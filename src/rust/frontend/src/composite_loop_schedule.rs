@@ -1,4 +1,4 @@
-use anyhow;
+use anyhow::anyhow;
 use backend_bindings::LoopMode;
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 use cxx_qt_lib_shoop::qvariant_helpers::*;
@@ -186,10 +186,10 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
                     let entry = qvariant_to_qvariantlist(&entry)?;
                     let loop_start = entry
                         .get(0)
-                        .ok_or(anyhow::anyhow!("No loop start entry in schedule elem"))?;
+                        .ok_or(anyhow!("No loop start entry in schedule elem"))?;
                     let loop_mode = entry
                         .get(1)
-                        .ok_or(anyhow::anyhow!("No loop mode entry in schedule elem"))?;
+                        .ok_or(anyhow!("No loop mode entry in schedule elem"))?;
                     let loop_start = LoopReference::<T> {
                         obj: T::from_qvariant(&loop_start).unwrap(),
                     };
@@ -201,7 +201,7 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
                 }
             }
             None => {
-                return Err(anyhow::anyhow!(
+                return Err(anyhow!(
                     "CompositeLoopSchedule: missing loops_start"
                 ))
             }
@@ -217,7 +217,7 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
                     result.loops_end.insert(object);
                 }
             }
-            None => return Err(anyhow::anyhow!("CompositeLoopSchedule: missing loops_end")),
+            None => return Err(anyhow!("CompositeLoopSchedule: missing loops_end")),
         }
 
         match map.get(&QString::from("loops_ignored")) {
@@ -231,7 +231,7 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
                 }
             }
             None => {
-                return Err(anyhow::anyhow!(
+                return Err(anyhow!(
                     "CompositeLoopSchedule: missing loops_ignored"
                 ))
             }
@@ -242,7 +242,7 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
 
     pub fn from_qvariant(qvariant: &QVariant) -> Result<Self, anyhow::Error> {
         let map = qvariant_to_qvariantmap(qvariant).map_err(|e| {
-            anyhow::anyhow!("CompositeLoopSchedule: could not convert to QVariantMap: {e}")
+            anyhow!("CompositeLoopSchedule: could not convert to QVariantMap: {e}")
         })?;
         Self::from_qvariantmap(&map)
     }

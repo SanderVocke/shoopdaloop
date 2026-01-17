@@ -30,15 +30,15 @@ impl SettingsIO {
     ) {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             let json = QJsonObject::from_variant_map(&settings)
-                .map_err(|e| anyhow::anyhow!("Failed to convert: {e}"))?
+                .map_err(|e| anyhow!("Failed to convert: {e}"))?
                 .to_json()
-                .map_err(|e| anyhow::anyhow!("Failed to convert: {e}"))?;
+                .map_err(|e| anyhow!("Failed to convert: {e}"))?;
             debug!("Settings to save: {json}");
             let filename = match override_filename.is_null() {
                 true => "settings.json".to_string(),
                 false => override_filename
                     .value::<QString>()
-                    .ok_or(anyhow::anyhow!("override_filename is not a string"))?
+                    .ok_or(anyhow!("override_filename is not a string"))?
                     .to_string(),
             };
             let settings_dir = self.settings_dir();
@@ -60,7 +60,7 @@ impl SettingsIO {
                 true => "settings.json".to_string(),
                 false => override_filename
                     .value::<QString>()
-                    .ok_or(anyhow::anyhow!("override_filename is not a string"))?
+                    .ok_or(anyhow!("override_filename is not a string"))?
                     .to_string(),
             };
             let path = self.settings_dir().join(filename);
@@ -73,14 +73,14 @@ impl SettingsIO {
             }
             let json = std::fs::read_to_string(&path)?;
             let json = QJsonObject::from_json(&json)
-                .map_err(|e| anyhow::anyhow!("Failed to convert: {e}"))?;
-            let json = json.as_ref().ok_or(anyhow::anyhow!("Failed to convert"))?;
+                .map_err(|e| anyhow!("Failed to convert: {e}"))?;
+            let json = json.as_ref().ok_or(anyhow!("Failed to convert"))?;
             let jsonstr = json
                 .to_json()
-                .map_err(|e| anyhow::anyhow!("Could not stringify json: {e}"))?;
+                .map_err(|e| anyhow!("Could not stringify json: {e}"))?;
             let json = json
                 .to_variant()
-                .map_err(|e| anyhow::anyhow!("Failed to convert: {e}"))?;
+                .map_err(|e| anyhow!("Failed to convert: {e}"))?;
             debug!("Loaded settings: {jsonstr}");
             info!("Loaded settings from {}", path.display());
             Ok(json)

@@ -569,7 +569,7 @@ impl PortGui {
                     let other_backend = other
                         .backend_port_wrapper
                         .as_ref()
-                        .ok_or(anyhow::anyhow!("Other backend wrapper not set"))?;
+                        .ok_or(anyhow!("Other backend wrapper not set"))?;
                     let other_backend_copy = qsharedpointer_qobject_to_qvariant(other_backend)?;
                     backend_port_handles.append(other_backend_copy);
                     Ok(())

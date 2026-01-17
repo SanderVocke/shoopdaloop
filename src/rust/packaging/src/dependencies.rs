@@ -1,4 +1,4 @@
-use anyhow;
+use anyhow::anyhow;
 use anyhow::Context;
 use indexmap::IndexMap;
 use std::cell::RefCell;
@@ -55,7 +55,7 @@ pub fn get_dependency_libs(
     if !list_deps_output.status.success() {
         error!("Command stderr:\n{}", command_output);
         error!("Command stdout:\n{}", deps_output);
-        return Err(anyhow::anyhow!(
+        return Err(anyhow!(
             "list_dependencies returned nonzero exit code"
         ));
     }
@@ -82,7 +82,7 @@ pub fn get_dependency_libs(
         let path = PathBuf::from(line.trim());
         let path_str = path
             .to_str()
-            .ok_or(anyhow::anyhow!("cannot find dependency"))?;
+            .ok_or(anyhow!("cannot find dependency"))?;
         let path_filename = path.file_name().unwrap().to_str().unwrap();
         let indent = line.chars().take_while(|&c| c == ' ').count();
 
@@ -114,7 +114,7 @@ pub fn get_dependency_libs(
                         .borrow()
                         .maybe_parent
                         .clone()
-                        .ok_or(anyhow::anyhow!("Failed to traverse outward"))?
+                        .ok_or(anyhow!("Failed to traverse outward"))?
                         .clone();
                     current_parent = parent;
                     children_indent = current_parent.borrow().children_indent;
@@ -126,7 +126,7 @@ pub fn get_dependency_libs(
                     current_parent.borrow_mut().children_indent = indent;
                 } else if children_indent != indent {
                     // cannot recover
-                    return Err(anyhow::anyhow!(
+                    return Err(anyhow!(
                         "Failed to find correct indent level: {children_indent} vs. {indent}"
                     ));
                 }
@@ -294,7 +294,7 @@ pub fn get_dependency_libs(
         }
     }
     if !error_msgs.is_empty() {
-        return Err(anyhow::anyhow!("Dependency errors:\n{}", error_msgs));
+        return Err(anyhow!("Dependency errors:\n{}", error_msgs));
     }
     let paths: HashSet<PathBuf> = HashSet::from_iter(paths.into_iter());
 

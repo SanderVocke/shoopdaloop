@@ -1,4 +1,4 @@
-use anyhow;
+use anyhow::anyhow;
 use backend_bindings::MidiEvent;
 use common::logging::macros::*;
 use midly::num::u28;
@@ -36,7 +36,7 @@ pub fn save_to_standard_midi<'a>(
         tracks: vec![track],
     };
 
-    smf.save(filename).map_err(|e| anyhow::anyhow!(e))
+    smf.save(filename).map_err(|e| anyhow!(e))
 }
 
 pub fn load_standard_midi<'a>(
@@ -84,7 +84,7 @@ pub fn load_standard_midi<'a>(
                                 }
                             }
                             if samples_per_tick.is_none() {
-                                return Err(anyhow::anyhow!("No tempo information"));
+                                return Err(anyhow!("No tempo information"));
                             }
                             let delta = event.delta.as_int() as f64 * samples_per_tick.unwrap();
                             prev_timestamp += delta;
@@ -92,7 +92,7 @@ pub fn load_standard_midi<'a>(
                                 Some(event) => {
                                     let mut buf: Vec<u8> = Vec::default();
                                     event.write(&mut buf).map_err(|e| {
-                                        anyhow::anyhow!("Could not write event: {e}")
+                                        anyhow!("Could not write event: {e}")
                                     })?;
                                     let our_event = MidiEvent {
                                         data: buf,
@@ -106,13 +106,13 @@ pub fn load_standard_midi<'a>(
                             }
                         }
                         Err(e) => {
-                            return Err(anyhow::anyhow!("Failed to parse event: {e}"));
+                            return Err(anyhow!("Failed to parse event: {e}"));
                         }
                     }
                 }
             }
             Err(e) => {
-                return Err(anyhow::anyhow!("Failed to parse track: {e}"));
+                return Err(anyhow!("Failed to parse track: {e}"));
             }
         }
     }

@@ -11,6 +11,8 @@ path = "src/bin/print_backend_build_info.rs"
 [dependencies]
 common = { path = "../common" }
 refilling_pool = { path = "../refilling_pool" }
+log = { workspace = true }
+ctor = { workspace = true }
 
 [build-dependencies]
 common = { path = "../common" }

@@ -5,7 +5,7 @@ use crate::cxx_qt_shoop::qobj_application_bridge::ApplicationStartupSettings;
 use crate::cxx_qt_shoop::qobj_qmlengine::register_qml_engine;
 use crate::cxx_qt_shoop::qobj_qmlengine_bridge::QmlEngine;
 use crate::engine_update_thread;
-use anyhow;
+use anyhow::anyhow;
 use crashhandling::set_crash_json_tag;
 use cxx::UniquePtr;
 use cxx_qt::CxxQtType;
@@ -187,7 +187,7 @@ impl Application {
                 "backup_timer_interval_ms",
                 &(rust.settings.backend_backup_refresh_interval_ms as i32),
             )
-            .map_err(|e| anyhow::anyhow!("Unable to set timer interval property: {e}"))?;
+            .map_err(|e| anyhow!("Unable to set timer interval property: {e}"))?;
         }
 
         if main_qml.is_some() {

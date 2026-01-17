@@ -1,4 +1,4 @@
-use anyhow;
+use anyhow::anyhow;
 use anyhow::Context;
 use std::path::Path;
 

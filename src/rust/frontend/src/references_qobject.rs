@@ -66,7 +66,7 @@ impl ReferencesQObject for cxx::UniquePtr<QSharedPointer_QObject> {
 
     fn to_qvariant(&self) -> Result<QVariant, anyhow::Error> {
         Ok(qsharedpointer_qobject_to_qvariant(
-            self.as_ref().ok_or(anyhow::anyhow!("empty unique ptr"))?,
+            self.as_ref().ok_or(anyhow!("empty unique ptr"))?,
         )?)
     }
 
@@ -105,7 +105,7 @@ impl ReferencesQObject for cxx::UniquePtr<QWeakPointer_QObject> {
 
     fn to_qvariant(&self) -> Result<QVariant, anyhow::Error> {
         Ok(qweakpointer_qobject_to_qvariant(
-            self.as_ref().ok_or(anyhow::anyhow!("empty unique ptr"))?,
+            self.as_ref().ok_or(anyhow!("empty unique ptr"))?,
         )?)
     }
 

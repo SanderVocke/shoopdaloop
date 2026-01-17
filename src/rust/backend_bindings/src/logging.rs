@@ -1,5 +1,5 @@
 use crate::ffi;
-use anyhow;
+use anyhow::anyhow;
 use enum_iterator::*;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::ffi::CString;
@@ -31,7 +31,7 @@ impl Logger {
         let c_name = CString::new(name).expect("CString::new failed");
         let logger = unsafe { ffi::get_logger(c_name.as_ptr()) };
         if logger.is_null() {
-            Err(anyhow::anyhow!("Failed to create logger"))
+            Err(anyhow!("Failed to create logger"))
         } else {
             Ok(Logger { logger })
         }

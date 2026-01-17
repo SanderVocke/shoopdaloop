@@ -25,7 +25,7 @@ impl LuaEngine {
             let lua_dir = GLOBAL_CONFIG
                 .get()
                 .as_ref()
-                .ok_or(anyhow::anyhow!("Global config not initialized"))?
+                .ok_or(anyhow!("Global config not initialized"))?
                 .lua_dir
                 .clone();
 
@@ -33,23 +33,23 @@ impl LuaEngine {
             let get_builtin_script = move |name: &str| -> Result<String, anyhow::Error> {
                 let path = PathBuf::from(format!("{}/{}", lua_dir_cloned, name));
                 if !path.exists() {
-                    return Err(anyhow::anyhow!(
+                    return Err(anyhow!(
                         "Non-existent built-in script: {name}. Tried: {path:?}"
                     ));
                 }
                 let contents = std::fs::read_to_string(path)
-                    .map_err(|e| anyhow::anyhow!("Failed to read builtin script file: {e}"))?;
+                    .map_err(|e| anyhow!("Failed to read builtin script file: {e}"))?;
                 Ok(contents)
             };
 
             let mut libs: HashMap<String, String> = HashMap::default();
             for file in glob::glob(&format!("{}/lib/*.lua", lua_dir))
-                .map_err(|e| anyhow::anyhow!("Could not glob for Lua libs: {e}"))?
+                .map_err(|e| anyhow!("Could not glob for Lua libs: {e}"))?
             {
                 let file = file?;
                 let name = file
                     .file_stem()
-                    .ok_or(anyhow::anyhow!("No stem for {file:?}"))?;
+                    .ok_or(anyhow!("No stem for {file:?}"))?;
                 let contents = std::fs::read_to_string(&file)?;
                 libs.insert(name.to_string_lossy().to_string(), contents);
             }
@@ -79,7 +79,7 @@ impl LuaEngine {
             let lua_val = self
                 .engine
                 .as_ref()
-                .ok_or(anyhow::anyhow!("engine not initialized"))?
+                .ok_or(anyhow!("engine not initialized"))?
                 .evaluate::<mlua::Value>(
                     code.to_string().as_str(),
                     maybe_script_name.as_ref().map(|s| s.as_str()),
@@ -87,7 +87,7 @@ impl LuaEngine {
                 )?;
             let eng_impl = self.engine.as_ref().unwrap().lua.borrow();
             QVariant::from_lua(lua_val, &eng_impl.lua)
-                .map_err(|e| anyhow::anyhow!("Failed to map to QVariant: {e}"))
+                .map_err(|e| anyhow!("Failed to map to QVariant: {e}"))
         }() {
             Ok(value) => value,
             Err(e) => {
@@ -129,7 +129,7 @@ impl LuaEngine {
             let engine = self
                 .engine
                 .as_ref()
-                .ok_or(anyhow::anyhow!("No engine set"))?;
+                .ok_or(anyhow!("No engine set"))?;
             let cb = engine.evaluate::<mlua::Function>(
                 code.to_string().as_str(),
                 Some(name.to_string().as_str()),
@@ -228,19 +228,19 @@ impl WrappedLuaCallback {
             let callback = self.callback.borrow();
             let callback = callback
                 .as_ref()
-                .ok_or(anyhow::anyhow!("No callback set"))?;
+                .ok_or(anyhow!("No callback set"))?;
             let lua = callback
                 .weak_lua
                 .upgrade()
-                .ok_or(anyhow::anyhow!("Lua went out of scope"))?;
+                .ok_or(anyhow!("Lua went out of scope"))?;
             let lua = lua.as_ref();
             let args = override_stored_args.unwrap_or(&self.stored_arg);
             let rval = callback
                 .callback
                 .call::<mlua::Value>(args.clone())
-                .map_err(|e| anyhow::anyhow!("failed to call callback: {e}"))?;
+                .map_err(|e| anyhow!("failed to call callback: {e}"))?;
             let rval = QVariant::from_lua(rval, lua)
-                .map_err(|e| anyhow::anyhow!("failed to convert return value: {e}"))?;
+                .map_err(|e| anyhow!("failed to convert return value: {e}"))?;
 
             Ok(rval)
         }() {
@@ -266,15 +266,15 @@ impl WrappedLuaCallback {
                 let callback = rust_mut.callback.borrow();
                 let callback = callback
                     .as_ref()
-                    .ok_or(anyhow::anyhow!("No callback set"))?;
+                    .ok_or(anyhow!("No callback set"))?;
                 let lua = callback
                     .weak_lua
                     .upgrade()
-                    .ok_or(anyhow::anyhow!("Lua went out of scope"))?;
+                    .ok_or(anyhow!("Lua went out of scope"))?;
                 let lua = lua.as_ref();
                 converted = arg
                     .into_lua(lua)
-                    .map_err(|e| anyhow::anyhow!("Could not convert arg to lua: {e}"))?;
+                    .map_err(|e| anyhow!("Could not convert arg to lua: {e}"))?;
             }
             self.as_mut()
                 .call_impl(Some(&mlua::MultiValue::from_vec(vec![converted])));

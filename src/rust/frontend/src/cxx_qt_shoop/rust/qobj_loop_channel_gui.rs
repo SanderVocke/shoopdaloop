@@ -515,7 +515,7 @@ impl LoopChannelGui {
 
         if let Err(e) = || -> Result<(), anyhow::Error> {
             if send_to_object.is_null() {
-                return Err(anyhow::anyhow!("target object is null"));
+                return Err(anyhow!("target object is null"));
             }
             let channel_backend = self
                 .as_mut()
@@ -546,10 +546,10 @@ impl LoopChannelGui {
                 move || -> Result<(), anyhow::Error> {
                     let backend_channel_qobj = channel_backend
                         .as_ref()
-                        .ok_or(anyhow::anyhow!("could not get backend channel"))?
+                        .ok_or(anyhow!("could not get backend channel"))?
                         .data()?;
                     if backend_channel_qobj.is_null() {
-                        return Err(anyhow::anyhow!("backend channel is null"));
+                        return Err(anyhow!("backend channel is null"));
                     }
 
                     let data = unsafe {

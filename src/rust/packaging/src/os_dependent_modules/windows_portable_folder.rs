@@ -1,4 +1,4 @@
-use anyhow;
+use anyhow::anyhow;
 use anyhow::Context;
 use glob::glob;
 use std::path::{Path, PathBuf};
@@ -12,7 +12,7 @@ fn populate_folder(folder: &Path, exe_path: &Path) -> Result<(), anyhow::Error> 
     let src_path = src_path
         .ancestors()
         .nth(6)
-        .ok_or(anyhow::anyhow!("cannot find src dir"))?;
+        .ok_or(anyhow!("cannot find src dir"))?;
     info!("Using source path {src_path:?}");
 
     let excludelist_path = src_path.join("distribution/windows/excludelist");
@@ -72,13 +72,13 @@ fn populate_folder(folder: &Path, exe_path: &Path) -> Result<(), anyhow::Error> 
 
 pub fn build_portable_folder(exe_path: &Path, output_dir: &Path) -> Result<(), anyhow::Error> {
     if std::fs::exists(output_dir)? {
-        return Err(anyhow::anyhow!(
+        return Err(anyhow!(
             "Output directory {:?} already exists",
             output_dir
         ));
     }
     if !std::fs::exists(output_dir.parent().unwrap())? {
-        return Err(anyhow::anyhow!(
+        return Err(anyhow!(
             "Output directory {:?}: parent doesn't exist",
             output_dir
         ));

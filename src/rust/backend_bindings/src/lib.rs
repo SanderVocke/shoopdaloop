@@ -1,5 +1,6 @@
 #[cfg(not(feature = "prebuild"))]
 mod ffi;
+mod verify_anyhow;
 
 #[cfg(not(feature = "prebuild"))]
 mod audio_channel;

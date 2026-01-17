@@ -10,7 +10,7 @@ pub fn dev_config_path() -> PathBuf {
 }
 
 #[cfg(not(feature = "prebuild"))]
-use anyhow;
+use anyhow::anyhow;
 
 #[cfg(not(feature = "prebuild"))]
 pub fn config_dynlib_env_var(

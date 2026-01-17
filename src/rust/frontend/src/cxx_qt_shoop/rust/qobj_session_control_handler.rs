@@ -137,7 +137,7 @@ fn as_track_indices(val: &mlua::Value) -> Option<Vec<i64>> {
 
 fn loop_coords(l: *mut QObject) -> Result<(i64, i64), anyhow::Error> {
     if l.is_null() {
-        return Err(anyhow::anyhow!("loop is null"));
+        return Err(anyhow!("loop is null"));
     }
     unsafe {
         let x = qobject_property_int(&*l, "track_idx")?;
@@ -157,42 +157,42 @@ fn loops_coords_vec(i: impl Iterator<Item = *mut QObject>) -> impl Iterator<Item
 
 fn loop_int_prop(l: &*mut QObject, prop: &str) -> Result<i32, anyhow::Error> {
     if l.is_null() {
-        return Err(anyhow::anyhow!("loop is null"));
+        return Err(anyhow!("loop is null"));
     }
     unsafe {
         qobject_property_int(&**l, prop)
-            .map_err(|e| anyhow::anyhow!("Could not get loop int prop: {e}"))
+            .map_err(|e| anyhow!("Could not get loop int prop: {e}"))
     }
 }
 
 fn loop_opt_int_prop(l: &*mut QObject, prop: &str) -> Result<Option<i32>, anyhow::Error> {
     if l.is_null() {
-        return Err(anyhow::anyhow!("loop is null"));
+        return Err(anyhow!("loop is null"));
     }
     unsafe {
         qobject_property_qvariant(&**l, prop)
             .map(|v| v.value::<i32>())
-            .map_err(|e| anyhow::anyhow!("Could not get loop int prop: {e}"))
+            .map_err(|e| anyhow!("Could not get loop int prop: {e}"))
     }
 }
 
 fn loop_bool_prop(l: &*mut QObject, prop: &str) -> Result<bool, anyhow::Error> {
     if l.is_null() {
-        return Err(anyhow::anyhow!("loop is null"));
+        return Err(anyhow!("loop is null"));
     }
     unsafe {
         qobject_property_bool(&**l, prop)
-            .map_err(|e| anyhow::anyhow!("Could not get loop bool prop: {e}"))
+            .map_err(|e| anyhow!("Could not get loop bool prop: {e}"))
     }
 }
 
 fn loop_float_prop(l: &*mut QObject, prop: &str) -> Result<f32, anyhow::Error> {
     if l.is_null() {
-        return Err(anyhow::anyhow!("loop is null"));
+        return Err(anyhow!("loop is null"));
     }
     unsafe {
         qobject_property_float(&**l, prop)
-            .map_err(|e| anyhow::anyhow!("Could not get loop float prop: {e}"))
+            .map_err(|e| anyhow!("Could not get loop float prop: {e}"))
     }
 }
 
@@ -218,7 +218,7 @@ impl SessionControlHandlerLuaTarget {
                 let strong_self = self
                     .weak_target
                     .upgrade()
-                    .ok_or(anyhow::anyhow!("Session control target went out of scope"))?;
+                    .ok_or(anyhow!("Session control target went out of scope"))?;
                 let strong_self = strong_self.borrow();
                 (self.callable)(&strong_self, lua, args)
             }
@@ -230,24 +230,24 @@ impl SessionControlHandlerLuaTarget {
             let wrapped_engine = engine_rust
                 .engine
                 .as_mut()
-                .ok_or(anyhow::anyhow!("Wrapped engine not initialized"))?;
+                .ok_or(anyhow!("Wrapped engine not initialized"))?;
 
             let lua_module: mlua::Table = wrapped_engine
                 .lua
                 .borrow()
                 .lua
                 .create_table()
-                .map_err(|e| anyhow::anyhow!("Could not create table: {e}"))?;
+                .map_err(|e| anyhow!("Could not create table: {e}"))?;
 
             let lua_constants: mlua::Table = wrapped_engine
                 .lua
                 .borrow()
                 .lua
                 .create_table()
-                .map_err(|e| anyhow::anyhow!("Could not create table: {e}"))?;
+                .map_err(|e| anyhow!("Could not create table: {e}"))?;
 
             let map_const_err = |r: Result<(), mlua::Error>| {
-                r.map_err(|e| anyhow::anyhow!("Could not set constant: {e}"))
+                r.map_err(|e| anyhow!("Could not set constant: {e}"))
             };
 
             macro_rules! map_iterable_enum {
@@ -286,7 +286,7 @@ impl SessionControlHandlerLuaTarget {
                     let callback_rc: Arc<Box<dyn LuaCallback>> = Arc::new(Box::new(callback));
                     let callback_lua = wrapped_engine.create_callback_fn($name, &callback_rc)?;
                     lua_module.set($name, callback_lua).map_err(|e| {
-                        anyhow::anyhow!("Could not set module callback {}: {e}", $name)
+                        anyhow!("Could not set module callback {}: {e}", $name)
                     })?;
                     self.callbacks_lua_to_rust.push(callback_rc);
                 }};
@@ -377,7 +377,7 @@ impl SessionControlHandlerLuaTarget {
                 &engine
                     .engine
                     .as_ref()
-                    .ok_or(anyhow::anyhow!("Engine not initialized"))?
+                    .ok_or(anyhow!("Engine not initialized"))?
                     .lua
                     .try_borrow()?
                     .lua,
@@ -401,7 +401,7 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
 
         let rval = mlua::Value::Integer(
@@ -437,12 +437,12 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 0 {
-            return Err(anyhow::anyhow!("Expected 0 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 0 arguments, got {}", args.len()));
         }
         loops_coords_vec(self.all_loops_iter()?)
             .collect::<Vec<Vec<i64>>>()
             .into_lua(lua)
-            .map_err(|e| anyhow::anyhow!("Could not convert into lua: {e}"))
+            .map_err(|e| anyhow!("Could not convert into lua: {e}"))
     }
 
     /*
@@ -459,7 +459,7 @@ impl SessionControlHandlerLuaTarget {
         loops_coords_vec(self.selected_loops.iter().map(|p| p.clone()))
             .collect::<Vec<Vec<i64>>>()
             .into_lua(lua)
-            .map_err(|e| anyhow::anyhow!("Could not convert loop coords to lua: {e}"))
+            .map_err(|e| anyhow!("Could not convert loop coords to lua: {e}"))
     }
 
     /*
@@ -476,7 +476,7 @@ impl SessionControlHandlerLuaTarget {
         match self.maybe_targeted_loop {
             Some(l) => loop_coords_vec(l)?
                 .into_lua(lua)
-                .map_err(|e| anyhow::anyhow!("Could not convert loop coords to lua: {e}")),
+                .map_err(|e| anyhow!("Could not convert loop coords to lua: {e}")),
             None => Ok(mlua::Nil),
         }
     }
@@ -493,17 +493,17 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         let mode: i64 = <i64 as FromLua>::from_lua(args.get(0).unwrap().clone(), lua)
-            .map_err(|e| anyhow::anyhow!("arg is not an int: {e}"))?;
+            .map_err(|e| anyhow!("arg is not an int: {e}"))?;
         loops_coords_vec(
             self.all_loops_iter()?
                 .filter(|l| loop_opt_int_prop(l, "mode").ok() == Some(Some(mode as i32))),
         )
         .collect::<Vec<Vec<i64>>>()
         .into_lua(lua)
-        .map_err(|e| anyhow::anyhow!("Could not convert into lua: {e}"))
+        .map_err(|e| anyhow!("Could not convert into lua: {e}"))
     }
 
     /*
@@ -518,13 +518,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         self.select_loops(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
             .map(|l| loop_int_prop(&l, "mode").unwrap_or(LoopMode::Unknown as i32))
             .collect::<Vec<i32>>()
             .into_lua(lua)
-            .map_err(|e| anyhow::anyhow!("could not convert to lua: {e}"))
+            .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
 
     /*
@@ -539,13 +539,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         self.select_loops(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
             .map(|l| loop_opt_int_prop(&l, "next_mode").unwrap_or(None))
             .collect::<Vec<Option<i32>>>()
             .into_lua(lua)
-            .map_err(|e| anyhow::anyhow!("could not convert to lua: {e}"))
+            .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
 
     /*
@@ -560,13 +560,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         self.select_loops(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
             .map(|l| loop_opt_int_prop(&l, "next_transition_delay").unwrap_or(None))
             .collect::<Vec<Option<i32>>>()
             .into_lua(lua)
-            .map_err(|e| anyhow::anyhow!("could not convert to lua: {e}"))
+            .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
 
     /*
@@ -581,13 +581,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         self.select_loops(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
             .map(|l| loop_int_prop(&l, "length").unwrap_or(0))
             .collect::<Vec<i32>>()
             .into_lua(lua)
-            .map_err(|e| anyhow::anyhow!("could not convert to lua: {e}"))
+            .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
 
     /*
@@ -602,12 +602,12 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         let track_idx = match args.get(0).unwrap() {
             mlua::Value::Integer(track_idx) => *track_idx,
             _ => {
-                return Err(anyhow::anyhow!("arg is not an integer"));
+                return Err(anyhow!("arg is not an integer"));
             }
         };
         loops_coords_vec(
@@ -620,7 +620,7 @@ impl SessionControlHandlerLuaTarget {
         )
         .collect::<Vec<Vec<i64>>>()
         .into_lua(lua)
-        .map_err(|e| anyhow::anyhow!("Could not convert coords: {e}"))
+        .map_err(|e| anyhow!("Could not convert coords: {e}"))
     }
 
     /*
@@ -636,25 +636,25 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 4 {
-            return Err(anyhow::anyhow!("Expected 4 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 4 arguments, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         let mode = match args.get(1).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Integer(mode) => *mode as i32,
             _ => {
-                return Err(anyhow::anyhow!("arg 2 is not a mode"));
+                return Err(anyhow!("arg 2 is not a mode"));
             }
         };
         let maybe_cycles_delay = match args.get(2).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Integer(maybe_cycles_delay) => *maybe_cycles_delay as i32,
             _ => {
-                return Err(anyhow::anyhow!("arg 3 is not a cycles delay"));
+                return Err(anyhow!("arg 3 is not a cycles delay"));
             }
         };
         let maybe_align_to_sync_at = match args.get(3).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Integer(maybe_align_to_sync_at) => *maybe_align_to_sync_at as i32,
             _ => {
-                return Err(anyhow::anyhow!("arg 3 is not a sync at point"));
+                return Err(anyhow!("arg 3 is not a sync at point"));
             }
         };
 
@@ -706,13 +706,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 2 {
-            return Err(anyhow::anyhow!("Expected 2 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         let mode = match args.get(1).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Integer(mode) => *mode as i32,
             _ => {
-                return Err(anyhow::anyhow!("arg 2 is not a mode"));
+                return Err(anyhow!("arg 2 is not a mode"));
             }
         };
         self.select_loops(lua, selector)?.try_for_each(|l| unsafe {
@@ -742,7 +742,7 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         self.select_loops(lua, selector)?.try_for_each(|l| unsafe {
@@ -772,13 +772,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         self.select_loops(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
             .map(|l| loop_float_prop(&l, "last_pushed_gain").unwrap_or(0.0))
             .collect::<Vec<f32>>()
             .into_lua(lua)
-            .map_err(|e| anyhow::anyhow!("could not convert to lua: {e}"))
+            .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
 
     /*
@@ -793,13 +793,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         self.select_loops(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
             .map(|l| loop_float_prop(&l, "gain_fader").unwrap_or(0.0))
             .collect::<Vec<f32>>()
             .into_lua(lua)
-            .map_err(|e| anyhow::anyhow!("could not convert to lua: {e}"))
+            .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
 
     /*
@@ -814,13 +814,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         self.select_loops(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
             .map(|l| loop_float_prop(&l, "last_pushed_stereo_balance").unwrap_or(0.0))
             .collect::<Vec<f32>>()
             .into_lua(lua)
-            .map_err(|e| anyhow::anyhow!("could not convert to lua: {e}"))
+            .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
 
     /*
@@ -835,19 +835,19 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 3 {
-            return Err(anyhow::anyhow!("Expected 3 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 3 arguments, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         let n = match args.get(1).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Integer(n) => *n as i32,
             _ => {
-                return Err(anyhow::anyhow!("arg 2 is not an integer"));
+                return Err(anyhow!("arg 2 is not an integer"));
             }
         };
         let cycles_delay = match args.get(2).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Integer(cycles_delay) => *cycles_delay as i32,
             _ => {
-                return Err(anyhow::anyhow!("arg 3 is not an integer"));
+                return Err(anyhow!("arg 3 is not an integer"));
             }
         };
         self.select_loops(lua, selector)?.try_for_each(|l| unsafe {
@@ -877,7 +877,7 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         self.select_loops(lua, selector)?.try_for_each(|l| unsafe {
@@ -907,13 +907,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 2 {
-            return Err(anyhow::anyhow!("Expected 2 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         let gain = match args.get(1).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Number(gain) => *gain as f32,
             _ => {
-                return Err(anyhow::anyhow!("arg 2 is not a gain number"));
+                return Err(anyhow!("arg 2 is not a gain number"));
             }
         };
         self.select_loops(lua, selector)?.try_for_each(|l| unsafe {
@@ -943,13 +943,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 2 {
-            return Err(anyhow::anyhow!("Expected 2 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         let gain = match args.get(1).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Number(gain) => *gain as f32,
             _ => {
-                return Err(anyhow::anyhow!("arg 2 is not a gain number"));
+                return Err(anyhow!("arg 2 is not a gain number"));
             }
         };
         self.select_loops(lua, selector)?.try_for_each(|l| unsafe {
@@ -979,13 +979,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 2 {
-            return Err(anyhow::anyhow!("Expected 2 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         let balance = match args.get(1).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Number(gain) => *gain as f32,
             _ => {
-                return Err(anyhow::anyhow!("arg 2 is not a gain number"));
+                return Err(anyhow!("arg 2 is not a gain number"));
             }
         };
         self.select_loops(lua, selector)?.try_for_each(|l| unsafe {
@@ -1015,13 +1015,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 2 {
-            return Err(anyhow::anyhow!("Expected 2 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         let clear = match args.get(1).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Boolean(clear) => *clear,
             _ => {
-                return Err(anyhow::anyhow!("arg 2 is not a boolean"));
+                return Err(anyhow!("arg 2 is not a boolean"));
             }
         };
         let mut loops: QList_QVariant = QList::default();
@@ -1063,7 +1063,7 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         let l = self
@@ -1098,7 +1098,7 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         self.select_loops(lua, selector)?.try_for_each(|l| unsafe {
@@ -1128,7 +1128,7 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 0 {
-            return Err(anyhow::anyhow!("Expected 0 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 0 arguments, got {}", args.len()));
         }
         self.all_loops_iter()?.try_for_each(|l| unsafe {
             if l.is_null() {
@@ -1157,12 +1157,12 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 0 {
-            return Err(anyhow::anyhow!("Expected 0 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 0 argument, got {}", args.len()));
         }
         let l = self
             .all_loops_iter()?
             .nth(0)
-            .ok_or(anyhow::anyhow!("No loop found to help untarget"))?;
+            .ok_or(anyhow!("No loop found to help untarget"))?;
         unsafe {
             if l.is_null() {
                 warn!("loop_untarget_all: loop is null");
@@ -1190,7 +1190,7 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         self.select_loops(lua, selector)?.try_for_each(|l| unsafe {
@@ -1221,13 +1221,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         let l = self
             .select_loops(lua, selector)?
             .nth(0)
-            .ok_or(anyhow::anyhow!("No loop found to toggle targeted"))?;
+            .ok_or(anyhow!("No loop found to toggle targeted"))?;
         unsafe {
             if l.is_null() {
                 warn!("loop_toggle_targeted: loop is null");
@@ -1260,31 +1260,31 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 5 {
-            return Err(anyhow::anyhow!("Expected 5 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 5 arguments, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         let reverse_start_cycle = match args.get(1).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Integer(reverse_start_cycle) => *reverse_start_cycle as i32,
             _ => {
-                return Err(anyhow::anyhow!("arg 2 is not an integer"));
+                return Err(anyhow!("arg 2 is not an integer"));
             }
         };
         let cycles_length = match args.get(2).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Integer(cycles_length) => *cycles_length as i32,
             _ => {
-                return Err(anyhow::anyhow!("arg 3 is not an integer"));
+                return Err(anyhow!("arg 3 is not an integer"));
             }
         };
         let go_to_cycle = match args.get(3).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Integer(go_to_cycle) => *go_to_cycle as i32,
             _ => {
-                return Err(anyhow::anyhow!("arg 4 is not an integer"));
+                return Err(anyhow!("arg 4 is not an integer"));
             }
         };
         let go_to_mode = match args.get(4).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Integer(go_to_mode) => *go_to_mode as i32,
             _ => {
-                return Err(anyhow::anyhow!("arg 5 is not an integer"));
+                return Err(anyhow!("arg 5 is not an integer"));
             }
         };
         self.select_loops(lua, selector)?.try_for_each(|l| unsafe {
@@ -1323,24 +1323,24 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 3 {
-            return Err(anyhow::anyhow!("Expected 3 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 3 arguments, got {}", args.len()));
         }
         let target_selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         let add_selector = args.get(1).unwrap_or(&mlua::Value::Nil);
         let parallel = match args.get(2).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Boolean(parallel) => *parallel,
             _ => {
-                return Err(anyhow::anyhow!("arg 3 is not a boolean"));
+                return Err(anyhow!("arg 3 is not a boolean"));
             }
         };
         let target_loop = self
             .select_loops(lua, target_selector)?
             .next()
-            .ok_or(anyhow::anyhow!("No target loop found"))?;
+            .ok_or(anyhow!("No target loop found"))?;
         let add_loop = self
             .select_loops(lua, add_selector)?
             .next()
-            .ok_or(anyhow::anyhow!("No loop to add found"))?;
+            .ok_or(anyhow!("No loop to add found"))?;
 
         unsafe {
             if target_loop.is_null() {
@@ -1374,14 +1374,14 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 2 {
-            return Err(anyhow::anyhow!("Expected 2 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         let active = args.get(1).unwrap_or(&mlua::Value::Nil);
         let active = match active {
             mlua::Value::Boolean(active) => *active,
             _ => {
-                return Err(anyhow::anyhow!("arg 2 is not a boolean"));
+                return Err(anyhow!("arg 2 is not a boolean"));
             }
         };
         self.select_loops(lua, selector)?.try_for_each(|l| unsafe {
@@ -1411,13 +1411,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         self.select_tracks(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
             .map(|l| loop_float_prop(&l, "last_pushed_gain").unwrap_or(0.0))
             .collect::<Vec<f32>>()
             .into_lua(lua)
-            .map_err(|e| anyhow::anyhow!("could not convert to lua: {e}"))
+            .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
 
     /*
@@ -1432,13 +1432,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         self.select_tracks(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
             .map(|l| loop_float_prop(&l, "last_pushed_out_stereo_balance").unwrap_or(0.0))
             .collect::<Vec<f32>>()
             .into_lua(lua)
-            .map_err(|e| anyhow::anyhow!("could not convert to lua: {e}"))
+            .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
 
     /*
@@ -1453,13 +1453,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         self.select_tracks(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
             .map(|l| loop_float_prop(&l, "gain_fader_position").unwrap_or(0.0))
             .collect::<Vec<f32>>()
             .into_lua(lua)
-            .map_err(|e| anyhow::anyhow!("could not convert to lua: {e}"))
+            .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
 
     /*
@@ -1474,13 +1474,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         self.select_tracks(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
             .map(|l| loop_float_prop(&l, "last_pushed_in_gain").unwrap_or(0.0))
             .collect::<Vec<f32>>()
             .into_lua(lua)
-            .map_err(|e| anyhow::anyhow!("could not convert to lua: {e}"))
+            .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
 
     /*
@@ -1495,13 +1495,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         self.select_tracks(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
             .map(|l| loop_float_prop(&l, "input_fader_position").unwrap_or(0.0))
             .collect::<Vec<f32>>()
             .into_lua(lua)
-            .map_err(|e| anyhow::anyhow!("could not convert to lua: {e}"))
+            .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
 
     /*
@@ -1516,13 +1516,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         self.select_tracks(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
             .map(|l| loop_bool_prop(&l, "mute").unwrap_or(false))
             .collect::<Vec<bool>>()
             .into_lua(lua)
-            .map_err(|e| anyhow::anyhow!("could not convert to lua: {e}"))
+            .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
 
     /*
@@ -1537,13 +1537,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 2 {
-            return Err(anyhow::anyhow!("Expected 2 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         let muted = match args.get(1).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Boolean(muted) => *muted,
             _ => {
-                return Err(anyhow::anyhow!("arg 2 is not a boolean"));
+                return Err(anyhow!("arg 2 is not a boolean"));
             }
         };
         self.select_tracks(lua, selector)?
@@ -1574,13 +1574,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         self.select_tracks(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
             .map(|l| !loop_bool_prop(&l, "monitor").unwrap_or(true))
             .collect::<Vec<bool>>()
             .into_lua(lua)
-            .map_err(|e| anyhow::anyhow!("could not convert to lua: {e}"))
+            .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
 
     /*
@@ -1595,13 +1595,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 2 {
-            return Err(anyhow::anyhow!("Expected 2 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         let muted = match args.get(1).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Boolean(muted) => *muted,
             _ => {
-                return Err(anyhow::anyhow!("arg 2 is not a boolean"));
+                return Err(anyhow!("arg 2 is not a boolean"));
             }
         };
         let monitor = !muted;
@@ -1633,13 +1633,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 2 {
-            return Err(anyhow::anyhow!("Expected 2 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         let gain = match args.get(1).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Number(gain) => *gain as f32,
             _ => {
-                return Err(anyhow::anyhow!("arg 2 is not a float"));
+                return Err(anyhow!("arg 2 is not a float"));
             }
         };
         self.select_tracks(lua, selector)?
@@ -1670,13 +1670,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 2 {
-            return Err(anyhow::anyhow!("Expected 2 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         let balance = match args.get(1).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Number(balance) => *balance as f32,
             _ => {
-                return Err(anyhow::anyhow!("arg 2 is not a float"));
+                return Err(anyhow!("arg 2 is not a float"));
             }
         };
         self.select_tracks(lua, selector)?
@@ -1707,13 +1707,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 2 {
-            return Err(anyhow::anyhow!("Expected 2 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         let gain = match args.get(1).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Number(gain) => *gain as f32,
             _ => {
-                return Err(anyhow::anyhow!("arg 2 is not a float"));
+                return Err(anyhow!("arg 2 is not a float"));
             }
         };
         self.select_tracks(lua, selector)?
@@ -1744,13 +1744,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 2 {
-            return Err(anyhow::anyhow!("Expected 2 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         let gain = match args.get(1).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Number(gain) => *gain as f32,
             _ => {
-                return Err(anyhow::anyhow!("arg 2 is not a float"));
+                return Err(anyhow!("arg 2 is not a float"));
             }
         };
         self.select_tracks(lua, selector)?
@@ -1781,13 +1781,13 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 2 {
-            return Err(anyhow::anyhow!("Expected 2 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
         let gain = match args.get(1).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Number(gain) => *gain as f32,
             _ => {
-                return Err(anyhow::anyhow!("arg 2 is not a float"));
+                return Err(anyhow!("arg 2 is not a float"));
             }
         };
         self.select_tracks(lua, selector)?
@@ -1819,12 +1819,12 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         let n = match args.get(0).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Integer(n) => *n,
             _ => {
-                return Err(anyhow::anyhow!("arg 1 is not an integer"));
+                return Err(anyhow!("arg 1 is not an integer"));
             }
         };
         if self.global_state_registry.is_null() {
@@ -1857,7 +1857,7 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 0 {
-            return Err(anyhow::anyhow!("Expected 0 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 0 arguments, got {}", args.len()));
         }
         if self.global_state_registry.is_null() {
             warn!("get_apply_n_cycles: state registry is null");
@@ -1866,7 +1866,7 @@ impl SessionControlHandlerLuaTarget {
         unsafe {
             qobject_property_int(&mut *self.global_state_registry, "apply_n_cycles")
                 .map(|v| mlua::Value::Integer(v as i64))
-                .map_err(|e| anyhow::anyhow!("could not get state registry property: {e}"))
+                .map_err(|e| anyhow!("could not get state registry property: {e}"))
         }
     }
 
@@ -1882,12 +1882,12 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         let v = match args.get(0).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Boolean(v) => *v,
             _ => {
-                return Err(anyhow::anyhow!("arg 1 is not a bool"));
+                return Err(anyhow!("arg 1 is not a bool"));
             }
         };
         if self.global_state_registry.is_null() {
@@ -1920,7 +1920,7 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 0 {
-            return Err(anyhow::anyhow!("Expected 0 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 0 arguments, got {}", args.len()));
         }
         if self.global_state_registry.is_null() {
             warn!("get_solo: state registry is null");
@@ -1929,7 +1929,7 @@ impl SessionControlHandlerLuaTarget {
         unsafe {
             qobject_property_bool(&mut *self.global_state_registry, "solo_active")
                 .map(|v| mlua::Value::Boolean(v))
-                .map_err(|e| anyhow::anyhow!("could not get state registry property: {e}"))
+                .map_err(|e| anyhow!("could not get state registry property: {e}"))
         }
     }
 
@@ -1945,12 +1945,12 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         let v = match args.get(0).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Boolean(v) => *v,
             _ => {
-                return Err(anyhow::anyhow!("arg 1 is not a bool"));
+                return Err(anyhow!("arg 1 is not a bool"));
             }
         };
         if self.global_state_registry.is_null() {
@@ -1983,7 +1983,7 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 0 {
-            return Err(anyhow::anyhow!("Expected 0 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 0 arguments, got {}", args.len()));
         }
         if self.global_state_registry.is_null() {
             warn!("get_sync_active: state registry is null");
@@ -1992,7 +1992,7 @@ impl SessionControlHandlerLuaTarget {
         unsafe {
             qobject_property_bool(&mut *self.global_state_registry, "sync_active")
                 .map(|v| mlua::Value::Boolean(v))
-                .map_err(|e| anyhow::anyhow!("could not get state registry property: {e}"))
+                .map_err(|e| anyhow!("could not get state registry property: {e}"))
         }
     }
 
@@ -2008,12 +2008,12 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         let v = match args.get(0).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::Boolean(v) => *v,
             _ => {
-                return Err(anyhow::anyhow!("arg 1 is not a bool"));
+                return Err(anyhow!("arg 1 is not a bool"));
             }
         };
         if self.global_state_registry.is_null() {
@@ -2046,7 +2046,7 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 0 {
-            return Err(anyhow::anyhow!("Expected 0 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 0 arguments, got {}", args.len()));
         }
         if self.global_state_registry.is_null() {
             warn!("get_play_after_record: state registry is null");
@@ -2055,7 +2055,7 @@ impl SessionControlHandlerLuaTarget {
         unsafe {
             qobject_property_bool(&mut *self.global_state_registry, "play_after_record_active")
                 .map(|v| mlua::Value::Boolean(v))
-                .map_err(|e| anyhow::anyhow!("could not get state registry property: {e}"))
+                .map_err(|e| anyhow!("could not get state registry property: {e}"))
         }
     }
 
@@ -2071,12 +2071,12 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
+            return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         let action = match args.get(0).unwrap_or(&mlua::Value::Nil) {
             mlua::Value::String(v) => v.to_string_lossy(),
             _ => {
-                return Err(anyhow::anyhow!("arg 1 is not a string"));
+                return Err(anyhow!("arg 1 is not a string"));
             }
         };
         if self.global_state_registry.is_null() {
@@ -2107,7 +2107,7 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 0 {
-            return Err(anyhow::anyhow!("Expected 0 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 0 arguments, got {}", args.len()));
         }
         if self.global_state_registry.is_null() {
             warn!("get_play_after_record: state registry is null");
@@ -2116,7 +2116,7 @@ impl SessionControlHandlerLuaTarget {
         unsafe {
             qobject_property_string(&mut *self.global_state_registry, "default_recording_action")
                 .map(|v| IntoLua::into_lua(v.to_string(), lua).unwrap_or(mlua::Value::Nil))
-                .map_err(|e| anyhow::anyhow!("could not get state registry property: {e}"))
+                .map_err(|e| anyhow!("could not get state registry property: {e}"))
         }
     }
 
@@ -2132,7 +2132,7 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 1 arguments, got {}", args.len()));
         }
         let lua_fn = args.get(0).unwrap_or(&mlua::Value::Nil);
         if let mlua::Value::Function(function) = lua_fn {
@@ -2147,10 +2147,10 @@ impl SessionControlHandlerLuaTarget {
                 });
                 Ok(mlua::Value::Nil)
             } else {
-                return Err(anyhow::anyhow!("Could not get callbacks for loop event"));
+                return Err(anyhow!("Could not get callbacks for loop event"));
             }
         } else {
-            return Err(anyhow::anyhow!("Passed argument is not a function"));
+            return Err(anyhow!("Passed argument is not a function"));
         }
     }
 
@@ -2166,7 +2166,7 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 1 arguments, got {}", args.len()));
         }
         let lua_fn = args.get(0).unwrap_or(&mlua::Value::Nil);
         if let mlua::Value::Function(function) = lua_fn {
@@ -2181,10 +2181,10 @@ impl SessionControlHandlerLuaTarget {
                 });
                 Ok(mlua::Value::Nil)
             } else {
-                return Err(anyhow::anyhow!("Could not get callbacks for global event"));
+                return Err(anyhow!("Could not get callbacks for global event"));
             }
         } else {
-            return Err(anyhow::anyhow!("Passed argument is not a function"));
+            return Err(anyhow!("Passed argument is not a function"));
         }
     }
 
@@ -2200,7 +2200,7 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
-            return Err(anyhow::anyhow!("Expected 1 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 1 arguments, got {}", args.len()));
         }
         let lua_fn = args.get(0).unwrap_or(&mlua::Value::Nil);
         if let mlua::Value::Function(function) = lua_fn {
@@ -2215,12 +2215,12 @@ impl SessionControlHandlerLuaTarget {
                 });
                 Ok(mlua::Value::Nil)
             } else {
-                return Err(anyhow::anyhow!(
+                return Err(anyhow!(
                     "Could not get callbacks for keyboard event"
                 ));
             }
         } else {
-            return Err(anyhow::anyhow!("Passed argument is not a function"));
+            return Err(anyhow!("Passed argument is not a function"));
         }
     }
 
@@ -2236,20 +2236,20 @@ impl SessionControlHandlerLuaTarget {
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 2 {
-            return Err(anyhow::anyhow!("Expected 2 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
         let time_ms = args
             .get(0)
             .unwrap_or(&mlua::Value::Nil)
             .as_integer()
-            .ok_or(anyhow::anyhow!("1st arg is not an integer"))?;
+            .ok_or(anyhow!("1st arg is not an integer"))?;
         let lua_fn = args
             .get(1)
             .unwrap_or(&mlua::Value::Nil)
             .as_function()
-            .ok_or(anyhow::anyhow!("2nd arg is not a function"))?;
+            .ok_or(anyhow!("2nd arg is not a function"))?;
         if time_ms < 0 {
-            return Err(anyhow::anyhow!("time may not be negative"));
+            return Err(anyhow!("time may not be negative"));
         }
         WrappedLuaCallback::create_one_shot_timed(
             time_ms as usize,
@@ -2277,28 +2277,28 @@ impl SessionControlHandlerLuaTarget {
     ) -> Result<mlua::Value, anyhow::Error> {
         // Parse arguments
         if args.len() != 4 {
-            return Err(anyhow::anyhow!("Expected 4 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 4 arguments, got {}", args.len()));
         }
         let regex = args
             .get(0)
             .map(|v| v.as_string())
             .flatten()
-            .ok_or(anyhow::anyhow!("1st arg is not a string"))?;
+            .ok_or(anyhow!("1st arg is not a string"))?;
         let opened_callback = args
             .get(1)
             .map(|v| v.as_function())
             .flatten()
-            .ok_or(anyhow::anyhow!("2nd arg is not a function"))?;
+            .ok_or(anyhow!("2nd arg is not a function"))?;
         let connected_callback = args
             .get(2)
             .map(|v| v.as_function())
             .flatten()
-            .ok_or(anyhow::anyhow!("3rd arg is not a function"))?;
+            .ok_or(anyhow!("3rd arg is not a function"))?;
         let msg_rate_limit_hz = args
             .get(3)
             .map(|v| v.as_integer())
             .flatten()
-            .ok_or(anyhow::anyhow!("4th arg is not an integer"))?;
+            .ok_or(anyhow!("4th arg is not an integer"))?;
 
         // Determine port names and regexes
         let port_idx = self.created_port_idx.borrow().clone();
@@ -2349,12 +2349,12 @@ impl SessionControlHandlerLuaTarget {
                         .collect();
 
                     if error_msg.is_some() {
-                        return Err(anyhow::anyhow!("{}", error_msg.unwrap()));
+                        return Err(anyhow!("{}", error_msg.unwrap()));
                     }
 
                     let port = weak_port
                         .upgrade()
-                        .ok_or(anyhow::anyhow!("MIDI control port went out of scope"))?;
+                        .ok_or(anyhow!("MIDI control port went out of scope"))?;
                     port.borrow_mut().pin_mut().queue_send_msg_impl(bytes);
 
                     Ok(())
@@ -2364,13 +2364,13 @@ impl SessionControlHandlerLuaTarget {
 
                 Ok(())
             })
-            .map_err(|e| anyhow::anyhow!("Failed to create Lua function: {e}"))?;
+            .map_err(|e| anyhow!("Failed to create Lua function: {e}"))?;
         let lua_module = lua
             .create_table()
-            .map_err(|e| anyhow::anyhow!("Failed to create table: {e}"))?;
+            .map_err(|e| anyhow!("Failed to create table: {e}"))?;
         lua_module
             .set("send", send_fn)
-            .map_err(|e| anyhow::anyhow!("Failed to set send function: {e}"))?;
+            .map_err(|e| anyhow!("Failed to set send function: {e}"))?;
 
         // Create qt objects which will act as proxies for forwarding the Qt port's
         // signals onto lua callbacks
@@ -2442,18 +2442,18 @@ impl SessionControlHandlerLuaTarget {
     ) -> Result<mlua::Value, anyhow::Error> {
         // Parse arguments
         if args.len() != 2 {
-            return Err(anyhow::anyhow!("Expected 2 arguments, got {}", args.len()));
+            return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
         let regex = args
             .get(0)
             .map(|v| v.as_string())
             .flatten()
-            .ok_or(anyhow::anyhow!("1st arg is not a string"))?;
+            .ok_or(anyhow!("1st arg is not a string"))?;
         let msg_callback = args
             .get(1)
             .map(|v| v.as_function())
             .flatten()
-            .ok_or(anyhow::anyhow!("2nd arg is not a function"))?;
+            .ok_or(anyhow!("2nd arg is not a function"))?;
 
         // Determine port names and regexes
         let port_idx = self.created_port_idx.borrow().clone();
@@ -2568,11 +2568,11 @@ impl SessionControlHandlerLuaTarget {
                         self.select_loops_by_coords(multi_coords.into_iter()),
                     )))
                 } else {
-                    Err(anyhow::anyhow!("Unsupported loop selector: table cannot be interpreted as (list of) coordinates"))
+                    Err(anyhow!("Unsupported loop selector: table cannot be interpreted as (list of) coordinates"))
                 }
             }
             mlua::Value::Nil => Ok(Either::Right(std::iter::empty())),
-            others => Err(anyhow::anyhow!(
+            others => Err(anyhow!(
                 "Unsupported loop selector type: {others:?}"
             )),
         }
@@ -2620,11 +2620,11 @@ impl SessionControlHandlerLuaTarget {
                         self.select_tracks_by_indices(indices.into_iter()),
                     )))
                 } else {
-                    Err(anyhow::anyhow!("Unsupported track selector: table cannot be interpreted as list of indices"))
+                    Err(anyhow!("Unsupported track selector: table cannot be interpreted as list of indices"))
                 }
             }
             mlua::Value::Nil => Ok(Either::Right(std::iter::empty())),
-            others => Err(anyhow::anyhow!(
+            others => Err(anyhow!(
                 "Unsupported track selector type: {others:?}"
             )),
         }
@@ -2991,7 +2991,7 @@ impl SessionControlHandler {
                     let event = event
                         .clone()
                         .into_lua(&lock)
-                        .map_err(|e| anyhow::anyhow!("Could not convert loop event: {e}"))?;
+                        .map_err(|e| anyhow!("Could not convert loop event: {e}"))?;
                     if let Err(e) = registered_cb.callback.call::<()>(event) {
                         error!("Could not call loop event callback: {e}");
                     }
@@ -3034,7 +3034,7 @@ impl SessionControlHandler {
                     let event = event
                         .clone()
                         .into_lua(&lock)
-                        .map_err(|e| anyhow::anyhow!("Could not convert global event: {e}"))?;
+                        .map_err(|e| anyhow!("Could not convert global event: {e}"))?;
                     if let Err(e) = registered_cb.callback.call::<()>(event) {
                         error!("Could not call global event callback: {e}");
                     }
@@ -3072,7 +3072,7 @@ impl SessionControlHandler {
                     let event = event
                         .clone()
                         .into_lua(&lock)
-                        .map_err(|e| anyhow::anyhow!("Could not convert keyboard event: {e}"))?;
+                        .map_err(|e| anyhow!("Could not convert keyboard event: {e}"))?;
                     if let Err(e) = registered_cb.callback.call::<()>(event) {
                         error!("Could not call keyboard event callback: {e}");
                     }

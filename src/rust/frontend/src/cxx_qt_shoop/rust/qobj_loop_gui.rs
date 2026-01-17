@@ -60,7 +60,7 @@ impl LoopGui {
                 backend_loop_qobj,
                 engine_update_thread::get_engine_update_thread().thread,
             )
-            .unwrap();
+            .expect("Failed to move backend loop to update thread");
 
             {
                 let backend_loop_pin = std::pin::Pin::new_unchecked(&mut *backend_loop);
@@ -173,7 +173,9 @@ impl LoopGui {
 
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.backend_loop_wrapper =
-                QSharedPointer_QObject::from_ptr_delete_later(backend_loop_qobj).unwrap();
+                QSharedPointer_QObject::from_ptr_delete_later(backend_loop_qobj)
+                    .ok_or_else(|| anyhow!("Failed to create QSharedPointer"))
+                    .expect("Failed to initialize backend loop wrapper");
         }
     }
 
@@ -251,9 +253,11 @@ impl LoopGui {
             let ref_self = self.as_ref();
             let qquickitem = ref_self.qquickitem_ref();
             for child in qquickitem.child_items().iter().filter(|child| {
-                let object_name =
-                    qobject_object_name(qvariant_to_qobject_ptr(child).unwrap().as_ref().unwrap())
-                        .unwrap();
+                let object_name = qvariant_to_qobject_ptr(child)
+                    .ok()
+                    .and_then(|ptr| unsafe { ptr.as_ref() })
+                    .and_then(|ref_obj| unsafe { qobject_object_name(ref_obj) })
+                    .unwrap_or_default();
                 object_name == find_object_name
             }) {
                 result.append(child.clone());
@@ -280,7 +284,9 @@ impl LoopGui {
 
         // Get handles to the backend loops in terms of QSharedPointers, which will ensure
         // they don't go out of scope while our transition is queued in the event loop.
-        let backend_loop_handles = get_backend_loop_handles_variant_list(&loops).unwrap();
+        let backend_loop_handles = get_backend_loop_handles_variant_list(&loops)
+            .ok_or_else(|| anyhow!("Failed to get backend loop handles"))
+            .expect("Failed to get backend loop handles");
         self.backend_transition_multiple(
             backend_loop_handles,
             to_mode,
@@ -290,7 +296,13 @@ impl LoopGui {
     }
 
     pub fn get_backend_loop_shared_ptr(self: Pin<&mut LoopGui>) -> QVariant {
-        qsharedpointer_qobject_to_qvariant(&self.backend_loop_wrapper.as_ref().unwrap()).unwrap()
+        qsharedpointer_qobject_to_qvariant(
+            &self
+                .backend_loop_wrapper
+                .as_ref()
+                .expect("Backend loop wrapper is null"),
+        )
+        .expect("Failed to convert QSharedPointer to QVariant")
     }
 
     pub fn transition(
@@ -317,7 +329,7 @@ impl LoopGui {
         // make a better solution for this.
         let backend_wrapper = &self.as_ref().backend_loop_wrapper;
         if backend_wrapper.is_null() {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "Cannot add audio channel: no backend loop present"
             ));
         }
@@ -328,10 +340,10 @@ impl LoopGui {
             if maybe_backend_loop.is_some() {
                 debug!(self, "Created back-end audio channel");
                 return maybe_backend_loop
-                    .unwrap()
+                    .ok_or_else(|| anyhow!("Backend loop is null"))?
                     .add_audio_channel(mode.try_into()?);
             } else {
-                return Err(anyhow::anyhow!("Backend loop not set"));
+                return Err(anyhow!("Backend loop not set"));
             }
         }
     }
@@ -344,7 +356,7 @@ impl LoopGui {
         // make a better solution for this.
         let backend_wrapper = &self.as_ref().backend_loop_wrapper;
         if backend_wrapper.is_null() {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "Cannot add midi channel: no backend loop present"
             ));
         }
@@ -355,10 +367,10 @@ impl LoopGui {
             if maybe_backend_loop.is_some() {
                 debug!(self, "Created back-end MIDI channel");
                 return maybe_backend_loop
-                    .unwrap()
+                    .ok_or_else(|| anyhow!("Backend loop is null"))?
                     .add_midi_channel(mode.try_into()?);
             } else {
-                return Err(anyhow::anyhow!("Backend loop not set"));
+                return Err(anyhow!("Backend loop not set"));
             }
         }
     }
@@ -441,7 +453,10 @@ impl LoopGui {
             unsafe {
                 let loop_gui_ptr: *mut LoopGui = qobject_to_loop_ptr(sync_source_in);
                 let backend_loop_ptr: &cxx::UniquePtr<QSharedPointer_QObject> =
-                    &loop_gui_ptr.as_ref().unwrap().backend_loop_wrapper;
+                    &loop_gui_ptr
+                        .as_ref()
+                        .expect("loop_gui_ptr is null")
+                        .backend_loop_wrapper;
                 match backend_loop_ptr.as_ref() {
                     Some(r) => match qsharedpointer_qobject_to_qvariant(r) {
                         Ok(variant) => {

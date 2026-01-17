@@ -1,5 +1,8 @@
 use crate::ffi;
+use common::logging::macros::*;
 use enum_iterator::*;
+
+shoop_log_unit!("BackendBindings.Port");
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
@@ -21,17 +24,24 @@ impl ExternalPortDescriptor {
         ExternalPortDescriptor {
             name: unsafe {
                 std::ffi::CStr::from_ptr(ffi_descriptor.name)
-                    .to_str()
-                    .unwrap()
-                    .to_string()
+                    .to_string_lossy()
+                    .into_owned()
             },
-            direction: PortDirection::try_from(ffi_descriptor.direction as i32).unwrap(),
-            data_type: PortDataType::try_from(ffi_descriptor.data_type as i32).unwrap(),
+            direction: PortDirection::try_from(ffi_descriptor.direction as i32)
+                .unwrap_or(PortDirection::Any),
+            data_type: PortDataType::try_from(ffi_descriptor.data_type as i32)
+                .unwrap_or(PortDataType::Any),
         }
     }
 
     pub fn to_ffi(&self) -> ffi::shoop_external_port_descriptor_t {
-        let c_name = std::ffi::CString::new(self.name.clone()).unwrap();
+        let c_name = match std::ffi::CString::new(self.name.clone()) {
+            Ok(c) => c,
+            Err(e) => {
+                error!("Invalid CString for port name: {}", e);
+                std::ffi::CString::new("").unwrap()
+            }
+        };
         ffi::shoop_external_port_descriptor_t {
             name: c_name.into_raw(),
             direction: self.direction as ffi::shoop_port_direction_t,
@@ -66,7 +76,10 @@ impl PortConnectabilityKind {
             0 => PortConnectabilityKind::None,
             INTERNAL => PortConnectabilityKind::Internal,
             EXTERNAL => PortConnectabilityKind::External,
-            _ => panic!("Invalid PortConnectabilityKind value: {}", ffi_kind),
+            _ => {
+                error!("Invalid PortConnectabilityKind value: {}", ffi_kind);
+                PortConnectabilityKind::None
+            }
         }
     }
 

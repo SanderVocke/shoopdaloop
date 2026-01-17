@@ -56,9 +56,9 @@ impl LoopBackend {
             let mut rust = self.as_mut().rust_mut();
             rust.backend_loop
                 .as_mut()
-                .unwrap()
+                .expect("Backend loop object doesn't exist")
                 .set_length(length as u32)
-                .unwrap();
+                .expect("Failed to set length on backend loop");
         }
     }
 
@@ -73,9 +73,9 @@ impl LoopBackend {
             let mut rust = self.as_mut().rust_mut();
             rust.backend_loop
                 .as_mut()
-                .unwrap()
+                .expect("Backend loop object doesn't exist")
                 .set_position(position as u32)
-                .unwrap();
+                .expect("Failed to set position on backend loop");
         }
     }
 
@@ -122,8 +122,13 @@ impl LoopBackend {
             unsafe {
                 initialize_condition = !self.get_initialized()
                     && self.as_ref().backend != std::ptr::null_mut()
-                    && qobject::qobject_property_bool(self.backend.as_ref().unwrap(), "ready")
-                        .unwrap_or(false)
+                    && qobject::qobject_property_bool(
+                        self.backend
+                            .as_ref()
+                            .ok_or_else(|| anyhow!("Backend is null"))?,
+                        "ready",
+                    )
+                    .unwrap_or(false)
                     && self.as_ref().backend_loop.is_none();
             }
 
@@ -132,8 +137,13 @@ impl LoopBackend {
                 unsafe {
                     let backend = BackendWrapper::from_qobject_mut_ptr(self.as_ref().backend)?;
                     // FIXME: unwraps
-                    let backend_session = backend.session.as_ref().unwrap();
-                    let backend_loop = backend_session.create_loop().unwrap();
+                    let backend_session = backend
+                        .session
+                        .as_ref()
+                        .ok_or_else(|| anyhow!("Backend session is null"))?;
+                    let backend_loop = backend_session
+                        .create_loop()
+                        .map_err(|e| anyhow!("Failed to create backend loop: {}", e))?;
                     {
                         let mut rust_mut = self.as_mut().rust_mut();
                         rust_mut.backend_loop = Some(backend_loop);
@@ -181,7 +191,7 @@ impl LoopBackend {
             let new_state = rust
                 .backend_loop
                 .as_mut()
-                .ok_or(anyhow::anyhow!("backend loop object doesn't exist"))?
+                .ok_or(anyhow!("backend loop object doesn't exist"))?
                 .get_state()?;
 
             let prev_state;
@@ -194,8 +204,18 @@ impl LoopBackend {
                 prev_cycle_nr = rust.prev_cycle_nr;
 
                 new_cycle_nr = if new_state.position < prev_state.position
-                    && is_playing_mode(prev_state.mode.try_into().unwrap())
-                    && is_playing_mode(new_state.mode.try_into().unwrap())
+                    && is_playing_mode(
+                        prev_state
+                            .mode
+                            .try_into()
+                            .map_err(|e| anyhow!("Invalid loop mode: {}", e))?,
+                    )
+                    && is_playing_mode(
+                        new_state
+                            .mode
+                            .try_into()
+                            .map_err(|e| anyhow!("Invalid loop mode: {}", e))?,
+                    )
                 {
                     rust.prev_cycle_nr + 1
                 } else {
@@ -291,9 +311,12 @@ impl LoopBackend {
     ) {
         if let Err(e) = transition_backend_loops(
             loops
-                .iter()
-                .map(|variant| qvariant_to_qobject_ptr(variant).unwrap()),
-            LoopMode::try_from(to_mode).unwrap(),
+            loops.iter().map(|variant| {
+                qvariant_to_qobject_ptr(variant)
+                    .map_err(|e| anyhow!("Failed to convert QVariant to QObject: {}", e))
+            }),
+            LoopMode::try_from(to_mode)
+                .map_err(|e| anyhow!("Invalid loop mode: {}", e))?,
             if maybe_cycles_delay < 0 {
                 None
             } else {
@@ -340,10 +363,10 @@ impl LoopBackend {
                         }
                         let backend_loop_ref: &backend_bindings::Loop = loop_ptr
                             .as_ref()
-                            .unwrap()
+                            .ok_or_else(|| anyhow!("Loop pointer is null"))?
                             .backend_loop
                             .as_ref()
-                            .ok_or(anyhow::anyhow!("Backend loop not set"))?;
+                            .ok_or_else(|| anyhow!("Backend loop not set"))?;
                         backend_loop_refs.push(backend_loop_ref);
                         Ok(())
                     }
@@ -381,11 +404,15 @@ impl LoopBackend {
             return;
         }
         let result: Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
-            self.as_ref().backend_loop.as_ref().unwrap().transition(
-                to_mode.try_into()?,
-                maybe_cycles_delay,
-                maybe_to_sync_at_cycle,
-            )?;
+            self.as_ref()
+                .backend_loop
+                .as_ref()
+                .ok_or_else(|| anyhow!("Backend loop is null"))?
+                .transition(
+                    to_mode.try_into()?,
+                    maybe_cycles_delay,
+                    maybe_to_sync_at_cycle,
+                )?;
             debug!(
                 self,
                 "Transitioning to {} with delay {}, sync at cycle {}",
@@ -413,7 +440,7 @@ impl LoopBackend {
             self.as_ref()
                 .backend_loop
                 .as_ref()
-                .unwrap()
+                .ok_or_else(|| anyhow!("Backend loop is null"))?
                 .clear(length as u32)?;
             Ok(())
         })();
@@ -441,7 +468,7 @@ impl LoopBackend {
             self.as_ref()
                 .backend_loop
                 .as_ref()
-                .unwrap()
+                .ok_or_else(|| anyhow!("Backend loop is null"))?
                 .adopt_ringbuffer_contents(
                     maybe_reverse_start_cycle.value::<i32>(),
                     maybe_cycles_length.value::<i32>(),
@@ -464,20 +491,26 @@ impl LoopBackend {
             if !sync_source.is_null() {
                 let loop_ptr = qobject_to_loop_backend_ptr(sync_source);
                 if loop_ptr.is_null() {
-                    return Err(anyhow::anyhow!(
+                    return Err(anyhow!(
                         "Failed to cast sync source QObject to LoopBackend"
                     ));
                 }
                 self.as_ref()
                     .backend_loop
                     .as_ref()
-                    .unwrap()
-                    .set_sync_source(loop_ptr.as_ref().unwrap().backend_loop.as_ref())?;
+                    .ok_or_else(|| anyhow!("Backend loop is null"))?
+                    .set_sync_source(
+                        loop_ptr
+                            .as_ref()
+                            .ok_or_else(|| anyhow!("Loop pointer is null"))?
+                            .backend_loop
+                            .as_ref(),
+                    )?;
             } else {
                 self.as_ref()
                     .backend_loop
                     .as_ref()
-                    .unwrap()
+                    .ok_or_else(|| anyhow!("Backend loop is null"))?
                     .set_sync_source(None)?;
             }
 
@@ -546,7 +579,10 @@ impl LoopBackend {
     }
 
     pub fn metatype_name() -> String {
-        unsafe { loop_backend_metatype_name(std::ptr::null_mut()).unwrap() }
+        unsafe {
+            loop_backend_metatype_name(std::ptr::null_mut())
+                .unwrap_or_else(|| "Unknown".to_string())
+        }
     }
 
     pub fn dependent_will_handle_sync_loop_cycle(self: Pin<&mut LoopBackend>, _cycle_nr: i32) {}

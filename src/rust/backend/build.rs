@@ -1,4 +1,4 @@
-use anyhow;
+use anyhow::anyhow;
 use cmake::Config;
 use common;
 use std::env;
@@ -13,11 +13,11 @@ fn main_impl() -> Result<(), anyhow::Error> {
     }
 
     // environment
-    let refilling_pool_cxx_include = std::env::var("DEP_REFILLING_POOL_INCLUDE").unwrap();
-    let refilling_pool_cxx_libdir = std::env::var("DEP_REFILLING_POOL_CXX_BRIDGE_LIBDIR").unwrap();
-    let refilling_pool_staticlib = std::env::var("CARGO_STATICLIB_FILE_REFILLING_POOL").unwrap();
-    let profile = std::env::var("PROFILE").unwrap();
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let refilling_pool_cxx_include = std::env::var("DEP_REFILLING_POOL_INCLUDE")?;
+    let refilling_pool_cxx_libdir = std::env::var("DEP_REFILLING_POOL_CXX_BRIDGE_LIBDIR")?;
+    let refilling_pool_staticlib = std::env::var("CARGO_STATICLIB_FILE_REFILLING_POOL")?;
+    let profile = std::env::var("PROFILE")?;
+    let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     let build_time_link_dirs_raw = option_env!("SHOOP_BUILD_TIME_LINK_DIRS").unwrap_or_default();
     let runtime_link_dirs_raw = option_env!("SHOOP_RUNTIME_LINK_DIRS").unwrap_or_default();
 
@@ -26,7 +26,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
     let cmake_output_dir = out_dir.join("cmake_build");
 
     if !["debug", "release"].contains(&profile.as_str()) {
-        return Err(anyhow::anyhow!("Unknown build profile: {}", &profile));
+        return Err(anyhow!("Unknown build profile: {}", &profile));
     }
 
     // Build back-end via CMake and install into our output directory
@@ -36,7 +36,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
         let cmake_config_mut: &mut Config = cmake_config
             .out_dir(&cmake_output_dir)
             .generator("Ninja")
-            .define("CMAKE_INSTALL_PREFIX", install_dir.to_str().unwrap())
+            .define("CMAKE_INSTALL_PREFIX", install_dir.to_str().unwrap_or(""))
             .define("REFILLING_POOL_CXX_INCLUDE", refilling_pool_cxx_include)
             .define("REFILLING_POOL_CXX_LIBDIR", refilling_pool_cxx_libdir)
             .define("REFILLING_POOL_RUST_LIB", refilling_pool_staticlib)
@@ -73,7 +73,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
     );
     println!(
         "cargo:rustc-env=SHOOP_BACKEND_DIR={}",
-        install_dir.to_str().unwrap()
+        install_dir.to_str().unwrap_or("")
     );
     for path in build_time_link_dirs.iter() {
         println!("cargo:rustc-link-search=native={}", path.display());

@@ -19,7 +19,7 @@ pub trait LuaQObjectCallbackTarget {
 impl LuaQObjectCallbackTarget for cxx::UniquePtr<QPointerQObject> {
     fn lua_qobject_target(&self) -> Result<*mut QObject, anyhow::Error> {
         match unsafe { qpointer_to_qobject(self) } {
-            qobj if qobj.is_null() => Err(anyhow::anyhow!("QPointerQObject is null")),
+            qobj if qobj.is_null() => Err(anyhow!("QPointerQObject is null")),
             qobj => Ok(qobj),
         }
     }
@@ -49,7 +49,7 @@ where
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         let args: Args = Args::from_lua_multi(args, lua)
-            .map_err(|e| anyhow::anyhow!("Could not map args: {e}"))?;
+            .map_err(|e| anyhow!("Could not map args: {e}"))?;
 
         let result: R = unsafe {
             let qobject = self.qobject.lua_qobject_target()?;
@@ -62,7 +62,7 @@ where
         };
 
         let r_lua = R::into_lua(result, lua)
-            .map_err(|e| anyhow::anyhow!("Could not map return value: {e}"))?;
+            .map_err(|e| anyhow!("Could not map return value: {e}"))?;
 
         Ok(r_lua)
     }
@@ -102,7 +102,7 @@ mod tests {
     #[test]
     fn test_basic_qobject_invokable() {
         let mut eng = LuaEngine::default();
-        eng.initialize(|_| Err(anyhow::anyhow!("n/a")), HashMap::default())
+        eng.initialize(|_| Err(anyhow!("n/a")), HashMap::default())
             .unwrap();
 
         let mut obj = GenericTestItem::make_unique();

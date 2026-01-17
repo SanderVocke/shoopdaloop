@@ -76,7 +76,7 @@ fn replace_by_backend_objects(
                                 qobject_property_string(&mut *object, "instance_identifier")
                                     .unwrap_or(QString::from("unknown"))
                                     .to_string();
-                            return Err(anyhow::anyhow!(
+                            return Err(anyhow!(
                                 "Backend loop of loop {loop_id} in schedule is null"
                             ));
                         }
@@ -85,7 +85,7 @@ fn replace_by_backend_objects(
                         return Ok(weak);
                     }
                     Err(e) => {
-                        return Err(anyhow::anyhow!("Unable to get backend loop: {e}"));
+                        return Err(anyhow!("Unable to get backend loop: {e}"));
                     }
                 }
             }

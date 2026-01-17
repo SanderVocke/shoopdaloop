@@ -97,7 +97,7 @@ impl RenderMidiSequence {
             let vector = shared
                 .data()?
                 .as_ref()
-                .ok_or(anyhow::anyhow!("Could not extract data vector"))?;
+                .ok_or(anyhow!("Could not extract data vector"))?;
             trace!("Got {} events", vector.len());
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.notes =

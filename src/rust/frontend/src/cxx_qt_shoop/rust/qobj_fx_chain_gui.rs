@@ -248,7 +248,7 @@ impl FXChainGui {
                 return Ok(qsharedpointer_qobject_to_qvariant(
                     self.backend_chain_wrapper
                         .as_ref()
-                        .ok_or(anyhow::anyhow!("Backend wrapper not set"))?,
+                        .ok_or(anyhow!("Backend wrapper not set"))?,
                 )?);
             }
         }() {

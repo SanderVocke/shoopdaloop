@@ -1,5 +1,5 @@
 use crate::cli_args::CliArgs;
-use anyhow;
+use anyhow::anyhow;
 use backend_bindings::AudioDriverType;
 use common::logging::macros::*;
 use config::config::ShoopConfig;
@@ -123,7 +123,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
     {
         let mut app = app
             .as_mut()
-            .ok_or(anyhow::anyhow!("Failed to get application handle"))?;
+            .ok_or(anyhow!("Failed to get application handle"))?;
 
         if cli_args.self_test_options.self_test {
             // Let Qt manage the lifetime of our test runner by parenting it
@@ -326,11 +326,11 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
             let file = file?;
             let file = file
                 .file_name()
-                .ok_or(anyhow::anyhow!("Could not determine filename"))?
+                .ok_or(anyhow!("Could not determine filename"))?
                 .to_str()
-                .ok_or(anyhow::anyhow!("Could not determine filename"))?
+                .ok_or(anyhow!("Could not determine filename"))?
                 .strip_suffix(".qml")
-                .ok_or(anyhow::anyhow!("Could not determine filename"))?;
+                .ok_or(anyhow!("Could not determine filename"))?;
             println!("- {file}");
         }
         return Ok(0);

@@ -164,7 +164,7 @@ impl LoopChannelBackend {
                             .as_ref()
                             .unwrap()
                             .to_strong()?
-                            .ok_or(anyhow::anyhow!("Channel loop went out of scope"))?,
+                            .ok_or(anyhow!("Channel loop went out of scope"))?,
                     );
                     if channel_loop.as_ref().unwrap().data()?.is_null() {
                         non_ready_vars.insert("channel_loop (null)".to_string());
@@ -193,7 +193,7 @@ impl LoopChannelBackend {
                     let channel_loop = channel_loop
                         .backend_loop
                         .as_ref()
-                        .ok_or(anyhow::anyhow!("No backend loop in loop object"))?;
+                        .ok_or(anyhow!("No backend loop in loop object"))?;
                     let mode = ChannelMode::try_from(self.prev_state.mode as i32)?;
                     let backend_channel = match self.data_type.unwrap() {
                         PortDataType::Audio => {
@@ -203,7 +203,7 @@ impl LoopChannelBackend {
                             AnyBackendChannel::Midi(channel_loop.add_midi_channel(mode)?)
                         }
                         PortDataType::Any => {
-                            return Err(anyhow::anyhow!("No specific port data type"));
+                            return Err(anyhow!("No specific port data type"));
                         }
                     };
 
@@ -427,7 +427,7 @@ impl LoopChannelBackend {
                         |weak| -> Result<cxx::UniquePtr<QSharedPointer_QObject>, anyhow::Error> {
                             Ok(weak
                                 .to_strong()?
-                                .ok_or(anyhow::anyhow!("port went out of scope"))?)
+                                .ok_or(anyhow!("port went out of scope"))?)
                         },
                     )
                     .filter(|result| {
@@ -450,7 +450,7 @@ impl LoopChannelBackend {
                         |weak| -> Result<cxx::UniquePtr<QSharedPointer_QObject>, anyhow::Error> {
                             Ok(weak
                                 .to_strong()?
-                                .ok_or(anyhow::anyhow!("Port went out of scope"))?)
+                                .ok_or(anyhow!("Port went out of scope"))?)
                         },
                     )
                     .filter(|result| {

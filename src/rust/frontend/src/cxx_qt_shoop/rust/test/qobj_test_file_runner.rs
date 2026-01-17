@@ -155,7 +155,7 @@ Totals:
                 let s = s?;
                 let s = s
                     .to_str()
-                    .ok_or(anyhow::anyhow!("Cannot convert path to string"))?;
+                    .ok_or(anyhow!("Cannot convert path to string"))?;
                 all_test_files.push(PathBuf::from(s));
                 Ok(())
             })?;
@@ -206,11 +206,11 @@ Totals:
                     testcase_results.name = testcase_name.to_string();
                     fn_results.iter().try_for_each(|(testfn_name, testfn_content)| -> Result<(), anyhow::Error> {
                         let name = testfn_name.to_string();
-                        let result = match testfn_content.value::<QString>().ok_or(anyhow::anyhow!("QVariant not convertible to QString"))?.to_string().as_str() {
+                        let result = match testfn_content.value::<QString>().ok_or(anyhow!("QVariant not convertible to QString"))?.to_string().as_str() {
                             "pass" => ResultStatus::Passed,
                             "fail" => ResultStatus::Failed,
                             "skip" => ResultStatus::Skipped,
-                            other => return Err(anyhow::anyhow!("Unknown test result {other}")),
+                            other => return Err(anyhow!("Unknown test result {other}")),
                         };
                         debug!("found test function {name} result: {result:?}");
                         testcase_results.test_fn_results.push(TestFnResult { name: name, class_name: testcase_name.to_string(), status: result });

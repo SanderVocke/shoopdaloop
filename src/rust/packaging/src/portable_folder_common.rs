@@ -1,6 +1,6 @@
 use crate::dependencies::get_dependency_libs;
 use crate::fs_helpers::recursive_dir_cpy;
-use anyhow;
+use anyhow::anyhow;
 use anyhow::Context;
 use common::util::copy_dir_merge;
 use copy_dir::copy_dir;
@@ -32,7 +32,7 @@ pub fn populate_portable_folder(
     includelist_path: &Path,
     excludelist_path: &Path,
 ) -> Result<(), anyhow::Error> {
-    let qmake = MAYBE_QMAKE.ok_or(anyhow::anyhow!("QMAKE not set at compile-time"))?;
+    let qmake = MAYBE_QMAKE.ok_or(anyhow!("QMAKE not set at compile-time"))?;
 
     let lib_dir = folder.join("lib");
     std::fs::create_dir(&lib_dir).with_context(|| format!("Cannot create dir: {:?}", lib_dir))?;

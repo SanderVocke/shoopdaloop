@@ -144,7 +144,7 @@ impl MidiControlPort {
                     backend
                         .driver
                         .as_ref()
-                        .ok_or(anyhow::anyhow!("No driver"))?,
+                        .ok_or(anyhow!("No driver"))?,
                     &name_hint.to_string(),
                     &PortDirection::try_from(direction).unwrap_or(PortDirection::Input),
                 )?);

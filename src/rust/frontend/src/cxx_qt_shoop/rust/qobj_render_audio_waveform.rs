@@ -58,12 +58,12 @@ impl ffi::RenderAudioWaveform {
                 if let Err(e) = || -> Result<(), anyhow::Error> {
                     let shared_data = qvariant_to_qsharedpointer_qvector_qvariant(&shared_data)
                         .map_err(|e| {
-                            anyhow::anyhow!("Could not convert input data to shared QVector: {e}")
+                            anyhow!("Could not convert input data to shared QVector: {e}")
                         })?;
                     let vector = shared_data
                         .data()?
                         .as_ref()
-                        .ok_or(anyhow::anyhow!("Could not dereference QVector pointer"))?;
+                        .ok_or(anyhow!("Could not dereference QVector pointer"))?;
                     debug!("Preprocessing input data - {} elements", vector.len());
 
                     match shared_pyramid.lock() {

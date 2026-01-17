@@ -94,7 +94,9 @@ impl AutoConnect {
 
         unsafe {
             let q_connections_state: QMap_QString_QVariant = invokable::invoke(
-                internal_port.as_mut().unwrap(),
+                internal_port
+                    .as_mut()
+                    .ok_or_else(|| anyhow!("Internal port null"))?,
                 "get_connections_state()",
                 invokable::DIRECT_CONNECTION,
                 &(),
@@ -105,22 +107,24 @@ impl AutoConnect {
 
             let my_data_type: PortDataType =
                 qobject::qobject_property_int(&*internal_port, "data_type")
-                    .map_err(|err| anyhow::anyhow!(err))
+                    .map_err(|err| anyhow!(err))
                     .and_then(|o| {
-                        PortDataType::try_from(o as i32).map_err(|e| anyhow::anyhow!("{e}"))
+                        PortDataType::try_from(o as i32).map_err(|e| anyhow!("{e}"))
                     })?;
             let my_direction: PortDirection =
                 qobject::qobject_property_int(&*internal_port, "direction")
-                    .map_err(|err| anyhow::anyhow!(err))
+                    .map_err(|err| anyhow!(err))
                     .and_then(|o| {
-                        PortDirection::try_from(o as i32).map_err(|e| anyhow::anyhow!("{e}"))
+                        PortDirection::try_from(o as i32).map_err(|e| anyhow!("{e}"))
                     })?;
             let my_name: String = qobject::qobject_property_string(&*internal_port, "name")
                 .and_then(|o| Ok(o.to_string()))?;
             let my_port_initialized: bool =
                 qobject::qobject_property_bool(&*internal_port, "initialized")?;
             let q_external_ports: QList_QVariant = invokable::invoke(
-                backend.as_mut().unwrap(),
+                backend
+                    .as_mut()
+                    .ok_or_else(|| anyhow!("Backend null"))?,
                 "find_external_ports(QString,int,int)",
                 invokable::DIRECT_CONNECTION,
                 &(
@@ -133,7 +137,7 @@ impl AutoConnect {
                     my_data_type as i32,
                 ),
             )
-            .map_err(|err| anyhow::anyhow!(err))?;
+            .map_err(|err| anyhow!(err))?;
             let external_candidates =
                 fn_qlist_helpers::try_as_list_into::<ExternalPortDescriptor>(&q_external_ports)?;
             debug!("Queried for external ports: {:?}", external_candidates);
@@ -150,7 +154,9 @@ impl AutoConnect {
                 if !is_connected && is_match && my_port_initialized {
                     debug!("{} auto-connecting to {}", my_name, candidate.name);
                     let result: Result<bool, _> = invokable::invoke(
-                        internal_port.as_mut().unwrap(),
+                        internal_port
+                            .as_mut()
+                            .ok_or_else(|| anyhow!("Internal port null"))?,
                         "connect_external_port(QString)",
                         invokable::DIRECT_CONNECTION,
                         &(QString::from(&candidate.name)),
@@ -160,7 +166,7 @@ impl AutoConnect {
                             if o {
                                 Ok(())
                             } else {
-                                Err(anyhow::anyhow!("Connection failed"))
+                                Err(anyhow!("Connection failed"))
                             }
                         }
                         Err(e) => Err(e.into()),
@@ -240,9 +246,11 @@ mod tests {
     #[test]
     fn test_class_name() {
         let obj = make_unique_autoconnect();
-        let classname = qobject_class_name_autoconnect(obj.as_ref().unwrap());
+        let classname = qobject_class_name_autoconnect(
+            obj.as_ref().expect("Failed to get autoconnect reference"),
+        );
         assert!(classname.is_ok());
-        assert_eq!(classname.unwrap(), "AutoConnect");
+        assert_eq!(classname.expect("Failed to get classname"), "AutoConnect");
     }
 
     #[test]
@@ -250,7 +258,10 @@ mod tests {
         unsafe {
             // Create the port to connect to
             let mut port = qobj_test_port::make_unique();
-            let port_ptr = port.as_mut().unwrap().pin_mut_qobject_ptr();
+            let port_ptr = port
+                .as_mut()
+                .expect("Failed to get port mut")
+                .pin_mut_qobject_ptr();
             port.pin_mut()
                 .set_connections_state_from_json(
                     r#"
@@ -267,7 +278,10 @@ mod tests {
 
             // Create the fake backend
             let mut backend = qobj_test_backend_wrapper::make_unique();
-            backend.as_mut().unwrap().set_ready(true);
+            backend
+                .as_mut()
+                .expect("Failed to get backend mut")
+                .set_ready(true);
             {
                 let mut backend_rust = backend.pin_mut().rust_mut();
                 backend_rust
@@ -278,7 +292,10 @@ mod tests {
                         data_type: PortDataType::Audio,
                     });
             }
-            let backend_ptr = backend.as_mut().unwrap().pin_mut_qobject_ptr();
+            let backend_ptr = backend
+                .as_mut()
+                .expect("Failed to get backend mut")
+                .pin_mut_qobject_ptr();
 
             // Instantiate the connector
             let mut obj = make_unique_autoconnect();
@@ -287,7 +304,10 @@ mod tests {
             let autoconnect_connected_spy: *mut QSignalSpy;
             let port_connection_made_spy: *mut QSignalSpy;
             {
-                let obj_ptr = obj.as_ref().unwrap().ref_qobject_ptr();
+                let obj_ptr = obj
+                    .as_ref()
+                    .expect("Failed to get autoconnect ref")
+                    .ref_qobject_ptr();
                 autoconnect_connected_spy =
                     cxx_qt_lib_shoop::qsignalspy::make_raw(obj_ptr, String::from("connected()"))
                         .expect("Couldn't create spy");
@@ -299,15 +319,19 @@ mod tests {
             }
 
             obj.as_mut()
-                .unwrap()
+                .expect("Failed to get autoconnect mut")
                 .set_connect_to_port_regex(QString::from("port_1"));
-            obj.as_mut().unwrap().set_internal_port(port_ptr);
-            obj.as_mut().unwrap().set_backend(backend_ptr);
+            obj.as_mut()
+                .expect("Failed to get autoconnect mut")
+                .set_internal_port(port_ptr);
+            obj.as_mut()
+                .expect("Failed to get autoconnect mut")
+                .set_backend(backend_ptr);
 
             assert_eq!(
                 autoconnect_connected_spy
                     .as_ref()
-                    .unwrap()
+                    .expect("Failed to get spy ref")
                     .count()
                     .expect("Could not get count"),
                 1
@@ -315,7 +339,7 @@ mod tests {
             assert_eq!(
                 port_connection_made_spy
                     .as_ref()
-                    .unwrap()
+                    .expect("Failed to get spy ref")
                     .count()
                     .expect("Could not get count"),
                 1
@@ -328,7 +352,10 @@ mod tests {
         unsafe {
             // Create the port to connect to
             let mut port = qobj_test_port::make_unique();
-            let port_ptr = port.as_mut().unwrap().pin_mut_qobject_ptr();
+            let port_ptr = port
+                .as_mut()
+                .expect("Failed to get port mut")
+                .pin_mut_qobject_ptr();
             port.pin_mut()
                 .set_connections_state_from_json(
                     r#"
@@ -345,7 +372,10 @@ mod tests {
 
             // Create the fake backend
             let mut backend = qobj_test_backend_wrapper::make_unique();
-            backend.as_mut().unwrap().set_ready(true);
+            backend
+                .as_mut()
+                .expect("Failed to get backend mut")
+                .set_ready(true);
             {
                 let mut backend_rust = backend.pin_mut().rust_mut();
                 backend_rust
@@ -356,7 +386,10 @@ mod tests {
                         data_type: PortDataType::Audio,
                     });
             }
-            let backend_ptr = backend.as_mut().unwrap().pin_mut_qobject_ptr();
+            let backend_ptr = backend
+                .as_mut()
+                .expect("Failed to get backend mut")
+                .pin_mut_qobject_ptr();
 
             // Instantiate the connector
             let mut obj = make_unique_autoconnect();
@@ -365,7 +398,10 @@ mod tests {
             let autoconnect_connected_spy: *mut QSignalSpy;
             let port_connection_made_spy: *mut QSignalSpy;
             {
-                let obj_ptr = obj.as_ref().unwrap().ref_qobject_ptr();
+                let obj_ptr = obj
+                    .as_ref()
+                    .expect("Failed to get autoconnect ref")
+                    .ref_qobject_ptr();
                 autoconnect_connected_spy =
                     cxx_qt_lib_shoop::qsignalspy::make_raw(obj_ptr, String::from("connected()"))
                         .expect("Couldn't create spy");
@@ -377,15 +413,19 @@ mod tests {
             }
 
             obj.as_mut()
-                .unwrap()
+                .expect("Failed to get autoconnect mut")
                 .set_connect_to_port_regex(QString::from("port_1"));
-            obj.as_mut().unwrap().set_internal_port(port_ptr);
-            obj.as_mut().unwrap().set_backend(backend_ptr);
+            obj.as_mut()
+                .expect("Failed to get autoconnect mut")
+                .set_internal_port(port_ptr);
+            obj.as_mut()
+                .expect("Failed to get autoconnect mut")
+                .set_backend(backend_ptr);
 
             assert_eq!(
                 autoconnect_connected_spy
                     .as_ref()
-                    .unwrap()
+                    .expect("Failed to get spy ref")
                     .count()
                     .expect("Could not get count"),
                 0
@@ -393,7 +433,7 @@ mod tests {
             assert_eq!(
                 port_connection_made_spy
                     .as_ref()
-                    .unwrap()
+                    .expect("Failed to get spy ref")
                     .count()
                     .expect("Could not get count"),
                 0
@@ -406,7 +446,10 @@ mod tests {
         unsafe {
             // Create the port to connect to
             let mut port = qobj_test_port::make_unique();
-            let port_ptr = port.as_mut().unwrap().pin_mut_qobject_ptr();
+            let port_ptr = port
+                .as_mut()
+                .expect("Failed to get port mut")
+                .pin_mut_qobject_ptr();
             port.pin_mut()
                 .set_connections_state_from_json(
                     r#"
@@ -423,7 +466,10 @@ mod tests {
 
             // Create the fake backend
             let mut backend = qobj_test_backend_wrapper::make_unique();
-            backend.as_mut().unwrap().set_ready(true);
+            backend
+                .as_mut()
+                .expect("Failed to get backend mut")
+                .set_ready(true);
             {
                 let mut backend_rust = backend.pin_mut().rust_mut();
                 backend_rust
@@ -434,7 +480,10 @@ mod tests {
                         data_type: PortDataType::Audio,
                     });
             }
-            let backend_ptr = backend.as_mut().unwrap().pin_mut_qobject_ptr();
+            let backend_ptr = backend
+                .as_mut()
+                .expect("Failed to get backend mut")
+                .pin_mut_qobject_ptr();
 
             // Instantiate the connector
             let mut obj = make_unique_autoconnect();
@@ -443,7 +492,10 @@ mod tests {
             let autoconnect_connected_spy: *mut QSignalSpy;
             let port_connection_made_spy: *mut QSignalSpy;
             {
-                let obj_ptr = obj.as_ref().unwrap().ref_qobject_ptr();
+                let obj_ptr = obj
+                    .as_ref()
+                    .expect("Failed to get autoconnect ref")
+                    .ref_qobject_ptr();
                 autoconnect_connected_spy =
                     cxx_qt_lib_shoop::qsignalspy::make_raw(obj_ptr, String::from("connected()"))
                         .expect("Couldn't create spy");
@@ -455,15 +507,19 @@ mod tests {
             }
 
             obj.as_mut()
-                .unwrap()
+                .expect("Failed to get autoconnect mut")
                 .set_connect_to_port_regex(QString::from("port_1"));
-            obj.as_mut().unwrap().set_internal_port(port_ptr);
-            obj.as_mut().unwrap().set_backend(backend_ptr);
+            obj.as_mut()
+                .expect("Failed to get autoconnect mut")
+                .set_internal_port(port_ptr);
+            obj.as_mut()
+                .expect("Failed to get autoconnect mut")
+                .set_backend(backend_ptr);
 
             assert_eq!(
                 autoconnect_connected_spy
                     .as_ref()
-                    .unwrap()
+                    .expect("Failed to get spy ref")
                     .count()
                     .expect("Could not get count"),
                 0
@@ -471,7 +527,7 @@ mod tests {
             assert_eq!(
                 port_connection_made_spy
                     .as_ref()
-                    .unwrap()
+                    .expect("Failed to get spy ref")
                     .count()
                     .expect("Could not get count"),
                 0
@@ -484,7 +540,10 @@ mod tests {
         unsafe {
             // Create the port to connect to
             let mut port = qobj_test_port::make_unique();
-            let port_ptr = port.as_mut().unwrap().pin_mut_qobject_ptr();
+            let port_ptr = port
+                .as_mut()
+                .expect("Failed to get port mut")
+                .pin_mut_qobject_ptr();
             port.pin_mut()
                 .set_connections_state_from_json(
                     r#"
@@ -501,7 +560,10 @@ mod tests {
 
             // Create the fake backend
             let mut backend = qobj_test_backend_wrapper::make_unique();
-            backend.as_mut().unwrap().set_ready(true);
+            backend
+                .as_mut()
+                .expect("Failed to get backend mut")
+                .set_ready(true);
             {
                 let mut backend_rust = backend.pin_mut().rust_mut();
                 backend_rust
@@ -512,7 +574,10 @@ mod tests {
                         data_type: PortDataType::Audio,
                     });
             }
-            let backend_ptr = backend.as_mut().unwrap().pin_mut_qobject_ptr();
+            let backend_ptr = backend
+                .as_mut()
+                .expect("Failed to get backend mut")
+                .pin_mut_qobject_ptr();
 
             // Instantiate the connector
             let mut obj = make_unique_autoconnect();
@@ -521,7 +586,10 @@ mod tests {
             let autoconnect_connected_spy: *mut QSignalSpy;
             let port_connection_made_spy: *mut QSignalSpy;
             {
-                let obj_ptr = obj.as_ref().unwrap().ref_qobject_ptr();
+                let obj_ptr = obj
+                    .as_ref()
+                    .expect("Failed to get autoconnect ref")
+                    .ref_qobject_ptr();
                 autoconnect_connected_spy =
                     cxx_qt_lib_shoop::qsignalspy::make_raw(obj_ptr, String::from("connected()"))
                         .expect("Couldn't create spy");
@@ -533,15 +601,19 @@ mod tests {
             }
 
             obj.as_mut()
-                .unwrap()
+                .expect("Failed to get autoconnect mut")
                 .set_connect_to_port_regex(QString::from("port_1"));
-            obj.as_mut().unwrap().set_internal_port(port_ptr);
-            obj.as_mut().unwrap().set_backend(backend_ptr);
+            obj.as_mut()
+                .expect("Failed to get autoconnect mut")
+                .set_internal_port(port_ptr);
+            obj.as_mut()
+                .expect("Failed to get autoconnect mut")
+                .set_backend(backend_ptr);
 
             assert_eq!(
                 autoconnect_connected_spy
                     .as_ref()
-                    .unwrap()
+                    .expect("Failed to get spy ref")
                     .count()
                     .expect("Could not get count"),
                 0
@@ -549,7 +621,7 @@ mod tests {
             assert_eq!(
                 port_connection_made_spy
                     .as_ref()
-                    .unwrap()
+                    .expect("Failed to get spy ref")
                     .count()
                     .expect("Could not get count"),
                 0
@@ -562,7 +634,10 @@ mod tests {
         unsafe {
             // Create the port to connect to
             let mut port = qobj_test_port::make_unique();
-            let port_ptr = port.as_mut().unwrap().pin_mut_qobject_ptr();
+            let port_ptr = port
+                .as_mut()
+                .expect("Failed to get port mut")
+                .pin_mut_qobject_ptr();
             port.pin_mut()
                 .set_connections_state_from_json(
                     r#"
@@ -577,8 +652,14 @@ mod tests {
 
             // Create the fake backend
             let mut backend = qobj_test_backend_wrapper::make_unique();
-            backend.as_mut().unwrap().set_ready(true);
-            let backend_ptr = backend.as_mut().unwrap().pin_mut_qobject_ptr();
+            backend
+                .as_mut()
+                .expect("Failed to get backend mut")
+                .set_ready(true);
+            let backend_ptr = backend
+                .as_mut()
+                .expect("Failed to get backend mut")
+                .pin_mut_qobject_ptr();
 
             // Instantiate the connector
             let mut obj = make_unique_autoconnect();
@@ -587,7 +668,10 @@ mod tests {
             let autoconnect_connected_spy: *mut QSignalSpy;
             let port_connection_made_spy: *mut QSignalSpy;
             {
-                let obj_ptr = obj.as_ref().unwrap().ref_qobject_ptr();
+                let obj_ptr = obj
+                    .as_ref()
+                    .expect("Failed to get autoconnect ref")
+                    .ref_qobject_ptr();
                 autoconnect_connected_spy =
                     cxx_qt_lib_shoop::qsignalspy::make_raw(obj_ptr, String::from("connected()"))
                         .expect("Couldn't create spy");
@@ -599,15 +683,19 @@ mod tests {
             }
 
             obj.as_mut()
-                .unwrap()
+                .expect("Failed to get autoconnect mut")
                 .set_connect_to_port_regex(QString::from("port_1"));
-            obj.as_mut().unwrap().set_internal_port(port_ptr);
-            obj.as_mut().unwrap().set_backend(backend_ptr);
+            obj.as_mut()
+                .expect("Failed to get autoconnect mut")
+                .set_internal_port(port_ptr);
+            obj.as_mut()
+                .expect("Failed to get autoconnect mut")
+                .set_backend(backend_ptr);
 
             assert_eq!(
                 autoconnect_connected_spy
                     .as_ref()
-                    .unwrap()
+                    .expect("Failed to get spy ref")
                     .count()
                     .expect("Could not get count"),
                 0
@@ -615,7 +703,7 @@ mod tests {
             assert_eq!(
                 port_connection_made_spy
                     .as_ref()
-                    .unwrap()
+                    .expect("Failed to get spy ref")
                     .count()
                     .expect("Could not get count"),
                 0
@@ -634,7 +722,7 @@ mod tests {
             assert_eq!(
                 autoconnect_connected_spy
                     .as_ref()
-                    .unwrap()
+                    .expect("Failed to get spy ref")
                     .count()
                     .expect("Could not get count"),
                 0
@@ -642,18 +730,18 @@ mod tests {
             assert_eq!(
                 port_connection_made_spy
                     .as_ref()
-                    .unwrap()
+                    .expect("Failed to get spy ref")
                     .count()
                     .expect("Could not get count"),
                 0
             );
 
-            obj.as_mut().unwrap().update();
+            obj.as_mut().expect("Failed to get autoconnect mut").update();
 
             assert_eq!(
                 autoconnect_connected_spy
                     .as_ref()
-                    .unwrap()
+                    .expect("Failed to get spy ref")
                     .count()
                     .expect("Could not get count"),
                 1
@@ -661,7 +749,7 @@ mod tests {
             assert_eq!(
                 port_connection_made_spy
                     .as_ref()
-                    .unwrap()
+                    .expect("Failed to get spy ref")
                     .count()
                     .expect("Could not get count"),
                 1

@@ -27,23 +27,23 @@ impl SchemaValidator {
     ) -> bool {
         match || -> Result<bool, anyhow::Error> {
             let json_object = QJsonObject::from_variant_map(&object)
-                .map_err(|e| anyhow::anyhow!("Failed to convert: {e}"))?;
+                .map_err(|e| anyhow!("Failed to convert: {e}"))?;
             let json = json_object
                 .to_json()
-                .map_err(|e| anyhow::anyhow!("Failed to convert: {e}"))?;
+                .map_err(|e| anyhow!("Failed to convert: {e}"))?;
             let json = serde_json::from_str::<serde_json::Value>(&json)?;
 
             let schemas_dir = GLOBAL_CONFIG
                 .get()
                 .as_ref()
                 .map(|config| config.schemas_dir.clone())
-                .ok_or(anyhow::anyhow!("Global config not initialized"))?;
+                .ok_or(anyhow!("Global config not initialized"))?;
             let schemas_dir = PathBuf::from(schemas_dir);
             let schema_file = schemas_dir
                 .join("schemas")
                 .join(schemaname.to_string() + ".json");
             let schema = std::fs::read_to_string(&schema_file)
-                .map_err(|e| anyhow::anyhow!("Failed to read schema file {schema_file:?}: {e}"))?;
+                .map_err(|e| anyhow!("Failed to read schema file {schema_file:?}: {e}"))?;
             let schema = serde_json::from_str::<serde_json::Value>(&schema)?;
 
             let valid = jsonschema::is_valid(&schema, &json);

@@ -8,12 +8,13 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 #[cfg(target_os = "windows")]
 use std::time::Duration;
+use anyhow::anyhow;
 shoop_log_unit!("CrashHandlingServer");
 
 fn set_json(to: &mut JsonValue, from: &JsonValue) -> anyhow::Result<()> {
     if from.is_object() {
         if !to.is_object() {
-            return Err(anyhow::anyhow!("expected object"));
+            return Err(anyhow!("expected object"));
         }
 
         for (k, v) in from.as_object().unwrap().iter() {
@@ -21,14 +22,14 @@ fn set_json(to: &mut JsonValue, from: &JsonValue) -> anyhow::Result<()> {
                 if to.get(k).is_none() {
                     to[k] = serde_json::json!({});
                 } else if !to.get(k).unwrap().is_object() {
-                    return Err(anyhow::anyhow!("expected object"));
+                    return Err(anyhow!("expected object"));
                 }
                 return set_json(&mut to[k], v);
             } else if v.is_array() {
                 if to.get(k).is_none() {
                     to[k] = serde_json::json!([]);
                 } else if !to.get(k).unwrap().is_array() {
-                    return Err(anyhow::anyhow!("expected array"));
+                    return Err(anyhow!("expected array"));
                 }
                 return set_json(&mut to[k], v);
             } else {
@@ -99,9 +100,9 @@ pub fn crashhandling_server() {
                     let result = || -> Result<(), anyhow::Error> {
                         let filename = path
                             .file_name()
-                            .ok_or(anyhow::anyhow!("Could not get dump filename"))?
+                            .ok_or(anyhow!("Could not get dump filename"))?
                             .to_str()
-                            .ok_or(anyhow::anyhow!("Could not convert dump filename"))?;
+                            .ok_or(anyhow!("Could not convert dump filename"))?;
                         let new_filename = format!("{filename}.metadata.json");
                         let mut json_path: std::path::PathBuf = path.clone();
                         json_path.set_file_name(new_filename);
@@ -110,9 +111,9 @@ pub fn crashhandling_server() {
                         let guard = self
                             .json
                             .lock()
-                            .map_err(|e| anyhow::anyhow!("Failed to lock json: {e:?}"))?;
+                            .map_err(|e| anyhow!("Failed to lock json: {e:?}"))?;
                         let content = serde_json::to_string_pretty(&*guard).map_err(|e| {
-                            anyhow::anyhow!("Failed to serialize metadata json: {e:?}")
+                            anyhow!("Failed to serialize metadata json: {e:?}")
                         })?;
                         let content = format!("{content}\n");
                         let mut jsonfile = File::create(&json_path)?;
@@ -145,7 +146,7 @@ pub fn crashhandling_server() {
                         let mut guard = self
                             .json
                             .lock()
-                            .map_err(|e| anyhow::anyhow!("Could not lock json: {e:?}"))?;
+                            .map_err(|e| anyhow!("Could not lock json: {e:?}"))?;
                         let incoming_json: JsonValue = serde_json::from_str(content.as_str())?;
                         set_json(&mut *guard, &incoming_json)?;
                         Ok(())
@@ -167,7 +168,7 @@ pub fn crashhandling_server() {
                         let result = || -> anyhow::Result<()> {
                             let path = last_written_dump
                                 .as_ref()
-                                .ok_or(anyhow::anyhow!("No dump file remembered"))?;
+                                .ok_or(anyhow!("No dump file remembered"))?;
                             let filename = path.file_name().unwrap().to_string_lossy();
                             let new_filename = format!("{filename}.attach.{id}");
                             let mut attach_path: std::path::PathBuf = path.clone();

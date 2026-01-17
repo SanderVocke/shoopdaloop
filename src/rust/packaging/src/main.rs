@@ -1,4 +1,4 @@
-use anyhow;
+use anyhow::anyhow;
 use clap::{Parser, Subcommand};
 use common;
 use packaging::binaries_for_test::build_test_binaries_folder;
@@ -62,7 +62,7 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
     let exe = std::env::current_exe()?;
     let exe_dir = exe
         .parent()
-        .ok_or(anyhow::anyhow!("Unable to find exe dir"))?;
+        .ok_or(anyhow!("Unable to find exe dir"))?;
     let main_exe: PathBuf;
     #[cfg(target_os = "windows")]
     {
@@ -137,12 +137,12 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
             #[cfg(not(target_os = "linux"))]
             {
                 let _ = (appimagetool, appdir, output, replace);
-                Err(anyhow::anyhow!(
+                Err(anyhow!(
                     "AppImage packaging is only supported on Linux systems."
                 ))
             }
         }
-        _ => Err(anyhow::anyhow!("Did not determine a command to run.")),
+        _ => Err(anyhow!("Did not determine a command to run.")),
     }
 }
 

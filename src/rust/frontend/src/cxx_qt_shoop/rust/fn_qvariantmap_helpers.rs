@@ -14,7 +14,7 @@ where
             |p: (&QString, &QVariant)| -> Result<(String, T), anyhow::Error> {
                 let key = p.0.to_string();
                 let converted_val: T = p.1.clone().try_into().map_err(|_| {
-                    anyhow::anyhow!(
+                    anyhow!(
                         "Error converting from QVariant to {:?}, variant metatype is {:?}",
                         type_name::<T>(),
                         cxx_qt_lib_shoop::qvariant_helpers::qvariant_type_name(p.1)

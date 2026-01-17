@@ -158,7 +158,9 @@ dependencies = [
  "anyhow",
  "cmake",
  "common",
+ "ctor",
  "glob",
+ "log",
  "refilling_pool",
 ]
 
@@ -169,7 +171,10 @@ dependencies = [
  "anyhow",
  "backend",
  "bindgen",
+ "common",
+ "ctor",
  "enum-iterator",
+ "log",
  "num_enum",
  "static_assertions",
 ]

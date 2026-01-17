@@ -1,4 +1,4 @@
-use anyhow;
+use anyhow::anyhow;
 use colored::Colorize;
 use fern;
 use lazy_static::lazy_static;
@@ -29,7 +29,7 @@ fn parse_level(level: &str) -> log::LevelFilter {
 fn apply_env(dispatch: fern::Dispatch) -> Result<fern::Dispatch, anyhow::Error> {
     let modules = LOG_MODULES
         .lock()
-        .map_err(|e| anyhow::anyhow!("Could not lock global modules list: {e:?}"))?;
+        .map_err(|e| anyhow!("Could not lock global modules list: {e:?}"))?;
     let find_module = |module: &str| {
         modules
             .iter()

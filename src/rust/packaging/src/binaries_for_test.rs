@@ -1,5 +1,5 @@
 use crate::dependencies::get_dependency_libs;
-use anyhow;
+use anyhow::anyhow;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -23,7 +23,7 @@ fn populate_folder(folder: &Path, cargo_profile: &str) -> Result<(), anyhow::Err
     let src_path = src_path
         .ancestors()
         .nth(5)
-        .ok_or(anyhow::anyhow!("cannot find src dir"))?;
+        .ok_or(anyhow!("cannot find src dir"))?;
     info!("Using source path {src_path:?}");
 
     let testrunner_filename = if cfg![target_os = "windows"] {
@@ -157,17 +157,17 @@ pub fn build_test_binaries_folder(
     cargo_profile: &str,
 ) -> Result<(), anyhow::Error> {
     if output_dir.exists() {
-        return Err(anyhow::anyhow!(
+        return Err(anyhow!(
             "Output directory {:?} already exists",
             output_dir
         ));
     }
     if !output_dir
         .parent()
-        .ok_or(anyhow::anyhow!("Cannot find parent of {output_dir:?}"))?
+        .ok_or(anyhow!("Cannot find parent of {output_dir:?}"))?
         .exists()
     {
-        return Err(anyhow::anyhow!(
+        return Err(anyhow!(
             "Output directory {:?}: parent doesn't exist",
             output_dir
         ));

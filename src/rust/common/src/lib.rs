@@ -1,7 +1,7 @@
 pub mod env;
 pub mod logging;
 pub mod util;
-use anyhow;
+use anyhow::anyhow;
 use anyhow::Context;
 
 pub fn init() -> Result<(), anyhow::Error> {

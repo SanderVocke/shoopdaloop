@@ -1,6 +1,9 @@
 use crate::ffi;
-use anyhow;
+use anyhow::anyhow;
+use common::logging::macros::*;
 use std::sync::Mutex;
+
+shoop_log_unit!("BackendBindings.MidiPort");
 
 use crate::audio_driver::AudioDriver;
 use crate::backend_session::BackendSession;
@@ -55,7 +58,13 @@ impl MidiPort {
         direction: &PortDirection,
         min_n_ringbuffer_samples: u32,
     ) -> Result<Self, anyhow::Error> {
-        let c_name_hint = CString::new(name_hint).expect("CString::new failed");
+        let c_name_hint = match CString::new(name_hint) {
+            Ok(c) => c,
+            Err(e) => {
+                error!("Invalid CString for name_hint: {}", e);
+                return Err(anyhow!("Invalid name hint"));
+            }
+        };
         let name_hint_ptr = c_name_hint.as_ptr();
         let obj = unsafe {
             ffi::open_driver_midi_port(
@@ -67,7 +76,7 @@ impl MidiPort {
             )
         };
         if obj.is_null() {
-            return Err(anyhow::anyhow!("Failed to create audio port"));
+            return Err(anyhow!("Failed to create audio port"));
         }
         Ok(MidiPort {
             obj: Mutex::new(obj),
@@ -81,11 +90,14 @@ impl MidiPort {
     }
 
     pub fn get_state(&self) -> Result<MidiPortState, anyhow::Error> {
-        let guard = self.obj.lock().unwrap();
+        let guard = self
+            .obj
+            .lock()
+            .map_err(|e| anyhow!("Mutex poisoned: {}", e))?;
         let obj = *guard;
         let state_ptr = unsafe { ffi::get_midi_port_state(obj) };
         if state_ptr.is_null() {
-            return Err(anyhow::anyhow!("Failed to get midi port state"));
+            return Err(anyhow!("Failed to get midi port state"));
         }
         let state = unsafe { MidiPortState::from_ffi(&*state_ptr) };
         unsafe { ffi::destroy_midi_port_state_info(state_ptr) };
@@ -93,13 +105,25 @@ impl MidiPort {
     }
 
     pub fn set_muted(&self, muted: bool) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in set_muted: {}", e);
+                e.into_inner()
+            }
+        };
         let obj = *guard;
         unsafe { ffi::set_midi_port_muted(obj, if muted { 1 } else { 0 }) };
     }
 
     pub fn set_passthrough_muted(&self, muted: bool) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in set_passthrough_muted: {}", e);
+                e.into_inner()
+            }
+        };
         let obj = *guard;
         unsafe { ffi::set_midi_port_passthroughMuted(obj, if muted { 1 } else { 0 }) };
     }
@@ -140,7 +164,13 @@ impl MidiPort {
     }
 
     pub fn dummy_dequeue_data(&self) -> Vec<MidiEvent> {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in dummy_dequeue_data: {}", e);
+                e.into_inner()
+            }
+        };
         let obj = *guard;
         let sequence = unsafe { ffi::dummy_midi_port_dequeue_data(obj) };
         if sequence.is_null() {
@@ -224,14 +254,26 @@ impl MidiPort {
     }
 
     pub unsafe fn unsafe_backend_ptr(&self) -> *mut ffi::shoopdaloop_midi_port_t {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in unsafe_backend_ptr: {}", e);
+                e.into_inner()
+            }
+        };
         *guard
     }
 }
 
 impl Drop for MidiPort {
     fn drop(&mut self) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in drop: {}", e);
+                e.into_inner()
+            }
+        };
         let obj = *guard;
         if obj.is_null() {
             return;
