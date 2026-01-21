@@ -1,4 +1,5 @@
 use std::pin::Pin;
+use anyhow::anyhow;
 
 use backend_bindings::MidiEvent;
 use common::logging::macros::*;

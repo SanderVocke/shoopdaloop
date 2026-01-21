@@ -1,4 +1,5 @@
 use std::{marker::PhantomData, sync::Arc};
+use anyhow::anyhow;
 
 use cxx_qt_lib_shoop::{
     invokable::{invoke, Invokable},

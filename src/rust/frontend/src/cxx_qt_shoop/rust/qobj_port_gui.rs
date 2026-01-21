@@ -18,6 +18,7 @@ use cxx_qt_lib_shoop::qvariant_helpers::{
 };
 use cxx_qt_lib_shoop::{invokable, qobject::ffi::qobject_move_to_thread};
 use std::pin::Pin;
+use anyhow::anyhow;
 shoop_log_unit!("Frontend.Port");
 
 macro_rules! trace {

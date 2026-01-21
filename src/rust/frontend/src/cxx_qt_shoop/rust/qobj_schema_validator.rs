@@ -5,6 +5,7 @@ use crate::cxx_qt_shoop::qobj_schema_validator_bridge::ffi::*;
 use crate::init::GLOBAL_CONFIG;
 use std::path::PathBuf;
 use std::pin::Pin;
+use anyhow::anyhow;
 
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.SchemaValidator");

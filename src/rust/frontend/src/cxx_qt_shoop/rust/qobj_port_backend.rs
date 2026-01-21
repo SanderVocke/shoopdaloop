@@ -24,6 +24,7 @@ use std::{
     collections::{HashMap, HashSet},
     pin::Pin,
 };
+use anyhow::anyhow;
 shoop_log_unit!("Frontend.Port");
 
 macro_rules! trace {

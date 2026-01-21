@@ -32,6 +32,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::pin::Pin;
 use std::sync::{Arc, Weak};
+use anyhow::anyhow;
 shoop_log_unit!("Frontend.SessionControlHandler");
 use enum_iterator::*;
 use num_enum::{IntoPrimitive, TryFromPrimitive};

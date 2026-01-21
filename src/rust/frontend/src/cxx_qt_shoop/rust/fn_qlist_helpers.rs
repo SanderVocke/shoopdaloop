@@ -1,6 +1,7 @@
 use cxx::ExternType;
 use cxx_qt_lib::{QList, QListElement, QVariant};
 use std::any::{type_name, Any};
+use anyhow::anyhow;
 
 pub fn try_as_list_into<T>(list: &QList<QVariant>) -> Result<Vec<T>, anyhow::Error>
 where

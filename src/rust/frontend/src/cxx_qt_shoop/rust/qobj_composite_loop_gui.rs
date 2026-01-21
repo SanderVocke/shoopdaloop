@@ -22,6 +22,7 @@ use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qsharedpointer_qobject;
 use cxx_qt_lib_shoop::qweakpointer_qobject::QWeakPointer_QObject;
 use std::collections::HashSet;
 use std::pin::Pin;
+use anyhow::anyhow;
 shoop_log_unit!("Frontend.CompositeLoop");
 
 #[allow(unused_macros)]

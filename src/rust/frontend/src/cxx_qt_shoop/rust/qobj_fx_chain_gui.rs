@@ -8,6 +8,7 @@ use crate::{
     engine_update_thread,
 };
 use std::pin::Pin;
+use anyhow::anyhow;
 
 use common::logging::macros::{debug as raw_debug, error as raw_error, shoop_log_unit};
 use cxx_qt::CxxQtType;

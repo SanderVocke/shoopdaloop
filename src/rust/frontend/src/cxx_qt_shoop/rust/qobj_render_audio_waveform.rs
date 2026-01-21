@@ -14,6 +14,7 @@ use crate::{
     audio_power_pyramid, cxx_qt_shoop::qobj_async_task_bridge::ffi::make_raw_async_task_with_parent,
 };
 use core::pin::Pin;
+use anyhow::anyhow;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QColor, QLine};
 

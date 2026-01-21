@@ -25,6 +25,7 @@ use midi_processing::is_note_off;
 use midi_processing::is_note_on;
 use midi_processing::note;
 use std::pin::Pin;
+use anyhow::anyhow;
 shoop_log_unit!("Frontend.MidiControlPort");
 
 impl MidiControlPort {

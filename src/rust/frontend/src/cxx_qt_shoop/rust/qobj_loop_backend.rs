@@ -15,6 +15,7 @@ use cxx_qt_lib_shoop::qobject;
 use cxx_qt_lib_shoop::qobject::FromQObject;
 use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use std::pin::Pin;
+use anyhow::anyhow;
 shoop_log_unit!("Frontend.Loop");
 
 macro_rules! trace {

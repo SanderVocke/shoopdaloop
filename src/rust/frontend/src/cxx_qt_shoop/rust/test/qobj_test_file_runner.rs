@@ -6,6 +6,7 @@ use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qvariantmap;
 use glob::glob;
 use std::path::PathBuf;
 use std::pin::Pin;
+use anyhow::anyhow;
 
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.TestFileRunner");

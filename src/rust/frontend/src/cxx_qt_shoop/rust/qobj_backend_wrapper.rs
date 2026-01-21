@@ -9,6 +9,7 @@ use cxx_qt_lib_shoop::{connect, connection_types};
 use std::pin::Pin;
 use std::sync::OnceLock;
 use std::time;
+use anyhow::anyhow;
 
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.BackendWrapper");
@@ -305,7 +306,6 @@ impl BackendWrapper {
                 rust_mut.last_updated = Some(now);
             }
             if maybe_new_interval.is_some() {
-                self.as_mut()
                 self.as_mut().set_last_update_interval(
                     maybe_new_interval
                         .ok_or_else(|| anyhow!("maybe_new_interval is null"))?

@@ -4,6 +4,7 @@ pub use crate::cxx_qt_shoop::qobj_settings_io_bridge::ffi::SettingsIO;
 use crate::cxx_qt_shoop::qobj_settings_io_bridge::ffi::*;
 use common::logging::macros::*;
 use std::path::PathBuf;
+use anyhow::anyhow;
 shoop_log_unit!("Frontend.SettingsIO");
 
 pub fn register_qml_singleton(module_name: &str, type_name: &str) {

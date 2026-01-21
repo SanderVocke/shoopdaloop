@@ -21,6 +21,7 @@ use cxx_qt_lib_shoop::{
     qvariant_helpers::qvariant_to_qsharedpointer_qobject,
 };
 use std::{collections::HashSet, pin::Pin};
+use anyhow::anyhow;
 shoop_log_unit!("Frontend.LoopChannel");
 
 macro_rules! trace {

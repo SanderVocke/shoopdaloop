@@ -20,6 +20,7 @@ use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::qsharedpointer_qobject_to_qvariant;
 use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use std::pin::Pin;
+use anyhow::anyhow;
 shoop_log_unit!("Frontend.Loop");
 
 #[allow(unused_macros)]

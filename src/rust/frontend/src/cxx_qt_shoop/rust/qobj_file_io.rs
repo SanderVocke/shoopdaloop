@@ -30,6 +30,7 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::thread;
 use std::time::{Duration, Instant};
+use anyhow::anyhow;
 
 pub fn register_qml_singleton(module_name: &str, type_name: &str) {
     let mut mdl = String::from(module_name);

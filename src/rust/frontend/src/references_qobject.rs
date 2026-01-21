@@ -9,6 +9,7 @@ use cxx_qt_lib_shoop::{
     },
     qweakpointer_qobject::QWeakPointer_QObject,
 };
+use anyhow::anyhow;
 
 pub trait ReferencesQObject: Sized {
     fn as_qobject_ptr(&mut self) -> *mut QObject;

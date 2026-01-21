@@ -14,6 +14,7 @@ use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace, warn as raw_warn,
 };
 use std::pin::Pin;
+use anyhow::anyhow;
 shoop_log_unit!("Frontend.FXChain");
 
 macro_rules! trace {

@@ -3,6 +3,7 @@ use std::{
     collections::HashMap,
     sync::{Arc, Weak},
 };
+use anyhow::anyhow;
 
 use common::logging::macros::*;
 use mlua;
