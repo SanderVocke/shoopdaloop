@@ -310,14 +310,27 @@ impl LoopBackend {
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32,
     ) {
+        let to_mode_enum = match LoopMode::try_from(to_mode) {
+             Ok(m) => m,
+             Err(e) => {
+                 error!(self, "Invalid loop mode: {}", e);
+                 return;
+             }
+        };
+
+        let loop_ptrs: Vec<*mut QObject> = loops.iter().filter_map(|variant| {
+             match qvariant_to_qobject_ptr(variant) {
+                 Ok(ptr) => Some(ptr),
+                 Err(e) => {
+                      error!(self, "Failed to convert QVariant: {}", e);
+                      None
+                 }
+             }
+        }).collect();
+
         if let Err(e) = transition_backend_loops(
-            loops
-            loops.iter().map(|variant| {
-                qvariant_to_qobject_ptr(variant)
-                    .map_err(|e| anyhow!("Failed to convert QVariant to QObject: {}", e))
-            }),
-            LoopMode::try_from(to_mode)
-                .map_err(|e| anyhow!("Invalid loop mode: {}", e))?,
+            loop_ptrs,
+            to_mode_enum,
             if maybe_cycles_delay < 0 {
                 None
             } else {
@@ -582,7 +595,7 @@ impl LoopBackend {
     pub fn metatype_name() -> String {
         unsafe {
             loop_backend_metatype_name(std::ptr::null_mut())
-                .unwrap_or_else(|| "Unknown".to_string())
+                .unwrap_or_else(|_| "Unknown".to_string())
         }
     }
 

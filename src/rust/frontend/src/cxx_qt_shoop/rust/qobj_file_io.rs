@@ -169,7 +169,7 @@ fn save_channel_midi_data_impl(
         .as_ref()
         .ok_or_else(|| anyhow!("Channel pointer is null"))?
         .data()
-        .ok_or_else(|| anyhow!("Channel data is null"))?;
+        .map_err(|_| anyhow!("Channel data is null"))?;
     let mut conversion_error: Option<anyhow::Error> = None;
     let msgs: Vec<MidiEvent> = unsafe {
         invoke::<_, QVector_QVariant, _>(
@@ -303,7 +303,7 @@ fn load_midi_to_channels_impl<'a>(
             .as_ref()
             .ok_or_else(|| anyhow!("Loop object null"))?
             .data()
-            .ok_or_else(|| anyhow!("Loop data null"))?;
+            .map_err(|_| anyhow!("Loop data null"))?;
         unsafe {
             invoke::<_, (), _>(
                 &mut *loop_qobj,
@@ -403,10 +403,10 @@ fn load_soundfile_to_channels_impl(
                             .as_ref()
                             .ok_or_else(|| anyhow!("Target channel null"))?
                             .data()
-                            .ok_or_else(|| anyhow!("Target channel data null"))?;
+                            .map_err(|_| anyhow!("Target channel data null"))?;
                         let now = Instant::now();
                         let channel_ready = || {
-                            qobject_property_bool(&mut *target_channel, "initialized")
+                            qobject_property_bool(&*target_channel_ptr, "initialized")
                                 .map_err(|e| anyhow!("could not get bool property: {e}"))
                         };
                         let timeout_expired = || now.elapsed() > timeout;
@@ -454,7 +454,7 @@ fn load_soundfile_to_channels_impl(
                 .as_ref()
                 .ok_or_else(|| anyhow!("Loop object null"))?
                 .data()
-                .ok_or_else(|| anyhow!("Loop data null"))?;
+                .map_err(|_| anyhow!("Loop data null"))?;
             invoke::<_, (), _>(
                 &mut *loop_obj_ptr,
                 "set_length(::std::int32_t)",
@@ -477,7 +477,7 @@ fn qvariant_loop_gui_to_loop_backend(
 
     if !maybe_loop_ptr.is_null() {
         match unsafe { LoopGui::from_qobject_mut_ptr(maybe_loop_ptr) } {
-            Ok(l) => Some(l.backend_loop_wrapper.copy().ok_or_else(|| error!("Failed to copy loop backend wrapper")).ok().flatten().expect("Failed to get loop backend wrapper")),
+            Ok(l) => Some(l.backend_loop_wrapper.copy().map_err(|_| error!("Failed to copy loop backend wrapper")).ok().expect("Failed to get loop backend wrapper")),
             Err(_) => None,
         }
     } else {
@@ -515,9 +515,8 @@ fn qlist_qvariant_channels_to_backend(
                     result.push(
                         chan.backend_channel_wrapper
                             .copy()
-                            .ok_or_else(|| error!("Failed to copy backend channel wrapper"))
+                            .map_err(|_| error!("Failed to copy backend channel wrapper"))
                             .ok()
-                            .flatten()
                             .expect("Failed to get backend channel wrapper"),
                     );
                 }
@@ -838,7 +837,7 @@ impl FileIO {
                 .as_ref()
                 .ok_or_else(|| anyhow!("Backend channel wrapper is null"))?
                 .copy()
-                .ok_or_else(|| anyhow!("Failed to copy backend channel wrapper"))?;
+                .map_err(|_| anyhow!("Failed to copy backend channel wrapper"))?;
             pin_async_task.as_mut().exec_concurrent_rust_then_finish(
                 move || -> Result<(), anyhow::Error> {
                     let filename = PathBuf::from(filename.to_string());
@@ -868,7 +867,7 @@ impl FileIO {
                 .as_ref()
                 .ok_or_else(|| anyhow!("Backend channel wrapper is null"))?
                 .copy()
-                .ok_or_else(|| anyhow!("Failed to copy backend channel wrapper"))?;
+                .map_err(|_| anyhow!("Failed to copy backend channel wrapper"))?;
             let filename = PathBuf::from(filename.to_string());
             save_channel_midi_data_impl(&filename, samplerate as usize, &channel_backend)
                 .map_err(|e| anyhow!("Failed to save channel MIDI: {e}"))
@@ -998,7 +997,17 @@ impl FileIO {
 
         let mut qlists: QList_QVariant = QList::default();
         for shared in qlist_qvariant_channels_to_backend(&channels).iter() {
-            let ptr = shared.as_ref().ok_or_else(|| anyhow!("Shared pointer is null"))?.data().ok_or_else(|| anyhow!("Shared data is null"))?;
+            let shared_ptr_res = shared.as_ref().ok_or_else(|| anyhow!("Shared pointer is null"))
+                .and_then(|ptr| ptr.data().map_err(|_| anyhow!("Shared data is null")));
+
+            let ptr = match shared_ptr_res {
+                Ok(p) => p,
+                Err(e) => {
+                     error!("Failed to get shared pointer: {}", e);
+                     continue;
+                }
+            };
+
             unsafe {
                 match invoke::<_, QList_f32, _>(
                     &mut *ptr,
@@ -1008,10 +1017,14 @@ impl FileIO {
                 ) {
                     Ok(data) => {
                         debug!("channel yielded {} frames of audio data", data.len());
-                        qlists.append(
-                            qlist_f32_to_qvariant(&data)
-                                .ok_or_else(|| anyhow!("Failed to convert f32 list to QVariant"))?,
-                        )
+                        let variant = match qlist_f32_to_qvariant(&data) {
+                             Ok(v) => v,
+                             Err(e) => {
+                                 error!("Failed to convert f32 list to QVariant: {:?}", e);
+                                 QVariant::default()
+                             }
+                        };
+                        qlists.append(variant);
                     }
                     Err(e) => {
                         error!("Failed to get audio data - ignoring during save: {e}");
@@ -1020,7 +1033,7 @@ impl FileIO {
                 }
             }
         }
-        let variant = qvariantlist_to_qvariant(let variant = qvariantlist_to_qvariant(&qlists).unwrap();qlists).ok_or_else(|| anyhow!("Failed to convert QVariantList to QVariant"))?;
+        let variant = qvariantlist_to_qvariant(&qlists).unwrap_or(QVariant::default());
 
         pin_async_task
             .as_mut()
@@ -1041,7 +1054,18 @@ impl FileIO {
         let mut success = true;
         let mut qlists: QList_QVariant = QList::default();
         for shared in qlist_qvariant_channels_to_backend(&channels).iter() {
-            let ptr = shared.as_ref().ok_or_else(|| anyhow!("Shared pointer is null"))?.data().ok_or_else(|| anyhow!("Shared data is null"))?;
+            let shared_ptr_res = shared.as_ref().ok_or_else(|| anyhow!("Shared pointer is null"))
+                .and_then(|ptr| ptr.data().map_err(|_| anyhow!("Shared data is null")));
+
+            let ptr = match shared_ptr_res {
+                Ok(p) => p,
+                Err(e) => {
+                     error!("Failed to get shared pointer: {}", e);
+                     success = false;
+                     continue;
+                }
+            };
+
             unsafe {
                 match invoke(
                     &mut *ptr,
@@ -1050,10 +1074,14 @@ impl FileIO {
                     &(),
                 ) {
                     Ok(data) => {
-                        qlists.append(
-                            qlist_f32_to_qvariant(&data)
-                                .ok_or_else(|| anyhow!("Failed to convert f32 list to QVariant"))?,
-                        );
+                        match qlist_f32_to_qvariant(&data) {
+                             Ok(v) => qlists.append(v),
+                             Err(e) => {
+                                 error!("Failed to convert f32 list to QVariant: {:?}", e);
+                                 qlists.append(QVariant::default());
+                                 success = false;
+                             }
+                        }
                     }
                     Err(e) => {
                         error!("Failed to get audio data - ignoring during save: {e}");
@@ -1063,7 +1091,13 @@ impl FileIO {
                 }
             }
         }
-        let variant = qvariantlist_to_qvariant(let variant = qvariantlist_to_qvariant(&qlists).unwrap();qlists).ok_or_else(|| anyhow!("Failed to convert QVariantList to QVariant"))?;
+        let variant = match qvariantlist_to_qvariant(&qlists) {
+             Ok(v) => v,
+             Err(e) => {
+                 error!("Failed to convert QVariantList: {:?}", e);
+                 return false;
+             }
+        };
         if let Err(e) = save_qlist_data_to_soundfile_impl(filename, samplerate, variant) {
             error!("Failed to save sound data to file: {e}");
             success = false;
@@ -1166,7 +1200,7 @@ impl FileIO {
                     QVariant::from(
                         &(sound_file
                             .len()
-                            .ok_or_else(|| anyhow!("Failed to get sound file length"))?
+                            .unwrap_or(0)
                             as i32),
                     ),
                 );

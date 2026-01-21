@@ -175,7 +175,7 @@ impl LoopGui {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.backend_loop_wrapper =
                 QSharedPointer_QObject::from_ptr_delete_later(backend_loop_qobj)
-                    .ok_or_else(|| anyhow!("Failed to create QSharedPointer"))
+                    .map_err(|_| anyhow!("Failed to create QSharedPointer"))
                     .expect("Failed to initialize backend loop wrapper");
         }
     }
@@ -257,7 +257,7 @@ impl LoopGui {
                 let object_name = qvariant_to_qobject_ptr(child)
                     .ok()
                     .and_then(|ptr| unsafe { ptr.as_ref() })
-                    .and_then(|ref_obj| unsafe { qobject_object_name(ref_obj) })
+                    .and_then(|ref_obj| unsafe { qobject_object_name(ref_obj).ok() })
                     .unwrap_or_default();
                 object_name == find_object_name
             }) {
@@ -286,7 +286,7 @@ impl LoopGui {
         // Get handles to the backend loops in terms of QSharedPointers, which will ensure
         // they don't go out of scope while our transition is queued in the event loop.
         let backend_loop_handles = get_backend_loop_handles_variant_list(&loops)
-            .ok_or_else(|| anyhow!("Failed to get backend loop handles"))
+            .map_err(|_| anyhow!("Failed to get backend loop handles"))
             .expect("Failed to get backend loop handles");
         self.backend_transition_multiple(
             backend_loop_handles,
