@@ -128,12 +128,13 @@ impl FXChainGui {
                     )
                 }
 
-                let mut rust_mut = self.as_mut().rust_mut();
-                rust_mut.backend_chain_wrapper =
+                let wrapper =
                     QSharedPointer_QObject::from_ptr_delete_later(backend_fx_chain_qobj).unwrap_or_else(|e| {
                         error!(self, "Failed to create shared pointer for backend fx chain: {e}");
                         cxx::UniquePtr::null()
                     });
+                let mut rust_mut = self.as_mut().rust_mut();
+                rust_mut.backend_chain_wrapper = wrapper;
             }
         }
     }

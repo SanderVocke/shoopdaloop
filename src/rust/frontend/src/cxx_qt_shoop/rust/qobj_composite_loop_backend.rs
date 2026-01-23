@@ -368,6 +368,7 @@ impl CompositeLoopBackend {
                         if !loop_recording_starts.contains_key(loop_obj) {
                             loop_recording_starts.insert(*loop_obj, *iteration);
                         } else {
+                            // FIXME: Avoid panic call
                             let v = loop_recording_starts.get_mut(loop_obj).expect("Guarded by contains_key");
                             *v = min(*v, *iteration);
                         }
@@ -378,15 +379,20 @@ impl CompositeLoopBackend {
                 for (loop_obj, mode) in transitions.iter() {
                     if *mode != LoopMode::Recording
                         && loop_recording_starts.contains_key(loop_obj)
-                        && iteration > *loop_recording_starts.get(loop_obj).expect("Guarded by contains_key")
                     {
-                        if !loop_recording_ends.contains_key(loop_obj) {
-                            loop_recording_ends.insert(*loop_obj, *iteration);
-                        } else {
-                            let v = loop_recording_ends.get_mut(loop_obj).expect("Guarded by contains_key");
-                            *v = min(*v, *iteration);
+                        if let Some(start) = loop_recording_starts.get(loop_obj) {
+                            if iteration > start {
+                                if !loop_recording_ends.contains_key(loop_obj) {
+                                    loop_recording_ends.insert(*loop_obj, *iteration);
+                                } else {
+                                    // FIXME: Avoid panic call
+                                    let v = loop_recording_ends.get_mut(loop_obj).expect("Guarded by contains_key");
+                                    *v = min(*v, *iteration);
+                                }
+                            }
                         }
                     }
+
                 }
             }
 
@@ -1022,7 +1028,7 @@ impl CompositeLoopBackend {
     }
 
     pub fn metatype_name() -> String {
-        unsafe { composite_loop_backend_metatype_name(std::ptr::null_mut()).unwrap_or_else(|| "unknown".to_string()) }
+        unsafe { composite_loop_backend_metatype_name(std::ptr::null_mut()).unwrap_or_else(|_| "unknown".to_string()) }
     }
 
     pub fn dependent_will_handle_sync_loop_cycle(

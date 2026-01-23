@@ -194,7 +194,7 @@ impl Application {
         if main_qml.is_some() {
             let main_qml = main_qml.expect("Guarded by main_qml.is_some()");
             self.as_mut()
-                .reload_qml(QString::from(&main_qml.to_string_lossy()));
+                .reload_qml(QString::from(main_qml.to_string_lossy().as_ref()));
         }
 
         Ok(())

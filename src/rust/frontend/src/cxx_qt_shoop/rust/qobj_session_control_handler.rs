@@ -102,7 +102,7 @@ fn as_multi_coords(val: &mlua::Value) -> Option<Vec<(i64, i64)>> {
                 })
                 .collect();
                 return Some(as_coords.iter().map(|v| v.unwrap_or((0, 0))).collect());
-            }
+
         }
     }
     None
@@ -128,7 +128,7 @@ fn as_track_indices(val: &mlua::Value) -> Option<Vec<i64>> {
                 })
                 .collect();
                 return Some(as_indices.iter().map(|v| v.unwrap_or(0)).collect());
-            }
+
         }
     }
     None
@@ -494,7 +494,8 @@ impl SessionControlHandlerLuaTarget {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        let mode: i64 = <i64 as FromLua>::from_lua(args.get(0).unwrap().clone(), lua)
+        let arg0 = args.get(0).ok_or(anyhow!("Missing argument"))?;
+        let mode: i64 = <i64 as FromLua>::from_lua(arg0.clone(), lua)
             .map_err(|e| anyhow!("arg is not an int: {e}"))?;
         loops_coords_vec(
             self.all_loops_iter()?
@@ -603,7 +604,7 @@ impl SessionControlHandlerLuaTarget {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        let track_idx = match args.get(0).unwrap() {
+        let track_idx = match args.get(0).ok_or(anyhow!("Missing argument"))? {
             mlua::Value::Integer(track_idx) => *track_idx,
             _ => {
                 return Err(anyhow!("arg is not an integer"));
@@ -611,10 +612,9 @@ impl SessionControlHandlerLuaTarget {
         };
         loops_coords_vec(
             self.structured_loop_widget_references
-                .keys()
-                .filter(|(x, _y)| *x == track_idx)
-                .map(|coords| self.structured_loop_widget_references.get(&coords).unwrap())
-                .map(|qpointer| unsafe { qpointer_to_qobject(&qpointer) })
+                .iter()
+                .filter(|((x, _y), _)| *x == track_idx)
+                .map(|(_, qpointer)| unsafe { qpointer_to_qobject(qpointer) })
                 .filter(|p| !p.is_null()),
         )
         .collect::<Vec<Vec<i64>>>()

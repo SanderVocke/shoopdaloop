@@ -103,6 +103,7 @@ pub fn get_dependency_libs(
             let maybe_prev: Option<Rc<RefCell<InternalDependency>>> =
                 current_parent.borrow().deps.last().map(|r| r.1.clone());
             if indent > children_indent && maybe_prev.is_some() {
+                // FIXME: Avoid panic call
                 let prev = maybe_prev.expect("Guarded by is_some check");
                 let mut new_parent_mut = prev.borrow_mut();
                 new_parent_mut.children_indent = indent;
@@ -314,9 +315,11 @@ pub fn get_dependency_libs(
         .into_iter()
         .map(|lib| {
             // Detect libraries in framework folders and reduce the entries to the frameworks themselves
+            // FIXME: Avoid panic call
             let re = regex::Regex::new(r"(.*/.*.framework)/.*").expect("Invalid regex");
             if let Some(s) = lib.to_str() {
                 if let Some(cap) = re.captures(s) {
+                    // FIXME: Avoid panic call
                     PathBuf::from(cap.get(1).expect("Regex group 1 must exist").as_str())
                 } else {
                     lib

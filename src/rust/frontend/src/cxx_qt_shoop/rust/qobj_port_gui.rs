@@ -246,12 +246,13 @@ impl PortGui {
                     );
                 }
 
-                let mut rust_mut = self.as_mut().rust_mut();
-                rust_mut.backend_port_wrapper =
+                let wrapper =
                     QSharedPointer_QObject::from_ptr_delete_later(backend_port_qobj).unwrap_or_else(|e| {
                         error!(self, "Failed to create shared pointer for backend port: {e}");
                         cxx::UniquePtr::null()
                     });
+                let mut rust_mut = self.as_mut().rust_mut();
+                rust_mut.backend_port_wrapper = wrapper;
             }
         }
     }
@@ -528,7 +529,7 @@ impl PortGui {
                     invokable::DIRECT_CONNECTION,
                     &(),
                 )
-                )
+
                 .unwrap_or_else(|e| {
                     error!(self, "Failed to get backend fx chain: {e}");
                     QVariant::default()

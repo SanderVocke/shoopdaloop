@@ -314,12 +314,9 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
         Some(crate::cli_args::parse_arguments(args.iter()))
     };
 
-    if !(cli_args.is_some()
-        && cli_args
-            .as_ref()
-            .unwrap()
-            .developer_options
-            .no_crash_handling)
+    if !cli_args
+        .as_ref()
+        .map_or(false, |args| args.developer_options.no_crash_handling)
     {
         crashhandling::init_crashhandling(
             std::env::args().any(|arg| arg == "--crash-handling-server"),
