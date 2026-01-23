@@ -28,7 +28,7 @@ pub struct Logger {
 
 impl Logger {
     pub fn new(name: &str) -> Result<Self, anyhow::Error> {
-        let c_name = CString::new(name).expect("CString::new failed");
+        let c_name = CString::new(name)?;
         let logger = unsafe { ffi::get_logger(c_name.as_ptr()) };
         if logger.is_null() {
             Err(anyhow!("Failed to create logger"))
@@ -38,7 +38,10 @@ impl Logger {
     }
 
     pub fn log(&self, level: LogLevel, msg: &str) {
-        let c_msg = CString::new(msg).expect("CString::new failed");
+        let c_msg = match CString::new(msg) {
+            Ok(c) => c,
+            Err(_) => return, // Fail silently if we can't create a CString for the log message
+        };
         unsafe {
             ffi::shoopdaloop_log(self.logger, level as ffi::shoop_log_level_t, c_msg.as_ptr());
         }

@@ -129,15 +129,33 @@ impl MidiPort {
     }
 
     pub fn connect_internal(&self, other: &MidiPort) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in connect_internal (self): {}", e);
+                return;
+            }
+        };
         let obj = *guard;
-        let other_guard = other.obj.lock().unwrap();
+        let other_guard = match other.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in connect_internal (other): {}", e);
+                return;
+            }
+        };
         let other_obj = *other_guard;
         unsafe { ffi::connect_midi_port_internal(obj, other_obj) };
     }
 
     pub fn dummy_clear_queues(&self) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in dummy_clear_queues: {}", e);
+                return;
+            }
+        };
         let obj = *guard;
         unsafe { ffi::dummy_midi_port_clear_queues(obj) };
     }
@@ -147,7 +165,13 @@ impl MidiPort {
     }
 
     pub fn dummy_queue_msgs(&self, msgs: Vec<MidiEvent>) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in dummy_queue_msgs: {}", e);
+                return;
+            }
+        };
         let obj = *guard;
         let sequence = unsafe { ffi::alloc_midi_sequence(msgs.len() as u32) };
         for (i, msg) in msgs.iter().enumerate() {
@@ -187,13 +211,25 @@ impl MidiPort {
     }
 
     pub fn dummy_request_data(&self, n_frames: u32) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in dummy_request_data: {}", e);
+                return;
+            }
+        };
         let obj = *guard;
         unsafe { ffi::dummy_midi_port_request_data(obj, n_frames) };
     }
 
     pub fn get_connections_state(&self) -> HashMap<String, bool> {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in get_connections_state: {}", e);
+                return HashMap::new();
+            }
+        };
         let obj = *guard;
         let state_ptr = unsafe { ffi::get_midi_port_connections_state(obj) };
         let state = unsafe { &*state_ptr };
@@ -208,33 +244,81 @@ impl MidiPort {
     }
 
     pub fn connect_external_port(&self, name: &str) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in connect_external_port: {}", e);
+                return;
+            }
+        };
         let obj = *guard;
-        let c_name = CString::new(name).expect("CString::new failed");
+        let c_name = match CString::new(name) {
+            Ok(c) => c,
+            Err(e) => {
+                error!("CString::new failed: {}", e);
+                return;
+            }
+        };
         unsafe { ffi::connect_midi_port_external(obj, c_name.as_ptr()) };
     }
 
     pub fn disconnect_external_port(&self, name: &str) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in disconnect_external_port: {}", e);
+                return;
+            }
+        };
         let obj = *guard;
-        let c_name = CString::new(name).unwrap();
+        let c_name = match CString::new(name) {
+            Ok(c) => c,
+            Err(e) => {
+                error!("CString::new failed: {}", e);
+                return;
+            }
+        };
         unsafe { ffi::disconnect_midi_port_external(obj, c_name.as_ptr()) };
     }
 
     pub fn set_ringbuffer_n_samples(&self, n: u32) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in set_ringbuffer_n_samples: {}", e);
+                return;
+            }
+        };
         let obj = *guard;
         unsafe { ffi::set_midi_port_ringbuffer_n_samples(obj, n) };
     }
 
     pub fn input_connectability(&self) -> PortConnectability {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in input_connectability: {}", e);
+                return PortConnectability {
+                    external: false,
+                    internal: false,
+                };
+            }
+        };
         let obj = *guard;
         unsafe { PortConnectability::from_ffi(ffi::get_midi_port_input_connectability(obj)) }
     }
 
     pub fn output_connectability(&self) -> PortConnectability {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in output_connectability: {}", e);
+                return PortConnectability {
+                    external: false,
+                    internal: false,
+                };
+            }
+        };
         let obj = *guard;
         unsafe { PortConnectability::from_ffi(ffi::get_midi_port_output_connectability(obj)) }
     }

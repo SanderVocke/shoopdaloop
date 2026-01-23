@@ -47,7 +47,7 @@ impl JackAudioDriverSettings {
             client_name_hint: std::ffi::CString::new(self.client_name_hint.clone())
                 .unwrap_or_else(|_| {
                     error!("Invalid CString for client_name_hint");
-                    std::ffi::CString::new("").unwrap()
+                    std::ffi::CString::default()
                 })
                 .into_raw(),
             maybe_server_name: self
@@ -57,7 +57,7 @@ impl JackAudioDriverSettings {
                     std::ffi::CString::new(s.clone())
                         .unwrap_or_else(|_| {
                             error!("Invalid CString for server name");
-                            std::ffi::CString::new("").unwrap()
+                            std::ffi::CString::default()
                         })
                         .into_raw()
                 }),
@@ -99,7 +99,7 @@ impl DummyAudioDriverSettings {
             client_name: std::ffi::CString::new(self.client_name.clone())
                 .unwrap_or_else(|_| {
                     error!("Invalid CString for client_name");
-                    std::ffi::CString::new("").unwrap()
+                    std::ffi::CString::default()
                 })
                 .into_raw(),
             sample_rate: self.sample_rate,
@@ -259,7 +259,13 @@ impl AudioDriver {
 
     pub fn dummy_add_external_mock_port(&self, name: &str, direction: u32, data_type: u32) {
         let obj = self.lock();
-        let c_name = std::ffi::CString::new(name).expect("Failed to create CString");
+        let c_name = match std::ffi::CString::new(name) {
+            Ok(c) => c,
+            Err(e) => {
+                error!("Failed to create CString in dummy_add_external_mock_port: {}", e);
+                return;
+            }
+        };
         unsafe {
             ffi::dummy_driver_add_external_mock_port(
                 *obj,
@@ -303,7 +309,13 @@ impl AudioDriver {
         let maybe_name_regex_updated = match maybe_name_regex {
             Some(s) => match s {
                 "" => None,
-                _ => Some(std::ffi::CString::new(s).expect("Failed to create CString")),
+                _ => match std::ffi::CString::new(s) {
+                    Ok(c) => Some(c),
+                    Err(e) => {
+                        error!("Failed to create CString for regex: {}", e);
+                        None
+                    }
+                },
             },
             None => None,
         };

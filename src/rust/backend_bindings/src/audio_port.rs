@@ -55,7 +55,7 @@ impl AudioPort {
         direction: &PortDirection,
         min_n_ringbuffer_samples: u32,
     ) -> Result<Self, anyhow::Error> {
-        let name_hint_cstr = CString::new(name_hint).expect("CString::new failed");
+        let name_hint_cstr = CString::new(name_hint)?;
         let name_hint_ptr = name_hint_cstr.as_ptr();
         let obj = unsafe {
             ffi::open_driver_audio_port(
@@ -266,7 +266,13 @@ impl AudioPort {
             }
         };
         let obj = *guard;
-        let c_name = CString::new(name).expect("CString::new failed");
+        let c_name = match CString::new(name) {
+            Ok(c) => c,
+            Err(e) => {
+                error!("CString::new failed: {}", e);
+                return;
+            }
+        };
         unsafe {
             ffi::connect_audio_port_external(obj, c_name.as_ptr());
         }
@@ -281,7 +287,13 @@ impl AudioPort {
             }
         };
         let obj = *guard;
-        let c_name = CString::new(name).expect("CString::new failed");
+        let c_name = match CString::new(name) {
+            Ok(c) => c,
+            Err(e) => {
+                error!("CString::new failed: {}", e);
+                return;
+            }
+        };
         unsafe {
             ffi::disconnect_audio_port_external(obj, c_name.as_ptr());
         }

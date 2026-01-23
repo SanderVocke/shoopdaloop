@@ -39,7 +39,7 @@ impl ExternalPortDescriptor {
             Ok(c) => c,
             Err(e) => {
                 error!("Invalid CString for port name: {}", e);
-                std::ffi::CString::new("").unwrap()
+                std::ffi::CString::default()
             }
         };
         ffi::shoop_external_port_descriptor_t {
