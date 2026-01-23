@@ -104,7 +104,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
         schemas_dir: config.schemas_dir.clone(),
         version_string: config._version.clone(),
     };
-    GLOBAL_QML_SETTINGS.set(global_qml_settings).unwrap();
+    GLOBAL_QML_SETTINGS.set(global_qml_settings).expect("GLOBAL_QML_SETTINGS already initialized");
 
     let main_qml =
         if cli_args.developer_options.main.is_none() && !cli_args.self_test_options.self_test {
@@ -165,7 +165,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
 
                 TEST_RUNNER.with(|c| {
                     c.set(testrunner.get_unchecked_mut() as *mut TestFileRunner)
-                        .unwrap()
+                        .expect("Failed to set TEST_RUNNER");
                 });
             }
         }
@@ -174,11 +174,16 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
             config.clone(),
             |mut qml_engine: Pin<&mut QmlEngine>| {
                 // Set global QML arguments
-                let global_args: &GlobalQmlSettings = GLOBAL_QML_SETTINGS.get().unwrap();
+                let global_args: &GlobalQmlSettings = GLOBAL_QML_SETTINGS.get().expect("GLOBAL_QML_SETTINGS not initialized");
                 let global_args = global_args.as_qvariantmap();
                 let global_args =
-                    cxx_qt_lib_shoop::qvariant_helpers::qvariantmap_to_qvariant(&global_args)
-                        .unwrap();
+                    match cxx_qt_lib_shoop::qvariant_helpers::qvariantmap_to_qvariant(&global_args) {
+                        Ok(v) => v,
+                        Err(e) => {
+                             error!("Failed to convert global_args to QVariant: {}", e);
+                             return;
+                        }
+                    };
                 unsafe {
                     qml_engine
                         .as_mut()
@@ -190,7 +195,13 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                         if let Some(runner) = c.get() {
                             let mut runner_pin = std::pin::Pin::new_unchecked(&mut **runner);
                             let runner_qobj = runner_pin.as_mut().pin_mut_qobject_ptr();
-                            let runner_qvariant = qobject_ptr_to_qvariant(&runner_qobj).unwrap();
+                            let runner_qvariant = match qobject_ptr_to_qvariant(&runner_qobj) {
+                                Ok(v) => v,
+                                Err(e) => {
+                                    error!("Failed to convert runner_qobj to QVariant: {}", e);
+                                    return;
+                                }
+                            };
                             qml_engine.as_mut().set_root_context_property(
                                 &QString::from("shoop_test_file_runner"),
                                 &runner_qvariant,
@@ -305,7 +316,7 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
         crashhandling::set_crash_json_tag("shoop_phase", "startup".into());
         crashhandling::registered_threads::register_thread("gui");
     }
-    let cli_args = cli_args.unwrap();
+    let cli_args = cli_args.expect("CLI args missing (unexpected in client mode)");
 
     if cli_args.print_backends {
         println!("Available backends:\n");

@@ -8,18 +8,17 @@ shoop_log_unit!("packaging");
 
 fn populate_folder(folder: &Path, cargo_profile: &str) -> Result<(), anyhow::Error> {
     // For normalizing Windows paths
-    let normalize_path = |path: PathBuf| -> PathBuf {
-        PathBuf::from(
-            std::fs::canonicalize(path)
-                .unwrap()
+    let normalize_path = |path: PathBuf| -> Result<PathBuf, anyhow::Error> {
+        Ok(PathBuf::from(
+            std::fs::canonicalize(path)?
                 .to_str()
-                .unwrap()
+                .ok_or(anyhow!("Invalid unicode in path"))?
                 .trim_start_matches(r"\\?\"),
-        )
+        ))
     };
 
     let file_path = PathBuf::from(file!());
-    let src_path = normalize_path(file_path);
+    let src_path = normalize_path(file_path)?;
     let src_path = src_path
         .ancestors()
         .nth(5)
@@ -79,7 +78,7 @@ fn populate_folder(folder: &Path, cargo_profile: &str) -> Result<(), anyhow::Err
     info!("Bundling {} dependencies...", dependency_libs.len());
     for lib in dependency_libs {
         let src = lib.clone();
-        let dst = folder.join(lib.file_name().unwrap());
+        let dst = folder.join(lib.file_name().ok_or(anyhow!("Missing filename"))?);
         debug!("--> {:?} -> {:?}", &src, &dst);
         std::fs::copy(&src, &dst)?;
     }
@@ -87,7 +86,7 @@ fn populate_folder(folder: &Path, cargo_profile: &str) -> Result<(), anyhow::Err
     info!("Downloading prebuilt cargo-nextest into folder...");
 
     let nextest_path: PathBuf;
-    let nextest_dir = folder.to_str().unwrap();
+    let nextest_dir = folder.to_str().ok_or(anyhow!("Invalid unicode"))?;
     #[cfg(target_os = "windows")]
     {
         nextest_path = folder.join("cargo-nextest.exe");
@@ -134,7 +133,7 @@ fn populate_folder(folder: &Path, cargo_profile: &str) -> Result<(), anyhow::Err
         "nextest",
         "archive",
         "--archive-file",
-        archive.to_str().unwrap(),
+        archive.to_str().ok_or(anyhow!("Invalid unicode"))?,
         "--cargo-profile",
         cargo_profile,
     ];
@@ -146,7 +145,7 @@ fn populate_folder(folder: &Path, cargo_profile: &str) -> Result<(), anyhow::Err
 
     info!(
         "Test binaries folder produced in {}",
-        folder.to_str().unwrap()
+        folder.to_str().ok_or(anyhow!("Invalid unicode"))?
     );
 
     Ok(())

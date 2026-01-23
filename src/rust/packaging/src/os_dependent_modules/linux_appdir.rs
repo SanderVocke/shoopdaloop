@@ -34,13 +34,13 @@ fn populate_appdir(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Error> 
         "distribution/linux/shoopdaloop",
     ] {
         let from = src_path.join(file);
-        let to = appdir.join(from.file_name().unwrap());
+        let to = appdir.join(from.file_name().ok_or(anyhow!("Missing filename"))?);
         info!("  {:?} -> {:?}", &from, &to);
         std::fs::copy(&from, &to)
             .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
     }
 
-    info!("AppDir produced in {}", appdir.to_str().unwrap());
+    info!("AppDir produced in {:?}", appdir);
 
     Ok(())
 }

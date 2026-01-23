@@ -15,7 +15,10 @@ pub fn build_appimage(
 
     info!("Creating AppImage...");
     Command::new(appimagetool)
-        .args(&[src_dir.to_str().unwrap(), output_file.to_str().unwrap()])
+        .args(&[
+            src_dir.to_str().ok_or(anyhow!("Invalid unicode"))?,
+            output_file.to_str().ok_or(anyhow!("Invalid unicode"))?,
+        ])
         .status()
         .with_context(|| "Failed to run appimagetool")?;
 

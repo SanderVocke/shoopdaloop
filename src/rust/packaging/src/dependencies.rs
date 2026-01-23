@@ -44,7 +44,7 @@ pub fn get_dependency_libs(
     list_deps = list_deps
         .args(&args)
         .envs(new_env_map.iter())
-        .current_dir(std::env::current_dir().unwrap());
+        .current_dir(std::env::current_dir().context("Failed to get current dir")?);
     let list_deps_output = list_deps
         .output()
         .with_context(|| "Failed to run list_dependencies")?;
@@ -83,7 +83,7 @@ pub fn get_dependency_libs(
         let path_str = path
             .to_str()
             .ok_or(anyhow!("cannot find dependency"))?;
-        let path_filename = path.file_name().unwrap().to_str().unwrap();
+        let path_filename = path.file_name().ok_or(anyhow!("Missing filename"))?.to_str().ok_or(anyhow!("Invalid unicode"))?;
         let indent = line.chars().take_while(|&c| c == ' ').count();
 
         if Rc::ptr_eq(&current_parent, &root) && root.borrow().deps.len() == 0 {
@@ -203,7 +203,7 @@ pub fn get_dependency_libs(
                 .replace("*", ".*")
                 .replace("+", "\\+")
                 .to_lowercase();
-            return regex::Regex::new(pattern_str).unwrap().is_match(path_str);
+            return regex::Regex::new(pattern_str).expect("Invalid regex pattern").is_match(path_str);
         };
         let in_excludes = excludes.iter().any(|e| pattern_match(e, path_str.as_str()));
         let in_includes = includes.iter().any(|e| pattern_match(e, path_str.as_str()));
@@ -246,7 +246,7 @@ pub fn get_dependency_libs(
                 } else {
                     info!("  Including dependency {}", &path_str);
                     paths.push(path.to_path_buf());
-                    let path_filename = path.file_name().unwrap().to_str().unwrap();
+                    let path_filename = path.file_name().ok_or(anyhow!("Missing filename"))?.to_str().ok_or(anyhow!("Invalid unicode"))?;
                     used_includes.insert(path_filename.to_string());
                 }
                 handled.insert(path_str.clone());
@@ -303,10 +303,13 @@ pub fn get_dependency_libs(
         .into_iter()
         .map(|lib| {
             // Detect libraries in framework folders and reduce the entries to the frameworks themselves
-            let re = regex::Regex::new(r"(.*/.*.framework)/.*").unwrap();
-            let cap = re.captures(lib.to_str().unwrap());
-            if !cap.is_none() {
-                PathBuf::from(cap.unwrap().get(1).unwrap().as_str())
+            let re = regex::Regex::new(r"(.*/.*.framework)/.*").expect("Invalid regex");
+            if let Some(s) = lib.to_str() {
+                if let Some(cap) = re.captures(s) {
+                    PathBuf::from(cap.get(1).expect("Regex group missing").as_str())
+                } else {
+                    lib
+                }
             } else {
                 lib
             }
@@ -369,7 +372,7 @@ fn get_windows_specifics<'a>(
 
     let command = String::from("powershell.exe");
     let commandstr =
-        include_str!("scripts/windows_deps.ps1").replace("$args[0]", executable.to_str().unwrap());
+        include_str!("scripts/windows_deps.ps1").replace("$args[0]", executable.to_str().ok_or(anyhow!("Invalid unicode"))?);
     let args = vec![String::from("-Command"), commandstr];
     let warning_patterns = vec![];
     let skip_n_levels = 0;
@@ -407,8 +410,8 @@ fn get_linux_specifics<'a>(
         String::from("-c"),
         String::from(commandstr),
         String::from("dummy"),
-        String::from(executable.to_str().unwrap()),
-        String::from(include_directory.to_str().unwrap()),
+        String::from(executable.to_str().ok_or(anyhow!("Invalid unicode"))?),
+        String::from(include_directory.to_str().ok_or(anyhow!("Invalid unicode"))?),
     ];
     let warning_patterns = vec![String::from("not found")];
     let skip_n_levels = 0;
@@ -445,7 +448,7 @@ fn get_macos_specifics<'a>(
         String::from("-c"),
         String::from(commandstr),
         String::from("dummy"),
-        String::from(executable.to_str().unwrap()),
+        String::from(executable.to_str().ok_or(anyhow!("Invalid unicode"))?),
     ];
     let warning_patterns = vec![];
     let skip_n_levels = 0;

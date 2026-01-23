@@ -34,7 +34,7 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
         .args(&[
             "-add_rpath",
             "@executable_path/lib",
-            installed_exe.to_str().unwrap(),
+            installed_exe.to_str().ok_or(anyhow!("Invalid UTF-8 in path"))?,
         ])
         .status()?;
 
@@ -84,7 +84,7 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
                 }
                 let extra_lib_filename = &extra_lib_path
                     .file_name()
-                    .unwrap()
+                    .ok_or(anyhow!("Missing filename"))?
                     .to_string_lossy()
                     .to_string();
                 let extra_lib_dstpath: String = format!("lib/{}", extra_lib_filename);
@@ -117,9 +117,8 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
                 .ok_or(anyhow!("Could not get lib filename"))?
                 .to_str()
                 .ok_or(anyhow!("Could not interpret lib filename"))?;
-            let cap = re.captures(filename);
-            if !cap.is_none() {
-                let symlink_filename = cap.unwrap().get(1).unwrap().as_str();
+            if let Some(cap) = re.captures(filename) {
+                let symlink_filename = cap.get(1).expect("Regex must have group 1").as_str();
                 let symlink_filename = format!("{symlink_filename}.dylib");
                 let symlink_path = library
                     .parent()
@@ -135,7 +134,7 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
         })?;
     }
 
-    info!("App bundle produced in {}", appdir.to_str().unwrap());
+    info!("App bundle produced in {:?}", appdir);
 
     Ok(())
 }
