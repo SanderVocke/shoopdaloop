@@ -35,26 +35,26 @@ pub struct ShoopTomlConfig {
 
 impl ShoopTomlConfig {
     pub fn _apply_overrides(self: Self, config: &mut ShoopConfig) {
-        if self.qml_dir.is_some() {
-            config.qml_dir = self.qml_dir.unwrap()
+        if let Some(v) = self.qml_dir {
+            config.qml_dir = v;
         }
-        if self.lua_dir.is_some() {
-            config.lua_dir = self.lua_dir.unwrap()
+        if let Some(v) = self.lua_dir {
+            config.lua_dir = v;
         }
-        if self.resource_dir.is_some() {
-            config.resource_dir = self.resource_dir.unwrap()
+        if let Some(v) = self.resource_dir {
+            config.resource_dir = v;
         }
-        if self.schemas_dir.is_some() {
-            config.schemas_dir = self.schemas_dir.unwrap()
+        if let Some(v) = self.schemas_dir {
+            config.schemas_dir = v;
         }
-        if self.qt_plugins_dir.is_some() {
-            config.qt_plugins_dir = self.qt_plugins_dir.unwrap()
+        if let Some(v) = self.qt_plugins_dir {
+            config.qt_plugins_dir = v;
         }
-        if self.dynlibpaths.is_some() {
-            config.dynlibpaths = self.dynlibpaths.unwrap()
+        if let Some(v) = self.dynlibpaths {
+            config.dynlibpaths = v;
         }
-        if self.additional_qml_dirs.is_some() {
-            config.additional_qml_dirs = self.additional_qml_dirs.unwrap()
+        if let Some(v) = self.additional_qml_dirs {
+            config.additional_qml_dirs = v;
         }
     }
 
@@ -87,9 +87,10 @@ impl ShoopTomlConfig {
     }
 
     pub fn _substitute_root(&mut self, root: &Path) {
+        let root_str = root.to_string_lossy().into_owned();
         let substitute = |path: &mut Option<String>| {
             if let Some(path_str) = path {
-                *path_str = path_str.replace("$ROOT", root.to_str().unwrap());
+                *path_str = path_str.replace("$ROOT", &root_str);
             }
         };
         substitute(&mut self.qml_dir);
@@ -97,25 +98,15 @@ impl ShoopTomlConfig {
         substitute(&mut self.resource_dir);
         substitute(&mut self.schemas_dir);
         substitute(&mut self.qt_plugins_dir);
-        if self.dynlibpaths.is_some() {
-            self.dynlibpaths = Some(
-                self.dynlibpaths
-                    .as_ref()
-                    .unwrap()
-                    .iter()
-                    .map(|s| s.replace("$ROOT", root.to_str().unwrap()))
-                    .collect(),
-            );
+        if let Some(dynlibpaths) = &mut self.dynlibpaths {
+            for s in dynlibpaths.iter_mut() {
+                *s = s.replace("$ROOT", &root_str);
+            }
         }
-        if self.additional_qml_dirs.is_some() {
-            self.additional_qml_dirs = Some(
-                self.additional_qml_dirs
-                    .as_ref()
-                    .unwrap()
-                    .iter()
-                    .map(|s| s.replace("$ROOT", root.to_str().unwrap()))
-                    .collect(),
-            );
+        if let Some(additional_qml_dirs) = &mut self.additional_qml_dirs {
+            for s in additional_qml_dirs.iter_mut() {
+                *s = s.replace("$ROOT", &root_str);
+            }
         }
     }
 }
@@ -123,20 +114,21 @@ impl ShoopTomlConfig {
 impl Default for ShoopConfig {
     fn default() -> ShoopConfig {
         let normalize_path = |path: &Path| -> PathBuf {
-            PathBuf::from(
-                std::fs::canonicalize(path)
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .trim_start_matches(r"\\?\"),
-            )
+            match std::fs::canonicalize(path) {
+                Ok(p) => PathBuf::from(
+                    p.to_string_lossy()
+                        .trim_start_matches(r"\\?\")
+                        .to_string(),
+                ),
+                Err(_) => path.to_path_buf(),
+            }
         };
-        let executable_path = env::current_exe().unwrap();
-        let installed_path = normalize_path(executable_path.parent().unwrap());
+        let executable_path = env::current_exe().unwrap_or_else(|_| PathBuf::from("shoopdaloop"));
+        let installed_path = normalize_path(executable_path.parent().unwrap_or(Path::new(".")));
         ShoopConfig {
             _version: common::shoop_version().to_string(),
             _description: common::shoop_description().to_string(),
-            _install_info: format!("installed in {}", installed_path.to_str().unwrap()),
+            _install_info: format!("installed in {}", installed_path.to_string_lossy()),
             qml_dir: String::from(""),
             lua_dir: String::from(""),
             resource_dir: String::from(""),
@@ -157,8 +149,8 @@ impl ShoopConfig {
         let mut config: ShoopConfig = base_config.clone();
         let mut toml_config: ShoopTomlConfig =
             toml::from_str(content_str).context("Failed to parse TOML")?;
-        if maybe_root_path.is_some() {
-            toml_config._substitute_root(maybe_root_path.unwrap());
+        if let Some(root_path) = maybe_root_path {
+            toml_config._substitute_root(root_path);
         }
         toml_config._apply_overrides(&mut config);
         Ok(config)
@@ -174,27 +166,28 @@ impl ShoopConfig {
         maybe_substitute_root_path: Option<&Path>,
     ) -> Result<ShoopConfig, anyhow::Error> {
         let normalize_path = |path: &Path| -> PathBuf {
-            PathBuf::from(
-                std::fs::canonicalize(path)
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .trim_start_matches(r"\\?\"),
-            )
+            match std::fs::canonicalize(path) {
+                Ok(p) => PathBuf::from(
+                    p.to_string_lossy()
+                        .trim_start_matches(r"\\?\")
+                        .to_string(),
+                ),
+                Err(_) => path.to_path_buf(),
+            }
         };
         let config_path = normalize_path(config_path);
 
         let mut config: ShoopConfig = ShoopConfig::default();
-        if std::fs::exists(&config_path).expect("Could not check for config file existence") {
+        if config_path.exists() {
             debug!("Loading config file: {:?}", config_path);
-            let contents =
-                std::fs::read_to_string(config_path).expect("Could not read config file");
+            let contents = std::fs::read_to_string(&config_path)
+                .with_context(|| format!("Could not read config file: {:?}", config_path))?;
             config = ShoopConfig::_parse_toml_values(
-                &mut config,
+                &config,
                 contents.as_str(),
                 maybe_substitute_root_path,
             )
-            .expect("Could not parse config file");
+            .with_context(|| format!("Could not parse config file: {:?}", config_path))?;
         } else {
             return Err(anyhow::Error::msg(format!(
                 "Could not find config file: {:?}",
@@ -206,23 +199,24 @@ impl ShoopConfig {
 
     pub fn _load_default(root_path: &Path) -> Result<ShoopConfig, anyhow::Error> {
         let normalize_path = |path: &Path| -> PathBuf {
-            PathBuf::from(
-                std::fs::canonicalize(path)
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .trim_start_matches(r"\\?\"),
-            )
+            match std::fs::canonicalize(path) {
+                Ok(p) => PathBuf::from(
+                    p.to_string_lossy()
+                        .trim_start_matches(r"\\?\")
+                        .to_string(),
+                ),
+                Err(_) => path.to_path_buf(),
+            }
         };
 
-        let executable_path = env::current_exe().unwrap();
+        let executable_path = env::current_exe().unwrap_or_else(|_| PathBuf::from("shoopdaloop"));
         // Assumption is that we are in {root}/bin
-        let installed_path = normalize_path(executable_path.parent().unwrap());
+        let installed_path = normalize_path(executable_path.parent().unwrap_or(Path::new(".")));
         let config_path = env::var("SHOOP_CONFIG")
             .map_or(installed_path.join("shoop-config.toml"), |v| {
                 PathBuf::from(v)
             });
-        if std::fs::exists(&config_path).expect("Could not check for config file existence") {
+        if config_path.exists() {
             return ShoopConfig::_load(&config_path, Some(root_path));
         } else {
             debug!("No config file found, using defaults.");

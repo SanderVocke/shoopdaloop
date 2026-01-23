@@ -122,7 +122,13 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
 
         let refill_thread = thread::spawn(move || {
             let (lock, cvar) = &*refill_signal_clone;
-            let mut guard = lock.lock().expect("Refiller thread failed to acquire lock");
+            let mut guard = match lock.lock() {
+                Ok(g) => g,
+                Err(e) => {
+                    println!("Refiller thread failed to acquire lock (poisoned): {:?}", e);
+                    return;
+                }
+            };
 
             while !shutdown_signal_clone.load(Ordering::Relaxed) {
                 // The classic spurious wakeup loop.
@@ -130,9 +136,13 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
                 while !refill_needed_clone.load(Ordering::Acquire)
                     && !shutdown_signal_clone.load(Ordering::Relaxed)
                 {
-                    guard = cvar
-                        .wait(guard)
-                        .expect("Refiller thread failed to wait on condvar");
+                    match cvar.wait(guard) {
+                        Ok(g) => guard = g,
+                        Err(e) => {
+                            println!("Refiller thread failed to wait on condvar (poisoned): {:?}", e);
+                            return;
+                        }
+                    }
                 }
 
                 if shutdown_signal_clone.load(Ordering::Relaxed) {
@@ -245,9 +255,9 @@ impl<T: Send + Debug + 'static> Drop for RefillingPool<T> {
             self.notify_refiller();
 
             // 3. Join the thread to ensure it has terminated.
-            handle
-                .join()
-                .expect("Refilling thread panicked during shutdown");
+            if let Err(e) = handle.join() {
+                println!("Refilling thread panicked during shutdown: {:?}", e);
+            }
         }
     }
 }
