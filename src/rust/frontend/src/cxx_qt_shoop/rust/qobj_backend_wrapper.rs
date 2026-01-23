@@ -693,6 +693,7 @@ impl BackendWrapper {
             .as_mut()
             .expect("Session is null")
             .create_loop()
+            // FIXME: Handle error gracefully (return dummy?)
             .expect("Failed to create loop")
     }
 
@@ -713,6 +714,7 @@ impl BackendWrapper {
                     .expect("Invalid chain type"),
                 title,
             )
+            // FIXME: Handle error gracefully
             .expect("Failed to create fx chain")
     }
     pub fn backend_type_is_supported(self: Pin<&mut BackendWrapper>, _type: i32) -> bool {

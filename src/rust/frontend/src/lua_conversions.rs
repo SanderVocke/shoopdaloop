@@ -110,13 +110,17 @@ impl IntoLuaExtended for QVariant {
             return Ok(mlua::Value::Nil);
         }
 
-        let type_id = qvariant_type_id(&self).unwrap();
+        let type_id = qvariant_type_id(&self).map_err(|_| mlua::Error::ToLuaConversionError {
+            from: "QVariant".to_string(),
+            to: "type_id",
+            message: Some("Failed to get type ID".to_string()),
+        })?;
 
         macro_rules! convert {
             ($T:ty) => {
                 self.value::<$T>()
                     .ok_or(mlua::Error::ToLuaConversionError {
-                        from: qvariant_type_name(&self).unwrap().to_string(),
+                        from: qvariant_type_name(&self).unwrap_or("unknown").to_string(),
                         to: "val",
                         message: Some("failed to get qvariant value".to_string()),
                     })?
@@ -127,12 +131,12 @@ impl IntoLuaExtended for QVariant {
         match type_id {
             _v if _v == qmetatype_id_int() => convert!(i64),
             _v if _v == qmetatype_id_int64()
-                || qvariant_type_name(&self).unwrap() == "qlonglong" =>
+                || qvariant_type_name(&self).unwrap_or("unknown") == "qlonglong" =>
             {
                 convert!(i64)
             }
             _v if _v == qmetatype_id_uint() => convert!(i64),
-            _v if _v == qmetatype_id_uchar() || qvariant_type_name(&self).unwrap() == "uchar" => {
+            _v if _v == qmetatype_id_uchar() || qvariant_type_name(&self).unwrap_or("unknown") == "uchar" => {
                 convert!(u8)
             }
             _v if _v == qmetatype_id_uint64() => convert!(i64),
@@ -140,13 +144,13 @@ impl IntoLuaExtended for QVariant {
             _v if _v == qmetatype_id_float() => convert!(f32),
             _v if _v == qmetatype_id_double() => convert!(f64),
             _v if _v == qmetatype_id_qstring() => {
-                let str = self.value::<QString>().unwrap().to_string();
+                let str = self.value::<QString>().ok_or(mlua::Error::ToLuaConversionError { from: "QVariant".to_string(), to: "QString", message: Some("Value is not QString".to_string()) })?.to_string();
                 str.into_lua(lua)
             }
             _v if _v == qmetatype_id_qvariantmap() => {
                 let map = qvariant_to_qvariantmap(&self).map_err(|e| {
                     mlua::Error::ToLuaConversionError {
-                        from: qvariant_type_name(&self).unwrap().to_string(),
+                        from: "QVariantMap".to_string(),
                         to: "val",
                         message: Some(format!("Failed to extract QVariantMap: {e}")),
                     }
@@ -156,7 +160,7 @@ impl IntoLuaExtended for QVariant {
             _v if _v == qmetatype_id_qvariantlist() => {
                 let l = qvariant_to_qvariantlist(&self).map_err(|e| {
                     mlua::Error::ToLuaConversionError {
-                        from: qvariant_type_name(&self).unwrap().to_string(),
+                        from: "QVariantList".to_string(),
                         to: "val",
                         message: Some(format!("Failed to extract QVariantList: {e}")),
                     }
@@ -166,7 +170,7 @@ impl IntoLuaExtended for QVariant {
             _v if _v == qmetatype_id_qstringlist() => {
                 let l = qvariant_to_qstringlist(&self).map_err(|e| {
                     mlua::Error::ToLuaConversionError {
-                        from: qvariant_type_name(&self).unwrap().to_string(),
+                        from: "QStringList".to_string(),
                         to: "val",
                         message: Some(format!("Failed to extract QStringList: {e}")),
                     }
@@ -176,7 +180,7 @@ impl IntoLuaExtended for QVariant {
             _v if _v == qmetatype_id_qlist_u8() => {
                 let l =
                     qvariant_to_qlist_u8(&self).map_err(|e| mlua::Error::ToLuaConversionError {
-                        from: qvariant_type_name(&self).unwrap().to_string(),
+                        from: "QList<u8>".to_string(),
                         to: "val",
                         message: Some(format!("Failed to extract QStringList: {e}")),
                     })?;
@@ -193,7 +197,7 @@ impl IntoLuaExtended for QVariant {
                         }
                     })? {
                         return Err(mlua::Error::ToLuaConversionError {
-                            from: qvariant_type_name(&self).unwrap().to_string(),
+                            from: "QJSValue".to_string(),
                             to: "val",
                             message: Some(format!(
                             "Failed to convert JS objects in QVariant: post-conversion is still JS"
@@ -204,7 +208,7 @@ impl IntoLuaExtended for QVariant {
                 self.into_lua(lua)
             }
             _ => Err(mlua::Error::ToLuaConversionError {
-                from: qvariant_type_name(&self).unwrap().to_string(),
+                from: "QVariant".to_string(),
                 to: "val",
                 message: Some("unsupported".to_string()),
             }),
@@ -291,15 +295,21 @@ impl FromLuaExtended for QMap<QMapPair_QString_QVariant> {
             });
         }
 
-        value
-            .as_table()
-            .unwrap()
-            .for_each(|key, value| -> mlua::Result<()> {
+        if let Some(table) = value.as_table() {
+             table.for_each(|key, value| -> mlua::Result<()> {
                 let key: QString = QString::from(<String as mlua::FromLua>::from_lua(key, lua)?);
                 let variant = QVariant::from_lua(value, lua)?;
                 rval.insert(key, variant);
                 Ok(())
             })?;
+        } else {
+            // Should be unreachable because we check !value.is_table() above
+            return Err(mlua::Error::FromLuaConversionError {
+                from: "non-table",
+                to: "QMap<QString,QVariant>".to_string(),
+                message: Some("value is not a table".to_string()),
+            });
+        }
 
         Ok(rval)
     }

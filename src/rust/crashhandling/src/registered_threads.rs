@@ -12,13 +12,11 @@ pub fn register_thread(name: &str) {
     let id = std::thread::current().id();
     unsafe {
         let ptr: *mut once_cell::sync::Lazy<Mutex<ThreadsMap>> = &raw mut REGISTERED_THREADS;
-        let threads: &mut Mutex<ThreadsMap> = Lazy::force_mut(ptr.as_mut().unwrap());
-        if let Ok(mut guard) = threads.lock() {
-            guard.insert(id, name.to_string());
-        } else {
-            // If lock is poisoned, we might as well ignore or try to recover.
-            // But we can't easily recover map state.
-            // Ignoring registration is safest to avoid panic.
+        if let Some(lazy) = ptr.as_mut() {
+            let threads: &mut Mutex<ThreadsMap> = Lazy::force_mut(lazy);
+            if let Ok(mut guard) = threads.lock() {
+                guard.insert(id, name.to_string());
+            }
         }
     }
 }
@@ -28,9 +26,13 @@ pub fn current_thread_registered_name() -> Option<String> {
     let result: Option<String>;
     unsafe {
         let ptr: *mut once_cell::sync::Lazy<Mutex<ThreadsMap>> = &raw mut REGISTERED_THREADS;
-        let threads: &mut Mutex<ThreadsMap> = Lazy::force_mut(ptr.as_mut().unwrap());
-        if let Ok(guard) = threads.lock() {
-            result = guard.get(&id).map(|s| s.clone());
+        if let Some(lazy) = ptr.as_mut() {
+            let threads: &mut Mutex<ThreadsMap> = Lazy::force_mut(lazy);
+            if let Ok(guard) = threads.lock() {
+                result = guard.get(&id).map(|s| s.clone());
+            } else {
+                result = None;
+            }
         } else {
             result = None;
         }

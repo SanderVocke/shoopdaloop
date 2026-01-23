@@ -27,7 +27,7 @@ where
     let n_input_samples = current_level_power.len();
 
     let mut rval = AudioPowerPyramidData {
-        levels: Vec::with_capacity(n_levels.try_into().unwrap()),
+        levels: Vec::with_capacity(n_levels),
     };
 
     let mut current_size = n_input_samples;

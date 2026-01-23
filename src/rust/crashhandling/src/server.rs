@@ -21,17 +21,17 @@ fn set_json(to: &mut JsonValue, from: &JsonValue) -> anyhow::Result<()> {
             if v.is_object() {
                 if to.get(k).is_none() {
                     to[k] = serde_json::json!({});
-                } else if !to.get(k).unwrap().is_object() {
-                    return Err(anyhow!("expected object"));
+                } else if !to.get(k).and_then(|v| v.as_object()).is_some() {
+                     return Err(anyhow!("expected object"));
                 }
-                return set_json(&mut to[k], v);
+                set_json(&mut to[k], v)?;
             } else if v.is_array() {
                 if to.get(k).is_none() {
                     to[k] = serde_json::json!([]);
-                } else if !to.get(k).unwrap().is_array() {
-                    return Err(anyhow!("expected array"));
+                } else if !to.get(k).and_then(|v| v.as_array()).is_some() {
+                     return Err(anyhow!("expected array"));
                 }
-                return set_json(&mut to[k], v);
+                set_json(&mut to[k], v)?;
             } else {
                 to[k] = v.clone();
             }
@@ -85,8 +85,8 @@ pub fn crashhandling_server() {
         ) -> Result<(std::fs::File, std::path::PathBuf), std::io::Error> {
             let maybe_dump_folder: Option<String> = std::env::var("SHOOP_CRASHDUMP_DIR").ok();
 
-            let (dumpfile, dumpfilepath) = (if maybe_dump_folder.is_some() {
-                let path = std::path::PathBuf::from(maybe_dump_folder.as_ref().unwrap());
+            let (dumpfile, dumpfilepath) = (if let Some(dump_folder) = maybe_dump_folder.as_ref() {
+                let path = std::path::PathBuf::from(dump_folder);
                 tempfile::NamedTempFile::with_suffix_in(".dmp", &path)
             } else {
                 tempfile::NamedTempFile::with_suffix(".dmp")

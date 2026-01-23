@@ -83,10 +83,8 @@ pub fn load_standard_midi<'a>(
                                     }
                                 }
                             }
-                            if samples_per_tick.is_none() {
-                                return Err(anyhow!("No tempo information"));
-                            }
-                            let delta = event.delta.as_int() as f64 * samples_per_tick.unwrap();
+                            let spt = samples_per_tick.ok_or(anyhow!("No tempo information"))?;
+                            let delta = event.delta.as_int() as f64 * spt;
                             prev_timestamp += delta;
                             match event.kind.as_live_event() {
                                 Some(event) => {

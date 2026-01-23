@@ -1,4 +1,6 @@
 use backend_bindings::{ProfilingReport, ProfilingReportItem};
+use common::logging::macros::*;
+shoop_log_unit!("Frontend.ProfilingReport");
 use cxx_qt_lib::{QMap, QMapPair_QString_QVariant, QString, QVariant};
 use cxx_qt_lib_shoop::qvariant_helpers::qvariantmap_to_qvariant;
 
@@ -26,9 +28,11 @@ pub fn profiling_report_to_qvariantmap(report: &ProfilingReport) -> QVariantMap 
 
     for item in report.items.iter() {
         let item_map = profiling_report_item_to_qvariantmap(&item);
-        let item_map_variant =
-            qvariantmap_to_qvariant(&item_map).expect("Failed to convert qvariantmap to qvariant");
-        map.insert(QString::from(&item.key), item_map_variant);
+        if let Ok(item_map_variant) = qvariantmap_to_qvariant(&item_map) {
+            map.insert(QString::from(&item.key), item_map_variant);
+        } else {
+             error!("Failed to convert profiling report item for key {} to QVariant", item.key);
+        }
     }
 
     map

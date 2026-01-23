@@ -16,12 +16,12 @@ pub fn register_qml_singleton(module_name: &str, type_name: &str) {
 }
 
 impl SettingsIO {
-    fn settings_dir(&self) -> PathBuf {
-        PathBuf::from(
+    fn settings_dir(&self) -> Result<PathBuf, anyhow::Error> {
+        Ok(PathBuf::from(
             directories::ProjectDirs::from("com", "ShoopDaLoop", "ShoopDaLoop")
-                .expect("Could not determine project directories")
+                .ok_or(anyhow!("Could not determine project directories"))?
                 .config_dir(),
-        )
+        ))
     }
 
     pub fn save_settings(
@@ -42,11 +42,11 @@ impl SettingsIO {
                     .ok_or(anyhow!("override_filename is not a string"))?
                     .to_string(),
             };
-            let settings_dir = self.settings_dir();
+            let settings_dir = self.settings_dir().map_err(|e| anyhow!("Failed to get settings dir: {e}"))?;
             if !settings_dir.exists() {
-                std::fs::create_dir_all(settings_dir)?;
+                std::fs::create_dir_all(&settings_dir)?;
             }
-            let path = self.settings_dir().join(filename);
+            let path = settings_dir.join(filename);
             std::fs::write(&path, json)?;
             info!("Saved settings to {path:?}");
             Ok(())
@@ -64,7 +64,10 @@ impl SettingsIO {
                     .ok_or(anyhow!("override_filename is not a string"))?
                     .to_string(),
             };
-            let path = self.settings_dir().join(filename);
+            let path = self
+                .settings_dir()
+                .map_err(|e| anyhow!("Failed to get settings dir: {e}"))?
+                .join(filename);
             if !path.exists() {
                 info!(
                     "No settings file found at {}, using default values",

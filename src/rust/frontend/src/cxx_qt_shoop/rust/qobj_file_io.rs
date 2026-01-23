@@ -378,11 +378,9 @@ fn load_soundfile_to_channels_impl(
 
     let mut channel_datas: Vec<QList_f32> = Vec::default();
     for _ in 0..n_channels {
-        channel_datas.push(QList::default());
-        channel_datas
-            .last_mut()
-            .expect("Vector should not be empty")
-            .reserve(target_frames as isize);
+        let mut list = QList::default();
+        list.reserve(target_frames as isize);
+        channel_datas.push(list);
     }
 
     for frame in 0..target_frames {

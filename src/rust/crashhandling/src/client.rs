@@ -36,7 +36,13 @@ pub fn crashhandling_client(
                 }
             };
             let dirpath = dir.join("shoop.crashsocket");
-            dirpath.to_str().unwrap().to_string()
+            match dirpath.to_str() {
+                Some(s) => s.to_string(),
+                None => {
+                    error!("Unable to convert temporary dir path to string");
+                    return;
+                }
+            }
         };
 
         debug!("Client: crash handling socket: {socket_name}");

@@ -30,7 +30,7 @@ macro_rules! shoop_log_unit {
     ( $name:tt ) => {
         use ctor::ctor;
         use log;
-        const SHOOP_LOG_UNIT: &str = $name;
+        pub(crate) const SHOOP_LOG_UNIT: &str = $name;
         #[ctor]
         fn init_logging() {
             common::logging::register_log_module(SHOOP_LOG_UNIT);

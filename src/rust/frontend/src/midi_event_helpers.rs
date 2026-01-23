@@ -1,3 +1,5 @@
+use common::logging::macros::*;
+shoop_log_unit!("Frontend.MidiEventHelpers");
 use anyhow::anyhow;
 use backend_bindings::MidiEvent;
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
@@ -25,16 +27,23 @@ impl MidiEventToQVariant for MidiEvent {
         let mut data: QList<i32> = QList::default();
         result.insert(QString::from("time"), QVariant::from(&self.time));
         self.data.iter().for_each(|v| data.append(*v as i32));
-        result.insert(QString::from("data"), qlist_i32_to_qvariant(&data).unwrap());
+        if let Ok(v) = qlist_i32_to_qvariant(&data) {
+             result.insert(QString::from("data"), v);
+        } else {
+             error!("Failed to convert MIDI data list to QVariant");
+        }
         result
     }
 
     fn to_qvariant(&self) -> QVariant {
-        qvariantmap_to_qvariant(&self.to_qvariantmap()).unwrap()
+        qvariantmap_to_qvariant(&self.to_qvariantmap()).unwrap_or_else(|e| {
+            error!("Failed to convert MIDI event map to QVariant: {e}");
+            QVariant::default()
+        })
     }
 
     fn from_qvariant(qvariant: &QVariant) -> Result<Self, anyhow::Error> {
-        Self::from_qvariantmap(&qvariant_to_qvariantmap(qvariant).unwrap())
+        Self::from_qvariantmap(&qvariant_to_qvariantmap(qvariant).map_err(|e| anyhow!("Failed to convert qvariant to map: {e}"))?)
     }
 
     fn from_qvariantmap(

@@ -1,3 +1,5 @@
+use common::logging::macros::*;
+shoop_log_unit!("Frontend.CompositeLoopSchedule");
 use anyhow::anyhow;
 use backend_bindings::LoopMode;
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
@@ -148,9 +150,16 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
             };
             entry.append(mode);
 
-            loops_start.append(qvariantlist_to_qvariant(&entry).unwrap());
+            if let Ok(v) = qvariantlist_to_qvariant(&entry) {
+                 loops_start.append(v);
+            } else {
+                 error!("Failed to convert loop start entry to QVariant");
+            }
         }
-        let loops_start = qvariantlist_to_qvariant(&loops_start).unwrap();
+        let loops_start = qvariantlist_to_qvariant(&loops_start).unwrap_or_else(|e| {
+             error!("Failed to convert loops_start list: {e}");
+             QVariant::default()
+        });
 
         let mut loops_end: QVariantList = QList::default();
         let mut loops_ignored: QVariantList = QList::default();
@@ -158,10 +167,16 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
             loops_end.append(loop_obj.obj.to_qvariant().unwrap_or(QVariant::default()));
         }
         for loop_obj in self.loops_ignored.iter() {
-            loops_ignored.append(loop_obj.obj.to_qvariant().unwrap());
+            loops_ignored.append(loop_obj.obj.to_qvariant().unwrap_or(QVariant::default()));
         }
-        let loops_end = qvariantlist_to_qvariant(&loops_end).unwrap();
-        let loops_ignored = qvariantlist_to_qvariant(&loops_ignored).unwrap();
+        let loops_end = qvariantlist_to_qvariant(&loops_end).unwrap_or_else(|e| {
+             error!("Failed to convert loops_end list: {e}");
+             QVariant::default()
+        });
+        let loops_ignored = qvariantlist_to_qvariant(&loops_ignored).unwrap_or_else(|e| {
+             error!("Failed to convert loops_ignored list: {e}");
+             QVariant::default()
+        });
 
         let mut map: QVariantMap = QMap::default();
         map.insert(QString::from("loops_start"), loops_start);
@@ -173,7 +188,10 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
 
     pub fn to_qvariant(&self) -> QVariant {
         let map = self.to_qvariantmap();
-        qvariantmap_to_qvariant(&map).unwrap()
+        qvariantmap_to_qvariant(&map).unwrap_or_else(|e| {
+             error!("Failed to convert CompositeLoopIterationEvents map to QVariant: {e}");
+             QVariant::default()
+        })
     }
 
     pub fn from_qvariantmap(map: &QVariantMap) -> Result<Self, anyhow::Error> {
@@ -191,7 +209,7 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
                         .get(1)
                         .ok_or(anyhow!("No loop mode entry in schedule elem"))?;
                     let loop_start = LoopReference::<T> {
-                        obj: T::from_qvariant(&loop_start).unwrap(),
+                        obj: T::from_qvariant(&loop_start)?,
                     };
                     let loop_mode: Option<LoopMode> = match loop_mode.value::<i32>() {
                         Some(mode) => Some(LoopMode::try_from(mode)?),
@@ -212,7 +230,7 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
                 let loops_end = qvariant_to_qvariantlist(&loops_end)?;
                 for entry in loops_end.iter() {
                     let object = LoopReference::<T> {
-                        obj: T::from_qvariant(&entry).unwrap(),
+                        obj: T::from_qvariant(&entry)?,
                     };
                     result.loops_end.insert(object);
                 }
@@ -225,7 +243,7 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
                 let loops_ignored = qvariant_to_qvariantlist(&loops_ignored)?;
                 for entry in loops_ignored.iter() {
                     let object = LoopReference::<T> {
-                        obj: T::from_qvariant(&entry).unwrap(),
+                        obj: T::from_qvariant(&entry)?,
                     };
                     result.loops_ignored.insert(object);
                 }
