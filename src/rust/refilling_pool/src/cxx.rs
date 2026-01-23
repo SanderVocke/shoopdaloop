@@ -26,7 +26,7 @@ mod ffi {
             capacity: usize,
             low_water_mark: usize,
             buffer_size: usize,
-        ) -> Box<BufferPool>;
+        ) -> Result<Box<BufferPool>>;
 
         /// Retrieves a buffer handle from the pool.
         /// Returns a raw pointer to a `BufferHandle`, which must be returned
@@ -71,14 +71,17 @@ impl Debug for BufferHandle {
 
 /// Implementation of the C++-callable functions.
 
-fn new_buffer_pool(capacity: usize, low_water_mark: usize, buffer_size: usize) -> Box<BufferPool> {
+fn new_buffer_pool(
+    capacity: usize,
+    low_water_mark: usize,
+    buffer_size: usize,
+) -> Result<Box<BufferPool>, Box<dyn std::error::Error>> {
     // The factory closure captures the desired buffer size.
     let factory = move || Box::new(BufferHandle(vec![0u8; buffer_size]));
 
-    let pool =
-        RefillingPool::new(capacity, low_water_mark, factory).expect("Failed to create pool");
+    let pool = RefillingPool::new(capacity, low_water_mark, factory)?;
 
-    Box::new(BufferPool { pool })
+    Ok(Box::new(BufferPool { pool }))
 }
 
 impl BufferPool {

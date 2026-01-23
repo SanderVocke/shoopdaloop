@@ -124,7 +124,9 @@ pub fn save_qlist_data_to_soundfile_impl(
                 );
                 if n_frames.is_none() {
                     n_frames = Some(qlist.len() as usize);
-                } else if qlist.len() as usize != n_frames.expect("n_frames should be set") {
+                } else if qlist.len() as usize != n_frames.unwrap_or(0) {
+                     // Since we checked is_none above, unwrap_or(0) is safe/fallback.
+                     // But logic dictates n_frames is Some here.
                     return Err(anyhow!("Inconsistent data size across channels"));
                 }
                 qlists.push(qlist);
@@ -477,7 +479,7 @@ fn qvariant_loop_gui_to_loop_backend(
 
     if !maybe_loop_ptr.is_null() {
         match unsafe { LoopGui::from_qobject_mut_ptr(maybe_loop_ptr) } {
-            Ok(l) => Some(l.backend_loop_wrapper.copy().map_err(|_| error!("Failed to copy loop backend wrapper")).ok().expect("Failed to get loop backend wrapper")),
+            Ok(l) => l.backend_loop_wrapper.copy().map_err(|_| error!("Failed to copy loop backend wrapper")).ok(),
             Err(_) => None,
         }
     } else {
@@ -512,13 +514,11 @@ fn qlist_qvariant_channels_to_backend(
         match qvariant_to_qobject_ptr(chan_variant) {
             Ok(chan_ptr) => match unsafe { LoopChannelGui::from_qobject_mut_ptr(chan_ptr) } {
                 Ok(chan) => {
-                    result.push(
-                        chan.backend_channel_wrapper
-                            .copy()
-                            .map_err(|_| error!("Failed to copy backend channel wrapper"))
-                            .ok()
-                            .expect("Failed to get backend channel wrapper"),
-                    );
+                    if let Ok(wrapper) = chan.backend_channel_wrapper.copy() {
+                        result.push(wrapper);
+                    } else {
+                        error!("Failed to copy backend channel wrapper");
+                    }
                 }
                 Err(e) => {
                     error!("skipping channel map element: {e}");
@@ -612,7 +612,9 @@ impl FileIO {
             Ok(f) => {
                 let path = f.path().to_owned();
                 let ppath = path.to_string_lossy().into_owned();
-                f.close().expect("Unable to close temporary file");
+                if let Err(e) = f.close() {
+                    error!("Unable to close temporary file: {}", e);
+                }
                 debug!("generated temporary filename: {}", ppath);
                 return QString::from(ppath);
             }

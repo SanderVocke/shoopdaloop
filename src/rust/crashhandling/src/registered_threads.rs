@@ -13,11 +13,13 @@ pub fn register_thread(name: &str) {
     unsafe {
         let ptr: *mut once_cell::sync::Lazy<Mutex<ThreadsMap>> = &raw mut REGISTERED_THREADS;
         let threads: &mut Mutex<ThreadsMap> = Lazy::force_mut(ptr.as_mut().unwrap());
-        let mut guard = threads.lock();
-        guard
-            .as_mut()
-            .expect("Could not lock threads map")
-            .insert(id, name.to_string());
+        if let Ok(mut guard) = threads.lock() {
+            guard.insert(id, name.to_string());
+        } else {
+            // If lock is poisoned, we might as well ignore or try to recover.
+            // But we can't easily recover map state.
+            // Ignoring registration is safest to avoid panic.
+        }
     }
 }
 
@@ -27,12 +29,11 @@ pub fn current_thread_registered_name() -> Option<String> {
     unsafe {
         let ptr: *mut once_cell::sync::Lazy<Mutex<ThreadsMap>> = &raw mut REGISTERED_THREADS;
         let threads: &mut Mutex<ThreadsMap> = Lazy::force_mut(ptr.as_mut().unwrap());
-        let mut guard = threads.lock();
-        result = guard
-            .as_mut()
-            .expect("Could not lock threads map")
-            .get(&id)
-            .map(|s| s.clone());
+        if let Ok(guard) = threads.lock() {
+            result = guard.get(&id).map(|s| s.clone());
+        } else {
+            result = None;
+        }
     }
     result
 }

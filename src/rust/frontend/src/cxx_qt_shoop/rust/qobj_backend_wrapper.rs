@@ -298,13 +298,8 @@ impl BackendWrapper {
             {
                 let mut rust_mut = self.as_mut().rust_mut();
                 let now = time::Instant::now();
-                if rust_mut.last_updated.is_some() {
-                    maybe_new_interval = Some(now.duration_since(
-                        *rust_mut
-                            .last_updated
-                            .as_ref()
-                            .expect("last_updated is null"),
-                    ));
+                if let Some(last_updated_time) = rust_mut.last_updated.as_ref() {
+                    maybe_new_interval = Some(now.duration_since(*last_updated_time));
                 } else {
                     maybe_new_interval = None;
                 }
@@ -335,20 +330,24 @@ impl BackendWrapper {
                 trace!("update_on_other_thread called on a BackendWrapper with no driver");
                 return;
             }
-            driver_state = rust
-                .driver
-                .as_ref()
-                .expect("Driver is null")
-                .get_state();
+            driver_state = match rust.driver.as_ref() {
+                Some(d) => d.get_state(),
+                None => {
+                    error!("Driver is null in update_on_other_thread");
+                    return;
+                }
+            };
             if rust.session.is_none() {
                 trace!("update_on_other_thread called on a BackendWrapper with no session");
                 return;
             }
-            session_state = rust
-                .session
-                .as_ref()
-                .expect("Session is null")
-                .get_state();
+            session_state = match rust.session.as_ref() {
+                Some(s) => s.get_state(),
+                None => {
+                     error!("Session is null in update_on_other_thread");
+                     return;
+                }
+            };
         }
 
         let update_data = BackendWrapperUpdateData {
@@ -373,7 +372,10 @@ impl BackendWrapper {
     }
 
     pub unsafe fn get_gui_thread(self: &BackendWrapper) -> *mut QThread {
-        qobject_thread(self.qobject_ref()).expect("Could not get GUI thread")
+        qobject_thread(self.qobject_ref()).unwrap_or_else(|e| {
+            error!("Could not get GUI thread: {}", e);
+            std::ptr::null_mut()
+        })
     }
 
     pub fn get_backend_thread(self: &BackendWrapper) -> *mut QThread {
@@ -381,60 +383,44 @@ impl BackendWrapper {
     }
 
     pub fn dummy_enter_controlled_mode(mut self: Pin<&mut BackendWrapper>) {
-        let mut_rust = self.as_mut().rust_mut();
+        let mut mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.driver.is_none() {
-            warn!("dummy_enter_controlled_mode called on a BackendWrapper with no driver");
+        if let Some(driver) = mut_rust.driver.as_mut() {
+            driver.dummy_enter_controlled_mode();
         } else {
-            mut_rust
-                .driver
-                .as_ref()
-                .expect("Driver is null")
-                .dummy_enter_controlled_mode();
+            warn!("dummy_enter_controlled_mode called on a BackendWrapper with no driver");
         }
     }
 
     pub fn dummy_enter_automatic_mode(mut self: Pin<&mut BackendWrapper>) {
-        let mut_rust = self.as_mut().rust_mut();
+        let mut mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.driver.is_none() {
-            warn!("dummy_enter_automatic_mode called on a BackendWrapper with no driver");
+        if let Some(driver) = mut_rust.driver.as_mut() {
+            driver.dummy_enter_automatic_mode();
         } else {
-            mut_rust
-                .driver
-                .as_ref()
-                .expect("Driver is null")
-                .dummy_enter_automatic_mode();
+            warn!("dummy_enter_automatic_mode called on a BackendWrapper with no driver");
         }
     }
 
     pub fn dummy_is_controlled(mut self: Pin<&mut BackendWrapper>) -> bool {
         let mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.driver.is_none() {
-            warn!("dummy_is_controlled called on a BackendWrapper with no driver");
-            false
+        if let Some(driver) = mut_rust.driver.as_ref() {
+            driver.dummy_is_controlled()
         } else {
-            mut_rust
-                .driver
-                .as_ref()
-                .expect("Driver is null")
-                .dummy_is_controlled()
+             warn!("dummy_is_controlled called on a BackendWrapper with no driver");
+             false
         }
     }
 
     pub fn dummy_request_controlled_frames(mut self: Pin<&mut BackendWrapper>, n: i32) {
         trace!("dummy_request_controlled_frames {}", n);
-        let mut_rust = self.as_mut().rust_mut();
+        let mut mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.driver.is_none() {
-            warn!("dummy_request_controlled_frames called on a BackendWrapper with no driver");
+        if let Some(driver) = mut_rust.driver.as_mut() {
+            driver.dummy_request_controlled_frames(n as u32);
         } else {
-            mut_rust
-                .driver
-                .as_ref()
-                .expect("Driver is null")
-                .dummy_request_controlled_frames(n as u32);
+            warn!("dummy_request_controlled_frames called on a BackendWrapper with no driver");
         }
         trace!("dummy_request_controlled_frames done");
     }
@@ -442,29 +428,21 @@ impl BackendWrapper {
     pub fn dummy_n_requested_frames(mut self: Pin<&mut BackendWrapper>) -> i32 {
         let mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.driver.is_none() {
+        if let Some(driver) = mut_rust.driver.as_ref() {
+            driver.dummy_n_requested_frames() as i32
+        } else {
             warn!("dummy_n_requested_frames called on a BackendWrapper with no driver");
             0
-        } else {
-            mut_rust
-                .driver
-                .as_ref()
-                .expect("Driver is null")
-                .dummy_n_requested_frames() as i32
         }
     }
 
     pub fn dummy_run_requested_frames(mut self: Pin<&mut BackendWrapper>) {
-        let mut_rust = self.as_mut().rust_mut();
+        let mut mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.driver.is_none() {
-            warn!("dummy_run_requested_frames called on a BackendWrapper with no driver");
+        if let Some(driver) = mut_rust.driver.as_mut() {
+            driver.dummy_run_requested_frames();
         } else {
-            mut_rust
-                .driver
-                .as_ref()
-                .expect("Driver is null")
-                .dummy_run_requested_frames();
+            warn!("dummy_run_requested_frames called on a BackendWrapper with no driver");
         }
     }
 
@@ -474,60 +452,44 @@ impl BackendWrapper {
         direction: i32,
         data_type: i32,
     ) {
-        let mut_rust = self.as_mut().rust_mut();
+        let mut mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.driver.is_none() {
-            warn!("dummy_add_external_mock_port called on a BackendWrapper with no driver");
+        if let Some(driver) = mut_rust.driver.as_mut() {
+            driver.dummy_add_external_mock_port(
+                name.to_string().as_str(),
+                direction as u32,
+                data_type as u32,
+            );
         } else {
-            mut_rust
-                .driver
-                .as_ref()
-                .expect("Driver is null")
-                .dummy_add_external_mock_port(
-                    name.to_string().as_str(),
-                    direction as u32,
-                    data_type as u32,
-                );
+            warn!("dummy_add_external_mock_port called on a BackendWrapper with no driver");
         }
     }
 
     pub fn dummy_remove_external_mock_port(mut self: Pin<&mut BackendWrapper>, name: QString) {
-        let mut_rust = self.as_mut().rust_mut();
+        let mut mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.driver.is_none() {
-            warn!("dummy_remove_external_mock_port called on a BackendWrapper with no driver");
+        if let Some(driver) = mut_rust.driver.as_mut() {
+            driver.dummy_remove_external_mock_port(name.to_string().as_str());
         } else {
-            mut_rust
-                .driver
-                .as_ref()
-                .expect("Driver is null")
-                .dummy_remove_external_mock_port(name.to_string().as_str());
+            warn!("dummy_remove_external_mock_port called on a BackendWrapper with no driver");
         }
     }
 
     pub fn dummy_remove_all_external_mock_ports(mut self: Pin<&mut BackendWrapper>) {
-        let mut_rust = self.as_mut().rust_mut();
+        let mut mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.driver.is_none() {
-            warn!("dummy_remove_all_external_mock_ports called on a BackendWrapper with no driver");
+        if let Some(driver) = mut_rust.driver.as_mut() {
+            driver.dummy_remove_all_external_mock_ports();
         } else {
-            mut_rust
-                .driver
-                .as_ref()
-                .expect("Driver is null")
-                .dummy_remove_all_external_mock_ports();
+            warn!("dummy_remove_all_external_mock_ports called on a BackendWrapper with no driver");
         }
     }
 
     pub fn wait_process(mut self: Pin<&mut BackendWrapper>) {
-        let mut_rust = self.as_mut().rust_mut();
+        let mut mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.driver.is_some() {
-            mut_rust
-                .driver
-                .as_ref()
-                .expect("Driver is null")
-                .wait_process();
+        if let Some(driver) = mut_rust.driver.as_mut() {
+            driver.wait_process();
         }
     }
 
@@ -536,7 +498,10 @@ impl BackendWrapper {
             let report = session.get_profiling_report();
             let report_variant = profiling_report_to_qvariantmap(&report);
             qvariantmap_to_qvariant(&report_variant)
-                .expect("could not convert qvariantmap to qvariant")
+                .unwrap_or_else(|e| {
+                    error!("could not convert qvariantmap to qvariant: {}", e);
+                    QVariant::default()
+                })
         } else {
             error!("get_profiling_report called on a BackendWrapper with no session");
             QVariant::default()
@@ -656,28 +621,20 @@ impl BackendWrapper {
     pub fn segfault_on_process_thread(mut self: Pin<&mut BackendWrapper>) {
         let mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.session.is_none() {
-            warn!("segfault_on_process_thread called on a BackendWrapper with no session");
+        if let Some(session) = mut_rust.session.as_ref() {
+            session.segfault_on_process_thread();
         } else {
-            mut_rust
-                .session
-                .as_ref()
-                .expect("Session is null")
-                .segfault_on_process_thread();
+             warn!("segfault_on_process_thread called on a BackendWrapper with no session");
         }
     }
 
     pub fn abort_on_process_thread(mut self: Pin<&mut BackendWrapper>) {
         let mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.session.is_none() {
-            warn!("abort_on_process_thread called on a BackendWrapper with no session");
+        if let Some(session) = mut_rust.session.as_ref() {
+            session.abort_on_process_thread();
         } else {
-            mut_rust
-                .session
-                .as_ref()
-                .expect("Session is null")
-                .abort_on_process_thread();
+            warn!("abort_on_process_thread called on a BackendWrapper with no session");
         }
     }
 
@@ -730,6 +687,7 @@ impl BackendWrapper {
 
     pub fn create_loop(mut self: Pin<&mut BackendWrapper>) -> Loop {
         let mut mut_rust = self.as_mut().rust_mut();
+        // FIXME: Remove panic! We can't change signature to return Result yet.
         mut_rust
             .session
             .as_mut()
@@ -744,6 +702,7 @@ impl BackendWrapper {
         title: &str,
     ) -> FXChain {
         let mut mut_rust = self.as_mut().rust_mut();
+        // FIXME: Remove panic! We can't change signature to return Result yet.
         mut_rust
             .session
             .as_mut()
