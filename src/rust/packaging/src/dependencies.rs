@@ -103,7 +103,7 @@ pub fn get_dependency_libs(
             let maybe_prev: Option<Rc<RefCell<InternalDependency>>> =
                 current_parent.borrow().deps.last().map(|r| r.1.clone());
             if indent > children_indent && maybe_prev.is_some() {
-                let prev = maybe_prev.unwrap();
+                let prev = maybe_prev.expect("Guarded by is_some check");
                 let mut new_parent_mut = prev.borrow_mut();
                 new_parent_mut.children_indent = indent;
                 new_parent_mut.deps.insert(path.clone(), dep.clone());
@@ -193,9 +193,9 @@ pub fn get_dependency_libs(
         {
             let db = d.borrow();
             path = db.path.clone();
-            path_str = db.path.to_str().unwrap().to_owned();
+            path_str = db.path.to_string_lossy().into_owned();
         }
-        let pattern_match = |s: &str, p: &str| {
+        let pattern_match = |s: &str, p: &str| -> Result<bool, anyhow::Error> {
             let path_str = &p.replace("\\", "/").to_lowercase();
             let pattern_str = &s
                 .replace("\\", "\\\\")
@@ -203,10 +203,21 @@ pub fn get_dependency_libs(
                 .replace("*", ".*")
                 .replace("+", "\\+")
                 .to_lowercase();
-            return regex::Regex::new(pattern_str).expect("Invalid regex pattern").is_match(path_str);
+            Ok(regex::Regex::new(pattern_str)
+                .map_err(|e| anyhow!("Invalid regex pattern '{}': {}", pattern_str, e))?
+                .is_match(path_str))
         };
-        let in_excludes = excludes.iter().any(|e| pattern_match(e, path_str.as_str()));
-        let in_includes = includes.iter().any(|e| pattern_match(e, path_str.as_str()));
+        let check_list = |list: &HashSet<&str>, p: &str| -> Result<bool, anyhow::Error> {
+             for item in list {
+                 if pattern_match(item, p)? {
+                     return Ok(true);
+                 }
+             }
+             Ok(false)
+        };
+
+        let in_excludes = check_list(excludes, &path_str)?;
+        let in_includes = check_list(includes, &path_str)?;
         let already_in_folder = path.exists()
             && ignore_dir.exists()
             && path
@@ -306,7 +317,7 @@ pub fn get_dependency_libs(
             let re = regex::Regex::new(r"(.*/.*.framework)/.*").expect("Invalid regex");
             if let Some(s) = lib.to_str() {
                 if let Some(cap) = re.captures(s) {
-                    PathBuf::from(cap.get(1).expect("Regex group missing").as_str())
+                    PathBuf::from(cap.get(1).expect("Regex group 1 must exist").as_str())
                 } else {
                     lib
                 }

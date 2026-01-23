@@ -154,11 +154,12 @@ impl CompositeLoopGui {
         unsafe {
             let backend_loop = make_raw_composite_loop_backend();
             let backend_loop_qobj = composite_loop_backend_qobject_from_ptr(backend_loop);
-            qobject_move_to_thread(
+            if let Err(e) = qobject_move_to_thread(
                 backend_loop_qobj,
                 engine_update_thread::get_engine_update_thread().thread,
-            )
-            .unwrap();
+            ) {
+                 error!(self, "Failed to move backend loop to thread: {e}");
+            }
 
             {
                 let backend_loop_pin = std::pin::Pin::new_unchecked(&mut *backend_loop);
@@ -549,13 +550,16 @@ impl CompositeLoopGui {
             maybe_to_sync_at_cycle
         );
 
-        let backend_loop_handles = get_backend_loop_handles_variant_list(&loops).unwrap();
-        self.backend_transition_multiple(
-            backend_loop_handles,
-            to_mode,
-            maybe_cycles_delay,
-            maybe_to_sync_at_cycle,
-        );
+        if let Ok(backend_loop_handles) = get_backend_loop_handles_variant_list(&loops) {
+            self.backend_transition_multiple(
+                backend_loop_handles,
+                to_mode,
+                maybe_cycles_delay,
+                maybe_to_sync_at_cycle,
+            );
+        } else {
+            error!(self, "Failed to get backend loop handles from variant list");
+        }
     }
 
     pub fn on_backend_n_cycles_changed(mut self: Pin<&mut CompositeLoopGui>, n_cycles: i32) {
@@ -697,7 +701,10 @@ impl CompositeLoopGui {
     }
 
     pub fn get_backend_loop_shared_ptr(self: Pin<&mut CompositeLoopGui>) -> QVariant {
-        qsharedpointer_qobject_to_qvariant(&self.backend_loop_wrapper.as_ref().unwrap()).unwrap()
+        qsharedpointer_qobject_to_qvariant(&self.backend_loop_wrapper.as_ref().unwrap()).unwrap_or_else(|e| {
+            error!(self, "Failed to convert shared pointer to qvariant: {e}");
+            QVariant::default()
+        })
     }
 }
 

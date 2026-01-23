@@ -120,7 +120,8 @@ impl Application {
         unsafe {
             let self_qobj: *mut cxx_qt_lib_shoop::qobject::QObject =
                 self.as_mut().pin_mut_qobject_ptr();
-            let self_qvariant = qobject_ptr_to_qvariant(&self_qobj).unwrap();
+            let self_qvariant = qobject_ptr_to_qvariant(&self_qobj)
+                .expect("Failed to convert self_qobj to QVariant");
             let mut qml_engine_pin = std::pin::Pin::new_unchecked(&mut *qml_engine);
             qml_engine_pin
                 .as_mut()
@@ -168,7 +169,7 @@ impl Application {
 
         if self.settings.qml_debug_port.is_some() {
             let wait = self.settings.qml_debug_wait.unwrap_or(false);
-            let port = self.settings.qml_debug_port.unwrap() as i32;
+            let port = self.settings.qml_debug_port.expect("Guarded by is_some") as i32;
             info!("Enabling QML debugging on port {port}. Wait on connection: {wait}.");
             fn_qml_debugging::enable_qml_debugging(wait, port);
         }
@@ -191,9 +192,9 @@ impl Application {
         }
 
         if main_qml.is_some() {
-            let main_qml = main_qml.unwrap();
+            let main_qml = main_qml.expect("Guarded by main_qml.is_some()");
             self.as_mut()
-                .reload_qml(QString::from(main_qml.to_str().unwrap()));
+                .reload_qml(QString::from(&main_qml.to_string_lossy()));
         }
 
         Ok(())

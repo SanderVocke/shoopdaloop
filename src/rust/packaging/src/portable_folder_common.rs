@@ -109,7 +109,10 @@ pub fn populate_portable_folder(
     info!("Bundling {} dependencies...", dependency_libs.len());
     for lib in dependency_libs {
         let src = lib.clone();
-        let dst = lib_dir.clone().join(lib.file_name().unwrap());
+        let dst = lib_dir.clone().join(
+            lib.file_name()
+                .ok_or(anyhow!("Invalid library path (no filename): {:?}", lib))?,
+        );
 
         if !src.exists() {
             info!("--> Skipping nonexistent file/dir: {src:?}");

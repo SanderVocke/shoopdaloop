@@ -56,8 +56,11 @@ impl LoopChannelBackend {
             let new_state = match channel.get_state() {
                 Ok(state) => state,
                 Err(e) => {
-                    debug!(self, "Skipping update: {e}");
-                    prev_state.clone()
+                    error!(self, "Error getting state: {e}");
+                    // return Err(anyhow!("Error getting state: {e}"));
+                    // Wait, this is a closure returning Result<()...>.
+                    // If we return Err here, it's logged below.
+                    return Err(e.into());
                 }
             };
 
@@ -572,10 +575,16 @@ impl LoopChannelBackend {
         self.as_mut().maybe_initialize_backend();
         if let Some(chan) = self.maybe_backend_channel.as_ref() {
             trace!(self, "push mode: {mode}");
-            chan.set_mode(ChannelMode::try_from(mode).unwrap());
+            match ChannelMode::try_from(mode) {
+                 Ok(m) => chan.set_mode(m),
+                 Err(e) => error!(self, "Invalid mode {mode}: {e}"),
+            }
         } else {
             debug!(self, "mode (deferred) -> {mode}");
-            self.as_mut().rust_mut().prev_state.mode = ChannelMode::try_from(mode).unwrap();
+            match ChannelMode::try_from(mode) {
+                 Ok(m) => self.as_mut().rust_mut().prev_state.mode = m,
+                 Err(e) => error!(self, "Invalid mode {mode}: {e}"),
+            }
         }
     }
 

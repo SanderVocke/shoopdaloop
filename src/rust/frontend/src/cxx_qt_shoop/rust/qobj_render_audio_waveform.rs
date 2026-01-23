@@ -44,7 +44,7 @@ impl ffi::RenderAudioWaveform {
             unsafe {
                 let notifier = make_raw_update_notifier();
                 let notifier = update_notifier_to_qobject(notifier);
-                notifier_shared = QSharedPointer_QObject::from_ptr_delete_later(notifier).unwrap();
+                notifier_shared = QSharedPointer_QObject::from_ptr_delete_later(notifier).map_err(|e| anyhow!("Could not make shared ptr: {e}"))?;
 
                 connect_or_report(
                     &*notifier,
@@ -101,7 +101,10 @@ impl ffi::RenderAudioWaveform {
     }
 
     pub unsafe fn get_have_data(self: Pin<&mut RenderAudioWaveform>) -> bool {
-        let pyramid = self.pyramid.lock().unwrap();
+        let pyramid = match self.pyramid.lock() {
+            Ok(p) => p,
+            Err(_) => return false,
+        };
         pyramid.levels.len() > 0
     }
 
@@ -112,7 +115,13 @@ impl ffi::RenderAudioWaveform {
             self.samples_per_bin
         );
         let s: &RenderAudioWaveformRust = self.rust();
-        let p = s.pyramid.lock().unwrap();
+        let p = match s.pyramid.lock() {
+            Ok(p) => p,
+            Err(e) => {
+                error!("Could not lock pyramid in paint: {e}");
+                return;
+            }
+        };
 
         // Skip if no pyramid
         if p.levels.len() == 0 {
@@ -132,7 +141,13 @@ impl ffi::RenderAudioWaveform {
                 }
             }
         }
-        let level: &AudioPowerPyramidLevelData = maybe_level.unwrap();
+        let level: &AudioPowerPyramidLevelData = match maybe_level {
+            Some(l) => l,
+            None => {
+                error!("Unexpected missing level in paint");
+                return;
+            }
+        };
 
         // Calculate lines
         let n_lines = f64::ceil(self.size().width()) as usize;

@@ -82,19 +82,21 @@ impl CompositeLoopBackend {
         let mut transitions: TransitionsPerIteration = BTreeMap::new();
 
         // Step through the transitions up to the given iteration.
-        let until = self.schedule.data.last_key_value().unwrap().0 + 1;
-        for i in start_cycle..until {
-            let mut iteration_transitions: Transitions = Transitions::default();
-            self.as_mut().do_triggers_with_callback(
-                i,
-                mode,
-                |obj: *mut QObject, obj_mode: LoopMode| {
-                    iteration_transitions.push((obj, obj_mode));
-                },
-            );
-            transitions.insert(i, iteration_transitions);
-            if i >= end_cycle {
-                break;
+        if let Some((last, _)) = self.schedule.data.last_key_value() {
+            let until = last + 1;
+            for i in start_cycle..until {
+                let mut iteration_transitions: Transitions = Transitions::default();
+                self.as_mut().do_triggers_with_callback(
+                    i,
+                    mode,
+                    |obj: *mut QObject, obj_mode: LoopMode| {
+                        iteration_transitions.push((obj, obj_mode));
+                    },
+                );
+                transitions.insert(i, iteration_transitions);
+                if i >= end_cycle {
+                    break;
+                }
             }
         }
 
@@ -108,11 +110,28 @@ impl CompositeLoopBackend {
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32,
     ) {
+        let loops_iter = loops
+            .iter()
+            .map(|variant| qvariant_to_qobject_ptr(variant))
+            .collect::<Result<Vec<*mut QObject>, _>>();
+
+        if let Err(e) = loops_iter {
+             error!(self, "Failed to extract loop pointers for transition: {e}");
+             return;
+        }
+        let loop_ptrs = loops_iter.unwrap();
+
+        let mode = match LoopMode::try_from(to_mode) {
+            Ok(m) => m,
+            Err(e) => {
+                error!(self, "Invalid loop mode {to_mode}: {e}");
+                return;
+            }
+        };
+
         if let Err(e) = transition_backend_loops(
-            loops
-                .iter()
-                .map(|variant| qvariant_to_qobject_ptr(variant).unwrap()),
-            LoopMode::try_from(to_mode).unwrap(),
+            loop_ptrs.into_iter(),
+            mode,
             if maybe_cycles_delay < 0 {
                 None
             } else {
@@ -246,7 +265,7 @@ impl CompositeLoopBackend {
         if let Err(e) = transition_backend_loops(
             self.running_loops
                 .iter()
-                .map(|l| qvariant_to_qobject_ptr(l).unwrap()),
+                .map(|l| qvariant_to_qobject_ptr(l).unwrap_or(std::ptr::null_mut())),
             LoopMode::Stopped,
             Some(0),
             None,
@@ -349,7 +368,7 @@ impl CompositeLoopBackend {
                         if !loop_recording_starts.contains_key(loop_obj) {
                             loop_recording_starts.insert(*loop_obj, *iteration);
                         } else {
-                            let v = loop_recording_starts.get_mut(loop_obj).unwrap();
+                            let v = loop_recording_starts.get_mut(loop_obj).expect("Guarded by contains_key");
                             *v = min(*v, *iteration);
                         }
                     }
@@ -359,12 +378,12 @@ impl CompositeLoopBackend {
                 for (loop_obj, mode) in transitions.iter() {
                     if *mode != LoopMode::Recording
                         && loop_recording_starts.contains_key(loop_obj)
-                        && iteration > loop_recording_starts.get(loop_obj).unwrap()
+                        && iteration > *loop_recording_starts.get(loop_obj).expect("Guarded by contains_key")
                     {
                         if !loop_recording_ends.contains_key(loop_obj) {
                             loop_recording_ends.insert(*loop_obj, *iteration);
                         } else {
-                            let v = loop_recording_ends.get_mut(loop_obj).unwrap();
+                            let v = loop_recording_ends.get_mut(loop_obj).expect("Guarded by contains_key");
                             *v = min(*v, *iteration);
                         }
                     }
@@ -680,7 +699,7 @@ impl CompositeLoopBackend {
     pub fn update_position(mut self: Pin<&mut CompositeLoopBackend>) {
         trace!(self, "update position");
         let mut v = max(0, self.iteration) * self.sync_length;
-        if is_running_mode(LoopMode::try_from(self.mode).unwrap()) {
+        if is_running_mode(LoopMode::try_from(self.mode).unwrap_or(LoopMode::Unknown)) {
             v += self.sync_position;
         }
         if v != self.position {
@@ -1003,7 +1022,7 @@ impl CompositeLoopBackend {
     }
 
     pub fn metatype_name() -> String {
-        unsafe { composite_loop_backend_metatype_name(std::ptr::null_mut()).unwrap() }
+        unsafe { composite_loop_backend_metatype_name(std::ptr::null_mut()).unwrap_or_else(|| "unknown".to_string()) }
     }
 
     pub fn dependent_will_handle_sync_loop_cycle(

@@ -59,19 +59,21 @@ impl PortGui {
             let backend_port_qobj = port_backend_qobject_from_ptr(backend_port);
             let self_qobj = self.as_mut().pin_mut_qobject_ptr();
 
-            qobject_move_to_thread(
+            if let Err(e) = qobject_move_to_thread(
                 backend_port_qobj,
                 engine_update_thread::get_engine_update_thread().thread,
-            )
-            .unwrap();
+            ) {
+                 error!(self, "Failed to move backend port to thread: {e}");
+            }
 
-            invoke::<_, (), _>(
+            if let Err(e) = invoke::<_, (), _>(
                 &mut *backend_port_qobj,
                 "set_frontend_object(QObject*)",
                 connection_types::QUEUED_CONNECTION,
                 &(self_qobj),
-            )
-            .unwrap();
+            ) {
+                 error!(self, "Failed to set frontend object on backend port: {e}");
+            }
 
             let self_ref = self.as_ref().get_ref();
 
@@ -246,7 +248,10 @@ impl PortGui {
 
                 let mut rust_mut = self.as_mut().rust_mut();
                 rust_mut.backend_port_wrapper =
-                    QSharedPointer_QObject::from_ptr_delete_later(backend_port_qobj).unwrap();
+                    QSharedPointer_QObject::from_ptr_delete_later(backend_port_qobj).unwrap_or_else(|e| {
+                        error!(self, "Failed to create shared pointer for backend port: {e}");
+                        cxx::UniquePtr::null()
+                    });
             }
         }
     }
@@ -523,7 +528,11 @@ impl PortGui {
                     invokable::DIRECT_CONNECTION,
                     &(),
                 )
-                .unwrap();
+                )
+                .unwrap_or_else(|e| {
+                    error!(self, "Failed to get backend fx chain: {e}");
+                    QVariant::default()
+                });
                 trace!(self, "set backend fx chain");
                 self.as_mut().backend_set_fx_chain(backend_chain);
             }

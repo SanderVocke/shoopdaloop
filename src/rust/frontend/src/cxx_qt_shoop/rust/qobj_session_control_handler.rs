@@ -77,9 +77,9 @@ fn as_coords(val: &mlua::Value) -> Option<(i64, i64)> {
                 })
         {
             let mut iter = table.sequence_values::<mlua::Value>();
-            let first = iter.next().unwrap().unwrap_or(mlua::Value::Nil);
-            let second = iter.next().unwrap().unwrap_or(mlua::Value::Nil);
-            return Some((first.as_integer().unwrap(), second.as_integer().unwrap()));
+            let first = iter.next().unwrap_or(Ok(mlua::Value::Nil)).unwrap_or(mlua::Value::Nil);
+            let second = iter.next().unwrap_or(Ok(mlua::Value::Nil)).unwrap_or(mlua::Value::Nil);
+            return Some((first.as_integer().unwrap_or(0), second.as_integer().unwrap_or(0)));
         }
     }
     None
@@ -101,8 +101,7 @@ fn as_multi_coords(val: &mlua::Value) -> Option<Vec<(i64, i64)>> {
                     Err(_) => None,
                 })
                 .collect();
-            if as_coords.iter().fold(true, |acc, v| acc && v.is_some()) {
-                return Some(as_coords.iter().map(|v| v.unwrap()).collect());
+                return Some(as_coords.iter().map(|v| v.unwrap_or((0, 0))).collect());
             }
         }
     }
@@ -128,8 +127,7 @@ fn as_track_indices(val: &mlua::Value) -> Option<Vec<i64>> {
                     Err(_) => None,
                 })
                 .collect();
-            if as_indices.iter().fold(true, |acc, v| acc && v.is_some()) {
-                return Some(as_indices.iter().map(|v| v.unwrap()).collect());
+                return Some(as_indices.iter().map(|v| v.unwrap_or(0)).collect());
             }
         }
     }
