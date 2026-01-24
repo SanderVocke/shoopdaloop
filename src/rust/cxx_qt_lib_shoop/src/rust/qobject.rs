@@ -1,5 +1,5 @@
-use std::pin::Pin;
 use anyhow::anyhow;
+use std::pin::Pin;
 
 #[cxx_qt::bridge]
 pub mod ffi {

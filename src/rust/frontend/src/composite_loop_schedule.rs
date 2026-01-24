@@ -151,14 +151,14 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
             entry.append(mode);
 
             if let Ok(v) = qvariantlist_to_qvariant(&entry) {
-                 loops_start.append(v);
+                loops_start.append(v);
             } else {
-                 error!("Failed to convert loop start entry to QVariant");
+                error!("Failed to convert loop start entry to QVariant");
             }
         }
         let loops_start = qvariantlist_to_qvariant(&loops_start).unwrap_or_else(|e| {
-             error!("Failed to convert loops_start list: {e}");
-             QVariant::default()
+            error!("Failed to convert loops_start list: {e}");
+            QVariant::default()
         });
 
         let mut loops_end: QVariantList = QList::default();
@@ -170,12 +170,12 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
             loops_ignored.append(loop_obj.obj.to_qvariant().unwrap_or(QVariant::default()));
         }
         let loops_end = qvariantlist_to_qvariant(&loops_end).unwrap_or_else(|e| {
-             error!("Failed to convert loops_end list: {e}");
-             QVariant::default()
+            error!("Failed to convert loops_end list: {e}");
+            QVariant::default()
         });
         let loops_ignored = qvariantlist_to_qvariant(&loops_ignored).unwrap_or_else(|e| {
-             error!("Failed to convert loops_ignored list: {e}");
-             QVariant::default()
+            error!("Failed to convert loops_ignored list: {e}");
+            QVariant::default()
         });
 
         let mut map: QVariantMap = QMap::default();
@@ -189,8 +189,8 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
     pub fn to_qvariant(&self) -> QVariant {
         let map = self.to_qvariantmap();
         qvariantmap_to_qvariant(&map).unwrap_or_else(|e| {
-             error!("Failed to convert CompositeLoopIterationEvents map to QVariant: {e}");
-             QVariant::default()
+            error!("Failed to convert CompositeLoopIterationEvents map to QVariant: {e}");
+            QVariant::default()
         })
     }
 
@@ -218,11 +218,7 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
                     result.loops_start.insert(loop_start, loop_mode);
                 }
             }
-            None => {
-                return Err(anyhow!(
-                    "CompositeLoopSchedule: missing loops_start"
-                ))
-            }
+            None => return Err(anyhow!("CompositeLoopSchedule: missing loops_start")),
         }
 
         match map.get(&QString::from("loops_end")) {
@@ -248,20 +244,15 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
                     result.loops_ignored.insert(object);
                 }
             }
-            None => {
-                return Err(anyhow!(
-                    "CompositeLoopSchedule: missing loops_ignored"
-                ))
-            }
+            None => return Err(anyhow!("CompositeLoopSchedule: missing loops_ignored")),
         }
 
         Ok(result)
     }
 
     pub fn from_qvariant(qvariant: &QVariant) -> Result<Self, anyhow::Error> {
-        let map = qvariant_to_qvariantmap(qvariant).map_err(|e| {
-            anyhow!("CompositeLoopSchedule: could not convert to QVariantMap: {e}")
-        })?;
+        let map = qvariant_to_qvariantmap(qvariant)
+            .map_err(|e| anyhow!("CompositeLoopSchedule: could not convert to QVariantMap: {e}"))?;
         Self::from_qvariantmap(&map)
     }
 }

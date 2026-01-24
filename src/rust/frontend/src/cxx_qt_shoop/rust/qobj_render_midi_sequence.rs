@@ -1,5 +1,5 @@
-use std::pin::Pin;
 use anyhow::anyhow;
+use std::pin::Pin;
 
 use backend_bindings::MidiEvent;
 use common::logging::macros::*;
@@ -101,17 +101,20 @@ impl RenderMidiSequence {
                 .ok_or(anyhow!("Could not extract data vector"))?;
             trace!("Got {} events", vector.len());
             let mut rust_mut = self.as_mut().rust_mut();
-            rust_mut.notes =
-                msgs_to_notes(vector.iter().filter_map(|v| MidiEvent::from_qvariant(&v).ok()))
+            rust_mut.notes = msgs_to_notes(
+                vector
                     .iter()
-                    .map(|note| Note {
-                        start: note.start_t as i64,
-                        end: note.end_t as i64,
-                        note: note.note,
-                        scaled_start: 0,
-                        scaled_end: 0,
-                    })
-                    .collect();
+                    .filter_map(|v| MidiEvent::from_qvariant(&v).ok()),
+            )
+            .iter()
+            .map(|note| Note {
+                start: note.start_t as i64,
+                end: note.end_t as i64,
+                note: note.note,
+                scaled_start: 0,
+                scaled_end: 0,
+            })
+            .collect();
 
             trace!("{} msgs -> {} notes", vector.len(), rust_mut.notes.len());
 

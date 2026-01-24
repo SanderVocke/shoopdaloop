@@ -5,6 +5,7 @@ use crate::midi_event_helpers::MidiEventToQVariant;
 use crate::{
     any_backend_channel::AnyBackendChannel, cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend,
 };
+use anyhow::anyhow;
 use backend_bindings::{ChannelMode, MidiEvent, PortDataType};
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
@@ -21,7 +22,6 @@ use cxx_qt_lib_shoop::{
     qvariant_helpers::qvariant_to_qsharedpointer_qobject,
 };
 use std::{collections::HashSet, pin::Pin};
-use anyhow::anyhow;
 shoop_log_unit!("Frontend.LoopChannel");
 
 macro_rules! trace {
@@ -181,7 +181,7 @@ impl LoopChannelBackend {
                         .as_ref()
                         .ok_or(anyhow!("channel_loop ref is None"))?
                         .data()?;
-                    
+
                     if channel_loop_ptr.is_null() {
                         non_ready_vars.insert("channel_loop (null)".to_string());
                     } else {
@@ -210,24 +210,24 @@ impl LoopChannelBackend {
                         .as_ref()
                         .ok_or(anyhow!("channel_loop is None in init"))?
                         .data()?;
-                    let channel_loop =
-                        LoopBackend::from_qobject_ref_ptr(channel_loop_ptr)?;
+                    let channel_loop = LoopBackend::from_qobject_ref_ptr(channel_loop_ptr)?;
                     let channel_loop = channel_loop
                         .backend_loop
                         .as_ref()
                         .ok_or(anyhow!("No backend loop in loop object"))?;
                     let mode = ChannelMode::try_from(self.prev_state.mode as i32)?;
-                    let backend_channel = match self.data_type.ok_or(anyhow!("data_type is None"))? {
-                        PortDataType::Audio => {
-                            AnyBackendChannel::Audio(channel_loop.add_audio_channel(mode)?)
-                        }
-                        PortDataType::Midi => {
-                            AnyBackendChannel::Midi(channel_loop.add_midi_channel(mode)?)
-                        }
-                        PortDataType::Any => {
-                            return Err(anyhow!("No specific port data type"));
-                        }
-                    };
+                    let backend_channel =
+                        match self.data_type.ok_or(anyhow!("data_type is None"))? {
+                            PortDataType::Audio => {
+                                AnyBackendChannel::Audio(channel_loop.add_audio_channel(mode)?)
+                            }
+                            PortDataType::Midi => {
+                                AnyBackendChannel::Midi(channel_loop.add_midi_channel(mode)?)
+                            }
+                            PortDataType::Any => {
+                                return Err(anyhow!("No specific port data type"));
+                            }
+                        };
 
                     // Push initial state that was already set
                     let state = &self.prev_state;
@@ -447,36 +447,33 @@ impl LoopChannelBackend {
                     .iter()
                     .map(
                         |weak| -> Result<cxx::UniquePtr<QSharedPointer_QObject>, anyhow::Error> {
-                            Ok(weak
-                                .to_strong()?
-                                .ok_or(anyhow!("port went out of scope"))?)
+                            Ok(weak.to_strong()?.ok_or(anyhow!("port went out of scope"))?)
                         },
                     )
-                    .filter_map(|result| {
-                        match result {
-                            Ok(strong) => {
-                                let ptr = strong.data().unwrap_or(std::ptr::null_mut());
-                                if ptr.is_null() {
-                                    None
-                                } else {
-                                     match strong.copy() {
-                                         Ok(copied) => {
-                                             let data_ptr = strong.data().unwrap_or(std::ptr::null_mut());
-                                              if data_ptr.is_null() {
-                                                 None
-                                              } else {
-                                                 Some((copied, data_ptr))
-                                              }
-                                         },
-                                         Err(e) => {
-                                             error!(self, "failed to copy strong ptr: {e}");
-                                             None
-                                         }
-                                     }
+                    .filter_map(|result| match result {
+                        Ok(strong) => {
+                            let ptr = strong.data().unwrap_or(std::ptr::null_mut());
+                            if ptr.is_null() {
+                                None
+                            } else {
+                                match strong.copy() {
+                                    Ok(copied) => {
+                                        let data_ptr =
+                                            strong.data().unwrap_or(std::ptr::null_mut());
+                                        if data_ptr.is_null() {
+                                            None
+                                        } else {
+                                            Some((copied, data_ptr))
+                                        }
+                                    }
+                                    Err(e) => {
+                                        error!(self, "failed to copy strong ptr: {e}");
+                                        None
+                                    }
                                 }
                             }
-                            Err(_) => None,
                         }
+                        Err(_) => None,
                     })
                     .collect();
 
@@ -485,36 +482,33 @@ impl LoopChannelBackend {
                     .iter()
                     .map(
                         |weak| -> Result<cxx::UniquePtr<QSharedPointer_QObject>, anyhow::Error> {
-                            Ok(weak
-                                .to_strong()?
-                                .ok_or(anyhow!("Port went out of scope"))?)
+                            Ok(weak.to_strong()?.ok_or(anyhow!("Port went out of scope"))?)
                         },
                     )
-                    .filter_map(|result| {
-                        match result {
-                            Ok(strong) => {
-                                let ptr = strong.data().unwrap_or(std::ptr::null_mut());
-                                if ptr.is_null() {
-                                    None
-                                } else {
-                                     match strong.copy() {
-                                         Ok(copied) => {
-                                            let data_ptr = strong.data().unwrap_or(std::ptr::null_mut());
-                                              if data_ptr.is_null() {
-                                                 None
-                                              } else {
-                                                 Some((copied, data_ptr))
-                                              }
-                                         },
-                                         Err(e) => {
-                                             error!(self, "failed to copy strong ptr: {e}");
-                                             None
-                                         }
-                                     }
+                    .filter_map(|result| match result {
+                        Ok(strong) => {
+                            let ptr = strong.data().unwrap_or(std::ptr::null_mut());
+                            if ptr.is_null() {
+                                None
+                            } else {
+                                match strong.copy() {
+                                    Ok(copied) => {
+                                        let data_ptr =
+                                            strong.data().unwrap_or(std::ptr::null_mut());
+                                        if data_ptr.is_null() {
+                                            None
+                                        } else {
+                                            Some((copied, data_ptr))
+                                        }
+                                    }
+                                    Err(e) => {
+                                        error!(self, "failed to copy strong ptr: {e}");
+                                        None
+                                    }
                                 }
                             }
-                            Err(_) => None,
                         }
+                        Err(_) => None,
                     })
                     .collect();
 
@@ -539,13 +533,13 @@ impl LoopChannelBackend {
                             Some(port) => {
                                 let name = backend_port.get_name();
                                 debug!(self, "disconnect from {name:?}");
-                                    if let Some(chan) = self.maybe_backend_channel.as_ref() {
-                                        do_port(chan, port, Action::Disconnect);
-                                    } else {
-                                        error!(self, "Backend channel is None during disconnect");
-                                    }
-                                    false
+                                if let Some(chan) = self.maybe_backend_channel.as_ref() {
+                                    do_port(chan, port, Action::Disconnect);
+                                } else {
+                                    error!(self, "Backend channel is None during disconnect");
                                 }
+                                false
+                            }
 
                             None => false,
                         },
@@ -577,8 +571,10 @@ impl LoopChannelBackend {
                                     } else {
                                         error!(self, "Backend channel is None during connect");
                                     }
-                                    if let (Ok(copied), Ok(_data)) = (to_connect_strong.copy(), to_connect_strong.data()) {
-                                         strong_connected.push((copied, *to_connect_raw));
+                                    if let (Ok(copied), Ok(_data)) =
+                                        (to_connect_strong.copy(), to_connect_strong.data())
+                                    {
+                                        strong_connected.push((copied, *to_connect_raw));
                                     } else {
                                         error!(self, "Failed to copy/get data for port");
                                     }
@@ -628,14 +624,14 @@ impl LoopChannelBackend {
         if let Some(chan) = self.maybe_backend_channel.as_ref() {
             trace!(self, "push mode: {mode}");
             match ChannelMode::try_from(mode) {
-                 Ok(m) => chan.set_mode(m),
-                 Err(e) => error!(self, "Invalid mode {mode}: {e}"),
+                Ok(m) => chan.set_mode(m),
+                Err(e) => error!(self, "Invalid mode {mode}: {e}"),
             }
         } else {
             debug!(self, "mode (deferred) -> {mode}");
             match ChannelMode::try_from(mode) {
-                 Ok(m) => self.as_mut().rust_mut().prev_state.mode = m,
-                 Err(e) => error!(self, "Invalid mode {mode}: {e}"),
+                Ok(m) => self.as_mut().rust_mut().prev_state.mode = m,
+                Err(e) => error!(self, "Invalid mode {mode}: {e}"),
             }
         }
     }
@@ -712,7 +708,10 @@ impl LoopChannelBackend {
         if let Some(chan) = self.maybe_backend_channel.as_ref() {
             chan.audio_load_data(&vec);
         } else {
-            error!(self, "could not load audio data: not yet initialized (option is None)");
+            error!(
+                self,
+                "could not load audio data: not yet initialized (option is None)"
+            );
         }
     }
 
@@ -737,7 +736,10 @@ impl LoopChannelBackend {
         if let Some(chan) = self.maybe_backend_channel.as_ref() {
             chan.midi_load_data(&vec);
         } else {
-            error!(self, "could not load MIDI data: not yet initialized (option is None)");
+            error!(
+                self,
+                "could not load MIDI data: not yet initialized (option is None)"
+            );
         }
     }
 
@@ -750,8 +752,11 @@ impl LoopChannelBackend {
         let vec = match self.maybe_backend_channel.as_ref() {
             Some(chan) => chan.audio_get_data(),
             None => {
-                 error!(self, "could not get audio data: not yet initialized (option is None)");
-                 return QVector::default();
+                error!(
+                    self,
+                    "could not get audio data: not yet initialized (option is None)"
+                );
+                return QVector::default();
             }
         };
         rval.reserve(vec.len() as isize);
@@ -767,11 +772,14 @@ impl LoopChannelBackend {
         }
         let mut rval: QVector_QVariant = QVector::default();
         let vec = match self.maybe_backend_channel.as_ref() {
-             Some(chan) => chan.midi_get_data(),
-             None => {
-                 error!(self, "could not get MIDI data: not yet initialized (option is None)");
-                 return QVector::default();
-             }
+            Some(chan) => chan.midi_get_data(),
+            None => {
+                error!(
+                    self,
+                    "could not get MIDI data: not yet initialized (option is None)"
+                );
+                return QVector::default();
+            }
         };
         rval.reserve(vec.len() as isize);
         vec.iter().for_each(|v| rval.append(v.to_qvariant()));
@@ -853,7 +861,10 @@ impl LoopChannelBackend {
         if let Some(chan) = self.maybe_backend_channel.as_ref() {
             chan.clear(length as u32);
         } else {
-             error!(self, "could not clear: not yet initialized (option is None)");
+            error!(
+                self,
+                "could not clear: not yet initialized (option is None)"
+            );
         }
     }
 }

@@ -31,7 +31,10 @@ pub fn crashhandling_client(
             let dir = match tempfile::tempdir() {
                 Ok(d) => d.keep(),
                 Err(e) => {
-                    error!("Unable to create temporary dir for crash handling socket: {}", e);
+                    error!(
+                        "Unable to create temporary dir for crash handling socket: {}",
+                        e
+                    );
                     return;
                 }
             };
@@ -97,7 +100,8 @@ pub fn crashhandling_client(
                 }
             }
 
-            let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("shoopdaloop"));
+            let exe =
+                std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("shoopdaloop"));
 
             server = match std::process::Command::new(exe)
                 .arg(start_server_arg.clone())
@@ -106,11 +110,11 @@ pub fn crashhandling_client(
             {
                 Ok(child) => Some(child),
                 Err(e) => {
-                     error!("unable to spawn server process: {}", e);
-                     // If we can't spawn, we probably can't connect either.
-                     // But we loop to try again ? No, loop continues to try connect.
-                     // But if spawn failed, retry connection likely fails unless server is already running.
-                     None
+                    error!("unable to spawn server process: {}", e);
+                    // If we can't spawn, we probably can't connect either.
+                    // But we loop to try again ? No, loop continues to try connect.
+                    // But if spawn failed, retry connection likely fails unless server is already running.
+                    None
                 }
             };
 
@@ -142,12 +146,10 @@ pub fn crashhandling_client(
 
                 let thread_name = crate::registered_threads::current_thread_registered_name()
                     .unwrap_or("unknown".to_string());
-                if let Err(e) = client1
-                    .send_message(
-                        CrashHandlingMessageType::SetJson as u32,
-                        format!("{{\"tags\":{{\"thread_name\":\"{thread_name}\"}}}}"),
-                    ) 
-                {
+                if let Err(e) = client1.send_message(
+                    CrashHandlingMessageType::SetJson as u32,
+                    format!("{{\"tags\":{{\"thread_name\":\"{thread_name}\"}}}}"),
+                ) {
                     eprintln!("Failed to send thread name to crash handler: {}", e);
                 }
 
@@ -160,7 +162,7 @@ pub fn crashhandling_client(
                     eprintln!("Failed to ping client1: {}", e);
                 }
                 if let Err(e) = client2.ping() {
-                     eprintln!("Failed to ping client2: {}", e);
+                    eprintln!("Failed to ping client2: {}", e);
                 }
 
                 println!("Crash detected - requesting minidump");
@@ -209,11 +211,11 @@ pub fn crashhandling_client(
         };
 
         let _handler = match crash_handler::CrashHandler::attach(handler_closure) {
-             Ok(h) => h,
-             Err(e) => {
-                 error!("failed to attach signal handler: {}", e);
-                 return;
-             }
+            Ok(h) => h,
+            Err(e) => {
+                error!("failed to attach signal handler: {}", e);
+                return;
+            }
         };
 
         // On linux we can explicitly allow only the server process to inspect the

@@ -31,7 +31,10 @@ pub fn profiling_report_to_qvariantmap(report: &ProfilingReport) -> QVariantMap 
         if let Ok(item_map_variant) = qvariantmap_to_qvariant(&item_map) {
             map.insert(QString::from(&item.key), item_map_variant);
         } else {
-             error!("Failed to convert profiling report item for key {} to QVariant", item.key);
+            error!(
+                "Failed to convert profiling report item for key {} to QVariant",
+                item.key
+            );
         }
     }
 

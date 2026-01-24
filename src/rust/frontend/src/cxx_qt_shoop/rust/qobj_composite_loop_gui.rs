@@ -6,6 +6,7 @@ use crate::cxx_qt_shoop::qobj_composite_loop_gui_bridge::ffi::*;
 use crate::engine_update_thread;
 use crate::loop_helpers::get_backend_loop_handles_variant_list;
 use crate::references_qobject::ReferencesQObject;
+use anyhow::anyhow;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace, warn as raw_warn,
 };
@@ -22,7 +23,6 @@ use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qsharedpointer_qobject;
 use cxx_qt_lib_shoop::qweakpointer_qobject::QWeakPointer_QObject;
 use std::collections::HashSet;
 use std::pin::Pin;
-use anyhow::anyhow;
 shoop_log_unit!("Frontend.CompositeLoop");
 
 #[allow(unused_macros)]
@@ -158,7 +158,7 @@ impl CompositeLoopGui {
                 backend_loop_qobj,
                 engine_update_thread::get_engine_update_thread().thread,
             ) {
-                 error!(self, "Failed to move backend loop to thread: {e}");
+                error!(self, "Failed to move backend loop to thread: {e}");
             }
 
             {

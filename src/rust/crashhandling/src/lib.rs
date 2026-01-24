@@ -25,10 +25,7 @@ pub fn init_crashhandling(
 ) {
     let maybe_dump_folder: Option<String> = std::env::var("SHOOP_CRASHDUMP_DIR").ok();
     if let Some(dump_folder) = maybe_dump_folder.as_ref() {
-        debug!(
-            "Using dump folder: {:?}",
-            dump_folder
-        );
+        debug!("Using dump folder: {:?}", dump_folder);
         let path = std::path::PathBuf::from(dump_folder);
         if !path.exists() || !path.is_dir() {
             warn!("Dump folder {path:?} does not exist or is not a directory - crash handler not enabled.");

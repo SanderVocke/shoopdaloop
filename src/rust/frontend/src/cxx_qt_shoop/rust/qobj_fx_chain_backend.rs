@@ -10,11 +10,11 @@ pub use crate::cxx_qt_shoop::qobj_fx_chain_backend_bridge::ffi::FXChainBackend;
 use crate::cxx_qt_shoop::{
     qobj_backend_wrapper::BackendWrapper, qobj_fx_chain_backend_bridge::ffi::*,
 };
+use anyhow::anyhow;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace, warn as raw_warn,
 };
 use std::pin::Pin;
-use anyhow::anyhow;
 shoop_log_unit!("Frontend.FXChain");
 
 macro_rules! trace {
@@ -137,18 +137,15 @@ impl FXChainBackend {
                         .chain_type
                         .ok_or(anyhow!("Chain type not set for init"))?;
                     let title = self
-                         .title
-                         .as_ref()
-                         .ok_or(anyhow!("Title not set for init"))?;
+                        .title
+                        .as_ref()
+                        .ok_or(anyhow!("Title not set for init"))?;
 
                     let chain = backend
                         .session
                         .as_ref()
                         .ok_or(anyhow!("No session in backend"))?
-                        .create_fx_chain(
-                            chain_type.to_ffi(),
-                            title.as_str(),
-                        )?;
+                        .create_fx_chain(chain_type.to_ffi(), title.as_str())?;
 
                     // To push any state that was already set on us before initializing
                     let state = &self.prev_state;
@@ -186,7 +183,6 @@ impl FXChainBackend {
             }
         }
         "unknown".to_string()
-
     }
 
     pub fn set_backend(mut self: Pin<&mut Self>, backend: *mut QObject) {
@@ -251,11 +247,11 @@ impl FXChainBackend {
             return;
         }
         let chain_type_enum = match FXChainType::try_from(chain_type) {
-             Ok(t) => t,
-             Err(e) => {
-                 error!(self, "Invalid chain type {chain_type}: {e}");
-                 return;
-             }
+            Ok(t) => t,
+            Err(e) => {
+                error!(self, "Invalid chain type {chain_type}: {e}");
+                return;
+            }
         };
         if !self
             .chain_type

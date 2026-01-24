@@ -108,23 +108,17 @@ impl AutoConnect {
             let my_data_type: PortDataType =
                 qobject::qobject_property_int(&*internal_port, "data_type")
                     .map_err(|err| anyhow!(err))
-                    .and_then(|o| {
-                        PortDataType::try_from(o as i32).map_err(|e| anyhow!("{e}"))
-                    })?;
+                    .and_then(|o| PortDataType::try_from(o as i32).map_err(|e| anyhow!("{e}")))?;
             let my_direction: PortDirection =
                 qobject::qobject_property_int(&*internal_port, "direction")
                     .map_err(|err| anyhow!(err))
-                    .and_then(|o| {
-                        PortDirection::try_from(o as i32).map_err(|e| anyhow!("{e}"))
-                    })?;
+                    .and_then(|o| PortDirection::try_from(o as i32).map_err(|e| anyhow!("{e}")))?;
             let my_name: String = qobject::qobject_property_string(&*internal_port, "name")
                 .and_then(|o| Ok(o.to_string()))?;
             let my_port_initialized: bool =
                 qobject::qobject_property_bool(&*internal_port, "initialized")?;
             let q_external_ports: QList_QVariant = invokable::invoke(
-                backend
-                    .as_mut()
-                    .ok_or_else(|| anyhow!("Backend null"))?,
+                backend.as_mut().ok_or_else(|| anyhow!("Backend null"))?,
                 "find_external_ports(QString,int,int)",
                 invokable::DIRECT_CONNECTION,
                 &(
@@ -736,7 +730,9 @@ mod tests {
                 0
             );
 
-            obj.as_mut().expect("Failed to get autoconnect mut").update();
+            obj.as_mut()
+                .expect("Failed to get autoconnect mut")
+                .update();
 
             assert_eq!(
                 autoconnect_connected_spy

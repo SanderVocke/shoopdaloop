@@ -35,11 +35,7 @@ impl UpdateThread {
             let timer_slice = slice::from_raw_parts_mut(timer_mut_ref, 1);
             let mut timer: Pin<&mut QTimer> = Pin::new_unchecked(&mut timer_slice[0]);
             if let Some(thread) = rust.thread.as_mut() {
-                if !timer
-                    .as_mut()
-                    .move_to_thread(thread)
-                    .unwrap_or(false)
-                {
+                if !timer.as_mut().move_to_thread(thread).unwrap_or(false) {
                     error!("Failed to move update timer to thread");
                 }
             } else {
@@ -54,20 +50,20 @@ impl UpdateThread {
                 .as_mut()
                 .set_interval(DEFAULT_BACKUP_UPDATE_INTERVAL_MS);
             timer.as_mut().set_single_shot(false);
-            if let Err(e) = timer
-                .as_mut()
-                .connect_timeout(self_qobject, "timer_tick()") {
-                    error!("Failed to connect timeout: {e}");
+            if let Err(e) = timer.as_mut().connect_timeout(self_qobject, "timer_tick()") {
+                error!("Failed to connect timeout: {e}");
             }
             if let Err(e) = thread
                 .as_mut()
-                .connect_started(timer.as_mut().qobject_from_ptr(), "start()") {
-                    error!("Failed to connect started to timer: {e}");
+                .connect_started(timer.as_mut().qobject_from_ptr(), "start()")
+            {
+                error!("Failed to connect started to timer: {e}");
             }
             if let Err(e) = thread
                 .as_mut()
-                .connect_started(self_qobject, "update_thread_started()") {
-                    error!("Failed to connect started to update_thread_started: {e}");
+                .connect_started(self_qobject, "update_thread_started()")
+            {
+                error!("Failed to connect started to update_thread_started: {e}");
             }
             thread.as_mut().start();
 

@@ -1,5 +1,6 @@
 use crate::engine_update_thread;
 use crate::profiling_report::profiling_report_to_qvariantmap;
+use anyhow::anyhow;
 use backend_bindings::*;
 use cxx_qt_lib_shoop::qjsonobject::QJsonObject;
 use cxx_qt_lib_shoop::qobject::{qobject_thread, AsQObject};
@@ -9,7 +10,6 @@ use cxx_qt_lib_shoop::{connect, connection_types};
 use std::pin::Pin;
 use std::sync::OnceLock;
 use std::time;
-use anyhow::anyhow;
 
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.BackendWrapper");
@@ -261,14 +261,14 @@ impl BackendWrapper {
                 trace!("update_on_gui_thread called on a BackendWrapper with no session");
                 return;
             }
-                // Safe to unwrap because we checked is_none above, but match is cleaner or just expect
-                update_data = match maybe_update_data {
-                     Some(d) => *d,
-                     None => {
-                        error!("update_on_gui_thread called on a BackendWrapper with no update data");
-                        return;
-                     }
-                };
+            // Safe to unwrap because we checked is_none above, but match is cleaner or just expect
+            update_data = match maybe_update_data {
+                Some(d) => *d,
+                None => {
+                    error!("update_on_gui_thread called on a BackendWrapper with no update data");
+                    return;
+                }
+            };
             rust.update_data = None;
         }
 
@@ -307,7 +307,8 @@ impl BackendWrapper {
             }
             if maybe_new_interval.is_some() {
                 if let Some(interval) = maybe_new_interval {
-                     self.as_mut().set_last_update_interval(interval.as_secs_f32());
+                    self.as_mut()
+                        .set_last_update_interval(interval.as_secs_f32());
                 }
             }
         }
@@ -344,8 +345,8 @@ impl BackendWrapper {
             session_state = match rust.session.as_ref() {
                 Some(s) => s.get_state(),
                 None => {
-                     error!("Session is null in update_on_other_thread");
-                     return;
+                    error!("Session is null in update_on_other_thread");
+                    return;
                 }
             };
         }
@@ -408,8 +409,8 @@ impl BackendWrapper {
         if let Some(driver) = mut_rust.driver.as_ref() {
             driver.dummy_is_controlled()
         } else {
-             warn!("dummy_is_controlled called on a BackendWrapper with no driver");
-             false
+            warn!("dummy_is_controlled called on a BackendWrapper with no driver");
+            false
         }
     }
 
@@ -497,18 +498,15 @@ impl BackendWrapper {
         if let Some(session) = &self.session {
             let report = session.get_profiling_report();
             let report_variant = profiling_report_to_qvariantmap(&report);
-            qvariantmap_to_qvariant(&report_variant)
-                .unwrap_or_else(|e| {
-                    error!("could not convert qvariantmap to qvariant: {}", e);
-                    QVariant::default()
-                })
+            qvariantmap_to_qvariant(&report_variant).unwrap_or_else(|e| {
+                error!("could not convert qvariantmap to qvariant: {}", e);
+                QVariant::default()
+            })
         } else {
             error!("get_profiling_report called on a BackendWrapper with no session");
             QVariant::default()
         }
     }
-
-
 
     pub fn open_driver_audio_port(
         mut self: Pin<&mut BackendWrapper>,
@@ -624,7 +622,7 @@ impl BackendWrapper {
         if let Some(session) = mut_rust.session.as_ref() {
             session.segfault_on_process_thread();
         } else {
-             warn!("segfault_on_process_thread called on a BackendWrapper with no session");
+            warn!("segfault_on_process_thread called on a BackendWrapper with no session");
         }
     }
 
@@ -745,8 +743,10 @@ mod tests {
     #[test]
     fn test_class_name() {
         let obj = super::make_unique_backend_wrapper();
-        let classname =
-            qobject_class_name_backend_wrapper(obj.as_ref().expect("Object is null"));
-        assert_eq!(classname.expect("Failed to get class name"), "BackendWrapper");
+        let classname = qobject_class_name_backend_wrapper(obj.as_ref().expect("Object is null"));
+        assert_eq!(
+            classname.expect("Failed to get class name"),
+            "BackendWrapper"
+        );
     }
 }

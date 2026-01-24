@@ -1,7 +1,7 @@
 use crate::ffi;
 use anyhow::anyhow;
-use std::result::Result::Ok as StdOk;
 use common::logging::macros::*;
+use std::result::Result::Ok as StdOk;
 use std::sync::Mutex;
 
 shoop_log_unit!("BackendBindings.Resample");

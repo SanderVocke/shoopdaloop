@@ -89,9 +89,9 @@ pub fn load_standard_midi<'a>(
                             match event.kind.as_live_event() {
                                 Some(event) => {
                                     let mut buf: Vec<u8> = Vec::default();
-                                    event.write(&mut buf).map_err(|e| {
-                                        anyhow!("Could not write event: {e}")
-                                    })?;
+                                    event
+                                        .write(&mut buf)
+                                        .map_err(|e| anyhow!("Could not write event: {e}"))?;
                                     let our_event = MidiEvent {
                                         data: buf,
                                         time: prev_timestamp as i32,

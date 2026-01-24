@@ -1,5 +1,5 @@
-use std::cell::RefCell;
 use anyhow::anyhow;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -48,9 +48,7 @@ impl LuaEngine {
                 .map_err(|e| anyhow!("Could not glob for Lua libs: {e}"))?
             {
                 let file = file?;
-                let name = file
-                    .file_stem()
-                    .ok_or(anyhow!("No stem for {file:?}"))?;
+                let name = file.file_stem().ok_or(anyhow!("No stem for {file:?}"))?;
                 let contents = std::fs::read_to_string(&file)?;
                 libs.insert(name.to_string_lossy().to_string(), contents);
             }
@@ -107,11 +105,14 @@ impl LuaEngine {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             let maybe_script_name: Option<String> =
                 maybe_script_name.value::<QString>().map(|s| s.to_string());
-            self.engine.as_ref().ok_or(anyhow!("engine not initialized"))?.execute(
-                code.to_string().as_str(),
-                maybe_script_name.as_ref().map(|s| s.as_str()),
-                sandboxed,
-            )
+            self.engine
+                .as_ref()
+                .ok_or(anyhow!("engine not initialized"))?
+                .execute(
+                    code.to_string().as_str(),
+                    maybe_script_name.as_ref().map(|s| s.as_str()),
+                    sandboxed,
+                )
         }() {
             error!("Could not execute: {e}");
         }
@@ -132,10 +133,7 @@ impl LuaEngine {
     ) -> *mut WrappedLuaCallback {
         match || -> Result<*mut WrappedLuaCallback, anyhow::Error> {
             let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
-            let engine = self
-                .engine
-                .as_ref()
-                .ok_or(anyhow!("No engine set"))?;
+            let engine = self.engine.as_ref().ok_or(anyhow!("No engine set"))?;
             let cb = engine.evaluate::<mlua::Function>(
                 code.to_string().as_str(),
                 Some(name.to_string().as_str()),
@@ -237,9 +235,7 @@ impl WrappedLuaCallback {
     ) {
         match || -> Result<QVariant, anyhow::Error> {
             let callback = self.callback.borrow();
-            let callback = callback
-                .as_ref()
-                .ok_or(anyhow!("No callback set"))?;
+            let callback = callback.as_ref().ok_or(anyhow!("No callback set"))?;
             let lua = callback
                 .weak_lua
                 .upgrade()
@@ -275,9 +271,7 @@ impl WrappedLuaCallback {
             {
                 let rust_mut = self.as_mut().rust_mut();
                 let callback = rust_mut.callback.borrow();
-                let callback = callback
-                    .as_ref()
-                    .ok_or(anyhow!("No callback set"))?;
+                let callback = callback.as_ref().ok_or(anyhow!("No callback set"))?;
                 let lua = callback
                     .weak_lua
                     .upgrade()

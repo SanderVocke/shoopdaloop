@@ -48,10 +48,7 @@ fn populate_appdir(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Error> 
 pub fn build_appdir(exe_path: &Path, output_dir: &Path) -> Result<(), anyhow::Error> {
     let output_dir = std::path::absolute(output_dir)?;
     if output_dir.exists() {
-        return Err(anyhow!(
-            "Output directory {:?} already exists",
-            output_dir
-        ));
+        return Err(anyhow!("Output directory {:?} already exists", output_dir));
     }
     if !output_dir
         .parent()

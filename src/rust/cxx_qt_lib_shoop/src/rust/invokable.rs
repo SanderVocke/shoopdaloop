@@ -1,4 +1,3 @@
-
 use cxx_qt;
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 
@@ -313,7 +312,8 @@ impl Invokable<(), ()> for ffi::QObject {
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -330,7 +330,8 @@ impl Invokable<i32, ()> for ffi::QObject {
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -347,7 +348,8 @@ impl Invokable<bool, ()> for ffi::QObject {
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -364,7 +366,8 @@ impl Invokable<ffi::QVector_f32, ()> for ffi::QObject {
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -381,7 +384,8 @@ impl Invokable<ffi::QVector_QVariant, ()> for ffi::QObject {
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -398,7 +402,8 @@ impl Invokable<QVariant, ()> for ffi::QObject {
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -416,7 +421,8 @@ impl Invokable<(), i32> for ffi::QObject {
                 method.to_string(),
                 connection_type,
                 *args,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -434,7 +440,8 @@ impl Invokable<(), f32> for ffi::QObject {
                 method.to_string(),
                 connection_type,
                 *args,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -453,7 +460,8 @@ impl Invokable<i32, (i32, i32)> for ffi::QObject {
                 connection_type,
                 args.0,
                 args.1,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -473,7 +481,8 @@ impl Invokable<(), (i32, i32, i32)> for ffi::QObject {
                 args.0,
                 args.1,
                 args.2,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -491,7 +500,8 @@ impl Invokable<(), ffi::QList_f32> for ffi::QObject {
                 method.to_string(),
                 connection_type,
                 arg.clone(),
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -509,7 +519,8 @@ impl Invokable<(), *mut ffi::QObject> for ffi::QObject {
                 method.to_string(),
                 connection_type,
                 *arg,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -527,7 +538,8 @@ impl Invokable<(), bool> for ffi::QObject {
                 method.to_string(),
                 connection_type,
                 *arg,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -545,7 +557,8 @@ impl Invokable<(), QVariant> for ffi::QObject {
                 method.to_string(),
                 connection_type,
                 arg.clone(),
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -564,7 +577,8 @@ impl Invokable<(), (QVariant, QVariant)> for ffi::QObject {
                 connection_type,
                 args.0.clone(),
                 args.1.clone(),
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -582,7 +596,8 @@ impl Invokable<(), ffi::QVector_QVariant> for ffi::QObject {
                 method.to_string(),
                 connection_type,
                 arg.clone(),
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -600,7 +615,8 @@ impl Invokable<(), ffi::QVector_f32> for ffi::QObject {
                 method.to_string(),
                 connection_type,
                 arg.clone(),
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -621,7 +637,8 @@ impl Invokable<(), (ffi::QList_QVariant, i32, i32, i32)> for ffi::QObject {
                 args.1,
                 args.2,
                 args.3,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -642,7 +659,8 @@ impl Invokable<(), (QVariant, QVariant, QVariant, i32)> for ffi::QObject {
                 args.1.clone(),
                 args.2.clone(),
                 args.3,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -663,7 +681,8 @@ impl Invokable<(), (QVariant, QVariant, QVariant, QVariant)> for ffi::QObject {
                 args.1.clone(),
                 args.2.clone(),
                 args.3.clone(),
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -681,7 +700,8 @@ impl Invokable<bool, QString> for ffi::QObject {
                 method.to_string(),
                 connection_type,
                 args.clone(),
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -698,7 +718,8 @@ impl Invokable<QMap<QMapPair_QString_QVariant>, ()> for ffi::QObject {
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -715,7 +736,8 @@ impl Invokable<QList<QVariant>, ()> for ffi::QObject {
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -733,7 +755,8 @@ impl Invokable<(), ffi::QList_QVariant> for ffi::QObject {
                 method.to_string(),
                 connection_type,
                 arg.clone(),
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -753,7 +776,8 @@ impl Invokable<QList<QVariant>, (QString, i32, i32)> for ffi::QObject {
                 args.0.clone(),
                 args.1,
                 args.2,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -770,7 +794,8 @@ impl Invokable<ffi::QList_QString, ()> for ffi::QObject {
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -787,7 +812,8 @@ impl Invokable<ffi::QList_f32, ()> for ffi::QObject {
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -805,7 +831,8 @@ impl Invokable<ffi::QList_f32, i32> for ffi::QObject {
                 method.to_string(),
                 connection_type,
                 *arg,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -822,7 +849,8 @@ impl Invokable<*mut ffi::QObject, ()> for ffi::QObject {
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }
@@ -839,7 +867,8 @@ impl Invokable<ffi::QString, ()> for ffi::QObject {
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            ).map_err(anyhow::Error::from)
+            )
+            .map_err(anyhow::Error::from)
         }
     }
 }

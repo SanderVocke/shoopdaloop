@@ -6,6 +6,7 @@ use crate::{
     },
     midi_event_helpers::MidiEventToQVariant,
 };
+use anyhow::anyhow;
 use backend_bindings::{MidiEvent, PortConnectability, PortDataType, PortDirection};
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
@@ -24,7 +25,6 @@ use std::{
     collections::{HashMap, HashSet},
     pin::Pin,
 };
-use anyhow::anyhow;
 shoop_log_unit!("Frontend.Port");
 
 macro_rules! trace {
@@ -174,80 +174,79 @@ impl PortBackend {
     }
 
     pub fn maybe_initialize_backend_internal(mut self: Pin<&mut PortBackend>) -> bool {
-        if let Err(e) =
-            || -> Result<(), anyhow::Error> {
-                let idx = self
-                    .fx_chain_port_idx
-                    .ok_or(anyhow!("no fx chain port index set"))?;
-                let output_connectability = self
-                    .output_connectability
-                    .as_ref()
-                    .ok_or(anyhow!("output connectability not set"))?;
-                let fx_chain: Pin<&mut FXChainBackend> = unsafe {
-                    FXChainBackend::from_qobject_mut_ptr(
-                        self.fx_chain
-                            .as_ref()
-                            .ok_or(anyhow!("fx chain not set"))?
-                            .to_strong()?
-                            .as_ref()
-                            .ok_or(anyhow!("cannot get fx chain"))?
-                            .data()?,
-                    )?
-                };
-                let is_input = !output_connectability.internal;
-                let is_midi = self
-                    .port_type
-                    .ok_or(anyhow!("port data type (is_midi) not set"))?
-                    == PortDataType::Midi;
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            let idx = self
+                .fx_chain_port_idx
+                .ok_or(anyhow!("no fx chain port index set"))?;
+            let output_connectability = self
+                .output_connectability
+                .as_ref()
+                .ok_or(anyhow!("output connectability not set"))?;
+            let fx_chain: Pin<&mut FXChainBackend> = unsafe {
+                FXChainBackend::from_qobject_mut_ptr(
+                    self.fx_chain
+                        .as_ref()
+                        .ok_or(anyhow!("fx chain not set"))?
+                        .to_strong()?
+                        .as_ref()
+                        .ok_or(anyhow!("cannot get fx chain"))?
+                        .data()?,
+                )?
+            };
+            let is_input = !output_connectability.internal;
+            let is_midi = self
+                .port_type
+                .ok_or(anyhow!("port data type (is_midi) not set"))?
+                == PortDataType::Midi;
 
-                debug!(
-                    self,
-                    "initialize as {} {} port {} of FX chain",
-                    if is_midi { "MIDI" } else { "audio" },
-                    if is_input { "input " } else { "output " },
-                    idx
-                );
-                let port: AnyBackendPort =
-                    if is_input {
-                        if is_midi {
-                            AnyBackendPort::Midi(fx_chain.get_midi_input_port(idx as u32).ok_or(
-                                anyhow!("Could not get FX chain MIDI input {idx}"),
-                            )?)
-                        } else {
-                            // audio
-                            AnyBackendPort::Audio(fx_chain.get_audio_input_port(idx as u32).ok_or(
-                                anyhow!("Could not get FX chain audio input {idx}"),
-                            )?)
-                        }
-                    } else {
-                        if is_midi {
-                            return Err(anyhow!(
-                                "FX chains do not support internal MIDI out"
-                            ));
-                        } else {
-                            // audio
-                            AnyBackendPort::Audio(
-                                fx_chain.get_audio_output_port(idx as u32).ok_or(
-                                    anyhow!("Could not get FX chain audio output {idx}"),
-                                )?,
-                            )
-                        }
-                    };
+            debug!(
+                self,
+                "initialize as {} {} port {} of FX chain",
+                if is_midi { "MIDI" } else { "audio" },
+                if is_input { "input " } else { "output " },
+                idx
+            );
+            let port: AnyBackendPort = if is_input {
+                if is_midi {
+                    AnyBackendPort::Midi(
+                        fx_chain
+                            .get_midi_input_port(idx as u32)
+                            .ok_or(anyhow!("Could not get FX chain MIDI input {idx}"))?,
+                    )
+                } else {
+                    // audio
+                    AnyBackendPort::Audio(
+                        fx_chain
+                            .get_audio_input_port(idx as u32)
+                            .ok_or(anyhow!("Could not get FX chain audio input {idx}"))?,
+                    )
+                }
+            } else {
+                if is_midi {
+                    return Err(anyhow!("FX chains do not support internal MIDI out"));
+                } else {
+                    // audio
+                    AnyBackendPort::Audio(
+                        fx_chain
+                            .get_audio_output_port(idx as u32)
+                            .ok_or(anyhow!("Could not get FX chain audio output {idx}"))?,
+                    )
+                }
+            };
 
-                // To push any state that was already set on us before initializing
-                let state = &self.prev_state;
-                debug!(self, "Push deferred state: {state:?}");
-                port.push_state(state)?;
-                let mut rust_mut = self.as_mut().rust_mut();
-                rust_mut.maybe_backend_port = Some(port);
+            // To push any state that was already set on us before initializing
+            let state = &self.prev_state;
+            debug!(self, "Push deferred state: {state:?}");
+            port.push_state(state)?;
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.maybe_backend_port = Some(port);
 
-                self.as_mut().update_internal_port_connections_impl();
+            self.as_mut().update_internal_port_connections_impl();
 
-                debug!(self, "Initialized as internal-facing port");
-                self.as_mut().update();
-                Ok(())
-            }()
-        {
+            debug!(self, "Initialized as internal-facing port");
+            self.as_mut().update();
+            Ok(())
+        }() {
             error!(
                 self,
                 "Failed to initialize internal-facing backend port: {e}"
@@ -390,7 +389,10 @@ impl PortBackend {
                 Some(true) => self.as_mut().maybe_initialize_backend_internal(),
                 Some(false) => self.as_mut().maybe_initialize_backend_external(),
                 None => {
-                    error!(self, "Unexpected: is_internal is None but validation passed");
+                    error!(
+                        self,
+                        "Unexpected: is_internal is None but validation passed"
+                    );
                     false
                 }
             }

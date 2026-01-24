@@ -28,9 +28,9 @@ impl MidiEventToQVariant for MidiEvent {
         result.insert(QString::from("time"), QVariant::from(&self.time));
         self.data.iter().for_each(|v| data.append(*v as i32));
         if let Ok(v) = qlist_i32_to_qvariant(&data) {
-             result.insert(QString::from("data"), v);
+            result.insert(QString::from("data"), v);
         } else {
-             error!("Failed to convert MIDI data list to QVariant");
+            error!("Failed to convert MIDI data list to QVariant");
         }
         result
     }
@@ -43,7 +43,10 @@ impl MidiEventToQVariant for MidiEvent {
     }
 
     fn from_qvariant(qvariant: &QVariant) -> Result<Self, anyhow::Error> {
-        Self::from_qvariantmap(&qvariant_to_qvariantmap(qvariant).map_err(|e| anyhow!("Failed to convert qvariant to map: {e}"))?)
+        Self::from_qvariantmap(
+            &qvariant_to_qvariantmap(qvariant)
+                .map_err(|e| anyhow!("Failed to convert qvariant to map: {e}"))?,
+        )
     }
 
     fn from_qvariantmap(
@@ -59,9 +62,9 @@ impl MidiEventToQVariant for MidiEvent {
         let data: Vec<u8> = data
             .iter()
             .map(|v| -> Result<u8, anyhow::Error> {
-                let integer = v.value::<i32>().ok_or(anyhow!(
-                    "Unable to convert MIDI data element to integer"
-                ))?;
+                let integer = v
+                    .value::<i32>()
+                    .ok_or(anyhow!("Unable to convert MIDI data element to integer"))?;
                 Ok(integer as u8)
             })
             .collect::<Result<Vec<u8>, anyhow::Error>>()?;
@@ -69,9 +72,7 @@ impl MidiEventToQVariant for MidiEvent {
         let time: QVariant = qvariantmap
             .get(&QString::from("time"))
             .ok_or(anyhow!("no time key in map"))?;
-        let time: i32 = time
-            .value::<i32>()
-            .ok_or(anyhow!("invalid time value"))?;
+        let time: i32 = time.value::<i32>().ok_or(anyhow!("invalid time value"))?;
         Ok(Self { data, time })
     }
 }

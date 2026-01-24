@@ -115,11 +115,7 @@ impl Default for ShoopConfig {
     fn default() -> ShoopConfig {
         let normalize_path = |path: &Path| -> PathBuf {
             match std::fs::canonicalize(path) {
-                Ok(p) => PathBuf::from(
-                    p.to_string_lossy()
-                        .trim_start_matches(r"\\?\")
-                        .to_string(),
-                ),
+                Ok(p) => PathBuf::from(p.to_string_lossy().trim_start_matches(r"\\?\").to_string()),
                 Err(_) => path.to_path_buf(),
             }
         };
@@ -167,11 +163,7 @@ impl ShoopConfig {
     ) -> Result<ShoopConfig, anyhow::Error> {
         let normalize_path = |path: &Path| -> PathBuf {
             match std::fs::canonicalize(path) {
-                Ok(p) => PathBuf::from(
-                    p.to_string_lossy()
-                        .trim_start_matches(r"\\?\")
-                        .to_string(),
-                ),
+                Ok(p) => PathBuf::from(p.to_string_lossy().trim_start_matches(r"\\?\").to_string()),
                 Err(_) => path.to_path_buf(),
             }
         };
@@ -200,11 +192,7 @@ impl ShoopConfig {
     pub fn _load_default(root_path: &Path) -> Result<ShoopConfig, anyhow::Error> {
         let normalize_path = |path: &Path| -> PathBuf {
             match std::fs::canonicalize(path) {
-                Ok(p) => PathBuf::from(
-                    p.to_string_lossy()
-                        .trim_start_matches(r"\\?\")
-                        .to_string(),
-                ),
+                Ok(p) => PathBuf::from(p.to_string_lossy().trim_start_matches(r"\\?\").to_string()),
                 Err(_) => path.to_path_buf(),
             }
         };

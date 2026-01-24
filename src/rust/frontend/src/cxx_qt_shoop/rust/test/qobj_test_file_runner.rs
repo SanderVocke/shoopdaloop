@@ -1,13 +1,13 @@
 use crate::cxx_qt_shoop::test::qobj_test_file_runner_bridge::ffi::*;
 use crate::test_results::*;
+use anyhow::anyhow;
 use cxx_qt::CxxQtType;
+use cxx_qt_lib::QVariant;
 use cxx_qt_lib_shoop::qobject::qobject_property_qvariant;
 use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qvariantmap;
-use cxx_qt_lib::QVariant;
 use glob::glob;
 use std::path::PathBuf;
 use std::pin::Pin;
-use anyhow::anyhow;
 
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.TestFileRunner");
@@ -159,9 +159,7 @@ Totals:
             debug!("Glob pattern: {glob_pattern}");
             glob(glob_pattern.as_str())?.try_for_each(|s| -> Result<(), anyhow::Error> {
                 let s = s?;
-                let s = s
-                    .to_str()
-                    .ok_or(anyhow!("Cannot convert path to string"))?;
+                let s = s.to_str().ok_or(anyhow!("Cannot convert path to string"))?;
                 all_test_files.push(PathBuf::from(s));
                 Ok(())
             })?;
@@ -198,9 +196,12 @@ Totals:
             let results: cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
             {
                 let runner = self.as_ref().testcase_runner;
-                let results_variant =
-                    qobject_property_qvariant(&*runner, "testcase_results").unwrap_or(QVariant::default());
-                results = qvariant_to_qvariantmap(&results_variant).unwrap_or(cxx_qt_lib::QMap::<cxx_qt_lib::QMapPair_QString_QVariant>::default());
+                let results_variant = qobject_property_qvariant(&*runner, "testcase_results")
+                    .unwrap_or(QVariant::default());
+                results = qvariant_to_qvariantmap(&results_variant)
+                    .unwrap_or(
+                        cxx_qt_lib::QMap::<cxx_qt_lib::QMapPair_QString_QVariant>::default(),
+                    );
             }
 
             {

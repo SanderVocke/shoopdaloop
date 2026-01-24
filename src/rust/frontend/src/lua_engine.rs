@@ -1,9 +1,9 @@
+use anyhow::anyhow;
 use std::{
     cell::RefCell,
     collections::HashMap,
     sync::{Arc, Weak},
 };
-use anyhow::anyhow;
 
 use common::logging::macros::*;
 use mlua;
@@ -128,12 +128,10 @@ impl LuaEngineImpl {
         sandboxed: bool,
     ) -> Result<(), anyhow::Error> {
         debug!("Running built-in script: {script_subpath}");
-        let content = self
-            .get_builtin_script_fn
-            .as_ref()
-            .ok_or(anyhow!("no builtin script fn registered"))?(
-            script_subpath
-        )?;
+        let content =
+            self.get_builtin_script_fn
+                .as_ref()
+                .ok_or(anyhow!("no builtin script fn registered"))?(script_subpath)?;
         self.execute(content.as_str(), Some(script_subpath), sandboxed)?;
         Ok(())
     }
@@ -530,8 +528,16 @@ return test_hello_world()
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
-                let a = args.front().ok_or(anyhow!("missing arg 1"))?.as_i64().ok_or(anyhow!("arg 1 not i64"))?;
-                let b = args.back().ok_or(anyhow!("missing arg 2"))?.as_i64().ok_or(anyhow!("arg 2 not i64"))?;
+                let a = args
+                    .front()
+                    .ok_or(anyhow!("missing arg 1"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 1 not i64"))?;
+                let b = args
+                    .back()
+                    .ok_or(anyhow!("missing arg 2"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 2 not i64"))?;
                 Ok(mlua::Value::Integer(a + b))
             }
         }
@@ -561,8 +567,16 @@ return test_hello_world()
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
-                let a = args.front().ok_or(anyhow!("missing arg 1"))?.as_i64().ok_or(anyhow!("arg 1 not i64"))?;
-                let b = args.back().ok_or(anyhow!("missing arg 2"))?.as_i64().ok_or(anyhow!("arg 2 not i64"))?;
+                let a = args
+                    .front()
+                    .ok_or(anyhow!("missing arg 1"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 1 not i64"))?;
+                let b = args
+                    .back()
+                    .ok_or(anyhow!("missing arg 2"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 2 not i64"))?;
                 Ok(mlua::Value::Integer(a + b))
             }
         }
@@ -592,8 +606,16 @@ return test_hello_world()
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
-                let a = args.front().ok_or(anyhow!("missing arg 1"))?.as_i64().ok_or(anyhow!("arg 1 not i64"))?;
-                let b = args.back().ok_or(anyhow!("missing arg 2"))?.as_i64().ok_or(anyhow!("arg 2 not i64"))?;
+                let a = args
+                    .front()
+                    .ok_or(anyhow!("missing arg 1"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 1 not i64"))?;
+                let b = args
+                    .back()
+                    .ok_or(anyhow!("missing arg 2"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 2 not i64"))?;
                 Ok(mlua::Value::Integer(a + b))
             }
         }
@@ -607,8 +629,16 @@ return test_hello_world()
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
-                let a = args.front().ok_or(anyhow!("missing arg 1"))?.as_i64().ok_or(anyhow!("arg 1 not i64"))?;
-                let b = args.back().ok_or(anyhow!("missing arg 2"))?.as_i64().ok_or(anyhow!("arg 2 not i64"))?;
+                let a = args
+                    .front()
+                    .ok_or(anyhow!("missing arg 1"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 1 not i64"))?;
+                let b = args
+                    .back()
+                    .ok_or(anyhow!("missing arg 2"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 2 not i64"))?;
                 Ok(mlua::Value::Integer(a - b))
             }
         }
@@ -651,8 +681,16 @@ return test_hello_world()
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
-                let a = args.front().ok_or(anyhow!("missing arg 1"))?.as_i64().ok_or(anyhow!("arg 1 not i64"))?;
-                let b = args.back().ok_or(anyhow!("missing arg 2"))?.as_i64().ok_or(anyhow!("arg 2 not i64"))?;
+                let a = args
+                    .front()
+                    .ok_or(anyhow!("missing arg 1"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 1 not i64"))?;
+                let b = args
+                    .back()
+                    .ok_or(anyhow!("missing arg 2"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 2 not i64"))?;
                 Ok(mlua::Value::Integer(a + b))
             }
         }
@@ -666,8 +704,16 @@ return test_hello_world()
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
-                let a = args.front().ok_or(anyhow!("missing arg 1"))?.as_i64().ok_or(anyhow!("arg 1 not i64"))?;
-                let b = args.back().ok_or(anyhow!("missing arg 2"))?.as_i64().ok_or(anyhow!("arg 2 not i64"))?;
+                let a = args
+                    .front()
+                    .ok_or(anyhow!("missing arg 1"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 1 not i64"))?;
+                let b = args
+                    .back()
+                    .ok_or(anyhow!("missing arg 2"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 2 not i64"))?;
                 Ok(mlua::Value::Integer(a - b))
             }
         }

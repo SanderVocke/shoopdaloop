@@ -9,6 +9,7 @@ use crate::cxx_qt_shoop::{
 };
 use crate::lua_callback::LuaCallback;
 use crate::lua_conversions::IntoLuaExtended;
+use anyhow::anyhow;
 use backend_bindings::{LoopMode, PortDirection};
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
@@ -32,7 +33,6 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::pin::Pin;
 use std::sync::{Arc, Weak};
-use anyhow::anyhow;
 shoop_log_unit!("Frontend.SessionControlHandler");
 use enum_iterator::*;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -77,9 +77,18 @@ fn as_coords(val: &mlua::Value) -> Option<(i64, i64)> {
                 })
         {
             let mut iter = table.sequence_values::<mlua::Value>();
-            let first = iter.next().unwrap_or(Ok(mlua::Value::Nil)).unwrap_or(mlua::Value::Nil);
-            let second = iter.next().unwrap_or(Ok(mlua::Value::Nil)).unwrap_or(mlua::Value::Nil);
-            return Some((first.as_integer().unwrap_or(0), second.as_integer().unwrap_or(0)));
+            let first = iter
+                .next()
+                .unwrap_or(Ok(mlua::Value::Nil))
+                .unwrap_or(mlua::Value::Nil);
+            let second = iter
+                .next()
+                .unwrap_or(Ok(mlua::Value::Nil))
+                .unwrap_or(mlua::Value::Nil);
+            return Some((
+                first.as_integer().unwrap_or(0),
+                second.as_integer().unwrap_or(0),
+            ));
         }
     }
     None
@@ -101,8 +110,7 @@ fn as_multi_coords(val: &mlua::Value) -> Option<Vec<(i64, i64)>> {
                     Err(_) => None,
                 })
                 .collect();
-                return Some(as_coords.iter().map(|v| v.unwrap_or((0, 0))).collect());
-
+            return Some(as_coords.iter().map(|v| v.unwrap_or((0, 0))).collect());
         }
     }
     None
@@ -127,8 +135,7 @@ fn as_track_indices(val: &mlua::Value) -> Option<Vec<i64>> {
                     Err(_) => None,
                 })
                 .collect();
-                return Some(as_indices.iter().map(|v| v.unwrap_or(0)).collect());
-
+            return Some(as_indices.iter().map(|v| v.unwrap_or(0)).collect());
         }
     }
     None
@@ -159,8 +166,7 @@ fn loop_int_prop(l: &*mut QObject, prop: &str) -> Result<i32, anyhow::Error> {
         return Err(anyhow!("loop is null"));
     }
     unsafe {
-        qobject_property_int(&**l, prop)
-            .map_err(|e| anyhow!("Could not get loop int prop: {e}"))
+        qobject_property_int(&**l, prop).map_err(|e| anyhow!("Could not get loop int prop: {e}"))
     }
 }
 
@@ -180,8 +186,7 @@ fn loop_bool_prop(l: &*mut QObject, prop: &str) -> Result<bool, anyhow::Error> {
         return Err(anyhow!("loop is null"));
     }
     unsafe {
-        qobject_property_bool(&**l, prop)
-            .map_err(|e| anyhow!("Could not get loop bool prop: {e}"))
+        qobject_property_bool(&**l, prop).map_err(|e| anyhow!("Could not get loop bool prop: {e}"))
     }
 }
 
@@ -245,9 +250,8 @@ impl SessionControlHandlerLuaTarget {
                 .create_table()
                 .map_err(|e| anyhow!("Could not create table: {e}"))?;
 
-            let map_const_err = |r: Result<(), mlua::Error>| {
-                r.map_err(|e| anyhow!("Could not set constant: {e}"))
-            };
+            let map_const_err =
+                |r: Result<(), mlua::Error>| r.map_err(|e| anyhow!("Could not set constant: {e}"));
 
             macro_rules! map_iterable_enum {
                 ($maybe_basename:expr, $ty:ty) => {
@@ -284,9 +288,9 @@ impl SessionControlHandlerLuaTarget {
                     };
                     let callback_rc: Arc<Box<dyn LuaCallback>> = Arc::new(Box::new(callback));
                     let callback_lua = wrapped_engine.create_callback_fn($name, &callback_rc)?;
-                    lua_module.set($name, callback_lua).map_err(|e| {
-                        anyhow!("Could not set module callback {}: {e}", $name)
-                    })?;
+                    lua_module
+                        .set($name, callback_lua)
+                        .map_err(|e| anyhow!("Could not set module callback {}: {e}", $name))?;
                     self.callbacks_lua_to_rust.push(callback_rc);
                 }};
             }
@@ -2214,9 +2218,7 @@ impl SessionControlHandlerLuaTarget {
                 });
                 Ok(mlua::Value::Nil)
             } else {
-                return Err(anyhow!(
-                    "Could not get callbacks for keyboard event"
-                ));
+                return Err(anyhow!("Could not get callbacks for keyboard event"));
             }
         } else {
             return Err(anyhow!("Passed argument is not a function"));
@@ -2571,9 +2573,7 @@ impl SessionControlHandlerLuaTarget {
                 }
             }
             mlua::Value::Nil => Ok(Either::Right(std::iter::empty())),
-            others => Err(anyhow!(
-                "Unsupported loop selector type: {others:?}"
-            )),
+            others => Err(anyhow!("Unsupported loop selector type: {others:?}")),
         }
     }
 
@@ -2623,9 +2623,7 @@ impl SessionControlHandlerLuaTarget {
                 }
             }
             mlua::Value::Nil => Ok(Either::Right(std::iter::empty())),
-            others => Err(anyhow!(
-                "Unsupported track selector type: {others:?}"
-            )),
+            others => Err(anyhow!("Unsupported track selector type: {others:?}")),
         }
     }
 

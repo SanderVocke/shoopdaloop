@@ -3,6 +3,7 @@ use crate::cxx_qt_shoop::qobj_backend_wrapper::BackendWrapper;
 use crate::cxx_qt_shoop::qobj_midi_control_port_bridge::ffi::*;
 use crate::cxx_qt_shoop::qobj_midi_control_port_bridge::MidiControlPort;
 use crate::cxx_qt_shoop::qobj_midi_control_port_bridge::MidiControlPortRust;
+use anyhow::anyhow;
 use backend_bindings::PortDirection;
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
@@ -25,7 +26,6 @@ use midi_processing::is_note_off;
 use midi_processing::is_note_on;
 use midi_processing::note;
 use std::pin::Pin;
-use anyhow::anyhow;
 shoop_log_unit!("Frontend.MidiControlPort");
 
 impl MidiControlPort {
@@ -147,10 +147,7 @@ impl MidiControlPort {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.backend_port_wrapper =
                 Some(backend_bindings::DecoupledMidiPort::new_driver_port(
-                    backend
-                        .driver
-                        .as_ref()
-                        .ok_or(anyhow!("No driver"))?,
+                    backend.driver.as_ref().ok_or(anyhow!("No driver"))?,
                     &name_hint.to_string(),
                     &PortDirection::try_from(direction).unwrap_or(PortDirection::Input),
                 )?);

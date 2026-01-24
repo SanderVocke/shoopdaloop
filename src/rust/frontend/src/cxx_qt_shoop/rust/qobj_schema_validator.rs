@@ -3,9 +3,9 @@ use cxx_qt_lib_shoop::qjsonobject::QJsonObject;
 pub use crate::cxx_qt_shoop::qobj_schema_validator_bridge::ffi::SchemaValidator;
 use crate::cxx_qt_shoop::qobj_schema_validator_bridge::ffi::*;
 use crate::init::GLOBAL_CONFIG;
+use anyhow::anyhow;
 use std::path::PathBuf;
 use std::pin::Pin;
-use anyhow::anyhow;
 
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.SchemaValidator");

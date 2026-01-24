@@ -18,9 +18,7 @@ pub fn main() {
     let normalize_path = |path: &Path| -> Result<PathBuf, String> {
         let canonical = std::fs::canonicalize(path)
             .map_err(|e| format!("Failed to canonicalize path: {}", e))?;
-        let s = canonical
-            .to_str()
-            .ok_or("Path contains invalid UTF-8")?;
+        let s = canonical.to_str().ok_or("Path contains invalid UTF-8")?;
         Ok(PathBuf::from(s.trim_start_matches(r"\\?\")))
     };
 
@@ -31,7 +29,7 @@ pub fn main() {
         let parent = executable_path
             .parent()
             .ok_or("Executable path has no parent")?;
-            
+
         let installed_path = normalize_path(parent)?;
 
         let config: ShoopConfig = ShoopConfig::_load_default(&installed_path)

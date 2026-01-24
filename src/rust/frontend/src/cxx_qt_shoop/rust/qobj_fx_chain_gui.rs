@@ -7,8 +7,8 @@ use crate::{
     },
     engine_update_thread,
 };
-use std::pin::Pin;
 use anyhow::anyhow;
+use std::pin::Pin;
 
 use common::logging::macros::{debug as raw_debug, error as raw_error, shoop_log_unit};
 use cxx_qt::CxxQtType;
@@ -52,7 +52,7 @@ impl FXChainGui {
                 backend_fx_chain_qobj,
                 engine_update_thread::get_engine_update_thread().thread,
             ) {
-                 error!(self, "Failed to move backend fx chain to thread: {e}");
+                error!(self, "Failed to move backend fx chain to thread: {e}");
             }
 
             let self_ref = self.as_ref().get_ref();
@@ -128,9 +128,12 @@ impl FXChainGui {
                     )
                 }
 
-                let wrapper =
-                    QSharedPointer_QObject::from_ptr_delete_later(backend_fx_chain_qobj).unwrap_or_else(|e| {
-                        error!(self, "Failed to create shared pointer for backend fx chain: {e}");
+                let wrapper = QSharedPointer_QObject::from_ptr_delete_later(backend_fx_chain_qobj)
+                    .unwrap_or_else(|e| {
+                        error!(
+                            self,
+                            "Failed to create shared pointer for backend fx chain: {e}"
+                        );
                         cxx::UniquePtr::null()
                     });
                 let mut rust_mut = self.as_mut().rust_mut();

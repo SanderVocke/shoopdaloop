@@ -3,6 +3,7 @@ use crate::cxx_qt_shoop::rust::qobj_port_backend_bridge::ffi::{
 };
 use crate::cxx_qt_shoop::rust::qobj_port_gui_bridge::ffi::*;
 use crate::engine_update_thread;
+use anyhow::anyhow;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
@@ -18,7 +19,6 @@ use cxx_qt_lib_shoop::qvariant_helpers::{
 };
 use cxx_qt_lib_shoop::{invokable, qobject::ffi::qobject_move_to_thread};
 use std::pin::Pin;
-use anyhow::anyhow;
 shoop_log_unit!("Frontend.Port");
 
 macro_rules! trace {
@@ -63,7 +63,7 @@ impl PortGui {
                 backend_port_qobj,
                 engine_update_thread::get_engine_update_thread().thread,
             ) {
-                 error!(self, "Failed to move backend port to thread: {e}");
+                error!(self, "Failed to move backend port to thread: {e}");
             }
 
             if let Err(e) = invoke::<_, (), _>(
@@ -72,7 +72,7 @@ impl PortGui {
                 connection_types::QUEUED_CONNECTION,
                 &(self_qobj),
             ) {
-                 error!(self, "Failed to set frontend object on backend port: {e}");
+                error!(self, "Failed to set frontend object on backend port: {e}");
             }
 
             let self_ref = self.as_ref().get_ref();
@@ -246,9 +246,12 @@ impl PortGui {
                     );
                 }
 
-                let wrapper =
-                    QSharedPointer_QObject::from_ptr_delete_later(backend_port_qobj).unwrap_or_else(|e| {
-                        error!(self, "Failed to create shared pointer for backend port: {e}");
+                let wrapper = QSharedPointer_QObject::from_ptr_delete_later(backend_port_qobj)
+                    .unwrap_or_else(|e| {
+                        error!(
+                            self,
+                            "Failed to create shared pointer for backend port: {e}"
+                        );
                         cxx::UniquePtr::null()
                     });
                 let mut rust_mut = self.as_mut().rust_mut();
@@ -529,7 +532,6 @@ impl PortGui {
                     invokable::DIRECT_CONNECTION,
                     &(),
                 )
-
                 .unwrap_or_else(|e| {
                     error!(self, "Failed to get backend fx chain: {e}");
                     QVariant::default()

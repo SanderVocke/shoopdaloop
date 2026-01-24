@@ -139,7 +139,10 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
                     match cvar.wait(guard) {
                         Ok(g) => guard = g,
                         Err(e) => {
-                            println!("Refiller thread failed to wait on condvar (poisoned): {:?}", e);
+                            println!(
+                                "Refiller thread failed to wait on condvar (poisoned): {:?}",
+                                e
+                            );
                             return;
                         }
                     }
@@ -267,10 +270,10 @@ impl<T: Send + Debug + 'static> Drop for RefillingPool<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::anyhow;
     use std::sync::atomic::AtomicUsize;
     use std::sync::mpsc;
     use std::time::Duration;
-    use anyhow::anyhow;
 
     // A simple object for testing purposes.
     struct TestObject(usize);
@@ -405,9 +408,8 @@ mod tests {
         // The pool now needs to refill 5 items to get back to capacity 10.
         // We wait for exactly 5 signals from the refiller's factory calls.
         for i in 0..5 {
-            rx.recv_timeout(TEST_TIMEOUT).map_err(|_| {
-                anyhow!("Timeout waiting for refiller signal {}/5", i + 1)
-            })?;
+            rx.recv_timeout(TEST_TIMEOUT)
+                .map_err(|_| anyhow!("Timeout waiting for refiller signal {}/5", i + 1))?;
         }
 
         // Don't assert immediately. Poll until the queue is full, because the
@@ -441,7 +443,7 @@ mod tests {
                 Box::new(TestObject(0))
             };
             if let Ok(pool) = RefillingPool::new(10, 9, factory) {
-                 let _ = pool_tx.send(Arc::new(pool));
+                let _ = pool_tx.send(Arc::new(pool));
             }
         });
 
@@ -478,7 +480,7 @@ mod tests {
         let deadline = std::time::Instant::now() + TEST_TIMEOUT;
         while pool.queue.len() < 10 {
             if std::time::Instant::now() > deadline {
-                 return Err(anyhow!(
+                return Err(anyhow!(
                     "Timeout waiting for pool to be fully refilled. Final size: {}",
                     pool.queue.len()
                 ));
@@ -520,7 +522,7 @@ mod tests {
                     });
 
                     // Wait for the spawned thread to finish its work.
-                   let _ = worker.join();
+                    let _ = worker.join();
                 }
             } // `pool_arc` is dropped here, which is the operation we want to test for hangs.
 

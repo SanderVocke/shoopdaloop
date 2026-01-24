@@ -34,7 +34,9 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
         .args(&[
             "-add_rpath",
             "@executable_path/lib",
-            installed_exe.to_str().ok_or(anyhow!("Invalid UTF-8 in path"))?,
+            installed_exe
+                .to_str()
+                .ok_or(anyhow!("Invalid UTF-8 in path"))?,
         ])
         .status()?;
 
@@ -105,9 +107,7 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
     #[cfg(target_os = "macos")]
     {
         info!("Symlinking dylibs...");
-        let appdir_str = appdir
-            .to_str()
-            .ok_or(anyhow!("Could not stringify path"))?;
+        let appdir_str = appdir.to_str().ok_or(anyhow!("Could not stringify path"))?;
         let glob_pattern = format!("{appdir_str}/lib/*.dylib");
         let re = regex::Regex::new(r"(.*\.[0-9]+)\.[0-9]+\.[0-9]\.dylib")?;
         glob(glob_pattern.as_str())?.try_for_each(|library| -> Result<(), anyhow::Error> {
@@ -141,10 +141,7 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
 
 pub fn build_appbundle(exe_path: &Path, output_dir: &Path) -> Result<(), anyhow::Error> {
     if output_dir.exists() {
-        return Err(anyhow!(
-            "Output directory {:?} already exists",
-            output_dir
-        ));
+        return Err(anyhow!("Output directory {:?} already exists", output_dir));
     }
     if !output_dir
         .parent()

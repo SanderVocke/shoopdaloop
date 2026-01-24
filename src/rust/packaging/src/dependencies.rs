@@ -55,9 +55,7 @@ pub fn get_dependency_libs(
     if !list_deps_output.status.success() {
         error!("Command stderr:\n{}", command_output);
         error!("Command stdout:\n{}", deps_output);
-        return Err(anyhow!(
-            "list_dependencies returned nonzero exit code"
-        ));
+        return Err(anyhow!("list_dependencies returned nonzero exit code"));
     }
     for line in command_output.lines() {
         for pattern in &warning_patterns {
@@ -80,10 +78,12 @@ pub fn get_dependency_libs(
         }
 
         let path = PathBuf::from(line.trim());
-        let path_str = path
+        let path_str = path.to_str().ok_or(anyhow!("cannot find dependency"))?;
+        let path_filename = path
+            .file_name()
+            .ok_or(anyhow!("Missing filename"))?
             .to_str()
-            .ok_or(anyhow!("cannot find dependency"))?;
-        let path_filename = path.file_name().ok_or(anyhow!("Missing filename"))?.to_str().ok_or(anyhow!("Invalid unicode"))?;
+            .ok_or(anyhow!("Invalid unicode"))?;
         let indent = line.chars().take_while(|&c| c == ' ').count();
 
         if Rc::ptr_eq(&current_parent, &root) && root.borrow().deps.len() == 0 {
@@ -209,12 +209,12 @@ pub fn get_dependency_libs(
                 .is_match(path_str))
         };
         let check_list = |list: &HashSet<&str>, p: &str| -> Result<bool, anyhow::Error> {
-             for item in list {
-                 if pattern_match(item, p)? {
-                     return Ok(true);
-                 }
-             }
-             Ok(false)
+            for item in list {
+                if pattern_match(item, p)? {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         };
 
         let in_excludes = check_list(excludes, &path_str)?;
@@ -258,7 +258,11 @@ pub fn get_dependency_libs(
                 } else {
                     info!("  Including dependency {}", &path_str);
                     paths.push(path.to_path_buf());
-                    let path_filename = path.file_name().ok_or(anyhow!("Missing filename"))?.to_str().ok_or(anyhow!("Invalid unicode"))?;
+                    let path_filename = path
+                        .file_name()
+                        .ok_or(anyhow!("Missing filename"))?
+                        .to_str()
+                        .ok_or(anyhow!("Invalid unicode"))?;
                     used_includes.insert(path_filename.to_string());
                 }
                 handled.insert(path_str.clone());
@@ -385,8 +389,10 @@ fn get_windows_specifics<'a>(
     }
 
     let command = String::from("powershell.exe");
-    let commandstr =
-        include_str!("scripts/windows_deps.ps1").replace("$args[0]", executable.to_str().ok_or(anyhow!("Invalid unicode"))?);
+    let commandstr = include_str!("scripts/windows_deps.ps1").replace(
+        "$args[0]",
+        executable.to_str().ok_or(anyhow!("Invalid unicode"))?,
+    );
     let args = vec![String::from("-Command"), commandstr];
     let warning_patterns = vec![];
     let skip_n_levels = 0;
@@ -425,7 +431,11 @@ fn get_linux_specifics<'a>(
         String::from(commandstr),
         String::from("dummy"),
         String::from(executable.to_str().ok_or(anyhow!("Invalid unicode"))?),
-        String::from(include_directory.to_str().ok_or(anyhow!("Invalid unicode"))?),
+        String::from(
+            include_directory
+                .to_str()
+                .ok_or(anyhow!("Invalid unicode"))?,
+        ),
     ];
     let warning_patterns = vec![String::from("not found")];
     let skip_n_levels = 0;

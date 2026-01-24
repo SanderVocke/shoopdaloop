@@ -5,9 +5,12 @@ use crate::cxx_qt_shoop::qobj_loop_gui_bridge::ffi::*;
 use crate::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;
 use crate::engine_update_thread;
 use crate::loop_helpers::get_backend_loop_handles_variant_list;
+use anyhow::anyhow;
 use backend_bindings::AudioChannel;
 use backend_bindings::MidiChannel;
-use common::logging::macros::{debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace};
+use common::logging::macros::{
+    debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
+};
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QList, QString, QVariant};
 use cxx_qt_lib_shoop::connect::connect_or_report;
@@ -20,7 +23,6 @@ use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::qsharedpointer_qobject_to_qvariant;
 use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use std::pin::Pin;
-use anyhow::anyhow;
 shoop_log_unit!("Frontend.Loop");
 
 #[allow(unused_macros)]
@@ -341,9 +343,7 @@ impl LoopGui {
         // make a better solution for this.
         let backend_wrapper = &self.as_ref().backend_loop_wrapper;
         if backend_wrapper.is_null() {
-            return Err(anyhow!(
-                "Cannot add audio channel: no backend loop present"
-            ));
+            return Err(anyhow!("Cannot add audio channel: no backend loop present"));
         }
         let backend_wrapper_qobj = backend_wrapper
             .data()
@@ -370,9 +370,7 @@ impl LoopGui {
         // make a better solution for this.
         let backend_wrapper = &self.as_ref().backend_loop_wrapper;
         if backend_wrapper.is_null() {
-            return Err(anyhow!(
-                "Cannot add midi channel: no backend loop present"
-            ));
+            return Err(anyhow!("Cannot add midi channel: no backend loop present"));
         }
         let backend_wrapper_qobj = backend_wrapper
             .data()
@@ -485,7 +483,7 @@ impl LoopGui {
                         }
                     }
                 } else {
-                     error!(self, "loop_gui_ptr is null in update_backend_sync_source");
+                    error!(self, "loop_gui_ptr is null in update_backend_sync_source");
                 }
             }
         }

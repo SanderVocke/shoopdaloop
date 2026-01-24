@@ -13,8 +13,8 @@ use crate::cxx_qt_shoop::qobj_render_audio_waveform_bridge::*;
 use crate::{
     audio_power_pyramid, cxx_qt_shoop::qobj_async_task_bridge::ffi::make_raw_async_task_with_parent,
 };
-use core::pin::Pin;
 use anyhow::anyhow;
+use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QColor, QLine};
 
@@ -44,7 +44,8 @@ impl ffi::RenderAudioWaveform {
             unsafe {
                 let notifier = make_raw_update_notifier();
                 let notifier = update_notifier_to_qobject(notifier);
-                notifier_shared = QSharedPointer_QObject::from_ptr_delete_later(notifier).map_err(|e| anyhow!("Could not make shared ptr: {e}"))?;
+                notifier_shared = QSharedPointer_QObject::from_ptr_delete_later(notifier)
+                    .map_err(|e| anyhow!("Could not make shared ptr: {e}"))?;
 
                 connect_or_report(
                     &*notifier,
@@ -216,7 +217,7 @@ impl ffi::RenderAudioWaveform {
             );
             p.draw_line(&center_line);
         } else {
-             error!("Could not get mutable painter");
+            error!("Could not get mutable painter");
         }
     }
 }

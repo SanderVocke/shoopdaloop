@@ -47,9 +47,7 @@ unsafe impl Sync for AudioChannel {}
 impl AudioChannel {
     pub fn new(raw: *mut ffi::shoopdaloop_loop_audio_channel_t) -> Result<Self, anyhow::Error> {
         if raw.is_null() {
-            Err(anyhow!(
-                "Cannot create AudioChannel from null pointer"
-            ))
+            Err(anyhow!("Cannot create AudioChannel from null pointer"))
         } else {
             let wrapped = Mutex::new(raw);
             Ok(AudioChannel { obj: wrapped })

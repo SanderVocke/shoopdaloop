@@ -262,7 +262,10 @@ impl AudioDriver {
         let c_name = match std::ffi::CString::new(name) {
             Ok(c) => c,
             Err(e) => {
-                error!("Failed to create CString in dummy_add_external_mock_port: {}", e);
+                error!(
+                    "Failed to create CString in dummy_add_external_mock_port: {}",
+                    e
+                );
                 return;
             }
         };

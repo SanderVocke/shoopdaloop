@@ -60,9 +60,7 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
     let args = Cli::parse();
 
     let exe = std::env::current_exe()?;
-    let exe_dir = exe
-        .parent()
-        .ok_or(anyhow!("Unable to find exe dir"))?;
+    let exe_dir = exe.parent().ok_or(anyhow!("Unable to find exe dir"))?;
     let main_exe: PathBuf;
     #[cfg(target_os = "windows")]
     {

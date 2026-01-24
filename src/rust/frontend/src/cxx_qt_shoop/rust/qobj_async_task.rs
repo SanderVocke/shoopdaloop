@@ -36,8 +36,8 @@ impl AsyncTask {
             let notifier_shared = match QSharedPointer_QObject::from_ptr_delete_later(notifier) {
                 Ok(s) => s,
                 Err(e) => {
-                     error!("Failed to create QSharedPointer for async task notifier: {e}");
-                     return;
+                    error!("Failed to create QSharedPointer for async task notifier: {e}");
+                    return;
                 }
             };
             let self_ptr_formatted = format!("{self_ptr:?}");
@@ -64,7 +64,7 @@ impl AsyncTask {
                     Ok(ptr) => ptr,
                     Err(_) => {
                         error!("Notifier QSharedPointer is null");
-                         return;
+                        return;
                     }
                 };
                 if let Err(e) = invoke::<_, (), _>(

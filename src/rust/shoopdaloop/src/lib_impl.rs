@@ -166,14 +166,16 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                 }
 
                 TEST_RUNNER.with(|c| {
-                    if c.set(testrunner.get_unchecked_mut() as *mut TestFileRunner).is_err() {
-                         error!("Failed to set TEST_RUNNER");
-                         // If this fails, we probably shouldn't proceed with self-test related logic dependent on it,
-                         // but we are in unsafe block and likely deep in initialization.
-                         // Returning error from here is hard because we are in a block that doesn't propagate easily
-                         // actually we are in `if cli_args.self_test_options.self_test`.
-                         // We can return Err if we wrap this block or verify flow.
-                         // For now, logging error is safer than panic.
+                    if c.set(testrunner.get_unchecked_mut() as *mut TestFileRunner)
+                        .is_err()
+                    {
+                        error!("Failed to set TEST_RUNNER");
+                        // If this fails, we probably shouldn't proceed with self-test related logic dependent on it,
+                        // but we are in unsafe block and likely deep in initialization.
+                        // Returning error from here is hard because we are in a block that doesn't propagate easily
+                        // actually we are in `if cli_args.self_test_options.self_test`.
+                        // We can return Err if we wrap this block or verify flow.
+                        // For now, logging error is safer than panic.
                     }
                 });
             }
@@ -192,11 +194,12 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                 };
                 let global_args = global_args.as_qvariantmap();
                 let global_args =
-                    match cxx_qt_lib_shoop::qvariant_helpers::qvariantmap_to_qvariant(&global_args) {
+                    match cxx_qt_lib_shoop::qvariant_helpers::qvariantmap_to_qvariant(&global_args)
+                    {
                         Ok(v) => v,
                         Err(e) => {
-                             error!("Failed to convert global_args to QVariant: {}", e);
-                             return;
+                            error!("Failed to convert global_args to QVariant: {}", e);
+                            return;
                         }
                     };
                 unsafe {
@@ -331,10 +334,12 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
     let cli_args = match cli_args {
         Some(a) => a,
         None => {
-             // This case should theoretically be unreachable if init_crashhandling acts as a server loop,
-             // or if it returns, we shouldn't proceed as a client without args.
-             error!("CLI args missing (unexpected in client mode) - crash handling server mode exited?");
-             return Ok(1);
+            // This case should theoretically be unreachable if init_crashhandling acts as a server loop,
+            // or if it returns, we shouldn't proceed as a client without args.
+            error!(
+                "CLI args missing (unexpected in client mode) - crash handling server mode exited?"
+            );
+            return Ok(1);
         }
     };
 

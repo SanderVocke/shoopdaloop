@@ -3,6 +3,7 @@ use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::*;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend;
 use crate::loop_helpers::transition_backend_loops;
 use crate::loop_mode_helpers::*;
+use anyhow::anyhow;
 use backend_bindings::LoopMode;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
@@ -15,7 +16,6 @@ use cxx_qt_lib_shoop::qobject;
 use cxx_qt_lib_shoop::qobject::FromQObject;
 use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use std::pin::Pin;
-use anyhow::anyhow;
 shoop_log_unit!("Frontend.Loop");
 
 macro_rules! trace {
@@ -60,7 +60,10 @@ impl LoopBackend {
                     error!(self, "Failed to set length on backend loop: {e}");
                 }
             } else {
-                error!(self, "Backend loop object doesn't exist when setting length");
+                error!(
+                    self,
+                    "Backend loop object doesn't exist when setting length"
+                );
             }
         }
     }
@@ -79,7 +82,10 @@ impl LoopBackend {
                     error!(self, "Failed to set position on backend loop: {e}");
                 }
             } else {
-                error!(self, "Backend loop object doesn't exist when setting position");
+                error!(
+                    self,
+                    "Backend loop object doesn't exist when setting position"
+                );
             }
         }
     }
@@ -128,7 +134,9 @@ impl LoopBackend {
                 initialize_condition = !self.get_initialized()
                     && self.as_ref().backend != std::ptr::null_mut()
                     && match self.backend.as_ref() {
-                        Some(backend) => qobject::qobject_property_bool(backend, "ready").unwrap_or(false),
+                        Some(backend) => {
+                            qobject::qobject_property_bool(backend, "ready").unwrap_or(false)
+                        }
                         None => false,
                     }
                     && self.as_ref().backend_loop.is_none();
@@ -216,8 +224,7 @@ impl LoopBackend {
                             .mode
                             .try_into()
                             .map_err(|e| anyhow!("Invalid loop mode: {}", e))?,
-                    )
-                {
+                    ) {
                     rust.prev_cycle_nr + 1
                 } else {
                     rust.prev_cycle_nr
@@ -311,22 +318,23 @@ impl LoopBackend {
         maybe_to_sync_at_cycle: i32,
     ) {
         let to_mode_enum = match LoopMode::try_from(to_mode) {
-             Ok(m) => m,
-             Err(e) => {
-                 error!(self, "Invalid loop mode: {}", e);
-                 return;
-             }
+            Ok(m) => m,
+            Err(e) => {
+                error!(self, "Invalid loop mode: {}", e);
+                return;
+            }
         };
 
-        let loop_ptrs: Vec<*mut QObject> = loops.iter().filter_map(|variant| {
-             match qvariant_to_qobject_ptr(variant) {
-                 Ok(ptr) => Some(ptr),
-                 Err(e) => {
-                      error!(self, "Failed to convert QVariant: {}", e);
-                      None
-                 }
-             }
-        }).collect();
+        let loop_ptrs: Vec<*mut QObject> = loops
+            .iter()
+            .filter_map(|variant| match qvariant_to_qobject_ptr(variant) {
+                Ok(ptr) => Some(ptr),
+                Err(e) => {
+                    error!(self, "Failed to convert QVariant: {}", e);
+                    None
+                }
+            })
+            .collect();
 
         if let Err(e) = transition_backend_loops(
             loop_ptrs,
@@ -505,9 +513,7 @@ impl LoopBackend {
             if !sync_source.is_null() {
                 let loop_ptr = qobject_to_loop_backend_ptr(sync_source);
                 if loop_ptr.is_null() {
-                    return Err(anyhow!(
-                        "Failed to cast sync source QObject to LoopBackend"
-                    ));
+                    return Err(anyhow!("Failed to cast sync source QObject to LoopBackend"));
                 }
                 self.as_ref()
                     .backend_loop

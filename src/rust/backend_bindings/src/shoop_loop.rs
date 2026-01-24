@@ -1,9 +1,9 @@
 use crate::ffi;
 use anyhow::anyhow;
-use std::result::Result::Ok as StdOk;
 use common::logging::macros::*;
 use enum_iterator::*;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+use std::result::Result::Ok as StdOk;
 use std::sync::{Mutex, MutexGuard};
 
 shoop_log_unit!("BackendBindings.ShoopLoop");

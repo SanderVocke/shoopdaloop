@@ -1,5 +1,5 @@
-use std::{marker::PhantomData, sync::Arc};
 use anyhow::anyhow;
+use std::{marker::PhantomData, sync::Arc};
 
 use cxx_qt_lib_shoop::{
     invokable::{invoke, Invokable},
@@ -49,13 +49,15 @@ where
         lua: &Arc<mlua::Lua>,
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
-        let args: Args = Args::from_lua_multi(args, lua)
-            .map_err(|e| anyhow!("Could not map args: {e}"))?;
+        let args: Args =
+            Args::from_lua_multi(args, lua).map_err(|e| anyhow!("Could not map args: {e}"))?;
 
         let result: R = unsafe {
             let qobject = self.qobject.lua_qobject_target()?;
 
-            let qobject_ref = qobject.as_mut().ok_or(anyhow!("QObject pointer is null or invalid in invoke"))?;
+            let qobject_ref = qobject
+                .as_mut()
+                .ok_or(anyhow!("QObject pointer is null or invalid in invoke"))?;
             invoke::<_, R, _>(
                 qobject_ref,
                 &self.method_signature,
@@ -64,8 +66,8 @@ where
             )?
         };
 
-        let r_lua = R::into_lua(result, lua)
-            .map_err(|e| anyhow!("Could not map return value: {e}"))?;
+        let r_lua =
+            R::into_lua(result, lua).map_err(|e| anyhow!("Could not map return value: {e}"))?;
 
         Ok(r_lua)
     }
@@ -121,10 +123,7 @@ mod tests {
 
         eng.register_callback("qobj_add", LuaScope::Sandboxed, &callback)?;
 
-        assert_eq!(
-            eng.evaluate::<i32>("return qobj_add(1, 2)", None, true)?,
-            3
-        );
+        assert_eq!(eng.evaluate::<i32>("return qobj_add(1, 2)", None, true)?, 3);
         Ok(())
     }
 }

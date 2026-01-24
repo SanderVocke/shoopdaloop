@@ -1,6 +1,6 @@
+use crate::ffi;
 use anyhow::anyhow;
 use common::logging::macros::*;
-use crate::ffi;
 use std::sync::Mutex;
 
 shoop_log_unit!("BackendBindings.BackendSession");

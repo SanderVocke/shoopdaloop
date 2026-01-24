@@ -1,4 +1,5 @@
 use crate::types::*;
+use anyhow::anyhow;
 use common::logging::macros::*;
 use minidumper::Server;
 use serde_json::Value as JsonValue;
@@ -8,7 +9,6 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 #[cfg(target_os = "windows")]
 use std::time::Duration;
-use anyhow::anyhow;
 shoop_log_unit!("CrashHandlingServer");
 
 fn set_json(to: &mut JsonValue, from: &JsonValue) -> anyhow::Result<()> {
@@ -22,14 +22,14 @@ fn set_json(to: &mut JsonValue, from: &JsonValue) -> anyhow::Result<()> {
                 if to.get(k).is_none() {
                     to[k] = serde_json::json!({});
                 } else if !to.get(k).and_then(|v| v.as_object()).is_some() {
-                     return Err(anyhow!("expected object"));
+                    return Err(anyhow!("expected object"));
                 }
                 set_json(&mut to[k], v)?;
             } else if v.is_array() {
                 if to.get(k).is_none() {
                     to[k] = serde_json::json!([]);
                 } else if !to.get(k).and_then(|v| v.as_array()).is_some() {
-                     return Err(anyhow!("expected array"));
+                    return Err(anyhow!("expected array"));
                 }
                 set_json(&mut to[k], v)?;
             } else {
@@ -91,12 +91,23 @@ pub fn crashhandling_server() {
             } else {
                 tempfile::NamedTempFile::with_suffix(".dmp")
             })
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Could not open temp file for minidump: {e}")))
-            .and_then(|f| {
-                Ok(f.into_parts())
+            .map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Could not open temp file for minidump: {e}"),
+                )
+            })
+            .and_then(|f| Ok(f.into_parts()))?;
+            let dumpfilepath = dumpfilepath.keep().map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Could not persist temp file: {e}"),
+                )
             })?;
-            let dumpfilepath = dumpfilepath.keep().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Could not persist temp file: {e}")))?;
-            let mut ref_last_written_dump = self.last_written_dump.lock().unwrap_or_else(|e| e.into_inner());
+            let mut ref_last_written_dump = self
+                .last_written_dump
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             *ref_last_written_dump = Some(dumpfilepath.clone());
 
             info!("Writing minidump to {}", dumpfilepath.display());
@@ -133,9 +144,8 @@ pub fn crashhandling_server() {
                             .json
                             .lock()
                             .map_err(|e| anyhow!("Failed to lock json: {e:?}"))?;
-                        let content = serde_json::to_string_pretty(&*guard).map_err(|e| {
-                            anyhow!("Failed to serialize metadata json: {e:?}")
-                        })?;
+                        let content = serde_json::to_string_pretty(&*guard)
+                            .map_err(|e| anyhow!("Failed to serialize metadata json: {e:?}"))?;
                         let content = format!("{content}\n");
                         let mut jsonfile = File::create(&json_path)?;
                         jsonfile.write_all(content.as_bytes())?;
@@ -184,15 +194,19 @@ pub fn crashhandling_server() {
                     };
                 }
                 v if v == CrashHandlingMessageType::AdditionalCrashAttachment as usize as u32 => {
-                    let attachment: AdditionalCrashAttachment = match serde_json::from_str(content.as_str()) {
-                         Ok(a) => a,
-                         Err(e) => {
-                             error!("Failed to parse additional crash attachment: {}", e);
-                             return;
-                         }
-                    };
+                    let attachment: AdditionalCrashAttachment =
+                        match serde_json::from_str(content.as_str()) {
+                            Ok(a) => a,
+                            Err(e) => {
+                                error!("Failed to parse additional crash attachment: {}", e);
+                                return;
+                            }
+                        };
                     let id = attachment.id;
-                    let ref_last_written_dump = self.last_written_dump.lock().unwrap_or_else(|e| e.into_inner());
+                    let ref_last_written_dump = self
+                        .last_written_dump
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
                     let last_written_dump = &*ref_last_written_dump;
                     if last_written_dump.is_none() {
                         warn!("Received additional crash data attachment ('{id}'), but no dump written. Ignoring.");
@@ -201,7 +215,10 @@ pub fn crashhandling_server() {
                             let path = last_written_dump
                                 .as_ref()
                                 .ok_or(anyhow!("No dump file remembered"))?;
-                            let filename = path.file_name().ok_or(anyhow!("Invalid file name"))?.to_string_lossy();
+                            let filename = path
+                                .file_name()
+                                .ok_or(anyhow!("Invalid file name"))?
+                                .to_string_lossy();
                             let new_filename = format!("{filename}.attach.{id}");
                             let mut attach_path: std::path::PathBuf = path.clone();
                             attach_path.set_file_name(new_filename);
@@ -238,11 +255,10 @@ pub fn crashhandling_server() {
 
     let maybe_base_json: Option<String> = std::env::var("SHOOP_CRASH_METADATA_BASE_JSON").ok();
     let base_json: JsonValue = if let Some(base_json_str) = maybe_base_json {
-        serde_json::from_str(&base_json_str)
-            .unwrap_or_else(|_| {
-                 error!("invalid base crash handling json");
-                 serde_json::json!({ "environment": "unknown", "error": "invalid_base_json" })
-            })
+        serde_json::from_str(&base_json_str).unwrap_or_else(|_| {
+            error!("invalid base crash handling json");
+            serde_json::json!({ "environment": "unknown", "error": "invalid_base_json" })
+        })
     } else {
         serde_json::json!({ "environment": "unknown" })
     };
@@ -254,15 +270,14 @@ pub fn crashhandling_server() {
     // it may cause deadlocks because of trying to write to the
     // nonexistent parent process' output stream.
 
-    let result = server
-        .run(
-            Box::new(Handler {
-                json: Mutex::new(base_json),
-                last_written_dump: Mutex::new(None),
-            }),
-            &ab,
-            Some(std::time::Duration::from_millis(5000)),
-        );
+    let result = server.run(
+        Box::new(Handler {
+            json: Mutex::new(base_json),
+            last_written_dump: Mutex::new(None),
+        }),
+        &ab,
+        Some(std::time::Duration::from_millis(5000)),
+    );
 
     if let Err(e) = result {
         error!("failed to run server: {}", e);

@@ -23,6 +23,7 @@ use crate::midi_event_helpers::MidiEventToQVariant;
 use crate::midi_io;
 use crate::smf::{parse_smf, to_smf};
 
+use anyhow::anyhow;
 use dunce;
 use std::collections::HashMap;
 use std::env;
@@ -30,7 +31,6 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::thread;
 use std::time::{Duration, Instant};
-use anyhow::anyhow;
 
 pub fn register_qml_singleton(module_name: &str, type_name: &str) {
     let mut mdl = String::from(module_name);
@@ -69,9 +69,8 @@ fn save_data_to_soundfile_impl<'a>(
     n_frames: usize,
     n_channels: usize,
 ) -> Result<(), anyhow::Error> {
-    let (major_format, subtype_format) = get_formats_for(filename).ok_or(anyhow!(
-        "No format available for filename: {filename:?}"
-    ))?;
+    let (major_format, subtype_format) = get_formats_for(filename)
+        .ok_or(anyhow!("No format available for filename: {filename:?}"))?;
 
     // Reshape
     let mut reshaped: Vec<f32> = Vec::default();
@@ -125,8 +124,8 @@ pub fn save_qlist_data_to_soundfile_impl(
                 if n_frames.is_none() {
                     n_frames = Some(qlist.len() as usize);
                 } else if qlist.len() as usize != n_frames.unwrap_or(0) {
-                     // Since we checked is_none above, unwrap_or(0) is safe/fallback.
-                     // But logic dictates n_frames is Some here.
+                    // Since we checked is_none above, unwrap_or(0) is safe/fallback.
+                    // But logic dictates n_frames is Some here.
                     return Err(anyhow!("Inconsistent data size across channels"));
                 }
                 qlists.push(qlist);
@@ -154,9 +153,7 @@ pub fn save_qlist_data_to_soundfile_impl(
             1,
         )?;
     } else {
-        return Err(anyhow!(
-            "Unsupported QVariant type for saving audio file."
-        ));
+        return Err(anyhow!("Unsupported QVariant type for saving audio file."));
     }
 
     Ok(())
@@ -477,7 +474,11 @@ fn qvariant_loop_gui_to_loop_backend(
 
     if !maybe_loop_ptr.is_null() {
         match unsafe { LoopGui::from_qobject_mut_ptr(maybe_loop_ptr) } {
-            Ok(l) => l.backend_loop_wrapper.copy().map_err(|_| error!("Failed to copy loop backend wrapper")).ok(),
+            Ok(l) => l
+                .backend_loop_wrapper
+                .copy()
+                .map_err(|_| error!("Failed to copy loop backend wrapper"))
+                .ok(),
             Err(_) => None,
         }
     } else {
@@ -628,8 +629,8 @@ impl FileIO {
         let temp_dir = tempdir();
         match temp_dir {
             Ok(d) => {
-                let path = dunce::canonicalize(d.keep().to_owned())
-                    .unwrap_or_else(|_| PathBuf::from("."));
+                let path =
+                    dunce::canonicalize(d.keep().to_owned()).unwrap_or_else(|_| PathBuf::from("."));
                 let ppath = path.to_string_lossy().into_owned();
                 debug!("created temporary folder: {}", ppath);
                 return QString::from(ppath);
@@ -997,14 +998,16 @@ impl FileIO {
 
         let mut qlists: QList_QVariant = QList::default();
         for shared in qlist_qvariant_channels_to_backend(&channels).iter() {
-            let shared_ptr_res = shared.as_ref().ok_or_else(|| anyhow!("Shared pointer is null"))
+            let shared_ptr_res = shared
+                .as_ref()
+                .ok_or_else(|| anyhow!("Shared pointer is null"))
                 .and_then(|ptr| ptr.data().map_err(|_| anyhow!("Shared data is null")));
 
             let ptr = match shared_ptr_res {
                 Ok(p) => p,
                 Err(e) => {
-                     error!("Failed to get shared pointer: {}", e);
-                     continue;
+                    error!("Failed to get shared pointer: {}", e);
+                    continue;
                 }
             };
 
@@ -1018,11 +1021,11 @@ impl FileIO {
                     Ok(data) => {
                         debug!("channel yielded {} frames of audio data", data.len());
                         let variant = match qlist_f32_to_qvariant(&data) {
-                             Ok(v) => v,
-                             Err(e) => {
-                                 error!("Failed to convert f32 list to QVariant: {:?}", e);
-                                 QVariant::default()
-                             }
+                            Ok(v) => v,
+                            Err(e) => {
+                                error!("Failed to convert f32 list to QVariant: {:?}", e);
+                                QVariant::default()
+                            }
                         };
                         qlists.append(variant);
                     }
@@ -1054,15 +1057,17 @@ impl FileIO {
         let mut success = true;
         let mut qlists: QList_QVariant = QList::default();
         for shared in qlist_qvariant_channels_to_backend(&channels).iter() {
-            let shared_ptr_res = shared.as_ref().ok_or_else(|| anyhow!("Shared pointer is null"))
+            let shared_ptr_res = shared
+                .as_ref()
+                .ok_or_else(|| anyhow!("Shared pointer is null"))
                 .and_then(|ptr| ptr.data().map_err(|_| anyhow!("Shared data is null")));
 
             let ptr = match shared_ptr_res {
                 Ok(p) => p,
                 Err(e) => {
-                     error!("Failed to get shared pointer: {}", e);
-                     success = false;
-                     continue;
+                    error!("Failed to get shared pointer: {}", e);
+                    success = false;
+                    continue;
                 }
             };
 
@@ -1073,16 +1078,14 @@ impl FileIO {
                     connection_types::BLOCKING_QUEUED_CONNECTION,
                     &(),
                 ) {
-                    Ok(data) => {
-                        match qlist_f32_to_qvariant(&data) {
-                             Ok(v) => qlists.append(v),
-                             Err(e) => {
-                                 error!("Failed to convert f32 list to QVariant: {:?}", e);
-                                 qlists.append(QVariant::default());
-                                 success = false;
-                             }
+                    Ok(data) => match qlist_f32_to_qvariant(&data) {
+                        Ok(v) => qlists.append(v),
+                        Err(e) => {
+                            error!("Failed to convert f32 list to QVariant: {:?}", e);
+                            qlists.append(QVariant::default());
+                            success = false;
                         }
-                    }
+                    },
                     Err(e) => {
                         error!("Failed to get audio data - ignoring during save: {e}");
                         qlists.append(QVariant::default());
@@ -1092,11 +1095,11 @@ impl FileIO {
             }
         }
         let variant = match qvariantlist_to_qvariant(&qlists) {
-             Ok(v) => v,
-             Err(e) => {
-                 error!("Failed to convert QVariantList: {:?}", e);
-                 return false;
-             }
+            Ok(v) => v,
+            Err(e) => {
+                error!("Failed to convert QVariantList: {:?}", e);
+                return false;
+            }
         };
         if let Err(e) = save_qlist_data_to_soundfile_impl(filename, samplerate, variant) {
             error!("Failed to save sound data to file: {e}");
@@ -1197,12 +1200,7 @@ impl FileIO {
                 );
                 result.insert(
                     QString::from("frames"),
-                    QVariant::from(
-                        &(sound_file
-                            .len()
-                            .unwrap_or(0)
-                            as i32),
-                    ),
+                    QVariant::from(&(sound_file.len().unwrap_or(0) as i32)),
                 );
                 result
             }
@@ -1237,7 +1235,10 @@ mod tests {
         let start = SystemTime::now();
         obj.wait_blocking(10);
         let end = SystemTime::now();
-        let diff = end.duration_since(start).expect("Time went backwards").as_millis();
+        let diff = end
+            .duration_since(start)
+            .expect("Time went backwards")
+            .as_millis();
         assert!(diff >= 10);
     }
 
@@ -1245,9 +1246,11 @@ mod tests {
     fn test_get_current_directory() -> Result<(), anyhow::Error> {
         use std::env;
         let obj = make_unique_fileio();
-        let prev = env::current_dir().map_err(|e| anyhow!("Could not get current directory: {e}"))?;
+        let prev =
+            env::current_dir().map_err(|e| anyhow!("Could not get current directory: {e}"))?;
         let dir = obj.create_temporary_folder();
-        env::set_current_dir(dir.to_string()).map_err(|e| anyhow!("Could not set current directory: {e}"))?;
+        env::set_current_dir(dir.to_string())
+            .map_err(|e| anyhow!("Could not set current directory: {e}"))?;
         let current = obj.get_current_directory();
         env::set_current_dir(&prev).map_err(|e| anyhow!("Could not set current directory: {e}"))?;
         assert_eq!(current.to_string(), dir.to_string());
@@ -1347,9 +1350,12 @@ mod tests {
     #[test]
     fn test_glob() -> Result<(), anyhow::Error> {
         let folder = tempfile::tempdir().map_err(|e| anyhow!("Could not create temp dir: {e}"))?;
-        std::fs::create_dir(folder.path().join("testfolder")).map_err(|e| anyhow!("Could not create testfolder: {e}"))?;
-        std::fs::write(folder.path().join("test1"), "test").map_err(|e| anyhow!("Could not write test1: {e}"))?;
-        std::fs::write(folder.path().join("test2"), "test").map_err(|e| anyhow!("Could not write test2: {e}"))?;
+        std::fs::create_dir(folder.path().join("testfolder"))
+            .map_err(|e| anyhow!("Could not create testfolder: {e}"))?;
+        std::fs::write(folder.path().join("test1"), "test")
+            .map_err(|e| anyhow!("Could not write test1: {e}"))?;
+        std::fs::write(folder.path().join("test2"), "test")
+            .map_err(|e| anyhow!("Could not write test2: {e}"))?;
         std::fs::write(folder.path().join("testfolder").join("test1"), "test")
             .map_err(|e| anyhow!("Could not write test1 in testfolder: {e}"))?;
         std::fs::write(folder.path().join("testfolder").join("test2"), "test")

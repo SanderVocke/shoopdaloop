@@ -156,10 +156,7 @@ pub fn build_test_binaries_folder(
     cargo_profile: &str,
 ) -> Result<(), anyhow::Error> {
     if output_dir.exists() {
-        return Err(anyhow!(
-            "Output directory {:?} already exists",
-            output_dir
-        ));
+        return Err(anyhow!("Output directory {:?} already exists", output_dir));
     }
     if !output_dir
         .parent()

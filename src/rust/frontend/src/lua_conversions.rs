@@ -136,7 +136,9 @@ impl IntoLuaExtended for QVariant {
                 convert!(i64)
             }
             _v if _v == qmetatype_id_uint() => convert!(i64),
-            _v if _v == qmetatype_id_uchar() || qvariant_type_name(&self).unwrap_or("unknown") == "uchar" => {
+            _v if _v == qmetatype_id_uchar()
+                || qvariant_type_name(&self).unwrap_or("unknown") == "uchar" =>
+            {
                 convert!(u8)
             }
             _v if _v == qmetatype_id_uint64() => convert!(i64),
@@ -144,7 +146,14 @@ impl IntoLuaExtended for QVariant {
             _v if _v == qmetatype_id_float() => convert!(f32),
             _v if _v == qmetatype_id_double() => convert!(f64),
             _v if _v == qmetatype_id_qstring() => {
-                let str = self.value::<QString>().ok_or(mlua::Error::ToLuaConversionError { from: "QVariant".to_string(), to: "QString", message: Some("Value is not QString".to_string()) })?.to_string();
+                let str = self
+                    .value::<QString>()
+                    .ok_or(mlua::Error::ToLuaConversionError {
+                        from: "QVariant".to_string(),
+                        to: "QString",
+                        message: Some("Value is not QString".to_string()),
+                    })?
+                    .to_string();
                 str.into_lua(lua)
             }
             _v if _v == qmetatype_id_qvariantmap() => {
@@ -296,7 +305,7 @@ impl FromLuaExtended for QMap<QMapPair_QString_QVariant> {
         }
 
         if let Some(table) = value.as_table() {
-             table.for_each(|key, value| -> mlua::Result<()> {
+            table.for_each(|key, value| -> mlua::Result<()> {
                 let key: QString = QString::from(<String as mlua::FromLua>::from_lua(key, lua)?);
                 let variant = QVariant::from_lua(value, lua)?;
                 rval.insert(key, variant);

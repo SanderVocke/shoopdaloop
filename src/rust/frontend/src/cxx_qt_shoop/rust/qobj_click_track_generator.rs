@@ -1,5 +1,5 @@
-use std::{collections::BTreeMap, path::PathBuf};
 use anyhow::anyhow;
+use std::{collections::BTreeMap, path::PathBuf};
 
 pub use crate::cxx_qt_shoop::qobj_click_track_generator_bridge::ffi::ClickTrackGenerator;
 use crate::init::GLOBAL_CONFIG;

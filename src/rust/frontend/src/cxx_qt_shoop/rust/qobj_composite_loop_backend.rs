@@ -116,8 +116,8 @@ impl CompositeLoopBackend {
             .collect::<Result<Vec<*mut QObject>, _>>();
 
         if let Err(e) = loops_iter {
-             error!(self, "Failed to extract loop pointers for transition: {e}");
-             return;
+            error!(self, "Failed to extract loop pointers for transition: {e}");
+            return;
         }
         let loop_ptrs = match loops_iter {
             Ok(ptrs) => ptrs,
@@ -375,7 +375,9 @@ impl CompositeLoopBackend {
                             loop_recording_starts.insert(*loop_obj, *iteration);
                         } else {
                             // FIXME: Avoid panic call
-                            let v = loop_recording_starts.get_mut(loop_obj).expect("Guarded by contains_key");
+                            let v = loop_recording_starts
+                                .get_mut(loop_obj)
+                                .expect("Guarded by contains_key");
                             *v = min(*v, *iteration);
                         }
                     }
@@ -383,8 +385,7 @@ impl CompositeLoopBackend {
             }
             for (iteration, transitions) in transitions.iter() {
                 for (loop_obj, mode) in transitions.iter() {
-                    if *mode != LoopMode::Recording
-                        && loop_recording_starts.contains_key(loop_obj)
+                    if *mode != LoopMode::Recording && loop_recording_starts.contains_key(loop_obj)
                     {
                         if let Some(start) = loop_recording_starts.get(loop_obj) {
                             if iteration > start {
@@ -392,13 +393,14 @@ impl CompositeLoopBackend {
                                     loop_recording_ends.insert(*loop_obj, *iteration);
                                 } else {
                                     // FIXME: Avoid panic call
-                                    let v = loop_recording_ends.get_mut(loop_obj).expect("Guarded by contains_key");
+                                    let v = loop_recording_ends
+                                        .get_mut(loop_obj)
+                                        .expect("Guarded by contains_key");
                                     *v = min(*v, *iteration);
                                 }
                             }
                         }
                     }
-
                 }
             }
 
@@ -1034,7 +1036,10 @@ impl CompositeLoopBackend {
     }
 
     pub fn metatype_name() -> String {
-        unsafe { composite_loop_backend_metatype_name(std::ptr::null_mut()).unwrap_or_else(|_| "unknown".to_string()) }
+        unsafe {
+            composite_loop_backend_metatype_name(std::ptr::null_mut())
+                .unwrap_or_else(|_| "unknown".to_string())
+        }
     }
 
     pub fn dependent_will_handle_sync_loop_cycle(

@@ -2,9 +2,9 @@ use cxx_qt_lib_shoop::qjsonobject::QJsonObject;
 
 pub use crate::cxx_qt_shoop::qobj_settings_io_bridge::ffi::SettingsIO;
 use crate::cxx_qt_shoop::qobj_settings_io_bridge::ffi::*;
+use anyhow::anyhow;
 use common::logging::macros::*;
 use std::path::PathBuf;
-use anyhow::anyhow;
 shoop_log_unit!("Frontend.SettingsIO");
 
 pub fn register_qml_singleton(module_name: &str, type_name: &str) {
@@ -42,7 +42,9 @@ impl SettingsIO {
                     .ok_or(anyhow!("override_filename is not a string"))?
                     .to_string(),
             };
-            let settings_dir = self.settings_dir().map_err(|e| anyhow!("Failed to get settings dir: {e}"))?;
+            let settings_dir = self
+                .settings_dir()
+                .map_err(|e| anyhow!("Failed to get settings dir: {e}"))?;
             if !settings_dir.exists() {
                 std::fs::create_dir_all(&settings_dir)?;
             }
@@ -76,8 +78,8 @@ impl SettingsIO {
                 return Ok(QVariant::default());
             }
             let json = std::fs::read_to_string(&path)?;
-            let json = QJsonObject::from_json(&json)
-                .map_err(|e| anyhow!("Failed to convert: {e}"))?;
+            let json =
+                QJsonObject::from_json(&json).map_err(|e| anyhow!("Failed to convert: {e}"))?;
             let json = json.as_ref().ok_or(anyhow!("Failed to convert"))?;
             let jsonstr = json
                 .to_json()
