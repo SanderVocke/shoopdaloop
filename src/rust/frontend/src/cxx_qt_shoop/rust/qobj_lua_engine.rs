@@ -86,7 +86,12 @@ impl LuaEngine {
                     maybe_script_name.as_ref().map(|s| s.as_str()),
                     sandboxed,
                 )?;
-            let eng_impl = self.engine.as_ref().unwrap().lua.borrow();
+            let eng_impl = self
+                .engine
+                .as_ref()
+                .ok_or(anyhow!("engine not initialized for QVariant conversion"))?
+                .lua
+                .borrow();
             QVariant::from_lua(lua_val, &eng_impl.lua)
                 .map_err(|e| anyhow!("Failed to map to QVariant: {e}"))
         }() {
@@ -102,7 +107,7 @@ impl LuaEngine {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             let maybe_script_name: Option<String> =
                 maybe_script_name.value::<QString>().map(|s| s.to_string());
-            self.engine.as_ref().unwrap().execute(
+            self.engine.as_ref().ok_or(anyhow!("engine not initialized"))?.execute(
                 code.to_string().as_str(),
                 maybe_script_name.as_ref().map(|s| s.as_str()),
                 sandboxed,
@@ -204,10 +209,15 @@ impl WrappedLuaCallback {
     }
 
     // Create an unique ptr instance.
-    pub fn create_unique_ptr(callback: RustToLuaCallback) -> cxx::UniquePtr<WrappedLuaCallback> {
+    pub fn create_unique_ptr(
+        callback: RustToLuaCallback,
+    ) -> Result<cxx::UniquePtr<WrappedLuaCallback>, anyhow::Error> {
         let mut cb = unsafe { make_unique_wrapped_lua_callback() };
-        cb.as_mut().unwrap().rust_mut().callback = RefCell::new(Some(callback));
-        cb
+        cb.as_mut()
+            .ok_or(anyhow!("Failed to create unique ptr"))?
+            .rust_mut()
+            .callback = RefCell::new(Some(callback));
+        Ok(cb)
     }
 
     pub fn create_raw_with_parent(
@@ -318,30 +328,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_basic_eval_expression_sandboxed() {
+    #[test]
+    fn test_basic_eval_expression_sandboxed() -> Result<(), anyhow::Error> {
         GLOBAL_CONFIG.get_or_init(|| ShoopConfig::default());
         let eng = LuaEngine::make_unique();
-        assert_eq!(
-            eng.as_ref()
-                .unwrap()
-                .evaluate(QString::from("return 1 + 1"), QVariant::default(), true)
-                .value::<i64>()
-                .unwrap(),
-            2
-        );
+        let val = eng
+            .as_ref()
+            .ok_or(anyhow!("Engine is null"))?
+            .evaluate(QString::from("return 1 + 1"), QVariant::default(), true)
+            .value::<i64>()
+            .ok_or(anyhow!("Result is not an i64"))?;
+        assert_eq!(val, 2);
+        Ok(())
     }
 
     #[test]
-    fn test_basic_eval_expression_unsandboxed() {
+    fn test_basic_eval_expression_unsandboxed() -> Result<(), anyhow::Error> {
         GLOBAL_CONFIG.get_or_init(|| ShoopConfig::default());
         let eng = LuaEngine::make_unique();
-        assert_eq!(
-            eng.as_ref()
-                .unwrap()
-                .evaluate(QString::from("return 1 + 1"), QVariant::default(), false)
-                .value::<i64>()
-                .unwrap(),
-            2
-        );
+        let val = eng
+            .as_ref()
+            .ok_or(anyhow!("Engine is null"))?
+            .evaluate(QString::from("return 1 + 1"), QVariant::default(), false)
+            .value::<i64>()
+            .ok_or(anyhow!("Result is not an i64"))?;
+        assert_eq!(val, 2);
+        Ok(())
     }
 }

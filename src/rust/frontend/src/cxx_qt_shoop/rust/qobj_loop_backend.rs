@@ -55,11 +55,13 @@ impl LoopBackend {
         } else {
             debug!(self, "set length -> {}", length);
             let mut rust = self.as_mut().rust_mut();
-            rust.backend_loop
-                .as_mut()
-                .expect("Backend loop object doesn't exist")
-                .set_length(length as u32)
-                .expect("Failed to set length on backend loop");
+            if let Some(loop_obj) = rust.backend_loop.as_mut() {
+                if let Err(e) = loop_obj.set_length(length as u32) {
+                    error!(self, "Failed to set length on backend loop: {e}");
+                }
+            } else {
+                error!(self, "Backend loop object doesn't exist when setting length");
+            }
         }
     }
 
@@ -72,11 +74,13 @@ impl LoopBackend {
         } else {
             debug!(self, "set position -> {}", position);
             let mut rust = self.as_mut().rust_mut();
-            rust.backend_loop
-                .as_mut()
-                .expect("Backend loop object doesn't exist")
-                .set_position(position as u32)
-                .expect("Failed to set position on backend loop");
+            if let Some(loop_obj) = rust.backend_loop.as_mut() {
+                if let Err(e) = loop_obj.set_position(position as u32) {
+                    error!(self, "Failed to set position on backend loop: {e}");
+                }
+            } else {
+                error!(self, "Backend loop object doesn't exist when setting position");
+            }
         }
     }
 
@@ -123,13 +127,10 @@ impl LoopBackend {
             unsafe {
                 initialize_condition = !self.get_initialized()
                     && self.as_ref().backend != std::ptr::null_mut()
-                    && qobject::qobject_property_bool(
-                        self.backend
-                            .as_ref()
-                            .ok_or_else(|| anyhow!("Backend is null"))?,
-                        "ready",
-                    )
-                    .unwrap_or(false)
+                    && match self.backend.as_ref() {
+                        Some(backend) => qobject::qobject_property_bool(backend, "ready").unwrap_or(false),
+                        None => false,
+                    }
                     && self.as_ref().backend_loop.is_none();
             }
 
@@ -137,7 +138,6 @@ impl LoopBackend {
                 debug!(self, "Initializing");
                 unsafe {
                     let backend = BackendWrapper::from_qobject_mut_ptr(self.as_ref().backend)?;
-                    // FIXME: unwraps
                     let backend_session = backend
                         .session
                         .as_ref()

@@ -452,17 +452,32 @@ impl LoopChannelBackend {
                                 .ok_or(anyhow!("port went out of scope"))?)
                         },
                     )
-                    .filter(|result| {
-                        result.is_ok()
-                            && !result
-                                .as_ref()
-                                .unwrap()
-                                .data()
-                                .unwrap_or(std::ptr::null_mut())
-                                .is_null()
+                    .filter_map(|result| {
+                        match result {
+                            Ok(strong) => {
+                                let ptr = strong.data().unwrap_or(std::ptr::null_mut());
+                                if ptr.is_null() {
+                                    None
+                                } else {
+                                     match strong.copy() {
+                                         Ok(copied) => {
+                                             let data_ptr = strong.data().unwrap_or(std::ptr::null_mut());
+                                              if data_ptr.is_null() {
+                                                 None
+                                              } else {
+                                                 Some((copied, data_ptr))
+                                              }
+                                         },
+                                         Err(e) => {
+                                             error!(self, "failed to copy strong ptr: {e}");
+                                             None
+                                         }
+                                     }
+                                }
+                            }
+                            Err(_) => None,
+                        }
                     })
-                    .map(|result| result.unwrap())
-                    .map(|strong| (strong.copy().unwrap(), strong.data().unwrap()))
                     .collect();
 
             let mut strong_connected: Vec<(cxx::UniquePtr<QSharedPointer_QObject>, *mut QObject)> =
@@ -475,17 +490,32 @@ impl LoopChannelBackend {
                                 .ok_or(anyhow!("Port went out of scope"))?)
                         },
                     )
-                    .filter(|result| {
-                        result.is_ok()
-                            && !result
-                                .as_ref()
-                                .unwrap()
-                                .data()
-                                .unwrap_or(std::ptr::null_mut())
-                                .is_null()
+                    .filter_map(|result| {
+                        match result {
+                            Ok(strong) => {
+                                let ptr = strong.data().unwrap_or(std::ptr::null_mut());
+                                if ptr.is_null() {
+                                    None
+                                } else {
+                                     match strong.copy() {
+                                         Ok(copied) => {
+                                            let data_ptr = strong.data().unwrap_or(std::ptr::null_mut());
+                                              if data_ptr.is_null() {
+                                                 None
+                                              } else {
+                                                 Some((copied, data_ptr))
+                                              }
+                                         },
+                                         Err(e) => {
+                                             error!(self, "failed to copy strong ptr: {e}");
+                                             None
+                                         }
+                                     }
+                                }
+                            }
+                            Err(_) => None,
+                        }
                     })
-                    .map(|result| result.unwrap())
-                    .map(|strong| (strong.copy().unwrap(), strong.data().unwrap()))
                     .collect();
 
             let amount_to_connect = strong_to_connect.len();

@@ -2377,7 +2377,7 @@ impl SessionControlHandlerLuaTarget {
             callback: connected_callback.clone(),
             weak_lua: Arc::downgrade(lua),
         };
-        let mut wrapped_connected = WrappedLuaCallback::create_unique_ptr(connected_callback);
+        let mut wrapped_connected = WrappedLuaCallback::create_unique_ptr(connected_callback)?;
         let mut wrapped_connected_pin = wrapped_connected.pin_mut();
         wrapped_connected_pin.as_mut().rust_mut().stored_arg =
             mlua::MultiValue::from_vec(vec![mlua::Value::Table(lua_module.clone())]);
@@ -2385,7 +2385,7 @@ impl SessionControlHandlerLuaTarget {
             callback: opened_callback.clone(),
             weak_lua: Arc::downgrade(lua),
         };
-        let mut wrapped_opened = WrappedLuaCallback::create_unique_ptr(opened_callback);
+        let mut wrapped_opened = WrappedLuaCallback::create_unique_ptr(opened_callback)?;
         let mut wrapped_opened_pin = wrapped_opened.pin_mut();
         wrapped_opened_pin.as_mut().rust_mut().stored_arg =
             mlua::MultiValue::from_vec(vec![mlua::Value::Table(lua_module)]);
@@ -2482,7 +2482,7 @@ impl SessionControlHandlerLuaTarget {
             callback: msg_callback.clone(),
             weak_lua: Arc::downgrade(lua),
         };
-        let mut wrapped_msg = WrappedLuaCallback::create_unique_ptr(msg_callback);
+        let mut wrapped_msg = WrappedLuaCallback::create_unique_ptr(msg_callback)?;
         let wrapped_msg_pin = wrapped_msg.pin_mut();
 
         // Connect the signals to the callbacks

@@ -354,8 +354,11 @@ impl CompositeLoopGui {
             }
 
             let mut rust_mut = self.as_mut().rust_mut();
-            rust_mut.backend_loop_wrapper =
-                QSharedPointer_QObject::from_ptr_delete_later(backend_loop_qobj).unwrap();
+            if let Ok(wrapper) = QSharedPointer_QObject::from_ptr_delete_later(backend_loop_qobj) {
+                rust_mut.backend_loop_wrapper = wrapper;
+            } else {
+                error!(self, "Failed to create shared pointer for backend loop");
+            }
         }
     }
 
@@ -405,7 +408,10 @@ impl CompositeLoopGui {
                         if backend_loop.is_null() {
                             warn!(self, "Backend loop in sync source is null");
                         }
-                        qvariant_to_qobject_ptr(&backend_loop).unwrap()
+                        qvariant_to_qobject_ptr(&backend_loop).unwrap_or_else(|e| {
+                            error!(self, "Failed to convert variant to qobject ptr: {e}");
+                            std::ptr::null_mut()
+                        })
                     }
                     Err(e) => {
                         error!(self, "Unable to get backend loop: {e}");
@@ -701,10 +707,15 @@ impl CompositeLoopGui {
     }
 
     pub fn get_backend_loop_shared_ptr(self: Pin<&mut CompositeLoopGui>) -> QVariant {
-        qsharedpointer_qobject_to_qvariant(&self.backend_loop_wrapper.as_ref().unwrap()).unwrap_or_else(|e| {
-            error!(self, "Failed to convert shared pointer to qvariant: {e}");
+        if let Some(wrapper) = self.backend_loop_wrapper.as_ref() {
+            qsharedpointer_qobject_to_qvariant(wrapper).unwrap_or_else(|e| {
+                error!(self, "Failed to convert shared pointer to qvariant: {e}");
+                QVariant::default()
+            })
+        } else {
+            error!(self, "Backend loop wrapper is not initialized");
             QVariant::default()
-        })
+        }
     }
 }
 

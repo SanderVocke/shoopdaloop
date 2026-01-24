@@ -3,6 +3,7 @@ use crate::test_results::*;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::qobject::qobject_property_qvariant;
 use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qvariantmap;
+use cxx_qt_lib::QVariant;
 use glob::glob;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -119,7 +120,11 @@ Totals:
             let mut rust_mut = self.as_mut().rust_mut();
             let test_file = rust_mut.test_files_to_run.remove(0);
 
-            let filename = test_file.file_name().unwrap().to_string_lossy();
+            let filename = test_file
+                .file_name()
+                .ok_or(anyhow!("Invalid file name"))
+                .map(|s| s.to_string_lossy())
+                .unwrap_or_else(|_| "unknown".into());
 
             println!();
             info!("===== Test file: {filename} =====");
@@ -194,15 +199,15 @@ Totals:
             {
                 let runner = self.as_ref().testcase_runner;
                 let results_variant =
-                    qobject_property_qvariant(&*runner, "testcase_results").unwrap();
-                results = qvariant_to_qvariantmap(&results_variant).unwrap();
+                    qobject_property_qvariant(&*runner, "testcase_results").unwrap_or(QVariant::default());
+                results = qvariant_to_qvariantmap(&results_variant).unwrap_or(cxx_qt_lib::QMap::<cxx_qt_lib::QMapPair_QString_QVariant>::default());
             }
 
             {
                 let mut rust_mut = self.as_mut().rust_mut();
                 let our_results = &mut rust_mut.test_results;
                 results.iter().try_for_each(|(testcase_name, testcase_content) : (&QString, &cxx_qt_lib::QVariant)| -> Result<(), anyhow::Error> {
-                    let fn_results  = qvariant_to_qvariantmap(testcase_content).unwrap();
+                    let fn_results  = qvariant_to_qvariantmap(testcase_content).unwrap_or_default();
                     let mut testcase_results : TestCaseResults = TestCaseResults::default();
                     testcase_results.name = testcase_name.to_string();
                     fn_results.iter().try_for_each(|(testfn_name, testfn_content)| -> Result<(), anyhow::Error> {
@@ -219,7 +224,7 @@ Totals:
                     })?;
                     our_results.test_case_results.push(testcase_results);
                     Ok(())
-                }).unwrap();
+                }).unwrap_or_else(|e| error!("{e}"));
             }
         }
 

@@ -82,7 +82,11 @@ impl ffi::RenderAudioWaveform {
 
                     let shared = notifier_shared;
                     invoke::<_, (), _>(
-                        &mut *shared.as_ref().unwrap().data().unwrap(),
+                        &mut *shared
+                            .as_ref()
+                            .ok_or(anyhow!("notifier_shared is None"))?
+                            .data()
+                            .map_err(|e| anyhow!("notifier_shared data error: {e}"))?,
                         "notify_done()",
                         connection_types::DIRECT_CONNECTION,
                         &(),
@@ -199,18 +203,21 @@ impl ffi::RenderAudioWaveform {
         let color = QColor::from_rgb((0.7 * 255.0) as i32, 0, 0);
         let mut pen = QPen::default();
         pen.set_color(&color);
-        let mut_painter = painter.as_mut().unwrap();
-        let mut p: Pin<&mut QPainter> = Pin::new_unchecked(mut_painter);
-        p.as_mut().set_pen(&pen);
-        p.as_mut().draw_linefs(&lines);
-        let mut center_line = QLine::default();
-        center_line.set_line(
-            0,
-            (0.5 * self.size().height()) as i32,
-            self.size().width() as i32,
-            (0.5 * self.size().height()) as i32,
-        );
-        p.draw_line(&center_line);
+        if let Some(mut_painter) = painter.as_mut() {
+            let mut p: Pin<&mut QPainter> = Pin::new_unchecked(mut_painter);
+            p.as_mut().set_pen(&pen);
+            p.as_mut().draw_linefs(&lines);
+            let mut center_line = QLine::default();
+            center_line.set_line(
+                0,
+                (0.5 * self.size().height()) as i32,
+                self.size().width() as i32,
+                (0.5 * self.size().height()) as i32,
+            );
+            p.draw_line(&center_line);
+        } else {
+             error!("Could not get mutable painter");
+        }
     }
 }
 

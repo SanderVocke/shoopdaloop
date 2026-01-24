@@ -119,7 +119,13 @@ impl CompositeLoopBackend {
              error!(self, "Failed to extract loop pointers for transition: {e}");
              return;
         }
-        let loop_ptrs = loops_iter.unwrap();
+        let loop_ptrs = match loops_iter {
+            Ok(ptrs) => ptrs,
+            Err(e) => {
+                error!(self, "Failed to extract loop pointers for transition: {e}");
+                return;
+            }
+        };
 
         let mode = match LoopMode::try_from(to_mode) {
             Ok(m) => m,
@@ -324,7 +330,7 @@ impl CompositeLoopBackend {
             other => Some(other),
         };
         if maybe_to_sync_at_cycle.is_some() {
-            self.transition_with_immediate_sync(to_mode, maybe_to_sync_at_cycle.unwrap());
+            self.transition_with_immediate_sync(to_mode, maybe_to_sync_at_cycle.unwrap_or(0));
         } else {
             self.transition_regular(to_mode, maybe_cycles_delay);
         }
@@ -993,7 +999,7 @@ impl CompositeLoopBackend {
                 let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
                 let next_mode: Option<LoopMode> = LoopMode::try_from(self.next_mode).ok();
                 let next_mode_is_running_mode =
-                    next_mode.is_some() && is_running_mode(next_mode.unwrap());
+                    next_mode.is_some() && is_running_mode(next_mode.unwrap_or(LoopMode::Unknown));
                 let self_mode = LoopMode::try_from(self.mode)?;
                 debug!(self, "Extra trigger for cycle end");
                 if self.kind.to_string() == "script"
