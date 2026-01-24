@@ -102,7 +102,7 @@ impl RenderMidiSequence {
             trace!("Got {} events", vector.len());
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.notes =
-                msgs_to_notes(vector.iter().map(|v| MidiEvent::from_qvariant(&v).unwrap()))
+                msgs_to_notes(vector.iter().filter_map(|v| MidiEvent::from_qvariant(&v).ok()))
                     .iter()
                     .map(|note| Note {
                         start: note.start_t as i64,

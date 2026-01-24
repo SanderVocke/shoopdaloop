@@ -2347,8 +2347,8 @@ impl SessionControlHandlerLuaTarget {
                         })
                         .collect();
 
-                    if error_msg.is_some() {
-                        return Err(anyhow!("{}", error_msg.unwrap()));
+                    if let Some(msg) = error_msg {
+                        return Err(anyhow!("{}", msg));
                     }
 
                     let port = weak_port
@@ -2694,12 +2694,14 @@ impl SessionControlHandlerLuaTarget {
         debug!("Garbage collect dangling Lua callbacks");
         self.midi_control_port_rules.borrow_mut().retain(|rule| {
             let cb_eng = rule.weak_lua.upgrade();
-            if cb_eng.is_none() {
-                let name = rule.port.borrow().name.to_string();
-                debug!("Removing MIDI control port rule for {name}: lua out of scope");
-                return false;
-            }
-            let cb_eng = cb_eng.unwrap();
+            let cb_eng = match cb_eng {
+                Some(eng) => eng,
+                None => {
+                    let name = rule.port.borrow().name.to_string();
+                    debug!("Removing MIDI control port rule for {name}: lua out of scope");
+                    return false;
+                }
+            };
             if !self.engine_is_installed(&cb_eng) {
                 debug!("Removing Lua callback: lua exists but was uninstalled");
                 return false;
@@ -2712,11 +2714,13 @@ impl SessionControlHandlerLuaTarget {
             .for_each(|callbacks| {
                 callbacks.retain(|cb| {
                     let cb_eng = cb.weak_lua.upgrade();
-                    if cb_eng.is_none() {
-                        debug!("Removing Lua callback: lua out of scope");
-                        return false;
-                    }
-                    let cb_eng = cb_eng.unwrap();
+                    let cb_eng = match cb_eng {
+                        Some(eng) => eng,
+                        None => {
+                            debug!("Removing Lua callback: lua out of scope");
+                            return false;
+                        }
+                    };
                     if !self.engine_is_installed(&cb_eng) {
                         debug!("Removing Lua callback: lua exists but was uninstalled");
                         return false;

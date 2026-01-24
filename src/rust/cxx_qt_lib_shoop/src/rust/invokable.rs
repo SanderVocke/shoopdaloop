@@ -1,4 +1,4 @@
-use cxx::Exception;
+
 use cxx_qt;
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 
@@ -289,7 +289,7 @@ pub trait Invokable<RetVal, Args> {
         _method: &str,
         _connection_type: u32,
         _args: &Args,
-    ) -> Result<RetVal, Exception> {
+    ) -> Result<RetVal, anyhow::Error> {
         panic!(
             "Invokable not implemented for return type {} and arguments type {}",
             std::any::type_name::<RetVal>(),
@@ -307,13 +307,13 @@ impl Invokable<(), ()> for ffi::QObject {
         method: &str,
         connection_type: u32,
         _args: &(),
-    ) -> Result<(), Exception> {
+    ) -> Result<(), anyhow::Error> {
         unsafe {
             ffi::invoke_noreturn_noargs(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -324,13 +324,13 @@ impl Invokable<i32, ()> for ffi::QObject {
         method: &str,
         connection_type: u32,
         _args: &(),
-    ) -> Result<i32, Exception> {
+    ) -> Result<i32, anyhow::Error> {
         unsafe {
             ffi::invoke_i32_noargs(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -341,13 +341,13 @@ impl Invokable<bool, ()> for ffi::QObject {
         method: &str,
         connection_type: u32,
         _args: &(),
-    ) -> Result<bool, Exception> {
+    ) -> Result<bool, anyhow::Error> {
         unsafe {
             ffi::invoke_bool_noargs(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -358,13 +358,13 @@ impl Invokable<ffi::QVector_f32, ()> for ffi::QObject {
         method: &str,
         connection_type: u32,
         _args: &(),
-    ) -> Result<ffi::QVector_f32, Exception> {
+    ) -> Result<ffi::QVector_f32, anyhow::Error> {
         unsafe {
             ffi::invoke_qvector_f32_noargs(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -375,13 +375,13 @@ impl Invokable<ffi::QVector_QVariant, ()> for ffi::QObject {
         method: &str,
         connection_type: u32,
         _args: &(),
-    ) -> Result<ffi::QVector_QVariant, Exception> {
+    ) -> Result<ffi::QVector_QVariant, anyhow::Error> {
         unsafe {
             ffi::invoke_qvector_qvariant_noargs(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -392,13 +392,13 @@ impl Invokable<QVariant, ()> for ffi::QObject {
         method: &str,
         connection_type: u32,
         _args: &(),
-    ) -> Result<QVariant, Exception> {
+    ) -> Result<QVariant, anyhow::Error> {
         unsafe {
             ffi::invoke_qvariant_noargs(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -409,14 +409,14 @@ impl Invokable<(), i32> for ffi::QObject {
         method: &str,
         connection_type: u32,
         args: &i32,
-    ) -> Result<(), Exception> {
+    ) -> Result<(), anyhow::Error> {
         unsafe {
             ffi::invoke_noreturn_i32(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
                 *args,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -427,14 +427,14 @@ impl Invokable<(), f32> for ffi::QObject {
         method: &str,
         connection_type: u32,
         args: &f32,
-    ) -> Result<(), Exception> {
+    ) -> Result<(), anyhow::Error> {
         unsafe {
             ffi::invoke_noreturn_f32(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
                 *args,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -445,7 +445,7 @@ impl Invokable<i32, (i32, i32)> for ffi::QObject {
         method: &str,
         connection_type: u32,
         args: &(i32, i32),
-    ) -> Result<i32, Exception> {
+    ) -> Result<i32, anyhow::Error> {
         unsafe {
             ffi::invoke_i32_i32_i32(
                 self as *mut ffi::QObject,
@@ -453,7 +453,7 @@ impl Invokable<i32, (i32, i32)> for ffi::QObject {
                 connection_type,
                 args.0,
                 args.1,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -464,7 +464,7 @@ impl Invokable<(), (i32, i32, i32)> for ffi::QObject {
         method: &str,
         connection_type: u32,
         args: &(i32, i32, i32),
-    ) -> Result<(), Exception> {
+    ) -> Result<(), anyhow::Error> {
         unsafe {
             ffi::invoke_noreturn_i32_i32_i32(
                 self as *mut ffi::QObject,
@@ -473,7 +473,7 @@ impl Invokable<(), (i32, i32, i32)> for ffi::QObject {
                 args.0,
                 args.1,
                 args.2,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -484,14 +484,14 @@ impl Invokable<(), ffi::QList_f32> for ffi::QObject {
         method: &str,
         connection_type: u32,
         arg: &ffi::QList_f32,
-    ) -> Result<(), Exception> {
+    ) -> Result<(), anyhow::Error> {
         unsafe {
             ffi::invoke_noreturn_qlistf32(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
                 arg.clone(),
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -502,14 +502,14 @@ impl Invokable<(), *mut ffi::QObject> for ffi::QObject {
         method: &str,
         connection_type: u32,
         arg: &*mut ffi::QObject,
-    ) -> Result<(), Exception> {
+    ) -> Result<(), anyhow::Error> {
         unsafe {
             ffi::invoke_noreturn_qobject(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
                 *arg,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -520,14 +520,14 @@ impl Invokable<(), bool> for ffi::QObject {
         method: &str,
         connection_type: u32,
         arg: &bool,
-    ) -> Result<(), Exception> {
+    ) -> Result<(), anyhow::Error> {
         unsafe {
             ffi::invoke_noreturn_bool(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
                 *arg,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -538,14 +538,14 @@ impl Invokable<(), QVariant> for ffi::QObject {
         method: &str,
         connection_type: u32,
         arg: &QVariant,
-    ) -> Result<(), Exception> {
+    ) -> Result<(), anyhow::Error> {
         unsafe {
             ffi::invoke_noreturn_qvariant(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
                 arg.clone(),
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -556,7 +556,7 @@ impl Invokable<(), (QVariant, QVariant)> for ffi::QObject {
         method: &str,
         connection_type: u32,
         args: &(QVariant, QVariant),
-    ) -> Result<(), Exception> {
+    ) -> Result<(), anyhow::Error> {
         unsafe {
             ffi::invoke_noreturn_qvariant_qvariant(
                 self as *mut ffi::QObject,
@@ -564,7 +564,7 @@ impl Invokable<(), (QVariant, QVariant)> for ffi::QObject {
                 connection_type,
                 args.0.clone(),
                 args.1.clone(),
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -575,14 +575,14 @@ impl Invokable<(), ffi::QVector_QVariant> for ffi::QObject {
         method: &str,
         connection_type: u32,
         arg: &ffi::QVector_QVariant,
-    ) -> Result<(), Exception> {
+    ) -> Result<(), anyhow::Error> {
         unsafe {
             ffi::invoke_noreturn_qvectorqvariant(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
                 arg.clone(),
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -593,14 +593,14 @@ impl Invokable<(), ffi::QVector_f32> for ffi::QObject {
         method: &str,
         connection_type: u32,
         arg: &ffi::QVector_f32,
-    ) -> Result<(), Exception> {
+    ) -> Result<(), anyhow::Error> {
         unsafe {
             ffi::invoke_noreturn_qvectorf32(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
                 arg.clone(),
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -611,7 +611,7 @@ impl Invokable<(), (ffi::QList_QVariant, i32, i32, i32)> for ffi::QObject {
         method: &str,
         connection_type: u32,
         args: &(ffi::QList_QVariant, i32, i32, i32),
-    ) -> Result<(), Exception> {
+    ) -> Result<(), anyhow::Error> {
         unsafe {
             ffi::invoke_noreturn_qlistqvariant_i32_i32_i32(
                 self as *mut ffi::QObject,
@@ -621,7 +621,7 @@ impl Invokable<(), (ffi::QList_QVariant, i32, i32, i32)> for ffi::QObject {
                 args.1,
                 args.2,
                 args.3,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -632,7 +632,7 @@ impl Invokable<(), (QVariant, QVariant, QVariant, i32)> for ffi::QObject {
         method: &str,
         connection_type: u32,
         args: &(QVariant, QVariant, QVariant, i32),
-    ) -> Result<(), Exception> {
+    ) -> Result<(), anyhow::Error> {
         unsafe {
             ffi::invoke_noreturn_qvariant_qvariant_qvariant_i32(
                 self as *mut ffi::QObject,
@@ -642,7 +642,7 @@ impl Invokable<(), (QVariant, QVariant, QVariant, i32)> for ffi::QObject {
                 args.1.clone(),
                 args.2.clone(),
                 args.3,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -653,7 +653,7 @@ impl Invokable<(), (QVariant, QVariant, QVariant, QVariant)> for ffi::QObject {
         method: &str,
         connection_type: u32,
         args: &(QVariant, QVariant, QVariant, QVariant),
-    ) -> Result<(), Exception> {
+    ) -> Result<(), anyhow::Error> {
         unsafe {
             ffi::invoke_noreturn_qvariant_qvariant_qvariant_qvariant(
                 self as *mut ffi::QObject,
@@ -663,7 +663,7 @@ impl Invokable<(), (QVariant, QVariant, QVariant, QVariant)> for ffi::QObject {
                 args.1.clone(),
                 args.2.clone(),
                 args.3.clone(),
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -674,14 +674,14 @@ impl Invokable<bool, QString> for ffi::QObject {
         method: &str,
         connection_type: u32,
         args: &ffi::QString,
-    ) -> Result<bool, Exception> {
+    ) -> Result<bool, anyhow::Error> {
         unsafe {
             ffi::invoke_bool_qstring(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
                 args.clone(),
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -692,13 +692,13 @@ impl Invokable<QMap<QMapPair_QString_QVariant>, ()> for ffi::QObject {
         method: &str,
         connection_type: u32,
         _args: &(),
-    ) -> Result<QMap<QMapPair_QString_QVariant>, Exception> {
+    ) -> Result<QMap<QMapPair_QString_QVariant>, anyhow::Error> {
         unsafe {
             ffi::invoke_qmapqstringqvariant_noargs(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -709,13 +709,13 @@ impl Invokable<QList<QVariant>, ()> for ffi::QObject {
         method: &str,
         connection_type: u32,
         _args: &(),
-    ) -> Result<QList<QVariant>, Exception> {
+    ) -> Result<QList<QVariant>, anyhow::Error> {
         unsafe {
             ffi::invoke_qlistqvariant_noargs(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -726,14 +726,14 @@ impl Invokable<(), ffi::QList_QVariant> for ffi::QObject {
         method: &str,
         connection_type: u32,
         arg: &ffi::QList_QVariant,
-    ) -> Result<(), Exception> {
+    ) -> Result<(), anyhow::Error> {
         unsafe {
             ffi::invoke_noreturn_qlistqvariant(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
                 arg.clone(),
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -744,7 +744,7 @@ impl Invokable<QList<QVariant>, (QString, i32, i32)> for ffi::QObject {
         method: &str,
         connection_type: u32,
         args: &(ffi::QString, i32, i32),
-    ) -> Result<QList<QVariant>, Exception> {
+    ) -> Result<QList<QVariant>, anyhow::Error> {
         unsafe {
             ffi::invoke_qlistqvariant_qstring_i32_i32(
                 self as *mut ffi::QObject,
@@ -753,7 +753,7 @@ impl Invokable<QList<QVariant>, (QString, i32, i32)> for ffi::QObject {
                 args.0.clone(),
                 args.1,
                 args.2,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -764,13 +764,13 @@ impl Invokable<ffi::QList_QString, ()> for ffi::QObject {
         method: &str,
         connection_type: u32,
         _args: &(),
-    ) -> Result<ffi::QList_QString, Exception> {
+    ) -> Result<ffi::QList_QString, anyhow::Error> {
         unsafe {
             ffi::invoke_qlistqstring_noargs(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -781,13 +781,13 @@ impl Invokable<ffi::QList_f32, ()> for ffi::QObject {
         method: &str,
         connection_type: u32,
         _args: &(),
-    ) -> Result<ffi::QList_f32, Exception> {
+    ) -> Result<ffi::QList_f32, anyhow::Error> {
         unsafe {
             ffi::invoke_qlistf32_noargs(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -798,14 +798,14 @@ impl Invokable<ffi::QList_f32, i32> for ffi::QObject {
         method: &str,
         connection_type: u32,
         arg: &i32,
-    ) -> Result<ffi::QList_f32, Exception> {
+    ) -> Result<ffi::QList_f32, anyhow::Error> {
         unsafe {
             ffi::invoke_qlistf32_i32(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
                 *arg,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -816,13 +816,13 @@ impl Invokable<*mut ffi::QObject, ()> for ffi::QObject {
         method: &str,
         connection_type: u32,
         _args: &(),
-    ) -> Result<*mut ffi::QObject, Exception> {
+    ) -> Result<*mut ffi::QObject, anyhow::Error> {
         unsafe {
             ffi::invoke_qobject_noargs(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -833,13 +833,13 @@ impl Invokable<ffi::QString, ()> for ffi::QObject {
         method: &str,
         connection_type: u32,
         _args: &(),
-    ) -> Result<ffi::QString, Exception> {
+    ) -> Result<ffi::QString, anyhow::Error> {
         unsafe {
             ffi::invoke_qstring_noargs(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
-            )
+            ).map_err(anyhow::Error::from)
         }
     }
 }
@@ -850,7 +850,7 @@ pub trait Invoker<RetVal, Args> {
         method: &str,
         connection_type: u32,
         args: &Args,
-    ) -> Result<RetVal, Exception>;
+    ) -> Result<RetVal, anyhow::Error>;
 }
 
 impl<RetVal, Args> Invoker<RetVal, Args> for ffi::QObject
@@ -862,7 +862,7 @@ where
         method: &str,
         connection_type: u32,
         args: &Args,
-    ) -> Result<RetVal, Exception> {
+    ) -> Result<RetVal, anyhow::Error> {
         self.invoke_fn_qobj(method, connection_type, args)
     }
 }
@@ -872,7 +872,7 @@ fn invoke_fn_qobj<RetVal, Args>(
     method: &str,
     connection_type: u32,
     args: &Args,
-) -> Result<RetVal, Exception>
+) -> Result<RetVal, anyhow::Error>
 where
     ffi::QObject: Invoker<RetVal, Args>,
 {
@@ -916,13 +916,16 @@ pub fn invoke<Object, RetVal, Args>(
     method: &str,
     connection_type: u32,
     args: &Args,
-) -> Result<RetVal, Exception>
+) -> Result<RetVal, anyhow::Error>
 where
     Object: QObjectOrConvertible,
     ffi::QObject: Invoker<RetVal, Args>,
 {
     unsafe {
-        let qobj = obj.qobject_mut().as_mut().unwrap();
+        let qobj = obj
+            .qobject_mut()
+            .as_mut()
+            .ok_or(anyhow::anyhow!("QObject is null"))?;
         invoke_fn_qobj(qobj, method, connection_type, args)
     }
 }

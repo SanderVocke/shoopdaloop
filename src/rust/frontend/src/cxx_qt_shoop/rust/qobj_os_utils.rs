@@ -34,15 +34,26 @@ impl OSUtils {
         panic!("Manually triggered panic");
     }
 
+    pub fn get_env_var_or_default(var: &str) -> QString {
+        let var_string = var.to_string();
+        let value = env::var(&var_string).unwrap_or_else(|_| {
+            debug!("Failed to read env var {}", var_string);
+            "".to_string()
+        });
+        debug!("Read env var {}: {}", var_string, value);
+        QString::from(&value)
+    }
+
     pub fn get_env_var(self: &OSUtils, var: &QString) -> QVariant {
-        match env::var(var.to_string()) {
+        let var_string = var.to_string();
+        match env::var(&var_string) {
             Ok(value) => {
-                debug!("Read env var {}: {}", var.to_string(), value);
-                return QVariant::from(&QString::from(&value));
+                debug!("Read env var {}: {}", var_string, value);
+                QVariant::from(&QString::from(&value))
             }
             Err(_value) => {
-                debug!("Failed to read env var {}", var.to_string());
-                return QVariant::default();
+                debug!("Failed to read env var {}", var_string);
+                QVariant::default()
             }
         }
     }
@@ -63,7 +74,7 @@ mod tests {
     fn test_valid_env_var() {
         let os_utils = make_unique_osutils();
         let var: &str = if cfg!(windows) { "UserProfile" } else { "HOME" };
-        let home = env::var(var).unwrap();
+        let home = env::var(var).unwrap_or("DEADBEEF");
         assert_eq!(
             os_utils
                 .get_env_var(&QString::from(var))

@@ -103,10 +103,9 @@ mod tests {
     };
 
     #[test]
-    fn test_basic_qobject_invokable() {
+    fn test_basic_qobject_invokable() -> Result<(), anyhow::Error> {
         let mut eng = LuaEngine::default();
-        eng.initialize(|_| Err(anyhow!("n/a")), HashMap::default())
-            .unwrap();
+        eng.initialize(|_| Err(anyhow!("n/a")), HashMap::default())?;
 
         let mut obj = GenericTestItem::make_unique();
         let qobj = obj.pin_mut();
@@ -120,13 +119,12 @@ mod tests {
         );
         let callback: Arc<Box<dyn LuaCallback>> = Arc::new(Box::new(callback));
 
-        eng.register_callback("qobj_add", LuaScope::Sandboxed, &callback)
-            .unwrap();
+        eng.register_callback("qobj_add", LuaScope::Sandboxed, &callback)?;
 
         assert_eq!(
-            eng.evaluate::<i32>("return qobj_add(1, 2)", None, true)
-                .unwrap(),
+            eng.evaluate::<i32>("return qobj_add(1, 2)", None, true)?,
             3
         );
+        Ok(())
     }
 }

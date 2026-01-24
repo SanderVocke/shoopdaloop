@@ -94,9 +94,11 @@ impl UpdateThread {
 
     pub fn trigger_update_if_enough_time_elapsed(self: Pin<&mut Self>) -> Option<Duration> {
         let last_updated = self.as_ref().last_updated;
-        let do_update: bool = last_updated.is_none()
-            || Instant::now().duration_since(last_updated.unwrap())
-                > self.as_ref().backup_timer_elapsed_threshold;
+        let do_update: bool = if let Some(last) = last_updated {
+            Instant::now().duration_since(last) > self.as_ref().backup_timer_elapsed_threshold
+        } else {
+            true
+        };
         if do_update {
             return Some(self.trigger_update());
         } else {

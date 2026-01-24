@@ -1242,15 +1242,16 @@ mod tests {
     }
 
     #[test]
-    fn test_get_current_directory() {
+    fn test_get_current_directory() -> Result<(), anyhow::Error> {
         use std::env;
         let obj = make_unique_fileio();
-        let prev = env::current_dir().expect("Could not get current directory");
+        let prev = env::current_dir().map_err(|e| anyhow!("Could not get current directory: {e}"))?;
         let dir = obj.create_temporary_folder();
-        env::set_current_dir(dir.to_string()).expect("Could not set current directory");
+        env::set_current_dir(dir.to_string()).map_err(|e| anyhow!("Could not set current directory: {e}"))?;
         let current = obj.get_current_directory();
-        env::set_current_dir(&prev).expect("Could not set current directory");
+        env::set_current_dir(&prev).map_err(|e| anyhow!("Could not set current directory: {e}"))?;
         assert_eq!(current.to_string(), dir.to_string());
+        Ok(())
     }
 
     #[test]
@@ -1344,15 +1345,15 @@ mod tests {
     }
 
     #[test]
-    fn test_glob() {
-        let folder = tempfile::tempdir().expect("Could not create temp dir");
-        std::fs::create_dir(folder.path().join("testfolder")).expect("Could not create testfolder");
-        std::fs::write(folder.path().join("test1"), "test").expect("Could not write test1");
-        std::fs::write(folder.path().join("test2"), "test").expect("Could not write test2");
+    fn test_glob() -> Result<(), anyhow::Error> {
+        let folder = tempfile::tempdir().map_err(|e| anyhow!("Could not create temp dir: {e}"))?;
+        std::fs::create_dir(folder.path().join("testfolder")).map_err(|e| anyhow!("Could not create testfolder: {e}"))?;
+        std::fs::write(folder.path().join("test1"), "test").map_err(|e| anyhow!("Could not write test1: {e}"))?;
+        std::fs::write(folder.path().join("test2"), "test").map_err(|e| anyhow!("Could not write test2: {e}"))?;
         std::fs::write(folder.path().join("testfolder").join("test1"), "test")
-            .expect("Could not write test1 in testfolder");
+            .map_err(|e| anyhow!("Could not write test1 in testfolder: {e}"))?;
         std::fs::write(folder.path().join("testfolder").join("test2"), "test")
-            .expect("Could not write test2 in testfolder");
+            .map_err(|e| anyhow!("Could not write test2 in testfolder: {e}"))?;
 
         let obj = make_unique_fileio();
         let qstring_to_pathbuf = |qs: &QString| {
@@ -1366,28 +1367,33 @@ mod tests {
                 "{folder}/*",
                 folder = folder.path().to_string_lossy().as_ref()
             )));
-            let paths: Vec<PathBuf> = result.iter().map(qstring_to_pathbuf).collect();
-            let expect: Vec<PathBuf> = [
+            let mut paths: Vec<PathBuf> = result.iter().map(qstring_to_pathbuf).collect();
+            paths.sort();
+            let mut expect: Vec<PathBuf> = [
                 folder.path().join("test1"),
                 folder.path().join("test2"),
                 folder.path().join("testfolder"),
             ]
             .to_vec();
+            expect.sort();
             assert_eq!(paths, expect);
         }
 
         {
             let result = obj.glob(QString::from(&format!(
                 "{folder}/**/test1",
-                folder = folder.path().to_str().unwrap()
+                folder = folder.path().to_string_lossy()
             )));
-            let paths: Vec<PathBuf> = result.iter().map(qstring_to_pathbuf).collect();
-            let expect: Vec<PathBuf> = [
+            let mut paths: Vec<PathBuf> = result.iter().map(qstring_to_pathbuf).collect();
+            paths.sort();
+            let mut expect: Vec<PathBuf> = [
                 folder.path().join("test1"),
                 folder.path().join("testfolder/test1"),
             ]
             .to_vec();
+            expect.sort();
             assert_eq!(paths, expect);
         }
+        Ok(())
     }
 }
