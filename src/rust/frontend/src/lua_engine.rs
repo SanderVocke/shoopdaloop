@@ -460,39 +460,38 @@ end"#;
     }
 
     #[test]
-    fn test_basic_eval_expression_unsandboxed() {
+    fn test_basic_eval_expression_unsandboxed() -> Result<(), anyhow::Error> {
         let mut eng = LuaEngine::default();
-        eng.initialize(|_| Err(anyhow!("n/a")), HashMap::default())
-            .unwrap();
-        assert_eq!(eng.evaluate::<i32>("1 + 1", None, false).unwrap(), 2);
+        eng.initialize(|_| Err(anyhow!("n/a")), HashMap::default())?;
+        assert_eq!(eng.evaluate::<i32>("1 + 1", None, false)?, 2);
+        Ok(())
     }
 
     #[test]
-    fn test_basic_eval_chunk_unsandboxed() {
+    fn test_basic_eval_chunk_unsandboxed() -> Result<(), anyhow::Error> {
         let mut eng = LuaEngine::default();
-        eng.initialize(|_| Err(anyhow!("n/a")), HashMap::default())
-            .unwrap();
-        assert_eq!(eng.evaluate::<i32>("return 1 + 1", None, false).unwrap(), 2);
+        eng.initialize(|_| Err(anyhow!("n/a")), HashMap::default())?;
+        assert_eq!(eng.evaluate::<i32>("return 1 + 1", None, false)?, 2);
+        Ok(())
     }
 
     #[test]
-    fn test_basic_eval_chunk_sandboxed() {
+    fn test_basic_eval_chunk_sandboxed() -> Result<(), anyhow::Error> {
         let mut eng = LuaEngine::default();
-        eng.initialize(|_| Err(anyhow!("n/a")), HashMap::default())
-            .unwrap();
-        assert_eq!(eng.evaluate::<i32>("return 1 + 1", None, true).unwrap(), 2);
+        eng.initialize(|_| Err(anyhow!("n/a")), HashMap::default())?;
+        assert_eq!(eng.evaluate::<i32>("return 1 + 1", None, true)?, 2);
+        Ok(())
     }
 
     #[test]
-    fn test_builtin_lib_sandboxed() {
+    fn test_builtin_lib_sandboxed() -> Result<(), anyhow::Error> {
         let mut eng = LuaEngine::default();
         let mut libs: HashMap<String, String> = HashMap::default();
         libs.insert(
             "test_hello_world_lib".to_string(),
             HELLO_WORLD_IMPL.to_string(),
         );
-        eng.initialize(|_| Err(anyhow!("n/a")), libs)
-            .unwrap();
+        eng.initialize(|_| Err(anyhow!("n/a")), libs)?;
         assert_eq!(
             eng.evaluate::<String>(
                 r#"
@@ -501,28 +500,26 @@ return test_hello_world()
 "#,
                 None,
                 true
-            )
-            .unwrap(),
+            )?,
             "hello world"
         );
+        Ok(())
     }
 
     #[test]
-    fn test_builtin_script_sandboxed() {
+    fn test_builtin_script_sandboxed() -> Result<(), anyhow::Error> {
         let mut eng = LuaEngine::default();
-        eng.initialize(testing_builtins, HashMap::default())
-            .unwrap();
-        eng.execute_builtin_script("test_script_hello_world", true)
-            .unwrap();
+        eng.initialize(testing_builtins, HashMap::default())?;
+        eng.execute_builtin_script("test_script_hello_world", true)?;
         assert_eq!(
-            eng.evaluate::<String>("return test_hello_world()", None, true)
-                .unwrap(),
+            eng.evaluate::<String>("return test_hello_world()", None, true)?,
             "hello world"
         );
+        Ok(())
     }
 
     #[test]
-    fn test_callback_sandboxed() {
+    fn test_callback_sandboxed() -> Result<(), anyhow::Error> {
         struct TestCallback {}
         impl LuaCallback for TestCallback {
             fn call(
@@ -533,8 +530,8 @@ return test_hello_world()
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
-                let a = args.front().unwrap().as_i64().unwrap();
-                let b = args.back().unwrap().as_i64().unwrap();
+                let a = args.front().ok_or(anyhow!("missing arg 1"))?.as_i64().ok_or(anyhow!("arg 1 not i64"))?;
+                let b = args.back().ok_or(anyhow!("missing arg 2"))?.as_i64().ok_or(anyhow!("arg 2 not i64"))?;
                 Ok(mlua::Value::Integer(a + b))
             }
         }
@@ -542,20 +539,18 @@ return test_hello_world()
         let cb: Arc<Box<dyn LuaCallback>> = Arc::new(Box::new(TestCallback {}));
 
         let mut eng = LuaEngine::default();
-        eng.initialize(testing_builtins, HashMap::default())
-            .unwrap();
-        eng.register_callback("my_test_add", LuaScope::Sandboxed, &cb)
-            .unwrap();
+        eng.initialize(testing_builtins, HashMap::default())?;
+        eng.register_callback("my_test_add", LuaScope::Sandboxed, &cb)?;
 
         assert_eq!(
-            eng.evaluate::<i64>("return my_test_add(1, 2)", None, true)
-                .unwrap(),
+            eng.evaluate::<i64>("return my_test_add(1, 2)", None, true)?,
             3
         );
+        Ok(())
     }
 
     #[test]
-    fn test_callback_unsandboxed() {
+    fn test_callback_unsandboxed() -> Result<(), anyhow::Error> {
         struct TestCallback {}
         impl LuaCallback for TestCallback {
             fn call(
@@ -566,8 +561,8 @@ return test_hello_world()
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
-                let a = args.front().unwrap().as_i64().unwrap();
-                let b = args.back().unwrap().as_i64().unwrap();
+                let a = args.front().ok_or(anyhow!("missing arg 1"))?.as_i64().ok_or(anyhow!("arg 1 not i64"))?;
+                let b = args.back().ok_or(anyhow!("missing arg 2"))?.as_i64().ok_or(anyhow!("arg 2 not i64"))?;
                 Ok(mlua::Value::Integer(a + b))
             }
         }
@@ -575,20 +570,18 @@ return test_hello_world()
         let cb: Arc<Box<dyn LuaCallback>> = Arc::new(Box::new(TestCallback {}));
 
         let mut eng = LuaEngine::default();
-        eng.initialize(testing_builtins, HashMap::default())
-            .unwrap();
-        eng.register_callback("my_test_add", LuaScope::Global, &cb)
-            .unwrap();
+        eng.initialize(testing_builtins, HashMap::default())?;
+        eng.register_callback("my_test_add", LuaScope::Global, &cb)?;
 
         assert_eq!(
-            eng.evaluate::<i64>("return my_test_add(1, 2)", None, false)
-                .unwrap(),
+            eng.evaluate::<i64>("return my_test_add(1, 2)", None, false)?,
             3
         );
+        Ok(())
     }
 
     #[test]
-    fn test_callbacks_module_sandboxed() {
+    fn test_callbacks_module_sandboxed() -> Result<(), anyhow::Error> {
         struct TestAddCallback {}
         impl LuaCallback for TestAddCallback {
             fn call(
@@ -599,8 +592,8 @@ return test_hello_world()
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
-                let a = args.front().unwrap().as_i64().unwrap();
-                let b = args.back().unwrap().as_i64().unwrap();
+                let a = args.front().ok_or(anyhow!("missing arg 1"))?.as_i64().ok_or(anyhow!("arg 1 not i64"))?;
+                let b = args.back().ok_or(anyhow!("missing arg 2"))?.as_i64().ok_or(anyhow!("arg 2 not i64"))?;
                 Ok(mlua::Value::Integer(a + b))
             }
         }
@@ -614,8 +607,8 @@ return test_hello_world()
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
-                let a = args.front().unwrap().as_i64().unwrap();
-                let b = args.back().unwrap().as_i64().unwrap();
+                let a = args.front().ok_or(anyhow!("missing arg 1"))?.as_i64().ok_or(anyhow!("arg 1 not i64"))?;
+                let b = args.back().ok_or(anyhow!("missing arg 2"))?.as_i64().ok_or(anyhow!("arg 2 not i64"))?;
                 Ok(mlua::Value::Integer(a - b))
             }
         }
@@ -628,29 +621,26 @@ return test_hello_world()
         module.insert("sub".to_string(), sub_cb);
 
         let mut eng = LuaEngine::default();
-        eng.initialize(testing_builtins, HashMap::default())
-            .unwrap();
+        eng.initialize(testing_builtins, HashMap::default())?;
         eng.register_callbacks_module(
             "testmodule",
             LuaScope::Sandboxed,
             module.iter().map(|(name, cb)| (name.as_str(), cb)),
-        )
-        .unwrap();
+        )?;
 
         assert_eq!(
-            eng.evaluate::<i64>("return testmodule.add(1, 2)", None, true)
-                .unwrap(),
+            eng.evaluate::<i64>("return testmodule.add(1, 2)", None, true)?,
             3
         );
         assert_eq!(
-            eng.evaluate::<i64>("return testmodule.sub(1, 2)", None, true)
-                .unwrap(),
+            eng.evaluate::<i64>("return testmodule.sub(1, 2)", None, true)?,
             -1
         );
+        Ok(())
     }
 
     #[test]
-    fn test_callbacks_module_unsandboxed() {
+    fn test_callbacks_module_unsandboxed() -> Result<(), anyhow::Error> {
         struct TestAddCallback {}
         impl LuaCallback for TestAddCallback {
             fn call(
@@ -661,8 +651,8 @@ return test_hello_world()
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
-                let a = args.front().unwrap().as_i64().unwrap();
-                let b = args.back().unwrap().as_i64().unwrap();
+                let a = args.front().ok_or(anyhow!("missing arg 1"))?.as_i64().ok_or(anyhow!("arg 1 not i64"))?;
+                let b = args.back().ok_or(anyhow!("missing arg 2"))?.as_i64().ok_or(anyhow!("arg 2 not i64"))?;
                 Ok(mlua::Value::Integer(a + b))
             }
         }
@@ -676,8 +666,8 @@ return test_hello_world()
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
-                let a = args.front().unwrap().as_i64().unwrap();
-                let b = args.back().unwrap().as_i64().unwrap();
+                let a = args.front().ok_or(anyhow!("missing arg 1"))?.as_i64().ok_or(anyhow!("arg 1 not i64"))?;
+                let b = args.back().ok_or(anyhow!("missing arg 2"))?.as_i64().ok_or(anyhow!("arg 2 not i64"))?;
                 Ok(mlua::Value::Integer(a - b))
             }
         }
@@ -690,24 +680,21 @@ return test_hello_world()
         module.insert("sub".to_string(), sub_cb);
 
         let mut eng = LuaEngine::default();
-        eng.initialize(testing_builtins, HashMap::default())
-            .unwrap();
+        eng.initialize(testing_builtins, HashMap::default())?;
         eng.register_callbacks_module(
             "testmodule",
             LuaScope::Global,
             module.iter().map(|(name, cb)| (name.as_str(), cb)),
-        )
-        .unwrap();
+        )?;
 
         assert_eq!(
-            eng.evaluate::<i64>("return testmodule.add(1, 2)", None, false)
-                .unwrap(),
+            eng.evaluate::<i64>("return testmodule.add(1, 2)", None, false)?,
             3
         );
         assert_eq!(
-            eng.evaluate::<i64>("return testmodule.sub(1, 2)", None, false)
-                .unwrap(),
+            eng.evaluate::<i64>("return testmodule.sub(1, 2)", None, false)?,
             -1
         );
+        Ok(())
     }
 }
