@@ -52,7 +52,10 @@ impl PortBackend {
         }
 
         if let Err(e) = || -> Result<(), anyhow::Error> {
-            let port = self.maybe_backend_port.as_ref().unwrap();
+            let port = self
+                .maybe_backend_port
+                .as_ref()
+                .ok_or(anyhow!("Backend port not initialized"))?;
             let prev_state = self.prev_state.clone();
             let new_state = match port.get_state() {
                 Ok(state) => state,
@@ -137,8 +140,12 @@ impl PortBackend {
     pub fn display_name(self: &PortBackend) -> String {
         if self.prev_state.name.len() > 0 {
             self.prev_state.name.clone()
-        } else if self.name_hint.is_some() && self.name_hint.as_ref().unwrap().len() > 0 {
-            self.name_hint.as_ref().unwrap().to_string()
+        } else if let Some(hint) = self.name_hint.as_ref() {
+            if hint.len() > 0 {
+                hint.to_string()
+            } else {
+                "unknown".to_string()
+            }
         } else {
             "unknown".to_string()
         }
@@ -327,10 +334,15 @@ impl PortBackend {
             if self.backend.is_null() {
                 non_ready_vars.insert("backend".to_string());
             }
-            if !self.backend.is_null()
-                && !qobject_property_bool(self.backend.as_ref().unwrap(), "ready").unwrap_or(false)
-            {
-                non_ready_vars.insert("backend_ready".to_string());
+            if !self.backend.is_null() {
+                let ready = if let Some(backend_ref) = self.backend.as_ref() {
+                    qobject_property_bool(backend_ref, "ready").unwrap_or(false)
+                } else {
+                    false
+                };
+                if !ready {
+                    non_ready_vars.insert("backend_ready".to_string());
+                }
             }
             if self.is_internal.is_none() {
                 non_ready_vars.insert("internal".to_string());
@@ -356,25 +368,31 @@ impl PortBackend {
             if self.min_n_ringbuffer_samples.is_none() {
                 non_ready_vars.insert("min_n_ringbuffer_samples".to_string());
             }
-            if self.is_internal.is_some()
-                && self.is_internal.unwrap()
-                && self
-                    .fx_chain
-                    .as_ref()
-                    .unwrap_or(&cxx::UniquePtr::null())
-                    .is_null()
-            {
-                non_ready_vars.insert("fx_chain non-null".to_string());
+            if let Some(is_int) = self.is_internal {
+                if is_int {
+                    let fx_chain_invalid = if let Some(chain) = self.fx_chain.as_ref() {
+                        chain.is_null()
+                    } else {
+                        // Should have been caught by fx_chain.is_none() but for completeness
+                        true
+                    };
+                    if fx_chain_invalid {
+                        non_ready_vars.insert("fx_chain non-null".to_string());
+                    }
+                }
             }
         }
 
         let initialize_condition: bool = !self.initialized && non_ready_vars.is_empty();
 
         let result = if initialize_condition {
-            if self.is_internal.unwrap() {
-                self.as_mut().maybe_initialize_backend_internal()
-            } else {
-                self.as_mut().maybe_initialize_backend_external()
+            match self.is_internal {
+                Some(true) => self.as_mut().maybe_initialize_backend_internal(),
+                Some(false) => self.as_mut().maybe_initialize_backend_external(),
+                None => {
+                    error!(self, "Unexpected: is_internal is None but validation passed");
+                    false
+                }
             }
         } else {
             trace!(
@@ -1031,25 +1049,23 @@ impl PortBackend {
     }
 
     pub fn get_maybe_fx_chain(self: Pin<&mut PortBackend>) -> *mut QObject {
-        if self.fx_chain.is_none()
-            || self.fx_chain.as_ref().unwrap().is_null()
-            || self.fx_chain.as_ref().unwrap().as_ref().is_none()
-        {
+        let chain_ptr_ref = match self.fx_chain.as_ref() {
+            Some(c) => c,
+            None => return std::ptr::null_mut(),
+        };
+        if chain_ptr_ref.is_null() {
             return std::ptr::null_mut();
         }
-        let weak = self.fx_chain.as_ref().unwrap().as_ref().unwrap();
+        let weak = match chain_ptr_ref.as_ref() {
+            Some(w) => w,
+            None => return std::ptr::null_mut(),
+        };
         match weak.to_strong() {
             Ok(Some(ptr)) => match ptr.data() {
-                Ok(ptr) => {
-                    return ptr;
-                }
-                Err(_) => {
-                    return std::ptr::null_mut();
-                }
+                Ok(ptr) => ptr,
+                Err(_) => std::ptr::null_mut(),
             },
-            _ => {
-                return std::ptr::null_mut();
-            }
+            _ => std::ptr::null_mut(),
         }
     }
 

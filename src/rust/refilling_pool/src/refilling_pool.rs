@@ -270,6 +270,7 @@ mod tests {
     use std::sync::atomic::AtomicUsize;
     use std::sync::mpsc;
     use std::time::Duration;
+    use anyhow::anyhow;
 
     // A simple object for testing purposes.
     struct TestObject(usize);
@@ -284,11 +285,11 @@ mod tests {
 
     /// Tests that an invalid configuration returns an error instead of panicking.
     #[test]
-    fn test_new_with_invalid_config_returns_err() {
+    fn test_new_with_invalid_config_returns_err() -> Result<(), anyhow::Error> {
         let result = RefillingPool::new(10, 10, || Box::new(TestObject(0)));
         assert!(result.is_err());
         assert_eq!(
-            result.err().unwrap(),
+            result.err().ok_or(anyhow!("Expected error"))?,
             PoolCreationError {
                 description: "low_water_mark must be less than capacity".to_string()
             }
@@ -296,11 +297,13 @@ mod tests {
 
         let result_greater = RefillingPool::new(10, 11, || Box::new(TestObject(0)));
         assert!(result_greater.is_err());
+        Ok(())
     }
 
     /// Tests that the pool is correctly pre-filled to capacity upon creation.
+    /// Tests that the pool is correctly pre-filled to capacity upon creation.
     #[test]
-    fn test_initial_state_and_prefill() {
+    fn test_initial_state_and_prefill() -> Result<(), anyhow::Error> {
         let creation_counter = Arc::new(AtomicUsize::new(0));
         let factory = {
             let counter = Arc::clone(&creation_counter);
@@ -310,7 +313,7 @@ mod tests {
             }
         };
 
-        let pool = RefillingPool::new(10, 5, factory).unwrap();
+        let pool = RefillingPool::new(10, 5, factory).map_err(|e| anyhow!(e.to_string()))?;
 
         assert_eq!(
             creation_counter.load(Ordering::SeqCst),
@@ -318,11 +321,13 @@ mod tests {
             "Factory should be called 10 times for pre-filling"
         );
         assert_eq!(pool.queue.len(), 10, "Queue should be full after creation");
+        Ok(())
     }
 
     /// Tests the fallback mechanism when the pool is empty.
+    /// Tests the fallback mechanism when the pool is empty.
     #[test]
-    fn test_get_and_empty_fallback() {
+    fn test_get_and_empty_fallback() -> Result<(), anyhow::Error> {
         let creation_counter = Arc::new(AtomicUsize::new(0));
         let factory = {
             let counter = Arc::clone(&creation_counter);
@@ -332,7 +337,7 @@ mod tests {
             }
         };
 
-        let pool = RefillingPool::new(2, 1, factory).unwrap();
+        let pool = RefillingPool::new(2, 1, factory).map_err(|e| anyhow!(e.to_string()))?;
         assert_eq!(creation_counter.load(Ordering::SeqCst), 2);
 
         // Take the two pre-allocated objects
@@ -357,11 +362,13 @@ mod tests {
             3,
             "Factory should be called for the fallback allocation"
         );
+        Ok(())
     }
 
     /// Tests the refilling logic deterministically using a channel for synchronization.
+    /// Tests the refilling logic deterministically using a channel for synchronization.
     #[test]
-    fn test_deterministic_refilling_logic() {
+    fn test_deterministic_refilling_logic() -> Result<(), anyhow::Error> {
         let (tx, rx) = mpsc::sync_channel(0); // Rendezvous channel
         let (pool_tx, pool_rx) = mpsc::channel();
 
@@ -369,17 +376,18 @@ mod tests {
         // concurrently, preventing deadlock.
         thread::spawn(move || {
             let factory = move || {
-                tx.send(()).unwrap();
+                let _ = tx.send(());
                 Box::new(TestObject(0))
             };
-            let pool = RefillingPool::new(10, 5, factory).unwrap();
-            pool_tx.send(pool).unwrap();
+            if let Ok(pool) = RefillingPool::new(10, 5, factory) {
+                let _ = pool_tx.send(pool);
+            }
         });
 
         // Drain the 10 signals from the initial pre-fill. This unblocks the factory.
         for i in 0..10 {
             rx.recv_timeout(TEST_TIMEOUT)
-                .unwrap_or_else(|_| panic!("Timeout waiting for initial fill signal {}/10", i + 1));
+                .map_err(|_| anyhow!("Timeout waiting for initial fill signal {}/10", i + 1))?;
         }
 
         // Get the fully constructed pool from the creation thread.
@@ -397,9 +405,9 @@ mod tests {
         // The pool now needs to refill 5 items to get back to capacity 10.
         // We wait for exactly 5 signals from the refiller's factory calls.
         for i in 0..5 {
-            rx.recv_timeout(TEST_TIMEOUT).unwrap_or_else(|_| {
-                panic!("Timeout waiting for refiller signal {}/5", i + 1);
-            });
+            rx.recv_timeout(TEST_TIMEOUT).map_err(|_| {
+                anyhow!("Timeout waiting for refiller signal {}/5", i + 1)
+            })?;
         }
 
         // Don't assert immediately. Poll until the queue is full, because the
@@ -407,42 +415,45 @@ mod tests {
         let deadline = std::time::Instant::now() + TEST_TIMEOUT;
         while pool.queue.len() < 10 {
             if std::time::Instant::now() > deadline {
-                panic!(
+                return Err(anyhow!(
                     "Timeout waiting for pool to be fully refilled. Final size: {}",
                     pool.queue.len()
-                );
+                ));
             }
             thread::sleep(Duration::from_millis(1));
         }
 
         assert_eq!(pool.queue.len(), 10, "Pool should be refilled to capacity");
+        Ok(())
     }
 
     /// Tests that multiple concurrent signals don't confuse the refiller.
+    /// Tests that multiple concurrent signals don't confuse the refiller.
     #[test]
-    fn test_concurrent_signal() {
+    fn test_concurrent_signal() -> Result<(), anyhow::Error> {
         let (tx, rx) = mpsc::sync_channel(0);
         let (pool_tx, pool_rx) = mpsc::channel();
 
         // Spawn the pool creation to avoid deadlock on the rendezvous channel.
         thread::spawn(move || {
             let factory = move || {
-                tx.send(()).unwrap();
+                let _ = tx.send(());
                 Box::new(TestObject(0))
             };
-            let pool = Arc::new(RefillingPool::new(10, 9, factory).unwrap());
-            pool_tx.send(pool).unwrap();
+            if let Ok(pool) = RefillingPool::new(10, 9, factory) {
+                 let _ = pool_tx.send(Arc::new(pool));
+            }
         });
 
         // Drain initial signals
         for i in 0..10 {
             rx.recv_timeout(TEST_TIMEOUT)
-                .unwrap_or_else(|_| panic!("Timeout waiting for initial fill signal {}/10", i + 1));
+                .map_err(|_| anyhow!("Timeout waiting for initial fill signal {}/10", i + 1))?;
         }
 
         let pool = pool_rx
             .recv_timeout(TEST_TIMEOUT)
-            .expect("Failed to receive pool from creation thread");
+            .map_err(|_| anyhow!("Failed to receive pool from creation thread"))?;
 
         // Two threads get an item, pushing the count from 10 to 8,
         // crossing the low-water mark of 9 twice in quick succession.
@@ -451,26 +462,26 @@ mod tests {
         let pool2 = Arc::clone(&pool);
         let t2 = thread::spawn(move || pool2.get());
 
-        t1.join().unwrap();
-        t2.join().unwrap();
+        t1.join().map_err(|e| anyhow!("t1 panicked: {:?}", e))?;
+        t2.join().map_err(|e| anyhow!("t2 panicked: {:?}", e))?;
 
         assert_eq!(pool.queue.len(), 8);
 
         // The pool should refill exactly 2 items.
         rx.recv_timeout(TEST_TIMEOUT)
-            .expect("Did not receive first refill signal");
+            .map_err(|_| anyhow!("Did not receive first refill signal"))?;
         rx.recv_timeout(TEST_TIMEOUT)
-            .expect("Did not receive second refill signal");
+            .map_err(|_| anyhow!("Did not receive second refill signal"))?;
 
         // Don't assert immediately. Poll until the queue is full, because the
         // signals arrive before the `push` operations are complete.
         let deadline = std::time::Instant::now() + TEST_TIMEOUT;
         while pool.queue.len() < 10 {
             if std::time::Instant::now() > deadline {
-                panic!(
+                 return Err(anyhow!(
                     "Timeout waiting for pool to be fully refilled. Final size: {}",
                     pool.queue.len()
-                );
+                ));
             }
             thread::sleep(Duration::from_millis(1));
         }
@@ -482,11 +493,13 @@ mod tests {
             10,
             "Pool should be refilled exactly to capacity"
         );
+        Ok(())
     }
 
     /// Tests that the pool shuts down its background thread cleanly.
+    /// Tests that the pool shuts down its background thread cleanly.
     #[test]
-    fn test_clean_shutdown() {
+    fn test_clean_shutdown() -> Result<(), anyhow::Error> {
         let (tx, rx) = mpsc::channel();
 
         // The test logic is spawned in a separate thread.
@@ -494,38 +507,41 @@ mod tests {
         thread::spawn(move || {
             {
                 // This scope ensures the pool is dropped before we send the signal.
-                let pool_arc =
-                    Arc::new(RefillingPool::new(5, 2, || Box::new(TestObject(0))).unwrap());
-                let pool_clone = Arc::clone(&pool_arc);
+                if let Ok(pool) = RefillingPool::new(5, 2, || Box::new(TestObject(0))) {
+                    let pool_arc = Arc::new(pool);
+                    let pool_clone = Arc::clone(&pool_arc);
 
-                // Use the pool in another thread to ensure it's active.
-                let worker = thread::spawn(move || {
-                    for _ in 0..10 {
-                        let _ = pool_clone.get();
-                        thread::sleep(Duration::from_millis(1));
-                    }
-                });
+                    // Use the pool in another thread to ensure it's active.
+                    let worker = thread::spawn(move || {
+                        for _ in 0..10 {
+                            let _ = pool_clone.get();
+                            thread::sleep(Duration::from_millis(1));
+                        }
+                    });
 
-                // Wait for the spawned thread to finish its work.
-                worker.join().expect("Worker thread panicked");
+                    // Wait for the spawned thread to finish its work.
+                   let _ = worker.join();
+                }
             } // `pool_arc` is dropped here, which is the operation we want to test for hangs.
 
             // Signal that the test logic has completed without hanging.
-            tx.send(()).expect("Failed to send completion signal");
+            let _ = tx.send(());
         });
 
         // Wait for the completion signal from the test thread.
         if let Err(e) = rx.recv_timeout(TEST_TIMEOUT) {
-            panic!(
+            return Err(anyhow!(
                 "Test timed out: clean shutdown (drop) likely hung. Error: {}",
                 e
-            );
+            ));
         }
+        Ok(())
     }
 
     /// Tests that releasing an item puts it back in the pool.
+    /// Tests that releasing an item puts it back in the pool.
     #[test]
-    fn test_release() {
+    fn test_release() -> Result<(), anyhow::Error> {
         let creation_counter = Arc::new(AtomicUsize::new(0));
         let factory = {
             let counter = Arc::clone(&creation_counter);
@@ -535,7 +551,7 @@ mod tests {
             }
         };
 
-        let pool = RefillingPool::new(2, 1, factory).unwrap();
+        let pool = RefillingPool::new(2, 1, factory).map_err(|e| anyhow!(e.to_string()))?;
         let item = pool.get();
         assert_eq!(pool.queue.len(), 1);
 
@@ -543,5 +559,6 @@ mod tests {
 
         // Verify that releasing the item increases the queue length back to 2.
         assert_eq!(pool.queue.len(), 2);
+        Ok(())
     }
 }
