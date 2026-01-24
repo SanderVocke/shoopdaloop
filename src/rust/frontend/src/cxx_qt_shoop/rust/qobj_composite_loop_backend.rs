@@ -374,7 +374,7 @@ impl CompositeLoopBackend {
                         if !loop_recording_starts.contains_key(loop_obj) {
                             loop_recording_starts.insert(*loop_obj, *iteration);
                         } else {
-                            // FIXME: Avoid panic call
+                            // TODO: Avoid panic call
                             let v = loop_recording_starts
                                 .get_mut(loop_obj)
                                 .expect("Guarded by contains_key");
@@ -392,7 +392,7 @@ impl CompositeLoopBackend {
                                 if !loop_recording_ends.contains_key(loop_obj) {
                                     loop_recording_ends.insert(*loop_obj, *iteration);
                                 } else {
-                                    // FIXME: Avoid panic call
+                                    // TODO: Avoid panic call
                                     let v = loop_recording_ends
                                         .get_mut(loop_obj)
                                         .expect("Guarded by contains_key");

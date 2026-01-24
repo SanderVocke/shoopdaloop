@@ -27,12 +27,7 @@ pub fn get_engine_update_thread() -> &'static mut UpdateThread {
             let ptr: *mut UpdateThread = wrapper.thread.as_mut_ptr();
             &mut *ptr
         } else {
-            // This panic is technically unavoidable if the static is somehow null/invalid,
-            // but `&raw mut static` should be valid. However, respecting the "remove unwrap" rule:
-            // Since we return reference, we MUST have a value.
-            // We can't return Result here without changing signature.
-            // I'll keep the unwrap but via expect to be explicit, or if possible panic with message.
-            // FIXME: Avoid panic call
+            // This panic is technically unavoidable if the static is somehow null/invalid
             panic!("ENGINE_UPDATE_THREAD static is invalid");
         }
     }

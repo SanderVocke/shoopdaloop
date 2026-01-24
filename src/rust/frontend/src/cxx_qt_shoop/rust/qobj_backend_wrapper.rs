@@ -685,15 +685,13 @@ impl BackendWrapper {
 
     pub fn create_loop(mut self: Pin<&mut BackendWrapper>) -> Loop {
         let mut mut_rust = self.as_mut().rust_mut();
-        // FIXME: Remove panic! We can't change signature to return Result yet.
-        // FIXME: Remove panic! We can't change signature to return Result yet.
         mut_rust
             .session
             .as_mut()
-            // FIXME: Handle session null
+            // TODO: Handle session null
             .expect("Session is null")
             .create_loop()
-            // FIXME: Handle error gracefully (return dummy?)
+            // TODO: Handle error gracefully (return dummy?)
             .expect("Failed to create loop")
     }
 
@@ -703,21 +701,19 @@ impl BackendWrapper {
         title: &str,
     ) -> FXChain {
         let mut mut_rust = self.as_mut().rust_mut();
-        // FIXME: Remove panic! We can't change signature to return Result yet.
-        // FIXME: Remove panic! We can't change signature to return Result yet.
         mut_rust
             .session
             .as_mut()
-            // FIXME: Handle session null
+            // TODO: Handle session null
             .expect("Session is null")
             .create_fx_chain(
                 chain_type
                     .try_into()
-                    // FIXME: Handle invalid chain type
+                    // TODO: Handle invalid chain type
                     .expect("Invalid chain type"),
                 title,
             )
-            // FIXME: Handle error gracefully
+            // TODO: Handle error gracefully
             .expect("Failed to create fx chain")
     }
     pub fn backend_type_is_supported(self: Pin<&mut BackendWrapper>, _type: i32) -> bool {
