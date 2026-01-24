@@ -54,8 +54,10 @@ where
 
         let result: R = unsafe {
             let qobject = self.qobject.lua_qobject_target()?;
+
+            let qobject_ref = qobject.as_mut().ok_or(anyhow!("QObject pointer is null or invalid in invoke"))?;
             invoke::<_, R, _>(
-                qobject.as_mut().unwrap(),
+                qobject_ref,
                 &self.method_signature,
                 self.connection_type,
                 &args,

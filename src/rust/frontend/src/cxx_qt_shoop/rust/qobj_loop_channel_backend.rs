@@ -51,7 +51,10 @@ impl LoopChannelBackend {
         }
 
         if let Err(e) = || -> Result<(), anyhow::Error> {
-            let channel = self.maybe_backend_channel.as_ref().unwrap();
+            let channel = self
+                .maybe_backend_channel
+                .as_ref()
+                .ok_or(anyhow!("Backend channel is None in update"))?;
             let prev_state = self.prev_state.clone();
             let new_state = match channel.get_state() {
                 Ok(state) => state,
@@ -154,11 +157,15 @@ impl LoopChannelBackend {
                 if self.backend.is_null() {
                     non_ready_vars.insert("backend".to_string());
                 }
-                if !self.backend.is_null()
-                    && !qobject_property_bool(self.backend.as_ref().unwrap(), "ready")
-                        .unwrap_or(false)
-                {
-                    non_ready_vars.insert("backend_ready".to_string());
+                if !self.backend.is_null() {
+                    let ready = qobject_property_bool(
+                        self.backend.as_ref().ok_or(anyhow!("Backend null ref"))?,
+                        "ready",
+                    )
+                    .unwrap_or(false);
+                    if !ready {
+                        non_ready_vars.insert("backend_ready".to_string());
+                    }
                 }
                 if self.channel_loop.is_none() {
                     non_ready_vars.insert("channel_loop".to_string());
@@ -166,15 +173,22 @@ impl LoopChannelBackend {
                     channel_loop = Some(
                         self.channel_loop
                             .as_ref()
-                            .unwrap()
+                            .ok_or(anyhow!("channel_loop is None"))?
                             .to_strong()?
                             .ok_or(anyhow!("Channel loop went out of scope"))?,
                     );
-                    if channel_loop.as_ref().unwrap().data()?.is_null() {
+                    let channel_loop_ptr = channel_loop
+                        .as_ref()
+                        .ok_or(anyhow!("channel_loop ref is None"))?
+                        .data()?;
+                    
+                    if channel_loop_ptr.is_null() {
                         non_ready_vars.insert("channel_loop (null)".to_string());
                     } else {
                         if !qobject_property_bool(
-                            channel_loop.as_ref().unwrap().data()?.as_ref().unwrap(),
+                            channel_loop_ptr
+                                .as_ref()
+                                .ok_or(anyhow!("channel_loop_ptr ref is None"))?,
                             "initialized",
                         )
                         .unwrap_or(false)
@@ -192,14 +206,18 @@ impl LoopChannelBackend {
             if initialize_condition {
                 unsafe {
                     debug!(self, "Initializing back-end");
+                    let channel_loop_ptr = channel_loop
+                        .as_ref()
+                        .ok_or(anyhow!("channel_loop is None in init"))?
+                        .data()?;
                     let channel_loop =
-                        LoopBackend::from_qobject_ref_ptr(channel_loop.as_ref().unwrap().data()?)?;
+                        LoopBackend::from_qobject_ref_ptr(channel_loop_ptr)?;
                     let channel_loop = channel_loop
                         .backend_loop
                         .as_ref()
                         .ok_or(anyhow!("No backend loop in loop object"))?;
                     let mode = ChannelMode::try_from(self.prev_state.mode as i32)?;
-                    let backend_channel = match self.data_type.unwrap() {
+                    let backend_channel = match self.data_type.ok_or(anyhow!("data_type is None"))? {
                         PortDataType::Audio => {
                             AnyBackendChannel::Audio(channel_loop.add_audio_channel(mode)?)
                         }
@@ -491,13 +509,14 @@ impl LoopChannelBackend {
                             Some(port) => {
                                 let name = backend_port.get_name();
                                 debug!(self, "disconnect from {name:?}");
-                                do_port(
-                                    self.maybe_backend_channel.as_ref().unwrap(),
-                                    port,
-                                    Action::Disconnect,
-                                );
-                                false
-                            }
+                                    if let Some(chan) = self.maybe_backend_channel.as_ref() {
+                                        do_port(chan, port, Action::Disconnect);
+                                    } else {
+                                        error!(self, "Backend channel is None during disconnect");
+                                    }
+                                    false
+                                }
+
                             None => false,
                         },
                         Err(_) => false,
@@ -523,13 +542,16 @@ impl LoopChannelBackend {
                                 Some(port) => {
                                     let name = backend_port.get_name();
                                     debug!(self, "connect to {name:?}");
-                                    do_port(
-                                        self.maybe_backend_channel.as_ref().unwrap(),
-                                        port,
-                                        Action::Connect,
-                                    );
-                                    strong_connected
-                                        .push((to_connect_strong.copy().unwrap(), *to_connect_raw));
+                                    if let Some(chan) = self.maybe_backend_channel.as_ref() {
+                                        do_port(chan, port, Action::Connect);
+                                    } else {
+                                        error!(self, "Backend channel is None during connect");
+                                    }
+                                    if let (Ok(copied), Ok(_data)) = (to_connect_strong.copy(), to_connect_strong.data()) {
+                                         strong_connected.push((copied, *to_connect_raw));
+                                    } else {
+                                        error!(self, "Failed to copy/get data for port");
+                                    }
                                 }
                                 None => {
                                     // Subscribe for future changes
@@ -657,10 +679,11 @@ impl LoopChannelBackend {
             error!(self, "could not load audio data: not yet initialized");
         }
         let vec: Vec<f32> = data.iter().map(|v| *v).collect();
-        self.maybe_backend_channel
-            .as_ref()
-            .unwrap()
-            .audio_load_data(&vec);
+        if let Some(chan) = self.maybe_backend_channel.as_ref() {
+            chan.audio_load_data(&vec);
+        } else {
+            error!(self, "could not load audio data: not yet initialized (option is None)");
+        }
     }
 
     pub fn load_midi_data(self: Pin<&mut LoopChannelBackend>, data: QVector_QVariant) {
@@ -681,10 +704,11 @@ impl LoopChannelBackend {
                 }
             })
             .collect();
-        self.maybe_backend_channel
-            .as_ref()
-            .unwrap()
-            .midi_load_data(&vec);
+        if let Some(chan) = self.maybe_backend_channel.as_ref() {
+            chan.midi_load_data(&vec);
+        } else {
+            error!(self, "could not load MIDI data: not yet initialized (option is None)");
+        }
     }
 
     pub fn get_audio_data(self: Pin<&mut LoopChannelBackend>) -> QVector_f32 {
@@ -693,11 +717,13 @@ impl LoopChannelBackend {
             error!(self, "could not get audio data: not yet initialized");
         }
         let mut rval: QVector_f32 = QVector::default();
-        let vec = self
-            .maybe_backend_channel
-            .as_ref()
-            .unwrap()
-            .audio_get_data();
+        let vec = match self.maybe_backend_channel.as_ref() {
+            Some(chan) => chan.audio_get_data(),
+            None => {
+                 error!(self, "could not get audio data: not yet initialized (option is None)");
+                 return QVector::default();
+            }
+        };
         rval.reserve(vec.len() as isize);
         vec.iter().for_each(|v| rval.append(*v));
         debug!(self, "extracted {} frames of audio data", rval.len());
@@ -710,7 +736,13 @@ impl LoopChannelBackend {
             error!(self, "could not get MIDI data: not yet initialized");
         }
         let mut rval: QVector_QVariant = QVector::default();
-        let vec = self.maybe_backend_channel.as_ref().unwrap().midi_get_data();
+        let vec = match self.maybe_backend_channel.as_ref() {
+             Some(chan) => chan.midi_get_data(),
+             None => {
+                 error!(self, "could not get MIDI data: not yet initialized (option is None)");
+                 return QVector::default();
+             }
+        };
         rval.reserve(vec.len() as isize);
         vec.iter().for_each(|v| rval.append(v.to_qvariant()));
         debug!(self, "extracted {} msgs of MIDI data", rval.len());
@@ -788,9 +820,10 @@ impl LoopChannelBackend {
             error!(self, "could not clear: not yet initialized");
         }
         debug!(self, "clear -> {length}");
-        self.maybe_backend_channel
-            .as_ref()
-            .unwrap()
-            .clear(length as u32);
+        if let Some(chan) = self.maybe_backend_channel.as_ref() {
+            chan.clear(length as u32);
+        } else {
+             error!(self, "could not clear: not yet initialized (option is None)");
+        }
     }
 }
