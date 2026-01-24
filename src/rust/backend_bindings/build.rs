@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use backend;
 
 // For now, Rust "back-end" is just a set of C bindings to the
