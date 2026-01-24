@@ -459,9 +459,9 @@ mod tests {
 
         // Two threads get an item, pushing the count from 10 to 8,
         // crossing the low-water mark of 9 twice in quick succession.
-        let pool1 = Arc::clone(&pool);
+        let pool1: Arc<RefillingPool<TestObject>> = Arc::clone(&pool);
         let t1 = thread::spawn(move || pool1.get());
-        let pool2 = Arc::clone(&pool);
+        let pool2: Arc<RefillingPool<TestObject>> = Arc::clone(&pool);
         let t2 = thread::spawn(move || pool2.get());
 
         t1.join().map_err(|e| anyhow!("t1 panicked: {:?}", e))?;

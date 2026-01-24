@@ -74,7 +74,7 @@ mod tests {
     fn test_valid_env_var() {
         let os_utils = make_unique_osutils();
         let var: &str = if cfg!(windows) { "UserProfile" } else { "HOME" };
-        let home = env::var(var).unwrap_or("DEADBEEF");
+        let home = env::var(var).unwrap_or("DEADBEEF".to_string());
         assert_eq!(
             os_utils
                 .get_env_var(&QString::from(var))

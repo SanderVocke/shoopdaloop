@@ -322,7 +322,6 @@ mod tests {
     use super::*;
 
     #[test]
-    #[test]
     fn test_basic_eval_expression_sandboxed() -> Result<(), anyhow::Error> {
         GLOBAL_CONFIG.get_or_init(|| ShoopConfig::default());
         let eng = LuaEngine::make_unique();
