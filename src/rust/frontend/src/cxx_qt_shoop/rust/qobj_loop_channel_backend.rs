@@ -59,11 +59,8 @@ impl LoopChannelBackend {
             let new_state = match channel.get_state() {
                 Ok(state) => state,
                 Err(e) => {
-                    error!(self, "Error getting state: {e}");
-                    // return Err(anyhow!("Error getting state: {e}"));
-                    // Wait, this is a closure returning Result<()...>.
-                    // If we return Err here, it's logged below.
-                    return Err(e.into());
+                    debug!(self, "Skipping update: {e}");
+                    prev_state.clone()
                 }
             };
 
