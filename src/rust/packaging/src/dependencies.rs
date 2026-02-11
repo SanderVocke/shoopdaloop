@@ -69,7 +69,13 @@ pub fn get_dependency_libs(
         }
     }
 
-    let root = parse_dependency_tree(deps_output, &warning_patterns, dylib_filename_part, allow_nonexistent, &mut error_msgs);
+    let root = parse_dependency_tree(
+        deps_output,
+        &warning_patterns,
+        dylib_filename_part,
+        allow_nonexistent,
+        &mut error_msgs,
+    );
 
     let mut paths: Vec<PathBuf> = Vec::new();
     let mut handled: HashSet<String> = HashSet::new();
@@ -399,11 +405,11 @@ fn parse_dependency_tree(
         let path = PathBuf::from(line.trim());
         let path_str = path.to_string_lossy();
         let path_filename = match path.file_name() {
-             Some(f) => f.to_string_lossy(),
-             None => {
-                 warn!("Missing filename in path: {}", path_str);
-                 continue;
-             }
+            Some(f) => f.to_string_lossy(),
+            None => {
+                warn!("Missing filename in path: {}", path_str);
+                continue;
+            }
         };
         let indent = line.chars().take_while(|&c| c == ' ').count();
 
@@ -432,14 +438,11 @@ fn parse_dependency_tree(
                 current_parent = prev.clone();
             } else if indent < children_indent {
                 while indent < children_indent {
-                    let parent = current_parent
-                        .borrow()
-                        .maybe_parent
-                        .clone();
-                    
+                    let parent = current_parent.borrow().maybe_parent.clone();
+
                     if let Some(parent) = parent {
-                         current_parent = parent;
-                         children_indent = current_parent.borrow().children_indent;
+                        current_parent = parent;
+                        children_indent = current_parent.borrow().children_indent;
                     } else {
                         // We reached the root, but the indent is still smaller than the root's children indent?
                         // This means the indentation is inconsistent with the tree structure we built so far.
@@ -447,7 +450,7 @@ fn parse_dependency_tree(
                         break;
                     }
                 }
-                
+
                 // If we are here, we either found the correct level, or we reached the top and the indent is still small.
                 // In either case, we treat this node as a child of the current parent, establishing a new indentation level for this parent if needed.
                 current_parent.borrow_mut().children_indent = indent;
@@ -507,7 +510,7 @@ fn parse_dependency_tree(
             debug!("{} already handled, skipping", path_filename);
         }
     }
-    
+
     root
 }
 
@@ -529,15 +532,15 @@ mod tests {
                       
                      C:\Windows\system32\rpcrt4.dll 
                C:\Windows\system32\CRYPTSP.dll"#;
-        
+
         let mut error_msgs = String::new();
         // We use allow_nonexistent=true because these paths likely don't exist on the test runner machine
         let root = parse_dependency_tree(input, &[], ".dll", true, &mut error_msgs);
-        
+
         // Basic validaton that we parsed something
         let root_deps = &root.borrow().deps;
         assert_eq!(root_deps.len(), 1);
-        
+
         // Check structure
         let exe = root_deps.values().next().unwrap();
         let exe_deps = &exe.borrow().deps;
