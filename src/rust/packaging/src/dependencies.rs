@@ -69,114 +69,55 @@ pub fn get_dependency_libs(
         }
     }
 
-    let root: Rc<RefCell<InternalDependency>> =
-        Rc::new(RefCell::new(InternalDependency::default()));
-    let mut current_parent: Rc<RefCell<InternalDependency>> = root.clone();
-    for line in deps_output.lines() {
-        if line.trim().is_empty() {
-            continue;
-        }
+    let root = parse_dependency_tree(deps_output, &warning_patterns, dylib_filename_part, allow_nonexistent, &mut error_msgs);
 
-        let path = PathBuf::from(line.trim());
-        let path_str = path.to_str().ok_or(anyhow!("cannot find dependency"))?;
-        let path_filename = path
-            .file_name()
-            .ok_or(anyhow!("Missing filename"))?
-            .to_str()
-            .ok_or(anyhow!("Invalid unicode"))?;
-        let indent = line.chars().take_while(|&c| c == ' ').count();
-
-        if Rc::ptr_eq(&current_parent, &root) && root.borrow().deps.len() == 0 {
-            // First line, this is our base indentation
-            let mut root_mut = root.borrow_mut();
-            root_mut.children_indent = indent;
-        }
-
-        let dep: Rc<RefCell<InternalDependency>> =
-            Rc::new(RefCell::new(InternalDependency::default()));
-        {
-            let mut dep_mut = dep.borrow_mut();
-            dep_mut.path = path.clone();
-        }
-        {
-            let mut children_indent = current_parent.borrow().children_indent;
-            let maybe_prev: Option<Rc<RefCell<InternalDependency>>> =
-                current_parent.borrow().deps.last().map(|r| r.1.clone());
-            if indent > children_indent && maybe_prev.is_some() {
-                // TODO: Avoid panic call
-                let prev = maybe_prev.expect("Guarded by is_some check");
-                let mut new_parent_mut = prev.borrow_mut();
-                new_parent_mut.children_indent = indent;
-                new_parent_mut.deps.insert(path.clone(), dep.clone());
-                current_parent = prev.clone();
-            } else if indent < children_indent {
-                while indent < children_indent {
-                    let parent = current_parent
-                        .borrow()
-                        .maybe_parent
-                        .clone()
-                        .ok_or(anyhow!("Failed to traverse outward"))?
-                        .clone();
-                    current_parent = parent;
-                    children_indent = current_parent.borrow().children_indent;
-                }
-                if children_indent < indent {
-                    // there was a missing link somewhere, but we can pretend like
-                    // we are direct children of the ancestor and continue with
-                    // the new indent level and same parent.
-                    current_parent.borrow_mut().children_indent = indent;
-                } else if children_indent != indent {
-                    // cannot recover
-                    return Err(anyhow!(
-                        "Failed to find correct indent level: {children_indent} vs. {indent}"
-                    ));
-                }
-            }
-        }
-        for pattern in &warning_patterns {
-            if line.contains(pattern.as_str()) {
-                warn!(
-                    "{}: stdout line matched pattern {}",
-                    path_str,
-                    pattern.as_str()
-                );
-                continue;
-            }
-        }
-        let dylib_filename_pattern = dylib_filename_part.to_lowercase();
-        if !path_filename
-            .to_lowercase()
-            .contains(dylib_filename_pattern.as_str())
-        {
-            warn!(
-                "  Note: skipped dependency line (not a dynamic library): {}",
-                line
+    let mut paths: Vec<PathBuf> = Vec::new();
+    let mut handled: HashSet<String> = HashSet::new();
+    for dep in root.borrow().deps.values() {
+        collect_deps(
+            dep,
+            &includes,
+            &excludes,
+            &mut handled,
+            &mut error_msgs,
+            &mut used_includes,
+            &mut paths,
+            &include_directory,
+            skip_n_levels,
+        )?;
+    }
+    for include in includes.iter() {
+        if !used_includes.contains(*include) {
+            info!(
+                "  Note: library {} from include list was not required",
+                include
             );
-            continue;
-        }
-        if !path.exists() {
-            if allow_nonexistent {
-                warn!("  Nonexistent file {}", &path_str);
-            } else {
-                error_msgs.push_str(format!("{}: doesn't exist\n", path_str).as_str());
-                continue;
-            }
-        }
-        {
-            let mut dep_mut = dep.borrow_mut();
-            dep_mut.maybe_parent = Some(current_parent.clone());
-        }
-        if !current_parent.borrow_mut().deps.contains_key(&path) {
-            debug!(
-                "adding {path_filename} to {:?} at indent {}",
-                current_parent.borrow().path,
-                indent
-            );
-            current_parent.borrow_mut().deps.insert(path.clone(), dep);
-        } else {
-            debug!("{path_filename} already handled, skipping");
         }
     }
+    if !error_msgs.is_empty() {
+        return Err(anyhow!("Dependency errors:\n{}", error_msgs));
+    }
+    let paths: HashSet<PathBuf> = HashSet::from_iter(paths.into_iter());
+
+    #[cfg(target_os = "macos")]
+    let paths: HashSet<PathBuf> = paths
+        .into_iter()
+        .map(|lib| {
+            // Detect libraries in framework folders and reduce the entries to the frameworks themselves
+            // TODO: Avoid panic call
+            let re = regex::Regex::new(r"(.*/.*.framework)/.*").expect("Invalid regex");
+            if let Some(s) = lib.to_str() {
+                if let Some(cap) = re.captures(s) {
+                    // TODO: Avoid panic call
+                    PathBuf::from(cap.get(1).expect("Regex group 1 must exist").as_str())
+                } else {
+                    lib
+                }
+            } else {
+                lib
+            }
+        })
+        .collect();
 
     fn collect_deps(
         d: &Rc<RefCell<InternalDependency>>,
@@ -285,54 +226,6 @@ pub fn get_dependency_libs(
         }
         Ok(())
     }
-
-    let mut paths: Vec<PathBuf> = Vec::new();
-    let mut handled: HashSet<String> = HashSet::new();
-    for dep in root.borrow().deps.values() {
-        collect_deps(
-            dep,
-            &includes,
-            &excludes,
-            &mut handled,
-            &mut error_msgs,
-            &mut used_includes,
-            &mut paths,
-            &include_directory,
-            skip_n_levels,
-        )?;
-    }
-    for include in includes.iter() {
-        if !used_includes.contains(*include) {
-            info!(
-                "  Note: library {} from include list was not required",
-                include
-            );
-        }
-    }
-    if !error_msgs.is_empty() {
-        return Err(anyhow!("Dependency errors:\n{}", error_msgs));
-    }
-    let paths: HashSet<PathBuf> = HashSet::from_iter(paths.into_iter());
-
-    #[cfg(target_os = "macos")]
-    let paths: HashSet<PathBuf> = paths
-        .into_iter()
-        .map(|lib| {
-            // Detect libraries in framework folders and reduce the entries to the frameworks themselves
-            // TODO: Avoid panic call
-            let re = regex::Regex::new(r"(.*/.*.framework)/.*").expect("Invalid regex");
-            if let Some(s) = lib.to_str() {
-                if let Some(cap) = re.captures(s) {
-                    // TODO: Avoid panic call
-                    PathBuf::from(cap.get(1).expect("Regex group 1 must exist").as_str())
-                } else {
-                    lib
-                }
-            } else {
-                lib
-            }
-        })
-        .collect();
 
     Ok(paths)
 }
@@ -486,4 +379,168 @@ fn get_macos_specifics<'a>(
         dylib_filename_part,
         env_map.clone(),
     ))
+}
+
+fn parse_dependency_tree(
+    deps_output: &str,
+    warning_patterns: &[String],
+    dylib_filename_part: &str,
+    allow_nonexistent: bool,
+    error_msgs: &mut String,
+) -> Rc<RefCell<InternalDependency>> {
+    let root: Rc<RefCell<InternalDependency>> =
+        Rc::new(RefCell::new(InternalDependency::default()));
+    let mut current_parent: Rc<RefCell<InternalDependency>> = root.clone();
+    for line in deps_output.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        let path = PathBuf::from(line.trim());
+        let path_str = path.to_string_lossy();
+        let path_filename = match path.file_name() {
+             Some(f) => f.to_string_lossy(),
+             None => {
+                 warn!("Missing filename in path: {}", path_str);
+                 continue;
+             }
+        };
+        let indent = line.chars().take_while(|&c| c == ' ').count();
+
+        if Rc::ptr_eq(&current_parent, &root) && root.borrow().deps.len() == 0 {
+            // First line, this is our base indentation
+            let mut root_mut = root.borrow_mut();
+            root_mut.children_indent = indent;
+        }
+
+        let dep: Rc<RefCell<InternalDependency>> =
+            Rc::new(RefCell::new(InternalDependency::default()));
+        {
+            let mut dep_mut = dep.borrow_mut();
+            dep_mut.path = path.clone();
+        }
+        {
+            let mut children_indent = current_parent.borrow().children_indent;
+            let maybe_prev: Option<Rc<RefCell<InternalDependency>>> =
+                current_parent.borrow().deps.last().map(|r| r.1.clone());
+            if indent > children_indent && maybe_prev.is_some() {
+                // TODO: Avoid panic call
+                let prev = maybe_prev.expect("Guarded by is_some check");
+                let mut new_parent_mut = prev.borrow_mut();
+                new_parent_mut.children_indent = indent;
+                new_parent_mut.deps.insert(path.clone(), dep.clone());
+                current_parent = prev.clone();
+            } else if indent < children_indent {
+                while indent < children_indent {
+                    let parent = current_parent
+                        .borrow()
+                        .maybe_parent
+                        .clone();
+                    
+                    if let Some(parent) = parent {
+                         current_parent = parent;
+                         children_indent = current_parent.borrow().children_indent;
+                    } else {
+                        // We reached the root, but the indent is still smaller than the root's children indent?
+                        // This means the indentation is inconsistent with the tree structure we built so far.
+                        // We should stop traversing up.
+                        break;
+                    }
+                }
+                
+                // If we are here, we either found the correct level, or we reached the top and the indent is still small.
+                // In either case, we treat this node as a child of the current parent, establishing a new indentation level for this parent if needed.
+                current_parent.borrow_mut().children_indent = indent;
+            } else if children_indent != indent {
+                // cannot recover
+                // This error path is now unreachable due to the change above.
+                // If children_indent == indent, we continue.
+                // If children_indent < indent, we set new children_indent.
+                // If children_indent > indent, we traverse up until children_indent <= indent.
+                // If after traversing up, children_indent < indent, we set new children_indent.
+                // If after traversing up, children_indent == indent, we continue.
+                // So, children_indent != indent should not happen here.
+            }
+        }
+        for pattern in warning_patterns {
+            if line.contains(pattern.as_str()) {
+                warn!(
+                    "{}: stdout line matched pattern {}",
+                    path_str,
+                    pattern.as_str()
+                );
+                continue;
+            }
+        }
+        let dylib_filename_pattern = dylib_filename_part.to_lowercase();
+        if !path_filename
+            .to_lowercase()
+            .contains(dylib_filename_pattern.as_str())
+        {
+            warn!(
+                "  Note: skipped dependency line (not a dynamic library): {}",
+                line
+            );
+            continue;
+        }
+        if !path.exists() {
+            if allow_nonexistent {
+                warn!("  Nonexistent file {}", &path_str);
+            } else {
+                error_msgs.push_str(format!("{}: doesn't exist\n", path_str).as_str());
+                continue;
+            }
+        }
+        {
+            let mut dep_mut = dep.borrow_mut();
+            dep_mut.maybe_parent = Some(current_parent.clone());
+        }
+        if !current_parent.borrow_mut().deps.contains_key(&path) {
+            debug!(
+                "adding {} to {:?} at indent {}",
+                path_filename,
+                current_parent.borrow().path,
+                indent
+            );
+            current_parent.borrow_mut().deps.insert(path.clone(), dep);
+        } else {
+            debug!("{} already handled, skipping", path_filename);
+        }
+    }
+    
+    root
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_crash_repro() {
+        let input = r#"
+   D:/a/shoopdaloop/shoopdaloop/shoopdaloop.65442fab.release-windows-msvc-x64.portable\shoopdaloop_exe.exe 
+      C:\Windows\system32\bcryptPrimitives.dll 
+         C:\Windows\system32\ntdll.dll 
+         C:\Windows\system32\kernelbase.dll 
+            C:\Windows\system32\advapi32.dll 
+               C:\Windows\system32\MSVCRT.dll 
+               C:\Windows\system32\sechost.dll 
+               C:\Windows\system32\kernel32.dll 
+                      
+                     C:\Windows\system32\rpcrt4.dll 
+               C:\Windows\system32\CRYPTSP.dll"#;
+        
+        let mut error_msgs = String::new();
+        // We use allow_nonexistent=true because these paths likely don't exist on the test runner machine
+        let root = parse_dependency_tree(input, &[], ".dll", true, &mut error_msgs);
+        
+        // Basic validaton that we parsed something
+        let root_deps = &root.borrow().deps;
+        assert_eq!(root_deps.len(), 1);
+        
+        // Check structure
+        let exe = root_deps.values().next().unwrap();
+        let exe_deps = &exe.borrow().deps;
+        assert!(exe_deps.len() > 0);
+    }
 }
