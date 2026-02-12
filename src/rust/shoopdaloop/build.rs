@@ -1,4 +1,4 @@
-use anyhow;
+use anyhow::anyhow;
 use backend;
 use common;
 use std::path::PathBuf;
@@ -86,7 +86,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
 
     let profile = std::env::var("PROFILE").unwrap();
     if !["debug", "release", "release-with-debug"].contains(&profile.as_str()) {
-        return Err(anyhow::anyhow!("Unknown build profile: {}", &profile));
+        return Err(anyhow!("Unknown build profile: {}", &profile));
     }
 
     #[cfg(target_os = "linux")]

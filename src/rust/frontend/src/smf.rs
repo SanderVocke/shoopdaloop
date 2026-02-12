@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use backend_bindings::MidiEvent;
 use json;
 
@@ -51,17 +52,17 @@ pub fn parse_smf(smf: &str, target_sample_rate: usize) -> Result<ParseSmfResult,
                 json::JsonValue::Object(object) => {
                     let time = object
                         .get("time")
-                        .ok_or(anyhow::anyhow!("No time field"))?
+                        .ok_or(anyhow!("No time field"))?
                         .as_f64()
-                        .ok_or(anyhow::anyhow!("time is not an f64"))?;
+                        .ok_or(anyhow!("time is not an f64"))?;
                     let data: Vec<u8> = object
                         .get("data")
-                        .ok_or(anyhow::anyhow!("No data field"))?
+                        .ok_or(anyhow!("No data field"))?
                         .members()
                         .map(|byte| match byte.as_u8() {
                             Some(byte) => byte,
                             None => {
-                                conversion_error = Some(anyhow::anyhow!("invalid byte"));
+                                conversion_error = Some(anyhow!("invalid byte"));
                                 0
                             }
                         })
@@ -71,7 +72,7 @@ pub fn parse_smf(smf: &str, target_sample_rate: usize) -> Result<ParseSmfResult,
                         data: data,
                     })
                 }
-                _ => Err(anyhow::anyhow!("event is not a JSON object")),
+                _ => Err(anyhow!("event is not a JSON object")),
             }
         }() {
             Ok(m) => m,
@@ -89,20 +90,20 @@ pub fn parse_smf(smf: &str, target_sample_rate: usize) -> Result<ParseSmfResult,
     if let json::JsonValue::Object(object) = json_value {
         let recorded_msgs = object
             .get("messages")
-            .ok_or(anyhow::anyhow!("missing 'messages' field"))?
+            .ok_or(anyhow!("missing 'messages' field"))?
             .members()
             .map(|v| event_from_json(v))
             .collect::<Vec<_>>();
         let state_msgs = object
             .get("start_state")
-            .ok_or(anyhow::anyhow!("missing 'start_state' field"))?
+            .ok_or(anyhow!("missing 'start_state' field"))?
             .members()
             .map(|v| {
                 v.members()
                     .map(|byte| match byte.as_u8() {
                         Some(byte) => byte,
                         None => {
-                            conversion_error = Some(anyhow::anyhow!("invalid byte"));
+                            conversion_error = Some(anyhow!("invalid byte"));
                             0
                         }
                     })
@@ -111,12 +112,12 @@ pub fn parse_smf(smf: &str, target_sample_rate: usize) -> Result<ParseSmfResult,
             .collect::<Vec<_>>();
         let length_s = object
             .get("length")
-            .ok_or(anyhow::anyhow!("missing 'length' field"))?
+            .ok_or(anyhow!("missing 'length' field"))?
             .as_f64()
-            .ok_or(anyhow::anyhow!("'length' is not a float"))?;
+            .ok_or(anyhow!("'length' is not a float"))?;
 
         if let Some(e) = conversion_error {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "Failed to convert MIDI message(s). Last error: {e}"
             ));
         }
@@ -128,6 +129,6 @@ pub fn parse_smf(smf: &str, target_sample_rate: usize) -> Result<ParseSmfResult,
             sample_rate: target_sample_rate,
         });
     } else {
-        return Err(anyhow::anyhow!("Not a top-level JSON object"));
+        return Err(anyhow!("Not a top-level JSON object"));
     }
 }

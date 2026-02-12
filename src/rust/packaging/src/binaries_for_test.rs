@@ -1,5 +1,5 @@
 use crate::dependencies::get_dependency_libs;
-use anyhow;
+use anyhow::anyhow;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -8,22 +8,21 @@ shoop_log_unit!("packaging");
 
 fn populate_folder(folder: &Path, cargo_profile: &str) -> Result<(), anyhow::Error> {
     // For normalizing Windows paths
-    let normalize_path = |path: PathBuf| -> PathBuf {
-        PathBuf::from(
-            std::fs::canonicalize(path)
-                .unwrap()
+    let normalize_path = |path: PathBuf| -> Result<PathBuf, anyhow::Error> {
+        Ok(PathBuf::from(
+            std::fs::canonicalize(path)?
                 .to_str()
-                .unwrap()
+                .ok_or(anyhow!("Invalid unicode in path"))?
                 .trim_start_matches(r"\\?\"),
-        )
+        ))
     };
 
     let file_path = PathBuf::from(file!());
-    let src_path = normalize_path(file_path);
+    let src_path = normalize_path(file_path)?;
     let src_path = src_path
         .ancestors()
         .nth(5)
-        .ok_or(anyhow::anyhow!("cannot find src dir"))?;
+        .ok_or(anyhow!("cannot find src dir"))?;
     info!("Using source path {src_path:?}");
 
     let testrunner_filename = if cfg![target_os = "windows"] {
@@ -79,7 +78,7 @@ fn populate_folder(folder: &Path, cargo_profile: &str) -> Result<(), anyhow::Err
     info!("Bundling {} dependencies...", dependency_libs.len());
     for lib in dependency_libs {
         let src = lib.clone();
-        let dst = folder.join(lib.file_name().unwrap());
+        let dst = folder.join(lib.file_name().ok_or(anyhow!("Missing filename"))?);
         debug!("--> {:?} -> {:?}", &src, &dst);
         std::fs::copy(&src, &dst)?;
     }
@@ -87,7 +86,7 @@ fn populate_folder(folder: &Path, cargo_profile: &str) -> Result<(), anyhow::Err
     info!("Downloading prebuilt cargo-nextest into folder...");
 
     let nextest_path: PathBuf;
-    let nextest_dir = folder.to_str().unwrap();
+    let nextest_dir = folder.to_str().ok_or(anyhow!("Invalid unicode"))?;
     #[cfg(target_os = "windows")]
     {
         nextest_path = folder.join("cargo-nextest.exe");
@@ -134,7 +133,7 @@ fn populate_folder(folder: &Path, cargo_profile: &str) -> Result<(), anyhow::Err
         "nextest",
         "archive",
         "--archive-file",
-        archive.to_str().unwrap(),
+        archive.to_str().ok_or(anyhow!("Invalid unicode"))?,
         "--cargo-profile",
         cargo_profile,
     ];
@@ -146,7 +145,7 @@ fn populate_folder(folder: &Path, cargo_profile: &str) -> Result<(), anyhow::Err
 
     info!(
         "Test binaries folder produced in {}",
-        folder.to_str().unwrap()
+        folder.to_str().ok_or(anyhow!("Invalid unicode"))?
     );
 
     Ok(())
@@ -157,17 +156,14 @@ pub fn build_test_binaries_folder(
     cargo_profile: &str,
 ) -> Result<(), anyhow::Error> {
     if output_dir.exists() {
-        return Err(anyhow::anyhow!(
-            "Output directory {:?} already exists",
-            output_dir
-        ));
+        return Err(anyhow!("Output directory {:?} already exists", output_dir));
     }
     if !output_dir
         .parent()
-        .ok_or(anyhow::anyhow!("Cannot find parent of {output_dir:?}"))?
+        .ok_or(anyhow!("Cannot find parent of {output_dir:?}"))?
         .exists()
     {
-        return Err(anyhow::anyhow!(
+        return Err(anyhow!(
             "Output directory {:?}: parent doesn't exist",
             output_dir
         ));

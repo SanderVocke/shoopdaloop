@@ -1,6 +1,9 @@
 use crate::ffi;
-use anyhow;
+use anyhow::anyhow;
+use common::logging::macros::*;
 use std::sync::Mutex;
+
+shoop_log_unit!("BackendBindings.AudioPort");
 
 use crate::audio_driver::AudioDriver;
 use crate::backend_session::BackendSession;
@@ -52,7 +55,7 @@ impl AudioPort {
         direction: &PortDirection,
         min_n_ringbuffer_samples: u32,
     ) -> Result<Self, anyhow::Error> {
-        let name_hint_cstr = CString::new(name_hint).expect("CString::new failed");
+        let name_hint_cstr = CString::new(name_hint)?;
         let name_hint_ptr = name_hint_cstr.as_ptr();
         let obj = unsafe {
             ffi::open_driver_audio_port(
@@ -64,7 +67,7 @@ impl AudioPort {
             )
         };
         if obj.is_null() {
-            return Err(anyhow::anyhow!("Failed to create audio port"));
+            return Err(anyhow!("Failed to create audio port"));
         }
         Ok(AudioPort {
             obj: Mutex::new(obj),
@@ -78,24 +81,45 @@ impl AudioPort {
     }
 
     pub fn input_connectability(&self) -> PortConnectability {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in input_connectability: {}", e);
+                return PortConnectability {
+                    external: false,
+                    internal: false,
+                };
+            }
+        };
         let obj = *guard;
         unsafe { PortConnectability::from_ffi(ffi::get_audio_port_input_connectability(obj)) }
     }
 
     pub fn output_connectability(&self) -> PortConnectability {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in output_connectability: {}", e);
+                return PortConnectability {
+                    external: false,
+                    internal: false,
+                };
+            }
+        };
         let obj = *guard;
         unsafe { PortConnectability::from_ffi(ffi::get_audio_port_output_connectability(obj)) }
     }
 
     pub fn get_state(&self) -> Result<AudioPortState, anyhow::Error> {
-        let guard = self.obj.lock().unwrap();
+        let guard = self
+            .obj
+            .lock()
+            .map_err(|e| anyhow!("Mutex poisoned: {}", e))?;
         let obj = *guard;
         unsafe {
             let state = ffi::get_audio_port_state(obj);
             if state.is_null() {
-                return Err(anyhow::anyhow!("Failed to get audio port state"));
+                return Err(anyhow!("Failed to get audio port state"));
             }
             let rval = AudioPortState::from_ffi(&*state);
             ffi::destroy_audio_port_state_info(state);
@@ -104,7 +128,13 @@ impl AudioPort {
     }
 
     pub fn set_gain(&self, gain: f32) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in set_gain: {}", e);
+                return;
+            }
+        };
         let obj = *guard;
         unsafe {
             ffi::set_audio_port_gain(obj, gain);
@@ -112,7 +142,13 @@ impl AudioPort {
     }
 
     pub fn set_muted(&self, muted: bool) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in set_muted: {}", e);
+                return;
+            }
+        };
         let obj = *guard;
         unsafe {
             ffi::set_audio_port_muted(obj, if muted { 1 } else { 0 });
@@ -120,7 +156,13 @@ impl AudioPort {
     }
 
     pub fn set_passthrough_muted(&self, muted: bool) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in set_passthrough_muted: {}", e);
+                return;
+            }
+        };
         let obj = *guard;
         unsafe {
             ffi::set_audio_port_passthroughMuted(obj, if muted { 1 } else { 0 });
@@ -128,9 +170,21 @@ impl AudioPort {
     }
 
     pub fn connect_internal(&self, other: &AudioPort) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in connect_internal (self): {}", e);
+                return;
+            }
+        };
         let obj = *guard;
-        let other_guard = other.obj.lock().unwrap();
+        let other_guard = match other.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in connect_internal (other): {}", e);
+                return;
+            }
+        };
         let other_obj = *other_guard;
         unsafe {
             ffi::connect_audio_port_internal(obj, other_obj);
@@ -138,7 +192,13 @@ impl AudioPort {
     }
 
     pub fn dummy_queue_data(&self, data: &[f32]) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in dummy_queue_data: {}", e);
+                return;
+            }
+        };
         let obj = *guard;
         unsafe {
             ffi::dummy_audio_port_queue_data(obj, data.len() as u32, data.as_ptr());
@@ -146,7 +206,13 @@ impl AudioPort {
     }
 
     pub fn dummy_dequeue_data(&self, n_samples: u32) -> Vec<f32> {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in dummy_dequeue_data: {}", e);
+                return Vec::new();
+            }
+        };
         let obj = *guard;
         let mut data = vec![0.0; n_samples as usize];
         unsafe {
@@ -156,7 +222,13 @@ impl AudioPort {
     }
 
     pub fn dummy_request_data(&self, n_samples: u32) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in dummy_request_data: {}", e);
+                return;
+            }
+        };
         let obj = *guard;
         unsafe {
             ffi::dummy_audio_port_request_data(obj, n_samples);
@@ -164,7 +236,13 @@ impl AudioPort {
     }
 
     pub fn get_connections_state(&self) -> HashMap<String, bool> {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in get_connections_state: {}", e);
+                return HashMap::new();
+            }
+        };
         let obj = *guard;
         unsafe {
             let state = ffi::get_audio_port_connections_state(obj);
@@ -180,25 +258,55 @@ impl AudioPort {
     }
 
     pub fn connect_external_port(&self, name: &str) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in connect_external_port: {}", e);
+                return;
+            }
+        };
         let obj = *guard;
-        let c_name = CString::new(name).expect("CString::new failed");
+        let c_name = match CString::new(name) {
+            Ok(c) => c,
+            Err(e) => {
+                error!("CString::new failed: {}", e);
+                return;
+            }
+        };
         unsafe {
             ffi::connect_audio_port_external(obj, c_name.as_ptr());
         }
     }
 
     pub fn disconnect_external_port(&self, name: &str) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in disconnect_external_port: {}", e);
+                return;
+            }
+        };
         let obj = *guard;
-        let c_name = CString::new(name).expect("CString::new failed");
+        let c_name = match CString::new(name) {
+            Ok(c) => c,
+            Err(e) => {
+                error!("CString::new failed: {}", e);
+                return;
+            }
+        };
         unsafe {
             ffi::disconnect_audio_port_external(obj, c_name.as_ptr());
         }
     }
 
     pub fn set_ringbuffer_n_samples(&self, n: u32) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in set_ringbuffer_n_samples: {}", e);
+                return;
+            }
+        };
         let obj = *guard;
         unsafe {
             ffi::set_audio_port_ringbuffer_n_samples(obj, n);
@@ -220,14 +328,26 @@ impl AudioPort {
     }
 
     pub unsafe fn unsafe_backend_ptr(&self) -> *mut ffi::shoopdaloop_audio_port_t {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in unsafe_backend_ptr: {}", e);
+                return std::ptr::null_mut();
+            }
+        };
         *guard
     }
 }
 
 impl Drop for AudioPort {
     fn drop(&mut self) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in drop: {}", e);
+                return;
+            }
+        };
         let obj = *guard;
         if obj.is_null() {
             return;

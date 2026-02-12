@@ -12,12 +12,12 @@ pub fn register_thread(name: &str) {
     let id = std::thread::current().id();
     unsafe {
         let ptr: *mut once_cell::sync::Lazy<Mutex<ThreadsMap>> = &raw mut REGISTERED_THREADS;
-        let threads: &mut Mutex<ThreadsMap> = Lazy::force_mut(ptr.as_mut().unwrap());
-        let mut guard = threads.lock();
-        guard
-            .as_mut()
-            .expect("Could not lock threads map")
-            .insert(id, name.to_string());
+        if let Some(lazy) = ptr.as_mut() {
+            let threads: &mut Mutex<ThreadsMap> = Lazy::force_mut(lazy);
+            if let Ok(mut guard) = threads.lock() {
+                guard.insert(id, name.to_string());
+            }
+        }
     }
 }
 
@@ -26,13 +26,16 @@ pub fn current_thread_registered_name() -> Option<String> {
     let result: Option<String>;
     unsafe {
         let ptr: *mut once_cell::sync::Lazy<Mutex<ThreadsMap>> = &raw mut REGISTERED_THREADS;
-        let threads: &mut Mutex<ThreadsMap> = Lazy::force_mut(ptr.as_mut().unwrap());
-        let mut guard = threads.lock();
-        result = guard
-            .as_mut()
-            .expect("Could not lock threads map")
-            .get(&id)
-            .map(|s| s.clone());
+        if let Some(lazy) = ptr.as_mut() {
+            let threads: &mut Mutex<ThreadsMap> = Lazy::force_mut(lazy);
+            if let Ok(guard) = threads.lock() {
+                result = guard.get(&id).map(|s| s.clone());
+            } else {
+                result = None;
+            }
+        } else {
+            result = None;
+        }
     }
     result
 }

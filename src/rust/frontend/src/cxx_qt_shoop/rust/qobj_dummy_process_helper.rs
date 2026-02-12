@@ -34,8 +34,17 @@ impl DummyProcessHelper {
         unsafe {
             self_qobj_ptr = self.as_mut().pin_mut_qobject_ptr();
             let backend_variant = self.backend();
-            backend_ptr = qvariant_to_qobject_ptr(&backend_variant).unwrap();
+            // Fallback to null if conversion fails. checking null later or assuming safe if we let it happen?
+            // Better to check.
+            backend_ptr = qvariant_to_qobject_ptr(&backend_variant).unwrap_or(std::ptr::null_mut());
         }
+
+        if backend_ptr.is_null() {
+            error!("Cannot start dummy process helper: backend is null or invalid");
+            self.set_active(false);
+            return;
+        }
+
         let self_aptr = AtomicPtr::new(self_qobj_ptr);
         let backend_aptr = AtomicPtr::new(backend_ptr);
 
@@ -43,44 +52,66 @@ impl DummyProcessHelper {
             let self_thread_ptr = self_aptr.load(Ordering::SeqCst);
             let backend_thread_ptr = backend_aptr.load(Ordering::SeqCst);
 
+            if self_thread_ptr.is_null() || backend_thread_ptr.is_null() {
+                error!(
+                    "DummyProcessHelper thread: pointers are null (self: {:?}, backend: {:?})",
+                    self_thread_ptr, backend_thread_ptr
+                );
+                return;
+            }
+
             thread::sleep(Duration::from_secs_f32(wait_start));
             for _ in 0..n_iters {
                 unsafe {
                     debug!("requesting {} frames", samples_per_iter);
-                    invokable::invoke::<_, (), _>(
-                        backend_thread_ptr.as_mut().unwrap(),
-                        "wait_process()",
-                        invokable::DIRECT_CONNECTION,
-                        &(),
-                    )
-                    .unwrap();
-                    invokable::invoke::<_, (), _>(
-                        backend_thread_ptr.as_mut().unwrap(),
-                        "dummy_request_controlled_frames(::std::int32_t)",
-                        invokable::DIRECT_CONNECTION,
-                        &(samples_per_iter),
-                    )
-                    .unwrap();
+                    if let Some(backend) = backend_thread_ptr.as_mut() {
+                        if let Err(e) = invokable::invoke::<_, (), _>(
+                            backend,
+                            "wait_process()",
+                            invokable::DIRECT_CONNECTION,
+                            &(),
+                        ) {
+                            error!("DummyProcessHelper: wait_process failed: {e}");
+                        }
+
+                        if let Err(e) = invokable::invoke::<_, (), _>(
+                            backend,
+                            "dummy_request_controlled_frames(::std::int32_t)",
+                            invokable::DIRECT_CONNECTION,
+                            &(samples_per_iter),
+                        ) {
+                            error!(
+                                "DummyProcessHelper: dummy_request_controlled_frames failed: {e}"
+                            );
+                        }
+                    } else {
+                        error!("DummyProcessHelper: backend pointer became null during loop");
+                        break;
+                    }
                 }
                 // Simulate backend processing
                 thread::sleep(Duration::from_secs_f32(wait_interval));
             }
 
             unsafe {
-                invokable::invoke::<_, (), _>(
-                    backend_thread_ptr.as_mut().unwrap(),
-                    "wait_process()",
-                    invokable::DIRECT_CONNECTION,
-                    &(),
-                )
-                .unwrap();
+                if let Some(backend) = backend_thread_ptr.as_mut() {
+                    if let Err(e) = invokable::invoke::<_, (), _>(
+                        backend,
+                        "wait_process()",
+                        invokable::DIRECT_CONNECTION,
+                        &(),
+                    ) {
+                        error!("DummyProcessHelper: wait_process (final) failed: {e}");
+                    }
+                }
+
                 debug!("Invoking finish");
-                let _dummy: Result<(), _> = invokable::invoke(
-                    self_thread_ptr.as_mut().unwrap(),
-                    "finish()",
-                    invokable::DIRECT_CONNECTION,
-                    &(),
-                );
+                if let Some(this) = self_thread_ptr.as_mut() {
+                    let _dummy: Result<(), _> =
+                        invokable::invoke(this, "finish()", invokable::DIRECT_CONNECTION, &());
+                } else {
+                    error!("DummyProcessHelper: self pointer became null at finish");
+                }
             }
         });
     }

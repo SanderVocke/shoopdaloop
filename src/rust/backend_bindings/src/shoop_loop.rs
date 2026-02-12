@@ -1,8 +1,12 @@
 use crate::ffi;
-use anyhow;
+use anyhow::anyhow;
+use common::logging::macros::*;
 use enum_iterator::*;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+use std::result::Result::Ok as StdOk;
 use std::sync::{Mutex, MutexGuard};
+
+shoop_log_unit!("BackendBindings.ShoopLoop");
 
 use crate::audio_channel::AudioChannel;
 use crate::channel::ChannelMode;
@@ -66,11 +70,13 @@ impl LoopState {
     pub fn new(obj: &ffi::shoop_loop_state_info_t) -> Self {
         let has_next_mode = obj.maybe_next_mode != ffi::shoop_loop_mode_t_LoopMode_Unknown;
         return LoopState {
-            mode: LoopMode::try_from(obj.mode as i32).unwrap(),
+            mode: LoopMode::try_from(obj.mode as i32).unwrap_or(LoopMode::Unknown),
             length: obj.length,
             position: obj.position,
             maybe_next_mode: match has_next_mode {
-                true => Some(LoopMode::try_from(obj.maybe_next_mode as i32).unwrap()),
+                true => Some(
+                    LoopMode::try_from(obj.maybe_next_mode as i32).unwrap_or(LoopMode::Unknown),
+                ),
                 false => None,
             },
             maybe_next_mode_delay: match has_next_mode {
@@ -92,7 +98,7 @@ impl Loop {
     fn lock(&self) -> Result<MutexGuard<'_, *mut ffi::shoopdaloop_loop_t>, anyhow::Error> {
         self.obj
             .lock()
-            .map_err(|e| anyhow::anyhow!("Failed to get mutex lock: {e}"))
+            .map_err(|e| anyhow!("Failed to get mutex lock: {e}"))
     }
 
     pub fn new(obj: *mut ffi::shoopdaloop_loop_t) -> Result<Self, anyhow::Error> {
@@ -103,14 +109,14 @@ impl Loop {
     pub fn add_audio_channel(&self, mode: ChannelMode) -> Result<AudioChannel, anyhow::Error> {
         let guard = self.lock()?;
         let obj = *guard;
-        let channel = unsafe { ffi::add_audio_channel(obj, (mode as u32).try_into().unwrap()) };
+        let channel = unsafe { ffi::add_audio_channel(obj, mode as ffi::shoop_channel_mode_t) };
         AudioChannel::new(channel)
     }
 
     pub fn add_midi_channel(&self, mode: ChannelMode) -> Result<MidiChannel, anyhow::Error> {
         let guard = self.lock()?;
         let obj = *guard;
-        let channel = unsafe { ffi::add_midi_channel(obj, (mode as u32).try_into().unwrap()) };
+        let channel = unsafe { ffi::add_midi_channel(obj, mode as ffi::shoop_channel_mode_t) };
         MidiChannel::new(channel)
     }
 
@@ -123,12 +129,12 @@ impl Loop {
         let guard = self.lock()?;
         let obj = *guard;
         if obj.is_null() {
-            return Err(anyhow::anyhow!("Invalid backend object"));
+            return Err(anyhow!("Invalid backend object"));
         }
         unsafe {
             ffi::loop_transition(
                 obj,
-                (to_mode as u32).try_into().unwrap(),
+                to_mode as ffi::shoop_loop_mode_t,
                 maybe_cycles_delay,
                 maybe_to_sync_at_cycle,
             )
@@ -140,11 +146,11 @@ impl Loop {
         let guard = self.lock()?;
         let obj = *guard;
         if obj.is_null() {
-            return Err(anyhow::anyhow!("Failed to retrieve loop state"));
+            return Err(anyhow!("Failed to retrieve loop state"));
         }
         let state = unsafe { ffi::get_loop_state(obj) };
         if state.is_null() {
-            return Err(anyhow::anyhow!("Failed to retrieve loop state"));
+            return Err(anyhow!("Failed to retrieve loop state"));
         }
         let rval = unsafe { LoopState::new(&(*state)) };
         unsafe { ffi::destroy_loop_state_info(state) };
@@ -155,7 +161,7 @@ impl Loop {
         let guard = self.lock()?;
         let obj = *guard;
         if obj.is_null() {
-            return Err(anyhow::anyhow!("Invalid backend object"));
+            return Err(anyhow!("Invalid backend object"));
         }
         unsafe { ffi::set_loop_length(obj, length) };
         Ok(())
@@ -165,7 +171,7 @@ impl Loop {
         let guard = self.lock()?;
         let obj = *guard;
         if obj.is_null() {
-            return Err(anyhow::anyhow!("Invalid backend object"));
+            return Err(anyhow!("Invalid backend object"));
         }
         unsafe { ffi::set_loop_position(obj, position) };
         Ok(())
@@ -175,7 +181,7 @@ impl Loop {
         let guard = self.lock()?;
         let obj = *guard;
         if obj.is_null() {
-            return Err(anyhow::anyhow!("Invalid backend object"));
+            return Err(anyhow!("Invalid backend object"));
         }
         unsafe { ffi::clear_loop(obj, length) };
         Ok(())
@@ -185,7 +191,7 @@ impl Loop {
         let guard = self.lock()?;
         let obj = *guard;
         if obj.is_null() {
-            return Err(anyhow::anyhow!("Invalid backend object"));
+            return Err(anyhow!("Invalid backend object"));
         }
         let loop_ptr = match loop_ref {
             Some(loop_ref) => {
@@ -217,7 +223,7 @@ impl Loop {
         let guard = self.lock()?;
         let obj = *guard;
         if obj.is_null() {
-            return Err(anyhow::anyhow!("Invalid backend object"));
+            return Err(anyhow!("Invalid backend object"));
         }
         unsafe {
             ffi::adopt_ringbuffer_contents(
@@ -225,7 +231,7 @@ impl Loop {
                 reverse_start_cycle,
                 cycles_length,
                 go_to_cycle,
-                (go_to_mode as u32).try_into().unwrap(),
+                go_to_mode as ffi::shoop_loop_mode_t,
             )
         };
         Ok(())
@@ -251,7 +257,7 @@ pub fn transition_multiple_loops(
         ffi::loops_transition(
             handles.len() as u32,
             handles_ptr,
-            (to_state as u32).try_into().unwrap(),
+            to_state as ffi::shoop_loop_mode_t,
             maybe_cycles_delay,
             maybe_to_sync_at_cycle,
         )
@@ -261,7 +267,13 @@ pub fn transition_multiple_loops(
 
 impl Drop for Loop {
     fn drop(&mut self) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            StdOk(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in drop: {}", e);
+                e.into_inner()
+            }
+        };
         let obj = *guard;
         if obj.is_null() {
             return;

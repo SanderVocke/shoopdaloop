@@ -21,4 +21,4 @@ runs:
       brew install create-dmg
       brew install mono
 
-      python3 -m pip install --upgrade pip build patchelf toml jinja2
+      python3 -m pip install build patchelf toml jinja2

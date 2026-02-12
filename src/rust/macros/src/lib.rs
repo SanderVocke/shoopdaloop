@@ -10,7 +10,12 @@ fn thread_check(_args: TokenStream, input: TokenStream, should_match: bool) -> T
     let block = &input_fn.block;
 
     if !matches!(fn_sig.inputs.first(), Some(FnArg::Receiver(_))) {
-        panic!("Thread protection macros can only be annotated on object-associated methods");
+        return syn::Error::new_spanned(
+            &fn_sig.inputs,
+            "Thread protection macros can only be annotated on object-associated methods",
+        )
+        .to_compile_error()
+        .into();
     }
 
     let expanded: TokenStream = quote! {

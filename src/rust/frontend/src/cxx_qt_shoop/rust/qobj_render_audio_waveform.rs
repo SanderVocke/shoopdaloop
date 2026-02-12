@@ -13,6 +13,7 @@ use crate::cxx_qt_shoop::qobj_render_audio_waveform_bridge::*;
 use crate::{
     audio_power_pyramid, cxx_qt_shoop::qobj_async_task_bridge::ffi::make_raw_async_task_with_parent,
 };
+use anyhow::anyhow;
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QColor, QLine};
@@ -43,7 +44,8 @@ impl ffi::RenderAudioWaveform {
             unsafe {
                 let notifier = make_raw_update_notifier();
                 let notifier = update_notifier_to_qobject(notifier);
-                notifier_shared = QSharedPointer_QObject::from_ptr_delete_later(notifier).unwrap();
+                notifier_shared = QSharedPointer_QObject::from_ptr_delete_later(notifier)
+                    .map_err(|e| anyhow!("Could not make shared ptr: {e}"))?;
 
                 connect_or_report(
                     &*notifier,
@@ -58,12 +60,12 @@ impl ffi::RenderAudioWaveform {
                 if let Err(e) = || -> Result<(), anyhow::Error> {
                     let shared_data = qvariant_to_qsharedpointer_qvector_qvariant(&shared_data)
                         .map_err(|e| {
-                            anyhow::anyhow!("Could not convert input data to shared QVector: {e}")
+                            anyhow!("Could not convert input data to shared QVector: {e}")
                         })?;
                     let vector = shared_data
                         .data()?
                         .as_ref()
-                        .ok_or(anyhow::anyhow!("Could not dereference QVector pointer"))?;
+                        .ok_or(anyhow!("Could not dereference QVector pointer"))?;
                     debug!("Preprocessing input data - {} elements", vector.len());
 
                     match shared_pyramid.lock() {
@@ -81,7 +83,11 @@ impl ffi::RenderAudioWaveform {
 
                     let shared = notifier_shared;
                     invoke::<_, (), _>(
-                        &mut *shared.as_ref().unwrap().data().unwrap(),
+                        &mut *shared
+                            .as_ref()
+                            .ok_or(anyhow!("notifier_shared is None"))?
+                            .data()
+                            .map_err(|e| anyhow!("notifier_shared data error: {e}"))?,
                         "notify_done()",
                         connection_types::DIRECT_CONNECTION,
                         &(),
@@ -100,7 +106,10 @@ impl ffi::RenderAudioWaveform {
     }
 
     pub unsafe fn get_have_data(self: Pin<&mut RenderAudioWaveform>) -> bool {
-        let pyramid = self.pyramid.lock().unwrap();
+        let pyramid = match self.pyramid.lock() {
+            Ok(p) => p,
+            Err(_) => return false,
+        };
         pyramid.levels.len() > 0
     }
 
@@ -111,7 +120,13 @@ impl ffi::RenderAudioWaveform {
             self.samples_per_bin
         );
         let s: &RenderAudioWaveformRust = self.rust();
-        let p = s.pyramid.lock().unwrap();
+        let p = match s.pyramid.lock() {
+            Ok(p) => p,
+            Err(e) => {
+                error!("Could not lock pyramid in paint: {e}");
+                return;
+            }
+        };
 
         // Skip if no pyramid
         if p.levels.len() == 0 {
@@ -131,7 +146,13 @@ impl ffi::RenderAudioWaveform {
                 }
             }
         }
-        let level: &AudioPowerPyramidLevelData = maybe_level.unwrap();
+        let level: &AudioPowerPyramidLevelData = match maybe_level {
+            Some(l) => l,
+            None => {
+                error!("Unexpected missing level in paint");
+                return;
+            }
+        };
 
         // Calculate lines
         let n_lines = f64::ceil(self.size().width()) as usize;
@@ -183,18 +204,21 @@ impl ffi::RenderAudioWaveform {
         let color = QColor::from_rgb((0.7 * 255.0) as i32, 0, 0);
         let mut pen = QPen::default();
         pen.set_color(&color);
-        let mut_painter = painter.as_mut().unwrap();
-        let mut p: Pin<&mut QPainter> = Pin::new_unchecked(mut_painter);
-        p.as_mut().set_pen(&pen);
-        p.as_mut().draw_linefs(&lines);
-        let mut center_line = QLine::default();
-        center_line.set_line(
-            0,
-            (0.5 * self.size().height()) as i32,
-            self.size().width() as i32,
-            (0.5 * self.size().height()) as i32,
-        );
-        p.draw_line(&center_line);
+        if let Some(mut_painter) = painter.as_mut() {
+            let mut p: Pin<&mut QPainter> = Pin::new_unchecked(mut_painter);
+            p.as_mut().set_pen(&pen);
+            p.as_mut().draw_linefs(&lines);
+            let mut center_line = QLine::default();
+            center_line.set_line(
+                0,
+                (0.5 * self.size().height()) as i32,
+                self.size().width() as i32,
+                (0.5 * self.size().height()) as i32,
+            );
+            p.draw_line(&center_line);
+        } else {
+            error!("Could not get mutable painter");
+        }
     }
 }
 

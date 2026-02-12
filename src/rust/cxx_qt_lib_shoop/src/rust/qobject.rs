@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use std::pin::Pin;
 
 #[cxx_qt::bridge]
@@ -136,7 +137,7 @@ pub trait FromQObject {
     unsafe fn from_qobject_ref(obj: &QObject) -> Result<&Self, anyhow::Error> {
         let ptr = Self::ptr_from_qobject_ref(obj);
         if ptr.is_null() {
-            return Err(anyhow::anyhow!("failed conversion"));
+            return Err(anyhow!("failed conversion"));
         }
         Ok(&*ptr)
     }
@@ -144,7 +145,7 @@ pub trait FromQObject {
     unsafe fn from_qobject_mut(obj: Pin<&mut QObject>) -> Result<Pin<&mut Self>, anyhow::Error> {
         let ptr = Self::ptr_from_qobject_mut(obj);
         if ptr.is_null() {
-            return Err(anyhow::anyhow!("failed conversion"));
+            return Err(anyhow!("failed conversion"));
         }
         let pin = std::pin::Pin::new_unchecked(&mut *ptr);
         Ok(pin)

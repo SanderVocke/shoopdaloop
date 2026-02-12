@@ -1,4 +1,4 @@
-use anyhow;
+use anyhow::anyhow;
 use colored::Colorize;
 use fern;
 use lazy_static::lazy_static;
@@ -11,25 +11,26 @@ lazy_static! {
 }
 
 pub fn register_log_module(name: &'static str) {
-    let mut modules = LOG_MODULES.lock().unwrap();
-    modules.insert(name);
+    if let Ok(mut modules) = LOG_MODULES.lock() {
+        modules.insert(name);
+    }
 }
 
-fn parse_level(level: &str) -> log::LevelFilter {
-    match level {
-        "trace" => log::LevelFilter::Trace,
-        "debug" => log::LevelFilter::Debug,
-        "info" => log::LevelFilter::Info,
-        "warn" => log::LevelFilter::Warn,
-        "error" => log::LevelFilter::Error,
-        _ => panic!("Unknown log level: {}", level),
+fn parse_level(level: &str) -> Option<log::LevelFilter> {
+    match level.to_lowercase().as_str() {
+        "trace" => Some(log::LevelFilter::Trace),
+        "debug" => Some(log::LevelFilter::Debug),
+        "info" => Some(log::LevelFilter::Info),
+        "warn" => Some(log::LevelFilter::Warn),
+        "error" => Some(log::LevelFilter::Error),
+        _ => None,
     }
 }
 
 fn apply_env(dispatch: fern::Dispatch) -> Result<fern::Dispatch, anyhow::Error> {
     let modules = LOG_MODULES
         .lock()
-        .map_err(|e| anyhow::anyhow!("Could not lock global modules list: {e:?}"))?;
+        .map_err(|e| anyhow!("Could not lock global modules list: {e:?}"))?;
     let find_module = |module: &str| {
         modules
             .iter()
@@ -47,13 +48,21 @@ fn apply_env(dispatch: fern::Dispatch) -> Result<fern::Dispatch, anyhow::Error> 
                 (false, false) => {
                     let maybe_log_unit = find_module(module_or_level.as_str());
                     if let Some(log_unit) = maybe_log_unit {
-                        rval = rval.level_for(log_unit, parse_level(&level));
+                        if let Some(parsed_level) = parse_level(&level) {
+                            rval = rval.level_for(log_unit, parsed_level);
+                        } else {
+                            log::warn!(target: "Logging", "Skipping unknown logging level {} for module {}", level, module_or_level);
+                        }
                     } else {
                         log::warn!(target: "Logging", "Skipping unknown logging module {}", module_or_level);
                     }
                 }
                 (false, true) => {
-                    rval = rval.level(parse_level(&module_or_level));
+                    if let Some(parsed_level) = parse_level(&module_or_level) {
+                        rval = rval.level(parsed_level);
+                    } else {
+                        log::warn!(target: "Logging", "Skipping unknown logging level/module {}", module_or_level);
+                    }
                 }
                 _ => log::warn!(target: "Logging", "Skipping invalid log statement: {}", item),
             }

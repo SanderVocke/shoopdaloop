@@ -23,6 +23,7 @@ use crate::midi_event_helpers::MidiEventToQVariant;
 use crate::midi_io;
 use crate::smf::{parse_smf, to_smf};
 
+use anyhow::anyhow;
 use dunce;
 use std::collections::HashMap;
 use std::env;
@@ -68,9 +69,8 @@ fn save_data_to_soundfile_impl<'a>(
     n_frames: usize,
     n_channels: usize,
 ) -> Result<(), anyhow::Error> {
-    let (major_format, subtype_format) = get_formats_for(filename).ok_or(anyhow::anyhow!(
-        "No format available for filename: {filename:?}"
-    ))?;
+    let (major_format, subtype_format) = get_formats_for(filename)
+        .ok_or(anyhow!("No format available for filename: {filename:?}"))?;
 
     // Reshape
     let mut reshaped: Vec<f32> = Vec::default();
@@ -90,9 +90,9 @@ fn save_data_to_soundfile_impl<'a>(
         n_channels,
     ))
     .from_path(filename)
-    .map_err(|e| anyhow::anyhow!("could not open sound file: {e:?}"))?
+    .map_err(|e| anyhow!("could not open sound file: {e:?}"))?
     .write_from_iter(reshaped.iter().map(|v| *v))
-    .map_err(|e| anyhow::anyhow!("could not write sound file: {e:?}"))?;
+    .map_err(|e| anyhow!("could not write sound file: {e:?}"))?;
 
     info!("Saved {n_frames} frames of audio to {filename:?}");
 
@@ -115,7 +115,7 @@ pub fn save_qlist_data_to_soundfile_impl(
 
             for (idx, variant) in multi.iter().enumerate() {
                 let qlist = qvariant_to_qvector_f32(&variant)
-                    .map_err(|e| anyhow::anyhow!("Could not view data as f32 vector: {e}"))?;
+                    .map_err(|e| anyhow!("Could not view data as f32 vector: {e}"))?;
                 debug!(
                     "QList sublist # {} is a QVector<f32> of {} frames",
                     idx,
@@ -123,8 +123,10 @@ pub fn save_qlist_data_to_soundfile_impl(
                 );
                 if n_frames.is_none() {
                     n_frames = Some(qlist.len() as usize);
-                } else if qlist.len() as usize != n_frames.unwrap() {
-                    return Err(anyhow::anyhow!("Inconsistent data size across channels"));
+                } else if qlist.len() as usize != n_frames.unwrap_or(0) {
+                    // Since we checked is_none above, unwrap_or(0) is safe/fallback.
+                    // But logic dictates n_frames is Some here.
+                    return Err(anyhow!("Inconsistent data size across channels"));
                 }
                 qlists.push(qlist);
             }
@@ -135,11 +137,11 @@ pub fn save_qlist_data_to_soundfile_impl(
                 &filename,
                 samplerate as usize,
                 total_data_iter,
-                n_frames.unwrap(),
+                n_frames.ok_or_else(|| anyhow!("No data found in any channel"))?,
                 n_channels,
             )?;
         } else {
-            return Err(anyhow::anyhow!("Failed to extract QVariantList"));
+            return Err(anyhow!("Failed to extract QVariantList"));
         }
     } else if let Ok(mono) = qvariant_to_qvector_f32(&data) {
         debug!("Data is a QVector<f32> of {} frames", mono.len());
@@ -151,9 +153,7 @@ pub fn save_qlist_data_to_soundfile_impl(
             1,
         )?;
     } else {
-        return Err(anyhow::anyhow!(
-            "Unsupported QVariant type for saving audio file."
-        ));
+        return Err(anyhow!("Unsupported QVariant type for saving audio file."));
     }
 
     Ok(())
@@ -164,7 +164,11 @@ fn save_channel_midi_data_impl(
     samplerate: usize,
     channel: &cxx::UniquePtr<QSharedPointer_QObject>,
 ) -> Result<(), anyhow::Error> {
-    let chan_qobj = channel.as_ref().unwrap().data().unwrap();
+    let chan_qobj = channel
+        .as_ref()
+        .ok_or_else(|| anyhow!("Channel pointer is null"))?
+        .data()
+        .map_err(|_| anyhow!("Channel data is null"))?;
     let mut conversion_error: Option<anyhow::Error> = None;
     let msgs: Vec<MidiEvent> = unsafe {
         invoke::<_, QVector_QVariant, _>(
@@ -187,7 +191,7 @@ fn save_channel_midi_data_impl(
         .collect()
     };
     if let Some(e) = conversion_error {
-        return Err(anyhow::anyhow!(
+        return Err(anyhow!(
             "Error converting MIDI from QVariant, aborting save. Last error: {e}"
         ));
     }
@@ -195,7 +199,7 @@ fn save_channel_midi_data_impl(
 
     let extension = filename
         .extension()
-        .ok_or(anyhow::anyhow!("Could not get file extension"))?
+        .ok_or(anyhow!("Could not get file extension"))?
         .to_string_lossy()
         .to_lowercase();
     if extension == "smf" {
@@ -223,7 +227,7 @@ fn load_midi_to_channels_impl<'a>(
     maybe_update_loop_to_data_length: Option<cxx::UniquePtr<QSharedPointer_QObject>>,
     timeout: Duration,
 ) -> Result<(), anyhow::Error> {
-    let extension = filename.extension().ok_or(anyhow::anyhow!(
+    let extension = filename.extension().ok_or(anyhow!(
         "Could not determine filename extension for {filename:?}"
     ))?;
     let mut messages: Vec<MidiEvent> = Vec::default();
@@ -256,14 +260,14 @@ fn load_midi_to_channels_impl<'a>(
             let now = Instant::now();
             let channel_ready = || {
                 qobject_property_bool(&mut *channel, "initialized")
-                    .map_err(|e| anyhow::anyhow!("could not get bool property: {e}"))
+                    .map_err(|e| anyhow!("could not get bool property: {e}"))
             };
             let timeout_expired = || now.elapsed() > timeout;
             while !channel_ready()? && !timeout_expired() {
                 std::thread::sleep(Duration::from_millis(10));
             }
             if !channel_ready()? {
-                return Err(anyhow::anyhow!(
+                return Err(anyhow!(
                     "Channel was not ready to receive data within the timeout ({:?})",
                     timeout
                 ));
@@ -294,7 +298,11 @@ fn load_midi_to_channels_impl<'a>(
     }
 
     if let Some(loop_obj) = maybe_update_loop_to_data_length {
-        let loop_qobj = loop_obj.as_ref().unwrap().data()?;
+        let loop_qobj = loop_obj
+            .as_ref()
+            .ok_or_else(|| anyhow!("Loop object null"))?
+            .data()
+            .map_err(|_| anyhow!("Loop data null"))?;
         unsafe {
             invoke::<_, (), _>(
                 &mut *loop_qobj,
@@ -329,15 +337,15 @@ fn load_soundfile_to_channels_impl(
     {
         let mut sound_file = sndfile::OpenOptions::ReadOnly(sndfile::ReadOptions::Auto)
             .from_path(filename)
-            .map_err(|_| anyhow::anyhow!("could not open {filename:?} for reading"))?;
+            .map_err(|_| anyhow!("could not open {filename:?} for reading"))?;
         n_channels = sound_file.get_channels();
         file_sample_rate = sound_file.get_samplerate();
         combined_data = sound_file
             .read_all_to_vec()
-            .map_err(|_| anyhow::anyhow!("could not read data from sound file {filename:?}"))?;
+            .map_err(|_| anyhow!("could not read data from sound file {filename:?}"))?;
     }
     if n_channels == 0 {
-        return Err(anyhow::anyhow!("got 0-channel audio"));
+        return Err(anyhow!("got 0-channel audio"));
     }
     let n_frames = combined_data.len() / n_channels;
 
@@ -355,8 +363,11 @@ fn load_soundfile_to_channels_impl(
 
     let mut target_frames: usize = n_frames;
     if target_sample_rate != file_sample_rate {
-        let filename = filename.file_name().unwrap().to_str().unwrap();
-        debug!("Resample {filename} from {file_sample_rate}Hz to {target_sample_rate}Hz, explicit target length {maybe_target_data_length:?}");
+        let filename_str = filename
+            .file_name()
+            .map(|f| f.to_string_lossy())
+            .unwrap_or_else(|| "unknown".into());
+        debug!("Resample {filename_str} from {file_sample_rate}Hz to {target_sample_rate}Hz, explicit target length {maybe_target_data_length:?}");
         target_frames =
             maybe_target_data_length.unwrap_or((n_frames * target_sample_rate) / file_sample_rate);
         multi_audio = multi_audio.resample(target_frames as u32)?
@@ -364,18 +375,16 @@ fn load_soundfile_to_channels_impl(
 
     let mut channel_datas: Vec<QList_f32> = Vec::default();
     for _ in 0..n_channels {
-        channel_datas.push(QList::default());
-        channel_datas
-            .last_mut()
-            .unwrap()
-            .reserve(target_frames as isize);
+        let mut list = QList::default();
+        list.reserve(target_frames as isize);
+        channel_datas.push(list);
     }
 
     for frame in 0..target_frames {
         for chan in 0..n_channels {
             channel_datas
                 .get_mut(chan)
-                .unwrap()
+                .ok_or_else(|| anyhow!("Channel index out of bounds"))?
                 .append(multi_audio.at(frame as u32, chan as u32)?);
         }
     }
@@ -387,31 +396,35 @@ fn load_soundfile_to_channels_impl(
             if let Some(target_channels) = channels_to_loop_channels.get(&idx) {
                 for target_channel in target_channels.iter() {
                     unsafe {
-                        let target_channel = target_channel.as_ref().unwrap().data().unwrap();
+                        let target_channel_ptr = target_channel
+                            .as_ref()
+                            .ok_or_else(|| anyhow!("Target channel null"))?
+                            .data()
+                            .map_err(|_| anyhow!("Target channel data null"))?;
                         let now = Instant::now();
                         let channel_ready = || {
-                            qobject_property_bool(&mut *target_channel, "initialized")
-                                .map_err(|e| anyhow::anyhow!("could not get bool property: {e}"))
+                            qobject_property_bool(&*target_channel_ptr, "initialized")
+                                .map_err(|e| anyhow!("could not get bool property: {e}"))
                         };
                         let timeout_expired = || now.elapsed() > timeout;
                         while !channel_ready()? && !timeout_expired() {
                             std::thread::sleep(Duration::from_millis(10));
                         }
                         if !channel_ready()? {
-                            return Err(anyhow::anyhow!(
+                            return Err(anyhow!(
                                 "Channel was not ready to receive data within the timeout ({:?})",
                                 timeout
                             ));
                         }
                         invoke::<_, (), _>(
-                            &mut *target_channel,
+                            &mut *target_channel_ptr,
                             "load_audio_data(QList<float>)",
                             connection_types::QUEUED_CONNECTION,
                             &(*qlist),
                         )?;
                         if let Some(start_offset) = maybe_set_start_offset {
                             invoke::<_, (), _>(
-                                &mut *target_channel,
+                                &mut *target_channel_ptr,
                                 "push_start_offset(::std::int32_t)",
                                 connection_types::QUEUED_CONNECTION,
                                 &(start_offset as i32),
@@ -419,7 +432,7 @@ fn load_soundfile_to_channels_impl(
                         }
                         if let Some(n_preplay) = maybe_set_n_preplay_samples {
                             invoke::<_, (), _>(
-                                &mut *target_channel,
+                                &mut *target_channel_ptr,
                                 "push_n_preplay_samples(::std::int32_t)",
                                 connection_types::QUEUED_CONNECTION,
                                 &(n_preplay as i32),
@@ -434,9 +447,13 @@ fn load_soundfile_to_channels_impl(
 
     if let Some(loop_obj) = maybe_update_loop_to_data_length {
         unsafe {
-            let loop_obj = loop_obj.as_ref().unwrap().data().unwrap();
+            let loop_obj_ptr = loop_obj
+                .as_ref()
+                .ok_or_else(|| anyhow!("Loop object null"))?
+                .data()
+                .map_err(|_| anyhow!("Loop data null"))?;
             invoke::<_, (), _>(
-                &mut *loop_obj,
+                &mut *loop_obj_ptr,
                 "set_length(::std::int32_t)",
                 connection_types::QUEUED_CONNECTION,
                 &(target_frames as i32),
@@ -457,7 +474,11 @@ fn qvariant_loop_gui_to_loop_backend(
 
     if !maybe_loop_ptr.is_null() {
         match unsafe { LoopGui::from_qobject_mut_ptr(maybe_loop_ptr) } {
-            Ok(l) => Some(l.backend_loop_wrapper.copy().unwrap()),
+            Ok(l) => l
+                .backend_loop_wrapper
+                .copy()
+                .map_err(|_| error!("Failed to copy loop backend wrapper"))
+                .ok(),
             Err(_) => None,
         }
     } else {
@@ -492,7 +513,11 @@ fn qlist_qvariant_channels_to_backend(
         match qvariant_to_qobject_ptr(chan_variant) {
             Ok(chan_ptr) => match unsafe { LoopChannelGui::from_qobject_mut_ptr(chan_ptr) } {
                 Ok(chan) => {
-                    result.push(chan.backend_channel_wrapper.copy().unwrap());
+                    if let Ok(wrapper) = chan.backend_channel_wrapper.copy() {
+                        result.push(wrapper);
+                    } else {
+                        error!("Failed to copy backend channel wrapper");
+                    }
                 }
                 Err(e) => {
                     error!("skipping channel map element: {e}");
@@ -564,7 +589,7 @@ impl FileIO {
         match file {
             Ok(f) => {
                 let path = f.path().to_owned();
-                let ppath = path.to_str().unwrap();
+                let ppath = path.to_string_lossy().into_owned();
                 debug!("created temporary file: {}", ppath);
                 let result = f.keep();
                 return match result {
@@ -585,8 +610,10 @@ impl FileIO {
         match temp_file {
             Ok(f) => {
                 let path = f.path().to_owned();
-                let ppath = path.to_str().unwrap();
-                f.close().expect("Unable to close temporary file");
+                let ppath = path.to_string_lossy().into_owned();
+                if let Err(e) = f.close() {
+                    error!("Unable to close temporary file: {}", e);
+                }
                 debug!("generated temporary filename: {}", ppath);
                 return QString::from(ppath);
             }
@@ -602,8 +629,9 @@ impl FileIO {
         let temp_dir = tempdir();
         match temp_dir {
             Ok(d) => {
-                let path = dunce::canonicalize(d.keep().to_owned()).unwrap();
-                let ppath = path.to_str().unwrap();
+                let path =
+                    dunce::canonicalize(d.keep().to_owned()).unwrap_or_else(|_| PathBuf::from("."));
+                let ppath = path.to_string_lossy().into_owned();
                 debug!("created temporary folder: {}", ppath);
                 return QString::from(ppath);
             }
@@ -726,7 +754,7 @@ impl FileIO {
         let path = Path::new(&path);
         let result = path.file_name();
         match result {
-            Some(f) => return QString::from(f.to_str().unwrap()),
+            Some(f) => return QString::from(f.to_string_lossy().as_ref()),
             _ => return QString::default(),
         }
     }
@@ -742,7 +770,7 @@ impl FileIO {
         let path = path.to_string();
         let result = dunce::canonicalize(&path);
         match result {
-            Ok(p) => return QString::from(p.to_str().unwrap()),
+            Ok(p) => return QString::from(p.to_string_lossy().as_ref()),
             Err(_) => {
                 error!("failed to get realpath of: {}", path);
                 return QString::default();
@@ -767,8 +795,8 @@ impl FileIO {
                 for entry in g {
                     match entry {
                         Ok(p) => {
-                            let p = p.to_str().unwrap();
-                            paths.append(QString::from(p));
+                            let p = p.to_string_lossy().into_owned();
+                            paths.append(QString::from(&p));
                         }
                         Err(_) => {}
                     }
@@ -808,14 +836,14 @@ impl FileIO {
             let channel_backend = channel_gui
                 .backend_channel_wrapper
                 .as_ref()
-                .unwrap()
+                .ok_or_else(|| anyhow!("Backend channel wrapper is null"))?
                 .copy()
-                .unwrap();
+                .map_err(|_| anyhow!("Failed to copy backend channel wrapper"))?;
             pin_async_task.as_mut().exec_concurrent_rust_then_finish(
                 move || -> Result<(), anyhow::Error> {
                     let filename = PathBuf::from(filename.to_string());
                     save_channel_midi_data_impl(&filename, samplerate as usize, &channel_backend)
-                        .map_err(|e| anyhow::anyhow!("Failed to save channel MIDI data: {e}"))
+                        .map_err(|e| anyhow!("Failed to save channel MIDI data: {e}"))
                 },
             );
             Ok(())
@@ -838,12 +866,12 @@ impl FileIO {
             let channel_backend = channel_gui
                 .backend_channel_wrapper
                 .as_ref()
-                .unwrap()
+                .ok_or_else(|| anyhow!("Backend channel wrapper is null"))?
                 .copy()
-                .unwrap();
+                .map_err(|_| anyhow!("Failed to copy backend channel wrapper"))?;
             let filename = PathBuf::from(filename.to_string());
             save_channel_midi_data_impl(&filename, samplerate as usize, &channel_backend)
-                .map_err(|e| anyhow::anyhow!("Failed to save channel MIDI: {e}"))
+                .map_err(|e| anyhow!("Failed to save channel MIDI: {e}"))
         }() {
             error!("Failed to save channel MIDI: {e}");
             return false;
@@ -880,7 +908,7 @@ impl FileIO {
                         match maybe_set_n_preplay_samples.is_null() {
                             false => {
                                 Some(QVariant::value::<i32>(&maybe_set_n_preplay_samples).ok_or(
-                                    anyhow::anyhow!(
+                                    anyhow!(
                                         "n_preplay_samples not convertible to i32, type is {}",
                                         qvariant_type_name(&maybe_set_n_preplay_samples)?
                                     ),
@@ -891,7 +919,7 @@ impl FileIO {
                         match !maybe_set_start_offset.is_null() {
                             false => Some(
                                 QVariant::value::<i32>(&maybe_set_start_offset)
-                                    .ok_or(anyhow::anyhow!("start offset not convertible to i32"))?
+                                    .ok_or(anyhow!("start offset not convertible to i32"))?
                                     as isize,
                             ),
                             true => None,
@@ -899,7 +927,7 @@ impl FileIO {
                         maybe_loop,
                         Duration::from_millis(ready_timeout_ms as u64),
                     )
-                    .map_err(|e| anyhow::anyhow!("Failed to load MIDI to channels: {e}"))
+                    .map_err(|e| anyhow!("Failed to load MIDI to channels: {e}"))
                 },
             );
             Ok(())
@@ -932,7 +960,7 @@ impl FileIO {
                 backend_channels.iter(),
                 match maybe_set_n_preplay_samples.is_null() {
                     false => Some(QVariant::value::<i32>(&maybe_set_n_preplay_samples).ok_or(
-                        anyhow::anyhow!(
+                        anyhow!(
                             "n_preplay_samples not convertible to i32, type is {}",
                             qvariant_type_name(&maybe_set_n_preplay_samples)?
                         ),
@@ -942,7 +970,7 @@ impl FileIO {
                 match maybe_set_start_offset.is_null() {
                     false => Some(
                         QVariant::value::<i32>(&maybe_set_start_offset)
-                            .ok_or(anyhow::anyhow!("start offset not convertible to i32"))?
+                            .ok_or(anyhow!("start offset not convertible to i32"))?
                             as isize,
                     ),
                     true => None,
@@ -970,7 +998,19 @@ impl FileIO {
 
         let mut qlists: QList_QVariant = QList::default();
         for shared in qlist_qvariant_channels_to_backend(&channels).iter() {
-            let ptr = shared.as_ref().unwrap().data().unwrap();
+            let shared_ptr_res = shared
+                .as_ref()
+                .ok_or_else(|| anyhow!("Shared pointer is null"))
+                .and_then(|ptr| ptr.data().map_err(|_| anyhow!("Shared data is null")));
+
+            let ptr = match shared_ptr_res {
+                Ok(p) => p,
+                Err(e) => {
+                    error!("Failed to get shared pointer: {}", e);
+                    continue;
+                }
+            };
+
             unsafe {
                 match invoke::<_, QList_f32, _>(
                     &mut *ptr,
@@ -980,7 +1020,14 @@ impl FileIO {
                 ) {
                     Ok(data) => {
                         debug!("channel yielded {} frames of audio data", data.len());
-                        qlists.append(qlist_f32_to_qvariant(&data).unwrap())
+                        let variant = match qlist_f32_to_qvariant(&data) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                error!("Failed to convert f32 list to QVariant: {:?}", e);
+                                QVariant::default()
+                            }
+                        };
+                        qlists.append(variant);
                     }
                     Err(e) => {
                         error!("Failed to get audio data - ignoring during save: {e}");
@@ -989,13 +1036,13 @@ impl FileIO {
                 }
             }
         }
-        let variant = qvariantlist_to_qvariant(&qlists).unwrap();
+        let variant = qvariantlist_to_qvariant(&qlists).unwrap_or(QVariant::default());
 
         pin_async_task
             .as_mut()
             .exec_concurrent_rust_then_finish(move || {
                 save_qlist_data_to_soundfile_impl(filename, samplerate, variant)
-                    .map_err(|e| anyhow::anyhow!("Failed to save channels audio to file: {e}"))
+                    .map_err(|e| anyhow!("Failed to save channels audio to file: {e}"))
             });
 
         return unsafe { pin_async_task.pin_mut_qobject_ptr() };
@@ -1010,7 +1057,20 @@ impl FileIO {
         let mut success = true;
         let mut qlists: QList_QVariant = QList::default();
         for shared in qlist_qvariant_channels_to_backend(&channels).iter() {
-            let ptr = shared.as_ref().unwrap().data().unwrap();
+            let shared_ptr_res = shared
+                .as_ref()
+                .ok_or_else(|| anyhow!("Shared pointer is null"))
+                .and_then(|ptr| ptr.data().map_err(|_| anyhow!("Shared data is null")));
+
+            let ptr = match shared_ptr_res {
+                Ok(p) => p,
+                Err(e) => {
+                    error!("Failed to get shared pointer: {}", e);
+                    success = false;
+                    continue;
+                }
+            };
+
             unsafe {
                 match invoke(
                     &mut *ptr,
@@ -1018,9 +1078,14 @@ impl FileIO {
                     connection_types::BLOCKING_QUEUED_CONNECTION,
                     &(),
                 ) {
-                    Ok(data) => {
-                        qlists.append(qlist_f32_to_qvariant(&data).unwrap());
-                    }
+                    Ok(data) => match qlist_f32_to_qvariant(&data) {
+                        Ok(v) => qlists.append(v),
+                        Err(e) => {
+                            error!("Failed to convert f32 list to QVariant: {:?}", e);
+                            qlists.append(QVariant::default());
+                            success = false;
+                        }
+                    },
                     Err(e) => {
                         error!("Failed to get audio data - ignoring during save: {e}");
                         qlists.append(QVariant::default());
@@ -1029,7 +1094,13 @@ impl FileIO {
                 }
             }
         }
-        let variant = qvariantlist_to_qvariant(&qlists).unwrap();
+        let variant = match qvariantlist_to_qvariant(&qlists) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("Failed to convert QVariantList: {:?}", e);
+                return false;
+            }
+        };
         if let Err(e) = save_qlist_data_to_soundfile_impl(filename, samplerate, variant) {
             error!("Failed to save sound data to file: {e}");
             success = false;
@@ -1073,7 +1144,7 @@ impl FileIO {
                     maybe_loop,
                     Duration::from_millis(ready_timeout_ms as u64),
                 )
-                .map_err(|e| anyhow::anyhow!("Failed to load soundfile to channels: {e}"))
+                .map_err(|e| anyhow!("Failed to load soundfile to channels: {e}"))
             });
 
         return unsafe { pin_async_task.pin_mut_qobject_ptr() };
@@ -1129,7 +1200,7 @@ impl FileIO {
                 );
                 result.insert(
                     QString::from("frames"),
-                    QVariant::from(&(sound_file.len().unwrap() as i32)),
+                    QVariant::from(&(sound_file.len().unwrap_or(0) as i32)),
                 );
                 result
             }
@@ -1164,20 +1235,26 @@ mod tests {
         let start = SystemTime::now();
         obj.wait_blocking(10);
         let end = SystemTime::now();
-        let diff = end.duration_since(start).unwrap().as_millis();
+        let diff = end
+            .duration_since(start)
+            .expect("Time went backwards")
+            .as_millis();
         assert!(diff >= 10);
     }
 
     #[test]
-    fn test_get_current_directory() {
+    fn test_get_current_directory() -> Result<(), anyhow::Error> {
         use std::env;
         let obj = make_unique_fileio();
-        let prev = env::current_dir().unwrap();
+        let prev =
+            env::current_dir().map_err(|e| anyhow!("Could not get current directory: {e}"))?;
         let dir = obj.create_temporary_folder();
-        env::set_current_dir(dir.to_string()).unwrap();
+        env::set_current_dir(dir.to_string())
+            .map_err(|e| anyhow!("Could not set current directory: {e}"))?;
         let current = obj.get_current_directory();
-        env::set_current_dir(&prev).unwrap();
+        env::set_current_dir(&prev).map_err(|e| anyhow!("Could not set current directory: {e}"))?;
         assert_eq!(current.to_string(), dir.to_string());
+        Ok(())
     }
 
     #[test]
@@ -1271,13 +1348,18 @@ mod tests {
     }
 
     #[test]
-    fn test_glob() {
-        let folder = tempfile::tempdir().unwrap();
-        std::fs::create_dir(folder.path().join("testfolder")).unwrap();
-        std::fs::write(folder.path().join("test1"), "test").unwrap();
-        std::fs::write(folder.path().join("test2"), "test").unwrap();
-        std::fs::write(folder.path().join("testfolder").join("test1"), "test").unwrap();
-        std::fs::write(folder.path().join("testfolder").join("test2"), "test").unwrap();
+    fn test_glob() -> Result<(), anyhow::Error> {
+        let folder = tempfile::tempdir().map_err(|e| anyhow!("Could not create temp dir: {e}"))?;
+        std::fs::create_dir(folder.path().join("testfolder"))
+            .map_err(|e| anyhow!("Could not create testfolder: {e}"))?;
+        std::fs::write(folder.path().join("test1"), "test")
+            .map_err(|e| anyhow!("Could not write test1: {e}"))?;
+        std::fs::write(folder.path().join("test2"), "test")
+            .map_err(|e| anyhow!("Could not write test2: {e}"))?;
+        std::fs::write(folder.path().join("testfolder").join("test1"), "test")
+            .map_err(|e| anyhow!("Could not write test1 in testfolder: {e}"))?;
+        std::fs::write(folder.path().join("testfolder").join("test2"), "test")
+            .map_err(|e| anyhow!("Could not write test2 in testfolder: {e}"))?;
 
         let obj = make_unique_fileio();
         let qstring_to_pathbuf = |qs: &QString| {
@@ -1289,30 +1371,35 @@ mod tests {
         {
             let result = obj.glob(QString::from(&format!(
                 "{folder}/*",
-                folder = folder.path().to_str().unwrap()
+                folder = folder.path().to_string_lossy().as_ref()
             )));
-            let paths: Vec<PathBuf> = result.iter().map(qstring_to_pathbuf).collect();
-            let expect: Vec<PathBuf> = [
+            let mut paths: Vec<PathBuf> = result.iter().map(qstring_to_pathbuf).collect();
+            paths.sort();
+            let mut expect: Vec<PathBuf> = [
                 folder.path().join("test1"),
                 folder.path().join("test2"),
                 folder.path().join("testfolder"),
             ]
             .to_vec();
+            expect.sort();
             assert_eq!(paths, expect);
         }
 
         {
             let result = obj.glob(QString::from(&format!(
                 "{folder}/**/test1",
-                folder = folder.path().to_str().unwrap()
+                folder = folder.path().to_string_lossy()
             )));
-            let paths: Vec<PathBuf> = result.iter().map(qstring_to_pathbuf).collect();
-            let expect: Vec<PathBuf> = [
+            let mut paths: Vec<PathBuf> = result.iter().map(qstring_to_pathbuf).collect();
+            paths.sort();
+            let mut expect: Vec<PathBuf> = [
                 folder.path().join("test1"),
                 folder.path().join("testfolder/test1"),
             ]
             .to_vec();
+            expect.sort();
             assert_eq!(paths, expect);
         }
+        Ok(())
     }
 }

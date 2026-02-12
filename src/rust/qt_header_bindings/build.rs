@@ -1,6 +1,6 @@
 use std::process::Command;
 
-use anyhow;
+use anyhow::anyhow;
 
 fn qmake_command(qmake_path: &str, argstring: &str) -> Command {
     let shell_command = format!("{} {}", qmake_path, argstring);
@@ -50,11 +50,11 @@ fn main_impl() -> Result<(), anyhow::Error> {
 
     let bindings = builder
         .generate()
-        .map_err(|e| anyhow::anyhow!("Generation failed: {e}"))?;
+        .map_err(|e| anyhow!("Generation failed: {e}"))?;
 
     // post-process the file to add enum iteration capabilities.
     let mut file = syn::parse_file(bindings.to_string().as_str())
-        .map_err(|e| anyhow::anyhow!("Parsing failed: {e}"))?;
+        .map_err(|e| anyhow!("Parsing failed: {e}"))?;
     for item in &mut file.items {
         if let syn::Item::Enum(item_enum) = item {
             item_enum

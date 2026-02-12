@@ -1,7 +1,7 @@
 pub use crate::cxx_qt_shoop::qobj_qmlengine_bridge::QmlEngine;
 use crate::cxx_qt_shoop::qobj_qmlengine_bridge::{self, ffi::*};
 use crate::engine_update_thread;
-use anyhow;
+use anyhow::anyhow;
 use common::util::PATH_LIST_SEPARATOR;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::qobject::AsQObject;
@@ -37,11 +37,11 @@ impl QmlEngine {
                 connect::connect_or_report(
                     window
                         .as_ref()
-                        .ok_or(anyhow::anyhow!("Unable to get root window reference"))?,
+                        .ok_or(anyhow!("Unable to get root window reference"))?,
                     "frameSwapped()",
                     update_thread
                         .as_ref()
-                        .ok_or(anyhow::anyhow!("Unable to get update thread reference"))?,
+                        .ok_or(anyhow!("Unable to get update thread reference"))?,
                     "frontend_frame_swapped()",
                     connection_types::QUEUED_CONNECTION,
                 );

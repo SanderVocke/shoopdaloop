@@ -1,6 +1,9 @@
 use crate::ffi;
-use anyhow;
+use anyhow::anyhow;
+use common::logging::macros::*;
 use std::sync::Mutex;
+
+shoop_log_unit!("BackendBindings.AudioChannel");
 
 use crate::audio_port::AudioPort;
 use crate::channel::ChannelMode;
@@ -44,9 +47,7 @@ unsafe impl Sync for AudioChannel {}
 impl AudioChannel {
     pub fn new(raw: *mut ffi::shoopdaloop_loop_audio_channel_t) -> Result<Self, anyhow::Error> {
         if raw.is_null() {
-            Err(anyhow::anyhow!(
-                "Cannot create AudioChannel from null pointer"
-            ))
+            Err(anyhow!("Cannot create AudioChannel from null pointer"))
         } else {
             let wrapped = Mutex::new(raw);
             Ok(AudioChannel { obj: wrapped })
@@ -83,10 +84,7 @@ impl AudioChannel {
                 return;
             }
             for (i, &value) in data.iter().enumerate() {
-                (*backend_data)
-                    .data
-                    .offset(i.try_into().unwrap())
-                    .write(value);
+                (*backend_data).data.offset(i as isize).write(value);
             }
             ffi::load_audio_channel_data(self.unsafe_backend_ptr(), backend_data);
             ffi::destroy_audio_channel_data(backend_data);
@@ -110,7 +108,7 @@ impl AudioChannel {
         unsafe {
             let state_ptr = ffi::get_audio_channel_state(self.unsafe_backend_ptr());
             if state_ptr.is_null() {
-                return Err(anyhow::anyhow!("Failed to retrieve audio channel state"));
+                return Err(anyhow!("Failed to retrieve audio channel state"));
             }
             let state = AudioChannelState::new(&(*state_ptr))?;
             ffi::destroy_audio_channel_state_info(state_ptr);
@@ -160,7 +158,13 @@ impl AudioChannel {
 
 impl Drop for AudioChannel {
     fn drop(&mut self) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in drop: {}", e);
+                e.into_inner()
+            }
+        };
         let obj = *guard;
         if obj.is_null() {
             return;

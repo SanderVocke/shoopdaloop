@@ -1,4 +1,4 @@
-use anyhow;
+use anyhow::anyhow;
 use backend_bindings::LoopMode;
 use cxx_qt_lib::{QList, QVariant};
 use cxx_qt_lib_shoop::{
@@ -114,7 +114,7 @@ pub fn transition_backend_loops(
         if unison_transition_loops.len() > 0 {
             let first = unison_transition_loops
                 .get(0)
-                .ok_or(anyhow::anyhow!("No loops to transition"))?;
+                .ok_or(anyhow!("No loops to transition"))?;
             let first = qvariant_to_qobject_ptr(first)?;
             invoke(
                 &mut *first,

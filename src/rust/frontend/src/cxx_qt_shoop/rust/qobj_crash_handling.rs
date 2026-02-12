@@ -12,10 +12,9 @@ impl CrashHandling {
     pub fn set_json_toplevel_field(&self, key: QString, json: QString) {
         let json_str = json.to_string();
         let maybe_structured = serde_json::from_str(&json_str);
-        let value = if maybe_structured.is_ok() {
-            maybe_structured.unwrap()
-        } else {
-            serde_json::json!(json_str)
+        let value = match maybe_structured {
+            Ok(v) => v,
+            Err(_) => serde_json::json!(json_str),
         };
 
         crashhandling::set_crash_json_toplevel_field(key.to_string().as_str(), value);
@@ -24,10 +23,9 @@ impl CrashHandling {
     pub fn set_json_tag(&self, tag: QString, json: QString) {
         let json_str = json.to_string();
         let maybe_structured = serde_json::from_str(&json_str);
-        let value = if maybe_structured.is_ok() {
-            maybe_structured.unwrap()
-        } else {
-            serde_json::json!(json_str)
+        let value = match maybe_structured {
+            Ok(v) => v,
+            Err(_) => serde_json::json!(json_str),
         };
 
         crashhandling::set_crash_json_tag(tag.to_string().as_str(), value);

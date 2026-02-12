@@ -6,6 +6,7 @@ use crate::{
     },
     midi_event_helpers::MidiEventToQVariant,
 };
+use anyhow::anyhow;
 use backend_bindings::{MidiEvent, PortConnectability, PortDataType, PortDirection};
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
@@ -51,7 +52,10 @@ impl PortBackend {
         }
 
         if let Err(e) = || -> Result<(), anyhow::Error> {
-            let port = self.maybe_backend_port.as_ref().unwrap();
+            let port = self
+                .maybe_backend_port
+                .as_ref()
+                .ok_or(anyhow!("Backend port not initialized"))?;
             let prev_state = self.prev_state.clone();
             let new_state = match port.get_state() {
                 Ok(state) => state,
@@ -136,8 +140,12 @@ impl PortBackend {
     pub fn display_name(self: &PortBackend) -> String {
         if self.prev_state.name.len() > 0 {
             self.prev_state.name.clone()
-        } else if self.name_hint.is_some() && self.name_hint.as_ref().unwrap().len() > 0 {
-            self.name_hint.as_ref().unwrap().to_string()
+        } else if let Some(hint) = self.name_hint.as_ref() {
+            if hint.len() > 0 {
+                hint.to_string()
+            } else {
+                "unknown".to_string()
+            }
         } else {
             "unknown".to_string()
         }
@@ -166,80 +174,79 @@ impl PortBackend {
     }
 
     pub fn maybe_initialize_backend_internal(mut self: Pin<&mut PortBackend>) -> bool {
-        if let Err(e) =
-            || -> Result<(), anyhow::Error> {
-                let idx = self
-                    .fx_chain_port_idx
-                    .ok_or(anyhow::anyhow!("no fx chain port index set"))?;
-                let output_connectability = self
-                    .output_connectability
-                    .as_ref()
-                    .ok_or(anyhow::anyhow!("output connectability not set"))?;
-                let fx_chain: Pin<&mut FXChainBackend> = unsafe {
-                    FXChainBackend::from_qobject_mut_ptr(
-                        self.fx_chain
-                            .as_ref()
-                            .ok_or(anyhow::anyhow!("fx chain not set"))?
-                            .to_strong()?
-                            .as_ref()
-                            .ok_or(anyhow::anyhow!("cannot get fx chain"))?
-                            .data()?,
-                    )?
-                };
-                let is_input = !output_connectability.internal;
-                let is_midi = self
-                    .port_type
-                    .ok_or(anyhow::anyhow!("port data type (is_midi) not set"))?
-                    == PortDataType::Midi;
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            let idx = self
+                .fx_chain_port_idx
+                .ok_or(anyhow!("no fx chain port index set"))?;
+            let output_connectability = self
+                .output_connectability
+                .as_ref()
+                .ok_or(anyhow!("output connectability not set"))?;
+            let fx_chain: Pin<&mut FXChainBackend> = unsafe {
+                FXChainBackend::from_qobject_mut_ptr(
+                    self.fx_chain
+                        .as_ref()
+                        .ok_or(anyhow!("fx chain not set"))?
+                        .to_strong()?
+                        .as_ref()
+                        .ok_or(anyhow!("cannot get fx chain"))?
+                        .data()?,
+                )?
+            };
+            let is_input = !output_connectability.internal;
+            let is_midi = self
+                .port_type
+                .ok_or(anyhow!("port data type (is_midi) not set"))?
+                == PortDataType::Midi;
 
-                debug!(
-                    self,
-                    "initialize as {} {} port {} of FX chain",
-                    if is_midi { "MIDI" } else { "audio" },
-                    if is_input { "input " } else { "output " },
-                    idx
-                );
-                let port: AnyBackendPort =
-                    if is_input {
-                        if is_midi {
-                            AnyBackendPort::Midi(fx_chain.get_midi_input_port(idx as u32).ok_or(
-                                anyhow::anyhow!("Could not get FX chain MIDI input {idx}"),
-                            )?)
-                        } else {
-                            // audio
-                            AnyBackendPort::Audio(fx_chain.get_audio_input_port(idx as u32).ok_or(
-                                anyhow::anyhow!("Could not get FX chain audio input {idx}"),
-                            )?)
-                        }
-                    } else {
-                        if is_midi {
-                            return Err(anyhow::anyhow!(
-                                "FX chains do not support internal MIDI out"
-                            ));
-                        } else {
-                            // audio
-                            AnyBackendPort::Audio(
-                                fx_chain.get_audio_output_port(idx as u32).ok_or(
-                                    anyhow::anyhow!("Could not get FX chain audio output {idx}"),
-                                )?,
-                            )
-                        }
-                    };
+            debug!(
+                self,
+                "initialize as {} {} port {} of FX chain",
+                if is_midi { "MIDI" } else { "audio" },
+                if is_input { "input " } else { "output " },
+                idx
+            );
+            let port: AnyBackendPort = if is_input {
+                if is_midi {
+                    AnyBackendPort::Midi(
+                        fx_chain
+                            .get_midi_input_port(idx as u32)
+                            .ok_or(anyhow!("Could not get FX chain MIDI input {idx}"))?,
+                    )
+                } else {
+                    // audio
+                    AnyBackendPort::Audio(
+                        fx_chain
+                            .get_audio_input_port(idx as u32)
+                            .ok_or(anyhow!("Could not get FX chain audio input {idx}"))?,
+                    )
+                }
+            } else {
+                if is_midi {
+                    return Err(anyhow!("FX chains do not support internal MIDI out"));
+                } else {
+                    // audio
+                    AnyBackendPort::Audio(
+                        fx_chain
+                            .get_audio_output_port(idx as u32)
+                            .ok_or(anyhow!("Could not get FX chain audio output {idx}"))?,
+                    )
+                }
+            };
 
-                // To push any state that was already set on us before initializing
-                let state = &self.prev_state;
-                debug!(self, "Push deferred state: {state:?}");
-                port.push_state(state)?;
-                let mut rust_mut = self.as_mut().rust_mut();
-                rust_mut.maybe_backend_port = Some(port);
+            // To push any state that was already set on us before initializing
+            let state = &self.prev_state;
+            debug!(self, "Push deferred state: {state:?}");
+            port.push_state(state)?;
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.maybe_backend_port = Some(port);
 
-                self.as_mut().update_internal_port_connections_impl();
+            self.as_mut().update_internal_port_connections_impl();
 
-                debug!(self, "Initialized as internal-facing port");
-                self.as_mut().update();
-                Ok(())
-            }()
-        {
+            debug!(self, "Initialized as internal-facing port");
+            self.as_mut().update();
+            Ok(())
+        }() {
             error!(
                 self,
                 "Failed to initialize internal-facing backend port: {e}"
@@ -254,7 +261,7 @@ impl PortBackend {
             let input_connectability = self
                 .input_connectability
                 .as_ref()
-                .ok_or(anyhow::anyhow!("input_connectability not set"))?;
+                .ok_or(anyhow!("input_connectability not set"))?;
             let direction = if !input_connectability.internal {
                 PortDirection::Input
             } else {
@@ -262,16 +269,16 @@ impl PortBackend {
             };
             let port_type = self
                 .port_type
-                .ok_or(anyhow::anyhow!("port data type (is_midi) not set"))?;
+                .ok_or(anyhow!("port data type (is_midi) not set"))?;
             unsafe {
                 let name_hint = self
                     .name_hint
                     .as_ref()
-                    .ok_or(anyhow::anyhow!("name_hint not set"))?
+                    .ok_or(anyhow!("name_hint not set"))?
                     .to_string();
                 let min_n_ringbuffer_samples: i32 = self
                     .min_n_ringbuffer_samples
-                    .ok_or(anyhow::anyhow!("min_n_ringbuffer_samples not set"))?;
+                    .ok_or(anyhow!("min_n_ringbuffer_samples not set"))?;
                 let backend = BackendWrapper::from_qobject_ref_ptr(self.backend as *const QObject)?;
 
                 debug!(self, "Opening driver port for: {name_hint}");
@@ -281,11 +288,11 @@ impl PortBackend {
                     backend
                         .session
                         .as_ref()
-                        .ok_or(anyhow::anyhow!("No session in backend"))?,
+                        .ok_or(anyhow!("No session in backend"))?,
                     backend
                         .driver
                         .as_ref()
-                        .ok_or(anyhow::anyhow!("No driver in backend"))?,
+                        .ok_or(anyhow!("No driver in backend"))?,
                     name_hint.as_str(),
                     &direction,
                     min_n_ringbuffer_samples as u32,
@@ -326,10 +333,15 @@ impl PortBackend {
             if self.backend.is_null() {
                 non_ready_vars.insert("backend".to_string());
             }
-            if !self.backend.is_null()
-                && !qobject_property_bool(self.backend.as_ref().unwrap(), "ready").unwrap_or(false)
-            {
-                non_ready_vars.insert("backend_ready".to_string());
+            if !self.backend.is_null() {
+                let ready = if let Some(backend_ref) = self.backend.as_ref() {
+                    qobject_property_bool(backend_ref, "ready").unwrap_or(false)
+                } else {
+                    false
+                };
+                if !ready {
+                    non_ready_vars.insert("backend_ready".to_string());
+                }
             }
             if self.is_internal.is_none() {
                 non_ready_vars.insert("internal".to_string());
@@ -355,25 +367,34 @@ impl PortBackend {
             if self.min_n_ringbuffer_samples.is_none() {
                 non_ready_vars.insert("min_n_ringbuffer_samples".to_string());
             }
-            if self.is_internal.is_some()
-                && self.is_internal.unwrap()
-                && self
-                    .fx_chain
-                    .as_ref()
-                    .unwrap_or(&cxx::UniquePtr::null())
-                    .is_null()
-            {
-                non_ready_vars.insert("fx_chain non-null".to_string());
+            if let Some(is_int) = self.is_internal {
+                if is_int {
+                    let fx_chain_invalid = if let Some(chain) = self.fx_chain.as_ref() {
+                        chain.is_null()
+                    } else {
+                        // Should have been caught by fx_chain.is_none() but for completeness
+                        true
+                    };
+                    if fx_chain_invalid {
+                        non_ready_vars.insert("fx_chain non-null".to_string());
+                    }
+                }
             }
         }
 
         let initialize_condition: bool = !self.initialized && non_ready_vars.is_empty();
 
         let result = if initialize_condition {
-            if self.is_internal.unwrap() {
-                self.as_mut().maybe_initialize_backend_internal()
-            } else {
-                self.as_mut().maybe_initialize_backend_external()
+            match self.is_internal {
+                Some(true) => self.as_mut().maybe_initialize_backend_internal(),
+                Some(false) => self.as_mut().maybe_initialize_backend_external(),
+                None => {
+                    error!(
+                        self,
+                        "Unexpected: is_internal is None but validation passed"
+                    );
+                    false
+                }
             }
         } else {
             trace!(
@@ -464,7 +485,7 @@ impl PortBackend {
         if let Some(port) = self.maybe_backend_port.as_ref() {
             Ok(port.get_connections_state())
         } else {
-            Err(anyhow::anyhow!("uninitialized"))
+            Err(anyhow!("uninitialized"))
         }
     }
 
@@ -770,12 +791,12 @@ impl PortBackend {
             debug!(self, "connect internal to {other_name}");
             self.maybe_backend_port
                 .as_ref()
-                .ok_or(anyhow::anyhow!("not initialized"))?
+                .ok_or(anyhow!("not initialized"))?
                 .connect_internal(
                     other_backend_obj
                         .maybe_backend_port
                         .as_ref()
-                        .ok_or(anyhow::anyhow!("other not initialized"))?,
+                        .ok_or(anyhow!("other not initialized"))?,
                 );
 
             let mut rust_mut = self.as_mut().rust_mut();
@@ -805,7 +826,7 @@ impl PortBackend {
                         qvariant_to_qsharedpointer_qobject(other_internal_port)?;
                     let other_internal_port: *mut QObject = other_internal_port_handle.data()?;
                     if other_internal_port.is_null() {
-                        return Err(anyhow::anyhow!("Internal port is null"));
+                        return Err(anyhow!("Internal port is null"));
                     }
                     let other_initialized =
                         unsafe { qobject_property_bool(&*other_internal_port, "initialized")? };
@@ -931,7 +952,7 @@ impl PortBackend {
             let converted: Vec<f32> = audio_data.iter().map(|v| *v as f32).collect();
             self.maybe_backend_port
                 .as_ref()
-                .ok_or(anyhow::anyhow!("Not initialized"))?
+                .ok_or(anyhow!("Not initialized"))?
                 .dummy_queue_audio_data(&converted);
             Ok(())
         }() {
@@ -945,7 +966,7 @@ impl PortBackend {
             let mut result: QList_f32 = QList::default();
             self.maybe_backend_port
                 .as_ref()
-                .ok_or(anyhow::anyhow!("Not initialized"))?
+                .ok_or(anyhow!("Not initialized"))?
                 .dummy_dequeue_audio_data(n as u32)
                 .iter()
                 .for_each(|v| result.append(*v as f32));
@@ -979,7 +1000,7 @@ impl PortBackend {
                 .collect::<Result<Vec<MidiEvent>, _>>()?;
             self.maybe_backend_port
                 .as_ref()
-                .ok_or(anyhow::anyhow!("Backend not yet initialized"))?
+                .ok_or(anyhow!("Backend not yet initialized"))?
                 .dummy_queue_midi_msgs(&msg_events);
             Ok(())
         }() {
@@ -992,7 +1013,7 @@ impl PortBackend {
             let mut msg_variants: QList_QVariant = QList::default();
             self.maybe_backend_port
                 .as_ref()
-                .ok_or(anyhow::anyhow!("Backend not yet initialized"))?
+                .ok_or(anyhow!("Backend not yet initialized"))?
                 .dummy_dequeue_midi_msgs()
                 .iter()
                 .for_each(|event| {
@@ -1030,25 +1051,23 @@ impl PortBackend {
     }
 
     pub fn get_maybe_fx_chain(self: Pin<&mut PortBackend>) -> *mut QObject {
-        if self.fx_chain.is_none()
-            || self.fx_chain.as_ref().unwrap().is_null()
-            || self.fx_chain.as_ref().unwrap().as_ref().is_none()
-        {
+        let chain_ptr_ref = match self.fx_chain.as_ref() {
+            Some(c) => c,
+            None => return std::ptr::null_mut(),
+        };
+        if chain_ptr_ref.is_null() {
             return std::ptr::null_mut();
         }
-        let weak = self.fx_chain.as_ref().unwrap().as_ref().unwrap();
+        let weak = match chain_ptr_ref.as_ref() {
+            Some(w) => w,
+            None => return std::ptr::null_mut(),
+        };
         match weak.to_strong() {
             Ok(Some(ptr)) => match ptr.data() {
-                Ok(ptr) => {
-                    return ptr;
-                }
-                Err(_) => {
-                    return std::ptr::null_mut();
-                }
+                Ok(ptr) => ptr,
+                Err(_) => std::ptr::null_mut(),
             },
-            _ => {
-                return std::ptr::null_mut();
-            }
+            _ => std::ptr::null_mut(),
         }
     }
 

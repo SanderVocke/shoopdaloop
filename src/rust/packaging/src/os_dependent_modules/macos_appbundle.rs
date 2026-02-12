@@ -1,5 +1,5 @@
 use crate::fs_helpers::recursive_dir_cpy;
-use anyhow;
+use anyhow::anyhow;
 use anyhow::Context;
 use glob::glob;
 use std::path::{Path, PathBuf};
@@ -14,7 +14,7 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
     let src_path = src_path
         .ancestors()
         .nth(6)
-        .ok_or(anyhow::anyhow!("cannot find src dir"))?;
+        .ok_or(anyhow!("cannot find src dir"))?;
     info!("Using source path {src_path:?}");
 
     let excludelist_path = src_path.join("distribution/macos/excludelist");
@@ -34,7 +34,9 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
         .args(&[
             "-add_rpath",
             "@executable_path/lib",
-            installed_exe.to_str().unwrap(),
+            installed_exe
+                .to_str()
+                .ok_or(anyhow!("Invalid UTF-8 in path"))?,
         ])
         .status()?;
 
@@ -84,7 +86,7 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
                 }
                 let extra_lib_filename = &extra_lib_path
                     .file_name()
-                    .unwrap()
+                    .ok_or(anyhow!("Missing filename"))?
                     .to_string_lossy()
                     .to_string();
                 let extra_lib_dstpath: String = format!("lib/{}", extra_lib_filename);
@@ -105,54 +107,48 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
     #[cfg(target_os = "macos")]
     {
         info!("Symlinking dylibs...");
-        let appdir_str = appdir
-            .to_str()
-            .ok_or(anyhow::anyhow!("Could not stringify path"))?;
+        let appdir_str = appdir.to_str().ok_or(anyhow!("Could not stringify path"))?;
         let glob_pattern = format!("{appdir_str}/lib/*.dylib");
         let re = regex::Regex::new(r"(.*\.[0-9]+)\.[0-9]+\.[0-9]\.dylib")?;
         glob(glob_pattern.as_str())?.try_for_each(|library| -> Result<(), anyhow::Error> {
             let library = library?;
             let filename = library
                 .file_name()
-                .ok_or(anyhow::anyhow!("Could not get lib filename"))?
+                .ok_or(anyhow!("Could not get lib filename"))?
                 .to_str()
-                .ok_or(anyhow::anyhow!("Could not interpret lib filename"))?;
-            let cap = re.captures(filename);
-            if !cap.is_none() {
-                let symlink_filename = cap.unwrap().get(1).unwrap().as_str();
+                .ok_or(anyhow!("Could not interpret lib filename"))?;
+            if let Some(cap) = re.captures(filename) {
+                let symlink_filename = cap.get(1).expect("Regex must have group 1").as_str();
                 let symlink_filename = format!("{symlink_filename}.dylib");
                 let symlink_path = library
                     .parent()
-                    .ok_or(anyhow::anyhow!("Failed to get lib folder"))?
+                    .ok_or(anyhow!("Failed to get lib folder"))?
                     .join(symlink_filename);
                 if !std::fs::exists(&symlink_path)? {
                     debug!("Creating symlink: {symlink_path:?} --> {filename:?}");
                     return std::os::unix::fs::symlink(PathBuf::from(filename), symlink_path)
-                        .map_err(|e| anyhow::anyhow!("{e}"));
+                        .map_err(|e| anyhow!("{e}"));
                 }
             }
             return Ok(());
         })?;
     }
 
-    info!("App bundle produced in {}", appdir.to_str().unwrap());
+    info!("App bundle produced in {:?}", appdir);
 
     Ok(())
 }
 
 pub fn build_appbundle(exe_path: &Path, output_dir: &Path) -> Result<(), anyhow::Error> {
     if output_dir.exists() {
-        return Err(anyhow::anyhow!(
-            "Output directory {:?} already exists",
-            output_dir
-        ));
+        return Err(anyhow!("Output directory {:?} already exists", output_dir));
     }
     if !output_dir
         .parent()
-        .ok_or(anyhow::anyhow!("Cannot find parent of {output_dir:?}"))?
+        .ok_or(anyhow!("Cannot find parent of {output_dir:?}"))?
         .exists()
     {
-        return Err(anyhow::anyhow!(
+        return Err(anyhow!(
             "Output directory {:?}: parent doesn't exist",
             output_dir
         ));
