@@ -255,7 +255,15 @@ impl<T: Send + Debug + 'static> Drop for RefillingPool<T> {
             self.shutdown_signal.store(true, Ordering::Relaxed);
 
             // 2. Wake up the thread from its `condvar.wait()` call.
-            self.notify_refiller();
+            // We MUST acquire the lock here to avoid the "lost wake-up" race.
+            // If the thread is between the check and the wait, it will hold the lock,
+            // so we will block here until it enters the wait (releasing the lock)
+            // or finishes its current loop iteration.
+            {
+                let (lock, cvar) = &*self.refill_signal;
+                let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
+                cvar.notify_all();
+            }
 
             // 3. Join the thread to ensure it has terminated.
             if let Err(e) = handle.join() {
