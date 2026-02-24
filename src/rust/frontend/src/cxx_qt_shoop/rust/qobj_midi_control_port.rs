@@ -3,6 +3,7 @@ use crate::cxx_qt_shoop::qobj_backend_wrapper::BackendWrapper;
 use crate::cxx_qt_shoop::qobj_midi_control_port_bridge::ffi::*;
 use crate::cxx_qt_shoop::qobj_midi_control_port_bridge::MidiControlPort;
 use crate::cxx_qt_shoop::qobj_midi_control_port_bridge::MidiControlPortRust;
+use anyhow::anyhow;
 use backend_bindings::PortDirection;
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
@@ -36,7 +37,12 @@ impl MidiControlPort {
             let mut timer_pin = std::pin::Pin::new_unchecked(&mut *timer);
             let timer_qobj = QTimer::qobject_from_ptr(timer_pin.as_mut());
 
-            self.as_mut().rust_mut().send_timer = timer_qobj.as_mut().unwrap();
+            if let Some(timer_ref) = timer_qobj.as_mut() {
+                self.as_mut().rust_mut().send_timer = timer_ref;
+            } else {
+                error!("Failed to get QObject from timer");
+                self.as_mut().rust_mut().send_timer = std::ptr::null_mut();
+            }
 
             timer_pin.as_mut().set_interval(1);
             timer_pin.as_mut().set_single_shot(true);
@@ -141,15 +147,16 @@ impl MidiControlPort {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.backend_port_wrapper =
                 Some(backend_bindings::DecoupledMidiPort::new_driver_port(
-                    backend
-                        .driver
-                        .as_ref()
-                        .ok_or(anyhow::anyhow!("No driver"))?,
+                    backend.driver.as_ref().ok_or(anyhow!("No driver"))?,
                     &name_hint.to_string(),
                     &PortDirection::try_from(direction).unwrap_or(PortDirection::Input),
                 )?);
 
-            let name = self.backend_port_wrapper.as_ref().unwrap().name();
+            let name = self
+                .backend_port_wrapper
+                .as_ref()
+                .ok_or(anyhow!("Backend port wrapper not initialized"))?
+                .name();
             self.as_mut().set_name(QString::from(name));
 
             if self.direction == PortDirection::Input as i32 {

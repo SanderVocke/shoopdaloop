@@ -13,25 +13,40 @@ pub fn main() {
         common::tracing_helpers::set_tracing_enabled(true);
     }
     common::init().unwrap();
+    if let Err(e) = common::init() {
+        eprintln!("Failed to initialize common: {}", e);
+        std::process::exit(1);
+    }
 
     // For normalizing Windows paths
-    let normalize_path = |path: &Path| -> PathBuf {
-        PathBuf::from(
-            std::fs::canonicalize(path)
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .trim_start_matches(r"\\?\"),
-        )
+    let normalize_path = |path: &Path| -> Result<PathBuf, String> {
+        let canonical = std::fs::canonicalize(path)
+            .map_err(|e| format!("Failed to canonicalize path: {}", e))?;
+        let s = canonical.to_str().ok_or("Path contains invalid UTF-8")?;
+        Ok(PathBuf::from(s.trim_start_matches(r"\\?\")))
     };
 
-    let executable_path = env::current_exe().unwrap();
-    // Assumption is that we are in {root}/bin
-    let installed_path = normalize_path(executable_path.parent().unwrap());
+    let run = || -> Result<i32, String> {
+        let executable_path = env::current_exe()
+            .map_err(|e| format!("Failed to get current executable path: {}", e))?;
 
-    let config: ShoopConfig =
-        ShoopConfig::_load_default(&installed_path).expect("Failed to load config");
+        let parent = executable_path
+            .parent()
+            .ok_or("Executable path has no parent")?;
 
-    let errcode = shoopdaloop_main(config);
-    std::process::exit(errcode);
+        let installed_path = normalize_path(parent)?;
+
+        let config: ShoopConfig = ShoopConfig::_load_default(&installed_path)
+            .map_err(|e| format!("Failed to load config: {}", e))?;
+
+        Ok(shoopdaloop_main(config))
+    };
+
+    match run() {
+        Ok(errcode) => std::process::exit(errcode),
+        Err(e) => {
+            eprintln!("Error during startup: {}", e);
+            std::process::exit(1);
+        }
+    }
 }

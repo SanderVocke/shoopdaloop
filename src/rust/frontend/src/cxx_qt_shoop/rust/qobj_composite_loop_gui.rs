@@ -6,6 +6,7 @@ use crate::cxx_qt_shoop::qobj_composite_loop_gui_bridge::ffi::*;
 use crate::engine_update_thread;
 use crate::loop_helpers::get_backend_loop_handles_variant_list;
 use crate::references_qobject::ReferencesQObject;
+use anyhow::anyhow;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace, warn as raw_warn,
 };
@@ -76,7 +77,7 @@ fn replace_by_backend_objects(
                                 qobject_property_string(&mut *object, "instance_identifier")
                                     .unwrap_or(QString::from("unknown"))
                                     .to_string();
-                            return Err(anyhow::anyhow!(
+                            return Err(anyhow!(
                                 "Backend loop of loop {loop_id} in schedule is null"
                             ));
                         }
@@ -85,7 +86,7 @@ fn replace_by_backend_objects(
                         return Ok(weak);
                     }
                     Err(e) => {
-                        return Err(anyhow::anyhow!("Unable to get backend loop: {e}"));
+                        return Err(anyhow!("Unable to get backend loop: {e}"));
                     }
                 }
             }
@@ -153,11 +154,12 @@ impl CompositeLoopGui {
         unsafe {
             let backend_loop = make_raw_composite_loop_backend();
             let backend_loop_qobj = composite_loop_backend_qobject_from_ptr(backend_loop);
-            qobject_move_to_thread(
+            if let Err(e) = qobject_move_to_thread(
                 backend_loop_qobj,
                 engine_update_thread::get_engine_update_thread().thread,
-            )
-            .unwrap();
+            ) {
+                error!(self, "Failed to move backend loop to thread: {e}");
+            }
 
             {
                 let backend_loop_pin = std::pin::Pin::new_unchecked(&mut *backend_loop);
@@ -352,8 +354,11 @@ impl CompositeLoopGui {
             }
 
             let mut rust_mut = self.as_mut().rust_mut();
-            rust_mut.backend_loop_wrapper =
-                QSharedPointer_QObject::from_ptr_delete_later(backend_loop_qobj).unwrap();
+            if let Ok(wrapper) = QSharedPointer_QObject::from_ptr_delete_later(backend_loop_qobj) {
+                rust_mut.backend_loop_wrapper = wrapper;
+            } else {
+                error!(self, "Failed to create shared pointer for backend loop");
+            }
         }
     }
 
@@ -403,7 +408,10 @@ impl CompositeLoopGui {
                         if backend_loop.is_null() {
                             warn!(self, "Backend loop in sync source is null");
                         }
-                        qvariant_to_qobject_ptr(&backend_loop).unwrap()
+                        qvariant_to_qobject_ptr(&backend_loop).unwrap_or_else(|e| {
+                            error!(self, "Failed to convert variant to qobject ptr: {e}");
+                            std::ptr::null_mut()
+                        })
                     }
                     Err(e) => {
                         error!(self, "Unable to get backend loop: {e}");
@@ -548,13 +556,16 @@ impl CompositeLoopGui {
             maybe_to_sync_at_cycle
         );
 
-        let backend_loop_handles = get_backend_loop_handles_variant_list(&loops).unwrap();
-        self.backend_transition_multiple(
-            backend_loop_handles,
-            to_mode,
-            maybe_cycles_delay,
-            maybe_to_sync_at_cycle,
-        );
+        if let Ok(backend_loop_handles) = get_backend_loop_handles_variant_list(&loops) {
+            self.backend_transition_multiple(
+                backend_loop_handles,
+                to_mode,
+                maybe_cycles_delay,
+                maybe_to_sync_at_cycle,
+            );
+        } else {
+            error!(self, "Failed to get backend loop handles from variant list");
+        }
     }
 
     pub fn on_backend_n_cycles_changed(mut self: Pin<&mut CompositeLoopGui>, n_cycles: i32) {
@@ -696,7 +707,15 @@ impl CompositeLoopGui {
     }
 
     pub fn get_backend_loop_shared_ptr(self: Pin<&mut CompositeLoopGui>) -> QVariant {
-        qsharedpointer_qobject_to_qvariant(&self.backend_loop_wrapper.as_ref().unwrap()).unwrap()
+        if let Some(wrapper) = self.backend_loop_wrapper.as_ref() {
+            qsharedpointer_qobject_to_qvariant(wrapper).unwrap_or_else(|e| {
+                error!(self, "Failed to convert shared pointer to qvariant: {e}");
+                QVariant::default()
+            })
+        } else {
+            error!(self, "Backend loop wrapper is not initialized");
+            QVariant::default()
+        }
     }
 }
 

@@ -354,7 +354,7 @@ jobs:
         cmake_build_type: ${{ matrix.kind.build_type }}
         cmake_opts: ${{ matrix.kind.cmake_opts }}
         prepare_kind: 'macos'
-        python: python3.9
+        python: python3
         appbundle: ${{ matrix.kind.appbundle }}
         package_kind: ${{ matrix.kind.package_kind }}
         second_package_kind: ${{ matrix.kind.second_package_kind }}

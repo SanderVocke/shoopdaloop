@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use std::{marker::PhantomData, sync::Arc};
 
 use cxx_qt_lib_shoop::{
@@ -19,7 +20,7 @@ pub trait LuaQObjectCallbackTarget {
 impl LuaQObjectCallbackTarget for cxx::UniquePtr<QPointerQObject> {
     fn lua_qobject_target(&self) -> Result<*mut QObject, anyhow::Error> {
         match unsafe { qpointer_to_qobject(self) } {
-            qobj if qobj.is_null() => Err(anyhow::anyhow!("QPointerQObject is null")),
+            qobj if qobj.is_null() => Err(anyhow!("QPointerQObject is null")),
             qobj => Ok(qobj),
         }
     }
@@ -48,21 +49,25 @@ where
         lua: &Arc<mlua::Lua>,
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
-        let args: Args = Args::from_lua_multi(args, lua)
-            .map_err(|e| anyhow::anyhow!("Could not map args: {e}"))?;
+        let args: Args =
+            Args::from_lua_multi(args, lua).map_err(|e| anyhow!("Could not map args: {e}"))?;
 
         let result: R = unsafe {
             let qobject = self.qobject.lua_qobject_target()?;
+
+            let qobject_ref = qobject
+                .as_mut()
+                .ok_or(anyhow!("QObject pointer is null or invalid in invoke"))?;
             invoke::<_, R, _>(
-                qobject.as_mut().unwrap(),
+                qobject_ref,
                 &self.method_signature,
                 self.connection_type,
                 &args,
             )?
         };
 
-        let r_lua = R::into_lua(result, lua)
-            .map_err(|e| anyhow::anyhow!("Could not map return value: {e}"))?;
+        let r_lua =
+            R::into_lua(result, lua).map_err(|e| anyhow!("Could not map return value: {e}"))?;
 
         Ok(r_lua)
     }
@@ -100,10 +105,9 @@ mod tests {
     };
 
     #[test]
-    fn test_basic_qobject_invokable() {
+    fn test_basic_qobject_invokable() -> Result<(), anyhow::Error> {
         let mut eng = LuaEngine::default();
-        eng.initialize(|_| Err(anyhow::anyhow!("n/a")), HashMap::default())
-            .unwrap();
+        eng.initialize(|_| Err(anyhow!("n/a")), HashMap::default())?;
 
         let mut obj = GenericTestItem::make_unique();
         let qobj = obj.pin_mut();
@@ -117,13 +121,9 @@ mod tests {
         );
         let callback: Arc<Box<dyn LuaCallback>> = Arc::new(Box::new(callback));
 
-        eng.register_callback("qobj_add", LuaScope::Sandboxed, &callback)
-            .unwrap();
+        eng.register_callback("qobj_add", LuaScope::Sandboxed, &callback)?;
 
-        assert_eq!(
-            eng.evaluate::<i32>("return qobj_add(1, 2)", None, true)
-                .unwrap(),
-            3
-        );
+        assert_eq!(eng.evaluate::<i32>("return qobj_add(1, 2)", None, true)?, 3);
+        Ok(())
     }
 }

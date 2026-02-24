@@ -7,6 +7,7 @@ use crate::{
     },
     engine_update_thread,
 };
+use anyhow::anyhow;
 use std::pin::Pin;
 
 use common::logging::macros::{debug as raw_debug, error as raw_error, shoop_log_unit};
@@ -47,11 +48,12 @@ impl FXChainGui {
         unsafe {
             let backend_fx_chain = make_raw_fx_chain_backend();
             let backend_fx_chain_qobj = fx_chain_backend_qobject_from_ptr(backend_fx_chain);
-            qobject_move_to_thread(
+            if let Err(e) = qobject_move_to_thread(
                 backend_fx_chain_qobj,
                 engine_update_thread::get_engine_update_thread().thread,
-            )
-            .unwrap();
+            ) {
+                error!(self, "Failed to move backend fx chain to thread: {e}");
+            }
 
             let self_ref = self.as_ref().get_ref();
 
@@ -126,9 +128,16 @@ impl FXChainGui {
                     )
                 }
 
+                let wrapper = QSharedPointer_QObject::from_ptr_delete_later(backend_fx_chain_qobj)
+                    .unwrap_or_else(|e| {
+                        error!(
+                            self,
+                            "Failed to create shared pointer for backend fx chain: {e}"
+                        );
+                        cxx::UniquePtr::null()
+                    });
                 let mut rust_mut = self.as_mut().rust_mut();
-                rust_mut.backend_chain_wrapper =
-                    QSharedPointer_QObject::from_ptr_delete_later(backend_fx_chain_qobj).unwrap();
+                rust_mut.backend_chain_wrapper = wrapper;
             }
         }
     }
@@ -248,7 +257,7 @@ impl FXChainGui {
                 return Ok(qsharedpointer_qobject_to_qvariant(
                     self.backend_chain_wrapper
                         .as_ref()
-                        .ok_or(anyhow::anyhow!("Backend wrapper not set"))?,
+                        .ok_or(anyhow!("Backend wrapper not set"))?,
                 )?);
             }
         }() {

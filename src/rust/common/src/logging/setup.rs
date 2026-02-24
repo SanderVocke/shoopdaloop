@@ -11,8 +11,9 @@ lazy_static! {
 }
 
 pub fn register_log_module(name: &'static str) {
-    let mut modules = LOG_MODULES.lock().unwrap();
-    modules.insert(name);
+    if let Ok(mut modules) = LOG_MODULES.lock() {
+        modules.insert(name);
+    }
 }
 
 use colored::Colorize;

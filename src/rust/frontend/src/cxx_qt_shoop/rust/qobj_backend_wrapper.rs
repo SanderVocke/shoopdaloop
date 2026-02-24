@@ -1,5 +1,6 @@
 use crate::engine_update_thread;
 use crate::profiling_report::profiling_report_to_qvariantmap;
+use anyhow::anyhow;
 use backend_bindings::*;
 use cxx_qt_lib_shoop::qjsonobject::QJsonObject;
 use cxx_qt_lib_shoop::qobject::{qobject_thread, AsQObject};
@@ -28,56 +29,60 @@ unsafe extern "C" fn register_process_thread() {
 fn audio_driver_settings_from_qvariantmap(
     map: &QMap_QString_QVariant,
     driver_type: &AudioDriverType,
-) -> AudioDriverSettings {
-    let settings: Option<AudioDriverSettings>;
+) -> Result<AudioDriverSettings, anyhow::Error> {
+    let settings: AudioDriverSettings;
     match driver_type {
         AudioDriverType::Jack | AudioDriverType::JackTest => {
             let client_name_hint = map
                 .get(&QString::from("client_name_hint"))
-                .expect("No client name setting for driver")
+                .ok_or_else(|| anyhow!("No client name setting for driver"))?
                 .value::<QString>()
-                .expect("Wrong type for client name of driver")
+                .ok_or_else(|| anyhow!("Wrong type for client name of driver"))?
                 .to_string();
             let maybe_server_name = map.get(&QString::from("maybe_server_name")).map(|v| {
                 v.value::<QString>()
-                    .expect("Wrong type for server name")
-                    .to_string()
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| anyhow!("Wrong type for server name"))
             });
-            settings = Some(AudioDriverSettings::Jack(JackAudioDriverSettings {
+            let maybe_server_name = match maybe_server_name {
+                Some(res) => Some(res?),
+                None => None,
+            };
+            settings = AudioDriverSettings::Jack(JackAudioDriverSettings {
                 client_name_hint,
                 maybe_server_name,
-            }));
+            });
         }
         AudioDriverType::Dummy => {
             let client_name = map
                 .get(&QString::from("client_name_hint"))
-                .expect("No client name setting for driver")
+                .ok_or_else(|| anyhow!("No client name setting for driver"))?
                 .value::<QString>()
-                .expect("Wrong type for client name of driver")
+                .ok_or_else(|| anyhow!("Wrong type for client name of driver"))?
                 .to_string();
             let sample_rate = map
                 .get(&QString::from("sample_rate"))
-                .expect("No sample rate setting for driver")
+                .ok_or_else(|| anyhow!("No sample rate setting for driver"))?
                 .value::<i32>()
-                .expect("Wrong type for sample rate of driver")
+                .ok_or_else(|| anyhow!("Wrong type for sample rate of driver"))?
                 .try_into()
-                .expect("Sample rate out of range");
+                .map_err(|e| anyhow!("Sample rate out of range: {}", e))?;
             let buffer_size = map
                 .get(&QString::from("buffer_size"))
-                .expect("No buffer size setting for driver")
+                .ok_or_else(|| anyhow!("No buffer size setting for driver"))?
                 .value::<i32>()
-                .expect("Wrong type for buffer size of driver")
+                .ok_or_else(|| anyhow!("Wrong type for buffer size of driver"))?
                 .try_into()
-                .expect("Buffer size out of range");
-            settings = Some(AudioDriverSettings::Dummy(DummyAudioDriverSettings {
+                .map_err(|e| anyhow!("Buffer size out of range: {}", e))?;
+            settings = AudioDriverSettings::Dummy(DummyAudioDriverSettings {
                 client_name,
                 sample_rate,
                 buffer_size,
-            }));
+            });
         }
     }
 
-    settings.expect("Unable to convert audio driver settings")
+    Ok(settings)
 }
 
 impl BackendWrapper {
@@ -88,7 +93,8 @@ impl BackendWrapper {
 
         {
             let ref_self = self.as_ref();
-            driver_type = AudioDriverType::try_from(*ref_self.backend_type()).unwrap();
+            driver_type = AudioDriverType::try_from(*ref_self.backend_type())
+                .map_err(|e| anyhow!("Invalid driver type: {}", e))?;
             let client_name_hint = ref_self.client_name_hint();
             let mut settings_map = ref_self.driver_setting_overrides().clone();
             if !settings_map.contains(&QString::from("client_name_hint")) {
@@ -103,12 +109,12 @@ impl BackendWrapper {
             if !settings_map.contains(&QString::from("buffer_size")) {
                 settings_map.insert(QString::from("buffer_size"), QVariant::from(&256));
             }
-            settings = audio_driver_settings_from_qvariantmap(&settings_map, &driver_type);
+            settings = audio_driver_settings_from_qvariantmap(&settings_map, &driver_type)?;
             ready = *ref_self.ready();
         }
 
         if ready {
-            return Err(anyhow::anyhow!("Already initialized"));
+            return Err(anyhow!("Already initialized"));
         }
 
         debug!(
@@ -126,20 +132,27 @@ impl BackendWrapper {
             let mut rust = self.as_mut().rust_mut();
 
             let local_driver = AudioDriver::new(driver_type, Some(register_process_thread))
-                .expect("Failed to create driver");
+                .map_err(|e| anyhow!("Failed to create driver: {}", e))?;
             local_driver
                 .start(&settings)
-                .expect("Failed to start driver");
+                .map_err(|e| anyhow!("Failed to start driver: {}", e))?;
 
-            let local_session = BackendSession::new().expect("Failed to create session");
+            let local_session =
+                BackendSession::new().map_err(|e| anyhow!("Failed to create session: {}", e))?;
             local_session.set_audio_driver(&local_driver)?;
 
             rust.driver = Some(local_driver);
             rust.session = Some(local_session);
             rust.closed = false;
 
-            rust.driver.as_mut().unwrap().wait_process();
-            rust.driver.as_mut().unwrap().get_state(); // Has implicit side-effect necessary for initialization
+            rust.driver
+                .as_mut()
+                .ok_or_else(|| anyhow!("Driver is null"))?
+                .wait_process();
+            rust.driver
+                .as_mut()
+                .ok_or_else(|| anyhow!("Driver is null"))?
+                .get_state(); // Has implicit side-effect necessary for initialization
 
             let engine_update_thread = crate::engine_update_thread::get_engine_update_thread();
             let engine_update_thread_obj = engine_update_thread.ref_qobject_ptr();
@@ -248,7 +261,14 @@ impl BackendWrapper {
                 trace!("update_on_gui_thread called on a BackendWrapper with no session");
                 return;
             }
-            update_data = *maybe_update_data.unwrap();
+            // Safe to unwrap because we checked is_none above, but match is cleaner or just expect
+            update_data = match maybe_update_data {
+                Some(d) => *d,
+                None => {
+                    error!("update_on_gui_thread called on a BackendWrapper with no update data");
+                    return;
+                }
+            };
             rust.update_data = None;
         }
 
@@ -278,17 +298,18 @@ impl BackendWrapper {
             {
                 let mut rust_mut = self.as_mut().rust_mut();
                 let now = time::Instant::now();
-                if rust_mut.last_updated.is_some() {
-                    maybe_new_interval =
-                        Some(now.duration_since(*rust_mut.last_updated.as_ref().unwrap()));
+                if let Some(last_updated_time) = rust_mut.last_updated.as_ref() {
+                    maybe_new_interval = Some(now.duration_since(*last_updated_time));
                 } else {
                     maybe_new_interval = None;
                 }
                 rust_mut.last_updated = Some(now);
             }
             if maybe_new_interval.is_some() {
-                self.as_mut()
-                    .set_last_update_interval(maybe_new_interval.unwrap().as_secs_f32());
+                if let Some(interval) = maybe_new_interval {
+                    self.as_mut()
+                        .set_last_update_interval(interval.as_secs_f32());
+                }
             }
         }
 
@@ -310,12 +331,24 @@ impl BackendWrapper {
                 trace!("update_on_other_thread called on a BackendWrapper with no driver");
                 return;
             }
-            driver_state = rust.driver.as_ref().unwrap().get_state();
+            driver_state = match rust.driver.as_ref() {
+                Some(d) => d.get_state(),
+                None => {
+                    error!("Driver is null in update_on_other_thread");
+                    return;
+                }
+            };
             if rust.session.is_none() {
                 trace!("update_on_other_thread called on a BackendWrapper with no session");
                 return;
             }
-            session_state = rust.session.as_ref().unwrap().get_state();
+            session_state = match rust.session.as_ref() {
+                Some(s) => s.get_state(),
+                None => {
+                    error!("Session is null in update_on_other_thread");
+                    return;
+                }
+            };
         }
 
         let update_data = BackendWrapperUpdateData {
@@ -340,7 +373,10 @@ impl BackendWrapper {
     }
 
     pub unsafe fn get_gui_thread(self: &BackendWrapper) -> *mut QThread {
-        qobject_thread(self.qobject_ref()).unwrap()
+        qobject_thread(self.qobject_ref()).unwrap_or_else(|e| {
+            error!("Could not get GUI thread: {}", e);
+            std::ptr::null_mut()
+        })
     }
 
     pub fn get_backend_thread(self: &BackendWrapper) -> *mut QThread {
@@ -348,56 +384,44 @@ impl BackendWrapper {
     }
 
     pub fn dummy_enter_controlled_mode(mut self: Pin<&mut BackendWrapper>) {
-        let mut_rust = self.as_mut().rust_mut();
+        let mut mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.driver.is_none() {
-            warn!("dummy_enter_controlled_mode called on a BackendWrapper with no driver");
+        if let Some(driver) = mut_rust.driver.as_mut() {
+            driver.dummy_enter_controlled_mode();
         } else {
-            mut_rust
-                .driver
-                .as_ref()
-                .unwrap()
-                .dummy_enter_controlled_mode();
+            warn!("dummy_enter_controlled_mode called on a BackendWrapper with no driver");
         }
     }
 
     pub fn dummy_enter_automatic_mode(mut self: Pin<&mut BackendWrapper>) {
-        let mut_rust = self.as_mut().rust_mut();
+        let mut mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.driver.is_none() {
-            warn!("dummy_enter_automatic_mode called on a BackendWrapper with no driver");
+        if let Some(driver) = mut_rust.driver.as_mut() {
+            driver.dummy_enter_automatic_mode();
         } else {
-            mut_rust
-                .driver
-                .as_ref()
-                .unwrap()
-                .dummy_enter_automatic_mode();
+            warn!("dummy_enter_automatic_mode called on a BackendWrapper with no driver");
         }
     }
 
     pub fn dummy_is_controlled(mut self: Pin<&mut BackendWrapper>) -> bool {
         let mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.driver.is_none() {
+        if let Some(driver) = mut_rust.driver.as_ref() {
+            driver.dummy_is_controlled()
+        } else {
             warn!("dummy_is_controlled called on a BackendWrapper with no driver");
             false
-        } else {
-            mut_rust.driver.as_ref().unwrap().dummy_is_controlled()
         }
     }
 
     pub fn dummy_request_controlled_frames(mut self: Pin<&mut BackendWrapper>, n: i32) {
         trace!("dummy_request_controlled_frames {}", n);
-        let mut_rust = self.as_mut().rust_mut();
+        let mut mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.driver.is_none() {
-            warn!("dummy_request_controlled_frames called on a BackendWrapper with no driver");
+        if let Some(driver) = mut_rust.driver.as_mut() {
+            driver.dummy_request_controlled_frames(n as u32);
         } else {
-            mut_rust
-                .driver
-                .as_ref()
-                .unwrap()
-                .dummy_request_controlled_frames(n as u32);
+            warn!("dummy_request_controlled_frames called on a BackendWrapper with no driver");
         }
         trace!("dummy_request_controlled_frames done");
     }
@@ -405,25 +429,21 @@ impl BackendWrapper {
     pub fn dummy_n_requested_frames(mut self: Pin<&mut BackendWrapper>) -> i32 {
         let mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.driver.is_none() {
+        if let Some(driver) = mut_rust.driver.as_ref() {
+            driver.dummy_n_requested_frames() as i32
+        } else {
             warn!("dummy_n_requested_frames called on a BackendWrapper with no driver");
             0
-        } else {
-            mut_rust.driver.as_ref().unwrap().dummy_n_requested_frames() as i32
         }
     }
 
     pub fn dummy_run_requested_frames(mut self: Pin<&mut BackendWrapper>) {
-        let mut_rust = self.as_mut().rust_mut();
+        let mut mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.driver.is_none() {
-            warn!("dummy_run_requested_frames called on a BackendWrapper with no driver");
+        if let Some(driver) = mut_rust.driver.as_mut() {
+            driver.dummy_run_requested_frames();
         } else {
-            mut_rust
-                .driver
-                .as_ref()
-                .unwrap()
-                .dummy_run_requested_frames();
+            warn!("dummy_run_requested_frames called on a BackendWrapper with no driver");
         }
     }
 
@@ -433,56 +453,44 @@ impl BackendWrapper {
         direction: i32,
         data_type: i32,
     ) {
-        let mut_rust = self.as_mut().rust_mut();
+        let mut mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.driver.is_none() {
-            warn!("dummy_add_external_mock_port called on a BackendWrapper with no driver");
+        if let Some(driver) = mut_rust.driver.as_mut() {
+            driver.dummy_add_external_mock_port(
+                name.to_string().as_str(),
+                direction as u32,
+                data_type as u32,
+            );
         } else {
-            mut_rust
-                .driver
-                .as_ref()
-                .unwrap()
-                .dummy_add_external_mock_port(
-                    name.to_string().as_str(),
-                    direction as u32,
-                    data_type as u32,
-                );
+            warn!("dummy_add_external_mock_port called on a BackendWrapper with no driver");
         }
     }
 
     pub fn dummy_remove_external_mock_port(mut self: Pin<&mut BackendWrapper>, name: QString) {
-        let mut_rust = self.as_mut().rust_mut();
+        let mut mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.driver.is_none() {
-            warn!("dummy_remove_external_mock_port called on a BackendWrapper with no driver");
+        if let Some(driver) = mut_rust.driver.as_mut() {
+            driver.dummy_remove_external_mock_port(name.to_string().as_str());
         } else {
-            mut_rust
-                .driver
-                .as_ref()
-                .unwrap()
-                .dummy_remove_external_mock_port(name.to_string().as_str());
+            warn!("dummy_remove_external_mock_port called on a BackendWrapper with no driver");
         }
     }
 
     pub fn dummy_remove_all_external_mock_ports(mut self: Pin<&mut BackendWrapper>) {
-        let mut_rust = self.as_mut().rust_mut();
+        let mut mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.driver.is_none() {
-            warn!("dummy_remove_all_external_mock_ports called on a BackendWrapper with no driver");
+        if let Some(driver) = mut_rust.driver.as_mut() {
+            driver.dummy_remove_all_external_mock_ports();
         } else {
-            mut_rust
-                .driver
-                .as_ref()
-                .unwrap()
-                .dummy_remove_all_external_mock_ports();
+            warn!("dummy_remove_all_external_mock_ports called on a BackendWrapper with no driver");
         }
     }
 
     pub fn wait_process(mut self: Pin<&mut BackendWrapper>) {
-        let mut_rust = self.as_mut().rust_mut();
+        let mut mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.driver.is_some() {
-            mut_rust.driver.as_ref().unwrap().wait_process();
+        if let Some(driver) = mut_rust.driver.as_mut() {
+            driver.wait_process();
         }
     }
 
@@ -490,16 +498,14 @@ impl BackendWrapper {
         if let Some(session) = &self.session {
             let report = session.get_profiling_report();
             let report_variant = profiling_report_to_qvariantmap(&report);
-            qvariantmap_to_qvariant(&report_variant)
-                .expect("could not convert qvariantmap to qvariant")
+            qvariantmap_to_qvariant(&report_variant).unwrap_or_else(|e| {
+                error!("could not convert qvariantmap to qvariant: {}", e);
+                QVariant::default()
+            })
         } else {
             error!("get_profiling_report called on a BackendWrapper with no session");
             QVariant::default()
         }
-    }
-
-    pub fn backend_type_is_supported(self: Pin<&mut BackendWrapper>, t: i32) -> bool {
-        driver_type_supported(AudioDriverType::try_from(t).unwrap())
     }
 
     pub fn open_driver_audio_port(
@@ -511,24 +517,31 @@ impl BackendWrapper {
         let mut_rust = self.as_mut().rust_mut();
 
         if mut_rust.session.is_none() {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "open_driver_audio_port called on a BackendWrapper with no session"
             ));
         }
         if mut_rust.driver.is_none() {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "open_driver_audio_port called on a BackendWrapper with no driver"
             ));
         }
 
         let port = backend_bindings::AudioPort::new_driver_port(
-            &mut_rust.session.as_ref().unwrap(),
-            &mut_rust.driver.as_ref().unwrap(),
+            mut_rust
+                .session
+                .as_ref()
+                .ok_or_else(|| anyhow!("Session is null"))?,
+            mut_rust
+                .driver
+                .as_ref()
+                .ok_or_else(|| anyhow!("Driver is null"))?,
             name_hint.to_string().as_str(),
-            &PortDirection::try_from(direction).unwrap(),
+            &PortDirection::try_from(direction)
+                .map_err(|e| anyhow!("Invalid port direction: {}", e))?,
             min_n_ringbuffer_samples as u32,
         )
-        .expect("Failed to create audio port");
+        .map_err(|e| anyhow!("Failed to create audio port: {}", e))?;
 
         Ok(port)
     }
@@ -542,24 +555,31 @@ impl BackendWrapper {
         let mut_rust = self.as_mut().rust_mut();
 
         if mut_rust.session.is_none() {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "open_driver_midi_port called on a BackendWrapper with no session"
             ));
         }
         if mut_rust.driver.is_none() {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "open_driver_midi_port called on a BackendWrapper with no driver"
             ));
         }
 
         let port = backend_bindings::MidiPort::new_driver_port(
-            &mut_rust.session.as_ref().unwrap(),
-            &mut_rust.driver.as_ref().unwrap(),
+            mut_rust
+                .session
+                .as_ref()
+                .ok_or_else(|| anyhow!("Session is null"))?,
+            mut_rust
+                .driver
+                .as_ref()
+                .ok_or_else(|| anyhow!("Driver is null"))?,
             name_hint.to_string().as_str(),
-            &PortDirection::try_from(direction).unwrap(),
+            &PortDirection::try_from(direction)
+                .map_err(|e| anyhow!("Invalid port direction: {}", e))?,
             min_n_ringbuffer_samples as u32,
         )
-        .expect("Failed to create midi port");
+        .map_err(|e| anyhow!("Failed to create midi port: {}", e))?;
 
         Ok(port)
     }
@@ -572,22 +592,26 @@ impl BackendWrapper {
         let mut_rust = self.as_mut().rust_mut();
 
         if mut_rust.session.is_none() {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "open_driver_decoupled_midi_port called on a BackendWrapper with no session"
             ));
         }
         if mut_rust.driver.is_none() {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "open_driver_decoupled_midi_port called on a BackendWrapper with no driver"
             ));
         }
 
         let port = backend_bindings::DecoupledMidiPort::new_driver_port(
-            &mut_rust.driver.as_ref().unwrap(),
+            mut_rust
+                .driver
+                .as_ref()
+                .ok_or_else(|| anyhow!("Driver is null"))?,
             name_hint.to_string().as_str(),
-            &PortDirection::try_from(direction).unwrap(),
+            &PortDirection::try_from(direction)
+                .map_err(|e| anyhow!("Invalid port direction: {}", e))?,
         )
-        .expect("Failed to create decoupled midi port");
+        .map_err(|e| anyhow!("Failed to create decoupled midi port: {}", e))?;
 
         Ok(port)
     }
@@ -595,24 +619,20 @@ impl BackendWrapper {
     pub fn segfault_on_process_thread(mut self: Pin<&mut BackendWrapper>) {
         let mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.session.is_none() {
-            warn!("segfault_on_process_thread called on a BackendWrapper with no session");
+        if let Some(session) = mut_rust.session.as_ref() {
+            session.segfault_on_process_thread();
         } else {
-            mut_rust
-                .session
-                .as_ref()
-                .unwrap()
-                .segfault_on_process_thread();
+            warn!("segfault_on_process_thread called on a BackendWrapper with no session");
         }
     }
 
     pub fn abort_on_process_thread(mut self: Pin<&mut BackendWrapper>) {
         let mut_rust = self.as_mut().rust_mut();
 
-        if mut_rust.session.is_none() {
-            warn!("abort_on_process_thread called on a BackendWrapper with no session");
+        if let Some(session) = mut_rust.session.as_ref() {
+            session.abort_on_process_thread();
         } else {
-            mut_rust.session.as_ref().unwrap().abort_on_process_thread();
+            warn!("abort_on_process_thread called on a BackendWrapper with no session");
         }
     }
 
@@ -624,11 +644,17 @@ impl BackendWrapper {
     ) -> QList_QVariant {
         let rust = self.rust();
         let name_regex = maybe_name_regex.to_string();
-        let ports = rust.driver.as_ref().unwrap().find_external_ports(
-            Some(name_regex.as_str()),
-            port_direction as u32,
-            data_type as u32,
-        );
+        let ports = match rust.driver.as_ref() {
+            Some(d) => d.find_external_ports(
+                Some(name_regex.as_str()),
+                port_direction as u32,
+                data_type as u32,
+            ),
+            None => {
+                error!("find_external_ports called on a BackendWrapper with no driver");
+                return QList_QVariant::default();
+            }
+        };
         let mut descriptors = QList_QVariant::default();
 
         for port in ports.iter() {
@@ -647,10 +673,11 @@ impl BackendWrapper {
             );
 
             // TODO: indirect conversion because QMap as QVariant seems unsupported by cxx-qt
-            let json = QJsonObject::from_variant_map(&qmap).unwrap();
-            let variant = json.to_variant().unwrap();
-
-            descriptors.append(variant);
+            if let Ok(json) = QJsonObject::from_variant_map(&qmap) {
+                if let Ok(variant) = json.to_variant() {
+                    descriptors.append(variant);
+                }
+            }
         }
 
         descriptors
@@ -658,7 +685,14 @@ impl BackendWrapper {
 
     pub fn create_loop(mut self: Pin<&mut BackendWrapper>) -> Loop {
         let mut mut_rust = self.as_mut().rust_mut();
-        mut_rust.session.as_mut().unwrap().create_loop().unwrap()
+        mut_rust
+            .session
+            .as_mut()
+            // TODO: Handle session null
+            .expect("Session is null")
+            .create_loop()
+            // TODO: Handle error gracefully (return dummy?)
+            .expect("Failed to create loop")
     }
 
     pub fn create_fx_chain(
@@ -670,9 +704,23 @@ impl BackendWrapper {
         mut_rust
             .session
             .as_mut()
-            .unwrap()
-            .create_fx_chain(chain_type.try_into().unwrap(), title)
-            .unwrap()
+            // TODO: Handle session null
+            .expect("Session is null")
+            .create_fx_chain(
+                chain_type
+                    .try_into()
+                    // TODO: Handle invalid chain type
+                    .expect("Invalid chain type"),
+                title,
+            )
+            // TODO: Handle error gracefully
+            .expect("Failed to create fx chain")
+    }
+    pub fn backend_type_is_supported(self: Pin<&mut BackendWrapper>, _type: i32) -> bool {
+        match AudioDriverType::try_from(_type) {
+            Ok(driver_type) => driver_type_supported(driver_type),
+            Err(_) => false,
+        }
     }
 }
 
@@ -691,7 +739,10 @@ mod tests {
     #[test]
     fn test_class_name() {
         let obj = super::make_unique_backend_wrapper();
-        let classname = qobject_class_name_backend_wrapper(obj.as_ref().unwrap());
-        assert_eq!(classname.unwrap(), "BackendWrapper");
+        let classname = qobject_class_name_backend_wrapper(obj.as_ref().expect("Object is null"));
+        assert_eq!(
+            classname.expect("Failed to get class name"),
+            "BackendWrapper"
+        );
     }
 }

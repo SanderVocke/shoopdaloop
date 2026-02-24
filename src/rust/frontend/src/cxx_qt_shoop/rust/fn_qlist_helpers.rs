@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use cxx::ExternType;
 use cxx_qt_lib::{QList, QListElement, QVariant};
 use std::any::{type_name, Any};
@@ -9,7 +10,7 @@ where
     list.iter()
         .map(|v: &QVariant| -> Result<T, anyhow::Error> {
             let converted: T = v.clone().try_into().map_err(|_| {
-                anyhow::anyhow!(
+                anyhow!(
                     "Error converting from QVariant to {:?}, metatype {:?}",
                     type_name::<T>(),
                     cxx_qt_lib_shoop::qvariant_helpers::qvariant_type_name(v).unwrap_or("Unknown")
@@ -30,7 +31,7 @@ where
         let elem: QtT = elem
             .clone()
             .try_into()
-            .map_err(|_| anyhow::anyhow!("Conversion error"))?;
+            .map_err(|_| anyhow!("Conversion error"))?;
         QList::<QtT>::append(&mut list, elem);
     }
     Ok(list)

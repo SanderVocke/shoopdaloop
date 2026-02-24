@@ -6,6 +6,7 @@ use crate::cxx_qt_shoop::rust::qobj_loop_channel_gui_bridge::ffi::{
     QList_QVariant, QObject, QString, QVariant, QVector_QVariant, QVector_f32,
 };
 use crate::engine_update_thread;
+use anyhow::anyhow;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
@@ -65,19 +66,21 @@ impl LoopChannelGui {
             let backend_channel_qobj = loop_channel_backend_qobject_from_ptr(backend_channel);
             let self_qobj = self.as_mut().pin_mut_qobject_ptr();
 
-            qobject_move_to_thread(
+            if let Err(e) = qobject_move_to_thread(
                 backend_channel_qobj,
                 engine_update_thread::get_engine_update_thread().thread,
-            )
-            .unwrap();
+            ) {
+                error!(self, "Failed to move backend object to thread: {e}");
+            }
 
-            invoke::<_, (), _>(
+            if let Err(e) = invoke::<_, (), _>(
                 &mut *backend_channel_qobj,
                 "set_frontend_object(QObject*)",
                 connection_types::QUEUED_CONNECTION,
                 &(self_qobj),
-            )
-            .unwrap();
+            ) {
+                error!(self, "Failed to set frontend object: {e}");
+            }
 
             let self_ref = self.as_ref().get_ref();
 
@@ -216,8 +219,12 @@ impl LoopChannelGui {
                 }
 
                 let mut rust_mut = self.as_mut().rust_mut();
-                rust_mut.backend_channel_wrapper =
-                    QSharedPointer_QObject::from_ptr_delete_later(backend_channel_qobj).unwrap();
+                if let Ok(ptr) = QSharedPointer_QObject::from_ptr_delete_later(backend_channel_qobj)
+                {
+                    rust_mut.backend_channel_wrapper = ptr;
+                } else {
+                    error!(self, "Failed to create shared pointer for backend channel");
+                }
             }
         }
     }
@@ -257,12 +264,11 @@ impl LoopChannelGui {
             ports.iter().for_each(|variant| {
                 if let Ok(obj) = qvariant_to_qobject_ptr(&variant) {
                     if let Ok(chan) = PortGui::from_qobject_mut_ptr(obj) {
-                        shared_ptrs.append(
-                            qsharedpointer_qobject_to_qvariant(
-                                &chan.backend_port_wrapper.as_ref().unwrap(),
-                            )
-                            .unwrap(),
-                        );
+                        if let Some(wrapper) = chan.backend_port_wrapper.as_ref() {
+                            if let Ok(variant) = qsharedpointer_qobject_to_qvariant(wrapper) {
+                                shared_ptrs.append(variant);
+                            }
+                        }
                     }
                 }
             });
@@ -437,12 +443,17 @@ impl LoopChannelGui {
 
     pub fn get_audio_data(self: &LoopChannelGui) -> QVector_f32 {
         unsafe {
-            let backend_ptr = self
-                .backend_channel_wrapper
-                .as_ref()
-                .unwrap()
-                .data()
-                .unwrap();
+            let backend_ptr = if let Some(w) = self.backend_channel_wrapper.as_ref() {
+                if let Ok(d) = w.data() {
+                    d
+                } else {
+                    error!(self, "Backend channel data is null");
+                    return QVector::default();
+                }
+            } else {
+                error!(self, "Backend channel wrapper is null (not initialized?)");
+                return QVector::default();
+            };
             match invokable::invoke::<_, QVector_f32, _>(
                 &mut *backend_ptr,
                 "get_audio_data()",
@@ -460,12 +471,17 @@ impl LoopChannelGui {
 
     pub fn get_midi_data(self: &LoopChannelGui) -> QVector_QVariant {
         unsafe {
-            let backend_ptr = self
-                .backend_channel_wrapper
-                .as_ref()
-                .unwrap()
-                .data()
-                .unwrap();
+            let backend_ptr = if let Some(w) = self.backend_channel_wrapper.as_ref() {
+                if let Ok(d) = w.data() {
+                    d
+                } else {
+                    error!(self, "Backend channel data is null");
+                    return QVector::default();
+                }
+            } else {
+                error!(self, "Backend channel wrapper is null (not initialized?)");
+                return QVector::default();
+            };
             match invokable::invoke::<_, QVector_QVariant, _>(
                 &mut *backend_ptr,
                 "get_midi_data()",
@@ -515,21 +531,22 @@ impl LoopChannelGui {
 
         if let Err(e) = || -> Result<(), anyhow::Error> {
             if send_to_object.is_null() {
-                return Err(anyhow::anyhow!("target object is null"));
+                return Err(anyhow!("target object is null"));
             }
             let channel_backend = self
                 .as_mut()
                 .backend_channel_wrapper
                 .as_ref()
-                .unwrap()
+                .ok_or(anyhow!("backend channel wrapper is null"))?
                 .copy()
-                .unwrap();
+                .map_err(|_| anyhow!("Failed to copy backend channel wrapper"))?;
 
             let notifier_shared;
             unsafe {
                 let notifier = make_raw_channel_get_data_notifier();
                 let notifier = channel_get_data_notifier_to_qobject(notifier);
-                notifier_shared = QSharedPointer_QObject::from_ptr_delete_later(notifier).unwrap();
+                notifier_shared = QSharedPointer_QObject::from_ptr_delete_later(notifier)
+                    .map_err(|_| anyhow!("Failed to create notifier shared pointer"))?;
 
                 connect_or_report(
                     &*notifier,
@@ -546,10 +563,10 @@ impl LoopChannelGui {
                 move || -> Result<(), anyhow::Error> {
                     let backend_channel_qobj = channel_backend
                         .as_ref()
-                        .ok_or(anyhow::anyhow!("could not get backend channel"))?
+                        .ok_or(anyhow!("could not get backend channel"))?
                         .data()?;
                     if backend_channel_qobj.is_null() {
-                        return Err(anyhow::anyhow!("backend channel is null"));
+                        return Err(anyhow!("backend channel is null"));
                     }
 
                     let data = unsafe {
@@ -565,13 +582,19 @@ impl LoopChannelGui {
 
                     // Move onto the heap
                     let on_heap = Box::into_raw(Box::<QVector_QVariant>::new(data));
-                    let shared = QSharedPointer_QVector_QVariant::from_ptr(on_heap).unwrap();
+                    let shared = QSharedPointer_QVector_QVariant::from_ptr(on_heap)
+                        .map_err(|_| anyhow!("Failed to create shared pointer for data"))?;
                     let variant = qsharedpointer_qvector_qvariant_to_qvariant(&shared)?;
 
                     let shared = notifier_shared;
                     unsafe {
+                        let ptr = shared
+                            .as_ref()
+                            .ok_or(anyhow!("Notifier shared pointer null"))?
+                            .data()
+                            .map_err(|_| anyhow!("Notifier data null"))?;
                         invoke::<_, (), _>(
-                            &mut *shared.as_ref().unwrap().data().unwrap(),
+                            &mut *ptr,
                             "notify_done(QVariant)",
                             connection_types::DIRECT_CONNECTION,
                             &(variant),

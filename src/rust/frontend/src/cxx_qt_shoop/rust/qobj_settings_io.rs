@@ -2,6 +2,7 @@ use cxx_qt_lib_shoop::qjsonobject::QJsonObject;
 
 pub use crate::cxx_qt_shoop::qobj_settings_io_bridge::ffi::SettingsIO;
 use crate::cxx_qt_shoop::qobj_settings_io_bridge::ffi::*;
+use anyhow::anyhow;
 use common::logging::macros::*;
 use std::path::PathBuf;
 shoop_log_unit!("Frontend.SettingsIO");
@@ -15,12 +16,12 @@ pub fn register_qml_singleton(module_name: &str, type_name: &str) {
 }
 
 impl SettingsIO {
-    fn settings_dir(&self) -> PathBuf {
-        PathBuf::from(
+    fn settings_dir(&self) -> Result<PathBuf, anyhow::Error> {
+        Ok(PathBuf::from(
             directories::ProjectDirs::from("com", "ShoopDaLoop", "ShoopDaLoop")
-                .expect("Could not determine project directories")
+                .ok_or(anyhow!("Could not determine project directories"))?
                 .config_dir(),
-        )
+        ))
     }
 
     pub fn save_settings(
@@ -30,22 +31,24 @@ impl SettingsIO {
     ) {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             let json = QJsonObject::from_variant_map(&settings)
-                .map_err(|e| anyhow::anyhow!("Failed to convert: {e}"))?
+                .map_err(|e| anyhow!("Failed to convert: {e}"))?
                 .to_json()
-                .map_err(|e| anyhow::anyhow!("Failed to convert: {e}"))?;
+                .map_err(|e| anyhow!("Failed to convert: {e}"))?;
             debug!("Settings to save: {json}");
             let filename = match override_filename.is_null() {
                 true => "settings.json".to_string(),
                 false => override_filename
                     .value::<QString>()
-                    .ok_or(anyhow::anyhow!("override_filename is not a string"))?
+                    .ok_or(anyhow!("override_filename is not a string"))?
                     .to_string(),
             };
-            let settings_dir = self.settings_dir();
+            let settings_dir = self
+                .settings_dir()
+                .map_err(|e| anyhow!("Failed to get settings dir: {e}"))?;
             if !settings_dir.exists() {
-                std::fs::create_dir_all(settings_dir)?;
+                std::fs::create_dir_all(&settings_dir)?;
             }
-            let path = self.settings_dir().join(filename);
+            let path = settings_dir.join(filename);
             std::fs::write(&path, json)?;
             info!("Saved settings to {path:?}");
             Ok(())
@@ -60,10 +63,13 @@ impl SettingsIO {
                 true => "settings.json".to_string(),
                 false => override_filename
                     .value::<QString>()
-                    .ok_or(anyhow::anyhow!("override_filename is not a string"))?
+                    .ok_or(anyhow!("override_filename is not a string"))?
                     .to_string(),
             };
-            let path = self.settings_dir().join(filename);
+            let path = self
+                .settings_dir()
+                .map_err(|e| anyhow!("Failed to get settings dir: {e}"))?
+                .join(filename);
             if !path.exists() {
                 info!(
                     "No settings file found at {}, using default values",
@@ -72,15 +78,15 @@ impl SettingsIO {
                 return Ok(QVariant::default());
             }
             let json = std::fs::read_to_string(&path)?;
-            let json = QJsonObject::from_json(&json)
-                .map_err(|e| anyhow::anyhow!("Failed to convert: {e}"))?;
-            let json = json.as_ref().ok_or(anyhow::anyhow!("Failed to convert"))?;
+            let json =
+                QJsonObject::from_json(&json).map_err(|e| anyhow!("Failed to convert: {e}"))?;
+            let json = json.as_ref().ok_or(anyhow!("Failed to convert"))?;
             let jsonstr = json
                 .to_json()
-                .map_err(|e| anyhow::anyhow!("Could not stringify json: {e}"))?;
+                .map_err(|e| anyhow!("Could not stringify json: {e}"))?;
             let json = json
                 .to_variant()
-                .map_err(|e| anyhow::anyhow!("Failed to convert: {e}"))?;
+                .map_err(|e| anyhow!("Failed to convert: {e}"))?;
             debug!("Loaded settings: {jsonstr}");
             info!("Loaded settings from {}", path.display());
             Ok(json)

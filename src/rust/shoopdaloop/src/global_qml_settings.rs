@@ -21,7 +21,9 @@ impl GlobalQmlSettings {
     pub fn as_named_qvariants(self: &Self) -> impl Iterator<Item = (QString, QVariant)> {
         fn option_pathbuf_to_qvariant(p: Option<PathBuf>) -> QVariant {
             match p {
-                Some(pathbuf) => QVariant::from(&QString::from(pathbuf.to_str().unwrap())),
+                Some(pathbuf) => {
+                    QVariant::from(&QString::from(pathbuf.to_str().unwrap_or_default()))
+                }
                 None => <QVariant as Default>::default(),
             }
         }

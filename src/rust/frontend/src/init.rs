@@ -25,14 +25,18 @@ fn register_qml_types_and_singletons() {
     qobj_test_screen_grabber::register_qml_singleton(&mdl, "ShoopRustTestScreenGrabber");
 
     // Singletons (QML)
-    unsafe {
-        register_qml_singletons::ffi::register_qmlfile_singleton(
-            &mut format!("{}/AppRegistries.qml", GLOBAL_CONFIG.get().unwrap().qml_dir),
-            &mut mdl.clone(),
-            1,
-            0,
-            &mut "AppRegistries".to_string(),
-        );
+    if let Some(config) = GLOBAL_CONFIG.get() {
+        unsafe {
+            register_qml_singletons::ffi::register_qmlfile_singleton(
+                &mut format!("{}/AppRegistries.qml", config.qml_dir),
+                &mut mdl.clone(),
+                1,
+                0,
+                &mut "AppRegistries".to_string(),
+            );
+        }
+    } else {
+        error!("GLOBAL_CONFIG not set when registering QML singletons");
     }
 
     // Types
@@ -58,7 +62,9 @@ fn register_metatypes() {}
 #[no_mangle]
 pub extern "C" fn init(config: &ShoopConfig) {
     debug!("Initializing rust metatypes, types and singletons");
-    GLOBAL_CONFIG.set(config.clone()).unwrap();
+    if let Err(_) = GLOBAL_CONFIG.set(config.clone()) {
+        error!("Failed to set GLOBAL_CONFIG: already initialized");
+    }
     register_metatypes();
     register_qml_types_and_singletons();
     crate::engine_update_thread::init();

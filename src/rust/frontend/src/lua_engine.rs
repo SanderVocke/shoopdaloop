@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -59,9 +60,9 @@ impl LuaEngineImpl {
                         info!("{msg}");
                         Ok(())
                     })
-                    .map_err(|e| anyhow::anyhow!("Failed to create print function: {e}"))?,
+                    .map_err(|e| anyhow!("Failed to create print function: {e}"))?,
             )
-            .map_err(|e| anyhow::anyhow!("Failed to register print function: {e}"))?;
+            .map_err(|e| anyhow!("Failed to register print function: {e}"))?;
         globals
             .set(
                 "__shoop_print_trace",
@@ -70,9 +71,9 @@ impl LuaEngineImpl {
                         trace!("{msg}");
                         Ok(())
                     })
-                    .map_err(|e| anyhow::anyhow!("Failed to create print function: {e}"))?,
+                    .map_err(|e| anyhow!("Failed to create print function: {e}"))?,
             )
-            .map_err(|e| anyhow::anyhow!("Failed to register print function: {e}"))?;
+            .map_err(|e| anyhow!("Failed to register print function: {e}"))?;
         globals
             .set(
                 "__shoop_print_debug",
@@ -81,9 +82,9 @@ impl LuaEngineImpl {
                         debug!("{msg}");
                         Ok(())
                     })
-                    .map_err(|e| anyhow::anyhow!("Failed to create print function: {e}"))?,
+                    .map_err(|e| anyhow!("Failed to create print function: {e}"))?,
             )
-            .map_err(|e| anyhow::anyhow!("Failed to register print function: {e}"))?;
+            .map_err(|e| anyhow!("Failed to register print function: {e}"))?;
         globals
             .set(
                 "__shoop_print_info",
@@ -92,9 +93,9 @@ impl LuaEngineImpl {
                         info!("{msg}");
                         Ok(())
                     })
-                    .map_err(|e| anyhow::anyhow!("Failed to create print function: {e}"))?,
+                    .map_err(|e| anyhow!("Failed to create print function: {e}"))?,
             )
-            .map_err(|e| anyhow::anyhow!("Failed to register print function: {e}"))?;
+            .map_err(|e| anyhow!("Failed to register print function: {e}"))?;
         globals
             .set(
                 "__shoop_print_warning",
@@ -103,9 +104,9 @@ impl LuaEngineImpl {
                         warn!("{msg}");
                         Ok(())
                     })
-                    .map_err(|e| anyhow::anyhow!("Failed to create print function: {e}"))?,
+                    .map_err(|e| anyhow!("Failed to create print function: {e}"))?,
             )
-            .map_err(|e| anyhow::anyhow!("Failed to register print function: {e}"))?;
+            .map_err(|e| anyhow!("Failed to register print function: {e}"))?;
         globals
             .set(
                 "__shoop_print_error",
@@ -114,9 +115,9 @@ impl LuaEngineImpl {
                         error!("{msg}");
                         Ok(())
                     })
-                    .map_err(|e| anyhow::anyhow!("Failed to create print function: {e}"))?,
+                    .map_err(|e| anyhow!("Failed to create print function: {e}"))?,
             )
-            .map_err(|e| anyhow::anyhow!("Failed to register print function: {e}"))?;
+            .map_err(|e| anyhow!("Failed to register print function: {e}"))?;
 
         Ok(())
     }
@@ -127,12 +128,10 @@ impl LuaEngineImpl {
         sandboxed: bool,
     ) -> Result<(), anyhow::Error> {
         debug!("Running built-in script: {script_subpath}");
-        let content = self
-            .get_builtin_script_fn
-            .as_ref()
-            .ok_or(anyhow::anyhow!("no builtin script fn registered"))?(
-            script_subpath
-        )?;
+        let content =
+            self.get_builtin_script_fn
+                .as_ref()
+                .ok_or(anyhow!("no builtin script fn registered"))?(script_subpath)?;
         self.execute(content.as_str(), Some(script_subpath), sandboxed)?;
         Ok(())
     }
@@ -145,7 +144,7 @@ impl LuaEngineImpl {
             self.run_sandboxed = Some(
                 globals
                     .get("__shoop_run_sandboxed")
-                    .map_err(|e| anyhow::anyhow!("failed to get __shoop_run_sandboxed: {e}"))?,
+                    .map_err(|e| anyhow!("failed to get __shoop_run_sandboxed: {e}"))?,
             );
 
             let weak_self = self.weak_self.clone();
@@ -155,15 +154,15 @@ impl LuaEngineImpl {
                         match || -> Result<mlua::Value, anyhow::Error> {
                             let strong_self = weak_self
                                 .upgrade()
-                                .ok_or(anyhow::anyhow!("Lua went out of scope"))?;
+                                .ok_or(anyhow!("Lua went out of scope"))?;
                             let strong_self = strong_self.borrow();
                             let lib_content = strong_self
                                 .preloaded_libs
                                 .get(&name)
-                                .ok_or(anyhow::anyhow!("Lib not found: {name}"))?;
+                                .ok_or(anyhow!("Lib not found: {name}"))?;
                             strong_self
                                 .evaluate(&lib_content, Some(&name), true)
-                                .map_err(|e| anyhow::anyhow!("Could not import lib {name}: {e}"))
+                                .map_err(|e| anyhow!("Could not import lib {name}: {e}"))
                         }() {
                             Ok(result) => Ok(result),
                             Err(e) => {
@@ -172,7 +171,7 @@ impl LuaEngineImpl {
                             }
                         }
                     })
-                    .map_err(|e| anyhow::anyhow!("Could not create require function: {e}"))?,
+                    .map_err(|e| anyhow!("Could not create require function: {e}"))?,
             );
         }
         let require = self.require.clone();
@@ -188,19 +187,19 @@ impl LuaEngineImpl {
                 .load("__shoop_control_interface")
                 .set_name("get control interface")
                 .eval::<mlua::Value>()
-                .map_err(|e| anyhow::anyhow!("could not get control interface: {e}"));
+                .map_err(|e| anyhow!("could not get control interface: {e}"));
         }
         if !self.preloaded_libs.contains_key(name) {
-            return Err(anyhow::anyhow!("Cannot require unloaded library: {name}"));
+            return Err(anyhow!("Cannot require unloaded library: {name}"));
         }
         self.lua
             .load(
                 self.preloaded_libs
                     .get(name)
-                    .ok_or(anyhow::anyhow!("No such builtin script: {name}"))?,
+                    .ok_or(anyhow!("No such builtin script: {name}"))?,
             )
             .eval::<mlua::Value>()
-            .map_err(|e| anyhow::anyhow!("could not evaluate required builtin script {name}: {e}"))
+            .map_err(|e| anyhow!("could not evaluate required builtin script {name}: {e}"))
     }
 
     pub fn evaluate<R>(
@@ -220,14 +219,14 @@ impl LuaEngineImpl {
             true => self
                 .run_sandboxed
                 .as_ref()
-                .ok_or(anyhow::anyhow!("no sandbox function set"))?
+                .ok_or(anyhow!("no sandbox function set"))?
                 .call::<R>((code,))
-                .map_err(|e| anyhow::anyhow!("Could not evaluate sandboxed: {e}")),
+                .map_err(|e| anyhow!("Could not evaluate sandboxed: {e}")),
             false => self
                 .lua
                 .load(code)
                 .eval::<R>()
-                .map_err(|e| anyhow::anyhow!("Could not evaluate unsandboxed: {e}")),
+                .map_err(|e| anyhow!("Could not evaluate unsandboxed: {e}")),
         }
     }
 
@@ -250,9 +249,9 @@ impl LuaEngineImpl {
             Some("registrar"),
             true,
         )
-        .map_err(|e| anyhow::anyhow!("Could not create registrar: {e}"))?
+        .map_err(|e| anyhow!("Could not create registrar: {e}"))?
         .call((value,))
-        .map_err(|e| anyhow::anyhow!("Could not set {key}: {e}"))
+        .map_err(|e| anyhow!("Could not set {key}: {e}"))
     }
 
     pub fn initialize(
@@ -285,10 +284,10 @@ impl LuaEngineImpl {
                     match || -> Result<mlua::Value, anyhow::Error> {
                         let strong_cb = weak
                             .upgrade()
-                            .ok_or(anyhow::anyhow!("callback went out of scope"))?;
+                            .ok_or(anyhow!("callback went out of scope"))?;
                         let strong_self = weak_self
                             .upgrade()
-                            .ok_or(anyhow::anyhow!("lua went out of scope"))?;
+                            .ok_or(anyhow!("lua went out of scope"))?;
                         let strong_self = strong_self.borrow();
                         strong_cb.call(&strong_self.lua, multi)
                     }() {
@@ -300,7 +299,7 @@ impl LuaEngineImpl {
                     }
                 },
             )
-            .map_err(|e| anyhow::anyhow!("Could not create callback function: {e}"))
+            .map_err(|e| anyhow!("Could not create callback function: {e}"))
     }
 
     pub fn register_callback(
@@ -315,7 +314,7 @@ impl LuaEngineImpl {
                 self.lua
                     .globals()
                     .set(name, call)
-                    .map_err(|e| anyhow::anyhow!("Unable to set global callback: {e}"))?;
+                    .map_err(|e| anyhow!("Unable to set global callback: {e}"))?;
             }
             LuaScope::Sandboxed => {
                 self.set_toplevel(name, call)?;
@@ -333,13 +332,13 @@ impl LuaEngineImpl {
         let module = self
             .lua
             .create_table()
-            .map_err(|e| anyhow::anyhow!("Could not create table: {e}"))?;
+            .map_err(|e| anyhow!("Could not create table: {e}"))?;
 
         for (name, callback) in callbacks {
             let callback = self.create_callback_fn(name, callback)?;
             module
                 .set(name, callback)
-                .map_err(|e| anyhow::anyhow!("Could not set module callback {name}: {e}"))?;
+                .map_err(|e| anyhow!("Could not set module callback {name}: {e}"))?;
         }
 
         match scope {
@@ -347,7 +346,7 @@ impl LuaEngineImpl {
                 self.lua
                     .globals()
                     .set(name, module)
-                    .map_err(|e| anyhow::anyhow!("Unable to set global callback: {e}"))?;
+                    .map_err(|e| anyhow!("Unable to set global callback: {e}"))?;
             }
             LuaScope::Sandboxed => {
                 self.set_toplevel(name, module)?;
@@ -454,44 +453,43 @@ end"#;
     fn testing_builtins(name: &str) -> Result<String, anyhow::Error> {
         match name {
             "test_script_hello_world" => Ok(HELLO_WORLD_IMPL.to_string()),
-            other => Err(anyhow::anyhow!("Not a testing builtin: {other}")),
+            other => Err(anyhow!("Not a testing builtin: {other}")),
         }
     }
 
     #[test]
-    fn test_basic_eval_expression_unsandboxed() {
+    fn test_basic_eval_expression_unsandboxed() -> Result<(), anyhow::Error> {
         let mut eng = LuaEngine::default();
-        eng.initialize(|_| Err(anyhow::anyhow!("n/a")), HashMap::default())
-            .unwrap();
-        assert_eq!(eng.evaluate::<i32>("1 + 1", None, false).unwrap(), 2);
+        eng.initialize(|_| Err(anyhow!("n/a")), HashMap::default())?;
+        assert_eq!(eng.evaluate::<i32>("1 + 1", None, false)?, 2);
+        Ok(())
     }
 
     #[test]
-    fn test_basic_eval_chunk_unsandboxed() {
+    fn test_basic_eval_chunk_unsandboxed() -> Result<(), anyhow::Error> {
         let mut eng = LuaEngine::default();
-        eng.initialize(|_| Err(anyhow::anyhow!("n/a")), HashMap::default())
-            .unwrap();
-        assert_eq!(eng.evaluate::<i32>("return 1 + 1", None, false).unwrap(), 2);
+        eng.initialize(|_| Err(anyhow!("n/a")), HashMap::default())?;
+        assert_eq!(eng.evaluate::<i32>("return 1 + 1", None, false)?, 2);
+        Ok(())
     }
 
     #[test]
-    fn test_basic_eval_chunk_sandboxed() {
+    fn test_basic_eval_chunk_sandboxed() -> Result<(), anyhow::Error> {
         let mut eng = LuaEngine::default();
-        eng.initialize(|_| Err(anyhow::anyhow!("n/a")), HashMap::default())
-            .unwrap();
-        assert_eq!(eng.evaluate::<i32>("return 1 + 1", None, true).unwrap(), 2);
+        eng.initialize(|_| Err(anyhow!("n/a")), HashMap::default())?;
+        assert_eq!(eng.evaluate::<i32>("return 1 + 1", None, true)?, 2);
+        Ok(())
     }
 
     #[test]
-    fn test_builtin_lib_sandboxed() {
+    fn test_builtin_lib_sandboxed() -> Result<(), anyhow::Error> {
         let mut eng = LuaEngine::default();
         let mut libs: HashMap<String, String> = HashMap::default();
         libs.insert(
             "test_hello_world_lib".to_string(),
             HELLO_WORLD_IMPL.to_string(),
         );
-        eng.initialize(|_| Err(anyhow::anyhow!("n/a")), libs)
-            .unwrap();
+        eng.initialize(|_| Err(anyhow!("n/a")), libs)?;
         assert_eq!(
             eng.evaluate::<String>(
                 r#"
@@ -500,28 +498,26 @@ return test_hello_world()
 "#,
                 None,
                 true
-            )
-            .unwrap(),
+            )?,
             "hello world"
         );
+        Ok(())
     }
 
     #[test]
-    fn test_builtin_script_sandboxed() {
+    fn test_builtin_script_sandboxed() -> Result<(), anyhow::Error> {
         let mut eng = LuaEngine::default();
-        eng.initialize(testing_builtins, HashMap::default())
-            .unwrap();
-        eng.execute_builtin_script("test_script_hello_world", true)
-            .unwrap();
+        eng.initialize(testing_builtins, HashMap::default())?;
+        eng.execute_builtin_script("test_script_hello_world", true)?;
         assert_eq!(
-            eng.evaluate::<String>("return test_hello_world()", None, true)
-                .unwrap(),
+            eng.evaluate::<String>("return test_hello_world()", None, true)?,
             "hello world"
         );
+        Ok(())
     }
 
     #[test]
-    fn test_callback_sandboxed() {
+    fn test_callback_sandboxed() -> Result<(), anyhow::Error> {
         struct TestCallback {}
         impl LuaCallback for TestCallback {
             fn call(
@@ -530,10 +526,18 @@ return test_hello_world()
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 if args.len() != 2 {
-                    return Err(anyhow::anyhow!("Incorrect amount of args"));
+                    return Err(anyhow!("Incorrect amount of args"));
                 }
-                let a = args.front().unwrap().as_i64().unwrap();
-                let b = args.back().unwrap().as_i64().unwrap();
+                let a = args
+                    .front()
+                    .ok_or(anyhow!("missing arg 1"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 1 not i64"))?;
+                let b = args
+                    .back()
+                    .ok_or(anyhow!("missing arg 2"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 2 not i64"))?;
                 Ok(mlua::Value::Integer(a + b))
             }
         }
@@ -541,20 +545,18 @@ return test_hello_world()
         let cb: Arc<Box<dyn LuaCallback>> = Arc::new(Box::new(TestCallback {}));
 
         let mut eng = LuaEngine::default();
-        eng.initialize(testing_builtins, HashMap::default())
-            .unwrap();
-        eng.register_callback("my_test_add", LuaScope::Sandboxed, &cb)
-            .unwrap();
+        eng.initialize(testing_builtins, HashMap::default())?;
+        eng.register_callback("my_test_add", LuaScope::Sandboxed, &cb)?;
 
         assert_eq!(
-            eng.evaluate::<i64>("return my_test_add(1, 2)", None, true)
-                .unwrap(),
+            eng.evaluate::<i64>("return my_test_add(1, 2)", None, true)?,
             3
         );
+        Ok(())
     }
 
     #[test]
-    fn test_callback_unsandboxed() {
+    fn test_callback_unsandboxed() -> Result<(), anyhow::Error> {
         struct TestCallback {}
         impl LuaCallback for TestCallback {
             fn call(
@@ -563,10 +565,18 @@ return test_hello_world()
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 if args.len() != 2 {
-                    return Err(anyhow::anyhow!("Incorrect amount of args"));
+                    return Err(anyhow!("Incorrect amount of args"));
                 }
-                let a = args.front().unwrap().as_i64().unwrap();
-                let b = args.back().unwrap().as_i64().unwrap();
+                let a = args
+                    .front()
+                    .ok_or(anyhow!("missing arg 1"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 1 not i64"))?;
+                let b = args
+                    .back()
+                    .ok_or(anyhow!("missing arg 2"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 2 not i64"))?;
                 Ok(mlua::Value::Integer(a + b))
             }
         }
@@ -574,20 +584,18 @@ return test_hello_world()
         let cb: Arc<Box<dyn LuaCallback>> = Arc::new(Box::new(TestCallback {}));
 
         let mut eng = LuaEngine::default();
-        eng.initialize(testing_builtins, HashMap::default())
-            .unwrap();
-        eng.register_callback("my_test_add", LuaScope::Global, &cb)
-            .unwrap();
+        eng.initialize(testing_builtins, HashMap::default())?;
+        eng.register_callback("my_test_add", LuaScope::Global, &cb)?;
 
         assert_eq!(
-            eng.evaluate::<i64>("return my_test_add(1, 2)", None, false)
-                .unwrap(),
+            eng.evaluate::<i64>("return my_test_add(1, 2)", None, false)?,
             3
         );
+        Ok(())
     }
 
     #[test]
-    fn test_callbacks_module_sandboxed() {
+    fn test_callbacks_module_sandboxed() -> Result<(), anyhow::Error> {
         struct TestAddCallback {}
         impl LuaCallback for TestAddCallback {
             fn call(
@@ -596,10 +604,18 @@ return test_hello_world()
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 if args.len() != 2 {
-                    return Err(anyhow::anyhow!("Incorrect amount of args"));
+                    return Err(anyhow!("Incorrect amount of args"));
                 }
-                let a = args.front().unwrap().as_i64().unwrap();
-                let b = args.back().unwrap().as_i64().unwrap();
+                let a = args
+                    .front()
+                    .ok_or(anyhow!("missing arg 1"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 1 not i64"))?;
+                let b = args
+                    .back()
+                    .ok_or(anyhow!("missing arg 2"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 2 not i64"))?;
                 Ok(mlua::Value::Integer(a + b))
             }
         }
@@ -611,10 +627,18 @@ return test_hello_world()
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 if args.len() != 2 {
-                    return Err(anyhow::anyhow!("Incorrect amount of args"));
+                    return Err(anyhow!("Incorrect amount of args"));
                 }
-                let a = args.front().unwrap().as_i64().unwrap();
-                let b = args.back().unwrap().as_i64().unwrap();
+                let a = args
+                    .front()
+                    .ok_or(anyhow!("missing arg 1"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 1 not i64"))?;
+                let b = args
+                    .back()
+                    .ok_or(anyhow!("missing arg 2"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 2 not i64"))?;
                 Ok(mlua::Value::Integer(a - b))
             }
         }
@@ -627,29 +651,26 @@ return test_hello_world()
         module.insert("sub".to_string(), sub_cb);
 
         let mut eng = LuaEngine::default();
-        eng.initialize(testing_builtins, HashMap::default())
-            .unwrap();
+        eng.initialize(testing_builtins, HashMap::default())?;
         eng.register_callbacks_module(
             "testmodule",
             LuaScope::Sandboxed,
             module.iter().map(|(name, cb)| (name.as_str(), cb)),
-        )
-        .unwrap();
+        )?;
 
         assert_eq!(
-            eng.evaluate::<i64>("return testmodule.add(1, 2)", None, true)
-                .unwrap(),
+            eng.evaluate::<i64>("return testmodule.add(1, 2)", None, true)?,
             3
         );
         assert_eq!(
-            eng.evaluate::<i64>("return testmodule.sub(1, 2)", None, true)
-                .unwrap(),
+            eng.evaluate::<i64>("return testmodule.sub(1, 2)", None, true)?,
             -1
         );
+        Ok(())
     }
 
     #[test]
-    fn test_callbacks_module_unsandboxed() {
+    fn test_callbacks_module_unsandboxed() -> Result<(), anyhow::Error> {
         struct TestAddCallback {}
         impl LuaCallback for TestAddCallback {
             fn call(
@@ -658,10 +679,18 @@ return test_hello_world()
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 if args.len() != 2 {
-                    return Err(anyhow::anyhow!("Incorrect amount of args"));
+                    return Err(anyhow!("Incorrect amount of args"));
                 }
-                let a = args.front().unwrap().as_i64().unwrap();
-                let b = args.back().unwrap().as_i64().unwrap();
+                let a = args
+                    .front()
+                    .ok_or(anyhow!("missing arg 1"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 1 not i64"))?;
+                let b = args
+                    .back()
+                    .ok_or(anyhow!("missing arg 2"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 2 not i64"))?;
                 Ok(mlua::Value::Integer(a + b))
             }
         }
@@ -673,10 +702,18 @@ return test_hello_world()
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 if args.len() != 2 {
-                    return Err(anyhow::anyhow!("Incorrect amount of args"));
+                    return Err(anyhow!("Incorrect amount of args"));
                 }
-                let a = args.front().unwrap().as_i64().unwrap();
-                let b = args.back().unwrap().as_i64().unwrap();
+                let a = args
+                    .front()
+                    .ok_or(anyhow!("missing arg 1"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 1 not i64"))?;
+                let b = args
+                    .back()
+                    .ok_or(anyhow!("missing arg 2"))?
+                    .as_i64()
+                    .ok_or(anyhow!("arg 2 not i64"))?;
                 Ok(mlua::Value::Integer(a - b))
             }
         }
@@ -689,24 +726,21 @@ return test_hello_world()
         module.insert("sub".to_string(), sub_cb);
 
         let mut eng = LuaEngine::default();
-        eng.initialize(testing_builtins, HashMap::default())
-            .unwrap();
+        eng.initialize(testing_builtins, HashMap::default())?;
         eng.register_callbacks_module(
             "testmodule",
             LuaScope::Global,
             module.iter().map(|(name, cb)| (name.as_str(), cb)),
-        )
-        .unwrap();
+        )?;
 
         assert_eq!(
-            eng.evaluate::<i64>("return testmodule.add(1, 2)", None, false)
-                .unwrap(),
+            eng.evaluate::<i64>("return testmodule.add(1, 2)", None, false)?,
             3
         );
         assert_eq!(
-            eng.evaluate::<i64>("return testmodule.sub(1, 2)", None, false)
-                .unwrap(),
+            eng.evaluate::<i64>("return testmodule.sub(1, 2)", None, false)?,
             -1
         );
+        Ok(())
     }
 }

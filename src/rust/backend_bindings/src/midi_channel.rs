@@ -1,6 +1,9 @@
 use crate::ffi;
-use anyhow;
+use anyhow::anyhow;
+use common::logging::macros::*;
 use std::sync::Mutex;
+
+shoop_log_unit!("BackendBindings.MidiChannel");
 
 use crate::channel::ChannelMode;
 use crate::midi::MidiEvent;
@@ -45,9 +48,7 @@ unsafe impl Sync for MidiChannel {}
 impl MidiChannel {
     pub fn new(raw: *mut ffi::shoopdaloop_loop_midi_channel_t) -> Result<Self, anyhow::Error> {
         if raw.is_null() {
-            Err(anyhow::anyhow!(
-                "Cannot create MidiChannel from null pointer"
-            ))
+            Err(anyhow!("Cannot create MidiChannel from null pointer"))
         } else {
             let wrapped = Mutex::new(raw);
             Ok(MidiChannel { obj: wrapped })
@@ -55,7 +56,13 @@ impl MidiChannel {
     }
 
     pub unsafe fn unsafe_backend_ptr(&self) -> *mut ffi::shoopdaloop_loop_midi_channel_t {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in unsafe_backend_ptr: {}", e);
+                e.into_inner()
+            }
+        };
         *guard
     }
 
@@ -122,7 +129,7 @@ impl MidiChannel {
         unsafe {
             let state_ptr = ffi::get_midi_channel_state(self.unsafe_backend_ptr());
             if state_ptr.is_null() {
-                return Err(anyhow::anyhow!("Failed to retrieve MIDI channel state"));
+                return Err(anyhow!("Failed to retrieve MIDI channel state"));
             }
             let state = MidiChannelState::new(&(*state_ptr))?;
             ffi::destroy_midi_channel_state_info(state_ptr);
@@ -172,7 +179,13 @@ impl MidiChannel {
 
 impl Drop for MidiChannel {
     fn drop(&mut self) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in drop: {}", e);
+                e.into_inner()
+            }
+        };
         let obj = *guard;
         if obj.is_null() {
             return;

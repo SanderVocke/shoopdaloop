@@ -1,6 +1,9 @@
 use crate::ffi;
-use anyhow;
+use anyhow::anyhow;
+use common::logging::macros::*;
 use std::sync::Mutex;
+
+shoop_log_unit!("BackendBindings.BackendSession");
 
 use crate::audio_driver::AudioDriver;
 use crate::common::BackendResult;
@@ -72,7 +75,7 @@ impl BackendSession {
     pub fn new() -> Result<Self, anyhow::Error> {
         let obj = unsafe { ffi::create_backend_session() };
         if obj.is_null() {
-            Err(anyhow::anyhow!("create_backend_session() failed"))
+            Err(anyhow!("create_backend_session() failed"))
         } else {
             let wrapped = Mutex::new(obj);
             Ok(BackendSession { obj: wrapped })
@@ -80,12 +83,21 @@ impl BackendSession {
     }
 
     pub unsafe fn unsafe_backend_ptr(&self) -> *mut ffi::shoop_backend_session_t {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in unsafe_backend_ptr: {}", e);
+                e.into_inner()
+            }
+        };
         *guard
     }
 
     pub fn set_audio_driver(&self, driver: &AudioDriver) -> Result<(), anyhow::Error> {
-        let guard = self.obj.lock().unwrap();
+        let guard = self
+            .obj
+            .lock()
+            .map_err(|e| anyhow!("Mutex poisoned (session): {}", e))?;
         let obj = *guard;
         let driver_guard = driver.lock();
         let driver_obj = *driver_guard;
@@ -93,14 +105,14 @@ impl BackendSession {
         if BackendResult::try_from(result as i32)? == BackendResult::Success {
             Ok(())
         } else {
-            Err(anyhow::anyhow!("set_audio_driver() failed"))
+            Err(anyhow!("set_audio_driver() failed"))
         }
     }
 
     pub fn create() -> Result<Self, anyhow::Error> {
         let obj = unsafe { ffi::create_backend_session() };
         if obj.is_null() {
-            Err(anyhow::anyhow!("create_backend_session() failed"))
+            Err(anyhow!("create_backend_session() failed"))
         } else {
             let wrapped = Mutex::new(obj);
             Ok(BackendSession { obj: wrapped })
@@ -119,7 +131,7 @@ impl BackendSession {
         let obj = unsafe { self.unsafe_backend_ptr() };
         let loop_ptr = unsafe { ffi::create_loop(obj) };
         if loop_ptr.is_null() {
-            Err(anyhow::anyhow!("create_loop() failed"))
+            Err(anyhow!("create_loop() failed"))
         } else {
             let _loop = Loop::new(loop_ptr)?;
             Ok(_loop)
@@ -132,10 +144,11 @@ impl BackendSession {
         title: &str,
     ) -> Result<FXChain, anyhow::Error> {
         let obj = unsafe { self.unsafe_backend_ptr() };
-        let c_title = std::ffi::CString::new(title).expect("Failed to create CString");
+        let c_title =
+            std::ffi::CString::new(title).map_err(|_| anyhow!("Failed to create CString"))?;
         let chain_ptr = unsafe { ffi::create_fx_chain(obj, chain_type, c_title.as_ptr()) };
         if chain_ptr.is_null() {
-            Err(anyhow::anyhow!("create_fx_chain() failed"))
+            Err(anyhow!("create_fx_chain() failed"))
         } else {
             let chain = FXChain::new(chain_ptr)?;
             Ok(chain)
@@ -163,7 +176,13 @@ impl BackendSession {
 
 impl Drop for BackendSession {
     fn drop(&mut self) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in drop: {}", e);
+                e.into_inner()
+            }
+        };
         let obj = *guard;
         if obj.is_null() {
             return;

@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -25,7 +26,7 @@ impl LuaEngine {
             let lua_dir = GLOBAL_CONFIG
                 .get()
                 .as_ref()
-                .ok_or(anyhow::anyhow!("Global config not initialized"))?
+                .ok_or(anyhow!("Global config not initialized"))?
                 .lua_dir
                 .clone();
 
@@ -33,23 +34,21 @@ impl LuaEngine {
             let get_builtin_script = move |name: &str| -> Result<String, anyhow::Error> {
                 let path = PathBuf::from(format!("{}/{}", lua_dir_cloned, name));
                 if !path.exists() {
-                    return Err(anyhow::anyhow!(
+                    return Err(anyhow!(
                         "Non-existent built-in script: {name}. Tried: {path:?}"
                     ));
                 }
                 let contents = std::fs::read_to_string(path)
-                    .map_err(|e| anyhow::anyhow!("Failed to read builtin script file: {e}"))?;
+                    .map_err(|e| anyhow!("Failed to read builtin script file: {e}"))?;
                 Ok(contents)
             };
 
             let mut libs: HashMap<String, String> = HashMap::default();
             for file in glob::glob(&format!("{}/lib/*.lua", lua_dir))
-                .map_err(|e| anyhow::anyhow!("Could not glob for Lua libs: {e}"))?
+                .map_err(|e| anyhow!("Could not glob for Lua libs: {e}"))?
             {
                 let file = file?;
-                let name = file
-                    .file_stem()
-                    .ok_or(anyhow::anyhow!("No stem for {file:?}"))?;
+                let name = file.file_stem().ok_or(anyhow!("No stem for {file:?}"))?;
                 let contents = std::fs::read_to_string(&file)?;
                 libs.insert(name.to_string_lossy().to_string(), contents);
             }
@@ -79,15 +78,20 @@ impl LuaEngine {
             let lua_val = self
                 .engine
                 .as_ref()
-                .ok_or(anyhow::anyhow!("engine not initialized"))?
+                .ok_or(anyhow!("engine not initialized"))?
                 .evaluate::<mlua::Value>(
                     code.to_string().as_str(),
                     maybe_script_name.as_ref().map(|s| s.as_str()),
                     sandboxed,
                 )?;
-            let eng_impl = self.engine.as_ref().unwrap().lua.borrow();
+            let eng_impl = self
+                .engine
+                .as_ref()
+                .ok_or(anyhow!("engine not initialized for QVariant conversion"))?
+                .lua
+                .borrow();
             QVariant::from_lua(lua_val, &eng_impl.lua)
-                .map_err(|e| anyhow::anyhow!("Failed to map to QVariant: {e}"))
+                .map_err(|e| anyhow!("Failed to map to QVariant: {e}"))
         }() {
             Ok(value) => value,
             Err(e) => {
@@ -101,11 +105,14 @@ impl LuaEngine {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             let maybe_script_name: Option<String> =
                 maybe_script_name.value::<QString>().map(|s| s.to_string());
-            self.engine.as_ref().unwrap().execute(
-                code.to_string().as_str(),
-                maybe_script_name.as_ref().map(|s| s.as_str()),
-                sandboxed,
-            )
+            self.engine
+                .as_ref()
+                .ok_or(anyhow!("engine not initialized"))?
+                .execute(
+                    code.to_string().as_str(),
+                    maybe_script_name.as_ref().map(|s| s.as_str()),
+                    sandboxed,
+                )
         }() {
             error!("Could not execute: {e}");
         }
@@ -126,10 +133,7 @@ impl LuaEngine {
     ) -> *mut WrappedLuaCallback {
         match || -> Result<*mut WrappedLuaCallback, anyhow::Error> {
             let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
-            let engine = self
-                .engine
-                .as_ref()
-                .ok_or(anyhow::anyhow!("No engine set"))?;
+            let engine = self.engine.as_ref().ok_or(anyhow!("No engine set"))?;
             let cb = engine.evaluate::<mlua::Function>(
                 code.to_string().as_str(),
                 Some(name.to_string().as_str()),
@@ -203,10 +207,15 @@ impl WrappedLuaCallback {
     }
 
     // Create an unique ptr instance.
-    pub fn create_unique_ptr(callback: RustToLuaCallback) -> cxx::UniquePtr<WrappedLuaCallback> {
+    pub fn create_unique_ptr(
+        callback: RustToLuaCallback,
+    ) -> Result<cxx::UniquePtr<WrappedLuaCallback>, anyhow::Error> {
         let mut cb = unsafe { make_unique_wrapped_lua_callback() };
-        cb.as_mut().unwrap().rust_mut().callback = RefCell::new(Some(callback));
-        cb
+        cb.as_mut()
+            .ok_or(anyhow!("Failed to create unique ptr"))?
+            .rust_mut()
+            .callback = RefCell::new(Some(callback));
+        Ok(cb)
     }
 
     pub fn create_raw_with_parent(
@@ -226,21 +235,19 @@ impl WrappedLuaCallback {
     ) {
         match || -> Result<QVariant, anyhow::Error> {
             let callback = self.callback.borrow();
-            let callback = callback
-                .as_ref()
-                .ok_or(anyhow::anyhow!("No callback set"))?;
+            let callback = callback.as_ref().ok_or(anyhow!("No callback set"))?;
             let lua = callback
                 .weak_lua
                 .upgrade()
-                .ok_or(anyhow::anyhow!("Lua went out of scope"))?;
+                .ok_or(anyhow!("Lua went out of scope"))?;
             let lua = lua.as_ref();
             let args = override_stored_args.unwrap_or(&self.stored_arg);
             let rval = callback
                 .callback
                 .call::<mlua::Value>(args.clone())
-                .map_err(|e| anyhow::anyhow!("failed to call callback: {e}"))?;
+                .map_err(|e| anyhow!("failed to call callback: {e}"))?;
             let rval = QVariant::from_lua(rval, lua)
-                .map_err(|e| anyhow::anyhow!("failed to convert return value: {e}"))?;
+                .map_err(|e| anyhow!("failed to convert return value: {e}"))?;
 
             Ok(rval)
         }() {
@@ -264,17 +271,15 @@ impl WrappedLuaCallback {
             {
                 let rust_mut = self.as_mut().rust_mut();
                 let callback = rust_mut.callback.borrow();
-                let callback = callback
-                    .as_ref()
-                    .ok_or(anyhow::anyhow!("No callback set"))?;
+                let callback = callback.as_ref().ok_or(anyhow!("No callback set"))?;
                 let lua = callback
                     .weak_lua
                     .upgrade()
-                    .ok_or(anyhow::anyhow!("Lua went out of scope"))?;
+                    .ok_or(anyhow!("Lua went out of scope"))?;
                 let lua = lua.as_ref();
                 converted = arg
                     .into_lua(lua)
-                    .map_err(|e| anyhow::anyhow!("Could not convert arg to lua: {e}"))?;
+                    .map_err(|e| anyhow!("Could not convert arg to lua: {e}"))?;
             }
             self.as_mut()
                 .call_impl(Some(&mlua::MultiValue::from_vec(vec![converted])));
@@ -317,30 +322,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_basic_eval_expression_sandboxed() {
+    fn test_basic_eval_expression_sandboxed() -> Result<(), anyhow::Error> {
         GLOBAL_CONFIG.get_or_init(|| ShoopConfig::default());
         let eng = LuaEngine::make_unique();
-        assert_eq!(
-            eng.as_ref()
-                .unwrap()
-                .evaluate(QString::from("return 1 + 1"), QVariant::default(), true)
-                .value::<i64>()
-                .unwrap(),
-            2
-        );
+        let val = eng
+            .as_ref()
+            .ok_or(anyhow!("Engine is null"))?
+            .evaluate(QString::from("return 1 + 1"), QVariant::default(), true)
+            .value::<i64>()
+            .ok_or(anyhow!("Result is not an i64"))?;
+        assert_eq!(val, 2);
+        Ok(())
     }
 
     #[test]
-    fn test_basic_eval_expression_unsandboxed() {
+    fn test_basic_eval_expression_unsandboxed() -> Result<(), anyhow::Error> {
         GLOBAL_CONFIG.get_or_init(|| ShoopConfig::default());
         let eng = LuaEngine::make_unique();
-        assert_eq!(
-            eng.as_ref()
-                .unwrap()
-                .evaluate(QString::from("return 1 + 1"), QVariant::default(), false)
-                .value::<i64>()
-                .unwrap(),
-            2
-        );
+        let val = eng
+            .as_ref()
+            .ok_or(anyhow!("Engine is null"))?
+            .evaluate(QString::from("return 1 + 1"), QVariant::default(), false)
+            .value::<i64>()
+            .ok_or(anyhow!("Result is not an i64"))?;
+        assert_eq!(val, 2);
+        Ok(())
     }
 }

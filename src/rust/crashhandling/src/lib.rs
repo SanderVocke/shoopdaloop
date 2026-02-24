@@ -24,12 +24,9 @@ pub fn init_crashhandling(
     on_crash_callback: Option<client::CrashCallback>,
 ) {
     let maybe_dump_folder: Option<String> = std::env::var("SHOOP_CRASHDUMP_DIR").ok();
-    if maybe_dump_folder.is_some() {
-        debug!(
-            "Using dump folder: {:?}",
-            maybe_dump_folder.as_ref().unwrap()
-        );
-        let path = std::path::PathBuf::from(maybe_dump_folder.unwrap());
+    if let Some(dump_folder) = maybe_dump_folder.as_ref() {
+        debug!("Using dump folder: {:?}", dump_folder);
+        let path = std::path::PathBuf::from(dump_folder);
         if !path.exists() || !path.is_dir() {
             warn!("Dump folder {path:?} does not exist or is not a directory - crash handler not enabled.");
             return;
@@ -52,12 +49,12 @@ pub fn init_crashhandling(
 
 pub fn set_crash_json_partial(partial_json: JsonValue) {
     let handle = CLIENTSIDE_HANDLE.get_or_init(|| None);
-    if handle.is_none() {
+    let handle = if let Some(h) = handle.as_ref() {
+        h
+    } else {
         debug!("set_metadata called, but no crash handling client active");
         return;
-    }
-
-    let handle = handle.as_ref().unwrap();
+    };
     let content = partial_json.to_string();
     match handle.sender.send(CrashHandlingMessage {
         message_type: CrashHandlingMessageType::SetJson,

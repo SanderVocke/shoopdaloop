@@ -1,6 +1,9 @@
 use crate::ffi;
-use anyhow;
+use anyhow::anyhow;
+use common::logging::macros::*;
 use std::sync::Mutex;
+
+shoop_log_unit!("BackendBindings.DecoupledMidiPort");
 
 use crate::audio_driver::AudioDriver;
 use crate::midi::MidiEvent;
@@ -29,7 +32,7 @@ impl DecoupledMidiPort {
             )
         };
         if obj.is_null() {
-            return Err(anyhow::anyhow!("Failed to create decoupled MIDI port"));
+            return Err(anyhow!("Failed to create decoupled MIDI port"));
         }
         Ok(DecoupledMidiPort {
             obj: Mutex::new(obj),
@@ -37,7 +40,13 @@ impl DecoupledMidiPort {
     }
 
     pub unsafe fn unsafe_backend_ptr(&self) -> *mut ffi::shoopdaloop_decoupled_midi_port_t {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in unsafe_backend_ptr: {}", e);
+                e.into_inner()
+            }
+        };
         *guard
     }
 
@@ -85,20 +94,38 @@ impl DecoupledMidiPort {
 
     pub fn connect_external_port(&self, name: &str) {
         let obj = unsafe { self.unsafe_backend_ptr() };
-        let c_name = std::ffi::CString::new(name).expect("CString::new failed");
+        let c_name = match std::ffi::CString::new(name) {
+            Ok(c) => c,
+            Err(e) => {
+                error!("Invalid CString for port name: {}", e);
+                return;
+            }
+        };
         unsafe { ffi::connect_external_decoupled_midi_port(obj, c_name.as_ptr()) };
     }
 
     pub fn disconnect_external_port(&self, name: &str) {
         let obj = unsafe { self.unsafe_backend_ptr() };
-        let c_name = std::ffi::CString::new(name).expect("CString::new failed");
+        let c_name = match std::ffi::CString::new(name) {
+            Ok(c) => c,
+            Err(e) => {
+                error!("Invalid CString for port name: {}", e);
+                return;
+            }
+        };
         unsafe { ffi::disconnect_external_decoupled_midi_port(obj, c_name.as_ptr()) };
     }
 }
 
 impl Drop for DecoupledMidiPort {
     fn drop(&mut self) {
-        let guard = self.obj.lock().unwrap();
+        let guard = match self.obj.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Mutex poisoned in drop: {}", e);
+                e.into_inner()
+            }
+        };
         let obj = *guard;
         if obj.is_null() {
             return;

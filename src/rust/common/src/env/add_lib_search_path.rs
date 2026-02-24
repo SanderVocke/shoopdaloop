@@ -16,7 +16,7 @@ pub fn add_lib_search_path(path: &Path) {
         name,
         format!(
             "{}{}{}",
-            path.to_str().unwrap(),
+            path.to_string_lossy(),
             crate::util::PATH_LIST_SEPARATOR,
             value
         ),

@@ -6,11 +6,8 @@ use common::logging::macros::*;
 shoop_log_unit!("Config");
 
 pub fn dev_config_path() -> PathBuf {
-    PathBuf::from(option_env!("SHOOP_DEV_CONFIG_PATH").unwrap())
+    PathBuf::from(option_env!("SHOOP_DEV_CONFIG_PATH").unwrap_or("."))
 }
-
-#[cfg(not(feature = "prebuild"))]
-use anyhow;
 
 #[cfg(not(feature = "prebuild"))]
 pub fn config_dynlib_env_var(

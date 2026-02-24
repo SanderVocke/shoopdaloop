@@ -1,4 +1,4 @@
-use anyhow;
+use anyhow::anyhow;
 use anyhow::Context;
 use glob::glob;
 use std::path::{Path, PathBuf};
@@ -12,7 +12,7 @@ fn populate_folder(folder: &Path, exe_path: &Path) -> Result<(), anyhow::Error> 
     let src_path = src_path
         .ancestors()
         .nth(6)
-        .ok_or(anyhow::anyhow!("cannot find src dir"))?;
+        .ok_or(anyhow!("cannot find src dir"))?;
     info!("Using source path {src_path:?}");
 
     let excludelist_path = src_path.join("distribution/windows/excludelist");
@@ -47,7 +47,7 @@ fn populate_folder(folder: &Path, exe_path: &Path) -> Result<(), anyhow::Error> 
                 let extra_lib_srcpath: String = extra_lib_path.to_string_lossy().to_string();
                 let extra_lib_filename = &extra_lib_path
                     .file_name()
-                    .unwrap()
+                    .ok_or(anyhow!("Missing filename"))?
                     .to_string_lossy()
                     .to_string();
                 let extra_lib_dstpath: String = format!("lib/{}", extra_lib_filename);
@@ -65,20 +65,17 @@ fn populate_folder(folder: &Path, exe_path: &Path) -> Result<(), anyhow::Error> 
             .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
     }
 
-    info!("Portable folder produced in {}", folder.to_str().unwrap());
+    info!("Portable folder produced in {:?}", folder);
 
     Ok(())
 }
 
 pub fn build_portable_folder(exe_path: &Path, output_dir: &Path) -> Result<(), anyhow::Error> {
     if std::fs::exists(output_dir)? {
-        return Err(anyhow::anyhow!(
-            "Output directory {:?} already exists",
-            output_dir
-        ));
+        return Err(anyhow!("Output directory {:?} already exists", output_dir));
     }
-    if !std::fs::exists(output_dir.parent().unwrap())? {
-        return Err(anyhow::anyhow!(
+    if !std::fs::exists(output_dir.parent().ok_or(anyhow!("No parent dir"))?)? {
+        return Err(anyhow!(
             "Output directory {:?}: parent doesn't exist",
             output_dir
         ));

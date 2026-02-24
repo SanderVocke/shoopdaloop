@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use std::{collections::BTreeMap, path::PathBuf};
 
 pub use crate::cxx_qt_shoop::qobj_click_track_generator_bridge::ffi::ClickTrackGenerator;
@@ -48,9 +49,10 @@ fn generate_click_track_timings(
     if alt_click_delay_percent > 0.0 {
         for idx in 0..n_beats {
             if idx % 2 > 0 {
-                let frame = beat_start_frames.get_mut(idx).unwrap();
-                *frame += (alt_click_delay_percent * sample_rate as f64 * seconds_per_beat / 100.0)
-                    as usize;
+                if let Some(frame) = beat_start_frames.get_mut(idx) {
+                    *frame += (alt_click_delay_percent * sample_rate as f64 * seconds_per_beat
+                        / 100.0) as usize;
+                }
             }
         }
     }
@@ -79,13 +81,13 @@ fn generate_click_track_midi(
         for (idx, start) in timings.beat_start_frames.iter().enumerate() {
             let chan = channels
                 .get(idx % channels.len())
-                .ok_or(anyhow::anyhow!("Failed to index channels"))?;
+                .ok_or(anyhow!("Failed to index channels"))?;
             let note = notes
                 .get(idx % notes.len())
-                .ok_or(anyhow::anyhow!("Failed to index channels"))?;
+                .ok_or(anyhow!("Failed to index channels"))?;
             let velocity = notes
                 .get(idx % velocities.len())
-                .ok_or(anyhow::anyhow!("Failed to index velocities"))?;
+                .ok_or(anyhow!("Failed to index velocities"))?;
 
             msgs.push(MidiEvent {
                 time: *start as i32,
@@ -121,7 +123,7 @@ fn generate_click_track_audio_from_waveforms(
     for start_frame in timings.beat_start_frames.iter() {
         let waveform = waveform_iter
             .next()
-            .ok_or(anyhow::anyhow!("No waveforms available"))?;
+            .ok_or(anyhow!("No waveforms available"))?;
         for (idx, sample) in waveform.iter().enumerate() {
             if let Some(target_sample) = output_buffer.get_mut(start_frame + idx) {
                 *target_sample += sample;
@@ -162,15 +164,15 @@ fn generate_click_track_audio(
     for click in clicks {
         let click_path = all_clicks
             .get(click)
-            .ok_or(anyhow::anyhow!("No click '{click}' found"))?;
+            .ok_or(anyhow!("No click '{click}' found"))?;
         let mut audio = sndfile::OpenOptions::ReadOnly(sndfile::ReadOptions::Auto)
             .from_path(click_path)
-            .map_err(|e| anyhow::anyhow!("failed to load audio: {e:?}"))?;
+            .map_err(|e| anyhow!("failed to load audio: {e:?}"))?;
         let audio_channels = audio.get_channels();
         let audio_samplerate = audio.get_samplerate();
         let mut data: Vec<f32> = audio
             .read_all_to_vec()
-            .map_err(|e| anyhow::anyhow!("failed to read audio: {e:?}"))?;
+            .map_err(|e| anyhow!("failed to read audio: {e:?}"))?;
 
         // Convert to single-channel
         let mut indices = 0..data.len();
@@ -268,7 +270,7 @@ impl ClickTrackGenerator {
             for channel in channels.iter() {
                 let channel = qvariant_to_qobject_ptr(channel)?;
                 if channel.is_null() {
-                    return Err(anyhow::anyhow!("Null channel"));
+                    return Err(anyhow!("Null channel"));
                 }
                 unsafe {
                     invoke::<_, (), _>(
@@ -363,7 +365,7 @@ impl ClickTrackGenerator {
             for channel in target_channels.iter() {
                 let channel = qvariant_to_qobject_ptr(channel)?;
                 if channel.is_null() {
-                    return Err(anyhow::anyhow!("Null channel"));
+                    return Err(anyhow!("Null channel"));
                 }
                 unsafe {
                     invoke::<_, (), _>(
@@ -426,7 +428,7 @@ impl ClickTrackGenerator {
             std::thread::spawn(move || {
                 if let Err(e) = || -> Result<(), anyhow::Error> {
                     let mut stream_handle = rodio::OutputStreamBuilder::open_default_stream()
-                        .map_err(|e| anyhow::anyhow!("Failed to open rodio stream: {e}"))?;
+                        .map_err(|e| anyhow!("Failed to open rodio stream: {e}"))?;
                     stream_handle.log_on_drop(false);
                     let sink = rodio::Sink::connect_new(&stream_handle.mixer());
                     let source = rodio::buffer::SamplesBuffer::new(1, sample_rate as u32, wave);

@@ -11,7 +11,10 @@ use std::pin::Pin;
 impl TestPort {
     pub fn set_connections_state_from_json(self: Pin<&mut Self>, json: &str) -> Result<(), String> {
         let json_obj: UniquePtr<QJsonObject> = QJsonObject::from_json(json)?;
-        let map: QMap_QString_QVariant = json_obj.as_ref().unwrap().to_variant_map()?;
+        let map: QMap_QString_QVariant = json_obj
+            .as_ref()
+            .ok_or(String::from("Failed to create JSON object"))?
+            .to_variant_map()?;
         self.set_connections_state(map);
         Ok(())
     }

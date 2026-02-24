@@ -33,7 +33,13 @@ impl AsyncTask {
         unsafe {
             let notifier = make_raw_async_task_notifier();
             let notifier = async_task_notifier_to_qobject(notifier);
-            let notifier_shared = QSharedPointer_QObject::from_ptr_delete_later(notifier).unwrap();
+            let notifier_shared = match QSharedPointer_QObject::from_ptr_delete_later(notifier) {
+                Ok(s) => s,
+                Err(e) => {
+                    error!("Failed to create QSharedPointer for async task notifier: {e}");
+                    return;
+                }
+            };
             let self_ptr_formatted = format!("{self_ptr:?}");
 
             connect_or_report(
@@ -54,8 +60,15 @@ impl AsyncTask {
                     success = false;
                 }
                 debug!("{self_ptr_formatted}: work done, callback - success {success}");
+                let notifier_ptr = match shared.data() {
+                    Ok(ptr) => ptr,
+                    Err(_) => {
+                        error!("Notifier QSharedPointer is null");
+                        return;
+                    }
+                };
                 if let Err(e) = invoke::<_, (), _>(
-                    &mut *shared.data().unwrap(),
+                    &mut *notifier_ptr,
                     "notify_done(bool)",
                     connection_types::BLOCKING_QUEUED_CONNECTION,
                     &(success),

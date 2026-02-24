@@ -1,5 +1,8 @@
 use common;
+use common::logging::macros::*;
 use std::path::PathBuf;
+
+shoop_log_unit!("Backend");
 
 pub fn backend_build_dir() -> PathBuf {
     // If we're pre-building, return an invalid path
@@ -7,10 +10,10 @@ pub fn backend_build_dir() -> PathBuf {
         return PathBuf::new();
     }
 
-    let build_dir = option_env!("SHOOP_BACKEND_DIR").unwrap();
+    let build_dir = option_env!("SHOOP_BACKEND_DIR").unwrap_or("");
     let rval = PathBuf::from(build_dir);
-    if !rval.exists() {
-        panic!("SHOOP_BACKEND_DIR does not exist");
+    if !rval.exists() && !cfg!(feature = "prebuild") {
+        error!("SHOOP_BACKEND_DIR ('{}') does not exist", build_dir);
     }
     rval
 }
