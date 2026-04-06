@@ -83,6 +83,9 @@ libarchive-dev
 libcryptsetup-dev
 libwayland-dev
 libpng-dev
+libice-dev
+libxext-dev
+libsm-dev
 
 # libraries for running / coverage
 libportaudio2
