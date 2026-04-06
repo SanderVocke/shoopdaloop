@@ -1,7 +1,7 @@
 {
   "name": "shoopdaloop",
   "version": "0.0.0",
-  "builtin-baseline": "83375d1ded4878305df9f5272f360f4f80ee0d83",
+  "builtin-baseline": "d3a1e8c161275780ebf2eebd8c6b70d9fabc0a19",
   "dependencies": [
     {
       "name": "lilv"
