@@ -236,6 +236,8 @@ jobs:
             python: python3
             container: docker.io/sandervocke/shoopdaloop_build_base_debian_bookworm_x86_64:latest
             coverage: true
+            package: shoopdaloop.*.coverage-linux-x64.portable.tar.gz
+            second_package: shoopdaloop.*.coverage-linux-x64.test_binaries.tar.gz
             run_cmd_prefix: >-
               BASEDIR=$(pwd)
               EXCLUDE='/*/third_party/* /*/catch2/*'
