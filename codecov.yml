@@ -6,7 +6,7 @@ ignore:
   - "scripts"
   - "third_party"
   - "build"
-  - "src/shoopdaloop/third_party"
+  - "src/qml/third_party"
 
 comment:
   layout: "header, diff, flags, components"
