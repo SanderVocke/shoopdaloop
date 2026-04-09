@@ -275,6 +275,7 @@ jobs:
         asan: ${{ matrix.kind.asan }}
         coverage: ${{ matrix.kind.coverage }}
         python: ${{ matrix.kind.python }}
+        run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
         sentry_key: ${{ secrets.SENTRY_KEY }}
         sentry_build_type: ${{ matrix.kind.sentry_build_type }}
