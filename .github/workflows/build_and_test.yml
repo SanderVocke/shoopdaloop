@@ -240,7 +240,6 @@ jobs:
             second_package: shoopdaloop.*.coverage-linux-x64.test_binaries.tar.gz
             run_cmd_prefix: >-
               BASEDIR=$(pwd)
-              EXCLUDE='/*/third_party/* /*/catch2/*'
               REPORTDIR=coverage_reports
               BUILDDIR=$(realpath build/cp*/)
               ORI_BUILD_DIR=$(cat ori_build_dir.txt)
