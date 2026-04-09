@@ -215,7 +215,7 @@ runs:
        GHA_RUN_ALWAYS: 1
     with:
       strip: ".*/pip/shoopdaloop"
-      package_path: ${{ steps.install_package.outputs.install_dir }}
+      package_path: ${{ env.PORTABLE_FOLDER_INSTALL }}
       console_output_file: test-qml-console-output.log
       report_file: coverage_reports/qml_qoverage.xml
   - uses: ./.github/actions/checkpoint
