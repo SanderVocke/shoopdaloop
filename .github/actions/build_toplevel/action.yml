@@ -212,7 +212,7 @@ runs:
     shell: wrap-shell {0}
     if: always() && inputs.coverage
     run: |
-      echo "$(realpath build/cp*/)" | tee ori_build_dir.txt
+      echo "$(realpath target\debug\build\backend-*\out\cmake_build\build)" | tee ori_build_dir.txt
   - name: Upload info context for coverage analysis
     if: always() && inputs.coverage && inputs.upload_artifacts == 'true'
     uses: actions/upload-artifact@v4
