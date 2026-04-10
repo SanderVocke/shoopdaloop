@@ -144,6 +144,17 @@ runs:
     shell: wrap-shell {0}
     run: |
       PIP_BREAK_SYSTEM_PACKAGES=1 ${{ env.PIP }} install pipx
+  - name: Prepare Rust LLVM tools
+    if: always() && inputs.coverage == 'true'
+    uses: dtolnay/rust-toolchain@nightly
+    with:
+      components: llvm-tools-preview
+  - name: find LLVM tools
+    if: always() && inputs.coverage == 'true'
+    shell: wrap-shell {0}
+    run: |
+      echo "LLVM_COV=$(find $(rustc --print sysroot) -name llvm-cov)" | tee -a $GITHUB_ENV
+      echo "LLVM_PROFDATA=$(find $(rustc --print sysroot) -name llvm-profdata)" | tee -a $GITHUB_ENV
   - uses: ./.github/actions/checkpoint
     if: always()
   - name: Install Qoverage
