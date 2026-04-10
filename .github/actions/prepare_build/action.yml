@@ -31,7 +31,7 @@ runs:
     if: always() && inputs.variant != 'windows'
     uses: dtolnay/rust-toolchain@nightly
     with:
-      components: rustfmt
+      components: rustfmt llvm-tools-preview
   - name: Rust info
     shell: wrap-shell {0}
     run: |
@@ -43,6 +43,9 @@ runs:
       rustup toolchain list
       echo "==== Rust component list ===="
       rustup component list
+      echo "==== Rust LLVM tools (if installed) ===="
+      echo "LLVM_COV=$(find $(rustc --print sysroot) -name llvm-cov)" | tee -a $GITHUB_ENV
+      echo "LLVM_PROFDATA=$(find $(rustc --print sysroot) -name llvm-profdata)" | tee -a $GITHUB_ENV
 
   - name: Prepare linux
     if: always() && inputs.variant == 'linux'

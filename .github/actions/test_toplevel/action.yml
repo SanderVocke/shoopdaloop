@@ -165,7 +165,8 @@ runs:
     if: always() && env.COMMAND_TEST_BACKEND != ''
     uses: ./.github/actions/test_backend
     env:
-      REPORTNAME: backend_lcov
+      LCOV_REPORTNAME: backend_cpp_lcov
+      LLVM_REPORTNAME: backend_rust_lcov
       GHA_RUN_ALWAYS: 1
   - uses: ./.github/actions/checkpoint
     if: always()
@@ -200,7 +201,8 @@ runs:
     if: always() && (inputs.do_qml_tests == 'true')
     uses: ./.github/actions/test_qml
     env:
-      REPORTNAME: qml_lcov
+      LCOV_REPORTNAME: qml_cpp_lcov
+      LLVM_REPORTNAME: qml_rust_lcov
       GHA_RUN_ALWAYS: 1
     with:
       variant_name: release
@@ -291,7 +293,7 @@ runs:
     with:
       token: ${{ inputs.codecov_token }}
       flags: back-end
-      files: coverage_reports/backend_lcov.info
+      files: coverage_reports/backend_cpp_lcov.info
       verbose: true
       fail_ci_if_error: true
   - name: Upload QML test coverage to CodeCov
@@ -302,7 +304,7 @@ runs:
     with:
       token: ${{ inputs.codecov_token }}
       flags: qml
-      files: coverage_reports/qml_lcov.info,coverage_reports/qml_qoverage.xml
+      files: coverage_reports/qml_cpp_lcov.info,coverage_reports/qml_rust_lcov.info,coverage_reports/qml_qoverage.xml
       verbose: true
       fail_ci_if_error: true
   - name: Upload raw coverage reports

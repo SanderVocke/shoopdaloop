@@ -9,15 +9,20 @@ _LCOV=${LCOV:-lcov}
 _GCOV=${GCOV:-gcov}
 _LCOV_ARGS=${LCOV_ARGS}
 _GENHTML=${GENHTML:-genhtml}
-_REPORTNAME=${REPORTNAME:-report}
+_LCOV_REPORTNAME=${LCOV_REPORTNAME:-report_lcov}
+_LLVM_REPORTNAME=${LLVM_REPORTNAME:-report_llvm}
 _ORI_BUILD_DIR=${ORI_BUILD_DIR}
 _DO_GENHTML=${DO_GENHTML:-1}
 _WORKDIR=${WORKDIR:-${PWD}}
+_LLVM_COV=${LLVM_COV:-llvm-cov}
+_LLVM_PROFDATA=${LLVM_PROFDATA:-llvm-profdata}
 
 cd ${_WORKDIR}
 
 _LCOV="${_LCOV} --ignore-errors source --gcov-tool ${_GCOV} -b ${_BASEDIR} -d ${_BUILDDIR} ${_LCOV_ARGS}"
 echo "Using lcov as: ${_LCOV}"
+echo "Using llvm-cov as: ${_LLVM_COV}"
+echo "Using llvm-profdata as: ${_LLVM_PROFDATA}"
 echo "Running in: $(pwd)"
 
 mkdir -p ${_REPORTDIR}
@@ -31,15 +36,15 @@ if [ ! -z ${_ORI_BUILD_DIR} ]; then
 fi
 
 # Clean
-c="${_LCOV} -z"
+c="${_LCOV} -z; rm *.profraw | true; rm *.profdata | true"
 echo "---------------------------------------"
 echo "Cleaning: ${c}"
 echo "---------------------------------------"
 ${c}
 
 # Generate baseline
-if [ ! -f ${_REPORTDIR}/${_REPORTNAME}.info ]; then
-    c="${_LCOV} -c -i -o ${_REPORTDIR}/${_REPORTNAME}.base"
+if [ ! -f ${_REPORTDIR}/${_LCOV_REPORTNAME}.info ]; then
+    c="${_LCOV} -c -i -o ${_REPORTDIR}/${_LCOV_REPORTNAME}.base"
     echo "---------------------------------------"
     echo "Generating baseline: ${c}"
     echo "---------------------------------------"
@@ -63,33 +68,61 @@ echo "---------------------------------------"
 echo "Found ${gcda_count} gcda files"
 echo "---------------------------------------"
 
-# Capture
-c="${_LCOV} -c -o ${_REPORTDIR}/${_REPORTNAME}.capture"
+# Count profraw files
+profraw_count=`ls "./*.profraw" | wc -l`
 echo "---------------------------------------"
-echo "Generating report: ${c}"
+echo "Found ${profraw_count} .profraw files"
+echo "---------------------------------------"
+
+# Merge profraw files
+c="if [ -f ${_LLVM_PROFDATA} ]; then ${_LLVM_PROFDATA} merge -sparse *.profraw -o coverage.profdata; else echo skipping; fi"
+echo "---------------------------------------"
+echo "Merging LLVM profdata: ${c}"
+echo "---------------------------------------"
+${c}
+
+# Profraw reporting
+c="if [ -f ${_LLVM_COV} -a -f coverage.profdata ]; then ${_LLVM_COV} export -instr-profile=coverate.profdata -format=lcov > ${_REPORTDIR}/${_LLVM_REPORTNAME}.info; else echo skipping; fi"
+echo "---------------------------------------"
+echo "Generating LLVM lcov report: ${c}"
+echo "---------------------------------------"
+${c}
+
+# Capture
+c="${_LCOV} -c -o ${_REPORTDIR}/${_LCOV_REPORTNAME}.capture"
+echo "---------------------------------------"
+echo "Generating lcov report: ${c}"
 echo "---------------------------------------"
 ${c}
 
 # Add baseline
-c="${_LCOV} -a ${_REPORTDIR}/${_REPORTNAME}.base -a ${_REPORTDIR}/${_REPORTNAME}.capture -o ${_REPORTDIR}/${_REPORTNAME}.total"
+c="${_LCOV} -a ${_REPORTDIR}/${_LCOV_REPORTNAME}.base -a ${_REPORTDIR}/${_LCOV_REPORTNAME}.capture -o ${_REPORTDIR}/${_LCOV_REPORTNAME}.total"
 echo "---------------------------------------"
-echo "Appending baseline: ${c}"
+echo "Appending lcov baseline: ${c}"
 echo "---------------------------------------"
 ${c}
 
 # Filter
-c="${_LCOV} -r ${_REPORTDIR}/${_REPORTNAME}.total ${_EXCLUDE} -o ${_REPORTDIR}/${_REPORTNAME}.info"
+c="${_LCOV} -r ${_REPORTDIR}/${_LCOV_REPORTNAME}.total ${_EXCLUDE} -o ${_REPORTDIR}/${_LCOV_REPORTNAME}.info"
 echo "---------------------------------------"
-echo "Filtering report: ${c}"
+echo "Filtering lcov report: ${c}"
 echo "---------------------------------------"
 ${c}
 
 
 if [ $_DO_GENHTML -ne 0 ]; then
     # HTML
-    c="${_GENHTML} -o ${_REPORTDIR}/${_REPORTNAME} ${_REPORTDIR}/${_REPORTNAME}.info"
+    c="${_GENHTML} -o ${_REPORTDIR}/${_LCOV_REPORTNAME} ${_REPORTDIR}/${_LCOV_REPORTNAME}.info"
     echo "---------------------------------------"
-    echo "Generating HTML: ${c}"
+    echo "Generating lcov HTML: ${c}"
+    echo "---------------------------------------"
+    ${c}
+
+    # LLVM HTML
+    # Profraw reporting
+    c="if [ -f ${_LLVM_COV} -a -f coverage.profdata ]; then mkdir -p ${_REPORTDIR}/${_LLVM_REPORTNAME}_html; ${_LLVM_COV} show -instr-profile=coverate.profdata -format=html -output-dir=${_REPORTDIR}/${_LLVM_REPORTNAME}_html; else echo skipping; fi"
+    echo "---------------------------------------"
+    echo "Generating LLVM lcov HTML: ${c}"
     echo "---------------------------------------"
     ${c}
 else
