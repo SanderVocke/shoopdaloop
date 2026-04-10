@@ -149,7 +149,6 @@ jobs:
           #   platform: linux-x64
           - name: linux_coverage
             release_build: false
-            cmake_opts: '"ENABLE_COVERAGE" = "On"'
             package_kind: portable_folder
             second_package_kind: appimage
             third_package_kind: test_binaries
@@ -196,7 +195,6 @@ jobs:
         name: ${{ matrix.kind.name }}
         platform: ${{ matrix.kind.platform }}
         release_build: ${{ matrix.kind.release_build }}
-        cmake_opts: ${{ matrix.kind.cmake_opts }}
         prepare_kind: 'linux'
         python: python3.11
         package_kind: ${{ matrix.kind.package_kind }}
@@ -241,7 +239,7 @@ jobs:
             run_cmd_prefix: >-
               BASEDIR=$(pwd)
               REPORTDIR=coverage_reports
-              BUILDDIR=$(realpath build/cp*/)
+              BUILDDIR=$(pwd)/portable/
               ORI_BUILD_DIR=$(cat ori_build_dir.txt)
               DO_GENHTML=0
               SHOOP_LOG=QoverageCollectorFactory=debug
@@ -355,7 +353,6 @@ jobs:
   #       name: ${{ matrix.kind.name }}
   #       platform: ${{ matrix.kind.platform }}
   #       cmake_build_type: ${{ matrix.kind.build_type }}
-  #       cmake_opts: ${{ matrix.kind.cmake_opts }}
   #       prepare_kind: 'macos'
   #       python: python3
   #       appbundle: ${{ matrix.kind.appbundle }}
@@ -517,7 +514,6 @@ jobs:
   #       name: ${{ matrix.kind.name }}
   #       platform: ${{ matrix.kind.platform }}
   #       cmake_build_type: ${{ matrix.kind.build_type }}
-  #       cmake_opts: ${{ matrix.kind.cmake_opts }}
   #       prepare_kind: ${{ matrix.kind.prepare }}
   #       python: ${{ matrix.kind.python }}
   #       package_kind: ${{ matrix.kind.package_kind }}

@@ -75,14 +75,14 @@ echo "Found ${profraw_count} .profraw files"
 echo "---------------------------------------"
 
 # Merge profraw files
-c="if [ -f ${_LLVM_PROFDATA} ]; then ${_LLVM_PROFDATA} merge -sparse *.profraw -o coverage.profdata; else echo skipping; fi"
+c="${_LLVM_PROFDATA} merge -sparse *.profraw -o coverage.profdata"
 echo "---------------------------------------"
 echo "Merging LLVM profdata: ${c}"
 echo "---------------------------------------"
 ${c}
 
 # Profraw reporting
-c="if [ -f ${_LLVM_COV} -a -f coverage.profdata ]; then ${_LLVM_COV} export -instr-profile=coverate.profdata -format=lcov > ${_REPORTDIR}/${_LLVM_REPORTNAME}.info; else echo skipping; fi"
+c="${_LLVM_COV} export -instr-profile=coverate.profdata -format=lcov > ${_REPORTDIR}/${_LLVM_REPORTNAME}.info"
 echo "---------------------------------------"
 echo "Generating LLVM lcov report: ${c}"
 echo "---------------------------------------"
@@ -120,7 +120,7 @@ if [ $_DO_GENHTML -ne 0 ]; then
 
     # LLVM HTML
     # Profraw reporting
-    c="if [ -f ${_LLVM_COV} -a -f coverage.profdata ]; then mkdir -p ${_REPORTDIR}/${_LLVM_REPORTNAME}_html; ${_LLVM_COV} show -instr-profile=coverate.profdata -format=html -output-dir=${_REPORTDIR}/${_LLVM_REPORTNAME}_html; else echo skipping; fi"
+    c="mkdir -p ${_REPORTDIR}/${_LLVM_REPORTNAME}_html; ${_LLVM_COV} show -instr-profile=coverate.profdata -format=html -output-dir=${_REPORTDIR}/${_LLVM_REPORTNAME}_html"
     echo "---------------------------------------"
     echo "Generating LLVM lcov HTML: ${c}"
     echo "---------------------------------------"

@@ -6,8 +6,6 @@ inputs:
   release_build:
     description: "if true, does a release build. Otherwise, a debug build."
     default: 'false'
-  cmake_opts:
-    description: "CMake options"
   prepare_kind:
     description: "Which prepare function to call (see prepare action)"
   python:
@@ -125,6 +123,7 @@ runs:
     uses: ./.github/actions/build_base
     with:
         release_build: ${{ inputs.release_build }}
+        coverage: ${{ inputs.coverage }}
   - name: Qoverage - Instrument QML files
     if: always() && inputs.coverage
     uses: ./.github/actions/qoverage_instrument
