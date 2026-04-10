@@ -25,4 +25,4 @@ glob = { workspace = true }
 # Dummy build to build dependencies only
 prebuild = ["common/prebuild", "refilling_pool/prebuild"]
 # Enable code coverage in the CMake build using 
-coverage
+coverage = []
