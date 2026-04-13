@@ -27,13 +27,13 @@ echo "Running in: $(pwd)"
 
 mkdir -p ${_REPORTDIR}
 
-# if [ ! -z ${_ORI_BUILD_DIR} ]; then
-#     export GCOV_PREFIX=${_BUILDDIR}
-#     export GCOV_PREFIX_STRIP=$(echo ${_ORI_BUILD_DIR} | tr '/' ' ' | wc -w)
-#     echo "Remapping build dir: ${_ORI_BUILD_DIR} -> ${_BUILDDIR}"
-#     echo "  - GCOV_PREFIX = ${GCOV_PREFIX}"
-#     echo "  - GCOV_PREFIX_STRIP = ${GCOV_PREFIX_STRIP}"
-# fi
+if [ ! -z ${_ORI_BUILD_DIR} ]; then
+    export GCOV_PREFIX=${_BUILDDIR}
+    export GCOV_PREFIX_STRIP=$(echo ${_ORI_BUILD_DIR} | tr '/' ' ' | wc -w)
+    echo "Remapping build dir: ${_ORI_BUILD_DIR} -> ${_BUILDDIR}"
+    echo "  - GCOV_PREFIX = ${GCOV_PREFIX}"
+    echo "  - GCOV_PREFIX_STRIP = ${GCOV_PREFIX_STRIP}"
+fi
 
 # Clean
 c="${_LCOV} -z ; rm *.profraw | true; rm *.profdata | true"
