@@ -208,11 +208,11 @@ runs:
   #   with:
   #     name: breakpad_debuginfo_${{ inputs.name }}
   #     path: debuginfo
-  - name: Save build info for coverage analyis
+  - name: Save C++ build info for coverage analyis
     shell: wrap-shell {0}
     if: always() && inputs.coverage
     run: |
-      echo "$(realpath target/debug/build/backend-*/out/cmake_build/build)" | tee ori_build_dir.txt
+      echo "$(realpath target/debug/build/backend-*/out/cmake_build/build)" | head -n1 | tee ori_build_dir.txt
   - name: Upload info context for coverage analysis
     if: always() && inputs.coverage && inputs.upload_artifacts == 'true'
     uses: actions/upload-artifact@v4
