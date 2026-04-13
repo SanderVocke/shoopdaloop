@@ -5,6 +5,9 @@ inputs:
   release_build:
     description: "if true, does a release build. Otherwise, a debug build."
     default: 'false'
+  coverage:
+    description: "if true, do a coverage build"
+    default: 'false'
 
 runs:
   using: "composite"
@@ -32,6 +35,13 @@ runs:
         echo "CARGO_PROFILE=dev" | tee -a $GITHUB_ENV
         echo "CARGO_BUILD_FLAGS=--profile dev" | tee -a $GITHUB_ENV
         echo "BUILD_ENV_FILE=./build/build-env-debug.sh" | tee -a $GITHUB_ENV
+
+  - name: Set coverage flags
+    if: always() && inputs.coverage == 'true'
+    shell: wrap-shell {0}
+    run: |
+        echo "CARGO_BUILD_FLAGS=${{ env.CARGO_BUILD_FLAGS }} --features coverage" | tee -a $GITHUB_ENV 
+        echo "RUSTFLAGS=$RUSTFLAGS -C instrument-coverage" | tee -a $GITHUB_ENV
 
   - name: Setup build env and build vcpkg packages
     if: always()
