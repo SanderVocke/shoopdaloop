@@ -19,7 +19,6 @@ use std::pin::Pin;
 
 use tracing::{debug_span, info};
 
-
 shoop_log_unit!("Frontend.Loop");
 
 macro_rules! trace {
@@ -209,33 +208,52 @@ impl LoopBackend {
                 .ok_or(anyhow!("backend loop object doesn't exist"))?
                 .get_state()?;
 
-            let _span = debug_span!("update", instance = %self.instance_identifier().to_string()).entered();
+            let _span =
+                debug_span!("update", instance = %self.instance_identifier().to_string()).entered();
 
-
-            if common::tracing_helpers::is_tracing_enabled() && tracy_client::Client::running().is_some() {
+            if common::tracing_helpers::is_tracing_enabled()
+                && tracy_client::Client::running().is_some()
+            {
                 let mut rust = self.as_mut().rust_mut();
                 let identifier = rust.instance_identifier.to_string();
-                
+
                 // Extract values beforehand to capture what we need to avoid borrow issues if necessary,
                 // though here we are plotting sequentially.
                 // We access `rust` fields directly.
-                
-                rust.plotter_position.plot(new_state.position as f64, &identifier);
-                rust.plotter_mode.plot(new_state.mode as i32 as f64, &identifier);
-                rust.plotter_length.plot(new_state.length as f64, &identifier);
-                rust.plotter_next_mode.plot(convert_maybe_mode_i32(new_state.maybe_next_mode) as f64, &identifier);
-                rust.plotter_next_delay.plot(new_state.maybe_next_mode_delay.unwrap_or(0) as f64, &identifier); // Using 0 for no delay/none
+
+                rust.plotter_position
+                    .plot(new_state.position as f64, &identifier);
+                rust.plotter_mode
+                    .plot(new_state.mode as i32 as f64, &identifier);
+                rust.plotter_length
+                    .plot(new_state.length as f64, &identifier);
+                rust.plotter_next_mode.plot(
+                    convert_maybe_mode_i32(new_state.maybe_next_mode) as f64,
+                    &identifier,
+                );
+                rust.plotter_next_delay.plot(
+                    new_state.maybe_next_mode_delay.unwrap_or(0) as f64,
+                    &identifier,
+                ); // Using 0 for no delay/none
                 let prev_pos = rust.prev_state.position;
                 let prev_mode = rust.prev_state.mode;
                 let prev_cycle_nr = rust.prev_cycle_nr;
-                rust.plotter_cycle_nr.plot(match new_state.position < prev_pos 
-                    && is_playing_mode(prev_mode.try_into().unwrap())
-                    && is_playing_mode(new_state.mode.try_into().unwrap()) {
+                rust.plotter_cycle_nr.plot(
+                    match new_state.position < prev_pos
+                        && is_playing_mode(prev_mode.try_into().unwrap())
+                        && is_playing_mode(new_state.mode.try_into().unwrap())
+                    {
                         true => prev_cycle_nr + 1,
-                        false => prev_cycle_nr
-                    } as f64, &identifier);
+                        false => prev_cycle_nr,
+                    } as f64,
+                    &identifier,
+                );
 
-                let sync_source_val = if !rust.sync_source.is_null() { 1.0 } else { 0.0 };
+                let sync_source_val = if !rust.sync_source.is_null() {
+                    1.0
+                } else {
+                    0.0
+                };
                 rust.plotter_sync_source.plot(sync_source_val, &identifier);
             }
 
@@ -336,7 +354,6 @@ impl LoopBackend {
                     self.as_mut().cycled(new_cycle_nr);
                     info!(instance = %self.instance_identifier().to_string(), cycle = new_cycle_nr, "cycled");
                 }
-
             }
 
             Ok(())

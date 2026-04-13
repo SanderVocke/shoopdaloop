@@ -1,5 +1,5 @@
-use cxx_qt_lib_shoop::qobject::AsQObject;
 use common::tracing_helpers::TracyPlotter;
+use cxx_qt_lib_shoop::qobject::AsQObject;
 
 #[cxx_qt::bridge]
 pub mod ffi {

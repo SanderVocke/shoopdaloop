@@ -1,10 +1,10 @@
 use anyhow;
+use lazy_static::lazy_static;
+use std::collections::HashSet;
+use std::sync::Mutex;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
-use std::collections::HashSet;
-use std::sync::Mutex;
-use lazy_static::lazy_static;
 
 lazy_static! {
     static ref LOG_MODULES: Mutex<HashSet<&'static str>> = Mutex::new(HashSet::new());
@@ -66,16 +66,16 @@ pub fn init_logging() -> Result<(), anyhow::Error> {
     if let Ok(value) = std::env::var("SHOOP_LOG") {
         let mut filter_str = String::new();
         let modules = LOG_MODULES.lock().unwrap();
-        
+
         for item in value.split(',') {
             let mut parts = item.splitn(2, '=');
             let module_or_level = parts.next().unwrap_or_default();
             let level = parts.next();
-            
+
             if !filter_str.is_empty() {
                 filter_str.push(',');
             }
-            
+
             match level {
                 Some(level_str) => {
                     if modules.contains(module_or_level) {

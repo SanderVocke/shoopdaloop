@@ -721,29 +721,35 @@ impl CompositeLoopBackend {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.position = v;
 
-            if common::tracing_helpers::is_tracing_enabled() && tracy_client::Client::running().is_some() {
-                 let identifier = rust_mut.instance_identifier.to_string();
-                 let iteration = rust_mut.iteration as f64;
-                 let mode = rust_mut.mode as i32 as f64;
-                 let next_mode = rust_mut.next_mode as f64;
-                 let next_transition_delay = rust_mut.next_transition_delay as f64;
-                 let n_cycles = rust_mut.n_cycles as f64;
-                 let length = rust_mut.length as f64;
-                 let sync_position = rust_mut.sync_position as f64;
-                 let sync_length = rust_mut.sync_length as f64;
-                 let position = rust_mut.position as f64;
-                 let cycle_nr = rust_mut.cycle_nr as f64;
+            if common::tracing_helpers::is_tracing_enabled()
+                && tracy_client::Client::running().is_some()
+            {
+                let identifier = rust_mut.instance_identifier.to_string();
+                let iteration = rust_mut.iteration as f64;
+                let mode = rust_mut.mode as i32 as f64;
+                let next_mode = rust_mut.next_mode as f64;
+                let next_transition_delay = rust_mut.next_transition_delay as f64;
+                let n_cycles = rust_mut.n_cycles as f64;
+                let length = rust_mut.length as f64;
+                let sync_position = rust_mut.sync_position as f64;
+                let sync_length = rust_mut.sync_length as f64;
+                let position = rust_mut.position as f64;
+                let cycle_nr = rust_mut.cycle_nr as f64;
 
-                 rust_mut.plotter_iteration.plot(iteration, &identifier);
-                 rust_mut.plotter_mode.plot(mode, &identifier);
-                 rust_mut.plotter_next_mode.plot(next_mode, &identifier);
-                 rust_mut.plotter_next_transition_delay.plot(next_transition_delay, &identifier);
-                 rust_mut.plotter_n_cycles.plot(n_cycles, &identifier);
-                 rust_mut.plotter_length.plot(length, &identifier);
-                 rust_mut.plotter_sync_position.plot(sync_position, &identifier);
-                 rust_mut.plotter_sync_length.plot(sync_length, &identifier);
-                 rust_mut.plotter_position.plot(position, &identifier);
-                 rust_mut.plotter_cycle_nr.plot(cycle_nr, &identifier);
+                rust_mut.plotter_iteration.plot(iteration, &identifier);
+                rust_mut.plotter_mode.plot(mode, &identifier);
+                rust_mut.plotter_next_mode.plot(next_mode, &identifier);
+                rust_mut
+                    .plotter_next_transition_delay
+                    .plot(next_transition_delay, &identifier);
+                rust_mut.plotter_n_cycles.plot(n_cycles, &identifier);
+                rust_mut.plotter_length.plot(length, &identifier);
+                rust_mut
+                    .plotter_sync_position
+                    .plot(sync_position, &identifier);
+                rust_mut.plotter_sync_length.plot(sync_length, &identifier);
+                rust_mut.plotter_position.plot(position, &identifier);
+                rust_mut.plotter_cycle_nr.plot(cycle_nr, &identifier);
             }
 
             unsafe {

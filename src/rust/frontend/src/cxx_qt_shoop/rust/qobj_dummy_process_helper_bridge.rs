@@ -62,9 +62,9 @@ pub mod ffi {
     impl cxx_qt::Constructor<(), NewArguments = ()> for DummyProcessHelper {}
 }
 
+use common::tracing_helpers::TracyPlotter;
 pub use ffi::DummyProcessHelper;
 use ffi::*;
-use common::tracing_helpers::TracyPlotter;
 
 pub struct DummyProcessHelperRust {
     wait_start: f32,

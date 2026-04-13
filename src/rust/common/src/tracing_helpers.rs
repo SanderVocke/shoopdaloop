@@ -33,7 +33,7 @@ impl TracyPlotter {
     }
 
     /// Plots a value to Tracy.
-    /// 
+    ///
     /// If `base_identifier` changes, a new `PlotName` is created (and leaked).
     /// Safe to call frequently.
     pub fn plot(&mut self, value: f64, base_identifier: &str) {
@@ -41,7 +41,9 @@ impl TracyPlotter {
             return;
         }
         if let Some(client) = tracy_client::Client::running() {
-            if self.plot_name.is_none() || self.last_base_identifier.as_deref() != Some(base_identifier) {
+            if self.plot_name.is_none()
+                || self.last_base_identifier.as_deref() != Some(base_identifier)
+            {
                 let full_name = if self.suffix.is_empty() {
                     base_identifier.to_string()
                 } else {

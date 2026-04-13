@@ -63,20 +63,31 @@ impl LoopChannelBackend {
                     prev_state.clone()
                 }
             };
-            
-            if common::tracing_helpers::is_tracing_enabled() && tracy_client::Client::running().is_some() {
+
+            if common::tracing_helpers::is_tracing_enabled()
+                && tracy_client::Client::running().is_some()
+            {
                 let mut rust = self.as_mut().rust_mut();
                 let identifier = rust.instance_identifier.to_string();
 
-                rust.plotter_mode.plot(new_state.mode as i32 as f64, &identifier);
-                rust.plotter_length.plot(new_state.length as f64, &identifier);
-                rust.plotter_start_offset.plot(new_state.start_offset as f64, &identifier);
-                rust.plotter_n_preplay_samples.plot(new_state.n_preplay_samples as f64, &identifier);
-                rust.plotter_data_dirty.plot(if new_state.data_dirty { 1.0 } else { 0.0 }, &identifier);
-                rust.plotter_audio_gain.plot(new_state.audio_gain as f64, &identifier);
-                rust.plotter_audio_peak.plot(new_state.audio_output_peak as f64, &identifier);
-                rust.plotter_n_events_triggered.plot(new_state.n_events_triggered as f64, &identifier);
-                rust.plotter_n_notes_active.plot(new_state.n_notes_active as f64, &identifier);
+                rust.plotter_mode
+                    .plot(new_state.mode as i32 as f64, &identifier);
+                rust.plotter_length
+                    .plot(new_state.length as f64, &identifier);
+                rust.plotter_start_offset
+                    .plot(new_state.start_offset as f64, &identifier);
+                rust.plotter_n_preplay_samples
+                    .plot(new_state.n_preplay_samples as f64, &identifier);
+                rust.plotter_data_dirty
+                    .plot(if new_state.data_dirty { 1.0 } else { 0.0 }, &identifier);
+                rust.plotter_audio_gain
+                    .plot(new_state.audio_gain as f64, &identifier);
+                rust.plotter_audio_peak
+                    .plot(new_state.audio_output_peak as f64, &identifier);
+                rust.plotter_n_events_triggered
+                    .plot(new_state.n_events_triggered as f64, &identifier);
+                rust.plotter_n_notes_active
+                    .plot(new_state.n_notes_active as f64, &identifier);
             }
 
             {

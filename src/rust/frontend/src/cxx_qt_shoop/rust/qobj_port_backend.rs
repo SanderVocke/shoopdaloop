@@ -65,20 +65,41 @@ impl PortBackend {
                 }
             };
 
-            if common::tracing_helpers::is_tracing_enabled() && tracy_client::Client::running().is_some() {
+            if common::tracing_helpers::is_tracing_enabled()
+                && tracy_client::Client::running().is_some()
+            {
                 let mut rust = self.as_mut().rust_mut();
-                let identifier = rust.name_hint.clone().unwrap_or(QString::from("unknown")).to_string();
+                let identifier = rust
+                    .name_hint
+                    .clone()
+                    .unwrap_or(QString::from("unknown"))
+                    .to_string();
 
-                rust.plotter_muted.plot(if new_state.muted != 0 { 1.0 } else { 0.0 }, &identifier);
-                rust.plotter_passthrough_muted.plot(if new_state.passthrough_muted != 0 { 1.0 } else { 0.0 }, &identifier);
+                rust.plotter_muted
+                    .plot(if new_state.muted != 0 { 1.0 } else { 0.0 }, &identifier);
+                rust.plotter_passthrough_muted.plot(
+                    if new_state.passthrough_muted != 0 {
+                        1.0
+                    } else {
+                        0.0
+                    },
+                    &identifier,
+                );
                 rust.plotter_gain.plot(new_state.gain as f64, &identifier);
-                rust.plotter_input_peak.plot(new_state.input_peak as f64, &identifier);
-                rust.plotter_output_peak.plot(new_state.output_peak as f64, &identifier);
-                rust.plotter_n_input_events.plot(new_state.n_input_events as f64, &identifier);
-                rust.plotter_n_output_events.plot(new_state.n_output_events as f64, &identifier);
-                rust.plotter_n_input_notes.plot(new_state.n_input_notes_active as f64, &identifier);
-                rust.plotter_n_output_notes.plot(new_state.n_output_notes_active as f64, &identifier);
-                rust.plotter_n_ringbuffer_samples.plot(new_state.ringbuffer_n_samples as f64, &identifier);
+                rust.plotter_input_peak
+                    .plot(new_state.input_peak as f64, &identifier);
+                rust.plotter_output_peak
+                    .plot(new_state.output_peak as f64, &identifier);
+                rust.plotter_n_input_events
+                    .plot(new_state.n_input_events as f64, &identifier);
+                rust.plotter_n_output_events
+                    .plot(new_state.n_output_events as f64, &identifier);
+                rust.plotter_n_input_notes
+                    .plot(new_state.n_input_notes_active as f64, &identifier);
+                rust.plotter_n_output_notes
+                    .plot(new_state.n_output_notes_active as f64, &identifier);
+                rust.plotter_n_ringbuffer_samples
+                    .plot(new_state.ringbuffer_n_samples as f64, &identifier);
             }
 
             {

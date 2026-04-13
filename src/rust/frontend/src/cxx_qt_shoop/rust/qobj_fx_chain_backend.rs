@@ -63,12 +63,17 @@ impl FXChainBackend {
                 }
             };
 
-            if common::tracing_helpers::is_tracing_enabled() && tracy_client::Client::running().is_some() {
+            if common::tracing_helpers::is_tracing_enabled()
+                && tracy_client::Client::running().is_some()
+            {
                 let mut rust = self.as_mut().rust_mut();
                 let identifier = rust.title.clone().unwrap_or("fx_chain".to_string());
-                rust.plotter_ready.plot(if new_state.ready != 0 { 1.0 } else { 0.0 }, &identifier);
-                rust.plotter_active.plot(if new_state.active != 0 { 1.0 } else { 0.0 }, &identifier);
-                rust.plotter_visible.plot(if new_state.visible != 0 { 1.0 } else { 0.0 }, &identifier);
+                rust.plotter_ready
+                    .plot(if new_state.ready != 0 { 1.0 } else { 0.0 }, &identifier);
+                rust.plotter_active
+                    .plot(if new_state.active != 0 { 1.0 } else { 0.0 }, &identifier);
+                rust.plotter_visible
+                    .plot(if new_state.visible != 0 { 1.0 } else { 0.0 }, &identifier);
             }
 
             {

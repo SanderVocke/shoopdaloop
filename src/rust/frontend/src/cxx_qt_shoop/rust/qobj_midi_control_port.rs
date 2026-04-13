@@ -185,10 +185,12 @@ impl MidiControlPort {
             self.as_mut().autoconnect_update();
             self.as_mut().set_initialized(true);
 
-            if common::tracing_helpers::is_tracing_enabled() && tracy_client::Client::running().is_some() {
-                 let mut rust = self.as_mut().rust_mut();
-                 let identifier = rust.name.to_string();
-                 rust.plotter_initialized.plot(1.0, &identifier);
+            if common::tracing_helpers::is_tracing_enabled()
+                && tracy_client::Client::running().is_some()
+            {
+                let mut rust = self.as_mut().rust_mut();
+                let identifier = rust.name.to_string();
+                rust.plotter_initialized.plot(1.0, &identifier);
             }
 
             Ok(())
@@ -262,17 +264,21 @@ impl MidiControlPort {
             while rust_mut.send_queue.len() > 0 {
                 do_send(&rust_mut.send_queue.remove(0), &mut rust_mut);
             }
-            if common::tracing_helpers::is_tracing_enabled() && tracy_client::Client::running().is_some() {
-                 let identifier = rust_mut.name.to_string();
-                 let len = rust_mut.send_queue.len() as f64;
-                 rust_mut.plotter_send_queue_len.plot(len, &identifier);
+            if common::tracing_helpers::is_tracing_enabled()
+                && tracy_client::Client::running().is_some()
+            {
+                let identifier = rust_mut.name.to_string();
+                let len = rust_mut.send_queue.len() as f64;
+                rust_mut.plotter_send_queue_len.plot(len, &identifier);
             }
         } else if rust_mut.send_queue.len() > 0 {
             do_send(&rust_mut.send_queue.remove(0), &mut rust_mut);
-            if common::tracing_helpers::is_tracing_enabled() && tracy_client::Client::running().is_some() {
-                 let identifier = rust_mut.name.to_string();
-                 let len = rust_mut.send_queue.len() as f64;
-                 rust_mut.plotter_send_queue_len.plot(len, &identifier);
+            if common::tracing_helpers::is_tracing_enabled()
+                && tracy_client::Client::running().is_some()
+            {
+                let identifier = rust_mut.name.to_string();
+                let len = rust_mut.send_queue.len() as f64;
+                rust_mut.plotter_send_queue_len.plot(len, &identifier);
             }
             unsafe {
                 if let Err(e) = invoke::<_, (), _>(
@@ -290,10 +296,12 @@ impl MidiControlPort {
     pub fn queue_send_msg_impl(mut self: Pin<&mut MidiControlPort>, msg: Vec<u8>) {
         let mut rust_mut = self.as_mut().rust_mut();
         rust_mut.send_queue.push(msg);
-        if common::tracing_helpers::is_tracing_enabled() && tracy_client::Client::running().is_some() {
-             let identifier = rust_mut.name.to_string();
-             let len = rust_mut.send_queue.len() as f64;
-             rust_mut.plotter_send_queue_len.plot(len, &identifier);
+        if common::tracing_helpers::is_tracing_enabled()
+            && tracy_client::Client::running().is_some()
+        {
+            let identifier = rust_mut.name.to_string();
+            let len = rust_mut.send_queue.len() as f64;
+            rust_mut.plotter_send_queue_len.plot(len, &identifier);
         }
         if rust_mut.send_rate_limit_hz > 0 {
             unsafe {
@@ -384,11 +392,13 @@ impl MidiControlPort {
         self.as_mut().msg_received(list);
         self.as_mut().msg_received_variant(variant);
 
-        if common::tracing_helpers::is_tracing_enabled() && tracy_client::Client::running().is_some() {
-             let mut rust = self.as_mut().rust_mut();
-             let identifier = rust.name.to_string();
-             let len = rust.active_notes.len() as f64;
-             rust.plotter_n_active_notes.plot(len, &identifier);
+        if common::tracing_helpers::is_tracing_enabled()
+            && tracy_client::Client::running().is_some()
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let identifier = rust.name.to_string();
+            let len = rust.active_notes.len() as f64;
+            rust.plotter_n_active_notes.plot(len, &identifier);
         }
     }
 
