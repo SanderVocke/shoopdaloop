@@ -50,7 +50,7 @@ enum-iterator = "2.1"
 prettyplease = "0.2"
 jsonschema = "0.33"
 rodio = "0.21"
-winapi = "0.3"
+winapi = { version = "0.3", features = ["processthreadsapi", "winnt"] }
 crossbeam-queue = "0.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "tracing-log"] }
