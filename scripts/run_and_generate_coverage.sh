@@ -36,11 +36,11 @@ if [ ! -z ${_ORI_BUILD_DIR} ]; then
 fi
 
 # Clean
-c="${_LCOV} -z; rm *.profraw | true; rm *.profdata | true"
+c="${_LCOV} -z ; rm *.profraw | true; rm *.profdata | true"
 echo "---------------------------------------"
 echo "Cleaning: ${c}"
 echo "---------------------------------------"
-${c}
+bash -c "${c}"
 
 # Generate baseline
 if [ ! -f ${_REPORTDIR}/${_LCOV_REPORTNAME}.info ]; then
