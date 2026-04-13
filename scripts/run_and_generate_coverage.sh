@@ -19,7 +19,7 @@ _LLVM_PROFDATA=${LLVM_PROFDATA:-llvm-profdata}
 
 cd ${_WORKDIR}
 
-_LCOV="${_LCOV} --ignore-errors source --gcov-tool ${_GCOV} -b ${_BASEDIR} -d ${_BUILDDIR} ${_LCOV_ARGS}"
+_LCOV="${_LCOV} --ignore-errors source,mismatch --gcov-tool ${_GCOV} -b ${_BASEDIR} -d ${_BUILDDIR} ${_LCOV_ARGS}"
 echo "Using lcov as: ${_LCOV}"
 echo "Using llvm-cov as: ${_LLVM_COV}"
 echo "Using llvm-profdata as: ${_LLVM_PROFDATA}"
