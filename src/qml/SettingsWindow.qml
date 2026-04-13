@@ -689,11 +689,12 @@ ShoopApplicationWindow {
                                         anchors.centerIn: parent
                                     }
                                     onClicked: {
-                                        var window = script_doc_dialog_factory.createObject(root.parent, {
-                                            script_name: ShoopRustFileIO.basename(mapped_item.path_or_filename),
-                                            docstring: maybe_docstring,
-                                            visible: true
-                                        })
+                                        var window = script_doc_dialog_factory.createObject(
+                                            root, {
+                                                script_name: ShoopRustFileIO.basename(mapped_item.path_or_filename),
+                                                docstring: maybe_docstring,
+                                                visible: true
+                                            })
                                     }
                                 }
 
