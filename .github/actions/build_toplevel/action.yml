@@ -6,8 +6,6 @@ inputs:
   release_build:
     description: "if true, does a release build. Otherwise, a debug build."
     default: 'false'
-  cmake_opts:
-    description: "CMake options"
   prepare_kind:
     description: "Which prepare function to call (see prepare action)"
   python:
@@ -75,10 +73,16 @@ runs:
       echo "ARTIFACT_VARIANT=release-${{ inputs.platform }}" | tee -a $GITHUB_ENV
       echo "CARGO_ARTIFACTS_DIR=$(${{ env.CONVERT_PATH_FN }} $(pwd)/target/release-with-debug)" | tee -a $GITHUB_ENV
   - name: set Cargo build flags (debug)
-    if: always() && inputs.release_build != 'true'
+    if: always() && inputs.release_build != 'true' && inputs.coverage != 'true'
     shell: wrap-shell {0}
     run: |
       echo "ARTIFACT_VARIANT=debug-${{ inputs.platform }}" | tee -a $GITHUB_ENV
+      echo "CARGO_ARTIFACTS_DIR=$(${{ env.CONVERT_PATH_FN }} $(pwd)/target/debug)" | tee -a $GITHUB_ENV
+  - name: set Cargo build flags (coverage)
+    if: always() && inputs.release_build != 'true' && inputs.coverage == 'true'
+    shell: wrap-shell {0}
+    run: |
+      echo "ARTIFACT_VARIANT=coverage-${{ inputs.platform }}" | tee -a $GITHUB_ENV
       echo "CARGO_ARTIFACTS_DIR=$(${{ env.CONVERT_PATH_FN }} $(pwd)/target/debug)" | tee -a $GITHUB_ENV
   - name: More env settings
     shell: wrap-shell {0}
@@ -119,11 +123,12 @@ runs:
     uses: ./.github/actions/build_base
     with:
         release_build: ${{ inputs.release_build }}
+        coverage: ${{ inputs.coverage }}
   - name: Qoverage - Instrument QML files
     if: always() && inputs.coverage
     uses: ./.github/actions/qoverage_instrument
     with:
-      package_path: .
+      glob_string: ./src/qml/**/*.qml
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
@@ -203,11 +208,11 @@ runs:
   #   with:
   #     name: breakpad_debuginfo_${{ inputs.name }}
   #     path: debuginfo
-  - name: Save build info for coverage analyis
+  - name: Save C++ build info for coverage analyis
     shell: wrap-shell {0}
     if: always() && inputs.coverage
     run: |
-      echo "$(realpath build/cp*/)" | tee ori_build_dir.txt
+      echo "$(pwd)" | tee ori_build_dir.txt
   - name: Upload info context for coverage analysis
     if: always() && inputs.coverage && inputs.upload_artifacts == 'true'
     uses: actions/upload-artifact@v4

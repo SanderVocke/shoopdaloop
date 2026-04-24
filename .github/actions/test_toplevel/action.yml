@@ -25,6 +25,9 @@ inputs:
     type: string
   sentry_build_type:
     type: string
+  run_cmd_prefix:
+    type: string
+    default: ''
 
 runs:
   using: "composite"
@@ -37,6 +40,7 @@ runs:
       echo "PIP=${{ inputs.python }} -m pip" | tee -a $GITHUB_ENV
       echo "ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0" | tee -a $GITHUB_ENV
       echo 'SHOOP_CRASH_METADATA_BASE_JSON={"environment": "ci", "tags": {"ci_build_type": "${{ inputs.sentry_build_type }}", "ci_run": "${{ github.run_id }}", "vc_ref": "${{ github.ref }}"}}' | tee -a $GITHUB_ENV
+      echo 'RUN_CMD_PREFIX=${{ inputs.run_cmd_prefix }} ${{ env.RUN_CMD_PREFIX }}' | tee -a $GITHUB_ENV
 
   - name: Setup dependencies checker (Windows)
     if: always() && runner.os == 'Windows'
@@ -140,6 +144,17 @@ runs:
     shell: wrap-shell {0}
     run: |
       PIP_BREAK_SYSTEM_PACKAGES=1 ${{ env.PIP }} install pipx
+  - name: Prepare Rust LLVM tools
+    if: always() && inputs.coverage == 'true'
+    uses: dtolnay/rust-toolchain@nightly
+    with:
+      components: llvm-tools-preview
+  - name: find LLVM tools
+    if: always() && inputs.coverage == 'true'
+    shell: wrap-shell {0}
+    run: |
+      echo "LLVM_COV=$(find $(rustc --print sysroot) -name llvm-cov)" | tee -a $GITHUB_ENV
+      echo "LLVM_PROFDATA=$(find $(rustc --print sysroot) -name llvm-profdata)" | tee -a $GITHUB_ENV
   - uses: ./.github/actions/checkpoint
     if: always()
   - name: Install Qoverage
@@ -161,7 +176,8 @@ runs:
     if: always() && env.COMMAND_TEST_BACKEND != ''
     uses: ./.github/actions/test_backend
     env:
-      REPORTNAME: backend_lcov
+      LCOV_REPORTNAME: backend_cpp_lcov
+      LLVM_REPORTNAME: backend_rust_lcov
       GHA_RUN_ALWAYS: 1
   - uses: ./.github/actions/checkpoint
     if: always()
@@ -196,7 +212,8 @@ runs:
     if: always() && (inputs.do_qml_tests == 'true')
     uses: ./.github/actions/test_qml
     env:
-      REPORTNAME: qml_lcov
+      LCOV_REPORTNAME: qml_cpp_lcov
+      LLVM_REPORTNAME: qml_rust_lcov
       GHA_RUN_ALWAYS: 1
     with:
       variant_name: release
@@ -211,7 +228,7 @@ runs:
        GHA_RUN_ALWAYS: 1
     with:
       strip: ".*/pip/shoopdaloop"
-      package_path: ${{ steps.install_package.outputs.install_dir }}
+      package_path: ${{ env.PORTABLE_FOLDER_INSTALL }}
       console_output_file: test-qml-console-output.log
       report_file: coverage_reports/qml_qoverage.xml
   - uses: ./.github/actions/checkpoint
@@ -287,7 +304,7 @@ runs:
     with:
       token: ${{ inputs.codecov_token }}
       flags: back-end
-      files: coverage_reports/backend_lcov.info
+      files: coverage_reports/backend_cpp_lcov.info
       verbose: true
       fail_ci_if_error: true
   - name: Upload QML test coverage to CodeCov
@@ -298,7 +315,7 @@ runs:
     with:
       token: ${{ inputs.codecov_token }}
       flags: qml
-      files: coverage_reports/qml_lcov.info,coverage_reports/qml_qoverage.xml
+      files: coverage_reports/qml_cpp_lcov.info,coverage_reports/qml_rust_lcov.info,coverage_reports/qml_qoverage.xml
       verbose: true
       fail_ci_if_error: true
   - name: Upload raw coverage reports

@@ -167,7 +167,7 @@ Item {
 
     RegisterInRegistry {
         id: sync_reg_entry
-        enabled: initial_descriptor.is_sync
+        active: initial_descriptor.is_sync
         registry: AppRegistries.state_registry
         key: 'sync_loop'
         object: root

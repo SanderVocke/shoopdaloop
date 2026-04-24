@@ -416,7 +416,23 @@ ShoopApplicationWindow {
 
     component ScriptSettingsUi : Item {
         id: script_ui
-        property var known_scripts: script_settings.contents ? script_settings.contents.known_scripts : []
+
+        function get_known_scripts() {
+            if (script_settings.contents) {
+                return script_settings.contents.known_scripts
+            }
+            return []
+        }
+
+        property var known_scripts: get_known_scripts()
+
+        Connections {
+            target: script_settings
+            function onContentsChanged() {
+                known_scripts = get_known_scripts()
+                known_scriptsChanged()
+            }
+        }
 
         signal updateKnownScripts(var known_scripts)
 
@@ -673,11 +689,12 @@ ShoopApplicationWindow {
                                         anchors.centerIn: parent
                                     }
                                     onClicked: {
-                                        var window = script_doc_dialog_factory.createObject(root.parent, {
-                                            script_name: ShoopRustFileIO.basename(mapped_item.path_or_filename),
-                                            docstring: maybe_docstring,
-                                            visible: true
-                                        })
+                                        var window = script_doc_dialog_factory.createObject(
+                                            root, {
+                                                script_name: ShoopRustFileIO.basename(mapped_item.path_or_filename),
+                                                docstring: maybe_docstring,
+                                                visible: true
+                                            })
                                     }
                                 }
 

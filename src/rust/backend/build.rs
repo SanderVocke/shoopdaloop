@@ -41,6 +41,14 @@ fn main_impl() -> Result<(), anyhow::Error> {
             .define("REFILLING_POOL_CXX_LIBDIR", refilling_pool_cxx_libdir)
             .define("REFILLING_POOL_RUST_LIB", refilling_pool_staticlib)
             .define(
+                "ENABLE_COVERAGE",
+                if cfg!(feature = "coverage") {
+                    "ON"
+                } else {
+                    "OFF"
+                },
+            )
+            .define(
                 "CMAKE_BUILD_TYPE",
                 if profile == "debug" {
                     "Debug"
