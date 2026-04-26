@@ -36,7 +36,7 @@ if [ ! -z ${_ORI_BUILD_DIR} ]; then
 fi
 
 # Clean
-c="${_LCOV} -z ; rm *.profraw | true; rm *.profdata | true"
+c="${_LCOV} -z ; find . -name '*.profraw' -delete; rm *.profdata | true"
 echo "---------------------------------------"
 echo "Cleaning: ${c}"
 echo "---------------------------------------"
@@ -69,17 +69,22 @@ echo "Found ${gcda_count} gcda files"
 echo "---------------------------------------"
 
 # Count profraw files
-profraw_count=`ls "./*.profraw" | wc -l`
+profraw_count=`find . -name '*.profraw' | wc -l`
 echo "---------------------------------------"
 echo "Found ${profraw_count} .profraw files"
 echo "---------------------------------------"
 
 # Merge profraw files
-c="${_LLVM_PROFDATA} merge -sparse *.profraw -o coverage.profdata"
-echo "---------------------------------------"
-echo "Merging LLVM profdata: ${c}"
-echo "---------------------------------------"
-${c}
+PROFRAW_FILES=$(find . -name '*.profraw')
+if [ -z "${PROFRAW_FILES}" ]; then
+    echo "WARNING: No .profraw files found - skipping LLVM coverage merge"
+else
+    c="${_LLVM_PROFDATA} merge -sparse ${PROFRAW_FILES} -o coverage.profdata"
+    echo "---------------------------------------"
+    echo "Merging LLVM profdata: ${c}"
+    echo "---------------------------------------"
+    ${c}
+fi
 
 # Profraw reporting
 c="${_LLVM_COV} export -instr-profile=coverate.profdata -format=lcov > ${_REPORTDIR}/${_LLVM_REPORTNAME}.info"
