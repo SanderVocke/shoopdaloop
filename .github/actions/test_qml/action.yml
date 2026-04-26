@@ -28,6 +28,32 @@ runs:
       ${{ env.RUN_CMD_PREFIX }} timeout -s 9 15m ${{ env.COMMAND_SHOOPDALOOP }} --self-test --junit-xml ${{ env.RESULTS_XML }}
       2>&1 | tee ${{ inputs.tee_all_output_to }}
 
+  - name: Find LLVM coverage artifacts (profraw, gcno, gcda, etc.)
+    if: always()
+    shell: wrap-shell {0}
+    run: |
+      echo "=========================================="
+      echo "Searching for LLVM coverage artifacts..."
+      echo "=========================================="
+      echo "--- .profraw files ---"
+      find . -name '*.profraw' -type f 2>/dev/null || echo "(none found)"
+      echo "--- .gcno files ---"
+      find . -name '*.gcno' -type f 2>/dev/null || echo "(none found)"
+      echo "--- .gcda files ---"
+      find . -name '*.gcda' -type f 2>/dev/null || echo "(none found)"
+      echo "--- All coverage-related files (profraw, profdata, gcno, gcda, lcov, cov) ---"
+      find . \( -name '*.profraw' -o -name '*.profdata' -o -name '*.gcno' -o -name '*.gcda' -o -name '*.lcov' -o -name '*.cov' \) -type f 2>/dev/null || echo "(none found)"
+      echo "--- Also checking current working dir ---"
+      pwd
+      echo "--- Contents of target/debug (if exists) ---"
+      ls -laR target/debug/*.profraw 2>/dev/null || echo "(no .profraw in target/debug)"
+      echo "--- Contents of portable folder (if exists) ---"
+      ls -laR ${PORTABLE_FOLDER_INSTALL:-./portable} 2>/dev/null | head -100 || echo "(portable folder not found)"
+      echo "=========================================="
+      echo "FAILING INTENTIONALLY FOR DEBUGGING"
+      echo "=========================================="
+      exit 1
+
   - name: Report results filename
     shell: wrap-shell {0}
     if: always()
