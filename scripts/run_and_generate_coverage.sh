@@ -87,7 +87,7 @@ else
 fi
 
 # Profraw reporting
-c="${_LLVM_COV} export -instr-profile=coverate.profdata -format=lcov > ${_REPORTDIR}/${_LLVM_REPORTNAME}.info"
+c="${_LLVM_COV} export -instr-profile=coverage.profdata -format=lcov > ${_REPORTDIR}/${_LLVM_REPORTNAME}.info"
 echo "---------------------------------------"
 echo "Generating LLVM lcov report: ${c}"
 echo "---------------------------------------"
@@ -125,7 +125,7 @@ if [ $_DO_GENHTML -ne 0 ]; then
 
     # LLVM HTML
     # Profraw reporting
-    c="mkdir -p ${_REPORTDIR}/${_LLVM_REPORTNAME}_html; ${_LLVM_COV} show -instr-profile=coverate.profdata -format=html -output-dir=${_REPORTDIR}/${_LLVM_REPORTNAME}_html"
+    c="mkdir -p ${_REPORTDIR}/${_LLVM_REPORTNAME}_html; ${_LLVM_COV} show -instr-profile=coverage.profdata -format=html -output-dir=${_REPORTDIR}/${_LLVM_REPORTNAME}_html"
     echo "---------------------------------------"
     echo "Generating LLVM lcov HTML: ${c}"
     echo "---------------------------------------"
