@@ -91,7 +91,7 @@ c="${_LLVM_COV} export -instr-profile=coverage.profdata -format=lcov > ${_REPORT
 echo "---------------------------------------"
 echo "Generating LLVM lcov report: ${c}"
 echo "---------------------------------------"
-${c}
+bash -c "${c}"
 
 # Capture
 c="${_LCOV} -c -o ${_REPORTDIR}/${_LCOV_REPORTNAME}.capture"
