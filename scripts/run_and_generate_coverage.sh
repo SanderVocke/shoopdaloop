@@ -87,7 +87,7 @@ else
 fi
 
 # Profraw reporting
-c="find . -type f \\( -name '*.so' -o -executable \\) -print0 | xargs -0 file | grep 'ELF' | cut -d: -f1 -z | xargs -0 ${_LLVM_COV} export -instr-profile=coverage.profdata -format=lcov > ${_REPORTDIR}/${_LLVM_REPORTNAME}.info"
+c="find . -type f \\( -name '*.so' -o -executable \\) -print0 | xargs -0 file | grep 'ELF' | cut -d: -f1 | tr '\n' '\0' | xargs -0 ${_LLVM_COV} export -instr-profile=coverage.profdata -format=lcov > ${_REPORTDIR}/${_LLVM_REPORTNAME}.info"
 echo "---------------------------------------"
 echo "Generating LLVM lcov report: ${c}"
 echo "---------------------------------------"
