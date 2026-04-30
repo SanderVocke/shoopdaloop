@@ -73,6 +73,12 @@ jobs:
       run: |
         choco install -y ninja
 
+    - name: Setup Qt (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        # Ubuntu 22.04 qt6-base-dev installs CMake configs here
+        echo "Qt6_DIR=/usr/lib/x86_64-linux-gnu/cmake/Qt6" >> $GITHUB_ENV
+
     - name: Setup Qt (macOS)
       if: runner.os == 'macOS'
       run: |
@@ -102,12 +108,18 @@ jobs:
       run: |
         cd tracy
         mkdir -p build
-        cmake -S . -B build \
-          -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_PREFIX_PATH="${{ env.CMAKE_PREFIX_PATH }}" \
-          -DTRACY_ONLY=ON
-        cmake --build build --config Release --parallel
+        CMAKE_ARGS=(
+          -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+        )
+        if [ -n "${{ env.Qt6_DIR }}" ]; then
+          CMAKE_ARGS+=(-DQt6_DIR="${{ env.Qt6_DIR }}")
+        fi
+        if [ -n "${{ env.CMAKE_PREFIX_PATH }}" ]; then
+          CMAKE_ARGS+=(-DCMAKE_PREFIX_PATH="${{ env.CMAKE_PREFIX_PATH }}")
+        fi
+        cmake -S . -B build "${CMAKE_ARGS[@]}"
+        cmake --build build --config Release --parallel --target tracy
 
     - name: Configure and build (Windows)
       if: runner.os == 'Windows'
@@ -115,12 +127,15 @@ jobs:
       run: |
         cd tracy
         mkdir -Force build | Out-Null
-        cmake -S . -B build `
-          -G "Ninja" `
-          -DCMAKE_BUILD_TYPE=Release `
-          -DCMAKE_PREFIX_PATH="${{ env.CMAKE_PREFIX_PATH }}" `
-          -DTRACY_ONLY=ON
-        cmake --build build --config Release --parallel
+        $cmakeArgs = @(
+          "-G", "Ninja",
+          "-DCMAKE_BUILD_TYPE=Release"
+        )
+        if ($env:CMAKE_PREFIX_PATH) {
+          $cmakeArgs += "-DCMAKE_PREFIX_PATH=$env:CMAKE_PREFIX_PATH"
+        }
+        cmake -S . -B build @cmakeArgs
+        cmake --build build --config Release --parallel --target tracy
 
     - name: Collect and compress (Linux)
       if: runner.os == 'Linux'
