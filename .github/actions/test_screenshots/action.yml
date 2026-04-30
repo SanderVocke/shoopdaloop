@@ -25,7 +25,7 @@ runs:
     run: >
         LIBGL_ALWAYS_SOFTWARE=1
         SHOOP_LOG=Frontend.TestScreenGrabber=debug
-        ${{ env.RUN_CMD_PREFIX }} timeout -s 9 3m ${{ env.COMMAND_SHOOPDALOOP }} -b dummy --test-grab-screens ${{ inputs.screenshots_path }}
+        ${{ env.RUN_CMD_PREFIX }} timeout -s 9 3m ${{ env.COMMAND_SHOOPDALOOP }} --tracing -b dummy --test-grab-screens ${{ inputs.screenshots_path }}
 
   - name: Upload screenshots
     if: always()
