@@ -5,14 +5,14 @@ Item {
     property var registry
     property var object
     property string key
-    property bool enabled: true
+    property bool active: true
 
     property var registered_key : undefined
     property var registered_object : undefined
     property var registered_registry : undefined
 
     function close() {
-        enabled = false
+        active = false
         update()
     }
 
@@ -35,7 +35,7 @@ Item {
     }
 
     function update() {
-        if (!enabled) {
+        if (!active) {
             unregister()
             return;
         }

@@ -4,9 +4,13 @@ ignore:
   - "dist"
   - "distribution"
   - "scripts"
-  - "third_party"
+  - "src/backend/third_party"
   - "build"
-  - "src/shoopdaloop/third_party"
+  - "src/qml/third_party"
+  - "portable"
+
+fixes:
+  - "/__w/shoopdaloop/shoopdaloop/::"
 
 comment:
   layout: "header, diff, flags, components"
@@ -20,6 +24,10 @@ component_management:
         - "**/*.h"
         - "**/*.hpp"
         - "**/*.c"
+    - component_id: rust
+      name: Rust
+      paths:
+        - "src/rust/**"
 
 coverage:
   status:
