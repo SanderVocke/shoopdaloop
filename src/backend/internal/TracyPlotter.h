@@ -1,16 +1,19 @@
 #pragma once
 
-#include "tracing_cxx_bridge/src/cxx.rs.h"
+#include "TracingRegistry.h"
 #include <cstdint>
 #include <string_view>
 
 /// RAII helper for plotting values to Tracy from C++.
 ///
-/// Mirrors the Rust `TracyPlotter` pattern: register once during
-/// initialization, then plot by ID on hot paths with minimal overhead.
+/// The Rust executable owns the tracy-client singleton and registers
+/// function-pointer callbacks at startup.  This class calls through
+/// them via TracingRegistry.  When callbacks are not registered (or
+/// tracing is disabled) every operation is a no-op with negligible
+/// overhead (one pointer load + one atomic load).
 ///
 /// Usage:
-///   // During initialization (not on audio thread):
+///   // During initialisation (not on audio thread):
 ///   TracyPlotter latency_plotter{"audio/thread_latency_ms"};
 ///
 ///   // On audio thread (zero overhead when tracing disabled):
@@ -21,30 +24,20 @@ class TracyPlotter {
 public:
     /// Register a plot name with Tracy and store the returned ID.
     ///
-    /// Call this during initialization, NOT on hot paths. The name
+    /// Call this during initialisation, NOT on hot paths.  The name
     /// is allocated once and lives for the program's lifetime.
     explicit TracyPlotter(std::string_view name)
-        : m_plot_id(shoop_tracing::register_plot_name(
-              rust::Str(name.data(), name.size())))
+        : m_plot_id(TracingRegistry::register_plot_name(
+              name.data(), name.size()))
     {}
 
-    /// Plot a value to Tracy. Returns immediately when tracing is disabled.
-    ///
-    /// Safe to call from audio threads. The overhead when enabled is:
-    ///   1 atomic load + mutex lock + Vec::get + clone + Tracy call.
-    /// When disabled (the common case), only the atomic load executes.
+    /// Plot a value to Tracy.  Returns immediately when tracing is disabled.
     inline void plot(double value) const {
-        if (shoop_tracing::is_tracing_enabled()) {
-            shoop_tracing::plot_by_id(m_plot_id, value);
-        }
+        TracingRegistry::plot(m_plot_id, value);
     }
 
     /// Check if Tracy tracing is currently active.
-    ///
-    /// Compiles to a single atomic load. Branch predictor learns the
-    /// false path when tracing is disabled, making this essentially
-    /// zero overhead.
     static inline bool is_enabled() {
-        return shoop_tracing::is_tracing_enabled();
+        return TracingRegistry::is_enabled();
     }
 };

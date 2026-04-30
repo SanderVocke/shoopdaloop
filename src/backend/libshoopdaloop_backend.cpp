@@ -2410,3 +2410,31 @@ void destroy_multichannel_audio(shoop_multichannel_audio_t *audio) {
   free(audio->data);
   delete audio;
 }
+
+// ── Tracing registration ───────────────────────────────────────────────
+#include "TracingRegistry.h"
+
+void shoop_register_tracing(const shoop_tracing_callbacks* cb) {
+  if (cb) {
+    // Store a copy of the adapted callbacks on the heap so it
+    // outlives this call.  We use a function-local static pointer
+    // to keep exactly one copy alive at a time.
+    static auto* stored = new TracingCallbacks;
+    stored->is_tracing_enabled = cb->is_tracing_enabled
+        ? []() -> bool { return cb->is_tracing_enabled() != 0; }
+        : nullptr;
+    stored->register_plot_name = cb->register_plot_name
+        ? [](const char* name, std::size_t len) -> uint32_t {
+            return cb->register_plot_name(name, static_cast<unsigned>(len));
+          }
+        : nullptr;
+    stored->plot_by_id = cb->plot_by_id
+        ? [](uint32_t id, double value) {
+            cb->plot_by_id(id, value);
+          }
+        : nullptr;
+    TracingRegistry::register_callbacks(stored);
+  } else {
+    TracingRegistry::register_callbacks(nullptr);
+  }
+}

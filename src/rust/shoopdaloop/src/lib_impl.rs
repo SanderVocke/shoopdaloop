@@ -347,6 +347,10 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
         common::tracing_helpers::set_tracing_enabled(true);
     }
 
+    // Register tracing callbacks with the backend .so so that C++
+    // code can plot to the same tracy-client instance owned by Rust.
+    register_backend_tracing();
+
     if cli_args.print_backends {
         println!("Available backends:\n");
         let all_audio_driver_types = crate::audio_driver_names::all_audio_driver_types();
@@ -403,5 +407,22 @@ pub fn shoopdaloop_main(config: ShoopConfig) -> i32 {
             error!("Error: {:?}\nBacktrace:\n{:?}", e, e.backtrace());
             return 1;
         }
+    }
+}
+
+/// Register tracing function-pointer callbacks with the backend .so
+/// so that C++ code can plot to the same tracy-client instance owned by Rust.
+#[cfg(not(feature = "prebuild"))]
+fn register_backend_tracing() {
+    use backend_bindings::ffi::shoop_tracing_callbacks;
+
+    let callbacks = shoop_tracing_callbacks {
+        is_tracing_enabled: Some(common::tracing_helpers::shoop_tracing_is_enabled),
+        register_plot_name: Some(common::tracing_helpers::shoop_tracing_register_plot_name),
+        plot_by_id: Some(common::tracing_helpers::shoop_tracing_plot_by_id),
+    };
+
+    unsafe {
+        backend_bindings::ffi::shoop_register_tracing(std::ptr::addr_of!(callbacks));
     }
 }
