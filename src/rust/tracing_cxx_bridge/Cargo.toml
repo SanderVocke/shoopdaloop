@@ -1,0 +1,18 @@
+[package]
+name = "tracing_cxx_bridge"
+links = "tracing_cxx_bridge"
+edition = "2021"
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+cxx = { workspace = true }
+tracy-client = { workspace = true }
+
+[build-dependencies]
+cxx-build = { workspace = true }
+
+[features]
+# Dummy build to build dependencies only
+prebuild = []

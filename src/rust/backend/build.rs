@@ -16,6 +16,11 @@ fn main_impl() -> Result<(), anyhow::Error> {
     let refilling_pool_cxx_include = std::env::var("DEP_REFILLING_POOL_INCLUDE")?;
     let refilling_pool_cxx_libdir = std::env::var("DEP_REFILLING_POOL_CXX_BRIDGE_LIBDIR")?;
     let refilling_pool_staticlib = std::env::var("CARGO_STATICLIB_FILE_REFILLING_POOL")?;
+    let tracing_cxx_bridge_include = std::env::var("DEP_TRACING_CXX_BRIDGE_INCLUDE")?;
+    let tracing_cxx_bridge_libdir =
+        std::env::var("DEP_TRACING_CXX_BRIDGE_CXX_BRIDGE_LIBDIR")?;
+    let tracing_cxx_bridge_staticlib =
+        std::env::var("CARGO_STATICLIB_FILE_TRACING_CXX_BRIDGE")?;
     let profile = std::env::var("PROFILE")?;
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     let build_time_link_dirs_raw = option_env!("SHOOP_BUILD_TIME_LINK_DIRS").unwrap_or_default();
@@ -40,6 +45,18 @@ fn main_impl() -> Result<(), anyhow::Error> {
             .define("REFILLING_POOL_CXX_INCLUDE", refilling_pool_cxx_include)
             .define("REFILLING_POOL_CXX_LIBDIR", refilling_pool_cxx_libdir)
             .define("REFILLING_POOL_RUST_LIB", refilling_pool_staticlib)
+            .define(
+                "TRACING_CXX_BRIDGE_INCLUDE",
+                tracing_cxx_bridge_include,
+            )
+            .define(
+                "TRACING_CXX_BRIDGE_LIBDIR",
+                tracing_cxx_bridge_libdir,
+            )
+            .define(
+                "TRACING_CXX_BRIDGE_RUST_LIB",
+                tracing_cxx_bridge_staticlib,
+            )
             .define(
                 "ENABLE_COVERAGE",
                 if cfg!(feature = "coverage") {

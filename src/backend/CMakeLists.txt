@@ -227,6 +227,8 @@ include_directories(${CMAKE_SOURCE_DIR}/third_party/nlohmann_json)
 # Dependencies provided by in-repo Rust CXX bridges
 include_directories(${REFILLING_POOL_CXX_INCLUDE})
 link_directories(${REFILLING_POOL_CXX_LIBDIR})
+include_directories(${TRACING_CXX_BRIDGE_INCLUDE})
+link_directories(${TRACING_CXX_BRIDGE_LIBDIR})
 
 add_subdirectory(test)
 
@@ -244,6 +246,8 @@ target_link_libraries(shoopdaloop_backend_internals PRIVATE
   Boost::headers
   ${REFILLING_POOL_RUST_LIB}
   refilling_pool_cxx
+  ${TRACING_CXX_BRIDGE_RUST_LIB}
+  tracing_cxx_bridge_cxx
   )
 if (MSVC)
   # On Windows, we need to link some additional system libs

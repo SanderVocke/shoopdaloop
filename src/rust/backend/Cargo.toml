@@ -11,18 +11,20 @@ path = "src/bin/print_backend_build_info.rs"
 [dependencies]
 common = { path = "../common" }
 refilling_pool = { path = "../refilling_pool" }
+tracing_cxx_bridge = { path = "../tracing_cxx_bridge" }
 log = { workspace = true }
 ctor = { workspace = true }
 
 [build-dependencies]
 common = { path = "../common" }
 refilling_pool = { path = "../refilling_pool", artifact = "staticlib" }
+tracing_cxx_bridge = { path = "../tracing_cxx_bridge", artifact = "staticlib" }
 cmake = { workspace = true }
 anyhow = { workspace = true }
 glob = { workspace = true }
 
 [features]
 # Dummy build to build dependencies only
-prebuild = ["common/prebuild", "refilling_pool/prebuild"]
+prebuild = ["common/prebuild", "refilling_pool/prebuild", "tracing_cxx_bridge/prebuild"]
 # Enable code coverage in the CMake build using 
 coverage = []
