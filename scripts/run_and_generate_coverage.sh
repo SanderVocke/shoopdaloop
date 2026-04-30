@@ -36,7 +36,7 @@ if [ ! -z ${_ORI_BUILD_DIR} ]; then
 fi
 
 # Clean
-c="${_LCOV} -z ; rm *.profraw | true; rm *.profdata | true"
+c="${_LCOV} -z ; find . -name '*.profraw' -delete; rm *.profdata | true"
 echo "---------------------------------------"
 echo "Cleaning: ${c}"
 echo "---------------------------------------"
@@ -69,24 +69,29 @@ echo "Found ${gcda_count} gcda files"
 echo "---------------------------------------"
 
 # Count profraw files
-profraw_count=`ls "./*.profraw" | wc -l`
+profraw_count=`find . -name '*.profraw' | wc -l`
 echo "---------------------------------------"
 echo "Found ${profraw_count} .profraw files"
 echo "---------------------------------------"
 
 # Merge profraw files
-c="${_LLVM_PROFDATA} merge -sparse *.profraw -o coverage.profdata"
-echo "---------------------------------------"
-echo "Merging LLVM profdata: ${c}"
-echo "---------------------------------------"
-${c}
+PROFRAW_FILES=$(find . -name '*.profraw')
+if [ -z "${PROFRAW_FILES}" ]; then
+    echo "WARNING: No .profraw files found - skipping LLVM coverage merge"
+else
+    c="${_LLVM_PROFDATA} merge -sparse ${PROFRAW_FILES} -o coverage.profdata"
+    echo "---------------------------------------"
+    echo "Merging LLVM profdata: ${c}"
+    echo "---------------------------------------"
+    ${c}
+fi
 
 # Profraw reporting
-c="${_LLVM_COV} export -instr-profile=coverate.profdata -format=lcov > ${_REPORTDIR}/${_LLVM_REPORTNAME}.info"
+c="find . -type f \\( -name '*.so' -o -executable \\) -print0 | xargs -0 file | grep 'ELF' | cut -d: -f1 | tr '\n' '\0' | xargs -0 ${_LLVM_COV} export -instr-profile=coverage.profdata -format=lcov > ${_REPORTDIR}/${_LLVM_REPORTNAME}.info"
 echo "---------------------------------------"
 echo "Generating LLVM lcov report: ${c}"
 echo "---------------------------------------"
-${c}
+bash -c "${c}"
 
 # Capture
 c="${_LCOV} -c -o ${_REPORTDIR}/${_LCOV_REPORTNAME}.capture"
@@ -120,7 +125,7 @@ if [ $_DO_GENHTML -ne 0 ]; then
 
     # LLVM HTML
     # Profraw reporting
-    c="mkdir -p ${_REPORTDIR}/${_LLVM_REPORTNAME}_html; ${_LLVM_COV} show -instr-profile=coverate.profdata -format=html -output-dir=${_REPORTDIR}/${_LLVM_REPORTNAME}_html"
+    c="mkdir -p ${_REPORTDIR}/${_LLVM_REPORTNAME}_html; ${_LLVM_COV} show -instr-profile=coverage.profdata -format=html -output-dir=${_REPORTDIR}/${_LLVM_REPORTNAME}_html"
     echo "---------------------------------------"
     echo "Generating LLVM lcov HTML: ${c}"
     echo "---------------------------------------"
