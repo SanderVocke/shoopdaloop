@@ -119,7 +119,7 @@ jobs:
           CMAKE_ARGS+=(-DCMAKE_PREFIX_PATH="${{ env.CMAKE_PREFIX_PATH }}")
         fi
         cmake -S . -B build "${CMAKE_ARGS[@]}"
-        cmake --build build --config Release --parallel --target tracy
+        cmake --build build --config Release --parallel
 
     - name: Configure and build (Windows)
       if: runner.os == 'Windows'
@@ -135,7 +135,7 @@ jobs:
           $cmakeArgs += "-DCMAKE_PREFIX_PATH=$env:CMAKE_PREFIX_PATH"
         }
         cmake -S . -B build @cmakeArgs
-        cmake --build build --config Release --parallel --target tracy
+        cmake --build build --config Release --parallel
 
     - name: Collect and compress (Linux)
       if: runner.os == 'Linux'
