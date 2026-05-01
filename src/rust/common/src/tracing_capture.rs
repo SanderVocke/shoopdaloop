@@ -167,7 +167,7 @@ pub fn start_tracing_capture(
 
 /// Stop the capture child process gracefully.
 ///
-/// Sends SIGTERM and waits for the process to exit. If the process doesn't exit
+/// Sends SIGINT and waits for the process to exit. If the process doesn't exit
 /// within a reasonable time, it will be killed.
 pub fn stop_tracing_capture() {
     let mut guard = CAPTURE_PROCESS.lock().unwrap();
@@ -181,7 +181,7 @@ pub fn stop_tracing_capture() {
             #[cfg(unix)]
             {
                 let _ = unsafe {
-                    libc::kill(child.id() as i32, libc::SIGTERM)
+                    libc::kill(child.id() as i32, libc::SIGINT)
                 };
             }
 
