@@ -118,7 +118,7 @@ jobs:
       if: runner.os == 'Linux'
       shell: bash
       run: |
-        for component in capture csvexport import profiler update; do
+        for component in capture csvexport import update; do
           CMAKE_ARGS=(-G Ninja -DCMAKE_BUILD_TYPE=Release)
           if [ -n "${Qt6_DIR}" ]; then
             CMAKE_ARGS+=(-DQt6_DIR="${Qt6_DIR}")
@@ -126,6 +126,14 @@ jobs:
           cmake -S tracy/${component} -B tracy/${component}/build "${CMAKE_ARGS[@]}"
           cmake --build tracy/${component}/build --config Release --parallel
         done
+        # Build profiler with Wayland disabled (wl_display_dispatch_timeout missing
+        # even on systems with wayland >= 1.21 due to symbol visibility issues)
+        PROFILER_ARGS=(-G Ninja -DCMAKE_BUILD_TYPE=Release -DLEGACY=ON)
+        if [ -n "${Qt6_DIR}" ]; then
+          PROFILER_ARGS+=(-DQt6_DIR="${Qt6_DIR}")
+        fi
+        cmake -S tracy/profiler -B tracy/profiler/build "${PROFILER_ARGS[@]}"
+        cmake --build tracy/profiler/build --config Release --parallel
 
     - name: Build all Tracy components (Windows)
       if: runner.os == 'Windows'
