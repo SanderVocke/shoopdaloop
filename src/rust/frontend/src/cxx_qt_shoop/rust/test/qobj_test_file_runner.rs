@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::pin::Pin;
 
 use common::logging::macros::*;
+use common::tracing_capture;
 shoop_log_unit!("Frontend.TestFileRunner");
 
 pub use crate::cxx_qt_shoop::test::qobj_test_file_runner_bridge::ffi::TestFileRunner;
@@ -128,6 +129,23 @@ Totals:
 
             println!();
             info!("===== Test file: {filename} =====");
+
+            // Restart tracing capture for this test case to get isolated trace files.
+            let trace_filename = format!("{}.tracy", filename);
+            match tracing_capture::restart_tracing_capture_to(&trace_filename) {
+                Ok(()) => {
+                    debug!(
+                        "Tracing capture restarted for test file '{}' -> {}",
+                        filename, trace_filename
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to restart tracing capture for test file '{}': {}",
+                        filename, e
+                    );
+                }
+            }
 
             self.as_mut()
                 .reload_qml(QString::from(test_file.to_string_lossy().to_string()));
