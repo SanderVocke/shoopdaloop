@@ -2,7 +2,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::SystemTime;
 
-use common::logging::macros::*;
+use crate::logging::macros::*;
 
 shoop_log_unit!("TracingCapture");
 

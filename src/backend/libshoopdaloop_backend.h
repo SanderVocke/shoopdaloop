@@ -1,3 +1,6 @@
+#ifndef SHOOP_LIBSHOOPDALOOP_BACKEND_H
+#define SHOOP_LIBSHOOPDALOOP_BACKEND_H
+
 #include "types.h"
 
 #ifdef _WIN32
@@ -250,3 +253,5 @@ SHOOP_EXPORT void shoop_register_tracing(const shoop_tracing_callbacks* cb);
 #ifdef __cplusplus
 }
 #endif
+
+#endif // SHOOP_LIBSHOOPDALOOP_BACKEND_H

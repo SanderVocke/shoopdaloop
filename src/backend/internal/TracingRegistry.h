@@ -8,9 +8,9 @@
 /// callbacks during initialisation.  If tracing is disabled or the
 /// callbacks have not been registered every operation is a no-op.
 struct TracingCallbacks {
-    bool (*is_tracing_enabled)();
-    uint32_t (*register_plot_name)(const char* name, std::size_t len);
-    void (*plot_by_id)(uint32_t id, double value);
+    unsigned (*is_tracing_enabled)(void);
+    unsigned (*register_plot_name)(const char* name, unsigned len);
+    void (*plot_by_id)(unsigned id, double value);
 };
 
 /// Global tracing registry living inside shoopdaloop_backend.so.
@@ -42,7 +42,7 @@ public:
     /// If callbacks are not registered returns 0 (a valid but unused ID).
     static inline uint32_t register_plot_name(const char* name, std::size_t len) {
         if (s_callbacks) {
-            return s_callbacks->register_plot_name(name, len);
+            return s_callbacks->register_plot_name(name, static_cast<unsigned>(len));
         }
         return 0;
     }
@@ -50,7 +50,7 @@ public:
     /// Plot a value by ID.  No-op when callbacks are not registered.
     static inline void plot(uint32_t id, double value) {
         if (s_callbacks && s_callbacks->is_tracing_enabled()) {
-            s_callbacks->plot_by_id(id, value);
+            s_callbacks->plot_by_id(static_cast<unsigned>(id), value);
         }
     }
 };
