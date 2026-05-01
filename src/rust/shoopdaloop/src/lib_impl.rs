@@ -22,7 +22,7 @@ use std::pin::Pin;
 
 use crate::audio_driver_names::get_audio_driver_from_name;
 use crate::global_qml_settings::GlobalQmlSettings;
-use crate::tracy_capture;
+use common::tracy_capture;
 
 shoop_log_unit!("Main");
 

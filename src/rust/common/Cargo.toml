@@ -16,6 +16,8 @@ tracing-tracy = { workspace = true }
 tracy-client = { workspace = true }
 colored = { workspace = true }
 humantime = { workspace = true }
+shlex = "1.3"
+libc = "0.2"
 
 [build-dependencies]
 toml = { workspace = true }
