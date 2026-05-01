@@ -338,3 +338,13 @@ runs:
     with:
       name: coverage_reports
       path: coverage_reports
+  - name: Upload profiling traces
+    if: always()
+    uses: actions/upload-artifact@v4
+    env:
+       GHA_RUN_ALWAYS: 1
+    with:
+      name: tracing_traces_${{ inputs.name }}
+      path: "**/*.tracy"
+      retention-days: 30
+      if-no-files-found: ignore
