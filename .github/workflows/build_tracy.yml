@@ -87,7 +87,7 @@ jobs:
       shell: pwsh
       run: |
         pip install aqtinstall
-        aqt install-qt --outputdir C:\Qt windows desktop 6.8.1 win64_msvc2022_64 -m qtbase
+        aqt install-qt --outputdir C:\Qt windows desktop 6.8.1 win64_msvc2022_64
         echo "C:\Qt\6.8.1\msvc2022_64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8
         echo "CMAKE_PREFIX_PATH=C:\Qt\6.8.1\msvc2022_64" | Out-File -FilePath $env:GITHUB_ENV
 
