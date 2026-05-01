@@ -21,12 +21,15 @@ jobs:
           - name: linux
             os: ubuntu-24.04
             artifact: tracy-linux-x64.tar.gz
+            qt_pkg: qt6-base-dev
           - name: macos
             os: macos-15-intel
             artifact: tracy-macos-x64.tar.gz
+            qt_pkg: qt@6
           - name: windows
             os: windows-2022
             artifact: tracy-windows-msvc-x64.zip
+            qt_pkg: ''
 
     runs-on: ${{ matrix.os }}
 
