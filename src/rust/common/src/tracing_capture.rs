@@ -1,10 +1,12 @@
+use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+use std::thread::JoinHandle;
 use std::time::SystemTime;
 
 use crate::logging::macros::*;
 
-shoop_log_unit!("TracingCapture");
+shoop_log_unit!("Tracing.Capture");
 
 /// Configuration for the tracing capture process, stored so it can be reused
 /// when restarting for a new trace file.
@@ -14,7 +16,13 @@ struct CaptureConfig {
     args: Option<String>,
 }
 
-static CAPTURE_PROCESS: Mutex<Option<Child>> = Mutex::new(None);
+struct CaptureState {
+    child: Option<Child>,
+    stdout_thread: Option<JoinHandle<()>>,
+    stderr_thread: Option<JoinHandle<()>>,
+}
+
+static CAPTURE_PROCESS: Mutex<Option<CaptureState>> = Mutex::new(None);
 static CAPTURE_CONFIG: Mutex<Option<CaptureConfig>> = Mutex::new(None);
 
 /// Generate a timestamp-based output filename.
@@ -42,8 +50,51 @@ fn build_args_str(config: &CaptureConfig, output_filename: &str) -> String {
     }
 }
 
+/// Spawn reader threads that forward child process output to the log.
+fn spawn_output_readers(
+    stdout: std::process::ChildStdout,
+    stderr: std::process::ChildStderr,
+) -> (JoinHandle<()>, JoinHandle<()>) {
+    let stdout_thread = std::thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            match line {
+                Ok(msg) if !msg.is_empty() => {
+                    info!("{}", msg);
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    warn!("read error on stdout: {}", e);
+                    break;
+                }
+            }
+        }
+    });
+
+    let stderr_thread = std::thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines() {
+            match line {
+                Ok(msg) if !msg.is_empty() => {
+                    warn!("{}", msg);
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    warn!("read error on stderr: {}", e);
+                    break;
+                }
+            }
+        }
+    });
+
+    (stdout_thread, stderr_thread)
+}
+
 /// Spawn a capture child process with the given config and output filename.
-fn spawn_capture_process(config: &CaptureConfig, output_filename: &str) -> Result<Child, String> {
+fn spawn_capture_process(
+    config: &CaptureConfig,
+    output_filename: &str,
+) -> Result<(Child, JoinHandle<()>, JoinHandle<()>), String> {
     let args_str = build_args_str(config, output_filename);
 
     info!(
@@ -52,15 +103,26 @@ fn spawn_capture_process(config: &CaptureConfig, output_filename: &str) -> Resul
         args_str
     );
 
-    let child = Command::new(&config.tool)
+    let mut child = Command::new(&config.tool)
         .args(shlex::split(&args_str).unwrap_or_else(|| vec![args_str.clone()]))
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to start tracing capture tool '{}': {}", config.tool, e))?;
 
+    let stdout = child
+        .stdout
+        .take()
+        .expect("stdout was not piped");
+    let stderr = child
+        .stderr
+        .take()
+        .expect("stderr was not piped");
+
+    let (stdout_thread, stderr_thread) = spawn_output_readers(stdout, stderr);
+
     info!("Tracing capture process started (PID: {:?})", child.id());
-    Ok(child)
+    Ok((child, stdout_thread, stderr_thread))
 }
 
 /// Start a capture child process.
@@ -91,10 +153,14 @@ pub fn start_tracing_capture(
     }
 
     let output_filename = generate_trace_filename();
-    let child = spawn_capture_process(&config, &output_filename)?;
+    let (child, stdout_thread, stderr_thread) = spawn_capture_process(&config, &output_filename)?;
 
     let mut guard = CAPTURE_PROCESS.lock().unwrap();
-    *guard = Some(child);
+    *guard = Some(CaptureState {
+        child: Some(child),
+        stdout_thread: Some(stdout_thread),
+        stderr_thread: Some(stderr_thread),
+    });
 
     Ok(())
 }
@@ -105,29 +171,37 @@ pub fn start_tracing_capture(
 /// within a reasonable time, it will be killed.
 pub fn stop_tracing_capture() {
     let mut guard = CAPTURE_PROCESS.lock().unwrap();
-    if let Some(mut child) = guard.take() {
-        info!("Stopping tracing capture process (PID: {})...", child.id());
+    if let Some(state) = guard.take() {
+        let pid = state.child.as_ref().map(|c| c.id()).unwrap_or(0);
+        info!("Stopping tracing capture process (PID: {})...", pid);
 
-        // Try to terminate gracefully
-        #[cfg(unix)]
-        {
-            // Send SIGTERM
-            let _ = unsafe {
-                let pid = child.id();
-                libc::kill(pid as i32, libc::SIGTERM)
-            };
+        // Wait for the child to exit (reader threads will finish when pipes close)
+        if let Some(mut child) = state.child {
+            // Try to terminate gracefully
+            #[cfg(unix)]
+            {
+                let _ = unsafe {
+                    libc::kill(child.id() as i32, libc::SIGTERM)
+                };
+            }
+
+            match child.wait() {
+                Ok(status) => {
+                    info!("Tracing capture process exited with status: {}", status);
+                }
+                Err(e) => {
+                    warn!("Error waiting for tracing capture process: {}", e);
+                    let _ = child.kill();
+                }
+            }
         }
 
-        // Wait for the process to exit
-        match child.wait() {
-            Ok(status) => {
-                info!("Tracing capture process exited with status: {}", status);
-            }
-            Err(e) => {
-                warn!("Error waiting for tracing capture process: {}", e);
-                // Force kill if wait fails
-                let _ = child.kill();
-            }
+        // Join the output reader threads so they finish draining any buffered output
+        if let Some(handle) = state.stdout_thread {
+            let _ = handle.join();
+        }
+        if let Some(handle) = state.stderr_thread {
+            let _ = handle.join();
         }
     }
 }
@@ -158,10 +232,14 @@ pub fn restart_tracing_capture() -> Result<(), String> {
 
     // Start a new capture process with a fresh filename
     let output_filename = generate_trace_filename();
-    let child = spawn_capture_process(&config, &output_filename)?;
+    let (child, stdout_thread, stderr_thread) = spawn_capture_process(&config, &output_filename)?;
 
     let mut guard = CAPTURE_PROCESS.lock().unwrap();
-    *guard = Some(child);
+    *guard = Some(CaptureState {
+        child: Some(child),
+        stdout_thread: Some(stdout_thread),
+        stderr_thread: Some(stderr_thread),
+    });
 
     Ok(())
 }
@@ -194,10 +272,14 @@ pub fn restart_tracing_capture_to(output_filename: &str) -> Result<(), String> {
     stop_tracing_capture();
 
     // Start a new capture process with the specified filename
-    let child = spawn_capture_process(&config, output_filename)?;
+    let (child, stdout_thread, stderr_thread) = spawn_capture_process(&config, output_filename)?;
 
     let mut guard = CAPTURE_PROCESS.lock().unwrap();
-    *guard = Some(child);
+    *guard = Some(CaptureState {
+        child: Some(child),
+        stdout_thread: Some(stdout_thread),
+        stderr_thread: Some(stderr_thread),
+    });
 
     Ok(())
 }
