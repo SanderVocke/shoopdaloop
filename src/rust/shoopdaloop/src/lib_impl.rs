@@ -22,7 +22,7 @@ use std::pin::Pin;
 
 use crate::audio_driver_names::get_audio_driver_from_name;
 use crate::global_qml_settings::GlobalQmlSettings;
-use common::tracy_capture;
+use common::tracing_capture;
 
 shoop_log_unit!("Main");
 
@@ -348,14 +348,14 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
         common::tracing_helpers::set_tracing_enabled(true);
     }
 
-    // Start Tracy capture process if requested
+    // Start tracing capture process if requested
     if cli_args.developer_options.tracing_capture {
-        let capture_result = tracy_capture::start_tracy_capture(
-            cli_args.developer_options.tracy_capture_tool.as_deref(),
-            cli_args.developer_options.tracy_capture_args.as_deref(),
+        let capture_result = tracing_capture::start_tracing_capture(
+            cli_args.developer_options.tracing_capture_tool.as_deref(),
+            cli_args.developer_options.tracing_capture_args.as_deref(),
         );
         if let Err(e) = capture_result {
-            error!("Failed to start Tracy capture: {}", e);
+            error!("Failed to start tracing capture: {}", e);
         }
     }
 
@@ -409,19 +409,19 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
     app_main(&cli_args, config)
 }
 
-/// Guard to ensure Tracy capture is stopped when the app exits.
-struct TracyCaptureCleanupGuard;
+/// Guard to ensure tracing capture is stopped when the app exits.
+struct TracingCaptureCleanupGuard;
 
-impl Drop for TracyCaptureCleanupGuard {
+impl Drop for TracingCaptureCleanupGuard {
     fn drop(&mut self) {
-        tracy_capture::stop_tracy_capture();
+        tracing_capture::stop_tracing_capture();
     }
 }
 
 #[cfg(not(feature = "prebuild"))]
 pub fn shoopdaloop_main(config: ShoopConfig) -> i32 {
-    // Create cleanup guard that will stop Tracy capture when the app exits
-    let _tracy_guard = TracyCaptureCleanupGuard;
+    // Create cleanup guard that will stop tracing capture when the app exits
+    let _tracing_guard = TracingCaptureCleanupGuard;
 
     match entry_point(config) {
         Ok(r) => {

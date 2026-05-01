@@ -69,8 +69,8 @@ pub mod qobj_settings_io;
 pub mod qobj_settings_io_bridge;
 pub mod qobj_test_screen_grabber;
 pub mod qobj_test_screen_grabber_bridge;
-pub mod qobj_tracy_capture;
-pub mod qobj_tracy_capture_bridge;
+pub mod qobj_tracing_capture;
+pub mod qobj_tracing_capture_bridge;
 pub mod qobj_update_thread;
 pub mod qobj_update_thread_bridge;
 

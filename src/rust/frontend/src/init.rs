@@ -23,7 +23,7 @@ fn register_qml_types_and_singletons() {
     qobj_settings_io::register_qml_singleton(&mdl, "ShoopRustSettingsIO");
     qobj_enums::register_qml_singleton(&mdl, "ShoopRustConstants");
     qobj_test_screen_grabber::register_qml_singleton(&mdl, "ShoopRustTestScreenGrabber");
-    qobj_tracy_capture::register_qml_singleton(&mdl, "ShoopRustTracyCapture");
+    qobj_tracing_capture::register_qml_singleton(&mdl, "ShoopRustTracingCapture");
 
     // Singletons (QML)
     if let Some(config) = GLOBAL_CONFIG.get() {
