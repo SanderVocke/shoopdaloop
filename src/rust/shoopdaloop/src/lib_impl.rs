@@ -22,6 +22,7 @@ use std::pin::Pin;
 
 use crate::audio_driver_names::get_audio_driver_from_name;
 use crate::global_qml_settings::GlobalQmlSettings;
+use crate::tracy_capture;
 
 shoop_log_unit!("Main");
 
@@ -347,6 +348,17 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
         common::tracing_helpers::set_tracing_enabled(true);
     }
 
+    // Start Tracy capture process if requested
+    if cli_args.developer_options.tracing_capture {
+        let capture_result = tracy_capture::start_tracy_capture(
+            cli_args.developer_options.tracy_capture_tool.as_deref(),
+            cli_args.developer_options.tracy_capture_args.as_deref(),
+        );
+        if let Err(e) = capture_result {
+            error!("Failed to start Tracy capture: {}", e);
+        }
+    }
+
     // Register tracing callbacks with the backend .so so that C++
     // code can plot to the same tracy-client instance owned by Rust.
     register_backend_tracing();
@@ -397,8 +409,20 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
     app_main(&cli_args, config)
 }
 
+/// Guard to ensure Tracy capture is stopped when the app exits.
+struct TracyCaptureCleanupGuard;
+
+impl Drop for TracyCaptureCleanupGuard {
+    fn drop(&mut self) {
+        tracy_capture::stop_tracy_capture();
+    }
+}
+
 #[cfg(not(feature = "prebuild"))]
 pub fn shoopdaloop_main(config: ShoopConfig) -> i32 {
+    // Create cleanup guard that will stop Tracy capture when the app exits
+    let _tracy_guard = TracyCaptureCleanupGuard;
+
     match entry_point(config) {
         Ok(r) => {
             return r;

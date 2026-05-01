@@ -105,6 +105,27 @@ pub struct DeveloperOptions {
     /// Enable Tracy profiling.
     #[clap(long = "tracing", help_heading = "Developer options")]
     pub tracing: bool,
+
+    /// Start a tracy-capture child process to record Tracy profiling data to a file.
+    /// Requires Tracy to be installed and --tracing to be enabled.
+    #[clap(long = "tracing-capture", help_heading = "Developer options")]
+    pub tracing_capture: bool,
+
+    /// Path to the Tracy capture tool (default: tracy-capture).
+    #[clap(
+        long = "tracy-capture-tool",
+        value_name = "PATH",
+        help_heading = "Developer options"
+    )]
+    pub tracy_capture_tool: Option<String>,
+
+    /// Arguments for the Tracy capture tool (default: -o trace-{timestamp}.tracy).
+    #[clap(
+        long = "tracy-capture-args",
+        value_name = "ARGS",
+        help_heading = "Developer options"
+    )]
+    pub tracy_capture_args: Option<String>,
 }
 
 /// Developer options group.
