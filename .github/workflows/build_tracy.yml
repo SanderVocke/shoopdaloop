@@ -19,7 +19,7 @@ jobs:
       matrix:
         include:
           - name: linux
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             artifact: tracy-linux-x64.tar.gz
           - name: macos
             os: macos-15-intel
@@ -101,17 +101,27 @@ jobs:
         git clone --depth 1 --branch ${{ inputs.tracy_version }} https://github.com/wolfpld/tracy.git
 
     # Build each Tracy component separately (matching AUR PKGBUILD layout)
-    - name: Build all Tracy components (Linux/macOS)
-      if: runner.os != 'Windows'
+    - name: Build all Tracy components (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        for component in capture csvexport import profiler update; do
+          CMAKE_ARGS=(-G Ninja -DCMAKE_BUILD_TYPE=Release)
+          if [ -n "${CMAKE_PREFIX_PATH}" ]; then
+            CMAKE_ARGS+=(-DCMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH}")
+          fi
+          cmake -S tracy/${component} -B tracy/${component}/build "${CMAKE_ARGS[@]}"
+          cmake --build tracy/${component}/build --config Release --parallel
+        done
+
+    - name: Build all Tracy components (Linux)
+      if: runner.os == 'Linux'
       shell: bash
       run: |
         for component in capture csvexport import profiler update; do
           CMAKE_ARGS=(-G Ninja -DCMAKE_BUILD_TYPE=Release)
           if [ -n "${Qt6_DIR}" ]; then
             CMAKE_ARGS+=(-DQt6_DIR="${Qt6_DIR}")
-          fi
-          if [ -n "${CMAKE_PREFIX_PATH}" ]; then
-            CMAKE_ARGS+=(-DCMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH}")
           fi
           cmake -S tracy/${component} -B tracy/${component}/build "${CMAKE_ARGS[@]}"
           cmake --build tracy/${component}/build --config Release --parallel
@@ -161,14 +171,22 @@ jobs:
       shell: pwsh
       run: |
         mkdir -Force dist | Out-Null
-        Copy-Item tracy/profiler/build/Release/tracy-profiler.exe dist/
-        Copy-Item tracy/capture/build/Release/tracy-capture.exe dist/ -ErrorAction SilentlyContinue
-        Copy-Item tracy/csvexport/build/Release/tracy-csvexport.exe dist/ -ErrorAction SilentlyContinue
-        Copy-Item tracy/import/build/Release/tracy-import-chrome.exe dist/ -ErrorAction SilentlyContinue
-        Copy-Item tracy/import/build/Release/tracy-import-fuchsia.exe dist/ -ErrorAction SilentlyContinue
-        Copy-Item tracy/update/build/Release/tracy-update.exe dist/ -ErrorAction SilentlyContinue
-        # Also try non-Release paths for any that didn't exist
-        Copy-Item tracy/profiler/build/tracy-profiler.exe dist/ -ErrorAction SilentlyContinue
+        $components = @(
+            @{ src="tracy/profiler/build/Release/tracy-profiler.exe"; dst="dist/" },
+            @{ src="tracy/capture/build/Release/tracy-capture.exe"; dst="dist/" },
+            @{ src="tracy/csvexport/build/Release/tracy-csvexport.exe"; dst="dist/" },
+            @{ src="tracy/import/build/Release/tracy-import-chrome.exe"; dst="dist/" },
+            @{ src="tracy/import/build/Release/tracy-import-fuchsia.exe"; dst="dist/" },
+            @{ src="tracy/update/build/Release/tracy-update.exe"; dst="dist/" }
+        )
+        foreach ($c in $components) {
+            Copy-Item $c.src $c.dst -ErrorAction SilentlyContinue
+        }
+        # Fallback: non-Release paths (Ninja may not use config subdirs with MSVC)
+        foreach ($c in $components) {
+            $fallback = $c.src -replace '/Release/', '/'
+            Copy-Item $fallback $c.dst -ErrorAction SilentlyContinue
+        }
         Compress-Archive -Path dist/* -DestinationPath ${{ matrix.artifact }}
 
     - name: Upload artifact
