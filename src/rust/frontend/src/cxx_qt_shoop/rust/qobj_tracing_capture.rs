@@ -4,6 +4,7 @@ use cxx_qt_lib::QString;
 
 shoop_log_unit!("Frontend.TracingCapture");
 
+use crate::cxx_qt_shoop::qobj_tracing_capture_bridge::ffi;
 pub use crate::cxx_qt_shoop::qobj_tracing_capture_bridge::ffi::TracingCapture;
 
 impl TracingCapture {
@@ -39,6 +40,6 @@ pub fn register_qml_singleton(module_name: &str, type_name: &str) {
     let mut mdl = String::from(module_name);
     let mut tp = String::from(type_name);
     unsafe {
-        register_qml_singleton_tracing_capture(std::ptr::null_mut(), &mut mdl, 1, 0, &mut tp);
+        ffi::register_qml_singleton_tracing_capture(std::ptr::null_mut(), &mut mdl, 1, 0, &mut tp);
     }
 }

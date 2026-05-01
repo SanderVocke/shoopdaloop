@@ -9,6 +9,10 @@ pub mod ffi {
         type QString = cxx_qt_lib::QString;
     }
 
+    unsafe extern "C++" {
+        type QObject = cxx_qt_lib_shoop::qobject::QObject;
+    }
+
     unsafe extern "RustQt" {
         #[qobject]
         #[qml_singleton]
