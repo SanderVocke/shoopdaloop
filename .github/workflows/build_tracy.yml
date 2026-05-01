@@ -26,6 +26,10 @@ jobs:
             os: macos-15-intel
             artifact: tracy-macos-x64.tar.gz
             qt_pkg: qt@6
+          - name: macos-arm64
+            os: macos-15
+            artifact: tracy-macos-arm64.tar.gz
+            qt_pkg: qt@6
           - name: windows
             os: windows-2022
             artifact: tracy-windows-msvc-x64.zip
