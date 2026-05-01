@@ -60,11 +60,11 @@ fn spawn_output_readers(
         for line in reader.lines() {
             match line {
                 Ok(msg) if !msg.is_empty() => {
-                    info!("{}", msg);
+                    println!("{}", msg);
                 }
                 Ok(_) => {}
                 Err(e) => {
-                    warn!("read error on stdout: {}", e);
+                    println!("read error on stdout: {}", e);
                     break;
                 }
             }
@@ -76,11 +76,11 @@ fn spawn_output_readers(
         for line in reader.lines() {
             match line {
                 Ok(msg) if !msg.is_empty() => {
-                    warn!("{}", msg);
+                    println!("{}", msg);
                 }
                 Ok(_) => {}
                 Err(e) => {
-                    warn!("read error on stderr: {}", e);
+                    println!("read error on stderr: {}", e);
                     break;
                 }
             }
@@ -97,7 +97,7 @@ fn spawn_capture_process(
 ) -> Result<(Child, JoinHandle<()>, JoinHandle<()>), String> {
     let args_str = build_args_str(config, output_filename);
 
-    info!(
+    println!(
         "Starting tracing capture: {} {}",
         config.tool,
         args_str
@@ -121,7 +121,7 @@ fn spawn_capture_process(
 
     let (stdout_thread, stderr_thread) = spawn_output_readers(stdout, stderr);
 
-    info!("Tracing capture process started (PID: {:?})", child.id());
+    println!("Tracing capture process started (PID: {:?})", child.id());
     Ok((child, stdout_thread, stderr_thread))
 }
 
@@ -173,7 +173,7 @@ pub fn stop_tracing_capture() {
     let mut guard = CAPTURE_PROCESS.lock().unwrap();
     if let Some(state) = guard.take() {
         let pid = state.child.as_ref().map(|c| c.id()).unwrap_or(0);
-        info!("Stopping tracing capture process (PID: {})...", pid);
+        println!("Stopping tracing capture process (PID: {})...", pid);
 
         // Wait for the child to exit (reader threads will finish when pipes close)
         if let Some(mut child) = state.child {
@@ -187,10 +187,10 @@ pub fn stop_tracing_capture() {
 
             match child.wait() {
                 Ok(status) => {
-                    info!("Tracing capture process exited with status: {}", status);
+                    println!("Tracing capture process exited with status: {}", status);
                 }
                 Err(e) => {
-                    warn!("Error waiting for tracing capture process: {}", e);
+                    println!("Error waiting for tracing capture process: {}", e);
                     let _ = child.kill();
                 }
             }
@@ -225,7 +225,7 @@ pub fn restart_tracing_capture() -> Result<(), String> {
             .ok_or_else(|| "Tracing capture not configured. Call start_tracing_capture() first.".to_string())?
     };
 
-    info!("Restarting tracing capture to a new trace file");
+    println!("Restarting tracing capture to a new trace file");
 
     // Stop the current capture process (this finalizes the current trace file)
     stop_tracing_capture();
@@ -266,7 +266,7 @@ pub fn restart_tracing_capture_to(output_filename: &str) -> Result<(), String> {
             .ok_or_else(|| "Tracing capture not configured. Call start_tracing_capture() first.".to_string())?
     };
 
-    info!("Restarting tracing capture to '{}'", output_filename);
+    println!("Restarting tracing capture to '{}'", output_filename);
 
     // Stop the current capture process (this finalizes the current trace file)
     stop_tracing_capture();
