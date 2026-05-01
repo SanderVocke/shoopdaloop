@@ -54,8 +54,8 @@ winapi = { version = "0.3", features = ["processthreadsapi", "winnt"] }
 crossbeam-queue = "0.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "tracing-log"] }
-tracing-tracy = "0.11"
-tracy-client = "0.18.4" # careful about version-matching with tracing-tracy and tracy client (current client: 0.13.1)
+tracing-tracy = { version = "0.11", features = ["ondemand"] }
+tracy-client = { version = "0.18.4", features = ["ondemand"] } # careful about version-matching with tracing-tracy and tracy client (current client: 0.13.1)
 
 # [patch.crates-io]F
 # cxx-qt =  { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "win_dbg_v072", package = "cxx-qt" }
