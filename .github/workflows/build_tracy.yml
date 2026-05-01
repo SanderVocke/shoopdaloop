@@ -86,8 +86,8 @@ jobs:
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
-        curl -L "https://download.qt.io/official_releases/qt/6.8/6.8.1/qt-unified-windows-x64-online.exe" -o qt-installer.exe
-        .\qt-installer.exe --verbose --root C:\Qt --al --accept-licenses --default-answer default --confirm-command install qt.base.qt6
+        pip install aqtinstall
+        aqt install-qt --outputdir C:\Qt windows desktop 6.8.1 win64_msvc2022_64 -m qtbase
         echo "C:\Qt\6.8.1\msvc2022_64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8
         echo "CMAKE_PREFIX_PATH=C:\Qt\6.8.1\msvc2022_64" | Out-File -FilePath $env:GITHUB_ENV
 
