@@ -6,6 +6,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use crate::logging::macros::*;
 
+#[allow(unused_imports)]
 shoop_log_unit!("Tracing.Capture");
 
 /// Maximum time to wait for the capture child process and reader threads
@@ -180,8 +181,8 @@ fn join_thread_with_timeout(handle: JoinHandle<()>, timeout: Duration) {
     while !join_done.load(std::sync::atomic::Ordering::Relaxed) {
         if start.elapsed() >= timeout {
             println!("Reader thread did not finish within {:?}, detaching", timeout);
-            // Detach the monitor thread - it will finish on its own
-            monitor.detach();
+            // Forget the monitor thread handle - it will finish on its own
+            std::mem::forget(monitor);
             return;
         }
         std::thread::sleep(Duration::from_millis(50));
