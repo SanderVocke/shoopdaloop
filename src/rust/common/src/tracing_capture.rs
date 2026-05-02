@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
@@ -6,7 +7,6 @@ use std::time::{Duration, Instant, SystemTime};
 
 use crate::logging::macros::*;
 
-#[allow(unused_imports)]
 shoop_log_unit!("Tracing.Capture");
 
 /// Maximum time to wait for the capture child process and reader threads
@@ -113,16 +113,15 @@ fn spawn_capture_process(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("Failed to start tracing capture tool '{}': {}", config.tool, e))?;
+        .map_err(|e| {
+            format!(
+                "Failed to start tracing capture tool '{}': {}",
+                config.tool, e
+            )
+        })?;
 
-    let stdout = child
-        .stdout
-        .take()
-        .expect("stdout was not piped");
-    let stderr = child
-        .stderr
-        .take()
-        .expect("stderr was not piped");
+    let stdout = child.stdout.take().expect("stdout was not piped");
+    let stderr = child.stderr.take().expect("stderr was not piped");
 
     let (stdout_thread, stderr_thread) = spawn_output_readers(stdout, stderr);
 
