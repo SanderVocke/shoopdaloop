@@ -1,0 +1,48 @@
+name: Install Tracy
+description: Download and install tracy-capture from a GitHub release
+
+runs:
+  using: "composite"
+  steps:
+  - name: Download and install Tracy (Linux x64)
+    if: runner.os == 'Linux'
+    shell: wrap-shell {0}
+    run: |
+      mkdir -p tracy_bin
+      curl -L "https://github.com/SanderVocke/shoopdaloop/releases/download/tracy-v0.1/tracy-linux-x64.tar.gz" \
+        -o tracy_bin/tracy.tar.gz
+      tar -xzf tracy_bin/tracy.tar.gz -C tracy_bin
+      echo "TRACY_CAPTURE_TOOL=$(pwd)/tracy_bin/tracy-capture" | tee -a $GITHUB_ENV
+      chmod +x "$(pwd)/tracy_bin/tracy-capture"
+
+  - name: Download and install Tracy (macOS x64)
+    if: runner.os == 'macOS' && runner.arch == 'X64'
+    shell: wrap-shell {0}
+    run: |
+      mkdir -p tracy_bin
+      curl -L "https://github.com/SanderVocke/shoopdaloop/releases/download/tracy-v0.1/tracy-macos-x64.tar.gz" \
+        -o tracy_bin/tracy.tar.gz
+      tar -xzf tracy_bin/tracy.tar.gz -C tracy_bin
+      echo "TRACY_CAPTURE_TOOL=$(pwd)/tracy_bin/tracy-capture" | tee -a $GITHUB_ENV
+      chmod +x "$(pwd)/tracy_bin/tracy-capture"
+
+  - name: Download and install Tracy (macOS arm64)
+    if: runner.os == 'macOS' && runner.arch == 'ARM64'
+    shell: wrap-shell {0}
+    run: |
+      mkdir -p tracy_bin
+      curl -L "https://github.com/SanderVocke/shoopdaloop/releases/download/tracy-v0.1/tracy-macos-arm.tar.gz" \
+        -o tracy_bin/tracy.tar.gz
+      tar -xzf tracy_bin/tracy.tar.gz -C tracy_bin
+      echo "TRACY_CAPTURE_TOOL=$(pwd)/tracy_bin/tracy-capture" | tee -a $GITHUB_ENV
+      chmod +x "$(pwd)/tracy_bin/tracy-capture"
+
+  - name: Download and install Tracy (Windows)
+    if: runner.os == 'Windows'
+    shell: powershell -Command {0}
+    run: |
+      New-Item -ItemType Directory -Force -Path tracy_bin
+      Invoke-WebRequest -Uri "https://github.com/SanderVocke/shoopdaloop/releases/download/tracy-v0.1/tracy-windows-msvc-x64.zip" -OutFile "tracy_bin\tracy.zip"
+      Expand-Archive -Path "tracy_bin\tracy.zip" -DestinationPath "tracy_bin" -Force
+      $toolPath = Join-Path (Get-Location) "tracy_bin\tracy-capture.exe"
+      echo "TRACY_CAPTURE_TOOL=$toolPath" >> $env:GITHUB_ENV

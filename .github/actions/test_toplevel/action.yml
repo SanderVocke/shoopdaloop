@@ -126,6 +126,9 @@ runs:
       echo "Preparing environment"
       echo "=========================================="
       printf "\n\n\n\n\n\n"
+  - name: Install Tracy capture tool
+    if: always()
+    uses: ./.github/actions/install_tracy
   - name: Retrieve info context for coverage analysis
     if: always() && inputs.coverage
     uses: actions/download-artifact@v4
