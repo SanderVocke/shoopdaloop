@@ -9,9 +9,10 @@ runs:
     shell: wrap-shell {0}
     run: |
       mkdir -p tracy_bin
-      curl -L "https://github.com/SanderVocke/shoopdaloop/releases/download/tracy-v0.1/tracy-linux-x64.tar.gz" \
-        -o tracy_bin/tracy.tar.gz
-      tar -xzf tracy_bin/tracy.tar.gz -C tracy_bin
+      curl -L "https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-2/tracy-linux-x64.tar.gz.zip" \
+        -o tracy_bin/tracy.zip
+      unzip tracy_bin/tracy.zip -d tracy_bin
+      tar -xzf tracy_bin/tracy-linux-x64.tar.gz -C tracy_bin
       echo "TRACY_CAPTURE_TOOL=$(pwd)/tracy_bin/tracy-capture" | tee -a $GITHUB_ENV
       chmod +x "$(pwd)/tracy_bin/tracy-capture"
 
@@ -20,9 +21,10 @@ runs:
     shell: wrap-shell {0}
     run: |
       mkdir -p tracy_bin
-      curl -L "https://github.com/SanderVocke/shoopdaloop/releases/download/tracy-v0.1/tracy-macos-x64.tar.gz" \
-        -o tracy_bin/tracy.tar.gz
-      tar -xzf tracy_bin/tracy.tar.gz -C tracy_bin
+      curl -L "https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-2/tracy-macos-x64.tar.gz.zip" \
+        -o tracy_bin/tracy.zip
+      unzip tracy_bin/tracy.zip -d tracy_bin
+      tar -xzf tracy_bin/tracy-macos-x64.tar.gz -C tracy_bin
       echo "TRACY_CAPTURE_TOOL=$(pwd)/tracy_bin/tracy-capture" | tee -a $GITHUB_ENV
       chmod +x "$(pwd)/tracy_bin/tracy-capture"
 
@@ -31,9 +33,10 @@ runs:
     shell: wrap-shell {0}
     run: |
       mkdir -p tracy_bin
-      curl -L "https://github.com/SanderVocke/shoopdaloop/releases/download/tracy-v0.1/tracy-macos-arm.tar.gz" \
-        -o tracy_bin/tracy.tar.gz
-      tar -xzf tracy_bin/tracy.tar.gz -C tracy_bin
+      curl -L "https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-2/tracy-macos-arm64.tar.gz.zip" \
+        -o tracy_bin/tracy.zip
+      unzip tracy_bin/tracy.zip -d tracy_bin
+      tar -xzf tracy_bin/tracy-macos-arm64.tar.gz -C tracy_bin
       echo "TRACY_CAPTURE_TOOL=$(pwd)/tracy_bin/tracy-capture" | tee -a $GITHUB_ENV
       chmod +x "$(pwd)/tracy_bin/tracy-capture"
 
@@ -42,7 +45,7 @@ runs:
     shell: powershell -Command {0}
     run: |
       New-Item -ItemType Directory -Force -Path tracy_bin
-      Invoke-WebRequest -Uri "https://github.com/SanderVocke/shoopdaloop/releases/download/tracy-v0.1/tracy-windows-msvc-x64.zip" -OutFile "tracy_bin\tracy.zip"
+      Invoke-WebRequest -Uri "https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-2/tracy-windows-msvc-x64.zip" -OutFile "tracy_bin\tracy.zip"
       Expand-Archive -Path "tracy_bin\tracy.zip" -DestinationPath "tracy_bin" -Force
       $toolPath = Join-Path (Get-Location) "tracy_bin\tracy-capture.exe"
       echo "TRACY_CAPTURE_TOOL=$toolPath" >> $env:GITHUB_ENV
