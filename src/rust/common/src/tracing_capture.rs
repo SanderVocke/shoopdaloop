@@ -2,11 +2,15 @@ use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::thread::JoinHandle;
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::logging::macros::*;
 
 shoop_log_unit!("Tracing.Capture");
+
+/// Maximum time to wait for the capture child process and reader threads
+/// to shut down gracefully before force-killing them.
+const STOP_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Configuration for the tracing capture process, stored so it can be reused
 /// when restarting for a new trace file.
@@ -125,6 +129,65 @@ fn spawn_capture_process(
     Ok((child, stdout_thread, stderr_thread))
 }
 
+/// Wait for a child process to exit, with a timeout.
+///
+/// If the process does not exit within the timeout, it is killed.
+fn wait_child_with_timeout(child: &mut Child, timeout: Duration) {
+    let start = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                println!("Tracing capture process exited with status: {}", status);
+                return;
+            }
+            Ok(None) => {
+                if start.elapsed() >= timeout {
+                    println!(
+                        "Tracing capture process (PID: {}) did not exit within {:?}, killing...",
+                        child.id(),
+                        timeout
+                    );
+                    let _ = child.kill();
+                    // Best-effort final wait after kill
+                    let _ = child.wait();
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => {
+                println!("Error waiting for tracing capture process: {}", e);
+                return;
+            }
+        }
+    }
+}
+
+/// Wait for a thread to finish, with a timeout.
+///
+/// If the thread does not finish within the timeout, this function returns
+/// without joining. The thread continues running in the background.
+fn join_thread_with_timeout(handle: JoinHandle<()>, timeout: Duration) {
+    // We can't directly timeout a JoinHandle, so we poll via a helper thread.
+    let join_done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let join_done_clone = join_done.clone();
+
+    let monitor = std::thread::spawn(move || {
+        let _ = handle.join();
+        join_done_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+    });
+
+    let start = Instant::now();
+    while !join_done.load(std::sync::atomic::Ordering::Relaxed) {
+        if start.elapsed() >= timeout {
+            println!("Reader thread did not finish within {:?}, detaching", timeout);
+            // Detach the monitor thread - it will finish on its own
+            monitor.detach();
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
 /// Start a capture child process.
 ///
 /// The provided configuration is stored internally so it can be reused when
@@ -167,15 +230,17 @@ pub fn start_tracing_capture(
 
 /// Stop the capture child process gracefully.
 ///
-/// Sends SIGINT and waits for the process to exit. If the process doesn't exit
-/// within a reasonable time, it will be killed.
+/// Sends SIGINT and waits for the process to exit (up to 5 seconds).
+/// If the process doesn't exit within the timeout, it is killed.
+/// Reader threads are also given a timeout to finish; if they don't,
+/// they are detached to prevent blocking.
 pub fn stop_tracing_capture() {
     let mut guard = CAPTURE_PROCESS.lock().unwrap();
     if let Some(state) = guard.take() {
         let pid = state.child.as_ref().map(|c| c.id()).unwrap_or(0);
         println!("Stopping tracing capture process (PID: {})...", pid);
 
-        // Wait for the child to exit (reader threads will finish when pipes close)
+        // Wait for the child to exit with timeout (reader threads will finish when pipes close)
         if let Some(mut child) = state.child {
             // Try to terminate gracefully
             #[cfg(unix)]
@@ -185,23 +250,17 @@ pub fn stop_tracing_capture() {
                 };
             }
 
-            match child.wait() {
-                Ok(status) => {
-                    println!("Tracing capture process exited with status: {}", status);
-                }
-                Err(e) => {
-                    println!("Error waiting for tracing capture process: {}", e);
-                    let _ = child.kill();
-                }
-            }
+            wait_child_with_timeout(&mut child, STOP_TIMEOUT);
         }
 
-        // Join the output reader threads so they finish draining any buffered output
+        // Join the output reader threads with timeout so they finish draining
+        // any buffered output. If they don't finish in time, they are detached.
+        let thread_timeout = STOP_TIMEOUT;
         if let Some(handle) = state.stdout_thread {
-            let _ = handle.join();
+            join_thread_with_timeout(handle, thread_timeout);
         }
         if let Some(handle) = state.stderr_thread {
-            let _ = handle.join();
+            join_thread_with_timeout(handle, thread_timeout);
         }
     }
 }
