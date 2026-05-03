@@ -52,6 +52,7 @@ jsonschema = "0.33"
 rodio = "0.21"
 winapi = { version = "0.3", features = ["processthreadsapi", "winnt"] }
 crossbeam-queue = "0.3"
+arc-swap = "1.7"
 tracing = "0.1"
 tracing-log = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

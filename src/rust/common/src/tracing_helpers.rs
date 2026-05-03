@@ -1,16 +1,23 @@
 use std::os::raw::{c_char, c_uint};
 use std::slice;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, OnceLock};
+
+use arc_swap::ArcSwap;
 
 static TRACING_ENABLED: AtomicBool = AtomicBool::new(false);
 
 /// Global counter for assigning unique plot IDs sequentially from 0.
 static NEXT_PLOT_ID: AtomicU32 = AtomicU32::new(0);
 
-/// Registry of PlotName objects, indexed by their assigned ID.
-static PLOT_REGISTRY: Mutex<Vec<Option<tracy_client::PlotName>>> =
-    Mutex::new(Vec::new());
+/// Lock-free registry of PlotName objects, indexed by their assigned ID.
+///
+/// Uses `ArcSwap<Vec<Arc<PlotName>>>` so that the hot-path `plot_by_id`
+/// can read a snapshot without acquiring a mutex.  Writers (register)
+/// clone-and-append, which is fine for the ~20-50 plot names we expect.
+type PlotRegistry = ArcSwap<Vec<Arc<tracy_client::PlotName>>>;
+
+static PLOT_REGISTRY: OnceLock<PlotRegistry> = OnceLock::new();
 
 pub fn set_tracing_enabled(enabled: bool) {
     TRACING_ENABLED.store(enabled, Ordering::Relaxed);
@@ -23,26 +30,35 @@ pub fn is_tracing_enabled() -> bool {
 /// Register a plot name and return a unique numeric ID.
 pub fn register_plot_name(name: &str) -> u32 {
     let id = NEXT_PLOT_ID.fetch_add(1, Ordering::Relaxed);
-    let plot_name = tracy_client::PlotName::new_leak(name.to_string());
+    let plot_name = Arc::new(tracy_client::PlotName::new_leak(name.to_string()));
 
-    let mut registry = PLOT_REGISTRY.lock().unwrap();
-    if (id as usize) >= registry.len() {
-        registry.resize(id as usize + 1, None);
-    }
-    registry[id as usize] = Some(plot_name);
+    let registry = PLOT_REGISTRY.get_or_init(|| ArcSwap::new(Arc::new(Vec::new())));
+
+    // Clone current snapshot, append, and swap atomically.
+    // Writers are rare (init time only), so the clone cost is negligible.
+    let mut vec = registry.load().as_ref().clone();
+    vec.push(plot_name);
+    registry.store(Arc::new(vec));
     id
 }
 
 /// Plot a value to Tracy using a pre-registered plot ID.
+///
+/// Lock-free on the hot path: loads an Arc snapshot, then indexes
+/// into the vector without any mutex.
 pub fn plot_by_id(id: u32, value: f64) {
     if !is_tracing_enabled() {
         return;
     }
 
-    let registry = PLOT_REGISTRY.lock().unwrap();
-    if let Some(Some(plot_name)) = registry.get(id as usize) {
-        if let Some(client) = tracy_client::Client::running() {
-            client.plot(plot_name.clone(), value);
+    // OnceLock::get() is lock-free after initialization.
+    // ArcSwap::load() is lock-free — returns an Arc without blocking.
+    if let Some(registry) = PLOT_REGISTRY.get() {
+        let registry = registry.load();
+        if let Some(plot_name) = registry.get(id as usize) {
+            if let Some(client) = tracy_client::Client::running() {
+                client.plot((**plot_name).clone(), value);
+            }
         }
     }
 }
@@ -56,13 +72,20 @@ pub fn plot_by_id(id: u32, value: f64) {
 /// Returns 1 if enabled, 0 otherwise (matches C `unsigned`).
 #[no_mangle]
 pub unsafe extern "C" fn shoop_tracing_is_enabled() -> c_uint {
-    if is_tracing_enabled() { 1 } else { 0 }
+    if is_tracing_enabled() {
+        1
+    } else {
+        0
+    }
 }
 
 /// C-compatible wrapper: register a plot name (name, len) and return an ID.
 /// len is C `unsigned` (c_uint).
 #[no_mangle]
-pub unsafe extern "C" fn shoop_tracing_register_plot_name(name: *const c_char, len: c_uint) -> c_uint {
+pub unsafe extern "C" fn shoop_tracing_register_plot_name(
+    name: *const c_char,
+    len: c_uint,
+) -> c_uint {
     let name_str = unsafe {
         assert!(!name.is_null());
         let bytes = slice::from_raw_parts(name as *const u8, len as usize);
