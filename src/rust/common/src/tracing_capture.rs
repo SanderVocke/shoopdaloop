@@ -1,4 +1,3 @@
-#![allow(unused_imports)]
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
@@ -65,11 +64,11 @@ fn spawn_output_readers(
         for line in reader.lines() {
             match line {
                 Ok(msg) if !msg.is_empty() => {
-                    println!("{}", msg);
+                    info!("{}", msg);
                 }
                 Ok(_) => {}
                 Err(e) => {
-                    println!("read error on stdout: {}", e);
+                    error!("read error on stdout: {}", e);
                     break;
                 }
             }
@@ -81,11 +80,11 @@ fn spawn_output_readers(
         for line in reader.lines() {
             match line {
                 Ok(msg) if !msg.is_empty() => {
-                    println!("{}", msg);
+                    info!("{}", msg);
                 }
                 Ok(_) => {}
                 Err(e) => {
-                    println!("read error on stderr: {}", e);
+                    error!("read error on stderr: {}", e);
                     break;
                 }
             }
@@ -102,11 +101,7 @@ fn spawn_capture_process(
 ) -> Result<(Child, JoinHandle<()>, JoinHandle<()>), String> {
     let args_str = build_args_str(config, output_filename);
 
-    println!(
-        "Starting tracing capture: {} {}",
-        config.tool,
-        args_str
-    );
+    info!("Starting tracing capture: {} {}", config.tool, args_str);
 
     let mut child = Command::new(&config.tool)
         .args(shlex::split(&args_str).unwrap_or_else(|| vec![args_str.clone()]))
@@ -125,7 +120,7 @@ fn spawn_capture_process(
 
     let (stdout_thread, stderr_thread) = spawn_output_readers(stdout, stderr);
 
-    println!("Tracing capture process started (PID: {:?})", child.id());
+    info!("Tracing capture process started (PID: {:?})", child.id());
     Ok((child, stdout_thread, stderr_thread))
 }
 
@@ -137,12 +132,12 @@ fn wait_child_with_timeout(child: &mut Child, timeout: Duration) {
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
-                println!("Tracing capture process exited with status: {}", status);
+                info!("Tracing capture process exited with status: {}", status);
                 return;
             }
             Ok(None) => {
                 if start.elapsed() >= timeout {
-                    println!(
+                    warn!(
                         "Tracing capture process (PID: {}) did not exit within {:?}, killing...",
                         child.id(),
                         timeout
@@ -155,7 +150,7 @@ fn wait_child_with_timeout(child: &mut Child, timeout: Duration) {
                 std::thread::sleep(Duration::from_millis(50));
             }
             Err(e) => {
-                println!("Error waiting for tracing capture process: {}", e);
+                error!("Error waiting for tracing capture process: {}", e);
                 return;
             }
         }
@@ -179,7 +174,7 @@ fn join_thread_with_timeout(handle: JoinHandle<()>, timeout: Duration) {
     let start = Instant::now();
     while !join_done.load(std::sync::atomic::Ordering::Relaxed) {
         if start.elapsed() >= timeout {
-            println!("Reader thread did not finish within {:?}, detaching", timeout);
+            warn!("Reader thread did not finish within {:?}, detaching", timeout);
             // Forget the monitor thread handle - it will finish on its own
             std::mem::forget(monitor);
             return;
@@ -238,7 +233,7 @@ pub fn stop_tracing_capture() {
     let mut guard = CAPTURE_PROCESS.lock().unwrap();
     if let Some(state) = guard.take() {
         let pid = state.child.as_ref().map(|c| c.id()).unwrap_or(0);
-        println!("Stopping tracing capture process (PID: {})...", pid);
+        info!("Stopping tracing capture process (PID: {})...", pid);
 
         // Wait for the child to exit with timeout (reader threads will finish when pipes close)
         if let Some(mut child) = state.child {
@@ -284,7 +279,7 @@ pub fn restart_tracing_capture() -> Result<(), String> {
             .ok_or_else(|| "Tracing capture not configured. Call start_tracing_capture() first.".to_string())?
     };
 
-    println!("Restarting tracing capture to a new trace file");
+    info!("Restarting tracing capture to a new trace file");
 
     // Stop the current capture process (this finalizes the current trace file)
     stop_tracing_capture();
@@ -325,7 +320,7 @@ pub fn restart_tracing_capture_to(output_filename: &str) -> Result<(), String> {
             .ok_or_else(|| "Tracing capture not configured. Call start_tracing_capture() first.".to_string())?
     };
 
-    println!("Restarting tracing capture to '{}'", output_filename);
+    info!("Restarting tracing capture to '{}'", output_filename);
 
     // Stop the current capture process (this finalizes the current trace file)
     stop_tracing_capture();
