@@ -15,6 +15,7 @@
 #include <memory>
 #include <stdint.h>
 #include <mutex>
+#include "TracyPlotter.h"
 
 class DummyMidiPort : public virtual MidiPort,
                       public DummyPort,
@@ -40,6 +41,11 @@ private:
 
     std::atomic<uint32_t> n_processed_last_round = 0;
     std::atomic<uint32_t> n_original_requested_frames = 0;
+
+    // Tracy plotters for data flow analysis (constructed with port name)
+    TracyPlotter m_plot_input_queued;
+    TracyPlotter m_plot_output_written;
+    TracyPlotter m_plot_frames_requested;
 
 public:
     uint32_t PROC_get_n_events() const override;
