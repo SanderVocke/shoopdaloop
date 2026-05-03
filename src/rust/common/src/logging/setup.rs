@@ -110,5 +110,11 @@ pub fn init_logging() -> Result<(), anyhow::Error> {
 
     registry.init();
 
+    // Bridge the `log` crate into the tracing subscriber so that
+    // `log::info!()` etc. (used by shoop_info! and friends) are
+    // forwarded to all tracing layers (fmt::layer → stdout,
+    // TracyLayer → profiler, etc.).
+    let _ = tracing_log::LogTracer::init();
+
     Ok(())
 }

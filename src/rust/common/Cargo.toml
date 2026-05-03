@@ -11,6 +11,7 @@ anyhow = { workspace = true }
 ctor = { workspace = true }
 walkdir = { workspace = true }
 tracing = { workspace = true }
+tracing-log = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-tracy = { workspace = true }
 tracy-client = { workspace = true }
