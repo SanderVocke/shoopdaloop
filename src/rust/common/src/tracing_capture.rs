@@ -174,7 +174,10 @@ fn join_thread_with_timeout(handle: JoinHandle<()>, timeout: Duration) {
     let start = Instant::now();
     while !join_done.load(std::sync::atomic::Ordering::Relaxed) {
         if start.elapsed() >= timeout {
-            warn!("Reader thread did not finish within {:?}, detaching", timeout);
+            warn!(
+                "Reader thread did not finish within {:?}, detaching",
+                timeout
+            );
             // Forget the monitor thread handle - it will finish on its own
             std::mem::forget(monitor);
             return;
@@ -195,10 +198,7 @@ fn join_thread_with_timeout(handle: JoinHandle<()>, timeout: Duration) {
 ///
 /// # Returns
 /// `Ok(())` if the process was started successfully, `Err` otherwise.
-pub fn start_tracing_capture(
-    tool: Option<&str>,
-    args: Option<&str>,
-) -> Result<(), String> {
+pub fn start_tracing_capture(tool: Option<&str>, args: Option<&str>) -> Result<(), String> {
     let config = CaptureConfig {
         tool: tool.unwrap_or("tracy-capture").to_string(),
         args: args.map(str::to_string),
@@ -240,9 +240,7 @@ pub fn stop_tracing_capture() {
             // Try to terminate gracefully
             #[cfg(unix)]
             {
-                let _ = unsafe {
-                    libc::kill(child.id() as i32, libc::SIGINT)
-                };
+                let _ = unsafe { libc::kill(child.id() as i32, libc::SIGINT) };
             }
 
             wait_child_with_timeout(&mut child, STOP_TIMEOUT);
@@ -274,9 +272,9 @@ pub fn restart_tracing_capture() -> Result<(), String> {
     // Get the stored config
     let config = {
         let guard = CAPTURE_CONFIG.lock().unwrap();
-        guard
-            .clone()
-            .ok_or_else(|| "Tracing capture not configured. Call start_tracing_capture() first.".to_string())?
+        guard.clone().ok_or_else(|| {
+            "Tracing capture not configured. Call start_tracing_capture() first.".to_string()
+        })?
     };
 
     info!("Restarting tracing capture to a new trace file");
@@ -315,9 +313,9 @@ pub fn restart_tracing_capture_to(output_filename: &str) -> Result<(), String> {
     // Get the stored config
     let config = {
         let guard = CAPTURE_CONFIG.lock().unwrap();
-        guard
-            .clone()
-            .ok_or_else(|| "Tracing capture not configured. Call start_tracing_capture() first.".to_string())?
+        guard.clone().ok_or_else(|| {
+            "Tracing capture not configured. Call start_tracing_capture() first.".to_string()
+        })?
     };
 
     info!("Restarting tracing capture to '{}'", output_filename);
