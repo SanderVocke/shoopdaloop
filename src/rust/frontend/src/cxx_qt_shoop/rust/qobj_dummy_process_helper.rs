@@ -80,7 +80,7 @@ impl DummyProcessHelper {
                     {
                         let helper_ptr: *mut DummyProcessHelper = self_thread_ptr.cast();
                         if let Some(self_obj) = helper_ptr.as_mut() {
-                            let mut pinned = Pin::new_unchecked(self_obj);
+                            let pinned = Pin::new_unchecked(self_obj);
                             let mut rust = pinned.rust_mut();
                             rust.plotter_iteration
                                 .plot(iter as f64, "DummyProcessHelper");
