@@ -78,7 +78,9 @@ impl DummyProcessHelper {
                     if common::tracing_helpers::is_tracing_enabled()
                         && tracy_client::Client::running().is_some()
                     {
-                        if let Some(self_obj) = self_thread_ptr.as_mut() {
+                        let helper_ptr: *mut DummyProcessHelper =
+                            self_thread_ptr.cast();
+                        if let Some(self_obj) = helper_ptr.as_mut() {
                             let mut rust = self_obj.rust_mut();
                             rust.plotter_iteration
                                 .plot(iter as f64, "DummyProcessHelper");

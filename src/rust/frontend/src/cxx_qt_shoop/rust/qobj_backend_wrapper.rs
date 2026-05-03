@@ -432,7 +432,7 @@ impl BackendWrapper {
     }
 
     pub fn dummy_n_requested_frames(mut self: Pin<&mut BackendWrapper>) -> i32 {
-        let mut_rust = self.as_mut().rust_mut();
+        let mut mut_rust = self.as_mut().rust_mut();
 
         let result = if let Some(driver) = mut_rust.driver.as_ref() {
             driver.dummy_n_requested_frames() as i32
