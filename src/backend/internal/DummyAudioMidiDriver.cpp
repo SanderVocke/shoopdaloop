@@ -34,6 +34,7 @@ void DummyAudioMidiDriver<Time, Size>::enter_mode(DummyAudioMidiDriverMode mode)
         // Ensure we finish any processing we were doing
         wait_process();
     }
+    m_plot_mode.plot(static_cast<double>(mode));
 }
 
 template <typename Time, typename Size>
@@ -47,6 +48,7 @@ void DummyAudioMidiDriver<Time, Size>::controlled_mode_request_samples(uint32_t 
         this->m_controlled_mode_samples_to_process += samples;
         uint32_t requested = this->m_controlled_mode_samples_to_process.load();
         Log::log<log_level_debug>("DummyAudioMidiDriver: request {} samples ({} total)", samples, requested);
+        this->m_plot_samples_pending.plot(static_cast<double>(requested));
     });
 }
 
@@ -95,6 +97,7 @@ void DummyAudioMidiDriver<Time, Size>::start(
 
     m_proc_thread = std::thread([this] {
         Log::log<log_level_debug>("Starting process thread - {}", mode_names.at(m_mode));
+        m_plot_mode.plot(static_cast<double>(m_mode.load()));
         auto bufs_per_second = AudioMidiDriver::get_sample_rate() / AudioMidiDriver::get_buffer_size();
         auto interval = 1.0f / ((float)bufs_per_second);
         auto micros = uint32_t(interval * 1000000.0f);
@@ -112,9 +115,11 @@ void DummyAudioMidiDriver<Time, Size>::start(
                 if (to_process > 0) {
                     Log::log<log_level_debug_trace>("Process {}", to_process);
                 }
+                m_plot_to_process.plot(static_cast<double>(to_process));
                 AudioMidiDriver::PROC_process(to_process);
                 if (mode == DummyAudioMidiDriverMode::Controlled) {
                     m_controlled_mode_samples_to_process -= to_process;
+                    this->m_plot_samples_pending.plot(static_cast<double>(m_controlled_mode_samples_to_process.load()));
                 }
                 auto end = std::chrono::high_resolution_clock::now();
                 time_taken = duration_cast<std::chrono::microseconds>(end - start).count();
@@ -129,6 +134,7 @@ template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::pause() {
     Log::log<log_level_debug>("DummyAudioMidiDriver: pause");
     m_paused = true;
+    m_plot_paused.plot(1.0);
     wait_process();
 }
 
@@ -136,6 +142,7 @@ template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::resume() {
     Log::log<log_level_debug>("DummyAudioMidiDriver: resume");
     m_paused = false;
+    m_plot_paused.plot(0.0);
 }
 
 template <typename Time, typename Size>
@@ -167,6 +174,7 @@ DummyAudioMidiDriver<Time, Size>::open_midi_port(std::string name,
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::close() {
     m_finish = true;
+    m_plot_finish.plot(1.0);
     if (m_proc_thread.joinable()) {
         if (std::this_thread::get_id() != m_proc_thread.get_id()) {
             m_proc_thread.join();

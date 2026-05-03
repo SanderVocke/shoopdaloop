@@ -76,6 +76,7 @@ pub struct DummyProcessHelperRust {
     pub plotter_active: TracyPlotter,
     pub plotter_n_iters: TracyPlotter,
     pub plotter_samples_per_iter: TracyPlotter,
+    pub plotter_iteration: TracyPlotter,
 }
 
 impl Default for DummyProcessHelperRust {
@@ -90,6 +91,7 @@ impl Default for DummyProcessHelperRust {
             plotter_active: TracyPlotter::new("active"),
             plotter_n_iters: TracyPlotter::new("n_iters"),
             plotter_samples_per_iter: TracyPlotter::new("samples_per_iter"),
+            plotter_iteration: TracyPlotter::new("iteration"),
         }
     }
 }

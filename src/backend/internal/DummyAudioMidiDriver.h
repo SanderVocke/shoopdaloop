@@ -18,6 +18,7 @@
 #include <memory>
 #include <stdint.h>
 #include "shoop_shared_ptr.h"
+#include "TracyPlotter.h"
 
 struct DummyAudioMidiDriverSettings : public AudioMidiDriverSettingsInterface {
     DummyAudioMidiDriverSettings() {}
@@ -50,6 +51,13 @@ class DummyAudioMidiDriver : public AudioMidiDriver,
     std::function<void(std::string, shoop_port_direction_t)> m_midi_port_opened_cb = nullptr;
     std::function<void(std::string)> m_audio_port_closed_cb = nullptr;
     std::function<void(std::string)> m_midi_port_closed_cb = nullptr;
+
+    // Tracy plotters for concurrency debugging (plot name changes on mode/finish)
+    TracyPlotter m_plot_mode{"DummyDriver/mode"};
+    TracyPlotter m_plot_paused{"DummyDriver/paused"};
+    TracyPlotter m_plot_samples_pending{"DummyDriver/samples_pending"};
+    TracyPlotter m_plot_finish{"DummyDriver/finish"};
+    TracyPlotter m_plot_to_process{"DummyDriver/to_process"};
 
 public:
 

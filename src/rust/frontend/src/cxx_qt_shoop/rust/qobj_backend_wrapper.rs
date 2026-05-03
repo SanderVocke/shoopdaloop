@@ -388,6 +388,7 @@ impl BackendWrapper {
 
         if let Some(driver) = mut_rust.driver.as_mut() {
             driver.dummy_enter_controlled_mode();
+            mut_rust.plotter_mode.plot(1.0, "BackendWrapper");
         } else {
             warn!("dummy_enter_controlled_mode called on a BackendWrapper with no driver");
         }
@@ -398,6 +399,7 @@ impl BackendWrapper {
 
         if let Some(driver) = mut_rust.driver.as_mut() {
             driver.dummy_enter_automatic_mode();
+            mut_rust.plotter_mode.plot(0.0, "BackendWrapper");
         } else {
             warn!("dummy_enter_automatic_mode called on a BackendWrapper with no driver");
         }
@@ -420,6 +422,9 @@ impl BackendWrapper {
 
         if let Some(driver) = mut_rust.driver.as_mut() {
             driver.dummy_request_controlled_frames(n as u32);
+            mut_rust
+                .plotter_samples_requested
+                .plot(n as f64, "BackendWrapper");
         } else {
             warn!("dummy_request_controlled_frames called on a BackendWrapper with no driver");
         }
@@ -429,12 +434,16 @@ impl BackendWrapper {
     pub fn dummy_n_requested_frames(mut self: Pin<&mut BackendWrapper>) -> i32 {
         let mut_rust = self.as_mut().rust_mut();
 
-        if let Some(driver) = mut_rust.driver.as_ref() {
+        let result = if let Some(driver) = mut_rust.driver.as_ref() {
             driver.dummy_n_requested_frames() as i32
         } else {
             warn!("dummy_n_requested_frames called on a BackendWrapper with no driver");
             0
-        }
+        };
+        mut_rust
+            .plotter_samples_pending
+            .plot(result as f64, "BackendWrapper");
+        result
     }
 
     pub fn dummy_run_requested_frames(mut self: Pin<&mut BackendWrapper>) {
@@ -442,6 +451,7 @@ impl BackendWrapper {
 
         if let Some(driver) = mut_rust.driver.as_mut() {
             driver.dummy_run_requested_frames();
+            mut_rust.plotter_samples_pending.plot(0.0, "BackendWrapper");
         } else {
             warn!("dummy_run_requested_frames called on a BackendWrapper with no driver");
         }

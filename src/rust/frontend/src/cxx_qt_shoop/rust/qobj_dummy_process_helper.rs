@@ -73,8 +73,17 @@ impl DummyProcessHelper {
             }
 
             thread::sleep(Duration::from_secs_f32(wait_start));
-            for _ in 0..n_iters {
+            for iter in 0..n_iters {
                 unsafe {
+                    if common::tracing_helpers::is_tracing_enabled()
+                        && tracy_client::Client::running().is_some()
+                    {
+                        if let Some(self_obj) = self_thread_ptr.as_mut() {
+                            let mut rust = self_obj.rust_mut();
+                            rust.plotter_iteration
+                                .plot(iter as f64, "DummyProcessHelper");
+                        }
+                    }
                     debug!("requesting {} frames", samples_per_iter);
                     if let Some(backend) = backend_thread_ptr.as_mut() {
                         if let Err(e) = invokable::invoke::<_, (), _>(
