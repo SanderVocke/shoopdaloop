@@ -58,6 +58,7 @@ class DummyAudioMidiDriver : public AudioMidiDriver,
     TracyPlotter m_plot_samples_pending{"DummyDriver/samples_pending"};
     TracyPlotter m_plot_finish{"DummyDriver/finish"};
     TracyPlotter m_plot_to_process{"DummyDriver/to_process"};
+    TracyPlotter m_plot_process_interval{"DummyDriver/process_interval_us"};
 
 public:
 

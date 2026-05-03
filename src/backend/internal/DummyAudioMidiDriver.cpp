@@ -102,8 +102,13 @@ void DummyAudioMidiDriver<Time, Size>::start(
         auto interval = 1.0f / ((float)bufs_per_second);
         auto micros = uint32_t(interval * 1000000.0f);
         float time_taken = 0.0f;
+        auto last_cycle = std::chrono::high_resolution_clock::now();
         while (!this->m_finish) {
+            auto sleep_start = std::chrono::high_resolution_clock::now();
             std::this_thread::sleep_for(std::chrono::microseconds((uint32_t)std::ceil(std::max(0.0f, micros - time_taken))));
+            auto actual_interval = duration_cast<std::chrono::microseconds>(sleep_start - last_cycle).count();
+            last_cycle = sleep_start;
+            m_plot_process_interval.plot(static_cast<double>(actual_interval));
             PROC_handle_command_queue();
             if (!m_paused) {
                 auto start = std::chrono::high_resolution_clock::now();
@@ -123,6 +128,8 @@ void DummyAudioMidiDriver<Time, Size>::start(
                 }
                 auto end = std::chrono::high_resolution_clock::now();
                 time_taken = duration_cast<std::chrono::microseconds>(end - start).count();
+            } else {
+                m_plot_to_process.plot(0.0);
             }
         }
         Log::log<log_level_debug>("Ending process thread");
