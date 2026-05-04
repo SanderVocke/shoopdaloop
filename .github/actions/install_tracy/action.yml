@@ -19,7 +19,9 @@ runs:
         echo "ERROR: tracy-capture not found in archive"
         exit 1
       fi
-      cp "$TRACY_BIN" tracy_bin/tracy-capture
+      if [ "$TRACY_BIN" != "tracy_bin/tracy-capture" ]; then
+        cp "$TRACY_BIN" tracy_bin/tracy-capture
+      fi
       chmod +x tracy_bin/tracy-capture
       echo "TRACY_CAPTURE_TOOL=$(pwd)/tracy_bin/tracy-capture" | tee -a $GITHUB_ENV
 
@@ -38,7 +40,9 @@ runs:
         echo "ERROR: tracy-capture not found in archive"
         exit 1
       fi
-      cp "$TRACY_BIN" tracy_bin/tracy-capture
+      if [ "$TRACY_BIN" != "tracy_bin/tracy-capture" ]; then
+        cp "$TRACY_BIN" tracy_bin/tracy-capture
+      fi
       chmod +x tracy_bin/tracy-capture
       echo "TRACY_CAPTURE_TOOL=$(pwd)/tracy_bin/tracy-capture" | tee -a $GITHUB_ENV
 
@@ -57,7 +61,9 @@ runs:
         echo "ERROR: tracy-capture not found in archive"
         exit 1
       fi
-      cp "$TRACY_BIN" tracy_bin/tracy-capture
+      if [ "$TRACY_BIN" != "tracy_bin/tracy-capture" ]; then
+        cp "$TRACY_BIN" tracy_bin/tracy-capture
+      fi
       chmod +x tracy_bin/tracy-capture
       echo "TRACY_CAPTURE_TOOL=$(pwd)/tracy_bin/tracy-capture" | tee -a $GITHUB_ENV
 
@@ -74,6 +80,8 @@ runs:
         Write-Error "tracy-capture.exe not found in archive"
         exit 1
       }
-      Copy-Item $tool.FullName "tracy_bin\tracy-capture.exe" -Force
+      if ($tool.FullName -ne (Join-Path (Get-Location) "tracy_bin\tracy-capture.exe")) {
+        Copy-Item $tool.FullName "tracy_bin\tracy-capture.exe" -Force
+      }
       $toolPath = Join-Path (Get-Location) "tracy_bin\tracy-capture.exe"
       echo "TRACY_CAPTURE_TOOL=$toolPath" >> $env:GITHUB_ENV
