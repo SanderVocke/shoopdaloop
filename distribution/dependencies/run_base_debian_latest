@@ -24,6 +24,7 @@ gcc
 
 #for checkout
 git
+unzip
 
 # for convenience - -E env
 cmake
