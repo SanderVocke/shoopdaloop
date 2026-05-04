@@ -62,4 +62,7 @@ void MidiBufferingInputPort::PROC_process(uint32_t nframes) {
     }
 
     MidiPort::PROC_process(nframes);
+
+    // Plot metrics
+    m_plot_buffered_messages.plot(static_cast<double>(m_temp_midi_storage.size()));
 }

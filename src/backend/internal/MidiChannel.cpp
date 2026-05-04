@@ -248,6 +248,14 @@ MidiChannel::PROC_process(shoop_loop_mode_t mode, std::optional<shoop_loop_mode_
     if (mp_playback_target_buffer.has_value()) {
         mp_playback_target_buffer->first.n_frames_processed += n_samples;
     }
+
+    // Plot metrics
+    m_plot_data_length.plot(static_cast<double>(ma_data_length.load()));
+    m_plot_events_triggered.plot(static_cast<double>(ma_n_events_triggered.load()));
+    m_plot_mode.plot(static_cast<double>(ma_mode.load()));
+    m_plot_notes_active.plot(static_cast<double>(mp_output_midi_state->n_notes_active()));
+    m_plot_process_flags.plot(static_cast<double>(process_flags));
+    m_plot_n_storage_events.plot(static_cast<double>(mp_storage->n_events()));
 }
 
 void

@@ -6,6 +6,7 @@
 #include "GraphNode.h"
 #include "LoggingEnabled.h"
 #include "shoop_shared_ptr.h"
+#include "TracyPlotter.h"
 
 class GraphLoopChannel:  public HasTwoGraphNodes,
                          protected ModuleLoggingEnabled<"Backend.GraphLoopChannel"> {
@@ -16,6 +17,10 @@ public:
     shoop_weak_ptr<BackendSession> backend;
     shoop_weak_ptr<GraphPort> mp_output_port_mapping;
     std::atomic<unsigned> ma_data_sequence_nr = 0;
+
+    // Tracy plotters for graph loop channel debugging
+    TracyPlotter m_plot_frames_processed{"GraphLoopChannel/frames_processed"};
+    TracyPlotter m_plot_data_dirty{"GraphLoopChannel/data_dirty"};
 
     GraphLoopChannel(shoop_shared_ptr<ChannelInterface> chan,
                 shoop_shared_ptr<GraphLoop> loop,

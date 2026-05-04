@@ -12,7 +12,12 @@ DecoupledMidiPort<TimeType, SizeType>::DecoupledMidiPort(
     shoop_weak_ptr<AudioMidiDriver> driver,
     uint32_t queue_size,
     shoop_port_direction_t direction)
-    : port(port), ma_queue(queue_size), direction(direction), maybe_driver(driver) {};
+    : port(port),
+      ma_queue(queue_size),
+      direction(direction),
+      maybe_driver(driver),
+      m_plot_incoming_queue_size("DecoupledMidiPort/" + std::string(port->name()) + "/incoming_queue_size"),
+      m_plot_outgoing_queue_size("DecoupledMidiPort/" + std::string(port->name()) + "/outgoing_queue_size") {};
 
 template <typename TimeType, typename SizeType>
 shoop_shared_ptr<MidiPort> const& DecoupledMidiPort<TimeType, SizeType>::get_port() {
@@ -39,6 +44,7 @@ void DecoupledMidiPort<TimeType, SizeType>::PROC_process(uint32_t n_frames) {
             memcpy((void *)m.data.data(), (void *)data, size);
             ma_queue.push(m);
         }
+        m_plot_incoming_queue_size.plot(static_cast<double>(ma_queue.read_available()));
     } else if (direction == shoop_port_direction_t::ShoopPortDirection_Output) {
         port->PROC_prepare(n_frames);
         auto buf = port->PROC_get_write_data_into_port_buffer(n_frames);
@@ -47,6 +53,7 @@ void DecoupledMidiPort<TimeType, SizeType>::PROC_process(uint32_t n_frames) {
             buf->PROC_write_event_value(m.data.size(), 0, m.data.data());
         }
         port->PROC_process(n_frames);
+        m_plot_outgoing_queue_size.plot(static_cast<double>(ma_queue.read_available()));
     }
 }
 

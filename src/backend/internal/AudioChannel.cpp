@@ -303,6 +303,14 @@ void AudioChannel<SampleT>::PROC_process(
         mp_playback_target_buffer += n_samples;
         mp_playback_target_buffer_size -= n_samples;
     }
+
+    // Plot metrics
+    m_plot_data_length.plot(static_cast<double>(ma_buffers_data_length.load()));
+    m_plot_position.plot(static_cast<double>(process_params.position));
+    m_plot_mode.plot(static_cast<double>(ma_mode.load()));
+    m_plot_output_peak.plot(static_cast<double>(ma_output_peak.load()));
+    m_plot_process_flags.plot(static_cast<double>(process_flags));
+    m_plot_n_buffers.plot(static_cast<double>(mp_buffers.n_buffers()));
 }
 
 template <typename SampleT>

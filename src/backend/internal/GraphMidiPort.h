@@ -1,9 +1,17 @@
 #pragma once
 #include "GraphPort.h"
 #include "shoop_shared_ptr.h"
+#include "TracyPlotter.h"
 
 class GraphMidiPort : public GraphPort {
     const shoop_shared_ptr<MidiPort> port = nullptr;
+
+    // Tracy plotters for graph midi port debugging
+    TracyPlotter m_plot_frames_processed;
+    TracyPlotter m_plot_input_events;
+    TracyPlotter m_plot_output_events;
+    TracyPlotter m_plot_notes_active;
+    TracyPlotter m_plot_internal_connections;
 public:
     GraphMidiPort (shoop_shared_ptr<MidiPort> const& port,
                    shoop_shared_ptr<BackendSession> const& backend);

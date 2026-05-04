@@ -26,6 +26,23 @@ AudioPort<SampleT>::AudioPort(shoop_shared_ptr<UsedBufferPool> buffer_pool)
 }
 
 template<typename SampleT>
+AudioPort<SampleT>::AudioPort(shoop_shared_ptr<UsedBufferPool> buffer_pool,
+                               const char* plot_prefix)
+    : PortInterface(),
+      ma_muted(false),
+      ma_gain(1.0f),
+      ma_input_peak(0.0f),
+      ma_output_peak(0.0f),
+      mp_always_record_ringbuffer(buffer_pool, buffer_pool ? 32 : 0),
+      m_plot_input_peak(std::string(plot_prefix) + "/input_peak"),
+      m_plot_output_peak(std::string(plot_prefix) + "/output_peak"),
+      m_plot_frames_processed(std::string(plot_prefix) + "/frames_processed"),
+      m_plot_muted(std::string(plot_prefix) + "/muted"),
+      m_plot_gain(std::string(plot_prefix) + "/gain")
+{
+}
+
+template<typename SampleT>
 AudioPort<SampleT>::~AudioPort() {}
 
 template<typename SampleT>
@@ -57,6 +74,13 @@ void AudioPort<SampleT>::PROC_process(uint32_t nframes) {
         muted ?
             0.0f : input_peak * gain
     );
+
+    // Plot metrics
+    m_plot_input_peak.plot(static_cast<double>(input_peak));
+    m_plot_output_peak.plot(static_cast<double>(ma_output_peak.load()));
+    m_plot_frames_processed.plot(static_cast<double>(nframes));
+    m_plot_muted.plot(muted ? 1.0 : 0.0);
+    m_plot_gain.plot(static_cast<double>(gain));
 
     // Process ringbuffer
     if (mp_always_record_ringbuffer.single_buffer_size() > 0) {

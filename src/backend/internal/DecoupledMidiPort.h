@@ -5,6 +5,7 @@
 #include <vector>
 #include <stdint.h>
 #include <boost/lockfree/spsc_queue.hpp>
+#include "TracyPlotter.h"
 
 class AudioMidiDriver;
 
@@ -28,6 +29,10 @@ class DecoupledMidiPort : public shoop_enable_shared_from_this<DecoupledMidiPort
     const shoop_port_direction_t direction;
     Queue ma_queue;
     shoop_weak_ptr<AudioMidiDriver> maybe_driver;
+
+    // Tracy plotters for decoupled midi port debugging
+    TracyPlotter m_plot_incoming_queue_size;
+    TracyPlotter m_plot_outgoing_queue_size;
 public:
     DecoupledMidiPort (shoop_shared_ptr<MidiPort> port,
                        shoop_weak_ptr<AudioMidiDriver> driver,

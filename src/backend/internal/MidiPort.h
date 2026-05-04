@@ -10,6 +10,7 @@
 #include "MidiRingbuffer.h"
 #include "LoggingBackend.h"
 #include "shoop_shared_ptr.h"
+#include "TracyPlotter.h"
 
 struct MidiPortTestHelper;
 
@@ -31,6 +32,13 @@ class MidiPort : public virtual PortInterface, private ModuleLoggingEnabled<"Bac
     shoop_shared_ptr<MidiRingbuffer> m_midi_ringbuffer;
     std::atomic<uint32_t> n_input_events = 0;
     std::atomic<uint32_t> n_output_events = 0;
+
+    // Tracy plotters for MIDI port debugging
+    TracyPlotter m_plot_input_events{"MidiPort/input_events"};
+    TracyPlotter m_plot_output_events{"MidiPort/output_events"};
+    TracyPlotter m_plot_notes_active{"MidiPort/notes_active"};
+    TracyPlotter m_plot_muted{"MidiPort/muted"};
+    TracyPlotter m_plot_frames_processed{"MidiPort/frames_processed"};
 public:
     friend class MidiPortTestHelper;
 

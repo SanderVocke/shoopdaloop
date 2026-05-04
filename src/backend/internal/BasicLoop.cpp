@@ -191,6 +191,15 @@ void BasicLoop::PROC_process(uint32_t n_samples) {
         if (mp_next_trigger.value() == 0) { mp_next_trigger = std::nullopt; }
     }
     PROC_handle_poi();
+
+    // Plot metrics
+    m_plot_mode.plot(static_cast<double>(ma_mode.load()));
+    m_plot_position.plot(static_cast<double>(ma_position.load()));
+    m_plot_length.plot(static_cast<double>(ma_length.load()));
+    m_plot_poi.plot(mp_next_poi.has_value() ? static_cast<double>(mp_next_poi.value().when) : -1.0);
+    m_plot_trigger_eta.plot(mp_next_trigger.has_value() ? static_cast<double>(mp_next_trigger.value()) : -1.0);
+    m_plot_triggering.plot(ma_triggering_now.load() ? 1.0 : 0.0);
+    m_plot_planned_transitions.plot(static_cast<double>(mp_planned_states.size()));
 }
 
 void BasicLoop::set_sync_source(shoop_shared_ptr<LoopInterface> const& src, bool thread_safe) {

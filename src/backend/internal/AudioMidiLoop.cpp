@@ -157,6 +157,10 @@ void AudioMidiLoop::PROC_process_channels(
                             maybe_next_mode_eta, n_samples, pos_before,
                             pos_after, length_before, length_after);
     }
+
+    // Plot metrics
+    m_plot_n_audio_channels.plot(static_cast<double>(mp_audio_channels.size()));
+    m_plot_n_midi_channels.plot(static_cast<double>(mp_midi_channels.size()));
 }
 
 void AudioMidiLoop::PROC_update_poi() {

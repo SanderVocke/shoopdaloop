@@ -5,6 +5,7 @@
 #include "BufferQueue.h"
 #include "BufferPool.h"
 #include "shoop_shared_ptr.h"
+#include "TracyPlotter.h"
 
 template<typename SampleT>
 class AudioPort : public virtual PortInterface {
@@ -18,11 +19,20 @@ class AudioPort : public virtual PortInterface {
     // Can be used for retroactive recording.
     BufferQueue<SampleT> mp_always_record_ringbuffer;
 
+    // Tracy plotters for audio port debugging
+    TracyPlotter m_plot_input_peak{"AudioPort/input_peak"};
+    TracyPlotter m_plot_output_peak{"AudioPort/output_peak"};
+    TracyPlotter m_plot_frames_processed{"AudioPort/frames_processed"};
+    TracyPlotter m_plot_muted{"AudioPort/muted"};
+    TracyPlotter m_plot_gain{"AudioPort/gain"};
+
 public:
     using RingbufferSnapshot = typename BufferQueue<SampleT>::Snapshot;
     using UsedBufferPool = BufferPool<SampleT>;
 
     AudioPort(shoop_shared_ptr<UsedBufferPool> maybe_ringbuffer_buffer_pool);
+    explicit AudioPort(shoop_shared_ptr<UsedBufferPool> maybe_ringbuffer_buffer_pool,
+                       const char* plot_prefix);
     virtual ~AudioPort();
 
     virtual SampleT *PROC_get_buffer(uint32_t n_frames) = 0;

@@ -203,6 +203,10 @@ WeakGraphNodeSet GraphLoopChannel::graph_node_0_outgoing_edges() {
 
 void GraphLoopChannel::PROC_process(uint32_t nframes) {
     channel->PROC_finalize_process();
+
+    // Plot metrics
+    m_plot_frames_processed.plot(static_cast<double>(nframes));
+    m_plot_data_dirty.plot(get_data_dirty() ? 1.0 : 0.0);
 }
 
 void GraphLoopChannel::graph_node_1_process(uint32_t nframes) {

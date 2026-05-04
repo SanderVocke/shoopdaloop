@@ -17,7 +17,14 @@ InternalAudioPort<SampleT>::InternalAudioPort(std::string name,
                                               unsigned input_connectability,
                                               unsigned output_connectability,
                                               shoop_shared_ptr<typename AudioPort<SampleT>::UsedBufferPool> buffer_pool)
-    : AudioPort<SampleT>(buffer_pool), m_name(name), m_buffer(n_frames), m_input_connectability(input_connectability), m_output_connectability(output_connectability) {}
+    : AudioPort<SampleT>(buffer_pool),
+      m_name(name),
+      m_buffer(n_frames),
+      m_input_connectability(input_connectability),
+      m_output_connectability(output_connectability),
+      m_plot_frames_processed("InternalAudioPort/" + name + "/frames_processed"),
+      m_plot_input_peak("InternalAudioPort/" + name + "/input_peak"),
+      m_plot_output_peak("InternalAudioPort/" + name + "/output_peak") {}
 
 template <typename SampleT>
 SampleT *InternalAudioPort<SampleT>::PROC_get_buffer(uint32_t n_frames) {
@@ -68,6 +75,11 @@ void InternalAudioPort<SampleT>::PROC_prepare(uint32_t nframes) {
 template <typename SampleT>
 void InternalAudioPort<SampleT>::PROC_process(uint32_t nframes) {
     AudioPort<SampleT>::PROC_process(nframes);
+
+    // Plot metrics
+    m_plot_frames_processed.plot(static_cast<double>(nframes));
+    m_plot_input_peak.plot(static_cast<double>(this->get_input_peak()));
+    m_plot_output_peak.plot(static_cast<double>(this->get_output_peak()));
 }
 
 template <typename SampleT>

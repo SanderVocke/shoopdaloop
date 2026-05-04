@@ -9,6 +9,7 @@
 #include "TrackedRelativeMidiState.h"
 #include <stdint.h>
 #include "shoop_shared_ptr.h"
+#include "TracyPlotter.h"
 
 class MidiChannel : public ChannelInterface,
                     private WithCommandQueue,
@@ -75,6 +76,14 @@ private:
     std::atomic<unsigned> ma_data_seq_nr = 0;
     std::atomic<uint32_t> ma_pre_play_samples = 0;
     std::atomic<int> ma_last_played_back_sample = 0;
+
+    // Tracy plotters for MIDI channel debugging
+    TracyPlotter m_plot_data_length{"MidiChannel/data_length"};
+    TracyPlotter m_plot_events_triggered{"MidiChannel/events_triggered"};
+    TracyPlotter m_plot_mode{"MidiChannel/mode"};
+    TracyPlotter m_plot_notes_active{"MidiChannel/notes_active"};
+    TracyPlotter m_plot_process_flags{"MidiChannel/process_flags"};
+    TracyPlotter m_plot_n_storage_events{"MidiChannel/n_storage_events"};
 
 public:
     MidiChannel(uint32_t data_size, shoop_channel_mode_t mode);

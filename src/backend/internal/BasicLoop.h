@@ -5,6 +5,7 @@
 #include <deque>
 #include <atomic>
 #include "shoop_shared_ptr.h"
+#include "TracyPlotter.h"
 
 #ifdef BASICLOOP_EXPOSE_ALL_FOR_TEST
 #define private public
@@ -48,6 +49,15 @@ protected:
     // Cached state for easy lock-free reading.
     std::atomic<shoop_loop_mode_t> ma_maybe_next_planned_mode =  LoopMode_Stopped;
     std::atomic<int> ma_maybe_next_planned_delay = -1;
+
+    // Tracy plotters for loop debugging
+    TracyPlotter m_plot_mode{"Loop/mode"};
+    TracyPlotter m_plot_position{"Loop/position"};
+    TracyPlotter m_plot_length{"Loop/length"};
+    TracyPlotter m_plot_poi{"Loop/poi"};
+    TracyPlotter m_plot_trigger_eta{"Loop/trigger_eta"};
+    TracyPlotter m_plot_triggering{"Loop/triggering"};
+    TracyPlotter m_plot_planned_transitions{"Loop/planned_transitions"};
 
 public:
 

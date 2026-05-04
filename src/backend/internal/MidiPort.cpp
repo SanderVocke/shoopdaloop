@@ -23,6 +23,7 @@ void MidiPort::set_muted(bool muted) {
         log<log_level_debug>("muted -> {}", muted);
     }
     ma_muted = muted;
+    m_plot_muted.plot(muted ? 1.0 : 0.0);
 }
 
 bool MidiPort::get_muted() const { return ma_muted; }
@@ -178,6 +179,12 @@ void MidiPort::PROC_process(uint32_t nframes) {
             }
         }
     }
+
+    // Plot metrics
+    m_plot_input_events.plot(static_cast<double>(n_input_events.load()));
+    m_plot_output_events.plot(static_cast<double>(n_output_events.load()));
+    m_plot_notes_active.plot(static_cast<double>(get_n_output_notes_active()));
+    m_plot_frames_processed.plot(static_cast<double>(nframes));
 }
 
 MidiPort::MidiPort(

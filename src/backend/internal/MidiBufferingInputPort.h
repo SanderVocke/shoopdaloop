@@ -3,6 +3,7 @@
 #include "MidiPort.h"
 #include <stdint.h>
 #include <vector>
+#include "TracyPlotter.h"
 
 // A MIDI buffer that can be read from. It buffers messages from another
 // input source so that they can be passed on as references and sorted
@@ -31,6 +32,9 @@ protected:
                  }
     };
     std::vector<ReadMessage> m_temp_midi_storage;
+
+    // Tracy plotters for MIDI buffering input port debugging
+    TracyPlotter m_plot_buffered_messages{"MidiBufferingInputPort/buffered_messages"};
 public:
 
     uint32_t PROC_get_n_events() const override;

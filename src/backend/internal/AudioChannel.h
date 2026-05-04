@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <vector>
 #include "shoop_shared_ptr.h"
+#include "TracyPlotter.h"
 
 template<typename SampleT>
 class AudioChannel : public ChannelInterface,
@@ -49,6 +50,14 @@ private:
     uint32_t   mp_recording_source_buffer_size = 0;
 
     unsigned mp_prev_process_flags = 0;
+
+    // Tracy plotters for audio channel debugging
+    TracyPlotter m_plot_data_length{"AudioChannel/data_length"};
+    TracyPlotter m_plot_position{"AudioChannel/position"};
+    TracyPlotter m_plot_mode{"AudioChannel/mode"};
+    TracyPlotter m_plot_output_peak{"AudioChannel/output_peak"};
+    TracyPlotter m_plot_process_flags{"AudioChannel/process_flags"};
+    TracyPlotter m_plot_n_buffers{"AudioChannel/n_buffers"};
 
     enum class ProcessingCommandType {
         RawCopy,

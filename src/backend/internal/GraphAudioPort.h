@@ -1,9 +1,16 @@
 #pragma once
 #include "GraphPort.h"
 #include "shoop_shared_ptr.h"
+#include "TracyPlotter.h"
 
 class GraphAudioPort : public GraphPort {
     const shoop_shared_ptr<shoop_types::_AudioPort> port = nullptr;
+
+    // Tracy plotters for graph audio port debugging
+    TracyPlotter m_plot_frames_processed;
+    TracyPlotter m_plot_input_peak;
+    TracyPlotter m_plot_output_peak;
+    TracyPlotter m_plot_internal_connections;
 public:
     GraphAudioPort (shoop_shared_ptr<shoop_types::_AudioPort> const& port,
                         shoop_shared_ptr<BackendSession> const& backend);

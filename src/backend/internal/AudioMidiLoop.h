@@ -6,6 +6,7 @@
 #include "ProcessProfiling.h"
 #include <optional>
 #include "shoop_shared_ptr.h"
+#include "TracyPlotter.h"
 
 template<typename SampleT> class AudioPort;
 
@@ -13,6 +14,10 @@ template<typename SampleT> class AudioPort;
 class AudioMidiLoop : public BasicLoop {
     std::vector<shoop_shared_ptr<ChannelInterface>> mp_audio_channels;
     std::vector<shoop_shared_ptr<ChannelInterface>> mp_midi_channels;
+
+    // Tracy plotters for audio-midi loop debugging
+    TracyPlotter m_plot_n_audio_channels{"AudioMidiLoop/n_audio_channels"};
+    TracyPlotter m_plot_n_midi_channels{"AudioMidiLoop/n_midi_channels"};
 
   public:
     AudioMidiLoop();
