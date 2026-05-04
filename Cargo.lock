@@ -134,6 +134,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
 
 [[package]]
+name = "arc-swap"
+version = "1.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a3a1fd6f75306b68087b831f025c712524bcb19aad54e557b1129cfa0a2b207"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "arrayvec"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -478,6 +487,7 @@ name = "common"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "arc-swap",
  "colored",
  "ctor",
  "humantime",
@@ -487,6 +497,7 @@ dependencies = [
  "shlex",
  "toml",
  "tracing",
+ "tracing-log",
  "tracing-subscriber",
  "tracing-tracy",
  "tracy-client",

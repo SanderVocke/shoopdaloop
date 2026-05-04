@@ -62,8 +62,8 @@ where
 }
 
 pub fn init_logging() -> Result<(), anyhow::Error> {
-    let mut env_filter = EnvFilter::from_default_env();
-    if let Ok(value) = std::env::var("SHOOP_LOG") {
+    let env_filter = if let Ok(value) = std::env::var("SHOOP_LOG") {
+        // SHOOP_LOG takes precedence
         let mut filter_str = String::new();
         let modules = LOG_MODULES.lock().unwrap();
 
@@ -91,8 +91,11 @@ pub fn init_logging() -> Result<(), anyhow::Error> {
                 }
             }
         }
-        env_filter = EnvFilter::new(filter_str);
-    }
+        EnvFilter::new(filter_str)
+    } else {
+        // Fall back to RUST_LOG, or default to "info" level if not set
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"))
+    };
 
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_ansi(true)
