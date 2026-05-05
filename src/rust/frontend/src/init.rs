@@ -25,22 +25,7 @@ fn register_qml_types_and_singletons() {
     qobj_test_screen_grabber::register_qml_singleton(&mdl, "ShoopRustTestScreenGrabber");
     qobj_tracing_capture::register_qml_singleton(&mdl, "ShoopRustTracingCapture");
 
-    // Singletons (QML)
-    if let Some(config) = GLOBAL_CONFIG.get() {
-        unsafe {
-            register_qml_singletons::ffi::register_qmlfile_singleton(
-                &mut format!("{}/AppRegistries.qml", config.qml_dir),
-                &mut mdl.clone(),
-                1,
-                0,
-                &mut "AppRegistries".to_string(),
-            );
-        }
-    } else {
-        error!("GLOBAL_CONFIG not set when registering QML singletons");
-    }
-
-    // Types
+    // Types (register BEFORE QML singletons which may use them)
     qobj_dummy_process_helper::register_qml_type(&mdl, "ShoopRustDummyProcessHelper");
     qobj_render_audio_waveform::register_qml_type(&mdl, "ShoopRustRenderAudioWaveform");
     qobj_render_midi_sequence::register_qml_type(&mdl, "ShoopRustRenderMidiSequence");
@@ -56,6 +41,21 @@ fn register_qml_types_and_singletons() {
     qobj_session_control_handler::register_qml_type(&mdl, "ShoopRustSessionControlHandler");
     qobj_midi_control_port::register_qml_type(&mdl, "ShoopRustMidiControlPort");
     qobj_logger::register_qml_type(&mdl, "ShoopRustLogger");
+
+    // Singletons (QML) - must be AFTER types since they may depend on them
+    if let Some(config) = GLOBAL_CONFIG.get() {
+        unsafe {
+            register_qml_singletons::ffi::register_qmlfile_singleton(
+                &mut format!("{}/AppRegistries.qml", config.qml_dir),
+                &mut mdl.clone(),
+                1,
+                0,
+                &mut "AppRegistries".to_string(),
+            );
+        }
+    } else {
+        error!("GLOBAL_CONFIG not set when registering QML singletons");
+    }
 }
 
 fn register_metatypes() {}
