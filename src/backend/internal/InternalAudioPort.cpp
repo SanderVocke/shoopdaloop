@@ -22,11 +22,11 @@ InternalAudioPort<SampleT>::InternalAudioPort(std::string name,
       m_buffer(n_frames),
       m_input_connectability(input_connectability),
       m_output_connectability(output_connectability),
-      m_plot_frames_processed("InternalAudioPort/" + name + "/frames_processed"),
-      m_plot_input_peak("InternalAudioPort/" + name + "/input_peak"),
-      m_plot_output_peak("InternalAudioPort/" + name + "/output_peak"),
-      m_plot_input_checksum("InternalAudioPort/" + name + "/input_checksum"),
-      m_plot_output_checksum("InternalAudioPort/" + name + "/output_checksum") {}
+      m_plot_frames_processed("frames_processed"),
+      m_plot_input_peak("input_peak"),
+      m_plot_output_peak("output_peak"),
+      m_plot_input_checksum("input_checksum"),
+      m_plot_output_checksum("output_checksum") {}
 
 template <typename SampleT>
 SampleT *InternalAudioPort<SampleT>::PROC_get_buffer(uint32_t n_frames) {
@@ -88,12 +88,13 @@ void InternalAudioPort<SampleT>::PROC_process(uint32_t nframes) {
     double output_checksum = checksum::compute_audio_checksum(buf, nframes);
     ma_output_checksum = output_checksum;
 
-    // Plot metrics
-    m_plot_frames_processed.plot(static_cast<double>(nframes));
-    m_plot_input_peak.plot(static_cast<double>(this->get_input_peak()));
-    m_plot_output_peak.plot(static_cast<double>(this->get_output_peak()));
-    m_plot_input_checksum.plot(input_checksum);
-    m_plot_output_checksum.plot(output_checksum);
+    // Plot metrics (use port name as base identifier for Tracy grouping)
+    const char* port_name = name();
+    m_plot_frames_processed.plot(static_cast<double>(nframes), port_name);
+    m_plot_input_peak.plot(static_cast<double>(this->get_input_peak()), port_name);
+    m_plot_output_peak.plot(static_cast<double>(this->get_output_peak()), port_name);
+    m_plot_input_checksum.plot(input_checksum, port_name);
+    m_plot_output_checksum.plot(output_checksum, port_name);
 }
 
 template <typename SampleT>

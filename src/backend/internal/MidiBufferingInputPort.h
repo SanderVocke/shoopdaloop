@@ -33,8 +33,8 @@ protected:
     };
     std::vector<ReadMessage> m_temp_midi_storage;
 
-    // Tracy plotters for MIDI buffering input port debugging
-    TracyPlotter m_plot_buffered_messages{"MidiBufferingInputPort/buffered_messages"};
+    // Tracy plotters for MIDI buffering input port debugging (suffix only)
+    TracyPlotter m_plot_buffered_messages{"buffered_messages"};
 public:
 
     uint32_t PROC_get_n_events() const override;

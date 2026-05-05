@@ -79,18 +79,18 @@ private:
     std::atomic<int> ma_last_played_back_sample = 0;
 
     // Tracy plotters for MIDI channel debugging
-    TracyPlotter m_plot_data_length{"MidiChannel/data_length"};
-    TracyPlotter m_plot_events_triggered{"MidiChannel/events_triggered"};
-    TracyPlotter m_plot_mode{"MidiChannel/mode"};
-    TracyPlotter m_plot_notes_active{"MidiChannel/notes_active"};
-    TracyPlotter m_plot_process_flags{"MidiChannel/process_flags"};
-    TracyPlotter m_plot_n_storage_events{"MidiChannel/n_storage_events"};
+    TracyPlotter m_plot_data_length{"data_length"};
+    TracyPlotter m_plot_events_triggered{"events_triggered"};
+    TracyPlotter m_plot_mode{"mode"};
+    TracyPlotter m_plot_notes_active{"notes_active"};
+    TracyPlotter m_plot_process_flags{"process_flags"};
+    TracyPlotter m_plot_n_storage_events{"n_storage_events"};
 
     // Checksum tracking for recorded/playback data consistency verification
     std::atomic<double> ma_recorded_checksum{0.0};
     std::atomic<double> ma_playback_checksum{0.0};
-    TracyPlotter m_plot_recorded_checksum{"MidiChannel/recorded_checksum"};
-    TracyPlotter m_plot_playback_checksum{"MidiChannel/playback_checksum"};
+    TracyPlotter m_plot_recorded_checksum{"recorded_checksum"};
+    TracyPlotter m_plot_playback_checksum{"playback_checksum"};
 
 public:
     MidiChannel(uint32_t data_size, shoop_channel_mode_t mode);

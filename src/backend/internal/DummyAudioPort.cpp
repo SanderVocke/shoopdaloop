@@ -9,12 +9,6 @@
 #undef max
 #endif
 
-namespace {
-std::string audio_port_plot_name(const std::string& name, const std::string& suffix) {
-    return "DummyAudioPort/" + name + "/" + suffix;
-}
-}
-
 
 DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction, shoop_shared_ptr<AudioPort<audio_sample_t>::UsedBufferPool> buffer_pool, shoop_weak_ptr<DummyExternalConnections> external_connections)
     : AudioPort<audio_sample_t>(buffer_pool), m_name(name),
@@ -22,11 +16,11 @@ DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t directio
       WithCommandQueue(100),
       m_direction(direction),
       m_queued_data(128),
-      m_plot_input_queued(audio_port_plot_name(name, "input_queued")),
-      m_plot_output_retained(audio_port_plot_name(name, "output_retained")),
-      m_plot_frames_processed(audio_port_plot_name(name, "frames_processed")),
-      m_plot_input_checksum(audio_port_plot_name(name, "input_checksum")),
-      m_plot_output_checksum(audio_port_plot_name(name, "output_checksum")) { }
+      m_plot_input_queued("input_queued"),
+      m_plot_output_retained("output_retained"),
+      m_plot_frames_processed("frames_processed"),
+      m_plot_input_checksum("input_checksum"),
+      m_plot_output_checksum("output_checksum") { }
 
 float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames) {
     size_t new_size = std::max({m_buffer_data.size(), (size_t)n_frames, (size_t)1});
@@ -46,7 +40,7 @@ void DummyAudioPort::queue_data(uint32_t n_frames, audio_sample_t const *data) {
             log<log_level_debug_trace>("--> Queued samples: {}", v);
         }
         this->m_queued_data.push(v);
-        this->m_plot_input_queued.plot(static_cast<double>(s));
+        this->m_plot_input_queued.plot(static_cast<double>(s), this->name());
     });
 }
 
@@ -67,7 +61,8 @@ void DummyAudioPort::PROC_process(uint32_t n_frames) {
 
     AudioPort<audio_sample_t>::PROC_process(n_frames);
 
-    m_plot_frames_processed.plot(static_cast<double>(n_frames));
+    const char* port_name = name();
+    m_plot_frames_processed.plot(static_cast<double>(n_frames), port_name);
 
     auto buf = PROC_get_buffer(n_frames);
     uint32_t to_store = std::min(n_frames, m_n_requested_samples.load());
@@ -75,7 +70,7 @@ void DummyAudioPort::PROC_process(uint32_t n_frames) {
     // Compute output checksum after AudioPort processing
     double output_checksum = checksum::compute_audio_checksum(buf, n_frames);
     ma_output_checksum = output_checksum;
-    m_plot_output_checksum.plot(output_checksum);
+    m_plot_output_checksum.plot(output_checksum, port_name);
 
     if (to_store > 0) {
         log<log_level_debug>("Buffering {} samples ({} total)", to_store, m_retained_samples.size() + to_store);
@@ -86,7 +81,7 @@ void DummyAudioPort::PROC_process(uint32_t n_frames) {
         }
         m_retained_samples.insert(m_retained_samples.end(), buf, buf+to_store);
         m_n_requested_samples -= to_store;
-        m_plot_output_retained.plot(static_cast<double>(m_retained_samples.size()));
+        m_plot_output_retained.plot(static_cast<double>(m_retained_samples.size()), port_name);
     }
 }
 
@@ -112,13 +107,14 @@ void DummyAudioPort::PROC_prepare(uint32_t n_frames) {
             log<log_level_debug>("Pop queue item. Another: {}", another);
         }
     }
-    m_plot_input_queued.plot(static_cast<double>(m_queued_data.read_available()));
+    const char* port_name = name();
+    m_plot_input_queued.plot(static_cast<double>(m_queued_data.read_available()), port_name);
     memset((void *)(buf+filled), 0, sizeof(audio_sample_t) * (n_frames - filled));
 
     // Compute input checksum after preparing buffer
     double input_checksum = checksum::compute_audio_checksum(buf, n_frames);
     ma_input_checksum = input_checksum;
-    m_plot_input_checksum.plot(input_checksum);
+    m_plot_input_checksum.plot(input_checksum, port_name);
 }
 
 void DummyAudioPort::request_data(uint32_t n_frames) {
@@ -137,7 +133,7 @@ std::vector<audio_sample_t> DummyAudioPort::dequeue_data(uint32_t n) {
         log<log_level_debug>("Yielding {} of {} output samples", n, s);
         rval = std::vector<audio_sample_t>(m_retained_samples.begin(), m_retained_samples.begin()+n);
         m_retained_samples.erase(m_retained_samples.begin(), m_retained_samples.begin()+n);
-        m_plot_output_retained.plot(static_cast<double>(m_retained_samples.size()));
+        m_plot_output_retained.plot(static_cast<double>(m_retained_samples.size()), name());
         if (should_log<log_level_debug_trace>()) {
             log<log_level_debug_trace>("--> Yielded samples: {}", rval);
         }

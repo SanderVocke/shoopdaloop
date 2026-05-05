@@ -22,8 +22,8 @@ AudioPort<SampleT>::AudioPort(shoop_shared_ptr<UsedBufferPool> buffer_pool)
       ma_input_peak(0.0f),
       ma_output_peak(0.0f),
       mp_always_record_ringbuffer(buffer_pool, buffer_pool ? 32 : 0),
-      m_plot_input_checksum("AudioPort/input_checksum"),
-      m_plot_output_checksum("AudioPort/output_checksum")
+      m_plot_input_checksum("input_checksum"),
+      m_plot_output_checksum("output_checksum")
 {
 }
 
@@ -36,13 +36,13 @@ AudioPort<SampleT>::AudioPort(shoop_shared_ptr<UsedBufferPool> buffer_pool,
       ma_input_peak(0.0f),
       ma_output_peak(0.0f),
       mp_always_record_ringbuffer(buffer_pool, buffer_pool ? 32 : 0),
-      m_plot_input_peak(std::string(plot_prefix) + "/input_peak"),
-      m_plot_output_peak(std::string(plot_prefix) + "/output_peak"),
-      m_plot_frames_processed(std::string(plot_prefix) + "/frames_processed"),
-      m_plot_muted(std::string(plot_prefix) + "/muted"),
-      m_plot_gain(std::string(plot_prefix) + "/gain"),
-      m_plot_input_checksum(std::string(plot_prefix) + "/input_checksum"),
-      m_plot_output_checksum(std::string(plot_prefix) + "/output_checksum")
+      m_plot_input_peak("input_peak"),
+      m_plot_output_peak("output_peak"),
+      m_plot_frames_processed("frames_processed"),
+      m_plot_muted("muted"),
+      m_plot_gain("gain"),
+      m_plot_input_checksum("input_checksum"),
+      m_plot_output_checksum("output_checksum")
 {
 }
 
@@ -87,14 +87,15 @@ void AudioPort<SampleT>::PROC_process(uint32_t nframes) {
     double output_checksum = checksum::compute_audio_checksum(buf, nframes);
     ma_output_checksum = output_checksum;
 
-    // Plot metrics
-    m_plot_input_peak.plot(static_cast<double>(input_peak));
-    m_plot_output_peak.plot(static_cast<double>(ma_output_peak.load()));
-    m_plot_frames_processed.plot(static_cast<double>(nframes));
-    m_plot_muted.plot(muted ? 1.0 : 0.0);
-    m_plot_gain.plot(static_cast<double>(gain));
-    m_plot_input_checksum.plot(input_checksum);
-    m_plot_output_checksum.plot(output_checksum);
+    // Plot metrics (use port name as base identifier for Tracy grouping)
+    const char* port_name = name();
+    m_plot_input_peak.plot(static_cast<double>(input_peak), port_name);
+    m_plot_output_peak.plot(static_cast<double>(ma_output_peak.load()), port_name);
+    m_plot_frames_processed.plot(static_cast<double>(nframes), port_name);
+    m_plot_muted.plot(muted ? 1.0 : 0.0, port_name);
+    m_plot_gain.plot(static_cast<double>(gain), port_name);
+    m_plot_input_checksum.plot(input_checksum, port_name);
+    m_plot_output_checksum.plot(output_checksum, port_name);
 
     // Process ringbuffer
     if (mp_always_record_ringbuffer.single_buffer_size() > 0) {

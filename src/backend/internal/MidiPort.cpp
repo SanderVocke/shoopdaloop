@@ -197,13 +197,14 @@ void MidiPort::PROC_process(uint32_t nframes) {
     ma_input_checksum = input_checksum;
     ma_output_checksum = output_checksum;
 
-    // Plot metrics
-    m_plot_input_events.plot(static_cast<double>(n_input_events.load()));
-    m_plot_output_events.plot(static_cast<double>(n_output_events.load()));
-    m_plot_notes_active.plot(static_cast<double>(get_n_output_notes_active()));
-    m_plot_frames_processed.plot(static_cast<double>(nframes));
-    m_plot_input_checksum.plot(input_checksum);
-    m_plot_output_checksum.plot(output_checksum);
+    // Plot metrics (use port name as base identifier for Tracy grouping)
+    const char* port_name = name();
+    m_plot_input_events.plot(static_cast<double>(n_input_events.load()), port_name);
+    m_plot_output_events.plot(static_cast<double>(n_output_events.load()), port_name);
+    m_plot_notes_active.plot(static_cast<double>(get_n_output_notes_active()), port_name);
+    m_plot_frames_processed.plot(static_cast<double>(nframes), port_name);
+    m_plot_input_checksum.plot(input_checksum, port_name);
+    m_plot_output_checksum.plot(output_checksum, port_name);
 }
 
 MidiPort::MidiPort(

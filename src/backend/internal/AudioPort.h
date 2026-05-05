@@ -20,18 +20,18 @@ class AudioPort : public virtual PortInterface {
     // Can be used for retroactive recording.
     BufferQueue<SampleT> mp_always_record_ringbuffer;
 
-    // Tracy plotters for audio port debugging
-    TracyPlotter m_plot_input_peak{"AudioPort/input_peak"};
-    TracyPlotter m_plot_output_peak{"AudioPort/output_peak"};
-    TracyPlotter m_plot_frames_processed{"AudioPort/frames_processed"};
-    TracyPlotter m_plot_muted{"AudioPort/muted"};
-    TracyPlotter m_plot_gain{"AudioPort/gain"};
+    // Tracy plotters for audio port debugging (suffixes only, base identifier from name())
+    TracyPlotter m_plot_input_peak{"input_peak"};
+    TracyPlotter m_plot_output_peak{"output_peak"};
+    TracyPlotter m_plot_frames_processed{"frames_processed"};
+    TracyPlotter m_plot_muted{"muted"};
+    TracyPlotter m_plot_gain{"gain"};
 
     // Checksum tracking for data consistency verification
     std::atomic<double> ma_input_checksum{0.0};
     std::atomic<double> ma_output_checksum{0.0};
-    TracyPlotter m_plot_input_checksum{"AudioPort/input_checksum"};
-    TracyPlotter m_plot_output_checksum{"AudioPort/output_checksum"};
+    TracyPlotter m_plot_input_checksum{"input_checksum"};
+    TracyPlotter m_plot_output_checksum{"output_checksum"};
 
 public:
     using RingbufferSnapshot = typename BufferQueue<SampleT>::Snapshot;

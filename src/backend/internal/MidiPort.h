@@ -38,14 +38,14 @@ class MidiPort : public virtual PortInterface, private ModuleLoggingEnabled<"Bac
     std::atomic<double> ma_input_checksum{0.0};
     std::atomic<double> ma_output_checksum{0.0};
 
-    // Tracy plotters for MIDI port debugging
-    TracyPlotter m_plot_input_events{"MidiPort/input_events"};
-    TracyPlotter m_plot_output_events{"MidiPort/output_events"};
-    TracyPlotter m_plot_notes_active{"MidiPort/notes_active"};
-    TracyPlotter m_plot_muted{"MidiPort/muted"};
-    TracyPlotter m_plot_frames_processed{"MidiPort/frames_processed"};
-    TracyPlotter m_plot_input_checksum{"MidiPort/input_checksum"};
-    TracyPlotter m_plot_output_checksum{"MidiPort/output_checksum"};
+    // Tracy plotters for MIDI port debugging (suffixes only, base identifier from name())
+    TracyPlotter m_plot_input_events{"input_events"};
+    TracyPlotter m_plot_output_events{"output_events"};
+    TracyPlotter m_plot_notes_active{"notes_active"};
+    TracyPlotter m_plot_muted{"muted"};
+    TracyPlotter m_plot_frames_processed{"frames_processed"};
+    TracyPlotter m_plot_input_checksum{"input_checksum"};
+    TracyPlotter m_plot_output_checksum{"output_checksum"};
 public:
     friend class MidiPortTestHelper;
 

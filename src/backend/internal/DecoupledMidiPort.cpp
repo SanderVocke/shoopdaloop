@@ -16,10 +16,10 @@ DecoupledMidiPort<TimeType, SizeType>::DecoupledMidiPort(
       ma_queue(queue_size),
       direction(direction),
       maybe_driver(driver),
-      m_plot_incoming_queue_size("DecoupledMidiPort/" + std::string(port->name()) + "/incoming_queue_size"),
-      m_plot_outgoing_queue_size("DecoupledMidiPort/" + std::string(port->name()) + "/outgoing_queue_size"),
-      m_plot_input_checksum("DecoupledMidiPort/" + std::string(port->name()) + "/input_checksum"),
-      m_plot_output_checksum("DecoupledMidiPort/" + std::string(port->name()) + "/output_checksum") {};
+      m_plot_incoming_queue_size("incoming_queue_size"),
+      m_plot_outgoing_queue_size("outgoing_queue_size"),
+      m_plot_input_checksum("input_checksum"),
+      m_plot_output_checksum("output_checksum") {};
 
 template <typename TimeType, typename SizeType>
 shoop_shared_ptr<MidiPort> const& DecoupledMidiPort<TimeType, SizeType>::get_port() {
@@ -51,8 +51,9 @@ void DecoupledMidiPort<TimeType, SizeType>::PROC_process(uint32_t n_frames) {
             input_checksum += checksum::compute_midi_message_checksum(time, size, data);
         }
         ma_input_checksum = input_checksum;
-        m_plot_incoming_queue_size.plot(static_cast<double>(ma_queue.read_available()));
-        m_plot_input_checksum.plot(input_checksum);
+        const char* port_name = port->name();
+        m_plot_incoming_queue_size.plot(static_cast<double>(ma_queue.read_available()), port_name);
+        m_plot_input_checksum.plot(input_checksum, port_name);
     } else if (direction == shoop_port_direction_t::ShoopPortDirection_Output) {
         port->PROC_prepare(n_frames);
         auto buf = port->PROC_get_write_data_into_port_buffer(n_frames);
@@ -65,9 +66,10 @@ void DecoupledMidiPort<TimeType, SizeType>::PROC_process(uint32_t n_frames) {
             output_checksum += checksum::compute_midi_message_checksum(0, m.data.size(), m.data.data());
         }
         ma_output_checksum = output_checksum;
+        const char* port_name = port->name();
         port->PROC_process(n_frames);
-        m_plot_outgoing_queue_size.plot(static_cast<double>(ma_queue.read_available()));
-        m_plot_output_checksum.plot(output_checksum);
+        m_plot_outgoing_queue_size.plot(static_cast<double>(ma_queue.read_available()), port_name);
+        m_plot_output_checksum.plot(output_checksum, port_name);
     }
 }
 

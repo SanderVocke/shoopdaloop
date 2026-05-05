@@ -273,19 +273,19 @@ MidiChannel::PROC_process(shoop_loop_mode_t mode, std::optional<shoop_loop_mode_
         mp_playback_target_buffer->first.n_frames_processed += n_samples;
     }
 
-    // Store and plot checksums
+    // Store and plot checksums (use fallback identifier since channel has no inherent name)
     ma_recorded_checksum = recorded_checksum;
     ma_playback_checksum = playback_checksum;
-    m_plot_recorded_checksum.plot(recorded_checksum);
-    m_plot_playback_checksum.plot(playback_checksum);
+    m_plot_recorded_checksum.plot(recorded_checksum, "MidiChannel");
+    m_plot_playback_checksum.plot(playback_checksum, "MidiChannel");
 
     // Plot metrics
-    m_plot_data_length.plot(static_cast<double>(ma_data_length.load()));
-    m_plot_events_triggered.plot(static_cast<double>(ma_n_events_triggered.load()));
-    m_plot_mode.plot(static_cast<double>(ma_mode.load()));
-    m_plot_notes_active.plot(static_cast<double>(mp_output_midi_state->n_notes_active()));
-    m_plot_process_flags.plot(static_cast<double>(process_flags));
-    m_plot_n_storage_events.plot(static_cast<double>(mp_storage->n_events()));
+    m_plot_data_length.plot(static_cast<double>(ma_data_length.load()), "MidiChannel");
+    m_plot_events_triggered.plot(static_cast<double>(ma_n_events_triggered.load()), "MidiChannel");
+    m_plot_mode.plot(static_cast<double>(ma_mode.load()), "MidiChannel");
+    m_plot_notes_active.plot(static_cast<double>(mp_output_midi_state->n_notes_active()), "MidiChannel");
+    m_plot_process_flags.plot(static_cast<double>(process_flags), "MidiChannel");
+    m_plot_n_storage_events.plot(static_cast<double>(mp_storage->n_events()), "MidiChannel");
 }
 
 void

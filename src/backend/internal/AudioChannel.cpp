@@ -316,19 +316,19 @@ void AudioChannel<SampleT>::PROC_process(
         mp_playback_target_buffer_size -= n_samples;
     }
 
-    // Store and plot checksums
+    // Store and plot checksums (use fallback identifier since channel has no inherent name)
     ma_recorded_checksum = recorded_checksum;
     ma_playback_checksum = playback_checksum;
-    m_plot_recorded_checksum.plot(recorded_checksum);
-    m_plot_playback_checksum.plot(playback_checksum);
+    m_plot_recorded_checksum.plot(recorded_checksum, "AudioChannel");
+    m_plot_playback_checksum.plot(playback_checksum, "AudioChannel");
 
     // Plot metrics
-    m_plot_data_length.plot(static_cast<double>(ma_buffers_data_length.load()));
-    m_plot_position.plot(static_cast<double>(process_params.position));
-    m_plot_mode.plot(static_cast<double>(ma_mode.load()));
-    m_plot_output_peak.plot(static_cast<double>(ma_output_peak.load()));
-    m_plot_process_flags.plot(static_cast<double>(process_flags));
-    m_plot_n_buffers.plot(static_cast<double>(mp_buffers.n_buffers()));
+    m_plot_data_length.plot(static_cast<double>(ma_buffers_data_length.load()), "AudioChannel");
+    m_plot_position.plot(static_cast<double>(process_params.position), "AudioChannel");
+    m_plot_mode.plot(static_cast<double>(ma_mode.load()), "AudioChannel");
+    m_plot_output_peak.plot(static_cast<double>(ma_output_peak.load()), "AudioChannel");
+    m_plot_process_flags.plot(static_cast<double>(process_flags), "AudioChannel");
+    m_plot_n_buffers.plot(static_cast<double>(mp_buffers.n_buffers()), "AudioChannel");
 }
 
 template <typename SampleT>

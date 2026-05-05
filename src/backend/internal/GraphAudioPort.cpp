@@ -8,12 +8,12 @@ GraphAudioPort::GraphAudioPort (shoop_shared_ptr<shoop_types::_AudioPort> const&
                     shoop_shared_ptr<BackendSession> const& backend) :
     GraphPort(backend),
     port(port),
-    m_plot_frames_processed("GraphAudioPort/" + std::string(port->name()) + "/frames_processed"),
-    m_plot_input_peak("GraphAudioPort/" + std::string(port->name()) + "/input_peak"),
-    m_plot_output_peak("GraphAudioPort/" + std::string(port->name()) + "/output_peak"),
-    m_plot_internal_connections("GraphAudioPort/" + std::string(port->name()) + "/internal_connections"),
-    m_plot_input_checksum("GraphAudioPort/" + std::string(port->name()) + "/input_checksum"),
-    m_plot_output_checksum("GraphAudioPort/" + std::string(port->name()) + "/output_checksum") {}
+    m_plot_frames_processed("frames_processed"),
+    m_plot_input_peak("input_peak"),
+    m_plot_output_peak("output_peak"),
+    m_plot_internal_connections("internal_connections"),
+    m_plot_input_checksum("input_checksum"),
+    m_plot_output_checksum("output_checksum") {}
 
 PortInterface &GraphAudioPort::get_port() const {
     return static_cast<PortInterface &>(*port);
@@ -77,11 +77,12 @@ void GraphAudioPort::PROC_process(uint32_t n_frames) {
     // Compute output checksum after processing
     double output_checksum = checksum::compute_audio_checksum(buf, n_frames);
 
-    // Plot metrics
-    m_plot_frames_processed.plot(static_cast<double>(n_frames));
-    m_plot_input_peak.plot(static_cast<double>(port->get_input_peak()));
-    m_plot_output_peak.plot(static_cast<double>(port->get_output_peak()));
-    m_plot_internal_connections.plot(static_cast<double>(mp_internal_port_connections.size()));
-    m_plot_input_checksum.plot(input_checksum);
-    m_plot_output_checksum.plot(output_checksum);
+    // Plot metrics (use port name as base identifier for Tracy grouping)
+    const char* port_name = port->name();
+    m_plot_frames_processed.plot(static_cast<double>(n_frames), port_name);
+    m_plot_input_peak.plot(static_cast<double>(port->get_input_peak()), port_name);
+    m_plot_output_peak.plot(static_cast<double>(port->get_output_peak()), port_name);
+    m_plot_internal_connections.plot(static_cast<double>(mp_internal_port_connections.size()), port_name);
+    m_plot_input_checksum.plot(input_checksum, port_name);
+    m_plot_output_checksum.plot(output_checksum, port_name);
 }

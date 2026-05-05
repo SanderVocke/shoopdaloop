@@ -53,18 +53,18 @@ private:
     unsigned mp_prev_process_flags = 0;
 
     // Tracy plotters for audio channel debugging
-    TracyPlotter m_plot_data_length{"AudioChannel/data_length"};
-    TracyPlotter m_plot_position{"AudioChannel/position"};
-    TracyPlotter m_plot_mode{"AudioChannel/mode"};
-    TracyPlotter m_plot_output_peak{"AudioChannel/output_peak"};
-    TracyPlotter m_plot_process_flags{"AudioChannel/process_flags"};
-    TracyPlotter m_plot_n_buffers{"AudioChannel/n_buffers"};
+    TracyPlotter m_plot_data_length{"data_length"};
+    TracyPlotter m_plot_position{"position"};
+    TracyPlotter m_plot_mode{"mode"};
+    TracyPlotter m_plot_output_peak{"output_peak"};
+    TracyPlotter m_plot_process_flags{"process_flags"};
+    TracyPlotter m_plot_n_buffers{"n_buffers"};
 
     // Checksum tracking for recorded/playback data consistency verification
     std::atomic<double> ma_recorded_checksum{0.0};
     std::atomic<double> ma_playback_checksum{0.0};
-    TracyPlotter m_plot_recorded_checksum{"AudioChannel/recorded_checksum"};
-    TracyPlotter m_plot_playback_checksum{"AudioChannel/playback_checksum"};
+    TracyPlotter m_plot_recorded_checksum{"recorded_checksum"};
+    TracyPlotter m_plot_playback_checksum{"playback_checksum"};
 
     enum class ProcessingCommandType {
         RawCopy,

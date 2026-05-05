@@ -8,12 +8,6 @@
 #undef max
 #endif
 
-namespace {
-std::string midi_port_plot_name(const std::string& name, const std::string& suffix) {
-    return "DummyMidiPort/" + name + "/" + suffix;
-}
-}
-
 
 MidiSortableMessageInterface &
 DummyMidiPort::PROC_get_event_reference(uint32_t idx) {
@@ -57,11 +51,11 @@ DummyMidiPort::DummyMidiPort(std::string name, shoop_port_direction_t direction,
     : MidiPort(true, true, true),
       DummyPort(name, direction, PortDataType::Midi, external_connections),
       WithCommandQueue(100),
-      m_plot_input_queued(midi_port_plot_name(name, "input_queued")),
-      m_plot_output_written(midi_port_plot_name(name, "output_written")),
-      m_plot_frames_requested(midi_port_plot_name(name, "frames_requested")),
-      m_plot_input_checksum(midi_port_plot_name(name, "input_checksum")),
-      m_plot_output_checksum(midi_port_plot_name(name, "output_checksum")) {}
+      m_plot_input_queued("input_queued"),
+      m_plot_output_written("output_written"),
+      m_plot_frames_requested("frames_requested"),
+      m_plot_input_checksum("input_checksum"),
+      m_plot_output_checksum("output_checksum") {}
 
 unsigned DummyMidiPort::input_connectability() const {
     return (m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
@@ -87,7 +81,7 @@ void DummyMidiPort::queue_msg(uint32_t size, uint32_t time, uint8_t const *data)
         std::stable_sort(this->m_queued_msgs.begin(), this->m_queued_msgs.end(), [](StoredMessage const& a, StoredMessage const& b) {
             return a.time < b.time;
         });
-        this->m_plot_input_queued.plot(static_cast<double>(m_queued_msgs.size()));
+        this->m_plot_input_queued.plot(static_cast<double>(m_queued_msgs.size()), this->name());
     });
 }
 
@@ -107,7 +101,7 @@ void DummyMidiPort::request_data(uint32_t n_frames) {
         ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("request {} frames", n_frames);
         this->n_requested_frames = n_frames;
         this->n_original_requested_frames = n_frames;
-        this->m_plot_frames_requested.plot(static_cast<double>(n_frames));
+        this->m_plot_frames_requested.plot(static_cast<double>(n_frames), this->name());
     });
 }
 
@@ -134,7 +128,8 @@ void DummyMidiPort::PROC_prepare(uint32_t nframes) {
             msg.time = new_val;
         });
     }
-    m_plot_input_queued.plot(static_cast<double>(m_queued_msgs.size()));
+    const char* port_name = name();
+    m_plot_input_queued.plot(static_cast<double>(m_queued_msgs.size()), port_name);
     n_processed_last_round = 0;
     current_buf_frames = nframes;
 
@@ -147,7 +142,7 @@ void DummyMidiPort::PROC_prepare(uint32_t nframes) {
         }
     }
     ma_input_checksum = input_checksum;
-    m_plot_input_checksum.plot(input_checksum);
+    m_plot_input_checksum.plot(input_checksum, port_name);
 
     MidiPort::PROC_prepare(nframes);
 }
@@ -176,7 +171,7 @@ void DummyMidiPort::PROC_process(uint32_t nframes) {
                     m_written_requested_msgs.push_back(StoredMessage(new_time, msg.size, msg.data));
                 }
             }
-            m_plot_output_written.plot(static_cast<double>(m_written_requested_msgs.size()));
+            m_plot_output_written.plot(static_cast<double>(m_written_requested_msgs.size()), name());
         } else {
             ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("{} messages not propagated to external due to being muted", m_buffer_data.size());
         }
@@ -186,7 +181,7 @@ void DummyMidiPort::PROC_process(uint32_t nframes) {
 
     // Store and plot output checksum
     ma_output_checksum = output_checksum;
-    m_plot_output_checksum.plot(output_checksum);
+    m_plot_output_checksum.plot(output_checksum, name());
 
     MidiPort::PROC_process(nframes);
 }
@@ -236,7 +231,7 @@ std::vector<DummyMidiPort::StoredMessage> DummyMidiPort::get_written_requested_m
         ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Dequeue (have {} msgs)", this->m_written_requested_msgs.size());
         result = this->m_written_requested_msgs;
         this->m_written_requested_msgs.clear();
-        this->m_plot_output_written.plot(0.0);
+        this->m_plot_output_written.plot(0.0, this->name());
     });
     return result;
 }

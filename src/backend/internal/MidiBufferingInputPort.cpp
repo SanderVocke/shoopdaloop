@@ -63,6 +63,6 @@ void MidiBufferingInputPort::PROC_process(uint32_t nframes) {
 
     MidiPort::PROC_process(nframes);
 
-    // Plot metrics
-    m_plot_buffered_messages.plot(static_cast<double>(m_temp_midi_storage.size()));
+    // Plot metrics (use "MidiBufferingInputPort" as fallback identifier since this class has no name)
+    m_plot_buffered_messages.plot(static_cast<double>(m_temp_midi_storage.size()), "MidiBufferingInputPort");
 }
