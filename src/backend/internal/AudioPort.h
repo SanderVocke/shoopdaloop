@@ -6,6 +6,7 @@
 #include "BufferPool.h"
 #include "shoop_shared_ptr.h"
 #include "TracyPlotter.h"
+#include "Checksum.h"
 
 template<typename SampleT>
 class AudioPort : public virtual PortInterface {
@@ -25,6 +26,12 @@ class AudioPort : public virtual PortInterface {
     TracyPlotter m_plot_frames_processed{"AudioPort/frames_processed"};
     TracyPlotter m_plot_muted{"AudioPort/muted"};
     TracyPlotter m_plot_gain{"AudioPort/gain"};
+
+    // Checksum tracking for data consistency verification
+    std::atomic<double> ma_input_checksum{0.0};
+    std::atomic<double> ma_output_checksum{0.0};
+    TracyPlotter m_plot_input_checksum{"AudioPort/input_checksum"};
+    TracyPlotter m_plot_output_checksum{"AudioPort/output_checksum"};
 
 public:
     using RingbufferSnapshot = typename BufferQueue<SampleT>::Snapshot;
@@ -51,6 +58,9 @@ public:
     void reset_input_peak();
     float get_output_peak() const;
     void reset_output_peak();
+
+    double get_input_checksum() const { return ma_input_checksum.load(); }
+    double get_output_checksum() const { return ma_output_checksum.load(); }
 
     void set_ringbuffer_n_samples(unsigned n) override;
     unsigned get_ringbuffer_n_samples() const override;

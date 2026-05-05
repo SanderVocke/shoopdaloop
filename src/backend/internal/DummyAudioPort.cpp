@@ -24,7 +24,9 @@ DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t directio
       m_queued_data(128),
       m_plot_input_queued(audio_port_plot_name(name, "input_queued")),
       m_plot_output_retained(audio_port_plot_name(name, "output_retained")),
-      m_plot_frames_processed(audio_port_plot_name(name, "frames_processed")) { }
+      m_plot_frames_processed(audio_port_plot_name(name, "frames_processed")),
+      m_plot_input_checksum(audio_port_plot_name(name, "input_checksum")),
+      m_plot_output_checksum(audio_port_plot_name(name, "output_checksum")) { }
 
 float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames) {
     size_t new_size = std::max({m_buffer_data.size(), (size_t)n_frames, (size_t)1});
@@ -69,6 +71,12 @@ void DummyAudioPort::PROC_process(uint32_t n_frames) {
 
     auto buf = PROC_get_buffer(n_frames);
     uint32_t to_store = std::min(n_frames, m_n_requested_samples.load());
+
+    // Compute output checksum after AudioPort processing
+    double output_checksum = checksum::compute_audio_checksum(buf, n_frames);
+    ma_output_checksum = output_checksum;
+    m_plot_output_checksum.plot(output_checksum);
+
     if (to_store > 0) {
         log<log_level_debug>("Buffering {} samples ({} total)", to_store, m_retained_samples.size() + to_store);
         if (should_log<log_level_debug_trace>()) {
@@ -106,6 +114,11 @@ void DummyAudioPort::PROC_prepare(uint32_t n_frames) {
     }
     m_plot_input_queued.plot(static_cast<double>(m_queued_data.read_available()));
     memset((void *)(buf+filled), 0, sizeof(audio_sample_t) * (n_frames - filled));
+
+    // Compute input checksum after preparing buffer
+    double input_checksum = checksum::compute_audio_checksum(buf, n_frames);
+    ma_input_checksum = input_checksum;
+    m_plot_input_checksum.plot(input_checksum);
 }
 
 void DummyAudioPort::request_data(uint32_t n_frames) {

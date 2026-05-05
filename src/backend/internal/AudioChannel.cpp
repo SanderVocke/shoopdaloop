@@ -223,6 +223,10 @@ void AudioChannel<SampleT>::PROC_process(
     // Execute any commands queued from other threads.
     PROC_handle_command_queue();
 
+    // Reset per-cycle checksums
+    double recorded_checksum = 0.0;
+    double playback_checksum = 0.0;
+
     auto process_params = get_channel_process_params(
         mode, maybe_next_mode, maybe_next_mode_delay_cycles,
         maybe_next_mode_eta, pos_before, ma_start_offset, ma_mode);
@@ -266,10 +270,14 @@ void AudioChannel<SampleT>::PROC_process(
         PROC_process_playback(
             process_params.position, length_before, n_samples, false,
             mp_playback_target_buffer, mp_playback_target_buffer_size);
+        // Compute playback checksum from target buffer after playback
+        playback_checksum = checksum::compute_audio_checksum(mp_playback_target_buffer, n_samples);
     } else {
         ma_last_played_back_sample = -1;
     }
     if (process_flags & ChannelRecord) {
+        // Compute recorded checksum from source buffer before recording
+        recorded_checksum = checksum::compute_audio_checksum(mp_recording_source_buffer, n_samples);
         PROC_process_record(n_samples,
                             ((int)length_before + ma_start_offset),
                             mp_buffers, ma_buffers_data_length,
@@ -277,6 +285,8 @@ void AudioChannel<SampleT>::PROC_process(
                             mp_recording_source_buffer_size);
     }
     if (process_flags & ChannelReplace) {
+        // Compute recorded checksum for replace mode
+        recorded_checksum = checksum::compute_audio_checksum(mp_recording_source_buffer, n_samples);
         PROC_process_replace(process_params.position, length_before,
                                 n_samples, mp_recording_source_buffer,
                                 mp_recording_source_buffer_size);
@@ -285,6 +295,8 @@ void AudioChannel<SampleT>::PROC_process(
         if (!(mp_prev_process_flags & ChannelPreRecord)) {
             log<log_level_debug>("Pre-record start");
         }
+        // Compute prerecorded checksum
+        recorded_checksum = checksum::compute_audio_checksum(mp_recording_source_buffer, n_samples);
         PROC_process_record(n_samples, mp_prerecord_buffers_data_length,
                             mp_prerecord_buffers,
                             mp_prerecord_buffers_data_length,
@@ -303,6 +315,12 @@ void AudioChannel<SampleT>::PROC_process(
         mp_playback_target_buffer += n_samples;
         mp_playback_target_buffer_size -= n_samples;
     }
+
+    // Store and plot checksums
+    ma_recorded_checksum = recorded_checksum;
+    ma_playback_checksum = playback_checksum;
+    m_plot_recorded_checksum.plot(recorded_checksum);
+    m_plot_playback_checksum.plot(playback_checksum);
 
     // Plot metrics
     m_plot_data_length.plot(static_cast<double>(ma_buffers_data_length.load()));
@@ -437,6 +455,9 @@ void AudioChannel<SampleT>::load_data(SampleT *samples, uint32_t len,
                                       bool thread_safe) {
     log<log_level_debug_trace>("load data ({} samples)", len);
 
+    // Compute checksum of loaded data
+    double loaded_checksum = checksum::compute_audio_checksum(samples, len);
+
     // Convert to internal storage layout
     auto buffers =
         Buffers(ma_buffer_pool, std::ceil((float)len / (float)ma_buffer_size));
@@ -451,11 +472,12 @@ void AudioChannel<SampleT>::load_data(SampleT *samples, uint32_t len,
                sizeof(SampleT) * n_elems);
     }
 
-    auto cmd = [this, buffers, len]() {
+    auto cmd = [this, buffers, len, loaded_checksum]() {
         mp_buffers = buffers;
         ma_buffers_data_length = len;
         mp_prerecord_buffers_data_length = 0;
         ma_start_offset = 0;
+        ma_recorded_checksum = loaded_checksum;  // Set checksum to loaded data sum
         data_changed();
     };
 
@@ -710,6 +732,8 @@ void AudioChannel<SampleT>::PROC_clear(uint32_t length) {
     mp_buffers.ensure_available(length);
     ma_buffers_data_length = length;
     ma_start_offset = 0;
+    ma_recorded_checksum = 0.0;  // Reset checksum on clear
+    ma_playback_checksum = 0.0;
     data_changed();
 }
 

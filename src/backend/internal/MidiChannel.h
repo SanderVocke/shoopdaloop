@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include "shoop_shared_ptr.h"
 #include "TracyPlotter.h"
+#include "Checksum.h"
 
 class MidiChannel : public ChannelInterface,
                     private WithCommandQueue,
@@ -85,6 +86,12 @@ private:
     TracyPlotter m_plot_process_flags{"MidiChannel/process_flags"};
     TracyPlotter m_plot_n_storage_events{"MidiChannel/n_storage_events"};
 
+    // Checksum tracking for recorded/playback data consistency verification
+    std::atomic<double> ma_recorded_checksum{0.0};
+    std::atomic<double> ma_playback_checksum{0.0};
+    TracyPlotter m_plot_recorded_checksum{"MidiChannel/recorded_checksum"};
+    TracyPlotter m_plot_playback_checksum{"MidiChannel/playback_checksum"};
+
 public:
     MidiChannel(uint32_t data_size, shoop_channel_mode_t mode);
     ~MidiChannel();
@@ -133,7 +140,7 @@ public:
     void PROC_send_message_ref(MidiWriteableBufferInterface &buf, MidiSortableMessageInterface const &event);
 
     void PROC_send_message_value(MidiWriteableBufferInterface &buf, uint32_t time, uint32_t size, uint8_t *data);
-    void PROC_process_playback(uint32_t our_pos, uint32_t our_length, uint32_t n_samples, bool muted);
+    void PROC_process_playback(uint32_t our_pos, uint32_t our_length, uint32_t n_samples, bool muted, double *checksum_out = nullptr);
 
     std::optional<uint32_t> PROC_get_next_poi(shoop_loop_mode_t mode,
                                                std::optional<shoop_loop_mode_t> maybe_next_mode,
@@ -169,6 +176,9 @@ public:
     uint32_t get_n_notes_active() const;
 
     uint32_t get_n_events_triggered();
+
+    double get_recorded_checksum() const { return ma_recorded_checksum.load(); }
+    double get_playback_checksum() const { return ma_playback_checksum.load(); }
 
     void set_start_offset(int offset) override;
 

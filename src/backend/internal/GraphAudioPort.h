@@ -2,6 +2,7 @@
 #include "GraphPort.h"
 #include "shoop_shared_ptr.h"
 #include "TracyPlotter.h"
+#include "Checksum.h"
 
 class GraphAudioPort : public GraphPort {
     const shoop_shared_ptr<shoop_types::_AudioPort> port = nullptr;
@@ -11,6 +12,10 @@ class GraphAudioPort : public GraphPort {
     TracyPlotter m_plot_input_peak;
     TracyPlotter m_plot_output_peak;
     TracyPlotter m_plot_internal_connections;
+
+    // Checksum tracking for data consistency verification
+    TracyPlotter m_plot_input_checksum;
+    TracyPlotter m_plot_output_checksum;
 public:
     GraphAudioPort (shoop_shared_ptr<shoop_types::_AudioPort> const& port,
                         shoop_shared_ptr<BackendSession> const& backend);

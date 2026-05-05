@@ -17,7 +17,9 @@ DecoupledMidiPort<TimeType, SizeType>::DecoupledMidiPort(
       direction(direction),
       maybe_driver(driver),
       m_plot_incoming_queue_size("DecoupledMidiPort/" + std::string(port->name()) + "/incoming_queue_size"),
-      m_plot_outgoing_queue_size("DecoupledMidiPort/" + std::string(port->name()) + "/outgoing_queue_size") {};
+      m_plot_outgoing_queue_size("DecoupledMidiPort/" + std::string(port->name()) + "/outgoing_queue_size"),
+      m_plot_input_checksum("DecoupledMidiPort/" + std::string(port->name()) + "/input_checksum"),
+      m_plot_output_checksum("DecoupledMidiPort/" + std::string(port->name()) + "/output_checksum") {};
 
 template <typename TimeType, typename SizeType>
 shoop_shared_ptr<MidiPort> const& DecoupledMidiPort<TimeType, SizeType>::get_port() {
@@ -34,6 +36,9 @@ void DecoupledMidiPort<TimeType, SizeType>::PROC_process(uint32_t n_frames) {
         if (n>0) {
             log<log_level_debug>("Got {} MIDI events", n);
         }
+
+        // Compute input checksum from received messages
+        double input_checksum = 0.0;
         for (uint32_t idx = 0; idx < n; idx++) {
             Message m;
             const uint8_t *data;
@@ -43,17 +48,26 @@ void DecoupledMidiPort<TimeType, SizeType>::PROC_process(uint32_t n_frames) {
             m.data = std::vector<uint8_t>(size);
             memcpy((void *)m.data.data(), (void *)data, size);
             ma_queue.push(m);
+            input_checksum += checksum::compute_midi_message_checksum(time, size, data);
         }
+        ma_input_checksum = input_checksum;
         m_plot_incoming_queue_size.plot(static_cast<double>(ma_queue.read_available()));
+        m_plot_input_checksum.plot(input_checksum);
     } else if (direction == shoop_port_direction_t::ShoopPortDirection_Output) {
         port->PROC_prepare(n_frames);
         auto buf = port->PROC_get_write_data_into_port_buffer(n_frames);
+
+        // Compute output checksum from outgoing messages
+        double output_checksum = 0.0;
         Message m;
         while (ma_queue.pop(m)) {
             buf->PROC_write_event_value(m.data.size(), 0, m.data.data());
+            output_checksum += checksum::compute_midi_message_checksum(0, m.data.size(), m.data.data());
         }
+        ma_output_checksum = output_checksum;
         port->PROC_process(n_frames);
         m_plot_outgoing_queue_size.plot(static_cast<double>(ma_queue.read_available()));
+        m_plot_output_checksum.plot(output_checksum);
     }
 }
 

@@ -14,7 +14,9 @@ GraphMidiPort::GraphMidiPort (shoop_shared_ptr<MidiPort> const& port,
     m_plot_input_events("GraphMidiPort/" + std::string(port->name()) + "/input_events"),
     m_plot_output_events("GraphMidiPort/" + std::string(port->name()) + "/output_events"),
     m_plot_notes_active("GraphMidiPort/" + std::string(port->name()) + "/notes_active"),
-    m_plot_internal_connections("GraphMidiPort/" + std::string(port->name()) + "/internal_connections") {}
+    m_plot_internal_connections("GraphMidiPort/" + std::string(port->name()) + "/internal_connections"),
+    m_plot_input_checksum("GraphMidiPort/" + std::string(port->name()) + "/input_checksum"),
+    m_plot_output_checksum("GraphMidiPort/" + std::string(port->name()) + "/output_checksum") {}
 
 PortInterface &GraphMidiPort::get_port() const {
     return static_cast<PortInterface&>(*port);
@@ -82,10 +84,13 @@ void GraphMidiPort::PROC_process(uint32_t n_frames) {
     port->PROC_process(n_frames);
     PROC_internal_connections(n_frames);
 
-    // Plot metrics
+    // Plot metrics (checksums are computed and stored in MidiPort::PROC_process)
     m_plot_frames_processed.plot(static_cast<double>(n_frames));
     m_plot_input_events.plot(static_cast<double>(port->get_n_input_events()));
     m_plot_output_events.plot(static_cast<double>(port->get_n_output_events()));
     m_plot_notes_active.plot(static_cast<double>(port->get_n_output_notes_active()));
     m_plot_internal_connections.plot(static_cast<double>(mp_internal_port_connections.size()));
+    // Plot checksums from the underlying MidiPort
+    m_plot_input_checksum.plot(port->get_input_checksum());
+    m_plot_output_checksum.plot(port->get_output_checksum());
 }

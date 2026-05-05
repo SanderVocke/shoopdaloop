@@ -74,7 +74,11 @@ void MidiPort::PROC_process(uint32_t nframes) {
     if (nframes > 0) {
         log<log_level_debug_trace>("process {}", nframes);
     }
-    
+
+    // Reset checksums for this iteration
+    double input_checksum = 0.0;
+    double output_checksum = 0.0;
+
     // Get buffers
     auto write_in_buf = ma_write_data_into_port_buffer.load();
     auto read_out_buf = ma_read_output_data_buffer.load();
@@ -127,6 +131,8 @@ void MidiPort::PROC_process(uint32_t nframes) {
                 read_in_buf->PROC_get_event_value(i, size, time, data);
                 if (write_into_procbuf) { procbuf->PROC_write_event_value(size, time, data); }
             }
+            // Add to input checksum
+            input_checksum += checksum::compute_midi_message_checksum(time, size, data);
             if(m_maybe_midi_state) {
                 m_maybe_midi_state->process_msg(data);
             }
@@ -148,6 +154,13 @@ void MidiPort::PROC_process(uint32_t nframes) {
             auto n_events = source->PROC_get_n_events();
             log<log_level_debug_trace>("# output events: {}", n_events);
             n_output_events += n_events;
+
+            // Compute output checksum
+            for(uint32_t i=0; i<n_events; i++) {
+                auto &msg = source->PROC_get_event_reference(i);
+                output_checksum += checksum::compute_midi_message_checksum(
+                    msg.get_time(), msg.get_size(), msg.get_data());
+            }
 
             if (write_out_buf) {
                 // We need to actively write data to the output.
@@ -180,11 +193,17 @@ void MidiPort::PROC_process(uint32_t nframes) {
         }
     }
 
+    // Store checksums
+    ma_input_checksum = input_checksum;
+    ma_output_checksum = output_checksum;
+
     // Plot metrics
     m_plot_input_events.plot(static_cast<double>(n_input_events.load()));
     m_plot_output_events.plot(static_cast<double>(n_output_events.load()));
     m_plot_notes_active.plot(static_cast<double>(get_n_output_notes_active()));
     m_plot_frames_processed.plot(static_cast<double>(nframes));
+    m_plot_input_checksum.plot(input_checksum);
+    m_plot_output_checksum.plot(output_checksum);
 }
 
 MidiPort::MidiPort(

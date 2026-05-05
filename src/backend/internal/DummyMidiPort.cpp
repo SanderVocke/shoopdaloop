@@ -59,7 +59,9 @@ DummyMidiPort::DummyMidiPort(std::string name, shoop_port_direction_t direction,
       WithCommandQueue(100),
       m_plot_input_queued(midi_port_plot_name(name, "input_queued")),
       m_plot_output_written(midi_port_plot_name(name, "output_written")),
-      m_plot_frames_requested(midi_port_plot_name(name, "frames_requested")) {}
+      m_plot_frames_requested(midi_port_plot_name(name, "frames_requested")),
+      m_plot_input_checksum(midi_port_plot_name(name, "input_checksum")),
+      m_plot_output_checksum(midi_port_plot_name(name, "output_checksum")) {}
 
 unsigned DummyMidiPort::input_connectability() const {
     return (m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
@@ -135,6 +137,18 @@ void DummyMidiPort::PROC_prepare(uint32_t nframes) {
     m_plot_input_queued.plot(static_cast<double>(m_queued_msgs.size()));
     n_processed_last_round = 0;
     current_buf_frames = nframes;
+
+    // Compute input checksum from queued messages
+    double input_checksum = 0.0;
+    for (auto const& msg : m_queued_msgs) {
+        if (msg.time < nframes) {
+            input_checksum += checksum::compute_midi_message_checksum(
+                msg.time, msg.size, msg.data.data());
+        }
+    }
+    ma_input_checksum = input_checksum;
+    m_plot_input_checksum.plot(input_checksum);
+
     MidiPort::PROC_prepare(nframes);
 }
 
@@ -142,6 +156,14 @@ void DummyMidiPort::PROC_process(uint32_t nframes) {
     if (nframes > 0) {
         ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("Process {}", nframes);
     }
+
+    // Compute output checksum from buffer data
+    double output_checksum = 0.0;
+    for (auto const& msg : m_buffer_data) {
+        output_checksum += checksum::compute_midi_message_checksum(
+            msg.time, msg.size, msg.data.data());
+    }
+
     if (m_direction == shoop_port_direction_t::ShoopPortDirection_Output) {
         std::stable_sort(m_buffer_data.begin(), m_buffer_data.end(), [](StoredMessage const& a, StoredMessage const& b) {
             return a.time < b.time;
@@ -161,6 +183,11 @@ void DummyMidiPort::PROC_process(uint32_t nframes) {
     }
     n_processed_last_round = nframes;
     n_requested_frames -= std::min(nframes, n_requested_frames.load());
+
+    // Store and plot output checksum
+    ma_output_checksum = output_checksum;
+    m_plot_output_checksum.plot(output_checksum);
+
     MidiPort::PROC_process(nframes);
 }
 

@@ -8,6 +8,7 @@
 #include <vector>
 #include "shoop_shared_ptr.h"
 #include "TracyPlotter.h"
+#include "Checksum.h"
 
 template<typename SampleT>
 class AudioChannel : public ChannelInterface,
@@ -58,6 +59,12 @@ private:
     TracyPlotter m_plot_output_peak{"AudioChannel/output_peak"};
     TracyPlotter m_plot_process_flags{"AudioChannel/process_flags"};
     TracyPlotter m_plot_n_buffers{"AudioChannel/n_buffers"};
+
+    // Checksum tracking for recorded/playback data consistency verification
+    std::atomic<double> ma_recorded_checksum{0.0};
+    std::atomic<double> ma_playback_checksum{0.0};
+    TracyPlotter m_plot_recorded_checksum{"AudioChannel/recorded_checksum"};
+    TracyPlotter m_plot_playback_checksum{"AudioChannel/playback_checksum"};
 
     enum class ProcessingCommandType {
         RawCopy,
@@ -208,6 +215,9 @@ public:
     void set_gain(float gain);
 
     float get_gain();
+
+    double get_recorded_checksum() const { return ma_recorded_checksum.load(); }
+    double get_playback_checksum() const { return ma_playback_checksum.load(); }
     
     void set_start_offset(int offset) override;
 

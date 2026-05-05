@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include "shoop_shared_ptr.h"
 #include "TracyPlotter.h"
+#include "Checksum.h"
 
 class DummyAudioPort : public virtual AudioPort<audio_sample_t>,
                        public DummyPort,
@@ -32,6 +33,12 @@ class DummyAudioPort : public virtual AudioPort<audio_sample_t>,
     TracyPlotter m_plot_input_queued;
     TracyPlotter m_plot_output_retained;
     TracyPlotter m_plot_frames_processed;
+
+    // Checksum tracking for data consistency verification
+    std::atomic<double> ma_input_checksum{0.0};
+    std::atomic<double> ma_output_checksum{0.0};
+    TracyPlotter m_plot_input_checksum;
+    TracyPlotter m_plot_output_checksum;
 
 public:
     DummyAudioPort(

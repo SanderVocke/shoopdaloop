@@ -129,6 +129,10 @@ MidiChannel::PROC_process(shoop_loop_mode_t mode, std::optional<shoop_loop_mode_
                   uint32_t length_after) {
     PROC_handle_command_queue();
 
+    // Reset per-cycle checksums
+    double recorded_checksum = 0.0;
+    double playback_checksum = 0.0;
+
     auto process_params = get_channel_process_params(
         mode, maybe_next_mode, maybe_next_mode_delay_cycles,
         maybe_next_mode_eta, pos_before, ma_start_offset, ma_mode);
@@ -213,12 +217,22 @@ MidiChannel::PROC_process(shoop_loop_mode_t mode, std::optional<shoop_loop_mode_
         }
 
         PROC_process_playback(process_params.position, length_before,
-                                n_samples, false);
+                                n_samples, false, &playback_checksum);
     } else if (ma_last_played_back_sample.load() >= 0) {
         log<log_level_debug_trace>("Playback ended, clearing last played sample");
         ma_last_played_back_sample = -1;
     }
     if (process_flags & ChannelRecord) {
+        // Compute recorded checksum from input buffer
+        if (mp_recording_source_buffer.has_value()) {
+            auto &recbuf = mp_recording_source_buffer.value();
+            for (uint32_t idx = recbuf.first.n_events_processed; idx < recbuf.first.n_events_total; idx++) {
+                uint32_t t, s;
+                const uint8_t *d;
+                recbuf.second->PROC_get_event_reference(idx).get(s, t, d);
+                recorded_checksum += checksum::compute_midi_message_checksum(t, s, d);
+            }
+        }
         PROC_process_record(*mp_storage, ma_data_length,
                             *mp_recording_start_state_tracker,
                             length_before + ma_start_offset, n_samples);
@@ -226,6 +240,16 @@ MidiChannel::PROC_process(shoop_loop_mode_t mode, std::optional<shoop_loop_mode_
     } else if (process_flags & ChannelPreRecord) {
         if (!(mp_prev_process_flags & ChannelPreRecord)) {
             log<log_level_debug>("Pre-record start");
+        }
+        // Compute prerecorded checksum from input buffer
+        if (mp_recording_source_buffer.has_value()) {
+            auto &recbuf = mp_recording_source_buffer.value();
+            for (uint32_t idx = recbuf.first.n_events_processed; idx < recbuf.first.n_events_total; idx++) {
+                uint32_t t, s;
+                const uint8_t *d;
+                recbuf.second->PROC_get_event_reference(idx).get(s, t, d);
+                recorded_checksum += checksum::compute_midi_message_checksum(t, s, d);
+            }
         }
         PROC_process_record(*mp_prerecord_storage,
                             ma_prerecord_data_length,
@@ -248,6 +272,12 @@ MidiChannel::PROC_process(shoop_loop_mode_t mode, std::optional<shoop_loop_mode_
     if (mp_playback_target_buffer.has_value()) {
         mp_playback_target_buffer->first.n_frames_processed += n_samples;
     }
+
+    // Store and plot checksums
+    ma_recorded_checksum = recorded_checksum;
+    ma_playback_checksum = playback_checksum;
+    m_plot_recorded_checksum.plot(recorded_checksum);
+    m_plot_playback_checksum.plot(playback_checksum);
 
     // Plot metrics
     m_plot_data_length.plot(static_cast<double>(ma_data_length.load()));
@@ -377,6 +407,8 @@ MidiChannel::clear(bool thread_safe) {
         mp_recording_start_state_tracker->reset();
         mp_temp_prerecording_start_state_tracker->reset();
         ma_n_events_triggered = 0;
+        ma_recorded_checksum = 0.0;  // Reset checksum on clear
+        ma_playback_checksum = 0.0;
         PROC_set_length(0);
         ma_start_offset = 0;
         data_changed();
@@ -436,7 +468,7 @@ MidiChannel::PROC_send_message_value(MidiWriteableBufferInterface &buf, uint32_t
 
 void
 MidiChannel::PROC_process_playback(uint32_t our_pos, uint32_t our_length, uint32_t n_samples,
-                           bool muted) {
+                           bool muted, double *checksum_out) {
     if (!mp_playback_target_buffer.has_value()) {
         throw_error<std::runtime_error>("Playing without target buffer");
     }
@@ -491,13 +523,16 @@ MidiChannel::PROC_process_playback(uint32_t our_pos, uint32_t our_length, uint32
         {
             log<log_level_debug_trace>("Resolve pre-playback state");
             mp_track_state_until_first_msg_playback->resolve_to_output(
-                [this, &buf](uint32_t size, uint8_t *data) {
+                [this, &buf, checksum_out](uint32_t size, uint8_t *data) {
                     // Play state resolving msgs ASAP (at current buffer pos)
                     auto time = mp_playback_target_buffer->first.n_frames_processed;
                     log<log_level_debug_trace>("  - Restore msg @ {}: {} {} {}",
                                         time,
                                         data[0], data[1], data[2]);
                     PROC_send_message_value(*buf.second, time, size, data);
+                    if (checksum_out) {
+                        *checksum_out += checksum::compute_midi_message_checksum(time, size, data);
+                    }
                 });
             mp_track_state_until_first_msg_playback->set_valid(false);
         }
@@ -519,6 +554,10 @@ MidiChannel::PROC_process_playback(uint32_t our_pos, uint32_t our_length, uint32
                 log<log_level_debug_trace>("playback: play msg @ {}", event->storage_time);
                 event->proc_time = proc_time;
                 PROC_send_message_ref(*buf.second, *event);
+                if (checksum_out) {
+                    *checksum_out += checksum::compute_midi_message_checksum(
+                        event->storage_time, event->size, event->data());
+                }
                 ma_last_played_back_sample = event->storage_time;
                 ma_n_events_triggered++;
             }
@@ -629,16 +668,24 @@ MidiChannel::set_contents(Contents contents, uint32_t length_samples,
     size_t new_storage_size = std::max((size_t)mp_storage->bytes_capacity(), min_storage_size);
     auto s = shoop_make_shared<Storage>(new_storage_size);
 
+    // Compute checksum of loaded data
+    double loaded_checksum = 0.0;
     for (auto const &elem : contents.recorded_msgs) {
         s->append(elem.time, elem.size, elem.data.data());
+        loaded_checksum += checksum::compute_midi_message_checksum(elem.time, elem.size, elem.data.data());
+    }
+    // Also add state messages to checksum
+    for (auto const &data : contents.starting_state_msg_datas) {
+        loaded_checksum += checksum::compute_midi_message_checksum(0, data.size(), data.data());
     }
     log<log_level_debug>("Loading data ({} messages + {} state messages in storage {}).", s->n_events(), n_state_msgs, fmt::ptr(s.get()));
 
-    auto fn = [this, s, length_samples, new_start_state]() {
+    auto fn = [this, s, length_samples, new_start_state, loaded_checksum]() {
         log<log_level_debug_trace>("Applying loaded data (storage @ {}).", fmt::ptr(s.get()));
         mp_storage = s;
         mp_playback_cursor = mp_storage->create_cursor();
         mp_recording_start_state_tracker->start_tracking_from_with_state(mp_input_midi_state, new_start_state);
+        ma_recorded_checksum = loaded_checksum;  // Set checksum to loaded data sum
         PROC_set_length(length_samples);
         data_changed();
     };
