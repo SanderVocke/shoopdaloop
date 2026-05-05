@@ -9,7 +9,8 @@ pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
+        include!("cxx-qt-lib-shoop/qobject.h");
+        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -46,8 +47,8 @@ pub mod ffi {
         #[qproperty(i32, next_transition_delay, READ, NOTIFY=next_transition_delay_changed)]
         #[qproperty(i32, cycle_nr, READ, NOTIFY)]
         // Frontend -> Backend properties
-        #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
-        #[qproperty(*mut QObject, sync_source, READ, WRITE=set_sync_source, NOTIFY=sync_source_changed)]
+        #[qproperty(*mut ShoopQObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
+        #[qproperty(*mut ShoopQObject, sync_source, READ, WRITE=set_sync_source, NOTIFY=sync_source_changed)]
         #[qproperty(QString, instance_identifier, READ, WRITE=set_instance_identifier, NOTIFY=instance_identifier_changed)]
         // Other properties
         type LoopGui = super::LoopGuiRust;
@@ -110,10 +111,10 @@ pub mod ffi {
         );
 
         #[qinvokable]
-        pub unsafe fn set_sync_source(self: Pin<&mut LoopGui>, sync_source: *mut QObject);
+        pub unsafe fn set_sync_source(self: Pin<&mut LoopGui>, sync_source: *mut ShoopQObject);
 
         #[qinvokable]
-        pub unsafe fn set_backend(self: Pin<&mut LoopGui>, backend: *mut QObject);
+        pub unsafe fn set_backend(self: Pin<&mut LoopGui>, backend: *mut ShoopQObject);
 
         #[qinvokable]
         pub unsafe fn set_initialized(self: Pin<&mut LoopGui>, initialized: bool);
@@ -129,11 +130,11 @@ pub mod ffi {
 
         #[qsignal]
         #[cxx_name = "backendChanged"]
-        pub unsafe fn backend_changed(self: Pin<&mut LoopGui>, backend: *mut QObject);
+        pub unsafe fn backend_changed(self: Pin<&mut LoopGui>, backend: *mut ShoopQObject);
 
         #[qsignal]
         #[cxx_name = "syncSourceChanged"]
-        pub unsafe fn sync_source_changed(self: Pin<&mut LoopGui>, sync_source: *mut QObject);
+        pub unsafe fn sync_source_changed(self: Pin<&mut LoopGui>, sync_source: *mut ShoopQObject);
 
         #[qsignal]
         #[cxx_name = "instanceIdentifierChanged"]
@@ -207,7 +208,7 @@ pub mod ffi {
 
         #[qsignal]
         #[inherit]
-        pub unsafe fn destroyed(self: Pin<&mut LoopGui>, obj: *mut QObject);
+        pub unsafe fn destroyed(self: Pin<&mut LoopGui>, obj: *mut ShoopQObject);
     }
 
     unsafe extern "C++" {
@@ -229,7 +230,7 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/cast_ptr.h");
         #[rust_name = "qobject_to_loop_ptr"]
-        unsafe fn cast_qobject_ptr(obj: *mut QObject) -> *mut LoopGui;
+        unsafe fn cast_qobject_ptr(obj: *mut ShoopQObject) -> *mut LoopGui;
 
         include!("cxx-qt-lib-shoop/qobject_classname.h");
         #[rust_name = "qobject_class_name_loop"]
@@ -250,16 +251,16 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/qobject.h");
         #[rust_name = "loop_gui_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj: *mut LoopGui) -> *mut QObject;
+        unsafe fn qobjectFromPtr(obj: *mut LoopGui) -> *mut ShoopQObject;
 
         #[rust_name = "loop_gui_qobject_from_ref"]
-        fn qobjectFromRef(obj: &LoopGui) -> &QObject;
+        fn qobjectFromRef(obj: &LoopGui) -> &ShoopQObject;
 
         #[rust_name = "from_qobject_ref_loop_gui"]
-        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const LoopGui);
+        unsafe fn fromQObjectRef(obj: &ShoopQObject, output: *mut *const LoopGui);
 
         #[rust_name = "from_qobject_mut_loop_gui"]
-        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut LoopGui);
+        unsafe fn fromQObjectMut(obj: Pin<&mut ShoopQObject>, output: *mut *mut LoopGui);
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = (*mut QQuickItem,)> for LoopGui {}
@@ -272,14 +273,14 @@ use ffi::*;
 
 pub struct LoopGuiRust {
     // Properties
-    pub backend: *mut QObject,
+    pub backend: *mut ShoopQObject,
     pub initialized: bool,
     pub mode: i32,
     pub length: i32,
     pub position: i32,
     pub next_mode: i32,
     pub next_transition_delay: i32,
-    pub sync_source: *mut QObject,
+    pub sync_source: *mut ShoopQObject,
     pub instance_identifier: QString,
     pub cycle_nr: i32,
     pub backend_loop_wrapper: cxx::UniquePtr<QSharedPointer_QObject>,
@@ -313,14 +314,14 @@ impl cxx_qt_lib_shoop::qquickitem::AsQQuickItem for LoopGui {
 }
 
 impl cxx_qt_lib_shoop::qobject::FromQObject for LoopGui {
-    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::QObject) -> *const Self {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::ShoopQObject) -> *const Self {
         let mut output: *const Self = std::ptr::null();
         from_qobject_ref_loop_gui(obj, &mut output as *mut *const Self);
         output
     }
 
     unsafe fn ptr_from_qobject_mut(
-        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::QObject>,
+        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::ShoopQObject>,
     ) -> *mut Self {
         let mut output: *mut Self = std::ptr::null_mut();
         from_qobject_mut_loop_gui(obj, &mut output as *mut *mut Self);

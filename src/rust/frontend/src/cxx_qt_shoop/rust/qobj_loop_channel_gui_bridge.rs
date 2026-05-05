@@ -8,7 +8,8 @@ pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
+        include!("cxx-qt-lib-shoop/qobject.h");
+        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -48,9 +49,9 @@ pub mod ffi {
         #[qproperty(i32, midi_n_notes_active, READ, NOTIFY=midi_n_notes_active_changed)]
         // Frontend -> Backend properties
         #[qproperty(bool, is_midi, READ, WRITE=set_is_midi, NOTIFY=is_midi_changed)]
-        #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
+        #[qproperty(*mut ShoopQObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
         #[qproperty(QList_QVariant, ports_to_connect, READ, WRITE=set_ports_to_connect, NOTIFY=ports_to_connect_changed)]
-        #[qproperty(*mut QObject, channel_loop, READ=get_channel_loop, WRITE=set_channel_loop, NOTIFY=channel_loop_changed)]
+        #[qproperty(*mut ShoopQObject, channel_loop, READ=get_channel_loop, WRITE=set_channel_loop, NOTIFY=channel_loop_changed)]
         // Other properties
         #[qproperty(QVariant, recording_started_at, READ, WRITE, NOTIFY)]
         #[qproperty(QString, instance_identifier, READ, WRITE=set_instance_identifier, NOTIFY=instance_identifier_changed)]
@@ -59,7 +60,7 @@ pub mod ffi {
         pub fn initialize_impl(self: Pin<&mut LoopChannelGui>);
 
         #[qinvokable]
-        pub fn set_backend(self: Pin<&mut LoopChannelGui>, backend: *mut QObject);
+        pub fn set_backend(self: Pin<&mut LoopChannelGui>, backend: *mut ShoopQObject);
 
         #[qinvokable]
         pub fn set_is_midi(self: Pin<&mut LoopChannelGui>, is_midi: bool);
@@ -83,10 +84,10 @@ pub mod ffi {
         pub fn push_audio_gain(self: Pin<&mut LoopChannelGui>, audio_gain: f32);
 
         #[qinvokable]
-        pub fn get_channel_loop(self: Pin<&mut LoopChannelGui>) -> *mut QObject;
+        pub fn get_channel_loop(self: Pin<&mut LoopChannelGui>) -> *mut ShoopQObject;
 
         #[qinvokable]
-        pub fn set_channel_loop(self: Pin<&mut LoopChannelGui>, channel_loop: *mut QObject);
+        pub fn set_channel_loop(self: Pin<&mut LoopChannelGui>, channel_loop: *mut ShoopQObject);
 
         #[qinvokable]
         pub fn load_audio_data(self: Pin<&mut LoopChannelGui>, data: QVector_f32);
@@ -116,9 +117,9 @@ pub mod ffi {
         #[qinvokable]
         pub fn get_data_async_and_send_to(
             self: Pin<&mut LoopChannelGui>,
-            send_to_object: *mut QObject,
+            send_to_object: *mut ShoopQObject,
             method_signature: QString,
-        ) -> *mut QObject;
+        ) -> *mut ShoopQObject;
 
         #[qinvokable]
         pub fn set_instance_identifier(
@@ -152,7 +153,7 @@ pub mod ffi {
         pub fn deinit(self: Pin<&mut LoopChannelGui>);
 
         #[qsignal]
-        pub unsafe fn backend_changed(self: Pin<&mut LoopChannelGui>, backend: *mut QObject);
+        pub unsafe fn backend_changed(self: Pin<&mut LoopChannelGui>, backend: *mut ShoopQObject);
 
         #[qsignal]
         pub unsafe fn is_midi_changed(self: Pin<&mut LoopChannelGui>, is_midi: bool);
@@ -214,7 +215,7 @@ pub mod ffi {
         #[qsignal]
         pub unsafe fn channel_loop_changed(
             self: Pin<&mut LoopChannelGui>,
-            channel_loop: *mut QObject,
+            channel_loop: *mut ShoopQObject,
         );
 
         #[qsignal]
@@ -227,7 +228,7 @@ pub mod ffi {
         pub unsafe fn initialized_changed(self: Pin<&mut LoopChannelGui>, initialized: bool);
 
         #[qsignal]
-        pub unsafe fn backend_set_backend(self: Pin<&mut LoopChannelGui>, backend: *mut QObject);
+        pub unsafe fn backend_set_backend(self: Pin<&mut LoopChannelGui>, backend: *mut ShoopQObject);
 
         #[qsignal]
         pub unsafe fn backend_set_is_midi(self: Pin<&mut LoopChannelGui>, is_midi: bool);
@@ -279,7 +280,7 @@ pub mod ffi {
 
         #[qsignal]
         #[inherit]
-        pub unsafe fn destroyed(self: Pin<&mut LoopChannelGui>, obj: *mut QObject);
+        pub unsafe fn destroyed(self: Pin<&mut LoopChannelGui>, obj: *mut ShoopQObject);
     }
 
     unsafe extern "RustQt" {
@@ -294,16 +295,16 @@ pub mod ffi {
         include!("cxx-qt-lib-shoop/qobject.h");
 
         #[rust_name = "from_qobject_ref_channel_get_data_notifier"]
-        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const ChannelGetDataNotifier);
+        unsafe fn fromQObjectRef(obj: &ShoopQObject, output: *mut *const ChannelGetDataNotifier);
 
         #[rust_name = "from_qobject_mut_channel_get_data_notifier"]
-        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut ChannelGetDataNotifier);
+        unsafe fn fromQObjectMut(obj: Pin<&mut ShoopQObject>, output: *mut *mut ChannelGetDataNotifier);
 
         #[rust_name = "channel_get_data_notifier_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj: *mut ChannelGetDataNotifier) -> *mut QObject;
+        unsafe fn qobjectFromPtr(obj: *mut ChannelGetDataNotifier) -> *mut ShoopQObject;
 
         #[rust_name = "channel_get_data_notifier_qobject_from_ref"]
-        fn qobjectFromRef(obj: &ChannelGetDataNotifier) -> &QObject;
+        fn qobjectFromRef(obj: &ChannelGetDataNotifier) -> &ShoopQObject;
 
         include!("cxx-qt-lib-shoop/make_raw.h");
         #[rust_name = "make_raw_channel_get_data_notifier"]
@@ -311,7 +312,7 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/cast_ptr.h");
         #[rust_name = "channel_get_data_notifier_to_qobject"]
-        unsafe fn cast_ptr(obj: *mut ChannelGetDataNotifier) -> *mut QObject;
+        unsafe fn cast_ptr(obj: *mut ChannelGetDataNotifier) -> *mut ShoopQObject;
     }
 
     unsafe extern "C++" {
@@ -336,10 +337,10 @@ pub mod ffi {
         include!("cxx-qt-lib-shoop/qobject.h");
 
         #[rust_name = "from_qobject_ref_loop_channel_gui"]
-        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const LoopChannelGui);
+        unsafe fn fromQObjectRef(obj: &ShoopQObject, output: *mut *const LoopChannelGui);
 
         #[rust_name = "from_qobject_mut_loop_channel_gui"]
-        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut LoopChannelGui);
+        unsafe fn fromQObjectMut(obj: Pin<&mut ShoopQObject>, output: *mut *mut LoopChannelGui);
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = (*mut QQuickItem,)> for LoopChannelGui {}
@@ -370,9 +371,9 @@ pub struct LoopChannelGuiRust {
     pub midi_n_events_triggered: i32,
     pub midi_n_notes_active: i32,
     pub is_midi: bool,
-    pub backend: *mut QObject,
+    pub backend: *mut ShoopQObject,
     pub ports_to_connect: QList_QVariant,
-    pub channel_loop: *mut QObject,
+    pub channel_loop: *mut ShoopQObject,
     // Other
     pub backend_channel_wrapper: cxx::UniquePtr<QSharedPointer_QObject>,
     pub instance_identifier: QString,
@@ -464,14 +465,14 @@ impl cxx_qt::Constructor<()> for LoopChannelGui {
 }
 
 impl cxx_qt_lib_shoop::qobject::FromQObject for LoopChannelGui {
-    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::QObject) -> *const Self {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::ShoopQObject) -> *const Self {
         let mut output: *const Self = std::ptr::null();
         from_qobject_ref_loop_channel_gui(obj, &mut output as *mut *const Self);
         output
     }
 
     unsafe fn ptr_from_qobject_mut(
-        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::QObject>,
+        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::ShoopQObject>,
     ) -> *mut Self {
         let mut output: *mut Self = std::ptr::null_mut();
         from_qobject_mut_loop_channel_gui(obj, &mut output as *mut *mut Self);

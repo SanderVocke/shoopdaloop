@@ -18,7 +18,7 @@ pub fn register_qml_singleton(module_name: &str, type_name: &str) {
 
 #[allow(unreachable_code)]
 impl GlobalUtils {
-    pub unsafe fn set_window_icon_path(self: &GlobalUtils, window: *mut QObject, path: QString) {
+    pub unsafe fn set_window_icon_path(self: &GlobalUtils, window: *mut ShoopQObject, path: QString) {
         set_window_icon_path_if_window(window, path);
     }
 }

@@ -30,9 +30,9 @@ cxx = "1.0"
 cxx-build = "1.0"
 tar = "0.4"
 dunce = "1.0"
-cxx-qt = "0.7.2"
-cxx-qt-lib = { version = "0.7.2", features = ["full"] }
-cxx-qt-build = "0.7.2"
+cxx-qt = "0.8.1"
+cxx-qt-lib = { version = "0.8.1", features = ["full"] }
+cxx-qt-build = "0.8.1"
 quote = "1.0"
 syn = { version = "2.0", features = ["full"] }
 walkdir = "2.5"

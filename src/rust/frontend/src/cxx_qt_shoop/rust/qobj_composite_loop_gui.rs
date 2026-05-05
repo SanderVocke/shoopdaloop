@@ -14,7 +14,7 @@ use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::invokable::invoke;
-use cxx_qt_lib_shoop::qobject::QObject;
+use cxx_qt_lib_shoop::qobject::ShoopQObject;
 use cxx_qt_lib_shoop::qobject::*;
 use cxx_qt_lib_shoop::qsharedpointer_qobject::*;
 use cxx_qt_lib_shoop::qvariant_helpers::qsharedpointer_qobject_to_qvariant;
@@ -56,16 +56,16 @@ macro_rules! error {
 #[derive(Default)]
 struct ReplaceByBackendResult {
     replaced_schedule: CompositeLoopSchedule<cxx::UniquePtr<QWeakPointer_QObject>>,
-    loops_without_backend: HashSet<*mut QObject>,
+    loops_without_backend: HashSet<*mut ShoopQObject>,
 }
 
 fn replace_by_backend_objects(
-    schedule: &CompositeLoopSchedule<*mut QObject>,
+    schedule: &CompositeLoopSchedule<*mut ShoopQObject>,
 ) -> Result<ReplaceByBackendResult, anyhow::Error> {
     let get_backend_obj =
-        |object: *mut QObject| -> Result<cxx::UniquePtr<QWeakPointer_QObject>, anyhow::Error> {
+        |object: *mut ShoopQObject| -> Result<cxx::UniquePtr<QWeakPointer_QObject>, anyhow::Error> {
             unsafe {
-                match invoke::<QObject, QVariant, ()>(
+                match invoke::<ShoopQObject, QVariant, ()>(
                     &mut *object,
                     "get_backend_loop_shared_ptr()",
                     connection_types::DIRECT_CONNECTION,
@@ -99,7 +99,7 @@ fn replace_by_backend_objects(
         for (object, mode) in events.loops_start.iter() {
             new_events.loops_start.insert(
                 LoopReference {
-                    obj: match get_backend_obj(object.obj.as_qobject_ref() as *mut QObject) {
+                    obj: match get_backend_obj(object.obj.as_qobject_ref() as *mut ShoopQObject) {
                         Ok(backend_loop) => backend_loop,
                         Err(_) => {
                             rval.loops_without_backend.insert(object.obj);
@@ -112,7 +112,7 @@ fn replace_by_backend_objects(
         }
         for object in events.loops_end.iter() {
             new_events.loops_end.insert(LoopReference {
-                obj: match get_backend_obj(object.obj.as_qobject_ref() as *mut QObject) {
+                obj: match get_backend_obj(object.obj.as_qobject_ref() as *mut ShoopQObject) {
                     Ok(backend_loop) => backend_loop,
                     Err(_) => {
                         rval.loops_without_backend.insert(object.obj);
@@ -123,7 +123,7 @@ fn replace_by_backend_objects(
         }
         for object in events.loops_ignored.iter() {
             new_events.loops_ignored.insert(LoopReference {
-                obj: match get_backend_obj(object.obj.as_qobject_ref() as *mut QObject) {
+                obj: match get_backend_obj(object.obj.as_qobject_ref() as *mut ShoopQObject) {
                     Ok(backend_loop) => backend_loop,
                     Err(_) => {
                         rval.loops_without_backend.insert(object.obj);
@@ -392,13 +392,13 @@ impl CompositeLoopGui {
 
     pub fn update_backend_sync_source(mut self: Pin<&mut Self>) {
         debug!(self, "Updating backend sync source");
-        let sync_source_in: *mut QObject = *self.sync_source();
+        let sync_source_in: *mut ShoopQObject = *self.sync_source();
 
         unsafe {
-            let backend_loop: *mut QObject = if sync_source_in.is_null() {
+            let backend_loop: *mut ShoopQObject = if sync_source_in.is_null() {
                 std::ptr::null_mut()
             } else {
-                match invoke::<QObject, QVariant, ()>(
+                match invoke::<ShoopQObject, QVariant, ()>(
                     &mut *sync_source_in,
                     "get_backend_loop_wrapper()",
                     connection_types::DIRECT_CONNECTION,
@@ -424,7 +424,7 @@ impl CompositeLoopGui {
         }
     }
 
-    pub unsafe fn set_sync_source(mut self: Pin<&mut Self>, sync_source: *mut QObject) {
+    pub unsafe fn set_sync_source(mut self: Pin<&mut Self>, sync_source: *mut ShoopQObject) {
         let changed = self.as_mut().rust_mut().sync_source != sync_source;
         self.as_mut().rust_mut().sync_source = sync_source;
 
@@ -435,7 +435,7 @@ impl CompositeLoopGui {
         }
     }
 
-    pub unsafe fn set_backend(mut self: Pin<&mut Self>, backend: *mut QObject) {
+    pub unsafe fn set_backend(mut self: Pin<&mut Self>, backend: *mut ShoopQObject) {
         debug!(self, "backend -> {:?}", backend);
         let changed = self.as_mut().rust_mut().backend != backend;
         self.as_mut().rust_mut().backend = backend;
@@ -534,7 +534,7 @@ impl CompositeLoopGui {
         self.backend_set_instance_identifier(instance_identifier);
     }
 
-    pub fn get_backend_loop_wrapper(self: Pin<&mut Self>) -> *mut QObject {
+    pub fn get_backend_loop_wrapper(self: Pin<&mut Self>) -> *mut ShoopQObject {
         self.backend_loop_wrapper
             .data()
             .unwrap_or(std::ptr::null_mut())

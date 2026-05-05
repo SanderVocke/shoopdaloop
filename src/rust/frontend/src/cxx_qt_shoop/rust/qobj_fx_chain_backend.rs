@@ -132,7 +132,7 @@ impl FXChainBackend {
             if let Err(e) = || -> Result<(), anyhow::Error> {
                 unsafe {
                     let backend =
-                        BackendWrapper::from_qobject_ref_ptr(self.backend as *const QObject)?;
+                        BackendWrapper::from_qobject_ref_ptr(self.backend as *const ShoopQObject)?;
                     let chain_type = self
                         .chain_type
                         .ok_or(anyhow!("Chain type not set for init"))?;
@@ -185,7 +185,7 @@ impl FXChainBackend {
         "unknown".to_string()
     }
 
-    pub fn set_backend(mut self: Pin<&mut Self>, backend: *mut QObject) {
+    pub fn set_backend(mut self: Pin<&mut Self>, backend: *mut ShoopQObject) {
         self.as_mut().maybe_initialize_backend();
         if self.backend_chain_wrapper.is_some() {
             error!(

@@ -3,7 +3,8 @@ pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
+        include!("cxx-qt-lib-shoop/qobject.h");
+        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
 
         include!("cxx-qt-lib-shoop/qpointer.h");
         type QPointerQObject = cxx_qt_lib_shoop::qpointer::QPointerQObject;
@@ -39,15 +40,15 @@ pub mod ffi {
         #[qproperty(i32, position, READ, NOTIFY=position_changed)]
         #[qproperty(i32, cycle_nr, READ, NOTIFY=cycle_nr_changed)]
         // Frontend -> Backend properties
-        #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
-        #[qproperty(*mut QObject, sync_source, READ, WRITE=set_sync_source, NOTIFY=sync_source_changed)]
+        #[qproperty(*mut ShoopQObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
+        #[qproperty(*mut ShoopQObject, sync_source, READ, WRITE=set_sync_source, NOTIFY=sync_source_changed)]
         #[qproperty(QMap_QString_QVariant, schedule, READ=get_schedule, WRITE=set_schedule, NOTIFY=schedule_changed)]
         #[qproperty(bool, play_after_record, READ, WRITE=set_play_after_record, NOTIFY=play_after_record_changed)]
         #[qproperty(bool, sync_mode_active, READ, WRITE=set_sync_mode_active, NOTIFY=sync_mode_active_changed)]
         #[qproperty(QString, kind, READ, WRITE=set_kind, NOTIFY=kind_changed)]
         #[qproperty(QString, instance_identifier, READ, WRITE=set_instance_identifier, NOTIFY=instance_identifier_changed)]
         // Other properties
-        #[qproperty(*mut QObject, backend_loop_wrapper, READ=get_backend_loop_wrapper)]
+        #[qproperty(*mut ShoopQObject, backend_loop_wrapper, READ=get_backend_loop_wrapper)]
         type CompositeLoopGui = super::CompositeLoopGuiRust;
 
         #[qinvokable]
@@ -71,10 +72,10 @@ pub mod ffi {
         );
 
         #[qinvokable]
-        pub unsafe fn set_sync_source(self: Pin<&mut CompositeLoopGui>, sync_source: *mut QObject);
+        pub unsafe fn set_sync_source(self: Pin<&mut CompositeLoopGui>, sync_source: *mut ShoopQObject);
 
         #[qinvokable]
-        pub unsafe fn set_backend(self: Pin<&mut CompositeLoopGui>, backend: *mut QObject);
+        pub unsafe fn set_backend(self: Pin<&mut CompositeLoopGui>, backend: *mut ShoopQObject);
 
         #[qinvokable]
         pub fn update_backend_schedule(self: Pin<&mut CompositeLoopGui>);
@@ -107,20 +108,20 @@ pub mod ffi {
         );
 
         #[qinvokable]
-        pub fn get_backend_loop_wrapper(self: Pin<&mut CompositeLoopGui>) -> *mut QObject;
+        pub fn get_backend_loop_wrapper(self: Pin<&mut CompositeLoopGui>) -> *mut ShoopQObject;
 
         #[qinvokable]
         pub fn get_backend_loop_shared_ptr(self: Pin<&mut CompositeLoopGui>) -> QVariant;
 
         #[qsignal]
         #[cxx_name = "backendChanged"]
-        pub unsafe fn backend_changed(self: Pin<&mut CompositeLoopGui>, backend: *mut QObject);
+        pub unsafe fn backend_changed(self: Pin<&mut CompositeLoopGui>, backend: *mut ShoopQObject);
 
         #[qsignal]
         #[cxx_name = "syncSourceChanged"]
         pub unsafe fn sync_source_changed(
             self: Pin<&mut CompositeLoopGui>,
-            sync_source: *mut QObject,
+            sync_source: *mut ShoopQObject,
         );
 
         #[qsignal]
@@ -235,7 +236,7 @@ pub mod ffi {
         #[qsignal]
         pub unsafe fn backend_set_sync_source(
             self: Pin<&mut CompositeLoopGui>,
-            sync_source: *mut QObject,
+            sync_source: *mut ShoopQObject,
         );
 
         #[qsignal]
@@ -306,7 +307,7 @@ pub mod ffi {
 
         #[qsignal]
         #[inherit]
-        pub unsafe fn destroyed(self: Pin<&mut CompositeLoopGui>, obj: *mut QObject);
+        pub unsafe fn destroyed(self: Pin<&mut CompositeLoopGui>, obj: *mut ShoopQObject);
     }
 
     unsafe extern "C++" {
@@ -334,7 +335,7 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/cast_ptr.h");
         #[rust_name = "qobject_to_composite_loop_gui_ptr"]
-        unsafe fn cast_qobject_ptr(obj: *mut QObject) -> *mut CompositeLoopGui;
+        unsafe fn cast_qobject_ptr(obj: *mut ShoopQObject) -> *mut CompositeLoopGui;
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = (*mut QQuickItem,)>
@@ -425,8 +426,8 @@ pub struct CompositeLoopGuiRust {
     pub sync_position: i32,
     pub sync_length: i32,
     pub position: i32,
-    pub backend: *mut QObject,
-    pub sync_source: *mut QObject,
+    pub backend: *mut ShoopQObject,
+    pub sync_source: *mut ShoopQObject,
     pub play_after_record: bool,
     pub sync_mode_active: bool,
     pub kind: QString,
@@ -435,7 +436,7 @@ pub struct CompositeLoopGuiRust {
     pub cycle_nr: i32,
 
     // Others
-    pub schedule: CompositeLoopSchedule<*mut QObject>,
+    pub schedule: CompositeLoopSchedule<*mut ShoopQObject>,
 }
 
 impl Default for CompositeLoopGuiRust {

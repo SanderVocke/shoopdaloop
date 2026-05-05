@@ -13,7 +13,8 @@ pub mod ffi {
         type QTimer = cxx_qt_lib_shoop::qtimer::QTimer;
 
         include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
+        include!("cxx-qt-lib-shoop/qobject.h");
+        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
     }
 
     unsafe extern "RustQt" {
@@ -49,10 +50,10 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/qobject.h");
         #[rust_name = "update_thread_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj: *mut UpdateThread) -> *mut QObject;
+        unsafe fn qobjectFromPtr(obj: *mut UpdateThread) -> *mut ShoopQObject;
 
         #[rust_name = "update_thread_qobject_from_ref"]
-        fn qobjectFromRef(obj: &UpdateThread) -> &QObject;
+        fn qobjectFromRef(obj: &UpdateThread) -> &ShoopQObject;
     }
 
     impl cxx_qt::Constructor<()> for UpdateThread {}
@@ -62,12 +63,12 @@ use cxx_qt_lib_shoop::qobject::AsQObject;
 pub use ffi::UpdateThread;
 
 impl AsQObject for UpdateThread {
-    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
+    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::ShoopQObject {
         ffi::update_thread_qobject_from_ptr(self as *mut Self)
     }
 
-    unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
-        ffi::update_thread_qobject_from_ref(self) as *const ffi::QObject
+    unsafe fn ref_qobject_ptr(&self) -> *const ffi::ShoopQObject {
+        ffi::update_thread_qobject_from_ref(self) as *const ffi::ShoopQObject
     }
 }
 

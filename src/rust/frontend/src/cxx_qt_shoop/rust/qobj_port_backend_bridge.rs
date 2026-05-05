@@ -11,7 +11,8 @@ shoop_log_unit!("Frontend.Port");
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
+        include!("cxx-qt-lib-shoop/qobject.h");
+        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -45,8 +46,8 @@ pub mod ffi {
         #[qproperty(f32, audio_gain, READ=get_audio_gain, NOTIFY=audio_gain_changed)]
         // Frontend -> Backend properties
         #[qproperty(bool, is_midi, READ=get_is_midi, WRITE=set_is_midi, NOTIFY=is_midi_changed)]
-        #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
-        #[qproperty(*mut QObject, maybe_fx_chain, READ=get_maybe_fx_chain, NOTIFY=fx_chain_changed)]
+        #[qproperty(*mut ShoopQObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
+        #[qproperty(*mut ShoopQObject, maybe_fx_chain, READ=get_maybe_fx_chain, NOTIFY=fx_chain_changed)]
         #[qproperty(i32, fx_chain_port_idx, READ=get_fx_chain_port_idx, WRITE=set_fx_chain_port_idx, NOTIFY=fx_chain_port_idx_changed)]
         #[qproperty(QString, name_hint, READ=get_name_hint, WRITE=set_name_hint, NOTIFY=name_hint_changed)]
         #[qproperty(i32, input_connectability, READ=get_input_connectability, WRITE=set_input_connectability, NOTIFY=input_connectability_changed)]
@@ -54,7 +55,7 @@ pub mod ffi {
         #[qproperty(bool, is_internal, READ=get_is_internal, WRITE=set_is_internal, NOTIFY=is_internal_changed)]
         #[qproperty(QList_QVariant, internal_port_connections, READ, WRITE=set_internal_port_connections, NOTIFY=internal_port_connections_changed)]
         #[qproperty(i32, min_n_ringbuffer_samples, READ=get_min_n_ringbuffer_samples, WRITE=set_min_n_ringbuffer_samples, NOTIFY=min_n_ringbuffer_samples_changed)]
-        #[qproperty(*mut QObject, frontend_object, READ=get_frontend_object, WRITE=set_frontend_object, NOTIFY)]
+        #[qproperty(*mut ShoopQObject, frontend_object, READ=get_frontend_object, WRITE=set_frontend_object, NOTIFY)]
         // Other properties
         type PortBackend = super::PortBackendRust;
 
@@ -82,7 +83,7 @@ pub mod ffi {
         pub fn get_midi_n_output_notes_active(self: &PortBackend) -> i32;
 
         #[qinvokable]
-        pub fn get_frontend_object(self: Pin<&mut PortBackend>) -> *mut QObject;
+        pub fn get_frontend_object(self: Pin<&mut PortBackend>) -> *mut ShoopQObject;
 
         #[qinvokable]
         pub fn connect_external_port(self: Pin<&mut PortBackend>, name: QString);
@@ -100,7 +101,7 @@ pub mod ffi {
         pub fn try_make_connections(self: Pin<&mut PortBackend>, connections: QList_QString);
 
         #[qinvokable]
-        pub unsafe fn set_backend(self: Pin<&mut PortBackend>, backend: *mut QObject);
+        pub unsafe fn set_backend(self: Pin<&mut PortBackend>, backend: *mut ShoopQObject);
 
         #[qinvokable]
         pub fn set_name_hint(self: Pin<&mut PortBackend>, name_hint: QString);
@@ -128,7 +129,7 @@ pub mod ffi {
         );
 
         #[qinvokable]
-        pub fn set_frontend_object(self: Pin<&mut PortBackend>, frontend_object: *mut QObject);
+        pub fn set_frontend_object(self: Pin<&mut PortBackend>, frontend_object: *mut ShoopQObject);
 
         #[qinvokable]
         pub fn update_internal_port_connections(self: Pin<&mut PortBackend>);
@@ -173,7 +174,7 @@ pub mod ffi {
         pub fn get_is_midi(self: Pin<&mut PortBackend>) -> bool;
 
         #[qinvokable]
-        pub fn get_maybe_fx_chain(self: Pin<&mut PortBackend>) -> *mut QObject;
+        pub fn get_maybe_fx_chain(self: Pin<&mut PortBackend>) -> *mut ShoopQObject;
 
         #[qinvokable]
         pub fn get_fx_chain_port_idx(self: Pin<&mut PortBackend>) -> i32;
@@ -220,7 +221,7 @@ pub mod ffi {
         );
 
         #[qsignal]
-        pub unsafe fn backend_changed(self: Pin<&mut PortBackend>, backend: *mut QObject);
+        pub unsafe fn backend_changed(self: Pin<&mut PortBackend>, backend: *mut ShoopQObject);
 
         #[qsignal]
         pub unsafe fn name_hint_changed(self: Pin<&mut PortBackend>, name_hint: QString);
@@ -292,7 +293,7 @@ pub mod ffi {
         );
 
         #[qsignal]
-        pub unsafe fn fx_chain_changed(self: Pin<&mut PortBackend>, fx_chain: *mut QObject);
+        pub unsafe fn fx_chain_changed(self: Pin<&mut PortBackend>, fx_chain: *mut ShoopQObject);
 
         #[qsignal]
         pub unsafe fn fx_chain_port_idx_changed(
@@ -326,10 +327,10 @@ pub mod ffi {
         include!("cxx-qt-lib-shoop/qobject.h");
 
         #[rust_name = "from_qobject_ref_port_backend"]
-        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const PortBackend);
+        unsafe fn fromQObjectRef(obj: &ShoopQObject, output: *mut *const PortBackend);
 
         #[rust_name = "from_qobject_mut_port_backend"]
-        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut PortBackend);
+        unsafe fn fromQObjectMut(obj: Pin<&mut ShoopQObject>, output: *mut *mut PortBackend);
 
         include!("cxx-qt-lib-shoop/make_raw.h");
         #[rust_name = "make_raw_port_backend"]
@@ -337,10 +338,10 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/qobject.h");
         #[rust_name = "port_backend_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj: *mut PortBackend) -> *mut QObject;
+        unsafe fn qobjectFromPtr(obj: *mut PortBackend) -> *mut ShoopQObject;
 
         #[rust_name = "port_backend_qobject_from_ref"]
-        fn qobjectFromRef(obj: &PortBackend) -> &QObject;
+        fn qobjectFromRef(obj: &PortBackend) -> &ShoopQObject;
     }
 }
 
@@ -350,9 +351,9 @@ use ffi::*;
 pub struct PortBackendRust {
     // Properties
     pub initialized: bool,
-    pub backend: *mut QObject,
+    pub backend: *mut ShoopQObject,
     pub internal_port_connections: QList_QVariant,
-    pub frontend_object: *mut QObject,
+    pub frontend_object: *mut ShoopQObject,
 
     // Other fields
     pub maybe_backend_port: Option<AnyBackendPort>,
@@ -365,7 +366,7 @@ pub struct PortBackendRust {
     pub fx_chain: Option<cxx::UniquePtr<QWeakPointer_QObject>>,
     pub fx_chain_port_idx: Option<i32>,
     pub min_n_ringbuffer_samples: Option<i32>,
-    pub internally_connected_ports: HashSet<*mut QObject>,
+    pub internally_connected_ports: HashSet<*mut ShoopQObject>,
 }
 
 impl Default for PortBackendRust {
@@ -391,24 +392,24 @@ impl Default for PortBackendRust {
 }
 
 impl AsQObject for ffi::PortBackend {
-    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
+    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::ShoopQObject {
         ffi::port_backend_qobject_from_ptr(self as *mut Self)
     }
 
-    unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
-        ffi::port_backend_qobject_from_ref(self) as *const ffi::QObject
+    unsafe fn ref_qobject_ptr(&self) -> *const ffi::ShoopQObject {
+        ffi::port_backend_qobject_from_ref(self) as *const ffi::ShoopQObject
     }
 }
 
 impl cxx_qt_lib_shoop::qobject::FromQObject for PortBackend {
-    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::QObject) -> *const Self {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::ShoopQObject) -> *const Self {
         let mut output: *const Self = std::ptr::null();
         from_qobject_ref_port_backend(obj, &mut output as *mut *const Self);
         output
     }
 
     unsafe fn ptr_from_qobject_mut(
-        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::QObject>,
+        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::ShoopQObject>,
     ) -> *mut Self {
         let mut output: *mut Self = std::ptr::null_mut();
         from_qobject_mut_port_backend(obj, &mut output as *mut *mut Self);

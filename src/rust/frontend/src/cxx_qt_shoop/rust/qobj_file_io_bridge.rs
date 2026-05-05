@@ -21,7 +21,8 @@ pub mod ffi {
         type QVector_QVariant = cxx_qt_lib::QVector<QVariant>;
 
         include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
+        include!("cxx-qt-lib-shoop/qobject.h");
+        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
 
         include!("cxx-qt-lib/qmap.h");
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
@@ -97,15 +98,15 @@ pub mod ffi {
             self: Pin<&mut FileIO>,
             filename: QString,
             samplerate: i32,
-            channel: *mut QObject,
-        ) -> *mut QObject;
+            channel: *mut ShoopQObject,
+        ) -> *mut ShoopQObject;
 
         #[qinvokable]
         pub fn save_channel_to_midi(
             self: &FileIO,
             filename: QString,
             samplerate: i32,
-            channel: *mut QObject,
+            channel: *mut ShoopQObject,
         ) -> bool;
 
         // returns an AsyncTask
@@ -119,7 +120,7 @@ pub mod ffi {
             maybe_set_start_offset: QVariant,
             maybe_update_loop_to_data_length: QVariant,
             ready_timeout_ms: i32,
-        ) -> *mut QObject;
+        ) -> *mut ShoopQObject;
 
         #[qinvokable]
         pub fn load_midi_to_channels(
@@ -140,7 +141,7 @@ pub mod ffi {
             filename: QString,
             samplerate: i32,
             channels: QList_QVariant,
-        ) -> *mut QObject;
+        ) -> *mut ShoopQObject;
 
         #[qinvokable]
         pub fn save_channels_to_soundfile(
@@ -162,7 +163,7 @@ pub mod ffi {
             maybe_set_start_offset: QVariant,
             maybe_update_loop_to_data_length: QVariant,
             ready_timeout_ms: i32,
-        ) -> *mut QObject;
+        ) -> *mut ShoopQObject;
 
         #[qinvokable]
         pub fn load_soundfile_to_channels(
@@ -204,16 +205,16 @@ pub mod ffi {
         include!("cxx-qt-lib-shoop/qobject.h");
 
         #[rust_name = "from_qobject_ref_file_io"]
-        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const FileIO);
+        unsafe fn fromQObjectRef(obj: &ShoopQObject, output: *mut *const FileIO);
 
         #[rust_name = "from_qobject_mut_file_io"]
-        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut FileIO);
+        unsafe fn fromQObjectMut(obj: Pin<&mut ShoopQObject>, output: *mut *mut FileIO);
 
         #[rust_name = "file_io_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj: *mut FileIO) -> *mut QObject;
+        unsafe fn qobjectFromPtr(obj: *mut FileIO) -> *mut ShoopQObject;
 
         #[rust_name = "file_io_qobject_from_ref"]
-        fn qobjectFromRef(obj: &FileIO) -> &QObject;
+        fn qobjectFromRef(obj: &FileIO) -> &ShoopQObject;
     }
 }
 
@@ -221,11 +222,11 @@ pub mod ffi {
 pub struct FileIORust {}
 
 impl AsQObject for ffi::FileIO {
-    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
+    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::ShoopQObject {
         ffi::file_io_qobject_from_ptr(self as *mut Self)
     }
 
-    unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
-        ffi::file_io_qobject_from_ref(self) as *const ffi::QObject
+    unsafe fn ref_qobject_ptr(&self) -> *const ffi::ShoopQObject {
+        ffi::file_io_qobject_from_ref(self) as *const ffi::ShoopQObject
     }
 }

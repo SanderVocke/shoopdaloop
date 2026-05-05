@@ -3,7 +3,7 @@ use crate::cxx_qt_shoop::qobj_port_gui_bridge::PortGui;
 use crate::cxx_qt_shoop::rust::qobj_loop_channel_backend_bridge::ffi::*;
 use crate::cxx_qt_shoop::rust::qobj_loop_channel_gui_bridge::ffi::*;
 use crate::cxx_qt_shoop::rust::qobj_loop_channel_gui_bridge::ffi::{
-    QList_QVariant, QObject, QString, QVariant, QVector_QVariant, QVector_f32,
+    QList_QVariant, ShoopQObject, QString, QVariant, QVector_QVariant, QVector_f32,
 };
 use crate::engine_update_thread;
 use anyhow::anyhow;
@@ -229,7 +229,7 @@ impl LoopChannelGui {
         }
     }
 
-    pub fn set_backend(mut self: Pin<&mut LoopChannelGui>, backend: *mut QObject) {
+    pub fn set_backend(mut self: Pin<&mut LoopChannelGui>, backend: *mut ShoopQObject) {
         unsafe {
             self.as_mut().backend_set_backend(backend);
         }
@@ -405,11 +405,11 @@ impl LoopChannelGui {
         }
     }
 
-    pub fn get_channel_loop(self: Pin<&mut LoopChannelGui>) -> *mut QObject {
+    pub fn get_channel_loop(self: Pin<&mut LoopChannelGui>) -> *mut ShoopQObject {
         self.channel_loop
     }
 
-    pub fn set_channel_loop(mut self: Pin<&mut LoopChannelGui>, channel_loop: *mut QObject) {
+    pub fn set_channel_loop(mut self: Pin<&mut LoopChannelGui>, channel_loop: *mut ShoopQObject) {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             unsafe {
                 let backend_loop: QVariant = invokable::invoke(
@@ -521,9 +521,9 @@ impl LoopChannelGui {
 
     pub fn get_data_async_and_send_to(
         mut self: Pin<&mut LoopChannelGui>,
-        send_to_object: *mut QObject,
+        send_to_object: *mut ShoopQObject,
         method_signature: QString,
-    ) -> *mut QObject {
+    ) -> *mut ShoopQObject {
         let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
         let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
         let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };
@@ -631,7 +631,7 @@ impl LoopChannelGui {
                         if let Some(Ok(raw)) = strong.as_ref().map(|s| s.data()) {
                             if !raw.is_null() {
                                 match unsafe {
-                                    invoke::<_, *mut QObject, _>(
+                                    invoke::<_, *mut ShoopQObject, _>(
                                         &mut *raw,
                                         "get_frontend_object()",
                                         connection_types::BLOCKING_QUEUED_CONNECTION,

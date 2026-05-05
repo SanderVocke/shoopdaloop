@@ -220,7 +220,7 @@ impl WrappedLuaCallback {
 
     pub fn create_raw_with_parent(
         callback: RustToLuaCallback,
-        parent: *mut QObject,
+        parent: *mut ShoopQObject,
     ) -> *mut WrappedLuaCallback {
         let cb = unsafe { make_raw_wrapped_lua_callback_with_parent(parent) };
         let pin = unsafe { std::pin::Pin::new_unchecked(&mut *cb) };

@@ -10,7 +10,8 @@ pub mod ffi {
         type QVariant = cxx_qt_lib::QVariant;
 
         include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
+        include!("cxx-qt-lib-shoop/qobject.h");
+        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
 
         include!("cxx-qt-lib/qurl.h");
         type QUrl = cxx_qt_lib::QUrl;
@@ -40,7 +41,7 @@ pub mod ffi {
         pub fn unload_qml(self: Pin<&mut Application>);
 
         #[qinvokable]
-        pub fn on_qml_object_created(self: Pin<&mut Application>, object: *mut QObject, url: QUrl);
+        pub fn on_qml_object_created(self: Pin<&mut Application>, object: *mut ShoopQObject, url: QUrl);
 
         #[inherit]
         #[qinvokable]
@@ -81,17 +82,17 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/qobject.h");
         #[rust_name = "application_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj: *mut Application) -> *mut QObject;
+        unsafe fn qobjectFromPtr(obj: *mut Application) -> *mut ShoopQObject;
 
         #[rust_name = "application_qobject_from_ref"]
-        fn qobjectFromRef(obj: &Application) -> &QObject;
+        fn qobjectFromRef(obj: &Application) -> &ShoopQObject;
 
         // include!("cxx-qt-shoop/ShoopApplication.h");
         // #[rust_name = set_window_icon_path]
         // pub fn setWindowIconPath(app: Pin<&mut Application>, path: &QString);
 
         // #[rust_name = set_window_icon_path_if_window]
-        // pub unsafe fn setWindowIconPathIfWindow(object: *mut QObject, path: &QString);
+        // pub unsafe fn setWindowIconPathIfWindow(object: *mut ShoopQObject, path: &QString);
     }
 }
 
@@ -128,11 +129,11 @@ impl Default for ApplicationRust {
 }
 
 impl AsQObject for Application {
-    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
+    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::ShoopQObject {
         ffi::application_qobject_from_ptr(self as *mut Self)
     }
 
-    unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
-        ffi::application_qobject_from_ref(self) as *const ffi::QObject
+    unsafe fn ref_qobject_ptr(&self) -> *const ffi::ShoopQObject {
+        ffi::application_qobject_from_ref(self) as *const ffi::ShoopQObject
     }
 }
