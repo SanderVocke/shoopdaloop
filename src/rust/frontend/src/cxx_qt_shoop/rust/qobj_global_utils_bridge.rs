@@ -3,7 +3,8 @@ shoop_log_unit!("Frontend.Utils");
 
 #[cxx_qt::bridge]
 pub mod ffi {
-    unsafe extern "C++" {                include!("cxx-qt-lib/qstring.h");
+    unsafe extern "C++" {
+        include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
     }
 

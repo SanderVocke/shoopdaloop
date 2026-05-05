@@ -6,13 +6,13 @@ use crate::{
     },
     midi_event_helpers::MidiEventToQVariant,
 };
-use cxx_qt::QObject;
 use anyhow::anyhow;
 use backend_bindings::{MidiEvent, PortConnectability, PortDataType, PortDirection};
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
 use cxx_qt::CxxQtType;
+use cxx_qt::QObject;
 use cxx_qt_lib::{QList, QMap};
 use cxx_qt_lib_shoop::{
     connect::connect_or_report,

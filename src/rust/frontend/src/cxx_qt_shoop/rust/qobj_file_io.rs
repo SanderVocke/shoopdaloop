@@ -1,12 +1,12 @@
 use backend_bindings::{MidiEvent, MultichannelAudio};
 use common::logging::macros::*;
+use cxx_qt::QObject;
 use cxx_qt_lib::{QList, QMap, QVector};
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::invokable::invoke;
 use cxx_qt_lib_shoop::qobject::{
     qobject_property_bool, qobject_property_int, AsQObject, FromQObject,
 };
-use cxx_qt::QObject;
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::{
     qlist_f32_to_qvariant, qvariant_to_qobject_ptr, qvariant_to_qvariantlist,

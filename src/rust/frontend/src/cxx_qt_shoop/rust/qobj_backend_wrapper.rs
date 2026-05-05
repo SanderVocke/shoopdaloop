@@ -10,7 +10,6 @@ use cxx_qt_lib_shoop::{connect, connection_types};
 use std::pin::Pin;
 use std::sync::OnceLock;
 use std::time;
-use cxx_qt::QObject;
 
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.BackendWrapper");

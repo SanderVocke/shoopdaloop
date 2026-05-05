@@ -132,8 +132,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
             // to the application object. Also, register it as a singleton
             // in QML-land.
             unsafe {
-                let app_qobj: *mut cxx_qt::QObject =
-                    app.as_mut().pin_mut_qobject_ptr();
+                let app_qobj: *mut cxx_qt::QObject = app.as_mut().pin_mut_qobject_ptr();
                 let testrunner_ptr = TestFileRunner::make_raw(app_qobj);
                 let mut testrunner = std::pin::Pin::new_unchecked(&mut *testrunner_ptr);
 
@@ -246,8 +245,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
             // to the application object. Also, register it as a singleton
             // in QML-land.
             unsafe {
-                let app_qobj: *mut cxx_qt::QObject =
-                    app.as_mut().pin_mut_qobject_ptr();
+                let app_qobj: *mut cxx_qt::QObject = app.as_mut().pin_mut_qobject_ptr();
 
                 TEST_RUNNER.with(|c| {
                     if let Some(testrunner) = c.get() {

@@ -4,7 +4,8 @@ shoop_log_unit!("Frontend.FileIO");
 
 #[cxx_qt::bridge]
 pub mod ffi {
-    unsafe extern "C++" {                include!("cxx-qt-lib/qstring.h");
+    unsafe extern "C++" {
+        include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;

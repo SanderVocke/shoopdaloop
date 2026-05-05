@@ -9,7 +9,8 @@ pub mod ffi {
         #[namespace = ""]
         type QObject = cxx_qt::QObject;
     }
-    unsafe extern "C++" {                include!("cxx-qt-lib-shoop/qquickitem.h");
+    unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -491,9 +492,7 @@ impl cxx_qt_lib_shoop::qobject::FromQObject for PortGui {
         output
     }
 
-    unsafe fn ptr_from_qobject_mut(
-        obj: std::pin::Pin<&mut cxx_qt::QObject>,
-    ) -> *mut Self {
+    unsafe fn ptr_from_qobject_mut(obj: std::pin::Pin<&mut cxx_qt::QObject>) -> *mut Self {
         let mut output: *mut Self = std::ptr::null_mut();
         from_qobject_mut_port_gui(obj, &mut output as *mut *mut Self);
         output

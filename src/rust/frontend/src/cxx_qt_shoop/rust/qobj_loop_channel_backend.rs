@@ -5,13 +5,13 @@ use crate::midi_event_helpers::MidiEventToQVariant;
 use crate::{
     any_backend_channel::AnyBackendChannel, cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend,
 };
-use cxx_qt::QObject;
 use anyhow::anyhow;
 use backend_bindings::{ChannelMode, MidiEvent, PortDataType};
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
 use cxx_qt::CxxQtType;
+use cxx_qt::QObject;
 use cxx_qt_lib::{QList, QVector};
 use cxx_qt_lib_shoop::qvariant_helpers::qweakpointer_qobject_to_qvariant;
 use cxx_qt_lib_shoop::qweakpointer_qobject::QWeakPointer_QObject;
@@ -240,18 +240,22 @@ impl LoopChannelBackend {
                         .as_ref()
                         .ok_or(anyhow!("No backend loop in loop object"))?;
                     let mode = ChannelMode::try_from(self.prev_state.mode as i32)?;
-                    let backend_channel =
-                        match self.data_type.ok_or(anyhow!("data_type is None"))? {
-                            PortDataType::Audio => {
-                                AnyBackendChannel::Audio(channel_loop.add_audio_channel(mode, &self.instance_identifier().to_string())?)
-                            }
-                            PortDataType::Midi => {
-                                AnyBackendChannel::Midi(channel_loop.add_midi_channel(mode, &self.instance_identifier().to_string())?)
-                            }
-                            PortDataType::Any => {
-                                return Err(anyhow!("No specific port data type"));
-                            }
-                        };
+                    let backend_channel = match self
+                        .data_type
+                        .ok_or(anyhow!("data_type is None"))?
+                    {
+                        PortDataType::Audio => AnyBackendChannel::Audio(
+                            channel_loop
+                                .add_audio_channel(mode, &self.instance_identifier().to_string())?,
+                        ),
+                        PortDataType::Midi => AnyBackendChannel::Midi(
+                            channel_loop
+                                .add_midi_channel(mode, &self.instance_identifier().to_string())?,
+                        ),
+                        PortDataType::Any => {
+                            return Err(anyhow!("No specific port data type"));
+                        }
+                    };
 
                     // Push initial state that was already set
                     let state = &self.prev_state;

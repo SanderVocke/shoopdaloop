@@ -3,7 +3,7 @@ use cxx_qt_lib_shoop::qobject::AsQObject;
 
 #[cxx_qt::bridge]
 pub mod ffi {
-    unsafe extern "C++" {        
+    unsafe extern "C++" {
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
         include!("cxx-qt-lib/qstring.h");

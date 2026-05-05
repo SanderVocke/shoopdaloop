@@ -1,6 +1,7 @@
 #[cxx_qt::bridge]
 pub mod ffi {
-    unsafe extern "C++" {                include!("cxx-qt-lib-shoop/qquickitem.h");
+    unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
         // QObject is automatically provided by cxx_qt::bridge when using #[qobject]
 
