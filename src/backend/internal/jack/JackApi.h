@@ -23,6 +23,7 @@ public:
     static auto get_sample_rate(auto ...args) { return jack_get_sample_rate(args...); }
     static auto get_buffer_size(auto ...args) { return jack_get_buffer_size(args...); }
     static auto activate(auto ...args) { return jack_activate(args...); }
+    static auto deactivate(auto ...args) { return jack_deactivate(args...); }
     static auto client_close(auto ...args) { return jack_client_close(args...); }
     static auto get_time(auto ...args) { return jack_get_time(args...); }
     static auto set_process_callback(auto ...args) { return jack_set_process_callback(args...); }

@@ -178,6 +178,11 @@ public:
         return 0;
     };
 
+    static int deactivate(auto ...args) {
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL deactivate");
+        return 0;
+    };
+
     static int client_close(auto ...args) { return 0; };
 
     static jack_nframes_t get_sample_rate(auto ...args) {
