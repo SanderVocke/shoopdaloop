@@ -10,7 +10,8 @@ ShoopRustSessionControlHandler {
     global_state_registry: AppRegistries.state_registry
     selected_loops: {
         // Sort by coordinates to get stable results
-        var result = Array.from(session.selected_loops)
+        var raw = session.selected_loops
+        var result = Array.from(raw || [])
         result.sort(function(a,b) {
             if (a.track_idx < b.track_idx) { return -1 }
             else if (a.track_idx > b.track_idx) { return 1 }
