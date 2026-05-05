@@ -16,7 +16,7 @@ shoop_log_unit!("Frontend.TestFileRunner");
 pub use crate::cxx_qt_shoop::test::qobj_test_file_runner_bridge::ffi::TestFileRunner;
 
 impl TestFileRunner {
-    pub unsafe fn make_raw(parent: *mut QObject) -> *mut TestFileRunner {
+    pub unsafe fn make_raw(parent: *mut ShoopQObject) -> *mut TestFileRunner {
         let ptr = make_raw_test_runner(parent);
         ptr
     }
@@ -156,7 +156,7 @@ Totals:
         mut self: Pin<&mut Self>,
         test_file_pattern: QString,
         test_filter_pattern: QString,
-        _application: *mut QObject,
+        _application: *mut ShoopQObject,
         list_only: bool,
         xml_report: QString,
     ) -> bool {

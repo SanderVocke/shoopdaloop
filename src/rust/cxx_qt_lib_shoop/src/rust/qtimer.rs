@@ -10,7 +10,7 @@ mod ffi {
         include!("cxx-qt-lib-shoop/qtimer.h");
         include!("cxx-qt-lib-shoop/qobject.h");
         type QTimer = super::QTimerRust;
-        type QObject = crate::qobject::QObject;
+        type ShoopQObject = crate::qobject::ShoopQObject;
 
         #[rust_name = "qtimer_set_single_shot"]
         fn qtimerSetSingleShot(timer: Pin<&mut QTimer>, single_shot: bool);
@@ -33,23 +33,23 @@ mod ffi {
         #[rust_name = "qtimer_connect_timeout"]
         unsafe fn qtimerConnectTimeout(
             timer: Pin<&mut QTimer>,
-            receiver: *mut QObject,
+            receiver: *mut ShoopQObject,
             slot: String,
         ) -> Result<()>;
 
         include!("cxx-qt-lib-shoop/make_raw.h");
         #[rust_name = "make_raw_qtimer_with_parent"]
-        unsafe fn make_raw_with_one_arg(parent: *mut QObject) -> *mut QTimer;
+        unsafe fn make_raw_with_one_arg(parent: *mut ShoopQObject) -> *mut QTimer;
         #[rust_name = "make_raw_qtimer"]
         unsafe fn make_raw() -> *mut QTimer;
 
         #[rust_name = "qobject_from_ptr_qtimer"]
-        unsafe fn qobjectFromPtr(timer: *mut QTimer) -> *mut QObject;
+        unsafe fn qobjectFromPtr(timer: *mut QTimer) -> *mut ShoopQObject;
     }
 }
 
 pub use ffi::make_raw_qtimer_with_parent as make_raw_with_parent;
-use ffi::QObject;
+use ffi::ShoopQObject;
 pub use ffi::QTimer;
 
 #[repr(C)]
@@ -87,7 +87,7 @@ impl QTimer {
 
     pub fn connect_timeout(
         self: Pin<&mut Self>,
-        receiver: *mut QObject,
+        receiver: *mut ShoopQObject,
         slot: &str,
     ) -> Result<(), cxx::Exception> {
         unsafe { ffi::qtimer_connect_timeout(self, receiver, slot.to_string()) }
@@ -105,7 +105,7 @@ impl QTimer {
         }
     }
 
-    pub fn make_raw_with_parent(parent: *mut QObject) -> *mut QTimer {
+    pub fn make_raw_with_parent(parent: *mut ShoopQObject) -> *mut QTimer {
         unsafe { ffi::make_raw_qtimer_with_parent(parent) }
     }
 
@@ -113,7 +113,7 @@ impl QTimer {
         unsafe { ffi::make_raw_qtimer() }
     }
 
-    pub fn qobject_from_ptr(mut self: Pin<&mut Self>) -> *mut QObject {
+    pub fn qobject_from_ptr(mut self: Pin<&mut Self>) -> *mut ShoopQObject {
         unsafe { ffi::qobject_from_ptr_qtimer(self.as_mut().get_unchecked_mut()) }
     }
 }

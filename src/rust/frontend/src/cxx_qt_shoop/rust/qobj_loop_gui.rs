@@ -412,7 +412,7 @@ impl LoopGui {
         );
     }
 
-    pub unsafe fn set_sync_source(mut self: Pin<&mut LoopGui>, sync_source: *mut QObject) {
+    pub unsafe fn set_sync_source(mut self: Pin<&mut LoopGui>, sync_source: *mut ShoopQObject) {
         debug!(self, "sync source -> {:?}", sync_source);
         let changed = self.as_mut().rust_mut().sync_source != sync_source;
         self.as_mut().rust_mut().sync_source = sync_source;
@@ -424,7 +424,7 @@ impl LoopGui {
         self.update_backend_sync_source();
     }
 
-    pub unsafe fn set_backend(mut self: Pin<&mut LoopGui>, backend: *mut QObject) {
+    pub unsafe fn set_backend(mut self: Pin<&mut LoopGui>, backend: *mut ShoopQObject) {
         debug!(self, "backend -> {:?}", backend);
         let changed = self.as_mut().rust_mut().backend != backend;
         self.as_mut().rust_mut().backend = backend;
@@ -462,7 +462,7 @@ impl LoopGui {
 
     pub fn update_backend_sync_source(mut self: Pin<&mut LoopGui>) {
         debug!(self, "Updating backend sync source");
-        let sync_source_in: *mut QObject = *self.sync_source();
+        let sync_source_in: *mut ShoopQObject = *self.sync_source();
         let mut sync_source_out: QVariant = QVariant::default();
 
         if !sync_source_in.is_null() {

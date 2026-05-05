@@ -52,7 +52,7 @@ macro_rules! error {
     };
 }
 
-fn get_loop_iid(l: &*mut QObject) -> String {
+fn get_loop_iid(l: &*mut ShoopQObject) -> String {
     unsafe {
         match qobject::qobject_property_string(&**l, "instance_identifier") {
             Ok(iid) => {
@@ -66,7 +66,7 @@ fn get_loop_iid(l: &*mut QObject) -> String {
     }
 }
 
-type Transition = (*mut QObject, LoopMode);
+type Transition = (*mut ShoopQObject, LoopMode);
 type Transitions = Vec<Transition>;
 type TransitionsPerIteration = BTreeMap<i32, Transitions>;
 
@@ -89,7 +89,7 @@ impl CompositeLoopBackend {
                 self.as_mut().do_triggers_with_callback(
                     i,
                     mode,
-                    |obj: *mut QObject, obj_mode: LoopMode| {
+                    |obj: *mut ShoopQObject, obj_mode: LoopMode| {
                         iteration_transitions.push((obj, obj_mode));
                     },
                 );
@@ -113,7 +113,7 @@ impl CompositeLoopBackend {
         let loops_iter = loops
             .iter()
             .map(|variant| qvariant_to_qobject_ptr(variant))
-            .collect::<Result<Vec<*mut QObject>, _>>();
+            .collect::<Result<Vec<*mut ShoopQObject>, _>>();
 
         if let Err(e) = loops_iter {
             error!(self, "Failed to extract loop pointers for transition: {e}");
@@ -170,7 +170,7 @@ impl CompositeLoopBackend {
             trace!(self, "virtual transition list: {all_transitions:?}");
 
             // Find the last transition for each loop up until this point
-            type LastTransitionPerLoop = HashMap<*mut QObject, (LoopMode, i32)>;
+            type LastTransitionPerLoop = HashMap<*mut ShoopQObject, (LoopMode, i32)>;
             let mut last_transition_per_loop: LastTransitionPerLoop = HashMap::new();
             for (iteration, transitions) in all_transitions.iter() {
                 for (loop_obj, mode) in transitions.iter() {
@@ -364,7 +364,7 @@ impl CompositeLoopBackend {
             trace!(self, "virtual transition list: {transitions:?}");
 
             // Find the first recording range for each loop.
-            type IterationPerLoop = HashMap<*mut QObject, i32>;
+            type IterationPerLoop = HashMap<*mut ShoopQObject, i32>;
             let mut loop_recording_starts = IterationPerLoop::default();
             let mut loop_recording_ends = IterationPerLoop::default();
             for (iteration, transitions) in transitions.iter() {
@@ -407,7 +407,7 @@ impl CompositeLoopBackend {
             // Determine the grabs to make on our sub-loops.
             #[derive(Debug)]
             struct ToGrab {
-                loop_obj: *mut QObject,
+                loop_obj: *mut ShoopQObject,
                 reverse_start: i32,
                 n_cycles: i32,
             }
@@ -465,17 +465,17 @@ impl CompositeLoopBackend {
         }
     }
 
-    fn all_loops(self: &Self) -> HashSet<*mut QObject> {
-        let mut result: HashSet<*mut QObject> = HashSet::new();
+    fn all_loops(self: &Self) -> HashSet<*mut ShoopQObject> {
+        let mut result: HashSet<*mut ShoopQObject> = HashSet::new();
         for (_, events) in self.schedule.data.iter() {
             for (l, _mode) in events.loops_start.iter() {
-                let l = l.obj.as_qobject_ref() as *mut QObject;
+                let l = l.obj.as_qobject_ref() as *mut ShoopQObject;
                 if !l.is_null() {
                     result.insert(l);
                 }
             }
             for l in events.loops_end.iter().chain(events.loops_ignored.iter()) {
-                let l = l.obj.as_qobject_ref() as *mut QObject;
+                let l = l.obj.as_qobject_ref() as *mut ShoopQObject;
                 if !l.is_null() {
                     result.insert(l);
                 }
@@ -484,7 +484,7 @@ impl CompositeLoopBackend {
         result
     }
 
-    pub unsafe fn set_sync_source(mut self: Pin<&mut Self>, sync_source: *mut QObject) {
+    pub unsafe fn set_sync_source(mut self: Pin<&mut Self>, sync_source: *mut ShoopQObject) {
         debug!(self, "set sync source -> {sync_source:?}");
         if sync_source != self.sync_source {
             if !self.sync_source.is_null() && !sync_source.is_null() {
@@ -607,7 +607,7 @@ impl CompositeLoopBackend {
                 // of events.
                 for loop_obj in self.as_mut().all_loops().iter() {
                     if !loop_obj.is_null() {
-                        invoke::<QObject, (), i32>(
+                        invoke::<ShoopQObject, (), i32>(
                             &mut **loop_obj,
                             "dependent_will_handle_sync_loop_cycle(::std::int32_t)",
                             connection_types::DIRECT_CONNECTION,
@@ -684,7 +684,7 @@ impl CompositeLoopBackend {
         }
     }
 
-    pub unsafe fn set_backend(mut self: Pin<&mut Self>, backend: *mut QObject) {
+    pub unsafe fn set_backend(mut self: Pin<&mut Self>, backend: *mut ShoopQObject) {
         debug!(self, "set backend -> {backend:?}");
         if !backend.is_null() {
             let mut rust_mut = self.as_mut().rust_mut();
@@ -842,11 +842,11 @@ impl CompositeLoopBackend {
 
     pub fn do_trigger<AlternativeTriggerCallback>(
         mut self: Pin<&mut CompositeLoopBackend>,
-        loop_obj: *mut QObject,
+        loop_obj: *mut ShoopQObject,
         mode: LoopMode,
         mut callback: Option<&mut AlternativeTriggerCallback>,
     ) where
-        AlternativeTriggerCallback: FnMut(*mut QObject, LoopMode),
+        AlternativeTriggerCallback: FnMut(*mut ShoopQObject, LoopMode),
     {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             if let Some(callback) = callback.as_mut() {
@@ -883,7 +883,7 @@ impl CompositeLoopBackend {
     }
 
     pub fn do_triggers(self: Pin<&mut Self>, iteration: i32, mode: LoopMode) {
-        type Callback = fn(*mut QObject, LoopMode);
+        type Callback = fn(*mut ShoopQObject, LoopMode);
         self.do_triggers_impl::<Callback>(iteration, mode, None, false);
     }
 
@@ -893,7 +893,7 @@ impl CompositeLoopBackend {
         mode: LoopMode,
         mut callback: TriggerCallback,
     ) where
-        TriggerCallback: FnMut(*mut QObject, LoopMode),
+        TriggerCallback: FnMut(*mut ShoopQObject, LoopMode),
     {
         self.do_triggers_impl::<TriggerCallback>(iteration, mode, Some(&mut callback), false);
     }
@@ -905,7 +905,7 @@ impl CompositeLoopBackend {
         mut trigger_callback: Option<&mut AlternativeTriggerCallback>,
         nested: bool,
     ) where
-        AlternativeTriggerCallback: FnMut(*mut QObject, LoopMode),
+        AlternativeTriggerCallback: FnMut(*mut ShoopQObject, LoopMode),
     {
         if let Err(err) = || -> Result<(), anyhow::Error> {
             let schedule = self.schedule.clone();
@@ -922,7 +922,7 @@ impl CompositeLoopBackend {
                 let events = &schedule.data[&iteration];
                 let loops_start = &events.loops_start;
                 let loops_end = &events.loops_end;
-                let mut running_loops: HashSet<*mut QObject> = self
+                let mut running_loops: HashSet<*mut ShoopQObject> = self
                     .as_mut()
                     .running_loops
                     .iter()
@@ -932,7 +932,7 @@ impl CompositeLoopBackend {
 
                 // Handle any loop that needs to end this iteration.
                 for loop_end in loops_end.iter() {
-                    let loop_end = loop_end.obj.as_qobject_ref() as *mut QObject;
+                    let loop_end = loop_end.obj.as_qobject_ref() as *mut ShoopQObject;
                     let loop_iid = get_loop_iid(&loop_end);
                     debug!(self, "loop end: {loop_iid}");
                     self.as_mut().do_trigger(
@@ -947,7 +947,7 @@ impl CompositeLoopBackend {
                     // Our new mode will be a running mode. Apply it to
                     // loops that start this iteration.
                     for (loop_start, maybe_explicit_mode) in loops_start.iter() {
-                        let loop_start_qobj = loop_start.obj.as_qobject_ref() as *mut QObject;
+                        let loop_start_qobj = loop_start.obj.as_qobject_ref() as *mut ShoopQObject;
                         let loop_iid = get_loop_iid(&loop_start_qobj);
                         if let Some(explicit_mode) = maybe_explicit_mode {
                             // Explicit mode, just apply it as scheduled

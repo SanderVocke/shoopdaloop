@@ -7,7 +7,8 @@ shoop_log_unit!("Frontend.FXChain");
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
+        include!("cxx-qt-lib-shoop/qobject.h");
+        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -21,13 +22,13 @@ pub mod ffi {
         #[qproperty(bool, ready, READ=get_ready, NOTIFY=ready_changed)]
         #[qproperty(bool, active, READ=get_active, NOTIFY=active_changed)]
         // Frontend -> Backend properties
-        #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
+        #[qproperty(*mut ShoopQObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
         #[qproperty(QString, title, READ=get_title, WRITE=set_title, NOTIFY=title_changed)]
         #[qproperty(i32, chain_type, READ=get_chain_type, WRITE=set_chain_type, NOTIFY=chain_type_changed)]
         type FXChainBackend = super::FXChainBackendRust;
 
         #[qinvokable]
-        pub fn set_backend(self: Pin<&mut FXChainBackend>, backend: *mut QObject);
+        pub fn set_backend(self: Pin<&mut FXChainBackend>, backend: *mut ShoopQObject);
 
         #[qinvokable]
         pub fn set_title(self: Pin<&mut FXChainBackend>, title: QString);
@@ -99,20 +100,20 @@ pub mod ffi {
         pub unsafe fn active_changed(self: Pin<&mut FXChainBackend>, active: bool);
 
         #[qsignal]
-        pub unsafe fn backend_changed(self: Pin<&mut FXChainBackend>, backend: *mut QObject);
+        pub unsafe fn backend_changed(self: Pin<&mut FXChainBackend>, backend: *mut ShoopQObject);
     }
 
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qobject.h");
 
         #[rust_name = "from_qobject_ref_fx_chain_backend"]
-        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const FXChainBackend);
+        unsafe fn fromQObjectRef(obj: &ShoopQObject, output: *mut *const FXChainBackend);
 
         #[rust_name = "from_qobject_mut_fx_chain_backend"]
-        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut FXChainBackend);
+        unsafe fn fromQObjectMut(obj: Pin<&mut ShoopQObject>, output: *mut *mut FXChainBackend);
 
         #[rust_name = "fx_chain_backend_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj: *mut FXChainBackend) -> *mut QObject;
+        unsafe fn qobjectFromPtr(obj: *mut FXChainBackend) -> *mut ShoopQObject;
 
         include!("cxx-qt-lib-shoop/make_raw.h");
         #[rust_name = "make_raw_fx_chain_backend"]
@@ -127,7 +128,7 @@ use ffi::*;
 pub struct FXChainBackendRust {
     // Properties
     pub initialized: bool,
-    pub backend: *mut QObject,
+    pub backend: *mut ShoopQObject,
 
     // Other
     pub backend_chain_wrapper: Option<BackendFXChain>,
@@ -161,14 +162,14 @@ impl Default for FXChainBackendRust {
 }
 
 impl cxx_qt_lib_shoop::qobject::FromQObject for FXChainBackend {
-    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::QObject) -> *const Self {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::ShoopQObject) -> *const Self {
         let mut output: *const Self = std::ptr::null();
         from_qobject_ref_fx_chain_backend(obj, &mut output as *mut *const Self);
         output
     }
 
     unsafe fn ptr_from_qobject_mut(
-        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::QObject>,
+        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::ShoopQObject>,
     ) -> *mut Self {
         let mut output: *mut Self = std::ptr::null_mut();
         from_qobject_mut_fx_chain_backend(obj, &mut output as *mut *mut Self);

@@ -7,7 +7,8 @@ pub mod ffi {
         include!("cxx-qt-lib/qstring.h");
         include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
+        include!("cxx-qt-lib-shoop/qobject.h");
+        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
         type QString = cxx_qt_lib::QString;
 
         include!("cxx-qt-lib/qmap.h");

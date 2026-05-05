@@ -29,7 +29,8 @@ pub mod ffi {
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
 
         include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
+        include!("cxx-qt-lib-shoop/qobject.h");
+        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
     }
 
     unsafe extern "RustQt" {
@@ -144,10 +145,10 @@ pub mod ffi {
         include!("cxx-qt-lib-shoop/qobject.h");
 
         #[rust_name = "from_qobject_ref_backend_wrapper"]
-        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const BackendWrapper);
+        unsafe fn fromQObjectRef(obj: &ShoopQObject, output: *mut *const BackendWrapper);
 
         #[rust_name = "from_qobject_mut_backend_wrapper"]
-        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut BackendWrapper);
+        unsafe fn fromQObjectMut(obj: Pin<&mut ShoopQObject>, output: *mut *mut BackendWrapper);
 
         include!("cxx-qt-lib-shoop/make_unique.h");
         #[rust_name = "make_unique_backend_wrapper"]
@@ -261,14 +262,14 @@ impl cxx_qt_lib_shoop::qquickitem::AsQQuickItem for BackendWrapper {
 }
 
 impl cxx_qt_lib_shoop::qobject::FromQObject for BackendWrapper {
-    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::QObject) -> *const Self {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::ShoopQObject) -> *const Self {
         let mut output: *const Self = std::ptr::null();
         from_qobject_ref_backend_wrapper(obj, &mut output as *mut *const Self);
         output
     }
 
     unsafe fn ptr_from_qobject_mut(
-        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::QObject>,
+        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::ShoopQObject>,
     ) -> *mut Self {
         let mut output: *mut Self = std::ptr::null_mut();
         from_qobject_mut_backend_wrapper(obj, &mut output as *mut *mut Self);

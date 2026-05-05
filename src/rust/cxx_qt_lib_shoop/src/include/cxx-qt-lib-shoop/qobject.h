@@ -1,5 +1,8 @@
 #pragma once
 #include <QObject>
+
+// ShoopQObject is an alias for Qt's QObject to avoid conflicts with cxx-qt-lib's QObject type
+using ShoopQObject = QObject;
 #include <QThread>
 #include <QVariant>
 #include <rust/cxx.h>

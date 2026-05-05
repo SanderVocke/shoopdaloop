@@ -10,7 +10,8 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
+        include!("cxx-qt-lib-shoop/qobject.h");
+        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
     }
 
     unsafe extern "RustQt" {
@@ -50,10 +51,10 @@ pub mod ffi {
         include!("cxx-qt-lib-shoop/qobject.h");
 
         #[rust_name = "tracing_capture_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj: *mut TracingCapture) -> *mut QObject;
+        unsafe fn qobjectFromPtr(obj: *mut TracingCapture) -> *mut ShoopQObject;
 
         #[rust_name = "tracing_capture_qobject_from_ref"]
-        fn qobjectFromRef(obj: &TracingCapture) -> &QObject;
+        fn qobjectFromRef(obj: &TracingCapture) -> &ShoopQObject;
     }
 }
 
@@ -61,11 +62,11 @@ pub mod ffi {
 pub struct TracingCaptureRust {}
 
 impl AsQObject for ffi::TracingCapture {
-    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
+    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::ShoopQObject {
         ffi::tracing_capture_qobject_from_ptr(self as *mut Self)
     }
 
-    unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
-        ffi::tracing_capture_qobject_from_ref(self) as *const ffi::QObject
+    unsafe fn ref_qobject_ptr(&self) -> *const ffi::ShoopQObject {
+        ffi::tracing_capture_qobject_from_ref(self) as *const ffi::ShoopQObject
     }
 }

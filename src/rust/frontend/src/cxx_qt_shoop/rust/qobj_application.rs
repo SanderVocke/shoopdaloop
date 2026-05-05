@@ -118,7 +118,7 @@ impl Application {
         }
 
         unsafe {
-            let self_qobj: *mut cxx_qt_lib_shoop::qobject::QObject =
+            let self_qobj: *mut cxx_qt_lib_shoop::qobject::ShoopQObject =
                 self.as_mut().pin_mut_qobject_ptr();
             let self_qvariant = qobject_ptr_to_qvariant(&self_qobj)
                 .expect("Failed to convert self_qobj to QVariant");
@@ -200,7 +200,7 @@ impl Application {
         Ok(())
     }
 
-    pub fn on_qml_object_created(self: Pin<&mut Application>, object: *mut QObject, url: QUrl) {
+    pub fn on_qml_object_created(self: Pin<&mut Application>, object: *mut ShoopQObject, url: QUrl) {
         if object.is_null() {
             warn!("Created invalid object");
             return;

@@ -93,7 +93,7 @@ impl LoopBackend {
         }
     }
 
-    pub fn set_backend(mut self: Pin<&mut LoopBackend>, backend: *mut QObject) {
+    pub fn set_backend(mut self: Pin<&mut LoopBackend>, backend: *mut ShoopQObject) {
         debug!(self, "set backend -> {:?}", backend);
         let mut rust_mut = self.as_mut().rust_mut();
         rust_mut.backend = backend;
@@ -377,7 +377,7 @@ impl LoopBackend {
             }
         };
 
-        let loop_ptrs: Vec<*mut QObject> = loops
+        let loop_ptrs: Vec<*mut ShoopQObject> = loops
             .iter()
             .filter_map(|variant| match qvariant_to_qobject_ptr(variant) {
                 Ok(ptr) => Some(ptr),
@@ -429,7 +429,7 @@ impl LoopBackend {
                 .iter()
                 .map(|loop_variant| -> Result<(), anyhow::Error> {
                     unsafe {
-                        let loop_qobj: *mut QObject = qvariant_to_qobject_ptr(loop_variant)?;
+                        let loop_qobj: *mut ShoopQObject = qvariant_to_qobject_ptr(loop_variant)?;
                         let loop_ptr: *mut LoopBackend = qobject_to_loop_backend_ptr(loop_qobj);
                         {
                             let loop_pin = std::pin::Pin::new_unchecked(&mut *loop_ptr);
@@ -559,7 +559,7 @@ impl LoopBackend {
         }
     }
 
-    unsafe fn set_backend_sync_source(self: Pin<&mut LoopBackend>, sync_source: *mut QObject) {
+    unsafe fn set_backend_sync_source(self: Pin<&mut LoopBackend>, sync_source: *mut ShoopQObject) {
         debug!(self, "set sync source -> {:?}", sync_source);
         let result: Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
             if !sync_source.is_null() {
@@ -598,7 +598,7 @@ impl LoopBackend {
 
     pub unsafe fn set_sync_source(mut self: Pin<&mut LoopBackend>, sync_source: QVariant) {
         let maybe_sync_source_ptr = qvariant_to_qobject_ptr(&sync_source);
-        let sync_source_ptr: *mut QObject = if let Ok(ptr) = maybe_sync_source_ptr {
+        let sync_source_ptr: *mut ShoopQObject = if let Ok(ptr) = maybe_sync_source_ptr {
             ptr
         } else {
             std::ptr::null_mut()

@@ -13,7 +13,7 @@ use common::logging::macros::*;
 shoop_log_unit!("Frontend.QmlEngine");
 
 impl QmlEngine {
-    pub unsafe fn make_raw(parent: *mut QObject) -> *mut Self {
+    pub unsafe fn make_raw(parent: *mut ShoopQObject) -> *mut Self {
         make_raw_qmlengine(parent)
     }
 

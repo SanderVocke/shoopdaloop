@@ -141,7 +141,7 @@ impl MidiControlPort {
             debug!("Opening decoupled MIDI port {:?}", self.name_hint);
             let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
             let backend =
-                unsafe { BackendWrapper::from_qobject_ref_ptr(self.backend as *const QObject)? };
+                unsafe { BackendWrapper::from_qobject_ref_ptr(self.backend as *const ShoopQObject)? };
             let name_hint = self.name_hint.to_string();
             let direction = self.direction;
             let mut rust_mut = self.as_mut().rust_mut();

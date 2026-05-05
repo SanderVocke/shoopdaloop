@@ -8,7 +8,8 @@ pub mod ffi {
         type QString = cxx_qt_lib::QString;
 
         include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
+        include!("cxx-qt-lib-shoop/qobject.h");
+        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
     }
 
     unsafe extern "RustQt" {
@@ -18,7 +19,7 @@ pub mod ffi {
 
     unsafe extern "RustQt" {
         #[qinvokable]
-        pub unsafe fn set_window_icon_path(self: &GlobalUtils, window: *mut QObject, path: QString);
+        pub unsafe fn set_window_icon_path(self: &GlobalUtils, window: *mut ShoopQObject, path: QString);
     }
 
     unsafe extern "C++" {

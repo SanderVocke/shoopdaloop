@@ -440,7 +440,7 @@ impl PortGui {
         }
     }
 
-    pub unsafe fn set_backend(mut self: Pin<&mut PortGui>, backend: *mut QObject) {
+    pub unsafe fn set_backend(mut self: Pin<&mut PortGui>, backend: *mut ShoopQObject) {
         self.as_mut().backend_set_backend(backend);
         if backend != self.backend {
             let mut rust_mut = self.as_mut().rust_mut();
@@ -520,7 +520,7 @@ impl PortGui {
         }
     }
 
-    pub unsafe fn set_fx_chain(mut self: Pin<&mut PortGui>, fx_chain: *mut QObject) {
+    pub unsafe fn set_fx_chain(mut self: Pin<&mut PortGui>, fx_chain: *mut ShoopQObject) {
         unsafe {
             if fx_chain.is_null() {
                 trace!(self, "set backend fx chain -> {fx_chain:?}");

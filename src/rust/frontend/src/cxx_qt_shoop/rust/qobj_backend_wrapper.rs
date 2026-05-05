@@ -122,7 +122,7 @@ impl BackendWrapper {
             driver_type, settings
         );
 
-        let obj_qobject: *mut QObject;
+        let obj_qobject: *mut ShoopQObject;
         unsafe {
             let obj_qquickitem = self.as_mut().pin_mut_qquickitem_ptr();
             obj_qobject = qquickitem_to_qobject_mut(obj_qquickitem);

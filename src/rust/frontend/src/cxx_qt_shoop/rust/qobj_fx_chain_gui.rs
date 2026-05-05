@@ -187,7 +187,7 @@ impl FXChainGui {
         }
     }
 
-    pub fn set_backend(mut self: Pin<&mut Self>, backend: *mut QObject) {
+    pub fn set_backend(mut self: Pin<&mut Self>, backend: *mut ShoopQObject) {
         unsafe {
             self.as_mut().backend_set_backend(backend);
         }

@@ -723,9 +723,9 @@ dependencies = [
 
 [[package]]
 name = "cxx-qt"
-version = "0.7.2"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1013b28f54b0872a7d1a08e46325ab0603de7aab30bbf41c08bfafb8bb4a2656"
+checksum = "3fdf26e5ee4375a85799d0fe436662e5a8ef099bd0964b84bce8812c35c7daea"
 dependencies = [
  "cxx",
  "cxx-qt-build",
@@ -737,9 +737,9 @@ dependencies = [
 
 [[package]]
 name = "cxx-qt-build"
-version = "0.7.2"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4cee79cc965fc86eece3c84896d30b075a49b98dce784c7f874a8b6827536239"
+checksum = "f9a88c7f8241bfe4dfd19d27397a5845f0f275735a34ee7fb219045da81945e3"
 dependencies = [
  "cc",
  "codespan-reporting 0.11.1",
@@ -750,17 +750,17 @@ dependencies = [
  "quote",
  "serde",
  "serde_json",
- "version_check",
 ]
 
 [[package]]
 name = "cxx-qt-gen"
-version = "0.7.2"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa5e6dd2c802128a9cd3c6f295b4aa3239d5bc67fa366b2e08fb895baea85b1f"
+checksum = "9b1917c90b10117890e3794f4a0dc764a24704de40711d688ae128b0704490b8"
 dependencies = [
  "clang-format",
  "convert_case",
+ "cxx-gen",
  "indoc",
  "proc-macro2",
  "quote",
@@ -769,9 +769,9 @@ dependencies = [
 
 [[package]]
 name = "cxx-qt-lib"
-version = "0.7.2"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42e4ea0cf8e4b89b81ca92f3e6ad9d4b73f493e7616d46a64a73153731dc14bc"
+checksum = "d7b3de184cff59ad29d657021f933380e584d9b70265247f6a96098bef964211"
 dependencies = [
  "bytes",
  "chrono",
@@ -786,16 +786,18 @@ dependencies = [
  "serde",
  "time",
  "url",
+ "uuid",
 ]
 
 [[package]]
 name = "cxx-qt-macro"
-version = "0.7.2"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48c4c602fd8a942cb1986df9255e3fd8613cddb6e0e383119f2eb5450dc0ab12"
+checksum = "230b0d8b20d3d02a85885742be4fabc0382fead4e382dd8c9c9ff1827f221e8c"
 dependencies = [
  "cxx-qt-gen",
  "proc-macro2",
+ "quote",
  "syn",
 ]
 
@@ -2314,13 +2316,15 @@ dependencies = [
 
 [[package]]
 name = "qt-build-utils"
-version = "0.7.2"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce2f932be2cc04afebe74dc6f434377dd53ea63f562ad14c99176f01267a8917"
+checksum = "4d074750fd3baba12fdb47388d591ad9ed043e23864a79d129dcf3a1ef6fc8d9"
 dependencies = [
+ "anyhow",
  "cc",
+ "semver",
+ "serde",
  "thiserror 1.0.69",
- "versions",
 ]
 
 [[package]]
@@ -2627,6 +2631,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "semver"
+version = "1.0.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
+
+[[package]]
 name = "serde"
 version = "1.0.219"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2707,6 +2717,7 @@ dependencies = [
  "copy_dir",
  "crashhandling",
  "ctor",
+ "cxx-qt",
  "cxx-qt-lib",
  "cxx_qt_lib_shoop",
  "frontend",
@@ -3376,16 +3387,6 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "versions"
-version = "6.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f25d498b63d1fdb376b4250f39ab3a5ee8d103957346abacd911e2d8b612c139"
-dependencies = [
- "itertools 0.13.0",
- "nom",
-]
 
 [[package]]
 name = "vsimd"

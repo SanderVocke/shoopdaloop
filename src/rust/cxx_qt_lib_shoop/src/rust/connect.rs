@@ -7,7 +7,7 @@ shoop_log_unit!("Frontend.Qt");
 mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = crate::qobject::QObject;
+        type ShoopQObject = crate::qobject::ShoopQObject;
     }
 
     unsafe extern "C++" {
@@ -15,9 +15,9 @@ mod ffi {
 
         #[rust_name = "connect"]
         unsafe fn connect(
-            obj: *const QObject,
+            obj: *const ShoopQObject,
             signal: String,
-            receiver: *const QObject,
+            receiver: *const ShoopQObject,
             slot: String,
             connection_type: u32,
         ) -> Result<()>;
@@ -25,29 +25,29 @@ mod ffi {
 }
 
 pub trait QObjectOrConvertible {
-    fn qobject_mut(&mut self) -> *mut ffi::QObject;
-    fn qobject_ref(&self) -> *const ffi::QObject;
+    fn qobject_mut(&mut self) -> *mut ffi::ShoopQObject;
+    fn qobject_ref(&self) -> *const ffi::ShoopQObject;
 }
 
 impl<T> QObjectOrConvertible for T
 where
     T: AsQObject,
 {
-    fn qobject_mut(&mut self) -> *mut ffi::QObject {
+    fn qobject_mut(&mut self) -> *mut ffi::ShoopQObject {
         unsafe { self.qobject_mut() }
     }
 
-    fn qobject_ref(&self) -> *const ffi::QObject {
+    fn qobject_ref(&self) -> *const ffi::ShoopQObject {
         unsafe { self.qobject_ref() }
     }
 }
 
-impl QObjectOrConvertible for crate::qobject::QObject {
-    fn qobject_mut(&mut self) -> *mut ffi::QObject {
-        self as *mut ffi::QObject
+impl QObjectOrConvertible for crate::qobject::ShoopQObject {
+    fn qobject_mut(&mut self) -> *mut ffi::ShoopQObject {
+        self as *mut ffi::ShoopQObject
     }
-    fn qobject_ref(&self) -> *const ffi::QObject {
-        self as *const ffi::QObject
+    fn qobject_ref(&self) -> *const ffi::ShoopQObject {
+        self as *const ffi::ShoopQObject
     }
 }
 

@@ -133,7 +133,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
             // to the application object. Also, register it as a singleton
             // in QML-land.
             unsafe {
-                let app_qobj: *mut cxx_qt_lib_shoop::qobject::QObject =
+                let app_qobj: *mut cxx_qt_lib_shoop::qobject::ShoopQObject =
                     app.as_mut().pin_mut_qobject_ptr();
                 let testrunner_ptr = TestFileRunner::make_raw(app_qobj);
                 let mut testrunner = std::pin::Pin::new_unchecked(&mut *testrunner_ptr);
@@ -247,7 +247,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
             // to the application object. Also, register it as a singleton
             // in QML-land.
             unsafe {
-                let app_qobj: *mut cxx_qt_lib_shoop::qobject::QObject =
+                let app_qobj: *mut cxx_qt_lib_shoop::qobject::ShoopQObject =
                     app.as_mut().pin_mut_qobject_ptr();
 
                 TEST_RUNNER.with(|c| {
@@ -420,6 +420,11 @@ impl Drop for TracingCaptureCleanupGuard {
 
 #[cfg(not(feature = "prebuild"))]
 pub fn shoopdaloop_main(config: ShoopConfig) -> i32 {
+    cxx_qt::init_crate!(frontend);
+    cxx_qt::init_crate!(cxx_qt_lib_shoop);
+    cxx_qt::init_crate!(cxx_qt_lib);
+    cxx_qt::init_crate!(cxx_qt);
+
     // Create cleanup guard that will stop tracing capture when the app exits
     let _tracing_guard = TracingCaptureCleanupGuard;
 

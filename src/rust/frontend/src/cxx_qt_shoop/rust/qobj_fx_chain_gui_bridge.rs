@@ -7,7 +7,8 @@ pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
+        include!("cxx-qt-lib-shoop/qobject.h");
+        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -26,13 +27,13 @@ pub mod ffi {
         #[qproperty(bool, ready, READ, NOTIFY=ready_changed)]
         #[qproperty(bool, active, READ, NOTIFY=active_changed)]
         // Frontend -> Backend properties
-        #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
+        #[qproperty(*mut ShoopQObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
         #[qproperty(QString, title, READ, WRITE=set_title, NOTIFY=title_changed)]
         #[qproperty(i32, chain_type, READ, WRITE=set_chain_type, NOTIFY=chain_type_changed)]
         type FXChainGui = super::FXChainGuiRust;
 
         #[qinvokable]
-        pub fn set_backend(self: Pin<&mut FXChainGui>, backend: *mut QObject);
+        pub fn set_backend(self: Pin<&mut FXChainGui>, backend: *mut ShoopQObject);
 
         #[qinvokable]
         pub fn set_title(self: Pin<&mut FXChainGui>, title: QString);
@@ -87,10 +88,10 @@ pub mod ffi {
         pub unsafe fn active_changed(self: Pin<&mut FXChainGui>, active: bool);
 
         #[qsignal]
-        pub unsafe fn backend_changed(self: Pin<&mut FXChainGui>, backend: *mut QObject);
+        pub unsafe fn backend_changed(self: Pin<&mut FXChainGui>, backend: *mut ShoopQObject);
 
         #[qsignal]
-        pub unsafe fn backend_set_backend(self: Pin<&mut FXChainGui>, backend: *mut QObject);
+        pub unsafe fn backend_set_backend(self: Pin<&mut FXChainGui>, backend: *mut ShoopQObject);
 
         #[qsignal]
         pub unsafe fn backend_set_title(self: Pin<&mut FXChainGui>, title: QString);
@@ -109,7 +110,7 @@ pub mod ffi {
 
         #[qsignal]
         #[inherit]
-        pub unsafe fn destroyed(self: Pin<&mut FXChainGui>, obj: *mut QObject);
+        pub unsafe fn destroyed(self: Pin<&mut FXChainGui>, obj: *mut ShoopQObject);
     }
 
     unsafe extern "C++" {
@@ -124,10 +125,10 @@ pub mod ffi {
         include!("cxx-qt-lib-shoop/qobject.h");
 
         #[rust_name = "from_qobject_ref_fx_chain_gui"]
-        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const FXChainGui);
+        unsafe fn fromQObjectRef(obj: &ShoopQObject, output: *mut *const FXChainGui);
 
         #[rust_name = "from_qobject_mut_fx_chain_gui"]
-        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut FXChainGui);
+        unsafe fn fromQObjectMut(obj: Pin<&mut ShoopQObject>, output: *mut *mut FXChainGui);
 
         include!("cxx-qt-lib-shoop/register_qml_type.h");
         #[rust_name = "register_qml_type_fx_chain_gui"]
@@ -153,7 +154,7 @@ pub struct FXChainGuiRust {
     pub ui_visible: bool,
     pub ready: bool,
     pub active: bool,
-    pub backend: *mut QObject,
+    pub backend: *mut ShoopQObject,
     pub title: QString,
     pub chain_type: i32,
     pub backend_chain_wrapper: cxx::UniquePtr<QSharedPointer_QObject>,
@@ -184,14 +185,14 @@ impl cxx_qt_lib_shoop::qquickitem::AsQQuickItem for FXChainGui {
 }
 
 impl cxx_qt_lib_shoop::qobject::FromQObject for FXChainGui {
-    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::QObject) -> *const Self {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::ShoopQObject) -> *const Self {
         let mut output: *const Self = std::ptr::null();
         from_qobject_ref_fx_chain_gui(obj, &mut output as *mut *const Self);
         output
     }
 
     unsafe fn ptr_from_qobject_mut(
-        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::QObject>,
+        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::ShoopQObject>,
     ) -> *mut Self {
         let mut output: *mut Self = std::ptr::null_mut();
         from_qobject_mut_fx_chain_gui(obj, &mut output as *mut *mut Self);

@@ -74,7 +74,7 @@ impl AutoConnect {
             }
         }
 
-        let internal_port: *mut QObject;
+        let internal_port: *mut ShoopQObject;
         {
             internal_port = self.as_mut().internal_port().clone();
             if internal_port.is_null() {

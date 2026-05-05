@@ -7,7 +7,8 @@ pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
+        include!("cxx-qt-lib-shoop/qobject.h");
+        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -43,9 +44,9 @@ pub mod ffi {
         #[qproperty(f32, audio_gain, READ, NOTIFY=audio_gain_changed)]
         // Frontend -> Backend properties
         #[qproperty(bool, is_midi, READ, WRITE=set_is_midi, NOTIFY=is_midi_changed)]
-        #[qproperty(*mut QObject, maybe_fx_chain, READ, WRITE=set_fx_chain, NOTIFY=fx_chain_changed)]
+        #[qproperty(*mut ShoopQObject, maybe_fx_chain, READ, WRITE=set_fx_chain, NOTIFY=fx_chain_changed)]
         #[qproperty(i32, fx_chain_port_idx, READ, WRITE=set_fx_chain_port_idx, NOTIFY=fx_chain_port_idx_changed)]
-        #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
+        #[qproperty(*mut ShoopQObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
         #[qproperty(QString, name_hint, READ, WRITE=set_name_hint, NOTIFY=name_hint_changed)]
         #[qproperty(i32, input_connectability, READ, WRITE=set_input_connectability, NOTIFY=input_connectability_changed)]
         #[qproperty(i32, output_connectability, READ, WRITE=set_output_connectability, NOTIFY=output_connectability_changed)]
@@ -73,7 +74,7 @@ pub mod ffi {
         pub fn try_make_connections(self: Pin<&mut PortGui>, connections: QList_QString);
 
         #[qinvokable]
-        pub unsafe fn set_backend(self: Pin<&mut PortGui>, backend: *mut QObject);
+        pub unsafe fn set_backend(self: Pin<&mut PortGui>, backend: *mut ShoopQObject);
 
         #[qinvokable]
         pub fn set_name_hint(self: Pin<&mut PortGui>, name_hint: QString);
@@ -100,7 +101,7 @@ pub mod ffi {
         pub unsafe fn set_is_midi(self: Pin<&mut PortGui>, is_midi: bool);
 
         #[qinvokable]
-        pub unsafe fn set_fx_chain(self: Pin<&mut PortGui>, fx_chain: *mut QObject);
+        pub unsafe fn set_fx_chain(self: Pin<&mut PortGui>, fx_chain: *mut ShoopQObject);
 
         #[qinvokable]
         pub unsafe fn set_fx_chain_port_idx(self: Pin<&mut PortGui>, idx: i32);
@@ -153,7 +154,7 @@ pub mod ffi {
         );
 
         #[qsignal]
-        pub unsafe fn backend_changed(self: Pin<&mut PortGui>, backend: *mut QObject);
+        pub unsafe fn backend_changed(self: Pin<&mut PortGui>, backend: *mut ShoopQObject);
 
         #[qsignal]
         pub unsafe fn name_hint_changed(self: Pin<&mut PortGui>, name_hint: QString);
@@ -240,7 +241,7 @@ pub mod ffi {
         pub unsafe fn is_midi_changed(self: Pin<&mut PortGui>, is_midi: bool);
 
         #[qsignal]
-        pub unsafe fn fx_chain_changed(self: Pin<&mut PortGui>, fx_chain: *mut QObject);
+        pub unsafe fn fx_chain_changed(self: Pin<&mut PortGui>, fx_chain: *mut ShoopQObject);
 
         #[qsignal]
         pub unsafe fn fx_chain_port_idx_changed(self: Pin<&mut PortGui>, idx: i32);
@@ -276,7 +277,7 @@ pub mod ffi {
         pub unsafe fn backend_dummy_clear_queues(self: Pin<&mut PortGui>);
 
         #[qsignal]
-        pub unsafe fn backend_set_backend(self: Pin<&mut PortGui>, backend: *mut QObject);
+        pub unsafe fn backend_set_backend(self: Pin<&mut PortGui>, backend: *mut ShoopQObject);
 
         #[qsignal]
         pub unsafe fn backend_set_name_hint(self: Pin<&mut PortGui>, name_hint: QString);
@@ -326,7 +327,7 @@ pub mod ffi {
 
         #[qsignal]
         #[inherit]
-        pub unsafe fn destroyed(self: Pin<&mut PortGui>, obj: *mut QObject);
+        pub unsafe fn destroyed(self: Pin<&mut PortGui>, obj: *mut ShoopQObject);
     }
 
     unsafe extern "C++" {
@@ -351,10 +352,10 @@ pub mod ffi {
         include!("cxx-qt-lib-shoop/qobject.h");
 
         #[rust_name = "from_qobject_ref_port_gui"]
-        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const PortGui);
+        unsafe fn fromQObjectRef(obj: &ShoopQObject, output: *mut *const PortGui);
 
         #[rust_name = "from_qobject_mut_port_gui"]
-        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut PortGui);
+        unsafe fn fromQObjectMut(obj: Pin<&mut ShoopQObject>, output: *mut *mut PortGui);
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = (*mut QQuickItem,)> for PortGui {}
@@ -377,7 +378,7 @@ pub struct PortGuiRust {
     pub midi_n_output_events: i32,
     pub midi_n_input_notes_active: i32,
     pub midi_n_output_notes_active: i32,
-    pub backend: *mut QObject,
+    pub backend: *mut ShoopQObject,
     pub name_hint: QString,
     pub input_connectability: i32,
     pub output_connectability: i32,
@@ -387,7 +388,7 @@ pub struct PortGuiRust {
     pub audio_gain: f32,
     pub min_n_ringbuffer_samples: i32,
     pub is_midi: bool,
-    pub maybe_fx_chain: *mut QObject,
+    pub maybe_fx_chain: *mut ShoopQObject,
     pub fx_chain_port_idx: i32,
 
     // Other
@@ -484,14 +485,14 @@ impl cxx_qt::Constructor<()> for PortGui {
 }
 
 impl cxx_qt_lib_shoop::qobject::FromQObject for PortGui {
-    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::QObject) -> *const Self {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::ShoopQObject) -> *const Self {
         let mut output: *const Self = std::ptr::null();
         from_qobject_ref_port_gui(obj, &mut output as *mut *const Self);
         output
     }
 
     unsafe fn ptr_from_qobject_mut(
-        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::QObject>,
+        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::ShoopQObject>,
     ) -> *mut Self {
         let mut output: *mut Self = std::ptr::null_mut();
         from_qobject_mut_port_gui(obj, &mut output as *mut *mut Self);

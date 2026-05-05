@@ -3,7 +3,7 @@ use std::{marker::PhantomData, sync::Arc};
 
 use cxx_qt_lib_shoop::{
     invokable::{invoke, Invokable},
-    qobject::QObject,
+    qobject::ShoopQObject,
     qpointer::{qpointer_to_qobject, QPointerQObject},
 };
 use mlua;
@@ -14,11 +14,11 @@ use crate::{
 };
 
 pub trait LuaQObjectCallbackTarget {
-    fn lua_qobject_target(&self) -> Result<*mut QObject, anyhow::Error>;
+    fn lua_qobject_target(&self) -> Result<*mut ShoopQObject, anyhow::Error>;
 }
 
 impl LuaQObjectCallbackTarget for cxx::UniquePtr<QPointerQObject> {
-    fn lua_qobject_target(&self) -> Result<*mut QObject, anyhow::Error> {
+    fn lua_qobject_target(&self) -> Result<*mut ShoopQObject, anyhow::Error> {
         match unsafe { qpointer_to_qobject(self) } {
             qobj if qobj.is_null() => Err(anyhow!("QPointerQObject is null")),
             qobj => Ok(qobj),
@@ -42,7 +42,7 @@ where
 impl<Args: FromLuaMultiExtended, R: IntoLuaExtended, Q: LuaQObjectCallbackTarget> LuaCallback
     for LuaQObjectCallback<Q, R, Args>
 where
-    QObject: Invokable<R, Args>,
+    ShoopQObject: Invokable<R, Args>,
 {
     fn call(
         &self,
@@ -81,7 +81,7 @@ pub fn create_lua_qobject_callback_qpointer<R, Args>(
 where
     Args: FromLuaMultiExtended,
     R: IntoLuaExtended,
-    QObject: Invokable<R, Args>,
+    ShoopQObject: Invokable<R, Args>,
 {
     LuaQObjectCallback {
         qobject: obj,

@@ -5,7 +5,8 @@ use cxx_qt_lib_shoop::qobject::AsQObject;
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
+        include!("cxx-qt-lib-shoop/qobject.h");
+        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
 
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
@@ -36,15 +37,15 @@ pub mod ffi {
         #[qproperty(i32, position, READ, NOTIFY=position_changed)]
         #[qproperty(i32, cycle_nr, READ, NOTIFY=cycle_nr_changed)]
         // Frontend -> Backend properties
-        #[qproperty(*mut QObject, backend, READ, NOTIFY=backend_changed)]
-        #[qproperty(*mut QObject, sync_source, READ, NOTIFY=sync_source_changed)]
+        #[qproperty(*mut ShoopQObject, backend, READ, NOTIFY=backend_changed)]
+        #[qproperty(*mut ShoopQObject, sync_source, READ, NOTIFY=sync_source_changed)]
         #[qproperty(QMap_QString_QVariant, schedule, READ=get_schedule, NOTIFY=schedule_changed)]
         #[qproperty(bool, play_after_record, READ, NOTIFY=play_after_record_changed)]
         #[qproperty(bool, sync_mode_active, READ, NOTIFY=sync_mode_active_changed)]
         #[qproperty(QString, kind, READ, WRITE=set_kind, NOTIFY=kind_changed)]
         #[qproperty(QString, instance_identifier, READ, NOTIFY=instance_identifier_changed)]
         // Other properties
-        #[qproperty(*mut QObject, frontend_loop, READ, WRITE)]
+        #[qproperty(*mut ShoopQObject, frontend_loop, READ, WRITE)]
         type CompositeLoopBackend = super::CompositeLoopBackendRust;
 
         #[qinvokable]
@@ -70,11 +71,11 @@ pub mod ffi {
         #[qinvokable]
         pub unsafe fn set_sync_source(
             self: Pin<&mut CompositeLoopBackend>,
-            sync_source: *mut QObject,
+            sync_source: *mut ShoopQObject,
         );
 
         #[qinvokable]
-        pub unsafe fn set_backend(self: Pin<&mut CompositeLoopBackend>, backend: *mut QObject);
+        pub unsafe fn set_backend(self: Pin<&mut CompositeLoopBackend>, backend: *mut ShoopQObject);
 
         #[qinvokable]
         pub unsafe fn set_schedule(
@@ -149,13 +150,13 @@ pub mod ffi {
 
         #[qsignal]
         #[cxx_name = "backendChanged"]
-        pub unsafe fn backend_changed(self: Pin<&mut CompositeLoopBackend>, backend: *mut QObject);
+        pub unsafe fn backend_changed(self: Pin<&mut CompositeLoopBackend>, backend: *mut ShoopQObject);
 
         #[qsignal]
         #[cxx_name = "syncSourceChanged"]
         pub unsafe fn sync_source_changed(
             self: Pin<&mut CompositeLoopBackend>,
-            sync_source: *mut QObject,
+            sync_source: *mut ShoopQObject,
         );
 
         #[qsignal]
@@ -247,10 +248,10 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/qobject.h");
         #[rust_name = "composite_loop_backend_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj: *mut CompositeLoopBackend) -> *mut QObject;
+        unsafe fn qobjectFromPtr(obj: *mut CompositeLoopBackend) -> *mut ShoopQObject;
 
         #[rust_name = "composite_loop_backend_qobject_from_ref"]
-        fn qobjectFromRef(obj: &CompositeLoopBackend) -> &QObject;
+        fn qobjectFromRef(obj: &CompositeLoopBackend) -> &ShoopQObject;
 
         include!("cxx-qt-lib-shoop/qmetatype.h");
         #[rust_name = "composite_loop_backend_metatype_name"]
@@ -267,12 +268,12 @@ use ffi::*;
 use crate::composite_loop_schedule::CompositeLoopSchedule;
 
 impl AsQObject for CompositeLoopBackend {
-    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
+    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::ShoopQObject {
         ffi::composite_loop_backend_qobject_from_ptr(self as *mut Self)
     }
 
-    unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
-        ffi::composite_loop_backend_qobject_from_ref(self) as *const ffi::QObject
+    unsafe fn ref_qobject_ptr(&self) -> *const ffi::ShoopQObject {
+        ffi::composite_loop_backend_qobject_from_ref(self) as *const ffi::ShoopQObject
     }
 }
 
@@ -313,14 +314,14 @@ pub struct CompositeLoopBackendRust {
     pub sync_position: i32,
     pub sync_length: i32,
     pub position: i32,
-    pub backend: *mut QObject,
-    pub sync_source: *mut QObject,
+    pub backend: *mut ShoopQObject,
+    pub sync_source: *mut ShoopQObject,
     pub play_after_record: bool,
     pub sync_mode_active: bool,
     pub kind: QString,
     pub instance_identifier: QString,
     pub cycle_nr: i32,
-    pub frontend_loop: *mut QObject,
+    pub frontend_loop: *mut ShoopQObject,
 
     // Others
     pub schedule: CompositeLoopSchedule<cxx::UniquePtr<QWeakPointer_QObject>>,
