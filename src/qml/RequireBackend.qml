@@ -1,3 +1,5 @@
+import QtQuick 6.6
+
 Item {
     property var provider : parent
     property var backend: {

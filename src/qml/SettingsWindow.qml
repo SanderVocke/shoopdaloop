@@ -1,4 +1,5 @@
 import QtQuick 6.6
+import ShoopDaLoop.Rust
 import QtQuick.Controls 6.6
 import QtQuick.Layouts 6.6
 import QtQuick.Controls.Material 6.6

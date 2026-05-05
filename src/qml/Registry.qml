@@ -1,4 +1,5 @@
 import QtQuick 6.6
+import ShoopDaLoop.Rust
 
 // A registry is a simple key-value store which can be shared by reference
 Item {
