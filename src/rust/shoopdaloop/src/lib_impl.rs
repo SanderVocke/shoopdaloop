@@ -417,9 +417,8 @@ impl Drop for TracingCaptureCleanupGuard {
 
 #[cfg(not(feature = "prebuild"))]
 pub fn shoopdaloop_main(config: ShoopConfig) -> i32 {
-    cxx_qt::init_crate!(frontend);
-    cxx_qt::init_crate!(cxx_qt_lib_shoop);
-    // Note: shoopdaloop crate has no #[qobject] types, so no init_crate for itself
+    // Note: cxx_qt init_crate calls are now handled in #[ctor] static initializer in lib.rs
+    // This ensures they run even in test builds and creates proper linker references
 
     // Create cleanup guard that will stop tracing capture when the app exits
     let _tracing_guard = TracingCaptureCleanupGuard;
