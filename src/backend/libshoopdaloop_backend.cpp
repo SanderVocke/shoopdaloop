@@ -1372,7 +1372,13 @@ shoop_midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_port_t *port) 
 
 void close_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port) {
   return api_impl<void>("close_decoupled_midi_port", [&]() {
-    auto _port = internal_decoupled_midi_port(port);
+    shoop_shared_ptr<_DecoupledMidiPort> _port;
+    try {
+        _port = internal_decoupled_midi_port(port);
+    } catch (const std::runtime_error &e) {
+        // Handle already destroyed - weak_ptr has expired
+        return;
+    }
     auto _driver = _port->get_maybe_driver();
     if (!_driver) {
        // Already closed
@@ -1962,8 +1968,11 @@ void destroy_midi_channel(shoopdaloop_loop_midi_channel_t *d) {
 
 void destroy_shoopdaloop_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *d) {
   return api_impl<void, log_level_debug_trace, log_level_warning>("destroy_shoopdaloop_decoupled_midi_port", [&]() {
-    logging::log<"Backend.API", log_level_debug>(std::nullopt, std::nullopt, "destroy_shoopdaloop_decoupled_midi_port");
-    throw std::runtime_error("unimplemented");
+    // No-op - handles are intentionally leaked to avoid dangling pointer issues.
+    // Actual cleanup is done by close_decoupled_midi_port().
+    // See TODO in libshoopdaloop_backend.cpp about proper handle lifecycle management.
+    logging::log<"Backend.API", log_level_debug>(std::nullopt, std::nullopt, 
+        "destroy_shoopdaloop_decoupled_midi_port called (no-op, handle intentionally leaked)");
   });
 }
 
