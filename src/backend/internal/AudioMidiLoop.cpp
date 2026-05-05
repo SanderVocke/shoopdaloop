@@ -9,16 +9,17 @@
 #include <fmt/format.h>
 #include "AudioPort.h"
 
-AudioMidiLoop::AudioMidiLoop()
-    : BasicLoop() {}
+AudioMidiLoop::AudioMidiLoop(std::string name)
+    : BasicLoop(name) {}
 
 template <typename SampleT>
 shoop_shared_ptr<AudioChannel<SampleT>> AudioMidiLoop::add_audio_channel(
     shoop_shared_ptr<BufferPool<SampleT>> const &buffer_pool,
-    uint32_t initial_max_buffers, shoop_channel_mode_t mode, bool thread_safe)
+    uint32_t initial_max_buffers, shoop_channel_mode_t mode,
+    std::string name, bool thread_safe)
 {
     auto channel = shoop_make_shared<AudioChannel<SampleT>>(
-        buffer_pool, initial_max_buffers, mode);
+        buffer_pool, initial_max_buffers, mode, name);
     auto fn = [this, channel]() { mp_audio_channels.push_back(
         shoop_static_pointer_cast<ChannelInterface>(channel)
     ); };
@@ -32,10 +33,10 @@ shoop_shared_ptr<AudioChannel<SampleT>> AudioMidiLoop::add_audio_channel(
 
 shoop_shared_ptr<MidiChannel>
 AudioMidiLoop::add_midi_channel(uint32_t data_size, shoop_channel_mode_t mode,
-                                bool thread_safe)
+                                std::string name, bool thread_safe)
 {
     auto channel = shoop_make_shared<MidiChannel>(
-        data_size, mode);
+        data_size, mode, name);
     auto fn = [this, channel]() {
         mp_midi_channels.push_back(
             shoop_static_pointer_cast<ChannelInterface>(channel)
@@ -158,9 +159,10 @@ void AudioMidiLoop::PROC_process_channels(
                             pos_after, length_before, length_after);
     }
 
-    // Plot metrics
-    m_plot_n_audio_channels.plot(static_cast<double>(mp_audio_channels.size()));
-    m_plot_n_midi_channels.plot(static_cast<double>(mp_midi_channels.size()));
+    // Plot metrics (use loop name as base identifier)
+    const char* loop_name = name();
+    m_plot_n_audio_channels.plot(static_cast<double>(mp_audio_channels.size()), loop_name);
+    m_plot_n_midi_channels.plot(static_cast<double>(mp_midi_channels.size()), loop_name);
 }
 
 void AudioMidiLoop::PROC_update_poi() {
@@ -198,11 +200,13 @@ void AudioMidiLoop::PROC_handle_poi() {
 
 template shoop_shared_ptr<AudioChannel<float>> AudioMidiLoop::add_audio_channel(
     shoop_shared_ptr<BufferPool<float>> const &buffer_pool,
-    uint32_t initial_max_buffers, shoop_channel_mode_t mode, bool thread_safe);
+    uint32_t initial_max_buffers, shoop_channel_mode_t mode,
+    std::string name, bool thread_safe);
 
 template shoop_shared_ptr<AudioChannel<int>> AudioMidiLoop::add_audio_channel(
     shoop_shared_ptr<BufferPool<int>> const &buffer_pool,
-    uint32_t initial_max_buffers, shoop_channel_mode_t mode, bool thread_safe);
+    uint32_t initial_max_buffers, shoop_channel_mode_t mode,
+    std::string name, bool thread_safe);
 
 template shoop_shared_ptr<AudioChannel<float>>
 AudioMidiLoop::audio_channel(uint32_t idx, bool thread_safe);

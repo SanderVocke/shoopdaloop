@@ -348,6 +348,7 @@ impl LoopGui {
         let backend_wrapper_qobj = backend_wrapper
             .data()
             .map_err(|_| anyhow!("Backend wrapper data is null"))?;
+        let channel_name = self.as_ref().instance_identifier.to_string();
         unsafe {
             let backend_wrapper_obj = &mut *qobject_to_loop_backend_ptr(backend_wrapper_qobj);
             let maybe_backend_loop = backend_wrapper_obj.backend_loop.as_ref();
@@ -355,7 +356,7 @@ impl LoopGui {
                 debug!(self, "Created back-end audio channel");
                 return maybe_backend_loop
                     .ok_or_else(|| anyhow!("Backend loop is null"))?
-                    .add_audio_channel(mode.try_into()?);
+                    .add_audio_channel(mode.try_into()?, &channel_name);
             } else {
                 return Err(anyhow!("Backend loop not set"));
             }
@@ -375,6 +376,7 @@ impl LoopGui {
         let backend_wrapper_qobj = backend_wrapper
             .data()
             .map_err(|_| anyhow!("Backend wrapper data is null"))?;
+        let channel_name = self.as_ref().instance_identifier.to_string();
         unsafe {
             let backend_wrapper_obj = &mut *qobject_to_loop_backend_ptr(backend_wrapper_qobj);
             let maybe_backend_loop = backend_wrapper_obj.backend_loop.as_ref();
@@ -382,7 +384,7 @@ impl LoopGui {
                 debug!(self, "Created back-end MIDI channel");
                 return maybe_backend_loop
                     .ok_or_else(|| anyhow!("Backend loop is null"))?
-                    .add_midi_channel(mode.try_into()?);
+                    .add_midi_channel(mode.try_into()?, &channel_name);
             } else {
                 return Err(anyhow!("Backend loop not set"));
             }

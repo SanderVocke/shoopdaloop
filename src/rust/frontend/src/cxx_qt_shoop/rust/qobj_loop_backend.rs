@@ -154,7 +154,7 @@ impl LoopBackend {
                         .as_ref()
                         .ok_or_else(|| anyhow!("Backend session is null"))?;
                     let backend_loop = backend_session
-                        .create_loop()
+                        .create_loop(&self.instance_identifier().to_string())
                         .map_err(|e| anyhow!("Failed to create backend loop: {}", e))?;
                     {
                         let mut rust_mut = self.as_mut().rust_mut();

@@ -40,9 +40,9 @@ SHOOP_EXPORT shoop_profiling_report_t* get_profiling_report(shoop_backend_sessio
 SHOOP_EXPORT shoop_result_t set_audio_driver(shoop_backend_session_t *session, shoop_audio_driver_t *driver);
 
 // Loops
-SHOOP_EXPORT shoopdaloop_loop_t *create_loop(shoop_backend_session_t *backend);
-SHOOP_EXPORT shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, shoop_channel_mode_t mode);
-SHOOP_EXPORT shoopdaloop_loop_midi_channel_t  *add_midi_channel  (shoopdaloop_loop_t *loop, shoop_channel_mode_t mode);
+SHOOP_EXPORT shoopdaloop_loop_t *create_loop(shoop_backend_session_t *backend, const char *name);
+SHOOP_EXPORT shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, shoop_channel_mode_t mode, const char *name);
+SHOOP_EXPORT shoopdaloop_loop_midi_channel_t  *add_midi_channel  (shoopdaloop_loop_t *loop, shoop_channel_mode_t mode, const char *name);
 SHOOP_EXPORT unsigned          get_n_audio_channels     (shoopdaloop_loop_t *loop);
 SHOOP_EXPORT unsigned          get_n_midi_channels      (shoopdaloop_loop_t *loop);
 SHOOP_EXPORT void              clear_loop               (shoopdaloop_loop_t *loop, unsigned length);

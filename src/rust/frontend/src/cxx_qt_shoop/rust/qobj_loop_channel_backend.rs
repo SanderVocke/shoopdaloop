@@ -242,10 +242,10 @@ impl LoopChannelBackend {
                     let backend_channel =
                         match self.data_type.ok_or(anyhow!("data_type is None"))? {
                             PortDataType::Audio => {
-                                AnyBackendChannel::Audio(channel_loop.add_audio_channel(mode)?)
+                                AnyBackendChannel::Audio(channel_loop.add_audio_channel(mode, &self.instance_identifier().to_string())?)
                             }
                             PortDataType::Midi => {
-                                AnyBackendChannel::Midi(channel_loop.add_midi_channel(mode)?)
+                                AnyBackendChannel::Midi(channel_loop.add_midi_channel(mode, &self.instance_identifier().to_string())?)
                             }
                             PortDataType::Any => {
                                 return Err(anyhow!("No specific port data type"));

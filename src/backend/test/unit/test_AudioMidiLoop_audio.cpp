@@ -13,7 +13,7 @@ using namespace std::chrono_literals;
 TEST_CASE("AudioMidiLoop - Audio - Stop", "[AudioMidiLoop][audio]") {
     auto pool = shoop_make_shared<BufferPool<int>>(10, 5, 256);
     AudioMidiLoop loop;
-    auto chan = loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    auto chan = loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, "test_channel", false);
 
     REQUIRE(loop.get_mode() == LoopMode_Stopped);
     REQUIRE(loop.PROC_get_next_poi() == std::nullopt);
@@ -32,9 +32,9 @@ TEST_CASE("AudioMidiLoop - Audio - Stop", "[AudioMidiLoop][audio]") {
 TEST_CASE("AudioMidiLoop - Audio - Record", "[AudioMidiLoop][audio]") {
     auto pool = shoop_make_shared<BufferPool<int>>(10, 5, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, "test_channel", false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, "test_channel", false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, "test_channel", false);
     std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
 
@@ -71,7 +71,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record", "[AudioMidiLoop][audio]") {
 TEST_CASE("AudioMidiLoop - Audio - Record Beyond Ext. Buf", "[AudioMidiLoop][audio]") {
     auto pool = shoop_make_shared<BufferPool<int>>(10, 5, 256);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, "test_channel", false);
     auto &channel = *loop.audio_channel<int>(0);
     
     channel.PROC_set_recording_buffer(nullptr, 0);
@@ -85,7 +85,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Beyond Ext. Buf", "[AudioMidiLoop][aud
 TEST_CASE("AudioMidiLoop - Audio - Record Multiple Target", "[AudioMidiLoop][audio]") {
     auto pool = shoop_make_shared<BufferPool<int>>(10, 5, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, "test_channel", false);
     auto &channel = *loop.audio_channel<int>(0);
 
     auto source_buf = create_audio_buf<int>(512, [](uint32_t position) { return position; }); 
@@ -117,7 +117,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Multiple Target", "[AudioMidiLoop][aud
 TEST_CASE("AudioMidiLoop - Audio - Record Multiple Source", "[AudioMidiLoop][audio]") {
     auto pool = shoop_make_shared<BufferPool<int>>(10, 5, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, "test_channel", false);
     auto &channel = *loop.audio_channel<int>(0);
 
     auto source_buf = create_audio_buf<int>(32, [](uint32_t position) { return position; });
@@ -157,7 +157,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Multiple Source", "[AudioMidiLoop][aud
 TEST_CASE("AudioMidiLoop - Audio - Record Onto Smaller", "[AudioMidiLoop][audio]") {
     auto pool = shoop_make_shared<BufferPool<int>>(10, 5, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, "test_channel", false);
     auto &channel = *loop.audio_channel<int>(0);
     auto data = create_audio_buf<int>(64, [](uint32_t position) { return -((int)position); });
     channel.load_data(data.data(), 64, false);
@@ -213,7 +213,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Onto Smaller", "[AudioMidiLoop][audio]
 TEST_CASE("AudioMidiLoop - Audio - Record Onto Larger", "[AudioMidiLoop][audio]") {
     auto pool = shoop_make_shared<BufferPool<int>>(10, 5, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, "test_channel", false);
     auto &channel = *loop.audio_channel<int>(0);
     auto data = create_audio_buf<int>(128, [](uint32_t position) { return -((int)position); });
     channel.load_data(data.data(), 128, false);
@@ -259,9 +259,9 @@ TEST_CASE("AudioMidiLoop - Audio - Record Onto Larger", "[AudioMidiLoop][audio]"
 TEST_CASE("AudioMidiLoop - Audio - Playback", "[AudioMidiLoop][audio]") {
     auto pool = shoop_make_shared<BufferPool<int>>(10, 5, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, "test_channel", false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, "test_channel", false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, "test_channel", false);
     std::vector<shoop_shared_ptr<AudioChannel<int>>> channels =
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2)};
     
@@ -303,7 +303,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback", "[AudioMidiLoop][audio]") {
 TEST_CASE("AudioMidiLoop - Audio - Playback Multiple Target", "[AudioMidiLoop][audio]") {
     auto pool = shoop_make_shared<BufferPool<int>>(10, 5, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, "test_channel", false);
     auto &channel = *loop.audio_channel<int>(0);
     
     auto data = create_audio_buf<int>(512, [](uint32_t position) { return position; });
@@ -336,7 +336,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Multiple Target", "[AudioMidiLoop][a
 TEST_CASE("AudioMidiLoop - Audio - Playback Shorter Data", "[AudioMidiLoop][audio]") {
     auto pool = shoop_make_shared<BufferPool<int>>(10, 5, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, "test_channel", false);
     auto &channel = *loop.audio_channel<int>(0);
     
     auto data = create_audio_buf<int>(32, [](uint32_t position) { return position; });
@@ -372,7 +372,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Shorter Data", "[AudioMidiLoop][audi
 TEST_CASE("AudioMidiLoop - Audio - Playback Wrap", "[AudioMidiLoop][audio]") {
     auto pool = shoop_make_shared<BufferPool<int>>(10, 5, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, "test_channel", false);
     auto &channel = *loop.audio_channel<int>(0);
     
     auto data = create_audio_buf<int>(64, [](uint32_t position) { return position; });
@@ -420,7 +420,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Wrap", "[AudioMidiLoop][audio]") {
 TEST_CASE("AudioMidiLoop - Audio - Playback Wrap Longer Data", "[AudioMidiLoop][audio]") {
     auto pool = shoop_make_shared<BufferPool<int>>(10, 5, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, "test_channel", false);
     auto &channel = *loop.audio_channel<int>(0);
     
     auto data = create_audio_buf<int>(128, [](uint32_t position) { return position; });
@@ -467,9 +467,9 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Wrap Longer Data", "[AudioMidiLoop][
 TEST_CASE("AudioMidiLoop - Audio - Replace", "[AudioMidiLoop][audio]") {
     auto pool = shoop_make_shared<BufferPool<int>>(10, 5, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, "test_channel", false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, "test_channel", false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, "test_channel", false);
     std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
         { loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
     
@@ -512,7 +512,7 @@ TEST_CASE("AudioMidiLoop - Audio - Replace", "[AudioMidiLoop][audio]") {
 TEST_CASE("AudioMidiLoop - Audio - Replace Onto Smaller", "[AudioMidiLoop][audio]") {
     auto pool = shoop_make_shared<BufferPool<int>>(10, 5, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, "test_channel", false);
     auto &channel = *loop.audio_channel<int>(0);
     
     auto data = create_audio_buf<int>(64, [](uint32_t position) { return position; });
@@ -558,9 +558,9 @@ TEST_CASE("AudioMidiLoop - Audio - Replace Onto Smaller", "[AudioMidiLoop][audio
 TEST_CASE("AudioMidiLoop - Audio - Play Dry Through Wet", "[AudioMidiLoop][audio]") {
     auto pool = shoop_make_shared<BufferPool<int>>(10, 5, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, "test_channel", false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, "test_channel", false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, "test_channel", false);
     std::vector<shoop_shared_ptr<AudioChannel<int>>> channels =
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2)};
     
@@ -602,9 +602,9 @@ TEST_CASE("AudioMidiLoop - Audio - Play Dry Through Wet", "[AudioMidiLoop][audio
 TEST_CASE("AudioMidiLoop - Audio - Record Dry Into Wet", "[AudioMidiLoop][audio]") {
     auto pool = shoop_make_shared<BufferPool<int>>(10, 5, 64);
     AudioMidiLoop loop;
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, "test_channel", false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, "test_channel", false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, "test_channel", false);
     std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
         { loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
     
@@ -687,9 +687,9 @@ TEST_CASE("AudioMidiLoop - Audio - Prerecord", "[AudioMidiLoop][audio]") {
     loop.PROC_update_trigger_eta();
     REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999)== 100);
 
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, "test_channel", false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, "test_channel", false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, "test_channel", false);
     std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
 
@@ -766,9 +766,9 @@ TEST_CASE("AudioMidiLoop - Audio - Preplay", "[AudioMidiLoop][audio]") {
     loop.PROC_update_trigger_eta();
     REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999)== 100);
 
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, "test_channel", false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, "test_channel", false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, "test_channel", false);
     std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
 
@@ -849,9 +849,9 @@ TEST_CASE("AudioMidiLoop - Audio - Playback and set to sync", "[AudioMidiLoop][a
     loop.PROC_update_trigger_eta();
     REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999)== 30);
 
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, "test_channel", false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, "test_channel", false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, "test_channel", false);
     std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
 
@@ -920,9 +920,9 @@ TEST_CASE("AudioMidiLoop - Audio - Record and set to sync", "[AudioMidiLoop][aud
     loop.PROC_update_trigger_eta();
     REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999)== 30);
 
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
-    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, "test_channel", false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, "test_channel", false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, "test_channel", false);
     std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
 

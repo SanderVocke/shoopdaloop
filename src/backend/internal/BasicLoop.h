@@ -50,18 +50,21 @@ protected:
     std::atomic<shoop_loop_mode_t> ma_maybe_next_planned_mode =  LoopMode_Stopped;
     std::atomic<int> ma_maybe_next_planned_delay = -1;
 
-    // Tracy plotters for loop debugging
-    TracyPlotter m_plot_mode{"Loop/mode"};
-    TracyPlotter m_plot_position{"Loop/position"};
-    TracyPlotter m_plot_length{"Loop/length"};
-    TracyPlotter m_plot_poi{"Loop/poi"};
-    TracyPlotter m_plot_trigger_eta{"Loop/trigger_eta"};
-    TracyPlotter m_plot_triggering{"Loop/triggering"};
-    TracyPlotter m_plot_planned_transitions{"Loop/planned_transitions"};
+    // Tracy plotters for loop debugging (suffix only, base identifier passed at plot time)
+    TracyPlotter m_plot_mode{"mode"};
+    TracyPlotter m_plot_position{"position"};
+    TracyPlotter m_plot_length{"length"};
+    TracyPlotter m_plot_poi{"poi"};
+    TracyPlotter m_plot_trigger_eta{"trigger_eta"};
+    TracyPlotter m_plot_triggering{"triggering"};
+    TracyPlotter m_plot_planned_transitions{"planned_transitions"};
+
+    // Name/identifier for tracing
+    std::string m_name;
 
 public:
 
-    BasicLoop();
+    BasicLoop(std::string name = "loop");
     ~BasicLoop() override;
 
     // We always assume that the POI has been properly updated by whatever calls were
@@ -107,6 +110,7 @@ public:
     void get_first_planned_transition(shoop_loop_mode_t &maybe_mode_out, uint32_t &delay_out) override;
     void set_length(uint32_t len, bool thread_safe=true) override;
     void set_mode(shoop_loop_mode_t mode, bool thread_safe=true) override;
+    const char* name() const override;
 
 protected:
     static std::optional<PointOfInterest> dominant_poi(std::optional<PointOfInterest> const& a, std::optional<PointOfInterest> const& b);

@@ -33,7 +33,7 @@ uint32_t MidiChannel::ExternalBufState::events_left() const {
     return n_events_total - n_events_processed;
 }
 
-MidiChannel::MidiChannel(uint32_t data_size, shoop_channel_mode_t mode)
+MidiChannel::MidiChannel(uint32_t data_size, shoop_channel_mode_t mode, std::string name)
     : WithCommandQueue(50),
       mp_playback_target_buffer(std::make_pair(ExternalBufState(), nullptr)),
       mp_recording_source_buffer(std::make_pair(ExternalBufState(), nullptr)),
@@ -49,8 +49,13 @@ MidiChannel::MidiChannel(uint32_t data_size, shoop_channel_mode_t mode)
       mp_temp_prerecording_start_state_tracker(shoop_make_shared<TrackedRelativeMidiState>(true, true, true)),
       ma_n_events_triggered(0), ma_start_offset(0), ma_data_seq_nr(0),
       ma_pre_play_samples(0), mp_prev_pos_after(0), mp_prev_process_flags(0),
-      ma_last_played_back_sample(0), ma_prerecord_data_length(0) {
+      ma_last_played_back_sample(0), ma_prerecord_data_length(0),
+      m_name(name) {
     mp_playback_cursor = mp_storage->create_cursor();
+}
+
+const char* MidiChannel::name() const {
+    return m_name.c_str();
 }
 
 MidiChannel::~MidiChannel() { log<log_level_debug>("Destroyed"); }
@@ -273,19 +278,20 @@ MidiChannel::PROC_process(shoop_loop_mode_t mode, std::optional<shoop_loop_mode_
         mp_playback_target_buffer->first.n_frames_processed += n_samples;
     }
 
-    // Store and plot checksums (use fallback identifier since channel has no inherent name)
+    // Store and plot checksums (use "MidiChannel" as layer name for Tracy grouping)
+    const char* chan_name = name();
     ma_recorded_checksum = recorded_checksum;
     ma_playback_checksum = playback_checksum;
-    m_plot_recorded_checksum.plot(recorded_checksum, "MidiChannel");
-    m_plot_playback_checksum.plot(playback_checksum, "MidiChannel");
+    m_plot_recorded_checksum.plot(recorded_checksum, chan_name);
+    m_plot_playback_checksum.plot(playback_checksum, chan_name);
 
     // Plot metrics
-    m_plot_data_length.plot(static_cast<double>(ma_data_length.load()), "MidiChannel");
-    m_plot_events_triggered.plot(static_cast<double>(ma_n_events_triggered.load()), "MidiChannel");
-    m_plot_mode.plot(static_cast<double>(ma_mode.load()), "MidiChannel");
-    m_plot_notes_active.plot(static_cast<double>(mp_output_midi_state->n_notes_active()), "MidiChannel");
-    m_plot_process_flags.plot(static_cast<double>(process_flags), "MidiChannel");
-    m_plot_n_storage_events.plot(static_cast<double>(mp_storage->n_events()), "MidiChannel");
+    m_plot_data_length.plot(static_cast<double>(ma_data_length.load()), chan_name);
+    m_plot_events_triggered.plot(static_cast<double>(ma_n_events_triggered.load()), chan_name);
+    m_plot_mode.plot(static_cast<double>(ma_mode.load()), chan_name);
+    m_plot_notes_active.plot(static_cast<double>(mp_output_midi_state->n_notes_active()), chan_name);
+    m_plot_process_flags.plot(static_cast<double>(process_flags), chan_name);
+    m_plot_n_storage_events.plot(static_cast<double>(mp_storage->n_events()), chan_name);
 }
 
 void

@@ -693,14 +693,14 @@ impl BackendWrapper {
         descriptors
     }
 
-    pub fn create_loop(mut self: Pin<&mut BackendWrapper>) -> Loop {
+    pub fn create_loop(mut self: Pin<&mut BackendWrapper>, name: &str) -> Loop {
         let mut mut_rust = self.as_mut().rust_mut();
         mut_rust
             .session
             .as_mut()
             // TODO: Handle session null
             .expect("Session is null")
-            .create_loop()
+            .create_loop(name)
             // TODO: Handle error gracefully (return dummy?)
             .expect("Failed to create loop")
     }

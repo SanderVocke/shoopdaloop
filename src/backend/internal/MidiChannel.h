@@ -92,8 +92,12 @@ private:
     TracyPlotter m_plot_recorded_checksum{"recorded_checksum"};
     TracyPlotter m_plot_playback_checksum{"playback_checksum"};
 
+    // Name/identifier for tracing
+    std::string m_name;
+
 public:
-    MidiChannel(uint32_t data_size, shoop_channel_mode_t mode);
+    MidiChannel(uint32_t data_size, shoop_channel_mode_t mode, std::string name = "midi_channel");
+    const char* name() const override;
     ~MidiChannel();
 
     // NOTE: only use on process thread

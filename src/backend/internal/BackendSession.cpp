@@ -206,8 +206,8 @@ void BackendSession::destroy() {
     }
 }
 
-shoop_shared_ptr<GraphLoop> BackendSession::create_loop() {
-    auto loop = shoop_make_shared<AudioMidiLoop>();
+shoop_shared_ptr<GraphLoop> BackendSession::create_loop(std::string name) {
+    auto loop = shoop_make_shared<AudioMidiLoop>(name);
     auto r = shoop_make_shared<GraphLoop>(shared_from_this(), loop);
 
     // Setup profiling

@@ -151,7 +151,7 @@ void AudioChannel<SampleT>::throw_if_commands_queued() const {
 template <typename SampleT>
 AudioChannel<SampleT>::AudioChannel(
     shoop_shared_ptr<UsedBufferPool> buffer_pool, uint32_t initial_max_buffers,
-    shoop_channel_mode_t mode)
+    shoop_channel_mode_t mode, std::string name)
     : WithCommandQueue(50), ma_buffer_pool(buffer_pool),
       ma_buffers_data_length(0), mp_prerecord_buffers_data_length(0),
       ma_buffer_size(buffer_pool->elems_per_buffer()),
@@ -161,7 +161,13 @@ AudioChannel<SampleT>::AudioChannel(
       ma_data_seq_nr(0), ma_pre_play_samples(0),
       mp_buffers(buffer_pool, initial_max_buffers),
       mp_prerecord_buffers(buffer_pool, initial_max_buffers),
-      mp_prev_process_flags(0), ma_last_played_back_sample(-1) {
+      mp_prev_process_flags(0), ma_last_played_back_sample(-1),
+      m_name(name) {
+}
+
+template <typename SampleT>
+const char* AudioChannel<SampleT>::name() const {
+    return m_name.c_str();
 }
 
 template <typename SampleT>
@@ -202,7 +208,7 @@ AudioChannel<SampleT>::operator=(AudioChannel<SampleT> const &other) {
 }
 
 template <typename SampleT>
-AudioChannel<SampleT>::AudioChannel() : ma_buffer_size(1) {}
+AudioChannel<SampleT>::AudioChannel(std::string name) : ma_buffer_size(1), m_name(name) {}
 
 template <typename SampleT> AudioChannel<SampleT>::~AudioChannel() {}
 
@@ -316,19 +322,20 @@ void AudioChannel<SampleT>::PROC_process(
         mp_playback_target_buffer_size -= n_samples;
     }
 
-    // Store and plot checksums (use fallback identifier since channel has no inherent name)
+    // Store and plot checksums (use "AudioChannel" as layer name for Tracy grouping)
+    const char* chan_name = name();
     ma_recorded_checksum = recorded_checksum;
     ma_playback_checksum = playback_checksum;
-    m_plot_recorded_checksum.plot(recorded_checksum, "AudioChannel");
-    m_plot_playback_checksum.plot(playback_checksum, "AudioChannel");
+    m_plot_recorded_checksum.plot(recorded_checksum, chan_name);
+    m_plot_playback_checksum.plot(playback_checksum, chan_name);
 
     // Plot metrics
-    m_plot_data_length.plot(static_cast<double>(ma_buffers_data_length.load()), "AudioChannel");
-    m_plot_position.plot(static_cast<double>(process_params.position), "AudioChannel");
-    m_plot_mode.plot(static_cast<double>(ma_mode.load()), "AudioChannel");
-    m_plot_output_peak.plot(static_cast<double>(ma_output_peak.load()), "AudioChannel");
-    m_plot_process_flags.plot(static_cast<double>(process_flags), "AudioChannel");
-    m_plot_n_buffers.plot(static_cast<double>(mp_buffers.n_buffers()), "AudioChannel");
+    m_plot_data_length.plot(static_cast<double>(ma_buffers_data_length.load()), chan_name);
+    m_plot_position.plot(static_cast<double>(process_params.position), chan_name);
+    m_plot_mode.plot(static_cast<double>(ma_mode.load()), chan_name);
+    m_plot_output_peak.plot(static_cast<double>(ma_output_peak.load()), chan_name);
+    m_plot_process_flags.plot(static_cast<double>(process_flags), chan_name);
+    m_plot_n_buffers.plot(static_cast<double>(mp_buffers.n_buffers()), chan_name);
 }
 
 template <typename SampleT>

@@ -106,17 +106,19 @@ impl Loop {
         Ok(Loop { obj: wrapped })
     }
 
-    pub fn add_audio_channel(&self, mode: ChannelMode) -> Result<AudioChannel, anyhow::Error> {
+    pub fn add_audio_channel(&self, mode: ChannelMode, name: &str) -> Result<AudioChannel, anyhow::Error> {
         let guard = self.lock()?;
         let obj = *guard;
-        let channel = unsafe { ffi::add_audio_channel(obj, mode as ffi::shoop_channel_mode_t) };
+        let c_name = std::ffi::CString::new(name).map_err(|_| anyhow!("Failed to create CString"))?;
+        let channel = unsafe { ffi::add_audio_channel(obj, mode as ffi::shoop_channel_mode_t, c_name.as_ptr()) };
         AudioChannel::new(channel)
     }
 
-    pub fn add_midi_channel(&self, mode: ChannelMode) -> Result<MidiChannel, anyhow::Error> {
+    pub fn add_midi_channel(&self, mode: ChannelMode, name: &str) -> Result<MidiChannel, anyhow::Error> {
         let guard = self.lock()?;
         let obj = *guard;
-        let channel = unsafe { ffi::add_midi_channel(obj, mode as ffi::shoop_channel_mode_t) };
+        let c_name = std::ffi::CString::new(name).map_err(|_| anyhow!("Failed to create CString"))?;
+        let channel = unsafe { ffi::add_midi_channel(obj, mode as ffi::shoop_channel_mode_t, c_name.as_ptr()) };
         MidiChannel::new(channel)
     }
 

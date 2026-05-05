@@ -66,6 +66,9 @@ private:
     TracyPlotter m_plot_recorded_checksum{"recorded_checksum"};
     TracyPlotter m_plot_playback_checksum{"playback_checksum"};
 
+    // Name/identifier for tracing
+    std::string m_name;
+
     enum class ProcessingCommandType {
         RawCopy,
         AdditiveCopy
@@ -148,7 +151,10 @@ public:
     AudioChannel(
             shoop_shared_ptr<UsedBufferPool> buffer_pool,
             uint32_t initial_max_buffers,
-            shoop_channel_mode_t mode);
+            shoop_channel_mode_t mode,
+            std::string name = "audio_channel");
+
+    const char* name() const override;
 
     virtual void set_pre_play_samples(uint32_t samples) override;
     virtual uint32_t get_pre_play_samples() const override;
@@ -156,7 +162,7 @@ public:
     // NOTE: only use on process thread!
     AudioChannel<SampleT>& operator= (AudioChannel<SampleT> const& other);
 
-    AudioChannel();
+    AudioChannel(std::string name = "audio_channel");
     ~AudioChannel() override;
 
     void data_changed();

@@ -102,18 +102,18 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
         api_fx_midi_in = fx_chain_midi_input_port(api_fx_chain, 0);
         int_fx_midi_in = internal_midi_port(api_fx_midi_in);
 
-        api_loop = create_loop(api_backend_session);
+        api_loop = create_loop(api_backend_session, "test_loop");
         int_loop = internal_loop(api_loop);
 
-        api_sync_loop = create_loop(api_backend_session);
+        api_sync_loop = create_loop(api_backend_session, "test_loop");
         int_sync_loop = internal_loop(api_sync_loop);
 
-        api_dry_chan = add_audio_channel(api_loop, ChannelMode_Dry);
-        api_wet_chan = add_audio_channel(api_loop, ChannelMode_Wet);
+        api_dry_chan = add_audio_channel(api_loop, ChannelMode_Dry, "test_channel");
+        api_wet_chan = add_audio_channel(api_loop, ChannelMode_Wet, "test_channel");
         int_dry_chan_node = internal_audio_channel(api_dry_chan);
         int_wet_chan_node = internal_audio_channel(api_wet_chan);
 
-        api_dry_midi_chan = add_midi_channel(api_loop, ChannelMode_Dry);
+        api_dry_midi_chan = add_midi_channel(api_loop, ChannelMode_Dry, "test_channel");
         int_dry_midi_chan_node = internal_midi_channel(api_dry_midi_chan);
 
         // Note: need to wait for channels to really appear

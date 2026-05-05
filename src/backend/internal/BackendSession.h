@@ -83,7 +83,7 @@ public:
 
     shoop_backend_session_state_info_t get_state();
 
-    shoop_shared_ptr<GraphLoop> create_loop();
+    shoop_shared_ptr<GraphLoop> create_loop(std::string name = "loop");
     shoop_shared_ptr<GraphFXChain> create_fx_chain(shoop_fx_chain_type_t type, const char *title);
     shoop_shared_ptr<GraphAudioPort> add_audio_port(shoop_shared_ptr<shoop_types::_AudioPort> port);
     shoop_shared_ptr<GraphMidiPort> add_midi_port(shoop_shared_ptr<MidiPort> port);

@@ -89,14 +89,14 @@ struct SingleDirectLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDirec
         int_dummy_midi_input_port = dynamic_cast<DummyMidiPort*>(&int_midi_input_port->get_port());
         int_dummy_midi_output_port = dynamic_cast<DummyMidiPort*>(&int_midi_output_port->get_port());
 
-        api_loop = create_loop(api_backend_session);
+        api_loop = create_loop(api_backend_session, "test_loop");
         int_loop = internal_loop(api_loop);
 
-        api_sync_loop = create_loop(api_backend_session);
+        api_sync_loop = create_loop(api_backend_session, "test_loop");
         int_sync_loop = internal_loop(api_sync_loop);
 
-        api_audio_chan = add_audio_channel(api_loop, ChannelMode_Direct);
-        api_midi_chan = add_midi_channel(api_loop, ChannelMode_Direct);
+        api_audio_chan = add_audio_channel(api_loop, ChannelMode_Direct, "test_channel");
+        api_midi_chan = add_midi_channel(api_loop, ChannelMode_Direct, "test_channel");
         int_audio_chan_node = internal_audio_channel(api_audio_chan);
         int_midi_chan_node = internal_midi_channel(api_midi_chan);
 

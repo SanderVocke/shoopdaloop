@@ -14,7 +14,7 @@
 #undef max
 #endif
 
-BasicLoop::BasicLoop() :
+BasicLoop::BasicLoop(std::string name) :
         WithCommandQueue(100),
         mp_next_poi(std::nullopt),
         mp_next_trigger(std::nullopt),
@@ -25,9 +25,14 @@ BasicLoop::BasicLoop() :
         ma_position(0),
         ma_maybe_next_planned_mode(LoopMode_Unknown),
         ma_maybe_next_planned_delay(-1),
-        ma_already_triggered(false)
+        ma_already_triggered(false),
+        m_name(name)
     {
     }
+
+const char* BasicLoop::name() const {
+    return m_name.c_str();
+}
 
 BasicLoop::~BasicLoop() {}
 
@@ -192,14 +197,15 @@ void BasicLoop::PROC_process(uint32_t n_samples) {
     }
     PROC_handle_poi();
 
-    // Plot metrics
-    m_plot_mode.plot(static_cast<double>(ma_mode.load()));
-    m_plot_position.plot(static_cast<double>(ma_position.load()));
-    m_plot_length.plot(static_cast<double>(ma_length.load()));
-    m_plot_poi.plot(mp_next_poi.has_value() ? static_cast<double>(mp_next_poi.value().when) : -1.0);
-    m_plot_trigger_eta.plot(mp_next_trigger.has_value() ? static_cast<double>(mp_next_trigger.value()) : -1.0);
-    m_plot_triggering.plot(ma_triggering_now.load() ? 1.0 : 0.0);
-    m_plot_planned_transitions.plot(static_cast<double>(mp_planned_states.size()));
+    // Plot metrics (use "BasicLoop" as layer name for Tracy grouping)
+    const char* loop_name = name();
+    m_plot_mode.plot(static_cast<double>(ma_mode.load()), loop_name);
+    m_plot_position.plot(static_cast<double>(ma_position.load()), loop_name);
+    m_plot_length.plot(static_cast<double>(ma_length.load()), loop_name);
+    m_plot_poi.plot(mp_next_poi.has_value() ? static_cast<double>(mp_next_poi.value().when) : -1.0, loop_name);
+    m_plot_trigger_eta.plot(mp_next_trigger.has_value() ? static_cast<double>(mp_next_trigger.value()) : -1.0, loop_name);
+    m_plot_triggering.plot(ma_triggering_now.load() ? 1.0 : 0.0, loop_name);
+    m_plot_planned_transitions.plot(static_cast<double>(mp_planned_states.size()), loop_name);
 }
 
 void BasicLoop::set_sync_source(shoop_shared_ptr<LoopInterface> const& src, bool thread_safe) {

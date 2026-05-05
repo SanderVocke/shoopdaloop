@@ -110,7 +110,7 @@ TEST_CASE("Graph Construction - Direct Loop", "[GraphConstruct]") {
     auto port1 = shoop_make_shared<GraphAudioPort>(shoop_static_pointer_cast<_AudioPort>(_p1), backend);
     auto port2 = shoop_make_shared<GraphAudioPort>(shoop_static_pointer_cast<_AudioPort>(_p2), backend);
     port1->connect_internal(shoop_static_pointer_cast<GraphPort>(port2));
-    auto loop = backend->create_loop();
+    auto loop = backend->create_loop("test_loop");
     auto chan = shoop_make_shared<GraphLoopChannel>(nullptr, loop, backend);
     chan->connect_input_port(shoop_static_pointer_cast<GraphPort>(port1), false);
     chan->connect_output_port(shoop_static_pointer_cast<GraphPort>(port2), false);
@@ -142,9 +142,9 @@ TEST_CASE("Graph Construction - Two Direct Loops", "[GraphConstruct]") {
     auto port1 = shoop_make_shared<GraphAudioPort>(shoop_static_pointer_cast<_AudioPort>(_p1), backend);
     auto port2 = shoop_make_shared<GraphAudioPort>(shoop_static_pointer_cast<_AudioPort>(_p2), backend);
     port1->connect_internal(shoop_static_pointer_cast<GraphPort>(port2));
-    auto loop1 = backend->create_loop();
+    auto loop1 = backend->create_loop("test_loop");
     auto chan1 = shoop_make_shared<GraphLoopChannel>(nullptr, loop1, backend);
-    auto loop2 = backend->create_loop();
+    auto loop2 = backend->create_loop("test_loop");
     auto chan2 = shoop_make_shared<GraphLoopChannel>(nullptr, loop2, backend);
     WeakGraphNodeSet loops { loop1->graph_node(), loop2->graph_node() };
     loop1->set_get_co_process_nodes_cb([&]() { return loops; });

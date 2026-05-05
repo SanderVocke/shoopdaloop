@@ -64,6 +64,9 @@ public:
     virtual void         set_mode(shoop_loop_mode_t mode, bool thread_safe=true) = 0;
     virtual void get_first_planned_transition(shoop_loop_mode_t &maybe_mode_out, uint32_t &delay_out) = 0;
 
+    // Get the loop name/identifier for tracing/debugging purposes.
+    virtual const char* name() const = 0;
+
     LoopInterface() = default;
     virtual ~LoopInterface() {}
 };
