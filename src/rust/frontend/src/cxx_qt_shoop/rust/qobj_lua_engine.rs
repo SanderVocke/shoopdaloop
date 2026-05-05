@@ -8,6 +8,7 @@ use std::sync::Arc;
 use crate::cxx_qt_shoop::qobj_lua_engine_bridge::{
     ffi::*, RustToLuaCallback, WrappedLuaCallbackRust,
 };
+use cxx_qt::QObject;
 use crate::init::GLOBAL_CONFIG;
 use crate::lua_conversions::{FromLuaExtended, IntoLuaExtended};
 use crate::lua_engine::LuaEngine as WrappedLuaEngine;
@@ -220,7 +221,7 @@ impl WrappedLuaCallback {
 
     pub fn create_raw_with_parent(
         callback: RustToLuaCallback,
-        parent: *mut ShoopQObject,
+        parent: *mut QObject,
     ) -> *mut WrappedLuaCallback {
         let cb = unsafe { make_raw_wrapped_lua_callback_with_parent(parent) };
         let pin = unsafe { std::pin::Pin::new_unchecked(&mut *cb) };

@@ -4,6 +4,7 @@ use crate::cxx_qt_shoop::qobj_midi_control_port_bridge::ffi::make_unique_midi_co
 use crate::cxx_qt_shoop::qobj_session_control_handler_bridge::{
     BridgedMidiControlPortRule, RustToLuaCallbackType, SessionControlHandlerLuaTarget,
 };
+use cxx_qt::QObject;
 use crate::cxx_qt_shoop::{
     qobj_lua_engine_bridge::ffi::LuaEngine, qobj_session_control_handler_bridge::ffi::*,
 };
@@ -141,7 +142,7 @@ fn as_track_indices(val: &mlua::Value) -> Option<Vec<i64>> {
     None
 }
 
-fn loop_coords(l: *mut ShoopQObject) -> Result<(i64, i64), anyhow::Error> {
+fn loop_coords(l: *mut QObject) -> Result<(i64, i64), anyhow::Error> {
     if l.is_null() {
         return Err(anyhow!("loop is null"));
     }
@@ -152,16 +153,16 @@ fn loop_coords(l: *mut ShoopQObject) -> Result<(i64, i64), anyhow::Error> {
     }
 }
 
-fn loop_coords_vec(l: *mut ShoopQObject) -> Result<Vec<i64>, anyhow::Error> {
+fn loop_coords_vec(l: *mut QObject) -> Result<Vec<i64>, anyhow::Error> {
     let tuple = loop_coords(l)?;
     Ok(vec![tuple.0, tuple.1])
 }
 
-fn loops_coords_vec(i: impl Iterator<Item = *mut ShoopQObject>) -> impl Iterator<Item = Vec<i64>> {
+fn loops_coords_vec(i: impl Iterator<Item = *mut QObject>) -> impl Iterator<Item = Vec<i64>> {
     i.filter_map(|l| loop_coords_vec(l).ok())
 }
 
-fn loop_int_prop(l: &*mut ShoopQObject, prop: &str) -> Result<i32, anyhow::Error> {
+fn loop_int_prop(l: &*mut QObject, prop: &str) -> Result<i32, anyhow::Error> {
     if l.is_null() {
         return Err(anyhow!("loop is null"));
     }
@@ -170,7 +171,7 @@ fn loop_int_prop(l: &*mut ShoopQObject, prop: &str) -> Result<i32, anyhow::Error
     }
 }
 
-fn loop_opt_int_prop(l: &*mut ShoopQObject, prop: &str) -> Result<Option<i32>, anyhow::Error> {
+fn loop_opt_int_prop(l: &*mut QObject, prop: &str) -> Result<Option<i32>, anyhow::Error> {
     if l.is_null() {
         return Err(anyhow!("loop is null"));
     }
@@ -181,7 +182,7 @@ fn loop_opt_int_prop(l: &*mut ShoopQObject, prop: &str) -> Result<Option<i32>, a
     }
 }
 
-fn loop_bool_prop(l: &*mut ShoopQObject, prop: &str) -> Result<bool, anyhow::Error> {
+fn loop_bool_prop(l: &*mut QObject, prop: &str) -> Result<bool, anyhow::Error> {
     if l.is_null() {
         return Err(anyhow!("loop is null"));
     }
@@ -190,7 +191,7 @@ fn loop_bool_prop(l: &*mut ShoopQObject, prop: &str) -> Result<bool, anyhow::Err
     }
 }
 
-fn loop_float_prop(l: &*mut ShoopQObject, prop: &str) -> Result<f32, anyhow::Error> {
+fn loop_float_prop(l: &*mut QObject, prop: &str) -> Result<f32, anyhow::Error> {
     if l.is_null() {
         return Err(anyhow!("loop is null"));
     }
@@ -201,7 +202,7 @@ fn loop_float_prop(l: &*mut ShoopQObject, prop: &str) -> Result<f32, anyhow::Err
 }
 
 impl SessionControlHandlerLuaTarget {
-    pub fn install_on_lua_engine(&mut self, engine: *mut ShoopQObject) {
+    pub fn install_on_lua_engine(&mut self, engine: *mut QObject) {
         struct SessionControlCallback {
             weak_target: Weak<RefCell<SessionControlHandlerLuaTarget>>,
             callable: Box<
@@ -2516,7 +2517,7 @@ impl SessionControlHandlerLuaTarget {
         Ok(mlua::Value::Nil)
     }
 
-    fn select_loop_by_coords(&self, x: i64, y: i64) -> Option<*mut ShoopQObject> {
+    fn select_loop_by_coords(&self, x: i64, y: i64) -> Option<*mut QObject> {
         self.structured_loop_widget_references
             .get(&(x, y))
             .map(|r| unsafe {
@@ -2534,7 +2535,7 @@ impl SessionControlHandlerLuaTarget {
     fn select_loops_by_coords<'a>(
         &'a self,
         coords: impl Iterator<Item = (i64, i64)> + 'a,
-    ) -> impl Iterator<Item = *mut ShoopQObject> + 'a {
+    ) -> impl Iterator<Item = *mut QObject> + 'a {
         {
             coords.map(move |(x, y)| {
                 self.select_loop_by_coords(x, y)
@@ -2545,7 +2546,7 @@ impl SessionControlHandlerLuaTarget {
 
     fn all_loops_iter(
         &self,
-    ) -> Result<impl Iterator<Item = *mut ShoopQObject> + use<'_>, anyhow::Error> {
+    ) -> Result<impl Iterator<Item = *mut QObject> + use<'_>, anyhow::Error> {
         Ok(self
             .structured_loop_widget_references
             .values()
@@ -2557,7 +2558,7 @@ impl SessionControlHandlerLuaTarget {
         &'a self,
         _lua: &mlua::Lua,
         selector: &mlua::Value,
-    ) -> Result<impl Iterator<Item = *mut ShoopQObject> + 'a, anyhow::Error> {
+    ) -> Result<impl Iterator<Item = *mut QObject> + 'a, anyhow::Error> {
         match selector {
             mlua::Value::Table(_) => {
                 if let Some(coords) = as_coords(selector) {
@@ -2577,7 +2578,7 @@ impl SessionControlHandlerLuaTarget {
         }
     }
 
-    fn select_track_by_index(&self, idx: i64) -> Option<*mut ShoopQObject> {
+    fn select_track_by_index(&self, idx: i64) -> Option<*mut QObject> {
         self.structured_track_control_widget_references
             .get(&idx)
             .map(|r| unsafe {
@@ -2595,7 +2596,7 @@ impl SessionControlHandlerLuaTarget {
     fn select_tracks_by_indices<'a>(
         &'a self,
         indices: impl Iterator<Item = i64> + 'a,
-    ) -> impl Iterator<Item = *mut ShoopQObject> + 'a {
+    ) -> impl Iterator<Item = *mut QObject> + 'a {
         {
             indices.map(move |idx| {
                 self.select_track_by_index(idx)
@@ -2608,7 +2609,7 @@ impl SessionControlHandlerLuaTarget {
         &'a self,
         _lua: &mlua::Lua,
         selector: &mlua::Value,
-    ) -> Result<impl Iterator<Item = *mut ShoopQObject> + 'a, anyhow::Error> {
+    ) -> Result<impl Iterator<Item = *mut QObject> + 'a, anyhow::Error> {
         match selector {
             mlua::Value::Integer(idx) => Ok(Either::Left(Either::Left(
                 self.select_tracks_by_indices(std::iter::once(*idx)),
@@ -2776,7 +2777,7 @@ impl SessionControlHandler {
         }
     }
 
-    pub fn install_on_lua_engine(self: Pin<&mut SessionControlHandler>, engine: *mut ShoopQObject) {
+    pub fn install_on_lua_engine(self: Pin<&mut SessionControlHandler>, engine: *mut QObject) {
         self.lua_target.borrow_mut().install_on_lua_engine(engine);
     }
 
@@ -2786,7 +2787,7 @@ impl SessionControlHandler {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             let mut result: BTreeMap<i64, cxx::UniquePtr<QPointerQObject>> = BTreeMap::default();
 
-            let self_qobj: *mut ShoopQObject = unsafe { self.as_mut().pin_mut_qobject_ptr() };
+            let self_qobj: *mut QObject = unsafe { self.as_mut().pin_mut_qobject_ptr() };
 
             for track_variant in self.track_control_widget_references.iter() {
                 let track_qobj = qvariant_to_qobject_ptr(&track_variant)?;
@@ -2825,7 +2826,7 @@ impl SessionControlHandler {
             let mut result: BTreeMap<(i64, i64), cxx::UniquePtr<QPointerQObject>> =
                 BTreeMap::default();
 
-            let self_qobj: *mut ShoopQObject = unsafe { self.as_mut().pin_mut_qobject_ptr() };
+            let self_qobj: *mut QObject = unsafe { self.as_mut().pin_mut_qobject_ptr() };
 
             for loop_qobj in self.loop_widget_references.iter() {
                 let loop_qobj = qvariant_to_qobject_ptr(&loop_qobj)?;
@@ -2868,7 +2869,7 @@ impl SessionControlHandler {
     }
 
     pub fn set_selected_loops(self: Pin<&mut SessionControlHandler>, loops: QList_QVariant) {
-        let mut converted: Vec<*mut ShoopQObject> = Vec::default();
+        let mut converted: Vec<*mut QObject> = Vec::default();
         for variant in loops.iter() {
             let qobj = qvariant_to_qobject_ptr(variant).unwrap_or(std::ptr::null_mut());
             if !qobj.is_null() {
@@ -2914,7 +2915,7 @@ impl SessionControlHandler {
         .unwrap_or(QVariant::default())
     }
 
-    pub fn set_session(self: Pin<&mut SessionControlHandler>, session: *mut ShoopQObject) {
+    pub fn set_session(self: Pin<&mut SessionControlHandler>, session: *mut QObject) {
         if self.lua_target.borrow().session != session {
             debug!("session -> {session:?}");
             self.lua_target.borrow_mut().session = session;
@@ -2922,11 +2923,11 @@ impl SessionControlHandler {
         }
     }
 
-    pub fn get_session(self: Pin<&mut SessionControlHandler>) -> *mut ShoopQObject {
+    pub fn get_session(self: Pin<&mut SessionControlHandler>) -> *mut QObject {
         self.lua_target.borrow().session
     }
 
-    pub fn set_backend(self: Pin<&mut SessionControlHandler>, backend: *mut ShoopQObject) {
+    pub fn set_backend(self: Pin<&mut SessionControlHandler>, backend: *mut QObject) {
         if self.lua_target.borrow().backend != backend {
             debug!("backend -> {backend:?}");
             self.lua_target.borrow_mut().backend = backend;
@@ -2934,13 +2935,13 @@ impl SessionControlHandler {
         }
     }
 
-    pub fn get_backend(self: Pin<&mut SessionControlHandler>) -> *mut ShoopQObject {
+    pub fn get_backend(self: Pin<&mut SessionControlHandler>) -> *mut QObject {
         self.lua_target.borrow().backend
     }
 
     pub fn set_global_state_registry(
         self: Pin<&mut SessionControlHandler>,
-        registry: *mut ShoopQObject,
+        registry: *mut QObject,
     ) {
         let current = self.lua_target.borrow().global_state_registry;
         if current != registry {
@@ -2949,7 +2950,7 @@ impl SessionControlHandler {
         }
     }
 
-    pub fn get_global_state_registry(self: Pin<&mut SessionControlHandler>) -> *mut ShoopQObject {
+    pub fn get_global_state_registry(self: Pin<&mut SessionControlHandler>) -> *mut QObject {
         self.lua_target.borrow_mut().global_state_registry
     }
 
@@ -3087,7 +3088,7 @@ impl SessionControlHandler {
         }
     }
 
-    pub fn uninstall_lua_engine(self: Pin<&mut SessionControlHandler>, engine: *mut ShoopQObject) {
+    pub fn uninstall_lua_engine(self: Pin<&mut SessionControlHandler>, engine: *mut QObject) {
         unsafe {
             if let Ok(engine) = LuaEngine::from_qobject_mut_ptr(engine) {
                 if let Some(engine) = engine.engine.as_ref() {
@@ -3100,7 +3101,7 @@ impl SessionControlHandler {
 
     pub fn uninstall_lua_engine_if_no_callbacks(
         self: Pin<&mut SessionControlHandler>,
-        engine: *mut ShoopQObject,
+        engine: *mut QObject,
     ) {
         unsafe {
             if let Ok(engine) = LuaEngine::from_qobject_mut_ptr(engine) {
@@ -3116,7 +3117,7 @@ impl SessionControlHandler {
 
     pub fn engine_is_installed(
         self: Pin<&mut SessionControlHandler>,
-        engine: *mut ShoopQObject,
+        engine: *mut QObject,
     ) -> bool {
         unsafe {
             if let Ok(engine) = LuaEngine::from_qobject_mut_ptr(engine) {

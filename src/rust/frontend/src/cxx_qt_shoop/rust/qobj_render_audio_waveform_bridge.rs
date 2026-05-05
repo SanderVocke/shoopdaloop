@@ -3,10 +3,8 @@ shoop_log_unit!("Frontend.RenderAudioWaveform");
 
 #[cxx_qt::bridge]
 pub mod ffi {
-    unsafe extern "C++" {
-        include!("cxx-qt-lib/qcolor.h");
+    unsafe extern "C++" {                include!("cxx-qt-lib/qcolor.h");
         type QColor = cxx_qt_lib::QColor;
-
         include!("cxx-qt-lib/qrectf.h");
         type QRectF = cxx_qt_lib::QRectF;
 
@@ -34,10 +32,6 @@ pub mod ffi {
 
         include!("cxx-qt-lib/qpainter.h");
         type QPainter = cxx_qt_lib::QPainter;
-
-        include!("cxx-qt-lib-shoop/qobject.h");
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
 
         include!(<QtQuick/QQuickPaintedItem>);
         type QQuickPaintedItem;
@@ -112,16 +106,16 @@ pub mod ffi {
         include!("cxx-qt-lib-shoop/qobject.h");
 
         #[rust_name = "from_qobject_ref_update_notifier"]
-        unsafe fn fromQObjectRef(obj: &ShoopQObject, output: *mut *const UpdateNotifier);
+        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const UpdateNotifier);
 
         #[rust_name = "from_qobject_mut_update_notifier"]
-        unsafe fn fromQObjectMut(obj: Pin<&mut ShoopQObject>, output: *mut *mut UpdateNotifier);
+        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut UpdateNotifier);
 
         #[rust_name = "update_notifier_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj: *mut UpdateNotifier) -> *mut ShoopQObject;
+        unsafe fn qobjectFromPtr(obj: *mut UpdateNotifier) -> *mut QObject;
 
         #[rust_name = "update_notifier_qobject_from_ref"]
-        fn qobjectFromRef(obj: &UpdateNotifier) -> &ShoopQObject;
+        fn qobjectFromRef(obj: &UpdateNotifier) -> &QObject;
 
         include!("cxx-qt-lib-shoop/make_raw.h");
         #[rust_name = "make_raw_update_notifier"]
@@ -129,23 +123,22 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/cast_ptr.h");
         #[rust_name = "update_notifier_to_qobject"]
-        unsafe fn cast_ptr(obj: *mut UpdateNotifier) -> *mut ShoopQObject;
+        unsafe fn cast_ptr(obj: *mut UpdateNotifier) -> *mut QObject;
     }
 
     unsafe extern "C++" {
-        include!("cxx-qt-lib-shoop/qobject.h");
 
         #[rust_name = "from_qobject_ref_render_audio_waveform"]
-        unsafe fn fromQObjectRef(obj: &ShoopQObject, output: *mut *const RenderAudioWaveform);
+        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const RenderAudioWaveform);
 
         #[rust_name = "from_qobject_mut_render_audio_waveform"]
-        unsafe fn fromQObjectMut(obj: Pin<&mut ShoopQObject>, output: *mut *mut RenderAudioWaveform);
+        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut RenderAudioWaveform);
 
         #[rust_name = "render_audio_waveform_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj: *mut RenderAudioWaveform) -> *mut ShoopQObject;
+        unsafe fn qobjectFromPtr(obj: *mut RenderAudioWaveform) -> *mut QObject;
 
         #[rust_name = "render_audio_waveform_qobject_from_ref"]
-        fn qobjectFromRef(obj: &RenderAudioWaveform) -> &ShoopQObject;
+        fn qobjectFromRef(obj: &RenderAudioWaveform) -> &QObject;
 
         include!("cxx-qt-lib-shoop/make_raw.h");
         #[rust_name = "make_raw_render_audio_waveform"]
@@ -153,7 +146,7 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/cast_ptr.h");
         #[rust_name = "render_audio_waveform_to_qobject"]
-        unsafe fn cast_ptr(obj: *mut RenderAudioWaveform) -> *mut ShoopQObject;
+        unsafe fn cast_ptr(obj: *mut RenderAudioWaveform) -> *mut QObject;
     }
 }
 

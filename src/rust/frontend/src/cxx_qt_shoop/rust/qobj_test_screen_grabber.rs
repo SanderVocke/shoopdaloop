@@ -5,7 +5,7 @@ use common::logging::macros::*;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::QString;
 use cxx_qt_lib_shoop::{
-    qobject::ShoopQObject,
+    qobject::QObject,
     qquickwindow_helpers::ffi::{
         qobject_as_qquickwindow_grab_and_save, qobject_as_qquickwindow_title,
     },
@@ -22,11 +22,11 @@ pub fn register_qml_singleton(module_name: &str, type_name: &str) {
 }
 
 impl TestScreenGrabber {
-    pub fn add_window(self: Pin<&mut TestScreenGrabber>, window: *mut ShoopQObject) {
+    pub fn add_window(self: Pin<&mut TestScreenGrabber>, window: *mut QObject) {
         self.rust_mut().windows.insert(window);
     }
 
-    pub fn remove_window(self: Pin<&mut TestScreenGrabber>, window: *mut ShoopQObject) {
+    pub fn remove_window(self: Pin<&mut TestScreenGrabber>, window: *mut QObject) {
         self.rust_mut().windows.remove(&window);
     }
 

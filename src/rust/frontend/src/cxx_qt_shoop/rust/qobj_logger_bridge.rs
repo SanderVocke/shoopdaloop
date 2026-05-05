@@ -1,12 +1,8 @@
 #[cxx_qt::bridge]
 pub mod ffi {
-    unsafe extern "C++" {
-        include!("cxx-qt-lib-shoop/qquickitem.h");
+    unsafe extern "C++" {                include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
-
-        include!("cxx-qt-lib-shoop/qobject.h");
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
+        // QObject is automatically provided by cxx_qt::bridge when using #[qobject]
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -61,7 +57,7 @@ pub mod ffi {
         );
     }
 
-    impl cxx_qt::Constructor<(*mut ShoopQObject,), NewArguments = (*mut ShoopQObject,)> for Logger {}
+    impl cxx_qt::Constructor<(*mut QObject,), NewArguments = (*mut QObject,)> for Logger {}
     impl cxx_qt::Constructor<(), NewArguments = ()> for Logger {}
 }
 use backend_bindings::Logger as BackendLogger;
@@ -74,13 +70,13 @@ pub struct LoggerRust {
     pub backend: Option<BackendLogger>,
 }
 
-impl cxx_qt::Constructor<(*mut ShoopQObject,)> for Logger {
-    type BaseArguments = (*mut ShoopQObject,); // Will be passed to the base class constructor
+impl cxx_qt::Constructor<(*mut QObject,)> for Logger {
+    type BaseArguments = (*mut QObject,); // Will be passed to the base class constructor
     type InitializeArguments = (); // Will be passed to the "initialize" function
-    type NewArguments = (*mut ShoopQObject,); // Will be passed to the "new" function
+    type NewArguments = (*mut QObject,); // Will be passed to the "new" function
 
     fn route_arguments(
-        args: (*mut ShoopQObject,),
+        args: (*mut QObject,),
     ) -> (
         Self::NewArguments,
         Self::BaseArguments,
@@ -89,7 +85,7 @@ impl cxx_qt::Constructor<(*mut ShoopQObject,)> for Logger {
         (args, args, ())
     }
 
-    fn new(_parent: (*mut ShoopQObject,)) -> LoggerRust {
+    fn new(_parent: (*mut QObject,)) -> LoggerRust {
         LoggerRust::default()
     }
 

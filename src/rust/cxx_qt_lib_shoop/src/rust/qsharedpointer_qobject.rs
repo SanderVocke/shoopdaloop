@@ -6,12 +6,12 @@ mod ffi {
         include!("cxx-qt-lib-shoop/qobject.h");
         include!("cxx-qt-lib-shoop/qsharedpointer_qobject.h");
         #[allow(clippy::redundant_type_restriction)]
-        type ShoopQObject = crate::qobject::ShoopQObject;
+        type QObject = crate::qobject::QObject;
         type QSharedPointer_QObject;
 
         #[rust_name = "qsharedpointer_qobject_from_ptr_delete_later"]
         unsafe fn qSharedPointerFromPtrDeleteLater(
-            ptr: *mut ShoopQObject,
+            ptr: *mut QObject,
         ) -> Result<UniquePtr<QSharedPointer_QObject>>;
 
         #[rust_name = "qsharedpointer_qobject_copy"]
@@ -20,7 +20,7 @@ mod ffi {
         ) -> Result<UniquePtr<QSharedPointer_QObject>>;
 
         #[rust_name = "qsharedpointer_qobject_data"]
-        unsafe fn qSharedPointerData(ptr: &QSharedPointer_QObject) -> Result<*mut ShoopQObject>;
+        unsafe fn qSharedPointerData(ptr: &QSharedPointer_QObject) -> Result<*mut QObject>;
     }
 }
 
@@ -28,7 +28,7 @@ pub use ffi::QSharedPointer_QObject;
 
 impl QSharedPointer_QObject {
     pub fn from_ptr_delete_later(
-        ptr: *mut ffi::ShoopQObject,
+        ptr: *mut ffi::QObject,
     ) -> Result<UniquePtr<QSharedPointer_QObject>, cxx::Exception> {
         unsafe { ffi::qsharedpointer_qobject_from_ptr_delete_later(ptr) }
     }
@@ -37,7 +37,7 @@ impl QSharedPointer_QObject {
         unsafe { ffi::qsharedpointer_qobject_copy(self) }
     }
 
-    pub fn data(&self) -> Result<*mut ffi::ShoopQObject, cxx::Exception> {
+    pub fn data(&self) -> Result<*mut ffi::QObject, cxx::Exception> {
         unsafe { ffi::qsharedpointer_qobject_data(self) }
     }
 }

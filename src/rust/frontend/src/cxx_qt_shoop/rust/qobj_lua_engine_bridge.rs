@@ -1,13 +1,7 @@
 #[cxx_qt::bridge]
 pub mod ffi {
-    unsafe extern "C++" {
-        include!("cxx-qt-lib-shoop/qquickitem.h");
+    unsafe extern "C++" {                include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
-
-        include!("cxx-qt-lib-shoop/qobject.h");
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
-
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
 
@@ -52,6 +46,7 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qobject.h");
         include!("cxx-qt-lib-shoop/make_unique.h");
         #[rust_name = "make_unique_lua_engine"]
         fn make_unique() -> UniquePtr<LuaEngine>;
@@ -64,13 +59,11 @@ pub mod ffi {
         #[rust_name = "qquickitem_from_ptr_lua_engine"]
         unsafe fn qquickitemFromPtr(obj: *mut LuaEngine) -> *mut QQuickItem;
 
-        include!("cxx-qt-lib-shoop/qobject.h");
-
         #[rust_name = "from_qobject_ref_lua_engine"]
-        unsafe fn fromQObjectRef(obj: &ShoopQObject, output: *mut *const LuaEngine);
+        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const LuaEngine);
 
         #[rust_name = "from_qobject_mut_lua_engine"]
-        unsafe fn fromQObjectMut(obj: Pin<&mut ShoopQObject>, output: *mut *mut LuaEngine);
+        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut LuaEngine);
 
         include!("cxx-qt-lib-shoop/register_qml_type.h");
         #[rust_name = "register_qml_type_lua_engine"]
@@ -112,19 +105,17 @@ pub mod ffi {
         unsafe fn make_raw() -> *mut WrappedLuaCallback;
 
         #[rust_name = "make_raw_wrapped_lua_callback_with_parent"]
-        unsafe fn make_raw_with_one_arg(parent: *mut ShoopQObject) -> *mut WrappedLuaCallback;
+        unsafe fn make_raw_with_one_arg(parent: *mut QObject) -> *mut WrappedLuaCallback;
 
         include!("cxx-qt-lib-shoop/make_unique.h");
         #[rust_name = "make_unique_wrapped_lua_callback"]
         unsafe fn make_unique() -> UniquePtr<WrappedLuaCallback>;
 
-        include!("cxx-qt-lib-shoop/qobject.h");
-
         #[rust_name = "wrapped_lua_callback_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj: *mut WrappedLuaCallback) -> *mut ShoopQObject;
+        unsafe fn qobjectFromPtr(obj: *mut WrappedLuaCallback) -> *mut QObject;
 
         #[rust_name = "wrapped_lua_callback_qobject_from_ref"]
-        fn qobjectFromRef(obj: &WrappedLuaCallback) -> &ShoopQObject;
+        fn qobjectFromRef(obj: &WrappedLuaCallback) -> &QObject;
     }
 }
 
@@ -202,14 +193,14 @@ impl cxx_qt_lib_shoop::qquickitem::AsQQuickItem for LuaEngine {
 }
 
 impl cxx_qt_lib_shoop::qobject::FromQObject for LuaEngine {
-    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::ShoopQObject) -> *const Self {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt::QObject) -> *const Self {
         let mut output: *const Self = std::ptr::null();
         from_qobject_ref_lua_engine(obj, &mut output as *mut *const Self);
         output
     }
 
     unsafe fn ptr_from_qobject_mut(
-        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::ShoopQObject>,
+        obj: std::pin::Pin<&mut cxx_qt::QObject>,
     ) -> *mut Self {
         let mut output: *mut Self = std::ptr::null_mut();
         from_qobject_mut_lua_engine(obj, &mut output as *mut *mut Self);
@@ -239,11 +230,11 @@ impl Default for WrappedLuaCallbackRust {
 }
 
 impl AsQObject for ffi::WrappedLuaCallback {
-    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::ShoopQObject {
+    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
         ffi::wrapped_lua_callback_qobject_from_ptr(self as *mut Self)
     }
 
-    unsafe fn ref_qobject_ptr(&self) -> *const ffi::ShoopQObject {
-        ffi::wrapped_lua_callback_qobject_from_ref(self) as *const ffi::ShoopQObject
+    unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
+        ffi::wrapped_lua_callback_qobject_from_ref(self) as *const ffi::QObject
     }
 }

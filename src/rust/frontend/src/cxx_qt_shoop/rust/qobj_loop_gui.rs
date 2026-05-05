@@ -11,12 +11,13 @@ use backend_bindings::MidiChannel;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
+use cxx_qt::QObject;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QList, QString, QVariant};
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
-use cxx_qt_lib_shoop::qobject::ffi::qobject_move_to_thread;
-use cxx_qt_lib_shoop::qobject::ffi::qobject_object_name;
+use cxx_qt_lib_shoop::qobject::qobject_move_to_thread;
+use cxx_qt_lib_shoop::qobject::qobject_object_name;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 use cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
@@ -410,7 +411,7 @@ impl LoopGui {
         );
     }
 
-    pub unsafe fn set_sync_source(mut self: Pin<&mut LoopGui>, sync_source: *mut ShoopQObject) {
+    pub unsafe fn set_sync_source(mut self: Pin<&mut LoopGui>, sync_source: *mut QObject) {
         debug!(self, "sync source -> {:?}", sync_source);
         let changed = self.as_mut().rust_mut().sync_source != sync_source;
         self.as_mut().rust_mut().sync_source = sync_source;
@@ -422,7 +423,7 @@ impl LoopGui {
         self.update_backend_sync_source();
     }
 
-    pub unsafe fn set_backend(mut self: Pin<&mut LoopGui>, backend: *mut ShoopQObject) {
+    pub unsafe fn set_backend(mut self: Pin<&mut LoopGui>, backend: *mut QObject) {
         debug!(self, "backend -> {:?}", backend);
         let changed = self.as_mut().rust_mut().backend != backend;
         self.as_mut().rust_mut().backend = backend;
@@ -460,7 +461,7 @@ impl LoopGui {
 
     pub fn update_backend_sync_source(mut self: Pin<&mut LoopGui>) {
         debug!(self, "Updating backend sync source");
-        let sync_source_in: *mut ShoopQObject = *self.sync_source();
+        let sync_source_in: *mut QObject = *self.sync_source();
         let mut sync_source_out: QVariant = QVariant::default();
 
         if !sync_source_in.is_null() {

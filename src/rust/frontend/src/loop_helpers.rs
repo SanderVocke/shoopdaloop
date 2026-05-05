@@ -4,7 +4,7 @@ use cxx_qt_lib::{QList, QVariant};
 use cxx_qt_lib_shoop::{
     connection_types,
     invokable::invoke,
-    qobject::{ffi::qobject_meta_type_name, ShoopQObject},
+    qobject::{qobject_meta_type_name, QObject},
     qvariant_helpers::QList_QVariant,
     qvariant_helpers::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
 };
@@ -47,7 +47,7 @@ pub fn get_backend_loop_handles_variant_list(
 }
 
 pub fn transition_gui_loops(
-    loops: impl IntoIterator<Item = *mut ShoopQObject>,
+    loops: impl IntoIterator<Item = *mut QObject>,
     to_mode: LoopMode,
     maybe_cycles_delay: Option<i32>,
     maybe_to_sync_at_cycle: Option<i32>,
@@ -59,7 +59,7 @@ pub fn transition_gui_loops(
 
     unsafe {
         let mut list: QList_QVariant = QList::default();
-        let mut call_on: *mut ShoopQObject = std::ptr::null_mut();
+        let mut call_on: *mut QObject = std::ptr::null_mut();
         for l in loops {
             list.append(qobject_ptr_to_qvariant(&l)?);
             call_on = l;
@@ -81,7 +81,7 @@ pub fn transition_gui_loops(
 }
 
 pub fn transition_backend_loops(
-    loops: impl IntoIterator<Item = *mut ShoopQObject>,
+    loops: impl IntoIterator<Item = *mut QObject>,
     to_mode: LoopMode,
     maybe_cycles_delay: Option<i32>,
     maybe_to_sync_at_cycle: Option<i32>,

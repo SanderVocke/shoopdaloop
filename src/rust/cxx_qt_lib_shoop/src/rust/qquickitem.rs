@@ -9,7 +9,7 @@ mod ffi {
         include!("cxx-qt-lib-shoop/qobject.h");
         type QQuickItem;
         #[allow(clippy::redundant_type_restriction)]
-        type ShoopQObject = crate::qobject::ShoopQObject;
+        type QObject = crate::qobject::QObject;
 
         include!("cxx-qt-lib/qlist.h");
         include!("cxx-qt-lib/qvariant.h");
@@ -22,17 +22,17 @@ mod ffi {
         unsafe fn qquickitemParentItem(item: &QQuickItem) -> *mut QQuickItem;
 
         #[rust_name = "qquickitem_to_qobject_ptr"]
-        unsafe fn qquickitemToQobjectPtr(item: *mut QQuickItem) -> *mut ShoopQObject;
+        unsafe fn qquickitemToQobjectPtr(item: *mut QQuickItem) -> *mut QObject;
 
         #[rust_name = "qquickitem_to_qobject_ref"]
-        fn qquickitemToQobjectRef(item: &QQuickItem) -> &ShoopQObject;
+        fn qquickitemToQobjectRef(item: &QQuickItem) -> &QObject;
 
         #[rust_name = "qquickitem_child_items"]
         fn qquickitemChildItems(item: &QQuickItem) -> QList_QVariant;
     }
 }
 
-use ffi::ShoopQObject;
+use ffi::QObject;
 pub use ffi::QQuickItem;
 
 // Should be implemented by each QQuickItem derivative explicitly
@@ -65,11 +65,11 @@ pub unsafe fn qquickitem_set_parent_item(item: *mut QQuickItem, parent: *mut QQu
     ffi::qquickitem_set_parent_item(item, parent);
 }
 
-pub unsafe fn qquickitem_to_qobject_ref(item: &QQuickItem) -> &ShoopQObject {
+pub unsafe fn qquickitem_to_qobject_ref(item: &QQuickItem) -> &QObject {
     ffi::qquickitem_to_qobject_ref(item)
 }
 
-pub unsafe fn qquickitem_to_qobject_mut(item: *mut QQuickItem) -> *mut ShoopQObject {
+pub unsafe fn qquickitem_to_qobject_mut(item: *mut QQuickItem) -> *mut QObject {
     ffi::qquickitem_to_qobject_ptr(item)
 }
 
@@ -83,22 +83,22 @@ impl<T> AsQObject for T
 where
     T: AsQQuickItem,
 {
-    unsafe fn mut_qobject_ptr(self: &mut Self) -> *mut ShoopQObject {
+    unsafe fn mut_qobject_ptr(self: &mut Self) -> *mut QObject {
         ffi::qquickitem_to_qobject_ptr(self.mut_qquickitem_ptr())
     }
 
-    unsafe fn ref_qobject_ptr(self: &Self) -> *const ShoopQObject {
-        ffi::qquickitem_to_qobject_ref(&*self.ref_qquickitem_ptr() as &QQuickItem) as *const ShoopQObject
+    unsafe fn ref_qobject_ptr(self: &Self) -> *const QObject {
+        ffi::qquickitem_to_qobject_ref(&*self.ref_qquickitem_ptr() as &QQuickItem) as *const QObject
     }
 }
 
 impl AsQObject for QQuickItem {
-    unsafe fn mut_qobject_ptr(self: &mut Self) -> *mut ShoopQObject {
+    unsafe fn mut_qobject_ptr(self: &mut Self) -> *mut QObject {
         ffi::qquickitem_to_qobject_ptr(self)
     }
 
-    unsafe fn ref_qobject_ptr(self: &Self) -> *const ShoopQObject {
-        ffi::qquickitem_to_qobject_ref(self) as *const ShoopQObject
+    unsafe fn ref_qobject_ptr(self: &Self) -> *const QObject {
+        ffi::qquickitem_to_qobject_ref(self) as *const QObject
     }
 }
 

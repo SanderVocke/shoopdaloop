@@ -10,6 +10,7 @@ use cxx_qt_lib_shoop::{connect, connection_types};
 use std::pin::Pin;
 use std::sync::OnceLock;
 use std::time;
+use cxx_qt::QObject;
 
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.BackendWrapper");
@@ -122,7 +123,7 @@ impl BackendWrapper {
             driver_type, settings
         );
 
-        let obj_qobject: *mut ShoopQObject;
+        let obj_qobject: *mut QObject;
         unsafe {
             let obj_qquickitem = self.as_mut().pin_mut_qquickitem_ptr();
             obj_qobject = qquickitem_to_qobject_mut(obj_qquickitem);

@@ -3,12 +3,15 @@ shoop_log_unit!("Frontend.TestPort");
 
 #[cxx_qt::bridge]
 pub mod ffi {
+    extern "C++" {
+        #[doc(hidden)]
+        #[namespace = ""]
+        type QObject = cxx_qt::QObject;
+    }
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
         type QString = cxx_qt_lib::QString;
 
         include!("cxx-qt-lib/qmap.h");

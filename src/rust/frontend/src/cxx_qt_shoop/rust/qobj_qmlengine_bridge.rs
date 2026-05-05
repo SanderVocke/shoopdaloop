@@ -1,16 +1,15 @@
 #[cxx_qt::bridge]
 pub mod ffi {
-    unsafe extern "C++" {
-        include!("cxx-qt-shoop/ShoopQmlEngine.h");
+    extern "C++" {
+        #[doc(hidden)]
+        #[namespace = ""]
+        type QObject = cxx_qt::QObject;
+    }
+    unsafe extern "C++" {                include!("cxx-qt-shoop/ShoopQmlEngine.h");
         type ShoopQmlEngine;
-
-        include!("cxx-qt-lib-shoop/qobject.h");
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
-
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
     }
@@ -47,7 +46,7 @@ pub mod ffi {
 
         #[inherit]
         #[cxx_name = "getRootWindow"]
-        fn get_root_window(self: Pin<&mut QmlEngine>) -> Result<*mut ShoopQObject>;
+        fn get_root_window(self: Pin<&mut QmlEngine>) -> Result<*mut QObject>;
 
         #[inherit]
         #[cxx_name = "deleteLater"]
@@ -62,17 +61,17 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qobject.h");
         include!("cxx-qt-lib-shoop/make_raw.h");
 
         #[rust_name = "make_raw_qmlengine"]
-        unsafe fn make_raw_with_one_arg(parent: *mut ShoopQObject) -> *mut QmlEngine;
+        unsafe fn make_raw_with_one_arg(parent: *mut QObject) -> *mut QmlEngine;
 
-        include!("cxx-qt-lib-shoop/qobject.h");
         #[rust_name = "qmlengine_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj: *mut QmlEngine) -> *mut ShoopQObject;
+        unsafe fn qobjectFromPtr(obj: *mut QmlEngine) -> *mut QObject;
 
         #[rust_name = "qmlengine_qobject_from_ref"]
-        fn qobjectFromRef(obj: &QmlEngine) -> &ShoopQObject;
+        fn qobjectFromRef(obj: &QmlEngine) -> &QObject;
 
         include!("cxx-qt-shoop/ShoopQmlEngine.h");
         #[rust_name = "register_qml_engine"]
@@ -85,20 +84,20 @@ pub mod ffi {
         unsafe fn getQmlEngineStackTrace(engine: Pin<&mut ShoopQmlEngine>) -> String;
 
         #[rust_name = "set_cpp_ownership"]
-        unsafe fn setCppOwnership(object: *mut ShoopQObject);
+        unsafe fn setCppOwnership(object: *mut QObject);
 
         #[rust_name = "set_javascript_ownership"]
-        unsafe fn setJavascriptOwnership(object: *mut ShoopQObject);
+        unsafe fn setJavascriptOwnership(object: *mut QObject);
 
         include!("cxx-qt-lib-shoop/cast_ptr.h");
         #[rust_name = "qobject_to_qml_engine_ptr"]
-        unsafe fn cast_qobject_ptr(obj: *mut ShoopQObject) -> *mut QmlEngine;
+        unsafe fn cast_qobject_ptr(obj: *mut QObject) -> *mut QmlEngine;
 
         #[rust_name = "qobject_to_shoop_qml_engine_ptr"]
-        unsafe fn cast_qobject_ptr(obj: *mut ShoopQObject) -> *mut ShoopQmlEngine;
+        unsafe fn cast_qobject_ptr(obj: *mut QObject) -> *mut ShoopQmlEngine;
 
         #[rust_name = "shoop_qml_engine_to_qobject_ptr"]
-        unsafe fn cast_ptr(obj: *mut ShoopQmlEngine) -> *mut ShoopQObject;
+        unsafe fn cast_ptr(obj: *mut ShoopQmlEngine) -> *mut QObject;
     }
 }
 
@@ -117,11 +116,11 @@ impl Default for QmlEngineRust {
 }
 
 impl AsQObject for QmlEngine {
-    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::ShoopQObject {
+    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
         ffi::qmlengine_qobject_from_ptr(self as *mut Self)
     }
 
-    unsafe fn ref_qobject_ptr(&self) -> *const ffi::ShoopQObject {
-        ffi::qmlengine_qobject_from_ref(self) as *const ffi::ShoopQObject
+    unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
+        ffi::qmlengine_qobject_from_ref(self) as *const ffi::QObject
     }
 }

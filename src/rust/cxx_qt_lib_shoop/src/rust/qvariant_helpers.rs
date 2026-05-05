@@ -7,7 +7,7 @@ mod ffi {
         type QVariant = cxx_qt_lib::QVariant;
 
         include!("cxx-qt-lib-shoop/qobject.h");
-        type ShoopQObject = crate::qobject::ShoopQObject;
+        type QObject = crate::qobject::QObject;
 
         include!("cxx-qt-lib/qlist.h");
         include!("cxx-qt-lib/qstring.h");
@@ -43,17 +43,17 @@ mod ffi {
         fn qvariantTypeId(obj: &QVariant) -> Result<i32>;
 
         #[rust_name = "qvariant_convertible_to_qobject_ptr"]
-        unsafe fn qvariantConvertibleTo(obj: &QVariant, example: *mut *mut ShoopQObject)
+        unsafe fn qvariantConvertibleTo(obj: &QVariant, example: *mut *mut QObject)
             -> Result<bool>;
 
         #[rust_name = "qvariant_to_qobject_ptr"]
         unsafe fn qvariantAs(
             variant: &QVariant,
-            example: *mut *mut ShoopQObject,
-        ) -> Result<*mut ShoopQObject>;
+            example: *mut *mut QObject,
+        ) -> Result<*mut QObject>;
 
         #[rust_name = "qobject_ptr_to_qvariant"]
-        unsafe fn asQVariant(obj: &*mut ShoopQObject) -> Result<QVariant>;
+        unsafe fn asQVariant(obj: &*mut QObject) -> Result<QVariant>;
 
         #[rust_name = "qvariant_convertible_to_qvariantmap"]
         unsafe fn qvariantConvertibleTo(
@@ -205,11 +205,11 @@ pub fn qvariant_convertible_to_qobject_ptr(obj: &QVariant) -> Result<bool, cxx::
     unsafe { ffi::qvariant_convertible_to_qobject_ptr(obj, std::ptr::null_mut()) }
 }
 
-pub fn qvariant_to_qobject_ptr(obj: &QVariant) -> Result<*mut ShoopQObject, cxx::Exception> {
+pub fn qvariant_to_qobject_ptr(obj: &QVariant) -> Result<*mut QObject, cxx::Exception> {
     unsafe { ffi::qvariant_to_qobject_ptr(obj, std::ptr::null_mut()) }
 }
 
-pub fn qobject_ptr_to_qvariant(obj: &*mut ShoopQObject) -> Result<QVariant, cxx::Exception> {
+pub fn qobject_ptr_to_qvariant(obj: &*mut QObject) -> Result<QVariant, cxx::Exception> {
     unsafe { ffi::qobject_ptr_to_qvariant(obj) }
 }
 

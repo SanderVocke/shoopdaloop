@@ -2671,6 +2671,7 @@ dependencies = [
  "crashhandling",
  "ctor",
  "cxx-qt",
+ "cxx-qt-build",
  "cxx-qt-lib",
  "cxx_qt_lib_shoop",
  "frontend",

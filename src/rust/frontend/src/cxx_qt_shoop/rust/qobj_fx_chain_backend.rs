@@ -5,6 +5,7 @@ use cxx_qt_lib_shoop::{
     connection_types,
     qobject::{qobject_property_bool, FromQObject},
 };
+use cxx_qt::QObject;
 
 pub use crate::cxx_qt_shoop::qobj_fx_chain_backend_bridge::ffi::FXChainBackend;
 use crate::cxx_qt_shoop::{
@@ -132,7 +133,7 @@ impl FXChainBackend {
             if let Err(e) = || -> Result<(), anyhow::Error> {
                 unsafe {
                     let backend =
-                        BackendWrapper::from_qobject_ref_ptr(self.backend as *const ShoopQObject)?;
+                        BackendWrapper::from_qobject_ref_ptr(self.backend as *const QObject)?;
                     let chain_type = self
                         .chain_type
                         .ok_or(anyhow!("Chain type not set for init"))?;
@@ -185,7 +186,7 @@ impl FXChainBackend {
         "unknown".to_string()
     }
 
-    pub fn set_backend(mut self: Pin<&mut Self>, backend: *mut ShoopQObject) {
+    pub fn set_backend(mut self: Pin<&mut Self>, backend: *mut QObject) {
         self.as_mut().maybe_initialize_backend();
         if self.backend_chain_wrapper.is_some() {
             error!(

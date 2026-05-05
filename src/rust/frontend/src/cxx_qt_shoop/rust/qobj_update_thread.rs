@@ -5,7 +5,7 @@ use crate::cxx_qt_shoop::qobj_update_thread_bridge::{
     UpdateThread, DEFAULT_BACKUP_UPDATE_INTERVAL_MS,
 };
 use core::pin::Pin;
-use cxx_qt_lib_shoop::qobject::ffi::qobject_move_to_thread;
+use cxx_qt_lib_shoop::qobject::qobject_move_to_thread;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 use cxx_qt_lib_shoop::{connection_types, invokable};
 use std::slice;

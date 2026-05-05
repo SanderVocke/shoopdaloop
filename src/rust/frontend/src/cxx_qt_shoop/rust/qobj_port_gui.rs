@@ -1,6 +1,7 @@
 use crate::cxx_qt_shoop::rust::qobj_port_backend_bridge::ffi::{
     make_raw_port_backend, port_backend_qobject_from_ptr,
 };
+use cxx_qt::QObject;
 use crate::cxx_qt_shoop::rust::qobj_port_gui_bridge::ffi::*;
 use crate::engine_update_thread;
 use anyhow::anyhow;
@@ -17,7 +18,7 @@ use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::{
     qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr,
 };
-use cxx_qt_lib_shoop::{invokable, qobject::ffi::qobject_move_to_thread};
+use cxx_qt_lib_shoop::{invokable, qobject::qobject_move_to_thread};
 use std::pin::Pin;
 shoop_log_unit!("Frontend.Port");
 
@@ -440,7 +441,7 @@ impl PortGui {
         }
     }
 
-    pub unsafe fn set_backend(mut self: Pin<&mut PortGui>, backend: *mut ShoopQObject) {
+    pub unsafe fn set_backend(mut self: Pin<&mut PortGui>, backend: *mut QObject) {
         self.as_mut().backend_set_backend(backend);
         if backend != self.backend {
             let mut rust_mut = self.as_mut().rust_mut();
@@ -520,7 +521,7 @@ impl PortGui {
         }
     }
 
-    pub unsafe fn set_fx_chain(mut self: Pin<&mut PortGui>, fx_chain: *mut ShoopQObject) {
+    pub unsafe fn set_fx_chain(mut self: Pin<&mut PortGui>, fx_chain: *mut QObject) {
         unsafe {
             if fx_chain.is_null() {
                 trace!(self, "set backend fx chain -> {fx_chain:?}");

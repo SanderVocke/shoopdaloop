@@ -6,6 +6,7 @@ use crate::{
     },
     midi_event_helpers::MidiEventToQVariant,
 };
+use cxx_qt::QObject;
 use anyhow::anyhow;
 use backend_bindings::{MidiEvent, PortConnectability, PortDataType, PortDirection};
 use common::logging::macros::{
@@ -279,7 +280,7 @@ impl PortBackend {
                 let min_n_ringbuffer_samples: i32 = self
                     .min_n_ringbuffer_samples
                     .ok_or(anyhow!("min_n_ringbuffer_samples not set"))?;
-                let backend = BackendWrapper::from_qobject_ref_ptr(self.backend as *const ShoopQObject)?;
+                let backend = BackendWrapper::from_qobject_ref_ptr(self.backend as *const QObject)?;
 
                 debug!(self, "Opening driver port for: {name_hint}");
 
@@ -583,7 +584,7 @@ impl PortBackend {
         }
     }
 
-    pub unsafe fn set_backend(mut self: Pin<&mut PortBackend>, backend: *mut ShoopQObject) {
+    pub unsafe fn set_backend(mut self: Pin<&mut PortBackend>, backend: *mut QObject) {
         self.as_mut().maybe_initialize_backend();
         if self.maybe_backend_port.is_some() {
             error!(
@@ -744,7 +745,7 @@ impl PortBackend {
         }
     }
 
-    pub fn connect_internal(mut self: Pin<&mut PortBackend>, other_port: *mut ShoopQObject) {
+    pub fn connect_internal(mut self: Pin<&mut PortBackend>, other_port: *mut QObject) {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             self.as_mut().maybe_initialize_backend();
             self.as_mut().connect_internal_impl(other_port);
@@ -754,7 +755,7 @@ impl PortBackend {
         }
     }
 
-    pub fn connect_internal_impl(mut self: Pin<&mut PortBackend>, other_port: *mut ShoopQObject) {
+    pub fn connect_internal_impl(mut self: Pin<&mut PortBackend>, other_port: *mut QObject) {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             if self.internally_connected_ports.contains(&other_port) {
                 return Ok(());
@@ -824,7 +825,7 @@ impl PortBackend {
                 |other_internal_port| -> Result<(), anyhow::Error> {
                     let other_internal_port_handle: cxx::UniquePtr<QSharedPointer_QObject> =
                         qvariant_to_qsharedpointer_qobject(other_internal_port)?;
-                    let other_internal_port: *mut ShoopQObject = other_internal_port_handle.data()?;
+                    let other_internal_port: *mut QObject = other_internal_port_handle.data()?;
                     if other_internal_port.is_null() {
                         return Err(anyhow!("Internal port is null"));
                     }
@@ -840,7 +841,7 @@ impl PortBackend {
                             self,
                             "skip connection: other port '{other_iid}' not initialized"
                         );
-                        let self_qobj: *mut ShoopQObject =
+                        let self_qobj: *mut QObject =
                             unsafe { self.as_mut().pin_mut_qobject_ptr() };
                         unsafe {
                             connect_or_report(
@@ -1050,7 +1051,7 @@ impl PortBackend {
         self.port_type.unwrap_or(PortDataType::Audio) == PortDataType::Midi
     }
 
-    pub fn get_maybe_fx_chain(self: Pin<&mut PortBackend>) -> *mut ShoopQObject {
+    pub fn get_maybe_fx_chain(self: Pin<&mut PortBackend>) -> *mut QObject {
         let chain_ptr_ref = match self.fx_chain.as_ref() {
             Some(c) => c,
             None => return std::ptr::null_mut(),
@@ -1103,13 +1104,13 @@ impl PortBackend {
         self.is_internal.unwrap_or(false)
     }
 
-    pub fn set_frontend_object(mut self: Pin<&mut PortBackend>, frontend_object: *mut ShoopQObject) {
+    pub fn set_frontend_object(mut self: Pin<&mut PortBackend>, frontend_object: *mut QObject) {
         let mut rust_mut = self.as_mut().rust_mut();
         rust_mut.frontend_object = frontend_object;
         self.as_mut().frontend_object_changed();
     }
 
-    pub fn get_frontend_object(self: Pin<&mut PortBackend>) -> *mut ShoopQObject {
+    pub fn get_frontend_object(self: Pin<&mut PortBackend>) -> *mut QObject {
         self.frontend_object
     }
 }

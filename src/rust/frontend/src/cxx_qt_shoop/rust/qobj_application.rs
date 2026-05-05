@@ -1,5 +1,6 @@
 use crate::cxx_qt_shoop::fn_qml_debugging;
 use crate::cxx_qt_shoop::qobj_application_bridge::ffi::*;
+use cxx_qt::QObject;
 pub use crate::cxx_qt_shoop::qobj_application_bridge::Application;
 use crate::cxx_qt_shoop::qobj_application_bridge::ApplicationStartupSettings;
 use crate::cxx_qt_shoop::qobj_qmlengine::register_qml_engine;
@@ -118,7 +119,7 @@ impl Application {
         }
 
         unsafe {
-            let self_qobj: *mut cxx_qt_lib_shoop::qobject::ShoopQObject =
+            let self_qobj: *mut cxx_qt_lib_shoop::qobject::QObject =
                 self.as_mut().pin_mut_qobject_ptr();
             let self_qvariant = qobject_ptr_to_qvariant(&self_qobj)
                 .expect("Failed to convert self_qobj to QVariant");
@@ -200,7 +201,7 @@ impl Application {
         Ok(())
     }
 
-    pub fn on_qml_object_created(self: Pin<&mut Application>, object: *mut ShoopQObject, url: QUrl) {
+    pub fn on_qml_object_created(self: Pin<&mut Application>, object: *mut QObject, url: QUrl) {
         if object.is_null() {
             warn!("Created invalid object");
             return;

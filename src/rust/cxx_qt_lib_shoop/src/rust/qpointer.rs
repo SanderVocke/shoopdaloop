@@ -7,16 +7,16 @@ mod ffi {
         include!("cxx-qt-lib-shoop/qobject.h");
         type QPointerQObject;
         #[allow(clippy::redundant_type_restriction)]
-        type ShoopQObject = crate::qobject::ShoopQObject;
+        type QObject = crate::qobject::QObject;
 
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
 
         #[rust_name=qpointer_to_qobject]
-        pub unsafe fn qpointerToQObject(p: &QPointerQObject) -> *mut ShoopQObject;
+        pub unsafe fn qpointerToQObject(p: &QPointerQObject) -> *mut QObject;
 
         #[rust_name=qpointer_from_qobject]
-        pub unsafe fn qpointerFromQObject(obj: *mut ShoopQObject) -> UniquePtr<QPointerQObject>;
+        pub unsafe fn qpointerFromQObject(obj: *mut QObject) -> UniquePtr<QPointerQObject>;
 
         #[rust_name=qvariant_from_qpointer]
         pub unsafe fn qvariantFromQPointer(p: &QPointerQObject) -> QVariant;
