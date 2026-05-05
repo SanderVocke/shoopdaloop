@@ -388,8 +388,8 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
 
 #[cfg(not(feature = "prebuild"))]
 pub fn shoopdaloop_main(config: ShoopConfig) -> i32 {
-    cxx_qt::init_crate!(frontend);
-    cxx_qt::init_crate!(cxx_qt_lib_shoop);
+    // Note: cxx_qt init_crate calls are now handled in #[ctor] static initializer in lib.rs
+    // This ensures they run even in test builds and creates proper linker references
 
     // Note: shoopdaloop crate has no #[qobject] types, so no init_crate for itself
 
