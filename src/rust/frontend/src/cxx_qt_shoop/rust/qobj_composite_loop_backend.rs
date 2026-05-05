@@ -5,12 +5,12 @@ use crate::{
     loop_mode_helpers::{is_recording_mode, is_running_mode},
     references_qobject::ReferencesQObject,
 };
-use cxx_qt::QObject;
 use backend_bindings::LoopMode;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace, warn as raw_warn,
 };
 use cxx_qt::CxxQtType;
+use cxx_qt::QObject;
 use cxx_qt_lib_shoop::{
     connect::connect_or_report,
     connection_types,

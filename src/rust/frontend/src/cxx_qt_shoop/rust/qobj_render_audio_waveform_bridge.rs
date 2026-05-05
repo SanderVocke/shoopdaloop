@@ -3,7 +3,8 @@ shoop_log_unit!("Frontend.RenderAudioWaveform");
 
 #[cxx_qt::bridge]
 pub mod ffi {
-    unsafe extern "C++" {                include!("cxx-qt-lib/qcolor.h");
+    unsafe extern "C++" {
+        include!("cxx-qt-lib/qcolor.h");
         type QColor = cxx_qt_lib::QColor;
         include!("cxx-qt-lib/qrectf.h");
         type QRectF = cxx_qt_lib::QRectF;

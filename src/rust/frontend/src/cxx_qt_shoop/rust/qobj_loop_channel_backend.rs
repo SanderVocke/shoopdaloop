@@ -5,13 +5,13 @@ use crate::midi_event_helpers::MidiEventToQVariant;
 use crate::{
     any_backend_channel::AnyBackendChannel, cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend,
 };
-use cxx_qt::QObject;
 use anyhow::anyhow;
 use backend_bindings::{ChannelMode, MidiEvent, PortDataType};
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
 use cxx_qt::CxxQtType;
+use cxx_qt::QObject;
 use cxx_qt_lib::{QList, QVector};
 use cxx_qt_lib_shoop::qvariant_helpers::qweakpointer_qobject_to_qvariant;
 use cxx_qt_lib_shoop::qweakpointer_qobject::QWeakPointer_QObject;

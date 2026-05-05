@@ -5,7 +5,8 @@ pub mod ffi {
         #[namespace = ""]
         type QObject = cxx_qt::QObject;
     }
-    unsafe extern "C++" {                include!("cxx-qt-lib-shoop/qquickitem.h");
+    unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;

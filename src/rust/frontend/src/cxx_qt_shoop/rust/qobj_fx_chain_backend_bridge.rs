@@ -4,9 +4,10 @@ shoop_log_unit!("Frontend.FXChain");
 
 #[cxx_qt::bridge]
 pub mod ffi {
-    unsafe extern "C++" {        
+    unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
-        type QString = cxx_qt_lib::QString;    }
+        type QString = cxx_qt_lib::QString;
+    }
 
     unsafe extern "RustQt" {
         #[qobject]
@@ -155,9 +156,7 @@ impl cxx_qt_lib_shoop::qobject::FromQObject for FXChainBackend {
         output
     }
 
-    unsafe fn ptr_from_qobject_mut(
-        obj: std::pin::Pin<&mut cxx_qt::QObject>,
-    ) -> *mut Self {
+    unsafe fn ptr_from_qobject_mut(obj: std::pin::Pin<&mut cxx_qt::QObject>) -> *mut Self {
         let mut output: *mut Self = std::ptr::null_mut();
         from_qobject_mut_fx_chain_backend(obj, &mut output as *mut *mut Self);
         output

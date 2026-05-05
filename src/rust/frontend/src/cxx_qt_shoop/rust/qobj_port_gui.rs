@@ -1,7 +1,6 @@
 use crate::cxx_qt_shoop::rust::qobj_port_backend_bridge::ffi::{
     make_raw_port_backend, port_backend_qobject_from_ptr,
 };
-use cxx_qt::QObject;
 use crate::cxx_qt_shoop::rust::qobj_port_gui_bridge::ffi::*;
 use crate::engine_update_thread;
 use anyhow::anyhow;
@@ -9,6 +8,7 @@ use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
 use cxx_qt::CxxQtType;
+use cxx_qt::QObject;
 use cxx_qt_lib::{QList, QMap};
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;

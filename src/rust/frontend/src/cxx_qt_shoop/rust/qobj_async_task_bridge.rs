@@ -1,8 +1,9 @@
 #[cxx_qt::bridge]
 pub mod ffi {
-    unsafe extern "C++" {        
+    unsafe extern "C++" {
         include!("cxx-qt-lib/qvariant.h");
-        type QVariant = cxx_qt_lib::QVariant;    }
+        type QVariant = cxx_qt_lib::QVariant;
+    }
 
     unsafe extern "RustQt" {
         #[qobject]
@@ -144,9 +145,7 @@ impl cxx_qt_lib_shoop::qobject::FromQObject for AsyncTask {
         output
     }
 
-    unsafe fn ptr_from_qobject_mut(
-        obj: std::pin::Pin<&mut cxx_qt::QObject>,
-    ) -> *mut Self {
+    unsafe fn ptr_from_qobject_mut(obj: std::pin::Pin<&mut cxx_qt::QObject>) -> *mut Self {
         let mut output: *mut Self = std::ptr::null_mut();
         from_qobject_mut_async_task(obj, &mut output as *mut *mut Self);
         output
@@ -170,9 +169,7 @@ impl cxx_qt_lib_shoop::qobject::FromQObject for AsyncTaskNotifier {
         output
     }
 
-    unsafe fn ptr_from_qobject_mut(
-        obj: std::pin::Pin<&mut cxx_qt::QObject>,
-    ) -> *mut Self {
+    unsafe fn ptr_from_qobject_mut(obj: std::pin::Pin<&mut cxx_qt::QObject>) -> *mut Self {
         let mut output: *mut Self = std::ptr::null_mut();
         from_qobject_mut_async_task_notifier(obj, &mut output as *mut *mut Self);
         output

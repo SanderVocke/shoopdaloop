@@ -1,6 +1,5 @@
 use crate::cxx_qt_shoop::fn_qml_debugging;
 use crate::cxx_qt_shoop::qobj_application_bridge::ffi::*;
-use cxx_qt::QObject;
 pub use crate::cxx_qt_shoop::qobj_application_bridge::Application;
 use crate::cxx_qt_shoop::qobj_application_bridge::ApplicationStartupSettings;
 use crate::cxx_qt_shoop::qobj_qmlengine::register_qml_engine;
@@ -10,6 +9,7 @@ use anyhow::anyhow;
 use crashhandling::set_crash_json_tag;
 use cxx::UniquePtr;
 use cxx_qt::CxxQtType;
+use cxx_qt::QObject;
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 use cxx_qt_lib_shoop::qvariant_helpers::qobject_ptr_to_qvariant;

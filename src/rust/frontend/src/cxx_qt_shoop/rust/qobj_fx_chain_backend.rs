@@ -1,11 +1,11 @@
 use backend_bindings::FXChainType;
 use cxx_qt::CxxQtType;
+use cxx_qt::QObject;
 use cxx_qt_lib_shoop::{
     connect::connect_or_report,
     connection_types,
     qobject::{qobject_property_bool, FromQObject},
 };
-use cxx_qt::QObject;
 
 pub use crate::cxx_qt_shoop::qobj_fx_chain_backend_bridge::ffi::FXChainBackend;
 use crate::cxx_qt_shoop::{

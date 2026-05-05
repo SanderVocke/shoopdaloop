@@ -5,7 +5,8 @@ shoop_log_unit!("Frontend.UpdateThread");
 pub const DEFAULT_BACKUP_UPDATE_INTERVAL_MS: i32 = 25;
 #[cxx_qt::bridge]
 pub mod ffi {
-    unsafe extern "C++" {                include!("cxx-qt-lib-shoop/qthread.h");
+    unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qthread.h");
         type QThread = cxx_qt_lib_shoop::qthread::QThread;
         include!("cxx-qt-lib-shoop/qtimer.h");
         type QTimer = cxx_qt_lib_shoop::qtimer::QTimer;

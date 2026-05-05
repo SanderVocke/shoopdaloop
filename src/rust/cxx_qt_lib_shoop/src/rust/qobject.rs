@@ -297,11 +297,7 @@ pub unsafe fn qobject_set_property_qvariantlist(
     property: &str,
     value: &QList_QVariant,
 ) -> Result<(), cxx::Exception> {
-    ffi::qobject_set_property_qvariantlist(
-        obj as *mut QObjectHelper,
-        property.to_string(),
-        value,
-    )
+    ffi::qobject_set_property_qvariantlist(obj as *mut QObjectHelper, property.to_string(), value)
 }
 
 pub unsafe fn qobject_find_child(

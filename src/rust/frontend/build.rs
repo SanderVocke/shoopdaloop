@@ -7,7 +7,6 @@ fn main() {
     }
 
     unsafe {
-            
         CxxQtBuilder::new()
             .qt_module("Quick")
             .qt_module("Gui")

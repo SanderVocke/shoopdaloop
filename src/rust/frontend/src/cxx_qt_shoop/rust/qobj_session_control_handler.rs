@@ -4,7 +4,6 @@ use crate::cxx_qt_shoop::qobj_midi_control_port_bridge::ffi::make_unique_midi_co
 use crate::cxx_qt_shoop::qobj_session_control_handler_bridge::{
     BridgedMidiControlPortRule, RustToLuaCallbackType, SessionControlHandlerLuaTarget,
 };
-use cxx_qt::QObject;
 use crate::cxx_qt_shoop::{
     qobj_lua_engine_bridge::ffi::LuaEngine, qobj_session_control_handler_bridge::ffi::*,
 };
@@ -14,6 +13,7 @@ use anyhow::anyhow;
 use backend_bindings::{LoopMode, PortDirection};
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
+use cxx_qt::QObject;
 use cxx_qt_lib::{QList, QString};
 use cxx_qt_lib_shoop::connect::{connect, connect_or_report};
 use cxx_qt_lib_shoop::connection_types;
