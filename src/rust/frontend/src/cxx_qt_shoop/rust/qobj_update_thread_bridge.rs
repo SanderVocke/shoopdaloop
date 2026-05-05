@@ -5,16 +5,11 @@ shoop_log_unit!("Frontend.UpdateThread");
 pub const DEFAULT_BACKUP_UPDATE_INTERVAL_MS: i32 = 25;
 #[cxx_qt::bridge]
 pub mod ffi {
-    unsafe extern "C++" {
-        include!("cxx-qt-lib-shoop/qthread.h");
+    unsafe extern "C++" {                include!("cxx-qt-lib-shoop/qthread.h");
         type QThread = cxx_qt_lib_shoop::qthread::QThread;
-
         include!("cxx-qt-lib-shoop/qtimer.h");
         type QTimer = cxx_qt_lib_shoop::qtimer::QTimer;
 
-        include!("cxx-qt-lib-shoop/qobject.h");
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
     }
 
     unsafe extern "RustQt" {
@@ -43,17 +38,17 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qobject.h");
         include!("cxx-qt-lib-shoop/make_unique.h");
 
         #[rust_name = "make_unique_update_thread"]
         fn make_unique() -> UniquePtr<UpdateThread>;
 
-        include!("cxx-qt-lib-shoop/qobject.h");
         #[rust_name = "update_thread_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj: *mut UpdateThread) -> *mut ShoopQObject;
+        unsafe fn qobjectFromPtr(obj: *mut UpdateThread) -> *mut QObject;
 
         #[rust_name = "update_thread_qobject_from_ref"]
-        fn qobjectFromRef(obj: &UpdateThread) -> &ShoopQObject;
+        fn qobjectFromRef(obj: &UpdateThread) -> &QObject;
     }
 
     impl cxx_qt::Constructor<()> for UpdateThread {}
@@ -63,12 +58,12 @@ use cxx_qt_lib_shoop::qobject::AsQObject;
 pub use ffi::UpdateThread;
 
 impl AsQObject for UpdateThread {
-    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::ShoopQObject {
+    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
         ffi::update_thread_qobject_from_ptr(self as *mut Self)
     }
 
-    unsafe fn ref_qobject_ptr(&self) -> *const ffi::ShoopQObject {
-        ffi::update_thread_qobject_from_ref(self) as *const ffi::ShoopQObject
+    unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
+        ffi::update_thread_qobject_from_ref(self) as *const ffi::QObject
     }
 }
 

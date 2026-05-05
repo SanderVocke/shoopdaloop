@@ -6,6 +6,7 @@ use crate::cxx_qt_shoop::qobj_midi_control_port_bridge::MidiControlPortRust;
 use anyhow::anyhow;
 use backend_bindings::PortDirection;
 use common::logging::macros::*;
+use cxx_qt::QObject;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::QList;
 use cxx_qt_lib::QMap;
@@ -141,7 +142,7 @@ impl MidiControlPort {
             debug!("Opening decoupled MIDI port {:?}", self.name_hint);
             let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
             let backend =
-                unsafe { BackendWrapper::from_qobject_ref_ptr(self.backend as *const ShoopQObject)? };
+                unsafe { BackendWrapper::from_qobject_ref_ptr(self.backend as *const QObject)? };
             let name_hint = self.name_hint.to_string();
             let direction = self.direction;
             let mut rust_mut = self.as_mut().rust_mut();

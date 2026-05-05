@@ -10,10 +10,11 @@ use std::path::Path;
 use std::pin::Pin;
 
 use common::logging::macros::*;
+use cxx_qt::QObject;
 shoop_log_unit!("Frontend.QmlEngine");
 
 impl QmlEngine {
-    pub unsafe fn make_raw(parent: *mut ShoopQObject) -> *mut Self {
+    pub unsafe fn make_raw(parent: *mut QObject) -> *mut Self {
         make_raw_qmlengine(parent)
     }
 

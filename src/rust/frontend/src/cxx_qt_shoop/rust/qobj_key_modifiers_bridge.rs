@@ -3,13 +3,15 @@ shoop_log_unit!("Frontend.KeyModifiers");
 
 #[cxx_qt::bridge]
 pub mod ffi {
+    extern "C++" {
+        #[doc(hidden)]
+        #[namespace = ""]
+        type QObject = cxx_qt::QObject;
+    }
     unsafe extern "C++" {
         include!("cxx-qt-shoop/ShoopKeyEventParser.h");
         type ShoopKeyEventParser;
 
-        include!("cxx-qt-lib-shoop/qobject.h");
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
     }
 
     unsafe extern "RustQt" {

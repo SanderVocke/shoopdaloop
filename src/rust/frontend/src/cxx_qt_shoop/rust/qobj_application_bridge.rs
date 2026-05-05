@@ -2,16 +2,16 @@ use std::pin::Pin;
 
 #[cxx_qt::bridge]
 pub mod ffi {
-    unsafe extern "C++" {
-        include!("cxx-qt-lib/qstring.h");
+    extern "C++" {
+        #[doc(hidden)]
+        #[namespace = ""]
+        type QObject = cxx_qt::QObject;
+    }
+    unsafe extern "C++" {        include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
 
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
-
-        include!("cxx-qt-lib-shoop/qobject.h");
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
 
         include!("cxx-qt-lib/qurl.h");
         type QUrl = cxx_qt_lib::QUrl;
@@ -41,7 +41,7 @@ pub mod ffi {
         pub fn unload_qml(self: Pin<&mut Application>);
 
         #[qinvokable]
-        pub fn on_qml_object_created(self: Pin<&mut Application>, object: *mut ShoopQObject, url: QUrl);
+        pub fn on_qml_object_created(self: Pin<&mut Application>, object: *mut QObject, url: QUrl);
 
         #[inherit]
         #[qinvokable]
@@ -75,24 +75,25 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qobject.h");
+
         include!("cxx-qt-lib-shoop/make_unique.h");
 
         #[rust_name = "make_unique_application"]
         fn make_unique() -> UniquePtr<Application>;
 
-        include!("cxx-qt-lib-shoop/qobject.h");
         #[rust_name = "application_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj: *mut Application) -> *mut ShoopQObject;
+        unsafe fn qobjectFromPtr(obj: *mut Application) -> *mut QObject;
 
         #[rust_name = "application_qobject_from_ref"]
-        fn qobjectFromRef(obj: &Application) -> &ShoopQObject;
+        fn qobjectFromRef(obj: &Application) -> &QObject;
 
         // include!("cxx-qt-shoop/ShoopApplication.h");
         // #[rust_name = set_window_icon_path]
         // pub fn setWindowIconPath(app: Pin<&mut Application>, path: &QString);
 
         // #[rust_name = set_window_icon_path_if_window]
-        // pub unsafe fn setWindowIconPathIfWindow(object: *mut ShoopQObject, path: &QString);
+        // pub unsafe fn setWindowIconPathIfWindow(object: *mut QObject, path: &QString);
     }
 }
 
@@ -129,11 +130,11 @@ impl Default for ApplicationRust {
 }
 
 impl AsQObject for Application {
-    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::ShoopQObject {
+    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
         ffi::application_qobject_from_ptr(self as *mut Self)
     }
 
-    unsafe fn ref_qobject_ptr(&self) -> *const ffi::ShoopQObject {
-        ffi::application_qobject_from_ref(self) as *const ffi::ShoopQObject
+    unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
+        ffi::application_qobject_from_ref(self) as *const ffi::QObject
     }
 }

@@ -3,13 +3,13 @@ shoop_log_unit!("Frontend.AutoConnect");
 
 #[cxx_qt::bridge]
 pub mod ffi {
-    unsafe extern "C++" {
-        include!("cxx-qt-lib-shoop/qquickitem.h");
+    extern "C++" {
+        #[doc(hidden)]
+        #[namespace = ""]
+        type QObject = cxx_qt::QObject;
+    }
+    unsafe extern "C++" {        include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        include!("cxx-qt-lib-shoop/qobject.h");
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
-
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
 
@@ -33,10 +33,10 @@ pub mod ffi {
     unsafe extern "RustQt" {
         #[qobject]
         #[base = QQuickItem]
-        #[qproperty(*mut ShoopQObject, internal_port)]
+        #[qproperty(*mut QObject, internal_port)]
         #[qproperty(QString, connect_to_port_regex)]
         #[qproperty(bool, is_closed)]
-        #[qproperty(*mut ShoopQObject, backend)]
+        #[qproperty(*mut QObject, backend)]
         type AutoConnect = super::AutoConnectRust;
 
         pub fn initialize_impl(self: Pin<&mut AutoConnect>);
@@ -100,10 +100,10 @@ pub use ffi::AutoConnect;
 use ffi::*;
 pub struct AutoConnectRust {
     // Properties
-    pub internal_port: *mut ShoopQObject,
+    pub internal_port: *mut QObject,
     pub connect_to_port_regex: QString,
     pub is_closed: bool,
-    pub backend: *mut ShoopQObject,
+    pub backend: *mut QObject,
     // Private
     pub timer: *mut QTimer,
 }

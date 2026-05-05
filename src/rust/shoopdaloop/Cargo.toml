@@ -40,6 +40,8 @@ cxx-qt-lib = { workspace = true, features = ["full"] }
 backend = { path = "../backend" }
 common = { path = "../common" }
 config = { path = "../config" }
+cxx-qt-build = { workspace = true }
+
 
 glob = { workspace = true }
 copy_dir = { workspace = true }

@@ -6,6 +6,7 @@ use cxx_qt_lib_shoop::invokable::invoke;
 use cxx_qt_lib_shoop::qobject::{
     qobject_property_bool, qobject_property_int, AsQObject, FromQObject,
 };
+use cxx_qt::QObject;
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::{
     qlist_f32_to_qvariant, qvariant_to_qobject_ptr, qvariant_to_qvariantlist,
@@ -469,7 +470,7 @@ fn load_soundfile_to_channels_impl(
 fn qvariant_loop_gui_to_loop_backend(
     loop_gui: &QVariant,
 ) -> Option<cxx::UniquePtr<QSharedPointer_QObject>> {
-    let maybe_loop_ptr: *mut ShoopQObject =
+    let maybe_loop_ptr: *mut QObject =
         qvariant_to_qobject_ptr(loop_gui).unwrap_or(std::ptr::null_mut());
 
     if !maybe_loop_ptr.is_null() {
@@ -824,8 +825,8 @@ impl FileIO {
         mut self: Pin<&mut FileIO>,
         filename: QString,
         samplerate: i32,
-        channel: *mut ShoopQObject,
-    ) -> *mut ShoopQObject {
+        channel: *mut QObject,
+    ) -> *mut QObject {
         let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
         let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
         let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };
@@ -859,7 +860,7 @@ impl FileIO {
         self: &FileIO,
         filename: QString,
         samplerate: i32,
-        channel: *mut ShoopQObject,
+        channel: *mut QObject,
     ) -> bool {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             let channel_gui = unsafe { LoopChannelGui::from_qobject_mut_ptr(channel)? };
@@ -888,7 +889,7 @@ impl FileIO {
         maybe_set_start_offset: QVariant,
         maybe_update_loop_to_data_length: QVariant,
         ready_timeout_ms: i32,
-    ) -> *mut ShoopQObject {
+    ) -> *mut QObject {
         let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
         let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
         let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };
@@ -990,7 +991,7 @@ impl FileIO {
         filename: QString,
         samplerate: i32,
         channels: QList_QVariant,
-    ) -> *mut ShoopQObject {
+    ) -> *mut QObject {
         let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
         let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
         let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };
@@ -1118,7 +1119,7 @@ impl FileIO {
         maybe_set_start_offset: QVariant,
         maybe_update_loop_to_data_length: QVariant,
         ready_timeout_ms: i32,
-    ) -> *mut ShoopQObject {
+    ) -> *mut QObject {
         let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
         let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
         let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };

@@ -129,7 +129,8 @@ impl BackendSession {
 
     pub fn create_loop(&self, name: &str) -> Result<Loop, anyhow::Error> {
         let obj = unsafe { self.unsafe_backend_ptr() };
-        let c_name = std::ffi::CString::new(name).map_err(|_| anyhow!("Failed to create CString"))?;
+        let c_name =
+            std::ffi::CString::new(name).map_err(|_| anyhow!("Failed to create CString"))?;
         let loop_ptr = unsafe { ffi::create_loop(obj, c_name.as_ptr()) };
         if loop_ptr.is_null() {
             Err(anyhow!("create_loop() failed"))

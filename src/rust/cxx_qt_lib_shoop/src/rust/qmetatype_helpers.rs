@@ -18,7 +18,7 @@ mod ffi {
         type QList_QString = cxx_qt_lib::QList<QString>;
         type QList_u8 = cxx_qt_lib::QList<u8>;
 
-        type ShoopQObject = crate::qobject::ShoopQObject;
+        type QObject = crate::qobject::QObject;
 
         #[rust_name = "qmetatype_id_int"]
         unsafe fn meta_type_id(v: *mut i32) -> i32;
@@ -48,7 +48,7 @@ mod ffi {
         unsafe fn meta_type_id(v: *mut f64) -> i32;
 
         #[rust_name = "qmetatype_id_qobject_ptr"]
-        unsafe fn meta_type_id(v: *mut *mut ShoopQObject) -> i32;
+        unsafe fn meta_type_id(v: *mut *mut QObject) -> i32;
 
         #[rust_name = "qmetatype_id_qvariantmap"]
         unsafe fn meta_type_id(v: *mut QMap_QString_QVariant) -> i32;

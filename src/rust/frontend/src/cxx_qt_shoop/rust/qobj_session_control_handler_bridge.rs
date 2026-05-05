@@ -1,18 +1,17 @@
 #[cxx_qt::bridge]
 pub mod ffi {
-    unsafe extern "C++" {
-        include!("cxx-qt-lib-shoop/qquickitem.h");
+    extern "C++" {
+        #[doc(hidden)]
+        #[namespace = ""]
+        type QObject = cxx_qt::QObject;
+    }
+    unsafe extern "C++" {                include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
-
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
 
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
-
-        include!("cxx-qt-lib-shoop/qobject.h");
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
 
         include!("cxx-qt-lib/qmap.h");
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
@@ -32,27 +31,27 @@ pub mod ffi {
         #[qproperty(QList_QVariant, selected_loops, READ=get_selected_loops, WRITE=set_selected_loops, NOTIFY=selected_loops_changed)]
         #[qproperty(QList_QVariant, midi_control_ports, READ=get_midi_control_ports)]
         #[qproperty(QVariant, targeted_loop, READ=get_targeted_loop, WRITE=set_targeted_loop, NOTIFY=targeted_loop_changed)]
-        #[qproperty(*mut ShoopQObject, global_state_registry, READ=get_global_state_registry, WRITE=set_global_state_registry, NOTIFY=global_state_registry_changed)]
-        #[qproperty(*mut ShoopQObject, session, READ=get_session, WRITE=set_session, NOTIFY=session_changed)]
-        #[qproperty(*mut ShoopQObject, backend, READ=get_backend, WRITE=set_backend, NOTIFY=backend_changed)]
+        #[qproperty(*mut QObject, global_state_registry, READ=get_global_state_registry, WRITE=set_global_state_registry, NOTIFY=global_state_registry_changed)]
+        #[qproperty(*mut QObject, session, READ=get_session, WRITE=set_session, NOTIFY=session_changed)]
+        #[qproperty(*mut QObject, backend, READ=get_backend, WRITE=set_backend, NOTIFY=backend_changed)]
         type SessionControlHandler = super::SessionControlHandlerRust;
 
         #[qinvokable]
-        pub fn install_on_lua_engine(self: Pin<&mut SessionControlHandler>, engine: *mut ShoopQObject);
+        pub fn install_on_lua_engine(self: Pin<&mut SessionControlHandler>, engine: *mut QObject);
 
         #[qinvokable]
-        pub fn uninstall_lua_engine(self: Pin<&mut SessionControlHandler>, engine: *mut ShoopQObject);
+        pub fn uninstall_lua_engine(self: Pin<&mut SessionControlHandler>, engine: *mut QObject);
 
         #[qinvokable]
         pub fn uninstall_lua_engine_if_no_callbacks(
             self: Pin<&mut SessionControlHandler>,
-            engine: *mut ShoopQObject,
+            engine: *mut QObject,
         );
 
         #[qinvokable]
         pub fn engine_is_installed(
             self: Pin<&mut SessionControlHandler>,
-            engine: *mut ShoopQObject,
+            engine: *mut QObject,
         ) -> bool;
 
         #[qinvokable]
@@ -76,16 +75,16 @@ pub mod ffi {
         pub fn get_targeted_loop(self: Pin<&mut SessionControlHandler>) -> QVariant;
 
         #[qinvokable]
-        pub fn set_session(self: Pin<&mut SessionControlHandler>, session: *mut ShoopQObject);
+        pub fn set_session(self: Pin<&mut SessionControlHandler>, session: *mut QObject);
 
         #[qinvokable]
-        pub fn get_session(self: Pin<&mut SessionControlHandler>) -> *mut ShoopQObject;
+        pub fn get_session(self: Pin<&mut SessionControlHandler>) -> *mut QObject;
 
         #[qinvokable]
-        pub fn set_backend(self: Pin<&mut SessionControlHandler>, backend: *mut ShoopQObject);
+        pub fn set_backend(self: Pin<&mut SessionControlHandler>, backend: *mut QObject);
 
         #[qinvokable]
-        pub fn get_backend(self: Pin<&mut SessionControlHandler>) -> *mut ShoopQObject;
+        pub fn get_backend(self: Pin<&mut SessionControlHandler>) -> *mut QObject;
 
         #[qinvokable]
         pub fn get_midi_control_ports(self: Pin<&mut SessionControlHandler>) -> QList_QVariant;
@@ -93,11 +92,11 @@ pub mod ffi {
         #[qinvokable]
         pub fn set_global_state_registry(
             self: Pin<&mut SessionControlHandler>,
-            registry: *mut ShoopQObject,
+            registry: *mut QObject,
         );
 
         #[qinvokable]
-        pub fn get_global_state_registry(self: Pin<&mut SessionControlHandler>) -> *mut ShoopQObject;
+        pub fn get_global_state_registry(self: Pin<&mut SessionControlHandler>) -> *mut QObject;
 
         #[qinvokable]
         pub fn on_loop_event(self: Pin<&mut SessionControlHandler>, event: QMap_QString_QVariant);
@@ -135,6 +134,7 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qobject.h");
         include!("cxx-qt-lib-shoop/register_qml_type.h");
 
         #[rust_name = "register_qml_type_session_control_handler"]
@@ -146,13 +146,11 @@ pub mod ffi {
             type_name: &mut String,
         );
 
-        include!("cxx-qt-lib-shoop/qobject.h");
-
         #[rust_name = "session_control_handler_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj: *mut SessionControlHandler) -> *mut ShoopQObject;
+        unsafe fn qobjectFromPtr(obj: *mut SessionControlHandler) -> *mut QObject;
 
         #[rust_name = "session_control_handler_qobject_from_ref"]
-        fn qobjectFromRef(obj: &SessionControlHandler) -> &ShoopQObject;
+        fn qobjectFromRef(obj: &SessionControlHandler) -> &QObject;
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = (*mut QQuickItem,)>
@@ -201,13 +199,13 @@ pub struct SessionControlHandlerLuaTarget {
     pub callbacks_lua_to_rust: Vec<Arc<Box<dyn LuaCallback>>>,
     pub callbacks_rust_to_lua:
         Arc<RefCell<BTreeMap<RustToLuaCallbackType, Vec<RustToLuaCallback>>>>,
-    pub selected_loops: Vec<*mut ShoopQObject>,
-    pub maybe_targeted_loop: Option<*mut ShoopQObject>,
-    pub session: *mut ShoopQObject,
-    pub global_state_registry: *mut ShoopQObject,
+    pub selected_loops: Vec<*mut QObject>,
+    pub maybe_targeted_loop: Option<*mut QObject>,
+    pub session: *mut QObject,
+    pub global_state_registry: *mut QObject,
     pub midi_control_port_rules: RefCell<Vec<BridgedMidiControlPortRule>>,
     pub created_port_idx: RefCell<usize>,
-    pub backend: *mut ShoopQObject,
+    pub backend: *mut QObject,
     pub logged_calls: RefCell<Vec<String>>,
     pub test_logging_enabled: bool,
 }
@@ -253,12 +251,12 @@ impl Default for SessionControlHandlerRust {
 }
 
 impl AsQObject for ffi::SessionControlHandler {
-    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::ShoopQObject {
+    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
         ffi::session_control_handler_qobject_from_ptr(self as *mut Self)
     }
 
-    unsafe fn ref_qobject_ptr(&self) -> *const ffi::ShoopQObject {
-        ffi::session_control_handler_qobject_from_ref(self) as *const ffi::ShoopQObject
+    unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
+        ffi::session_control_handler_qobject_from_ref(self) as *const ffi::QObject
     }
 }
 

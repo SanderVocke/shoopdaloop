@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use cxx_qt_lib::QVariant;
 use cxx_qt_lib_shoop::{
-    qobject::ShoopQObject,
+    qobject::QObject,
     qsharedpointer_qobject::QSharedPointer_QObject,
     qvariant_helpers::{
         qobject_ptr_to_qvariant, qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr,
@@ -12,9 +12,9 @@ use cxx_qt_lib_shoop::{
 };
 
 pub trait ReferencesQObject: Sized {
-    fn as_qobject_ptr(&mut self) -> *mut ShoopQObject;
+    fn as_qobject_ptr(&mut self) -> *mut QObject;
 
-    fn as_qobject_ref(&self) -> *const ShoopQObject;
+    fn as_qobject_ref(&self) -> *const QObject;
 
     fn copy(&self) -> Self;
 
@@ -27,13 +27,13 @@ pub trait ReferencesQObject: Sized {
     }
 }
 
-impl ReferencesQObject for *mut ShoopQObject {
-    fn as_qobject_ptr(&mut self) -> *mut ShoopQObject {
-        *self as *mut ShoopQObject
+impl ReferencesQObject for *mut QObject {
+    fn as_qobject_ptr(&mut self) -> *mut QObject {
+        *self as *mut QObject
     }
 
-    fn as_qobject_ref(&self) -> *const ShoopQObject {
-        *self as *const ShoopQObject
+    fn as_qobject_ref(&self) -> *const QObject {
+        *self as *const QObject
     }
 
     fn copy(&self) -> Self {
@@ -50,12 +50,12 @@ impl ReferencesQObject for *mut ShoopQObject {
 }
 
 impl ReferencesQObject for cxx::UniquePtr<QSharedPointer_QObject> {
-    fn as_qobject_ptr(&mut self) -> *mut ShoopQObject {
+    fn as_qobject_ptr(&mut self) -> *mut QObject {
         self.data().unwrap_or(std::ptr::null_mut())
     }
 
-    fn as_qobject_ref(&self) -> *const ShoopQObject {
-        self.data().unwrap_or(std::ptr::null_mut()) as *const ShoopQObject
+    fn as_qobject_ref(&self) -> *const QObject {
+        self.data().unwrap_or(std::ptr::null_mut()) as *const QObject
     }
 
     fn copy(&self) -> Self {
@@ -77,7 +77,7 @@ impl ReferencesQObject for cxx::UniquePtr<QSharedPointer_QObject> {
 }
 
 impl ReferencesQObject for cxx::UniquePtr<QWeakPointer_QObject> {
-    fn as_qobject_ptr(&mut self) -> *mut ShoopQObject {
+    fn as_qobject_ptr(&mut self) -> *mut QObject {
         match self.as_ref() {
             Some(obj) => match obj.to_strong() {
                 Ok(Some(obj)) => obj.data().unwrap_or(std::ptr::null_mut()),
@@ -87,10 +87,10 @@ impl ReferencesQObject for cxx::UniquePtr<QWeakPointer_QObject> {
         }
     }
 
-    fn as_qobject_ref(&self) -> *const ShoopQObject {
+    fn as_qobject_ref(&self) -> *const QObject {
         match self.as_ref() {
             Some(obj) => match obj.to_strong() {
-                Ok(Some(obj)) => obj.data().unwrap_or(std::ptr::null_mut()) as *const ShoopQObject,
+                Ok(Some(obj)) => obj.data().unwrap_or(std::ptr::null_mut()) as *const QObject,
                 _ => std::ptr::null(),
             },
             None => std::ptr::null(),

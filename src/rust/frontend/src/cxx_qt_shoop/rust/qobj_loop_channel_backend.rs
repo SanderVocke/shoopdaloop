@@ -5,6 +5,7 @@ use crate::midi_event_helpers::MidiEventToQVariant;
 use crate::{
     any_backend_channel::AnyBackendChannel, cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend,
 };
+use cxx_qt::QObject;
 use anyhow::anyhow;
 use backend_bindings::{ChannelMode, MidiEvent, PortDataType};
 use common::logging::macros::{
@@ -287,7 +288,7 @@ impl LoopChannelBackend {
         self.initialized
     }
 
-    pub unsafe fn set_backend(mut self: Pin<&mut LoopChannelBackend>, backend: *mut ShoopQObject) {
+    pub unsafe fn set_backend(mut self: Pin<&mut LoopChannelBackend>, backend: *mut QObject) {
         if self.maybe_backend_channel.is_some() {
             error!(
                 self,
@@ -383,7 +384,7 @@ impl LoopChannelBackend {
         self.data_type.unwrap_or(PortDataType::Audio) == PortDataType::Midi
     }
 
-    pub fn get_channel_loop(self: Pin<&mut LoopChannelBackend>) -> *mut ShoopQObject {
+    pub fn get_channel_loop(self: Pin<&mut LoopChannelBackend>) -> *mut QObject {
         match self.channel_loop.as_ref() {
             Some(channel_loop) => match channel_loop.as_ref() {
                 Some(channel_loop) => match channel_loop.to_strong() {
@@ -465,7 +466,7 @@ impl LoopChannelBackend {
         };
 
         if let Err(e) = || -> Result<(), anyhow::Error> {
-            let strong_to_connect: Vec<(cxx::UniquePtr<QSharedPointer_QObject>, *mut ShoopQObject)> =
+            let strong_to_connect: Vec<(cxx::UniquePtr<QSharedPointer_QObject>, *mut QObject)> =
                 self.ports_to_connect
                     .iter()
                     .map(
@@ -500,7 +501,7 @@ impl LoopChannelBackend {
                     })
                     .collect();
 
-            let mut strong_connected: Vec<(cxx::UniquePtr<QSharedPointer_QObject>, *mut ShoopQObject)> =
+            let mut strong_connected: Vec<(cxx::UniquePtr<QSharedPointer_QObject>, *mut QObject)> =
                 self.ports_connected
                     .iter()
                     .map(
@@ -865,14 +866,14 @@ impl LoopChannelBackend {
 
     pub fn set_frontend_object(
         mut self: Pin<&mut LoopChannelBackend>,
-        frontend_object: *mut ShoopQObject,
+        frontend_object: *mut QObject,
     ) {
         let mut rust_mut = self.as_mut().rust_mut();
         rust_mut.frontend_object = frontend_object;
         self.as_mut().frontend_object_changed();
     }
 
-    pub fn get_frontend_object(self: Pin<&mut LoopChannelBackend>) -> *mut ShoopQObject {
+    pub fn get_frontend_object(self: Pin<&mut LoopChannelBackend>) -> *mut QObject {
         self.frontend_object
     }
 

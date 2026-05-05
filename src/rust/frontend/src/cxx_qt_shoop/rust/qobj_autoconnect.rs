@@ -1,5 +1,6 @@
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
+use cxx_qt::QObject;
 shoop_log_unit!("Frontend.AutoConnect");
 
 pub use crate::cxx_qt_shoop::qobj_autoconnect_bridge::ffi::make_raw_autoconnect as make_raw;
@@ -74,7 +75,7 @@ impl AutoConnect {
             }
         }
 
-        let internal_port: *mut ShoopQObject;
+        let internal_port: *mut QObject;
         {
             internal_port = self.as_mut().internal_port().clone();
             if internal_port.is_null() {

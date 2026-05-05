@@ -7,13 +7,14 @@ shoop_log_unit!("Frontend.MidiControlPort");
 
 #[cxx_qt::bridge]
 pub mod ffi {
+    extern "C++" {
+        #[doc(hidden)]
+        #[namespace = ""]
+        type QObject = cxx_qt::QObject;
+    }
 
-    unsafe extern "C++" {
-        include!("cxx-qt-lib-shoop/qquickitem.h");
+    unsafe extern "C++" {                include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
-
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
 
@@ -42,7 +43,7 @@ pub mod ffi {
         #[qobject]
         #[qml_element]
         #[base = QQuickItem]
-        #[qproperty(*mut ShoopQObject, backend)]
+        #[qproperty(*mut QObject, backend)]
         #[qproperty(bool, initialized)]
         #[qproperty(QList_QString, autoconnect_regexes)]
         #[qproperty(QString, name_hint)]
@@ -104,6 +105,7 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qobject.h");
         include!("cxx-qt-lib-shoop/qquickitem.h");
 
         #[rust_name = "qquickitem_from_ref_midi_control_port"]
@@ -122,7 +124,7 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/cast_ptr.h");
         #[rust_name = "qobject_to_midi_control_port_ptr"]
-        unsafe fn cast_qobject_ptr(obj: *mut ShoopQObject) -> *mut MidiControlPort;
+        unsafe fn cast_qobject_ptr(obj: *mut QObject) -> *mut MidiControlPort;
 
         include!("cxx-qt-lib-shoop/qobject_classname.h");
         #[rust_name = "qobject_class_name_midi_control_port"]
@@ -138,18 +140,17 @@ pub mod ffi {
             type_name: &mut String,
         );
 
-        include!("cxx-qt-lib-shoop/qobject.h");
         #[rust_name = "midi_control_port_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj: *mut MidiControlPort) -> *mut ShoopQObject;
+        unsafe fn qobjectFromPtr(obj: *mut MidiControlPort) -> *mut QObject;
 
         #[rust_name = "midi_control_port_qobject_from_ref"]
-        fn qobjectFromRef(obj: &MidiControlPort) -> &ShoopQObject;
+        fn qobjectFromRef(obj: &MidiControlPort) -> &QObject;
 
         #[rust_name = "from_qobject_ref_midi_control_port"]
-        unsafe fn fromQObjectRef(obj: &ShoopQObject, output: *mut *const MidiControlPort);
+        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const MidiControlPort);
 
         #[rust_name = "from_qobject_mut_midi_control_port"]
-        unsafe fn fromQObjectMut(obj: Pin<&mut ShoopQObject>, output: *mut *mut MidiControlPort);
+        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut MidiControlPort);
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = (*mut QQuickItem,)>
@@ -167,7 +168,7 @@ use crate::cxx_qt_shoop::qobj_autoconnect::AutoConnect;
 
 pub struct MidiControlPortRust {
     // Properties
-    pub backend: *mut ShoopQObject,
+    pub backend: *mut QObject,
     pub initialized: bool,
     pub autoconnect_regexes: QList_QString,
     pub name_hint: QString,
@@ -179,7 +180,7 @@ pub struct MidiControlPortRust {
 
     // Other
     pub backend_port_wrapper: Option<DecoupledMidiPort>,
-    pub send_timer: *mut ShoopQObject,
+    pub send_timer: *mut QObject,
     pub send_queue: Vec<Vec<u8>>,
     pub active_notes: HashSet<(u8, u8)>,
     pub cc_states: Vec<Vec<Option<u8>>>,
@@ -228,14 +229,14 @@ impl cxx_qt_lib_shoop::qquickitem::AsQQuickItem for MidiControlPort {
 }
 
 impl cxx_qt_lib_shoop::qobject::FromQObject for MidiControlPort {
-    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::ShoopQObject) -> *const Self {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt::QObject) -> *const Self {
         let mut output: *const Self = std::ptr::null();
         from_qobject_ref_midi_control_port(obj, &mut output as *mut *const Self);
         output
     }
 
     unsafe fn ptr_from_qobject_mut(
-        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::ShoopQObject>,
+        obj: std::pin::Pin<&mut cxx_qt::QObject>,
     ) -> *mut Self {
         let mut output: *mut Self = std::ptr::null_mut();
         from_qobject_mut_midi_control_port(obj, &mut output as *mut *mut Self);

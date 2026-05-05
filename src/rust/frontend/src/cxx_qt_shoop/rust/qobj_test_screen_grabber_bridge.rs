@@ -1,12 +1,7 @@
 #[cxx_qt::bridge]
 pub mod ffi {
-    unsafe extern "C++" {
-        include!("cxx-qt-lib/qstring.h");
+    unsafe extern "C++" {                include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
-
-        include!("cxx-qt-lib-shoop/qobject.h");
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
     }
 
     unsafe extern "RustQt" {
@@ -14,10 +9,10 @@ pub mod ffi {
         type TestScreenGrabber = super::TestScreenGrabberRust;
 
         #[qinvokable]
-        pub fn add_window(self: Pin<&mut TestScreenGrabber>, window: *mut ShoopQObject);
+        pub fn add_window(self: Pin<&mut TestScreenGrabber>, window: *mut QObject);
 
         #[qinvokable]
-        pub fn remove_window(self: Pin<&mut TestScreenGrabber>, window: *mut ShoopQObject);
+        pub fn remove_window(self: Pin<&mut TestScreenGrabber>, window: *mut QObject);
 
         #[qinvokable]
         pub fn grab_all(self: Pin<&mut TestScreenGrabber>, output_folder: QString);
@@ -46,7 +41,7 @@ pub use ffi::TestScreenGrabber;
 use std::collections::BTreeSet;
 
 pub struct TestScreenGrabberRust {
-    pub windows: BTreeSet<*mut ffi::ShoopQObject>,
+    pub windows: BTreeSet<*mut ffi::QObject>,
 }
 
 impl Default for TestScreenGrabberRust {

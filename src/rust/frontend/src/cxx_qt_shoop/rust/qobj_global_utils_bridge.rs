@@ -3,13 +3,8 @@ shoop_log_unit!("Frontend.Utils");
 
 #[cxx_qt::bridge]
 pub mod ffi {
-    unsafe extern "C++" {
-        include!("cxx-qt-lib/qstring.h");
+    unsafe extern "C++" {                include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
-
-        include!("cxx-qt-lib-shoop/qobject.h");
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type ShoopQObject = cxx_qt_lib_shoop::qobject::ShoopQObject;
     }
 
     unsafe extern "RustQt" {
@@ -19,7 +14,7 @@ pub mod ffi {
 
     unsafe extern "RustQt" {
         #[qinvokable]
-        pub unsafe fn set_window_icon_path(self: &GlobalUtils, window: *mut ShoopQObject, path: QString);
+        pub unsafe fn set_window_icon_path(self: &GlobalUtils, window: *mut QObject, path: QString);
     }
 
     unsafe extern "C++" {

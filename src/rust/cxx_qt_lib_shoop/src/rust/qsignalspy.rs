@@ -8,7 +8,7 @@ mod ffi {
         type QSignalSpy = super::QSignalSpyRust;
 
         include!("cxx-qt-lib-shoop/qobject.h");
-        type ShoopQObject = crate::qobject::ShoopQObject;
+        type QObject = crate::qobject::QObject;
     }
 
     unsafe extern "C++" {
@@ -17,7 +17,7 @@ mod ffi {
         unsafe fn qsignalspyCount(obj: &QSignalSpy) -> Result<i32>;
 
         #[rust_name = "qsignalspy_make_raw"]
-        unsafe fn qsignalspyCreate(obj: *const ShoopQObject, signal: String) -> Result<*mut QSignalSpy>;
+        unsafe fn qsignalspyCreate(obj: *const QObject, signal: String) -> Result<*mut QSignalSpy>;
     }
 }
 
@@ -33,7 +33,7 @@ impl QSignalSpy {
 }
 
 pub fn make_raw(
-    obj: *const ffi::ShoopQObject,
+    obj: *const ffi::QObject,
     signal: String,
 ) -> Result<*mut QSignalSpy, cxx::Exception> {
     unsafe { ffi::qsignalspy_make_raw(obj, signal) }

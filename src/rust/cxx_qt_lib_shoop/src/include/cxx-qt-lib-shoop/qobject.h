@@ -1,12 +1,12 @@
 #pragma once
 #include <QObject>
-
-// ShoopQObject is an alias for Qt's QObject to avoid conflicts with cxx-qt-lib's QObject type
-using ShoopQObject = QObject;
 #include <QThread>
 #include <QVariant>
 #include <rust/cxx.h>
 #include <iostream>
+
+// Helper functions for QObject - these work with Qt's native QObject type
+// The Rust side will use cxx_qt::QObject which binds directly to Qt's QObject
 
 template<typename T>
 inline QObject* qobjectFromPtr(T *obj) {
@@ -85,7 +85,7 @@ inline float qobjectPropertyFloat(QObject const& obj, ::rust::String name) {
         throw std::runtime_error(err);
     }
     if (!result.canConvert<float>()) {
-        throw std::runtime_error("not convertible to int");
+        throw std::runtime_error("not convertible to float");
     }
     return result.toFloat();
 }
