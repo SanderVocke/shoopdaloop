@@ -109,6 +109,11 @@ fn main_impl() -> Result<(), anyhow::Error> {
         // Use RPATH instead of RUNPATH, which will enable finding transitive dependencies
         // (e.g. in the vcpkg installation folder)
         println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--disable-new-dtags");
+
+        // Add rpath-link for transitive shared library dependencies (fmt, b64)
+        for path in backend::build_time_link_dirs() {
+            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath-link,{}", path.display());
+        }
     }
 
     for path in backend::build_time_link_dirs() {
