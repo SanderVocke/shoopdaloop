@@ -112,7 +112,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
     }
 
     for path in backend::build_time_link_dirs() {
-        println!("cargo:rustc-link-search=native={:?}", path);
+        println!("cargo:rustc-link-search=native={}", path.display());
     }
 
     let backend_runtime_link_paths_str = backend::runtime_link_dirs()
