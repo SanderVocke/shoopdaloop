@@ -36,6 +36,9 @@ target_include_directories(test_runner
                         ${CMAKE_CURRENT_SOURCE_DIR}
                         ${CMAKE_CURRENT_SOURCE_DIR}/..
                         )
+if(B64_FOUND)
+    target_link_libraries(test_runner PRIVATE b64::b64)
+endif()
 if (WIN32)
     target_link_libraries(test_runner PRIVATE Boost::system)
 endif()

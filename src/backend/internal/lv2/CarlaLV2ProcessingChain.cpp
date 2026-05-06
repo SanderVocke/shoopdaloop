@@ -10,7 +10,7 @@
 #include <iostream>
 #include <thread>
 #include <nlohmann/json.hpp>
-#include <base64.hpp>
+#include "base64_wrapper.hpp"
 #include "LoadDynamicLibrary.h"
 #include "types.h"
 

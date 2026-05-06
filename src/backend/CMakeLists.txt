@@ -11,7 +11,7 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN 1)
 
 find_package(Threads REQUIRED)
 
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/cmake")
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/cmake" "${CMAKE_SOURCE_DIR}/cmake")
 
 # Ensure PDB file generation
 if (WIN32)
@@ -62,8 +62,10 @@ if (APPLE)
   message(STATUS "MacOS architectures included: ${CMAKE_OSX_ARCHITECTURES}")
 endif()
 
-find_package(fmt CONFIG REQUIRED)
+# Find b64 (libb64)
+find_package(B64 REQUIRED)
 
+find_package(fmt CONFIG REQUIRED)
 find_package(Catch2 CONFIG REQUIRED)
 
 include(CompilerCaching)
@@ -231,7 +233,6 @@ add_library(shoopdaloop_backend_internals STATIC libshoopdaloop_backend.cpp ${IN
 set_target_properties(shoopdaloop_backend_internals PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(shoopdaloop_backend_internals
                         PRIVATE
-                        ${CMAKE_SOURCE_DIR}/third_party/base64/include
                         ${CMAKE_CURRENT_BINARY_DIR}
                         )
 target_link_libraries(shoopdaloop_backend_internals PRIVATE
@@ -242,6 +243,9 @@ target_link_libraries(shoopdaloop_backend_internals PRIVATE
   ${REFILLING_POOL_RUST_LIB}
   refilling_pool_cxx
   )
+if(B64_FOUND)
+    target_link_libraries(shoopdaloop_backend_internals PUBLIC b64::b64)
+endif()
 if (MSVC)
   # On Windows, we need to link some additional system libs
   # in order to successfully link to Rust-generated static
