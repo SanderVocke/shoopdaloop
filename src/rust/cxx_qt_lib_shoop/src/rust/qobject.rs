@@ -187,7 +187,6 @@ pub trait FromQObject {
     }
 }
 
-
 pub unsafe fn qobject_parent(obj: &QObject) -> Result<*mut QObject, cxx::Exception> {
     // Cast QObject reference to QObjectHelper reference (they're the same C++ type)
     let obj_helper: &QObjectHelper = &*(obj as *const QObject as *const QObjectHelper);
