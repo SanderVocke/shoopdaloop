@@ -65,7 +65,13 @@ include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(B64 DEFAULT_MSG B64_LIBRARIES B64_INCLUDE_DIRS)
 
 if(B64_FOUND AND NOT TARGET b64::b64)
-    add_library(b64::b64 STATIC IMPORTED)
+    # Determine if library is static or shared
+    get_filename_component(B64_LIB_EXT "${B64_LIBRARIES}" EXT)
+    if(B64_LIB_EXT STREQUAL ".a" OR B64_LIB_EXT STREQUAL ".lib")
+        add_library(b64::b64 STATIC IMPORTED)
+    else()
+        add_library(b64::b64 SHARED IMPORTED)
+    endif()
     set_target_properties(b64::b64 PROPERTIES
         IMPORTED_LOCATION "${B64_LIBRARIES}"
         INTERFACE_INCLUDE_DIRECTORIES "${B64_INCLUDE_DIRS}"

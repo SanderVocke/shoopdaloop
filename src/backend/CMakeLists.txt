@@ -63,7 +63,19 @@ if (APPLE)
 endif()
 
 # Find b64 (libb64)
-find_package(B64 REQUIRED)
+# Try vcpkg config first, then fall back to FindB64.cmake for system libraries
+find_package(unofficial-b64 CONFIG QUIET)
+if(unofficial-b64_FOUND)
+    message(STATUS "Found b64 via vcpkg: unofficial::b64::b64")
+    # Create alias target for consistent usage
+    if(NOT TARGET b64::b64)
+        add_library(b64::b64 ALIAS unofficial::b64::b64)
+    endif()
+else()
+    # Use custom FindB64.cmake for system libraries (e.g., NixOS)
+    find_package(B64 REQUIRED)
+    message(STATUS "Found b64 via system: ${B64_LIBRARIES}")
+endif()
 
 find_package(fmt CONFIG REQUIRED)
 find_package(Catch2 CONFIG REQUIRED)
