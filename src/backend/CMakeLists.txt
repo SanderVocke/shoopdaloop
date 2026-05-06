@@ -71,6 +71,8 @@ if(unofficial-b64_FOUND)
     if(NOT TARGET b64::b64)
         add_library(b64::b64 ALIAS unofficial::b64::b64)
     endif()
+    # Set B64_FOUND so conditional linking works
+    set(B64_FOUND TRUE)
 else()
     # Use custom FindB64.cmake for system libraries (e.g., NixOS)
     find_package(B64 REQUIRED)
