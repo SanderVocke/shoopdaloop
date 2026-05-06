@@ -59,7 +59,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
                 },
             )
             // Force cmake rebuild
-            .define("SHOOP_FORCE_REBUILD", "v3");
+            .define("SHOOP_FORCE_REBUILD", "v4");
         let _ = cmake_config_mut.build();
     }
 

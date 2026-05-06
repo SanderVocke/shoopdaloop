@@ -64,7 +64,10 @@ endif()
 
 # Find b64 (libb64) for base64 encoding/decoding
 # Try vcpkg config first, then fall back to FindB64.cmake for system libraries
+# Prefer static library to avoid transitive dependency issues
+set(CMAKE_FIND_LIBRARY_SUFFIXES .a .lib)
 find_package(unofficial-b64 CONFIG QUIET)
+set(CMAKE_FIND_LIBRARY_SUFFIXES) # Reset to default
 if(unofficial-b64_FOUND)
     message(STATUS "Found b64 via vcpkg: unofficial::b64::b64")
     # Create alias target for consistent usage
@@ -79,7 +82,12 @@ else()
     message(STATUS "Found b64 via system: ${B64_LIBRARIES}")
 endif()
 
+# Prefer static libraries for fmt and b64 to avoid transitive dependency issues
+# when linking libshoopdaloop_backend.so into Rust crates
+set(CMAKE_FIND_LIBRARY_SUFFIXES .a .lib)
 find_package(fmt CONFIG REQUIRED)
+set(CMAKE_FIND_LIBRARY_SUFFIXES) # Reset to default
+
 find_package(Catch2 CONFIG REQUIRED)
 
 include(CompilerCaching)
