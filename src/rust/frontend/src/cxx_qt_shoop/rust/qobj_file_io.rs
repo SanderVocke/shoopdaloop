@@ -1,5 +1,6 @@
 use backend_bindings::{MidiEvent, MultichannelAudio};
 use common::logging::macros::*;
+use cxx_qt::QObject;
 use cxx_qt_lib::{QList, QMap, QVector};
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::invokable::invoke;

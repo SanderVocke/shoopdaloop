@@ -6,10 +6,14 @@ shoop_log_unit!("Frontend.BackendWrapper");
 
 #[cxx_qt::bridge]
 pub mod ffi {
+    extern "C++" {
+        #[doc(hidden)]
+        #[namespace = ""]
+        type QObject = cxx_qt::QObject;
+    }
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
-
         include!("cxx-qt-lib-shoop/qthread.h");
         type QThread = cxx_qt_lib_shoop::qthread::QThread;
 
@@ -28,8 +32,6 @@ pub mod ffi {
         include!("cxx-qt-lib/qmap.h");
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
 
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
     }
 
     unsafe extern "RustQt" {
@@ -133,6 +135,7 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qobject.h");
         include!("cxx-qt-lib-shoop/qquickitem.h");
 
         #[rust_name = "qquickitem_from_ref_backend_wrapper"]
@@ -140,8 +143,6 @@ pub mod ffi {
 
         #[rust_name = "qquickitem_from_ptr_backend_wrapper"]
         unsafe fn qquickitemFromPtr(obj: *mut BackendWrapper) -> *mut QQuickItem;
-
-        include!("cxx-qt-lib-shoop/qobject.h");
 
         #[rust_name = "from_qobject_ref_backend_wrapper"]
         unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const BackendWrapper);
@@ -249,15 +250,13 @@ impl cxx_qt_lib_shoop::qquickitem::AsQQuickItem for BackendWrapper {
 }
 
 impl cxx_qt_lib_shoop::qobject::FromQObject for BackendWrapper {
-    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::QObject) -> *const Self {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt::QObject) -> *const Self {
         let mut output: *const Self = std::ptr::null();
         from_qobject_ref_backend_wrapper(obj, &mut output as *mut *const Self);
         output
     }
 
-    unsafe fn ptr_from_qobject_mut(
-        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::QObject>,
-    ) -> *mut Self {
+    unsafe fn ptr_from_qobject_mut(obj: std::pin::Pin<&mut cxx_qt::QObject>) -> *mut Self {
         let mut output: *mut Self = std::ptr::null_mut();
         from_qobject_mut_backend_wrapper(obj, &mut output as *mut *mut Self);
         output

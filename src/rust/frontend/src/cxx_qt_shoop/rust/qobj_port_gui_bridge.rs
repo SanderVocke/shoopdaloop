@@ -4,11 +4,14 @@ shoop_log_unit!("Frontend.Port");
 
 #[cxx_qt::bridge]
 pub mod ffi {
+    extern "C++" {
+        #[doc(hidden)]
+        #[namespace = ""]
+        type QObject = cxx_qt::QObject;
+    }
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
-
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
 
@@ -330,6 +333,7 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qobject.h");
         include!("cxx-qt-lib-shoop/qquickitem.h");
 
         #[rust_name = "qquickitem_from_ref_port_gui"]
@@ -347,8 +351,6 @@ pub mod ffi {
             version_minor: i64,
             type_name: &mut String,
         );
-
-        include!("cxx-qt-lib-shoop/qobject.h");
 
         #[rust_name = "from_qobject_ref_port_gui"]
         unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const PortGui);
@@ -484,15 +486,13 @@ impl cxx_qt::Constructor<()> for PortGui {
 }
 
 impl cxx_qt_lib_shoop::qobject::FromQObject for PortGui {
-    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::QObject) -> *const Self {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt::QObject) -> *const Self {
         let mut output: *const Self = std::ptr::null();
         from_qobject_ref_port_gui(obj, &mut output as *mut *const Self);
         output
     }
 
-    unsafe fn ptr_from_qobject_mut(
-        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::QObject>,
-    ) -> *mut Self {
+    unsafe fn ptr_from_qobject_mut(obj: std::pin::Pin<&mut cxx_qt::QObject>) -> *mut Self {
         let mut output: *mut Self = std::ptr::null_mut();
         from_qobject_mut_port_gui(obj, &mut output as *mut *mut Self);
         output

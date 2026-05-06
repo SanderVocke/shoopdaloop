@@ -7,7 +7,6 @@ pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
-
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
 
@@ -19,9 +18,6 @@ pub mod ffi {
         include!("cxx-qt-lib/qvector.h");
         type QVector_f32 = cxx_qt_lib::QVector<f32>;
         type QVector_QVariant = cxx_qt_lib::QVector<QVariant>;
-
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
 
         include!("cxx-qt-lib/qmap.h");
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
@@ -185,6 +181,7 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qobject.h");
         include!("cxx-qt-lib-shoop/make_unique.h");
 
         #[rust_name = "make_unique_fileio"]
@@ -200,8 +197,6 @@ pub mod ffi {
             version_minor: i64,
             type_name: &mut String,
         );
-
-        include!("cxx-qt-lib-shoop/qobject.h");
 
         #[rust_name = "from_qobject_ref_file_io"]
         unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const FileIO);

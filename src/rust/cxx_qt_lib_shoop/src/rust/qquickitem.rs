@@ -6,7 +6,9 @@ mod ffi {
 
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
+        include!("cxx-qt-lib-shoop/qobject.h");
         type QQuickItem;
+        #[allow(clippy::redundant_type_restriction)]
         type QObject = crate::qobject::QObject;
 
         include!("cxx-qt-lib/qlist.h");

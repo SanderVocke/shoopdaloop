@@ -13,6 +13,7 @@ use anyhow::anyhow;
 use backend_bindings::{LoopMode, PortDirection};
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
+use cxx_qt::QObject;
 use cxx_qt_lib::{QList, QString};
 use cxx_qt_lib_shoop::connect::{connect, connect_or_report};
 use cxx_qt_lib_shoop::connection_types;

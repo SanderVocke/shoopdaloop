@@ -10,12 +10,8 @@ shoop_log_unit!("Frontend.Port");
 #[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
-
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
-
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
 
@@ -335,7 +331,6 @@ pub mod ffi {
         #[rust_name = "make_raw_port_backend"]
         unsafe fn make_raw() -> *mut PortBackend;
 
-        include!("cxx-qt-lib-shoop/qobject.h");
         #[rust_name = "port_backend_qobject_from_ptr"]
         unsafe fn qobjectFromPtr(obj: *mut PortBackend) -> *mut QObject;
 
@@ -401,15 +396,13 @@ impl AsQObject for ffi::PortBackend {
 }
 
 impl cxx_qt_lib_shoop::qobject::FromQObject for PortBackend {
-    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::QObject) -> *const Self {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt::QObject) -> *const Self {
         let mut output: *const Self = std::ptr::null();
         from_qobject_ref_port_backend(obj, &mut output as *mut *const Self);
         output
     }
 
-    unsafe fn ptr_from_qobject_mut(
-        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::QObject>,
-    ) -> *mut Self {
+    unsafe fn ptr_from_qobject_mut(obj: std::pin::Pin<&mut cxx_qt::QObject>) -> *mut Self {
         let mut output: *mut Self = std::ptr::null_mut();
         from_qobject_mut_port_backend(obj, &mut output as *mut *mut Self);
         output

@@ -8,12 +8,9 @@ pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qthread.h");
         type QThread = cxx_qt_lib_shoop::qthread::QThread;
-
         include!("cxx-qt-lib-shoop/qtimer.h");
         type QTimer = cxx_qt_lib_shoop::qtimer::QTimer;
 
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
     }
 
     unsafe extern "RustQt" {
@@ -42,12 +39,12 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qobject.h");
         include!("cxx-qt-lib-shoop/make_unique.h");
 
         #[rust_name = "make_unique_update_thread"]
         fn make_unique() -> UniquePtr<UpdateThread>;
 
-        include!("cxx-qt-lib-shoop/qobject.h");
         #[rust_name = "update_thread_qobject_from_ptr"]
         unsafe fn qobjectFromPtr(obj: *mut UpdateThread) -> *mut QObject;
 

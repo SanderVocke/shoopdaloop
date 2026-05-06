@@ -6,8 +6,8 @@ shoop_log_unit!("Frontend.Qt");
 #[cxx_qt::bridge]
 mod ffi {
     unsafe extern "C++" {
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = crate::qobject::QObject;
+        include!(<QtCore/QObject>);
+        type QObject = cxx_qt::QObject;
     }
 
     unsafe extern "C++" {

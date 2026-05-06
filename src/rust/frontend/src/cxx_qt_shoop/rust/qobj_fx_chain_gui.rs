@@ -8,6 +8,7 @@ use crate::{
     engine_update_thread,
 };
 use anyhow::anyhow;
+use cxx_qt::QObject;
 use std::pin::Pin;
 
 use common::logging::macros::{debug as raw_debug, error as raw_error, shoop_log_unit};
@@ -15,7 +16,7 @@ use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::{
     connect::connect_or_report,
     connection_types, invokable,
-    qobject::{ffi::qobject_move_to_thread, AsQObject},
+    qobject::{qobject_move_to_thread, AsQObject},
     qsharedpointer_qobject::QSharedPointer_QObject,
     qvariant_helpers::qsharedpointer_qobject_to_qvariant,
 };

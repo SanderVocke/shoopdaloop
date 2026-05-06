@@ -6,7 +6,6 @@ pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qcolor.h");
         type QColor = cxx_qt_lib::QColor;
-
         include!("cxx-qt-lib/qrectf.h");
         type QRectF = cxx_qt_lib::QRectF;
 
@@ -34,9 +33,6 @@ pub mod ffi {
 
         include!("cxx-qt-lib/qpainter.h");
         type QPainter = cxx_qt_lib::QPainter;
-
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
 
         include!(<QtQuick/QQuickPaintedItem>);
         type QQuickPaintedItem;
@@ -132,7 +128,6 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
-        include!("cxx-qt-lib-shoop/qobject.h");
 
         #[rust_name = "from_qobject_ref_render_audio_waveform"]
         unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const RenderAudioWaveform);

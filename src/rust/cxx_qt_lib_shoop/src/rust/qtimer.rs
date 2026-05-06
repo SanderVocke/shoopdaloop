@@ -1,4 +1,4 @@
-use crate::qobject::ffi::qobject_move_to_thread;
+use crate::qobject::qobject_move_to_thread;
 use crate::qthread::QThread;
 use cxx::{type_id, ExternType};
 use cxx_qt;

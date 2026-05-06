@@ -4,7 +4,7 @@ use cxx_qt_lib::{QList, QVariant};
 use cxx_qt_lib_shoop::{
     connection_types,
     invokable::invoke,
-    qobject::{ffi::qobject_meta_type_name, QObject},
+    qobject::{qobject_meta_type_name, QObject},
     qvariant_helpers::QList_QVariant,
     qvariant_helpers::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
 };

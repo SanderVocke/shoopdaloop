@@ -5,6 +5,7 @@ mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qobject.h");
         include!("cxx-qt-lib-shoop/qsharedpointer_qobject.h");
+        #[allow(clippy::redundant_type_restriction)]
         type QObject = crate::qobject::QObject;
         type QSharedPointer_QObject;
 

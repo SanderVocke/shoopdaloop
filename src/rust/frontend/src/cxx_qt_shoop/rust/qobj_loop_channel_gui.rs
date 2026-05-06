@@ -23,7 +23,7 @@ use cxx_qt_lib_shoop::qvariant_helpers::{
     qsharedpointer_qvector_qvariant_to_qvariant, qvariant_to_qobject_ptr,
     qvariant_to_qweakpointer_qobject,
 };
-use cxx_qt_lib_shoop::{invokable, qobject::ffi::qobject_move_to_thread};
+use cxx_qt_lib_shoop::{invokable, qobject::qobject_move_to_thread};
 use std::pin::Pin;
 shoop_log_unit!("Frontend.LoopChannel");
 

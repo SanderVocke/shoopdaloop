@@ -13,8 +13,8 @@ pub const SINGLE_SHOT_CONNECTION: u32 = 0x100;
 #[cxx_qt::bridge]
 mod ffi {
     unsafe extern "C++" {
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = crate::qobject::QObject;
+        include!(<QtCore/QObject>);
+        type QObject = cxx_qt::QObject;
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;

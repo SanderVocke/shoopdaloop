@@ -1,4 +1,5 @@
 use common::logging::macros::*;
+use cxx_qt::QObject;
 shoop_log_unit!("Frontend.GlobalUtils");
 
 pub use crate::cxx_qt_shoop::qobj_global_utils_bridge::ffi::GlobalUtils;

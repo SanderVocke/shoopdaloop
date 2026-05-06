@@ -8,9 +8,6 @@ pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
-
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
     }
 
     unsafe extern "RustQt" {
@@ -49,11 +46,11 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qobject.h");
         include!("cxx-qt-lib-shoop/make_raw.h");
         #[rust_name = "make_raw_test_runner"]
         unsafe fn make_raw_with_one_arg(parent: *mut QObject) -> *mut TestFileRunner;
 
-        include!("cxx-qt-lib-shoop/qobject.h");
         #[rust_name = "test_runner_qobject_from_ptr"]
         unsafe fn qobjectFromPtr(obj: *mut TestFileRunner) -> *mut QObject;
 

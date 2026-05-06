@@ -10,6 +10,7 @@ use std::path::Path;
 use std::pin::Pin;
 
 use common::logging::macros::*;
+use cxx_qt::QObject;
 shoop_log_unit!("Frontend.QmlEngine");
 
 impl QmlEngine {

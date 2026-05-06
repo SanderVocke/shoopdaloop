@@ -3,12 +3,8 @@ use cxx_qt_lib_shoop::qobject::AsQObject;
 #[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
-
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
-
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
 
@@ -240,11 +236,11 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qobject.h");
         include!("cxx-qt-lib-shoop/make_raw.h");
         #[rust_name = "make_raw_composite_loop_backend"]
         unsafe fn make_raw() -> *mut CompositeLoopBackend;
 
-        include!("cxx-qt-lib-shoop/qobject.h");
         #[rust_name = "composite_loop_backend_qobject_from_ptr"]
         unsafe fn qobjectFromPtr(obj: *mut CompositeLoopBackend) -> *mut QObject;
 

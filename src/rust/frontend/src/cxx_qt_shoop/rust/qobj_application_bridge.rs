@@ -2,15 +2,17 @@ use std::pin::Pin;
 
 #[cxx_qt::bridge]
 pub mod ffi {
+    extern "C++" {
+        #[doc(hidden)]
+        #[namespace = ""]
+        type QObject = cxx_qt::QObject;
+    }
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
 
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
-
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
 
         include!("cxx-qt-lib/qurl.h");
         type QUrl = cxx_qt_lib::QUrl;
@@ -74,12 +76,13 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qobject.h");
+
         include!("cxx-qt-lib-shoop/make_unique.h");
 
         #[rust_name = "make_unique_application"]
         fn make_unique() -> UniquePtr<Application>;
 
-        include!("cxx-qt-lib-shoop/qobject.h");
         #[rust_name = "application_qobject_from_ptr"]
         unsafe fn qobjectFromPtr(obj: *mut Application) -> *mut QObject;
 

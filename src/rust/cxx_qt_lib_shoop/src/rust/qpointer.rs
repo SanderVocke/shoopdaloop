@@ -4,7 +4,9 @@ use cxx;
 mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qpointer.h");
+        include!("cxx-qt-lib-shoop/qobject.h");
         type QPointerQObject;
+        #[allow(clippy::redundant_type_restriction)]
         type QObject = crate::qobject::QObject;
 
         include!("cxx-qt-lib/qvariant.h");

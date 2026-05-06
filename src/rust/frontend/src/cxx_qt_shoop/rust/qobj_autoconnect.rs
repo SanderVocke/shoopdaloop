@@ -1,5 +1,6 @@
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
+use cxx_qt::QObject;
 shoop_log_unit!("Frontend.AutoConnect");
 
 pub use crate::cxx_qt_shoop::qobj_autoconnect_bridge::ffi::make_raw_autoconnect as make_raw;

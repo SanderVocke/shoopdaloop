@@ -6,7 +6,6 @@ use config::config::ShoopConfig;
 use cxx_qt_lib::QString;
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
-use cxx_qt_lib_shoop::qobject::ffi::qobject_register_qml_singleton_instance;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 use cxx_qt_lib_shoop::qvariant_helpers::qobject_ptr_to_qvariant;
 use frontend::cxx_qt_shoop::qobj_application_bridge::{Application, ApplicationStartupSettings};
@@ -28,7 +27,7 @@ shoop_log_unit!("Main");
 static GLOBAL_QML_SETTINGS: OnceCell<GlobalQmlSettings> = OnceCell::new();
 
 thread_local! {
-static TEST_RUNNER: OnceCell<*mut TestFileRunner> = OnceCell::new();
+    static TEST_RUNNER: OnceCell<*mut TestFileRunner> = OnceCell::new();
 }
 
 fn crash_info_callback_impl() -> Result<Vec<crashhandling::AdditionalCrashAttachment>, anyhow::Error>
@@ -132,8 +131,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
             // to the application object. Also, register it as a singleton
             // in QML-land.
             unsafe {
-                let app_qobj: *mut cxx_qt_lib_shoop::qobject::QObject =
-                    app.as_mut().pin_mut_qobject_ptr();
+                let app_qobj: *mut cxx_qt::QObject = app.as_mut().pin_mut_qobject_ptr();
                 let testrunner_ptr = TestFileRunner::make_raw(app_qobj);
                 let mut testrunner = std::pin::Pin::new_unchecked(&mut *testrunner_ptr);
 
@@ -156,12 +154,12 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                     );
 
                     // Register as a singleton so it can be found from QML
-                    qobject_register_qml_singleton_instance(
+                    cxx_qt_lib_shoop::qobject::qobject_register_qml_singleton_instance(
                         testrunner_qobj,
-                        &mut String::from("ShoopDaLoop.Rust"),
+                        "ShoopDaLoop.Rust",
                         1,
                         0,
-                        &mut String::from("ShoopTestFileRunner"),
+                        "ShoopTestFileRunner",
                     )?;
                 }
 
@@ -246,8 +244,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
             // to the application object. Also, register it as a singleton
             // in QML-land.
             unsafe {
-                let app_qobj: *mut cxx_qt_lib_shoop::qobject::QObject =
-                    app.as_mut().pin_mut_qobject_ptr();
+                let app_qobj: *mut cxx_qt::QObject = app.as_mut().pin_mut_qobject_ptr();
 
                 TEST_RUNNER.with(|c| {
                     if let Some(testrunner) = c.get() {

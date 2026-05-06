@@ -1,15 +1,16 @@
 #[cxx_qt::bridge]
 pub mod ffi {
+    extern "C++" {
+        #[doc(hidden)]
+        #[namespace = ""]
+        type QObject = cxx_qt::QObject;
+    }
     unsafe extern "C++" {
         include!("cxx-qt-shoop/ShoopQmlEngine.h");
         type ShoopQmlEngine;
 
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
-
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
-
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
     }
@@ -61,12 +62,12 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qobject.h");
         include!("cxx-qt-lib-shoop/make_raw.h");
 
         #[rust_name = "make_raw_qmlengine"]
         unsafe fn make_raw_with_one_arg(parent: *mut QObject) -> *mut QmlEngine;
 
-        include!("cxx-qt-lib-shoop/qobject.h");
         #[rust_name = "qmlengine_qobject_from_ptr"]
         unsafe fn qobjectFromPtr(obj: *mut QmlEngine) -> *mut QObject;
 

@@ -1,6 +1,7 @@
 [package]
 name = "cxx_qt_lib_shoop"
 edition = "2021"
+links = "cxx-qt-lib-shoop"
 
 [lib]
 crate-type = ["lib"]
@@ -25,7 +26,7 @@ once_cell = { workspace = true }
 [build-dependencies]
 macros = { path = "../macros" }
 
-cxx-qt-build = { version = "0.7.2" }
+cxx-qt-build = { workspace = true }
 
 [features]
 # Dummy build to build dependencies only

@@ -7,6 +7,7 @@ use anyhow::anyhow;
 use backend_bindings::PortDirection;
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
+use cxx_qt::QObject;
 use cxx_qt_lib::QList;
 use cxx_qt_lib::QMap;
 use cxx_qt_lib::QVariant;

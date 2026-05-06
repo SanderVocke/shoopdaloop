@@ -12,11 +12,12 @@ use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
 use cxx_qt::CxxQtType;
+use cxx_qt::QObject;
 use cxx_qt_lib::{QList, QString, QVariant};
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
-use cxx_qt_lib_shoop::qobject::ffi::qobject_move_to_thread;
-use cxx_qt_lib_shoop::qobject::ffi::qobject_object_name;
+use cxx_qt_lib_shoop::qobject::qobject_move_to_thread;
+use cxx_qt_lib_shoop::qobject::qobject_object_name;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 use cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;

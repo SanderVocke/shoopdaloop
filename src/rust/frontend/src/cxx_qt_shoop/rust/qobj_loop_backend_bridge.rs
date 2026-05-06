@@ -8,8 +8,6 @@ pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        type QObject = cxx_qt_lib_shoop::qobject::QObject;
-
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
 
@@ -193,6 +191,7 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qobject.h");
         include!("cxx-qt-lib-shoop/cast_ptr.h");
         #[rust_name = "qobject_to_loop_backend_ptr"]
         unsafe fn cast_qobject_ptr(obj: *mut QObject) -> *mut LoopBackend;
@@ -201,7 +200,6 @@ pub mod ffi {
         #[rust_name = "qobject_class_name_loop_backend"]
         fn qobject_class_name(obj: &LoopBackend) -> Result<&str>;
 
-        include!("cxx-qt-lib-shoop/qobject.h");
         #[rust_name = "loop_backend_qobject_from_ptr"]
         unsafe fn qobjectFromPtr(obj: *mut LoopBackend) -> *mut QObject;
 
@@ -237,15 +235,13 @@ impl AsQObject for LoopBackend {
 }
 
 impl cxx_qt_lib_shoop::qobject::FromQObject for LoopBackend {
-    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::QObject) -> *const Self {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt::QObject) -> *const Self {
         let mut output: *const Self = std::ptr::null();
         from_qobject_ref_loop_backend(obj, &mut output as *mut *const Self);
         output
     }
 
-    unsafe fn ptr_from_qobject_mut(
-        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::QObject>,
-    ) -> *mut Self {
+    unsafe fn ptr_from_qobject_mut(obj: std::pin::Pin<&mut cxx_qt::QObject>) -> *mut Self {
         let mut output: *mut Self = std::ptr::null_mut();
         from_qobject_mut_loop_backend(obj, &mut output as *mut *mut Self);
         output
