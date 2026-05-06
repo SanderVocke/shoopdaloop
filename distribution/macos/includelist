@@ -29,3 +29,4 @@
 */libvorbis*.dylib
 */libogg*.dylib
 */libfmt*.dylib
+*/libb64*.dylib

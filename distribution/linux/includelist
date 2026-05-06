@@ -121,4 +121,5 @@
 */libogg.so*
 */liblua.so*
 */libfmt.so*
+*/libfmtd.so*
 */libb64.so*

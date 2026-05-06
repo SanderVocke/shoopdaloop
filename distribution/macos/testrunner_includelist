@@ -5,3 +5,5 @@
 */libzix-*.dylib*
 */libsratom-*.dylib*
 */libCatch2*.dylib*
+*/libfmt*.dylib
+*/libb64*.dylib
