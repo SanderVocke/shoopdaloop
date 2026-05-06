@@ -1,2 +1,0 @@
-- check the naming on c++ objects is correct (audio channel for example)
-- limit checksum calculations only to when tracing is enabled

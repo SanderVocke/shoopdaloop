@@ -7,9 +7,9 @@ pub use cxx_qt::QObject;
 #[cxx::bridge]
 pub mod ffi {
     unsafe extern "C++" {
-        // Include Qt's QObject header - this gives us the QObject type
+        // Include Qt's QObject header
         include!(<QtCore/QObject>);
-        // Include our helper header - this gives us the helper functions
+        // Include our helper header with helper functions
         include!("cxx-qt-lib-shoop/qobject.h");
 
         include!("cxx-qt-lib/qstring.h");
@@ -27,7 +27,7 @@ pub mod ffi {
         include!("cxx-qt-lib/qlist.h");
         type QList_QVariant = cxx_qt_lib::QList<QVariant>;
 
-        // Use a different name to avoid conflict with cxx_qt::QObject
+        // Use a different name in Rust to avoid conflict with cxx_qt::QObject
         #[rust_name = "QObjectHelper"]
         type QObject;
 
@@ -187,8 +187,6 @@ pub trait FromQObject {
     }
 }
 
-// Helper functions that wrap the FFI calls
-// These work with cxx_qt::QObject which is identical to QObjectHelper at the C++ level
 
 pub unsafe fn qobject_parent(obj: &QObject) -> Result<*mut QObject, cxx::Exception> {
     // Cast QObject reference to QObjectHelper reference (they're the same C++ type)
