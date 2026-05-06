@@ -293,7 +293,11 @@ add_library(shoopdaloop_backend SHARED ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp)
 target_link_libraries(shoopdaloop_backend PRIVATE
    "$<LINK_LIBRARY:WHOLE_ARCHIVE,shoopdaloop_backend_internals>"
    zita-resampler::zita-resampler
+   fmt::fmt
    Threads::Threads)
+if(B64_FOUND)
+    target_link_libraries(shoopdaloop_backend PRIVATE b64::b64)
+endif()
 if (WIN32)
    target_link_libraries(shoopdaloop_backend PRIVATE Boost::system)
 endif()
