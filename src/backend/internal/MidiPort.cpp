@@ -156,23 +156,48 @@ void MidiPort::PROC_process(uint32_t nframes) {
             n_output_events += n_events;
 
             // Compute output checksum
-            for(uint32_t i=0; i<n_events; i++) {
-                auto &msg = source->PROC_get_event_reference(i);
-                output_checksum += checksum::compute_midi_message_checksum(
-                    msg.get_time(), msg.get_size(), msg.get_data());
+            if (source->read_by_reference_supported()) {
+                for(uint32_t i=0; i<n_events; i++) {
+                    auto &msg = source->PROC_get_event_reference(i);
+                    output_checksum += checksum::compute_midi_message_checksum(
+                        msg.get_time(), msg.get_size(), msg.get_data());
+                }
+            } else {
+                for(uint32_t i=0; i<n_events; i++) {
+                    uint32_t size, time;
+                    const uint8_t *data;
+                    source->PROC_get_event_value(i, size, time, data);
+                    output_checksum += checksum::compute_midi_message_checksum(
+                        time, size, data);
+                }
             }
 
             if (write_out_buf) {
                 // We need to actively write data to the output.
                 // Take it from the processing buffer if we have one, otherwise from the input.
-                for(uint32_t i=0; i<n_events; i++) {
-                    auto &msg = source->PROC_get_event_reference(i);
-                    write_out_buf->PROC_write_event_reference(msg);
-                    if (!processed_state && m_maybe_midi_state) {
-                        m_maybe_midi_state->process_msg(msg.get_data());
+                if (source->read_by_reference_supported()) {
+                    for(uint32_t i=0; i<n_events; i++) {
+                        auto &msg = source->PROC_get_event_reference(i);
+                        write_out_buf->PROC_write_event_reference(msg);
+                        if (!processed_state && m_maybe_midi_state) {
+                            m_maybe_midi_state->process_msg(msg.get_data());
+                        }
+                        if (!processed_state && m_midi_ringbuffer) {
+                            put_in_ringbuf(msg.get_time(), msg.get_size(), msg.get_data());
+                        }
                     }
-                    if (!processed_state && m_midi_ringbuffer) {
-                        put_in_ringbuf(msg.get_time(), msg.get_size(), msg.get_data());
+                } else {
+                    for(uint32_t i=0; i<n_events; i++) {
+                        uint32_t size, time;
+                        const uint8_t *data;
+                        source->PROC_get_event_value(i, size, time, data);
+                        write_out_buf->PROC_write_event_value(size, time, data);
+                        if (!processed_state && m_maybe_midi_state) {
+                            m_maybe_midi_state->process_msg(data);
+                        }
+                        if (!processed_state && m_midi_ringbuffer) {
+                            put_in_ringbuf(time, size, data);
+                        }
                     }
                 }
                 log<log_level_debug_trace>("processed state changes");
@@ -182,13 +207,27 @@ void MidiPort::PROC_process(uint32_t nframes) {
     }
     if (!muted && !processed_state && m_maybe_midi_state && read_out_buf) {
         log<log_level_debug_trace>("processing msgs state from output read buffer");
-        for(uint32_t i=0; i<read_out_buf->PROC_get_n_events(); i++) {
-            auto &msg = read_out_buf->PROC_get_event_reference(i);
-            if (m_maybe_midi_state) {
-                m_maybe_midi_state->process_msg(msg.get_data());
+        if (read_out_buf->read_by_reference_supported()) {
+            for(uint32_t i=0; i<read_out_buf->PROC_get_n_events(); i++) {
+                auto &msg = read_out_buf->PROC_get_event_reference(i);
+                if (m_maybe_midi_state) {
+                    m_maybe_midi_state->process_msg(msg.get_data());
+                }
+                if (m_midi_ringbuffer) {
+                    put_in_ringbuf(msg.get_time(), msg.get_size(), msg.get_data());
+                }
             }
-            if (m_midi_ringbuffer) {
-                put_in_ringbuf(msg.get_time(), msg.get_size(), msg.get_data());
+        } else {
+            for(uint32_t i=0; i<read_out_buf->PROC_get_n_events(); i++) {
+                uint32_t size, time;
+                const uint8_t *data;
+                read_out_buf->PROC_get_event_value(i, size, time, data);
+                if (m_maybe_midi_state) {
+                    m_maybe_midi_state->process_msg(data);
+                }
+                if (m_midi_ringbuffer) {
+                    put_in_ringbuf(time, size, data);
+                }
             }
         }
     }
