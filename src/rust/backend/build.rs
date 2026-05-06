@@ -68,6 +68,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
         .collect::<Vec<_>>();
 
     println!("cargo:rerun-if-changed={}", cmake_backend_dir);
+    println!("cargo:rerun-if-changed={}/CMakeLists.txt", cmake_backend_dir);
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed=build.rs");
 
