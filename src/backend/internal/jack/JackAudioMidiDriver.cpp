@@ -174,7 +174,14 @@ void GenericJackAudioMidiDriver<API>::close() {
     if (get_maybe_client_handle()) {
         Log::log<log_level_debug>("Closing JACK client.");
         try {
-            run_in_thread_with_timeout_unsafe([this]() { API::client_close((jack_client_t*)get_maybe_client_handle()); }, 10000);
+            // First deactivate the client to stop the process callback
+            run_in_thread_with_timeout_unsafe([this]() { API::deactivate((jack_client_t*)get_maybe_client_handle()); }, 5000);
+        } catch (std::exception &e) {
+            Log::log<log_level_warning>("Attempt to deactivate JACK client failed: {}. Continuing with close.", e.what());
+        }
+        try {
+            // Then close the client
+            run_in_thread_with_timeout_unsafe([this]() { API::client_close((jack_client_t*)get_maybe_client_handle()); }, 5000);
         } catch (std::exception &e) {
             Log::log<log_level_warning>("Attempt to close JACK client failed: {}. Abandoning.", e.what());
         }
