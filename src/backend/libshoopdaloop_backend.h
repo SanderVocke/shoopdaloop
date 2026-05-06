@@ -241,7 +241,7 @@ SHOOP_EXPORT void dummy_driver_remove_all_external_mock_ports(shoop_audio_driver
 // Resampling
 SHOOP_EXPORT shoop_multichannel_audio_t *resample_audio(shoop_multichannel_audio_t *in, unsigned new_n_frames);
 
-// Tracing (runtime registration from Rust)
+// Tracing
 typedef struct {
     unsigned (*is_tracing_enabled)(void);
     unsigned (*register_plot_name)(const char* name, unsigned len);

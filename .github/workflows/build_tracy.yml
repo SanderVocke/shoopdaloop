@@ -107,7 +107,6 @@ jobs:
       run: |
         git clone --depth 1 --branch ${{ inputs.tracy_version }} https://github.com/wolfpld/tracy.git
 
-    # Build each Tracy component separately (matching AUR PKGBUILD layout)
     - name: Build all Tracy components (macOS)
       if: runner.os == 'macOS'
       shell: bash

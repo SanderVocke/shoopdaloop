@@ -276,13 +276,11 @@ void AudioChannel<SampleT>::PROC_process(
         PROC_process_playback(
             process_params.position, length_before, n_samples, false,
             mp_playback_target_buffer, mp_playback_target_buffer_size);
-        // Compute playback checksum from target buffer after playback
         playback_checksum = checksum::compute_audio_checksum(mp_playback_target_buffer, n_samples);
     } else {
         ma_last_played_back_sample = -1;
     }
     if (process_flags & ChannelRecord) {
-        // Compute recorded checksum from source buffer before recording
         recorded_checksum = checksum::compute_audio_checksum(mp_recording_source_buffer, n_samples);
         PROC_process_record(n_samples,
                             ((int)length_before + ma_start_offset),
@@ -291,7 +289,6 @@ void AudioChannel<SampleT>::PROC_process(
                             mp_recording_source_buffer_size);
     }
     if (process_flags & ChannelReplace) {
-        // Compute recorded checksum for replace mode
         recorded_checksum = checksum::compute_audio_checksum(mp_recording_source_buffer, n_samples);
         PROC_process_replace(process_params.position, length_before,
                                 n_samples, mp_recording_source_buffer,
@@ -301,7 +298,6 @@ void AudioChannel<SampleT>::PROC_process(
         if (!(mp_prev_process_flags & ChannelPreRecord)) {
             log<log_level_debug>("Pre-record start");
         }
-        // Compute prerecorded checksum
         recorded_checksum = checksum::compute_audio_checksum(mp_recording_source_buffer, n_samples);
         PROC_process_record(n_samples, mp_prerecord_buffers_data_length,
                             mp_prerecord_buffers,
@@ -322,7 +318,7 @@ void AudioChannel<SampleT>::PROC_process(
         mp_playback_target_buffer_size -= n_samples;
     }
 
-    // Store and plot checksums (use "AudioChannel" as layer name for Tracy grouping)
+    // Store and plot checksums
     const char* chan_name = name();
     ma_recorded_checksum = recorded_checksum;
     ma_playback_checksum = playback_checksum;
@@ -462,7 +458,6 @@ void AudioChannel<SampleT>::load_data(SampleT *samples, uint32_t len,
                                       bool thread_safe) {
     log<log_level_debug_trace>("load data ({} samples)", len);
 
-    // Compute checksum of loaded data
     double loaded_checksum = checksum::compute_audio_checksum(samples, len);
 
     // Convert to internal storage layout
@@ -739,7 +734,7 @@ void AudioChannel<SampleT>::PROC_clear(uint32_t length) {
     mp_buffers.ensure_available(length);
     ma_buffers_data_length = length;
     ma_start_offset = 0;
-    ma_recorded_checksum = 0.0;  // Reset checksum on clear
+    ma_recorded_checksum = 0.0;
     ma_playback_checksum = 0.0;
     data_changed();
 }
