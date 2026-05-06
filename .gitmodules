@@ -1,12 +1,6 @@
-[submodule "src/backend/third_party/fmt"]
-	path = src/backend/third_party/fmt
-	url = https://github.com/fmtlib/fmt.git
 [submodule "src/backend/third_party/base64"]
 	path = src/backend/third_party/base64
 	url = https://github.com/tobiaslocker/base64.git
-[submodule "src/backend/third_party/ut"]
-	path = src/backend/third_party/ut
-	url = https://github.com/boost-ext/ut.git
 [submodule "src/qml/third_party/QtMaterialDesignIcons"]
 	path = src/qml/third_party/QtMaterialDesignIcons
 	url = https://github.com/sthlm58/QtMaterialDesignIcons.git

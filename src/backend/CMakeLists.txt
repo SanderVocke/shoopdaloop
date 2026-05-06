@@ -62,10 +62,7 @@ if (APPLE)
   message(STATUS "MacOS architectures included: ${CMAKE_OSX_ARCHITECTURES}")
 endif()
 
-set(PREV_SETTING ${CMAKE_POSITION_INDEPENDENT_CODE})
-set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
-add_subdirectory(third_party/fmt EXCLUDE_FROM_ALL)
-set(CMAKE_POSITION_INDEPENDENT_CODE ${PREV_SETTING})
+find_package(fmt CONFIG REQUIRED)
 
 find_package(Catch2 CONFIG REQUIRED)
 
@@ -222,7 +219,7 @@ endif()
 # Includes
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
-include_directories(${CMAKE_SOURCE_DIR}/third_party/nlohmann_json)
+find_package(nlohmann_json CONFIG REQUIRED)
 
 # Dependencies provided by in-repo Rust CXX bridges
 include_directories(${REFILLING_POOL_CXX_INCLUDE})
