@@ -57,7 +57,9 @@ fn main_impl() -> Result<(), anyhow::Error> {
                 } else {
                     "Release"
                 },
-            );
+            )
+            // Force cmake rebuild
+            .define("SHOOP_FORCE_REBUILD", "v3");
         let _ = cmake_config_mut.build();
     }
 
