@@ -28,3 +28,5 @@
 */vorbis.dll
 */ogg.dll
 */lua.dll
+*/fmt.dll
+*/b64.dll

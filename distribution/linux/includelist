@@ -120,3 +120,5 @@
 */libvorbis.so*
 */libogg.so*
 */liblua.so*
+*/libfmt.so*
+*/libb64.so*
