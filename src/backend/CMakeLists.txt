@@ -62,7 +62,7 @@ if (APPLE)
   message(STATUS "MacOS architectures included: ${CMAKE_OSX_ARCHITECTURES}")
 endif()
 
-# Find b64 (libb64)
+# Find b64 (libb64) for base64 encoding/decoding
 # Try vcpkg config first, then fall back to FindB64.cmake for system libraries
 find_package(unofficial-b64 CONFIG QUIET)
 if(unofficial-b64_FOUND)
