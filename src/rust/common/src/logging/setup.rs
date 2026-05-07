@@ -47,10 +47,18 @@ where
             tracing::Level::ERROR => "ERROR".red(),
         };
 
+        let thread = std::thread::current();
+        let thread_id = thread.id();
+        let thread_str = match thread.name() {
+            Some(name) => format!("{} ({:?})", name, thread_id),
+            None => format!("{:?}", thread_id),
+        };
+
         write!(
             writer,
-            "[{}] [{}] [{}] ",
+            "[{}] [{}] [{}] [{}] ",
             timestamp,
+            thread_str,
             metadata.target().magenta(),
             level_str
         )?;
