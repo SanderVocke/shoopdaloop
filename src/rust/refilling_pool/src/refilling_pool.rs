@@ -348,7 +348,9 @@ mod tests {
             }
         };
 
-        let pool = RefillingPool::new(2, 1, factory).map_err(|e| anyhow!(e.to_string()))?;
+        // Use low_water_mark = 0 to prevent the background refiller from racing.
+        // This ensures the fallback path in get() is exercised deterministically.
+        let pool = RefillingPool::new(2, 0, factory).map_err(|e| anyhow!(e.to_string()))?;
         assert_eq!(creation_counter.load(Ordering::SeqCst), 2);
 
         // Take the two pre-allocated objects
