@@ -87,7 +87,8 @@ impl UpdateThread {
         // This prevents multiple updates from piling up in the queue
         // when triggers fire faster than the event loop can process them.
         {
-            let rust = self.as_ref().rust();
+            let this = self.as_ref();
+            let rust = this.rust();
             if rust.update_queued {
                 trace!("Update already queued, skipping");
                 return start.elapsed();
