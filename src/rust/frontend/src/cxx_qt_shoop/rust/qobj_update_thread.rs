@@ -76,16 +76,78 @@ impl UpdateThread {
     pub fn frontend_frame_swapped(self: Pin<&mut UpdateThread>) {
         if *self.as_ref().trigger_update_on_frame_swapped() {
             let elapsed = self.trigger_update();
-            trace!("Updated (frame swapped) - took {elapsed:?}");
+            trace!("Queued update (frame swapped) - took {elapsed:?}");
         }
     }
 
     pub fn trigger_update(mut self: Pin<&mut Self>) -> Duration {
-        let mut rust = self.as_mut().rust_mut();
         let start = Instant::now();
-        rust.last_updated = Some(start);
-        self.update();
+
+        // If an update is already pending in the event queue, skip.
+        // This prevents multiple updates from piling up in the queue
+        // when triggers fire faster than the event loop can process them.
+        {
+            let this = self.as_ref();
+            let rust = this.rust();
+            if rust.update_queued {
+                trace!("Update already queued, skipping");
+                return start.elapsed();
+            }
+        }
+
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.last_updated = Some(start);
+            rust.update_queued = true;
+        }
+
+        // Queue the actual update via the event loop instead of calling
+        // self.update() directly. This guarantees that any pending queued
+        // commands from the GUI thread (e.g. set_length, transition) are
+        // delivered to backend objects before we pull state from the C++
+        // backend, avoiding race conditions where state is sampled before
+        // all pending commands have been applied.
+        unsafe {
+            let self_qobject = self.as_mut().pin_mut_qobject_ptr();
+            match invokable::invoke::<_, (), _>(
+                &mut *self_qobject,
+                "do_queued_update()",
+                connection_types::QUEUED_CONNECTION,
+                &(),
+            ) {
+                Ok(_) => {
+                    trace!("Queued update via event loop");
+                }
+                Err(e) => {
+                    error!("Failed to queue update: {e}. Falling back to direct update.");
+                    // Reset flag and emit directly as fallback
+                    self.as_mut().rust_mut().update_queued = false;
+                    self.update();
+                }
+            }
+        }
+
         start.elapsed()
+    }
+
+    /// Performs the actual update work. Called from the event loop via
+    /// a queued invocation, ensuring all pending commands are processed first.
+    pub fn do_queued_update(mut self: Pin<&mut Self>) {
+        let start = Instant::now();
+
+        // Clear the queued flag first — now that we're executing,
+        // a new update can be queued if needed.
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.update_queued = false;
+        }
+
+        // Emit the update signal. All connected slots (BackendWrapper,
+        // LoopBackend, etc.) have DIRECT connections and will execute
+        // synchronously in this call, on this thread.
+        self.update();
+
+        trace!("End queued update - took {:?}", start.elapsed());
     }
 
     pub fn trigger_update_if_enough_time_elapsed(self: Pin<&mut Self>) -> Option<Duration> {
@@ -104,7 +166,7 @@ impl UpdateThread {
 
     pub fn timer_tick(self: Pin<&mut Self>) {
         if let Some(elapsed) = self.trigger_update_if_enough_time_elapsed() {
-            trace!("Updated (timer expired) - took {elapsed:?}");
+            trace!("Queued update (timer expired) - took {elapsed:?}");
         }
     }
 
