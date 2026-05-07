@@ -36,6 +36,12 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn update_thread_started(self: Pin<&mut UpdateThread>);
+
+        /// Performs the actual update work. Invoked via a queued connection
+        /// from trigger_update() to ensure all pending commands in the event
+        /// queue are processed before state is pulled from the C++ backend.
+        #[qinvokable]
+        pub fn do_queued_update(self: Pin<&mut UpdateThread>);
     }
 
     unsafe extern "C++" {
@@ -75,6 +81,9 @@ pub struct UpdateThreadRust {
     pub backup_timer_elapsed_threshold: Duration,
     pub trigger_update_on_frame_swapped: bool,
     pub backup_timer_interval_ms: i32,
+    /// True when a do_queued_update() invocation is pending in the event queue.
+    /// Prevents multiple updates from being queued simultaneously.
+    pub update_queued: bool,
 }
 
 impl Default for UpdateThreadRust {
@@ -86,6 +95,7 @@ impl Default for UpdateThreadRust {
             backup_timer_elapsed_threshold: Duration::default(),
             trigger_update_on_frame_swapped: true,
             backup_timer_interval_ms: 25,
+            update_queued: false,
         }
     }
 }
