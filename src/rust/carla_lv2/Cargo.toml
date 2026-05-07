@@ -1,0 +1,16 @@
+[package]
+name = "carla_lv2"
+links = "carla_lv2"
+edition = "2021"
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+cxx = { workspace = true }
+
+[build-dependencies]
+cxx-build = { workspace = true }
+
+[features]
+prebuild = []
