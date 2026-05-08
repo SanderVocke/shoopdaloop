@@ -24,8 +24,72 @@ echo "Command result ${CMD_RESULT}, masked with ${MASK_CMD}, final result ${RESU
 # check if command was successful
 if [ ${RESULT} -ne 0 ]; then
   echo "Command failed with exit code $?, setting status to failed"
-  echo "failure_status=unhandled" | tee -a $GITHUB_ENV
-  echo "ACTION_TMATE_CONNECT_TIMEOUT_SECONDS=3600" | tee -a $GITHUB_ENV
+
+  # Check if pi coding agent checkpoint is enabled (mutually exclusive with manual checkpoints)
+  if [ "$pi_checkpoint_enabled" == "true" ]; then
+    echo "Pi coding agent checkpoint enabled. Invoking pi coding agent..."
+
+    # Create coding_agent directory
+    mkdir -p coding_agent
+
+    # Set up pi config directory
+    PI_CONFIG_DIR="$HOME/.pi/agent"
+    mkdir -p "$PI_CONFIG_DIR"
+
+    # Copy models.json if it exists in the repo
+    if [ -f ".github/pi_coding_agent/models.json" ]; then
+      cp ".github/pi_coding_agent/models.json" "$PI_CONFIG_DIR/models.json"
+    fi
+
+    # Copy auth.json if it exists in the repo
+    if [ -f ".github/pi_coding_agent/auth.json" ]; then
+      cp ".github/pi_coding_agent/auth.json" "$PI_CONFIG_DIR/auth.json"
+    fi
+
+    # Determine model to use
+    PI_MODEL="${PI_MODEL:-claude-sonnet-4-20250514}"
+    PI_TIMEOUT="${PI_TIMEOUT:-600}"  # 10 minutes default
+
+    # Read prompt file
+    PI_PROMPT_FILE=".github/pi_coding_agent/prompt.md"
+    if [ ! -f "$PI_PROMPT_FILE" ]; then
+      echo "Warning: Pi prompt file not found at $PI_PROMPT_FILE, using default prompt"
+      PI_PROMPT="A CI step has failed. Please analyze the failure in log_all.txt and suggest fixes."
+    else
+      PI_PROMPT=$(cat "$PI_PROMPT_FILE")
+    fi
+
+    # Run pi coding agent with timeout
+    echo "Running pi coding agent with model: $PI_MODEL, timeout: ${PI_TIMEOUT}s"
+    echo "Prompt: $PI_PROMPT" | head -c 500
+    echo "..."
+
+    # Execute pi and tee output to log file
+    export PI_MODEL
+    export PI_API_KEY
+    timeout "$PI_TIMEOUT" pi \
+      --no-session \
+      --model "$PI_MODEL" \
+      -p "$PI_PROMPT" \
+      2>&1 | tee "coding_agent/pi_output.log"
+
+    PI_EXIT_CODE=${PIPESTATUS[0]}
+
+    if [ $PI_EXIT_CODE -eq 124 ]; then
+      echo "Pi coding agent timed out after ${PI_TIMEOUT}s"
+    elif [ $PI_EXIT_CODE -ne 0 ]; then
+      echo "Pi coding agent exited with code $PI_EXIT_CODE"
+    else
+      echo "Pi coding agent completed successfully"
+    fi
+
+    # Mark failure as handled so subsequent steps don't re-trigger
+    echo "failure_status=handled" | tee -a $GITHUB_ENV
+  else
+    # Manual checkpoint mode (existing behavior)
+    echo "failure_status=unhandled" | tee -a $GITHUB_ENV
+    echo "ACTION_TMATE_CONNECT_TIMEOUT_SECONDS=3600" | tee -a $GITHUB_ENV
+  fi
 fi
 
 exit $RESULT

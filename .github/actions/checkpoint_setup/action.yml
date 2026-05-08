@@ -17,8 +17,36 @@ runs:
       echo "BASE_WRAP_SHELL=${{ inputs.shell }}" >> $GITHUB_ENV
       echo "WRAP_SHELL=bash scripts/gha_bash_with_custom_fail.sh" >> $GITHUB_ENV
       echo "failure_status=" >> $GITHUB_ENV
-  - name: Background tmate
-    if: always()
+  - name: Install Node.js (for pi coding agent)
+    if: runner.os != 'Windows'
+    uses: actions/setup-node@v4
+    with:
+      node-version: '20'
+  - name: Install Node.js (for pi coding agent) - Windows
+    if: runner.os == 'Windows'
+    uses: actions/setup-node@v4
+    with:
+      node-version: '20'
+  - name: Install pi coding agent
+    if: env.pi_checkpoint_enabled == 'true'
+    shell: bash
+    run: |
+      echo "Installing pi coding agent..."
+      npm install -g @anthropic-ai/pi-coding-agent || npm install -g pi-coding-agent || {
+        echo "Warning: Could not install pi coding agent via npm, attempting nix..."
+        # Fallback if nix is available
+        if command -v nix &> /dev/null; then
+          nix profile install nixpkgs#pi-coding-agent || echo "Warning: Could not install via nix either"
+        fi
+      }
+      # Verify installation
+      if command -v pi &> /dev/null; then
+        echo "pi coding agent installed successfully: $(pi --version)"
+      else
+        echo "Warning: pi command not found after installation attempt"
+      fi
+  - name: Background tmate (manual checkpoint mode)
+    if: always() && env.checkpoints_enabled == 'true'
     uses: SanderVocke/action-tmate@master
     with:
        detached: true

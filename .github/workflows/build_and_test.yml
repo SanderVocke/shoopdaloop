@@ -37,9 +37,21 @@ on:
           type: boolean
           default: false
         checkpoints:
-          description: 'TMate checkpoints'
+          description: 'TMate checkpoints (manual debugging)'
           type: boolean
           default: false
+        pi_checkpoints:
+          description: 'Pi coding agent checkpoints (automatic debugging)'
+          type: boolean
+          default: false
+        pi_model:
+          description: 'Model for pi coding agent (e.g., claude-sonnet-4-20250514)'
+          type: string
+          default: 'claude-sonnet-4-20250514'
+        pi_timeout:
+          description: 'Timeout in seconds for pi coding agent'
+          type: number
+          default: 600
         create_draft_release:
           description: 'create draft release and upload build artifacts to it'
           type: boolean
@@ -49,6 +61,10 @@ on:
 
 env:
   checkpoints_enabled: false
+  pi_checkpoint_enabled: false
+  PI_MODEL: 'claude-sonnet-4-20250514'
+  PI_TIMEOUT: 600
+  PI_API_KEY: ''
   CONVERT_PATH_FN: "echo"
   RUST_BACKTRACE: "1"
   QT_QPA_PLATFORM: "offscreen"
@@ -100,6 +116,8 @@ jobs:
         path: release_upload_assets_url.txt
     - uses: ./.github/actions/checkpoint
       if: startsWith(github.ref, 'refs/tags/')
+    - uses: ./.github/actions/upload_coding_agent_artifact
+      if: always()
 
 
   #############################################################
@@ -171,6 +189,10 @@ jobs:
       PATH_SEPARATOR: ":"
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
+      pi_checkpoint_enabled: ${{ github.event.inputs.pi_checkpoints }}
+      PI_MODEL: ${{ github.event.inputs.pi_model || 'claude-sonnet-4-20250514' }}
+      PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
+      PI_API_KEY: ${{ secrets.PI_API_KEY }}
     needs: maybe_create_release
     if: ${{ (github.event.inputs.build_linux || 'true') == 'true' }}
     steps:
@@ -206,6 +228,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
     - uses: ./.github/actions/checkpoint
+      if: always()
+    - uses: ./.github/actions/upload_coding_agent_artifact
       if: always()
 
   test_linux:
@@ -253,6 +277,10 @@ jobs:
       options: --user root --workdir / # Note: this gets disregarded if container is null
     env:
       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
+      pi_checkpoint_enabled: ${{ github.event.inputs.pi_checkpoints }}
+      PI_MODEL: ${{ github.event.inputs.pi_model || 'claude-sonnet-4-20250514' }}
+      PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
+      PI_API_KEY: ${{ secrets.PI_API_KEY }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -277,6 +305,8 @@ jobs:
         sentry_key: ${{ secrets.SENTRY_KEY }}
         sentry_build_type: ${{ matrix.kind.sentry_build_type }}
     - uses: ./.github/actions/checkpoint
+      if: always()
+    - uses: ./.github/actions/upload_coding_agent_artifact
       if: always()
 
 
@@ -338,6 +368,10 @@ jobs:
        PATH_SEPARATOR: ":"
        COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
        checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
+       pi_checkpoint_enabled: ${{ github.event.inputs.pi_checkpoints }}
+       PI_MODEL: ${{ github.event.inputs.pi_model || 'claude-sonnet-4-20250514' }}
+       PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
+       PI_API_KEY: ${{ secrets.PI_API_KEY }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -367,6 +401,8 @@ jobs:
         vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
         sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
     - uses: ./.github/actions/checkpoint
+      if: always()
+    - uses: ./.github/actions/upload_coding_agent_artifact
       if: always()
 
   test_macos:
@@ -409,6 +445,10 @@ jobs:
     env:
       PATH_SEPARATOR: ":"
       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
+      pi_checkpoint_enabled: ${{ github.event.inputs.pi_checkpoints }}
+      PI_MODEL: ${{ github.event.inputs.pi_model || 'claude-sonnet-4-20250514' }}
+      PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
+      PI_API_KEY: ${{ secrets.PI_API_KEY }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -428,6 +468,8 @@ jobs:
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
         sentry_build_type: ${{ matrix.kind.sentry_build_type }}
     - uses: ./.github/actions/checkpoint
+    - uses: ./.github/actions/upload_coding_agent_artifact
+      if: always()
 
 
 
@@ -495,6 +537,10 @@ jobs:
       CONVERT_PATH_FN: bash -c "cygpath -w \$1 | sed 's/\\\\/\\\\\\\\/g'" _ 
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
+      pi_checkpoint_enabled: ${{ github.event.inputs.pi_checkpoints }}
+      PI_MODEL: ${{ github.event.inputs.pi_model || 'claude-sonnet-4-20250514' }}
+      PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
+      PI_API_KEY: ${{ secrets.PI_API_KEY }}
     if: ${{ (github.event.inputs.build_windows || 'true') == 'true' }}
     container:
       image: ${{ matrix.kind.container_image }}
@@ -526,6 +572,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
     - uses: ./.github/actions/checkpoint
+    - uses: ./.github/actions/upload_coding_agent_artifact
+      if: always()
 
   test_windows:
     strategy:
@@ -558,6 +606,10 @@ jobs:
     needs: build_windows
     env:
       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
+      pi_checkpoint_enabled: ${{ github.event.inputs.pi_checkpoints }}
+      PI_MODEL: ${{ github.event.inputs.pi_model || 'claude-sonnet-4-20250514' }}
+      PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
+      PI_API_KEY: ${{ secrets.PI_API_KEY }}
     if: ${{ (github.event.inputs.test_windows || 'true') == 'true' }}
     container:
       image: ${{ matrix.kind.container }}
@@ -581,6 +633,8 @@ jobs:
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
         sentry_build_type: ${{ matrix.kind.sentry_build_type }}
     - uses: ./.github/actions/checkpoint
+    - uses: ./.github/actions/upload_coding_agent_artifact
+      if: always()
 
 
 
