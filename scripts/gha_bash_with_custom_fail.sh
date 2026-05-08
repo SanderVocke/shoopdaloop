@@ -47,7 +47,7 @@ if [ ${RESULT} -ne 0 ]; then
     fi
 
     # Determine model to use
-    PI_MODEL="${PI_MODEL:-claude-sonnet-4-20250514}"
+    PI_MODEL="${PI_MODEL:-deepseek-v4-flash}"
     PI_TIMEOUT="${PI_TIMEOUT:-600}"  # 10 minutes default
 
     # Read prompt file

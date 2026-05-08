@@ -32,7 +32,7 @@ runs:
     shell: bash
     run: |
       echo "Installing pi coding agent..."
-      npm install -g @anthropic-ai/pi-coding-agent || npm install -g pi-coding-agent || {
+      npm install -g @earendil-works/pi-coding-agent || npm install -g pi-coding-agent || {
         echo "Warning: Could not install pi coding agent via npm, attempting nix..."
         # Fallback if nix is available
         if command -v nix &> /dev/null; then

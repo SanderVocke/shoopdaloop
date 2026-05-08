@@ -45,9 +45,9 @@ on:
           type: boolean
           default: false
         pi_model:
-          description: 'Model for pi coding agent (e.g., claude-sonnet-4-20250514)'
+          description: 'Model for pi coding agent (e.g., deepseek-v4-flash)'
           type: string
-          default: 'claude-sonnet-4-20250514'
+          default: 'deepseek-v4-flash'
         pi_timeout:
           description: 'Timeout in seconds for pi coding agent'
           type: number
@@ -62,7 +62,7 @@ on:
 env:
   checkpoints_enabled: false
   pi_checkpoint_enabled: false
-  PI_MODEL: 'claude-sonnet-4-20250514'
+  PI_MODEL: 'deepseek-v4-flash'
   PI_TIMEOUT: 600
   PI_API_KEY: ''
   CONVERT_PATH_FN: "echo"
@@ -188,7 +188,7 @@ jobs:
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
       pi_checkpoint_enabled: ${{ github.event.inputs.pi_checkpoints }}
-      PI_MODEL: ${{ github.event.inputs.pi_model || 'claude-sonnet-4-20250514' }}
+      PI_MODEL: ${{ github.event.inputs.pi_model || 'deepseek-v4-flash' }}
       PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
       PI_API_KEY: ${{ secrets.PI_API_KEY }}
     needs: maybe_create_release
@@ -276,7 +276,7 @@ jobs:
     env:
       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
       pi_checkpoint_enabled: ${{ github.event.inputs.pi_checkpoints }}
-      PI_MODEL: ${{ github.event.inputs.pi_model || 'claude-sonnet-4-20250514' }}
+      PI_MODEL: ${{ github.event.inputs.pi_model || 'deepseek-v4-flash' }}
       PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
       PI_API_KEY: ${{ secrets.PI_API_KEY }}
     steps:
@@ -367,7 +367,7 @@ jobs:
        COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
        checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
        pi_checkpoint_enabled: ${{ github.event.inputs.pi_checkpoints }}
-       PI_MODEL: ${{ github.event.inputs.pi_model || 'claude-sonnet-4-20250514' }}
+       PI_MODEL: ${{ github.event.inputs.pi_model || 'deepseek-v4-flash' }}
        PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
        PI_API_KEY: ${{ secrets.PI_API_KEY }}
     steps:
@@ -444,7 +444,7 @@ jobs:
       PATH_SEPARATOR: ":"
       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
       pi_checkpoint_enabled: ${{ github.event.inputs.pi_checkpoints }}
-      PI_MODEL: ${{ github.event.inputs.pi_model || 'claude-sonnet-4-20250514' }}
+      PI_MODEL: ${{ github.event.inputs.pi_model || 'deepseek-v4-flash' }}
       PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
       PI_API_KEY: ${{ secrets.PI_API_KEY }}
     steps:
@@ -536,7 +536,7 @@ jobs:
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
       pi_checkpoint_enabled: ${{ github.event.inputs.pi_checkpoints }}
-      PI_MODEL: ${{ github.event.inputs.pi_model || 'claude-sonnet-4-20250514' }}
+      PI_MODEL: ${{ github.event.inputs.pi_model || 'deepseek-v4-flash' }}
       PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
       PI_API_KEY: ${{ secrets.PI_API_KEY }}
     if: ${{ (github.event.inputs.build_windows || 'true') == 'true' }}
@@ -605,7 +605,7 @@ jobs:
     env:
       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
       pi_checkpoint_enabled: ${{ github.event.inputs.pi_checkpoints }}
-      PI_MODEL: ${{ github.event.inputs.pi_model || 'claude-sonnet-4-20250514' }}
+      PI_MODEL: ${{ github.event.inputs.pi_model || 'deepseek-v4-flash' }}
       PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
       PI_API_KEY: ${{ secrets.PI_API_KEY }}
     if: ${{ (github.event.inputs.test_windows || 'true') == 'true' }}
