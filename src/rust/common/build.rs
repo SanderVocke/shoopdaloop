@@ -23,7 +23,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rustc-env=SHOOP_VERSION={}", version);
     println!("cargo:rustc-env=SHOOP_DESCRIPTION={}", description);
     Ok(())
-
-
-    sdgsdg
 }
