@@ -47,7 +47,7 @@ if [ ${RESULT} -ne 0 ]; then
     fi
 
     # Determine model to use
-    PI_MODEL="${PI_MODEL:-deepseek-v4-flash}"
+    PI_MODEL="${PI_MODEL:-openrouter/openai/gpt-oss-20b:free}"
     PI_TIMEOUT="${PI_TIMEOUT:-600}"  # 10 minutes default
 
     # Read prompt file
@@ -66,7 +66,8 @@ if [ ${RESULT} -ne 0 ]; then
 
     # Execute pi and tee output to log file
     export PI_MODEL
-    export PI_API_KEY
+    export OPENCODE_API_KEY
+    export OPENROUTER_API_KEY
     timeout "$PI_TIMEOUT" pi \
       --no-session \
       --model "$PI_MODEL" \

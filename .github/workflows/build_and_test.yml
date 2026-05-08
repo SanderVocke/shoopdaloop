@@ -47,7 +47,7 @@ on:
         pi_model:
           description: 'Model for pi coding agent'
           type: string
-          default: 'deepseek-v4-flash'
+          default: 'openrouter/openai/gpt-oss-20b:free'
         pi_timeout:
           description: 'Timeout in seconds for pi coding agent'
           type: number
@@ -62,9 +62,10 @@ on:
 env:
   checkpoints_enabled: false
   pi_checkpoint_enabled: false
-  PI_MODEL: 'deepseek-v4-flash'
+  PI_MODEL: 'openrouter/openai/gpt-oss-20b:free'
   PI_TIMEOUT: 600
-  PI_API_KEY: ''
+  OPENCODE_API_KEY: ''
+  OPENROUTER_API_KEY: ''
   CONVERT_PATH_FN: "echo"
   RUST_BACKTRACE: "1"
   QT_QPA_PLATFORM: "offscreen"
@@ -188,9 +189,10 @@ jobs:
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
       pi_checkpoint_enabled: ${{ github.event.inputs.pi_checkpoints }}
-      PI_MODEL: ${{ github.event.inputs.pi_model || 'deepseek-v4-flash' }}
+      PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
       PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
-      PI_API_KEY: ${{ secrets.PI_API_KEY }}
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     needs: maybe_create_release
     if: ${{ (github.event.inputs.build_linux || 'true') == 'true' }}
     steps:
@@ -276,9 +278,10 @@ jobs:
     env:
       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
       pi_checkpoint_enabled: ${{ github.event.inputs.pi_checkpoints }}
-      PI_MODEL: ${{ github.event.inputs.pi_model || 'deepseek-v4-flash' }}
+      PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
       PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
-      PI_API_KEY: ${{ secrets.PI_API_KEY }}
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -367,9 +370,10 @@ jobs:
        COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
        checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
        pi_checkpoint_enabled: ${{ github.event.inputs.pi_checkpoints }}
-       PI_MODEL: ${{ github.event.inputs.pi_model || 'deepseek-v4-flash' }}
+       PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
        PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
-       PI_API_KEY: ${{ secrets.PI_API_KEY }}
+       OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -444,9 +448,10 @@ jobs:
       PATH_SEPARATOR: ":"
       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
       pi_checkpoint_enabled: ${{ github.event.inputs.pi_checkpoints }}
-      PI_MODEL: ${{ github.event.inputs.pi_model || 'deepseek-v4-flash' }}
+      PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
       PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
-      PI_API_KEY: ${{ secrets.PI_API_KEY }}
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -536,9 +541,10 @@ jobs:
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
       pi_checkpoint_enabled: ${{ github.event.inputs.pi_checkpoints }}
-      PI_MODEL: ${{ github.event.inputs.pi_model || 'deepseek-v4-flash' }}
+      PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
       PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
-      PI_API_KEY: ${{ secrets.PI_API_KEY }}
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     if: ${{ (github.event.inputs.build_windows || 'true') == 'true' }}
     container:
       image: ${{ matrix.kind.container_image }}
@@ -605,9 +611,10 @@ jobs:
     env:
       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
       pi_checkpoint_enabled: ${{ github.event.inputs.pi_checkpoints }}
-      PI_MODEL: ${{ github.event.inputs.pi_model || 'deepseek-v4-flash' }}
+      PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
       PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
-      PI_API_KEY: ${{ secrets.PI_API_KEY }}
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     if: ${{ (github.event.inputs.test_windows || 'true') == 'true' }}
     container:
       image: ${{ matrix.kind.container }}
