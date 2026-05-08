@@ -37,9 +37,21 @@ on:
           type: boolean
           default: false
         checkpoints:
-          description: 'TMate checkpoints'
+          description: 'TMate checkpoints (manual debugging)'
           type: boolean
           default: false
+        pi_checkpoints:
+          description: 'Pi coding agent checkpoints (automatic debugging)'
+          type: boolean
+          default: false
+        pi_model:
+          description: 'Model for pi coding agent'
+          type: string
+          default: 'deepseek-v4-flash'
+        pi_timeout:
+          description: 'Timeout in seconds for pi coding agent'
+          type: number
+          default: 600
         create_draft_release:
           description: 'create draft release and upload build artifacts to it'
           type: boolean
