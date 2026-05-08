@@ -45,7 +45,7 @@ on:
           type: boolean
           default: false
         pi_model:
-          description: 'Model for pi coding agent (e.g., deepseek-v4-flash)'
+          description: 'Model for pi coding agent'
           type: string
           default: 'deepseek-v4-flash'
         pi_timeout:
