@@ -11,7 +11,7 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN 1)
 
 find_package(Threads REQUIRED)
 
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/cmake")
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/cmake" "${CMAKE_SOURCE_DIR}/cmake")
 
 # Ensure PDB file generation
 if (WIN32)
@@ -62,10 +62,31 @@ if (APPLE)
   message(STATUS "MacOS architectures included: ${CMAKE_OSX_ARCHITECTURES}")
 endif()
 
-set(PREV_SETTING ${CMAKE_POSITION_INDEPENDENT_CODE})
-set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
-add_subdirectory(third_party/fmt EXCLUDE_FROM_ALL)
-set(CMAKE_POSITION_INDEPENDENT_CODE ${PREV_SETTING})
+# Find b64 (libb64) for base64 encoding/decoding
+# Try vcpkg config first, then fall back to FindB64.cmake for system libraries
+# Prefer static library to avoid transitive dependency issues
+set(CMAKE_FIND_LIBRARY_SUFFIXES .a .lib)
+find_package(unofficial-b64 CONFIG QUIET)
+set(CMAKE_FIND_LIBRARY_SUFFIXES) # Reset to default
+if(unofficial-b64_FOUND)
+    message(STATUS "Found b64 via vcpkg: unofficial::b64::b64")
+    # Create alias target for consistent usage
+    if(NOT TARGET b64::b64)
+        add_library(b64::b64 ALIAS unofficial::b64::b64)
+    endif()
+    # Set B64_FOUND so conditional linking works
+    set(B64_FOUND TRUE)
+else()
+    # Use custom FindB64.cmake for system libraries (e.g., NixOS)
+    find_package(B64 REQUIRED)
+    message(STATUS "Found b64 via system: ${B64_LIBRARIES}")
+endif()
+
+# Prefer static libraries for fmt and b64 to avoid transitive dependency issues
+# when linking libshoopdaloop_backend.so into Rust crates
+set(CMAKE_FIND_LIBRARY_SUFFIXES .a .lib)
+find_package(fmt CONFIG REQUIRED)
+set(CMAKE_FIND_LIBRARY_SUFFIXES) # Reset to default
 
 find_package(Catch2 CONFIG REQUIRED)
 
@@ -222,7 +243,7 @@ endif()
 # Includes
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
-include_directories(${CMAKE_SOURCE_DIR}/third_party/nlohmann_json)
+find_package(nlohmann_json CONFIG REQUIRED)
 
 # Dependencies provided by in-repo Rust CXX bridges
 include_directories(${REFILLING_POOL_CXX_INCLUDE})
@@ -234,7 +255,6 @@ add_library(shoopdaloop_backend_internals STATIC libshoopdaloop_backend.cpp ${IN
 set_target_properties(shoopdaloop_backend_internals PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(shoopdaloop_backend_internals
                         PRIVATE
-                        ${CMAKE_SOURCE_DIR}/third_party/base64/include
                         ${CMAKE_CURRENT_BINARY_DIR}
                         )
 target_link_libraries(shoopdaloop_backend_internals PRIVATE
@@ -245,6 +265,9 @@ target_link_libraries(shoopdaloop_backend_internals PRIVATE
   ${REFILLING_POOL_RUST_LIB}
   refilling_pool_cxx
   )
+if(B64_FOUND)
+    target_link_libraries(shoopdaloop_backend_internals PUBLIC b64::b64)
+endif()
 if (MSVC)
   # On Windows, we need to link some additional system libs
   # in order to successfully link to Rust-generated static
@@ -278,7 +301,11 @@ add_library(shoopdaloop_backend SHARED ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp)
 target_link_libraries(shoopdaloop_backend PRIVATE
    "$<LINK_LIBRARY:WHOLE_ARCHIVE,shoopdaloop_backend_internals>"
    zita-resampler::zita-resampler
+   fmt::fmt
    Threads::Threads)
+if(B64_FOUND)
+    target_link_libraries(shoopdaloop_backend PRIVATE b64::b64)
+endif()
 if (WIN32)
    target_link_libraries(shoopdaloop_backend PRIVATE Boost::system)
 endif()

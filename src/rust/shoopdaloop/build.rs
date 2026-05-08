@@ -109,14 +109,10 @@ fn main_impl() -> Result<(), anyhow::Error> {
     {
         // Link to portable lib folder
         println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/../lib");
-
-        // Use RPATH instead of RUNPATH, which will enable finding transitive dependencies
-        // (e.g. in the vcpkg installation folder)
-        println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--disable-new-dtags");
     }
 
     for path in backend::build_time_link_dirs() {
-        println!("cargo:rustc-link-search=native={:?}", path);
+        println!("cargo:rustc-link-search=native={}", path.display());
     }
 
     let backend_runtime_link_paths_str = backend::runtime_link_dirs()

@@ -9,4 +9,3 @@ runs:
     shell: wrap-shell {0}
     run: |
       $PIP install --upgrade pip build patchelf toml jinja2
-      echo "RUSTFLAGS=-C linker=gcc" | tee -a $GITHUB_ENV
