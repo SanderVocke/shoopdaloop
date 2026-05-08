@@ -29,8 +29,9 @@ if [ ${RESULT} -ne 0 ]; then
   if [ "$pi_checkpoint_enabled" == "true" ]; then
     echo "Pi coding agent checkpoint enabled. Invoking pi coding agent..."
 
-    # Create coding_agent directory
+    # Create coding_agent directory and copy the build log there for context
     mkdir -p coding_agent
+    cp log_all.txt coding_agent/
 
     # Set up pi config directory
     PI_CONFIG_DIR="$HOME/.pi/agent"

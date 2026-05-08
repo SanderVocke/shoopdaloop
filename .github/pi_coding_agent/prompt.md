@@ -20,7 +20,7 @@ you may be running on Linux (possibly containerized), MacOS or Windows, on any k
 
 ## Available Files
 
-- `log_all.txt` - Full build log so far. Be careful to pinpoint the command that actually failed and led to spawning you - any failure may cascade into further follow-up failures, so it is important to fix the first step that really failed.
+- `coding_agent/log_all.txt` - Full build log so far. Be careful to pinpoint the command that actually failed and led to spawning you - any failure may cascade into further follow-up failures, so it is important to fix the first step that really failed.
 - You are in the checked-out repository, so you can inspect any source files
 
 ## After finishing
