@@ -1,7 +1,4 @@
 {
   "providers": {
-    "anthropic": {
-      "apiKey": "PI_API_KEY"
-    }
   }
 }
