@@ -43,11 +43,11 @@ on:
         pi_checkpoints:
           description: 'Pi coding agent checkpoints (automatic debugging)'
           type: boolean
-          default: false
+          default: true
         pi_model:
           description: 'Model for pi coding agent'
           type: string
-          default: 'openrouter/openai/gpt-oss-20b:free'
+          default: 'openrouter/openai/gpt-oss-120b:free'
         pi_timeout:
           description: 'Timeout in seconds for pi coding agent'
           type: number
