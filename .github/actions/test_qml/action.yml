@@ -25,7 +25,7 @@ runs:
     shell: wrap-shell {0}
     run: >
       QT_ASSUME_STDERR_HAS_CONSOLE=1
-      ${{ env.RUN_CMD_PREFIX }} timeout -s 9 15m ${{ env.COMMAND_SHOOPDALOOP }} --tracing --tracing-capture --tracing-capture-tool ${{ env.TRACY_CAPTURE_TOOL }} --self-test --junit-xml ${{ env.RESULTS_XML }}
+      ${{ env.RUN_CMD_PREFIX }} ./scripts/run_with_timeout.sh 900 ${{ env.COMMAND_SHOOPDALOOP }} --tracing --tracing-capture --tracing-capture-tool ${{ env.TRACY_CAPTURE_TOOL }} --self-test --junit-xml ${{ env.RESULTS_XML }}
       2>&1 | tee ${{ inputs.tee_all_output_to }}
 
   - name: Report results filename
