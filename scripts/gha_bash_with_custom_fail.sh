@@ -50,29 +50,14 @@ if [ ${RESULT} -ne 0 ]; then
     PI_MODEL="${PI_MODEL:-openrouter/openai/gpt-oss-20b:free}"
     PI_TIMEOUT="${PI_TIMEOUT:-600}"  # 10 minutes default
 
-    # Read prompt file
-    PI_PROMPT_FILE=".github/pi_coding_agent/prompt.md"
-    if [ ! -f "$PI_PROMPT_FILE" ]; then
-      echo "Warning: Pi prompt file not found at $PI_PROMPT_FILE, using default prompt"
-      PI_PROMPT="A CI step has failed. Please analyze the failure in log_all.txt and suggest fixes."
-    else
-      PI_PROMPT=$(cat "$PI_PROMPT_FILE")
-    fi
-
-    # Run pi coding agent with timeout
-    echo "Running pi coding agent with model: $PI_MODEL, timeout: ${PI_TIMEOUT}s"
-    echo "Prompt: $PI_PROMPT" | head -c 500
-    echo "..."
+    # Run pi coding agent
+    echo "Running pi coding agent with model: $PI_MODEL"
 
     # Execute pi and tee output to log file
     export PI_MODEL
     export OPENCODE_API_KEY
     export OPENROUTER_API_KEY
-    timeout "$PI_TIMEOUT" pi \
-      --no-session \
-      --model "$PI_MODEL" \
-      -p "$PI_PROMPT" \
-      2>&1 | tee "coding_agent/pi_output.log"
+    pi --no-session --model "$PI_MODEL" -p "Read .github/pi_coding_agent/prompt.md and complete the task(s) inside." 2>&1 | tee "coding_agent/pi_output.log"
 
     PI_EXIT_CODE=${PIPESTATUS[0]}
 
