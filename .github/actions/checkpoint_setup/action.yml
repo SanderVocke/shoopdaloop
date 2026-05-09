@@ -45,10 +45,9 @@ runs:
       else
         echo "Warning: pi command not found after installation attempt"
       fi
-  - name: Background tmate (manual checkpoint mode)
+  - name: Background upterm (manual checkpoint mode)
     if: always() && env.checkpoints_enabled == 'true'
-    uses: SanderVocke/action-tmate@master
+    uses: owenthereal/action-upterm@v1
     with:
        detached: true
-       connect-timeout-seconds: 1
-       command-when-finished: 'touch tmate_finished'
+       limit-access-to-actor: true
