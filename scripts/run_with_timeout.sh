@@ -299,17 +299,45 @@ cleanup_all_processes() {
 }
 
 # Kill known problematic processes by name
+# Increments CLEANUP_KILLED_PROCESSES and appends PIDs to CLEANUP_KILLED_PIDS
 kill_known_problem_processes() {
     echo "[run_with_timeout] Checking for known problematic processes..."
     for proc_name in tracy-capture crashpad_handler breakpad_handler shoopdaloop shoopdaloop_exe shoopdaloop.exe shoopdaloop_exe.exe; do
         if [[ $IS_WINDOWS -eq 1 ]]; then
             # PowerShell handles Windows native processes reliably
             local ps_name="${proc_name%.exe}"
-            powershell -NoProfile -Command "Get-Process -Name '$ps_name' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue" 2>/dev/null || true
-        elif command -v pkill &>/dev/null; then
-            pkill -9 -x "$proc_name" 2>/dev/null || true
+            local pids=""
+            pids=$(powershell -NoProfile -Command "Get-Process -Name '$ps_name' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ProcessId" 2>/dev/null || true)
+            if [[ -n "$pids" ]]; then
+                for pid in $pids; do
+                    ((CLEANUP_KILLED_PROCESSES++)) || true
+                    CLEANUP_KILLED_PIDS="$CLEANUP_KILLED_PIDS $pid"
+                done
+                powershell -NoProfile -Command "Get-Process -Name '$ps_name' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue" 2>/dev/null || true
+            fi
+        elif command -v pgrep &>/dev/null; then
+            local pids=""
+            pids=$(pgrep -x "$proc_name" 2>/dev/null || true)
+            if [[ -n "$pids" ]]; then
+                for pid in $pids; do
+                    ((CLEANUP_KILLED_PROCESSES++)) || true
+                    CLEANUP_KILLED_PIDS="$CLEANUP_KILLED_PIDS $pid"
+                done
+                pkill -9 -x "$proc_name" 2>/dev/null || true
+            fi
         elif command -v killall &>/dev/null; then
+            # killall doesn't list PIDs; try pgrep for counting, but kill blind if unavailable
+            local pids=""
+            if command -v pgrep &>/dev/null; then
+                pids=$(pgrep -x "$proc_name" 2>/dev/null || true)
+            fi
             killall -9 "$proc_name" 2>/dev/null || true
+            if [[ -n "$pids" ]]; then
+                for pid in $pids; do
+                    ((CLEANUP_KILLED_PROCESSES++)) || true
+                    CLEANUP_KILLED_PIDS="$CLEANUP_KILLED_PIDS $pid"
+                done
+            fi
         fi
     done
 }
