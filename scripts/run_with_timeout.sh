@@ -72,8 +72,8 @@ find_children() {
     local parent_pid="$1"
     
     if [[ $IS_WINDOWS -eq 1 ]]; then
-        # Windows: use ps in Git Bash
-        ps -W 2>/dev/null | awk -v ppid="$parent_pid" 'NR>1 && $2 == ppid {print $1}' || true
+        # Windows: use PowerShell to query Win32_Process (more reliable than ps -W)
+        powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"ParentProcessId=$parent_pid\" | Select-Object -ExpandProperty ProcessId" 2>/dev/null || true
     else
         if command -v pgrep &>/dev/null; then
             pgrep -P "$parent_pid" 2>/dev/null || true
@@ -111,6 +111,25 @@ kill_process_tree() {
     local signal_name="$5"
     
     echo "[run_with_timeout] Sending ${signal_name} to process tree..."
+    
+    if [[ $IS_WINDOWS -eq 1 ]]; then
+        # Windows: PowerShell Stop-Process is more reliable than Git Bash kill for native processes
+        local descendants=""
+        descendants=$(find_descendants "$target_pid")
+        if [[ -n "$descendants" ]]; then
+            echo "[run_with_timeout] Killing descendants with ${signal_name}: $descendants"
+            for pid in $descendants; do
+                if [[ "$pid" != "$$" ]]; then
+                    powershell -NoProfile -Command "Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue" 2>/dev/null || true
+                fi
+            done
+        fi
+        if [[ "$target_pid" != "$$" ]]; then
+            echo "[run_with_timeout] Killing target PID $target_pid with ${signal_name}"
+            powershell -NoProfile -Command "Stop-Process -Id $target_pid -Force -ErrorAction SilentlyContinue" 2>/dev/null || true
+        fi
+        return
+    fi
     
     # Kill by process group (most reliable for orphans)
     if [[ -n "$stored_pgid" ]] && [[ "$stored_pgid" != "" ]]; then
@@ -190,6 +209,13 @@ cleanup_all_processes() {
             all_procs="$all_procs $sid_procs"
         fi
         
+        # Windows fallback: if no pgid/sid available, target live descendants of the original child
+        if [[ $IS_WINDOWS -eq 1 ]] && [[ -n "${CHILD_PID:-}" ]] && kill -0 "$CHILD_PID" 2>/dev/null; then
+            local win_descendants=""
+            win_descendants=$(find_descendants "$CHILD_PID")
+            all_procs="$all_procs $CHILD_PID $win_descendants"
+        fi
+        
         # Remove duplicates and empty entries, exclude our own PID
         all_procs=$(echo "$all_procs" | tr ' ' '\n' | sort -u | grep -v '^$' | grep -v "^$$\$" | tr '\n' ' ') || true
         
@@ -206,16 +232,30 @@ cleanup_all_processes() {
         # If aggressive mode, go straight to SIGKILL
         if [[ "$aggressive" == "true" ]]; then
             for pid in $all_procs; do
+                if [[ "$pid" == "$$" ]]; then
+                    continue
+                fi
                 echo "[run_with_timeout] SIGKILL PID $pid"
-                kill -9 "$pid" 2>/dev/null || true
+                if [[ $IS_WINDOWS -eq 1 ]]; then
+                    powershell -NoProfile -Command "Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue" 2>/dev/null || true
+                else
+                    kill -9 "$pid" 2>/dev/null || true
+                fi
                 ((pass_killed++)) || true
                 killed_pids="$killed_pids $pid"
             done
         else
             # SIGTERM first
             for pid in $all_procs; do
+                if [[ "$pid" == "$$" ]]; then
+                    continue
+                fi
                 echo "[run_with_timeout] SIGTERM PID $pid"
-                kill -15 "$pid" 2>/dev/null || true
+                if [[ $IS_WINDOWS -eq 1 ]]; then
+                    powershell -NoProfile -Command "Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue" 2>/dev/null || true
+                else
+                    kill -15 "$pid" 2>/dev/null || true
+                fi
                 ((pass_killed++)) || true
                 killed_pids="$killed_pids $pid"
             done
@@ -224,10 +264,22 @@ cleanup_all_processes() {
             # SIGKILL any remaining
             all_procs=$(find_by_pgid "$stored_pgid")
             all_procs="$all_procs $(find_by_sid "$stored_sid")"
+            if [[ $IS_WINDOWS -eq 1 ]] && [[ -n "${CHILD_PID:-}" ]] && kill -0 "$CHILD_PID" 2>/dev/null; then
+                local win_descendants=""
+                win_descendants=$(find_descendants "$CHILD_PID")
+                all_procs="$all_procs $CHILD_PID $win_descendants"
+            fi
             all_procs=$(echo "$all_procs" | tr ' ' '\n' | sort -u | grep -v '^$' | grep -v "^$$\$" | tr '\n' ' ') || true
             for pid in $all_procs; do
+                if [[ "$pid" == "$$" ]]; then
+                    continue
+                fi
                 echo "[run_with_timeout] SIGKILL PID $pid"
-                kill -9 "$pid" 2>/dev/null || true
+                if [[ $IS_WINDOWS -eq 1 ]]; then
+                    powershell -NoProfile -Command "Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue" 2>/dev/null || true
+                else
+                    kill -9 "$pid" 2>/dev/null || true
+                fi
                 ((pass_killed++)) || true
                 killed_pids="$killed_pids $pid"
             done
@@ -237,8 +289,8 @@ cleanup_all_processes() {
         sleep 1
     done
     
-    # Reap any zombie children
-    wait -n 2>/dev/null || true
+    # Reap any zombie children (use 'wait' instead of 'wait -n' for bash 3.2/macOS compatibility)
+    wait 2>/dev/null || true
     
     CLEANUP_KILLED_PROCESSES=$total_killed
     CLEANUP_KILLED_PIDS="$killed_pids"
@@ -250,7 +302,11 @@ cleanup_all_processes() {
 kill_known_problem_processes() {
     echo "[run_with_timeout] Checking for known problematic processes..."
     for proc_name in tracy-capture crashpad_handler breakpad_handler shoopdaloop shoopdaloop_exe shoopdaloop.exe shoopdaloop_exe.exe; do
-        if command -v pkill &>/dev/null; then
+        if [[ $IS_WINDOWS -eq 1 ]]; then
+            # PowerShell handles Windows native processes reliably
+            local ps_name="${proc_name%.exe}"
+            powershell -NoProfile -Command "Get-Process -Name '$ps_name' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue" 2>/dev/null || true
+        elif command -v pkill &>/dev/null; then
             pkill -9 -x "$proc_name" 2>/dev/null || true
         elif command -v killall &>/dev/null; then
             killall -9 "$proc_name" 2>/dev/null || true
@@ -394,6 +450,9 @@ ELAPSED_FINAL=$(($(date +%s) - START_TIME))
 # This is the last message that will go through the tee pipe
 echo "[run_with_timeout] Command finished with exit code $CHILD_EXIT_CODE after ${ELAPSED_FINAL}s"
 
+# Save original stdout so we can still write human-reviewable output later
+exec 3>&1
+
 # CRITICAL: Close stdout/stderr to signal to the tee wrapper that we're done
 # Any remaining output goes to a log file instead
 exec 1>> /tmp/run_with_timeout_${CHILD_PID}.log 2>&1
@@ -411,5 +470,13 @@ cleanup_all_processes "$STORED_Pgid" "$STORED_SID" "true"
 kill_known_problem_processes
 
 echo "[run_with_timeout] Final cleanup done, exiting with code $CHILD_EXIT_CODE"
+
+# Output full process list to original stdout for human review
+echo "[run_with_timeout] Process list at exit:" >&3
+if [[ $IS_WINDOWS -eq 1 ]]; then
+    tasklist >&3 2>/dev/null || true
+else
+    ps aux >&3 2>/dev/null || true
+fi
 
 exit $CHILD_EXIT_CODE
