@@ -149,19 +149,28 @@ wait_for_process() {
             return 1
         fi
         sleep 1
-        ((count++))
+        ((count++)) || true
     done
     return 0
 }
 
+# Global variable to track if any processes were killed during cleanup
+CLEANUP_KILLED_PROCESSES=0
+CLEANUP_KILLED_PIDS=""
+
 # Function to aggressively clean up all remaining processes
 # Uses stored pgid/sid since the main child may have already exited
+# Sets CLEANUP_KILLED_PROCESSES to count of processes killed
+# Sets CLEANUP_KILLED_PIDS to space-separated list of killed PIDs
 cleanup_all_processes() {
     local stored_pgid="$1"
     local stored_sid="$2"
     local aggressive="$3"  # "true" to skip SIGTERM and go straight to SIGKILL
     
     echo "[run_with_timeout] Performing aggressive cleanup (pgid=$stored_pgid, sid=$stored_sid, aggressive=${aggressive})..."
+    
+    local total_killed=0
+    local killed_pids=""
     
     # Multiple passes to catch processes that might spawn children during cleanup
     for pass in 1 2 3 4 5; do
@@ -191,17 +200,24 @@ cleanup_all_processes() {
         
         echo "[run_with_timeout] Cleanup pass $pass: found processes: $all_procs"
         
+        # Track how many we kill in this pass
+        local pass_killed=0
+        
         # If aggressive mode, go straight to SIGKILL
         if [[ "$aggressive" == "true" ]]; then
             for pid in $all_procs; do
                 echo "[run_with_timeout] SIGKILL PID $pid"
                 kill -9 "$pid" 2>/dev/null || true
+                ((pass_killed++)) || true
+                killed_pids="$killed_pids $pid"
             done
         else
             # SIGTERM first
             for pid in $all_procs; do
                 echo "[run_with_timeout] SIGTERM PID $pid"
                 kill -15 "$pid" 2>/dev/null || true
+                ((pass_killed++)) || true
+                killed_pids="$killed_pids $pid"
             done
             sleep 2
             
@@ -212,14 +228,20 @@ cleanup_all_processes() {
             for pid in $all_procs; do
                 echo "[run_with_timeout] SIGKILL PID $pid"
                 kill -9 "$pid" 2>/dev/null || true
+                ((pass_killed++)) || true
+                killed_pids="$killed_pids $pid"
             done
         fi
         
+        total_killed=$((total_killed + pass_killed))
         sleep 1
     done
     
     # Reap any zombie children
     wait -n 2>/dev/null || true
+    
+    CLEANUP_KILLED_PROCESSES=$total_killed
+    CLEANUP_KILLED_PIDS="$killed_pids"
     
     echo "[run_with_timeout] Cleanup complete"
 }
@@ -227,7 +249,7 @@ cleanup_all_processes() {
 # Kill known problematic processes by name
 kill_known_problem_processes() {
     echo "[run_with_timeout] Checking for known problematic processes..."
-    for proc_name in tracy-capture crashpad_handler breakpad_handler; do
+    for proc_name in tracy-capture crashpad_handler breakpad_handler shoopdaloop shoopdaloop_exe shoopdaloop.exe shoopdaloop_exe.exe; do
         if command -v pkill &>/dev/null; then
             pkill -9 -x "$proc_name" 2>/dev/null || true
         elif command -v killall &>/dev/null; then
@@ -280,10 +302,14 @@ while true; do
         # Child has exited, get exit code
         wait $CHILD_PID 2>/dev/null || CHILD_EXIT_CODE=$?
         
+        # Small delay to let things settle before cleanup
+        echo "[run_with_timeout] Main process exited (code $CHILD_EXIT_CODE), waiting 1s before cleanup..."
+        sleep 1
+        
         # CRITICAL for GitHub Actions: even after normal exit, orphaned child processes
         # (tracy-capture, crash handler) can still hold stdout/stderr open, causing the
         # tee wrapper to hang indefinitely. We MUST kill them ALL before exiting.
-        echo "[run_with_timeout] Main process exited (code $CHILD_EXIT_CODE), cleaning up orphaned child processes..."
+        echo "[run_with_timeout] Cleaning up orphaned child processes..."
         
         # Use stored pgid/sid for cleanup (child is already gone)
         cleanup_all_processes "$STORED_Pgid" "$STORED_SID" "true"
@@ -291,7 +317,15 @@ while true; do
         # Kill known problematic processes by name
         kill_known_problem_processes
         
-        echo "[run_with_timeout] Orphan cleanup complete, proceeding to exit"
+        # Check if we found any leftover processes - this is an error in CI
+        if [[ $CLEANUP_KILLED_PROCESSES -gt 0 ]]; then
+            echo "[run_with_timeout] ERROR: Found and killed $CLEANUP_KILLED_PROCESSES leftover process(es):$CLEANUP_KILLED_PIDS"
+            echo "[run_with_timeout] ERROR: Leftover processes are considered a failure in CI context."
+            echo "[run_with_timeout] ERROR: Please ensure all child processes are properly terminated by the main process."
+            CHILD_EXIT_CODE=125  # Special exit code for leftover processes
+        fi
+        
+        echo "[run_with_timeout] Cleanup complete, proceeding to exit"
         break
     fi
     
@@ -332,9 +366,20 @@ while true; do
             CHILD_EXIT_CODE=124
         fi
         
+        # Small delay before final cleanup
+        sleep 1
+        
         # Final cleanup using stored pgid/sid
         cleanup_all_processes "$STORED_Pgid" "$STORED_SID" "true"
         kill_known_problem_processes
+        
+        # Check if we found any leftover processes - this is an error in CI
+        if [[ $CLEANUP_KILLED_PROCESSES -gt 0 ]]; then
+            echo "[run_with_timeout] ERROR: Found and killed $CLEANUP_KILLED_PROCESSES leftover process(es):$CLEANUP_KILLED_PIDS"
+            echo "[run_with_timeout] ERROR: Leftover processes are considered a failure in CI context."
+            echo "[run_with_timeout] ERROR: Please ensure all child processes are properly terminated by the main process."
+            CHILD_EXIT_CODE=125  # Special exit code for leftover processes
+        fi
         
         break
     fi
