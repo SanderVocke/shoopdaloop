@@ -304,16 +304,27 @@ kill_known_problem_processes() {
     echo "[run_with_timeout] Checking for known problematic processes..."
     for proc_name in tracy-capture crashpad_handler breakpad_handler shoopdaloop shoopdaloop_exe shoopdaloop.exe shoopdaloop_exe.exe; do
         if [[ $IS_WINDOWS -eq 1 ]]; then
-            # PowerShell handles Windows native processes reliably
-            local ps_name="${proc_name%.exe}"
+            # Build exact executable name for Win32_Process (e.g. "shoopdaloop_exe.exe")
+            local img_name="$proc_name"
+            if [[ "$img_name" != *.exe ]]; then
+                img_name="${img_name}.exe"
+            fi
+            echo "[run_with_timeout]   Checking Windows image name: $img_name"
             local pids=""
-            pids=$(powershell -NoProfile -Command "Get-Process -Name '$ps_name' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ProcessId" 2>/dev/null || true)
+            pids=$(powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='$img_name'\" | Select-Object -ExpandProperty ProcessId" 2>/dev/null || true)
             if [[ -n "$pids" ]]; then
+                echo "[run_with_timeout]   Found $img_name PIDs: $pids"
                 for pid in $pids; do
                     ((CLEANUP_KILLED_PROCESSES++)) || true
                     CLEANUP_KILLED_PIDS="$CLEANUP_KILLED_PIDS $pid"
                 done
-                powershell -NoProfile -Command "Get-Process -Name '$ps_name' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue" 2>/dev/null || true
+                # Use taskkill /F /PID for each — more reliable than Stop-Process for stubborn native processes
+                for pid in $pids; do
+                    echo "[run_with_timeout]   taskkill /F /PID $pid ($img_name)"
+                    taskkill /F /PID "$pid" 2>/dev/null || true
+                done
+            else
+                echo "[run_with_timeout]   No matches for $img_name"
             fi
         elif command -v pgrep &>/dev/null; then
             local pids=""
