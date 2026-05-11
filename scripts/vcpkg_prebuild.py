@@ -23,19 +23,136 @@ def run_and_print(command, env=None, err="Command failed.", cwd=None):
         print(f"-> Error: {err}")
         exit(1)
 
+QMAKE_DEBUG_WRAPPER_C = r"""
+#include <windows.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+int main(int argc, char* argv[]) {
+    char self_path[MAX_PATH];
+    DWORD len = GetModuleFileNameA(NULL, self_path, MAX_PATH);
+    if (len == 0 || len == MAX_PATH) {
+        fprintf(stderr, "qmake-debug-wrapper: GetModuleFileName failed\n");
+        return 1;
+    }
+
+    char* last_sep = strrchr(self_path, '\\');
+    if (!last_sep) last_sep = strrchr(self_path, '/');
+    if (!last_sep) {
+        fprintf(stderr, "qmake-debug-wrapper: cannot determine own directory\n");
+        return 1;
+    }
+    *(last_sep + 1) = '\0';
+
+    char bat_path[MAX_PATH];
+    snprintf(bat_path, MAX_PATH, "%sqmake.debug.bat", self_path);
+
+    /* Build command line: cmd.exe /c ""bat_path" arg1 arg2 ..." */
+    /* The extra outer quotes are needed for cmd.exe /c to handle spaces correctly. */
+    size_t cmd_size = strlen("cmd.exe /c \"\"") + strlen(bat_path) + 3;
+    for (int i = 1; i < argc; i++) {
+        cmd_size += strlen(argv[i]) + 3;
+    }
+
+    char* cmd = (char*)malloc(cmd_size);
+    if (!cmd) {
+        fprintf(stderr, "qmake-debug-wrapper: malloc failed\n");
+        return 1;
+    }
+
+    snprintf(cmd, cmd_size, "cmd.exe /c \"\"%s\"", bat_path);
+    for (int i = 1; i < argc; i++) {
+        if (strchr(argv[i], ' ') || strchr(argv[i], '\t')) {
+            strcat(cmd, " \"");
+            strcat(cmd, argv[i]);
+            strcat(cmd, "\"");
+        } else {
+            strcat(cmd, " ");
+            strcat(cmd, argv[i]);
+        }
+    }
+    strcat(cmd, "\"");
+
+    STARTUPINFOA si;
+    memset(&si, 0, sizeof(si));
+    si.cb = sizeof(si);
+
+    PROCESS_INFORMATION pi;
+    memset(&pi, 0, sizeof(pi));
+
+    if (!CreateProcessA(NULL, cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+        fprintf(stderr, "qmake-debug-wrapper: CreateProcess failed (%lu)\n", GetLastError());
+        free(cmd);
+        return 1;
+    }
+
+    free(cmd);
+
+    WaitForSingleObject(pi.hProcess, INFINITE);
+
+    DWORD exit_code;
+    GetExitCodeProcess(pi.hProcess, &exit_code);
+
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+
+    return (int)exit_code;
+}
+"""
+
+def compile_qmake_debug_wrapper(output_dir):
+    """Compile the qmake debug wrapper executable next to qmake.debug.bat."""
+    wrapper_exe = os.path.join(output_dir, "qmake_debug_wrapper.exe")
+
+    if os.path.exists(wrapper_exe):
+        print(f"qmake debug wrapper already exists at: {wrapper_exe}")
+        return wrapper_exe
+
+    wrapper_src = os.path.join(output_dir, "qmake_debug_wrapper.c")
+    with open(wrapper_src, "w") as f:
+        f.write(QMAKE_DEBUG_WRAPPER_C)
+
+    cmd = f'cl.exe /nologo /O2 /Fe"{wrapper_exe}" "{wrapper_src}"'
+    print(f"Compiling qmake debug wrapper: {cmd}")
+    result = subprocess.run(cmd, shell=True)
+    if result.returncode != 0:
+        print("Error: Failed to compile qmake debug wrapper. Ensure cl.exe is in PATH.")
+        sys.exit(1)
+
+    # Clean up intermediate files
+    if os.path.exists(wrapper_src):
+        os.remove(wrapper_src)
+    obj_path = wrapper_src.replace('.c', '.obj')
+    if os.path.exists(obj_path):
+        os.remove(obj_path)
+
+    print(f"Compiled qmake debug wrapper: {wrapper_exe}")
+    return wrapper_exe
+
 def find_qmake(directory, is_debug_build):
     env_settings = dict()
 
-    # TODO: re-enable when .bat supported by cxx-qt
-    # win_qmake = 'qmake.debug.bat' if is_debug_build else 'qmake.exe'
-    win_qmake = 'qmake.exe'
-    tail = os.path.join("Qt6", "bin", win_qmake) if sys.platform == "win32" else os.path.join("Qt6", "bin", "qmake")
-    pattern = f'{directory}/**/{tail}'
-    print(f"Looking for qmake at: {pattern}")
-    qmake_paths = glob.glob(pattern, recursive=True)
-    if not qmake_paths:
-        return (None, None)
-    qmake = qmake_paths[0]
+    if sys.platform == "win32" and is_debug_build:
+        # Find qmake.debug.bat first, then compile a wrapper exe next to it.
+        # cxx-qt expects qmake to be a real executable and cannot run .bat files.
+        tail = os.path.join("Qt6", "bin", "qmake.debug.bat")
+        pattern = f'{directory}/**/{tail}'
+        print(f"Looking for qmake at: {pattern}")
+        bat_paths = glob.glob(pattern, recursive=True)
+        if not bat_paths:
+            return (None, None)
+        bat_dir = os.path.dirname(bat_paths[0])
+        qmake = compile_qmake_debug_wrapper(bat_dir)
+    else:
+        win_qmake = 'qmake.exe' if sys.platform == "win32" else 'qmake'
+        tail = os.path.join("Qt6", "bin", win_qmake)
+        pattern = f'{directory}/**/{tail}'
+        print(f"Looking for qmake at: {pattern}")
+        qmake_paths = glob.glob(pattern, recursive=True)
+        if not qmake_paths:
+            return (None, None)
+        qmake = qmake_paths[0]
 
     return (qmake, env_settings)
 
