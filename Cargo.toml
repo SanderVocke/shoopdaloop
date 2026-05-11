@@ -53,14 +53,10 @@ rodio = "0.21"
 winapi = "0.3"
 crossbeam-queue = "0.3"
 
-# [patch.crates-io]F
-# cxx-qt =  { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "win_dbg_v072", package = "cxx-qt" }
-# qt-build-utils = { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "win_dbg_v072", package = "qt-build-utils" }
-# cxx-qt-build = { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "win_dbg_v072", package = "cxx-qt-build" }
-# cxx-qt-gen = { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "win_dbg_v072", package = "cxx-qt-gen" }
-# cxx-qt-lib = { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "win_dbg_v072", package = "cxx-qt-lib" }
-# cxx-qt-lib-extras = { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "win_dbg_v072", package = "cxx-qt-lib-extras" }
-# cxx-qt-macro = { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "win_dbg_v072", package = "cxx-qt-macro" }
+[patch.crates-io]
+# Patched qt-build-utils to handle Windows debug Qt library "d" suffix
+# (vcpkg names debug libs Qt6Testd.lib, Qt6Cored.lib, etc.)
+qt-build-utils = { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "v081_windows_debug" }
 
 # cxx-qt =  { path = "C:/sdev/cxx-qt/crates/cxx-qt" }
 # qt-build-utils = { path = "C:/sdev/cxx-qt/crates/qt-build-utils" }

@@ -6,7 +6,7 @@
 */dbgeng.dll
 */dbgmodel.dll
 */double-conversion.dll
-*/fmt.dll
+*/fmt*.dll
 */freetype*.dll
 */harfbuzz.dll
 */icu*.dll

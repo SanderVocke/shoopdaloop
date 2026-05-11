@@ -1,0 +1,1 @@
+Small change w.r.t. upstream Catch2 portfile is to force Catch2 to link with the release version of the Microsoft runtime library. This is to match the Windows behavior of rust cxx builds and our backend build.

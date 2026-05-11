@@ -6,7 +6,7 @@
 */dbghelp.dll
 */double-conversion.dll
 */FLAC.dll
-*/fmt.dll
+*/fmt*.dll
 */freetype*.dll
 */harfbuzz.dll
 */icu*.dll

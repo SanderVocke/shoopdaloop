@@ -59,8 +59,26 @@ on:
     schedule:
       - cron: "0 1 * * *" # every day at 1am
 
+permissions:
+  contents: write
+  checks: write
+  packages: write
+
+# Default values for boolean inputs when NOT workflow_dispatch
+# Used by the setup job to resolve inputs.
+# Keep in sync with workflow_dispatch defaults above.
 env:
-  checkpoints_enabled: false
+  # Defaults for push / PR / schedule triggers
+  BUILD_WINDOWS_DEFAULT: 'true'
+  TEST_WINDOWS_DEFAULT: 'true'
+  BUILD_LINUX_DEFAULT: 'true'
+  TEST_LINUX_DEFAULT: 'true'
+  BUILD_MACOS_DEFAULT: 'true'
+  TEST_MACOS_DEFAULT: 'true'
+  VCPKG_FORCE_REBUILD_DEFAULT: 'false'
+  CHECKPOINTS_DEFAULT: 'false'
+  PI_CHECKPOINTS_DEFAULT: 'false'
+  CREATE_DRAFT_RELEASE_DEFAULT: 'false'
   CONVERT_PATH_FN: "echo"
   RUST_BACKTRACE: "1"
   QT_QPA_PLATFORM: "offscreen"
@@ -68,12 +86,53 @@ env:
   BASH_FLAGS: ""
   PIP_BREAK_SYSTEM_PACKAGES: 1
 
-permissions:
-  contents: write
-  checks: write
-  packages: write
-
 jobs:
+
+  ##############################################################
+  ## Setup job: resolve build settings from workflow inputs
+  ##############################################################
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      build_windows: ${{ steps.resolve.outputs.build_windows }}
+      test_windows: ${{ steps.resolve.outputs.test_windows }}
+      build_linux: ${{ steps.resolve.outputs.build_linux }}
+      test_linux: ${{ steps.resolve.outputs.test_linux }}
+      build_macos: ${{ steps.resolve.outputs.build_macos }}
+      test_macos: ${{ steps.resolve.outputs.test_macos }}
+      vcpkg_force_rebuild: ${{ steps.resolve.outputs.vcpkg_force_rebuild }}
+      checkpoints: ${{ steps.resolve.outputs.checkpoints }}
+      pi_checkpoints: ${{ steps.resolve.outputs.pi_checkpoints }}
+      create_draft_release: ${{ steps.resolve.outputs.create_draft_release }}
+    steps:
+      - name: Resolve boolean inputs with fallback defaults
+        id: resolve
+        shell: bash
+        run: |
+          # Helper: resolve a boolean input with a fallback default.
+          # github.event.inputs.xxx is the user's choice (workflow_dispatch)
+          # or empty string (push/PR/schedule).
+          resolve() {
+            local name="$1"
+            local default="$2"
+            # Get the workflow_dispatch input value (empty string if not dispatch)
+            local input_val="${{ github.event.inputs[format('{0}', env.name)] }}"
+            if [ -n "$input_val" ]; then
+              echo "$name=$input_val" >> "$GITHUB_OUTPUT"
+            else
+              echo "$name=$default" >> "$GITHUB_OUTPUT"
+            fi
+          }
+          resolve build_windows "${{ env.BUILD_WINDOWS_DEFAULT }}"
+          resolve test_windows "${{ env.TEST_WINDOWS_DEFAULT }}"
+          resolve build_linux "${{ env.BUILD_LINUX_DEFAULT }}"
+          resolve test_linux "${{ env.TEST_LINUX_DEFAULT }}"
+          resolve build_macos "${{ env.BUILD_MACOS_DEFAULT }}"
+          resolve test_macos "${{ env.TEST_MACOS_DEFAULT }}"
+          resolve vcpkg_force_rebuild "${{ env.VCPKG_FORCE_REBUILD_DEFAULT }}"
+          resolve checkpoints "${{ env.CHECKPOINTS_DEFAULT }}"
+          resolve pi_checkpoints "${{ env.PI_CHECKPOINTS_DEFAULT }}"
+          resolve create_draft_release "${{ env.CREATE_DRAFT_RELEASE_DEFAULT }}"
 
   ##############################################################
   ## Release creation for tag pushes
@@ -181,9 +240,9 @@ jobs:
     env:
       PATH_SEPARATOR: ":"
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
-      checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
-    needs: maybe_create_release
-    if: ${{ (github.event.inputs.build_linux || 'true') == 'true' }}
+      checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
+    needs: [maybe_create_release, setup]
+    if: ${{ needs.setup.outputs.build_linux == 'true' }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -212,8 +271,8 @@ jobs:
         second_package_kind: ${{ matrix.kind.second_package_kind }}
         third_package_kind: ${{ matrix.kind.third_package_kind }}
         coverage: ${{ matrix.kind.coverage }}
-        upload_release_assets: ${{ (github.event.inputs.create_draft_release && matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-        vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
+        upload_release_assets: ${{ (needs.setup.outputs.create_draft_release == 'true' && matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
+        vcpkg_rebuild: ${{ needs.setup.outputs.vcpkg_force_rebuild }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
     - uses: ./.github/actions/checkpoint
@@ -257,13 +316,13 @@ jobs:
               QML_IMPORT_PATH=$(~/.local/bin/qoverage --importpath)
               scripts/run_and_generate_coverage.sh
     runs-on: ubuntu-latest
-    needs: build_linux
-    if: ${{ (github.event.inputs.test_linux || 'true') == 'true' }}
+    needs: [build_linux, setup]
+    if: ${{ needs.setup.outputs.test_linux == 'true' }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
     env:
-      checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
+      checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -343,12 +402,12 @@ jobs:
           #   upload_release_assets: true
           #   platform: macos-arm
     runs-on: ${{ matrix.kind.os }}
-    needs: maybe_create_release
-    if: ${{ (github.event.inputs.build_macos || 'true') == 'true' }}
+    needs: [maybe_create_release, setup]
+    if: ${{ needs.setup.outputs.build_macos == 'true' }}
     env:
        PATH_SEPARATOR: ":"
        COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
-       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
+       checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -372,10 +431,10 @@ jobs:
         third_package_kind: ${{ matrix.kind.third_package_kind }}
         release_build: ${{ matrix.kind.release_build }}
         coverage: ${{ matrix.kind.coverage }}
-        upload_release_assets: ${{ (github.event.inputs.create_draft_release && matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
+        upload_release_assets: ${{ (needs.setup.outputs.create_draft_release == 'true' && matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         macos_target_version: ${{ matrix.kind.macos_target_version }}
-        vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
+        vcpkg_rebuild: ${{ needs.setup.outputs.vcpkg_force_rebuild }}
         sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
     - uses: ./.github/actions/checkpoint
       if: always()
@@ -412,14 +471,14 @@ jobs:
           #   package: shoopdaloop.*.debug-macos-x64.portable.tar.gz
           #   second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
     runs-on: ${{ matrix.kind.os }}
-    needs: build_macos
-    if: ${{ (github.event.inputs.test_macos || 'true') == 'true' }}
+    needs: [build_macos, setup]
+    if: ${{ needs.setup.outputs.test_macos == 'true' }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
     env:
       PATH_SEPARATOR: ":"
-      checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
+      checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -478,16 +537,16 @@ jobs:
             third_package_kind: test_binaries
             upload_release_assets: true
             platform: windows-msvc-x64
-          # - name: windows_debug
-          #   os: windows-2022
-          #   python: python.exe
-          #   pip: python.exe -m pip
-          #   container_image: null
-          #   prepare: 'windows'
-          #   release_build: false
-          #   package_kind: portable_folder
-          #   second_package_kind: test_binaries
-          #   platform: windows-msvc-x64
+          - name: windows_debug
+            os: windows-2022
+            python: python.exe
+            pip: python.exe -m pip
+            container_image: null
+            prepare: 'windows'
+            release_build: false
+            package_kind: portable_folder
+            second_package_kind: test_binaries
+            platform: windows-msvc-x64
           # - name: windows_arm_debug
           #   os: windows-11-arm
           #   python: python.exe
@@ -499,14 +558,14 @@ jobs:
           #   second_package_kind: test_binaries
           #   platform: windows-msvc-arm
     runs-on: ${{ matrix.kind.os}}
-    needs: maybe_create_release
+    needs: [maybe_create_release, setup]
     env:
       NATIVE_SHELL_CMD: "powershell -Command"
       PATH_SEPARATOR: ";"
       CONVERT_PATH_FN: bash -c "cygpath -w \$1 | sed 's/\\\\/\\\\\\\\/g'" _ 
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
-      checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
-    if: ${{ (github.event.inputs.build_windows || 'true') == 'true' }}
+      checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
+    if: ${{ needs.setup.outputs.build_windows == 'true' }}
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /
@@ -532,8 +591,8 @@ jobs:
         third_package_kind: ${{ matrix.kind.third_package_kind }}
         coverage: ${{ matrix.kind.coverage }}
         release_build: ${{ matrix.kind.release_build }}
-        upload_release_assets: ${{ (github.event.inputs.create_draft_release && matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-        vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
+        upload_release_assets: ${{ (needs.setup.outputs.create_draft_release == 'true' && matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
+        vcpkg_rebuild: ${{ needs.setup.outputs.vcpkg_force_rebuild }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
     - uses: ./.github/actions/checkpoint
@@ -558,18 +617,19 @@ jobs:
             package: ShoopDaLoop-Installer-*.exe
             pathconvert: "| cygpath -u -f -"
             sentry_build_type: release
-          # - name: debug_windows
-          #   python: python.exe
-          #   container: null
-          #   os: windows-2022
-          #   package: shoopdaloop.*.debug-windows-msvc-x64.portable.tar.gz
-          #   second_package: shoopdaloop.*.debug-windows-msvc-x64.test_binaries.tar.gz
-          #   pathconvert: "| cygpath -u -f -"
+          - name: debug_windows
+            python: python.exe
+            container: null
+            os: windows-2022
+            package: shoopdaloop.*.release-windows-msvc-x64.portable.tar.gz
+            second_package: shoopdaloop.*.release-windows-msvc-x64.test_binaries.tar.gz
+            pathconvert: "| cygpath -u -f -"
+            sentry_build_type: debug
     runs-on: ${{ matrix.kind.os }}
-    needs: build_windows
+    needs: [build_windows, setup]
     env:
-      checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
-    if: ${{ (github.event.inputs.test_windows || 'true') == 'true' }}
+      checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
+    if: ${{ needs.setup.outputs.test_windows == 'true' }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
