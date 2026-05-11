@@ -84,7 +84,7 @@ find_children() {
     echo "[run_with_timeout] DEBUG: find_children(parent_pid=$parent_pid)"
     local result=""
     if [[ $IS_WINDOWS -eq 1 ]]; then
-        result=$(powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"ParentProcessId=$parent_pid\" | Select-Object -ExpandProperty ProcessId" 2>/dev/null || true)
+        result=$(powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"ParentProcessId=$parent_pid\" | Select-Object -ExpandProperty ProcessId" 2>/dev/null | tr -d '\r' || true)
     else
         if command -v pgrep &>/dev/null; then
             result=$(pgrep -P "$parent_pid" 2>/dev/null || true)
@@ -349,6 +349,8 @@ cleanup_all_processes() {
 # Increments CLEANUP_KILLED_PROCESSES and appends PIDs to CLEANUP_KILLED_PIDS
 kill_known_problem_processes() {
     echo "[run_with_timeout] Checking for known problematic processes..."
+    # Deduplicate resolved Windows image names to avoid double-counting
+    local seen_img_names=""
     for proc_name in tracy-capture crashpad_handler breakpad_handler shoopdaloop shoopdaloop_exe shoopdaloop.exe shoopdaloop_exe.exe; do
         if [[ $IS_WINDOWS -eq 1 ]]; then
             # Build exact executable name for Win32_Process (e.g. "shoopdaloop_exe.exe")
@@ -356,19 +358,34 @@ kill_known_problem_processes() {
             if [[ "$img_name" != *.exe ]]; then
                 img_name="${img_name}.exe"
             fi
+            # Skip duplicates (e.g. shoopdaloop_exe and shoopdaloop_exe.exe both -> shoopdaloop_exe.exe)
+            if [[ "$seen_img_names" == *" $img_name "* ]]; then
+                echo "[run_with_timeout] DEBUG:   skipping duplicate Windows image name: $img_name"
+                continue
+            fi
+            seen_img_names="$seen_img_names $img_name "
             echo "[run_with_timeout]   Checking Windows image name: $img_name"
             local pids=""
-            pids=$(powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='$img_name'\" | Select-Object -ExpandProperty ProcessId" 2>/dev/null || true)
+            pids=$(powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='$img_name'\" | Select-Object -ExpandProperty ProcessId" 2>/dev/null | tr -d '\r' || true)
             if [[ -n "$pids" ]]; then
-                echo "[run_with_timeout]   Found $img_name PIDs: $pids"
+                echo "[run_with_timeout]   Found $img_name PIDs: $(echo "$pids" | tr '\n' ' ')"
                 for pid in $pids; do
                     ((CLEANUP_KILLED_PROCESSES++)) || true
                     CLEANUP_KILLED_PIDS="$CLEANUP_KILLED_PIDS $pid"
                 done
-                # Use taskkill /F /PID for each — more reliable than Stop-Process for stubborn native processes
+                # Use taskkill /F /PID for each — with Stop-Process fallback if taskkill fails
                 for pid in $pids; do
                     echo "[run_with_timeout]   taskkill /F /PID $pid ($img_name)"
-                    taskkill /F /PID "$pid" 2>/dev/null || true
+                    local taskkill_out=""
+                    local taskkill_rc=0
+                    taskkill_out=$(taskkill /F /PID "$pid" 2>&1) || taskkill_rc=$?
+                    if [[ $taskkill_rc -eq 0 ]]; then
+                        echo "[run_with_timeout]   taskkill succeeded: $taskkill_out"
+                    else
+                        echo "[run_with_timeout]   taskkill FAILED (rc=$taskkill_rc): $taskkill_out"
+                        echo "[run_with_timeout]   trying Stop-Process fallback for PID $pid"
+                        powershell -NoProfile -Command "Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue" 2>/dev/null || true
+                    fi
                 done
             else
                 echo "[run_with_timeout]   No matches for $img_name"
