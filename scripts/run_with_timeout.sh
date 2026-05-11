@@ -378,13 +378,18 @@ kill_known_problem_processes() {
                     echo "[run_with_timeout]   taskkill /F /PID $pid ($img_name)"
                     local taskkill_out=""
                     local taskkill_rc=0
-                    taskkill_out=$(taskkill /F /PID "$pid" 2>&1) || taskkill_rc=$?
+                    # MSYS_NO_PATHCONV=1 prevents Git Bash from translating /F to F:/
+                    taskkill_out=$(MSYS_NO_PATHCONV=1 taskkill /F /PID "$pid" 2>&1) || taskkill_rc=$?
                     if [[ $taskkill_rc -eq 0 ]]; then
                         echo "[run_with_timeout]   taskkill succeeded: $taskkill_out"
                     else
                         echo "[run_with_timeout]   taskkill FAILED (rc=$taskkill_rc): $taskkill_out"
                         echo "[run_with_timeout]   trying Stop-Process fallback for PID $pid"
-                        powershell -NoProfile -Command "Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue" 2>/dev/null || true
+                        local sp_out=""
+                        local sp_rc=0
+                        sp_out=$(powershell -NoProfile -Command "Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue; if(\$?) { Write-Output 'OK' } else { Write-Output 'FAIL' }" 2>/dev/null) || sp_rc=$?
+                        sp_out=$(echo "$sp_out" | tr -d '\r')
+                        echo "[run_with_timeout]   Stop-Process result: rc=$sp_rc, output='$sp_out'"
                     fi
                 done
             else
