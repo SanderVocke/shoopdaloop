@@ -17,7 +17,7 @@ runs:
     run: |
       set -x
       mkdir -p reports
-      ${{ env.RUN_CMD_PREFIX }} ${{ env.COMMAND_TEST_BACKEND }} -r JUnit -o ${{ env.results_xml }}
+      ${{ env.RUN_CMD_PREFIX }} ./scripts/run_with_timeout.sh 300 ${{ env.COMMAND_TEST_BACKEND }} -r JUnit -o ${{ env.results_xml }}
       echo "Back-end test results file: $(ls -la ${{ env.results_xml }})"
 
   - name: Publish Back-end Test Report

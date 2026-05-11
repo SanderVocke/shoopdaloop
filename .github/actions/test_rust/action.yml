@@ -43,7 +43,7 @@ runs:
     if: always()
     run: |
       mkdir -p reports
-      ${{ env.RUN_CMD_PREFIX }} ${{ env.COMMAND_TEST_RUST }}
+      ${{ env.RUN_CMD_PREFIX }} ./scripts/run_with_timeout.sh 300 ${{ env.COMMAND_TEST_RUST }}
       # echo "Rust test results file: $(ls -la ${{ env.RESULTS_XML }})"
 
   - name: Publish Rust Test Report
