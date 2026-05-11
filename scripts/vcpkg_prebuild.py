@@ -101,6 +101,64 @@ int main(int argc, char* argv[]) {
 }
 """
 
+def _find_vcvarsall():
+    """Find vcvarsall.bat via vswhere or common paths."""
+    vswhere_paths = [
+        os.path.join(os.environ.get("ProgramFiles(x86)", ""), "Microsoft Visual Studio", "Installer", "vswhere.exe"),
+        os.path.join(os.environ.get("ProgramFiles", ""), "Microsoft Visual Studio", "Installer", "vswhere.exe"),
+    ]
+    vswhere = None
+    for p in vswhere_paths:
+        if os.path.isfile(p):
+            vswhere = p
+            break
+    if vswhere is None:
+        result = subprocess.run("where vswhere.exe", capture_output=True, text=True, shell=True)
+        if result.returncode == 0:
+            vswhere = result.stdout.strip().splitlines()[0]
+
+    if vswhere:
+        result = subprocess.run(
+            f'"{vswhere}" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath',
+            capture_output=True, text=True, shell=True
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            install_path = result.stdout.strip()
+            vcvarsall = os.path.join(install_path, "VC", "Auxiliary", "Build", "vcvarsall.bat")
+            if os.path.isfile(vcvarsall):
+                return vcvarsall
+
+    for base in [os.environ.get("ProgramFiles", ""), os.environ.get("ProgramFiles(x86)", "")]:
+        for edition in ["Community", "Professional", "Enterprise", "BuildTools"]:
+            for ver in ["2022", "2019", "2017"]:
+                candidate = os.path.join(base, "Microsoft Visual Studio", ver, edition, "VC", "Auxiliary", "Build", "vcvarsall.bat")
+                if os.path.isfile(candidate):
+                    return candidate
+    return None
+
+
+def _get_msvc_env(arch="x64"):
+    """Run vcvarsall.bat and return an enriched environment dict."""
+    vcvarsall = _find_vcvarsall()
+    if vcvarsall is None:
+        print("Error: Could not find vcvarsall.bat. Cannot compile qmake debug wrapper.")
+        sys.exit(1)
+
+    cmd = f'cmd.exe /c ""{vcvarsall}" {arch} >nul 2>&1 && set"'
+    result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+    if result.returncode != 0:
+        print(f"Error: Failed to run vcvarsall.bat ({vcvarsall})")
+        print(result.stderr)
+        sys.exit(1)
+
+    env = os.environ.copy()
+    for line in result.stdout.splitlines():
+        if "=" in line:
+            key, _, value = line.partition("=")
+            env[key] = value
+    return env
+
+
 def compile_qmake_debug_wrapper(output_dir):
     """Compile the qmake debug wrapper executable next to qmake.debug.bat."""
     wrapper_exe = os.path.join(output_dir, "qmake_debug_wrapper.exe")
@@ -113,11 +171,13 @@ def compile_qmake_debug_wrapper(output_dir):
     with open(wrapper_src, "w") as f:
         f.write(QMAKE_DEBUG_WRAPPER_C)
 
+    # Set up MSVC env for this subprocess only — does not affect the caller's env
+    msvc_env = _get_msvc_env("x64")
     cmd = f'cl.exe /nologo /O2 /Fe"{wrapper_exe}" "{wrapper_src}"'
     print(f"Compiling qmake debug wrapper: {cmd}")
-    result = subprocess.run(cmd, shell=True)
+    result = subprocess.run(cmd, shell=True, env=msvc_env)
     if result.returncode != 0:
-        print("Error: Failed to compile qmake debug wrapper. Ensure cl.exe is in PATH.")
+        print("Error: Failed to compile qmake debug wrapper.")
         sys.exit(1)
 
     # Clean up intermediate files
