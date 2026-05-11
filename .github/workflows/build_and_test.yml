@@ -622,13 +622,14 @@ jobs:
             package: ShoopDaLoop-Installer-*.exe
             pathconvert: "| cygpath -u -f -"
             sentry_build_type: release
-          # - name: debug_windows
-          #   python: python.exe
-          #   container: null
-          #   os: windows-2022
-          #   package: shoopdaloop.*.debug-windows-msvc-x64.portable.tar.gz
-          #   second_package: shoopdaloop.*.debug-windows-msvc-x64.test_binaries.tar.gz
-          #   pathconvert: "| cygpath -u -f -"
+          - name: debug_windows
+            python: python.exe
+            container: null
+            os: windows-2022
+            package: shoopdaloop.*.release-windows-msvc-x64.portable.tar.gz
+            second_package: shoopdaloop.*.release-windows-msvc-x64.test_binaries.tar.gz
+            pathconvert: "| cygpath -u -f -"
+            sentry_build_type: debug
     runs-on: ${{ matrix.kind.os }}
     needs: [build_windows, setup]
     env:

@@ -56,7 +56,7 @@ crossbeam-queue = "0.3"
 [patch.crates-io]
 # Patched qt-build-utils to handle Windows debug Qt library "d" suffix
 # (vcpkg names debug libs Qt6Testd.lib, Qt6Cored.lib, etc.)
-qt-build-utils = { path = "patches/qt-build-utils" }
+qt-build-utils = { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "v081_windows_debug" }
 
 # cxx-qt =  { path = "C:/sdev/cxx-qt/crates/cxx-qt" }
 # qt-build-utils = { path = "C:/sdev/cxx-qt/crates/qt-build-utils" }
