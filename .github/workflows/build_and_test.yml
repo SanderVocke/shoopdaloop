@@ -59,15 +59,6 @@ on:
     schedule:
       - cron: "0 1 * * *" # every day at 1am
 
-env:
-  checkpoints_enabled: false
-  CONVERT_PATH_FN: "echo"
-  RUST_BACKTRACE: "1"
-  QT_QPA_PLATFORM: "offscreen"
-  NATIVE_SHELL_CMD: "bash -c"
-  BASH_FLAGS: ""
-  PIP_BREAK_SYSTEM_PACKAGES: 1
-
 permissions:
   contents: write
   checks: write
@@ -88,6 +79,12 @@ env:
   CHECKPOINTS_DEFAULT: 'false'
   PI_CHECKPOINTS_DEFAULT: 'false'
   CREATE_DRAFT_RELEASE_DEFAULT: 'false'
+  CONVERT_PATH_FN: "echo"
+  RUST_BACKTRACE: "1"
+  QT_QPA_PLATFORM: "offscreen"
+  NATIVE_SHELL_CMD: "bash -c"
+  BASH_FLAGS: ""
+  PIP_BREAK_SYSTEM_PACKAGES: 1
 
 jobs:
 
