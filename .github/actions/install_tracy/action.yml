@@ -83,5 +83,5 @@ runs:
       if ($tool.FullName -ne (Join-Path (Get-Location) "tracy_bin\tracy-capture.exe")) {
         Copy-Item $tool.FullName "tracy_bin\tracy-capture.exe" -Force
       }
-      $toolPath = Join-Path (Get-Location) "tracy_bin\tracy-capture.exe"
+      $toolPath = (Join-Path (Get-Location).Path "tracy_bin\tracy-capture.exe").Replace('\', '/')
       echo "TRACY_CAPTURE_TOOL=$toolPath" >> $env:GITHUB_ENV
