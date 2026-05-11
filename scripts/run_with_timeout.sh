@@ -34,7 +34,7 @@ IS_WINDOWS=0
 if [[ "$(uname -s)" == *"MINGW"* ]] || [[ "$(uname -s)" == *"MSYS"* ]] || [[ "$(uname -s)" == *"CYGWIN"* ]]; then
     IS_WINDOWS=1
 fi
-echo "[run_with_timeout] DEBUG: IS_WINDOWS=$IS_WINDOWS, uname=$(uname -s)"
+# echo "[run_with_timeout] DEBUG: IS_WINDOWS=$IS_WINDOWS, uname=$(uname -s)"
 
 # Helper function to format seconds as human-readable
 format_time() {
@@ -53,35 +53,35 @@ format_time() {
 # Function to find processes by process group
 find_by_pgid() {
     local pgid="$1"
-    echo "[run_with_timeout] DEBUG: find_by_pgid(pgid=$pgid)"
+    # echo "[run_with_timeout] DEBUG: find_by_pgid(pgid=$pgid)"
     if [[ $IS_WINDOWS -eq 1 ]]; then
-        echo "[run_with_timeout] DEBUG:   skipped (Windows)"
+        # echo "[run_with_timeout] DEBUG:   skipped (Windows)"
         return
     fi
     local result=""
     result=$(ps -o pid= -g "$pgid" 2>/dev/null | tr -d ' ' || true)
-    echo "[run_with_timeout] DEBUG:   result='$result'"
+    # echo "[run_with_timeout] DEBUG:   result='$result'"
     echo "$result"
 }
 
 # Function to find processes by session
 find_by_sid() {
     local sid="$1"
-    echo "[run_with_timeout] DEBUG: find_by_sid(sid=$sid)"
+    # echo "[run_with_timeout] DEBUG: find_by_sid(sid=$sid)"
     if [[ $IS_WINDOWS -eq 1 ]]; then
-        echo "[run_with_timeout] DEBUG:   skipped (Windows)"
+        # echo "[run_with_timeout] DEBUG:   skipped (Windows)"
         return
     fi
     local result=""
     result=$(ps -o pid= -s "$sid" 2>/dev/null | tr -d ' ' || true)
-    echo "[run_with_timeout] DEBUG:   result='$result'"
+    # echo "[run_with_timeout] DEBUG:   result='$result'"
     echo "$result"
 }
 
 # Function to find children of a specific PID
 find_children() {
     local parent_pid="$1"
-    echo "[run_with_timeout] DEBUG: find_children(parent_pid=$parent_pid)"
+    # echo "[run_with_timeout] DEBUG: find_children(parent_pid=$parent_pid)"
     local result=""
     if [[ $IS_WINDOWS -eq 1 ]]; then
         result=$(powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"ParentProcessId=$parent_pid\" | Select-Object -ExpandProperty ProcessId" 2>/dev/null | tr -d '\r' || true)
@@ -92,14 +92,14 @@ find_children() {
             result=$(ps -o pid=,ppid= 2>/dev/null | awk -v ppid="$parent_pid" '$2 == ppid {print $1}' || true)
         fi
     fi
-    echo "[run_with_timeout] DEBUG:   result='$result'"
+    # echo "[run_with_timeout] DEBUG:   result='$result'"
     echo "$result"
 }
 
 # Function to find all descendants recursively
 find_descendants() {
     local parent_pid="$1"
-    echo "[run_with_timeout] DEBUG: find_descendants(parent_pid=$parent_pid)"
+    # echo "[run_with_timeout] DEBUG: find_descendants(parent_pid=$parent_pid)"
     local descendants=""
     
     local children=""
@@ -113,7 +113,7 @@ find_descendants() {
         descendants="$descendants $grandchildren"
     done
     
-    echo "[run_with_timeout] DEBUG:   descendants='$descendants'"
+    # echo "[run_with_timeout] DEBUG:   descendants='$descendants'"
     echo "$descendants"
 }
 
@@ -125,27 +125,27 @@ kill_process_tree() {
     local signal="$4"
     local signal_name="$5"
     
-    echo "[run_with_timeout] DEBUG: kill_process_tree(target_pid=$target_pid, pgid=$stored_pgid, sid=$stored_sid, signal=$signal_name)"
+    # echo "[run_with_timeout] DEBUG: kill_process_tree(target_pid=$target_pid, pgid=$stored_pgid, sid=$stored_sid, signal=$signal_name)"
     echo "[run_with_timeout] Sending ${signal_name} to process tree..."
     
     if [[ $IS_WINDOWS -eq 1 ]]; then
-        echo "[run_with_timeout] DEBUG:   Windows path"
+        # echo "[run_with_timeout] DEBUG:   Windows path"
         local descendants=""
         descendants=$(find_descendants "$target_pid")
         if [[ -n "$descendants" ]]; then
             echo "[run_with_timeout] Killing descendants with ${signal_name}: $descendants"
             for pid in $descendants; do
                 if [[ "$pid" != "$$" ]]; then
-                    echo "[run_with_timeout] DEBUG:   Stop-Process -Id $pid"
+                    # echo "[run_with_timeout] DEBUG:   Stop-Process -Id $pid"
                     powershell -NoProfile -Command "Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue" 2>/dev/null || true
                 fi
             done
         else
-            echo "[run_with_timeout] DEBUG:   no descendants found"
+            : # echo "[run_with_timeout] DEBUG:   no descendants found"
         fi
         if [[ "$target_pid" != "$$" ]]; then
             echo "[run_with_timeout] Killing target PID $target_pid with ${signal_name}"
-            echo "[run_with_timeout] DEBUG:   Stop-Process -Id $target_pid"
+            # echo "[run_with_timeout] DEBUG:   Stop-Process -Id $target_pid"
             powershell -NoProfile -Command "Stop-Process -Id $target_pid -Force -ErrorAction SilentlyContinue" 2>/dev/null || true
         fi
         return
@@ -154,19 +154,19 @@ kill_process_tree() {
     # Kill by process group (most reliable for orphans)
     if [[ -n "$stored_pgid" ]] && [[ "$stored_pgid" != "" ]]; then
         echo "[run_with_timeout] Killing process group $stored_pgid with ${signal_name}"
-        echo "[run_with_timeout] DEBUG:   kill -${signal} -${stored_pgid}"
+        # echo "[run_with_timeout] DEBUG:   kill -${signal} -${stored_pgid}"
         kill "-${signal}" "-${stored_pgid}" 2>/dev/null || true
     else
-        echo "[run_with_timeout] DEBUG:   no stored pgid, skipping group kill"
+        : # echo "[run_with_timeout] DEBUG:   no stored pgid, skipping group kill"
     fi
     
     # Kill by session
     if [[ -n "$stored_sid" ]] && [[ "$stored_sid" != "" ]] && [[ "$stored_sid" != "$$" ]]; then
         echo "[run_with_timeout] Killing session $stored_sid with ${signal_name}"
-        echo "[run_with_timeout] DEBUG:   kill -${signal} -${stored_sid}"
+        # echo "[run_with_timeout] DEBUG:   kill -${signal} -${stored_sid}"
         kill "-${signal}" "-${stored_sid}" 2>/dev/null || true
     else
-        echo "[run_with_timeout] DEBUG:   no stored sid (or sid==$$), skipping session kill"
+        : # echo "[run_with_timeout] DEBUG:   no stored sid (or sid==$$), skipping session kill"
     fi
     
     # Find and kill descendants individually
@@ -175,15 +175,15 @@ kill_process_tree() {
     if [[ -n "$descendants" ]]; then
         echo "[run_with_timeout] Killing descendants with ${signal_name}: $descendants"
         for pid in $descendants; do
-            echo "[run_with_timeout] DEBUG:   kill -${signal} $pid"
+            # echo "[run_with_timeout] DEBUG:   kill -${signal} $pid"
             kill "-${signal}" "$pid" 2>/dev/null || true
         done
     else
-        echo "[run_with_timeout] DEBUG:   no descendants to kill individually"
+        : # echo "[run_with_timeout] DEBUG:   no descendants to kill individually"
     fi
     
     # Kill the target itself
-    echo "[run_with_timeout] DEBUG:   kill -${signal} $target_pid"
+    # echo "[run_with_timeout] DEBUG:   kill -${signal} $target_pid"
     kill "-${signal}" "$target_pid" 2>/dev/null || true
 }
 
@@ -192,18 +192,18 @@ wait_for_process() {
     local target_pid="$1"
     local wait_seconds="$2"
     local count=0
-    echo "[run_with_timeout] DEBUG: wait_for_process(pid=$target_pid, max=${wait_seconds}s)"
+    # echo "[run_with_timeout] DEBUG: wait_for_process(pid=$target_pid, max=${wait_seconds}s)"
     
     while kill -0 "$target_pid" 2>/dev/null; do
         if [[ $count -ge $wait_seconds ]]; then
-            echo "[run_with_timeout] DEBUG:   timed out after ${count}s"
+            # echo "[run_with_timeout] DEBUG:   timed out after ${count}s"
             return 1
         fi
         sleep 1
         ((count++)) || true
-        echo "[run_with_timeout] DEBUG:   still alive after ${count}s"
+        # echo "[run_with_timeout] DEBUG:   still alive after ${count}s"
     done
-    echo "[run_with_timeout] DEBUG:   exited after ${count}s"
+    # echo "[run_with_timeout] DEBUG:   exited after ${count}s"
     return 0
 }
 
@@ -221,7 +221,7 @@ cleanup_all_processes() {
     local aggressive="$3"  # "true" to skip SIGTERM and go straight to SIGKILL
     
     echo "[run_with_timeout] Performing aggressive cleanup (pgid=$stored_pgid, sid=$stored_sid, aggressive=${aggressive})..."
-    echo "[run_with_timeout] DEBUG: cleanup_all_processes entry: CHILD_PID=${CHILD_PID:-<unset>}, IS_WINDOWS=$IS_WINDOWS"
+    # echo "[run_with_timeout] DEBUG: cleanup_all_processes entry: CHILD_PID=${CHILD_PID:-<unset>}, IS_WINDOWS=$IS_WINDOWS"
     
     local total_killed=0
     local killed_pids=""
@@ -246,17 +246,17 @@ cleanup_all_processes() {
         
         # Windows fallback: if no pgid/sid available, target live descendants of the original child
         if [[ $IS_WINDOWS -eq 1 ]] && [[ -n "${CHILD_PID:-}" ]] && kill -0 "$CHILD_PID" 2>/dev/null; then
-            echo "[run_with_timeout] DEBUG:   Windows fallback: CHILD_PID=$CHILD_PID is alive, fetching descendants"
+            # echo "[run_with_timeout] DEBUG:   Windows fallback: CHILD_PID=$CHILD_PID is alive, fetching descendants"
             local win_descendants=""
             win_descendants=$(find_descendants "$CHILD_PID")
             all_procs="$all_procs $CHILD_PID $win_descendants"
         elif [[ $IS_WINDOWS -eq 1 ]]; then
-            echo "[run_with_timeout] DEBUG:   Windows fallback: CHILD_PID=${CHILD_PID:-<unset>} not alive or not set"
+            : # echo "[run_with_timeout] DEBUG:   Windows fallback: CHILD_PID=${CHILD_PID:-<unset>} not alive or not set"
         fi
         
         # Remove duplicates and empty entries, exclude our own PID
         all_procs=$(echo "$all_procs" | tr ' ' '\n' | sort -u | grep -v '^$' | grep -v "^$$\$" | tr '\n' ' ') || true
-        echo "[run_with_timeout] DEBUG:   pass $pass deduped list (excluding self): '$all_procs'"
+        # echo "[run_with_timeout] DEBUG:   pass $pass deduped list (excluding self): '$all_procs'"
         
         if [[ -z "$all_procs" ]]; then
             echo "[run_with_timeout] Cleanup pass $pass: no remaining processes"
@@ -276,10 +276,10 @@ cleanup_all_processes() {
                 fi
                 echo "[run_with_timeout] SIGKILL PID $pid"
                 if [[ $IS_WINDOWS -eq 1 ]]; then
-                    echo "[run_with_timeout] DEBUG:   Stop-Process -Id $pid"
+                    # echo "[run_with_timeout] DEBUG:   Stop-Process -Id $pid"
                     powershell -NoProfile -Command "Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue" 2>/dev/null || true
                 else
-                    echo "[run_with_timeout] DEBUG:   kill -9 $pid"
+                    # echo "[run_with_timeout] DEBUG:   kill -9 $pid"
                     kill -9 "$pid" 2>/dev/null || true
                 fi
                 ((pass_killed++)) || true
@@ -293,10 +293,10 @@ cleanup_all_processes() {
                 fi
                 echo "[run_with_timeout] SIGTERM PID $pid"
                 if [[ $IS_WINDOWS -eq 1 ]]; then
-                    echo "[run_with_timeout] DEBUG:   Stop-Process -Id $pid"
+                    # echo "[run_with_timeout] DEBUG:   Stop-Process -Id $pid"
                     powershell -NoProfile -Command "Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue" 2>/dev/null || true
                 else
-                    echo "[run_with_timeout] DEBUG:   kill -15 $pid"
+                    # echo "[run_with_timeout] DEBUG:   kill -15 $pid"
                     kill -15 "$pid" 2>/dev/null || true
                 fi
                 ((pass_killed++)) || true
@@ -313,17 +313,17 @@ cleanup_all_processes() {
                 all_procs="$all_procs $CHILD_PID $win_descendants"
             fi
             all_procs=$(echo "$all_procs" | tr ' ' '\n' | sort -u | grep -v '^$' | grep -v "^$$\$" | tr '\n' ' ') || true
-            echo "[run_with_timeout] DEBUG:   pass $pass post-SIGTERM deduped list: '$all_procs'"
+            # echo "[run_with_timeout] DEBUG:   pass $pass post-SIGTERM deduped list: '$all_procs'"
             for pid in $all_procs; do
                 if [[ "$pid" == "$$" ]]; then
                     continue
                 fi
                 echo "[run_with_timeout] SIGKILL PID $pid"
                 if [[ $IS_WINDOWS -eq 1 ]]; then
-                    echo "[run_with_timeout] DEBUG:   Stop-Process -Id $pid"
+                    # echo "[run_with_timeout] DEBUG:   Stop-Process -Id $pid"
                     powershell -NoProfile -Command "Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue" 2>/dev/null || true
                 else
-                    echo "[run_with_timeout] DEBUG:   kill -9 $pid"
+                    # echo "[run_with_timeout] DEBUG:   kill -9 $pid"
                     kill -9 "$pid" 2>/dev/null || true
                 fi
                 ((pass_killed++)) || true
@@ -332,7 +332,7 @@ cleanup_all_processes() {
         fi
         
         total_killed=$((total_killed + pass_killed))
-        echo "[run_with_timeout] DEBUG:   pass $pass killed=$pass_killed, total_killed=$total_killed"
+        # echo "[run_with_timeout] DEBUG:   pass $pass killed=$pass_killed, total_killed=$total_killed"
         sleep 1
     done
     
@@ -360,7 +360,7 @@ kill_known_problem_processes() {
             fi
             # Skip duplicates (e.g. shoopdaloop_exe and shoopdaloop_exe.exe both -> shoopdaloop_exe.exe)
             if [[ "$seen_img_names" == *" $img_name "* ]]; then
-                echo "[run_with_timeout] DEBUG:   skipping duplicate Windows image name: $img_name"
+                # echo "[run_with_timeout] DEBUG:   skipping duplicate Windows image name: $img_name"
                 continue
             fi
             seen_img_names="$seen_img_names $img_name "
@@ -396,27 +396,27 @@ kill_known_problem_processes() {
                 echo "[run_with_timeout]   No matches for $img_name"
             fi
         elif command -v pgrep &>/dev/null; then
-            echo "[run_with_timeout] DEBUG:   Unix pgrep path for '$proc_name'"
+            # echo "[run_with_timeout] DEBUG:   Unix pgrep path for '$proc_name'"
             local pids=""
             pids=$(pgrep -x "$proc_name" 2>/dev/null || true)
-            echo "[run_with_timeout] DEBUG:   pgrep result: '$pids'"
+            # echo "[run_with_timeout] DEBUG:   pgrep result: '$pids'"
             if [[ -n "$pids" ]]; then
                 for pid in $pids; do
                     ((CLEANUP_KILLED_PROCESSES++)) || true
                     CLEANUP_KILLED_PIDS="$CLEANUP_KILLED_PIDS $pid"
                 done
-                echo "[run_with_timeout] DEBUG:   pkill -9 -x '$proc_name'"
+                # echo "[run_with_timeout] DEBUG:   pkill -9 -x '$proc_name'"
                 pkill -9 -x "$proc_name" 2>/dev/null || true
             fi
         elif command -v killall &>/dev/null; then
-            echo "[run_with_timeout] DEBUG:   Unix killall path for '$proc_name'"
+            # echo "[run_with_timeout] DEBUG:   Unix killall path for '$proc_name'"
             # killall doesn't list PIDs; try pgrep for counting, but kill blind if unavailable
             local pids=""
             if command -v pgrep &>/dev/null; then
                 pids=$(pgrep -x "$proc_name" 2>/dev/null || true)
-                echo "[run_with_timeout] DEBUG:   pgrep result: '$pids'"
+                # echo "[run_with_timeout] DEBUG:   pgrep result: '$pids'"
             fi
-            echo "[run_with_timeout] DEBUG:   killall -9 '$proc_name'"
+            # echo "[run_with_timeout] DEBUG:   killall -9 '$proc_name'"
             killall -9 "$proc_name" 2>/dev/null || true
             if [[ -n "$pids" ]]; then
                 for pid in $pids; do
@@ -425,7 +425,7 @@ kill_known_problem_processes() {
                 done
             fi
         else
-            echo "[run_with_timeout] DEBUG:   no pkill/killall available, skipping Unix name kill"
+            : # echo "[run_with_timeout] DEBUG:   no pkill/killall available, skipping Unix name kill"
         fi
     done
 }
@@ -435,11 +435,11 @@ kill_known_problem_processes() {
 CHILD_PID=""
 
 if command -v setsid &>/dev/null; then
-    echo "[run_with_timeout] DEBUG: launching with setsid"
+    # echo "[run_with_timeout] DEBUG: launching with setsid"
     setsid "${COMMAND[@]}" &
     CHILD_PID=$!
 else
-    echo "[run_with_timeout] DEBUG: setsid not available, launching with job control"
+    # echo "[run_with_timeout] DEBUG: setsid not available, launching with job control"
     # Fallback: use job control
     set -m  # Enable job control
     "${COMMAND[@]}" &
@@ -461,7 +461,7 @@ if [[ $IS_WINDOWS -eq 0 ]]; then
     STORED_Pgid=$(ps -o pgid= -p $CHILD_PID 2>/dev/null | tr -d ' ') || true
     echo "[run_with_timeout] Stored Session: ${STORED_SID:-unknown}, Stored Process Group: ${STORED_Pgid:-unknown}"
 else
-    echo "[run_with_timeout] DEBUG: Windows path: skipping sid/pgid storage (not applicable)"
+    : # echo "[run_with_timeout] DEBUG: Windows path: skipping sid/pgid storage (not applicable)"
 fi
 
 # Track elapsed time
@@ -477,7 +477,7 @@ while true; do
         # Child has exited, get exit code
         wait $CHILD_PID 2>/dev/null || CHILD_EXIT_CODE=$?
         
-        echo "[run_with_timeout] DEBUG: child $CHILD_PID no longer running, raw exit code=$CHILD_EXIT_CODE"
+        # echo "[run_with_timeout] DEBUG: child $CHILD_PID no longer running, raw exit code=$CHILD_EXIT_CODE"
         
         # Small delay to let things settle before cleanup
         echo "[run_with_timeout] Main process exited (code $CHILD_EXIT_CODE), waiting 1s before cleanup..."
@@ -487,17 +487,17 @@ while true; do
         # (tracy-capture, crash handler) can still hold stdout/stderr open, causing the
         # tee wrapper to hang indefinitely. We MUST kill them ALL before exiting.
         echo "[run_with_timeout] Cleaning up orphaned child processes..."
-        echo "[run_with_timeout] DEBUG: pre-cleanup state: CLEANUP_KILLED_PROCESSES=$CLEANUP_KILLED_PROCESSES"
+        # echo "[run_with_timeout] DEBUG: pre-cleanup state: CLEANUP_KILLED_PROCESSES=$CLEANUP_KILLED_PROCESSES"
         
         # Use stored pgid/sid for cleanup (child is already gone)
         cleanup_all_processes "$STORED_Pgid" "$STORED_SID" "true"
         
-        echo "[run_with_timeout] DEBUG: post-cleanup_all_processes state: CLEANUP_KILLED_PROCESSES=$CLEANUP_KILLED_PROCESSES, PIDS='$CLEANUP_KILLED_PIDS'"
+        # echo "[run_with_timeout] DEBUG: post-cleanup_all_processes state: CLEANUP_KILLED_PROCESSES=$CLEANUP_KILLED_PROCESSES, PIDS='$CLEANUP_KILLED_PIDS'"
         
         # Kill known problematic processes by name
         kill_known_problem_processes
         
-        echo "[run_with_timeout] DEBUG: post-kill_known_problem_processes state: CLEANUP_KILLED_PROCESSES=$CLEANUP_KILLED_PROCESSES, PIDS='$CLEANUP_KILLED_PIDS'"
+        # echo "[run_with_timeout] DEBUG: post-kill_known_problem_processes state: CLEANUP_KILLED_PROCESSES=$CLEANUP_KILLED_PROCESSES, PIDS='$CLEANUP_KILLED_PIDS'"
         
         # Check if we found any leftover processes - this is an error in CI
         if [[ $CLEANUP_KILLED_PROCESSES -gt 0 ]]; then
@@ -525,7 +525,7 @@ while true; do
     
     if [[ $ELAPSED -ge $TIMEOUT_SECONDS ]]; then
         echo "[run_with_timeout] TIMEOUT: ${TIMEOUT_SECONDS}s exceeded after ${ELAPSED}s elapsed"
-        echo "[run_with_timeout] DEBUG: entering timeout kill path"
+        # echo "[run_with_timeout] DEBUG: entering timeout kill path"
         
         # Send SIGTERM first (graceful)
         kill_process_tree "$CHILD_PID" "$STORED_Pgid" "$STORED_SID" "15" "SIGTERM"
@@ -552,12 +552,12 @@ while true; do
         # Small delay before final cleanup
         sleep 1
         
-        echo "[run_with_timeout] DEBUG: pre-timeout-cleanup state: CLEANUP_KILLED_PROCESSES=$CLEANUP_KILLED_PROCESSES"
+        # echo "[run_with_timeout] DEBUG: pre-timeout-cleanup state: CLEANUP_KILLED_PROCESSES=$CLEANUP_KILLED_PROCESSES"
         # Final cleanup using stored pgid/sid
         cleanup_all_processes "$STORED_Pgid" "$STORED_SID" "true"
-        echo "[run_with_timeout] DEBUG: post-timeout-cleanup state: CLEANUP_KILLED_PROCESSES=$CLEANUP_KILLED_PROCESSES"
+        # echo "[run_with_timeout] DEBUG: post-timeout-cleanup state: CLEANUP_KILLED_PROCESSES=$CLEANUP_KILLED_PROCESSES"
         kill_known_problem_processes
-        echo "[run_with_timeout] DEBUG: post-timeout-known-kill state: CLEANUP_KILLED_PROCESSES=$CLEANUP_KILLED_PROCESSES"
+        # echo "[run_with_timeout] DEBUG: post-timeout-known-kill state: CLEANUP_KILLED_PROCESSES=$CLEANUP_KILLED_PROCESSES"
         
         # Check if we found any leftover processes - this is an error in CI
         if [[ $CLEANUP_KILLED_PROCESSES -gt 0 ]]; then
@@ -567,7 +567,7 @@ while true; do
             CHILD_EXIT_CODE=125  # Special exit code for leftover processes
         fi
         
-        echo "[run_with_timeout] DEBUG: timeout path final exit code=$CHILD_EXIT_CODE"
+        # echo "[run_with_timeout] DEBUG: timeout path final exit code=$CHILD_EXIT_CODE"
         break
     fi
     
@@ -589,8 +589,8 @@ exec 3>&1
 exec 1>> /tmp/run_with_timeout_${CHILD_PID}.log 2>&1
 
 echo "[run_with_timeout] Stdout/stderr redirected to /tmp/run_with_timeout_${CHILD_PID}.log"
-echo "[run_with_timeout] DEBUG: entering post-redirect final cleanup block"
-echo "[run_with_timeout] DEBUG: final cleanup params: STORED_Pgid=$STORED_Pgid, STORED_SID=$STORED_SID"
+# echo "[run_with_timeout] DEBUG: entering post-redirect final cleanup block"
+# echo "[run_with_timeout] DEBUG: final cleanup params: STORED_Pgid=$STORED_Pgid, STORED_SID=$STORED_SID"
 
 # Flush any remaining output
 sync 2>/dev/null || true
@@ -599,21 +599,21 @@ sync 2>/dev/null || true
 sleep 0.5
 
 # Final orphan check (messages go to log file now)
-echo "[run_with_timeout] DEBUG: final_cleanup calling cleanup_all_processes"
+# echo "[run_with_timeout] DEBUG: final_cleanup calling cleanup_all_processes"
 cleanup_all_processes "$STORED_Pgid" "$STORED_SID" "true"
-echo "[run_with_timeout] DEBUG: final_cleanup after cleanup_all_processes: total_killed=$CLEANUP_KILLED_PROCESSES"
-echo "[run_with_timeout] DEBUG: final_cleanup calling kill_known_problem_processes"
+# echo "[run_with_timeout] DEBUG: final_cleanup after cleanup_all_processes: total_killed=$CLEANUP_KILLED_PROCESSES"
+# echo "[run_with_timeout] DEBUG: final_cleanup calling kill_known_problem_processes"
 kill_known_problem_processes
-echo "[run_with_timeout] DEBUG: final_cleanup after known_problem: total_killed=$CLEANUP_KILLED_PROCESSES"
+# echo "[run_with_timeout] DEBUG: final_cleanup after known_problem: total_killed=$CLEANUP_KILLED_PROCESSES"
 
 echo "[run_with_timeout] Final cleanup done, exiting with code $CHILD_EXIT_CODE"
 
-# Output full process list to original stdout for human review
-echo "[run_with_timeout] Process list at exit:" >&3
-if [[ $IS_WINDOWS -eq 1 ]]; then
-    tasklist >&3 2>/dev/null || true
-else
-    ps aux >&3 2>/dev/null || true
-fi
+# # Output full process list to original stdout for human review
+# echo "[run_with_timeout] Process list at exit:" >&3
+# if [[ $IS_WINDOWS -eq 1 ]]; then
+#     tasklist >&3 2>/dev/null || true
+# else
+#     ps aux >&3 2>/dev/null || true
+# fi
 
 exit $CHILD_EXIT_CODE
