@@ -23,6 +23,9 @@ def run_and_print(command, env=None, err="Command failed.", cwd=None):
         print(f"-> Error: {err}")
         exit(1)
 
+# cxx-qt needs a qmake binary, and does not accept a .bat file on Windows.
+# however, a bat file is what is offered for debug on vcpkg builds.
+# we compile a wrapper to act as a proxy to the bat file.
 QMAKE_DEBUG_WRAPPER_C = r"""
 #include <windows.h>
 #include <stdio.h>

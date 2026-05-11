@@ -71,10 +71,10 @@ env:
   # Defaults for push / PR / schedule triggers
   BUILD_WINDOWS_DEFAULT: 'true'
   TEST_WINDOWS_DEFAULT: 'true'
-  BUILD_LINUX_DEFAULT: 'false'
-  TEST_LINUX_DEFAULT: 'false'
-  BUILD_MACOS_DEFAULT: 'false'
-  TEST_MACOS_DEFAULT: 'false'
+  BUILD_LINUX_DEFAULT: 'true'
+  TEST_LINUX_DEFAULT: 'true'
+  BUILD_MACOS_DEFAULT: 'true'
+  TEST_MACOS_DEFAULT: 'true'
   VCPKG_FORCE_REBUILD_DEFAULT: 'false'
   CHECKPOINTS_DEFAULT: 'false'
   PI_CHECKPOINTS_DEFAULT: 'false'
@@ -89,13 +89,8 @@ env:
 jobs:
 
   ##############################################################
-  ## Setup job: resolve workflow inputs with fallback defaults
-  ## This runs first and exports boolean env vars that control
-  ## whether other jobs run. On push/PR/schedule, github.event.inputs
-  ## is empty, so the fallback defaults (matching workflow_dispatch
-  ## defaults) are used. On workflow_dispatch, user's choice wins.
+  ## Setup job: resolve build settings from workflow inputs
   ##############################################################
-
   setup:
     runs-on: ubuntu-latest
     outputs:
