@@ -50,6 +50,226 @@ format_time() {
     fi
 }
 
+# Helper: one-line description of a PID
+describe_pid() {
+    local pid="$1"
+    if [[ "$pid" == "$$" ]]; then
+        echo "self"
+        return
+    fi
+    if [[ $IS_WINDOWS -eq 1 ]]; then
+        powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter \"ProcessId=$pid\").CommandLine" 2>/dev/null | tr -d '\r' | head -c 200 || echo "PID $pid"
+    else
+        ps -p "$pid" -o comm=,args= 2>/dev/null | head -c 200 || echo "PID $pid"
+    fi
+}
+
+# Diagnostic: Linux
+diagnose_pid_linux() {
+    local pid="$1"
+    local label="${2:-leftover}"
+    if [[ "$pid" == "$$" ]]; then return; fi
+    if ! kill -0 "$pid" 2>/dev/null; then
+        echo "[run_with_timeout] === DIAGNOSIS: $label PID $pid (already gone) ==="
+        return
+    fi
+
+    echo "[run_with_timeout] === DIAGNOSIS: $label PID $pid ==="
+
+    # 1. Full process metadata
+    echo "[run_with_timeout]   PS metadata:"
+    ps -p "$pid" -o pid,ppid,pgid,sid,comm,args,etime,pcpu,pmem,stat,wchan:25 2>/dev/null || true
+
+    # 2. Exact executable path
+    if [[ -e "/proc/$pid/exe" ]]; then
+        echo "[run_with_timeout]   EXE: $(readlink -f /proc/$pid/exe 2>/dev/null || echo '?')"
+    fi
+
+    # 3. Command line (null-separated -> space-separated)
+    if [[ -e "/proc/$pid/cmdline" ]]; then
+        echo -n "[run_with_timeout]   CMDLINE: "
+        cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ' || echo "?"
+        echo
+    fi
+
+    # 4. Status (threads, context switches, state)
+    if [[ -e "/proc/$pid/status" ]]; then
+        echo "[run_with_timeout]   STATUS (filtered):"
+        grep -E '^(Name|State|Tgid|Pid|PPid|TracerPid|Threads|voluntary_ctxt_switches|nonvoluntary_ctxt_switches):' /proc/$pid/status 2>/dev/null || true
+    fi
+
+    # 5. Kernel stack
+    if [[ -e "/proc/$pid/stack" ]]; then
+        echo "[run_with_timeout]   KERNEL STACK:"
+        cat /proc/$pid/stack 2>/dev/null || true
+    fi
+
+    # 6. Wait channel
+    if [[ -e "/proc/$pid/wchan" ]]; then
+        echo "[run_with_timeout]   WCHAN: $(cat /proc/$pid/wchan 2>/dev/null || echo '?')"
+    fi
+
+    # 7. Open files
+    if command -v lsof &>/dev/null; then
+        echo "[run_with_timeout]   OPEN FILES (top 20):"
+        lsof -p "$pid" 2>/dev/null | head -20 || true
+    fi
+
+    # 8. Parent chain
+    echo -n "[run_with_timeout]   ANCESTRY: $pid"
+    local curr="$pid"
+    for _ in {1..10}; do
+        local ppid=""
+        ppid=$(awk '/^PPid:/{print $2}' /proc/$curr/status 2>/dev/null || true)
+        if [[ -z "$ppid" ]] || [[ "$ppid" == "0" ]]; then break; fi
+        local pcomm=""
+        pcomm=$(cat /proc/$ppid/comm 2>/dev/null || echo "?")
+        echo -n " -> $ppid($pcomm)"
+        curr="$ppid"
+    done
+    echo
+
+    # 9. Environment hints
+    if [[ -e "/proc/$pid/environ" ]]; then
+        echo "[run_with_timeout]   ENV (filtered):"
+        tr '\0' '\n' < /proc/$pid/environ 2>/dev/null | grep -iE 'rust|shoop|test|ci|home|path' | head -10 || true
+    fi
+
+    # 10. Userland stack trace (best effort, 8s timeout)
+    if command -v eu-stack &>/dev/null; then
+        echo "[run_with_timeout]   USER STACK (eu-stack):"
+        timeout 8 eu-stack -p "$pid" 2>/dev/null || echo "(eu-stack failed or no symbols)"
+    elif command -v gdb &>/dev/null; then
+        echo "[run_with_timeout]   USER STACK (gdb):"
+        timeout 8 gdb -batch -p "$pid" \
+            -ex "set pagination off" \
+            -ex "thread apply all bt" \
+            -ex "detach" \
+            -ex "quit" 2>/dev/null || echo "(gdb attach failed — need debug symbols?)"
+    fi
+
+    echo "[run_with_timeout] === END DIAGNOSIS PID $pid ==="
+}
+
+# Diagnostic: Windows
+diagnose_pid_windows() {
+    local pid="$1"
+    local label="${2:-leftover}"
+    if [[ "$pid" == "$$" ]]; then return; fi
+    echo "[run_with_timeout] === DIAGNOSIS: $label PID $pid ==="
+
+    # 1. WMI record (CommandLine is the discriminating field)
+    echo "[run_with_timeout]   WMI details:"
+    powershell -NoProfile -Command "
+        \$p = Get-CimInstance Win32_Process -Filter \"ProcessId=$pid\";
+        if (\$p) {
+            Write-Host \"    Name:           \$(\$p.Name)\";
+            Write-Host \"    ExecutablePath: \$(\$p.ExecutablePath)\";
+            Write-Host \"    CommandLine:    \$(\$p.CommandLine)\";
+            Write-Host \"    ParentProcessId:\$(\$p.ParentProcessId)\";
+            Write-Host \"    CreationDate:   \$(\$p.CreationDate)\";
+        } else {
+            Write-Host \"    (process already gone)\"
+        }
+    " 2>/dev/null | tr -d '\r' || true
+
+    # 2. Get-Process extras
+    echo "[run_with_timeout]   Get-Process details:"
+    powershell -NoProfile -Command "
+        try {
+            \$proc = Get-Process -Id $pid -ErrorAction Stop;
+            Write-Host \"    Responding: \$(\$proc.Responding)\";
+            Write-Host \"    Threads:    \$(\$proc.Threads.Count)\";
+            Write-Host \"    Handles:    \$(\$proc.Handles)\";
+            Write-Host \"    StartTime:  \$(\$proc.StartTime)\";
+            Write-Host \"    Path:       \$(\$proc.Path)\";
+            if (\$proc.Parent) {
+                Write-Host \"    Parent:     \$(\$proc.Parent.Id) \$(\$proc.Parent.ProcessName)\"
+            }
+        } catch {
+            Write-Host \"    (unable to query)\"
+        }
+    " 2>/dev/null | tr -d '\r' || true
+
+    # 3. Parent chain
+    echo "[run_with_timeout]   ANCESTRY:"
+    powershell -NoProfile -Command "
+        \$curr = $pid;
+        \$chain = @();
+        for (\$i=0; \$i -lt 10; \$i++) {
+            \$p = Get-CimInstance Win32_Process -Filter \"ProcessId=\$curr\";
+            if (-not \$p) { break; }
+            \$chain += \"\$curr(\$(\$p.Name))\";
+            if (\$p.ParentProcessId -eq 0 -or \$p.ParentProcessId -eq \$curr) { break; }
+            \$curr = \$p.ParentProcessId;
+        }
+        Write-Host \"    \$(\$chain -join ' -> ')\"
+    " 2>/dev/null | tr -d '\r' || true
+
+    # 4. Optional procdump
+    if command -v procdump &>/dev/null || [[ -x "/c/Program Files/Sysinternals/procdump.exe" ]]; then
+        local procdump_path="${PROCDUMP_PATH:-procdump}"
+        echo "[run_with_timeout]   Capturing minidump with procdump..."
+        "$procdump_path" -accepteula -ma "$pid" "/tmp/run_with_timeout_${pid}.dmp" 2>/dev/null || true
+    fi
+
+    echo "[run_with_timeout] === END DIAGNOSIS PID $pid ==="
+}
+
+# Unified diagnostic entry point
+diagnose_pid() {
+    local pid="$1"
+    local label="${2:-leftover}"
+    if [[ "$pid" == "$$" ]]; then return; fi
+    if [[ $IS_WINDOWS -eq 1 ]]; then
+        diagnose_pid_windows "$pid" "$label"
+    else
+        diagnose_pid_linux "$pid" "$label"
+    fi
+}
+
+# Dump process tree before cleanup
+dump_process_tree() {
+    local root_pid="${1:-}"
+    echo "[run_with_timeout] PROCESS TREE at timeout/exit:"
+    if [[ $IS_WINDOWS -eq 1 ]]; then
+        powershell -NoProfile -Command "
+            function Show-Tree(\$pid, \$indent) {
+                \$p = Get-CimInstance Win32_Process -Filter \"ProcessId=\$pid\";
+                if (-not \$p) { return; }
+                Write-Host (\"\$indent\$(\$p.ProcessId): \$(\$p.Name) \$(\$p.CommandLine)\");
+                Get-CimInstance Win32_Process | Where-Object { \$_.ParentProcessId -eq \$pid } | ForEach-Object {
+                    Show-Tree \$_.ProcessId \"\$indent  \"
+                }
+            }
+            if ($root_pid) {
+                Show-Tree $root_pid ''
+            }
+            Write-Host '';
+            Write-Host 'All relevant processes:';
+            Get-CimInstance Win32_Process | Where-Object {
+                \$n = \$_.Name.ToLower();
+                \$n -like '*shoop*' -or \$n -like '*tracy*' -or \$n -like '*crash*'
+            } | ForEach-Object {
+                Write-Host \"  \$(\$_.ProcessId): \$(\$_.Name) \$(\$_.CommandLine)\"
+            }
+        " 2>/dev/null | tr -d '\r' || true
+    else
+        if [[ -n "$root_pid" ]] && kill -0 "$root_pid" 2>/dev/null; then
+            if command -v pstree &>/dev/null; then
+                echo "[run_with_timeout]   pstree:"
+                pstree -p -a -l "$root_pid" 2>/dev/null || true
+            fi
+        fi
+        echo "[run_with_timeout]   Session processes (sid=${STORED_SID:-N/A}):"
+        if [[ -n "${STORED_SID:-}" ]]; then
+            ps -s "$STORED_SID" -o pid,ppid,pgid,sid,comm,args 2>/dev/null || true
+        fi
+        echo "[run_with_timeout]   Full ps listing:"
+        ps aux 2>/dev/null || true
+    fi
+}
+
 # Function to find processes by process group
 find_by_pgid() {
     local pgid="$1"
@@ -265,6 +485,12 @@ cleanup_all_processes() {
         
         echo "[run_with_timeout] Cleanup pass $pass: found processes: $all_procs"
         
+        # Diagnose before killing
+        for pid in $all_procs; do
+            if [[ "$pid" == "$$" ]]; then continue; fi
+            diagnose_pid "$pid" "pass${pass}"
+        done
+        
         # Track how many we kill in this pass
         local pass_killed=0
         
@@ -274,7 +500,7 @@ cleanup_all_processes() {
                 if [[ "$pid" == "$$" ]]; then
                     continue
                 fi
-                echo "[run_with_timeout] SIGKILL PID $pid"
+                echo "[run_with_timeout] SIGKILL PID $pid ($(describe_pid $pid))"
                 if [[ $IS_WINDOWS -eq 1 ]]; then
                     # echo "[run_with_timeout] DEBUG:   Stop-Process -Id $pid"
                     powershell -NoProfile -Command "Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue" 2>/dev/null || true
@@ -291,7 +517,7 @@ cleanup_all_processes() {
                 if [[ "$pid" == "$$" ]]; then
                     continue
                 fi
-                echo "[run_with_timeout] SIGTERM PID $pid"
+                echo "[run_with_timeout] SIGTERM PID $pid ($(describe_pid $pid))"
                 if [[ $IS_WINDOWS -eq 1 ]]; then
                     # echo "[run_with_timeout] DEBUG:   Stop-Process -Id $pid"
                     powershell -NoProfile -Command "Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue" 2>/dev/null || true
@@ -318,7 +544,7 @@ cleanup_all_processes() {
                 if [[ "$pid" == "$$" ]]; then
                     continue
                 fi
-                echo "[run_with_timeout] SIGKILL PID $pid"
+                echo "[run_with_timeout] SIGKILL PID $pid ($(describe_pid $pid))"
                 if [[ $IS_WINDOWS -eq 1 ]]; then
                     # echo "[run_with_timeout] DEBUG:   Stop-Process -Id $pid"
                     powershell -NoProfile -Command "Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue" 2>/dev/null || true
@@ -370,6 +596,9 @@ kill_known_problem_processes() {
             if [[ -n "$pids" ]]; then
                 echo "[run_with_timeout]   Found $img_name PIDs: $(echo "$pids" | tr '\n' ' ')"
                 for pid in $pids; do
+                    diagnose_pid "$pid" "known_problem"
+                done
+                for pid in $pids; do
                     ((CLEANUP_KILLED_PROCESSES++)) || true
                     CLEANUP_KILLED_PIDS="$CLEANUP_KILLED_PIDS $pid"
                 done
@@ -402,6 +631,9 @@ kill_known_problem_processes() {
             # echo "[run_with_timeout] DEBUG:   pgrep result: '$pids'"
             if [[ -n "$pids" ]]; then
                 for pid in $pids; do
+                    diagnose_pid "$pid" "known_problem"
+                done
+                for pid in $pids; do
                     ((CLEANUP_KILLED_PROCESSES++)) || true
                     CLEANUP_KILLED_PIDS="$CLEANUP_KILLED_PIDS $pid"
                 done
@@ -416,14 +648,17 @@ kill_known_problem_processes() {
                 pids=$(pgrep -x "$proc_name" 2>/dev/null || true)
                 # echo "[run_with_timeout] DEBUG:   pgrep result: '$pids'"
             fi
-            # echo "[run_with_timeout] DEBUG:   killall -9 '$proc_name'"
-            killall -9 "$proc_name" 2>/dev/null || true
             if [[ -n "$pids" ]]; then
+                for pid in $pids; do
+                    diagnose_pid "$pid" "known_problem"
+                done
                 for pid in $pids; do
                     ((CLEANUP_KILLED_PROCESSES++)) || true
                     CLEANUP_KILLED_PIDS="$CLEANUP_KILLED_PIDS $pid"
                 done
             fi
+            # echo "[run_with_timeout] DEBUG:   killall -9 '$proc_name'"
+            killall -9 "$proc_name" 2>/dev/null || true
         else
             : # echo "[run_with_timeout] DEBUG:   no pkill/killall available, skipping Unix name kill"
         fi
@@ -489,6 +724,11 @@ while true; do
         echo "[run_with_timeout] Cleaning up orphaned child processes..."
         # echo "[run_with_timeout] DEBUG: pre-cleanup state: CLEANUP_KILLED_PROCESSES=$CLEANUP_KILLED_PROCESSES"
         
+        # Dump process tree before killing
+        if [[ -n "${CHILD_PID:-}" ]]; then
+            dump_process_tree "$CHILD_PID"
+        fi
+        
         # Use stored pgid/sid for cleanup (child is already gone)
         cleanup_all_processes "$STORED_Pgid" "$STORED_SID" "true"
         
@@ -551,6 +791,11 @@ while true; do
         
         # Small delay before final cleanup
         sleep 1
+        
+        # Dump process tree before killing
+        if [[ -n "${CHILD_PID:-}" ]]; then
+            dump_process_tree "$CHILD_PID"
+        fi
         
         # echo "[run_with_timeout] DEBUG: pre-timeout-cleanup state: CLEANUP_KILLED_PROCESSES=$CLEANUP_KILLED_PROCESSES"
         # Final cleanup using stored pgid/sid
