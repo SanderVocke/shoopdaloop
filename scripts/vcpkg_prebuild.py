@@ -26,7 +26,9 @@ def run_and_print(command, env=None, err="Command failed.", cwd=None):
 def find_qmake(directory, is_debug_build):
     env_settings = dict()
 
-    win_qmake = 'qmake.debug.bat' if is_debug_build else 'qmake.exe'
+    # TODO: re-enable when .bat supported by cxx-qt
+    # win_qmake = 'qmake.debug.bat' if is_debug_build else 'qmake.exe'
+    win_qmake = 'qmake.exe'
     tail = os.path.join("Qt6", "bin", win_qmake) if sys.platform == "win32" else os.path.join("Qt6", "bin", "qmake")
     pattern = f'{directory}/**/{tail}'
     print(f"Looking for qmake at: {pattern}")
