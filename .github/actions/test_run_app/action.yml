@@ -16,6 +16,6 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: >
-        ${{ env.RUN_CMD_PREFIX }} ./scripts/run_with_timeout.sh 900 ${{ env.COMMAND_SHOOPDALOOP }} --quit-after=40 --backend=dummy --monkey-tester
+        ${{ env.RUN_CMD_PREFIX }} ./scripts/run_with_timeout.sh 900 ${{ env.COMMAND_SHOOPDALOOP }} --tracing --tracing-capture --tracing-capture-tool ${{ env.TRACY_CAPTURE_TOOL }} --quit-after=40 --backend=dummy --monkey-tester
 
 
