@@ -31,7 +31,9 @@ pub fn init_crashhandling(
         let path = std::path::PathBuf::from(dump_folder);
         if !path.exists() || !path.is_dir() {
             warn!("Dump folder {path:?} does not exist or is not a directory - crash handler not enabled.");
-            drop(format!("[CRASH_DBG] Dump folder missing/disabled, crash handler NOT enabled"));
+            drop(format!(
+                "[CRASH_DBG] Dump folder missing/disabled, crash handler NOT enabled"
+            ));
             return;
         }
     } else {
@@ -50,7 +52,9 @@ pub fn init_crashhandling(
     let handle = crashhandling_client(start_server_arg, on_crash_callback);
     let _ =
         CLIENTSIDE_HANDLE.get_or_init(|| -> Option<client::CrashHandlerHandle> { Some(handle) });
-    drop(format!("[CRASH_DBG] Client handle stored in CLIENTSIDE_HANDLE, thread is running"));
+    drop(format!(
+        "[CRASH_DBG] Client handle stored in CLIENTSIDE_HANDLE, thread is running"
+    ));
 }
 
 pub fn set_crash_json_partial(partial_json: JsonValue) {

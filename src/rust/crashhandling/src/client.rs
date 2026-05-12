@@ -7,31 +7,22 @@ use std::time::Duration;
 use common::logging::macros::*;
 shoop_log_unit!("CrashHandlingClient");
 
+/// On unix, store the server child PID for reaping using atexit
 #[cfg(unix)]
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
-
-/// Stores the server child PID so an atexit handler can reap it on process exit.
-/// The client thread may be killed before it can call wait(), so this ensures
-/// the zombie is always cleaned up.
 #[cfg(unix)]
 static SERVER_PID: AtomicI32 = AtomicI32::new(-1);
-
-/// Ensures the atexit handler is registered only once.
 #[cfg(unix)]
 static ATEXIT_REGISTERED: AtomicBool = AtomicBool::new(false);
 
-/// atexit handler: kills and reaps the server child process on normal exit.
-/// This is needed because the CrashHandlerHandle is stored in a OnceLock
-/// static that is never dropped, so the client thread's cleanup code never
-/// runs. The atexit handler ensures the server zombie is reaped.
 #[cfg(unix)]
 extern "C" fn reap_server_atexit() {
     let pid = SERVER_PID.load(Ordering::SeqCst);
     if pid <= 0 {
-        drop(format!("[CRASH_DBG] atexit: no server child to reap"));
+        debug!("atexit: no server child to reap");
         return;
     }
-    drop(format!("[CRASH_DBG] atexit: cleaning up server child pid={pid}"));
+    debug!("atexit: cleaning up server child pid={pid}");
 
     // Send SIGKILL first to ensure the server terminates promptly.
     // It may have already exited (clients disconnected), but kill()
@@ -44,15 +35,13 @@ extern "C" fn reap_server_atexit() {
     for attempt in 0..50 {
         match unsafe { libc::waitpid(pid, std::ptr::null_mut(), libc::WNOHANG) } {
             r if r == pid => {
-                drop(format!("[CRASH_DBG] atexit: reaped server child pid={pid} (attempt {attempt})"));
+                debug!("atexit: reaped server child pid={pid} (attempt {attempt})");
                 SERVER_PID.store(-1, Ordering::SeqCst);
                 return;
             }
             -1 => {
                 // waitpid failed — child may have already been reaped by the thread's try_wait()
-                drop(format!(
-                    "[CRASH_DBG] atexit: waitpid failed for pid={pid} (already reaped or error)"
-                ));
+                debug!("atexit: waitpid failed for pid={pid} (already reaped or error)");
                 SERVER_PID.store(-1, Ordering::SeqCst);
                 return;
             }
@@ -68,7 +57,7 @@ extern "C" fn reap_server_atexit() {
             }
         }
     }
-    drop(format!("[CRASH_DBG] atexit: failed to reap server child pid={pid} after 1s"));
+    debug!("atexit: failed to reap server child pid={pid} after 1s");
 }
 
 pub struct CrashHandlerHandle {
@@ -78,7 +67,9 @@ pub struct CrashHandlerHandle {
 
 impl Drop for CrashHandlerHandle {
     fn drop(&mut self) {
-        drop(format!("[CRASH_DBG] CrashHandlerHandle::drop() called — sender will be dropped, channel will disconnect"));
+        debug!(
+            "CrashHandlerHandle::drop() called — sender will be dropped, channel will disconnect"
+        );
     }
 }
 
@@ -93,16 +84,13 @@ pub fn crashhandling_client(
 
     let handle = thread::spawn(move || {
         #[cfg(unix)]
-        drop(format!(
-            "[CRASH_DBG] Client thread started: pid={}, ppid={}",
+        debug!(
+            "Client thread started: pid={}, ppid={}",
             std::process::id(),
             unsafe { libc::getppid() }
-        ));
+        );
         #[cfg(not(unix))]
-        drop(format!(
-            "[CRASH_DBG] Client thread started: pid={}",
-            std::process::id()
-        ));
+        debug!("Client thread started: pid={}", std::process::id());
         let mut server: Option<std::process::Child> = None;
 
         // Determine which socket to open
@@ -143,13 +131,13 @@ pub fn crashhandling_client(
         // Attempt to connect to the server
         let (client, mut _server) = loop {
             if let Ok(client) = Client::with_name(socket_name.as_str()) {
-                drop(format!("[CRASH_DBG] Connected to crash server on socket {socket_name}"));
+                debug!("Connected to crash server on socket {socket_name}");
                 if let Some(s) = server {
-                    drop(format!("[CRASH_DBG] Server child pid={}", s.id()));
+                    debug!("Server child pid={}", s.id());
                     break (client, Some(s));
                 } else {
                     // Connected to a pre-existing server (not spawned by us).
-                    drop(format!("[CRASH_DBG] Connected to external server (no child handle)"));
+                    debug!("Connected to external server (no child handle)");
                     break (client, server);
                 }
             }
@@ -174,21 +162,19 @@ pub fn crashhandling_client(
                 } {
                     Ok(child) => {
                         let pid = child.id();
-                        drop(format!(
-                            "[CRASH_DBG] Spawned server child: pid={}, cmd={:?} {:?}",
+                        debug!(
+                            "Spawned server child: pid={}, cmd={:?} {:?}",
                             pid,
                             exe,
                             [start_server_arg.as_str(), socket_name.as_str()]
-                        ));
+                        );
 
                         // Store the PID for the atexit handler to reap on process exit.
                         SERVER_PID.store(pid as i32, Ordering::SeqCst);
                         // Register atexit handler (once) to ensure the server child
                         // is reaped even though the OnceLock prevents Drop from running.
                         if !ATEXIT_REGISTERED.swap(true, Ordering::SeqCst) {
-                            drop(format!(
-                                "[CRASH_DBG] Registering atexit handler to reap server child"
-                            ));
+                            debug!("Registering atexit handler to reap server child");
                             unsafe {
                                 libc::atexit(reap_server_atexit);
                             }
@@ -198,7 +184,6 @@ pub fn crashhandling_client(
                     }
                     Err(e) => {
                         error!("unable to spawn server process: {}", e);
-                        drop(format!("[CRASH_DBG] Failed to spawn server child: {}", e));
                         None
                     }
                 };
@@ -213,18 +198,16 @@ pub fn crashhandling_client(
                 {
                     Ok(child) => {
                         let pid = child.id();
-                        drop(format!(
-                            "[CRASH_DBG] Spawned server child: pid={}, cmd={:?} {:?}",
+                        debug!(
+                            "Spawned server child: pid={}, cmd={:?} {:?}",
                             pid,
                             exe,
                             [start_server_arg.as_str(), socket_name.as_str()]
-                        ));
+                        );
                         // Store PID for atexit handler (macOS etc.)
                         SERVER_PID.store(pid as i32, Ordering::SeqCst);
                         if !ATEXIT_REGISTERED.swap(true, Ordering::SeqCst) {
-                            drop(format!(
-                                "[CRASH_DBG] Registering atexit handler to reap server child"
-                            ));
+                            debug!("Registering atexit handler to reap server child");
                             unsafe {
                                 libc::atexit(reap_server_atexit);
                             }
@@ -233,7 +216,6 @@ pub fn crashhandling_client(
                     }
                     Err(e) => {
                         error!("unable to spawn server process: {}", e);
-                        drop(format!("[CRASH_DBG] Failed to spawn server child: {}", e));
                         None
                     }
                 };
@@ -247,17 +229,16 @@ pub fn crashhandling_client(
                     .spawn()
                 {
                     Ok(child) => {
-                        drop(format!(
-                            "[CRASH_DBG] Spawned server child: pid={}, cmd={:?} {:?}",
+                        debug!(
+                            "Spawned server child: pid={}, cmd={:?} {:?}",
                             child.id(),
                             exe,
                             [start_server_arg.as_str(), socket_name.as_str()]
-                        ));
+                        );
                         Some(child)
                     }
                     Err(e) => {
                         error!("unable to spawn server process: {}", e);
-                        drop(format!("[CRASH_DBG] Failed to spawn server child: {}", e));
                         None
                     }
                 };
@@ -267,10 +248,10 @@ pub fn crashhandling_client(
             std::thread::sleep(Duration::from_millis(100));
         };
         // Attempt to connect to the server (client 2)
-        drop(format!("[CRASH_DBG] Connecting second client to server..."));
+        debug!("Connecting second client to server...");
         let client2 = loop {
             if let Ok(client) = Client::with_name(socket_name.as_str()) {
-                drop(format!("[CRASH_DBG] Second client connected"));
+                debug!("Second client connected");
                 break client;
             }
 
@@ -370,14 +351,14 @@ pub fn crashhandling_client(
         #[cfg(any(target_os = "linux", target_os = "android"))]
         {
             if let Some(s) = _server.as_mut() {
-                drop(format!("[CRASH_DBG] Setting ptracer to server pid={}", s.id()));
+                debug!("Setting ptracer to server pid={}", s.id());
                 _handler.set_ptracer(Some(s.id()));
             } else {
-                drop(format!("[CRASH_DBG] No server child handle, cannot set ptracer"));
+                debug!("No server child handle, cannot set ptracer");
             }
         }
 
-        drop(format!("[CRASH_DBG] Crash handling client fully initialized, entering message loop."));
+        debug!("Crash handling client fully initialized, entering message loop.");
 
         loop {
             match receiver.recv_timeout(std::time::Duration::from_millis(100)) {
@@ -396,23 +377,19 @@ pub fn crashhandling_client(
                 }
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                     // Received a signal to stop or sender was dropped
-                    drop(format!("[CRASH_DBG] Client thread: sender disconnected, stopping loop."));
+                    debug!("Client thread: sender disconnected, stopping loop.");
                     if let Some(s) = _server.as_mut() {
                         match s.try_wait() {
-                            Ok(Some(status)) => drop(format!(
-                                "[CRASH_DBG] Server child already exited with status: {}",
-                                status
-                            )),
-                            Ok(None) => drop(format!(
-                                "[CRASH_DBG] Server child is still running (pid={})",
-                                s.id()
-                            )),
+                            Ok(Some(status)) => {
+                                debug!("Server child already exited with status: {}", status)
+                            }
+                            Ok(None) => debug!("Server child is still running (pid={})", s.id()),
                             Err(e) => {
-                                drop(format!("[CRASH_DBG] Cannot check server child status: {}", e))
+                                debug!("Cannot check server child status: {}", e)
                             }
                         }
                     } else {
-                        drop(format!("[CRASH_DBG] No server child handle (external server)"));
+                        debug!("No server child handle (external server)");
                     }
                     info!("Periodic task thread: Stopping.");
                     break;
@@ -441,7 +418,10 @@ pub fn crashhandling_client(
                     if let Some(s) = _server.as_mut() {
                         match s.try_wait() {
                             Ok(Some(status)) => {
-                                drop(format!("[CRASH_DBG] Server child exited with status: {}, reaped in timeout loop", status));
+                                debug!(
+                                    "Server child exited with status: {}, reaped in timeout loop",
+                                    status
+                                );
                                 // Child has been reaped by try_wait; remove it
                                 // so we don't try to wait again later.
                                 #[cfg(unix)]
@@ -455,7 +435,7 @@ pub fn crashhandling_client(
                                 // Server still running, this is normal
                             }
                             Err(e) => {
-                                drop(format!("[CRASH_DBG] try_wait error in timeout loop: {e}"));
+                                debug!("try_wait error in timeout loop: {e}");
                                 #[cfg(unix)]
                                 SERVER_PID.store(-1, Ordering::SeqCst);
                                 _server = None;
@@ -469,43 +449,40 @@ pub fn crashhandling_client(
         // Thread is exiting — reap the server child process to prevent zombies.
         // This code is reached when the sender is dropped (Disconnected received).
         // This code is NOT reached on normal process exit (the OnceLock prevents Drop).
-        drop(format!("[CRASH_DBG] Client thread exiting, reaping server child if any."));
+        debug!("Client thread exiting, reaping server child if any.");
         if let Some(mut server) = _server {
-            drop(format!(
-                "[CRASH_DBG] Have server child handle (pid={}), attempting kill+wait...",
+            debug!(
+                "Have server child handle (pid={}), attempting kill+wait...",
                 server.id()
-            ));
+            );
             match server.try_wait() {
                 Ok(Some(status)) => {
-                    drop(format!(
-                        "[CRASH_DBG] Server child already exited with status: {}, no kill needed",
+                    debug!(
+                        "Server child already exited with status: {}, no kill needed",
                         status
-                    ));
+                    );
                 }
                 Ok(None) => {
-                    drop(format!("[CRASH_DBG] Server child still running, sending SIGKILL..."));
+                    debug!("Server child still running, sending SIGKILL...");
                     match server.kill() {
-                        Ok(()) => drop(format!("[CRASH_DBG] SIGKILL sent successfully")),
-                        Err(e) => drop(format!("[CRASH_DBG] Failed to send SIGKILL: {}", e)),
+                        Ok(()) => debug!("SIGKILL sent successfully"),
+                        Err(e) => debug!("Failed to send SIGKILL: {}", e),
                     }
                 }
                 Err(e) => {
-                    drop(format!("[CRASH_DBG] try_wait error (child already reaped?): {}", e));
+                    debug!("try_wait error (child already reaped?): {}", e);
                 }
             }
             match server.wait() {
-                Ok(status) => drop(format!(
-                    "[CRASH_DBG] Server child reaped successfully, exit status: {}",
-                    status
-                )),
-                Err(e) => drop(format!("[CRASH_DBG] Failed to wait on server child: {}", e)),
+                Ok(status) => debug!("Server child reaped successfully, exit status: {}", status),
+                Err(e) => debug!("Failed to wait on server child: {}", e),
             }
             #[cfg(unix)]
             SERVER_PID.store(-1, Ordering::SeqCst);
         } else {
-            drop(format!("[CRASH_DBG] No server child handle (external server), nothing to reap."));
+            debug!("No server child handle (external server), nothing to reap.");
         }
-        drop(format!("[CRASH_DBG] Client thread done."));
+        debug!("Client thread done.");
     });
 
     CrashHandlerHandle {
