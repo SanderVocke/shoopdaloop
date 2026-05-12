@@ -23,17 +23,12 @@ mod ffi {
         fn tracking_programs(self: &MidiStateTracker) -> bool;
         fn maybe_program_value(self: &MidiStateTracker, channel: u8) -> u8;
         fn tracking_anything(self: &MidiStateTracker) -> bool;
-        unsafe fn subscribe(self: &mut MidiStateTracker, subscriber: *mut MidiStateDiffTracker);
-        unsafe fn unsubscribe(self: &mut MidiStateTracker, subscriber: *mut MidiStateDiffTracker);
+        fn get_id(self: &MidiStateTracker) -> u64;
         fn state_as_messages_flat(self: &MidiStateTracker) -> Vec<u8>;
 
         type MidiStateDiffTracker;
         fn new_midi_state_diff_tracker() -> Box<MidiStateDiffTracker>;
-        unsafe fn reset(
-            self: &mut MidiStateDiffTracker,
-            a: *mut MidiStateTracker,
-            b: *mut MidiStateTracker,
-        );
+        fn reset(self: &mut MidiStateDiffTracker, a: &mut MidiStateTracker, b: &mut MidiStateTracker);
         fn add_diff(self: &mut MidiStateDiffTracker, d0: u8, d1: u8);
         fn delete_diff(self: &mut MidiStateDiffTracker, d0: u8, d1: u8);
         fn check_note(self: &mut MidiStateDiffTracker, channel: u8, note: u8);
@@ -43,9 +38,9 @@ mod ffi {
         fn check_pitch_wheel(self: &mut MidiStateDiffTracker, channel: u8);
         fn rescan_diff(self: &mut MidiStateDiffTracker);
         fn clear_diff(self: &mut MidiStateDiffTracker);
-        unsafe fn resolve_to(
-            self: &MidiStateDiffTracker,
-            to: *mut MidiStateTracker,
+        fn resolve_to_wrapper(
+            self: &mut MidiStateDiffTracker,
+            to: &mut MidiStateTracker,
             notes: bool,
             controls: bool,
             programs: bool,
@@ -64,15 +59,15 @@ fn new_midi_state_tracker(
 }
 
 fn copy_relevant_state(this: &mut MidiStateTracker, other: &MidiStateTracker) {
-    crate::midi_state_tracker::copy_relevant_state(this, other);
+    crate::midi_state_tracker::copy_relevant_state(this, other)
 }
 
 fn clear(this: &mut MidiStateTracker) {
-    crate::midi_state_tracker::clear(this);
+    crate::midi_state_tracker::clear(this)
 }
 
 unsafe fn process_msg_raw(this: &mut MidiStateTracker, data: *const u8) {
-    crate::midi_state_tracker::process_msg_raw(this, data);
+    crate::midi_state_tracker::process_msg_raw(this, data)
 }
 
 fn tracking_notes(this: &MidiStateTracker) -> bool {
@@ -115,12 +110,8 @@ fn tracking_anything(this: &MidiStateTracker) -> bool {
     crate::midi_state_tracker::tracking_anything(this)
 }
 
-unsafe fn subscribe(this: &mut MidiStateTracker, subscriber: *mut MidiStateDiffTracker) {
-    crate::midi_state_tracker::subscribe(this, subscriber);
-}
-
-unsafe fn unsubscribe(this: &mut MidiStateTracker, subscriber: *mut MidiStateDiffTracker) {
-    crate::midi_state_tracker::unsubscribe(this, subscriber);
+fn get_id(this: &MidiStateTracker) -> u64 {
+    crate::midi_state_tracker::get_id(this)
 }
 
 fn state_as_messages_flat(this: &MidiStateTracker) -> Vec<u8> {
@@ -131,60 +122,60 @@ fn new_midi_state_diff_tracker() -> Box<MidiStateDiffTracker> {
     crate::midi_state_diff_tracker::new_midi_state_diff_tracker()
 }
 
-unsafe fn reset(this: &mut MidiStateDiffTracker, a: *mut MidiStateTracker, b: *mut MidiStateTracker) {
-    crate::midi_state_diff_tracker::reset(this, a, b);
+fn reset(this: &mut MidiStateDiffTracker, a: &mut MidiStateTracker, b: &mut MidiStateTracker) {
+    this.reset(a, b)
 }
 
 fn add_diff(this: &mut MidiStateDiffTracker, d0: u8, d1: u8) {
-    crate::midi_state_diff_tracker::add_diff(this, d0, d1);
+    this.add_diff(d0, d1)
 }
 
 fn delete_diff(this: &mut MidiStateDiffTracker, d0: u8, d1: u8) {
-    crate::midi_state_diff_tracker::delete_diff(this, d0, d1);
+    this.delete_diff(d0, d1)
 }
 
 fn check_note(this: &mut MidiStateDiffTracker, channel: u8, note: u8) {
-    crate::midi_state_diff_tracker::check_note(this, channel, note);
+    this.check_note(channel, note)
 }
 
 fn check_cc(this: &mut MidiStateDiffTracker, channel: u8, controller: u8) {
-    crate::midi_state_diff_tracker::check_cc(this, channel, controller);
+    this.check_cc(channel, controller)
 }
 
 fn check_program(this: &mut MidiStateDiffTracker, channel: u8) {
-    crate::midi_state_diff_tracker::check_program(this, channel);
+    this.check_program(channel)
 }
 
 fn check_channel_pressure(this: &mut MidiStateDiffTracker, channel: u8) {
-    crate::midi_state_diff_tracker::check_channel_pressure(this, channel);
+    this.check_channel_pressure(channel)
 }
 
 fn check_pitch_wheel(this: &mut MidiStateDiffTracker, channel: u8) {
-    crate::midi_state_diff_tracker::check_pitch_wheel(this, channel);
+    this.check_pitch_wheel(channel)
 }
 
 fn rescan_diff(this: &mut MidiStateDiffTracker) {
-    crate::midi_state_diff_tracker::rescan_diff(this);
+    this.rescan_diff()
 }
 
 fn clear_diff(this: &mut MidiStateDiffTracker) {
-    crate::midi_state_diff_tracker::clear_diff(this);
+    this.clear_diff()
 }
 
-unsafe fn resolve_to(
-    this: &MidiStateDiffTracker,
-    to: *mut MidiStateTracker,
+fn resolve_to_wrapper(
+    this: &mut MidiStateDiffTracker,
+    to: &mut MidiStateTracker,
     notes: bool,
     controls: bool,
     programs: bool,
 ) -> Vec<u8> {
-    crate::midi_state_diff_tracker::resolve_to(this, to, notes, controls, programs)
+    this.resolve_to_wrapper(to, notes, controls, programs)
 }
 
 fn get_diff_flat(this: &MidiStateDiffTracker) -> Vec<u8> {
-    crate::midi_state_diff_tracker::get_diff_flat(this)
+    this.get_diff_flat()
 }
 
 fn set_diff_flat(this: &mut MidiStateDiffTracker, data: &[u8]) {
-    crate::midi_state_diff_tracker::set_diff_flat(this, data);
+    this.set_diff_flat(data)
 }

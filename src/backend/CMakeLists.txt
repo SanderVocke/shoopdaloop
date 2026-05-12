@@ -48,6 +48,10 @@ if(ENABLE_COVERAGE)
   append_coverage_compiler_flags()
 endif()
 
+# Option to use original C++ MIDI trackers instead of Rust-backed ones
+# For debugging the C++ -> Rust port
+option(USE_ORIGINAL_MIDI_TRACKERS "Use original C++ MidiStateTracker implementations instead of Rust-backed ones (for debugging)" OFF)
+
 option(BACKEND_JACK "Enable JACK audio backend" ON)
 if(BACKEND_JACK)
   add_compile_definitions(SHOOP_HAVE_BACKEND_JACK)
@@ -188,6 +192,23 @@ set(EXTERNAL_DEPS_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external_deps)
 
 # Backend lib
 file(GLOB INTERNAL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/*.cpp)
+
+# If using original C++ MIDI trackers, exclude the Rust-backed implementations
+if(USE_ORIGINAL_MIDI_TRACKERS)
+    list(FILTER INTERNAL_SOURCES EXCLUDE REGEX ".*MidiStateTracker\.cpp$")
+    list(FILTER INTERNAL_SOURCES EXCLUDE REGEX ".*MidiStateDiffTracker\.cpp$")
+    # Use the original implementations
+    list(APPEND INTERNAL_SOURCES 
+        ${CMAKE_CURRENT_SOURCE_DIR}/internal/MidiStateTracker.orig.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/internal/MidiStateDiffTracker.orig.cpp
+    )
+    add_compile_definitions(USE_ORIGINAL_MIDI_TRACKERS=1)
+else()
+    # Exclude the original implementation files when using Rust
+    list(FILTER INTERNAL_SOURCES EXCLUDE REGEX ".*\.orig\.cpp$")
+    add_compile_definitions(USE_ORIGINAL_MIDI_TRACKERS=0)
+endif()
+
 if (HAVE_LV2)
   file(GLOB LV2_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/lv2/*.cpp)
   list(APPEND INTERNAL_SOURCES ${LV2_SOURCES}

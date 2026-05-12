@@ -1,3 +1,5 @@
+#if !USE_ORIGINAL_MIDI_TRACKERS
+
 #include "MidiStateTracker.h"
 #include "MidiStateDiffTracker.h"
 
@@ -72,11 +74,13 @@ bool MidiStateTracker::tracking_anything() const {
 }
 
 void MidiStateTracker::subscribe(shoop_shared_ptr<MidiStateDiffTracker> s) {
-    if (s) m_rust->subscribe(s->raw_ptr());
+    // No-op: In the new channel-based architecture, subscriptions are
+    // managed internally by MidiStateDiffTracker::reset()
 }
 
 void MidiStateTracker::unsubscribe(shoop_shared_ptr<MidiStateDiffTracker> s) {
-    if (s) m_rust->unsubscribe(s->raw_ptr());
+    // No-op: In the new channel-based architecture, subscriptions are
+    // managed internally by MidiStateDiffTracker::reset()
 }
 
 std::vector<std::vector<uint8_t>> MidiStateTracker::state_as_messages() {
@@ -91,3 +95,5 @@ std::vector<std::vector<uint8_t>> MidiStateTracker::state_as_messages() {
     }
     return result;
 }
+
+#endif // !USE_ORIGINAL_MIDI_TRACKERS
