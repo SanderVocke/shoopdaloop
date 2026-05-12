@@ -171,8 +171,7 @@ pub fn crashhandling_client(
                             Ok(())
                         })
                         .spawn()
-                }
-                {
+                } {
                     Ok(child) => {
                         let pid = child.id();
                         eprintln!(
