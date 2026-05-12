@@ -52,9 +52,16 @@ fn try_create_server(name: &str) -> Option<Server> {
 
 pub fn crashhandling_server() {
     #[cfg(unix)]
-    eprintln!("[CRASH_DBG] Server process starting: pid={}, ppid={}", std::process::id(), unsafe { libc::getppid() });
+    eprintln!(
+        "[CRASH_DBG] Server process starting: pid={}, ppid={}",
+        std::process::id(),
+        unsafe { libc::getppid() }
+    );
     #[cfg(not(unix))]
-    eprintln!("[CRASH_DBG] Server process starting: pid={}", std::process::id());
+    eprintln!(
+        "[CRASH_DBG] Server process starting: pid={}",
+        std::process::id()
+    );
     debug!("Starting crash handling server");
 
     let socket_name = match try_get_socket_name() {
@@ -77,7 +84,7 @@ pub fn crashhandling_server() {
             std::process::exit(1);
         }
     };
-    eprintln!("[CRASH_DBG] Server: server object created, about to run()", );
+    eprintln!("[CRASH_DBG] Server: server object created, about to run()",);
 
     let ab = std::sync::atomic::AtomicBool::new(false);
     struct Handler {
@@ -248,7 +255,9 @@ pub fn crashhandling_server() {
 
         fn on_client_disconnected(&self, _num_clients: usize) -> minidumper::LoopAction {
             debug!("Client disconnected, # -> {_num_clients}");
-            eprintln!("[CRASH_DBG] Server: client disconnected, remaining clients = {_num_clients}");
+            eprintln!(
+                "[CRASH_DBG] Server: client disconnected, remaining clients = {_num_clients}"
+            );
             if _num_clients == 0 {
                 eprintln!("[CRASH_DBG] Server: no clients left, returning Exit");
                 minidumper::LoopAction::Exit
