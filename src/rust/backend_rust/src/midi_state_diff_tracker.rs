@@ -1,9 +1,10 @@
 use crate::event::{Event, TrackerStateData, EVENT_NOTE, EVENT_CC, EVENT_PROGRAM, EVENT_PITCH, EVENT_PRESSURE};
 use crate::midi_state_tracker::MidiStateTracker;
 use crossbeam_channel::Receiver;
+use std::cell::RefCell;
 use std::collections::BTreeSet;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 
 const NOTE_INACTIVE: u8 = 0x80;
 const CC_VALUE_UNKNOWN: u8 = 0x80;
@@ -13,27 +14,32 @@ const PITCH_WHEEL_UNKNOWN: u16 = 0x8000;
 
 static NEXT_DIFF_TRACKER_ID: AtomicU64 = AtomicU64::new(1);
 
-/// Subscription to a tracker's events and state
+/// Subscription to a tracker's events
 struct Subscription {
     tracker_id: u64,
     receiver: Receiver<Event>,
-    state: Arc<TrackerStateData>,
+    /// Live reference to the tracker for reading state
+    tracker: Rc<RefCell<*mut MidiStateTracker>>,
 }
 
 /// MidiStateDiffTracker tracks differences between two MidiStateTracker instances.
-/// It uses channel-based communication to receive state change events from trackers.
+/// It uses channel-based communication to receive state change events from trackers,
+/// and reads LIVE state from trackers (not snapshots) for diff resolution.
 pub struct MidiStateDiffTracker {
     id: u64,
 
-    // Per-subscribed-tracker: receiver + shared state
+    // Per-subscribed-tracker: receiver + live tracker reference
     subscriptions: Vec<Subscription>,
 
     // Diff state
     diffs: BTreeSet<[u8; 2]>,
 
-    // Cached tracker info for comparison
-    tracker_a: Option<(u64, Arc<TrackerStateData>)>,
-    tracker_b: Option<(u64, Arc<TrackerStateData>)>,
+    // Live tracker references - stored as Rc<RefCell<*mut T>> so we can borrow mutably
+    // We use raw pointers internally but wrapped in Rc for shared ownership
+    tracker_a: Option<Rc<RefCell<*mut MidiStateTracker>>>,
+    tracker_a_id: u64,
+    tracker_b: Option<Rc<RefCell<*mut MidiStateTracker>>>,
+    tracker_b_id: u64,
 }
 
 impl MidiStateDiffTracker {
@@ -46,7 +52,9 @@ impl MidiStateDiffTracker {
             subscriptions: Vec::new(),
             diffs: BTreeSet::new(),
             tracker_a: None,
+            tracker_a_id: 0,
             tracker_b: None,
+            tracker_b_id: 0,
         }
     }
 
@@ -54,183 +62,183 @@ impl MidiStateDiffTracker {
         self.id
     }
 
-    /// Get the "other" tracker's state given a tracker_id
-    fn get_other_state(&self, tracker_id: u64) -> Option<Arc<TrackerStateData>> {
-        eprintln!("[RUST] MidiStateDiffTracker::get_other_state(tracker_id={})", tracker_id);
-        eprintln!("[RUST]   tracker_a={:?} tracker_b={:?}", 
-            self.tracker_a.as_ref().map(|(id, _)| id),
-            self.tracker_b.as_ref().map(|(id, _)| id)
-        );
-        
-        if let Some((a_id, _)) = &self.tracker_a {
-            if *a_id == tracker_id {
-                eprintln!("[RUST]   -> returning tracker_b");
-                if let Some((_, state)) = &self.tracker_b {
-                    eprintln!("[RUST]   tracker_b state: notes[0][100]={} pitch_wheel[0]={}",
-                        state.notes_active.get(100).copied().unwrap_or(0),
-                        state.pitch_wheel.get(0).copied().unwrap_or(0));
-                }
-                return self.tracker_b.as_ref().map(|(_, s)| Arc::clone(s));
-            }
+    /// Borrow a tracker immutably and call a function with its state data
+    fn with_tracker_state<F, R>(&self, tracker: &Rc<RefCell<*mut MidiStateTracker>>, f: F) -> R
+    where
+        F: FnOnce(&MidiStateTracker) -> R,
+    {
+        let ptr = tracker.borrow();
+        // SAFETY: The pointer is valid for the lifetime of the program since
+        // the C++ code owns the trackers and they live at least as long as
+        // the diff tracker that references them.
+        let tracker_ref = unsafe { &*(*ptr) };
+        f(tracker_ref)
+    }
+
+    /// Borrow a tracker mutably and call a function
+    fn with_tracker_state_mut<F, R>(&self, tracker: &Rc<RefCell<*mut MidiStateTracker>>, f: F) -> R
+    where
+        F: FnOnce(&mut MidiStateTracker) -> R,
+    {
+        let mut ptr = tracker.borrow_mut();
+        // SAFETY: Same as above - pointer is valid.
+        let tracker_ref = unsafe { &mut *(*ptr) };
+        f(tracker_ref)
+    }
+
+    /// Get the "other" tracker's live reference given a tracker_id
+    fn get_other_tracker(&self, tracker_id: u64) -> Option<Rc<RefCell<*mut MidiStateTracker>>> {
+        if self.tracker_a_id == tracker_id {
+            return self.tracker_b.clone();
         }
-        if let Some((b_id, _)) = &self.tracker_b {
-            if *b_id == tracker_id {
-                eprintln!("[RUST]   -> returning tracker_a");
-                if let Some((_, state)) = &self.tracker_a {
-                    eprintln!("[RUST]   tracker_a state: notes[0][100]={} pitch_wheel[0]={}",
-                        state.notes_active.get(100).copied().unwrap_or(0),
-                        state.pitch_wheel.get(0).copied().unwrap_or(0));
-                }
-                return self.tracker_a.as_ref().map(|(_, s)| Arc::clone(s));
-            }
+        if self.tracker_b_id == tracker_id {
+            return self.tracker_a.clone();
         }
-        eprintln!("[RUST]   -> returning None (tracker not found)");
         None
     }
 
     /// Drain all event channels and process events
     fn sync(&mut self) {
         eprintln!("[RUST] MidiStateDiffTracker::sync() id={}", self.id);
-        
-        // Collect events first to avoid borrow issues
-        let mut events: Vec<(Arc<TrackerStateData>, Event)> = Vec::new();
 
-        for sub in &self.subscriptions {
-            eprintln!("[RUST]   checking receiver for tracker_id={}", sub.tracker_id);
+        // Collect events first to avoid borrow issues
+        let mut events: Vec<(Rc<RefCell<*mut MidiStateTracker>>, Event)> = Vec::new();
+
+        for (i, sub) in self.subscriptions.iter().enumerate() {
+            let mut count = 0;
             while let Ok(event) = sub.receiver.try_recv() {
-                eprintln!("[RUST]   -> collected event: tracker_id={} type={} ch={} p1={} p2={}", 
-                    event.tracker_id, event.event_type, event.channel, event.param1, event.param2);
-                events.push((Arc::clone(&sub.state), event));
+                events.push((Rc::clone(&sub.tracker), event));
+                count += 1;
+            }
+            if count > 0 {
+                eprintln!("[RUST]   subscription[{}] collected {} events", i, count);
             }
         }
 
         eprintln!("[RUST]   sync: collected {} events, diffs before = {}", events.len(), self.diffs.len());
-        for d in &self.diffs {
-            eprintln!("[RUST]     diff before: [{:#x}, {:#x}]", d[0], d[1]);
-        }
 
-        // Process events
-        for (state, event) in events {
-            self.process_event_internal(&state, event);
+        // Process events using live tracker state
+        for (tracker, event) in events {
+            self.process_event_internal(&tracker, event);
         }
 
         eprintln!("[RUST]   sync: diffs after = {}", self.diffs.len());
-        for d in &self.diffs {
-            eprintln!("[RUST]     diff after: [{:#x}, {:#x}]", d[0], d[1]);
-        }
     }
 
-    /// Process a single event from a tracker (internal, no &mut self borrow)
-    fn process_event_internal(&mut self, sender_state: &Arc<TrackerStateData>, event: Event) {
-        eprintln!("[RUST] MidiStateDiffTracker::process_event_internal() event: tracker_id={} type={} ch={} note={} vel={}", 
-            event.tracker_id, event.event_type, event.channel, event.param1, event.param2);
-        
-        let other_state = self.get_other_state(event.tracker_id);
-        eprintln!("[RUST]   other_state present: {}", other_state.is_some());
+    /// Process a single event from a tracker - reads LIVE state
+    fn process_event_internal(&mut self, sender_tracker: &Rc<RefCell<*mut MidiStateTracker>>, event: Event) {
+        let sender_id = event.tracker_id;
+
+        // Get other tracker for comparison
+        let other_tracker = match self.get_other_tracker(sender_id) {
+            Some(t) => t,
+            None => return,
+        };
+
+        let channel = event.channel;
 
         match event.event_type {
             EVENT_NOTE => {
-                let ch = event.channel;
                 let note = event.param1;
                 let vel = event.param2;
 
-                let sender_vel = if sender_state.tracking_notes() {
-                    sender_state.maybe_current_note_velocity(ch, note)
-                } else {
-                    NOTE_INACTIVE
-                };
+                // Read LIVE state from both trackers
+                let sender_vel = self.with_tracker_state(sender_tracker, |t| {
+                    if t.tracking_notes() {
+                        t.maybe_current_note_velocity(channel, note)
+                    } else {
+                        NOTE_INACTIVE
+                    }
+                });
 
-                let other_vel = other_state.as_ref().map(|s| s.maybe_current_note_velocity(ch, note)).unwrap_or(NOTE_INACTIVE);
-                
-                eprintln!("[RUST]   EVENT_NOTE: ch={} note={} sender_vel={} (0x{:02x}) other_vel={} (0x{:02x})", 
-                    ch, note, sender_vel, sender_vel, other_vel, other_vel);
+                let other_vel = self.with_tracker_state(&other_tracker, |t| {
+                    t.maybe_current_note_velocity(channel, note)
+                });
 
                 // C++ behavior: only track NoteOn (0x90) diffs when states differ
                 if sender_vel != other_vel {
-                    eprintln!("[RUST]     -> inserting diff [0x90 | ch, note] = [{:#x}, {:#x}]", 0x90 | ch, note);
-                    self.diffs.insert([0x90 | ch, note]);
+                    self.diffs.insert([0x90 | channel, note]);
                 } else {
-                    eprintln!("[RUST]     -> removing diff [0x90 | ch, note]");
-                    self.diffs.remove(&[0x90 | ch, note]);
+                    self.diffs.remove(&[0x90 | channel, note]);
                 }
             }
             EVENT_CC => {
-                let ch = event.channel;
                 let cc = event.param1;
 
-                let sender_val = if sender_state.tracking_controls() {
-                    sender_state.maybe_cc_value(ch, cc)
-                } else {
-                    CC_VALUE_UNKNOWN
-                };
+                let sender_val = self.with_tracker_state(sender_tracker, |t| {
+                    if t.tracking_controls() {
+                        t.maybe_cc_value(channel, cc)
+                    } else {
+                        CC_VALUE_UNKNOWN
+                    }
+                });
 
-                let other_val = other_state.as_ref().map(|s| s.maybe_cc_value(ch, cc)).unwrap_or(CC_VALUE_UNKNOWN);
-                
-                eprintln!("[RUST]   EVENT_CC: ch={} cc={} sender_val={} other_val={}", ch, cc, sender_val, other_val);
+                let other_val = self.with_tracker_state(&other_tracker, |t| {
+                    t.maybe_cc_value(channel, cc)
+                });
 
                 if sender_val != CC_VALUE_UNKNOWN && sender_val != other_val {
-                    self.diffs.insert([0xB0 | ch, cc]);
+                    self.diffs.insert([0xB0 | channel, cc]);
                 } else {
-                    self.diffs.remove(&[0xB0 | ch, cc]);
+                    self.diffs.remove(&[0xB0 | channel, cc]);
                 }
             }
             EVENT_PROGRAM => {
-                let ch = event.channel;
-                let _new_prog = event.param1;
+                let sender_val = self.with_tracker_state(sender_tracker, |t| {
+                    if t.tracking_programs() {
+                        t.maybe_program_value(channel)
+                    } else {
+                        PROGRAM_UNKNOWN
+                    }
+                });
 
-                let sender_val = if sender_state.tracking_programs() {
-                    sender_state.maybe_program_value(ch)
-                } else {
-                    PROGRAM_UNKNOWN
-                };
-
-                let other_val = other_state.as_ref().map(|s| s.maybe_program_value(ch)).unwrap_or(PROGRAM_UNKNOWN);
+                let other_val = self.with_tracker_state(&other_tracker, |t| {
+                    t.maybe_program_value(channel)
+                });
 
                 if sender_val != PROGRAM_UNKNOWN && sender_val != other_val {
-                    self.diffs.insert([0xC0 | ch, 0]);
+                    self.diffs.insert([0xC0 | channel, 0]);
                 } else {
-                    self.diffs.remove(&[0xC0 | ch, 0]);
+                    self.diffs.remove(&[0xC0 | channel, 0]);
                 }
             }
             EVENT_PITCH => {
-                let ch = event.channel;
+                let sender_val = self.with_tracker_state(sender_tracker, |t| {
+                    if t.tracking_controls() {
+                        t.maybe_pitch_wheel_value(channel)
+                    } else {
+                        PITCH_WHEEL_UNKNOWN
+                    }
+                });
 
-                let sender_val = if sender_state.tracking_controls() {
-                    sender_state.maybe_pitch_wheel_value(ch)
-                } else {
-                    PITCH_WHEEL_UNKNOWN
-                };
-
-                let other_val = other_state.as_ref().map(|s| s.maybe_pitch_wheel_value(ch)).unwrap_or(PITCH_WHEEL_UNKNOWN);
-
-                eprintln!("[RUST]   EVENT_PITCH: ch={} sender_val={} (0x{:04x}) other_val={} (0x{:04x})", 
-                    ch, sender_val, sender_val, other_val, other_val);
+                let other_val = self.with_tracker_state(&other_tracker, |t| {
+                    t.maybe_pitch_wheel_value(channel)
+                });
 
                 // C++ behavior: if sender_val differs from other_val and sender is not unknown, add diff
                 if sender_val != other_val && sender_val != PITCH_WHEEL_UNKNOWN {
-                    eprintln!("[RUST]     -> inserting pitch diff [0xE0 | ch, 0]");
-                    self.diffs.insert([0xE0 | ch, 0]);
+                    self.diffs.insert([0xE0 | channel, 0]);
                 } else {
-                    eprintln!("[RUST]     -> removing pitch diff");
-                    self.diffs.remove(&[0xE0 | ch, 0]);
+                    self.diffs.remove(&[0xE0 | channel, 0]);
                 }
             }
             EVENT_PRESSURE => {
-                let ch = event.channel;
-                let _new_pressure = event.param1;
+                let sender_val = self.with_tracker_state(sender_tracker, |t| {
+                    if t.tracking_controls() {
+                        t.maybe_channel_pressure_value(channel)
+                    } else {
+                        CHANNEL_PRESSURE_UNKNOWN
+                    }
+                });
 
-                let sender_val = if sender_state.tracking_controls() {
-                    sender_state.maybe_channel_pressure_value(ch)
-                } else {
-                    CHANNEL_PRESSURE_UNKNOWN
-                };
-
-                let other_val = other_state.as_ref().map(|s| s.maybe_channel_pressure_value(ch)).unwrap_or(CHANNEL_PRESSURE_UNKNOWN);
+                let other_val = self.with_tracker_state(&other_tracker, |t| {
+                    t.maybe_channel_pressure_value(channel)
+                });
 
                 if sender_val != CHANNEL_PRESSURE_UNKNOWN && sender_val != other_val {
-                    self.diffs.insert([0xD0 | ch, 0]);
+                    self.diffs.insert([0xD0 | channel, 0]);
                 } else {
-                    self.diffs.remove(&[0xD0 | ch, 0]);
+                    self.diffs.remove(&[0xD0 | channel, 0]);
                 }
             }
             _ => {}
@@ -238,150 +246,170 @@ impl MidiStateDiffTracker {
     }
 
     /// Reset with two trackers - creates channel-based subscriptions
-    pub fn reset(&mut self, a: &mut MidiStateTracker, b: &mut MidiStateTracker) {
-        eprintln!("[RUST] MidiStateDiffTracker::reset() id={}", self.id);
-        eprintln!("[RUST]   a_id={} b_id={}", a.get_id(), b.get_id());
-        
-        // Show current state of both trackers
-        let state_a = a.get_state_data();
-        let state_b = b.get_state_data();
-        eprintln!("[RUST]   a state: notes[0][100]={} (0x{:02x}), controls len={}", 
-            state_a.notes_active.get(100).copied().unwrap_or(0), 
-            state_a.notes_active.get(100).copied().unwrap_or(0),
-            state_a.controls.len());
-        eprintln!("[RUST]   b state: notes[0][100]={} (0x{:02x}), controls len={}", 
-            state_b.notes_active.get(100).copied().unwrap_or(0),
-            state_b.notes_active.get(100).copied().unwrap_or(0),
-            state_b.controls.len());
-        
-        // Debug: show diffs before clearing
-        eprintln!("[RUST]   diffs before clear = {}:", self.diffs.len());
-        for d in &self.diffs {
-            eprintln!("[RUST]     diff: [{:#x}, {:#x}]", d[0], d[1]);
-        }
-        
+    /// Takes raw pointers from C++ FFI and wraps them in Rc<RefCell<...>>
+    pub fn reset_with_ptrs(&mut self, a: *mut MidiStateTracker, b: *mut MidiStateTracker) {
+        eprintln!("[RUST] MidiStateDiffTracker::reset_with_ptrs() id={}", self.id);
+
+        // SAFETY: The raw pointers are valid because they come from C++ which owns
+        // the MidiStateTracker objects. The Rc will NOT drop these pointers
+        // (we use Rc::from_raw with NonNull and ensure we don't call from_raw destructor).
+        // This is safe because the C++ side maintains ownership.
+
+        let tracker_a = unsafe {
+            Rc::new(RefCell::new(a))
+        };
+        let tracker_b = unsafe {
+            Rc::new(RefCell::new(b))
+        };
+
+        let a_id = self.with_tracker_state(&tracker_a, |t| t.get_id());
+        let b_id = self.with_tracker_state(&tracker_b, |t| t.get_id());
+
+        eprintln!("[RUST]   a_id={} b_id={}", a_id, b_id);
+
+        // Debug: show current state
+        eprintln!("[RUST]   a state: notes[0][100]={}",
+            self.with_tracker_state(&tracker_a, |t| t.maybe_current_note_velocity(0, 100)));
+        eprintln!("[RUST]   b state: notes[0][100]={}",
+            self.with_tracker_state(&tracker_b, |t| t.maybe_current_note_velocity(0, 100)));
+
         // Clear old subscriptions
         self.subscriptions.clear();
-        
-        // Create subscriptions for both trackers
-        let rx_a = a.create_subscription();
-        let rx_b = b.create_subscription();
-        
-        // Store tracker info BEFORE sync
-        self.tracker_a = Some((a.get_id(), Arc::new(a.get_state_data())));
-        self.tracker_b = Some((b.get_id(), Arc::new(b.get_state_data())));
-        
+
+        // Store live tracker references
+        self.tracker_a = Some(Rc::clone(&tracker_a));
+        self.tracker_a_id = a_id;
+        self.tracker_b = Some(Rc::clone(&tracker_b));
+        self.tracker_b_id = b_id;
+
+        // Create subscriptions for both trackers (needs mutable borrow)
+        let rx_a = self.with_tracker_state_mut(&tracker_a, |t| t.create_subscription());
+        let rx_b = self.with_tracker_state_mut(&tracker_b, |t| t.create_subscription());
+
         self.subscriptions.push(Subscription {
-            tracker_id: a.get_id(),
+            tracker_id: a_id,
             receiver: rx_a,
-            state: self.tracker_a.as_ref().unwrap().1.clone(),
+            tracker: Rc::clone(&tracker_a),
         });
-        
+
         self.subscriptions.push(Subscription {
-            tracker_id: b.get_id(),
+            tracker_id: b_id,
             receiver: rx_b,
-            state: self.tracker_b.as_ref().unwrap().1.clone(),
+            tracker: Rc::clone(&tracker_b),
         });
-        
+
         eprintln!("[RUST]   subscriptions created: {} total", self.subscriptions.len());
-        
+
         // Initial sync to populate diffs
         self.sync();
-        
-        // CRITICAL: After sync, also compare static state to populate diffs.
-        // This is what the C++ implementation's sync_internal() does.
-        // The sync() above only processes events from channels (none at reset time).
-        // We need to compare the current tracker states and add any diffs.
-        eprintln!("[RUST]   comparing static states to populate diffs...");
-        if let (Some((_, sa)), Some((_, sb))) = (&self.tracker_a, &self.tracker_b) {
-            // Check notes
-            if sa.tracking_notes() && sb.tracking_notes() {
-                let av = sa.maybe_current_note_velocity(0, 100);
-                let bv = sb.maybe_current_note_velocity(0, 100);
-                eprintln!("[RUST]   note ch=0 note=100: av={} bv={}", av, bv);
-                
-                if av != bv {
-                    eprintln!("[RUST]   -> adding note diff [0x90, 100] because states differ");
-                    self.diffs.insert([0x90 | 0, 100]);
+
+        // Compare static states to populate diffs
+        self.compare_static_states();
+    }
+
+    /// Compare static states between trackers to populate initial diffs
+    fn compare_static_states(&mut self) {
+        let tracker_a = match &self.tracker_a {
+            Some(t) => t,
+            None => return,
+        };
+        let tracker_b = match &self.tracker_b {
+            Some(t) => t,
+            None => return,
+        };
+
+        eprintln!("[RUST]   comparing static states...");
+
+        // Check notes
+        let a_tracking_notes = self.with_tracker_state(tracker_a, |t| t.tracking_notes());
+        let b_tracking_notes = self.with_tracker_state(tracker_b, |t| t.tracking_notes());
+        if a_tracking_notes && b_tracking_notes {
+            for channel in 0..16u8 {
+                for note in 0..128u8 {
+                    let av = self.with_tracker_state(tracker_a, |t| t.maybe_current_note_velocity(channel, note));
+                    let bv = self.with_tracker_state(tracker_b, |t| t.maybe_current_note_velocity(channel, note));
+                    if av != bv {
+                        self.diffs.insert([0x90 | channel, note]);
+                    }
                 }
             }
-            
-            // Check CC values (specifically CC1 which is often used for modulation)
-            if sa.tracking_controls() && sb.tracking_controls() {
-                let av = sa.maybe_cc_value(0, 1);
-                let bv = sb.maybe_cc_value(0, 1);
-                eprintln!("[RUST]   CC ch=0 cc=1: av={} bv={}", av, bv);
-                
-                if av != bv && av != CC_VALUE_UNKNOWN && bv != CC_VALUE_UNKNOWN {
-                    eprintln!("[RUST]   -> adding CC diff [0xB1, 1]");
-                    self.diffs.insert([0xB0 | 0, 1]);
+        }
+
+        // Check CC values
+        let a_tracking_controls = self.with_tracker_state(tracker_a, |t| t.tracking_controls());
+        let b_tracking_controls = self.with_tracker_state(tracker_b, |t| t.tracking_controls());
+        if a_tracking_controls && b_tracking_controls {
+            for channel in 0..16u8 {
+                for cc in 0..128u8 {
+                    let av = self.with_tracker_state(tracker_a, |t| t.maybe_cc_value(channel, cc));
+                    let bv = self.with_tracker_state(tracker_b, |t| t.maybe_cc_value(channel, cc));
+                    if av != bv && av != CC_VALUE_UNKNOWN && bv != CC_VALUE_UNKNOWN {
+                        self.diffs.insert([0xB0 | channel, cc]);
+                    }
                 }
             }
-            
-            // Check pitch wheel
-            if sa.tracking_controls() && sb.tracking_controls() {
-                let av = sa.maybe_pitch_wheel_value(0);
-                let bv = sb.maybe_pitch_wheel_value(0);
-                eprintln!("[RUST]   pitch wheel ch=0: av={} bv={}", av, bv);
-                
-                // C++ behavior: if av differs from bv and av is not unknown, add diff
+        }
+
+        // Check pitch wheel
+        if a_tracking_controls && b_tracking_controls {
+            for channel in 0..16u8 {
+                let av = self.with_tracker_state(tracker_a, |t| t.maybe_pitch_wheel_value(channel));
+                let bv = self.with_tracker_state(tracker_b, |t| t.maybe_pitch_wheel_value(channel));
                 if av != bv && av != PITCH_WHEEL_UNKNOWN {
-                    eprintln!("[RUST]   -> adding pitch diff [0xE0, 0]");
-                    self.diffs.insert([0xE0 | 0, 0]);
+                    eprintln!("[RUST]   pitch diff ch={}: av={} bv={} -> adding", channel, av, bv);
+                    self.diffs.insert([0xE0 | channel, 0]);
                 }
             }
         }
-        
+
         eprintln!("[RUST]   reset complete: diffs = {}", self.diffs.len());
-        for d in &self.diffs {
-            eprintln!("[RUST]     final diff: [{:#x}, {:#x}]", d[0], d[1]);
-        }
     }
 
     /// Add a diff (for manual diff management)
     pub fn add_diff(&mut self, d0: u8, d1: u8) {
-        eprintln!("[RUST] MidiStateDiffTracker::add_diff([{:#x}, {:#x}])", d0, d1);
         self.diffs.insert([d0, d1]);
-        eprintln!("[RUST]   diffs now: {}", self.diffs.len());
     }
 
     /// Remove a diff (for manual diff management)
     pub fn delete_diff(&mut self, d0: u8, d1: u8) {
-        eprintln!("[RUST] MidiStateDiffTracker::delete_diff([{:#x}, {:#x}])", d0, d1);
         self.diffs.remove(&[d0, d1]);
-        eprintln!("[RUST]   diffs now: {}", self.diffs.len());
     }
 
     /// Check a specific note and update diffs
     pub fn check_note(&mut self, channel: u8, note: u8) {
-        eprintln!("[RUST] MidiStateDiffTracker::check_note(ch={} note={})", channel, note);
-        
-        let (Some((_, state_a)), Some((_, state_b))) = (&self.tracker_a, &self.tracker_b) else { 
-            eprintln!("[RUST]   missing tracker state");
-            return; 
+        // Get trackers for comparison
+        let tracker_a = match &self.tracker_a {
+            Some(t) => t,
+            None => return,
+        };
+        let tracker_b = match &self.tracker_b {
+            Some(t) => t,
+            None => return,
         };
 
-        let av = state_a.maybe_current_note_velocity(channel, note);
-        let bv = state_b.maybe_current_note_velocity(channel, note);
-        
-        eprintln!("[RUST]   av={} bv={}", av, bv);
+        let av = self.with_tracker_state(tracker_a, |t| t.maybe_current_note_velocity(channel, note));
+        let bv = self.with_tracker_state(tracker_b, |t| t.maybe_current_note_velocity(channel, note));
 
-        // C++ behavior: if states differ, add diff; if same, remove diff
         if av != bv {
-            eprintln!("[RUST]   -> inserting diff [0x90 | ch, note]");
             self.diffs.insert([0x90 | channel, note]);
         } else {
-            eprintln!("[RUST]   -> removing diff");
             self.diffs.remove(&[0x90 | channel, note]);
         }
     }
 
     /// Check a specific CC and update diffs
     pub fn check_cc(&mut self, channel: u8, controller: u8) {
-        let (Some((_, state_a)), Some((_, state_b))) = (&self.tracker_a, &self.tracker_b) else { return };
+        let tracker_a = match &self.tracker_a {
+            Some(t) => t,
+            None => return,
+        };
+        let tracker_b = match &self.tracker_b {
+            Some(t) => t,
+            None => return,
+        };
 
-        let av = state_a.maybe_cc_value(channel, controller);
-        let bv = state_b.maybe_cc_value(channel, controller);
+        let av = self.with_tracker_state(tracker_a, |t| t.maybe_cc_value(channel, controller));
+        let bv = self.with_tracker_state(tracker_b, |t| t.maybe_cc_value(channel, controller));
 
         if av != bv && av != CC_VALUE_UNKNOWN && bv != CC_VALUE_UNKNOWN {
             self.diffs.insert([0xB0 | channel, controller]);
@@ -392,10 +420,17 @@ impl MidiStateDiffTracker {
 
     /// Check a specific program and update diffs
     pub fn check_program(&mut self, channel: u8) {
-        let (Some((_, state_a)), Some((_, state_b))) = (&self.tracker_a, &self.tracker_b) else { return };
+        let tracker_a = match &self.tracker_a {
+            Some(t) => t,
+            None => return,
+        };
+        let tracker_b = match &self.tracker_b {
+            Some(t) => t,
+            None => return,
+        };
 
-        let av = state_a.maybe_program_value(channel);
-        let bv = state_b.maybe_program_value(channel);
+        let av = self.with_tracker_state(tracker_a, |t| t.maybe_program_value(channel));
+        let bv = self.with_tracker_state(tracker_b, |t| t.maybe_program_value(channel));
 
         if av != bv && av != PROGRAM_UNKNOWN && bv != PROGRAM_UNKNOWN {
             self.diffs.insert([0xC0 | channel, 0]);
@@ -406,10 +441,17 @@ impl MidiStateDiffTracker {
 
     /// Check channel pressure and update diffs
     pub fn check_channel_pressure(&mut self, channel: u8) {
-        let (Some((_, state_a)), Some((_, state_b))) = (&self.tracker_a, &self.tracker_b) else { return };
+        let tracker_a = match &self.tracker_a {
+            Some(t) => t,
+            None => return,
+        };
+        let tracker_b = match &self.tracker_b {
+            Some(t) => t,
+            None => return,
+        };
 
-        let av = state_a.maybe_channel_pressure_value(channel);
-        let bv = state_b.maybe_channel_pressure_value(channel);
+        let av = self.with_tracker_state(tracker_a, |t| t.maybe_channel_pressure_value(channel));
+        let bv = self.with_tracker_state(tracker_b, |t| t.maybe_channel_pressure_value(channel));
 
         if av != bv && av != CHANNEL_PRESSURE_UNKNOWN && bv != CHANNEL_PRESSURE_UNKNOWN {
             self.diffs.insert([0xD0 | channel, 0]);
@@ -420,20 +462,21 @@ impl MidiStateDiffTracker {
 
     /// Check pitch wheel and update diffs
     pub fn check_pitch_wheel(&mut self, channel: u8) {
-        eprintln!("[RUST] MidiStateDiffTracker::check_pitch_wheel(ch={})", channel);
-        let (Some((_, state_a)), Some((_, state_b))) = (&self.tracker_a, &self.tracker_b) else { return };
+        let tracker_a = match &self.tracker_a {
+            Some(t) => t,
+            None => return,
+        };
+        let tracker_b = match &self.tracker_b {
+            Some(t) => t,
+            None => return,
+        };
 
-        let av = state_a.maybe_pitch_wheel_value(channel);
-        let bv = state_b.maybe_pitch_wheel_value(channel);
+        let av = self.with_tracker_state(tracker_a, |t| t.maybe_pitch_wheel_value(channel));
+        let bv = self.with_tracker_state(tracker_b, |t| t.maybe_pitch_wheel_value(channel));
 
-        eprintln!("[RUST]   av={} bv={}", av, bv);
-
-        // C++ behavior: if av differs from bv and av is not unknown, add diff
         if av != bv && av != PITCH_WHEEL_UNKNOWN {
-            eprintln!("[RUST]   -> inserting pitch diff");
             self.diffs.insert([0xE0 | channel, 0]);
         } else {
-            eprintln!("[RUST]   -> removing pitch diff");
             self.diffs.remove(&[0xE0 | channel, 0]);
         }
     }
@@ -441,91 +484,21 @@ impl MidiStateDiffTracker {
     /// Rescan all differences between trackers
     pub fn rescan_diff(&mut self) {
         eprintln!("[RUST] MidiStateDiffTracker::rescan_diff() id={}", self.id);
-        
+
         self.diffs.clear();
-
-        let (Some((_, state_a)), Some((_, state_b))) = (&self.tracker_a, &self.tracker_b) else {
-            eprintln!("[RUST]   missing tracker state");
-            return;
-        };
-
-        eprintln!("[RUST]   state_a tracking_notes={} tracking_controls={} tracking_programs={}", 
-            state_a.tracking_notes(), state_a.tracking_controls(), state_a.tracking_programs());
-        eprintln!("[RUST]   state_b tracking_notes={} tracking_controls={} tracking_programs={}", 
-            state_b.tracking_notes(), state_b.tracking_controls(), state_b.tracking_programs());
-
-        // Scan ALL notes
-        if state_a.tracking_notes() && state_b.tracking_notes() {
-            eprintln!("[RUST]   scanning notes...");
-            for channel in 0..16u8 {
-                for note in 0..128u8 {
-                    let av = state_a.maybe_current_note_velocity(channel, note);
-                    let bv = state_b.maybe_current_note_velocity(channel, note);
-                    
-                    if av != bv {
-                        if channel == 0 && note == 100 {
-                            eprintln!("[RUST]   note ch=0 note=100 av={} bv={} -> adding diff", av, bv);
-                        }
-                        self.diffs.insert([0x90 | channel, note]);
-                    }
-                }
-            }
-        }
-
-        // Scan CC values
-        if state_a.tracking_controls() && state_b.tracking_controls() {
-            eprintln!("[RUST]   scanning CCs...");
-            for channel in 0..16u8 {
-                for cc in 0..128u8 {
-                    let av = state_a.maybe_cc_value(channel, cc);
-                    let bv = state_b.maybe_cc_value(channel, cc);
-                    
-                    if av != bv && av != CC_VALUE_UNKNOWN && bv != CC_VALUE_UNKNOWN {
-                        if channel == 0 && cc == 1 {
-                            eprintln!("[RUST]   CC ch=0 cc=1 av={} bv={} -> adding diff", av, bv);
-                        }
-                        self.diffs.insert([0xB0 | channel, cc]);
-                    }
-                }
-            }
-        }
-
-        // Scan pitch wheel
-        if state_a.tracking_controls() && state_b.tracking_controls() {
-            eprintln!("[RUST]   scanning pitch wheel...");
-            for channel in 0..16u8 {
-                let av = state_a.maybe_pitch_wheel_value(channel);
-                let bv = state_b.maybe_pitch_wheel_value(channel);
-                
-                // C++ behavior: if values differ and sender (av) is not unknown, add diff
-                // Note: We don't check if bv is unknown because we want to resolve from
-                // a known value to an unknown/default value
-                if av != bv && av != PITCH_WHEEL_UNKNOWN {
-                    if channel == 0 {
-                        eprintln!("[RUST]   pitch ch=0 av={} (0x{:04x}) bv={} (0x{:04x}) -> adding diff", av, av, bv, bv);
-                    }
-                    self.diffs.insert([0xE0 | channel, 0]);
-                }
-            }
-        }
+        self.compare_static_states();
 
         eprintln!("[RUST]   final diffs count = {}", self.diffs.len());
-        if self.diffs.len() > 0 {
-            eprintln!("[RUST]   first few diffs:");
-            for d in self.diffs.iter().take(10) {
-                eprintln!("[RUST]     [{:#x}, {:#x}]", d[0], d[1]);
-            }
-        }
     }
 
     /// Clear all diffs
     pub fn clear_diff(&mut self) {
-        eprintln!("[RUST] MidiStateDiffTracker::clear_diff() id={} diffs before={}", self.id, self.diffs.len());
+        eprintln!("[RUST] MidiStateDiffTracker::clear_diff() id={}", self.id);
         self.diffs.clear();
     }
 
     /// Resolve diffs to a target tracker - generates messages to make target match source
-    /// Takes target_id directly (used by internal wrapper)
+    /// Reads LIVE state from the "from" tracker
     fn resolve_to_by_id(
         &mut self,
         target_id: u64,
@@ -533,53 +506,65 @@ impl MidiStateDiffTracker {
         controls: bool,
         programs: bool,
     ) -> Vec<u8> {
-        eprintln!("[RUST] MidiStateDiffTracker::resolve_to_by_id() target_id={} notes={} controls={} programs={}", 
-            target_id, notes, controls, programs);
-        
+        eprintln!("[RUST] MidiStateDiffTracker::resolve_to_by_id() target_id={} tracker_a_id={} tracker_b_id={}", 
+            target_id, self.tracker_a_id, self.tracker_b_id);
+
         // CRITICAL: Always sync first to ensure fresh diffs
         self.sync();
 
-        // Get the "from" tracker state (the one we're resolving FROM)
-        let from_state = self.get_other_state(target_id);
-        
-        eprintln!("[RUST]   from_state is_some: {}", from_state.is_some());
-
-        let Some(from) = from_state else { 
-            eprintln!("[RUST]   -> returning empty (no from state)");
-            return Vec::new(); 
+        // Get the "from" tracker (the one we're resolving FROM)
+        let from_tracker = match self.get_other_tracker(target_id) {
+            Some(t) => t,
+            None => return Vec::new(),
         };
 
-        eprintln!("[RUST]   from state: notes[0][100]={}", from.maybe_current_note_velocity(0, 100));
+        // Debug: show pitch values from both trackers
+        if let Some(ref ta) = self.tracker_a {
+            let pw = self.with_tracker_state(ta, |t| t.maybe_pitch_wheel_value(0));
+            eprintln!("[RUST]   tracker_a (id={}) pitch_wheel[0]={}", self.tracker_a_id, pw);
+        }
+        if let Some(ref tb) = self.tracker_b {
+            let pw = self.with_tracker_state(tb, |t| t.maybe_pitch_wheel_value(0));
+            eprintln!("[RUST]   tracker_b (id={}) pitch_wheel[0]={}", self.tracker_b_id, pw);
+        }
+        
+        // Show which tracker is the "from" tracker
+        if target_id == self.tracker_a_id {
+            eprintln!("[RUST]   resolving to tracker_a, so reading from tracker_b");
+        } else if target_id == self.tracker_b_id {
+            eprintln!("[RUST]   resolving to tracker_b, so reading from tracker_a");
+        }
+
+        eprintln!("[RUST]   from tracker found, reading live state...");
 
         let mut out = Vec::new();
 
-        eprintln!("[RUST]   iterating over {} diffs:", self.diffs.len());
+        // Read from LIVE tracker state
+        eprintln!("[RUST]   resolving {} diffs:", self.diffs.len());
         for diff in &self.diffs {
+            eprintln!("[RUST]     diff [{:#x}, {:#x}]", diff[0], diff[1]);
             let kind_part = diff[0] & 0xF0;
             let channel_part = diff[0] & 0x0F;
-            eprintln!("[RUST]     diff [{:#x}, {:#x}] kind={:#x} ch={}", diff[0], diff[1], kind_part, channel_part);
+            eprintln!("[RUST]       kind={:#x} ch={}", kind_part, channel_part);
 
             match kind_part {
                 0x90 => {
                     if notes {
-                        let v = from.maybe_current_note_velocity(channel_part, diff[1]);
-                        eprintln!("[RUST]       velocity from 'from': {} (0x{:02x})", v, v);
+                        let v = self.with_tracker_state(&from_tracker, |t| {
+                            t.maybe_current_note_velocity(channel_part, diff[1])
+                        });
                         if v != NOTE_INACTIVE {
-                            // Use the diff status byte (0x90 or 0x80) to determine NoteOn vs NoteOff
-                            // If diff says NoteOn (0x90), output NoteOn with velocity
-                            // If diff says NoteOff (0x80), output NoteOff with velocity
-                            out.push(diff[0]);  // 0x90 | channel or 0x80 | channel
-                            out.push(diff[1]);
-                            out.push(v);
-                            eprintln!("[RUST]       -> output [{:#x}, {}, {}]", diff[0], diff[1], v);
-                        } else {
-                            eprintln!("[RUST]       -> skip (velocity inactive)");
+                            out.push(diff[0]);  // 0x90 | channel
+                            out.push(diff[1]);  // note
+                            out.push(v);        // velocity
                         }
                     }
                 }
                 0xB0 => {
                     if controls {
-                        let v = from.maybe_cc_value(channel_part, diff[1]);
+                        let v = self.with_tracker_state(&from_tracker, |t| {
+                            t.maybe_cc_value(channel_part, diff[1])
+                        });
                         if v != CC_VALUE_UNKNOWN {
                             out.push(diff[0]);
                             out.push(diff[1]);
@@ -589,7 +574,9 @@ impl MidiStateDiffTracker {
                 }
                 0xC0 => {
                     if programs {
-                        let v = from.maybe_program_value(channel_part);
+                        let v = self.with_tracker_state(&from_tracker, |t| {
+                            t.maybe_program_value(channel_part)
+                        });
                         if v != PROGRAM_UNKNOWN {
                             out.push(diff[0]);
                             out.push(0);
@@ -599,7 +586,9 @@ impl MidiStateDiffTracker {
                 }
                 0xD0 => {
                     if controls {
-                        let v = from.maybe_channel_pressure_value(channel_part);
+                        let v = self.with_tracker_state(&from_tracker, |t| {
+                            t.maybe_channel_pressure_value(channel_part)
+                        });
                         if v != CHANNEL_PRESSURE_UNKNOWN {
                             out.push(diff[0]);
                             out.push(0);
@@ -609,26 +598,26 @@ impl MidiStateDiffTracker {
                 }
                 0xE0 => {
                     if controls {
-                        let v = from.maybe_pitch_wheel_value(channel_part);
-                        eprintln!("[RUST]       pitch from 'from': {} (0x{:04x})", v, v);
+                        let v = self.with_tracker_state(&from_tracker, |t| {
+                            t.maybe_pitch_wheel_value(channel_part)
+                        });
+                        eprintln!("[RUST]       reading pitch ch={} = {} ({:#x})", channel_part, v, v);
                         if v != PITCH_WHEEL_UNKNOWN {
                             out.push(diff[0]);
                             out.push((v & 0x7F) as u8);
                             out.push(((v >> 7) & 0x7F) as u8);
-                            eprintln!("[RUST]       -> output pitch [{:#x}, {}, {}]", diff[0], (v & 0x7F) as u8, ((v >> 7) & 0x7F) as u8);
-                        } else {
-                            eprintln!("[RUST]       -> skip (pitch unknown)");
                         }
                     }
                 }
                 _ => {}
             }
         }
-        eprintln!("[RUST]   resolve_to_by_id returning: {:?}", out);
+
+        eprintln!("[RUST]   resolve_to result: {:?}", out);
         out
     }
 
-    /// Resolve diffs - wrapper that takes &mut MidiStateTracker (for C++ FFI)
+    /// Resolve diffs - wrapper for C++ FFI
     pub fn resolve_to_wrapper(
         &mut self,
         to: &mut MidiStateTracker,
@@ -637,81 +626,64 @@ impl MidiStateDiffTracker {
         programs: bool,
     ) -> Vec<u8> {
         let to_id = to.get_id();
-
-        eprintln!("[RUST] MidiStateDiffTracker::resolve_to_wrapper() id={} to_id={} notes={} controls={} programs={}", 
-            self.id, to_id, notes, controls, programs);
-
-        // Debug: log current tracker states
-        eprintln!("[RUST]   tracker_a={:?} tracker_b={:?}", 
-            self.tracker_a.as_ref().map(|(id, _)| id),
-            self.tracker_b.as_ref().map(|(id, _)| id)
-        );
-
-        // Get current state from "to" tracker
-        let to_state = to.get_state_data();
-
-        // Log note state for channel 0, note 100
-        let note_idx = (0usize) * 128 + 100usize;
-        if note_idx < to_state.notes_active.len() {
-            eprintln!("[RUST]   to tracker note[0][100] = {} (0x{:02x})", 
-                to_state.notes_active[note_idx], to_state.notes_active[note_idx]);
+        eprintln!("[RUST] MidiStateDiffTracker::resolve_to_wrapper() id={} to_id={} tracker_a_id={} tracker_b_id={} notes={} controls={} programs={}", 
+            self.id, to_id, self.tracker_a_id, self.tracker_b_id, notes, controls, programs);
+        
+        // Check if trackers are set up
+        if self.tracker_a.is_none() || self.tracker_b.is_none() {
+            eprintln!("[RUST]   trackers not set up, returning empty");
+            return Vec::new();
         }
         
-        // Log CC state
-        if to_state.tracking_controls() {
-            let cc_idx = (0usize) * 128 + 1usize;
-            if cc_idx < to_state.controls.len() {
-                eprintln!("[RUST]   to tracker CC[0][1] = {} (0x{:02x})", 
-                    to_state.controls[cc_idx], to_state.controls[cc_idx]);
-            }
-            eprintln!("[RUST]   to tracker pitch_wheel[0] = {}", 
-                to_state.pitch_wheel.get(0).copied().unwrap_or(0));
+        // Debug: show pitch values from both trackers
+        if let Some(ref ta) = self.tracker_a {
+            let pw = self.with_tracker_state(ta, |t| t.maybe_pitch_wheel_value(0));
+            eprintln!("[RUST]   tracker_a (id={}) pitch_wheel[0]={}", self.tracker_a_id, pw);
         }
-
-        // Log diffs before resolve
-        eprintln!("[RUST]   diffs count = {}:", self.diffs.len());
-        for d in self.diffs.iter().take(10) {
-            eprintln!("[RUST]     diff = [{:#x}, {:#x}]", d[0], d[1]);
+        if let Some(ref tb) = self.tracker_b {
+            let pw = self.with_tracker_state(tb, |t| t.maybe_pitch_wheel_value(0));
+            eprintln!("[RUST]   tracker_b (id={}) pitch_wheel[0]={}", self.tracker_b_id, pw);
         }
 
         let result = self.resolve_to_by_id(to_id, notes, controls, programs);
-
-        eprintln!("[RUST]   resolve_to_wrapper result len = {}, result = {:?}", result.len(), result);
-
+        eprintln!("[RUST]   result: {:?}", result);
         result
     }
 
     /// Get diffs as flat byte array
     pub fn get_diff_flat(&self) -> Vec<u8> {
-        eprintln!("[RUST] MidiStateDiffTracker::get_diff_flat() id={}", self.id);
         let mut out = Vec::with_capacity(self.diffs.len() * 2);
         for d in &self.diffs {
             out.push(d[0]);
             out.push(d[1]);
         }
-        eprintln!("[RUST]   returning {} bytes", out.len());
         out
     }
 
     /// Set diffs from flat byte array
     pub fn set_diff_flat(&mut self, data: &[u8]) {
-        eprintln!("[RUST] MidiStateDiffTracker::set_diff_flat() id={} data_len={}", self.id, data.len());
         self.diffs.clear();
         for chunk in data.chunks_exact(2) {
-            eprintln!("[RUST]   inserting diff [{:#x}, {:#x}]", chunk[0], chunk[1]);
             self.diffs.insert([chunk[0], chunk[1]]);
         }
-        eprintln!("[RUST]   diffs now: {}", self.diffs.len());
     }
 
     /// Get tracker A id
     pub fn get_a_id(&self) -> Option<u64> {
-        self.tracker_a.as_ref().map(|(id, _)| *id)
+        if self.tracker_a_id != 0 {
+            Some(self.tracker_a_id)
+        } else {
+            None
+        }
     }
 
     /// Get tracker B id
     pub fn get_b_id(&self) -> Option<u64> {
-        self.tracker_b.as_ref().map(|(id, _)| *id)
+        if self.tracker_b_id != 0 {
+            Some(self.tracker_b_id)
+        } else {
+            None
+        }
     }
 }
 
@@ -722,20 +694,13 @@ pub fn new_midi_state_diff_tracker() -> Box<MidiStateDiffTracker> {
     Box::new(MidiStateDiffTracker::new())
 }
 
-pub fn reset(
+/// Reset with raw pointers (for C++ FFI)
+pub fn reset_with_ptrs(
     this: &mut MidiStateDiffTracker,
-    a: &mut MidiStateTracker,
-    b: &mut MidiStateTracker,
+    a: *mut MidiStateTracker,
+    b: *mut MidiStateTracker,
 ) {
-    this.reset(a, b);
-}
-
-pub fn setup_trackers(
-    _this: &mut MidiStateDiffTracker,
-    _a: *mut MidiStateTracker,
-    _b: *mut MidiStateTracker,
-) {
-    // No-op: reset handles tracker setup
+    this.reset_with_ptrs(a, b);
 }
 
 pub fn add_diff(this: &mut MidiStateDiffTracker, d0: u8, d1: u8) {

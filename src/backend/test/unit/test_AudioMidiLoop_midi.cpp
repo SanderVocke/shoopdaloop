@@ -692,8 +692,10 @@ const StateTrackingTestcaseData pb_from_40th_to_50th = {
 
 
 TEST_CASE("AudioMidiLoop - Midi - CC State tracking", "[AudioMidiLoop][midi]") {
+    std::cerr << "[TEST] CC State tracking test starting..." << std::endl;
     StateTrackingTestcaseData testdata =
         GENERATE(pb_from_first_sample, pb_from_40th_to_50th);
+    std::cerr << "[TEST] Test case: playback_from=" << testdata.playback_from << " playback_to=" << testdata.playback_to << std::endl;
 
     AudioMidiLoop loop;
     loop.add_midi_channel(100000, ChannelMode_Direct, false);
@@ -754,13 +756,16 @@ TEST_CASE("AudioMidiLoop - Midi - CC State tracking", "[AudioMidiLoop][midi]") {
     // Now, play back the first 10 samples.
     MidiTestBuffer play_buf;
     uint32_t n_samples = testdata.playback_to - testdata.playback_from;
+    std::cerr << "[TEST] Starting playback: n_samples=" << n_samples << " from=" << testdata.playback_from << std::endl;
     loop.plan_transition(LoopMode_Playing, 0, false, false);
     chan.set_start_offset(testdata.start_offset);
     chan.set_pre_play_samples(testdata.n_preplay_samples);
     loop.set_position(testdata.playback_from, false);
     chan.PROC_set_playback_buffer(&play_buf, n_samples);
     loop.PROC_update_poi();
+    std::cerr << "[TEST] Calling PROC_process(" << n_samples << ")" << std::endl;
     loop.PROC_process(n_samples);
+    std::cerr << "[TEST] PROC_process returned, position=" << loop.get_position() << " mode=" << (int)loop.get_mode() << std::endl;
 
     CHECK(loop.get_position() == testdata.playback_to);
     CHECK(loop.get_mode() == LoopMode_Playing);

@@ -81,13 +81,18 @@ impl MidiStateTracker {
     fn notify(&self, event: Event) {
         // try_send: atomic CAS, returns immediately
         // If channel full, event dropped (acceptable - sync will rescan)
-        for sender in &self.subscribers {
-            let _ = sender.try_send(event);
+        eprintln!("[RUST] MidiStateTracker::notify() id={} n_subscribers={}", self.id, self.subscribers.len());
+        for (i, sender) in self.subscribers.iter().enumerate() {
+            let result = sender.try_send(event);
+            eprintln!("[RUST]   -> subscriber[{}] send result: {:?}", i, result);
         }
     }
 
     fn process_note_on(&mut self, channel: u8, note: u8, velocity: u8) {
+        eprintln!("[RUST] MidiStateTracker::process_note_on() id={} ch={} note={} vel={}", 
+                   self.id, channel, note, velocity);
         if self.notes_active.is_empty() {
+            eprintln!("[RUST]   -> ignored (not tracking notes)");
             return;
         }
         let idx = Self::note_index(channel, note);
@@ -109,7 +114,10 @@ impl MidiStateTracker {
     }
 
     fn process_note_off(&mut self, channel: u8, note: u8) {
+        eprintln!("[RUST] MidiStateTracker::process_note_off() id={} ch={} note={}", 
+                   self.id, channel, note);
         if self.notes_active.is_empty() {
+            eprintln!("[RUST]   -> ignored (not tracking notes)");
             return;
         }
         let idx = Self::note_index(channel, note);
@@ -175,10 +183,15 @@ impl MidiStateTracker {
             return;
         }
         let ch = (channel & 0x0F) as usize;
+        eprintln!("[RUST] MidiStateTracker::process_pitch_wheel() id={} ch={} value={} (0x{:04x}) -> was={}", 
+                   self.id, channel, value, value, self.pitch_wheel[ch]);
         if self.pitch_wheel[ch] != value {
             self.pitch_wheel[ch] = value;
             let event = Event::pitch(self.id, channel, value);
+            eprintln!("[RUST]   -> sending event");
             self.notify(event);
+        } else {
+            eprintln!("[RUST]   -> no change, not sending event");
         }
     }
 
@@ -238,6 +251,7 @@ impl MidiStateTracker {
         if data.is_empty() {
             return;
         }
+        eprintln!("[RUST] MidiStateTracker::process_msg() id={} data={:?}", self.id, data);
         if let Some(ch) = midi_helpers::is_all_notes_off_for_channel(data) {
             self.process_all_notes_off(ch as u8);
         } else if let Some(ch) = midi_helpers::is_all_sound_off_for_channel(data) {
@@ -313,8 +327,10 @@ impl MidiStateTracker {
     /// Create a subscription for a diff tracker
     /// Returns a receiver that will receive events from this tracker
     pub fn create_subscription(&mut self) -> crossbeam_channel::Receiver<Event> {
+        eprintln!("[RUST] MidiStateTracker::create_subscription() id={} current_subscribers={}", self.id, self.subscribers.len());
         let (tx, rx) = bounded::<Event>(EVENT_CHANNEL_CAPACITY);
         self.subscribers.push(tx);
+        eprintln!("[RUST]   -> created subscription, total now: {}", self.subscribers.len());
         rx
     }
 

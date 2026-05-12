@@ -12,11 +12,12 @@ MidiStateDiffTracker::MidiStateDiffTracker(SharedTracker a, SharedTracker b, Sta
 
 void MidiStateDiffTracker::reset(SharedTracker a, SharedTracker b, StateDiffTrackerAction action) {
     // Note: subscribe/unsubscribe are no-ops in the new channel-based architecture
-    // The Rust implementation handles subscriptions internally via reset()
+    // The Rust implementation handles subscriptions internally via reset_with_ptrs()
     m_a = a;
     m_b = b;
     if (m_a && m_b) {
-        m_rust->reset(*m_a->raw_ptr(), *m_b->raw_ptr());
+        // Pass raw pointers to Rust, which wraps them in Rc<RefCell<...>>
+        m_rust->reset_with_ptrs(m_a->raw_ptr(), m_b->raw_ptr());
     }
     switch (action) {
     case StateDiffTrackerAction::ScanDiff:
