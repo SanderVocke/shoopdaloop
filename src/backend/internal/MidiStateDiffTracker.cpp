@@ -11,19 +11,19 @@ MidiStateDiffTracker::MidiStateDiffTracker(SharedTracker a, SharedTracker b, Sta
 }
 
 void MidiStateDiffTracker::reset(SharedTracker a, SharedTracker b, StateDiffTrackerAction action) {
-    if (m_a) backend_rust::unsubscribe(*m_a->raw_ptr(), m_rust.get());
-    if (m_b) backend_rust::unsubscribe(*m_b->raw_ptr(), m_rust.get());
+    if (m_a) m_a->raw_ptr()->unsubscribe(m_rust.operator->());
+    if (m_b) m_b->raw_ptr()->unsubscribe(m_rust.operator->());
     m_a = a;
     m_b = b;
-    if (m_a) backend_rust::subscribe(*m_a->raw_ptr(), m_rust.get());
-    if (m_b) backend_rust::subscribe(*m_b->raw_ptr(), m_rust.get());
-    backend_rust::reset(*m_rust, m_a ? m_a->raw_ptr() : nullptr, m_b ? m_b->raw_ptr() : nullptr);
+    if (m_a) m_a->raw_ptr()->subscribe(m_rust.operator->());
+    if (m_b) m_b->raw_ptr()->subscribe(m_rust.operator->());
+    m_rust->reset(m_a ? m_a->raw_ptr() : nullptr, m_b ? m_b->raw_ptr() : nullptr);
     switch (action) {
     case StateDiffTrackerAction::ScanDiff:
-        backend_rust::rescan_diff(*m_rust);
+        m_rust->rescan_diff();
         break;
     case StateDiffTrackerAction::ClearDiff:
-        backend_rust::clear_diff(*m_rust);
+        m_rust->clear_diff();
         break;
     default:
         break;
@@ -31,44 +31,44 @@ void MidiStateDiffTracker::reset(SharedTracker a, SharedTracker b, StateDiffTrac
 }
 
 void MidiStateDiffTracker::add_diff(DifferingState a) {
-    backend_rust::add_diff(*m_rust, a[0], a[1]);
+    m_rust->add_diff(a[0], a[1]);
 }
 
 void MidiStateDiffTracker::delete_diff(DifferingState a) {
-    backend_rust::delete_diff(*m_rust, a[0], a[1]);
+    m_rust->delete_diff(a[0], a[1]);
 }
 
 void MidiStateDiffTracker::check_note(uint8_t channel, uint8_t note) {
-    backend_rust::check_note(*m_rust, channel, note);
+    m_rust->check_note(channel, note);
 }
 
 void MidiStateDiffTracker::check_cc(uint8_t channel, uint8_t controller) {
-    backend_rust::check_cc(*m_rust, channel, controller);
+    m_rust->check_cc(channel, controller);
 }
 
 void MidiStateDiffTracker::check_program(uint8_t channel) {
-    backend_rust::check_program(*m_rust, channel);
+    m_rust->check_program(channel);
 }
 
 void MidiStateDiffTracker::check_channel_pressure(uint8_t channel) {
-    backend_rust::check_channel_pressure(*m_rust, channel);
+    m_rust->check_channel_pressure(channel);
 }
 
 void MidiStateDiffTracker::check_pitch_wheel(uint8_t channel) {
-    backend_rust::check_pitch_wheel(*m_rust, channel);
+    m_rust->check_pitch_wheel(channel);
 }
 
 void MidiStateDiffTracker::rescan_diff() {
-    backend_rust::rescan_diff(*m_rust);
+    m_rust->rescan_diff();
 }
 
 void MidiStateDiffTracker::clear_diff() {
-    backend_rust::clear_diff(*m_rust);
+    m_rust->clear_diff();
 }
 
 void MidiStateDiffTracker::resolve_to(MidiStateTracker *to, std::function<void(uint32_t size, uint8_t *data)> put_message_cb,
     bool notes, bool controls, bool programs) {
-    auto data = backend_rust::resolve_to(*m_rust, to ? to->raw_ptr() : nullptr, notes, controls, programs);
+    auto data = m_rust->resolve_to(to ? to->raw_ptr() : nullptr, notes, controls, programs);
     for (size_t i = 0; i + 2 < data.size(); i += 3) {
         put_message_cb(3, const_cast<uint8_t*>(&data[i]));
     }
@@ -89,11 +89,11 @@ void MidiStateDiffTracker::set_diff(DiffSet const &diff) {
         data.push_back(d[0]);
         data.push_back(d[1]);
     }
-    backend_rust::set_diff_flat(*m_rust, rust::Slice<const uint8_t>(data.data(), data.size()));
+    m_rust->set_diff_flat(rust::Slice<const uint8_t>(data.data(), data.size()));
 }
 
 MidiStateDiffTracker::DiffSet MidiStateDiffTracker::get_diff() const {
-    auto data = backend_rust::get_diff_flat(*m_rust);
+    auto data = m_rust->get_diff_flat();
     DiffSet ds;
     ds.reserve(data.size() / 2);
     for (size_t i = 0; i + 1 < data.size(); i += 2) {

@@ -14,7 +14,7 @@ public:
     MidiStateTracker(bool track_notes, bool track_controls, bool track_programs);
 
     MidiStateTracker(const MidiStateTracker&) = delete;
-    MidiStateTracker& operator=(const MidiStateTracker&) = delete;
+    MidiStateTracker& operator=(const MidiStateTracker& other);
 
     void copy_relevant_state(MidiStateTracker const &other);
     void clear();
@@ -33,6 +33,6 @@ public:
     void unsubscribe(shoop_shared_ptr<MidiStateDiffTracker> s);
     std::vector<std::vector<uint8_t>> state_as_messages();
 
-    backend_rust::MidiStateTracker* raw_ptr() { return m_rust.get(); }
-    backend_rust::MidiStateTracker const* raw_ptr() const { return m_rust.get(); }
+    backend_rust::MidiStateTracker* raw_ptr() { return m_rust.operator->(); }
+    backend_rust::MidiStateTracker const* raw_ptr() const { return m_rust.operator->(); }
 };

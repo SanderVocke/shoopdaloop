@@ -44,4 +44,7 @@ public:
     DiffSet get_diff() const;
     SharedTracker a() const;
     SharedTracker b() const;
+
+    backend_rust::MidiStateDiffTracker* raw_ptr() { return m_rust.operator->(); }
+    backend_rust::MidiStateDiffTracker const* raw_ptr() const { return m_rust.operator->(); }
 };
