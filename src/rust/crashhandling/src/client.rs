@@ -116,7 +116,7 @@ pub fn crashhandling_client(
             let exe =
                 std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("shoopdaloop"));
 
-            server = match std::process::Command::new(exe)
+            server = match std::process::Command::new(&exe)
                 .arg(start_server_arg.clone())
                 .arg(socket_name.as_str())
                 .spawn()
