@@ -51,15 +51,30 @@ fn try_create_server(name: &str) -> Option<Server> {
 }
 
 pub fn crashhandling_server() {
+    #[cfg(unix)]
+    drop(format!(
+        "[CRASH_DBG] Server process starting: pid={}, ppid={}",
+        std::process::id(),
+        unsafe { libc::getppid() }
+    ));
+    #[cfg(not(unix))]
+    drop(format!(
+        "[CRASH_DBG] Server process starting: pid={}",
+        std::process::id()
+    ));
     debug!("Starting crash handling server");
 
     let socket_name = match try_get_socket_name() {
         Some(s) => s,
         None => {
             error!("no socket name provided");
+            drop(format!(
+                "[CRASH_DBG] Server: no socket name provided, exiting with code 1"
+            ));
             std::process::exit(1);
         }
     };
+    drop(format!("[CRASH_DBG] Server: socket name = {socket_name}"));
 
     debug!("Server: crash handling socket: {socket_name}");
 
@@ -67,9 +82,15 @@ pub fn crashhandling_server() {
         Some(s) => s,
         None => {
             error!("failed to create crash handling server");
+            drop(format!(
+                "[CRASH_DBG] Server: failed to create server, exiting with code 1"
+            ));
             std::process::exit(1);
         }
     };
+    drop(format!(
+        "[CRASH_DBG] Server: server object created, about to run()",
+    ));
 
     let ab = std::sync::atomic::AtomicBool::new(false);
     struct Handler {
@@ -240,7 +261,13 @@ pub fn crashhandling_server() {
 
         fn on_client_disconnected(&self, _num_clients: usize) -> minidumper::LoopAction {
             debug!("Client disconnected, # -> {_num_clients}");
+            drop(format!(
+                "[CRASH_DBG] Server: client disconnected, remaining clients = {_num_clients}"
+            ));
             if _num_clients == 0 {
+                drop(format!(
+                    "[CRASH_DBG] Server: no clients left, returning Exit"
+                ));
                 minidumper::LoopAction::Exit
             } else {
                 minidumper::LoopAction::Continue
@@ -249,6 +276,9 @@ pub fn crashhandling_server() {
 
         fn on_client_connected(&self, _num_clients: usize) -> minidumper::LoopAction {
             debug!("Client connected, # -> {_num_clients}");
+            drop(format!(
+                "[CRASH_DBG] Server: client connected, total clients = {_num_clients}"
+            ));
             minidumper::LoopAction::Continue
         }
     }
@@ -281,10 +311,16 @@ pub fn crashhandling_server() {
 
     if let Err(e) = result {
         error!("failed to run server: {}", e);
+        drop(format!(
+            "[CRASH_DBG] Server: run() failed: {e}, exiting with code 1"
+        ));
         std::process::exit(1);
     }
 
     // ensure that we will exit
+    drop(format!(
+        "[CRASH_DBG] Server: run() completed normally, about to exit(0)"
+    ));
     #[cfg(target_os = "windows")]
     watchdog::notify(Duration::from_millis(3000));
     std::process::exit(0);
