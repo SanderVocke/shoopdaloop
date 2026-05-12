@@ -65,7 +65,6 @@ fn main_impl() -> Result<(), anyhow::Error> {
                 },
             )
             // Force cmake rebuild
-            .define("USE_ORIGINAL_MIDI_TRACKERS", "OFF")
             .define("SHOOP_FORCE_REBUILD", "v4");
         let _ = cmake_config_mut.build();
     }
