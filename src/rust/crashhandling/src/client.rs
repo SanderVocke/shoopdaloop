@@ -32,7 +32,7 @@ pub fn crashhandling_client(
         eprintln!("[CRASH_DBG] Client thread started: pid={}, ppid={}", std::process::id(), unsafe { libc::getppid() });
         #[cfg(not(unix))]
         eprintln!("[CRASH_DBG] Client thread started: pid={}", std::process::id());
-        let mut server = None;
+        let mut server: Option<std::process::Child> = None;
 
         // Determine which socket to open
         let socket_name: String = if cfg!(target_os = "linux") {
