@@ -620,6 +620,7 @@ dependencies = [
  "common",
  "crash-handler",
  "ctor",
+ "libc",
  "log",
  "minidumper",
  "once_cell",
@@ -2285,6 +2286,7 @@ dependencies = [
 [[package]]
 name = "qt-build-utils"
 version = "0.8.1"
+source = "git+https://github.com/SanderVocke/cxx-qt.git?branch=v081_windows_debug#0840cda700f550131888b420f1d077a59fd68aa7"
 dependencies = [
  "anyhow",
  "cc",

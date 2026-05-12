@@ -265,8 +265,6 @@ dump_process_tree() {
         if [[ -n "${STORED_SID:-}" ]]; then
             ps -s "$STORED_SID" -o pid,ppid,pgid,sid,comm,args 2>/dev/null || true
         fi
-        echo "[run_with_timeout]   Full ps listing:"
-        ps aux 2>/dev/null || true
     fi
 }
 
@@ -485,12 +483,6 @@ cleanup_all_processes() {
         
         echo "[run_with_timeout] Cleanup pass $pass: found processes: $all_procs"
         
-        # Diagnose before killing
-        for pid in $all_procs; do
-            if [[ "$pid" == "$$" ]]; then continue; fi
-            diagnose_pid "$pid" "pass${pass}"
-        done
-        
         # Track how many we kill in this pass
         local pass_killed=0
         
@@ -596,9 +588,6 @@ kill_known_problem_processes() {
             if [[ -n "$pids" ]]; then
                 echo "[run_with_timeout]   Found $img_name PIDs: $(echo "$pids" | tr '\n' ' ')"
                 for pid in $pids; do
-                    diagnose_pid "$pid" "known_problem"
-                done
-                for pid in $pids; do
                     ((CLEANUP_KILLED_PROCESSES++)) || true
                     CLEANUP_KILLED_PIDS="$CLEANUP_KILLED_PIDS $pid"
                 done
@@ -631,9 +620,6 @@ kill_known_problem_processes() {
             # echo "[run_with_timeout] DEBUG:   pgrep result: '$pids'"
             if [[ -n "$pids" ]]; then
                 for pid in $pids; do
-                    diagnose_pid "$pid" "known_problem"
-                done
-                for pid in $pids; do
                     ((CLEANUP_KILLED_PROCESSES++)) || true
                     CLEANUP_KILLED_PIDS="$CLEANUP_KILLED_PIDS $pid"
                 done
@@ -649,9 +635,6 @@ kill_known_problem_processes() {
                 # echo "[run_with_timeout] DEBUG:   pgrep result: '$pids'"
             fi
             if [[ -n "$pids" ]]; then
-                for pid in $pids; do
-                    diagnose_pid "$pid" "known_problem"
-                done
                 for pid in $pids; do
                     ((CLEANUP_KILLED_PROCESSES++)) || true
                     CLEANUP_KILLED_PIDS="$CLEANUP_KILLED_PIDS $pid"
