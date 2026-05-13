@@ -66,39 +66,13 @@ runs:
     run: |
       echo "RUSTFLAGS=$RUSTFLAGS -Dwarnings" | tee -a $GITHUB_ENV
 
-  - name: Debug C++ compiler info before build
-    if: always()
-    shell: wrap-shell {0}
-    run: |
-      echo "==== Pre-build compiler debug ===="
-      which c++ && c++ --version || true
-      which clang++ && clang++ --version || true
-      env | grep -E '^(RUST|CARGO|CC|CXX|CFLAGS|CXXFLAGS)' | sort
-      echo "==== End pre-build compiler debug ===="
-
   - name: Build main packages
     if: always()
     shell: wrap-shell {0}
     run: |
       set -x
       . ${BUILD_ENV_FILE}
-      cargo build -vv ${CARGO_BUILD_FLAGS}
-
-  - name: Debug generated CXX files on failure
-    if: failure()
-    shell: wrap-shell {0}
-    run: |
-      echo "==== Build failed - dumping generated CXX bridge files ===="
-      find target -path '*/cxxbridge/sources/*' -name '*.rs.cc' | head -20 | while read f; do
-        echo "--- $f ---"
-        head -200 "$f"
-      done
-      echo "==== Dumping full failing source if known ===="
-      find target -name 'midi_state_diff_tracker_cxx.rs.cc' -o -name 'midi_state_tracker_cxx.rs.cc' | while read f; do
-        echo "--- FULL $f ---"
-        cat "$f"
-      done
-      echo "==== End debug dump ===="
+      cargo build ${CARGO_BUILD_FLAGS}
 
   - name: Build test code
     if: always()
