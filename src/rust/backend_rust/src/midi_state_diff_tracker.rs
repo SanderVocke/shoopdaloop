@@ -73,10 +73,6 @@ impl MidiStateDiffTracker {
 
     // ---- flat diff set helpers (no allocations on audio thread) ----
 
-    fn diffs_contains(&self, key: &[u8; 2]) -> bool {
-        self.diffs.binary_search(key).is_ok()
-    }
-
     fn diffs_insert(&mut self, key: [u8; 2]) {
         match self.diffs.binary_search(&key) {
             Ok(_) => {} // already present
@@ -105,22 +101,6 @@ impl MidiStateDiffTracker {
             None
         } else {
             Some(unsafe { &*self.tracker_b })
-        }
-    }
-
-    fn tracker_a_mut(&mut self) -> Option<&mut MidiStateTracker> {
-        if self.tracker_a.is_null() {
-            None
-        } else {
-            Some(unsafe { &mut *self.tracker_a })
-        }
-    }
-
-    fn tracker_b_mut(&mut self) -> Option<&mut MidiStateTracker> {
-        if self.tracker_b.is_null() {
-            None
-        } else {
-            Some(unsafe { &mut *self.tracker_b })
         }
     }
 

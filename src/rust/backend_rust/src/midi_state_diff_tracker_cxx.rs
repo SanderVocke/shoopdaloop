@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::midi_state_diff_tracker::MidiStateDiffTracker;
 use crate::midi_state_tracker::MidiStateTracker;
 
