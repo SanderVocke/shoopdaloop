@@ -53,8 +53,7 @@ TEST_CASE("MidiStorage - Round-trip", "[MidiStorage]") {
         Msg(1, 3, {3, 4, 5}),
         Msg(10, 1, {10})
     };
-    uint32_t total_data_size = 0;
-    for(auto &i : in) { total_data_size += Storage::Elem::total_size_of(i.data.size()); }
+    uint32_t total_data_size = in.size() * sizeof(Storage::Elem);
 
     auto s = shoop_make_shared<Storage>(total_data_size);
 
@@ -98,9 +97,7 @@ TEST_CASE("MidiStorage - prepend", "[MidiStorage]") {
         Msg(10, 3, {0, 1, 2}),
         Msg(11, 3, {3, 4, 5})
     };
-    uint32_t total_data_size = 0;
-    for(auto &i : in) { total_data_size += Storage::Elem::total_size_of(i.data.size()); }
-    for(auto &i : prepend) { total_data_size += Storage::Elem::total_size_of(i.data.size()); }
+    uint32_t total_data_size = (in.size() + prepend.size()) * sizeof(Storage::Elem);
 
     auto s = shoop_make_shared<Storage>(total_data_size);
 
@@ -142,8 +139,7 @@ TEST_CASE("MidiStorage - replace append", "[MidiStorage]") {
         Msg(10, 1, {10}),
         Msg(11, 3, {4, 5, 6})
     };
-    uint32_t total_data_size = 0;
-    for(auto &i : in) { total_data_size += Storage::Elem::total_size_of(i.data.size()); }
+    uint32_t total_data_size = in.size() * sizeof(Storage::Elem);
 
     auto s = shoop_make_shared<Storage>(total_data_size);
 
@@ -176,37 +172,36 @@ TEST_CASE("MidiStorage - replace append", "[MidiStorage]") {
     CHECK(out == expect_result);
 };
 
-TEST_CASE("MidiStorage - replace multiple append", "[MidiStorage]") {
+TEST_CASE("MidiStorage - wrap around", "[MidiStorage]") {
     using Msg = MidiMessage<uint32_t, uint32_t>;
     using Storage = MidiStorage;
 
-    std::vector<Msg> in = {
-        Msg(0, 3, {0, 1, 2}),
-        Msg(1, 3, {3, 4, 5}),
-        Msg(10, 1, {10})
-    };
-    Msg append = Msg(11, 5, {4, 5, 6, 7, 8});
-    std::vector<Msg> expect_result = {
-        Msg(10, 1, {10}),
-        Msg(11, 5, {4, 5, 6, 7, 8})
-    };
-    uint32_t total_data_size = 0;
-    for(auto &i : in) { total_data_size += Storage::Elem::total_size_of(i.data.size()); }
+    // Buffer holds exactly 3 elements
+    auto s = shoop_make_shared<Storage>(3 * sizeof(Storage::Elem));
 
-    auto s = shoop_make_shared<Storage>(total_data_size);
-
-    for(auto &i: in) { s->append(i.time, i.size, i.data.data()); }
-
-    CHECK(s->bytes_occupied() == s->bytes_capacity());
-    CHECK(s->bytes_free() == 0);
+    const uint8_t d0[] = {0, 0, 0};
+    const uint8_t d1[] = {1, 1, 1};
+    const uint8_t d2[] = {2, 2, 2};
+    const uint8_t d3[] = {3, 3, 3};
+    const uint8_t d4[] = {4, 4, 4};
+    s->append(0, 3, d0);
+    s->append(1, 3, d1);
+    s->append(2, 3, d2);
     CHECK(s->n_events() == 3);
 
-    CHECK(s->append(append.time, append.size, append.data.data()) == false);
-    CHECK(s->append(append.time, append.size, append.data.data(), true) == true);
+    // This overwrites the oldest (time 0)
+    s->append(3, 3, d3, true);
+    CHECK(s->n_events() == 3);
 
-    CHECK(s->bytes_occupied() == s->bytes_capacity() - Storage::Elem::total_size_of(1));
-    CHECK(s->bytes_free() == Storage::Elem::total_size_of(1));
-    CHECK(s->n_events() == 2);
+    // And again (overwrites time 1)
+    s->append(4, 3, d4, true);
+    CHECK(s->n_events() == 3);
+
+    std::vector<Msg> expect = {
+        Msg(2, 3, {2, 2, 2}),
+        Msg(3, 3, {3, 3, 3}),
+        Msg(4, 3, {4, 4, 4})
+    };
 
     std::vector<Msg> out;
     auto cursor = s->create_cursor();
@@ -221,5 +216,5 @@ TEST_CASE("MidiStorage - replace multiple append", "[MidiStorage]") {
         if(cursor->is_at_start()) { break; }
     }
 
-    CHECK(out == expect_result);
+    CHECK(out == expect);
 };
