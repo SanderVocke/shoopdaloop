@@ -49,6 +49,40 @@ runs:
       echo "==== Rust LLVM tools (if installed) ===="
       echo "LLVM_COV=$(find $(rustc --print sysroot) -name llvm-cov)" | tee -a $GITHUB_ENV
       echo "LLVM_PROFDATA=$(find $(rustc --print sysroot) -name llvm-profdata)" | tee -a $GITHUB_ENV
+      echo "==== Environment ===="
+      env | grep -E '^(RUST|CARGO|CC|CXX|CFLAGS|CXXFLAGS|PATH)' | sort
+      echo "==== C++ compiler versions ===="
+      which c++ && c++ --version || true
+      which clang++ && clang++ --version || true
+      which cc && cc --version || true
+      echo "==== C++20 ranges test ===="
+      cat > /tmp/test_ranges.cpp <<'EOF'
+      #include <ranges>
+      #include <cstdint>
+      template<typename T>
+      struct simple_iterator {
+        T* ptr;
+        using iterator_category = std::random_access_iterator_tag;
+        using value_type = T;
+        using difference_type = std::ptrdiff_t;
+        using pointer = T*;
+        using reference = T&;
+        T& operator*() const { return *ptr; }
+        simple_iterator& operator++() { ++ptr; return *this; }
+        bool operator!=(const simple_iterator& other) const { return ptr != other.ptr; }
+      };
+      struct simple_slice {
+        using iterator = simple_iterator<const uint8_t>;
+        iterator begin() const { return iterator{nullptr}; }
+        iterator end() const { return iterator{nullptr}; }
+        const uint8_t* data() const { return nullptr; }
+        std::size_t size() const { return 0; }
+      };
+      static_assert(std::ranges::contiguous_range<simple_slice>);
+      int main() {}
+      EOF
+      c++ -std=c++20 /tmp/test_ranges.cpp -o /tmp/test_ranges || echo "C++20 ranges test FAILED"
+      echo "==== End debug info ===="
 
   - name: Prepare linux
     if: always() && inputs.variant == 'linux'
