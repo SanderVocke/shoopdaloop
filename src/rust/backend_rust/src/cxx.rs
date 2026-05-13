@@ -28,7 +28,12 @@ mod ffi {
 
         type MidiStateDiffTracker;
         fn new_midi_state_diff_tracker() -> Box<MidiStateDiffTracker>;
-        unsafe fn reset_with_ptrs(self: &mut MidiStateDiffTracker, a: *mut MidiStateTracker, b: *mut MidiStateTracker, action: i32);
+        unsafe fn reset_with_ptrs(
+            self: &mut MidiStateDiffTracker,
+            a: *mut MidiStateTracker,
+            b: *mut MidiStateTracker,
+            action: i32,
+        );
         fn add_diff(self: &mut MidiStateDiffTracker, d0: u8, d1: u8);
         fn delete_diff(self: &mut MidiStateDiffTracker, d0: u8, d1: u8);
         fn check_note(self: &mut MidiStateDiffTracker, channel: u8, note: u8);
@@ -122,7 +127,12 @@ fn new_midi_state_diff_tracker() -> Box<MidiStateDiffTracker> {
     crate::midi_state_diff_tracker::new_midi_state_diff_tracker()
 }
 
-unsafe fn reset_with_ptrs(this: &mut MidiStateDiffTracker, a: *mut MidiStateTracker, b: *mut MidiStateTracker, action: i32) {
+unsafe fn reset_with_ptrs(
+    this: &mut MidiStateDiffTracker,
+    a: *mut MidiStateTracker,
+    b: *mut MidiStateTracker,
+    action: i32,
+) {
     this.reset_with_ptrs(a, b, action)
 }
 

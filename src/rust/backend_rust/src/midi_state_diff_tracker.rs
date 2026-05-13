@@ -1,5 +1,4 @@
 use crate::midi_state_tracker::{MidiStateTracker, Subscriber};
-use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 const NOTE_INACTIVE: u8 = 0x80;
@@ -23,7 +22,9 @@ pub struct MidiStateDiffTracker {
     tracker_a_id: u64,
     tracker_b: *mut MidiStateTracker,
     tracker_b_id: u64,
-    diffs: BTreeSet<[u8; 2]>,
+    /// Flat sorted array of diffs. Kept sorted for O(log n) lookup and cache-friendly iteration.
+    /// Pre-allocated to avoid audio-thread allocations.
+    diffs: Vec<[u8; 2]>,
 }
 
 impl MidiStateDiffTracker {
@@ -35,13 +36,34 @@ impl MidiStateDiffTracker {
             tracker_a_id: 0,
             tracker_b: std::ptr::null_mut(),
             tracker_b_id: 0,
-            diffs: BTreeSet::new(),
+            diffs: Vec::with_capacity(4096),
         }
     }
 
     pub fn get_id(&self) -> u64 {
         self.id
     }
+
+    // ---- flat diff set helpers (no allocations on audio thread) ----
+
+    fn diffs_contains(&self, key: &[u8; 2]) -> bool {
+        self.diffs.binary_search(key).is_ok()
+    }
+
+    fn diffs_insert(&mut self, key: [u8; 2]) {
+        match self.diffs.binary_search(&key) {
+            Ok(_) => {} // already present
+            Err(idx) => self.diffs.insert(idx, key),
+        }
+    }
+
+    fn diffs_remove(&mut self, key: &[u8; 2]) {
+        if let Ok(idx) = self.diffs.binary_search(key) {
+            self.diffs.remove(idx);
+        }
+    }
+
+    // ----------------------------------------------------------------
 
     fn tracker_a_ref(&self) -> Option<&MidiStateTracker> {
         if self.tracker_a.is_null() {
@@ -77,13 +99,22 @@ impl MidiStateDiffTracker {
 
     /// Reset with two trackers.
     /// Matches C++ order: unsubscribe old, assign new, subscribe new, action.
-    pub unsafe fn reset_with_ptrs(&mut self, a: *mut MidiStateTracker, b: *mut MidiStateTracker, action: i32) {
+    pub unsafe fn reset_with_ptrs(
+        &mut self,
+        a: *mut MidiStateTracker,
+        b: *mut MidiStateTracker,
+        action: i32,
+    ) {
         // Unsubscribe from old trackers
         if !self.tracker_a.is_null() {
-            unsafe { (*self.tracker_a).unsubscribe(self as *mut dyn Subscriber); }
+            unsafe {
+                (*self.tracker_a).unsubscribe(self as *mut dyn Subscriber);
+            }
         }
         if !self.tracker_b.is_null() {
-            unsafe { (*self.tracker_b).unsubscribe(self as *mut dyn Subscriber); }
+            unsafe {
+                (*self.tracker_b).unsubscribe(self as *mut dyn Subscriber);
+            }
         }
 
         // Assign new trackers
@@ -91,15 +122,27 @@ impl MidiStateDiffTracker {
         self.tracker_b = b;
 
         // Cache IDs
-        self.tracker_a_id = if a.is_null() { 0 } else { unsafe { (*a).get_id() } };
-        self.tracker_b_id = if b.is_null() { 0 } else { unsafe { (*b).get_id() } };
+        self.tracker_a_id = if a.is_null() {
+            0
+        } else {
+            unsafe { (*a).get_id() }
+        };
+        self.tracker_b_id = if b.is_null() {
+            0
+        } else {
+            unsafe { (*b).get_id() }
+        };
 
         // Subscribe to new trackers
         if !self.tracker_a.is_null() {
-            unsafe { (*self.tracker_a).subscribe(self as *mut dyn Subscriber); }
+            unsafe {
+                (*self.tracker_a).subscribe(self as *mut dyn Subscriber);
+            }
         }
         if !self.tracker_b.is_null() {
-            unsafe { (*self.tracker_b).subscribe(self as *mut dyn Subscriber); }
+            unsafe {
+                (*self.tracker_b).subscribe(self as *mut dyn Subscriber);
+            }
         }
 
         // Action
@@ -111,11 +154,11 @@ impl MidiStateDiffTracker {
     }
 
     pub fn add_diff(&mut self, d0: u8, d1: u8) {
-        self.diffs.insert([d0, d1]);
+        self.diffs_insert([d0, d1]);
     }
 
     pub fn delete_diff(&mut self, d0: u8, d1: u8) {
-        self.diffs.remove(&[d0, d1]);
+        self.diffs_remove(&[d0, d1]);
     }
 
     pub fn check_note(&mut self, channel: u8, note: u8) {
@@ -133,9 +176,9 @@ impl MidiStateDiffTracker {
         let av = a.maybe_current_note_velocity(channel, note);
         let bv = b.maybe_current_note_velocity(channel, note);
         if av != bv {
-            self.diffs.insert([0x90 | channel, note]);
+            self.diffs_insert([0x90 | channel, note]);
         } else {
-            self.diffs.remove(&[0x90 | channel, note]);
+            self.diffs_remove(&[0x90 | channel, note]);
         }
     }
 
@@ -154,9 +197,9 @@ impl MidiStateDiffTracker {
         let av = a.maybe_cc_value(channel, controller);
         let bv = b.maybe_cc_value(channel, controller);
         if av != bv {
-            self.diffs.insert([0xB0 | channel, controller]);
+            self.diffs_insert([0xB0 | channel, controller]);
         } else {
-            self.diffs.remove(&[0xB0 | channel, controller]);
+            self.diffs_remove(&[0xB0 | channel, controller]);
         }
     }
 
@@ -175,9 +218,9 @@ impl MidiStateDiffTracker {
         let av = a.maybe_program_value(channel);
         let bv = b.maybe_program_value(channel);
         if av != bv {
-            self.diffs.insert([0xC0 | channel, 0]);
+            self.diffs_insert([0xC0 | channel, 0]);
         } else {
-            self.diffs.remove(&[0xC0 | channel, 0]);
+            self.diffs_remove(&[0xC0 | channel, 0]);
         }
     }
 
@@ -196,9 +239,9 @@ impl MidiStateDiffTracker {
         let av = a.maybe_channel_pressure_value(channel);
         let bv = b.maybe_channel_pressure_value(channel);
         if av != bv {
-            self.diffs.insert([0xD0 | channel, 0]);
+            self.diffs_insert([0xD0 | channel, 0]);
         } else {
-            self.diffs.remove(&[0xD0 | channel, 0]);
+            self.diffs_remove(&[0xD0 | channel, 0]);
         }
     }
 
@@ -217,20 +260,38 @@ impl MidiStateDiffTracker {
         let av = a.maybe_pitch_wheel_value(channel);
         let bv = b.maybe_pitch_wheel_value(channel);
         if av != bv {
-            self.diffs.insert([0xE0 | channel, 0]);
+            self.diffs_insert([0xE0 | channel, 0]);
         } else {
-            self.diffs.remove(&[0xE0 | channel, 0]);
+            self.diffs_remove(&[0xE0 | channel, 0]);
         }
     }
 
     pub fn rescan_diff(&mut self) {
         self.diffs.clear();
-        let a_notes = self.tracker_a_ref().map(|t| t.tracking_notes()).unwrap_or(false);
-        let b_notes = self.tracker_b_ref().map(|t| t.tracking_notes()).unwrap_or(false);
-        let a_ctrls = self.tracker_a_ref().map(|t| t.tracking_controls()).unwrap_or(false);
-        let b_ctrls = self.tracker_b_ref().map(|t| t.tracking_controls()).unwrap_or(false);
-        let a_progs = self.tracker_a_ref().map(|t| t.tracking_programs()).unwrap_or(false);
-        let b_progs = self.tracker_b_ref().map(|t| t.tracking_programs()).unwrap_or(false);
+        let a_notes = self
+            .tracker_a_ref()
+            .map(|t| t.tracking_notes())
+            .unwrap_or(false);
+        let b_notes = self
+            .tracker_b_ref()
+            .map(|t| t.tracking_notes())
+            .unwrap_or(false);
+        let a_ctrls = self
+            .tracker_a_ref()
+            .map(|t| t.tracking_controls())
+            .unwrap_or(false);
+        let b_ctrls = self
+            .tracker_b_ref()
+            .map(|t| t.tracking_controls())
+            .unwrap_or(false);
+        let a_progs = self
+            .tracker_a_ref()
+            .map(|t| t.tracking_programs())
+            .unwrap_or(false);
+        let b_progs = self
+            .tracker_b_ref()
+            .map(|t| t.tracking_programs())
+            .unwrap_or(false);
 
         if a_notes && b_notes {
             for channel in 0..16u8 {
@@ -295,7 +356,11 @@ impl MidiStateDiffTracker {
                 0x90 => {
                     if notes {
                         let v = from.maybe_current_note_velocity(channel_part, diff[1]);
-                        let status_byte = if v != NOTE_INACTIVE { diff[0] } else { 0x80 | channel_part };
+                        let status_byte = if v != NOTE_INACTIVE {
+                            diff[0]
+                        } else {
+                            0x80 | channel_part
+                        };
                         let velocity = if v != NOTE_INACTIVE { v } else { 64 };
                         out.push(status_byte);
                         out.push(diff[1]);
@@ -362,7 +427,7 @@ impl MidiStateDiffTracker {
     pub fn set_diff_flat(&mut self, data: &[u8]) {
         self.diffs.clear();
         for chunk in data.chunks_exact(2) {
-            self.diffs.insert([chunk[0], chunk[1]]);
+            self.diffs_insert([chunk[0], chunk[1]]);
         }
     }
 
@@ -399,11 +464,17 @@ impl Subscriber for MidiStateDiffTracker {
             return;
         };
 
-        let sender = match sender { Some(t) => t, None => return };
-        let other = match other { Some(t) => t, None => return };
+        let sender = match sender {
+            Some(t) => t,
+            None => return,
+        };
+        let other = match other {
+            Some(t) => t,
+            None => return,
+        };
 
         if !sender.tracking_notes() || !other.tracking_notes() {
-            self.diffs.remove(&[0x90 | channel, note]);
+            self.diffs_remove(&[0x90 | channel, note]);
             return;
         }
 
@@ -411,9 +482,9 @@ impl Subscriber for MidiStateDiffTracker {
         let other_vel = other.maybe_current_note_velocity(channel, note);
 
         if sender_vel != other_vel {
-            self.diffs.insert([0x90 | channel, note]);
+            self.diffs_insert([0x90 | channel, note]);
         } else {
-            self.diffs.remove(&[0x90 | channel, note]);
+            self.diffs_remove(&[0x90 | channel, note]);
         }
     }
 
@@ -432,11 +503,17 @@ impl Subscriber for MidiStateDiffTracker {
             return;
         };
 
-        let sender = match sender { Some(t) => t, None => return };
-        let other = match other { Some(t) => t, None => return };
+        let sender = match sender {
+            Some(t) => t,
+            None => return,
+        };
+        let other = match other {
+            Some(t) => t,
+            None => return,
+        };
 
         if !sender.tracking_controls() || !other.tracking_controls() {
-            self.diffs.remove(&[0xB0 | channel, cc]);
+            self.diffs_remove(&[0xB0 | channel, cc]);
             return;
         }
 
@@ -444,9 +521,9 @@ impl Subscriber for MidiStateDiffTracker {
         let other_val = other.maybe_cc_value(channel, cc);
 
         if sender_val != other_val && sender_val != CC_VALUE_UNKNOWN {
-            self.diffs.insert([0xB0 | channel, cc]);
+            self.diffs_insert([0xB0 | channel, cc]);
         } else {
-            self.diffs.remove(&[0xB0 | channel, cc]);
+            self.diffs_remove(&[0xB0 | channel, cc]);
         }
     }
 
@@ -464,11 +541,17 @@ impl Subscriber for MidiStateDiffTracker {
             return;
         };
 
-        let sender = match sender { Some(t) => t, None => return };
-        let other = match other { Some(t) => t, None => return };
+        let sender = match sender {
+            Some(t) => t,
+            None => return,
+        };
+        let other = match other {
+            Some(t) => t,
+            None => return,
+        };
 
         if !sender.tracking_programs() || !other.tracking_programs() {
-            self.diffs.remove(&[0xC0 | channel, 0]);
+            self.diffs_remove(&[0xC0 | channel, 0]);
             return;
         }
 
@@ -476,9 +559,9 @@ impl Subscriber for MidiStateDiffTracker {
         let other_val = other.maybe_program_value(channel);
 
         if sender_val != other_val && sender_val != PROGRAM_UNKNOWN {
-            self.diffs.insert([0xC0 | channel, 0]);
+            self.diffs_insert([0xC0 | channel, 0]);
         } else {
-            self.diffs.remove(&[0xC0 | channel, 0]);
+            self.diffs_remove(&[0xC0 | channel, 0]);
         }
     }
 
@@ -496,11 +579,17 @@ impl Subscriber for MidiStateDiffTracker {
             return;
         };
 
-        let sender = match sender { Some(t) => t, None => return };
-        let other = match other { Some(t) => t, None => return };
+        let sender = match sender {
+            Some(t) => t,
+            None => return,
+        };
+        let other = match other {
+            Some(t) => t,
+            None => return,
+        };
 
         if !sender.tracking_controls() || !other.tracking_controls() {
-            self.diffs.remove(&[0xE0 | channel, 0]);
+            self.diffs_remove(&[0xE0 | channel, 0]);
             return;
         }
 
@@ -508,9 +597,9 @@ impl Subscriber for MidiStateDiffTracker {
         let other_val = other.maybe_pitch_wheel_value(channel);
 
         if sender_val != other_val && sender_val != PITCH_WHEEL_UNKNOWN {
-            self.diffs.insert([0xE0 | channel, 0]);
+            self.diffs_insert([0xE0 | channel, 0]);
         } else {
-            self.diffs.remove(&[0xE0 | channel, 0]);
+            self.diffs_remove(&[0xE0 | channel, 0]);
         }
     }
 
@@ -528,11 +617,17 @@ impl Subscriber for MidiStateDiffTracker {
             return;
         };
 
-        let sender = match sender { Some(t) => t, None => return };
-        let other = match other { Some(t) => t, None => return };
+        let sender = match sender {
+            Some(t) => t,
+            None => return,
+        };
+        let other = match other {
+            Some(t) => t,
+            None => return,
+        };
 
         if !sender.tracking_controls() || !other.tracking_controls() {
-            self.diffs.remove(&[0xD0 | channel, 0]);
+            self.diffs_remove(&[0xD0 | channel, 0]);
             return;
         }
 
@@ -540,9 +635,9 @@ impl Subscriber for MidiStateDiffTracker {
         let other_val = other.maybe_channel_pressure_value(channel);
 
         if sender_val != other_val && sender_val != CHANNEL_PRESSURE_UNKNOWN {
-            self.diffs.insert([0xD0 | channel, 0]);
+            self.diffs_insert([0xD0 | channel, 0]);
         } else {
-            self.diffs.remove(&[0xD0 | channel, 0]);
+            self.diffs_remove(&[0xD0 | channel, 0]);
         }
     }
 }
@@ -550,10 +645,14 @@ impl Subscriber for MidiStateDiffTracker {
 impl Drop for MidiStateDiffTracker {
     fn drop(&mut self) {
         if !self.tracker_a.is_null() {
-            unsafe { (*self.tracker_a).unsubscribe(self as *mut dyn Subscriber); }
+            unsafe {
+                (*self.tracker_a).unsubscribe(self as *mut dyn Subscriber);
+            }
         }
         if !self.tracker_b.is_null() {
-            unsafe { (*self.tracker_b).unsubscribe(self as *mut dyn Subscriber); }
+            unsafe {
+                (*self.tracker_b).unsubscribe(self as *mut dyn Subscriber);
+            }
         }
     }
 }
@@ -655,13 +754,19 @@ mod tests {
 
         process_msg(&mut tracker_a, &[0xD0, 64]);
         process_msg(&mut tracker_b, &[0xD0, 64]);
-        assert!(diff.diffs.is_empty(), "no diffs expected after identical state");
+        assert!(
+            diff.diffs.is_empty(),
+            "no diffs expected after identical state"
+        );
 
         process_msg(&mut tracker_a, &[0xD0, 100]);
 
         let diffs = diff.get_diff_flat();
         assert_eq!(diffs.len(), 2, "expected exactly one diff");
-        assert_eq!(diffs[0], 0xD0, "status byte should be 0xD0 (channel pressure)");
+        assert_eq!(
+            diffs[0], 0xD0,
+            "status byte should be 0xD0 (channel pressure)"
+        );
         assert_eq!(diffs[1], 0);
     }
 
@@ -714,7 +819,10 @@ mod tests {
 
         let diffs = diff.get_diff_flat();
         assert_eq!(diffs.len(), 2, "expected exactly one diff");
-        assert_eq!(diffs[0], 0xD5, "status byte should be 0xD5 (channel pressure on ch 5)");
+        assert_eq!(
+            diffs[0], 0xD5,
+            "status byte should be 0xD5 (channel pressure on ch 5)"
+        );
         assert_eq!(diffs[1], 0);
     }
 

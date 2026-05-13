@@ -21,19 +21,8 @@ pub trait Subscriber {
         note: u8,
         maybe_velocity: Option<u8>,
     );
-    fn cc_changed(
-        &mut self,
-        from: &MidiStateTracker,
-        channel: u8,
-        cc: u8,
-        maybe_value: Option<u8>,
-    );
-    fn program_changed(
-        &mut self,
-        from: &MidiStateTracker,
-        channel: u8,
-        maybe_program: Option<u8>,
-    );
+    fn cc_changed(&mut self, from: &MidiStateTracker, channel: u8, cc: u8, maybe_value: Option<u8>);
+    fn program_changed(&mut self, from: &MidiStateTracker, channel: u8, maybe_program: Option<u8>);
     fn pitch_wheel_changed(
         &mut self,
         from: &MidiStateTracker,
@@ -77,11 +66,31 @@ impl MidiStateTracker {
             track_controls,
             track_programs,
             n_notes_active: AtomicI32::new(0),
-            notes_active: if track_notes { vec![NOTE_INACTIVE; 16 * 128] } else { vec![] },
-            controls: if track_controls { vec![CC_VALUE_UNKNOWN; 16 * 128] } else { vec![] },
-            programs: if track_programs { vec![PROGRAM_UNKNOWN; 16] } else { vec![] },
-            pitch_wheel: if track_controls { vec![PITCH_WHEEL_DEFAULT; 16] } else { vec![] },
-            channel_pressure: if track_controls { vec![CHANNEL_PRESSURE_UNKNOWN; 16] } else { vec![] },
+            notes_active: if track_notes {
+                vec![NOTE_INACTIVE; 16 * 128]
+            } else {
+                vec![]
+            },
+            controls: if track_controls {
+                vec![CC_VALUE_UNKNOWN; 16 * 128]
+            } else {
+                vec![]
+            },
+            programs: if track_programs {
+                vec![PROGRAM_UNKNOWN; 16]
+            } else {
+                vec![]
+            },
+            pitch_wheel: if track_controls {
+                vec![PITCH_WHEEL_DEFAULT; 16]
+            } else {
+                vec![]
+            },
+            channel_pressure: if track_controls {
+                vec![CHANNEL_PRESSURE_UNKNOWN; 16]
+            } else {
+                vec![]
+            },
             subscribers: RefCell::new(Vec::new()),
         };
         s.clear();
@@ -113,7 +122,9 @@ impl MidiStateTracker {
 
     /// Remove a subscriber by pointer identity. Called from MidiStateDiffTracker::reset()/Drop.
     pub fn unsubscribe(&self, subscriber: *mut dyn Subscriber) {
-        self.subscribers.borrow_mut().retain(|&s| !std::ptr::addr_eq(s, subscriber));
+        self.subscribers
+            .borrow_mut()
+            .retain(|&s| !std::ptr::addr_eq(s, subscriber));
     }
 
     fn notify_note_changed(&self, channel: u8, note: u8, maybe_velocity: Option<u8>) {
@@ -263,7 +274,8 @@ impl MidiStateTracker {
         if self.track_controls && other.track_controls {
             self.controls.copy_from_slice(&other.controls);
             self.pitch_wheel.copy_from_slice(&other.pitch_wheel);
-            self.channel_pressure.copy_from_slice(&other.channel_pressure);
+            self.channel_pressure
+                .copy_from_slice(&other.channel_pressure);
         }
         if self.track_programs && other.track_programs {
             self.programs.copy_from_slice(&other.programs);
@@ -300,11 +312,7 @@ impl MidiStateTracker {
         } else if let Some(ch) = midi_helpers::is_all_sound_off_for_channel(data) {
             self.process_all_notes_off(ch as u8);
         } else if midi_helpers::is_note_on(data) {
-            self.process_note_on(
-                midi_helpers::channel(data) as u8,
-                data[1],
-                data[2],
-            );
+            self.process_note_on(midi_helpers::channel(data) as u8, data[1], data[2]);
         } else if midi_helpers::is_note_off(data) {
             self.process_note_off(midi_helpers::channel(data) as u8, data[1]);
         } else if midi_helpers::is_pitch_wheel(data) {
@@ -451,7 +459,11 @@ pub fn new_midi_state_tracker(
     track_controls: bool,
     track_programs: bool,
 ) -> Box<MidiStateTracker> {
-    Box::new(MidiStateTracker::new(track_notes, track_controls, track_programs))
+    Box::new(MidiStateTracker::new(
+        track_notes,
+        track_controls,
+        track_programs,
+    ))
 }
 
 pub fn copy_relevant_state(this: &mut MidiStateTracker, other: &MidiStateTracker) {
@@ -566,7 +578,10 @@ mod tests {
     #[test]
     fn test_channel_pressure_tracking() {
         let mut tracker = MidiStateTracker::new(false, true, false);
-        assert_eq!(tracker.maybe_channel_pressure_value(0), CHANNEL_PRESSURE_UNKNOWN);
+        assert_eq!(
+            tracker.maybe_channel_pressure_value(0),
+            CHANNEL_PRESSURE_UNKNOWN
+        );
 
         process_msg(&mut tracker, &[0xD0, 64]);
         assert_eq!(tracker.maybe_channel_pressure_value(0), 64);
@@ -585,7 +600,11 @@ mod tests {
     fn test_state_as_messages_skips_unknown() {
         let tracker = MidiStateTracker::new(false, true, false);
         let msgs = tracker.state_as_messages_flat();
-        assert_eq!(msgs.len(), 0, "freshly cleared tracker should have no state messages");
+        assert_eq!(
+            msgs.len(),
+            0,
+            "freshly cleared tracker should have no state messages"
+        );
     }
 
     #[test]
