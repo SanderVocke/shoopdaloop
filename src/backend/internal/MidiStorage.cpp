@@ -181,7 +181,7 @@ void MidiStorageBase::copy(MidiStorageBase &to) const {
 }
 
 MidiStorageCursor::MidiStorageCursor(
-    shoop_shared_ptr<const Storage> _storage)
+    shoop_shared_ptr<Storage> _storage)
     : m_storage(_storage) {}
 
 bool MidiStorageCursor::valid() const {
@@ -297,7 +297,7 @@ CursorFindResult MidiStorageCursor::find_fn_forward(
         return rval;
     }
 
-    auto const& storage = *m_storage;
+    auto &storage = *m_storage;
     uint32_t cap = storage.m_data.size();
     if (cap == 0) {
         invalidate();
@@ -346,7 +346,7 @@ typename MidiStorage::SharedCursor
 MidiStorage::create_cursor() {
     auto maybe_self = MidiStorageBase::weak_from_this();
     if (auto self = maybe_self.lock()) {
-        auto rval = shoop_make_shared<Cursor>(shoop_static_pointer_cast<const MidiStorageBase>(self));
+        auto rval = shoop_make_shared<Cursor>(shoop_static_pointer_cast<MidiStorageBase>(self));
         m_cursors.push_back(rval);
         rval->reset();
         return rval;

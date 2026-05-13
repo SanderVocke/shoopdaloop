@@ -73,10 +73,10 @@ public:
 private:
     std::optional<uint32_t> m_offset = std::nullopt;
     std::optional<uint32_t> m_prev_offset = std::nullopt;
-    shoop_shared_ptr<const Storage> m_storage = nullptr;
+    shoop_shared_ptr<Storage> m_storage = nullptr;
 
 public:
-    MidiStorageCursor(shoop_shared_ptr<const Storage> _storage);
+    MidiStorageCursor(shoop_shared_ptr<Storage> _storage);
 
     bool valid() const;
 
