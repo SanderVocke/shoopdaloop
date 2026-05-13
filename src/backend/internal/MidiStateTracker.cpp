@@ -72,13 +72,12 @@ bool MidiStateTracker::tracking_anything() const {
 }
 
 void MidiStateTracker::subscribe(shoop_shared_ptr<MidiStateDiffTracker> s) {
-    // No-op: In the new channel-based architecture, subscriptions are
-    // managed internally by MidiStateDiffTracker::reset()
+    // No-op: subscriptions are managed entirely inside Rust via
+    // synchronous trait callbacks. See midi_state_tracker.rs.
 }
 
 void MidiStateTracker::unsubscribe(shoop_shared_ptr<MidiStateDiffTracker> s) {
-    // No-op: In the new channel-based architecture, subscriptions are
-    // managed internally by MidiStateDiffTracker::reset()
+    // No-op: see subscribe() above.
 }
 
 std::vector<std::vector<uint8_t>> MidiStateTracker::state_as_messages() {

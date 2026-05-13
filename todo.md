@@ -112,14 +112,14 @@
 
 ## Phase 6: Documentation & Wrap-up
 
-- [ ] **6.1 Update inline comments documenting the C++-matching design**
+- [x] **6.1 Update inline comments documenting the C++-matching design**
   - **Goal:** Add doc comments on `Subscriber`, `TrackerRef`, `subscribe/unsubscribe`, and `reset()` explaining how they mirror the original C++ architecture.
   - **End condition:** Future maintainers can read the Rust code and understand the intentional C++ parity.
 
-- [ ] **6.2 Delete or archive any temporary reference files**
+- [x] **6.2 Delete or archive any temporary reference files**
   - **Goal:** Remove `MidiStateTracker.original.h` or any other git-dumped scratch files if they are no longer needed.
   - **End condition:** Working tree is clean of temporary artifacts.
 
-- [ ] **6.3 Final full test suite run**
+- [x] **6.3 Final full test suite run**
   - **Goal:** Run the broadest test command available (`cargo test`, `ctest`, or project-specific full suite) to ensure no regressions.
   - **End condition:** Full suite passes; rearchitecture is complete.
