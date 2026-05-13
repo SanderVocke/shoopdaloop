@@ -7,21 +7,14 @@
 
 typedef std::function<void(uint32_t time, uint16_t size, const uint8_t* data)> DroppedMsgCallback;
 
-// We need a contiguously stored struct that also supports interface inheritance.
-// This cannot really be done in C++, so instead we just make a fixed-size
-// struct that is designed with the knowledge that its data bytes will always
-// be stored directly following it in the buffer.
-#pragma pack(push, 1)
 struct MidiStorageElem : public MidiSortableMessageInterface {
     uint32_t storage_time = 0;    // Overall time in the loop storage
     uint16_t proc_time = 0;       // time w.r.t. some reference point (position in this process iteration)
-    uint16_t size = 0;            // Size of the data portion
-    uint16_t offset_to_next = 0;  // Amount of bytes to the start of the next element.
-                                  // May be higher than the size of this structure in order
-                                  // to have some filler around the buffer boundaries for aligment.
+    uint16_t size = 0;            // Size of the data portion (1..4)
+    uint8_t bytes[4] = {0};       // Inline 4-byte payload
 
-    static uint32_t total_size_of(uint32_t data_bytes);
-    uint8_t* data() const;
+    uint8_t* data();
+    const uint8_t* data() const;
     const uint8_t* get_data() const override;
     uint32_t get_time() const override;
     uint32_t get_size() const override;
@@ -29,7 +22,6 @@ struct MidiStorageElem : public MidiSortableMessageInterface {
                 uint32_t &time_out,
                 const uint8_t* &data_out) const override;
 };
-#pragma pack(pop)
 
 class MidiStorageCursor;
 
@@ -40,23 +32,20 @@ public:
     using Elem = MidiStorageElem;
 
 protected:
-    std::vector<uint8_t> m_data;
+    std::vector<MidiStorageElem> m_data;
     uint32_t m_tail = 0;
     uint32_t m_head = 0;
-    uint32_t m_head_start = 0;
     uint32_t m_n_events = 0;
     static constexpr uint32_t n_starting_cursors = 10;
 
-    bool valid_elem_at(uint32_t offset) const;
-    std::optional<uint32_t> maybe_next_elem_offset(Elem* elem) const;
-    uint32_t bytes_size() const;
-    void store_unsafe(uint32_t offset, uint32_t t, uint16_t s, const uint8_t* d, uint16_t n_filler);
-    Elem *unsafe_at(uint32_t offset) const;
+
 
 public:
     MidiStorageBase(uint32_t data_size);
 
     uint32_t bytes_capacity() const;
+    uint32_t capacity_elems() const;
+    bool full() const;
 
     void clear();
 

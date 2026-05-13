@@ -616,7 +616,7 @@ MidiChannel::set_contents(Contents contents, uint32_t length_samples,
     // Calculate the needed storage size
     size_t min_storage_size = 1;
     for (auto const &elem : contents.recorded_msgs) {
-        min_storage_size += MidiStorageElem::total_size_of (elem.data.size());
+        min_storage_size += sizeof(MidiStorageElem);
     }
     size_t new_storage_size = std::max((size_t)mp_storage->bytes_capacity(), min_storage_size);
     auto s = shoop_make_shared<Storage>(new_storage_size);

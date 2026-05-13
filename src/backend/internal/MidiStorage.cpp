@@ -14,16 +14,16 @@
 
 using namespace logging;
 
-uint32_t MidiStorageElem::total_size_of(uint32_t data_bytes) {
-    return sizeof(MidiStorageElem) + data_bytes;
+uint8_t *MidiStorageElem::data() {
+    return bytes;
 }
 
-uint8_t *MidiStorageElem::data() const {
-    return ((uint8_t *)this) + sizeof(MidiStorageElem);
+const uint8_t *MidiStorageElem::data() const {
+    return bytes;
 }
 
 const uint8_t *MidiStorageElem::get_data() const {
-    return ((uint8_t *)this) + sizeof(MidiStorageElem);
+    return bytes;
 }
 
 uint32_t MidiStorageElem::get_time() const {
@@ -42,82 +42,32 @@ void MidiStorageElem::get(uint32_t &size_out,
     data_out = data();
 }
 
-bool MidiStorageBase::valid_elem_at(uint32_t offset) const {
-    return m_n_events > 0 &&
-           (m_head > m_tail ? (offset >= m_tail && offset < m_head)
-                            : (offset < m_head || offset >= m_tail));
-}
-
-std::optional<uint32_t>
-MidiStorageBase::maybe_next_elem_offset(Elem *e) const {
-    if (!e) {
-        return std::nullopt;
-    }
-    uint32_t m_data_offset = (uint8_t *)e - (uint8_t *)m_data.data();
-    uint32_t next_m_data_offset =
-        (m_data_offset + e->offset_to_next) % m_data.size();
-
-    if (!valid_elem_at(next_m_data_offset)) {
-        return std::nullopt;
-    }
-    return next_m_data_offset;
-}
-
-typename MidiStorageBase::Elem *
-MidiStorageBase::unsafe_at(uint32_t offset) const {
-    return (Elem *)&(m_data.at(offset));
-}
-
-uint32_t MidiStorageBase::bytes_size() const {
-    return (m_head > m_tail) ? m_head - m_tail
-                             : (m_head + m_data.size()) - m_tail;
-}
-
-void MidiStorageBase::store_unsafe(uint32_t offset,
-                                    uint32_t t, uint16_t s,
-                                    const uint8_t *d,
-                                    uint16_t n_filler) {
-    Elem elem;
-    elem.size = s;
-    elem.proc_time = elem.storage_time = t;
-    Elem *to = (Elem*)&(m_data.at(offset));
-    auto const data_size = (size_t)s;
-    auto const meta_size = Elem::total_size_of(0);
-    auto const total_size = Elem::total_size_of(s);
-    log<log_level_debug_trace>("store unsafe: offset {}, time {}, size {}, stored size {}, filler {}", offset, t, s, total_size, n_filler);
-    memcpy((void *)to, (void *)&elem, meta_size);
-    void *data_ptr = (void*)((uint8_t*)to + meta_size);
-    memcpy(data_ptr, d, data_size);
-    to->offset_to_next = total_size + n_filler;
-}
-
 MidiStorageBase::MidiStorageBase(uint32_t data_size)
-    : // MIDI storage is tied to a channel. For log readability we use that
-      // name.
-      m_head(0), m_tail(0), m_head_start(0), m_n_events(0), m_data(data_size) {
+    : m_data(data_size / sizeof(Elem)) {
 }
 
 uint32_t MidiStorageBase::bytes_capacity() const {
+    return m_data.size() * sizeof(Elem);
+}
+
+uint32_t MidiStorageBase::capacity_elems() const {
     return m_data.size();
 }
 
+bool MidiStorageBase::full() const {
+    return m_n_events == m_data.size();
+}
+
 void MidiStorageBase::clear() {
-    m_head = m_tail = m_head_start = m_n_events = 0;
+    m_head = m_tail = m_n_events = 0;
 }
 
 uint32_t MidiStorageBase::bytes_occupied() const {
-    if (m_head > m_tail) {
-        return m_head - m_tail;
-    } else if (m_head == m_tail && m_n_events > 0) {
-        return m_data.size();
-    } else if (m_head == m_tail && m_n_events == 0) {
-        return 0;
-    }
-    return m_data.size() - (m_tail - m_head);
+    return m_n_events * sizeof(Elem);
 }
 
 uint32_t MidiStorageBase::bytes_free() const {
-    return m_data.size() - bytes_occupied();
+    return (m_data.size() - m_n_events) * sizeof(Elem);
 }
 
 uint32_t MidiStorageBase::n_events() const {
@@ -129,81 +79,39 @@ bool MidiStorageBase::append(uint32_t time, uint16_t size,
                              DroppedMsgCallback dropped_msg_cb) {
     log<log_level_debug_trace>("append: time {}, size {}", time, size);
 
-    uint32_t sz = Elem::total_size_of(size);
-    if (sz > bytes_free() && !allow_replace) {
+    if (full() && !allow_replace) {
         log<log_level_warning>("Ignoring store of MIDI message: buffer full.");
         return false;
     }
-    if (m_n_events > 0 && unsafe_at(m_head_start)->storage_time > time) {
-        // Don't store out-of-order messages
-        log<log_level_warning>("Ignoring store of out-of-order MIDI message.");
-        return false;
+    if (m_n_events > 0) {
+        uint32_t newest_idx = (m_head + m_data.size() - 1) % m_data.size();
+        if (m_data[newest_idx].storage_time > time) {
+            // Don't store out-of-order messages
+            log<log_level_warning>("Ignoring store of out-of-order MIDI message.");
+            return false;
+        }
     }
 
-    int new_head_nowrap = (int)(m_head + sz);
-    int m_next_tail_nowrap = (m_tail < m_head) ? (int)(m_tail + bytes_capacity()) : (int)m_tail;
-    auto new_n_events = m_n_events;
-
-    // if we are crossing our own tail, remove message(s) from the tail side
     uint32_t n_removed = 0;
-    while(new_head_nowrap > m_next_tail_nowrap) {
-        auto n = maybe_next_elem_offset(unsafe_at(m_tail));
-        if (n.has_value()) {
-            auto const next_offset = n.value();
-            if (dropped_msg_cb) {
-                auto dropped_msg = unsafe_at(m_tail);
-                dropped_msg_cb(dropped_msg->storage_time, dropped_msg->size, dropped_msg->data());
-            }
-            auto shift_amount = (next_offset > m_tail) ?
-                                 next_offset - m_tail :
-                                (next_offset + m_data.size()) - m_tail;
-            m_tail = (m_tail + shift_amount) % m_data.size();
-            m_next_tail_nowrap += shift_amount;
-            new_n_events -= 1;
-            n_removed += 1;
-        } else {
-            break;
+    if (full()) {
+        if (dropped_msg_cb) {
+            auto &dropped_msg = m_data[m_tail];
+            dropped_msg_cb(dropped_msg.storage_time, dropped_msg.size, dropped_msg.data());
         }
+        m_tail = (m_tail + 1) % m_data.size();
+        n_removed++;
     }
 
-    // It could be that even though we freed up enough bytes, the free bytes
-    // are spanning the boundary of the buffer. To handle this case, add filler
-    // to our current head such that the next element will appear at the buffer
-    // start, and re-do the procedure.
-    auto const new_head = new_head_nowrap % m_data.size();
-    if (new_head > 0 && new_head < m_head) {
-        auto const prev_free = bytes_free();
-        log<log_level_debug_trace>("append: freed up space crosses buffer boundary, adding filler");
-        auto const new_offset_to_next = m_data.size() - m_head_start;
-        auto const prev_offset_to_next = unsafe_at(m_head_start)->offset_to_next;
-        unsafe_at(m_head_start)->offset_to_next = new_offset_to_next;
-        m_head = 0;
-        while (sz >= m_tail) {
-            log<log_level_debug_trace>("append: removing additional message to make space after adding filler");
-            // Adding filler caused us to cross our tail, remove one element.
-            if (dropped_msg_cb) {
-                auto dropped_msg = unsafe_at(m_tail);
-                dropped_msg_cb(dropped_msg->storage_time, dropped_msg->size, dropped_msg->data());
-            }
-            m_tail = (m_tail + unsafe_at(m_tail)->offset_to_next) % m_data.size();
-            n_removed += 1;
-            new_n_events -= 1;
-            // TODO test
-        }
-        if (n_removed > 0) {
-            log<log_level_debug_trace>("append: removed {} messages to make space", n_removed);
-        }
+    auto &elem = m_data[m_head];
+    elem.size = size;
+    elem.proc_time = time;
+    elem.storage_time = time;
+    memcpy(elem.bytes, data, size);
 
-        m_n_events = new_n_events;
-        return append(time, size, data, allow_replace, dropped_msg_cb);
+    m_head = (m_head + 1) % m_data.size();
+    if (m_n_events < m_data.size()) {
+        m_n_events++;
     }
-
-    m_head_start = m_head;
-    m_head = new_head_nowrap % m_data.size();
-
-    store_unsafe(m_head_start, time, size, data, 0);
-    new_n_events += 1;
-    m_n_events = new_n_events;
 
     if (n_removed > 0) {
         log<log_level_debug_trace>("append: removed {} messages to make space", n_removed);
@@ -229,57 +137,47 @@ bool MidiStorage::append(uint32_t time, uint16_t size,
 
 bool MidiStorageBase::prepend(uint32_t time, uint16_t size,
                               const uint8_t *data) {
-    uint32_t sz = Elem::total_size_of(size);
-    if (sz > bytes_free()) {
+    if (full()) {
         log<log_level_debug_trace>("Prepend: buffer full");
         return false;
     }
-    if (m_n_events > 0 && unsafe_at(m_tail)->get_time() < time) {
+    if (m_n_events > 0 && m_data[m_tail].get_time() < time) {
         // Don't store out-of-order messages
         log<log_level_warning>("Ignoring store of out-of-order MIDI message.");
         return false;
     }
 
-    int new_tail = (int)m_tail - (int)sz;
-    uint16_t n_filler = 0;
-    if (new_tail < 0) {
-        new_tail = m_data.size() - (int)sz;
-        if (new_tail < 0) {
-            log<log_level_debug_trace>("Message too big to prepend");
-            return false;
-        }
-        auto const new_offset = (m_data.size() - new_tail) + m_tail;
-        n_filler = new_offset - sz;
-        if((sz + n_filler) > bytes_free()) {
-            log<log_level_debug_trace>("Prepend: buffer full (filler)");
-            return false;
-        }
-    }
-    m_tail = (uint32_t) new_tail;
+    uint32_t new_tail = (m_tail + m_data.size() - 1) % m_data.size();
+    m_tail = new_tail;
     m_n_events++;
-    store_unsafe(m_tail, time, size, data, n_filler);
+
+    auto &elem = m_data[m_tail];
+    elem.size = size;
+    elem.proc_time = time;
+    elem.storage_time = time;
+    memcpy(elem.bytes, data, size);
 
     return true;
 }
 
-void MidiStorageBase::copy(
-    MidiStorageBase &to) const {
+void MidiStorageBase::copy(MidiStorageBase &to) const {
     to.m_data.resize(m_data.size());
-    if (m_head >= m_tail) {
-        memcpy((void *)(to.m_data.data()), (void *)&(m_data.at(m_tail)),
-               m_head - m_tail);
-    } else {
-        uint32_t first_copy = m_data.size() - m_tail;
-        uint32_t second_copy = m_head;
-        memcpy((void *)(to.m_data.data()), (void *)&(m_data.at(m_tail)),
-               first_copy);
-        memcpy((void *)&(to.m_data.at(first_copy)), (void *)m_data.data(),
-               second_copy);
-    }
     to.m_tail = 0;
-    to.m_head = bytes_occupied();
     to.m_n_events = m_n_events;
-    to.m_head_start = m_n_events > 0 ? to.m_head - (m_head - m_head_start) : 0;
+
+    if (m_n_events == 0) {
+        to.m_head = 0;
+        return;
+    }
+
+    uint32_t count = 0;
+    uint32_t idx = m_tail;
+    while (count < m_n_events) {
+        to.m_data[count] = m_data[idx];
+        idx = (idx + 1) % m_data.size();
+        count++;
+    }
+    to.m_head = count % m_data.size();
 }
 
 MidiStorageCursor::MidiStorageCursor(
@@ -327,8 +225,7 @@ void MidiStorageCursor::reset() {
 
 typename MidiStorageCursor::Elem *
 MidiStorageCursor::get(uint32_t raw_offset) const {
-    auto e = (Elem *)(&m_storage->m_data.at(raw_offset));
-    return (Elem *)(&m_storage->m_data.at(raw_offset));
+    return &m_storage->m_data.at(raw_offset);
 }
 
 typename MidiStorageCursor::Elem *
@@ -342,18 +239,37 @@ MidiStorageCursor::get_prev() const {
 }
 
 void MidiStorageCursor::next() {
-    auto next_offset = m_storage->maybe_next_elem_offset(get());
-    if (next_offset.has_value()) {
-        log<log_level_debug_trace>("cursor moving to next: {}", next_offset.value());
-        m_prev_offset = m_offset;
-        m_offset = next_offset;
-    } else {
+    if (!m_offset.has_value()) { return; }
+    auto const& storage = *m_storage;
+    uint32_t cap = storage.m_data.size();
+    if (cap == 0) { invalidate(); return; }
+
+    uint32_t next = (m_offset.value() + 1) % cap;
+
+    if (cap == 1) {
         invalidate();
+        return;
     }
+
+    if (!storage.full() && next == storage.m_head) {
+        invalidate();
+        return;
+    }
+
+    if (storage.full() && next == storage.m_tail && m_prev_offset.has_value()) {
+        invalidate();
+        return;
+    }
+
+    m_prev_offset = m_offset;
+    m_offset = next;
 }
 
 bool MidiStorageCursor::wrapped() const {
-    return false;
+    if (!m_prev_offset.has_value() || !m_offset.has_value()) {
+        return false;
+    }
+    return m_prev_offset.value() > m_offset.value();
 }
 
 CursorFindResult MidiStorageCursor::find_time_forward(
@@ -380,35 +296,44 @@ CursorFindResult MidiStorageCursor::find_fn_forward(
         log<log_level_debug_trace>("find_fn_forward: not valid, returning");
         return rval;
     }
-    std::optional<uint32_t> prev = m_offset;
-    for (auto next_offset = m_offset, prev = m_prev_offset;
-         next_offset.has_value(); prev = next_offset,
-              next_offset = m_storage->maybe_next_elem_offset(
-                  m_storage->unsafe_at(next_offset.value())),
-              rval.n_processed++) {
-        Elem *elem =
-            prev.has_value() ? m_storage->unsafe_at(prev.value()) : nullptr;
-        Elem *next_elem = m_storage->unsafe_at(next_offset.value());
-        if (elem) {
-            // skip current element
-            log<log_level_debug_trace>("Skip event @ {}", elem->storage_time);
-            if (maybe_skip_msg_callback) {
-                maybe_skip_msg_callback(elem);
-            }
+
+    auto const& storage = *m_storage;
+    uint32_t cap = storage.m_data.size();
+    if (cap == 0) {
+        invalidate();
+        return rval;
+    }
+
+    uint32_t idx = m_offset.value();
+    uint32_t prev_idx = idx;
+    for (uint32_t step = 0; step < storage.m_n_events; ++step) {
+        if (step > 0) {
+            if (!storage.full() && idx == storage.m_head) { break; }
+            if (storage.full() && idx == storage.m_tail) { break; }
         }
-        if (fn(next_elem)) {
-            // Found
-            log<log_level_debug_trace>("find_fn_forward done, next msg @ {}", next_elem->storage_time);
-            m_offset = next_offset;
-            m_prev_offset = prev;
+
+        Elem *elem = &storage.m_data.at(idx);
+        if (fn(elem)) {
+            if (step > 0) {
+                m_prev_offset = prev_idx;
+                m_offset = idx;
+            }
             rval.found_valid_elem = true;
             return rval;
         }
+
+        if (maybe_skip_msg_callback) {
+            log<log_level_debug_trace>("Skip event @ {}", elem->storage_time);
+            maybe_skip_msg_callback(elem);
+        }
+
+        prev_idx = idx;
+        idx = (idx + 1) % cap;
+        rval.n_processed++;
     }
 
-    // If we reached here, we reached the end. Reset to an invalid
-    // cursor.
     log<log_level_debug_trace>("find_fn_forward: none found");
+    invalidate();
     return rval;
 }
 
@@ -454,108 +379,100 @@ void MidiStorage::truncate_fn(std::function<bool(uint32_t, uint16_t, const uint8
                   TruncateSide type, DroppedMsgCallback dropped_msg_cb) {
     ModuleLoggingEnabled<"Backend.MidiStorage">::log<log_level_debug_trace>("truncate to function");
     auto prev_n_events = this->m_n_events;
-    auto _should_truncate_fn = [this, type, should_truncate_fn](Elem* e) {
-        return should_truncate_fn(e->storage_time, e->size, e->data());
-    };
+    uint32_t cap = m_data.size();
+    if (cap == 0 || m_n_events == 0) {
+        return;
+    }
 
-    if (type == TruncateSide::TruncateHead && !_should_truncate_fn(this->unsafe_at(this->m_head_start)))
-    {
+    if (type == TruncateSide::TruncateHead) {
+        uint32_t newest_idx = (m_head + cap - 1) % cap;
+        auto &e = m_data[newest_idx];
+        if (!should_truncate_fn(e.storage_time, e.size, e.data())) {
             this->template log<log_level_debug_trace>("truncate: head unchanged");
             return;
-    }
+        }
 
-    if (type == TruncateSide::TruncateTail && !_should_truncate_fn(this->unsafe_at(this->m_tail)))
-    {
+        uint32_t idx = m_tail;
+        uint32_t kept = 0;
+        for (uint32_t i = 0; i < m_n_events; ++i) {
+            auto &elem = m_data[idx];
+            if (should_truncate_fn(elem.storage_time, elem.size, elem.data())) {
+                break;
+            }
+            kept++;
+            idx = (idx + 1) % cap;
+        }
+
+        if (dropped_msg_cb) {
+            uint32_t drop_idx = idx;
+            for (uint32_t i = kept; i < m_n_events; ++i) {
+                auto &elem = m_data[drop_idx];
+                dropped_msg_cb(elem.storage_time, elem.size, elem.data());
+                drop_idx = (drop_idx + 1) % cap;
+            }
+        }
+
+        this->template log<log_level_debug_trace>("truncate head: {} -> {}, n msgs {} -> {}", m_head, idx, m_n_events, kept);
+        m_head = idx;
+        m_n_events = kept;
+
+    } else if (type == TruncateSide::TruncateTail) {
+        auto &e = m_data[m_tail];
+        if (!should_truncate_fn(e.storage_time, e.size, e.data())) {
             this->template log<log_level_debug_trace>("truncate: tail unchanged");
             return;
-    }
+        }
 
-    if (this->m_n_events > 0) {
-        auto cursor = create_cursor();
-        if (cursor->valid()) {
-            auto find_result = cursor->find_fn_forward([this, type, _should_truncate_fn, dropped_msg_cb](Elem* e) {
-                // Iterate over messages which will be dropped (if truncating tail)
-                // or remain (if truncating head)
-                auto stop = (type == TruncateSide::TruncateHead) ?
-                     _should_truncate_fn(e) :
-                    !_should_truncate_fn(e);
-                if (!stop && dropped_msg_cb && type == TruncateSide::TruncateTail) {
-                    if (dropped_msg_cb) {
-                        dropped_msg_cb(e->storage_time, e->size, e->data());
-                    }
-                }
-                return stop;
-            });
-
-            if (type == TruncateSide::TruncateHead) {
-                uint32_t new_head = cursor->offset().value();
-                auto new_n = find_result.n_processed;
-                this->template log<log_level_debug_trace>("truncate head: {} -> {}, n msgs {} -> {}", this->m_head, new_head, this->m_n_events, new_n);
-                this->m_n_events = new_n;
-                this->m_head = cursor->offset().value();
-                this->m_head_start = cursor->prev_offset().value_or(0);
-                // The rest of the messages will be dropped, so send them to the callback
-                // if needed.
-                if (dropped_msg_cb) {
-                    for (cursor->next(); cursor->valid(); cursor->next()) {
-                        auto *elem = cursor->get();
-                        dropped_msg_cb(elem->storage_time, elem->size, elem->data());
-                    }
-                }
-            } else if (type == TruncateSide::TruncateTail) {
-                uint32_t new_tail = find_result.found_valid_elem ? cursor->offset().value() : this->m_head;
-                auto new_n = this->m_n_events - find_result.n_processed;
-                this->template log<log_level_debug_trace>("truncate tail: {} -> {}, n msgs {} -> {}", this->m_tail, new_tail, this->m_n_events, new_n);
-                this->m_n_events = new_n;
-                this->m_tail = new_tail;
-                if (!find_result.found_valid_elem) {
-                    this->m_head = this->m_tail;
-                    this->m_head_start = this->m_tail;
-                }
+        uint32_t idx = m_tail;
+        uint32_t dropped = 0;
+        for (uint32_t i = 0; i < m_n_events; ++i) {
+            auto &elem = m_data[idx];
+            if (!should_truncate_fn(elem.storage_time, elem.size, elem.data())) {
+                break;
             }
-
-            for (auto &cursor : m_cursors) {
-                shoop_shared_ptr<Cursor> maybe_shared = cursor.lock();
-                if (maybe_shared) {
-                    if (type == TruncateSide::TruncateHead) {
-                        if (maybe_shared->offset() > this->m_head) {
-                            maybe_shared->overwrite(this->m_head,
-                                                    this->m_head_start);
-                        }
-                    } else if (type == TruncateSide::TruncateTail) {
-                        if (maybe_shared->offset() < this->m_tail || !find_result.found_valid_elem) {
-                            maybe_shared->invalidate();
-                        }
-                    }
-                }
+            if (dropped_msg_cb) {
+                dropped_msg_cb(elem.storage_time, elem.size, elem.data());
             }
-        } else {
-            this->template log<log_level_error>("truncate: couldn't make valid cursor");
+            dropped++;
+            idx = (idx + 1) % cap;
+        }
+
+        this->template log<log_level_debug_trace>("truncate tail: {} -> {}, n msgs {} -> {}", m_tail, idx, m_n_events, m_n_events - dropped);
+        m_tail = idx;
+        m_n_events -= dropped;
+        if (m_n_events == 0) {
+            m_head = m_tail;
         }
     }
+
+    // Invalidate cursors that no longer point to valid elements
+    auto is_valid_idx = [this](uint32_t idx) -> bool {
+        if (m_n_events == 0) return false;
+        if (m_head > m_tail) return idx >= m_tail && idx < m_head;
+        if (m_head < m_tail) return idx >= m_tail || idx < m_head;
+        return true; // full
+    };
+    for (auto &c : m_cursors) {
+        if (auto cc = c.lock()) {
+            auto off = cc->offset();
+            if (!off.has_value()) continue;
+            if (!is_valid_idx(off.value())) {
+                cc->invalidate();
+            }
+        }
+    }
+
     ModuleLoggingEnabled<"Backend.MidiStorage">::log<log_level_debug_trace>("truncate: was {}, now {} msgs", prev_n_events, this->m_n_events);
 }
 
 void MidiStorage::for_each_msg_modify(
     std::function<void(uint32_t &t, uint16_t &s, uint8_t *data)> cb) {
-    auto maybe_self = MidiStorageBase::weak_from_this();
-    if (auto self = maybe_self.lock()) {
-        auto cursor = shoop_make_shared<Cursor>(shoop_static_pointer_cast<const MidiStorageBase>(self));
-        cursor->reset();
-        auto *first_elem = cursor->get();
-        decltype(first_elem) prev_elem = nullptr;
-        for (; cursor->valid(); cursor->next()) {
-            auto *elem = cursor->get();
-            if (elem >= first_elem && prev_elem && ((prev_elem < first_elem) || (elem < prev_elem))) {
-                throw std::runtime_error ("Message iterator looped back to start");
-            }
-            cb(elem->storage_time, elem->size, elem->data());
-            prev_elem = elem;
-        }
-        cursor = nullptr;
-    } else {
-        throw std::runtime_error(
-            "Attempting to retrieve contents of destructed storage");
+    if (m_data.empty()) return;
+    uint32_t idx = m_tail;
+    for (uint32_t i = 0; i < m_n_events; ++i) {
+        auto &elem = m_data[idx];
+        cb(elem.storage_time, elem.size, elem.bytes);
+        idx = (idx + 1) % m_data.size();
     }
 }
 
