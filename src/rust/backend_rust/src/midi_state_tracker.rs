@@ -12,7 +12,6 @@ const PITCH_WHEEL_DEFAULT: u16 = 0x2000;
 static NEXT_TRACKER_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Trait for objects that receive synchronous state change notifications.
-/// This is the Rust equivalent of C++ `MidiStateTracker::Subscriber`.
 pub trait Subscriber {
     fn note_changed(
         &mut self,
@@ -53,7 +52,7 @@ pub struct MidiStateTracker {
     n_notes_active: AtomicI32,
 
     /// Subscribers — interior mutability via RefCell so subscribe/unsubscribe
-    /// can be called without &mut self (matching C++ non-const semantics).
+    /// can be called without &mut self
     subscribers: RefCell<Vec<*mut dyn Subscriber>>,
 }
 
@@ -451,8 +450,6 @@ impl MidiStateTracker {
         self.process_msg(slice);
     }
 }
-
-// C++-callable constructors and methods
 
 pub fn new_midi_state_tracker(
     track_notes: bool,

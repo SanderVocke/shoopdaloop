@@ -508,7 +508,7 @@ MidiChannel::PROC_process_playback(uint32_t our_pos, uint32_t our_length, uint32
                 auto proc_time =
                     (int)event->storage_time - _pos + buf.first.n_frames_processed;
 
-                log<log_level_debug_trace>("playback: play msg @ {} proc_time {} data {:02x} {:02x} {:02x}", event->storage_time, proc_time, event->get_data()[0], event->get_data()[1], event->get_data()[2]);
+                log<log_level_debug_trace>("playback: play msg @ {}", event->storage_time);
                 event->proc_time = proc_time;
                 PROC_send_message_ref(*buf.second, *event);
                 ma_last_played_back_sample = event->storage_time;

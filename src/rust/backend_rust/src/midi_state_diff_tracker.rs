@@ -71,8 +71,6 @@ impl MidiStateDiffTracker {
         )
     }
 
-    // ---- flat diff set helpers (no allocations on audio thread) ----
-
     fn diffs_insert(&mut self, key: [u8; 2]) {
         match self.diffs.binary_search(&key) {
             Ok(_) => {} // already present
@@ -85,8 +83,6 @@ impl MidiStateDiffTracker {
             self.diffs.remove(idx);
         }
     }
-
-    // ----------------------------------------------------------------
 
     fn tracker_a_ref(&self) -> Option<&MidiStateTracker> {
         if self.tracker_a.is_null() {
@@ -105,7 +101,6 @@ impl MidiStateDiffTracker {
     }
 
     /// Reset with two trackers.
-    /// Matches C++ order: unsubscribe old, assign new, subscribe new, action.
     pub unsafe fn reset_with_ptrs(
         &mut self,
         a: *mut MidiStateTracker,
@@ -663,8 +658,6 @@ impl Drop for MidiStateDiffTracker {
         }
     }
 }
-
-// C++-callable module-level functions
 
 pub fn new_midi_state_diff_tracker() -> Box<MidiStateDiffTracker> {
     Box::new(MidiStateDiffTracker::new())
