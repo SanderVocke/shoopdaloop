@@ -5,9 +5,12 @@ runs:
   steps:
   - name: Prepare Rust
     if: always()
-    uses: dtolnay/rust-toolchain@nightly
+    uses: actions-rust-lang/setup-rust-toolchain@v1
     with:
+      toolchain: nightly
       components: rustfmt
+      cache: false
+      rustflags: ""
   - name: Check format
     if: always()
     shell: bash

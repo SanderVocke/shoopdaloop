@@ -146,9 +146,12 @@ runs:
       PIP_BREAK_SYSTEM_PACKAGES=1 ${{ env.PIP }} install pipx
   - name: Prepare Rust LLVM tools
     if: always() && inputs.coverage == 'true'
-    uses: dtolnay/rust-toolchain@nightly
+    uses: actions-rust-lang/setup-rust-toolchain@v1
     with:
+      toolchain: nightly
       components: llvm-tools-preview
+      cache: false
+      rustflags: ""
   - name: find LLVM tools
     if: always() && inputs.coverage == 'true'
     shell: wrap-shell {0}
