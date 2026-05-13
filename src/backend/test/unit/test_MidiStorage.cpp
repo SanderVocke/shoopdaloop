@@ -179,17 +179,22 @@ TEST_CASE("MidiStorage - wrap around", "[MidiStorage]") {
     // Buffer holds exactly 3 elements
     auto s = shoop_make_shared<Storage>(3 * sizeof(Storage::Elem));
 
-    s->append(0, 3, (const uint8_t[]){0, 0, 0});
-    s->append(1, 3, (const uint8_t[]){1, 1, 1});
-    s->append(2, 3, (const uint8_t[]){2, 2, 2});
+    const uint8_t d0[] = {0, 0, 0};
+    const uint8_t d1[] = {1, 1, 1};
+    const uint8_t d2[] = {2, 2, 2};
+    const uint8_t d3[] = {3, 3, 3};
+    const uint8_t d4[] = {4, 4, 4};
+    s->append(0, 3, d0);
+    s->append(1, 3, d1);
+    s->append(2, 3, d2);
     CHECK(s->n_events() == 3);
 
     // This overwrites the oldest (time 0)
-    s->append(3, 3, (const uint8_t[]){3, 3, 3}, true);
+    s->append(3, 3, d3, true);
     CHECK(s->n_events() == 3);
 
     // And again (overwrites time 1)
-    s->append(4, 3, (const uint8_t[]){4, 4, 4}, true);
+    s->append(4, 3, d4, true);
     CHECK(s->n_events() == 3);
 
     std::vector<Msg> expect = {
