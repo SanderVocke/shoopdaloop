@@ -9,7 +9,6 @@ crate-type = ["rlib", "staticlib"]
 [dependencies]
 cxx = { workspace = true }
 log = { workspace = true }
-crossbeam-channel = "0.5"
 
 [build-dependencies]
 cxx-build = { workspace = true }

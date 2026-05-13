@@ -1,6 +1,5 @@
-use crate::event::{Event, TrackerStateData};
 use crate::midi_helpers;
-use crossbeam_channel::{bounded, Sender};
+use std::cell::RefCell;
 use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
 
 const NOTE_INACTIVE: u8 = 0x80;
@@ -10,40 +9,69 @@ const CHANNEL_PRESSURE_UNKNOWN: u8 = 0x80;
 const PITCH_WHEEL_UNKNOWN: u16 = 0x8000;
 const PITCH_WHEEL_DEFAULT: u16 = 0x2000;
 
-/// Capacity for event channels - pre-allocated to avoid allocation during processing
-const EVENT_CHANNEL_CAPACITY: usize = 64;
-
 static NEXT_TRACKER_ID: AtomicU64 = AtomicU64::new(1);
 
+/// Trait for objects that receive synchronous state change notifications.
+/// This is the Rust equivalent of C++ `MidiStateTracker::Subscriber`.
+pub trait Subscriber {
+    fn note_changed(
+        &mut self,
+        from: &MidiStateTracker,
+        channel: u8,
+        note: u8,
+        maybe_velocity: Option<u8>,
+    );
+    fn cc_changed(
+        &mut self,
+        from: &MidiStateTracker,
+        channel: u8,
+        cc: u8,
+        maybe_value: Option<u8>,
+    );
+    fn program_changed(
+        &mut self,
+        from: &MidiStateTracker,
+        channel: u8,
+        maybe_program: Option<u8>,
+    );
+    fn pitch_wheel_changed(
+        &mut self,
+        from: &MidiStateTracker,
+        channel: u8,
+        maybe_pitch: Option<u16>,
+    );
+    fn channel_pressure_changed(
+        &mut self,
+        from: &MidiStateTracker,
+        channel: u8,
+        maybe_pressure: Option<u8>,
+    );
+}
+
 /// MidiStateTracker tracks MIDI state (notes, CC, pitch wheel, channel pressure, programs)
-/// and communicates state changes via channels to subscribed diff trackers.
+/// and communicates state changes via synchronous trait callbacks to subscribers.
 pub struct MidiStateTracker {
     id: u64,
-    
-    // Tracking configuration
     track_notes: bool,
     track_controls: bool,
     track_programs: bool,
-    
-    // Owned mutable state - mutated during process_msg
+
     notes_active: Vec<u8>,
     controls: Vec<u8>,
     programs: Vec<u8>,
     pitch_wheel: Vec<u16>,
     channel_pressure: Vec<u8>,
     n_notes_active: AtomicI32,
-    
-    // Subscription senders - one per diff tracker
-    // When process_msg happens, we send to ALL of these
-    subscribers: Vec<Sender<Event>>,
+
+    /// Subscribers — interior mutability via RefCell so subscribe/unsubscribe
+    /// can be called without &mut self (matching C++ non-const semantics).
+    subscribers: RefCell<Vec<*mut dyn Subscriber>>,
 }
 
 impl MidiStateTracker {
-    /// Create a new MidiStateTracker
     pub fn new(track_notes: bool, track_controls: bool, track_programs: bool) -> Self {
         let id = NEXT_TRACKER_ID.fetch_add(1, Ordering::Relaxed);
-        
-        let mut s = Self {
+        Self {
             id,
             track_notes,
             track_controls,
@@ -54,9 +82,8 @@ impl MidiStateTracker {
             programs: if track_programs { vec![PROGRAM_UNKNOWN; 16] } else { vec![] },
             pitch_wheel: if track_controls { vec![PITCH_WHEEL_DEFAULT; 16] } else { vec![] },
             channel_pressure: if track_controls { vec![CHANNEL_PRESSURE_UNKNOWN; 16] } else { vec![] },
-            subscribers: Vec::new(),
-        };
-        s
+            subscribers: RefCell::new(Vec::new()),
+        }
     }
 
     #[inline]
@@ -77,62 +104,91 @@ impl MidiStateTracker {
         }
     }
 
-    /// Send event notification to all subscribers (non-blocking, lock-free)
-    fn notify(&self, event: Event) {
-        // try_send: atomic CAS, returns immediately
-        // If channel full, event dropped (acceptable - sync will rescan)
-        eprintln!("[RUST] MidiStateTracker::notify() id={} n_subscribers={}", self.id, self.subscribers.len());
-        for (i, sender) in self.subscribers.iter().enumerate() {
-            let result = sender.try_send(event);
-            eprintln!("[RUST]   -> subscriber[{}] send result: {:?}", i, result);
+    /// Add a subscriber. Called from MidiStateDiffTracker::reset().
+    pub fn subscribe(&self, subscriber: *mut dyn Subscriber) {
+        self.subscribers.borrow_mut().push(subscriber);
+    }
+
+    /// Remove a subscriber by pointer identity. Called from MidiStateDiffTracker::reset()/Drop.
+    pub fn unsubscribe(&self, subscriber: *mut dyn Subscriber) {
+        self.subscribers.borrow_mut().retain(|&s| !std::ptr::addr_eq(s, subscriber));
+    }
+
+    fn notify_note_changed(&self, channel: u8, note: u8, maybe_velocity: Option<u8>) {
+        for &subscriber in self.subscribers.borrow().iter() {
+            // SAFETY: subscribers are always valid because reset() unsubscribes
+            // old before subscribing new, and Drop unsubscribes before destruction.
+            unsafe {
+                (*subscriber).note_changed(self, channel, note, maybe_velocity);
+            }
+        }
+    }
+
+    fn notify_cc_changed(&self, channel: u8, cc: u8, maybe_value: Option<u8>) {
+        for &subscriber in self.subscribers.borrow().iter() {
+            unsafe {
+                (*subscriber).cc_changed(self, channel, cc, maybe_value);
+            }
+        }
+    }
+
+    fn notify_program_changed(&self, channel: u8, maybe_program: Option<u8>) {
+        for &subscriber in self.subscribers.borrow().iter() {
+            unsafe {
+                (*subscriber).program_changed(self, channel, maybe_program);
+            }
+        }
+    }
+
+    fn notify_pitch_wheel_changed(&self, channel: u8, maybe_pitch: Option<u16>) {
+        for &subscriber in self.subscribers.borrow().iter() {
+            unsafe {
+                (*subscriber).pitch_wheel_changed(self, channel, maybe_pitch);
+            }
+        }
+    }
+
+    fn notify_channel_pressure_changed(&self, channel: u8, maybe_pressure: Option<u8>) {
+        for &subscriber in self.subscribers.borrow().iter() {
+            unsafe {
+                (*subscriber).channel_pressure_changed(self, channel, maybe_pressure);
+            }
         }
     }
 
     fn process_note_on(&mut self, channel: u8, note: u8, velocity: u8) {
-        eprintln!("[RUST] MidiStateTracker::process_note_on() id={} ch={} note={} vel={}", 
-                   self.id, channel, note, velocity);
         if self.notes_active.is_empty() {
-            eprintln!("[RUST]   -> ignored (not tracking notes)");
             return;
         }
         let idx = Self::note_index(channel, note);
-        let was_inactive = self.notes_active[idx] == NOTE_INACTIVE;
         let old_vel = self.notes_active[idx];
-        
-        // Update state first
-        self.notes_active[idx] = velocity;
+        let was_inactive = old_vel == NOTE_INACTIVE;
+
         if was_inactive {
             self.n_notes_active.fetch_add(1, Ordering::Relaxed);
         }
-        
-        // Notify via channel (non-blocking, lock-free)
-        // Only if state actually changed
-        if was_inactive || old_vel != velocity {
-            let event = Event::note(self.id, channel, note, velocity);
-            self.notify(event);
+
+        if old_vel != velocity {
+            self.notes_active[idx] = velocity;
+            self.notify_note_changed(channel, note, Some(velocity));
+        } else {
+            self.notes_active[idx] = velocity;
         }
     }
 
     fn process_note_off(&mut self, channel: u8, note: u8) {
-        eprintln!("[RUST] MidiStateTracker::process_note_off() id={} ch={} note={}", 
-                   self.id, channel, note);
         if self.notes_active.is_empty() {
-            eprintln!("[RUST]   -> ignored (not tracking notes)");
             return;
         }
         let idx = Self::note_index(channel, note);
         let was_active = self.notes_active[idx] != NOTE_INACTIVE;
-        
-        // Update state first
-        self.notes_active[idx] = NOTE_INACTIVE;
+
         if was_active {
             self.n_notes_active.fetch_sub(1, Ordering::Relaxed);
-        }
-        
-        // Notify via channel (only if state changed)
-        if was_active {
-            let event = Event::note_off(self.id, channel, note);
-            self.notify(event);
+            self.notes_active[idx] = NOTE_INACTIVE;
+            self.notify_note_changed(channel, note, None);
+        } else {
+            self.notes_active[idx] = NOTE_INACTIVE;
         }
     }
 
@@ -145,8 +201,7 @@ impl MidiStateTracker {
             if self.notes_active[idx] != NOTE_INACTIVE {
                 self.n_notes_active.fetch_sub(1, Ordering::Relaxed);
                 self.notes_active[idx] = NOTE_INACTIVE;
-                let event = Event::note_off(self.id, channel, note);
-                self.notify(event);
+                self.notify_note_changed(channel, note, None);
             }
         }
     }
@@ -157,12 +212,10 @@ impl MidiStateTracker {
         }
         let idx = Self::cc_index(channel, controller);
         let current = self.controls[idx];
-        let def = Self::default_cc(channel, controller);
-        
-        if current != value || current == def {
+
+        if current != value {
             self.controls[idx] = value;
-            let event = Event::cc(self.id, channel, controller, value);
-            self.notify(event);
+            self.notify_cc_changed(channel, controller, Some(value));
         }
     }
 
@@ -173,8 +226,7 @@ impl MidiStateTracker {
         let ch = (channel & 0x0F) as usize;
         if self.programs[ch] != value {
             self.programs[ch] = value;
-            let event = Event::program(self.id, channel, value);
-            self.notify(event);
+            self.notify_program_changed(channel, Some(value));
         }
     }
 
@@ -183,15 +235,9 @@ impl MidiStateTracker {
             return;
         }
         let ch = (channel & 0x0F) as usize;
-        eprintln!("[RUST] MidiStateTracker::process_pitch_wheel() id={} ch={} value={} (0x{:04x}) -> was={}", 
-                   self.id, channel, value, value, self.pitch_wheel[ch]);
         if self.pitch_wheel[ch] != value {
             self.pitch_wheel[ch] = value;
-            let event = Event::pitch(self.id, channel, value);
-            eprintln!("[RUST]   -> sending event");
-            self.notify(event);
-        } else {
-            eprintln!("[RUST]   -> no change, not sending event");
+            self.notify_pitch_wheel_changed(channel, Some(value));
         }
     }
 
@@ -202,12 +248,10 @@ impl MidiStateTracker {
         let ch = (channel & 0x0F) as usize;
         if self.channel_pressure[ch] != value {
             self.channel_pressure[ch] = value;
-            let event = Event::pressure(self.id, channel, value);
-            self.notify(event);
+            self.notify_channel_pressure_changed(channel, Some(value));
         }
     }
 
-    /// Copy relevant state from another tracker (used for loop start state)
     pub fn copy_relevant_state(&mut self, other: &MidiStateTracker) {
         if self.track_notes && other.track_notes {
             let n_notes = other.n_notes_active.load(Ordering::Relaxed);
@@ -224,7 +268,6 @@ impl MidiStateTracker {
         }
     }
 
-    /// Reset state to defaults
     pub fn clear(&mut self) {
         for v in &mut self.notes_active {
             *v = NOTE_INACTIVE;
@@ -246,12 +289,10 @@ impl MidiStateTracker {
         }
     }
 
-    /// Process a MIDI message
     pub fn process_msg(&mut self, data: &[u8]) {
         if data.is_empty() {
             return;
         }
-        eprintln!("[RUST] MidiStateTracker::process_msg() id={} data={:?}", self.id, data);
         if let Some(ch) = midi_helpers::is_all_notes_off_for_channel(data) {
             self.process_all_notes_off(ch as u8);
         } else if let Some(ch) = midi_helpers::is_all_sound_off_for_channel(data) {
@@ -276,8 +317,6 @@ impl MidiStateTracker {
         }
     }
 
-    // Public accessors
-
     pub fn tracking_notes(&self) -> bool {
         !self.notes_active.is_empty()
     }
@@ -287,6 +326,9 @@ impl MidiStateTracker {
     }
 
     pub fn maybe_current_note_velocity(&self, channel: u8, note: u8) -> u8 {
+        if self.notes_active.is_empty() {
+            return NOTE_INACTIVE;
+        }
         let idx = Self::note_index(channel, note);
         self.notes_active[idx]
     }
@@ -296,15 +338,24 @@ impl MidiStateTracker {
     }
 
     pub fn maybe_cc_value(&self, channel: u8, controller: u8) -> u8 {
+        if self.controls.is_empty() {
+            return CC_VALUE_UNKNOWN;
+        }
         let idx = Self::cc_index(channel, controller);
         self.controls[idx]
     }
 
     pub fn maybe_pitch_wheel_value(&self, channel: u8) -> u16 {
+        if self.pitch_wheel.is_empty() {
+            return PITCH_WHEEL_UNKNOWN;
+        }
         self.pitch_wheel[(channel & 0x0F) as usize]
     }
 
     pub fn maybe_channel_pressure_value(&self, channel: u8) -> u8 {
+        if self.channel_pressure.is_empty() {
+            return CHANNEL_PRESSURE_UNKNOWN;
+        }
         self.channel_pressure[(channel & 0x0F) as usize]
     }
 
@@ -313,6 +364,9 @@ impl MidiStateTracker {
     }
 
     pub fn maybe_program_value(&self, channel: u8) -> u8 {
+        if self.programs.is_empty() {
+            return PROGRAM_UNKNOWN;
+        }
         self.programs[(channel & 0x0F) as usize]
     }
 
@@ -324,30 +378,9 @@ impl MidiStateTracker {
         self.id
     }
 
-    /// Create a subscription for a diff tracker
-    /// Returns a receiver that will receive events from this tracker
-    pub fn create_subscription(&mut self) -> crossbeam_channel::Receiver<Event> {
-        eprintln!("[RUST] MidiStateTracker::create_subscription() id={} current_subscribers={}", self.id, self.subscribers.len());
-        let (tx, rx) = bounded::<Event>(EVENT_CHANNEL_CAPACITY);
-        self.subscribers.push(tx);
-        eprintln!("[RUST]   -> created subscription, total now: {}", self.subscribers.len());
-        rx
-    }
-
-    /// Get current state data as TrackerStateData
-    pub fn get_state_data(&self) -> TrackerStateData {
-        TrackerStateData {
-            notes_active: self.notes_active.clone(),
-            controls: self.controls.clone(),
-            programs: self.programs.clone(),
-            pitch_wheel: self.pitch_wheel.clone(),
-            channel_pressure: self.channel_pressure.clone(),
-        }
-    }
-
     pub fn state_as_messages_flat(&self) -> Vec<u8> {
         let mut flat = Vec::new();
-        
+
         if self.tracking_programs() {
             for channel in 0..self.programs.len() {
                 let v = self.programs[channel];
