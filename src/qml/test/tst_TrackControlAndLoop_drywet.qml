@@ -575,6 +575,7 @@ ShoopTestFile {
 
                     session.backend.dummy_request_controlled_frames(200)
                     session.backend.dummy_run_requested_frames()
+                    testcase.wait_updated(session.backend)
 
                     tut_control().monitor = false
                     tut_control().mute = false

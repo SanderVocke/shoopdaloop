@@ -381,12 +381,15 @@ ShoopTestFile {
                     loop_at(-1, 0).queue_set_length(100);
                     loop_at(0, 1).queue_set_length(300);
                     loop_at(-1, 0).transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                    testcase.wait_updated(session.backend)
 
                     session.backend.dummy_request_controlled_frames(50)
                     session.backend.dummy_run_requested_frames()
+                    testcase.wait_updated(session.backend)
 
                     loop_at(0, 1).transition(ShoopRustConstants.LoopMode.Playing, 0, ShoopRustConstants.DontAlignToSyncImmediately)
                     session.target_loop(loop_at(0, 1))
+                    testcase.wait_updated(session.backend)
 
                     session.backend.dummy_request_controlled_frames(100)
                     session.backend.dummy_run_requested_frames()

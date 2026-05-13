@@ -1,0 +1,17 @@
+[package]
+name = "backend_rust"
+links = "backend_rust"
+edition = "2021"
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+cxx = { workspace = true }
+log = { workspace = true }
+
+[build-dependencies]
+cxx-build = { workspace = true }
+
+[features]
+prebuild = []

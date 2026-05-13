@@ -16,6 +16,9 @@ fn main_impl() -> Result<(), anyhow::Error> {
     let refilling_pool_cxx_include = std::env::var("DEP_REFILLING_POOL_INCLUDE")?;
     let refilling_pool_cxx_libdir = std::env::var("DEP_REFILLING_POOL_CXX_BRIDGE_LIBDIR")?;
     let refilling_pool_staticlib = std::env::var("CARGO_STATICLIB_FILE_REFILLING_POOL")?;
+    let backend_rust_cxx_include = std::env::var("DEP_BACKEND_RUST_INCLUDE")?;
+    let backend_rust_cxx_libdir = std::env::var("DEP_BACKEND_RUST_CXX_BRIDGE_LIBDIR")?;
+    let backend_rust_staticlib = std::env::var("CARGO_STATICLIB_FILE_BACKEND_RUST")?;
     let profile = std::env::var("PROFILE")?;
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     let build_time_link_dirs_raw = option_env!("SHOOP_BUILD_TIME_LINK_DIRS").unwrap_or_default();
@@ -40,6 +43,9 @@ fn main_impl() -> Result<(), anyhow::Error> {
             .define("REFILLING_POOL_CXX_INCLUDE", refilling_pool_cxx_include)
             .define("REFILLING_POOL_CXX_LIBDIR", refilling_pool_cxx_libdir)
             .define("REFILLING_POOL_RUST_LIB", refilling_pool_staticlib)
+            .define("BACKEND_RUST_CXX_INCLUDE", backend_rust_cxx_include)
+            .define("BACKEND_RUST_CXX_LIBDIR", backend_rust_cxx_libdir)
+            .define("BACKEND_RUST_RUST_LIB", backend_rust_staticlib)
             .define(
                 "ENABLE_COVERAGE",
                 if cfg!(feature = "coverage") {
