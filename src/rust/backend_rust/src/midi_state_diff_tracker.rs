@@ -8,6 +8,11 @@ const PROGRAM_UNKNOWN: u8 = 0x80;
 const CHANNEL_PRESSURE_UNKNOWN: u8 = 0x80;
 const PITCH_WHEEL_UNKNOWN: u16 = 0x8000;
 
+/// Action constants for reset_with_ptrs, matching C++ StateDiffTrackerAction.
+pub const ACTION_NONE: i32 = 0;
+pub const ACTION_CLEAR_DIFF: i32 = 1;
+pub const ACTION_SCAN_DIFF: i32 = 2;
+
 static NEXT_DIFF_TRACKER_ID: AtomicU64 = AtomicU64::new(1);
 
 /// MidiStateDiffTracker tracks differences between two MidiStateTracker instances.
@@ -624,4 +629,200 @@ pub fn set_diff_flat(this: &mut MidiStateDiffTracker, data: &[u8]) {
 
 pub fn get_id(this: &MidiStateDiffTracker) -> u64 {
     this.get_id()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn process_msg(tracker: &mut MidiStateTracker, data: &[u8]) {
+        unsafe { tracker.process_msg_raw(data.as_ptr()) }
+    }
+
+    #[test]
+    fn test_channel_pressure_diff_uses_correct_status_byte() {
+        let mut tracker_a = MidiStateTracker::new(false, true, false);
+        let mut tracker_b = MidiStateTracker::new(false, true, false);
+        let mut diff = MidiStateDiffTracker::new();
+
+        unsafe {
+            diff.reset_with_ptrs(
+                &mut tracker_a as *mut _,
+                &mut tracker_b as *mut _,
+                ACTION_NONE,
+            );
+        }
+
+        process_msg(&mut tracker_a, &[0xD0, 64]);
+        process_msg(&mut tracker_b, &[0xD0, 64]);
+        assert!(diff.diffs.is_empty(), "no diffs expected after identical state");
+
+        process_msg(&mut tracker_a, &[0xD0, 100]);
+
+        let diffs = diff.get_diff_flat();
+        assert_eq!(diffs.len(), 2, "expected exactly one diff");
+        assert_eq!(diffs[0], 0xD0, "status byte should be 0xD0 (channel pressure)");
+        assert_eq!(diffs[1], 0);
+    }
+
+    #[test]
+    fn test_channel_pressure_independent_from_pitch_wheel() {
+        let mut tracker_a = MidiStateTracker::new(false, true, false);
+        let mut tracker_b = MidiStateTracker::new(false, true, false);
+        let mut diff = MidiStateDiffTracker::new();
+
+        unsafe {
+            diff.reset_with_ptrs(
+                &mut tracker_a as *mut _,
+                &mut tracker_b as *mut _,
+                ACTION_NONE,
+            );
+        }
+
+        process_msg(&mut tracker_a, &[0xD0, 50]);
+        process_msg(&mut tracker_b, &[0xD0, 50]);
+        process_msg(&mut tracker_a, &[0xE0, 0x00, 0x40]);
+        process_msg(&mut tracker_b, &[0xE0, 0x00, 0x40]);
+        assert!(diff.diffs.is_empty());
+
+        process_msg(&mut tracker_a, &[0xD0, 75]);
+
+        let diffs = diff.get_diff_flat();
+        assert_eq!(diffs.len(), 2, "expected exactly one diff");
+        assert_eq!(diffs[0], 0xD0, "diff should be for channel pressure (0xD0)");
+        assert_eq!(diffs[1], 0);
+    }
+
+    #[test]
+    fn test_check_channel_pressure_uses_correct_byte() {
+        let mut tracker_a = MidiStateTracker::new(false, true, false);
+        let mut tracker_b = MidiStateTracker::new(false, true, false);
+        let mut diff = MidiStateDiffTracker::new();
+
+        unsafe {
+            diff.reset_with_ptrs(
+                &mut tracker_a as *mut _,
+                &mut tracker_b as *mut _,
+                ACTION_NONE,
+            );
+        }
+
+        process_msg(&mut tracker_a, &[0xD5, 42]);
+        process_msg(&mut tracker_b, &[0xD5, 0]);
+
+        diff.check_channel_pressure(5);
+
+        let diffs = diff.get_diff_flat();
+        assert_eq!(diffs.len(), 2, "expected exactly one diff");
+        assert_eq!(diffs[0], 0xD5, "status byte should be 0xD5 (channel pressure on ch 5)");
+        assert_eq!(diffs[1], 0);
+    }
+
+    #[test]
+    fn test_diff_tracks_cc_changes() {
+        let mut tracker_a = MidiStateTracker::new(false, true, false);
+        let mut tracker_b = MidiStateTracker::new(false, true, false);
+        let mut diff = MidiStateDiffTracker::new();
+
+        unsafe {
+            diff.reset_with_ptrs(
+                &mut tracker_a as *mut _,
+                &mut tracker_b as *mut _,
+                ACTION_SCAN_DIFF,
+            );
+        }
+
+        assert!(diff.diffs.is_empty());
+
+        process_msg(&mut tracker_a, &[0xB0, 7, 64]);
+        let diffs = diff.get_diff_flat();
+        assert_eq!(diffs.len(), 2);
+        assert_eq!(diffs[0], 0xB0);
+        assert_eq!(diffs[1], 7);
+
+        process_msg(&mut tracker_b, &[0xB0, 7, 64]);
+        assert!(diff.diffs.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_to_generates_messages() {
+        let mut tracker_a = MidiStateTracker::new(false, true, false);
+        let mut tracker_b = MidiStateTracker::new(false, true, false);
+        let mut diff = MidiStateDiffTracker::new();
+
+        unsafe {
+            diff.reset_with_ptrs(
+                &mut tracker_a as *mut _,
+                &mut tracker_b as *mut _,
+                ACTION_SCAN_DIFF,
+            );
+        }
+
+        process_msg(&mut tracker_a, &[0xB0, 7, 64]);
+        process_msg(&mut tracker_a, &[0xD0, 50]);
+
+        let msgs = diff.resolve_to_wrapper(&mut tracker_b, false, true, false);
+
+        // Resolve to tracker_b means: generate messages so tracker_b matches tracker_a.
+        // Tracker_a has CC7=64 and channel_pressure=50, so those values are output.
+        assert_eq!(msgs.len(), 6);
+        assert_eq!(msgs[0], 0xB0);
+        assert_eq!(msgs[1], 7);
+        assert_eq!(msgs[2], 64);
+        assert_eq!(msgs[3], 0xD0);
+        assert_eq!(msgs[4], 0);
+        assert_eq!(msgs[5], 50);
+    }
+
+    #[test]
+    fn test_reset_clears_old_diffs() {
+        let mut tracker_a = MidiStateTracker::new(false, true, false);
+        let mut tracker_b = MidiStateTracker::new(false, true, false);
+        let mut tracker_c = MidiStateTracker::new(false, true, false);
+        let mut diff = MidiStateDiffTracker::new();
+
+        unsafe {
+            diff.reset_with_ptrs(
+                &mut tracker_a as *mut _,
+                &mut tracker_b as *mut _,
+                ACTION_SCAN_DIFF,
+            );
+        }
+
+        process_msg(&mut tracker_a, &[0xB0, 7, 64]);
+        assert!(!diff.diffs.is_empty());
+
+        unsafe {
+            diff.reset_with_ptrs(
+                &mut tracker_a as *mut _,
+                &mut tracker_c as *mut _,
+                ACTION_CLEAR_DIFF,
+            );
+        }
+        assert!(diff.diffs.is_empty());
+    }
+
+    #[test]
+    fn test_note_diff_tracked_correctly() {
+        let mut tracker_a = MidiStateTracker::new(true, false, false);
+        let mut tracker_b = MidiStateTracker::new(true, false, false);
+        let mut diff = MidiStateDiffTracker::new();
+
+        unsafe {
+            diff.reset_with_ptrs(
+                &mut tracker_a as *mut _,
+                &mut tracker_b as *mut _,
+                ACTION_SCAN_DIFF,
+            );
+        }
+
+        process_msg(&mut tracker_a, &[0x90, 60, 100]);
+        let diffs = diff.get_diff_flat();
+        assert_eq!(diffs.len(), 2);
+        assert_eq!(diffs[0], 0x90);
+        assert_eq!(diffs[1], 60);
+
+        process_msg(&mut tracker_b, &[0x90, 60, 100]);
+        assert!(diff.diffs.is_empty());
+    }
 }

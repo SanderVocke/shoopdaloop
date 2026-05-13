@@ -519,3 +519,106 @@ pub fn get_id(this: &MidiStateTracker) -> u64 {
 pub fn state_as_messages_flat(this: &MidiStateTracker) -> Vec<u8> {
     this.state_as_messages_flat()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn process_msg(tracker: &mut MidiStateTracker, data: &[u8]) {
+        unsafe { tracker.process_msg_raw(data.as_ptr()) }
+    }
+
+    #[test]
+    fn test_note_tracking() {
+        let mut tracker = MidiStateTracker::new(true, false, false);
+        assert_eq!(tracker.n_notes_active(), 0);
+
+        process_msg(&mut tracker, &[0x90, 60, 100]);
+        assert_eq!(tracker.n_notes_active(), 1);
+        assert_eq!(tracker.maybe_current_note_velocity(0, 60), 100);
+
+        process_msg(&mut tracker, &[0x80, 60, 64]);
+        assert_eq!(tracker.n_notes_active(), 0);
+        assert_eq!(tracker.maybe_current_note_velocity(0, 60), NOTE_INACTIVE);
+    }
+
+    #[test]
+    fn test_cc_tracking() {
+        let mut tracker = MidiStateTracker::new(false, true, false);
+        assert_eq!(tracker.maybe_cc_value(0, 7), CC_VALUE_UNKNOWN);
+
+        process_msg(&mut tracker, &[0xB0, 7, 64]);
+        assert_eq!(tracker.maybe_cc_value(0, 7), 64);
+
+        process_msg(&mut tracker, &[0xB0, 7, 0]);
+        assert_eq!(tracker.maybe_cc_value(0, 7), 0);
+    }
+
+    #[test]
+    fn test_pitch_wheel_tracking() {
+        let mut tracker = MidiStateTracker::new(false, true, false);
+        assert_eq!(tracker.maybe_pitch_wheel_value(0), PITCH_WHEEL_DEFAULT);
+
+        process_msg(&mut tracker, &[0xE0, 0x00, 0x40]);
+        assert_eq!(tracker.maybe_pitch_wheel_value(0), 0x2000);
+    }
+
+    #[test]
+    fn test_channel_pressure_tracking() {
+        let mut tracker = MidiStateTracker::new(false, true, false);
+        assert_eq!(tracker.maybe_channel_pressure_value(0), CHANNEL_PRESSURE_UNKNOWN);
+
+        process_msg(&mut tracker, &[0xD0, 64]);
+        assert_eq!(tracker.maybe_channel_pressure_value(0), 64);
+    }
+
+    #[test]
+    fn test_program_tracking() {
+        let mut tracker = MidiStateTracker::new(false, false, true);
+        assert_eq!(tracker.maybe_program_value(0), PROGRAM_UNKNOWN);
+
+        process_msg(&mut tracker, &[0xC0, 42]);
+        assert_eq!(tracker.maybe_program_value(0), 42);
+    }
+
+    #[test]
+    fn test_state_as_messages_skips_unknown() {
+        let tracker = MidiStateTracker::new(false, true, false);
+        let msgs = tracker.state_as_messages_flat();
+        assert_eq!(msgs.len(), 0, "freshly cleared tracker should have no state messages");
+    }
+
+    #[test]
+    fn test_state_as_messages_includes_set_cc() {
+        let mut tracker = MidiStateTracker::new(false, true, false);
+        process_msg(&mut tracker, &[0xB0, 7, 64]);
+        let msgs = tracker.state_as_messages_flat();
+        assert_eq!(msgs.len(), 4);
+        assert_eq!(msgs[0], 3);
+        assert_eq!(msgs[1], 0xB0);
+        assert_eq!(msgs[2], 7);
+        assert_eq!(msgs[3], 64);
+    }
+
+    #[test]
+    fn test_clear_resets_all() {
+        let mut tracker = MidiStateTracker::new(true, true, true);
+        process_msg(&mut tracker, &[0x90, 60, 100]);
+        process_msg(&mut tracker, &[0xB0, 7, 64]);
+        process_msg(&mut tracker, &[0xC0, 42]);
+
+        tracker.clear();
+
+        assert_eq!(tracker.n_notes_active(), 0);
+        assert_eq!(tracker.maybe_cc_value(0, 7), CC_VALUE_UNKNOWN);
+        assert_eq!(tracker.maybe_program_value(0), PROGRAM_UNKNOWN);
+    }
+
+    #[test]
+    fn test_default_cc_64_and_69_are_zero() {
+        let tracker = MidiStateTracker::new(false, true, false);
+        assert_eq!(tracker.maybe_cc_value(0, 64), 0);
+        assert_eq!(tracker.maybe_cc_value(0, 69), 0);
+        assert_eq!(tracker.maybe_cc_value(0, 7), CC_VALUE_UNKNOWN);
+    }
+}
