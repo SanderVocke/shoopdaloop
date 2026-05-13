@@ -4,7 +4,7 @@
 #include <functional>
 #include "MidiStateTracker.h"
 #include "shoop_shared_ptr.h"
-#include "backend_rust/src/cxx.rs.h"
+#include "backend_rust/src/midi_state_diff_tracker_cxx.rs.h"
 
 enum class StateDiffTrackerAction {
     ScanDiff,

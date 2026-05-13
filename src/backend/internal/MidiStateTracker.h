@@ -3,7 +3,7 @@
 #include <optional>
 #include <vector>
 #include "shoop_shared_ptr.h"
-#include "backend_rust/src/cxx.rs.h"
+#include "backend_rust/src/midi_state_tracker_cxx.rs.h"
 
 class MidiStateDiffTracker;
 

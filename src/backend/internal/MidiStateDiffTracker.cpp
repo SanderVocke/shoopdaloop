@@ -13,9 +13,9 @@ MidiStateDiffTracker::MidiStateDiffTracker(SharedTracker a, SharedTracker b, Sta
 void MidiStateDiffTracker::reset(SharedTracker a, SharedTracker b, StateDiffTrackerAction action) {
     m_a = a;
     m_b = b;
-    m_rust->reset_with_ptrs(
-        m_a ? m_a->raw_ptr() : nullptr,
-        m_b ? m_b->raw_ptr() : nullptr,
+    m_rust->do_reset_with_ptrs(
+        reinterpret_cast<uint8_t*>(m_a ? m_a->raw_ptr() : nullptr),
+        reinterpret_cast<uint8_t*>(m_b ? m_b->raw_ptr() : nullptr),
         static_cast<int>(action)
     );
 }
@@ -59,7 +59,7 @@ void MidiStateDiffTracker::clear_diff() {
 void MidiStateDiffTracker::resolve_to(MidiStateTracker *to, std::function<void(uint32_t size, uint8_t *data)> put_message_cb,
     bool notes, bool controls, bool programs) {
     if (!to || !m_a || !m_b) return;
-    auto data = m_rust->resolve_to_wrapper(*to->raw_ptr(), notes, controls, programs);
+    auto data = m_rust->do_resolve_to_wrapper(reinterpret_cast<uint8_t*>(to->raw_ptr()), notes, controls, programs);
     for (size_t i = 0; i + 2 < data.size(); i += 3) {
         put_message_cb(3, const_cast<uint8_t*>(&data[i]));
     }

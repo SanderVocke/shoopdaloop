@@ -44,6 +44,33 @@ impl MidiStateDiffTracker {
         self.id
     }
 
+    /// Bridge adapter: takes raw byte pointers instead of *mut MidiStateTracker
+    /// to avoid cross-bridge type conflicts in cxx.
+    pub unsafe fn do_reset_with_ptrs(&mut self, a: *mut u8, b: *mut u8, action: i32) {
+        self.reset_with_ptrs(
+            a as *mut MidiStateTracker,
+            b as *mut MidiStateTracker,
+            action,
+        );
+    }
+
+    /// Bridge adapter: takes raw byte pointer instead of &mut MidiStateTracker
+    /// to avoid cross-bridge type conflicts in cxx.
+    pub unsafe fn do_resolve_to_wrapper(
+        &mut self,
+        to: *mut u8,
+        notes: bool,
+        controls: bool,
+        programs: bool,
+    ) -> Vec<u8> {
+        self.resolve_to_wrapper(
+            &mut *(to as *mut MidiStateTracker),
+            notes,
+            controls,
+            programs,
+        )
+    }
+
     // ---- flat diff set helpers (no allocations on audio thread) ----
 
     fn diffs_contains(&self, key: &[u8; 2]) -> bool {
