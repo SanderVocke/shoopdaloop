@@ -19,10 +19,11 @@ static ATEXIT_REGISTERED: AtomicBool = AtomicBool::new(false);
 extern "C" fn reap_server_atexit() {
     let pid = SERVER_PID.load(Ordering::SeqCst);
     if pid <= 0 {
-        debug!("atexit: no server child to reap");
+        // Do NOT use logging macros here: the tracing subscriber (and its
+        // thread-locals such as tracing_tracy's StrCache) may already have
+        // been destroyed during process exit, so calling debug!() would panic.
         return;
     }
-    debug!("atexit: cleaning up server child pid={pid}");
 
     // Send SIGKILL first to ensure the server terminates promptly.
     // It may have already exited (clients disconnected), but kill()
@@ -32,16 +33,14 @@ extern "C" fn reap_server_atexit() {
     }
 
     // Reap with retries. The server should exit very quickly after SIGKILL.
-    for attempt in 0..50 {
+    for _attempt in 0..50 {
         match unsafe { libc::waitpid(pid, std::ptr::null_mut(), libc::WNOHANG) } {
             r if r == pid => {
-                debug!("atexit: reaped server child pid={pid} (attempt {attempt})");
                 SERVER_PID.store(-1, Ordering::SeqCst);
                 return;
             }
             -1 => {
                 // waitpid failed — child may have already been reaped by the thread's try_wait()
-                debug!("atexit: waitpid failed for pid={pid} (already reaped or error)");
                 SERVER_PID.store(-1, Ordering::SeqCst);
                 return;
             }
@@ -57,7 +56,7 @@ extern "C" fn reap_server_atexit() {
             }
         }
     }
-    debug!("atexit: failed to reap server child pid={pid} after 1s");
+    // Failed to reap after 1s — leave it; we can't safely log here.
 }
 
 pub struct CrashHandlerHandle {
