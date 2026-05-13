@@ -28,7 +28,9 @@ uint32_t MidiStateTracker::note_index(uint8_t channel, uint8_t note) {
 
 void MidiStateTracker::process_noteOn(uint8_t channel, uint8_t note,
                                       uint8_t velocity) {
+    std::cerr << "[CPP] MidiStateTracker::process_noteOn() this=" << this << " ch=" << (int)channel << " note=" << (int)note << " vel=" << (int)velocity << std::endl;
     if (m_notes_active_velocities.size() == 0) {
+        std::cerr << "[CPP]   -> ignored (not tracking notes)" << std::endl;
         log<log_level_debug_trace>("Ignore note on (not tracking)");
         return;
     }
@@ -70,7 +72,9 @@ void MidiStateTracker::process_allNotesOff(uint8_t channel) {
 }
 
 void MidiStateTracker::process_noteOff(uint8_t channel, uint8_t note) {
+    std::cerr << "[CPP] MidiStateTracker::process_noteOff() this=" << this << " ch=" << (int)channel << " note=" << (int)note << std::endl;
     if (m_notes_active_velocities.size() == 0) {
+        std::cerr << "[CPP]   -> ignored (not tracking notes)" << std::endl;
         log<log_level_debug_trace>("Ignore note off (not tracking)");
         return;
     }
@@ -128,18 +132,23 @@ void MidiStateTracker::process_program(uint8_t channel, uint8_t value) {
 }
 
 void MidiStateTracker::process_pitch_wheel(uint8_t channel, uint16_t value) {
+    std::cerr << "[CPP] MidiStateTracker::process_pitch_wheel() this=" << this << " ch=" << (int)channel << " value=" << value << " (0x" << std::hex << value << std::dec << ") -> was=" << m_pitch_wheel[channel & 0x0F] << std::endl;
     if (m_pitch_wheel.size() == 0) {
+        std::cerr << "[CPP]   -> ignored (not tracking)" << std::endl;
         log<log_level_debug_trace>("Ignore pitch wheel (not tracking)");
         return;
     }
     log<log_level_debug_trace>("Process pitch wheel: {}, {}", channel, value);
 
     if (m_pitch_wheel.at(channel & 0x0F) != value) {
+        std::cerr << "[CPP]   -> sending to " << m_subscribers.size() << " subscribers" << std::endl;
         for (auto const &s : m_subscribers) {
             if (auto ss = s.lock()) {
                 ss->pitch_wheel_changed(this, channel, value);
             }
         }
+    } else {
+        std::cerr << "[CPP]   -> no change, not notifying" << std::endl;
     }
     m_pitch_wheel[channel & 0x0F] = value;
 }
@@ -361,8 +370,12 @@ bool MidiStateTracker::tracking_anything() const {
 }
 
 void MidiStateTracker::subscribe(shoop_shared_ptr<Subscriber> s) {
+    std::cerr << "[CPP] MidiStateTracker::subscribe() this=" << this << " subscriber=" << s.get() << " before size=" << m_subscribers.size() << std::endl;
     m_subscribers.insert(s);
+    std::cerr << "[CPP]   -> after size=" << m_subscribers.size() << std::endl;
 }
 void MidiStateTracker::unsubscribe(shoop_shared_ptr<Subscriber> s) {
+    std::cerr << "[CPP] MidiStateTracker::unsubscribe() this=" << this << " subscriber=" << s.get() << " before size=" << m_subscribers.size() << std::endl;
     m_subscribers.erase(s);
+    std::cerr << "[CPP]   -> after size=" << m_subscribers.size() << std::endl;
 }
