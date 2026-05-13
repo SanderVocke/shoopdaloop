@@ -631,6 +631,7 @@ dependencies = [
  "common",
  "crash-handler",
  "ctor",
+ "libc",
  "log",
  "minidumper",
  "once_cell",

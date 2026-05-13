@@ -19,6 +19,8 @@ void MidiStateDiffTracker::reset(SharedTracker a, SharedTracker b, StateDiffTrac
         // Pass raw pointers to Rust, which wraps them in Rc<RefCell<...>>
         m_rust->reset_with_ptrs(m_a->raw_ptr(), m_b->raw_ptr());
     }
+    std::cerr << "[CPP]   subscribers now: m_a->m_subscribers.size=?? m_b->m_subscribers.size=?? (pointer-based)" << std::endl;
+    std::cerr << "[CPP]   diffs before action: " << m_diffs.size() << std::endl;
     switch (action) {
     case StateDiffTrackerAction::ScanDiff:
         m_rust->rescan_diff();
@@ -28,6 +30,10 @@ void MidiStateDiffTracker::reset(SharedTracker a, SharedTracker b, StateDiffTrac
         break;
     default:
         break;
+    }
+    std::cerr << "[CPP]   diffs after action: " << m_diffs.size() << std::endl;
+    for (auto& d : m_diffs) {
+        std::cerr << "[CPP]     diff: [0x" << std::hex << (int)d[0] << ", " << std::dec << (int)d[1] << "]" << std::endl;
     }
 }
 
@@ -74,6 +80,7 @@ void MidiStateDiffTracker::resolve_to(MidiStateTracker *to, std::function<void(u
     for (size_t i = 0; i + 2 < data.size(); i += 3) {
         put_message_cb(3, const_cast<uint8_t*>(&data[i]));
     }
+    std::cerr << "[CPP]   rescan_diff complete: " << m_diffs.size() << " diffs" << std::endl;
 }
 
 void MidiStateDiffTracker::resolve_to_a(std::function<void(uint32_t size, uint8_t *data)> put_message_cb, bool notes, bool controls, bool programs) {
