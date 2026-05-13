@@ -177,6 +177,7 @@ impl MidiStateDiffTracker {
                     t.maybe_cc_value(channel, cc)
                 });
 
+                // C++ behavior: diff if sender has known value AND values differ
                 if sender_val != CC_VALUE_UNKNOWN && sender_val != other_val {
                     self.diffs.insert([0xB0 | channel, cc]);
                 } else {
@@ -336,6 +337,8 @@ impl MidiStateDiffTracker {
         }
 
         // Check CC values
+        // C++ logic: add diff if sender has known value AND sender's value != other's value
+        // This means: av != UNKNOWN AND av != bv (not: bv != UNKNOWN AND bv != av)
         let a_tracking_controls = self.with_tracker_state(tracker_a, |t| t.tracking_controls());
         let b_tracking_controls = self.with_tracker_state(tracker_b, |t| t.tracking_controls());
         if a_tracking_controls && b_tracking_controls {
@@ -343,7 +346,9 @@ impl MidiStateDiffTracker {
                 for cc in 0..128u8 {
                     let av = self.with_tracker_state(tracker_a, |t| t.maybe_cc_value(channel, cc));
                     let bv = self.with_tracker_state(tracker_b, |t| t.maybe_cc_value(channel, cc));
-                    if av != bv && av != CC_VALUE_UNKNOWN && bv != CC_VALUE_UNKNOWN {
+                    // C++ behavior: diff if sender (tracker_a) has known value AND values differ
+                    if av != CC_VALUE_UNKNOWN && av != bv {
+                        eprintln!("[RUST]     -> ADDING CC diff [0x{:02x}, {}] (av={} bv={})", 0xB0 | channel, cc, av, bv);
                         self.diffs.insert([0xB0 | channel, cc]);
                     }
                 }
@@ -553,10 +558,12 @@ impl MidiStateDiffTracker {
                         let v = self.with_tracker_state(&from_tracker, |t| {
                             t.maybe_current_note_velocity(channel_part, diff[1])
                         });
+                        eprintln!("[RUST]       -> note from={} ({})", v, if v != NOTE_INACTIVE { "ACTIVE" } else { "inactive" });
                         if v != NOTE_INACTIVE {
                             out.push(diff[0]);  // 0x90 | channel
                             out.push(diff[1]);  // note
                             out.push(v);        // velocity
+                            eprintln!("[RUST]       -> outputting note ON [0x{:02x}, {}, {}]", diff[0], diff[1], v);
                         }
                     }
                 }
@@ -565,11 +572,11 @@ impl MidiStateDiffTracker {
                         let v = self.with_tracker_state(&from_tracker, |t| {
                             t.maybe_cc_value(channel_part, diff[1])
                         });
-                        if v != CC_VALUE_UNKNOWN {
-                            out.push(diff[0]);
-                            out.push(diff[1]);
-                            out.push(v);
-                        }
+                        // C++ behavior: always output, using 0 when from value is unknown
+                        let out_val = if v != CC_VALUE_UNKNOWN { v } else { 0 };
+                        out.push(diff[0]);
+                        out.push(diff[1]);
+                        out.push(out_val);
                     }
                 }
                 0xC0 => {
@@ -577,10 +584,12 @@ impl MidiStateDiffTracker {
                         let v = self.with_tracker_state(&from_tracker, |t| {
                             t.maybe_program_value(channel_part)
                         });
+                        eprintln!("[RUST]       -> program from={} ({})", v, if v != PROGRAM_UNKNOWN { "known" } else { "unknown" });
                         if v != PROGRAM_UNKNOWN {
                             out.push(diff[0]);
                             out.push(0);
                             out.push(v);
+                            eprintln!("[RUST]       -> outputting program [0x{:02x}, 0, {}]", diff[0], v);
                         }
                     }
                 }
@@ -589,10 +598,12 @@ impl MidiStateDiffTracker {
                         let v = self.with_tracker_state(&from_tracker, |t| {
                             t.maybe_channel_pressure_value(channel_part)
                         });
+                        eprintln!("[RUST]       -> channel_pressure from={} ({})", v, if v != CHANNEL_PRESSURE_UNKNOWN { "known" } else { "unknown" });
                         if v != CHANNEL_PRESSURE_UNKNOWN {
                             out.push(diff[0]);
                             out.push(0);
                             out.push(v);
+                            eprintln!("[RUST]       -> outputting channel_pressure [0x{:02x}, 0, {}]", diff[0], v);
                         }
                     }
                 }
@@ -601,11 +612,14 @@ impl MidiStateDiffTracker {
                         let v = self.with_tracker_state(&from_tracker, |t| {
                             t.maybe_pitch_wheel_value(channel_part)
                         });
-                        eprintln!("[RUST]       reading pitch ch={} = {} ({:#x})", channel_part, v, v);
+                        eprintln!("[RUST]       -> pitch wheel from={} ({})", v, if v != PITCH_WHEEL_UNKNOWN { "known" } else { "unknown" });
                         if v != PITCH_WHEEL_UNKNOWN {
+                            let lsb = (v & 0x7F) as u8;
+                            let msb = ((v >> 7) & 0x7F) as u8;
                             out.push(diff[0]);
-                            out.push((v & 0x7F) as u8);
-                            out.push(((v >> 7) & 0x7F) as u8);
+                            out.push(lsb);
+                            out.push(msb);
+                            eprintln!("[RUST]       -> outputting pitch [0x{:02x}, {}, {}] (value={})", diff[0], lsb, msb, v);
                         }
                     }
                 }
