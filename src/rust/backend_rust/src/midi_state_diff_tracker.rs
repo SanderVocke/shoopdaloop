@@ -262,6 +262,11 @@ impl MidiStateDiffTracker {
         programs: bool,
     ) -> Vec<u8> {
         let to_id = to.get_id();
+        eprintln!("[RUST] resolve_to_wrapper to_id={} a_id={} b_id={} diffs={} notes={} controls={} programs={}",
+            to_id, self.tracker_a_id, self.tracker_b_id, self.diffs.len(), notes, controls, programs);
+        for d in &self.diffs {
+            eprintln!("[RUST]   diff [{:02x}, {:02x}]", d[0], d[1]);
+        }
         if self.tracker_a.is_null() || self.tracker_b.is_null() {
             return Vec::new();
         }

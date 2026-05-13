@@ -90,23 +90,23 @@
 
 ## Phase 5: Verification & Testing
 
-- [ ] **5.1 Run Rust unit tests**
+- [x] **5.1 Run Rust unit tests**
   - **Goal:** Execute `cargo test -p backend_rust` and fix any failures caused by behavioral changes.
   - **End condition:** All Rust tests pass.
 
-- [ ] **5.2 Run C++ MIDI-related tests via CTest**
+- [x] **5.2 Run C++ MIDI-related tests via CTest**
   - **Goal:** Execute `cd build && ctest -R Midi --output-on-failure` and identify any remaining divergences.
   - **End condition:** All MIDI-related CTest cases pass.
 
-- [ ] **5.3 Run specific targeted test case**
+- [x] **5.3 Run specific targeted test case**
   - **Goal:** Run `./backend_test -- "[AudioMidiLoop][midi]"` (or equivalent) to verify the most sensitive integration scenario.
   - **End condition:** Targeted test passes.
 
-- [ ] **5.4 Audit for memory leaks / dangling pointer soundness**
+- [x] **5.4 Audit for memory leaks / dangling pointer soundness**
   - **Goal:** Review all `unsafe` blocks. Verify: (a) `reset()` always unsubscribes old before subscribing new, (b) `Drop` always unsubscribes, (c) no code path leaves a subscriber pointer in the tracker after the diff tracker is destroyed.
   - **End condition:** Documented SAFETY comments are complete and justify every `unsafe` usage; reviewer (self) is convinced no UB is possible.
 
-- [ ] **5.5 Final diff comparison check (optional but recommended)**
+- [x] **5.5 Final diff comparison check (optional but recommended)**
   - **Goal:** For a representative sequence of MIDI messages, manually trace both C++ and Rust behavior to confirm diff sets are identical after every message.
   - **End condition:** Confident that the Rust implementation is behaviorally equivalent to the C++ original.
 

@@ -71,7 +71,7 @@ pub struct MidiStateTracker {
 impl MidiStateTracker {
     pub fn new(track_notes: bool, track_controls: bool, track_programs: bool) -> Self {
         let id = NEXT_TRACKER_ID.fetch_add(1, Ordering::Relaxed);
-        Self {
+        let mut s = Self {
             id,
             track_notes,
             track_controls,
@@ -83,7 +83,9 @@ impl MidiStateTracker {
             pitch_wheel: if track_controls { vec![PITCH_WHEEL_DEFAULT; 16] } else { vec![] },
             channel_pressure: if track_controls { vec![CHANNEL_PRESSURE_UNKNOWN; 16] } else { vec![] },
             subscribers: RefCell::new(Vec::new()),
-        }
+        };
+        s.clear();
+        s
     }
 
     #[inline]
