@@ -1,0 +1,22 @@
+Filters: "Chain - DryWet record MIDI basic"
+Randomness seeded to: 3218887569
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+test_runner is a Catch2 v3.14.0 host application.
+Run with -? for options
+
+-------------------------------------------------------------------------------
+Chain - DryWet record MIDI basic
+-------------------------------------------------------------------------------
+/home/sander/dev/shoopdaloop-2/src/backend/test/integration/test_chain_single_drywet_loop.cpp:479
+...............................................................................
+
+/home/sander/dev/shoopdaloop-2/src/backend/test/integration/test_chain_single_drywet_loop.cpp:499: FAILED:
+  REQUIRE( result_data.size() == 3 )
+with expansion:
+  35 == 3
+
+===============================================================================
+test cases: 1 | 1 failed
+assertions: 1 | 1 failed
+

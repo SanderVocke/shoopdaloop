@@ -1,0 +1,5 @@
+Filters: "Chain - DryWet record MIDI basic"
+Randomness seeded to: 128781021
+===============================================================================
+All tests passed (4 assertions in 1 test case)
+

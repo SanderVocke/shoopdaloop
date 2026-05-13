@@ -559,12 +559,13 @@ impl MidiStateDiffTracker {
                             t.maybe_current_note_velocity(channel_part, diff[1])
                         });
                         eprintln!("[RUST]       -> note from={} ({})", v, if v != NOTE_INACTIVE { "ACTIVE" } else { "inactive" });
-                        if v != NOTE_INACTIVE {
-                            out.push(diff[0]);  // 0x90 | channel
-                            out.push(diff[1]);  // note
-                            out.push(v);        // velocity
-                            eprintln!("[RUST]       -> outputting note ON [0x{:02x}, {}, {}]", diff[0], diff[1], v);
-                        }
+                        // C++ behavior: output even inactive notes (using 0x80 for inactive)
+                        let status_byte = if v != NOTE_INACTIVE { diff[0] } else { 0x80 | channel_part };
+                        let velocity = if v != NOTE_INACTIVE { v } else { 64 };
+                        out.push(status_byte);
+                        out.push(diff[1]);
+                        out.push(velocity);
+                        eprintln!("[RUST]       -> outputting note [0x{:02x}, {}, {}]", status_byte, diff[1], velocity);
                     }
                 }
                 0xB0 => {
