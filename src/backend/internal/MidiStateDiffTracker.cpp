@@ -118,7 +118,7 @@ void MidiStateDiffTracker::channel_pressure_changed(MidiStateTracker *tracker,
     if (other && other->tracking_controls() &&
         other->maybe_channel_pressure_value(channel) != pressure &&
         pressure.has_value()) {
-        m_diffs.insert({(uint8_t)(0xE0 | channel), 0});
+        m_diffs.insert({(uint8_t)(0xD0 | channel), 0});
         if (should_log<log_level_debug_trace>()) {
             auto _f = other->maybe_program_value(channel);
             int f = _f.has_value() ? _f.value() : -1;
@@ -126,7 +126,7 @@ void MidiStateDiffTracker::channel_pressure_changed(MidiStateTracker *tracker,
             log<log_level_debug_trace>("New channel pressure diff: tracker {} updated vs. {}, chan {}, pressure {} -> {}", fmt::ptr(tracker), fmt::ptr(other.get()), channel, f, t);
         }
     } else {
-        m_diffs.erase({(uint8_t)(0xE0 | channel), 0});
+        m_diffs.erase({(uint8_t)(0xD0 | channel), 0});
         log<log_level_debug_trace>("Forget channel pressure diff: tracker {} updated vs. {}, chan {}", fmt::ptr(tracker), fmt::ptr(other.get()), channel);
     }
 }
@@ -289,11 +289,11 @@ void MidiStateDiffTracker::resolve_to(
                     int _o = o.has_value() ? (int) o.value() : -1;
                     log<log_level_debug_trace>("  - note {}.{} : {} -> {}", d[0], d[1], _o, _v);
                 }
-                data[0] =
-                    v.has_value() ? 0x90 | channel_part : 0x80 | channel_part;
-                data[1] = d[1];
-                data[2] = v.value_or(64);
-                put_message_cb(3, data);
+                    data[0] =
+                        v.has_value() ? 0x90 | channel_part : 0x80 | channel_part;
+                    data[1] = d[1];
+                    data[2] = v.value_or(64);
+                    put_message_cb(3, data);
             }
             break;
         case 0xB0:
