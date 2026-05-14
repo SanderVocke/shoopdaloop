@@ -22,10 +22,6 @@ const uint8_t *MidiStorageElem::data() const {
     return bytes;
 }
 
-const uint8_t *MidiStorageElem::get_data() const {
-    return bytes;
-}
-
 uint32_t MidiStorageElem::get_time() const {
     return proc_time;
 }

@@ -5,8 +5,7 @@
 #include <vector>
 
 // A MIDI buffer that can be read from. It buffers messages from another
-// input source so that they can be passed on as references and sorted
-// downstream.
+// input source so that they can be passed on and sorted downstream.
 class MidiBufferingInputPort : public MidiPort,
                                protected MidiReadableBuffer,
                                private ModuleLoggingEnabled<"Backend.MidiBufferingInputPort"> {
@@ -21,7 +20,6 @@ public:
     virtual ~MidiBufferingInputPort() {}
 
     MidiReadableBuffer *PROC_get_read_output_data_buffer (uint32_t nframes) override;
-    MidiSortingBuffer *PROC_get_processing_buffer (uint32_t nframes) override { return nullptr; }
 
     void PROC_process(uint32_t nframes) override;
     void PROC_prepare(uint32_t nframes) override;

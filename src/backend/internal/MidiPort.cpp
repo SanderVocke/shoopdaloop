@@ -6,8 +6,6 @@
 
 MidiWriteableBuffer *MidiPort::PROC_get_write_data_into_port_buffer  (uint32_t n_frames) { return nullptr; }
     
-MidiSortingBuffer *MidiPort::PROC_get_processing_buffer (uint32_t n_frames) { return nullptr; }
-
 MidiReadableBuffer *MidiPort::PROC_get_read_output_data_buffer (uint32_t n_frames) { return nullptr; }
 
 MidiReadableBuffer *MidiPort::PROC_internal_read_input_data_buffer (uint32_t n_frames) { return nullptr; }
@@ -58,13 +56,6 @@ void MidiPort::PROC_prepare(uint32_t nframes) {
     ma_read_output_data_buffer = PROC_get_read_output_data_buffer(nframes);
     ma_internal_read_input_data_buffer = PROC_internal_read_input_data_buffer(nframes);
     ma_internal_write_output_data_to_buffer = PROC_internal_write_output_data_to_buffer(nframes);
-
-    auto procbuf = PROC_get_processing_buffer(nframes);
-    ma_processing_buffer = procbuf;
-
-    if (procbuf) {
-        procbuf->PROC_prepare(nframes);
-    }
 }
 
 void MidiPort::PROC_process(uint32_t nframes) {
@@ -79,7 +70,6 @@ void MidiPort::PROC_process(uint32_t nframes) {
     auto read_out_buf = ma_read_output_data_buffer.load();
     auto read_in_buf = ma_internal_read_input_data_buffer.load();
     auto write_out_buf = ma_internal_write_output_data_to_buffer.load();
-    auto procbuf = ma_processing_buffer.load();
     bool processed_state = false;
 
     auto put_in_ringbuf = [this](MidiStorageElem &elem) {
@@ -91,9 +81,8 @@ void MidiPort::PROC_process(uint32_t nframes) {
         }
     };
 
-    auto count_in_buf = read_in_buf ? read_in_buf :
-                        procbuf;
-    uint32_t n_in_events;
+    auto count_in_buf = read_in_buf;
+    uint32_t n_in_events = 0;
     if (m_midi_ringbuffer) {
         m_midi_ringbuffer->next_buffer(nframes,
             [this](uint32_t time, uint16_t size, const uint8_t *data) {
@@ -110,14 +99,6 @@ void MidiPort::PROC_process(uint32_t nframes) {
         // Process state
         for(uint32_t i=0; i<n_in_events; i++) {
             auto event = read_in_buf->get_event(i);
-
-            // Determine whether processing buffer is separate from our input buffer.
-            // If so, we need to move data into the processing buffer manually.
-            const bool write_into_procbuf = procbuf && procbuf != read_in_buf;
-            
-            if (write_into_procbuf) { 
-                procbuf->write_event(event); 
-            }
             if(m_maybe_midi_state) {
                 m_maybe_midi_state->process_msg(event.bytes);
             }
@@ -128,13 +109,8 @@ void MidiPort::PROC_process(uint32_t nframes) {
         log<log_level_debug_trace>("processed state changes");
         processed_state = true;
     }
-    if (!muted && procbuf) {
-        // Sort/process the processing buffer.
-        procbuf->PROC_process(nframes);
-    }
     if (!muted) {
-        MidiReadableBuffer *source =
-            procbuf ? procbuf : read_in_buf;
+        MidiReadableBuffer *source = read_in_buf;
         if (source) {
             auto n_events = source->n_events();
             log<log_level_debug_trace>("# output events: {}", n_events);
@@ -142,7 +118,6 @@ void MidiPort::PROC_process(uint32_t nframes) {
 
             if (write_out_buf) {
                 // We need to actively write data to the output.
-                // Take it from the processing buffer if we have one, otherwise from the input.
                 for(uint32_t i=0; i<n_events; i++) {
                     auto event = source->get_event(i);
                     write_out_buf->write_event(event);

@@ -26,7 +26,6 @@
 #include "AudioMidiDriver.h"
 #include "ProcessingChainInterface.h"
 #include "LoggingBackend.h"
-#include "MidiMessage.h"
 #include "MidiPort.h"
 #include "MidiSortingBuffer.h"
 #include "PortInterface.h"

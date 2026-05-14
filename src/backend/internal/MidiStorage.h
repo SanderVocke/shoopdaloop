@@ -3,11 +3,10 @@
 #include <vector>
 #include <functional>
 #include "shoop_shared_ptr.h"
-#include "MidiBufferInterfaces.h"
 
 typedef std::function<void(uint32_t time, uint16_t size, const uint8_t* data)> DroppedMsgCallback;
 
-struct MidiStorageElem : public MidiSortableMessageInterface {
+struct MidiStorageElem {
     uint32_t storage_time = 0;    // Overall time in the loop storage
     uint16_t proc_time = 0;       // time w.r.t. some reference point (position in this process iteration)
     uint16_t size = 0;            // Size of the data portion (1..4)
@@ -15,18 +14,25 @@ struct MidiStorageElem : public MidiSortableMessageInterface {
 
     uint8_t* data();
     const uint8_t* data() const;
-    const uint8_t* get_data() const override;
-    uint32_t get_time() const override;
-    uint32_t get_size() const override;
+    // Alias for data() for backward compatibility
+    const uint8_t* get_data() const { return bytes; }
+    uint32_t get_time() const;
+    uint32_t get_size() const;
     void get(uint32_t &size_out,
                 uint32_t &time_out,
-                const uint8_t* &data_out) const override;
+                const uint8_t* &data_out) const;
 
     bool operator==(MidiStorageElem const& other) const {
         return storage_time == other.storage_time &&
                proc_time == other.proc_time &&
                size == other.size &&
                memcmp(bytes, other.bytes, 4) == 0;
+    }
+
+    // Compare only the MIDI data bytes (ignores time fields)
+    bool contents_equal(MidiStorageElem const& other) const {
+        if (size != other.size) return false;
+        return memcmp(bytes, other.bytes, size) == 0;
     }
 };
 

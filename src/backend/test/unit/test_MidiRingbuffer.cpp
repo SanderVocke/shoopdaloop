@@ -1,5 +1,5 @@
 #include "MidiRingbuffer.h"
-#include "MidiMessage.h"
+#include "MidiStorage.h"
 #include "shoop_shared_ptr.h"
 
 #include <iostream>
@@ -28,21 +28,27 @@ namespace Catch {
     };
 
     template<>
-    struct StringMaker<MidiMessage<uint32_t, uint32_t>> {
-        static std::string convert(const MidiMessage<uint32_t, uint32_t>& e) {
+    struct StringMaker<MidiStorageElem> {
+        static std::string convert(const MidiStorageElem& e) {
             std::ostringstream oss;
-            oss << "{ t:" << e.time << ", s:" << e.size << ", d:" << StringMaker<std::vector<uint8_t>>::convert(e.data) << " }";
+            oss << "{ t:" << e.storage_time << ", s:" << e.size << ", d:";
+            oss << "[";
+            for (size_t i=0; i<e.size; i++) {
+                if (i>0) { oss << ", "; }
+                oss << (int)e.bytes[i];
+            }
+            oss << "] }";
             return oss.str();
         }
     };
 
     template<>
-    struct StringMaker<std::vector<MidiMessage<uint32_t, uint32_t>>> {
-        static std::string convert(const std::vector<MidiMessage<uint32_t, uint32_t>>& vec) {
+    struct StringMaker<std::vector<MidiStorageElem>> {
+        static std::string convert(const std::vector<MidiStorageElem>& vec) {
             std::ostringstream oss;
             oss << "[\n";
             for (auto &e : vec) {
-                oss << "  " << StringMaker<MidiMessage<uint32_t, uint32_t>>::convert(e) << "\n";
+                oss << "  " << StringMaker<MidiStorageElem>::convert(e) << "\n";
             }
             oss << "]";
             return oss.str();
@@ -51,24 +57,31 @@ namespace Catch {
 }
 
 template<typename Storage>
-std::vector<MidiMessage<uint32_t, uint32_t>> extract_messages(Storage &buf) {
-    std::vector<MidiMessage<uint32_t, uint32_t>> out;
+std::vector<MidiStorageElem> extract_messages(Storage &buf) {
+    std::vector<MidiStorageElem> out;
     auto cursor = buf.create_cursor();
     while (cursor->valid()) {
         auto elem = cursor->get();
-        out.push_back(MidiMessage<uint32_t, uint32_t>(
-            elem->storage_time,
-            elem->size,
-            std::vector<uint8_t>(elem->data(), elem->data() + elem->size)
-        ));
+        MidiStorageElem msg;
+        msg.storage_time = elem->storage_time;
+        msg.size = elem->size;
+        memcpy(msg.bytes, elem->bytes, elem->size);
+        out.push_back(msg);
         cursor->next();
         if(cursor->is_at_start()) { break; }
     }
     return out;
 }
 
+inline MidiStorageElem make_msg(uint32_t time, uint16_t size, const uint8_t* data) {
+    MidiStorageElem msg;
+    msg.storage_time = time;
+    msg.size = size;
+    memcpy(msg.bytes, data, size);
+    return msg;
+}
+
 TEST_CASE("MidiRingbuffer - Put and increment", "[MidiRingbuffer]") {
-    using Msg = MidiMessage<uint32_t, uint32_t>;
     using Ringbuffer = MidiRingbuffer;
     using Storage = Ringbuffer::Storage;
 
@@ -77,38 +90,37 @@ TEST_CASE("MidiRingbuffer - Put and increment", "[MidiRingbuffer]") {
     b->next_buffer(10);
 
     {
-        auto m = Msg(0, 3, {0, 0, 0});
-        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+        auto m = make_msg(0, 3, (uint8_t[]){0, 0, 0});
+        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
     }
     {
-        auto m = Msg(1, 3, {1, 1, 1});
-        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
-    }
-    b->next_buffer(10);
-    {
-        auto m = Msg(2, 3, {2, 2, 2});
-        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+        auto m = make_msg(1, 3, (uint8_t[]){1, 1, 1});
+        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
     }
     b->next_buffer(10);
     {
-        auto m = Msg(3, 3, {3, 3, 3});
-        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+        auto m = make_msg(2, 3, (uint8_t[]){2, 2, 2});
+        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+    }
+    b->next_buffer(10);
+    {
+        auto m = make_msg(3, 3, (uint8_t[]){3, 3, 3});
+        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
     }
 
     CHECK(b->n_events() == 4);
 
-    std::vector<Msg> expect = {
-        Msg(0, 3, {0, 0, 0}),
-        Msg(1, 3, {1, 1, 1}),
-        Msg(12, 3, {2, 2, 2}),
-        Msg(23, 3, {3, 3, 3})
+    std::vector<MidiStorageElem> expect = {
+        make_msg(0, 3, (uint8_t[]){0, 0, 0}),
+        make_msg(1, 3, (uint8_t[]){1, 1, 1}),
+        make_msg(12, 3, (uint8_t[]){2, 2, 2}),
+        make_msg(23, 3, (uint8_t[]){3, 3, 3})
     };
 
     CHECK(extract_messages(*b) == expect);
 };
 
 TEST_CASE("MidiRingbuffer - Put and truncate", "[MidiRingbuffer]") {
-    using Msg = MidiMessage<uint32_t, uint32_t>;
     using Ringbuffer = MidiRingbuffer;
     using Storage = Ringbuffer::Storage;
 
@@ -117,39 +129,38 @@ TEST_CASE("MidiRingbuffer - Put and truncate", "[MidiRingbuffer]") {
     b->next_buffer(10);
 
     {
-        auto m = Msg(0, 3, {0, 0, 0});
-        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+        auto m = make_msg(0, 3, (uint8_t[]){0, 0, 0});
+        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
     }
     {
-        auto m = Msg(1, 3, {1, 1, 1});
-        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
-    }
-    b->next_buffer(10);
-    {
-        auto m = Msg(2, 3, {2, 2, 2});
-        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
-    }
-    {
-        auto m = Msg(3, 3, {3, 3, 3});
-        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+        auto m = make_msg(1, 3, (uint8_t[]){1, 1, 1});
+        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
     }
     b->next_buffer(10);
     {
-        auto m = Msg(3, 3, {4, 4, 4});
-        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+        auto m = make_msg(2, 3, (uint8_t[]){2, 2, 2});
+        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+    }
+    {
+        auto m = make_msg(3, 3, (uint8_t[]){3, 3, 3});
+        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+    }
+    b->next_buffer(10);
+    {
+        auto m = make_msg(3, 3, (uint8_t[]){4, 4, 4});
+        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
     }
 
-    std::vector<Msg> out;
-    std::vector<Msg> expect = {
-        Msg(13, 3, {3, 3, 3}),
-        Msg(23, 3, {4, 4, 4})
+    std::vector<MidiStorageElem> out;
+    std::vector<MidiStorageElem> expect = {
+        make_msg(13, 3, (uint8_t[]){3, 3, 3}),
+        make_msg(23, 3, (uint8_t[]){4, 4, 4})
     };
     CHECK(b->n_events() == expect.size());
     CHECK(extract_messages(*b) == expect);
 };
 
 TEST_CASE("MidiRingbuffer - Put and wrap", "[MidiRingbuffer]") {
-    using Msg = MidiMessage<uint32_t, uint32_t>;
     using Ringbuffer = MidiRingbuffer;
     using Storage = Ringbuffer::Storage;
 
@@ -160,40 +171,39 @@ TEST_CASE("MidiRingbuffer - Put and wrap", "[MidiRingbuffer]") {
     b->next_buffer(10);
 
     {
-        auto m = Msg(0, 3, {0, 0, 0});
-        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+        auto m = make_msg(0, 3, (uint8_t[]){0, 0, 0});
+        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
     }
     {
-        auto m = Msg(1, 3, {1, 1, 1});
-        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+        auto m = make_msg(1, 3, (uint8_t[]){1, 1, 1});
+        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
     }
     {
-        auto m = Msg(2, 3, {2, 2, 2});
-        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+        auto m = make_msg(2, 3, (uint8_t[]){2, 2, 2});
+        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
     }
     {
         // 4th message overwrites oldest (time 0)
-        auto m = Msg(3, 3, {3, 3, 3});
-        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+        auto m = make_msg(3, 3, (uint8_t[]){3, 3, 3});
+        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
     }
     {
         // 5th message overwrites next oldest (time 1)
-        auto m = Msg(4, 3, {4, 4, 4});
-        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+        auto m = make_msg(4, 3, (uint8_t[]){4, 4, 4});
+        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
     }
     b->next_buffer(10);
 
-    std::vector<Msg> expect = {
-        Msg(2, 3, {2, 2, 2}),
-        Msg(3, 3, {3, 3, 3}),
-        Msg(4, 3, {4, 4, 4})
+    std::vector<MidiStorageElem> expect = {
+        make_msg(2, 3, (uint8_t[]){2, 2, 2}),
+        make_msg(3, 3, (uint8_t[]){3, 3, 3}),
+        make_msg(4, 3, (uint8_t[]){4, 4, 4})
     };
     CHECK(b->n_events() == expect.size());
     CHECK(extract_messages(*b) == expect);
 };
 
 TEST_CASE("MidiRingbuffer - Put and wrap then truncate", "[MidiRingbuffer]") {
-    using Msg = MidiMessage<uint32_t, uint32_t>;
     using Ringbuffer = MidiRingbuffer;
     using Storage = Ringbuffer::Storage;
 
@@ -204,39 +214,38 @@ TEST_CASE("MidiRingbuffer - Put and wrap then truncate", "[MidiRingbuffer]") {
     b->next_buffer(10);
 
     {
-        auto m = Msg(0, 3, {0, 0, 0});
-        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+        auto m = make_msg(0, 3, (uint8_t[]){0, 0, 0});
+        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
     }
     {
-        auto m = Msg(1, 3, {1, 1, 1});
-        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+        auto m = make_msg(1, 3, (uint8_t[]){1, 1, 1});
+        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
     }
     {
-        auto m = Msg(2, 3, {2, 2, 2});
-        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+        auto m = make_msg(2, 3, (uint8_t[]){2, 2, 2});
+        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
     }
     {
         // 4th message overwrites oldest
-        auto m = Msg(3, 3, {3, 3, 3});
-        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+        auto m = make_msg(3, 3, (uint8_t[]){3, 3, 3});
+        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
     }
     {
         // 5th message overwrites next oldest
-        auto m = Msg(4, 3, {4, 4, 4});
-        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+        auto m = make_msg(4, 3, (uint8_t[]){4, 4, 4});
+        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
     }
     b->next_buffer(10);
 
-    std::vector<Msg> expect = {
-        Msg(3, 3, {3, 3, 3}),
-        Msg(4, 3, {4, 4, 4})
+    std::vector<MidiStorageElem> expect = {
+        make_msg(3, 3, (uint8_t[]){3, 3, 3}),
+        make_msg(4, 3, (uint8_t[]){4, 4, 4})
     };
     CHECK(b->n_events() == expect.size());
     CHECK(extract_messages(*b) == expect);
 };
 
 TEST_CASE("MidiRingbuffer - Put then overflow then snapshot", "[MidiRingbuffer]") {
-using Msg = MidiMessage<uint32_t, uint32_t>;
     using Ringbuffer = MidiRingbuffer;
     using Storage = Ringbuffer::Storage;
 
@@ -254,27 +263,27 @@ using Msg = MidiMessage<uint32_t, uint32_t>;
         b->next_buffer(process);
     }
 
-    std::vector<Msg> to_put = {
-        Msg(0, 3, {0, 0, 0}),
-        Msg(2, 3, {1, 1, 1}),
-        Msg(5, 3, {2, 2, 2}),
+    std::vector<MidiStorageElem> to_put = {
+        make_msg(0, 3, (uint8_t[]){0, 0, 0}),
+        make_msg(2, 3, (uint8_t[]){1, 1, 1}),
+        make_msg(5, 3, (uint8_t[]){2, 2, 2}),
     };
-    for (auto &m : to_put) { CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true); }
+    for (auto &m : to_put) { CHECK(b->put(m.storage_time, m.size, m.bytes) == true); }
 
     b->next_buffer(10);
 
     auto copy = shoop_make_shared<MidiStorage>(b->bytes_capacity());
     b->snapshot(*copy, 8);
 
-    std::vector<Msg> expect_b = {
-        Msg(10, 3, {0, 0, 0}),
-        Msg(12, 3, {1, 1, 1}),
-        Msg(15, 3, {2, 2, 2})
+    std::vector<MidiStorageElem> expect_b = {
+        make_msg(10, 3, (uint8_t[]){0, 0, 0}),
+        make_msg(12, 3, (uint8_t[]){1, 1, 1}),
+        make_msg(15, 3, (uint8_t[]){2, 2, 2})
     };
-    std::vector<Msg> expect_copy = {
-        Msg(1, 3, {0, 0, 0}),
-        Msg(3, 3, {1, 1, 1}),
-        Msg(6, 3, {2, 2, 2})
+    std::vector<MidiStorageElem> expect_copy = {
+        make_msg(1, 3, (uint8_t[]){0, 0, 0}),
+        make_msg(3, 3, (uint8_t[]){1, 1, 1}),
+        make_msg(6, 3, (uint8_t[]){2, 2, 2})
     };
     CHECK(b->n_events() == expect_b.size());
     CHECK(extract_messages(*b) == expect_b);
@@ -284,7 +293,6 @@ using Msg = MidiMessage<uint32_t, uint32_t>;
 }
 
 TEST_CASE("MidiRingbuffer - Put then truncated snapshot", "[MidiRingbuffer]") {
-using Msg = MidiMessage<uint32_t, uint32_t>;
     using Ringbuffer = MidiRingbuffer;
     using Storage = Ringbuffer::Storage;
 
@@ -294,25 +302,25 @@ using Msg = MidiMessage<uint32_t, uint32_t>;
     b->set_n_samples(20);
     b->next_buffer(10);
 
-    std::vector<Msg> to_put = {
-        Msg(0, 3, {0, 0, 0}),
-        Msg(2, 3, {1, 1, 1}),
-        Msg(5, 3, {2, 2, 2}),
+    std::vector<MidiStorageElem> to_put = {
+        make_msg(0, 3, (uint8_t[]){0, 0, 0}),
+        make_msg(2, 3, (uint8_t[]){1, 1, 1}),
+        make_msg(5, 3, (uint8_t[]){2, 2, 2}),
     };
-    for (auto &m : to_put) { CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true); }
+    for (auto &m : to_put) { CHECK(b->put(m.storage_time, m.size, m.bytes) == true); }
 
     b->next_buffer(10);
 
     auto copy = shoop_make_shared<MidiStorage>(b->bytes_capacity());
     b->snapshot(*copy, 17);
 
-    std::vector<Msg> expect_b = {
-        Msg(0, 3, {0, 0, 0}),
-        Msg(2, 3, {1, 1, 1}),
-        Msg(5, 3, {2, 2, 2})
+    std::vector<MidiStorageElem> expect_b = {
+        make_msg(0, 3, (uint8_t[]){0, 0, 0}),
+        make_msg(2, 3, (uint8_t[]){1, 1, 1}),
+        make_msg(5, 3, (uint8_t[]){2, 2, 2})
     };
-    std::vector<Msg> expect_copy = {
-        Msg(2, 3, {2, 2, 2})
+    std::vector<MidiStorageElem> expect_copy = {
+        make_msg(2, 3, (uint8_t[]){2, 2, 2})
     };
     CHECK(b->n_events() == expect_b.size());
     CHECK(extract_messages(*b) == expect_b);

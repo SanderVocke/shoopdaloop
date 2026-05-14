@@ -7,7 +7,6 @@
 #include <atomic>
 #include "MidiStateTracker.h"
 #include "MidiBuffer.h"
-#include "MidiSortingBuffer.h"
 #include "MidiRingbuffer.h"
 #include "LoggingBackend.h"
 #include "shoop_shared_ptr.h"
@@ -16,7 +15,6 @@ struct MidiPortTestHelper;
 
 class MidiPort : public virtual PortInterface, private ModuleLoggingEnabled<"Backend.MidiPort"> {
     std::atomic<MidiWriteableBuffer*> ma_write_data_into_port_buffer = nullptr;
-    std::atomic<MidiSortingBuffer*> ma_processing_buffer = nullptr;
     std::atomic<MidiReadableBuffer*> ma_read_output_data_buffer = nullptr;
     std::atomic<MidiReadableBuffer*> ma_internal_read_input_data_buffer = nullptr;
     std::atomic<MidiWriteableBuffer*> ma_internal_write_output_data_to_buffer = nullptr;
@@ -38,7 +36,6 @@ public:
     // Midi ports can have buffering or not. Multiple buffers are defined, although they
     // don't have to exist (nullptr) or can point to the same buffer.
     virtual MidiWriteableBuffer *PROC_get_write_data_into_port_buffer  (uint32_t n_frames);
-    virtual MidiSortingBuffer *PROC_get_processing_buffer (uint32_t n_frames);
     virtual MidiReadableBuffer *PROC_get_read_output_data_buffer (uint32_t n_frames);
     // Below buffers are for internal use
     virtual MidiReadableBuffer *PROC_internal_read_input_data_buffer (uint32_t n_frames);

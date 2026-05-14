@@ -86,6 +86,7 @@ GenericJackMidiOutputPort<API>::GenericJackMidiOutputPort(
         jack_client_t *client,
         shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     ) : GenericJackMidiPort<API>(name, ShoopPortDirection_Output, client, all_ports_tracker),
+        MidiPort(true, true, true),
         m_sorting_buffer(shoop_make_shared<MidiSortingBuffer>())
 {}
 
@@ -95,6 +96,7 @@ GenericJackMidiInputPort<API>::GenericJackMidiInputPort(
         jack_client_t *client,
         shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     ) : GenericJackMidiPort<API>(name, ShoopPortDirection_Input, client, all_ports_tracker),
+        MidiPort(true, true, true),
         m_messages()
 {
     m_messages.reserve(1024);
@@ -113,6 +115,11 @@ void GenericJackMidiInputPort<API>::PROC_process(uint32_t nframes) {
     auto* jack_buffer = m_buffer.load();
     if (!jack_buffer) return;
 
+    if (m_muted.load()) {
+        m_messages.clear();
+        return;
+    }
+
     uint32_t n_events = API::midi_get_event_count(jack_buffer);
     
     m_messages.reserve(m_messages.size() + n_events);
@@ -127,6 +134,9 @@ void GenericJackMidiInputPort<API>::PROC_process(uint32_t nframes) {
         elem.size = jack_event.size;
         memcpy(elem.bytes, jack_event.buffer, jack_event.size);
         m_messages.push_back(elem);
+        
+        // Process state changes for note tracking via MidiPort's state tracker
+        maybe_midi_state_tracker()->process_msg(elem.bytes);
     }
     
     // Sort by time
@@ -138,26 +148,32 @@ void GenericJackMidiInputPort<API>::PROC_process(uint32_t nframes) {
 template<typename API>
 MidiReadableBuffer *GenericJackMidiInputPort<API>::PROC_internal_read_input_data_buffer(uint32_t nframes) {
     (void)nframes;
-    return this;
+    return static_cast<MidiReadableBuffer*>(this);
+}
+
+template<typename API>
+MidiReadableBuffer *GenericJackMidiInputPort<API>::PROC_get_read_output_data_buffer(uint32_t nframes) {
+    (void)nframes;
+    return static_cast<MidiReadableBuffer*>(this);
 }
 
 template<typename API>
 MidiWriteableBuffer *GenericJackMidiOutputPort<API>::PROC_internal_write_output_data_to_buffer(uint32_t nframes) {
     (void)nframes;
-    return m_sorting_buffer.get();
+    return static_cast<MidiWriteableBuffer*>(this);
 }
 
 template<typename API>
 MidiWriteableBuffer *GenericJackMidiOutputPort<API>::PROC_get_write_data_into_port_buffer(uint32_t nframes) {
     (void)nframes;
-    return m_sorting_buffer.get();
+    return static_cast<MidiWriteableBuffer*>(m_sorting_buffer.get());
 }
 
 template<typename API>
 void GenericJackMidiOutputPort<API>::PROC_prepare(uint32_t nframes) {
     GenericJackMidiPort<API>::PROC_prepare(nframes);
     API::midi_clear_buffer(m_buffer.load());
-    m_sorting_buffer->PROC_prepare(nframes);
+    m_sorting_buffer->PROC_clear();
 }
 
 template<typename API>

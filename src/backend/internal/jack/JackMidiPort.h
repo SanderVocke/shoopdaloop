@@ -2,6 +2,7 @@
 #include <jack/types.h>
 #include "JackTestApi.h"
 #include "JackPort.h"
+#include "MidiPort.h"
 #include "MidiBuffer.h"
 #include "MidiSortingBuffer.h"
 #include "PortInterface.h"
@@ -24,6 +25,7 @@ public:
 template<typename API>
 class GenericJackMidiInputPort : 
     public GenericJackMidiPort<API>,
+    private MidiPort,
     private MidiReadableBuffer
 {
     using GenericJackPort<API>::m_port;
@@ -43,6 +45,7 @@ public:
     MidiStorageElem get_event(uint32_t idx) const override;
 
     MidiReadableBuffer *PROC_internal_read_input_data_buffer (uint32_t nframes);
+    MidiReadableBuffer *PROC_get_read_output_data_buffer(uint32_t nframes) override;
     MidiWriteableBuffer *PROC_internal_write_output_data_to_buffer (uint32_t nframes) { return nullptr; }
     MidiWriteableBuffer *PROC_get_write_data_into_port_buffer (uint32_t nframes) { return nullptr; }
 
@@ -62,6 +65,7 @@ public:
 template<typename API>
 class GenericJackMidiOutputPort : 
     public GenericJackMidiPort<API>,
+    private MidiPort,
     private MidiWriteableBuffer
 {
     using GenericJackPort<API>::m_port;
