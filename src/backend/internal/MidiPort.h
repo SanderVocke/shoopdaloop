@@ -7,7 +7,7 @@
 #include <atomic>
 #include "MidiStateTracker.h"
 #include "MidiBuffer.h"
-#include "MidiRingbuffer.h"
+#include "MidiStorage.h"
 #include "LoggingBackend.h"
 #include "shoop_shared_ptr.h"
 
