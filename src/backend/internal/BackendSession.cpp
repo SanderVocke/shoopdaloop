@@ -291,7 +291,7 @@ BackendSession::create_fx_chain(shoop_fx_chain_type_t type, const char *title) {
                         auto n_msgs = readbuf->n_events();
                         for (uint32_t i = 0; i < n_msgs; i++) {
                             auto event = readbuf->get_event(i);
-                            auto time = event.proc_time;
+                            auto time = event.time;
                             auto data = event.bytes;
                             auto size = event.size;
                             if (size >= 3) {

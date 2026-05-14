@@ -21,7 +21,7 @@ std::unique_ptr<JackTestAudioMidiDriver> open_test_driver() {
 
 MidiStorageElem to_msg(jack_midi_event_t &m) {
     MidiStorageElem msg;
-    msg.proc_time = m.time;
+    msg.time = m.time;
     msg.size = m.size;
     memcpy(msg.bytes, m.buffer, m.size);
     return msg;
@@ -261,8 +261,8 @@ TEST_CASE("Ports - Jack Midi In - Receive", "[JackPorts][ports][midi]") {
     auto buf = port->PROC_get_read_output_data_buffer(100);
     CHECK(buf->n_events() == 0);
 
-    MidiStorageElem m1; m1.proc_time = 0; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
-    MidiStorageElem m2; m2.proc_time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
+    MidiStorageElem m1; m1.time = 0; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
+    MidiStorageElem m2; m2.time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
     internal_port.midi_buffer.push_back(m1);
     internal_port.midi_buffer.push_back(m2);
 
@@ -285,8 +285,8 @@ TEST_CASE("Ports - Jack Midi In - Mute", "[JackPorts][ports][midi]") {
 
     port->set_muted(true);
 
-    MidiStorageElem m1; m1.proc_time = 0; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
-    MidiStorageElem m2; m2.proc_time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
+    MidiStorageElem m1; m1.time = 0; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
+    MidiStorageElem m2; m2.time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
     internal_port.midi_buffer.push_back(m1);
     internal_port.midi_buffer.push_back(m2);
 
@@ -302,8 +302,8 @@ TEST_CASE("Ports - Jack Midi In - Message Counter", "[JackPorts][ports][midi]") 
     auto port = driver->open_midi_port("test", ShoopPortDirection_Input);
     auto &internal_port = JackTestApi::internal_port_data((jack_port_t*)port->maybe_driver_handle());
 
-    MidiStorageElem m1; m1.proc_time = 0; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
-    MidiStorageElem m2; m2.proc_time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
+    MidiStorageElem m1; m1.time = 0; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
+    MidiStorageElem m2; m2.time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
     internal_port.midi_buffer.push_back(m1);
     internal_port.midi_buffer.push_back(m2);
 
@@ -418,7 +418,7 @@ TEST_CASE("Ports - Jack Midi In - get ringbuffer data", "[JackPorts][ports][midi
     while (cursor->valid()) {
         auto elem = cursor->get();
         MidiStorageElem msg;
-        msg.storage_time = elem->storage_time;
+        msg.time = elem->time;
         msg.size = elem->size;
         memcpy(msg.bytes, elem->data(), elem->size);
         out.push_back(msg);
@@ -451,8 +451,8 @@ TEST_CASE("Ports - Jack Midi Out - Send", "[JackPorts][ports][midi]") {
 
     auto buf = port->PROC_get_write_data_into_port_buffer(100);
 
-    MidiStorageElem m1; m1.proc_time = 0; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
-    MidiStorageElem m2; m2.proc_time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
+    MidiStorageElem m1; m1.time = 0; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
+    MidiStorageElem m2; m2.time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
     buf->write_event(m1);
     buf->write_event(m2);
     
@@ -475,9 +475,9 @@ TEST_CASE("Ports - Jack Midi Out - Sort", "[JackPorts][ports][midi]") {
 
     auto buf = port->PROC_get_write_data_into_port_buffer(100);
 
-    MidiStorageElem m1; m1.proc_time = 1; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
-    MidiStorageElem m2; m2.proc_time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
-    MidiStorageElem m3; m3.proc_time = 10; m3.size = 3; m3.bytes[0] = 0; m3.bytes[1] = 1; m3.bytes[2] = 2;
+    MidiStorageElem m1; m1.time = 1; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
+    MidiStorageElem m2; m2.time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
+    MidiStorageElem m3; m3.time = 10; m3.size = 3; m3.bytes[0] = 0; m3.bytes[1] = 1; m3.bytes[2] = 2;
     buf->write_event(m1);
     buf->write_event(m2);
     buf->write_event(m3);
@@ -498,8 +498,8 @@ TEST_CASE("Ports - Jack Midi Out - Message Counter", "[JackPorts][ports][midi]")
     port->PROC_prepare(100);
     auto buf = port->PROC_get_write_data_into_port_buffer(100);
 
-    MidiStorageElem m1; m1.proc_time = 0; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
-    MidiStorageElem m2; m2.proc_time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
+    MidiStorageElem m1; m1.time = 0; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
+    MidiStorageElem m2; m2.time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
     buf->write_event(m1);
     buf->write_event(m2);
 
@@ -603,8 +603,8 @@ TEST_CASE("Ports - Jack Midi Out - Mute", "[JackPorts][ports][midi]") {
 
     auto buf = port->PROC_get_write_data_into_port_buffer(100);
 
-    MidiStorageElem m1; m1.proc_time = 0; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
-    MidiStorageElem m2; m2.proc_time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
+    MidiStorageElem m1; m1.time = 0; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
+    MidiStorageElem m2; m2.time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
     buf->write_event(m1);
     buf->write_event(m2);
     

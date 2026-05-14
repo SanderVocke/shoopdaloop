@@ -170,7 +170,7 @@ shoop_midi_sequence_t *external_midi_data(shoop_types::LoopMidiChannel::Contents
     for (uint32_t idx=0; idx < m.recorded_msgs.size(); idx++) {
         auto e = alloc_midi_event(m.recorded_msgs[idx].size);
         e->size = m.recorded_msgs[idx].size;
-        e->time = m.recorded_msgs[idx].storage_time;
+        e->time = m.recorded_msgs[idx].time;
         memcpy((void*)e->data, (void*)m.recorded_msgs[idx].bytes, m.recorded_msgs[idx].size);
         d->events[idx + m.starting_state_msg_datas.size()] = e;
     }
@@ -194,7 +194,7 @@ shoop_types::LoopMidiChannel::Contents internal_midi_data(shoop_midi_sequence_t 
           rval.starting_state_msg_datas.push_back(data);
         } else {
           MidiStorageElem m;
-          m.storage_time = from.time;
+          m.time = from.time;
           m.size = from.size;
           memcpy(m.bytes, from.data, from.size);
           rval.recorded_msgs.push_back(m);
@@ -1357,7 +1357,7 @@ shoop_midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_port_t *port) 
     auto m = _port.pop_incoming();
     if (m.has_value()) {
         auto r = alloc_midi_event(m->size);
-        r->time = m->storage_time;
+        r->time = m->time;
         memcpy((void*)r->data, (void*)m->data(), r->size);
         return r;
     } else {
@@ -1399,8 +1399,7 @@ void send_decoupled_midi(shoopdaloop_decoupled_midi_port_t *port, unsigned lengt
     auto &_port = *internal_decoupled_midi_port(port);
     MidiStorageElem m;
     m.size = length;
-    m.storage_time = 0;
-    m.proc_time = 0;
+    m.time = 0;
     memcpy(m.bytes, data, length);
     _port.push_outgoing(m);
   });
@@ -2127,11 +2126,11 @@ shoop_midi_sequence_t *dummy_midi_port_dequeue_data(shoopdaloop_midi_port_t *por
             auto &e = msgs[i];
             rval->events[i] = alloc_midi_event(e.get_size());
             rval->events[i]->size = e.get_size();
-            rval->events[i]->time = e.get_time();
+            rval->events[i]->time = e.time;
             memcpy((void*)rval->events[i]->data, (void*)e.get_data(), e.get_size());
         }
         rval->n_events = msgs.size();
-        rval->length_samples = msgs.size()? msgs.back().proc_time+1 : 0;
+        rval->length_samples = msgs.size()? msgs.back().time+1 : 0;
         return rval;
     } else {
         logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_midi_port_dequeue_data called on non-dummy-midi port");

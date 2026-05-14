@@ -72,7 +72,7 @@ public:
 
 inline MidiStorageElem create_note_msg(uint32_t time, uint8_t channel, uint8_t note, uint8_t velocity) {
     MidiStorageElem rval;
-    rval.proc_time = time;
+    rval.time = time;
     rval.bytes[0] = (uint8_t)(0x90 | (channel & 0x0F));
     rval.bytes[1] = note;
     rval.bytes[2] = velocity;
@@ -86,7 +86,7 @@ inline MidiStorageElem create_noteOn(uint32_t time, uint8_t channel, uint8_t not
 
 inline MidiStorageElem create_noteOff(uint32_t time, uint8_t channel, uint8_t note, uint8_t velocity) {
     MidiStorageElem rval;
-    rval.proc_time = time;
+    rval.time = time;
     rval.bytes[0] = (uint8_t)(0x80 | (channel & 0x0F));
     rval.bytes[1] = note;
     rval.bytes[2] = velocity;
@@ -96,7 +96,7 @@ inline MidiStorageElem create_noteOff(uint32_t time, uint8_t channel, uint8_t no
 
 inline MidiStorageElem create_cc(uint32_t time, uint8_t channel, uint8_t cc_num, uint8_t value) {
     MidiStorageElem rval;
-    rval.proc_time = time;
+    rval.time = time;
     rval.bytes[0] = (uint8_t)(0xB0 | (channel & 0x0F));
     rval.bytes[1] = cc_num;
     rval.bytes[2] = value;
@@ -112,7 +112,7 @@ inline Message create_noteOn(uint32_t time, uint8_t channel, uint8_t note, uint8
 template<typename Message>
 inline Message create_noteOff(uint32_t time, uint8_t channel, uint8_t note, uint8_t velocity) {
     MidiStorageElem rval;
-    rval.proc_time = time;
+    rval.time = time;
     rval.bytes[0] = (uint8_t)(0x80 | (channel & 0x0F));
     rval.bytes[1] = note;
     rval.bytes[2] = velocity;
@@ -123,7 +123,7 @@ inline Message create_noteOff(uint32_t time, uint8_t channel, uint8_t note, uint
 template<typename Message>
 inline Message create_cc(uint32_t time, uint8_t channel, uint8_t cc_num, uint8_t value) {
     MidiStorageElem rval;
-    rval.proc_time = time;
+    rval.time = time;
     rval.bytes[0] = (uint8_t)(0xB0 | (channel & 0x0F));
     rval.bytes[1] = cc_num;
     rval.bytes[2] = value;
@@ -133,13 +133,13 @@ inline Message create_cc(uint32_t time, uint8_t channel, uint8_t cc_num, uint8_t
 
 inline shoop_midi_sequence_t *convert_midi_msgs_to_api(std::vector<MidiStorageElem> &msgs) {
     auto sequence = alloc_midi_sequence(msgs.size());
-    sequence->length_samples = msgs.back().proc_time + 1;
+    sequence->length_samples = msgs.back().time + 1;
     for(size_t i=0; i<msgs.size(); i++) {
         auto &msg = msgs.at(i);
         auto pEvent = alloc_midi_event(msg.size);
         sequence->events[i] = pEvent;
         auto & event = *pEvent;
-        event.time = msg.proc_time;
+        event.time = msg.time;
         event.size = msg.size;
         for (auto j=0; j<msg.size && j<4; j++) {
             event.data[j] = msg.bytes[j];
@@ -164,7 +164,7 @@ inline std::vector<MidiStorageElem> convert_api_midi_msgs(shoop_midi_sequence_t 
     for (size_t i=0; i<sequence->n_events; i++) {
         auto &ev = sequence->events[i];
         MidiStorageElem m;
-        m.proc_time = ev->time;
+        m.time = ev->time;
         m.size = ev->size;
         for(size_t j=0; j<ev->size && j<4; j++) {
             m.bytes[j] = ev->data[j];
@@ -179,7 +179,7 @@ inline std::vector<MidiStorageElem> convert_api_midi_msgs(shoop_midi_sequence_t 
 
 inline std::string stringify_msg(MidiStorageElem &m) {
     std::ostringstream s;
-    s << "{ t=" << m.proc_time << ", s=" << m.size << ", d={";
+    s << "{ t=" << m.time << ", s=" << m.size << ", d={";
     for (size_t i=0; i<m.size; i++) {
         if (i>0) { s << ", "; }
         s << (int)m.bytes[i];
@@ -211,7 +211,7 @@ namespace Catch {
     struct StringMaker<MidiStorageElem> {
         static std::string convert(const MidiStorageElem& e) {
             std::ostringstream oss;
-            oss << "{ t:" << e.proc_time << ", s:" << e.size << ", d:[";
+            oss << "{ t:" << e.time << ", s:" << e.size << ", d:[";
             for (size_t i=0; i<e.size; i++) {
                 if (i>0) { oss << ", "; }
                 oss << (int)e.bytes[i];

@@ -26,7 +26,7 @@ namespace Catch {
     struct StringMaker<MidiStorageElem> {
         static std::string convert(const MidiStorageElem& e) {
             std::ostringstream oss;
-            oss << "{ t:" << e.storage_time << ", s:" << e.size << ", d:";
+            oss << "{ t:" << e.time << ", s:" << e.size << ", d:";
             oss << "[";
             for (size_t i=0; i<e.size; i++) {
                 if (i>0) { oss << ", "; }
@@ -53,7 +53,7 @@ namespace Catch {
 
 inline MidiStorageElem make_msg(uint32_t time, uint16_t size, const uint8_t* data) {
     MidiStorageElem msg;
-    msg.storage_time = time;
+    msg.time = time;
     msg.size = size;
     memcpy(msg.bytes, data, size);
     return msg;
@@ -71,7 +71,7 @@ TEST_CASE("MidiStorage - Round-trip", "[MidiStorage]") {
 
     auto s = shoop_make_shared<Storage>(total_data_size);
 
-    for(auto &i: in) { s->append(i.storage_time, i.size, i.bytes); }
+    for(auto &i: in) { s->append(i.time, i.size, i.bytes); }
 
     CHECK(s->bytes_occupied() == s->bytes_capacity());
     CHECK(s->bytes_free() == 0);
@@ -82,7 +82,7 @@ TEST_CASE("MidiStorage - Round-trip", "[MidiStorage]") {
     while (cursor->valid()) {
         auto elem = cursor->get();
         MidiStorageElem msg;
-        msg.storage_time = elem->storage_time;
+        msg.time = elem->time;
         msg.size = elem->size;
         memcpy(msg.bytes, elem->bytes, elem->size);
         out.push_back(msg);
@@ -114,8 +114,8 @@ TEST_CASE("MidiStorage - prepend", "[MidiStorage]") {
 
     auto s = shoop_make_shared<Storage>(total_data_size);
 
-    for(auto &i: in) { s->append(i.storage_time, i.size, i.bytes); }
-    for(auto &i: prepend) { s->prepend(i.storage_time, i.size, i.bytes); }
+    for(auto &i: in) { s->append(i.time, i.size, i.bytes); }
+    for(auto &i: prepend) { s->prepend(i.time, i.size, i.bytes); }
 
     CHECK(s->bytes_occupied() == s->bytes_capacity());
     CHECK(s->bytes_free() == 0);
@@ -126,7 +126,7 @@ TEST_CASE("MidiStorage - prepend", "[MidiStorage]") {
     while (cursor->valid()) {
         auto elem = cursor->get();
         MidiStorageElem msg;
-        msg.storage_time = elem->storage_time;
+        msg.time = elem->time;
         msg.size = elem->size;
         memcpy(msg.bytes, elem->bytes, elem->size);
         out.push_back(msg);
@@ -155,14 +155,14 @@ TEST_CASE("MidiStorage - replace append", "[MidiStorage]") {
 
     auto s = shoop_make_shared<Storage>(total_data_size);
 
-    for(auto &i: in) { s->append(i.storage_time, i.size, i.bytes); }
+    for(auto &i: in) { s->append(i.time, i.size, i.bytes); }
 
     CHECK(s->bytes_occupied() == s->bytes_capacity());
     CHECK(s->bytes_free() == 0);
     CHECK(s->n_events() == 3);
 
-    CHECK(s->append(append.storage_time, append.size, append.bytes) == false);
-    CHECK(s->append(append.storage_time, append.size, append.bytes, true) == true);
+    CHECK(s->append(append.time, append.size, append.bytes) == false);
+    CHECK(s->append(append.time, append.size, append.bytes, true) == true);
 
     CHECK(s->bytes_occupied() == s->bytes_capacity());
     CHECK(s->bytes_free() == 0);
@@ -173,7 +173,7 @@ TEST_CASE("MidiStorage - replace append", "[MidiStorage]") {
     while (cursor->valid()) {
         auto elem = cursor->get();
         MidiStorageElem msg;
-        msg.storage_time = elem->storage_time;
+        msg.time = elem->time;
         msg.size = elem->size;
         memcpy(msg.bytes, elem->bytes, elem->size);
         out.push_back(msg);
@@ -219,7 +219,7 @@ TEST_CASE("MidiStorage - wrap around", "[MidiStorage]") {
     while (cursor->valid()) {
         auto elem = cursor->get();
         MidiStorageElem msg;
-        msg.storage_time = elem->storage_time;
+        msg.time = elem->time;
         msg.size = elem->size;
         memcpy(msg.bytes, elem->bytes, elem->size);
         out.push_back(msg);

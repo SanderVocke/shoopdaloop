@@ -21,7 +21,7 @@ MidiStorageElem MidiSortingBuffer::get_event(uint32_t idx) const {
 void MidiSortingBuffer::PROC_sort() {
     if (dirty) {
         std::stable_sort(messages.begin(), messages.end(), [](const MidiStorageElem &a, const MidiStorageElem &b) {
-            return a.proc_time < b.proc_time;
+            return a.time < b.time;
         });
         dirty = false;
     }

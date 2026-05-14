@@ -39,7 +39,7 @@ inline void check_msgs_equal(
     )
 {
     INFO(log_level_info);
-    CHECK(a.storage_time == (uint32_t)b.proc_time+time_offset);
+    CHECK(a.time == (uint32_t)b.time+time_offset);
     CHECK(a.size == b.size);
     for (uint32_t i=0; i<a.size && i<b.size; i++) {
         CHECK((int)a.bytes[i] == (int)b.bytes[i]);
@@ -63,7 +63,7 @@ inline void check_msg_vectors_equal(
 template<typename Message>
 inline Message with_time (Message const& msg, uint32_t time) {
     Message m = msg;
-    m.storage_time = time;
+    m.time = time;
     return m;
 }
 
@@ -79,7 +79,7 @@ std::vector<uint8_t> pitch_wheel_bytes (uint8_t channel, uint16_t val) {
 inline
 Msg pitch_wheel_msg(uint32_t time, uint8_t channel, uint16_t val) {
     MidiStorageElem msg;
-    msg.storage_time = time;
+    msg.time = time;
     msg.size = 3;
     auto bytes = pitch_wheel_bytes(channel, val);
     msg.bytes[0] = bytes[0];
@@ -129,9 +129,9 @@ TEST_CASE("AudioMidiLoop - Midi - Record", "[AudioMidiLoop][midi]") {
     CHECK(loop.get_position() == 0);
 
     auto source_buf = MidiTestBuffer();
-    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 10; source_buf.read.back().size = 3; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0x03;
-    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 19; source_buf.read.back().size = 2; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0;
-    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 20; source_buf.read.back().size = 1; source_buf.read.back().bytes[0] = 0; source_buf.read.back().bytes[1] = 0; source_buf.read.back().bytes[2] = 0;
+    source_buf.read.push_back(Msg()); source_buf.read.back().time = 10; source_buf.read.back().size = 3; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0x03;
+    source_buf.read.push_back(Msg()); source_buf.read.back().time = 19; source_buf.read.back().size = 2; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0;
+    source_buf.read.push_back(Msg()); source_buf.read.back().time = 20; source_buf.read.back().size = 1; source_buf.read.back().bytes[0] = 0; source_buf.read.back().bytes[1] = 0; source_buf.read.back().bytes[2] = 0;
 
     loop.plan_transition(LoopMode_Recording);
     channel.PROC_set_recording_buffer(&source_buf, 512);
@@ -167,9 +167,9 @@ TEST_CASE("AudioMidiLoop - Midi - Record Append Out-of-order", "[AudioMidiLoop][
     loop.set_mode(LoopMode_Recording, false);
     loop.set_length(100);
     auto source_buf = MidiTestBuffer();
-    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 10; source_buf.read.back().size = 3; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0x03;
-    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 9; source_buf.read.back().size = 2; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0;
-    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 11; source_buf.read.back().size = 1; source_buf.read.back().bytes[0] = 0; source_buf.read.back().bytes[1] = 0; source_buf.read.back().bytes[2] = 0;
+    source_buf.read.push_back(Msg()); source_buf.read.back().time = 10; source_buf.read.back().size = 3; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0x03;
+    source_buf.read.push_back(Msg()); source_buf.read.back().time = 9; source_buf.read.back().size = 2; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0;
+    source_buf.read.push_back(Msg()); source_buf.read.back().time = 11; source_buf.read.back().size = 1; source_buf.read.back().bytes[0] = 0; source_buf.read.back().bytes[1] = 0; source_buf.read.back().bytes[2] = 0;
     channel.PROC_set_recording_buffer(&source_buf, 512);
     loop.PROC_update_poi();
     CHECK(loop.get_mode() == LoopMode_Recording);
@@ -203,16 +203,16 @@ TEST_CASE("AudioMidiLoop - Midi - Record multiple source buffers", "[AudioMidiLo
     CHECK(loop.get_position() == 0);
 
     std::vector<MidiTestBuffer> source_bufs = { MidiTestBuffer(), MidiTestBuffer(), MidiTestBuffer() };
-    source_bufs[0].read.push_back(Msg()); source_bufs[0].read.back().proc_time = 10; source_bufs[0].read.back().size = 3; source_bufs[0].read.back().bytes[0] = 0x01; source_bufs[0].read.back().bytes[1] = 0x02; source_bufs[0].read.back().bytes[2] = 0x03;
-    source_bufs[0].read.push_back(Msg()); source_bufs[0].read.back().proc_time = 19; source_bufs[0].read.back().size = 2; source_bufs[0].read.back().bytes[0] = 0x01; source_bufs[0].read.back().bytes[1] = 0x02; source_bufs[0].read.back().bytes[2] = 0;
-    source_bufs[0].read.push_back(Msg()); source_bufs[0].read.back().proc_time = 20; source_bufs[0].read.back().size = 1; source_bufs[0].read.back().bytes[0] = 0; source_bufs[0].read.back().bytes[1] = 0; source_bufs[0].read.back().bytes[2] = 0;
-    source_bufs[1].read.push_back(Msg()); source_bufs[1].read.back().proc_time = 21-21; source_bufs[1].read.back().size = 3; source_bufs[1].read.back().bytes[0] = 0x01; source_bufs[1].read.back().bytes[1] = 0x02; source_bufs[1].read.back().bytes[2] = 0x03;
-    source_bufs[1].read.push_back(Msg()); source_bufs[1].read.back().proc_time = 26-21; source_bufs[1].read.back().size = 2; source_bufs[1].read.back().bytes[0] = 0x01; source_bufs[1].read.back().bytes[1] = 0x02; source_bufs[1].read.back().bytes[2] = 0;
-    source_bufs[1].read.push_back(Msg()); source_bufs[1].read.back().proc_time = 29-21; source_bufs[1].read.back().size = 1; source_bufs[1].read.back().bytes[0] = 0; source_bufs[1].read.back().bytes[1] = 0; source_bufs[1].read.back().bytes[2] = 0;
-    source_bufs[2].read.push_back(Msg()); source_bufs[2].read.back().proc_time = 30-21-9; source_bufs[2].read.back().size = 3; source_bufs[2].read.back().bytes[0] = 0x01; source_bufs[2].read.back().bytes[1] = 0x02; source_bufs[2].read.back().bytes[2] = 0x03;
-    source_bufs[2].read.push_back(Msg()); source_bufs[2].read.back().proc_time = 30-21-9; source_bufs[2].read.back().size = 2; source_bufs[2].read.back().bytes[0] = 0x01; source_bufs[2].read.back().bytes[1] = 0x02; source_bufs[2].read.back().bytes[2] = 0;
-    source_bufs[2].read.push_back(Msg()); source_bufs[2].read.back().proc_time = 31-21-9; source_bufs[2].read.back().size = 1; source_bufs[2].read.back().bytes[0] = 0; source_bufs[2].read.back().bytes[1] = 0; source_bufs[2].read.back().bytes[2] = 0;
-    source_bufs[2].read.push_back(Msg()); source_bufs[2].read.back().proc_time = 40-21-9; source_bufs[2].read.back().size = 1; source_bufs[2].read.back().bytes[0] = 0; source_bufs[2].read.back().bytes[1] = 0; source_bufs[2].read.back().bytes[2] = 0;
+    source_bufs[0].read.push_back(Msg()); source_bufs[0].read.back().time = 10; source_bufs[0].read.back().size = 3; source_bufs[0].read.back().bytes[0] = 0x01; source_bufs[0].read.back().bytes[1] = 0x02; source_bufs[0].read.back().bytes[2] = 0x03;
+    source_bufs[0].read.push_back(Msg()); source_bufs[0].read.back().time = 19; source_bufs[0].read.back().size = 2; source_bufs[0].read.back().bytes[0] = 0x01; source_bufs[0].read.back().bytes[1] = 0x02; source_bufs[0].read.back().bytes[2] = 0;
+    source_bufs[0].read.push_back(Msg()); source_bufs[0].read.back().time = 20; source_bufs[0].read.back().size = 1; source_bufs[0].read.back().bytes[0] = 0; source_bufs[0].read.back().bytes[1] = 0; source_bufs[0].read.back().bytes[2] = 0;
+    source_bufs[1].read.push_back(Msg()); source_bufs[1].read.back().time = 21-21; source_bufs[1].read.back().size = 3; source_bufs[1].read.back().bytes[0] = 0x01; source_bufs[1].read.back().bytes[1] = 0x02; source_bufs[1].read.back().bytes[2] = 0x03;
+    source_bufs[1].read.push_back(Msg()); source_bufs[1].read.back().time = 26-21; source_bufs[1].read.back().size = 2; source_bufs[1].read.back().bytes[0] = 0x01; source_bufs[1].read.back().bytes[1] = 0x02; source_bufs[1].read.back().bytes[2] = 0;
+    source_bufs[1].read.push_back(Msg()); source_bufs[1].read.back().time = 29-21; source_bufs[1].read.back().size = 1; source_bufs[1].read.back().bytes[0] = 0; source_bufs[1].read.back().bytes[1] = 0; source_bufs[1].read.back().bytes[2] = 0;
+    source_bufs[2].read.push_back(Msg()); source_bufs[2].read.back().time = 30-21-9; source_bufs[2].read.back().size = 3; source_bufs[2].read.back().bytes[0] = 0x01; source_bufs[2].read.back().bytes[1] = 0x02; source_bufs[2].read.back().bytes[2] = 0x03;
+    source_bufs[2].read.push_back(Msg()); source_bufs[2].read.back().time = 30-21-9; source_bufs[2].read.back().size = 2; source_bufs[2].read.back().bytes[0] = 0x01; source_bufs[2].read.back().bytes[1] = 0x02; source_bufs[2].read.back().bytes[2] = 0;
+    source_bufs[2].read.push_back(Msg()); source_bufs[2].read.back().time = 31-21-9; source_bufs[2].read.back().size = 1; source_bufs[2].read.back().bytes[0] = 0; source_bufs[2].read.back().bytes[1] = 0; source_bufs[2].read.back().bytes[2] = 0;
+    source_bufs[2].read.push_back(Msg()); source_bufs[2].read.back().time = 40-21-9; source_bufs[2].read.back().size = 1; source_bufs[2].read.back().bytes[0] = 0; source_bufs[2].read.back().bytes[1] = 0; source_bufs[2].read.back().bytes[2] = 0;
 
     loop.plan_transition(LoopMode_Recording);
     channel.PROC_set_recording_buffer(&source_bufs[0], 21);
@@ -278,7 +278,7 @@ TEST_CASE("AudioMidiLoop - Midi - Record multiple source buffers", "[AudioMidiLo
 template<typename Msg>
 inline Msg at_time(Msg const& m, uint32_t time) {
     auto _m = m;
-    _m.storage_time = time;
+    _m.time = time;
     return _m;
 }
 
@@ -290,11 +290,11 @@ TEST_CASE("AudioMidiLoop - Midi - Record onto longer buffer", "[AudioMidiLoop][m
     MidiChannel::Contents contents;
     {
         MidiStorageElem msg;
-        msg.storage_time = 0; msg.size = 1; msg.bytes[0] = 0x01; contents.recorded_msgs.push_back(msg);
-        msg.storage_time = 10; msg.size = 1; msg.bytes[0] = 0x02; contents.recorded_msgs.push_back(msg);
-        msg.storage_time = 21; msg.size = 1; msg.bytes[0] = 0x03; contents.recorded_msgs.push_back(msg);
-        msg.storage_time = 30; msg.size = 1; msg.bytes[0] = 0x04; contents.recorded_msgs.push_back(msg);
-        msg.storage_time = 50; msg.size = 1; msg.bytes[0] = 0x05; contents.recorded_msgs.push_back(msg);
+        msg.time = 0; msg.size = 1; msg.bytes[0] = 0x01; contents.recorded_msgs.push_back(msg);
+        msg.time = 10; msg.size = 1; msg.bytes[0] = 0x02; contents.recorded_msgs.push_back(msg);
+        msg.time = 21; msg.size = 1; msg.bytes[0] = 0x03; contents.recorded_msgs.push_back(msg);
+        msg.time = 30; msg.size = 1; msg.bytes[0] = 0x04; contents.recorded_msgs.push_back(msg);
+        msg.time = 50; msg.size = 1; msg.bytes[0] = 0x05; contents.recorded_msgs.push_back(msg);
     };
     channel.set_contents(contents, 100, false);
     loop.set_mode(LoopMode_Recording, false);
@@ -306,9 +306,9 @@ TEST_CASE("AudioMidiLoop - Midi - Record onto longer buffer", "[AudioMidiLoop][m
     CHECK(loop.get_position() == 0);
 
     auto source_buf = MidiTestBuffer();
-    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 1; source_buf.read.back().size = 3; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0x03;
-    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 2; source_buf.read.back().size = 2; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0;
-    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 3; source_buf.read.back().size = 1; source_buf.read.back().bytes[0] = 0; source_buf.read.back().bytes[1] = 0; source_buf.read.back().bytes[2] = 0;
+    source_buf.read.push_back(Msg()); source_buf.read.back().time = 1; source_buf.read.back().size = 3; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0x03;
+    source_buf.read.push_back(Msg()); source_buf.read.back().time = 2; source_buf.read.back().size = 2; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0;
+    source_buf.read.push_back(Msg()); source_buf.read.back().time = 3; source_buf.read.back().size = 1; source_buf.read.back().bytes[0] = 0; source_buf.read.back().bytes[1] = 0; source_buf.read.back().bytes[2] = 0;
 
     channel.PROC_set_recording_buffer(&source_buf, 512);
 
@@ -347,9 +347,9 @@ TEST_CASE("AudioMidiLoop - Midi - Playback", "[AudioMidiLoop][midi]") {
     MidiChannel::Contents contents;
     {
         MidiStorageElem msg;
-        msg.storage_time = 0; msg.size = 1; msg.bytes[0] = 0x01; contents.recorded_msgs.push_back(msg);
-        msg.storage_time = 10; msg.size = 1; msg.bytes[0] = 0x02; contents.recorded_msgs.push_back(msg);
-        msg.storage_time = 21; msg.size = 1; msg.bytes[0] = 0x03; contents.recorded_msgs.push_back(msg);
+        msg.time = 0; msg.size = 1; msg.bytes[0] = 0x01; contents.recorded_msgs.push_back(msg);
+        msg.time = 10; msg.size = 1; msg.bytes[0] = 0x02; contents.recorded_msgs.push_back(msg);
+        msg.time = 21; msg.size = 1; msg.bytes[0] = 0x03; contents.recorded_msgs.push_back(msg);
     }
     channel.set_contents(contents, 100, false);
     loop.set_length(100);
@@ -400,10 +400,10 @@ TEST_CASE("AudioMidiLoop - Midi - Prerecord", "[AudioMidiLoop][midi]") {
     auto &chan = *loop.midi_channel(0);
 
     auto source_buf = MidiTestBuffer();
-    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 1; source_buf.read.back().size = 3; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0x03;
-    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 10; source_buf.read.back().size = 2; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0;
-    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 21; source_buf.read.back().size = 1; source_buf.read.back().bytes[0] = 0; source_buf.read.back().bytes[1] = 0; source_buf.read.back().bytes[2] = 0;
-    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 39; source_buf.read.back().size = 1; source_buf.read.back().bytes[0] = 0; source_buf.read.back().bytes[1] = 0; source_buf.read.back().bytes[2] = 0;
+    source_buf.read.push_back(Msg()); source_buf.read.back().time = 1; source_buf.read.back().size = 3; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0x03;
+    source_buf.read.push_back(Msg()); source_buf.read.back().time = 10; source_buf.read.back().size = 2; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0;
+    source_buf.read.push_back(Msg()); source_buf.read.back().time = 21; source_buf.read.back().size = 1; source_buf.read.back().bytes[0] = 0; source_buf.read.back().bytes[1] = 0; source_buf.read.back().bytes[2] = 0;
+    source_buf.read.push_back(Msg()); source_buf.read.back().time = 39; source_buf.read.back().size = 1; source_buf.read.back().bytes[0] = 0; source_buf.read.back().bytes[1] = 0; source_buf.read.back().bytes[2] = 0;
 
     loop.plan_transition(LoopMode_Recording); // Not triggered yet
     chan.PROC_set_recording_buffer(&source_buf, 512);
@@ -474,7 +474,7 @@ TEST_CASE("AudioMidiLoop - Midi - Preplay", "[AudioMidiLoop][midi]") {
     MidiChannel::Contents contents;
     for(uint32_t idx=0; idx<256; idx++) {
         MidiStorageElem msg;
-        msg.storage_time = idx;
+        msg.time = idx;
         msg.size = 3;
         msg.bytes[0] = 0x80;
         msg.bytes[1] = 100;
@@ -523,7 +523,7 @@ TEST_CASE("AudioMidiLoop - Midi - Preplay", "[AudioMidiLoop][midi]") {
     for (uint32_t t=0; t<128; t++) {
         if (t < 10) { input_msg_idx++; continue; }
         Message exp = contents.recorded_msgs.at(input_msg_idx++);
-        exp.storage_time = t;
+        exp.time = t;
         check_msgs_equal(msgs.at(output_msg_idx++), exp, 0, std::to_string(t));
     }
 };
@@ -869,22 +869,22 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started before loop boundar
     CHECK((int)msgs[0].bytes[0] == 0x90); // NoteOn
     CHECK((int)msgs[0].bytes[1] == 100);
     CHECK((int)msgs[0].bytes[2] == 90);
-    CHECK(msgs[0].storage_time == 0); // Written at start of playback
+    CHECK(msgs[0].time == 0); // Written at start of playback
 
     CHECK((int)msgs[1].bytes[0] == 0x80); // NoteOff
     CHECK((int)msgs[1].bytes[1] == 100);
     CHECK((int)msgs[1].bytes[2] == 80);
-    CHECK((int)msgs[1].storage_time == 8);
+    CHECK((int)msgs[1].time == 8);
 
     CHECK((int)msgs[2].bytes[0] == 0x90); // NoteOn
     CHECK((int)msgs[2].bytes[1] == 100);
     CHECK((int)msgs[2].bytes[2] == 70);
-    CHECK(msgs[2].storage_time == 18);
+    CHECK(msgs[2].time == 18);
 
     CHECK((int)msgs[3].bytes[0] == 0x80); // NoteOff
     CHECK((int)msgs[3].bytes[1] == 100);
     CHECK((int)msgs[3].bytes[2] == 60);
-    CHECK(msgs[3].storage_time == 28);
+    CHECK(msgs[3].time == 28);
 
     // Play another loop to make sure it works twice in a row
     playback_buf.written.clear();
@@ -899,22 +899,22 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started before loop boundar
     CHECK(msgs[1].bytes[0] == 0x90); // NoteOn
     CHECK(msgs[1].bytes[1] == 100);
     CHECK(msgs[1].bytes[2] == 90);
-    CHECK(msgs[1].storage_time == 30); // Written at start of 2nd playback
+    CHECK(msgs[1].time == 30); // Written at start of 2nd playback
 
     CHECK(msgs[2].bytes[0] == 0x80); // NoteOff
     CHECK(msgs[2].bytes[1] == 100);
     CHECK(msgs[2].bytes[2] == 80);
-    CHECK(msgs[2].storage_time == 38);
+    CHECK(msgs[2].time == 38);
 
     CHECK(msgs[3].bytes[0] == 0x90); // NoteOn
     CHECK(msgs[3].bytes[1] == 100);
     CHECK(msgs[3].bytes[2] == 70);
-    CHECK(msgs[3].storage_time == 48); // Written at start of 2nd playback
+    CHECK(msgs[3].time == 48); // Written at start of 2nd playback
 
     CHECK(msgs[4].bytes[0] == 0x80); // NoteOff
     CHECK(msgs[4].bytes[1] == 100);
     CHECK(msgs[4].bytes[2] == 60);
-    CHECK(msgs[4].storage_time == 58);
+    CHECK(msgs[4].time == 58);
 };
 
 TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "[AudioMidiLoop][midi]") {
@@ -1013,7 +1013,7 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
     CHECK(msgs[0].bytes[0] == 0x90); // NoteOn
     CHECK(msgs[0].bytes[1] == 100);
     CHECK(msgs[0].bytes[2] == 90);
-    CHECK(msgs[0].storage_time == 5);
+    CHECK(msgs[0].time == 5);
     msgs.clear();
 
     // Play 10 more samples. That should cover the normal play period.
@@ -1023,11 +1023,11 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
     CHECK(msgs[0].bytes[0] == 0x80); // NoteOff
     CHECK(msgs[0].bytes[1] == 100);
     CHECK(msgs[0].bytes[2] == 80);
-    CHECK(msgs[0].storage_time == 15);
+    CHECK(msgs[0].time == 15);
     CHECK(msgs[1].bytes[0] == 0x90); // NoteOn
-    CHECK(msgs[1].storage_time == 17);
+    CHECK(msgs[1].time == 17);
     CHECK(msgs[2].bytes[0] == 0x80); // NoteOff
-    CHECK(msgs[2].storage_time == 19);
+    CHECK(msgs[2].time == 19);
     msgs.clear();
 
     // Play another cycle. This time, the cycle should end in all notes off,
@@ -1040,22 +1040,22 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
     CHECK(msgs[1].bytes[0] == 0x90); // NoteOn
     CHECK(msgs[1].bytes[1] == 100);
     CHECK(msgs[1].bytes[2] == 90);
-    CHECK(msgs[1].storage_time == 20); // Written at start of 2nd playback
+    CHECK(msgs[1].time == 20); // Written at start of 2nd playback
 
     CHECK(msgs[2].bytes[0] == 0x80); // NoteOff
     CHECK(msgs[2].bytes[1] == 100);
     CHECK(msgs[2].bytes[2] == 80);
-    CHECK(msgs[2].storage_time == 25);
+    CHECK(msgs[2].time == 25);
 
     CHECK(msgs[3].bytes[0] == 0x90); // NoteOn
     CHECK(msgs[3].bytes[1] == 100);
     CHECK(msgs[3].bytes[2] == 70);
-    CHECK(msgs[3].storage_time == 27);
+    CHECK(msgs[3].time == 27);
 
     CHECK(msgs[4].bytes[0] == 0x80); // NoteOff
     CHECK(msgs[4].bytes[1] == 100);
     CHECK(msgs[4].bytes[2] == 60);
-    CHECK(msgs[4].storage_time == 29);
+    CHECK(msgs[4].time == 29);
 };
 
 TEST_CASE("AudioMidiLoop - Midi - Corner Case - note pre-recorded but no preplay", "[AudioMidiLoop][midi]") {
@@ -1153,15 +1153,15 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note pre-recorded but no preplay
     CHECK(msgs[0].bytes[0] == 0x90); // NoteOn
     CHECK(msgs[0].bytes[1] == 100);
     CHECK(msgs[0].bytes[2] == 90);
-    CHECK(msgs[0].storage_time == 10);
+    CHECK(msgs[0].time == 10);
     CHECK(msgs[1].bytes[0] == 0x80); // NoteOff
     CHECK(msgs[1].bytes[1] == 100);
     CHECK(msgs[1].bytes[2] == 80);
-    CHECK(msgs[1].storage_time == 15);
+    CHECK(msgs[1].time == 15);
     CHECK(msgs[2].bytes[0] == 0x90); // NoteOn
-    CHECK(msgs[2].storage_time == 17);
+    CHECK(msgs[2].time == 17);
     CHECK(msgs[3].bytes[0] == 0x80); // NoteOff
-    CHECK(msgs[3].storage_time == 19);
+    CHECK(msgs[3].time == 19);
     msgs.clear();
 
     // Play another cycle. This time, the cycle should end in all notes off,
@@ -1174,20 +1174,20 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note pre-recorded but no preplay
     CHECK(msgs[1].bytes[0] == 0x90); // NoteOn
     CHECK(msgs[1].bytes[1] == 100);
     CHECK(msgs[1].bytes[2] == 90);
-    CHECK(msgs[1].storage_time == 20); // Written at start of 2nd playback
+    CHECK(msgs[1].time == 20); // Written at start of 2nd playback
 
     CHECK(msgs[2].bytes[0] == 0x80); // NoteOff
     CHECK(msgs[2].bytes[1] == 100);
     CHECK(msgs[2].bytes[2] == 80);
-    CHECK(msgs[2].storage_time == 25);
+    CHECK(msgs[2].time == 25);
 
     CHECK(msgs[3].bytes[0] == 0x90); // NoteOn
     CHECK(msgs[3].bytes[1] == 100);
     CHECK(msgs[3].bytes[2] == 70);
-    CHECK(msgs[3].storage_time == 27);
+    CHECK(msgs[3].time == 27);
 
     CHECK(msgs[4].bytes[0] == 0x80); // NoteOff
     CHECK(msgs[4].bytes[1] == 100);
     CHECK(msgs[4].bytes[2] == 60);
-    CHECK(msgs[4].storage_time == 29);
+    CHECK(msgs[4].time == 29);
 };

@@ -47,7 +47,7 @@ void GraphMidiPort::PROC_internal_connections(uint32_t n_frames) {
                 log<log_level_debug_trace>("process MIDI internal connections: we have {} msgs total", n);
                 for(decltype(n) i = 0; i<n; i++) {
                     auto event = from_buf->get_event(i);
-                    log<log_level_debug_trace>("process MIDI internal connections: send msg @ {}", event.proc_time);
+                    log<log_level_debug_trace>("process MIDI internal connections: send msg @ {}", event.time);
                     buf->write_event(event);
                 }
             } else {

@@ -33,7 +33,7 @@ void MidiBufferingInputPort::PROC_process(uint32_t nframes) {
         }
         for(uint32_t i=0; i<n_events; i++) {
             auto event = inbuf->get_event(i);
-            ModuleLoggingEnabled<"Backend.MidiBufferingInputPort">::log<log_level_debug>("Buffer message @ {}", event.proc_time);
+            ModuleLoggingEnabled<"Backend.MidiBufferingInputPort">::log<log_level_debug>("Buffer message @ {}", event.time);
             m_temp_midi_storage.push_back(event);
         }
     }

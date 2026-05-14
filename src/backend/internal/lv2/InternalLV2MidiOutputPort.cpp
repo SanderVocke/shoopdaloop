@@ -48,7 +48,7 @@ void InternalLV2MidiOutputPort::connect_external(std::string name) {(void)name;}
 void InternalLV2MidiOutputPort::disconnect_external(std::string name) {(void)name;}
 
 void InternalLV2MidiOutputPort::write_event(MidiStorageElem event) {
-    bool result = lv2_evbuf_write(&m_iter, event.proc_time, 0, m_midi_event_type_urid,
+    bool result = lv2_evbuf_write(&m_iter, event.time, 0, m_midi_event_type_urid,
                                   event.size, (void *)event.bytes);
     if (!result) {
         throw std::runtime_error("Failed to write MIDI event into LV2 evbuf");

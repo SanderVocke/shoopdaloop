@@ -129,8 +129,7 @@ void GenericJackMidiInputPort<API>::PROC_process(uint32_t nframes) {
         API::midi_event_get(&jack_event, jack_buffer, i);
         
         MidiStorageElem elem;
-        elem.proc_time = jack_event.time;
-        elem.storage_time = 0;
+        elem.time = jack_event.time;
         elem.size = jack_event.size;
         memcpy(elem.bytes, jack_event.buffer, jack_event.size);
         m_messages.push_back(elem);
@@ -141,7 +140,7 @@ void GenericJackMidiInputPort<API>::PROC_process(uint32_t nframes) {
     
     // Sort by time
     std::stable_sort(m_messages.begin(), m_messages.end(), [](const MidiStorageElem &a, const MidiStorageElem &b) {
-        return a.proc_time < b.proc_time;
+        return a.time < b.time;
     });
 }
 
@@ -187,7 +186,7 @@ void GenericJackMidiOutputPort<API>::PROC_process(uint32_t nframes) {
     uint32_t n_events = m_sorting_buffer->n_events();
     for (uint32_t i = 0; i < n_events; ++i) {
         MidiStorageElem event = m_sorting_buffer->get_event(i);
-        API::midi_event_write(jack_buffer, event.proc_time, event.bytes, event.size);
+        API::midi_event_write(jack_buffer, event.time, event.bytes, event.size);
     }
 }
 

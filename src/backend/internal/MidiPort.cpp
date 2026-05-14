@@ -74,7 +74,7 @@ void MidiPort::PROC_process(uint32_t nframes) {
 
     auto put_in_ringbuf = [this](MidiStorageElem &elem) {
         if (m_midi_ringbuffer) {
-            m_midi_ringbuffer->put(elem.proc_time, elem.size, elem.bytes,
+            m_midi_ringbuffer->put(elem.time, elem.size, elem.bytes,
             [this](uint32_t time, uint16_t size, const uint8_t *data) {
                 m_ringbuffer_tail_state->process_msg(data);
             });

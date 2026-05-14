@@ -31,7 +31,7 @@ namespace Catch {
     struct StringMaker<MidiStorageElem> {
         static std::string convert(const MidiStorageElem& e) {
             std::ostringstream oss;
-            oss << "{ t:" << e.storage_time << ", s:" << e.size << ", d:";
+            oss << "{ t:" << e.time << ", s:" << e.size << ", d:";
             oss << "[";
             for (size_t i=0; i<e.size; i++) {
                 if (i>0) { oss << ", "; }
@@ -63,7 +63,7 @@ std::vector<MidiStorageElem> extract_messages(Storage &buf) {
     while (cursor->valid()) {
         auto elem = cursor->get();
         MidiStorageElem msg;
-        msg.storage_time = elem->storage_time;
+        msg.time = elem->time;
         msg.size = elem->size;
         memcpy(msg.bytes, elem->bytes, elem->size);
         out.push_back(msg);
@@ -75,7 +75,7 @@ std::vector<MidiStorageElem> extract_messages(Storage &buf) {
 
 inline MidiStorageElem make_msg(uint32_t time, uint16_t size, const uint8_t* data) {
     MidiStorageElem msg;
-    msg.storage_time = time;
+    msg.time = time;
     msg.size = size;
     memcpy(msg.bytes, data, size);
     return msg;
@@ -91,21 +91,21 @@ TEST_CASE("MidiRingbuffer - Put and increment", "[MidiRingbuffer]") {
 
     {
         auto m = make_msg(0, 3, (uint8_t[]){0, 0, 0});
-        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+        CHECK(b->put(m.time, m.size, m.bytes) == true);
     }
     {
         auto m = make_msg(1, 3, (uint8_t[]){1, 1, 1});
-        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+        CHECK(b->put(m.time, m.size, m.bytes) == true);
     }
     b->next_buffer(10);
     {
         auto m = make_msg(2, 3, (uint8_t[]){2, 2, 2});
-        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+        CHECK(b->put(m.time, m.size, m.bytes) == true);
     }
     b->next_buffer(10);
     {
         auto m = make_msg(3, 3, (uint8_t[]){3, 3, 3});
-        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+        CHECK(b->put(m.time, m.size, m.bytes) == true);
     }
 
     CHECK(b->n_events() == 4);
@@ -130,25 +130,25 @@ TEST_CASE("MidiRingbuffer - Put and truncate", "[MidiRingbuffer]") {
 
     {
         auto m = make_msg(0, 3, (uint8_t[]){0, 0, 0});
-        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+        CHECK(b->put(m.time, m.size, m.bytes) == true);
     }
     {
         auto m = make_msg(1, 3, (uint8_t[]){1, 1, 1});
-        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+        CHECK(b->put(m.time, m.size, m.bytes) == true);
     }
     b->next_buffer(10);
     {
         auto m = make_msg(2, 3, (uint8_t[]){2, 2, 2});
-        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+        CHECK(b->put(m.time, m.size, m.bytes) == true);
     }
     {
         auto m = make_msg(3, 3, (uint8_t[]){3, 3, 3});
-        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+        CHECK(b->put(m.time, m.size, m.bytes) == true);
     }
     b->next_buffer(10);
     {
         auto m = make_msg(3, 3, (uint8_t[]){4, 4, 4});
-        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+        CHECK(b->put(m.time, m.size, m.bytes) == true);
     }
 
     std::vector<MidiStorageElem> out;
@@ -172,25 +172,25 @@ TEST_CASE("MidiRingbuffer - Put and wrap", "[MidiRingbuffer]") {
 
     {
         auto m = make_msg(0, 3, (uint8_t[]){0, 0, 0});
-        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+        CHECK(b->put(m.time, m.size, m.bytes) == true);
     }
     {
         auto m = make_msg(1, 3, (uint8_t[]){1, 1, 1});
-        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+        CHECK(b->put(m.time, m.size, m.bytes) == true);
     }
     {
         auto m = make_msg(2, 3, (uint8_t[]){2, 2, 2});
-        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+        CHECK(b->put(m.time, m.size, m.bytes) == true);
     }
     {
         // 4th message overwrites oldest (time 0)
         auto m = make_msg(3, 3, (uint8_t[]){3, 3, 3});
-        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+        CHECK(b->put(m.time, m.size, m.bytes) == true);
     }
     {
         // 5th message overwrites next oldest (time 1)
         auto m = make_msg(4, 3, (uint8_t[]){4, 4, 4});
-        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+        CHECK(b->put(m.time, m.size, m.bytes) == true);
     }
     b->next_buffer(10);
 
@@ -215,25 +215,25 @@ TEST_CASE("MidiRingbuffer - Put and wrap then truncate", "[MidiRingbuffer]") {
 
     {
         auto m = make_msg(0, 3, (uint8_t[]){0, 0, 0});
-        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+        CHECK(b->put(m.time, m.size, m.bytes) == true);
     }
     {
         auto m = make_msg(1, 3, (uint8_t[]){1, 1, 1});
-        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+        CHECK(b->put(m.time, m.size, m.bytes) == true);
     }
     {
         auto m = make_msg(2, 3, (uint8_t[]){2, 2, 2});
-        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+        CHECK(b->put(m.time, m.size, m.bytes) == true);
     }
     {
         // 4th message overwrites oldest
         auto m = make_msg(3, 3, (uint8_t[]){3, 3, 3});
-        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+        CHECK(b->put(m.time, m.size, m.bytes) == true);
     }
     {
         // 5th message overwrites next oldest
         auto m = make_msg(4, 3, (uint8_t[]){4, 4, 4});
-        CHECK(b->put(m.storage_time, m.size, m.bytes) == true);
+        CHECK(b->put(m.time, m.size, m.bytes) == true);
     }
     b->next_buffer(10);
 
@@ -268,7 +268,7 @@ TEST_CASE("MidiRingbuffer - Put then overflow then snapshot", "[MidiRingbuffer]"
         make_msg(2, 3, (uint8_t[]){1, 1, 1}),
         make_msg(5, 3, (uint8_t[]){2, 2, 2}),
     };
-    for (auto &m : to_put) { CHECK(b->put(m.storage_time, m.size, m.bytes) == true); }
+    for (auto &m : to_put) { CHECK(b->put(m.time, m.size, m.bytes) == true); }
 
     b->next_buffer(10);
 
@@ -307,7 +307,7 @@ TEST_CASE("MidiRingbuffer - Put then truncated snapshot", "[MidiRingbuffer]") {
         make_msg(2, 3, (uint8_t[]){1, 1, 1}),
         make_msg(5, 3, (uint8_t[]){2, 2, 2}),
     };
-    for (auto &m : to_put) { CHECK(b->put(m.storage_time, m.size, m.bytes) == true); }
+    for (auto &m : to_put) { CHECK(b->put(m.time, m.size, m.bytes) == true); }
 
     b->next_buffer(10);
 

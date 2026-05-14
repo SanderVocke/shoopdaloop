@@ -148,7 +148,7 @@ inline shoop_audio_channel_data_t to_api_data(std::vector<float> &vec) {
 template<typename Msg>
 inline Msg at_time(Msg const& m, uint32_t time) {
     auto _m = m;
-    _m.storage_time = time;
+    _m.time = time;
     return _m;
 }
 
@@ -217,7 +217,7 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - no sync loop - 0 samples", "[c
         create_noteOn <MidiStorageElem>(9, 2,  1,  1 )
     };
     for (auto &msg : msgs) {
-        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.proc_time, msg.bytes);
+        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.time, msg.bytes);
     }
     // Process 8 samples in stopped mode
     tst.int_driver->controlled_mode_request_samples(8);
@@ -249,7 +249,7 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - no sync loop", "[chain][midi]"
         create_noteOn <MidiStorageElem>(9, 2,  1,  1 )
     };
     for (auto &msg : msgs) {
-        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.proc_time, msg.bytes);
+        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.time, msg.bytes);
     }
     // Process 8 samples in stopped mode
     tst.int_driver->controlled_mode_request_samples(8);
@@ -296,7 +296,7 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - no sync loop - integer time ov
         create_noteOn <MidiStorageElem>(9, 2,  1,  1 )
     };
     for (auto &msg : msgs) {
-        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.proc_time, msg.bytes);
+        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.time, msg.bytes);
     }
     // Process 8 samples in stopped mode
     tst.int_driver->controlled_mode_request_samples(8);
@@ -373,7 +373,7 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - one cycle", "[chain][midi]") {
         create_noteOn <MidiStorageElem>(8, 3,  30, 30), // 1st frame of cycle R + 1
     };
     for (auto &msg : msgs) {
-        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.proc_time, msg.bytes);
+        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.time, msg.bytes);
     }
     // Process 8 samples in stopped mode
     tst.int_driver->controlled_mode_request_samples(10); // Process cycles R-1, R, 2 frames of R+1
@@ -415,7 +415,7 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - one cycle with state restore",
         create_cc     <MidiStorageElem>(0, 0,  90, 100), // CC 90 set to 100
     };
     for (auto &msg : prearm_msgs) {
-        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.proc_time, msg.bytes);
+        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.time, msg.bytes);
     }
     // Run these changes all the way through the ringbuffer. They should now be tracked.
     tst.int_driver->controlled_mode_request_samples(n_ringbuffer_samples * 2);
@@ -442,7 +442,7 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - one cycle with state restore",
         create_cc      <MidiStorageElem>(9, 0,  90, 80), // cc 90 to 80 in 2nd frame of cycle R + 1
     };
     for (auto &msg : msgs) {
-        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.proc_time, msg.bytes);
+        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.time, msg.bytes);
     }
     // Process 8 samples in stopped mode
     tst.int_driver->controlled_mode_request_samples(10); // Process cycles R-1, R, 2 frames of R+1
@@ -561,7 +561,7 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - current cycle", "[chain][midi]
         create_noteOn <MidiStorageElem>(8, 3,  30, 30), // 1st frame of cycle R
     };
     for (auto &msg : msgs) {
-        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.proc_time, msg.bytes);
+        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.time, msg.bytes);
     }
     // Process 8 samples in stopped mode
     tst.int_driver->controlled_mode_request_samples(10); // Process cycles R-2, R-1, 2 frames of R
@@ -639,7 +639,7 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - prev cycle", "[chain][midi]") 
         create_noteOn <MidiStorageElem>(8, 3,  30, 30), // 1st frame of cycle R + 2
     };
     for (auto &msg : msgs) {
-        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.proc_time, msg.bytes);
+        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.time, msg.bytes);
     }
     // Process 8 samples in stopped mode
     tst.int_driver->controlled_mode_request_samples(10); // Process cycles R, R+1, 2 frames of R+2
@@ -719,7 +719,7 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - prev 2 cycles", "[chain][midi]
         create_noteOn <MidiStorageElem>(8, 3,  30, 30), // 1st frame of cycle R + 2
     };
     for (auto &msg : msgs) {
-        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.proc_time, msg.bytes);
+        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.time, msg.bytes);
     }
     // Process 8 samples in stopped mode
     tst.int_driver->controlled_mode_request_samples(10); // Process cycles R, R+1, 2 frames of R+2

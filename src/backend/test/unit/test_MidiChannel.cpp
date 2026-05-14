@@ -14,9 +14,9 @@ TEST_CASE("MidiChannel - Set Contents - Indefinite size", "[MidiChannel]") {
     std::vector<MidiStorageElem> data;
     {
         MidiStorageElem msg;
-        msg.storage_time = 0; msg.size = 3; msg.bytes[0] = 0; msg.bytes[1] = 1; msg.bytes[2] = 2; data.push_back(msg);
-        msg.storage_time = 1; msg.size = 3; msg.bytes[0] = 3; msg.bytes[1] = 4; msg.bytes[2] = 5; data.push_back(msg);
-        msg.storage_time = 10; msg.size = 1; msg.bytes[0] = 10; msg.bytes[1] = 0; msg.bytes[2] = 0; data.push_back(msg);
+        msg.time = 0; msg.size = 3; msg.bytes[0] = 0; msg.bytes[1] = 1; msg.bytes[2] = 2; data.push_back(msg);
+        msg.time = 1; msg.size = 3; msg.bytes[0] = 3; msg.bytes[1] = 4; msg.bytes[2] = 5; data.push_back(msg);
+        msg.time = 10; msg.size = 1; msg.bytes[0] = 10; msg.bytes[1] = 0; msg.bytes[2] = 0; data.push_back(msg);
     }
     const Contents contents = { data, {} };
 

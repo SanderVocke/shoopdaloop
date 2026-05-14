@@ -149,7 +149,7 @@ public:
     static int midi_event_get(jack_midi_event_t *event, void *port_buffer, uint32_t event_index) {
         auto &port = Port::from_ptr(jacktestapi_globals::buffers_to_ports[port_buffer]);
         auto &msg = port.midi_buffer[event_index];
-        event->time = msg.proc_time;
+        event->time = msg.time;
         event->size = msg.size;
         event->buffer = (jack_midi_data_t*) msg.bytes;
         return 0;
@@ -163,7 +163,7 @@ public:
     static int midi_event_write(void *port_buffer, jack_nframes_t time, const jack_midi_data_t *data, size_t data_size) {
         auto &port = Port::from_ptr(jacktestapi_globals::buffers_to_ports[port_buffer]);
         MidiStorageElem msg;
-        msg.proc_time = time;
+        msg.time = time;
         msg.size = data_size;
         memcpy(msg.bytes, data, data_size);
         port.midi_buffer.push_back(msg);
