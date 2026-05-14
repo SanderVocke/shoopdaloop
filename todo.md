@@ -323,12 +323,12 @@ event->proc_time = proc_time;
 
 ## Phase 5: Other Ports
 
-### [ ] 5.1: Update `DecoupledMidiPort.h/cpp`
+### [x] 5.1: Update `DecoupledMidiPort.h/cpp`
 
 **Goal:** Use canonical `MidiStorageElem` instead of custom wrapper
 
 **Changes in `DecoupledMidiPort.h`:**
-- Remove `DecoupledMidiMessage` struct (replace with `MidiStorageElem`)
+- Remove `DecoupledMidiMessage` struct (replaced with `MidiStorageElem`)
 - Change `Queue` type from `boost::lockfree::spsc_queue<Message>` to `boost::lockfree::spsc_queue<MidiStorageElem>`
 - Update `pop_incoming()` and `push_outgoing()` signatures
 
@@ -340,7 +340,8 @@ event->proc_time = proc_time;
 **End state:** Uses canonical message type throughout.
 
 **Verification:**
-- `cargo build` succeeds
+- `cargo build` succeeds ✅
+- `cargo test` passes ✅
 
 ---
 

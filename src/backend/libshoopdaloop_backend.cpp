@@ -1357,11 +1357,9 @@ shoop_midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_port_t *port) 
     auto &_port = *internal_decoupled_midi_port(port);
     auto m = _port.pop_incoming();
     if (m.has_value()) {
-        auto r = alloc_midi_event(m->data.size());
-        r->time = 0;
-        r->size = m->data.size();
-        r->data = (uint8_t*)malloc(r->size);
-        memcpy((void*)r->data, (void*)m->data.data(), r->size);
+        auto r = alloc_midi_event(m->size);
+        r->time = m->storage_time;
+        memcpy((void*)r->data, (void*)m->data(), r->size);
         return r;
     } else {
         return (shoop_midi_event_t*)nullptr;
@@ -1400,9 +1398,11 @@ const char* get_decoupled_midi_port_name(shoopdaloop_decoupled_midi_port_t *port
 void send_decoupled_midi(shoopdaloop_decoupled_midi_port_t *port, unsigned length, unsigned char *data) {
   return api_impl<void>("send_decoupled_midi", [&]() {
     auto &_port = *internal_decoupled_midi_port(port);
-    DecoupledMidiMessage m;
-    m.data.resize(length);
-    memcpy((void*)m.data.data(), (void*)data, length);
+    MidiStorageElem m;
+    m.size = length;
+    m.storage_time = 0;
+    m.proc_time = 0;
+    memcpy(m.bytes, data, length);
     _port.push_outgoing(m);
   });
 }
