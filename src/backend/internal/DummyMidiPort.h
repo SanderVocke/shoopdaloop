@@ -5,7 +5,7 @@
 #include "PortInterface.h"
 #include "LoggingEnabled.h"
 #include "WithCommandQueue.h"
-#include "MidiMessage.h"
+#include "MidiBuffer.h"
 #include "types.h"
 #include <memory>
 #include <memory>
@@ -18,12 +18,12 @@
 
 class DummyMidiPort : public virtual MidiPort,
                       public DummyPort,
-                      public MidiReadableBufferInterface,
-                      public MidiWriteableBufferInterface,
+                      public MidiReadableBuffer,
+                      public MidiWriteableBuffer,
                       public WithCommandQueue,
                       private ModuleLoggingEnabled<"Backend.DummyMidiPort"> {
 public:
-    using StoredMessage = MidiMessage<uint32_t, uint16_t>;
+    using StoredMessage = MidiStorageElem;
 
 private:
 
@@ -42,22 +42,12 @@ private:
     std::atomic<uint32_t> n_original_requested_frames = 0;
 
 public:
-    uint32_t PROC_get_n_events() const override;
-    virtual MidiSortableMessageInterface &PROC_get_event_reference(uint32_t idx) override;
-    virtual void PROC_get_event_value(uint32_t idx,
-                              uint32_t &size_out,
-                              uint32_t &time_out,
-                              const uint8_t* &data_out) override;
-    void PROC_write_event_value(uint32_t size,
-                                uint32_t time,
-                                const uint8_t* data) override;
-    void PROC_write_event_reference(MidiSortableMessageInterface const& m) override;
-    bool write_by_reference_supported() const override;
-    bool write_by_value_supported() const override;
-    bool read_by_reference_supported() const override;
+    uint32_t n_events() const override;
+    MidiStorageElem get_event(uint32_t idx) const override;
+    void write_event(MidiStorageElem event) override;
 
-    MidiWriteableBufferInterface *PROC_get_write_data_into_port_buffer(uint32_t n_frames) override;
-    MidiReadableBufferInterface *PROC_get_read_output_data_buffer(uint32_t n_frames) override;
+    MidiWriteableBuffer *PROC_get_write_data_into_port_buffer(uint32_t n_frames) override;
+    MidiReadableBuffer *PROC_get_read_output_data_buffer(uint32_t n_frames) override;
 
     DummyMidiPort(
         std::string name,

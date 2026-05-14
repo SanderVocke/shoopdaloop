@@ -22,14 +22,6 @@ const uint8_t *MidiStorageElem::data() const {
     return bytes;
 }
 
-const uint8_t *MidiStorageElem::get_data() const {
-    return bytes;
-}
-
-uint32_t MidiStorageElem::get_time() const {
-    return proc_time;
-}
-
 uint32_t MidiStorageElem::get_size() const {
     return size;
 }
@@ -38,7 +30,7 @@ void MidiStorageElem::get(uint32_t &size_out,
                                               uint32_t &time_out,
                                               const uint8_t *&data_out) const {
     size_out = size;
-    time_out = proc_time;
+    time_out = time;
     data_out = data();
 }
 
@@ -85,7 +77,7 @@ bool MidiStorageBase::append(uint32_t time, uint16_t size,
     }
     if (m_n_events > 0) {
         uint32_t newest_idx = (m_head + m_data.size() - 1) % m_data.size();
-        if (m_data[newest_idx].storage_time > time) {
+        if (m_data[newest_idx].time > time) {
             // Don't store out-of-order messages
             log<log_level_warning>("Ignoring store of out-of-order MIDI message.");
             return false;
@@ -96,16 +88,15 @@ bool MidiStorageBase::append(uint32_t time, uint16_t size,
     if (full()) {
         if (dropped_msg_cb) {
             auto &dropped_msg = m_data[m_tail];
-            dropped_msg_cb(dropped_msg.storage_time, dropped_msg.size, dropped_msg.data());
+            dropped_msg_cb(dropped_msg.time, dropped_msg.size, dropped_msg.data());
         }
         m_tail = (m_tail + 1) % m_data.size();
         n_removed++;
     }
 
     auto &elem = m_data[m_head];
+    elem.time = time;
     elem.size = size;
-    elem.proc_time = time;
-    elem.storage_time = time;
     memcpy(elem.bytes, data, size);
 
     m_head = (m_head + 1) % m_data.size();
@@ -141,7 +132,7 @@ bool MidiStorageBase::prepend(uint32_t time, uint16_t size,
         log<log_level_debug_trace>("Prepend: buffer full");
         return false;
     }
-    if (m_n_events > 0 && m_data[m_tail].get_time() < time) {
+    if (m_n_events > 0 && m_data[m_tail].time < time) {
         // Don't store out-of-order messages
         log<log_level_warning>("Ignoring store of out-of-order MIDI message.");
         return false;
@@ -152,9 +143,8 @@ bool MidiStorageBase::prepend(uint32_t time, uint16_t size,
     m_n_events++;
 
     auto &elem = m_data[m_tail];
+    elem.time = time;
     elem.size = size;
-    elem.proc_time = time;
-    elem.storage_time = time;
     memcpy(elem.bytes, data, size);
 
     return true;
@@ -279,7 +269,7 @@ CursorFindResult MidiStorageCursor::find_time_forward(
     auto storage_ptr = m_storage.get();
     log<log_level_debug_trace>("find_time_forward (storage {}, cursor {}, target time {})", fmt::ptr(storage_ptr), print_offset, time);
     return find_fn_forward([time](Elem *e) {
-        return e->storage_time >= time;
+        return e->time >= time;
     }, maybe_skip_msg_callback);
 }
 
@@ -323,7 +313,7 @@ CursorFindResult MidiStorageCursor::find_fn_forward(
         }
 
         if (maybe_skip_msg_callback) {
-            log<log_level_debug_trace>("Skip event @ {}", elem->storage_time);
+            log<log_level_debug_trace>("Skip event @ {}", elem->time);
             maybe_skip_msg_callback(elem);
         }
 
@@ -387,7 +377,7 @@ void MidiStorage::truncate_fn(std::function<bool(uint32_t, uint16_t, const uint8
     if (type == TruncateSide::TruncateHead) {
         uint32_t newest_idx = (m_head + cap - 1) % cap;
         auto &e = m_data[newest_idx];
-        if (!should_truncate_fn(e.storage_time, e.size, e.data())) {
+        if (!should_truncate_fn(e.time, e.size, e.data())) {
             this->template log<log_level_debug_trace>("truncate: head unchanged");
             return;
         }
@@ -396,7 +386,7 @@ void MidiStorage::truncate_fn(std::function<bool(uint32_t, uint16_t, const uint8
         uint32_t kept = 0;
         for (uint32_t i = 0; i < m_n_events; ++i) {
             auto &elem = m_data[idx];
-            if (should_truncate_fn(elem.storage_time, elem.size, elem.data())) {
+            if (should_truncate_fn(elem.time, elem.size, elem.data())) {
                 break;
             }
             kept++;
@@ -407,7 +397,7 @@ void MidiStorage::truncate_fn(std::function<bool(uint32_t, uint16_t, const uint8
             uint32_t drop_idx = idx;
             for (uint32_t i = kept; i < m_n_events; ++i) {
                 auto &elem = m_data[drop_idx];
-                dropped_msg_cb(elem.storage_time, elem.size, elem.data());
+                dropped_msg_cb(elem.time, elem.size, elem.data());
                 drop_idx = (drop_idx + 1) % cap;
             }
         }
@@ -418,7 +408,7 @@ void MidiStorage::truncate_fn(std::function<bool(uint32_t, uint16_t, const uint8
 
     } else if (type == TruncateSide::TruncateTail) {
         auto &e = m_data[m_tail];
-        if (!should_truncate_fn(e.storage_time, e.size, e.data())) {
+        if (!should_truncate_fn(e.time, e.size, e.data())) {
             this->template log<log_level_debug_trace>("truncate: tail unchanged");
             return;
         }
@@ -427,11 +417,11 @@ void MidiStorage::truncate_fn(std::function<bool(uint32_t, uint16_t, const uint8
         uint32_t dropped = 0;
         for (uint32_t i = 0; i < m_n_events; ++i) {
             auto &elem = m_data[idx];
-            if (!should_truncate_fn(elem.storage_time, elem.size, elem.data())) {
+            if (!should_truncate_fn(elem.time, elem.size, elem.data())) {
                 break;
             }
             if (dropped_msg_cb) {
-                dropped_msg_cb(elem.storage_time, elem.size, elem.data());
+                dropped_msg_cb(elem.time, elem.size, elem.data());
             }
             dropped++;
             idx = (idx + 1) % cap;
@@ -471,7 +461,7 @@ void MidiStorage::for_each_msg_modify(
     uint32_t idx = m_tail;
     for (uint32_t i = 0; i < m_n_events; ++i) {
         auto &elem = m_data[idx];
-        cb(elem.storage_time, elem.size, elem.bytes);
+        cb(elem.time, elem.size, elem.bytes);
         idx = (idx + 1) % m_data.size();
     }
 }
