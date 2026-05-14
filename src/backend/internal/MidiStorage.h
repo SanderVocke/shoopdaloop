@@ -1,42 +1,9 @@
 #pragma once
 #include "LoggingEnabled.h"
-#include <vector>
-#include <functional>
-#include <atomic>
-#include <cstdint>
-#include <cstring>
+#include "IMidiStorageCore.h"
+#include "shoop_shared_ptr.h"
 #include <memory>
 #include <optional>
-#include "shoop_shared_ptr.h"
-
-typedef std::function<void(uint32_t time, uint16_t size, const uint8_t* data)> DroppedMsgCallback;
-
-struct MidiStorageElem {
-    uint32_t time = 0;        // Position: absolute in storage, relative in buffers
-    uint16_t size = 0;        // Size of the data portion (1..4)
-    uint8_t bytes[4] = {0};   // Inline 4-byte payload
-
-    uint8_t* data();
-    const uint8_t* data() const;
-    // Alias for data() for backward compatibility
-    const uint8_t* get_data() const { return bytes; }
-    uint32_t get_size() const;
-    void get(uint32_t &size_out,
-                uint32_t &time_out,
-                const uint8_t* &data_out) const;
-
-    bool operator==(MidiStorageElem const& other) const {
-        return time == other.time &&
-               size == other.size &&
-               memcmp(bytes, other.bytes, 4) == 0;
-    }
-
-    // Compare only the MIDI data bytes (ignores time field)
-    bool contents_equal(MidiStorageElem const& other) const {
-        if (size != other.size) return false;
-        return memcmp(bytes, other.bytes, size) == 0;
-    }
-};
 
 // Forward declarations
 class MidiStorageCore;
@@ -50,7 +17,10 @@ struct CursorFindResult {
 
 // MidiStorageCore: Contains the raw ringbuffer data and basic operations.
 // This is the core storage that can be easily bridged to Rust.
-class MidiStorageCore : public ModuleLoggingEnabled<"Backend.MidiStorage"> {
+// Implements IMidiStorageCore and IMidiStorageOperations for FFI compatibility.
+class MidiStorageCore : public ModuleLoggingEnabled<"Backend.MidiStorage">,
+                        public IMidiStorageCore,
+                        public IMidiStorageOperations {
 public:
     using Elem = MidiStorageElem;
 
@@ -65,47 +35,40 @@ protected:
 public:
     MidiStorageCore(uint32_t data_size);
 
-    uint32_t bytes_capacity() const;
-    uint32_t capacity_elems() const;
-    bool full() const;
-
-    void clear();
-
-    uint32_t bytes_occupied() const;
-    uint32_t bytes_free() const;
-    uint32_t n_events() const;
+    // IMidiStorageCore implementation
+    uint32_t bytes_capacity() const override;
+    uint32_t capacity_elems() const override;
+    bool full() const override;
+    bool empty() const override;
+    uint32_t n_events() const override;
 
     // Raw accessors for cursor operations
-    uint32_t raw_tail() const { return m_tail; }
-    uint32_t raw_head() const { return m_head; }
-    uint32_t raw_capacity() const { return m_data.size(); }
-    bool raw_full() const { return m_n_events == m_data.size(); }
+    uint32_t raw_tail() const override { return m_tail; }
+    uint32_t raw_head() const override { return m_head; }
+    uint32_t raw_capacity() const override { return m_data.size(); }
+    bool raw_full() const override { return m_n_events == m_data.size(); }
 
-    Elem* get_elem(uint32_t idx) { return &m_data.at(idx); }
-    const Elem* get_elem(uint32_t idx) const { return &m_data.at(idx); }
+    Elem* get_elem(uint32_t idx) override { return &m_data.at(idx); }
+    const Elem* get_elem(uint32_t idx) const override { return &m_data.at(idx); }
+    std::vector<Elem>& data() override { return m_data; }
+    const std::vector<Elem>& data() const override { return m_data; }
 
+    // IMidiStorageOperations implementation
     bool append(uint32_t time, uint16_t size, const uint8_t* data,
                 bool allow_replace=false,
-                DroppedMsgCallback dropped_msg_cb=nullptr);
-    bool prepend(uint32_t time, uint16_t size, const uint8_t* data);
-    void copy(MidiStorageCore &to) const;
-    void copy_from(const MidiStorageCore &from);
+                DroppedMsgCallback dropped_msg_cb=nullptr) override;
+    bool prepend(uint32_t time, uint16_t size, const uint8_t* data) override;
+    void clear() override;
+    void copy(IMidiStorageCore &to) const override;
+    void copy_from(const IMidiStorageCore &from) override;
 
-    // Expose data vector for iteration (used by MidiStorage operations)
-    std::vector<Elem>& data() { return m_data; }
-    const std::vector<Elem>& data() const { return m_data; }
-
-    // Truncate operations
-    enum class TruncateSide {
-        TruncateHead, // Remove all messages with time > t from the head
-        TruncateTail, // Remove all messages with time < t from the tail
-    };
-
-    void truncate(uint32_t time, TruncateSide side, DroppedMsgCallback dropped_msg_cb=nullptr);
+    void truncate(uint32_t time, MidiStorageTruncateSide side, 
+                  DroppedMsgCallback dropped_msg_cb=nullptr) override;
     void truncate_fn(std::function<bool(uint32_t time, uint16_t size, const uint8_t* data)> should_truncate_fn,
-                     TruncateSide side, DroppedMsgCallback dropped_msg_cb=nullptr);
-    void for_each_msg_modify(std::function<void(uint32_t &t, uint16_t &s, uint8_t* data)> cb);
-    void for_each_msg(std::function<void(uint32_t t, uint16_t s, uint8_t* data)> cb);
+                     MidiStorageTruncateSide side, 
+                     DroppedMsgCallback dropped_msg_cb=nullptr) override;
+    void for_each_msg_modify(std::function<void(uint32_t &t, uint16_t &s, uint8_t* data)> cb) override;
+    void for_each_msg(std::function<void(uint32_t t, uint16_t s, uint8_t* data)> cb) override;
 };
 
 // MidiStorage: Contains a MidiStorageCore and adds cursor management
@@ -116,7 +79,7 @@ public:
     using Cursor = MidiStorageCursor;
     using SharedCursor = shoop_shared_ptr<Cursor>;
 
-    using TruncateSide = MidiStorageCore::TruncateSide;
+    using TruncateSide = MidiStorageTruncateSide;
 
 private:
     std::unique_ptr<MidiStorageCore> m_core;
@@ -131,8 +94,8 @@ public:
     uint32_t capacity_elems() const { return m_core->capacity_elems(); }
     bool full() const { return m_core->full(); }
     void clear();
-    uint32_t bytes_occupied() const { return m_core->bytes_occupied(); }
-    uint32_t bytes_free() const { return m_core->bytes_free(); }
+    uint32_t bytes_occupied() const { return m_core->n_events() * sizeof(Elem); }
+    uint32_t bytes_free() const { return (m_core->capacity_elems() - m_core->n_events()) * sizeof(Elem); }
     uint32_t n_events() const { return m_core->n_events(); }
 
     uint32_t raw_tail() const { return m_core->raw_tail(); }
@@ -165,14 +128,11 @@ public:
     MidiStorageCore* core() { return m_core.get(); }
     const MidiStorageCore* core() const { return m_core.get(); }
 
-    // For cursor invalidation - access to m_core's protected members
-    void invalidate_cursors_on_tail_change(uint32_t old_tail);
-
     std::vector<Elem>& data() { return m_core->data(); }
     const std::vector<Elem>& data() const { return m_core->data(); }
 };
 
-// MidiStorageCursor: Works with MidiStorageBase (now MidiStorageCore)
+// MidiStorageCursor: Works with MidiStorage
 class MidiStorageCursor : public ModuleLoggingEnabled<"Backend.MidiStorage"> {
 public:
     using Storage = MidiStorage;
@@ -215,8 +175,6 @@ public:
 };
 
 // MidiRingbuffer: Contains a MidiStorage instead of inheriting from it
-#include <optional>
-
 class MidiRingbuffer : public ModuleLoggingEnabled<"Backend.MidiStorage"> {
 public:
     using Storage = MidiStorage;
@@ -265,8 +223,6 @@ public:
 private:
     // Helper to create a shared_ptr from MidiRingbuffer itself for cursor creation
     shoop_shared_ptr<MidiRingbuffer> shared_from_this() {
-        // Since MidiRingbuffer isn't enable_shared_from_this, we create a new shared_ptr
-        // from this. This assumes the MidiRingbuffer is managed via shared_ptr.
         return shoop_shared_ptr<MidiRingbuffer>(this, [](MidiRingbuffer*){});
     }
 

@@ -53,24 +53,24 @@ cargo build
 
 ---
 
-## Phase 2: Extract IMidiStorageCore interface
+## Phase 2: Extract IMidiStorageCore interface (COMPLETED)
 
 **Goal**: Define a pure virtual interface that C++ consumers can use and Rust can implement/bridge to.
 
 ### Tasks
-- [ ] Create `IMidiStorageCore` interface with pure virtual methods:
+- [x] Create `IMidiStorageCore` interface with pure virtual methods:
   - `n_events() const`
   - `get_elem(uint32_t idx)` → mutable elem access
   - `get_elem(uint32_t idx) const` → immutable elem access
   - `raw_tail()`, `raw_head()`, `raw_capacity()`, `raw_full()`
-- [ ] Create `IMidiStorageOperations` interface:
+- [x] Create `IMidiStorageOperations` interface:
   - `append(time, size, data, allow_replace, dropped_cb)`
   - `clear()`
   - `copy_to(IMidiStorageCore& target)`
   - `truncate(time, side, dropped_cb)`
   - `for_each_msg_modify(callback)`
-- [ ] Make `MidiStorageCore` implement these interfaces
-- [ ] Update consumers to use interfaces where appropriate (not required for all consumers, just for the Rust bridge boundary)
+- [x] Make `MidiStorageCore` implement these interfaces
+- [x] Update consumers to use interfaces where appropriate (not required for all consumers, just for the Rust bridge boundary)
 
 ### Build & Test
 ```bash
@@ -78,6 +78,14 @@ cargo build
 ./target/debug/test_runner "[MidiStorage]"
 ./target/debug/test_runner "[MidiRingbuffer]"
 ```
+
+✅ All 140 test cases pass
+
+**Files created/modified:**
+- `IMidiStorageCore.h` - Pure virtual interfaces for FFI
+- `MidiStorageElem.h` - Extracted element struct with inline implementations
+- `MidiStorage.h` - MidiStorageCore now implements the interfaces
+- `MidiStorage.cpp` - Updated copy() methods to use interface
 
 ---
 

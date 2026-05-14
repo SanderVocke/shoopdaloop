@@ -14,26 +14,6 @@
 
 using namespace logging;
 
-uint8_t *MidiStorageElem::data() {
-    return bytes;
-}
-
-const uint8_t *MidiStorageElem::data() const {
-    return bytes;
-}
-
-uint32_t MidiStorageElem::get_size() const {
-    return size;
-}
-
-void MidiStorageElem::get(uint32_t &size_out,
-                                              uint32_t &time_out,
-                                              const uint8_t *&data_out) const {
-    size_out = size;
-    time_out = time;
-    data_out = data();
-}
-
 // MidiStorageCore implementation
 
 MidiStorageCore::MidiStorageCore(uint32_t data_size)
@@ -52,16 +32,12 @@ bool MidiStorageCore::full() const {
     return m_n_events == m_data.size();
 }
 
+bool MidiStorageCore::empty() const {
+    return m_n_events == 0;
+}
+
 void MidiStorageCore::clear() {
     m_head = m_tail = m_n_events = 0;
-}
-
-uint32_t MidiStorageCore::bytes_occupied() const {
-    return m_n_events * sizeof(Elem);
-}
-
-uint32_t MidiStorageCore::bytes_free() const {
-    return (m_data.size() - m_n_events) * sizeof(Elem);
 }
 
 uint32_t MidiStorageCore::n_events() const {
@@ -136,63 +112,73 @@ bool MidiStorageCore::prepend(uint32_t time, uint16_t size,
     return true;
 }
 
-void MidiStorageCore::copy(MidiStorageCore &to) const {
-    to.m_data.resize(m_data.size());
-    to.m_tail = 0;
-    to.m_n_events = m_n_events;
+void MidiStorageCore::copy(IMidiStorageCore &to) const {
+    // Cast to MidiStorageCore for internal access
+    auto* target = dynamic_cast<MidiStorageCore*>(&to);
+    if (!target) {
+        throw std::runtime_error("copy target must be MidiStorageCore or implement protected members");
+    }
+    target->m_data.resize(m_data.size());
+    target->m_tail = 0;
+    target->m_n_events = m_n_events;
 
     if (m_n_events == 0) {
-        to.m_head = 0;
+        target->m_head = 0;
         return;
     }
 
     uint32_t count = 0;
     uint32_t idx = m_tail;
     while (count < m_n_events) {
-        to.m_data[count] = m_data[idx];
+        target->m_data[count] = m_data[idx];
         idx = (idx + 1) % m_data.size();
         count++;
     }
-    to.m_head = count % m_data.size();
+    target->m_head = count % m_data.size();
 }
 
-void MidiStorageCore::copy_from(const MidiStorageCore &from) {
-    m_data.resize(from.m_data.size());
-    m_tail = from.m_tail;
-    m_head = from.m_head;
-    m_n_events = from.m_n_events;
+void MidiStorageCore::copy_from(const IMidiStorageCore &from) {
+    // Cast from IMidiStorageCore to MidiStorageCore for internal access
+    auto* source = dynamic_cast<const MidiStorageCore*>(&from);
+    if (!source) {
+        throw std::runtime_error("copy_from source must be MidiStorageCore or implement protected members");
+    }
+    m_data.resize(source->m_data.size());
+    m_tail = source->m_tail;
+    m_head = source->m_head;
+    m_n_events = source->m_n_events;
 
     if (m_n_events == 0) {
         return;
     }
 
     uint32_t count = 0;
-    uint32_t idx = from.m_tail;
+    uint32_t idx = source->m_tail;
     while (count < m_n_events) {
-        m_data[idx] = from.m_data[idx];
+        m_data[idx] = source->m_data[idx];
         idx = (idx + 1) % m_data.size();
         count++;
     }
 }
 
-void MidiStorageCore::truncate(uint32_t time, TruncateSide type, DroppedMsgCallback dropped_msg_cb) {
+void MidiStorageCore::truncate(uint32_t time, MidiStorageTruncateSide type, DroppedMsgCallback dropped_msg_cb) {
     log<log_level_debug_trace>("MidiStorageCore::truncate to {}", time);
-    if (type == TruncateSide::TruncateTail) {
+    if (type == MidiStorageTruncateSide::TruncateTail) {
         return truncate_fn([time](uint32_t t, uint16_t size, const uint8_t* data){ return t < time; }, type, dropped_msg_cb);
-    } else if (type == TruncateSide::TruncateHead) {
+    } else if (type == MidiStorageTruncateSide::TruncateHead) {
         return truncate_fn([time](uint32_t t, uint16_t size, const uint8_t* data){ return t > time; }, type, dropped_msg_cb);
     }
 }
 
 void MidiStorageCore::truncate_fn(std::function<bool(uint32_t, uint16_t, const uint8_t*)> should_truncate_fn,
-                  TruncateSide type, DroppedMsgCallback dropped_msg_cb) {
+                  MidiStorageTruncateSide type, DroppedMsgCallback dropped_msg_cb) {
     log<log_level_debug_trace>("MidiStorageCore::truncate to function");
     uint32_t cap = m_data.size();
     if (cap == 0 || m_n_events == 0) {
         return;
     }
 
-    if (type == TruncateSide::TruncateHead) {
+    if (type == MidiStorageTruncateSide::TruncateHead) {
         uint32_t newest_idx = (m_head + cap - 1) % cap;
         auto &e = m_data[newest_idx];
         if (!should_truncate_fn(e.time, e.size, e.data())) {
@@ -224,7 +210,7 @@ void MidiStorageCore::truncate_fn(std::function<bool(uint32_t, uint16_t, const u
         m_head = idx;
         m_n_events = kept;
 
-    } else if (type == TruncateSide::TruncateTail) {
+    } else if (type == MidiStorageTruncateSide::TruncateTail) {
         auto &e = m_data[m_tail];
         if (!should_truncate_fn(e.time, e.size, e.data())) {
             log<log_level_debug_trace>("MidiStorageCore::truncate: tail unchanged");
