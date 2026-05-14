@@ -253,18 +253,30 @@ pub fn crashhandling_client(
 
             // Check if we've exceeded max attempts and server is still None
             // If so, we've tried multiple times and server simply isn't starting properly.
-            // Log a message and continue without crash handling.
+            // Log a message and continue without crash handling (or panic if env var is set).
             static ATTEMPT_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
             let attempts = ATTEMPT_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
             
             if attempts >= MAX_CONNECTION_ATTEMPTS && server.is_none() {
+                // SHOOP_CRASH_HANDLING_STRICT=1 causes failure to connect to crash server to panic
+                let is_strict = std::env::var("SHOOP_CRASH_HANDLING_STRICT")
+                    .map(|v| v == "1")
+                    .unwrap_or(false);
+                
                 // Only log once to avoid spamming
-                static LOGGED_WARNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-                if LOGGED_WARNING.swap(true, std::sync::atomic::Ordering::SeqCst) {
-                    error!(
-                        "Failed to connect to crash handling server after {} attempts, continuing without crash handling",
-                        MAX_CONNECTION_ATTEMPTS
-                    );
+                static LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                if LOGGED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                    if is_strict {
+                        panic!(
+                            "FATAL: Failed to connect to crash handling server after {} attempts (SHOOP_CRASH_HANDLING_STRICT=1)",
+                            MAX_CONNECTION_ATTEMPTS
+                        );
+                    } else {
+                        error!(
+                            "Failed to connect to crash handling server after {} attempts, continuing without crash handling",
+                            MAX_CONNECTION_ATTEMPTS
+                        );
+                    }
                 }
                 // Return early instead of spinning forever
                 debug!("Crash handling client: giving up on server connection, exiting thread");
@@ -291,12 +303,24 @@ pub fn crashhandling_client(
             let attempts = SECOND_ATTEMPT_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
             
             if attempts >= MAX_SECOND_CLIENT_ATTEMPTS {
-                static LOGGED_WARNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-                if LOGGED_WARNING.swap(true, std::sync::atomic::Ordering::SeqCst) {
-                    error!(
-                        "Failed to connect second client to crash handling server after {} attempts",
-                        MAX_SECOND_CLIENT_ATTEMPTS
-                    );
+                // SHOOP_CRASH_HANDLING_STRICT=1 causes failure to connect to crash server to panic
+                let is_strict = std::env::var("SHOOP_CRASH_HANDLING_STRICT")
+                    .map(|v| v == "1")
+                    .unwrap_or(false);
+                
+                static LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                if LOGGED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                    if is_strict {
+                        panic!(
+                            "FATAL: Failed to connect second client to crash handling server after {} attempts (SHOOP_CRASH_HANDLING_STRICT=1)",
+                            MAX_SECOND_CLIENT_ATTEMPTS
+                        );
+                    } else {
+                        error!(
+                            "Failed to connect second client to crash handling server after {} attempts",
+                            MAX_SECOND_CLIENT_ATTEMPTS
+                        );
+                    }
                 }
                 debug!("Crash handling client: giving up on second client connection, exiting thread");
                 return;

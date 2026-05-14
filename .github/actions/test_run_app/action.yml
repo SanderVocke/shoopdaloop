@@ -15,6 +15,8 @@ runs:
   - name: run app
     if: always()
     shell: wrap-shell {0}
+    env:
+      SHOOP_CRASH_HANDLING_STRICT: "1"
     run: >
         ${{ env.RUN_CMD_PREFIX }} ./scripts/run_with_timeout.sh 300 ${{ env.COMMAND_SHOOPDALOOP }} --quit-after=40 --backend=dummy --monkey-tester
 
