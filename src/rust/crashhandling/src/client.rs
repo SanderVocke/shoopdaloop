@@ -128,6 +128,10 @@ pub fn crashhandling_client(
         // Hence we use client 1 to send runtime info and request the minidump on crash,
         // and client 2 to send additional messages after crash.
 
+        // Connection retry configuration to prevent infinite spinning when server fails to start
+        const MAX_CONNECTION_ATTEMPTS: usize = 30; // 30 * 100ms = 3s max wait for server
+        const MAX_SECOND_CLIENT_ATTEMPTS: usize = 30; // Same limit for second client
+
         // Attempt to connect to the server
         let (client, mut _server) = loop {
             if let Ok(client) = Client::with_name(socket_name.as_str()) {
@@ -246,7 +250,32 @@ pub fn crashhandling_client(
 
             // Give it time to start
             std::thread::sleep(Duration::from_millis(100));
+
+            // Check if we've exceeded max attempts and server is still None
+            // If so, we've tried multiple times and server simply isn't starting properly.
+            // Log a message and continue without crash handling.
+            static ATTEMPT_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let attempts = ATTEMPT_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+            
+            if attempts >= MAX_CONNECTION_ATTEMPTS && server.is_none() {
+                // Only log once to avoid spamming
+                static LOGGED_WARNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                if LOGGED_WARNING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                    error!(
+                        "Failed to connect to crash handling server after {} attempts, continuing without crash handling",
+                        MAX_CONNECTION_ATTEMPTS
+                    );
+                }
+                // Return early instead of spinning forever
+                debug!("Crash handling client: giving up on server connection, exiting thread");
+                return;
+            }
         };
+        
+        // Reset attempt counter for second client
+        static SECOND_ATTEMPT_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        SECOND_ATTEMPT_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
+        
         // Attempt to connect to the server (client 2)
         debug!("Connecting second client to server...");
         let client2 = loop {
@@ -257,6 +286,21 @@ pub fn crashhandling_client(
 
             // Give it time to start
             std::thread::sleep(Duration::from_millis(100));
+            
+            // Check if we've exceeded max attempts for second client
+            let attempts = SECOND_ATTEMPT_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+            
+            if attempts >= MAX_SECOND_CLIENT_ATTEMPTS {
+                static LOGGED_WARNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                if LOGGED_WARNING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                    error!(
+                        "Failed to connect second client to crash handling server after {} attempts",
+                        MAX_SECOND_CLIENT_ATTEMPTS
+                    );
+                }
+                debug!("Crash handling client: giving up on second client connection, exiting thread");
+                return;
+            }
         };
 
         let clients_access: Arc<Mutex<(Client, Client)>> = Arc::new(Mutex::new((client, client2)));
