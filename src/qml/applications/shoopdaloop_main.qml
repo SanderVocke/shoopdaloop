@@ -14,6 +14,18 @@ ShoopApplicationWindow {
     minimumHeight: 350
     title: "ShoopDaLoop"
 
+    // Timer to trigger intentional panic for crash handler testing
+    Timer {
+        id: panicTimer
+        // panic_after is passed from Rust via global_args (in seconds, 0 or negative means disabled)
+        interval: (global_args.panic_after > 0) ? global_args.panic_after * 1000 : 0
+        running: interval > 0
+        onTriggered: {
+            console.log("Triggering intentional panic for crash handler testing...")
+            ShoopRustOSUtils.cause_panic()
+        }
+    }
+
     Session {
         anchors.fill: parent
         initial_descriptor: GenerateSession.generate_default_session(global_args.version_string, null, true)

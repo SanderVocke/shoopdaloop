@@ -287,6 +287,26 @@ runs:
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
+      echo "Crash Handler Test"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
+  - name: Test Crash Handler
+    if: always()
+    env:
+       GHA_RUN_ALWAYS: 1
+    uses: ./.github/actions/test_crash_handler
+    with:
+      variant_name: release
+      root_path: ${{ steps.install_package.outputs.install_dir }}
+  - uses: ./.github/actions/checkpoint
+    if: always()
+  - shell: wrap-shell {0}
+    if: always()
+    env:
+       GHA_RUN_ALWAYS: 1
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
       echo "Processing results"
       echo "=========================================="
       printf "\n\n\n\n\n\n"
