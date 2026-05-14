@@ -51,11 +51,11 @@ namespace Catch {
     };
 }
 
-inline MidiStorageElem make_msg(uint32_t time, uint16_t size, const uint8_t* data) {
+inline MidiStorageElem make_msg(uint32_t time, std::initializer_list<uint8_t> data) {
     MidiStorageElem msg;
     msg.time = time;
-    msg.size = size;
-    memcpy(msg.bytes, data, size);
+    msg.size = static_cast<uint16_t>(data.size());
+    memcpy(msg.bytes, data.begin(), data.size());
     return msg;
 }
 
@@ -63,9 +63,9 @@ TEST_CASE("MidiStorage - Round-trip", "[MidiStorage]") {
     using Storage = MidiStorage;
 
     std::vector<MidiStorageElem> in = {
-        make_msg(0, 3, (uint8_t[]){0, 1, 2}),
-        make_msg(1, 3, (uint8_t[]){3, 4, 5}),
-        make_msg(10, 1, (uint8_t[]){10})
+        make_msg(0, {0, 1, 2}),
+        make_msg(1, {3, 4, 5}),
+        make_msg(10, {10})
     };
     uint32_t total_data_size = in.size() * sizeof(Storage::Elem);
 
@@ -97,18 +97,18 @@ TEST_CASE("MidiStorage - prepend", "[MidiStorage]") {
     using Storage = MidiStorage;
 
     std::vector<MidiStorageElem> in = {
-        make_msg(10, 3, (uint8_t[]){0, 1, 2}),
-        make_msg(11, 3, (uint8_t[]){3, 4, 5})
+        make_msg(10, {0, 1, 2}),
+        make_msg(11, {3, 4, 5})
     };
     std::vector<MidiStorageElem> prepend = {
-        make_msg(9, 1, (uint8_t[]){10}),
-        make_msg(8, 1, (uint8_t[]){10}),
+        make_msg(9, {10}),
+        make_msg(8, {10}),
     };
     std::vector<MidiStorageElem> expect_result = {
-        make_msg(8, 1, (uint8_t[]){10}),
-        make_msg(9, 1, (uint8_t[]){10}),
-        make_msg(10, 3, (uint8_t[]){0, 1, 2}),
-        make_msg(11, 3, (uint8_t[]){3, 4, 5})
+        make_msg(8, {10}),
+        make_msg(9, {10}),
+        make_msg(10, {0, 1, 2}),
+        make_msg(11, {3, 4, 5})
     };
     uint32_t total_data_size = (in.size() + prepend.size()) * sizeof(Storage::Elem);
 
@@ -141,15 +141,15 @@ TEST_CASE("MidiStorage - replace append", "[MidiStorage]") {
     using Storage = MidiStorage;
 
     std::vector<MidiStorageElem> in = {
-        make_msg(0, 3, (uint8_t[]){0, 1, 2}),
-        make_msg(1, 3, (uint8_t[]){3, 4, 5}),
-        make_msg(10, 1, (uint8_t[]){10})
+        make_msg(0, {0, 1, 2}),
+        make_msg(1, {3, 4, 5}),
+        make_msg(10, {10})
     };
-    MidiStorageElem append = make_msg(11, 3, (uint8_t[]){4, 5, 6});
+    MidiStorageElem append = make_msg(11, {4, 5, 6});
     std::vector<MidiStorageElem> expect_result = {
-        make_msg(1, 3, (uint8_t[]){3, 4, 5}),
-        make_msg(10, 1, (uint8_t[]){10}),
-        make_msg(11, 3, (uint8_t[]){4, 5, 6})
+        make_msg(1, {3, 4, 5}),
+        make_msg(10, {10}),
+        make_msg(11, {4, 5, 6})
     };
     uint32_t total_data_size = in.size() * sizeof(Storage::Elem);
 
@@ -209,9 +209,9 @@ TEST_CASE("MidiStorage - wrap around", "[MidiStorage]") {
     CHECK(s->n_events() == 3);
 
     std::vector<MidiStorageElem> expect = {
-        make_msg(2, 3, (uint8_t[]){2, 2, 2}),
-        make_msg(3, 3, (uint8_t[]){3, 3, 3}),
-        make_msg(4, 3, (uint8_t[]){4, 4, 4})
+        make_msg(2, {2, 2, 2}),
+        make_msg(3, {3, 3, 3}),
+        make_msg(4, {4, 4, 4})
     };
 
     std::vector<MidiStorageElem> out;
