@@ -316,10 +316,6 @@ TEST_CASE("Ports - Jack Midi In - Message Counter", "[JackPorts][ports][midi]") 
     CHECK(buf->get_event(0).contents_equal(m1));
     CHECK(buf->get_event(1).contents_equal(m2));
 
-    // Note: n_input_events/n_output_events track events flowing through MidiPort's
-    // internal processing pipeline. After refactoring, these may not accumulate
-    // the same way as before. The important thing is that message data is correct.
-
     port->reset_n_input_events();
     port->reset_n_output_events();
     internal_port.midi_buffer.clear();
