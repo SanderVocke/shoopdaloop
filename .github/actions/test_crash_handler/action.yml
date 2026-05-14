@@ -12,56 +12,57 @@ inputs:
 runs:
   using: "composite"
   steps:
-  - name: Setup crash dumps directory
+  - name: Setup test dumps directory
     if: always()
     shell: wrap-shell {0}
     run: |
-      mkdir -p crashdumps
-      echo "SHOOP_CRASHDUMP_DIR=$(pwd)/crashdumps" | tee -a $GITHUB_ENV
+      # Use a separate folder to avoid polluting the "crashdumps" folder
+      # which is reserved for "real" crashes to be analyzed by bug handling
+      mkdir -p crash_handler_test_dumps
+      echo "SHOOP_CRASHDUMP_DIR=$(pwd)/crash_handler_test_dumps" | tee -a $GITHUB_ENV
       echo "SHOOP_CRASH_METADATA_BASE_JSON={\"environment\": \"ci\", \"tags\": {\"ci_build_type\": \"${{ inputs.variant_name }}\", \"ci_run\": \"${{ github.run_id }}\"}}" | tee -a $GITHUB_ENV
 
   - name: Run app with intentional panic
     if: always()
     shell: wrap-shell {0}
     run: >
-        ${{ env.RUN_CMD_PREFIX }} ./scripts/run_with_timeout.sh 30 ${{ env.COMMAND_SHOOPDALOOP }}
-        --backend=dummy
-        --developer
-        --panic-after=5
-        2>&1 | tee crash_handler_test_output.log || true
+      ${{ env.RUN_CMD_PREFIX }} ./scripts/run_with_timeout.sh 30 ${{ env.COMMAND_SHOOPDALOOP }}
+      --backend=dummy
+      --developer
+      --panic-after=5
+      2>&1 | tee crash_handler_test_output.log || true
 
   - name: Check for minidump
     if: always()
     shell: wrap-shell {0}
     run: |
       echo "=== Checking for minidump ==="
-      find crashdumps -name "*.dmp" -type f
-      if [ $(find crashdumps -name "*.dmp" -type f | wc -l) -gt 0 ]; then
+      find crash_handler_test_dumps -name "*.dmp" -type f
+      if [ $(find crash_handler_test_dumps -name "*.dmp" -type f | wc -l) -gt 0 ]; then
         echo "MINIDUMP_FOUND=true" | tee -a $GITHUB_OUTPUT
         echo "SUCCESS: Minidump file was created"
       else
         echo "MINIDUMP_FOUND=false" | tee -a $GITHUB_OUTPUT
-        echo "FAILURE: No minidump file found in crashdumps/"
+        echo "FAILURE: No minidump file found in crash_handler_test_dumps/"
         exit 1
       fi
 
-  - name: Check for QML stack trace
+  - name: Check for QML stack trace attachment
     if: always()
     shell: wrap-shell {0}
     run: |
-      echo "=== Checking for QML stack trace ==="
-      if [ -f "crash_handler_test_output.log" ]; then
-        # The QML stack trace should appear in the log output
-        if grep -q "qml_stack\|ShoopApplicationWindow\|QML\|Timer\|panic_after" crash_handler_test_output.log 2>/dev/null; then
-          echo "QML_STACK_FOUND=true" | tee -a $GITHUB_OUTPUT
-          echo "SUCCESS: QML-related output found in log"
-        else
-          echo "QML_STACK_FOUND=false" | tee -a $GITHUB_OUTPUT
-          echo "WARNING: QML stack trace not clearly identifiable in log (may still exist in minidump)"
-        fi
+      echo "=== Checking for QML stack trace attachment ==="
+      # The QML stack trace is written as a separate attachment file with pattern: *.dmp.attach.qml_stack
+      find crash_handler_test_dumps -name "*.dmp.attach.qml_stack" -type f
+      if [ $(find crash_handler_test_dumps -name "*.dmp.attach.qml_stack" -type f | wc -l) -gt 0 ]; then
+        echo "QML_STACK_FOUND=true" | tee -a $GITHUB_OUTPUT
+        echo "SUCCESS: QML stack trace attachment file was created"
+        echo "=== QML stack content preview ==="
+        head -50 "$(find crash_handler_test_dumps -name '*.dmp.attach.qml_stack' | head -n1)"
       else
         echo "QML_STACK_FOUND=false" | tee -a $GITHUB_OUTPUT
-        echo "WARNING: No log file found"
+        echo "FAILURE: QML stack trace attachment file not found"
+        exit 1
       fi
 
   - name: Verify app crashed as expected
@@ -71,7 +72,7 @@ runs:
       echo "=== Verifying crash behavior ==="
       if [ -f "crash_handler_test_output.log" ]; then
         # We expect the app to have crashed
-        if grep -qi "panic\|abort\|segfault\|crash" crash_handler_test_output.log 2>/dev/null; then
+        if grep -qi "panic\|abort\|segfault\|crash\|triggering intentional panic" crash_handler_test_output.log 2>/dev/null; then
           echo "CRASH_AS_EXPECTED=true" | tee -a $GITHUB_OUTPUT
           echo "SUCCESS: App crashed as expected"
         else
@@ -85,12 +86,12 @@ runs:
         exit 1
       fi
 
-  - name: Upload crash dump artifacts
+  - name: Upload crash handler test artifacts
     if: always()
     uses: actions/upload-artifact@v4
     with:
-      name: crash_dumps_${{ inputs.variant_name }}
+      name: crash_handler_test_artifacts_${{ inputs.variant_name }}
       path: |
-        crashdumps/
+        crash_handler_test_dumps/
         crash_handler_test_output.log
       retention-days: 7
