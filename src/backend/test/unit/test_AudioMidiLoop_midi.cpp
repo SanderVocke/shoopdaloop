@@ -978,13 +978,13 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
     auto contents = channel.retrieve_contents(false).recorded_msgs;
     CHECK(contents.size() == 4);
     CHECK(channel.get_start_offset() == 10);
-    CHECK(contents[0].get_time() == 5);
+    CHECK(contents[0].time == 5);
     CHECK(contents[0].get_data()[0] == 0x90);
-    CHECK(contents[1].get_time() == 15);
+    CHECK(contents[1].time == 15);
     CHECK(contents[1].get_data()[0] == 0x80);
-    CHECK(contents[2].get_time() == 17);
+    CHECK(contents[2].time == 17);
     CHECK(contents[2].get_data()[0] == 0x90);
-    CHECK(contents[3].get_time() == 19);
+    CHECK(contents[3].time == 19);
     CHECK(contents[3].get_data()[0] == 0x80);
 
     // Set the preplay amount
@@ -1116,13 +1116,13 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note pre-recorded but no preplay
     auto contents = channel.retrieve_contents(false).recorded_msgs;
     CHECK(contents.size() == 4);
     CHECK(channel.get_start_offset() == 10);
-    CHECK(contents[0].get_time() == 5);
+    CHECK(contents[0].time == 5);
     CHECK(contents[0].get_data()[0] == 0x90);
-    CHECK(contents[1].get_time() == 15);
+    CHECK(contents[1].time == 15);
     CHECK(contents[1].get_data()[0] == 0x80);
-    CHECK(contents[2].get_time() == 17);
+    CHECK(contents[2].time == 17);
     CHECK(contents[2].get_data()[0] == 0x90);
-    CHECK(contents[3].get_time() == 19);
+    CHECK(contents[3].time == 19);
     CHECK(contents[3].get_data()[0] == 0x80);
 
     // Stop for a while
