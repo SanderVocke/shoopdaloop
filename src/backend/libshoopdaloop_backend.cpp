@@ -171,8 +171,8 @@ shoop_midi_sequence_t *external_midi_data(shoop_types::LoopMidiChannel::Contents
     for (uint32_t idx=0; idx < m.recorded_msgs.size(); idx++) {
         auto e = alloc_midi_event(m.recorded_msgs[idx].size);
         e->size = m.recorded_msgs[idx].size;
-        e->time = m.recorded_msgs[idx].time;
-        memcpy((void*)e->data, (void*)m.recorded_msgs[idx].data.data(), m.recorded_msgs[idx].size);
+        e->time = m.recorded_msgs[idx].storage_time;
+        memcpy((void*)e->data, (void*)m.recorded_msgs[idx].bytes, m.recorded_msgs[idx].size);
         d->events[idx + m.starting_state_msg_datas.size()] = e;
     }
 
@@ -194,11 +194,10 @@ shoop_types::LoopMidiChannel::Contents internal_midi_data(shoop_midi_sequence_t 
           memcpy((void*)data.data(), (void*)from.data, from.size);
           rval.starting_state_msg_datas.push_back(data);
         } else {
-          _MidiMessage m(
-            from.time,
-            from.size,
-            std::vector<uint8_t>(from.size));
-          memcpy((void*)m.data.data(), (void*)from.data, from.size);
+          MidiStorageElem m;
+          m.storage_time = from.time;
+          m.size = from.size;
+          memcpy(m.bytes, from.data, from.size);
           rval.recorded_msgs.push_back(m);
         }
     }

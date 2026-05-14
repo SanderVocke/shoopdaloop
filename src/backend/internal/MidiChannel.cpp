@@ -577,8 +577,10 @@ MidiChannel::retrieve_contents(bool thread_safe) {
 
     Contents rval;
     s->for_each_msg([&rval](uint32_t time, uint16_t size, uint8_t *data) {
-        rval.recorded_msgs.push_back(Message(time, size, std::vector<uint8_t>(size)));
-        memcpy((void *)rval.recorded_msgs.back().data.data(), (void *)data, size);
+        rval.recorded_msgs.push_back(MidiStorageElem{});
+        rval.recorded_msgs.back().storage_time = time;
+        rval.recorded_msgs.back().size = size;
+        memcpy(rval.recorded_msgs.back().bytes, data, size);
     });
     rval.starting_state_msg_datas = state.state_as_messages();
     return rval;
@@ -603,7 +605,7 @@ MidiChannel::set_contents(Contents contents, uint32_t length_samples,
     auto s = shoop_make_shared<Storage>(new_storage_size);
 
     for (auto const &elem : contents.recorded_msgs) {
-        s->append(elem.time, elem.size, elem.data.data());
+        s->append(elem.storage_time, elem.size, elem.bytes);
     }
     log<log_level_debug>("Loading data ({} messages + {} state messages in storage {}).", s->n_events(), n_state_msgs, fmt::ptr(s.get()));
 

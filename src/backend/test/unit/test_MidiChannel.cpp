@@ -1,22 +1,23 @@
 #include "MidiChannel.h"
-#include "MidiMessage.h"
+#include "MidiStorage.h"
 #include "helpers.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 TEST_CASE("MidiChannel - Set Contents - Indefinite size", "[MidiChannel]") {
-    using Msg = MidiMessage<uint32_t, uint16_t>;
     using Storage = MidiStorage;
     using Channel = MidiChannel;
     using Contents = Channel::Contents;
 
     auto c = shoop_make_shared<MidiChannel>(1, ChannelMode_Direct);
 
-    const std::vector<Msg> data = {
-        Msg(0, 3, {0, 1, 2}),
-        Msg(1, 3, {3, 4, 5}),
-        Msg(10, 1, {10})
-    };
+    std::vector<MidiStorageElem> data;
+    {
+        MidiStorageElem msg;
+        msg.storage_time = 0; msg.size = 3; msg.bytes[0] = 0; msg.bytes[1] = 1; msg.bytes[2] = 2; data.push_back(msg);
+        msg.storage_time = 1; msg.size = 3; msg.bytes[0] = 3; msg.bytes[1] = 4; msg.bytes[2] = 5; data.push_back(msg);
+        msg.storage_time = 10; msg.size = 1; msg.bytes[0] = 10; msg.bytes[1] = 0; msg.bytes[2] = 0; data.push_back(msg);
+    }
     const Contents contents = { data, {} };
 
     c->set_contents(contents, 1000, false);

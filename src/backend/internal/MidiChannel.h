@@ -1,8 +1,8 @@
 #pragma once
 #include "MidiStorage.h"
+#include "MidiBuffer.h"
 #include "ChannelInterface.h"
 #include "WithCommandQueue.h"
-#include "MidiMessage.h"
 #include "MidiStateTracker.h"
 #include "LoggingEnabled.h"
 #include "ProcessProfiling.h"
@@ -16,7 +16,6 @@ class MidiChannel : public ChannelInterface,
 public:
     using Storage = MidiStorage;
     using StorageCursor = typename Storage::Cursor;
-    using Message = MidiMessage<uint32_t, uint16_t>;
 
 private:
 
@@ -137,7 +136,7 @@ public:
     void PROC_set_recording_buffer(MidiReadableBuffer *buffer, uint32_t n_frames);
 
     struct Contents {
-        std::vector<Message> recorded_msgs;
+        std::vector<MidiStorageElem> recorded_msgs;
         std::vector<std::vector<uint8_t>> starting_state_msg_datas;
     };
 

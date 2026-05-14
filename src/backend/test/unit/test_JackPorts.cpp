@@ -272,8 +272,8 @@ TEST_CASE("Ports - Jack Midi In - Receive", "[JackPorts][ports][midi]") {
     buf = port->PROC_get_read_output_data_buffer(100);
     REQUIRE(buf->n_events() == 2);
 
-    auto &r1 = buf->get_event(0);
-    auto &r2 = buf->get_event(1);
+    auto r1 = buf->get_event(0);
+    auto r2 = buf->get_event(1);
     CHECK(r1.contents_equal(m1));
     CHECK(r2.contents_equal(m2));
 }
@@ -417,11 +417,11 @@ TEST_CASE("Ports - Jack Midi In - get ringbuffer data", "[JackPorts][ports][midi
     auto cursor = s->create_cursor();
     while (cursor->valid()) {
         auto elem = cursor->get();
-        out.push_back(Msg(
-            elem->storage_time,
-            elem->size,
-            std::vector<uint8_t>(elem->data(), elem->data() + elem->size)
-        ));
+        MidiStorageElem msg;
+        msg.storage_time = elem->storage_time;
+        msg.size = elem->size;
+        memcpy(msg.bytes, elem->data(), elem->size);
+        out.push_back(msg);
         cursor->next();
         if(cursor->is_at_start()) { break; }
     }

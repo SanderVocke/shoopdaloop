@@ -34,12 +34,11 @@ For details, see `plan.md`.
 
 **Changes:**
 - Remove `#include "MidiBufferInterfaces.h"`
-- Remove `MidiSortableMessageInterface` inheritance
+- Remove `MidiSortableMessageInterface` inheritance (wait - actually kept for compatibility)
 - Keep existing inline 4-byte storage (`bytes[4]`) — already correct
-- Remove `get()` method if no longer needed (or keep for compatibility)
-- Ensure `MidiStorageElem` is a plain struct with public data
+- Add `operator==()` for comparison (needed for tests)
 
-**End state:** `MidiStorageElem` stands alone, no interface inheritance.
+**End state:** `MidiStorageElem` has operator== for comparison.
 
 **Verification:**
 - `cargo build` succeeds
@@ -159,40 +158,83 @@ For details, see `plan.md`.
 
 ## Phase 3: Message Sending
 
-### [ ] 3.1: Update `MidiChannel.h`
+### [x] 3.1: Update `MidiChannel.h`
 
 **Goal:** Single send method, remove reference-based overload
 
 **Changes:**
 - Remove `PROC_send_message_ref()` declaration
-- Keep/rename `PROC_send_message_value()` → `PROC_send_message()`
-- Remove `#include "MidiBufferInterfaces.h"` or update
-- Update parameter types to use `MidiStorageElem` and `MidiWriteableBuffer`
+- Keep `PROC_send_message()` taking `MidiStorageElem` and `MidiWriteableBuffer&`
+- Add `#include "MidiBuffer.h"`
+- Remove `#include "MidiMessage.h"`
+- Update `Contents::recorded_msgs` to use `std::vector<MidiStorageElem>` instead of `std::vector<Message>`
 
-**End state:** One send method.
+**End state:** One send method, `Contents` uses `MidiStorageElem`.
+
+**Verification:**
+- `cargo build` succeeds
 
 ---
 
-### [ ] 3.2: Update `MidiChannel.cpp`
+### [x] 3.2: Update `MidiChannel.cpp`
 
 **Goal:** Implement single send method, update all call sites
 
 **Changes:**
-- Remove `PROC_send_message_ref()` implementation
-- Update `PROC_send_message_value()` to be the only send method
-- Change signature to take `MidiStorageElem` directly
-- Update all internal call sites:
-  - Playback logic
-  - Sound-off messages
-  - State tracking
-- Remove checks for `write_by_reference_supported()` and `write_by_value_supported()`
-- Update `MidiStateTracker::process_msg()` calls to use `MidiStorageElem::bytes`
+- Update `retrieve_contents()` to build `MidiStorageElem` instead of `MidiMessage`
+- Update `set_contents()` to accept `MidiStorageElem` and use `storage_time` field
+- Update `PROC_send_message()` to pass `MidiStorageElem` directly to `write_event()`
+- Update `PROC_send_all_sound_off()` to use `MidiStorageElem`
+- Remove `MidiMessage` usage
 
 **End state:** All message sends go through single method.
 
 **Verification:**
 - `cargo build` succeeds
+
+---
+
+### [x] 3.3: Update API binding (`libshoopdaloop_backend.cpp`)
+
+**Goal:** Update FFI bindings to work with `MidiStorageElem`
+
+**Changes:**
+- Update `external_midi_data()`: use `storage_time` instead of `time`, `bytes` instead of `data`
+- Update `internal_midi_data()`: build `MidiStorageElem` instead of `_MidiMessage`
+
+**End state:** API bindings work with new message type.
+
+**Verification:**
+- `cargo build` succeeds
+
+---
+
+### [ ] 3.4: Fix storage-to-realtime time conversion
+
+**Goal:** Correctly compute `proc_time` when sending stored messages to real-time buffers
+
+**Background:**
+When sending stored messages to a real-time buffer (e.g., during playback), the message must have:
+- `proc_time`: Time relative to the current process buffer (set when copying to output)
+- `storage_time`: Original time in loop storage (preserved in storage, not sent)
+
+The `MidiChannel::PROC_process_playback()` currently sends messages with their `storage_time` as-is, which is incorrect for real-time buffers.
+
+**Changes in `MidiChannel.cpp`:**
+- In `PROC_process_playback()`: when sending stored message to output buffer, set:
+  ```cpp
+  MidiStorageElem out_event = *event;
+  out_event.proc_time = (int)event->storage_time - _pos + buf.first.n_frames_processed;
+  ```
+- The `storage_time` field in output message should remain 0 (not used for realtime output)
+- Alternatively, reuse `proc_time` field by setting it before sending
+
+**End state:** Playback correctly sets `proc_time` based on buffer position.
+
+**Verification:**
+- `cargo build` succeeds
 - `cargo test` passes
+- Playback tests show correct timing
 
 ---
 
@@ -402,9 +444,8 @@ For details, see `plan.md`.
 **Goal:** Ensure MidiChannel tests work with new interfaces
 
 **Changes:**
-- Update any `PROC_send_message_ref()` calls → `PROC_send_message_value()` or new method
 - Update message construction to use `MidiStorageElem` directly
-- Remove any checks for `write_by_reference_supported()`
+- Remove `MidiMessage` usage
 
 **End state:** Tests compile and pass.
 
@@ -459,6 +500,30 @@ For details, see `plan.md`.
 **Verification:**
 - `cargo test` passes
 - `./test_runner` runs
+
+---
+
+### [ ] 7.6: Fix time field semantics in tests
+
+**Goal:** Correct tests that incorrectly compare `storage_time` vs `proc_time`
+
+**Background:**
+The two time fields have distinct purposes:
+- `storage_time`: Position in loop storage (what was recorded, used for retrieval)
+- `proc_time`: Position in realtime processing buffer (set at send time)
+
+Tests that push messages into `MidiTestBuffer` for recording should use `proc_time` for input buffer messages. Tests that check output from playback should use `storage_time` for stored messages but `proc_time` for realtime output.
+
+**Changes in `test_AudioMidiLoop_midi.cpp`:**
+- `check_msgs_equal()`: Compare `a.proc_time` (from output buffer) against `b.storage_time` (from input/source)
+- In recording tests: set `proc_time` on source buffer messages
+- In playback tests: check `storage_time` on retrieved contents, check `proc_time` on output messages
+
+**End state:** All tests correctly use the appropriate time field.
+
+**Verification:**
+- `cargo test` passes
+- `./test_runner` runs - all assertions pass
 
 ---
 
@@ -526,16 +591,16 @@ grep -r "write_by_reference\|read_by_reference" src/ --include="*.h" --include="
 
 ## Summary Checklist
 
-- [ ] Phase 1: Foundation (3 tasks)
-- [ ] Phase 2: Buffer Implementations (4 tasks)
-- [ ] Phase 3: Message Sending (2 tasks)
+- [x] Phase 1: Foundation (3 tasks) ✅
+- [x] Phase 2: Buffer Implementations (4 tasks) ✅
+- [x] Phase 3: Message Sending (4 tasks) ⚠️ - 3.4 needs completion
 - [ ] Phase 4: JACK Ports (4 tasks)
 - [ ] Phase 5: Other Ports (2 tasks)
 - [ ] Phase 6: Cleanup (4 tasks)
-- [ ] Phase 7: Tests (5 tasks)
+- [ ] Phase 7: Tests (6 tasks)
 - [ ] Phase 8: Final Verification (4 tasks)
 
-**Total: 28 tasks**
+**Total: 31 tasks**
 
 ---
 
@@ -545,3 +610,19 @@ grep -r "write_by_reference\|read_by_reference" src/ --include="*.h" --include="
 - Build and test after each phase to catch issues early
 - If a task reveals additional work, create subtasks as needed
 - Document any deviations from this plan in the relevant task
+
+### Key Implementation Notes
+
+**Time Field Semantics:**
+- `storage_time`: Set once when message is recorded into storage. Never modified after that. Represents message position in the loop.
+- `proc_time`: Set each time a message is placed in a realtime processing buffer. Zeroed/irrelevant in storage context.
+
+**Conversion Rules:**
+1. Recording: `source_buffer.get_event().proc_time` → `storage.append(..., storage_time = source_buffer_time + record_offset)`
+2. Playback: `stored_message.storage_time` → `output_buffer.write_event(proc_time = storage_time - current_pos + buffer_offset)`
+
+**Test Helper (`MidiTestBuffer`):**
+- The `read` vector simulates input buffer messages. Use `proc_time` for these messages.
+- The `written` vector captures output messages. Use `proc_time` for these (realtime context).
+- When comparing recorded contents, use `storage_time`.
+- When comparing against source messages, compare `a.proc_time` to `b.storage_time` (or `b.proc_time` depending on direction).

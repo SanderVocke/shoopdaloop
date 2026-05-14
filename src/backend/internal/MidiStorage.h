@@ -21,6 +21,13 @@ struct MidiStorageElem : public MidiSortableMessageInterface {
     void get(uint32_t &size_out,
                 uint32_t &time_out,
                 const uint8_t* &data_out) const override;
+
+    bool operator==(MidiStorageElem const& other) const {
+        return storage_time == other.storage_time &&
+               proc_time == other.proc_time &&
+               size == other.size &&
+               memcmp(bytes, other.bytes, 4) == 0;
+    }
 };
 
 class MidiStorageCursor;

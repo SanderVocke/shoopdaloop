@@ -66,6 +66,18 @@ GraphMidiPort → GraphLoop → MidiChannel
 OutputPort buffer (JACK or Dummy)
 ```
 
+### 2.5 The Two-Time-Field Problem
+
+The current `MidiStorageElem` has two time fields:
+- `storage_time`: Absolute time in storage context (loop position)
+- `proc_time`: Time relative to current process iteration
+
+These were needed because of the pass-by-reference mechanism:
+- Storage needed to preserve absolute time for long-term storage
+- Real-time processing needed time relative to the current buffer
+
+When passing by reference, messages from storage couldn't be modified (would corrupt storage). When passing by value, we can freely transform the message when copying.
+
 ## 3. The Proposed Architecture
 
 ### 3.1 Single Canonical Message Type
@@ -75,7 +87,7 @@ After refactoring, `MidiStorageElem` becomes the **single canonical MIDI message
 ```cpp
 struct MidiStorageElem {
     uint32_t storage_time;  // Absolute time in storage context
-    uint16_t proc_time;     // Time relative to process iteration
+    uint16_t proc_time;    // Time relative to process iteration
     uint16_t size;          // 1-4 bytes
     uint8_t bytes[4];       // Inline fixed-size payload
 };
@@ -85,6 +97,19 @@ struct MidiStorageElem {
 - Maximum 4 bytes of data — covers all standard MIDI messages (status + 1-3 data bytes)
 - Fixed-size: enables flat arrays, no pointer chasing, excellent cache locality
 - Inline storage: no heap allocations
+- Two time fields serve different purposes (see below)
+
+**Time Field Semantics:**
+Since all messages are now **copied** rather than passed by reference, the two time fields serve distinct purposes:
+- `storage_time`: Used when storing/reporting message positions in the loop storage context. Set once when message is recorded and preserved in storage.
+- `proc_time`: Used when placing messages in real-time processing buffers. Set dynamically when copying from storage to a real-time output buffer.
+
+**Conversion from Storage to Real-time:**
+When `MidiChannel` sends stored messages to a `MidiWriteableBuffer`, it must convert `storage_time` to `proc_time`:
+```cpp
+// When sending stored message to real-time buffer:
+event.proc_time = event.storage_time - current_buffer_position + n_frames_processed;
+```
 
 ### 3.2 Simplified Buffer Interfaces
 
@@ -220,8 +245,17 @@ void PROC_send_message_value(MidiWriteableBufferInterface &buf,
 - Keep `PROC_send_message_value()` as single `send()` method
 - Or rename to `PROC_send_message(MidiWriteableBuffer& buf, MidiStorageElem event)`
 - Remove `MidiSortableMessageInterface` include
+- **Important**: When sending stored messages to output buffer, convert `storage_time` to `proc_time`:
+  ```cpp
+  void MidiChannel::PROC_send_message(MidiWriteableBuffer &buf, MidiStorageElem event) {
+      // Convert storage time to process time for realtime buffer
+      event.proc_time = event.storage_time - our_pos + buf.n_frames_processed;
+      buf.write_event(event);
+      mp_output_midi_state->process_msg(event.bytes);
+  }
+  ```
 
-**End state:** One send method, always copies.
+**End state:** One send method, always copies, with correct time conversion.
 
 ---
 
