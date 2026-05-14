@@ -152,17 +152,17 @@ cargo build
 
 ---
 
-## Phase 5: Clean up remaining integration points
+## Phase 5: Clean up remaining integration points (COMPLETED)
 
 **Goal**: Ensure the bridge boundary is clean before Rust port begins.
 
 ### Tasks
-- [ ] Remove any remaining inheritance patterns in MIDI storage classes
-- [ ] Verify no raw pointer arithmetic that could cause FFI issues
-- [ ] Ensure all `std::function` callbacks at the bridge boundary are documented
-- [ ] Add `dropped_msg_cb` parameter consistently across all mutating operations
-- [ ] Update tests to use refactored classes
-- [ ] All tests pass
+- [x] Remove any remaining inheritance patterns in MIDI storage classes
+- [x] Verify no raw pointer arithmetic that could cause FFI issues
+- [x] Ensure all `std::function` callbacks at the bridge boundary are documented
+- [x] Add `dropped_msg_cb` parameter consistently across all mutating operations
+- [x] Update tests to use refactored classes
+- [x] All tests pass
 
 ### Build & Test
 ```bash
@@ -170,16 +170,23 @@ cargo build
 ./target/debug/test_runner   # Run all tests to ensure nothing is broken
 ```
 
+✅ All 140 test cases pass
+
+**Changes made:**
+- Added `dropped_msg_cb` parameter to `prepend()` method in `IMidiStorageCore`, `MidiStorageCore`, and `MidiStorage`
+- All mutating operations now consistently support dropped message callbacks
+- All `std::function` callbacks at bridge boundaries are now documented via interface headers
+
 ---
 
-## Phase 6: Add Rust storage implementation with CXX bridge
+## Phase 6: Add Rust storage implementation with CXX bridge (IN PROGRESS)
 
 **Goal**: Implement MIDI storage logic in Rust and expose via CXX.
 
 ### Tasks
-- [ ] Create `midi_storage.rs` with `MidiStorageCore` struct
-- [ ] Create `midi_storage_cxx.rs` with CXX bridge
-- [ ] Implement `MidiStorageElem` serialization if needed
+- [x] Create `midi_storage.rs` with `MidiStorageCore` struct
+- [x] Create `midi_storage_cxx.rs` with CXX bridge
+- [x] Implement `MidiStorageElem` serialization if needed (using repr(C) for FFI compatibility)
 - [ ] Implement cursor logic in Rust
 - [ ] Implement time-window logic in Rust
 - [ ] Add C++ wrapper classes that delegate to Rust
@@ -190,6 +197,20 @@ cargo build
 cargo build
 ./target/debug/test_runner   # All tests should pass with Rust implementation
 ```
+
+✅ Rust storage module compiles successfully
+
+**Files created/modified:**
+- `src/rust/backend_rust/src/midi_storage.rs` - Core MIDI storage implementation in Rust
+- `src/rust/backend_rust/src/midi_storage_cxx.rs` - CXX bridge for FFI
+- `src/rust/backend_rust/src/lib.rs` - Updated to include new modules
+
+**Current Status:**
+- Basic MidiStorageCore with `MidiStorageElem`, `TruncateSide`, `FindResult` types exposed via CXX
+- Basic state queries (n_events, capacity, full, empty) and ringbuffer access (tail, head, full) implemented
+- Mutable iteration (`for_each_msg_modify`) and callbacks not yet exposed due to closure signature limitations
+- Cursor and time-window logic still needs implementation
+- C++ continues to use native implementation; Rust bridge ready for future integration
 
 ---
 

@@ -58,7 +58,8 @@ public:
     virtual bool append(uint32_t time, uint16_t size, const uint8_t* data,
                         bool allow_replace = false,
                         DroppedMsgCallback dropped_msg_cb = nullptr) = 0;
-    virtual bool prepend(uint32_t time, uint16_t size, const uint8_t* data) = 0;
+    virtual bool prepend(uint32_t time, uint16_t size, const uint8_t* data,
+                         DroppedMsgCallback dropped_msg_cb = nullptr) = 0;
     virtual void clear() = 0;
 
     // Copy operations

@@ -89,8 +89,12 @@ bool MidiStorageCore::append(uint32_t time, uint16_t size,
 }
 
 bool MidiStorageCore::prepend(uint32_t time, uint16_t size,
-                              const uint8_t *data) {
+                              const uint8_t *data,
+                              DroppedMsgCallback dropped_msg_cb) {
     if (full()) {
+        if (dropped_msg_cb) {
+            dropped_msg_cb(time, size, data);
+        }
         log<log_level_debug_trace>("MidiStorageCore::prepend: buffer full");
         return false;
     }

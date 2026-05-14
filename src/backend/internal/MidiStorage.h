@@ -53,7 +53,8 @@ public:
     bool append(uint32_t time, uint16_t size, const uint8_t* data,
                 bool allow_replace=false,
                 DroppedMsgCallback dropped_msg_cb=nullptr) override;
-    bool prepend(uint32_t time, uint16_t size, const uint8_t* data) override;
+    bool prepend(uint32_t time, uint16_t size, const uint8_t* data,
+                 DroppedMsgCallback dropped_msg_cb=nullptr) override;
     void clear() override;
     void copy(IMidiStorageCore &to) const override;
     void copy_from(const IMidiStorageCore &from) override;
@@ -110,7 +111,8 @@ public:
     bool append(uint32_t time, uint16_t size, const uint8_t* data,
                 bool allow_replace = false,
                 DroppedMsgCallback dropped_msg_cb = nullptr) override;
-    bool prepend(uint32_t time, uint16_t size, const uint8_t* data) override { return m_core->prepend(time, size, data); }
+    bool prepend(uint32_t time, uint16_t size, const uint8_t* data,
+                 DroppedMsgCallback dropped_msg_cb = nullptr) override { return m_core->prepend(time, size, data, dropped_msg_cb); }
     void clear() override;
     void copy(IMidiStorageCore& to) const override;
     void copy_from(const IMidiStorageCore& from) override { m_core->copy_from(from); }
