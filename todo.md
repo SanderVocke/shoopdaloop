@@ -533,6 +533,52 @@ Tests that push messages into `MidiTestBuffer` for recording should use `proc_ti
 
 ---
 
+### [ ] 7.7: Fix JackTestApi test infrastructure issues
+
+**Goal:** Fix test failures in JACK port tests related to test API simulation
+
+**Background:**
+After the refactoring, several JACK port tests fail due to issues with how the test API simulates the JACK lifecycle:
+
+1. **Note tracking failures:** `GenericJackMidiInputPort::PROC_process()` reads from JACK buffer but note tracking relies on `m_maybe_midi_state->process_msg()`. When using test API, messages are written to `internal_port.midi_buffer` but note state isn't updated.
+
+2. **Mute behavior:** Test expects muted input to have empty buffer, but input port reads from JACK buffer which still contains test messages. The old code cleared messages in a different lifecycle phase.
+
+3. **Buffer lifecycle:** The test API doesn't simulate the full JACK buffer lifecycle (buffer clearing between process calls).
+
+**Changes needed:**
+
+**Option A - Fix in JackTestApi.h:**
+- Make `midi_get_event_count()` and `midi_event_get()` respect mute state
+- Clear `midi_buffer` after each `midi_get_event_count()` call to simulate consumption
+- Or add a separate mechanism for "muted" state tracking
+
+**Option B - Fix in GenericJackMidiInputPort:**
+- Ensure note state is updated in `PROC_process()` when reading from buffer
+- Clear `m_messages` in `PROC_prepare()` when muted
+- Consider tracking "external" messages separately from internal processing
+
+**Option C - Fix in test code:**
+- Update tests to match new behavior
+- Tests that check `get_n_input_notes_active()` need to verify state tracking works
+- Tests that check muted behavior need to verify output only, not input buffer
+
+**Recommended approach:** Option B combined with clarifying test expectations:
+
+1. In `GenericJackMidiInputPort::PROC_process()`: Process note state immediately when reading from buffer
+2. In `GenericJackMidiInputPort::PROC_prepare()`: Clear `m_messages` when muted
+3. Update failing tests to verify correct behavior:
+   - For mute tests: verify output buffer is empty (correct), not input buffer
+   - For note tracking: verify state is updated after process step
+
+**End state:** All JACK port tests pass.
+
+**Verification:**
+- `cargo test` passes
+- `./test_runner [JackPorts][midi]` - all tests pass
+
+---
+
 ## Phase 8: Final Verification
 
 ### [ ] 8.1: Full build
@@ -603,10 +649,10 @@ grep -r "write_by_reference\|read_by_reference" src/ --include="*.h" --include="
 - [x] Phase 4: JACK Ports (4 tasks) ✅
 - [x] Phase 5: Other Ports (2 tasks) ✅
 - [x] Phase 6: Cleanup (4 tasks) ✅
-- [ ] Phase 7: Tests (6 tasks)
+- [ ] Phase 7: Tests (7 tasks)
 - [ ] Phase 8: Final Verification (4 tasks)
 
-**Total: 31 tasks** (27 completed, 4 remaining)
+**Total: 32 tasks** (27 completed, 5 remaining)
 
 ---
 
