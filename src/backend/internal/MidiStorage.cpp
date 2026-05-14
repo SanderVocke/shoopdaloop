@@ -293,6 +293,17 @@ void MidiStorage::clear() {
     m_core->clear();
 }
 
+void MidiStorage::copy(IMidiStorageCore& to) const {
+    // Cast to MidiStorage to get access to its m_core
+    auto* midi_storage = dynamic_cast<MidiStorage*>(&to);
+    if (midi_storage) {
+        m_core->copy(*midi_storage->m_core);
+    } else {
+        // Fall back to the interface copy which may throw
+        m_core->copy(to);
+    }
+}
+
 typename MidiStorage::SharedCursor
 MidiStorage::create_cursor() {
     auto self = shared_from_this();
@@ -311,7 +322,7 @@ void MidiStorage::clear_cursors() {
     m_cursors.clear();
 }
 
-void MidiStorage::truncate(uint32_t time, TruncateSide side, DroppedMsgCallback dropped_msg_cb) {
+void MidiStorage::truncate(uint32_t time, MidiStorageTruncateSide side, DroppedMsgCallback dropped_msg_cb) {
     m_core->truncate(time, side, dropped_msg_cb);
     
     // Invalidate cursors that no longer point to valid elements
@@ -336,7 +347,7 @@ void MidiStorage::truncate(uint32_t time, TruncateSide side, DroppedMsgCallback 
 }
 
 void MidiStorage::truncate_fn(std::function<bool(uint32_t, uint16_t, const uint8_t*)> should_truncate_fn,
-                  TruncateSide side, DroppedMsgCallback dropped_msg_cb) {
+                  MidiStorageTruncateSide side, DroppedMsgCallback dropped_msg_cb) {
     m_core->truncate_fn(should_truncate_fn, side, dropped_msg_cb);
     
     // Invalidate cursors that no longer point to valid elements
@@ -366,6 +377,26 @@ void MidiStorage::for_each_msg_modify(
 }
 
 void MidiStorage::for_each_msg(
+    std::function<void(uint32_t t, uint16_t s, uint8_t *data)> cb) {
+    m_core->for_each_msg(cb);
+}
+
+// Backward-compatible versions (using TruncateSide alias)
+void MidiStorage::truncate_compat(uint32_t time, TruncateSide side, DroppedMsgCallback dropped_msg_cb) {
+    truncate(time, static_cast<MidiStorageTruncateSide>(side), dropped_msg_cb);
+}
+
+void MidiStorage::truncate_fn_compat(std::function<bool(uint32_t, uint16_t, const uint8_t*)> should_truncate_fn,
+                    TruncateSide side, DroppedMsgCallback dropped_msg_cb) {
+    truncate_fn(should_truncate_fn, static_cast<MidiStorageTruncateSide>(side), dropped_msg_cb);
+}
+
+void MidiStorage::for_each_msg_modify_compat(
+    std::function<void(uint32_t &t, uint16_t &s, uint8_t *data)> cb) {
+    m_core->for_each_msg_modify(cb);
+}
+
+void MidiStorage::for_each_msg_compat(
     std::function<void(uint32_t t, uint16_t s, uint8_t *data)> cb) {
     m_core->for_each_msg(cb);
 }
@@ -525,35 +556,36 @@ MidiStorageCursor::FindResult MidiStorageCursor::find_fn_forward(
     return rval;
 }
 
-// MidiRingbuffer implementation
+// MidiRingbufferCore implementation
 
-MidiRingbuffer::MidiRingbuffer(uint32_t data_size)
-    : m_storage(shoop_make_shared<MidiStorage>(data_size))
+MidiRingbufferCore::MidiRingbufferCore(shoop_shared_ptr<IMidiStorage> storage)
+    : m_storage(storage)
     , n_samples(0)
     , current_buffer_start_time(0)
     , current_buffer_end_time(0)
 {}
 
-void MidiRingbuffer::set_n_samples(uint32_t n) {
-    log<log_level_debug>("MidiRingbuffer - set_n_samples: {}", n);
+void MidiRingbufferCore::set_n_samples(uint32_t n) {
+    log<log_level_debug>("MidiRingbufferCore - set_n_samples: {}", n);
     n_samples = n;
     auto end = current_buffer_end_time.load();
     auto min_time = end - std::min(end, n);
-    m_storage->truncate(min_time, MidiStorage::TruncateSide::TruncateTail);
+    m_storage->truncate(min_time, MidiStorageTruncateSide::TruncateTail);
 }
 
-uint32_t MidiRingbuffer::get_n_samples() const {
+uint32_t MidiRingbufferCore::get_n_samples() const {
     return n_samples.load();
 }
 
-void MidiRingbuffer::next_buffer(uint32_t n_frames, DroppedMsgCallback dropped_msg_cb) {
+void MidiRingbufferCore::next_buffer(uint32_t n_frames, 
+                                   std::function<void(uint32_t, uint16_t, const uint8_t*)> dropped_msg_cb) {
     uint32_t old_end = current_buffer_end_time.load();
     uint32_t new_end = old_end + n_frames;  // Note: may overflow
 
     if (new_end < old_end) {
         // Overflow occurring. We will shift the timestamps of the whole buffer such that all messages
         // again have a low time value.
-        log<log_level_debug_trace>("MidiRingbuffer - time overflow, resetting");
+        log<log_level_debug_trace>("MidiRingbufferCore - time overflow, resetting");
         const uint32_t moved_new_end = n_samples.load();
         const int shift = (int)moved_new_end - (int)new_end;
         m_storage->for_each_msg_modify([shift](uint32_t &t, uint16_t &s, uint8_t *d) {
@@ -564,39 +596,47 @@ void MidiRingbuffer::next_buffer(uint32_t n_frames, DroppedMsgCallback dropped_m
     }
 
     auto min_time = new_end - std::min(n_samples.load(), new_end);
-    m_storage->truncate(min_time, MidiStorage::TruncateSide::TruncateTail, dropped_msg_cb);
-    log<log_level_debug_trace>("MidiRingbuffer - next buffer: {} -> {}", old_end, new_end);
+    m_storage->truncate(min_time, MidiStorageTruncateSide::TruncateTail, dropped_msg_cb);
+    log<log_level_debug_trace>("MidiRingbufferCore - next buffer: {} -> {}", old_end, new_end);
     current_buffer_start_time = old_end;
     current_buffer_end_time = new_end;
 }
 
-bool MidiRingbuffer::put(uint32_t frame_in_current_buffer, uint16_t size, const uint8_t* data, DroppedMsgCallback dropped_msg_cb) {
+bool MidiRingbufferCore::put(uint32_t frame_in_current_buffer, uint16_t size, const uint8_t* data,
+                            std::function<void(uint32_t, uint16_t, const uint8_t*)> dropped_msg_cb) {
     uint32_t time = current_buffer_start_time + frame_in_current_buffer;
     if (time > current_buffer_end_time) {
-        log<log_level_error>("MidiRingbuffer::put: time is out of range");
+        log<log_level_error>("MidiRingbufferCore::put: time is out of range");
         return false;
     }
     auto rval = m_storage->append(time, size, data, true, dropped_msg_cb);
     auto n = m_storage->n_events();
-    log<log_level_debug_trace>("MidiRingbuffer - put at time: {}, # msgs is {}", time, n);
+    log<log_level_debug_trace>("MidiRingbufferCore - put at time: {}, # msgs is {}", time, n);
     return rval;
 }
 
-void MidiRingbuffer::snapshot(MidiStorage &target, std::optional<uint32_t> start_offset_from_end) const {
+void MidiRingbufferCore::snapshot(IMidiStorage& target, std::optional<uint32_t> start_offset_from_end) const {
     m_storage->copy(target);
     auto const end = current_buffer_end_time.load();
     auto const start_from_end = start_offset_from_end.value_or(n_samples.load());
     const uint32_t min_message_time = end - std::min(end, start_from_end);
-    target.truncate(min_message_time, MidiStorage::TruncateSide::TruncateTail);
+    target.truncate(min_message_time, MidiStorageTruncateSide::TruncateTail);
     target.for_each_msg_modify([min_message_time](uint32_t &t, uint16_t &s, uint8_t *d) {
         t -= min_message_time;
     });
 }
 
-uint32_t MidiRingbuffer::get_current_start_time() const {
+uint32_t MidiRingbufferCore::get_current_start_time() const {
     return current_buffer_end_time.load() - n_samples.load();
 }
 
-uint32_t MidiRingbuffer::get_current_end_time() const {
+uint32_t MidiRingbufferCore::get_current_end_time() const {
     return current_buffer_end_time.load();
 }
+
+// MidiRingbuffer implementation
+
+MidiRingbuffer::MidiRingbuffer(uint32_t data_size)
+    : m_storage(shoop_make_shared<MidiStorage>(data_size))
+    , m_time_window(std::make_unique<MidiRingbufferCore>(m_storage))
+{}

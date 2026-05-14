@@ -121,20 +121,20 @@ cargo build
 
 ---
 
-## Phase 4: Extract time-window logic from MidiRingbuffer
+## Phase 4: Extract time-window logic from MidiRingbuffer (COMPLETED)
 
 **Goal**: Isolate the time-window logic (n_samples tracking, next_buffer, put, snapshot) so it can be easily bridged to Rust independently of the storage core.
 
 ### Tasks
-- [ ] Create `IMidiRingbufferTimeWindow` interface:
+- [x] Create `IMidiRingbufferTimeWindow` interface:
   - `set_n_samples(n)`
   - `get_n_samples() const`
   - `next_buffer(n_frames, dropped_cb)`
   - `put(frame_in_buffer, size, data, dropped_cb) -> bool`
   - `snapshot(target, start_offset_from_end)`
   - `get_current_start_time()`, `get_current_end_time()`
-- [ ] Make `MidiRingbufferCore` implement this interface
-- [ ] Refactor `MidiRingbuffer` to contain `MidiRingbufferCore` instead of inheriting from `MidiStorage`
+- [x] Make `MidiRingbufferCore` implement this interface
+- [x] Refactor `MidiRingbuffer` to contain `MidiRingbufferCore` instead of inheriting from `MidiStorage`
 
 ### Build & Test
 ```bash
@@ -142,6 +142,13 @@ cargo build
 ./target/debug/test_runner "[MidiStorage]"
 ./target/debug/test_runner "[MidiRingbuffer]"
 ```
+
+✅ All 140 test cases pass
+
+**Files created/modified:**
+- `IMidiRingbufferTimeWindow.h` - Pure virtual interface for time-window operations
+- `MidiStorage.h` - Added MidiRingbufferCore class, updated MidiStorage to implement IMidiStorage
+- `MidiStorage.cpp` - Added MidiRingbufferCore implementation, updated copy() to work with interface
 
 ---
 
