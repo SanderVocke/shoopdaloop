@@ -417,21 +417,6 @@ void MidiStorageCursor::reset() {
     }
 }
 
-typename MidiStorageCursor::Elem *
-MidiStorageCursor::get(uint32_t raw_offset) const {
-    return m_storage->get_elem(raw_offset);
-}
-
-typename MidiStorageCursor::Elem *
-MidiStorageCursor::get() const {
-    return m_offset.has_value() ? get(m_offset.value()) : nullptr;
-}
-
-typename MidiStorageCursor::Elem *
-MidiStorageCursor::get_prev() const {
-    return m_prev_offset.has_value() ? get(m_prev_offset.value()) : nullptr;
-}
-
 void MidiStorageCursor::next() {
     if (!m_offset.has_value()) { return; }
     auto storage_ptr = m_storage.get();
@@ -470,7 +455,7 @@ bool MidiStorageCursor::wrapped() const {
     return m_prev_offset.value() > m_offset.value();
 }
 
-CursorFindResult MidiStorageCursor::find_time_forward(
+MidiStorageCursor::FindResult MidiStorageCursor::find_time_forward(
     uint32_t time, std::function<void(Elem *)> maybe_skip_msg_callback)
 {
     auto print_offset = m_offset.has_value() ? (int)m_offset.value() : (int)-1;
@@ -481,10 +466,10 @@ CursorFindResult MidiStorageCursor::find_time_forward(
     }, maybe_skip_msg_callback);
 }
 
-CursorFindResult MidiStorageCursor::find_fn_forward(
+MidiStorageCursor::FindResult MidiStorageCursor::find_fn_forward(
     std::function<bool(Elem *)> fn, std::function<void(Elem *)> maybe_skip_msg_callback)
 {
-    CursorFindResult rval;
+    FindResult rval;
     rval.found_valid_elem = false;
     rval.n_processed = 0;
 

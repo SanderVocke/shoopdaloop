@@ -1,6 +1,7 @@
 #pragma once
 #include "LoggingEnabled.h"
 #include "IMidiStorageCore.h"
+#include "IMidiStorageCursor.h"
 #include "shoop_shared_ptr.h"
 #include <memory>
 #include <optional>
@@ -8,12 +9,6 @@
 // Forward declarations
 class MidiStorageCore;
 class MidiStorageCursor;
-
-// Cursor find result
-struct CursorFindResult {
-    uint32_t n_processed;
-    bool found_valid_elem;
-};
 
 // MidiStorageCore: Contains the raw ringbuffer data and basic operations.
 // This is the core storage that can be easily bridged to Rust.
@@ -132,8 +127,9 @@ public:
     const std::vector<Elem>& data() const { return m_core->data(); }
 };
 
-// MidiStorageCursor: Works with MidiStorage
-class MidiStorageCursor : public ModuleLoggingEnabled<"Backend.MidiStorage"> {
+// MidiStorageCursor: Works with MidiStorage, implements IMidiStorageCursor
+class MidiStorageCursor : public ModuleLoggingEnabled<"Backend.MidiStorage">,
+                          public IMidiStorageCursor {
 public:
     using Storage = MidiStorage;
     using Elem = MidiStorageElem;
@@ -146,32 +142,38 @@ private:
 public:
     MidiStorageCursor(shoop_shared_ptr<Storage> _storage);
 
-    bool valid() const;
+    // IMidiStorageCursor implementation
+    // Cursor state
+    bool valid() const override;
+    std::optional<uint32_t> offset() const override;
+    std::optional<uint32_t> prev_offset() const override;
 
-    std::optional<uint32_t> offset() const;
-    std::optional<uint32_t> prev_offset() const;
+    // Navigation
+    void invalidate() override;
+    bool is_at_start() const override;
+    void reset() override;
+    void overwrite(uint32_t offset, uint32_t prev_offset) override;
+    void next() override;
 
-    void invalidate();
-    bool is_at_start() const;
-    void overwrite(uint32_t offset, uint32_t prev_offset);
+    // Element access
+    Elem* get() override { return valid() ? get(m_offset.value()) : nullptr; }
+    const Elem* get() const override { return valid() ? get(m_offset.value()) : nullptr; }
+    Elem* get(uint32_t raw_offset) override { return m_storage->get_elem(raw_offset); }
+    const Elem* get(uint32_t raw_offset) const override { return m_storage->get_elem(raw_offset); }
+    Elem* get_prev() override { return m_prev_offset.has_value() ? get(m_prev_offset.value()) : nullptr; }
+    const Elem* get_prev() const override { return m_prev_offset.has_value() ? get(m_prev_offset.value()) : nullptr; }
 
-    void reset();
+    // State queries
+    bool wrapped() const override;
 
-    Elem *get(uint32_t raw_offset) const;
-    Elem *get() const;
-    Elem *get_prev() const;
-    void next();
+    // FindResult is now in IMidiStorageCursor
+    using FindResult = IMidiStorageCursor::FindResult;
 
-    // True if previous elem is valid, current elem is valid,
-    // but stepping between them steps over the ringbuffer
-    // boundary
-    bool wrapped() const;
-
-    // Iterate to the next message until the given time (or later) or end of buffer is reached.
-    CursorFindResult find_time_forward(uint32_t time, std::function<void(Elem *)> maybe_skip_msg_callback = nullptr);
-
-    // Iterate to the next message until the given function returns true or end of buffer is reached.
-    CursorFindResult find_fn_forward(std::function<bool(Elem *)> fn, std::function<void(Elem *)> maybe_skip_msg_callback = nullptr);
+    // Iteration with predicate
+    FindResult find_time_forward(uint32_t time, 
+        std::function<void(Elem*)> maybe_skip_msg_callback = nullptr) override;
+    FindResult find_fn_forward(std::function<bool(Elem*)> fn,
+        std::function<void(Elem*)> maybe_skip_msg_callback = nullptr) override;
 };
 
 // MidiRingbuffer: Contains a MidiStorage instead of inheriting from it
