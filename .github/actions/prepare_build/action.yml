@@ -20,18 +20,21 @@ runs:
   steps:
   - name: Prepare Rust (Windows)
     if: always() && inputs.variant == 'windows'
-    uses: dtolnay/rust-toolchain@nightly
+    uses: actions-rust-lang/setup-rust-toolchain@v1
     with:
-       targets: x86_64-pc-windows-msvc
-  - name: Install rustfmt
-    shell: wrap-shell {0}
-    if: always() && inputs.variant == 'windows'
-    run: rustup component add rustfmt --toolchain nightly-x86_64-pc-windows-msvc
+      toolchain: nightly
+      target: x86_64-pc-windows-msvc
+      components: rustfmt
+      cache: false
+      rustflags: ""
   - name: Prepare Rust (non-Windows)
     if: always() && inputs.variant != 'windows'
-    uses: dtolnay/rust-toolchain@nightly
+    uses: actions-rust-lang/setup-rust-toolchain@v1
     with:
-      components: rustfmt llvm-tools-preview
+      toolchain: nightly
+      components: rustfmt, llvm-tools-preview
+      cache: false
+      rustflags: ""
   - name: Rust info
     shell: wrap-shell {0}
     run: |

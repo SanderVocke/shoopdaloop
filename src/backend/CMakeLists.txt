@@ -248,6 +248,8 @@ find_package(nlohmann_json CONFIG REQUIRED)
 # Dependencies provided by in-repo Rust CXX bridges
 include_directories(${REFILLING_POOL_CXX_INCLUDE})
 link_directories(${REFILLING_POOL_CXX_LIBDIR})
+include_directories(${BACKEND_RUST_CXX_INCLUDE})
+link_directories(${BACKEND_RUST_CXX_LIBDIR})
 
 add_subdirectory(test)
 
@@ -264,6 +266,8 @@ target_link_libraries(shoopdaloop_backend_internals PRIVATE
   Boost::headers
   ${REFILLING_POOL_RUST_LIB}
   refilling_pool_cxx
+  ${BACKEND_RUST_RUST_LIB}
+  backend_rust_cxx
   )
 if(B64_FOUND)
     target_link_libraries(shoopdaloop_backend_internals PUBLIC b64::b64)

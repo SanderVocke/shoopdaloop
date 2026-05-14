@@ -165,6 +165,7 @@ name = "backend"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "backend_rust",
  "cmake",
  "common",
  "ctor",
@@ -186,6 +187,15 @@ dependencies = [
  "log",
  "num_enum",
  "static_assertions",
+]
+
+[[package]]
+name = "backend_rust"
+version = "0.0.0"
+dependencies = [
+ "cxx",
+ "cxx-build",
+ "log",
 ]
 
 [[package]]
