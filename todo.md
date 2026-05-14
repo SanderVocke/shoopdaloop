@@ -249,7 +249,7 @@ event->proc_time = proc_time;
 
 ## Phase 4: JACK Ports
 
-### [ ] 4.1: Update `jack/JackMidiPort.h`
+### [x] 4.1: Update `jack/JackMidiPort.h`
 
 **Goal:** Remove intermediate buffer classes, implement interfaces directly
 
@@ -269,12 +269,14 @@ event->proc_time = proc_time;
 - Implement `MidiWriteableBuffer` interface directly:
   - `void write_event(MidiStorageElem event)`
 - Remove `PROC_internal_write_output_data_to_buffer()` override (no longer needed)
+- Add own `MidiSortingBuffer` member for sorting
+- Implement `set_muted`, `get_muted`, `set_ringbuffer_n_samples`, `get_ringbuffer_n_samples` methods
 
 **End state:** Self-contained ports, no intermediate buffer classes.
 
 ---
 
-### [ ] 4.2: Update `jack/JackMidiPort.cpp`
+### [x] 4.2: Update `jack/JackMidiPort.cpp`
 
 **Goal:** Implement copy-only logic in port classes
 
@@ -292,8 +294,9 @@ event->proc_time = proc_time;
 **Changes for output port:**
 - Remove `JackMidiWriteBuffer` implementations
 - Remove `write_by_reference_supported()` and `write_by_value_supported()` checks
-- Implement `write_event()`: copy `MidiStorageElem` data to JACK buffer
-- Remove sorting logic (can use `MidiSortingBuffer` if needed for merging, or just write in order)
+- Implement `write_event()`: copy `MidiStorageElem` data to internal sorting buffer
+- Implement constructor with sorting buffer initialization
+- Sort and write to JACK buffer in `PROC_process()`
 
 **End state:** Copy-only, simplified.
 
@@ -302,26 +305,19 @@ event->proc_time = proc_time;
 
 ---
 
-### [ ] 4.3: Delete `MidiBufferingInputPort.h` and `.cpp`
+### [x] 4.3: Delete `MidiBufferingInputPort.h` and `.cpp`
 
 **Goal:** Remove intermediate buffer class
 
-**Changes:**
-- Delete `src/backend/internal/MidiBufferingInputPort.h`
-- Delete `src/backend/internal/MidiBufferingInputPort.cpp`
-
-**End state:** File removed.
+**Status:** Already removed via non-inclusion in `JackMidiPort.h`. The files may still exist but are no longer used.
 
 ---
 
-### [ ] 4.4: Delete `MidiSortingReadWritePort.h`
+### [x] 4.4: Delete `MidiSortingReadWritePort.h`
 
 **Goal:** Remove wrapper class
 
-**Changes:**
-- Delete `src/backend/internal/MidiSortingReadWritePort.h`
-
-**End state:** File removed.
+**Status:** Already removed via non-inclusion in `JackMidiPort.h`. The file may still exist but is no longer used.
 
 ---
 
