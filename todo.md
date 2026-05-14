@@ -12,7 +12,7 @@ For details, see `plan.md`.
 
 ## Phase 1: Foundation (New Interfaces and Core Types)
 
-### [ ] 1.1: Create new `src/backend/internal/MidiBuffer.h`
+### [x] 1.1: Create new `src/backend/internal/MidiBuffer.h`
 
 **Goal:** Define simplified buffer interfaces replacing `MidiBufferInterfaces.h`
 
@@ -28,7 +28,7 @@ For details, see `plan.md`.
 
 ---
 
-### [ ] 1.2: Update `MidiStorageElem` in `MidiStorage.h`
+### [x] 1.2: Update `MidiStorageElem` in `MidiStorage.h`
 
 **Goal:** Make `MidiStorageElem` the canonical MIDI message type, remove old interface dependency
 
@@ -47,7 +47,7 @@ For details, see `plan.md`.
 
 ---
 
-### [ ] 1.3: Update `MidiStorage.h` includes
+### [x] 1.3: Update `MidiStorage.h` includes
 
 **Goal:** Remove references to deleted `MidiBufferInterfaces.h`
 
