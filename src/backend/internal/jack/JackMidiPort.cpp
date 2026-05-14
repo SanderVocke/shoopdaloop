@@ -177,6 +177,11 @@ void GenericJackMidiOutputPort<API>::PROC_prepare(uint32_t nframes) {
 
 template<typename API>
 void GenericJackMidiOutputPort<API>::PROC_process(uint32_t nframes) {
+    if (get_muted()) {
+        m_sorting_buffer->PROC_clear();
+        return;
+    }
+
     m_sorting_buffer->PROC_process(nframes);
     
     // Write sorted messages to JACK output buffer

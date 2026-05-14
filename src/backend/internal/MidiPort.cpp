@@ -81,7 +81,8 @@ void MidiPort::PROC_process(uint32_t nframes) {
         }
     };
 
-    auto count_in_buf = read_in_buf;
+    // Count input events from the read output buffer (for input ports) or internal input buffer (for others)
+    MidiReadableBuffer *input_buf = read_out_buf ? read_out_buf : read_in_buf;
     uint32_t n_in_events = 0;
     if (m_midi_ringbuffer) {
         m_midi_ringbuffer->next_buffer(nframes,
@@ -89,16 +90,16 @@ void MidiPort::PROC_process(uint32_t nframes) {
                 m_ringbuffer_tail_state->process_msg(data);
             });
     }
-    if (count_in_buf) {
-        n_in_events = count_in_buf->n_events();
+    if (input_buf) {
+        n_in_events = input_buf->n_events();
         // Count events
         n_input_events += n_in_events;
         log<log_level_debug_trace>("# events in input buf: {}", n_in_events);
     }
-    if (read_in_buf) {
-        // Process state
+    if (input_buf) {
+        // Process input events for state tracking
         for(uint32_t i=0; i<n_in_events; i++) {
-            auto event = read_in_buf->get_event(i);
+            auto event = input_buf->get_event(i);
             if(m_maybe_midi_state) {
                 m_maybe_midi_state->process_msg(event.bytes);
             }
@@ -110,11 +111,16 @@ void MidiPort::PROC_process(uint32_t nframes) {
         processed_state = true;
     }
     if (!muted) {
-        MidiReadableBuffer *source = read_in_buf;
+        MidiReadableBuffer *source = input_buf;
         if (source) {
             auto n_events = source->n_events();
             log<log_level_debug_trace>("# output events: {}", n_events);
-            n_output_events += n_events;
+            // For output ports, count events being written to output
+            // For input ports, source == read_out_buf, but we shouldn't count input as output
+            // Only count to n_output_events if we have a write_out_buf (actual output)
+            if (write_out_buf) {
+                n_output_events += n_events;
+            }
 
             if (write_out_buf) {
                 // We need to actively write data to the output.
