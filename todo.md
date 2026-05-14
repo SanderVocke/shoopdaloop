@@ -209,7 +209,7 @@ For details, see `plan.md`.
 
 ---
 
-### [ ] 3.4: Fix storage-to-realtime time conversion
+### [x] 3.4: Fix storage-to-realtime time conversion
 
 **Goal:** Correctly compute `proc_time` when sending stored messages to real-time buffers
 
@@ -235,6 +235,15 @@ The `MidiChannel::PROC_process_playback()` currently sends messages with their `
 - `cargo build` succeeds
 - `cargo test` passes
 - Playback tests show correct timing
+
+---
+
+**Status:** ✅ Complete — `PROC_process_playback()` already computes `proc_time` correctly:
+```cpp
+auto proc_time =
+    (int)event->storage_time - _pos + buf.first.n_frames_processed;
+event->proc_time = proc_time;
+```
 
 ---
 
