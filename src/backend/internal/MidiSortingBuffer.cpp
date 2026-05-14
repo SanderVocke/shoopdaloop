@@ -1,47 +1,28 @@
 #include "MidiSortingBuffer.h"
 #include <vector>
 #include <algorithm>
-#include <array>
 #include <iostream>
 
-namespace {
-struct {
-    bool operator()(const MidiSortableMessageInterface *a,
-                    const MidiSortableMessageInterface *b) const {
-        return a->get_time() < b->get_time();
-    }
-} compare;
-} // namespace
-
 MidiSortingBuffer::MidiSortingBuffer() {
-    references.reserve(buffer_size);
-    stored_messages.reserve(stored_messages_size);
+    messages.reserve(buffer_size);
 }
 
-uint32_t MidiSortingBuffer::PROC_get_n_events() const {
-    return references.size();
+uint32_t MidiSortingBuffer::n_events() const {
+    return messages.size();
 }
 
-MidiSortableMessageInterface const &
-MidiSortingBuffer::PROC_get_event_reference(uint32_t idx) {
+MidiStorageElem MidiSortingBuffer::get_event(uint32_t idx) const {
     if (dirty) {
         throw std::runtime_error("Access in merging buffer which is unsorted");
     }
-    return *references[idx];
-}
-
-void MidiSortingBuffer::PROC_get_event_value(uint32_t idx, uint32_t &size_out,
-                                             uint32_t &time_out,
-                                             const uint8_t *&data_out) {
-    auto &m = PROC_get_event_reference(idx);
-    size_out = m.get_size();
-    time_out = m.get_time();
-    data_out = m.get_data();
+    return messages[idx];
 }
 
 void MidiSortingBuffer::PROC_sort() {
     if (dirty) {
-        std::stable_sort(references.begin(), references.end(), compare);
+        std::stable_sort(messages.begin(), messages.end(), [](const MidiStorageElem &a, const MidiStorageElem &b) {
+            return a.proc_time < b.proc_time;
+        });
         dirty = false;
     }
 }
@@ -55,32 +36,19 @@ void MidiSortingBuffer::PROC_prepare(uint32_t nframes) {
 }
 
 void MidiSortingBuffer::PROC_clear() {
-    references.clear();
-    stored_messages.clear();
+    messages.clear();
     dirty = false;
 }
 
-bool MidiSortingBuffer::write_by_value_supported() const { return true; }
-bool MidiSortingBuffer::write_by_reference_supported() const { return true; }
-bool MidiSortingBuffer::read_by_reference_supported() const { return true; }
-
-void MidiSortingBuffer::PROC_write_event_value(uint32_t size, uint32_t time,
-                                               const uint8_t *data) {
-    if (size > 3) {
+void MidiSortingBuffer::write_event(MidiStorageElem event) {
+    if (event.size > 4) {
         throw std::runtime_error(
-            "Midi merging buffer: message value dropped because size > 3");
+            "Midi merging buffer: message dropped because size > 4");
     }
-    if (stored_messages.size() >= stored_messages.capacity()) {
+    if (messages.size() >= messages.capacity()) {
         std::cerr << "Warning: expanded MIDI buffer on processing thread\n";
-        stored_messages.reserve(stored_messages.size() * 2);
+        messages.reserve(messages.size() * 2);
     }
-    stored_messages.push_back(Message(time, size, data));
-    auto ptr = (MidiSortableMessageInterface *)&stored_messages.back();
-    PROC_write_event_reference(*ptr);
-}
-
-void MidiSortingBuffer::PROC_write_event_reference(
-    MidiSortableMessageInterface const &m) {
-    references.push_back(&m);
+    messages.push_back(event);
     dirty = true;
 }

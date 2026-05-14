@@ -2133,7 +2133,7 @@ shoop_midi_sequence_t *dummy_midi_port_dequeue_data(shoopdaloop_midi_port_t *por
             memcpy((void*)rval->events[i]->data, (void*)e.get_data(), e.get_size());
         }
         rval->n_events = msgs.size();
-        rval->length_samples = msgs.size()? msgs.back().time+1 : 0;
+        rval->length_samples = msgs.size()? msgs.back().proc_time+1 : 0;
         return rval;
     } else {
         logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_midi_port_dequeue_data called on non-dummy-midi port");

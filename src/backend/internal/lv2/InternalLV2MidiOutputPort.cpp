@@ -17,8 +17,9 @@ InternalLV2MidiOutputPort::InternalLV2MidiOutputPort(
       m_midi_event_type_urid(midi_event_type_urid)
 {}
 
-MidiReadableBufferInterface *
+MidiReadableBuffer *
 InternalLV2MidiOutputPort::PROC_get_read_output_data_buffer(uint32_t n_frames) {
+    (void)n_frames;
     return nullptr;
 }
 
@@ -28,9 +29,10 @@ void InternalLV2MidiOutputPort::PROC_prepare(uint32_t n_frames) {
     MidiPort::PROC_prepare(n_frames);
 }
 
-MidiWriteableBufferInterface *
+MidiWriteableBuffer *
 InternalLV2MidiOutputPort::PROC_get_write_data_into_port_buffer(uint32_t n_frames) {
-    return (static_cast<MidiWriteableBufferInterface *>(this));
+    (void)n_frames;
+    return (static_cast<MidiWriteableBuffer *>(this));
 }
 
 const char *InternalLV2MidiOutputPort::name() const { return m_name.c_str(); }
@@ -41,30 +43,16 @@ PortDataType InternalLV2MidiOutputPort::type() const { return PortDataType::Midi
 
 PortExternalConnectionStatus InternalLV2MidiOutputPort::get_external_connection_status() const { return PortExternalConnectionStatus(); }
 
-void InternalLV2MidiOutputPort::connect_external(std::string name) {}
+void InternalLV2MidiOutputPort::connect_external(std::string name) {(void)name;}
 
-void InternalLV2MidiOutputPort::disconnect_external(std::string name) {}
+void InternalLV2MidiOutputPort::disconnect_external(std::string name) {(void)name;}
 
-void InternalLV2MidiOutputPort::PROC_write_event_value(uint32_t size,
-                                                       uint32_t time,
-                                                       const uint8_t *data) {
-    bool result = lv2_evbuf_write(&m_iter, time, 0, m_midi_event_type_urid,
-                                  size, (void *)data);
+void InternalLV2MidiOutputPort::write_event(MidiStorageElem event) {
+    bool result = lv2_evbuf_write(&m_iter, event.proc_time, 0, m_midi_event_type_urid,
+                                  event.size, (void *)event.bytes);
     if (!result) {
         throw std::runtime_error("Failed to write MIDI event into LV2 evbuf");
     }
-}
-
-void InternalLV2MidiOutputPort::PROC_write_event_reference(
-    MidiSortableMessageInterface const &m) {
-    throw std::runtime_error("Write by reference not supported");
-}
-
-bool InternalLV2MidiOutputPort::write_by_reference_supported() const {
-    return false;
-}
-bool InternalLV2MidiOutputPort::write_by_value_supported() const {
-    return true;
 }
 
 void *InternalLV2MidiOutputPort::maybe_driver_handle() const {

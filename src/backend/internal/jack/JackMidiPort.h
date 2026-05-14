@@ -4,6 +4,7 @@
 #include "MidiBufferingInputPort.h"
 #include "JackPort.h"
 #include "MidiSortingReadWritePort.h"
+#include "MidiBuffer.h"
 #include "PortInterface.h"
 #include "types.h"
 #include <jack_wrappers.h>
@@ -28,19 +29,12 @@ class GenericJackMidiInputPort :
     using GenericJackPort<API>::m_port;
     using GenericJackPort<API>::m_buffer;
 
-    class JackMidiReadBuffer : public MidiReadableBufferInterface {
+    class JackMidiReadBuffer : public MidiReadableBuffer {
     public:
-        void* m_jack_buffer;
+        void* m_jack_buffer = nullptr;
 
-        JackMidiReadBuffer();
-        
-        bool read_by_reference_supported() const override;
-        uint32_t PROC_get_n_events() const override;
-        MidiSortableMessageInterface const& PROC_get_event_reference(uint32_t idx) override;
-        void PROC_get_event_value(uint32_t idx,
-                                uint32_t &size_out,
-                                uint32_t &time_out,
-                                const uint8_t* &data_out) override;
+        uint32_t n_events() const override;
+        MidiStorageElem get_event(uint32_t idx) const override;
     };
 
     JackMidiReadBuffer m_read_buffer;
@@ -51,9 +45,9 @@ public:
         shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     );
 
-    MidiReadableBufferInterface *PROC_internal_read_input_data_buffer (uint32_t nframes) override;
-    MidiWriteableBufferInterface *PROC_internal_write_output_data_to_buffer (uint32_t nframes) override { return nullptr; }
-    MidiWriteableBufferInterface *PROC_get_write_data_into_port_buffer (uint32_t nframes) override { return nullptr; }
+    MidiReadableBuffer *PROC_internal_read_input_data_buffer (uint32_t nframes) override;
+    MidiWriteableBuffer *PROC_internal_write_output_data_to_buffer (uint32_t nframes) override { return nullptr; }
+    MidiWriteableBuffer *PROC_get_write_data_into_port_buffer (uint32_t nframes) override { return nullptr; }
 
     void PROC_prepare(uint32_t nframes) override;
     void PROC_process(uint32_t nframes) override;
@@ -70,19 +64,11 @@ class GenericJackMidiOutputPort :
     using GenericJackPort<API>::m_port;
     using GenericJackPort<API>::m_buffer;
 
-    class JackMidiWriteBuffer : public MidiWriteableBufferInterface {
+    class JackMidiWriteBuffer : public MidiWriteableBuffer {
     public:
         void* m_jack_buffer = nullptr;
 
-        JackMidiWriteBuffer();
-        
-        bool write_by_reference_supported() const override;
-        bool write_by_value_supported() const override;
-        void PROC_write_event_reference(MidiSortableMessageInterface const& m) override;
-        void PROC_write_event_value(uint32_t size,
-                            uint32_t time,
-                            const uint8_t* data) override;
-    
+        void write_event(MidiStorageElem event) override;
     };
 
     JackMidiWriteBuffer m_write_buffer;
@@ -95,8 +81,8 @@ public:
         MidiSortingReadWritePort(true, true, true),
         m_write_buffer(JackMidiWriteBuffer{}) {}
 
-    MidiReadableBufferInterface *PROC_internal_read_input_data_buffer (uint32_t nframes) override { return nullptr; }
-    MidiWriteableBufferInterface *PROC_internal_write_output_data_to_buffer (uint32_t nframes) override;
+    MidiReadableBuffer *PROC_internal_read_input_data_buffer (uint32_t nframes) override { return nullptr; }
+    MidiWriteableBuffer *PROC_internal_write_output_data_to_buffer (uint32_t nframes) override;
 
     PortDataType type() const override { return PortDataType::Midi; }
 

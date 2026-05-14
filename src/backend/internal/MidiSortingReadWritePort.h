@@ -1,5 +1,5 @@
 #pragma once
-#include "MidiBufferInterfaces.h"
+#include "MidiBuffer.h"
 #include "MidiSortingBuffer.h"
 #include "MidiPort.h"
 #include <stdint.h>
@@ -18,13 +18,13 @@ public:
     
     virtual ~MidiSortingReadWritePort() {}
 
-    MidiWriteableBufferInterface *PROC_get_write_data_into_port_buffer (uint32_t nframes) override {
+    MidiWriteableBuffer *PROC_get_write_data_into_port_buffer (uint32_t nframes) override {
         return m_sorting_buffer.get();
     }
-    MidiReadableBufferInterface *PROC_get_read_output_data_buffer (uint32_t nframes) override {
+    MidiReadableBuffer *PROC_get_read_output_data_buffer (uint32_t nframes) override {
         return m_sorting_buffer.get();
     }
-    MidiReadWriteBufferInterface *PROC_get_processing_buffer (uint32_t nframes) override {
+    MidiSortingBuffer *PROC_get_processing_buffer (uint32_t nframes) override {
         return m_sorting_buffer.get();
     }
 };

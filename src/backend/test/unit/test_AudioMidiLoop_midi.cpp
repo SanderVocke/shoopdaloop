@@ -83,15 +83,14 @@ Msg pitch_wheel_msg(uint32_t time, uint8_t channel, uint16_t val) {
 
 inline
 Msg hold_pedal_msg(uint32_t time, uint8_t channel, bool hold) {
-    std::vector<uint8_t> bytes =  { (uint8_t)(0xB0 + channel), 64, (uint8_t)(hold ? 127 : 0) };
-    return Msg(time, 3, bytes);
+    return create_cc<Msg>(time, channel, 64, hold ? 127 : 0);
 }
 
 inline Msg note_on_msg (uint32_t time, uint8_t channel, uint8_t note, uint8_t velocity) {
-    return Msg(time, 3, {(uint8_t)(0x90 | channel), note, velocity});
+    return create_noteOn<Msg>(time, channel, note, velocity);
 }
 inline Msg note_off_msg (uint32_t time, uint8_t channel, uint8_t note, uint8_t velocity) {
-    return Msg(time, 3, {(uint8_t)(0x80 | channel), note, velocity});
+    return create_noteOff<Msg>(time, channel, note, velocity);
 };
 
 TEST_CASE("AudioMidiLoop - Midi - Stop", "[AudioMidiLoop][midi]") {
@@ -123,9 +122,9 @@ TEST_CASE("AudioMidiLoop - Midi - Record", "[AudioMidiLoop][midi]") {
     CHECK(loop.get_position() == 0);
 
     auto source_buf = MidiTestBuffer();
-    source_buf.read.push_back(Msg(10, 3, { 0x01, 0x02, 0x03 }));
-    source_buf.read.push_back(Msg(19, 2, { 0x01, 0x02 }));
-    source_buf.read.push_back(Msg(20, 1, { 0x01 }));
+    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 10; source_buf.read.back().size = 3; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0x03;
+    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 19; source_buf.read.back().size = 2; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0;
+    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 20; source_buf.read.back().size = 1; source_buf.read.back().bytes[0] = 0; source_buf.read.back().bytes[1] = 0; source_buf.read.back().bytes[2] = 0;
 
     loop.plan_transition(LoopMode_Recording);
     channel.PROC_set_recording_buffer(&source_buf, 512);
@@ -161,9 +160,9 @@ TEST_CASE("AudioMidiLoop - Midi - Record Append Out-of-order", "[AudioMidiLoop][
     loop.set_mode(LoopMode_Recording, false);
     loop.set_length(100);
     auto source_buf = MidiTestBuffer();
-    source_buf.read.push_back(Msg(10, 3,  { 0x01, 0x02, 0x03 }));
-    source_buf.read.push_back(Msg(9,  2,  { 0x01, 0x02 }));
-    source_buf.read.push_back(Msg(11, 1,  { 0x01 }));
+    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 10; source_buf.read.back().size = 3; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0x03;
+    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 9; source_buf.read.back().size = 2; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0;
+    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 11; source_buf.read.back().size = 1; source_buf.read.back().bytes[0] = 0; source_buf.read.back().bytes[1] = 0; source_buf.read.back().bytes[2] = 0;
     channel.PROC_set_recording_buffer(&source_buf, 512);
     loop.PROC_update_poi();
     CHECK(loop.get_mode() == LoopMode_Recording);
@@ -197,16 +196,16 @@ TEST_CASE("AudioMidiLoop - Midi - Record multiple source buffers", "[AudioMidiLo
     CHECK(loop.get_position() == 0);
 
     std::vector<MidiTestBuffer> source_bufs = { MidiTestBuffer(), MidiTestBuffer(), MidiTestBuffer() };
-    source_bufs[0].read.push_back(Msg(10, 3, { 0x01, 0x02, 0x03 }));
-    source_bufs[0].read.push_back(Msg(19, 2, { 0x01, 0x02 }));
-    source_bufs[0].read.push_back(Msg(20, 1, { 0x01 }));
-    source_bufs[1].read.push_back(Msg(21-21, 3, { 0x01, 0x02, 0x03 }));
-    source_bufs[1].read.push_back(Msg(26-21, 2, { 0x01, 0x02 }));
-    source_bufs[1].read.push_back(Msg(29-21, 1, { 0x01 }));
-    source_bufs[2].read.push_back(Msg(30-21-9, 3, { 0x01, 0x02, 0x03 }));
-    source_bufs[2].read.push_back(Msg(30-21-9, 2, { 0x01, 0x02 }));
-    source_bufs[2].read.push_back(Msg(31-21-9, 1, { 0x01 }));
-    source_bufs[2].read.push_back(Msg(40-21-9, 1, { 0x01 }));
+    source_bufs[0].read.push_back(Msg()); source_bufs[0].read.back().proc_time = 10; source_bufs[0].read.back().size = 3; source_bufs[0].read.back().bytes[0] = 0x01; source_bufs[0].read.back().bytes[1] = 0x02; source_bufs[0].read.back().bytes[2] = 0x03;
+    source_bufs[0].read.push_back(Msg()); source_bufs[0].read.back().proc_time = 19; source_bufs[0].read.back().size = 2; source_bufs[0].read.back().bytes[0] = 0x01; source_bufs[0].read.back().bytes[1] = 0x02; source_bufs[0].read.back().bytes[2] = 0;
+    source_bufs[0].read.push_back(Msg()); source_bufs[0].read.back().proc_time = 20; source_bufs[0].read.back().size = 1; source_bufs[0].read.back().bytes[0] = 0; source_bufs[0].read.back().bytes[1] = 0; source_bufs[0].read.back().bytes[2] = 0;
+    source_bufs[1].read.push_back(Msg()); source_bufs[1].read.back().proc_time = 21-21; source_bufs[1].read.back().size = 3; source_bufs[1].read.back().bytes[0] = 0x01; source_bufs[1].read.back().bytes[1] = 0x02; source_bufs[1].read.back().bytes[2] = 0x03;
+    source_bufs[1].read.push_back(Msg()); source_bufs[1].read.back().proc_time = 26-21; source_bufs[1].read.back().size = 2; source_bufs[1].read.back().bytes[0] = 0x01; source_bufs[1].read.back().bytes[1] = 0x02; source_bufs[1].read.back().bytes[2] = 0;
+    source_bufs[1].read.push_back(Msg()); source_bufs[1].read.back().proc_time = 29-21; source_bufs[1].read.back().size = 1; source_bufs[1].read.back().bytes[0] = 0; source_bufs[1].read.back().bytes[1] = 0; source_bufs[1].read.back().bytes[2] = 0;
+    source_bufs[2].read.push_back(Msg()); source_bufs[2].read.back().proc_time = 30-21-9; source_bufs[2].read.back().size = 3; source_bufs[2].read.back().bytes[0] = 0x01; source_bufs[2].read.back().bytes[1] = 0x02; source_bufs[2].read.back().bytes[2] = 0x03;
+    source_bufs[2].read.push_back(Msg()); source_bufs[2].read.back().proc_time = 30-21-9; source_bufs[2].read.back().size = 2; source_bufs[2].read.back().bytes[0] = 0x01; source_bufs[2].read.back().bytes[1] = 0x02; source_bufs[2].read.back().bytes[2] = 0;
+    source_bufs[2].read.push_back(Msg()); source_bufs[2].read.back().proc_time = 31-21-9; source_bufs[2].read.back().size = 1; source_bufs[2].read.back().bytes[0] = 0; source_bufs[2].read.back().bytes[1] = 0; source_bufs[2].read.back().bytes[2] = 0;
+    source_bufs[2].read.push_back(Msg()); source_bufs[2].read.back().proc_time = 40-21-9; source_bufs[2].read.back().size = 1; source_bufs[2].read.back().bytes[0] = 0; source_bufs[2].read.back().bytes[1] = 0; source_bufs[2].read.back().bytes[2] = 0;
 
     loop.plan_transition(LoopMode_Recording);
     channel.PROC_set_recording_buffer(&source_bufs[0], 21);
@@ -299,9 +298,9 @@ TEST_CASE("AudioMidiLoop - Midi - Record onto longer buffer", "[AudioMidiLoop][m
     CHECK(loop.get_position() == 0);
 
     auto source_buf = MidiTestBuffer();
-    source_buf.read.push_back(Msg(1, 3, { 0x01, 0x02, 0x03 }));
-    source_buf.read.push_back(Msg(2, 2, { 0x01, 0x02 }));
-    source_buf.read.push_back(Msg(3, 1, { 0x01 }));
+    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 1; source_buf.read.back().size = 3; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0x03;
+    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 2; source_buf.read.back().size = 2; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0;
+    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 3; source_buf.read.back().size = 1; source_buf.read.back().bytes[0] = 0; source_buf.read.back().bytes[1] = 0; source_buf.read.back().bytes[2] = 0;
 
     channel.PROC_set_recording_buffer(&source_buf, 512);
 
@@ -393,9 +392,9 @@ TEST_CASE("AudioMidiLoop - Midi - Prerecord", "[AudioMidiLoop][midi]") {
 
     auto source_buf = MidiTestBuffer();
     source_buf.read.push_back(Msg(1 , 3, { 0x01, 0x02, 0x03 }));
-    source_buf.read.push_back(Msg(10, 2, { 0x01, 0x02 }));
-    source_buf.read.push_back(Msg(21, 1,  { 0x01 }));
-    source_buf.read.push_back(Msg(39, 1,  { 0x02 }));
+    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 10; source_buf.read.back().size = 2; source_buf.read.back().bytes[0] = 0x01; source_buf.read.back().bytes[1] = 0x02; source_buf.read.back().bytes[2] = 0;
+    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 21; source_buf.read.back().size = 1; source_buf.read.back().bytes[0] = 0; source_buf.read.back().bytes[1] = 0; source_buf.read.back().bytes[2] = 0;
+    source_buf.read.push_back(Msg()); source_buf.read.back().proc_time = 39; source_buf.read.back().size = 1; source_buf.read.back().bytes[0] = 0; source_buf.read.back().bytes[1] = 0; source_buf.read.back().bytes[2] = 0;
 
     loop.plan_transition(LoopMode_Recording); // Not triggered yet
     chan.PROC_set_recording_buffer(&source_buf, 512);
@@ -662,7 +661,7 @@ const StateTrackingTestcaseData pb_from_first_sample = {
         pitch_wheel_msg(97, 0, 107),
         pitch_wheel_msg(98, 0, 108)
     },
-    .expect_channel_1 = { Msg(0, 3, {0xB1, 64, 0 }) }, // Reset hold pedal on channel 1
+    .expect_channel_1 = { create_cc<Msg>(0, 1, 64, 0) }, // Reset hold pedal on channel 1
     .expect_channel_10 = { pitch_wheel_msg(0, 10, 0x2000) } // Reset pitch on channel 10
 };
 
@@ -686,7 +685,7 @@ const StateTrackingTestcaseData pb_from_40th_to_50th = {
         pitch_wheel_msg(8, 0, 58),
         pitch_wheel_msg(9, 0, 59),
     },
-    .expect_channel_1 = { Msg(0, 3, {0xB1, 64, 0 }) }, // Reset hold pedal on channel 1
+    .expect_channel_1 = { create_cc<Msg>(0, 1, 64, 0) }, // Reset hold pedal on channel 1
     .expect_channel_10 = { pitch_wheel_msg(0, 10, 0x2000) } // Reset pitch on channel 10
 };
 

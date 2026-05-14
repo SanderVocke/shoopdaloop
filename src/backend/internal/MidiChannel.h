@@ -33,8 +33,8 @@ private:
     };
 
     // Process thread access only (mp*)
-    std::optional<std::pair<ExternalBufState, MidiWriteableBufferInterface*>> mp_playback_target_buffer = std::nullopt;
-    std::optional<std::pair<ExternalBufState, MidiReadableBufferInterface*>> mp_recording_source_buffer = std::nullopt;
+    std::optional<std::pair<ExternalBufState, MidiWriteableBuffer*>> mp_playback_target_buffer = std::nullopt;
+    std::optional<std::pair<ExternalBufState, MidiReadableBuffer*>> mp_recording_source_buffer = std::nullopt;
     shoop_shared_ptr<Storage>       mp_storage = nullptr;
     shoop_shared_ptr<Storage>       mp_prerecord_storage = nullptr;
     shoop_shared_ptr<StorageCursor> mp_playback_cursor = nullptr;
@@ -121,9 +121,8 @@ public:
     void clear(bool thread_safe=true);
     void PROC_send_all_sound_off(unsigned frame=0);
 
-    void PROC_send_message_ref(MidiWriteableBufferInterface &buf, MidiSortableMessageInterface const &event);
+    void PROC_send_message(MidiWriteableBuffer &buf, MidiStorageElem event);
 
-    void PROC_send_message_value(MidiWriteableBufferInterface &buf, uint32_t time, uint32_t size, uint8_t *data);
     void PROC_process_playback(uint32_t our_pos, uint32_t our_length, uint32_t n_samples, bool muted);
 
     std::optional<uint32_t> PROC_get_next_poi(shoop_loop_mode_t mode,
@@ -133,9 +132,9 @@ public:
                                                uint32_t length,
                                                uint32_t position) const override;
 
-    void PROC_set_playback_buffer(MidiWriteableBufferInterface *buffer, uint32_t n_frames);
+    void PROC_set_playback_buffer(MidiWriteableBuffer *buffer, uint32_t n_frames);
 
-    void PROC_set_recording_buffer(MidiReadableBufferInterface *buffer, uint32_t n_frames);
+    void PROC_set_recording_buffer(MidiReadableBuffer *buffer, uint32_t n_frames);
 
     struct Contents {
         std::vector<Message> recorded_msgs;

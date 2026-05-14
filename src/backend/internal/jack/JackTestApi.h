@@ -5,7 +5,7 @@
 #include <map>
 #include <set>
 #include "LoggingBackend.h"
-#include "MidiMessage.h"
+#include "MidiStorage.h"
 #include <vector>
 
 #ifdef _WIN32
@@ -50,7 +50,7 @@ public:
         Client &client;
         bool valid = false;
         std::vector<float> audio_buffer;
-        std::vector<MidiMessage<uint32_t, uint32_t>> midi_buffer;
+        std::vector<MidiStorageElem> midi_buffer;
 
         Port(std::string name, Client &client, Type type, Direction direction) : name(name), type(type), direction(direction), valid(true), client(client) {}
         Port(Port const& other) = delete;
@@ -149,9 +149,9 @@ public:
     static int midi_event_get(jack_midi_event_t *event, void *port_buffer, uint32_t event_index) {
         auto &port = Port::from_ptr(jacktestapi_globals::buffers_to_ports[port_buffer]);
         auto &msg = port.midi_buffer[event_index];
-        event->time = msg.time;
+        event->time = msg.proc_time;
         event->size = msg.size;
-        event->buffer = (jack_midi_data_t*) msg.data.data();
+        event->buffer = (jack_midi_data_t*) msg.bytes;
         return 0;
     };
 
@@ -162,11 +162,10 @@ public:
 
     static int midi_event_write(void *port_buffer, jack_nframes_t time, const jack_midi_data_t *data, size_t data_size) {
         auto &port = Port::from_ptr(jacktestapi_globals::buffers_to_ports[port_buffer]);
-        MidiMessage<uint32_t, uint32_t> msg;
-        msg.data.resize(data_size);
-        memcpy((void*) msg.data.data(), (void*) data, data_size);
-        msg.time = time;
+        MidiStorageElem msg;
+        msg.proc_time = time;
         msg.size = data_size;
+        memcpy(msg.bytes, data, data_size);
         port.midi_buffer.push_back(msg);
         return 0;
     };

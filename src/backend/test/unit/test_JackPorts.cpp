@@ -1,5 +1,5 @@
 #include "JackAudioMidiDriver.h"
-#include "MidiMessage.h"
+#include "MidiBuffer.h"
 #include "AudioPort.h"
 #include "MidiStorage.h"
 #include "catch2/catch_approx.hpp"
@@ -19,12 +19,11 @@ std::unique_ptr<JackTestAudioMidiDriver> open_test_driver() {
     return driver;
 }
 
-MidiMessage<uint32_t, uint32_t> to_msg(jack_midi_event_t &m) {
-    MidiMessage<uint32_t, uint32_t> msg;
-    msg.time = m.time;
+MidiStorageElem to_msg(jack_midi_event_t &m) {
+    MidiStorageElem msg;
+    msg.proc_time = m.time;
     msg.size = m.size;
-    msg.data.resize(m.size);
-    memcpy((void*) msg.data.data(), (void*) m.buffer, m.size);
+    memcpy(msg.bytes, m.buffer, m.size);
     return msg;
 }
 
@@ -260,10 +259,10 @@ TEST_CASE("Ports - Jack Midi In - Receive", "[JackPorts][ports][midi]") {
     port->PROC_process(100);
 
     auto buf = port->PROC_get_read_output_data_buffer(100);
-    CHECK(buf->PROC_get_n_events() == 0);
+    CHECK(buf->n_events() == 0);
 
-    MidiMessage<uint32_t, uint32_t> m1(0, 3, {0, 1, 2});
-    MidiMessage<uint32_t, uint32_t> m2(0, 3, {0, 1, 2});
+    MidiStorageElem m1; m1.proc_time = 0; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
+    MidiStorageElem m2; m2.proc_time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
     internal_port.midi_buffer.push_back(m1);
     internal_port.midi_buffer.push_back(m2);
 
@@ -271,10 +270,10 @@ TEST_CASE("Ports - Jack Midi In - Receive", "[JackPorts][ports][midi]") {
     port->PROC_process(100);
 
     buf = port->PROC_get_read_output_data_buffer(100);
-    REQUIRE(buf->PROC_get_n_events() == 2);
+    REQUIRE(buf->n_events() == 2);
 
-    auto &r1 = buf->PROC_get_event_reference(0);
-    auto &r2 = buf->PROC_get_event_reference(1);
+    auto &r1 = buf->get_event(0);
+    auto &r2 = buf->get_event(1);
     CHECK(r1.contents_equal(m1));
     CHECK(r2.contents_equal(m2));
 }
@@ -286,8 +285,8 @@ TEST_CASE("Ports - Jack Midi In - Mute", "[JackPorts][ports][midi]") {
 
     port->set_muted(true);
 
-    MidiMessage<uint32_t, uint32_t> m1(0, 3, {0, 1, 2});
-    MidiMessage<uint32_t, uint32_t> m2(0, 3, {0, 1, 2});
+    MidiStorageElem m1; m1.proc_time = 0; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
+    MidiStorageElem m2; m2.proc_time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
     internal_port.midi_buffer.push_back(m1);
     internal_port.midi_buffer.push_back(m2);
 
@@ -295,7 +294,7 @@ TEST_CASE("Ports - Jack Midi In - Mute", "[JackPorts][ports][midi]") {
     port->PROC_process(100);
 
     auto buf = port->PROC_get_read_output_data_buffer(100);
-    REQUIRE(buf->PROC_get_n_events() == 0);
+    REQUIRE(buf->n_events() == 0);
 }
 
 TEST_CASE("Ports - Jack Midi In - Message Counter", "[JackPorts][ports][midi]") {
@@ -303,8 +302,8 @@ TEST_CASE("Ports - Jack Midi In - Message Counter", "[JackPorts][ports][midi]") 
     auto port = driver->open_midi_port("test", ShoopPortDirection_Input);
     auto &internal_port = JackTestApi::internal_port_data((jack_port_t*)port->maybe_driver_handle());
 
-    MidiMessage<uint32_t, uint32_t> m1(0, 3, {0, 1, 2});
-    MidiMessage<uint32_t, uint32_t> m2(0, 3, {0, 1, 2});
+    MidiStorageElem m1; m1.proc_time = 0; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
+    MidiStorageElem m2; m2.proc_time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
     internal_port.midi_buffer.push_back(m1);
     internal_port.midi_buffer.push_back(m2);
 
@@ -352,7 +351,7 @@ TEST_CASE("Ports - Jack Midi In - Note Tracker", "[JackPorts][ports][midi]") {
     auto driver = open_test_driver();
     auto port = driver->open_midi_port("test", ShoopPortDirection_Input);
     auto &internal_port = JackTestApi::internal_port_data((jack_port_t*)port->maybe_driver_handle());
-    using Msg = MidiMessage<uint32_t, uint32_t>;
+    using Msg = MidiStorageElem;
 
     auto n1_on = create_noteOn<Msg>(0, 0, 100, 127);
     auto n2_on = create_noteOn<Msg>(0, 0, 110, 127);
@@ -397,7 +396,7 @@ TEST_CASE("Ports - Jack Midi In - get ringbuffer data", "[JackPorts][ports][midi
     auto port = driver->open_midi_port("test", ShoopPortDirection_Input);
     port->set_ringbuffer_n_samples(1024);
     auto &internal_port = JackTestApi::internal_port_data((jack_port_t*)port->maybe_driver_handle());
-    using Msg = MidiMessage<uint32_t, uint32_t>;
+    using Msg = MidiStorageElem;
 
     CHECK(port->get_n_input_notes_active() == 0);
 
@@ -452,10 +451,10 @@ TEST_CASE("Ports - Jack Midi Out - Send", "[JackPorts][ports][midi]") {
 
     auto buf = port->PROC_get_write_data_into_port_buffer(100);
 
-    MidiMessage<uint32_t, uint32_t> m1(0, 3, {0, 1, 2});
-    MidiMessage<uint32_t, uint32_t> m2(0, 3, {0, 1, 2});
-    buf->PROC_write_event_reference(m1);
-    buf->PROC_write_event_reference(m2);
+    MidiStorageElem m1; m1.proc_time = 0; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
+    MidiStorageElem m2; m2.proc_time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
+    buf->write_event(m1);
+    buf->write_event(m2);
     
     port->PROC_process(100);
 
@@ -476,12 +475,12 @@ TEST_CASE("Ports - Jack Midi Out - Sort", "[JackPorts][ports][midi]") {
 
     auto buf = port->PROC_get_write_data_into_port_buffer(100);
 
-    MidiMessage<uint32_t, uint32_t> m1(1, 3, {0, 1, 2});
-    MidiMessage<uint32_t, uint32_t> m2(0, 3, {0, 1, 2});
-    MidiMessage<uint32_t, uint32_t> m3(10, 3, {0, 1, 2});
-    buf->PROC_write_event_reference(m1);
-    buf->PROC_write_event_reference(m2);
-    buf->PROC_write_event_reference(m3);
+    MidiStorageElem m1; m1.proc_time = 1; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
+    MidiStorageElem m2; m2.proc_time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
+    MidiStorageElem m3; m3.proc_time = 10; m3.size = 3; m3.bytes[0] = 0; m3.bytes[1] = 1; m3.bytes[2] = 2;
+    buf->write_event(m1);
+    buf->write_event(m2);
+    buf->write_event(m3);
     
     port->PROC_process(100);
 
@@ -499,10 +498,10 @@ TEST_CASE("Ports - Jack Midi Out - Message Counter", "[JackPorts][ports][midi]")
     port->PROC_prepare(100);
     auto buf = port->PROC_get_write_data_into_port_buffer(100);
 
-    MidiMessage<uint32_t, uint32_t> m1(0, 3, {0, 1, 2});
-    MidiMessage<uint32_t, uint32_t> m2(0, 3, {0, 1, 2});
-    buf->PROC_write_event_reference(m1);
-    buf->PROC_write_event_reference(m2);
+    MidiStorageElem m1; m1.proc_time = 0; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
+    MidiStorageElem m2; m2.proc_time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
+    buf->write_event(m1);
+    buf->write_event(m2);
 
     port->PROC_process(100);
 
@@ -511,10 +510,10 @@ TEST_CASE("Ports - Jack Midi Out - Message Counter", "[JackPorts][ports][midi]")
 
     port->PROC_prepare(100);
     buf = port->PROC_get_write_data_into_port_buffer(100);
-    buf->PROC_write_event_reference(m1);
-    buf->PROC_write_event_reference(m2);
-    buf->PROC_write_event_reference(m1);
-    buf->PROC_write_event_reference(m2);
+    buf->write_event(m1);
+    buf->write_event(m2);
+    buf->write_event(m1);
+    buf->write_event(m2);
 
     port->PROC_process(100);
 
@@ -533,8 +532,8 @@ TEST_CASE("Ports - Jack Midi Out - Message Counter", "[JackPorts][ports][midi]")
     port->set_muted(true);
     port->PROC_prepare(100);
     buf = port->PROC_get_write_data_into_port_buffer(100);
-    buf->PROC_write_event_reference(m1);
-    buf->PROC_write_event_reference(m2);
+    buf->write_event(m1);
+    buf->write_event(m2);
 
     port->PROC_process(100);
 
@@ -556,35 +555,35 @@ TEST_CASE("Ports - Jack Midi Out - Note Tracker", "[JackPorts][ports][midi]") {
 
     port->PROC_prepare(1);
     auto buf = port->PROC_get_write_data_into_port_buffer(1);
-    buf->PROC_write_event_reference(n1_on);
+    buf->write_event(n1_on);
     port->PROC_process(1);
 
     CHECK(port->get_n_output_notes_active() == 1);
 
     port->PROC_prepare(1);
     buf = port->PROC_get_write_data_into_port_buffer(1);
-    buf->PROC_write_event_reference(n1_on); // duplicate
+    buf->write_event(n1_on); // duplicate
     port->PROC_process(1);
 
     CHECK(port->get_n_output_notes_active() == 1);
 
     port->PROC_prepare(1);
     buf = port->PROC_get_write_data_into_port_buffer(1);
-    buf->PROC_write_event_reference(n2_on);
+    buf->write_event(n2_on);
     port->PROC_process(1);
 
     CHECK(port->get_n_output_notes_active() == 2);
 
     port->PROC_prepare(1);
     buf = port->PROC_get_write_data_into_port_buffer(1);
-    buf->PROC_write_event_reference(n1_off);
+    buf->write_event(n1_off);
     port->PROC_process(1);
 
     CHECK(port->get_n_output_notes_active() == 1);
 
     port->PROC_prepare(1);
     buf = port->PROC_get_write_data_into_port_buffer(1);
-    buf->PROC_write_event_reference(n2_off);
+    buf->write_event(n2_off);
     port->PROC_process(1);
 
     CHECK(port->get_n_output_notes_active() == 0);
@@ -604,10 +603,10 @@ TEST_CASE("Ports - Jack Midi Out - Mute", "[JackPorts][ports][midi]") {
 
     auto buf = port->PROC_get_write_data_into_port_buffer(100);
 
-    MidiMessage<uint32_t, uint32_t> m1(0, 3, {0, 1, 2});
-    MidiMessage<uint32_t, uint32_t> m2(0, 3, {0, 1, 2});
-    buf->PROC_write_event_reference(m1);
-    buf->PROC_write_event_reference(m2);
+    MidiStorageElem m1; m1.proc_time = 0; m1.size = 3; m1.bytes[0] = 0; m1.bytes[1] = 1; m1.bytes[2] = 2;
+    MidiStorageElem m2; m2.proc_time = 0; m2.size = 3; m2.bytes[0] = 0; m2.bytes[1] = 1; m2.bytes[2] = 2;
+    buf->write_event(m1);
+    buf->write_event(m2);
     
     port->PROC_process(100);
 

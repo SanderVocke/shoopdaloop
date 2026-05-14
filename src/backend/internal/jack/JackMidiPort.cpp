@@ -7,36 +7,21 @@
 #include "types.h"
 
 template<typename API>
-GenericJackMidiInputPort<API>::JackMidiReadBuffer::JackMidiReadBuffer() : m_jack_buffer(nullptr) {}
-        
-template<typename API>
-bool GenericJackMidiInputPort<API>::JackMidiReadBuffer::read_by_reference_supported() const {
-    return false;
-}
-
-template<typename API>
-uint32_t GenericJackMidiInputPort<API>::JackMidiReadBuffer::PROC_get_n_events() const {
+uint32_t GenericJackMidiInputPort<API>::JackMidiReadBuffer::n_events() const {
     if (!m_jack_buffer) { return 0; }
     auto rval = API::midi_get_event_count(m_jack_buffer);
     return rval;
 }
 
 template<typename API>
-MidiSortableMessageInterface const& GenericJackMidiInputPort<API>::JackMidiReadBuffer::PROC_get_event_reference(uint32_t idx) {
-    throw std::runtime_error("Attempt to read from jack midi port by reference");
-}
-
-template<typename API>
-void GenericJackMidiInputPort<API>::JackMidiReadBuffer::PROC_get_event_value(uint32_t idx,
-                                uint32_t &size_out,
-                                uint32_t &time_out,
-                                const uint8_t* &data_out)
-{
+MidiStorageElem GenericJackMidiInputPort<API>::JackMidiReadBuffer::get_event(uint32_t idx) const {
     jack_midi_event_t event;
     API::midi_event_get(&event, m_jack_buffer, idx);
-    size_out = event.size;
-    time_out = event.time;
-    data_out = event.buffer;
+    MidiStorageElem elem;
+    elem.size = event.size;
+    elem.proc_time = event.time;
+    memcpy(elem.bytes, event.buffer, event.size);
+    return elem;
 }
 
 template<typename API>
@@ -60,29 +45,9 @@ unsigned GenericJackMidiOutputPort<API>::output_connectability() const {
 }
 
 template<typename API>
-GenericJackMidiOutputPort<API>::JackMidiWriteBuffer::JackMidiWriteBuffer() : m_jack_buffer(nullptr) {}
-
-template<typename API>
-bool GenericJackMidiOutputPort<API>::JackMidiWriteBuffer::write_by_reference_supported() const {
-    return true;
-}
-
-template<typename API>
-bool GenericJackMidiOutputPort<API>::JackMidiWriteBuffer::write_by_value_supported() const {
-    return true;
-}
-
-template<typename API>
-void GenericJackMidiOutputPort<API>::JackMidiWriteBuffer::PROC_write_event_reference(MidiSortableMessageInterface const& m) {
-    PROC_write_event_value(m.get_size(), m.get_time(), m.get_data());
-}
-
-template<typename API>
-void GenericJackMidiOutputPort<API>::JackMidiWriteBuffer::PROC_write_event_value(uint32_t size,
-                            uint32_t time,
-                            const uint8_t* data) {
+void GenericJackMidiOutputPort<API>::JackMidiWriteBuffer::write_event(MidiStorageElem event) {
     if(!m_jack_buffer) { return; }
-    API::midi_event_write(m_jack_buffer, time, data, size);
+    API::midi_event_write(m_jack_buffer, event.proc_time, event.bytes, event.size);
 }
 
 template<typename API>
@@ -108,12 +73,14 @@ void GenericJackMidiInputPort<API>::PROC_process(uint32_t nframes) {
 }
 
 template<typename API>
-MidiReadableBufferInterface *GenericJackMidiInputPort<API>::PROC_internal_read_input_data_buffer(uint32_t nframes) {
+MidiReadableBuffer *GenericJackMidiInputPort<API>::PROC_internal_read_input_data_buffer(uint32_t nframes) {
+    (void)nframes;
     return &m_read_buffer;
 }
 
 template<typename API>
-MidiWriteableBufferInterface *GenericJackMidiOutputPort<API>::PROC_internal_write_output_data_to_buffer(uint32_t nframes) {
+MidiWriteableBuffer *GenericJackMidiOutputPort<API>::PROC_internal_write_output_data_to_buffer(uint32_t nframes) {
+    (void)nframes;
     return &m_write_buffer;
 }
 

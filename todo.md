@@ -64,7 +64,7 @@ For details, see `plan.md`.
 
 ## Phase 2: Buffer Implementations
 
-### [ ] 2.1: Refactor `MidiSortingBuffer`
+### [x] 2.1: Refactor `MidiSortingBuffer`
 
 **Goal:** Simplify to single vector storage, remove reference support
 
@@ -94,7 +94,7 @@ For details, see `plan.md`.
 
 ---
 
-### [ ] 2.2: Update `MidiPort.h`
+### [x] 2.2: Update `MidiPort.h`
 
 **Goal:** Simplify buffer pointer storage, remove old interface references
 
@@ -111,7 +111,7 @@ For details, see `plan.md`.
 
 ---
 
-### [ ] 2.3: Update `MidiPort.cpp`
+### [x] 2.3: Update `MidiPort.cpp`
 
 **Goal:** Implement simplified buffer retrieval
 
@@ -126,7 +126,7 @@ For details, see `plan.md`.
 
 ---
 
-### [ ] 2.4: Update `DummyMidiPort`
+### [x] 2.4: Update `DummyMidiPort`
 
 **Goal:** Remove reference support, use simplified copy-only interface
 

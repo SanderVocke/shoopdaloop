@@ -8,18 +8,16 @@
 #undef max
 #endif
 
-
-MidiSortableMessageInterface &
-DummyMidiPort::PROC_get_event_reference(uint32_t idx) {
+MidiStorageElem DummyMidiPort::get_event(uint32_t idx) const {
     try {
         if (!m_queued_msgs.empty()) {
-            auto &m =  m_queued_msgs.at(idx);
-            uint32_t time = m.get_time();
+            auto &m = m_queued_msgs.at(idx);
+            uint32_t time = m.proc_time;
             ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Read queued midi message @ {}", time);
             return m;
         } else {
-            auto &m =  m_buffer_data.at(idx);
-            uint32_t time = m.get_time();
+            auto &m = m_buffer_data.at(idx);
+            uint32_t time = m.proc_time;
             ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Read buffer midi message @ {}", time);
             return m;
         }
@@ -28,24 +26,10 @@ DummyMidiPort::PROC_get_event_reference(uint32_t idx) {
     }
 }
 
-void DummyMidiPort::PROC_write_event_value(uint32_t size, uint32_t time,
-                                           const uint8_t *data)
-{
-    ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Write midi message value to internal buffer @ {}", time);
-    m_buffer_data.push_back(StoredMessage(time, size, std::vector<uint8_t>(data, data + size)));
+void DummyMidiPort::write_event(MidiStorageElem event) {
+    ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Write midi message value to internal buffer @ {}", event.proc_time);
+    m_buffer_data.push_back(event);
 }
-
-void DummyMidiPort::PROC_write_event_reference(
-    MidiSortableMessageInterface const &m)
-{
-    uint32_t t = m.get_time();
-    ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Write midi message reference @ {}", t);
-    PROC_write_event_value(m.get_size(), m.get_time(), m.get_data());
-}
-
-bool DummyMidiPort::write_by_reference_supported() const { return true; }
-
-bool DummyMidiPort::write_by_value_supported() const { return true; }
 
 DummyMidiPort::DummyMidiPort(std::string name, shoop_port_direction_t direction, shoop_weak_ptr<DummyExternalConnections> external_connections)
     : MidiPort(true, true, true),
@@ -72,9 +56,13 @@ void DummyMidiPort::clear_queues() {
 void DummyMidiPort::queue_msg(uint32_t size, uint32_t time, uint8_t const *data) {
     exec_process_thread_command([=]() {
         ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Queueing midi message @ {}", time);
-        m_queued_msgs.push_back(StoredMessage(time, size, std::vector<uint8_t>(data, data + size)));
-        std::stable_sort(this->m_queued_msgs.begin(), this->m_queued_msgs.end(), [](StoredMessage const& a, StoredMessage const& b) {
-            return a.time < b.time;
+        MidiStorageElem msg;
+        msg.proc_time = time;
+        msg.size = size;
+        memcpy(msg.bytes, data, size);
+        m_queued_msgs.push_back(msg);
+        std::stable_sort(this->m_queued_msgs.begin(), this->m_queued_msgs.end(), [](const MidiStorageElem &a, const MidiStorageElem &b) {
+            return a.proc_time < b.proc_time;
         });
     });
 }
@@ -108,17 +96,17 @@ void DummyMidiPort::PROC_prepare(uint32_t nframes) {
 
         // The queue was used last pass and needs to be truncated now for the current pass.
         // (first erase msgs that will end up having a negative timestamp)
-        std::erase_if(m_queued_msgs, [&, this](StoredMessage const& msg) {
-            auto rval = msg.time < progress_by;
+        std::erase_if(m_queued_msgs, [&, this](const MidiStorageElem &msg) {
+            auto rval = msg.proc_time < progress_by;
             if (rval) {
                 this->ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("msg dropped from MIDI dummy input queue");
             }
             return rval;
         });
-        std::for_each(m_queued_msgs.begin(), m_queued_msgs.end(), [&](StoredMessage &msg) {
-            auto new_val = msg.time - progress_by;
-            ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("msg in queue: time {} -> {}", msg.time, new_val);
-            msg.time = new_val;
+        std::for_each(m_queued_msgs.begin(), m_queued_msgs.end(), [&](MidiStorageElem &msg) {
+            auto new_val = msg.proc_time - progress_by;
+            ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("msg in queue: time {} -> {}", msg.proc_time, new_val);
+            msg.proc_time = new_val;
         });
     }
     n_processed_last_round = 0;
@@ -131,15 +119,17 @@ void DummyMidiPort::PROC_process(uint32_t nframes) {
         ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("Process {}", nframes);
     }
     if (m_direction == shoop_port_direction_t::ShoopPortDirection_Output) {
-        std::stable_sort(m_buffer_data.begin(), m_buffer_data.end(), [](StoredMessage const& a, StoredMessage const& b) {
-            return a.time < b.time;
+        std::stable_sort(m_buffer_data.begin(), m_buffer_data.end(), [](const MidiStorageElem &a, const MidiStorageElem &b) {
+            return a.proc_time < b.proc_time;
         });
         if (!get_muted()) {
             for (auto &msg: m_buffer_data) {
-                if (msg.time < n_requested_frames) {
-                    uint32_t new_time = msg.time + (n_original_requested_frames - n_requested_frames);
-                    ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Write midi message value to external queue @ {} -> {} {} {}", msg.time, new_time, n_original_requested_frames.load(), n_requested_frames.load());
-                    m_written_requested_msgs.push_back(StoredMessage(new_time, msg.size, msg.data));
+                if (msg.proc_time < n_requested_frames) {
+                    uint32_t new_time = msg.proc_time + (n_original_requested_frames - n_requested_frames);
+                    ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Write midi message value to external queue @ {} -> {} {} {}", msg.proc_time, new_time, n_original_requested_frames.load(), n_requested_frames.load());
+                    MidiStorageElem out_msg = msg;
+                    out_msg.proc_time = new_time;
+                    m_written_requested_msgs.push_back(out_msg);
                 }
             }
         } else {
@@ -151,23 +141,23 @@ void DummyMidiPort::PROC_process(uint32_t nframes) {
     MidiPort::PROC_process(nframes);
 }
 
-MidiReadableBufferInterface *
+MidiReadableBuffer *
 DummyMidiPort::PROC_get_read_output_data_buffer(uint32_t n_frames) {
-    return (static_cast<MidiReadableBufferInterface *>(this));
+    return (static_cast<MidiReadableBuffer *>(this));
 }
 
-MidiWriteableBufferInterface *
+MidiWriteableBuffer *
 DummyMidiPort::PROC_get_write_data_into_port_buffer(uint32_t n_frames) {
     current_buf_frames = n_frames;
     m_buffer_data.clear();
-    return (static_cast<MidiWriteableBufferInterface *>(this));
+    return (static_cast<MidiWriteableBuffer *>(this));
 }
 
-uint32_t DummyMidiPort::PROC_get_n_events() const {
+uint32_t DummyMidiPort::n_events() const {
     uint32_t r = 0;
     if (!m_queued_msgs.empty()) {
         for (auto it = m_queued_msgs.begin(); it != m_queued_msgs.end(); ++it) {
-            if (it->time < current_buf_frames) {
+            if (it->proc_time < current_buf_frames) {
                 r++;
             } else {
                 break;
@@ -176,18 +166,6 @@ uint32_t DummyMidiPort::PROC_get_n_events() const {
         return r;
     }
     return m_buffer_data.size();
-}
-
-bool DummyMidiPort::read_by_reference_supported() const { return true; }
-
-void DummyMidiPort::PROC_get_event_value(uint32_t idx,
-                                         uint32_t &size_out,
-                                         uint32_t &time_out,
-                                         const uint8_t *&data_out) {
-    auto &msg = PROC_get_event_reference(idx);
-    size_out = msg.get_size();
-    time_out = msg.get_time();
-    data_out = msg.get_data();
 }
 
 std::vector<DummyMidiPort::StoredMessage> DummyMidiPort::get_written_requested_msgs() {

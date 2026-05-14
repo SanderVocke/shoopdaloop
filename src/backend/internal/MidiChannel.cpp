@@ -2,6 +2,7 @@
 #include "LoggingBackend.h"
 #include "MidiChannel.h"
 #include "MidiPort.h"
+#include "MidiBuffer.h"
 #include "MidiStateDiffTracker.h"
 #include "MidiStateTracker.h"
 #include "MidiStorage.h"
@@ -265,18 +266,15 @@ MidiChannel::PROC_process_input_messages(uint32_t n_samples) {
     uint32_t end = recbuf.first.n_frames_processed + n;
     for (uint32_t idx = recbuf.first.n_events_processed; idx < recbuf.first.n_events_total;
          idx++) {
-        uint32_t t;
-        uint32_t s;
-        const uint8_t *d;
-        recbuf.second->PROC_get_event_reference(idx).get(s, t, d);
-        if (t >= end) {
+        auto event = recbuf.second->get_event(idx);
+        if (event.proc_time >= end) {
             // Will handle in a future process iteration
             break;
         } else {
             // Regardless of whether we record or not, we need to keep the input
             // port state up-to-date.
             log<log_level_debug_trace>("Basic processing of msg {} of {}", idx, recbuf.first.n_events_total);
-            mp_input_midi_state->process_msg(d);
+            mp_input_midi_state->process_msg(event.bytes);
             recbuf.first.n_events_processed++;
         }
     }
@@ -307,21 +305,18 @@ MidiChannel::PROC_process_record(Storage &storage,
     uint32_t record_end = recbuf.first.n_frames_processed + n_samples;
     for (uint32_t idx = recbuf.first.n_events_processed; idx < recbuf.first.n_events_total;
          idx++) {
-        uint32_t t;
-        uint32_t s;
-        const uint8_t *d;
-        recbuf.second->PROC_get_event_reference(idx).get(s, t, d);
-        if (t >= record_end) {
+        auto event = recbuf.second->get_event(idx);
+        if (event.proc_time >= record_end) {
             // Will handle in a future process iteration
             log<log_level_debug_trace>("defer msg @ {}: {} {} {}",
-                    t,
-                    (s > 0) ? (int)d[0] : -1,
-                    (s > 1) ? (int)d[1] : -1,
-                    (s > 2) ? (int)d[2] : -1
+                    event.proc_time,
+                    (event.size > 0) ? (int)event.bytes[0] : -1,
+                    (event.size > 1) ? (int)event.bytes[1] : -1,
+                    (event.size > 2) ? (int)event.bytes[2] : -1
                 );
             break;
         } else {
-            if (t >=
+            if (event.proc_time >=
                 recbuf.first.n_frames_processed) { // Don't store any message that
                                                    // came before our process window
                 // If here, we are about to record a message.
@@ -333,20 +328,20 @@ MidiChannel::PROC_process_record(Storage &storage,
                     track_start_state.start_tracking_from(mp_input_midi_state);
                 }
                 log<log_level_debug_trace>("record msg @ {}: {} {} {}",
-                    t,
-                    (s > 0) ? (int)d[0] : -1,
-                    (s > 1) ? (int)d[1] : -1,
-                    (s > 2) ? (int)d[2] : -1
+                    event.proc_time,
+                    (event.size > 0) ? (int)event.bytes[0] : -1,
+                    (event.size > 1) ? (int)event.bytes[1] : -1,
+                    (event.size > 2) ? (int)event.bytes[2] : -1
                 );
-                storage.append(record_from + (uint32_t)t -
+                storage.append(record_from + (uint32_t)event.proc_time -
                                    recbuf.first.n_frames_processed,
-                               (uint16_t)s, d);
+                               event.size, event.bytes);
                 changed = true;
             }
 
             // Regardless of whether we record or not, we need to keep the input
             // port state up-to-date.
-            mp_input_midi_state->process_msg(d);
+            mp_input_midi_state->process_msg(event.bytes);
 
             recbuf.first.n_events_processed++;
         }
@@ -388,8 +383,11 @@ MidiChannel::PROC_send_all_sound_off(unsigned frame) {
         throw_error<std::runtime_error>(
             "Attempting to play back out of bounds");
     }
-    PROC_send_message_value(*buf.second,
-        frame, 3, (uint8_t*) all_sound_off_data);
+    MidiStorageElem event;
+    event.proc_time = frame;
+    event.size = 3;
+    memcpy(event.bytes, all_sound_off_data, 3);
+    PROC_send_message(*buf.second, event);
 }
 
 void
@@ -400,30 +398,9 @@ MidiChannel::PROC_reset_midi_state_tracking() {
 }
 
 void
-MidiChannel::PROC_send_message_ref(MidiWriteableBufferInterface &buf, MidiSortableMessageInterface const &event) {
-
-    if (buf.write_by_reference_supported()) {
-        buf.PROC_write_event_reference(event);
-        mp_output_midi_state->process_msg(event.get_data());
-    } else if (buf.write_by_value_supported()) {
-        buf.PROC_write_event_value(event.get_size(), event.get_time(),
-                                   event.get_data());
-        mp_output_midi_state->process_msg(event.get_data());
-    } else {
-        throw_error<std::runtime_error>(
-            "Midi write buffer does not support any write methods");
-    }
-}
-
-void
-MidiChannel::PROC_send_message_value(MidiWriteableBufferInterface &buf, uint32_t time, uint32_t size, uint8_t *data) {
-
-    if (!buf.write_by_value_supported()) {
-        throw_error<std::runtime_error>(
-            "Midi write buffer does not support value write method");
-    }
-    buf.PROC_write_event_value(size, time, data);
-    mp_output_midi_state->process_msg(data);
+MidiChannel::PROC_send_message(MidiWriteableBuffer &buf, MidiStorageElem event) {
+    buf.write_event(event);
+    mp_output_midi_state->process_msg(event.bytes);
 }
 
 void
@@ -489,7 +466,11 @@ MidiChannel::PROC_process_playback(uint32_t our_pos, uint32_t our_length, uint32
                     log<log_level_debug_trace>("  - Restore msg @ {}: {} {} {}",
                                         time,
                                         data[0], data[1], data[2]);
-                    PROC_send_message_value(*buf.second, time, size, data);
+                    MidiStorageElem event;
+                    event.size = size;
+                    event.proc_time = time;
+                    memcpy(event.bytes, data, size);
+                    PROC_send_message(*buf.second, event);
                 });
             mp_track_state_until_first_msg_playback->set_valid(false);
         }
@@ -510,14 +491,14 @@ MidiChannel::PROC_process_playback(uint32_t our_pos, uint32_t our_length, uint32
 
                 log<log_level_debug_trace>("playback: play msg @ {}", event->storage_time);
                 event->proc_time = proc_time;
-                PROC_send_message_ref(*buf.second, *event);
+                PROC_send_message(*buf.second, *event);
                 ma_last_played_back_sample = event->storage_time;
                 ma_n_events_triggered++;
             }
         }
         if (mp_track_state_until_first_msg_playback->valid()) {
             log<log_level_debug>("playback: skip msg but apply to state @ {}", event->storage_time);
-            mp_track_state_until_first_msg_playback->state->process_msg(event->get_data());
+            mp_track_state_until_first_msg_playback->state->process_msg(event->data());
         }
         buf.first.n_events_processed++;
         mp_playback_cursor->next();
@@ -562,21 +543,21 @@ PROC_get_next_poi(shoop_loop_mode_t mode, std::optional<shoop_loop_mode_t> maybe
 }
 
 void
-MidiChannel::PROC_set_playback_buffer(MidiWriteableBufferInterface *buffer,
+MidiChannel::PROC_set_playback_buffer(MidiWriteableBuffer *buffer,
                               uint32_t n_frames) {
     mp_playback_target_buffer = std::make_pair(ExternalBufState(), buffer);
     mp_playback_target_buffer.value().first.n_frames_total = n_frames;
 }
 
 void
-MidiChannel::PROC_set_recording_buffer(MidiReadableBufferInterface *buffer,
+MidiChannel::PROC_set_recording_buffer(MidiReadableBuffer *buffer,
                                uint32_t n_frames) {
     if (!buffer) return;
     mp_recording_source_buffer =
         std::make_pair(ExternalBufState(), buffer);
     mp_recording_source_buffer.value().first.n_frames_total = n_frames;
     mp_recording_source_buffer.value().first.n_events_total =
-        buffer->PROC_get_n_events();
+        buffer->n_events();
 }
 
 typename MidiChannel::Contents
