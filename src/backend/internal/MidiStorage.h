@@ -12,6 +12,12 @@ class MidiStorageCore;
 class MidiStorageCursor;
 class RustMidiStorage;
 
+// MidiRingbuffer is now in its own header
+#include "MidiRingbuffer.h"
+
+// Include for RustMidiStorage methods used by MidiRingbuffer
+#include "RustMidiStorage.h"
+
 // MidiStorageCore: Contains the raw ringbuffer data and basic operations.
 // This is the core storage that can be easily bridged to Rust.
 // Implements IMidiStorageCore and IMidiStorageOperations for FFI compatibility.
@@ -278,62 +284,7 @@ private:
     std::atomic<uint32_t> current_buffer_end_time = 0;
 };
 
-// MidiRingbuffer: Contains a MidiStorage and MidiRingbufferCore
-class MidiRingbuffer : public ModuleLoggingEnabled<"Backend.MidiStorage"> {
-public:
-    using Storage = MidiStorage;
-
-private:
-    shoop_shared_ptr<IMidiStorage> m_storage;
-    std::unique_ptr<MidiRingbufferCore> m_time_window;
-
-public:
-    MidiRingbuffer(uint32_t data_size);
-
-    // Set N samples. Also truncates the tail such that older data is erased.
-    void set_n_samples(uint32_t n) { m_time_window->set_n_samples(n); }
-
-    uint32_t get_n_samples() const { return m_time_window->get_n_samples(); }
-    uint32_t get_current_start_time() const { return m_time_window->get_current_start_time(); }
-    uint32_t get_current_end_time() const { return m_time_window->get_current_end_time(); }
-
-    // Increment the current time. Also truncates the tail such that out-of-range data is erased.
-    void next_buffer(uint32_t n_frames, DroppedMsgCallback dropped_msg_cb = nullptr) {
-        m_time_window->next_buffer(n_frames, dropped_msg_cb);
-    }
-
-    // Put a message at the head of the ringbuffer.
-    bool put(uint32_t frame_in_current_buffer, uint16_t size, const uint8_t* data, DroppedMsgCallback dropped_msg_cb = nullptr) {
-        return m_time_window->put(frame_in_current_buffer, size, data, dropped_msg_cb);
-    }
-
-    // Copy the current state of the ringbuffer to the target storage.
-    // The timestamps on the messages in "target" are set such that
-    // the time at "start_offset_from_end" before the current buffer end
-    // is considered zero. If not given, the buffer length is used.
-    // All messages before that point are truncated away.
-    void snapshot(IMidiStorage &target, std::optional<uint32_t> start_offset_from_end = std::nullopt) const {
-        m_time_window->snapshot(target, start_offset_from_end);
-    }
-
-    // Access underlying storage (via IMidiStorage interface)
-    IMidiStorage& storage() { return *m_storage; }
-    const IMidiStorage& storage() const { return *m_storage; }
-
-    // Delegating methods for backward compatibility with consumers that use MidiStorage methods
-    uint32_t n_events() const { return m_storage->n_events(); }
-    uint32_t bytes_capacity() const { return m_storage->bytes_capacity(); }
-    bool full() const { return m_storage->full(); }
-
-    // Cursor creation - returns MidiStorageCursor compatible cursor
-    // Note: m_storage can be MidiStorage or RustMidiStorage, both create MidiStorageCursor
-    shoop_shared_ptr<MidiStorageCursor> create_cursor();
-
-private:
-    // Helper to create a shared_ptr from MidiRingbuffer itself for cursor creation
-    shoop_shared_ptr<MidiRingbuffer> shared_from_this() {
-        return shoop_shared_ptr<MidiRingbuffer>(this, [](MidiRingbuffer*){});
-    }
-
-public:
-};
+// MidiRingbuffer: A thin C++ wrapper around Rust MIDI storage.
+// All core logic is handled by Rust (MidiTimeWindow + MidiStorageCore).
+// Full definition is in RustMidiStorage.cpp to avoid circular includes.
+class MidiRingbuffer;

@@ -2,18 +2,16 @@
 
 #include "MidiStorageElem.h"
 #include "IMidiStorageCore.h"
-#include "backend_rust/src/midi_storage_cxx.rs.h"
 #include "shoop_shared_ptr.h"
+#include "backend_rust/src/midi_storage_cxx.rs.h"
 #include <cstdint>
 #include <memory>
 #include <functional>
 #include <vector>
 
-// Forward declaration for cursor
+// Forward declarations
 class MidiStorageCursor;
-
-// Include MidiStorage.h for MidiStorageCursor definition
-#include "MidiStorage.h"
+class MidiRingbuffer;  // Full definition in MidiStorage.h (included by this header's includer)
 
 /**
  * RustMidiStorage - A wrapper that uses Rust for basic queries

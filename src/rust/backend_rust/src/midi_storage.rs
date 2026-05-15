@@ -126,8 +126,7 @@ impl MidiTimeWindow {
         let old_end = self.current_buffer_end_time;
         let new_end = old_end.wrapping_add(n_frames);
 
-        // Check for overflow using wrapping comparison (wrapping add may result in new_end > old_end even on overflow)
-        // Use the standard wrapping comparison: new_end < old_end when there was overflow of unsigned addition
+        // Check for overflow using wrapping comparison
         let overflow = new_end < old_end;
 
         let adjusted_new_end: u32;
@@ -288,6 +287,12 @@ impl MidiStorageCore {
     /// This is the actual array index, not related to logical order.
     pub fn get_elem_at_physical_offset_ref(&self, idx: u32) -> Option<&MidiStorageElem> {
         self.data.get(idx as usize)
+    }
+
+    /// Get element at a raw physical offset (mutable version).
+    /// This is the actual array index, not related to logical order.
+    pub fn get_elem_at_physical_offset_mut(&mut self, idx: u32) -> Option<&mut MidiStorageElem> {
+        self.data.get_mut(idx as usize)
     }
 
     /// Get element at logical index (0 = oldest message, increasing toward newest).

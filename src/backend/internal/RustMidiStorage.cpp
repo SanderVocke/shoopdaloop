@@ -1,7 +1,9 @@
+#include "MidiRingbuffer.h"
 #include "RustMidiStorage.h"
-#include "MidiStorage.h"
+#include "MidiStorage.h"  // For MidiStorage and MidiStorageCursor
 #include "MidiStorageElem.h"
 #include "IMidiStorageCore.h"
+#include "backend_rust/src/midi_storage_cxx.rs.h"
 #include <stdexcept>
 #include <cstring>
 #include <array>
@@ -399,4 +401,59 @@ void RustMidiStorage::snapshot(RustMidiStorage& target, std::optional<uint32_t> 
             std::cerr << "[C++ DEBUG]     logical=" << i << ", phys=" << phys << ", time=" << elem->time << ", size=" << elem->size << std::endl;
         }
     }
+}
+// MidiRingbuffer implementation - thin wrapper around Rust storage
+// All core logic is handled by Rust (MidiTimeWindow + MidiStorageCore)
+
+MidiRingbuffer::MidiRingbuffer(uint32_t data_size)
+    : m_storage(shoop_make_shared<RustMidiStorage>(data_size))
+{}
+
+void MidiRingbuffer::set_n_samples(uint32_t n) {
+    m_storage->set_n_samples(n);
+}
+
+uint32_t MidiRingbuffer::get_n_samples() const {
+    return m_storage->get_n_samples();
+}
+
+uint32_t MidiRingbuffer::get_current_start_time() const {
+    return m_storage->get_current_start_time();
+}
+
+uint32_t MidiRingbuffer::get_current_end_time() const {
+    return m_storage->get_current_end_time();
+}
+
+void MidiRingbuffer::next_buffer(uint32_t n_frames, DroppedMsgCallback dropped_msg_cb) {
+    m_storage->next_buffer(n_frames, dropped_msg_cb);
+}
+
+bool MidiRingbuffer::put(uint32_t frame_in_current_buffer, uint16_t size, const uint8_t* data, DroppedMsgCallback dropped_msg_cb) {
+    return m_storage->put(frame_in_current_buffer, size, data, dropped_msg_cb);
+}
+
+void MidiRingbuffer::snapshot(IMidiStorage &target, std::optional<uint32_t> start_offset_from_end) const {
+    // Handle RustMidiStorage target directly (efficient)
+    if (auto* rust_target = dynamic_cast<RustMidiStorage*>(&target)) {
+        m_storage->snapshot(*rust_target, start_offset_from_end);
+        return;
+    }
+    // Handle MidiStorage target via Rust snapshot then copy
+    auto temp = shoop_make_shared<RustMidiStorage>(target.bytes_capacity());
+    m_storage->snapshot(*temp, start_offset_from_end);
+    target.clear();
+    temp->copy(target);
+}
+
+IMidiStorage& MidiRingbuffer::storage() {
+    return *m_storage;
+}
+
+const IMidiStorage& MidiRingbuffer::storage() const {
+    return *m_storage;
+}
+
+shoop_shared_ptr<MidiStorageCursor> MidiRingbuffer::create_cursor() {
+    return m_storage->create_cursor();
 }

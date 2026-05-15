@@ -143,6 +143,15 @@ mod ffi {
             out: *mut u8,
             max_len: usize,
         );
+
+        // for_each_msg_modify - iterates and modifies all messages in storage
+        // callback_fn: raw function pointer (usize) to call for each message
+        // callback takes: (time: *mut u32, size: *mut u16, data: *mut u8, ctx: usize)
+        unsafe fn for_each_msg_modify(
+            storage: &mut MidiStorageCore,
+            callback_fn: usize,
+            callback_ctx: usize,
+        );
     }
 }
 
@@ -449,6 +458,36 @@ unsafe fn get_elem_bytes_at_logical_index(
     if let Some(elem) = storage.get_elem_logical_ref(idx) {
         let len = std::cmp::min(elem.size as usize, max_len);
         std::ptr::copy_nonoverlapping(elem.data().as_ptr(), out, len);
+    }
+}
+
+// Callback type for for_each_msg_modify
+// Signature: fn(time: *mut u32, size: *mut u16, data: *mut u8, ctx: usize)
+type ForEachModifyCallback = unsafe extern "C" fn(*mut u32, *mut u16, *mut u8, usize);
+
+/// Iterate over all messages and apply a callback to modify them
+/// The callback receives pointers to time, size, and data, allowing mutation
+unsafe fn for_each_msg_modify(storage: &mut MidiStorageCore, callback_fn: usize, callback_ctx: usize) {
+    if callback_fn == 0 {
+        return;
+    }
+    let cb: ForEachModifyCallback = std::mem::transmute(callback_fn);
+    
+    let n_events = storage.n_events();
+    let capacity = storage.capacity();
+    if n_events == 0 || capacity == 0 {
+        return;
+    }
+    
+    let tail = storage.raw_tail();
+    for i in 0..n_events {
+        let phys_idx = (tail + i) % capacity;
+        if let Some(elem) = storage.get_elem_at_physical_offset_mut(phys_idx) {
+            let time_ptr = &mut elem.time as *mut u32;
+            let size_ptr = &mut elem.size as *mut u16;
+            let data_ptr = elem.bytes.as_mut_ptr();
+            cb(time_ptr, size_ptr, data_ptr, callback_ctx);
+        }
     }
 }
 
