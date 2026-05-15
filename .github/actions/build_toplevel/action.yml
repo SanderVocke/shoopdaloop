@@ -56,9 +56,6 @@ runs:
       echo "Preparing environment"
       echo "=========================================="
       printf "\n\n\n\n\n\n"
-      exit 1
-  - uses: ./.github/actions/checkpoint
-    if: always()
   - name: Download upload URL for release assets
     if: always() && inputs.upload_release_assets == 'true'
     uses: actions/download-artifact@v4
