@@ -1,5 +1,6 @@
 #pragma once
 #include "MidiStorageElem.h"
+#include "shoop_shared_ptr.h"
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -87,4 +88,15 @@ public:
 class IMidiStorage : public IMidiStorageCore, public IMidiStorageOperations {
 public:
     virtual ~IMidiStorage() = default;
+
+    // Cursor management - using shared_ptr of the concrete cursor type
+    // Subclasses should define their own SharedCursor type and implement this
+    virtual shoop_shared_ptr<void> create_cursor_shared() = 0;
 };
+
+// Template for cursor creation in MidiStorage
+template<typename StorageType>
+shoop_shared_ptr<typename StorageType::Cursor>
+create_storage_cursor(shoop_shared_ptr<StorageType> storage) {
+    return storage->create_cursor();
+}

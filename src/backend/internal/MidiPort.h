@@ -67,7 +67,7 @@ public:
 
     void set_ringbuffer_n_samples(unsigned n) override;
     unsigned get_ringbuffer_n_samples() const override;
-    void PROC_snapshot_ringbuffer_into(MidiStorage &s) const;
+    void PROC_snapshot_ringbuffer_into(IMidiStorage &s) const;
 
     MidiPort(
         bool track_notes,

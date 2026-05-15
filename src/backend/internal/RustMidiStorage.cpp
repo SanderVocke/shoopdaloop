@@ -1,7 +1,11 @@
 #include "RustMidiStorage.h"
+#include "MidiStorage.h"
 #include "MidiStorageElem.h"
+#include "IMidiStorageCore.h"
 #include <stdexcept>
 #include <cstring>
+#include <array>
+#include <vector>
 
 using namespace backend_rust;
 
@@ -94,28 +98,50 @@ void RustMidiStorage::clear() {
 }
 
 void RustMidiStorage::copy(IMidiStorageCore& target) const {
-    auto* t = dynamic_cast<RustMidiStorage*>(&target);
-    if (!t) {
-        throw std::runtime_error("copy target must be RustMidiStorage");
-    }
-    
-    t->m_data.resize(m_data.size());
-    t->m_tail = 0;
-    t->m_n_events = m_n_events;
+    // Handle RustMidiStorage target
+    if (auto* t = dynamic_cast<RustMidiStorage*>(&target)) {
+        t->m_data.resize(m_data.size());
+        t->m_tail = 0;
+        t->m_n_events = m_n_events;
 
-    if (m_n_events == 0) {
-        t->m_head = 0;
+        if (m_n_events == 0) {
+            t->m_head = 0;
+            return;
+        }
+
+        uint32_t count = 0;
+        uint32_t idx = m_tail;
+        while (count < m_n_events) {
+            t->m_data[count] = m_data[idx];
+            idx = (idx + 1) % m_data.size();
+            count++;
+        }
+        t->m_head = count % m_data.size();
         return;
     }
-
-    uint32_t count = 0;
-    uint32_t idx = m_tail;
-    while (count < m_n_events) {
-        t->m_data[count] = m_data[idx];
-        idx = (idx + 1) % m_data.size();
-        count++;
+    
+    // Handle MidiStorage target - use copy_from by swapping const_cast approach
+    // or delegate to the non-const version
+    auto* t = dynamic_cast<MidiStorage*>(&target);
+    if (t) {
+        t->clear();
+        
+        // Copy elements manually using ringbuffer traversal
+        uint32_t cap = t->bytes_capacity() / sizeof(::MidiStorageElem);
+        uint32_t idx = 0;
+        
+        uint32_t pos = m_tail;
+        for (uint32_t i = 0; i < m_n_events; ++i) {
+            if (idx >= cap) break;
+            const auto& elem = m_data[pos];
+            t->append(elem.time, elem.size, elem.bytes, true, nullptr);
+            pos = (pos + 1) % m_data.size();
+            ++idx;
+        }
+        return;
     }
-    t->m_head = count % m_data.size();
+    
+    throw std::runtime_error("copy target must be RustMidiStorage or MidiStorage");
 }
 
 void RustMidiStorage::copy_from(const IMidiStorageCore& from) {
@@ -223,3 +249,17 @@ void RustMidiStorage::for_each_msg(
         cb(t, s, data);
     });
 }
+
+// Cursor creation - uses shared_from_this pattern
+shoop_shared_ptr<MidiStorageCursor> 
+RustMidiStorage::create_cursor() {
+    auto self = shared_from_this();
+    return shoop_make_shared<MidiStorageCursor>(self);
+}
+
+shoop_shared_ptr<void>
+RustMidiStorage::create_cursor_shared() {
+    return create_cursor();
+}
+
+// Note: shared_from_this() is inherited from shoop_enable_shared_from_this<RustMidiStorage>

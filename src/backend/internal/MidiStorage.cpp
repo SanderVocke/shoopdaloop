@@ -1,4 +1,5 @@
 #include "MidiStorage.h"
+#include "RustMidiStorage.h"
 #include "types.h"
 #include <atomic>
 #include <cstdint>
@@ -303,9 +304,36 @@ void MidiStorage::copy(IMidiStorageCore& to) const {
     if (midi_storage) {
         m_core->copy(*midi_storage->m_core);
     } else {
-        // Fall back to the interface copy which may throw
-        m_core->copy(to);
+        // Try RustMidiStorage - iterate and copy elements using ringbuffer semantics
+        auto* rust_storage = dynamic_cast<RustMidiStorage*>(&to);
+        if (rust_storage) {
+            rust_storage->m_data.resize(m_core->raw_capacity());
+            rust_storage->m_n_events = m_core->n_events();
+            
+            // Copy raw state
+            rust_storage->m_tail = m_core->raw_tail();
+            rust_storage->m_head = m_core->raw_head();
+            
+            // Copy elements using ringbuffer traversal
+            uint32_t idx = m_core->raw_tail();
+            uint32_t count = 0;
+            while (count < m_core->n_events()) {
+                auto* src_elem = m_core->get_elem(idx);
+                if (src_elem) {
+                    rust_storage->m_data[idx] = *src_elem;
+                }
+                idx = (idx + 1) % m_core->raw_capacity();
+                ++count;
+            }
+        } else {
+            throw std::runtime_error("copy target must be MidiStorage or RustMidiStorage");
+        }
     }
+}
+
+shoop_shared_ptr<void> 
+MidiStorage::create_cursor_shared() {
+    return create_cursor();
 }
 
 typename MidiStorage::SharedCursor
@@ -408,7 +436,7 @@ void MidiStorage::for_each_msg_compat(
 // MidiStorageCursor implementation
 
 MidiStorageCursor::MidiStorageCursor(
-    shoop_shared_ptr<Storage> _storage)
+    shoop_shared_ptr<IMidiStorage> _storage)
     : m_storage(_storage) {}
 
 bool MidiStorageCursor::valid() const {

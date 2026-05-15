@@ -131,6 +131,9 @@ public:
     // Cursor management (not part of IMidiStorage)
     SharedCursor create_cursor();
     void clear_cursors();
+    
+    // IMidiStorage interface implementation
+    shoop_shared_ptr<void> create_cursor_shared() override;
 
     // Access to core for time-window operations in MidiRingbuffer
     MidiStorageCore* core() { return m_core.get(); }
@@ -144,20 +147,26 @@ public:
     void for_each_msg_compat(std::function<void(uint32_t t, uint16_t s, uint8_t* data)> cb);
 };
 
-// MidiStorageCursor: Works with MidiStorage, implements IMidiStorageCursor
+// MidiStorageCursor: Works with any IMidiStorage implementation (MidiStorage or RustMidiStorage)
+// Implements IMidiStorageCursor
 class MidiStorageCursor : public ModuleLoggingEnabled<"Backend.MidiStorage">,
                           public IMidiStorageCursor {
 public:
-    using Storage = MidiStorage;
     using Elem = MidiStorageElem;
+    using SharedCursor = shoop_shared_ptr<MidiStorageCursor>;  // Typedef for cursor type
 
 private:
     std::optional<uint32_t> m_offset = std::nullopt;
     std::optional<uint32_t> m_prev_offset = std::nullopt;
-    shoop_shared_ptr<Storage> m_storage = nullptr;
+    shoop_shared_ptr<IMidiStorage> m_storage = nullptr;
 
 public:
-    MidiStorageCursor(shoop_shared_ptr<Storage> _storage);
+    MidiStorageCursor(shoop_shared_ptr<IMidiStorage> _storage);
+    
+    // For backward compatibility with MidiStorage
+    template<typename StorageType>
+    MidiStorageCursor(shoop_shared_ptr<StorageType> _storage) 
+        : m_storage(std::move(_storage)) {}
 
     // IMidiStorageCursor implementation
     // Cursor state
@@ -256,7 +265,7 @@ public:
     // the time at "start_offset_from_end" before the current buffer end
     // is considered zero. If not given, the buffer length is used.
     // All messages before that point are truncated away.
-    void snapshot(MidiStorage &target, std::optional<uint32_t> start_offset_from_end = std::nullopt) const {
+    void snapshot(IMidiStorage &target, std::optional<uint32_t> start_offset_from_end = std::nullopt) const {
         m_time_window->snapshot(target, start_offset_from_end);
     }
 

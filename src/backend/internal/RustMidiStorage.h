@@ -3,10 +3,17 @@
 #include "MidiStorageElem.h"
 #include "IMidiStorageCore.h"
 #include "backend_rust/src/midi_storage_cxx.rs.h"
+#include "shoop_shared_ptr.h"
 #include <cstdint>
 #include <memory>
 #include <functional>
 #include <vector>
+
+// Forward declaration for cursor
+class MidiStorageCursor;
+
+// Include MidiStorage.h for MidiStorageCursor definition
+#include "MidiStorage.h"
 
 /**
  * RustMidiStorage - A wrapper that uses Rust for basic queries
@@ -15,9 +22,11 @@
  * Rust provides: n_events, capacity, full, empty, raw_tail, raw_head, raw_full
  * C++ provides: append, prepend, clear, copy, truncate, iteration
  */
-class RustMidiStorage : public IMidiStorage {
+class RustMidiStorage : public shoop_enable_shared_from_this<RustMidiStorage>,
+                        public IMidiStorage {
 public:
     using Elem = MidiStorageElem;
+    using TruncateSide = MidiStorageTruncateSide;  // For compatibility with MidiStorage
 
     RustMidiStorage(uint32_t data_size);
     virtual ~RustMidiStorage();
@@ -57,7 +66,12 @@ public:
     void for_each_msg_modify(std::function<void(uint32_t&, uint16_t&, uint8_t*)> cb) override;
     void for_each_msg(std::function<void(uint32_t, uint16_t, uint8_t*)> cb) override;
 
+    // Cursor creation using MidiStorageCursor (which works with IMidiStorage)
+    shoop_shared_ptr<MidiStorageCursor> create_cursor();
+    shoop_shared_ptr<void> create_cursor_shared() override;
+
 private:
+    friend class MidiStorage;  // For copy operations
     rust::Box<backend_rust::MidiStorageCore> m_rust_core;
     std::vector<Elem> m_data;
     uint32_t m_tail = 0;
