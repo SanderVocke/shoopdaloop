@@ -41,18 +41,14 @@ void RustMidiStorage::sync_rust_state() {
     }
 }
 
-// Debug flag - set to 1 to enable debug prints, 0 to disable
-#define DEBUG_MIDI_STORAGE 1
-
-#if DEBUG_MIDI_STORAGE
-#include <iostream>
-#define DEBUG_PRINT(msg) std::cerr << "[DEBUG] " << msg << std::endl
-#else
-#define DEBUG_PRINT(msg) 
-#endif
+static void dropped_cb_trampoline(uint32_t time, uint16_t size, const uint8_t* data, uintptr_t ctx) {
+    auto* cb = reinterpret_cast<DroppedMsgCallback*>(ctx);
+    if (*cb) {
+        (*cb)(time, size, data);
+    }
+}
 
 ::MidiStorageElem* RustMidiStorage::get_elem_physical(uint32_t idx) {
-    DEBUG_PRINT("RustMidiStorage::get_elem_physical(phys=" << idx << ") n_events=" << m_n_events << ", cap=" << m_data.size());
     if (m_data.empty()) return nullptr;
     return &m_data[idx % m_data.size()];
 }
@@ -63,7 +59,6 @@ const ::MidiStorageElem* RustMidiStorage::get_elem_physical(uint32_t idx) const 
 }
 
 ::MidiStorageElem* RustMidiStorage::get_elem_logical(uint32_t idx) {
-    DEBUG_PRINT("RustMidiStorage::get_elem_logical(logical=" << idx << ") n_events=" << m_n_events);
     if (idx >= m_n_events || m_data.empty()) return nullptr;
     uint32_t phys_idx = (m_tail + idx) % m_data.size();
     return &m_data[phys_idx];
@@ -73,14 +68,6 @@ const ::MidiStorageElem* RustMidiStorage::get_elem_logical(uint32_t idx) const {
     if (idx >= m_n_events || m_data.empty()) return nullptr;
     uint32_t phys_idx = (m_tail + idx) % m_data.size();
     return &m_data[phys_idx];
-}
-
-// Static trampoline function that forwards to the stored std::function
-static void dropped_cb_trampoline(uint32_t time, uint16_t size, const uint8_t* data, uintptr_t ctx) {
-    auto* cb = reinterpret_cast<DroppedMsgCallback*>(ctx);
-    if (*cb) {
-        (*cb)(time, size, data);
-    }
 }
 
 bool RustMidiStorage::append(uint32_t time, uint16_t size,
@@ -101,14 +88,6 @@ bool RustMidiStorage::append(uint32_t time, uint16_t size,
     
     // Sync state from Rust to C++
     sync_rust_state();
-    
-    DEBUG_PRINT("RustMidiStorage::append: time=" << time << ", size=" << size << ", success=" << success);
-    DEBUG_PRINT("  after sync: n_events=" << m_n_events << ", tail=" << m_tail << ", head=" << m_head);
-    DEBUG_PRINT("  data contents:");
-    for (uint32_t i = 0; i < m_n_events; ++i) {
-        uint32_t phys = (m_tail + i) % m_data.size();
-        DEBUG_PRINT("    [" << i << "] phys=" << phys << ": t=" << m_data[phys].time << ", s=" << m_data[phys].size);
-    }
     
     return success;
 }
@@ -149,11 +128,8 @@ void RustMidiStorage::clear() {
 }
 
 void RustMidiStorage::copy(IMidiStorageCore& target) const {
-    DEBUG_PRINT("RustMidiStorage::copy called, this m_n_events=" << m_n_events << ", m_tail=" << m_tail << ", m_head=" << m_head);
-    
     // Handle RustMidiStorage target
     if (auto* t = dynamic_cast<RustMidiStorage*>(&target)) {
-        DEBUG_PRINT("  target is RustMidiStorage");
         // Use Rust copy operation
         backend_rust::copy_to_storage(*m_rust_core, *t->m_rust_core);
         
@@ -165,13 +141,10 @@ void RustMidiStorage::copy(IMidiStorageCore& target) const {
     // Handle MidiStorage target
     auto* t = dynamic_cast<MidiStorage*>(&target);
     if (t) {
-        DEBUG_PRINT("  target is MidiStorage");
         t->clear();
         
         // Copy elements by iterating physically from tail
         uint32_t n = m_rust_core->n_events();
-        
-        DEBUG_PRINT("  n=" << n << ", m_tail=" << m_tail);
         
         uint32_t pos = m_tail;
         for (uint32_t i = 0; i < n; ++i) {
@@ -179,11 +152,9 @@ void RustMidiStorage::copy(IMidiStorageCore& target) const {
             uint16_t size = backend_rust::get_elem_size_at_physical_offset(*m_rust_core, pos);
             uint8_t bytes[4];
             backend_rust::get_elem_bytes_at_physical_offset(*m_rust_core, pos, bytes, 4);
-            DEBUG_PRINT("  copying elem[" << i << "] from pos=" << pos << ": t=" << time);
             t->append(time, size, bytes, true, nullptr);
             pos = (pos + 1) % m_data.size();
         }
-        DEBUG_PRINT("  done copying, t->n_events()=" << t->n_events());
         return;
     }
     
@@ -370,36 +341,12 @@ bool RustMidiStorage::put(uint32_t frame_in_current_buffer, uint16_t size, const
 
 void RustMidiStorage::snapshot(RustMidiStorage& target, std::optional<uint32_t> start_offset_from_end) const {
     uint32_t offset = start_offset_from_end.value_or(get_n_samples());
-    std::cerr << "[C++ DEBUG] RustMidiStorage::snapshot called, offset=" << offset << std::endl;
-    std::cerr << "[C++ DEBUG]   this n_events=" << n_events() << ", tail=" << raw_tail() << ", head=" << raw_head() << std::endl;
-    std::cerr << "[C++ DEBUG]   target n_events before=" << target.n_events() << std::endl;
-    
-    // Print all messages in this (source) storage
-    std::cerr << "[C++ DEBUG]   Messages in source (this):" << std::endl;
-    for (uint32_t i = 0; i < n_events(); ++i) {
-        uint32_t phys = (raw_tail() + i) % raw_capacity();
-        auto* elem = get_elem_physical(phys);
-        if (elem) {
-            std::cerr << "[C++ DEBUG]     logical=" << i << ", phys=" << phys << ", time=" << elem->time << ", size=" << elem->size << std::endl;
-        }
-    }
     
     // Cast away const: Rust needs mutable reference for its copy operation
     backend_rust::time_window_snapshot(*m_time_window, const_cast<backend_rust::MidiStorageCore&>(*m_rust_core), *target.m_rust_core, offset);
     target.sync_rust_state();
-    
-    std::cerr << "[C++ DEBUG]   target n_events after=" << target.n_events() << std::endl;
-    
-    // Print all messages in target after snapshot
-    std::cerr << "[C++ DEBUG]   Messages in target after snapshot:" << std::endl;
-    for (uint32_t i = 0; i < target.n_events(); ++i) {
-        uint32_t phys = (target.raw_tail() + i) % target.raw_capacity();
-        auto* elem = target.get_elem_physical(phys);
-        if (elem) {
-            std::cerr << "[C++ DEBUG]     logical=" << i << ", phys=" << phys << ", time=" << elem->time << ", size=" << elem->size << std::endl;
-        }
-    }
 }
+
 // MidiRingbuffer implementation - thin wrapper around Rust storage
 // All core logic is handled by Rust (MidiTimeWindow + MidiStorageCore)
 

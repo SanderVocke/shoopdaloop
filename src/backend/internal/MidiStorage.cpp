@@ -13,16 +13,6 @@
 #include <vector>
 #include <fmt/format.h>
 
-// Debug flag - set to 1 to enable debug prints, 0 to disable
-#define DEBUG_MIDI_STORAGE 1
-
-#if DEBUG_MIDI_STORAGE
-#include <iostream>
-#define DEBUG_PRINT(msg) std::cerr << "[DEBUG] " << msg << std::endl
-#else
-#define DEBUG_PRINT(msg) 
-#endif
-
 using namespace logging;
 
 // MidiStorageCore implementation
@@ -308,19 +298,14 @@ void MidiStorage::clear() {
 }
 
 void MidiStorage::copy(IMidiStorageCore& to) const {
-    DEBUG_PRINT("MidiStorage::copy called");
-    DEBUG_PRINT("  this: n_events=" << m_core->n_events() << ", tail=" << m_core->m_tail << ", head=" << m_core->m_head);
-    
     // Cast to MidiStorage to get access to its m_core
     auto* midi_storage = dynamic_cast<MidiStorage*>(&to);
     if (midi_storage) {
-        DEBUG_PRINT("  target is MidiStorage");
         m_core->copy(*midi_storage->m_core);
     } else {
         // Try RustMidiStorage - iterate and copy elements using ringbuffer semantics
         auto* rust_storage = dynamic_cast<RustMidiStorage*>(&to);
         if (rust_storage) {
-            DEBUG_PRINT("  target is RustMidiStorage");
             uint32_t cap = m_core->raw_capacity();
             
             // Resize RustMidiStorage data to match capacity
@@ -331,22 +316,18 @@ void MidiStorage::copy(IMidiStorageCore& to) const {
             rust_storage->m_n_events = n;
             
             // Copy elements preserving their physical ringbuffer positions
-            // Source is MidiStorage (logical indexing), target is RustMidiStorage (physical)
-            // Source get_elem(i) = element at logical index i = physical (tail + i) % cap
             for (uint32_t i = 0; i < n; ++i) {
                 uint32_t src_phys = (m_core->m_tail + i) % cap;
-                auto* src_elem = m_core->get_elem(i);  // MidiStorage::get_elem takes logical idx
+                auto* src_elem = m_core->get_elem_physical(src_phys);
                 if (src_elem) {
                     // Store at same physical position in target
                     rust_storage->m_data[src_phys] = *src_elem;
-                    DEBUG_PRINT("  copied elem[" << i << "] from src_phys=" << src_phys << " to target_phys=" << src_phys << ", t=" << src_elem->time);
                 }
             }
             
             // Copy the ringbuffer state: head at (tail + n) % cap
             rust_storage->m_tail = m_core->m_tail;
             rust_storage->m_head = (m_core->m_tail + n) % cap;
-            DEBUG_PRINT("  set m_tail=" << rust_storage->m_tail << ", m_head=" << rust_storage->m_head << ", m_n_events=" << rust_storage->m_n_events);
         } else {
             throw std::runtime_error("copy target must be MidiStorage or RustMidiStorage");
         }
@@ -460,13 +441,10 @@ void MidiStorage::for_each_msg_compat(
 MidiStorageCursor::MidiStorageCursor(
     shoop_shared_ptr<IMidiStorage> _storage)
     : m_storage(_storage) {
-    DEBUG_PRINT("MidiStorageCursor::MidiStorageCursor created, storage=" << (void*)_storage.get());
 }
 
 bool MidiStorageCursor::valid() const {
-    bool rval = m_offset.has_value() && m_offset != INVALID_OFFSET;
-    DEBUG_PRINT("MidiStorageCursor::valid() = " << rval << ", m_offset=" << (m_offset.has_value() ? (int)m_offset.value() : -1));
-    return rval;
+    return m_offset.has_value() && m_offset != INVALID_OFFSET;
 }
 
 std::optional<uint32_t> MidiStorageCursor::offset() const {
@@ -502,58 +480,41 @@ void MidiStorageCursor::overwrite(uint32_t offset,
 void MidiStorageCursor::reset() {
     auto n_events = m_storage->n_events();
     if (n_events == 0) {
-        DEBUG_PRINT("MidiStorageCursor::reset: no events, invalidating");
         invalidate();
     } else {
-        auto tail = m_storage->raw_tail();
-        DEBUG_PRINT("MidiStorageCursor::reset: n_events=" << n_events << ", setting m_offset to tail=" << tail);
-        m_offset = tail;
+        m_offset = m_storage->raw_tail();
         m_prev_offset = std::nullopt;
     }
 }
 
 void MidiStorageCursor::next() {
-    DEBUG_PRINT("MidiStorageCursor::next() called, m_offset=" << (m_offset.has_value() ? (int)m_offset.value() : -1));
-    if (!m_offset.has_value()) { 
-        DEBUG_PRINT("MidiStorageCursor::next: no m_offset, returning");
-        return; 
-    }
+    if (!m_offset.has_value()) { return; }
     auto storage_ptr = m_storage.get();
     uint32_t cap = storage_ptr->raw_capacity();
     uint32_t n_events = storage_ptr->n_events();
-    DEBUG_PRINT("MidiStorageCursor::next: cap=" << cap << ", n_events=" << n_events);
-    if (cap == 0) { 
-        DEBUG_PRINT("MidiStorageCursor::next: cap=0, invalidating");
-        invalidate(); 
-        return; 
-    }
+    if (cap == 0) { invalidate(); return; }
 
     uint32_t next = (m_offset.value() + 1) % cap;
 
     auto raw_full = storage_ptr->raw_full();
     auto head = storage_ptr->raw_head();
     auto tail = storage_ptr->raw_tail();
-    DEBUG_PRINT("MidiStorageCursor::next: next=" << next << ", head=" << head << ", tail=" << tail << ", raw_full=" << raw_full);
 
     if (cap == 1) {
-        DEBUG_PRINT("MidiStorageCursor::next: cap=1, invalidating");
         invalidate();
         return;
     }
 
     if (!raw_full && next == head) {
-        DEBUG_PRINT("MidiStorageCursor::next: not full and reached head, invalidating");
         invalidate();
         return;
     }
 
     if (raw_full && next == tail && m_prev_offset.has_value()) {
-        DEBUG_PRINT("MidiStorageCursor::next: full and reached tail, invalidating");
         invalidate();
         return;
     }
 
-    DEBUG_PRINT("MidiStorageCursor::next: setting m_prev_offset=" << m_offset.value() << ", m_offset=" << next);
     m_prev_offset = m_offset;
     m_offset = next;
 }
@@ -610,7 +571,7 @@ MidiStorageCursor::FindResult MidiStorageCursor::find_fn_forward(
             if (raw_full && idx == tail) { break; }
         }
 
-        Elem *elem = storage_ptr->get_elem(idx);
+    Elem *elem = storage_ptr->get_elem_physical(idx);
         if (fn(elem)) {
             if (step > 0) {
                 m_prev_offset = prev_idx;

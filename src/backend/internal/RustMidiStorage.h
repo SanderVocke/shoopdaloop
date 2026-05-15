@@ -48,10 +48,6 @@ public:
     MidiStorageElem* get_elem_logical(uint32_t idx) override;
     const MidiStorageElem* get_elem_logical(uint32_t idx) const override;
     
-    // Legacy alias for backward compatibility with existing code
-    MidiStorageElem* get_elem(uint32_t idx) override { return get_elem_physical(idx); }
-    const MidiStorageElem* get_elem(uint32_t idx) const override { return get_elem_physical(idx); }
-    
     std::vector<MidiStorageElem>& data() override { return m_data; }
     const std::vector<MidiStorageElem>& data() const override { return m_data; }
 

@@ -49,8 +49,8 @@ TEST_CASE("RustMidiStorage - Basic append and query", "[RustMidiStorage]") {
     CHECK(storage->n_events() == 1);
     CHECK(storage->full() == false);
     
-    // Test get_elem
-    auto* elem = storage->get_elem(0);
+    // Test get_elem_physical
+    auto* elem = storage->get_elem_physical(0);
     CHECK(elem != nullptr);
     CHECK(elem->time == 100);
     CHECK(elem->size == 3);
@@ -123,11 +123,11 @@ TEST_CASE("RustMidiStorage - Copy to MidiStorage", "[RustMidiStorage]") {
     CHECK(cpp_storage->n_events() == 3);
     
     // Verify contents
-    auto* elem = cpp_storage->get_elem(0);
+    auto* elem = cpp_storage->get_elem_physical(0);
     CHECK(elem->time == 0);
-    elem = cpp_storage->get_elem(1);
+    elem = cpp_storage->get_elem_physical(1);
     CHECK(elem->time == 10);
-    elem = cpp_storage->get_elem(2);
+    elem = cpp_storage->get_elem_physical(2);
     CHECK(elem->time == 20);
 }
 
@@ -153,11 +153,11 @@ TEST_CASE("RustMidiStorage - Copy from MidiStorage", "[RustMidiStorage]") {
     CHECK(rust_storage->n_events() == 3);
     
     // Verify contents via RustMidiStorage
-    auto* elem = rust_storage->get_elem(0);
+    auto* elem = rust_storage->get_elem_physical(0);
     CHECK(elem->time == 0);
-    elem = rust_storage->get_elem(1);
+    elem = rust_storage->get_elem_physical(1);
     CHECK(elem->time == 10);
-    elem = rust_storage->get_elem(2);
+    elem = rust_storage->get_elem_physical(2);
     CHECK(elem->time == 20);
 }
 

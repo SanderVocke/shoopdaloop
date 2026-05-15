@@ -61,10 +61,6 @@ public:
         return &m_data[phys_idx];
     }
     
-    // Legacy alias
-    Elem* get_elem(uint32_t idx) override { return get_elem_physical(idx); }
-    const Elem* get_elem(uint32_t idx) const override { return get_elem_physical(idx); }
-    
     std::vector<Elem>& data() override { return m_data; }
     const std::vector<Elem>& data() const override { return m_data; }
 
@@ -128,10 +124,6 @@ public:
     // Logical index access (delegates to core)
     MidiStorageElem* get_elem_logical(uint32_t idx) override { return m_core->get_elem_logical(idx); }
     const MidiStorageElem* get_elem_logical(uint32_t idx) const override { return m_core->get_elem_logical(idx); }
-    
-    // Legacy alias
-    MidiStorageElem* get_elem(uint32_t idx) override { return m_core->get_elem(idx); }
-    const MidiStorageElem* get_elem(uint32_t idx) const override { return m_core->get_elem(idx); }
     
     std::vector<MidiStorageElem>& data() override { return m_core->data(); }
     const std::vector<MidiStorageElem>& data() const override { return m_core->data(); }
@@ -230,8 +222,8 @@ public:
     // Element access
     Elem* get() override { return valid() ? get(m_offset.value()) : nullptr; }
     const Elem* get() const override { return valid() ? get(m_offset.value()) : nullptr; }
-    Elem* get(uint32_t raw_offset) override { return m_storage->get_elem(raw_offset); }
-    const Elem* get(uint32_t raw_offset) const override { return m_storage->get_elem(raw_offset); }
+    Elem* get(uint32_t raw_offset) override { return m_storage->get_elem_physical(raw_offset); }
+    const Elem* get(uint32_t raw_offset) const override { return m_storage->get_elem_physical(raw_offset); }
     Elem* get_prev() override { return m_prev_offset.has_value() ? get(m_prev_offset.value()) : nullptr; }
     const Elem* get_prev() const override { return m_prev_offset.has_value() ? get(m_prev_offset.value()) : nullptr; }
 
