@@ -464,18 +464,22 @@ type ForEachModifyCallback = unsafe extern "C" fn(*mut u32, *mut u16, *mut u8, u
 
 /// Iterate over all messages and apply a callback to modify them
 /// The callback receives pointers to time, size, and data, allowing mutation
-unsafe fn for_each_msg_modify(storage: &mut MidiStorageCore, callback_fn: usize, callback_ctx: usize) {
+unsafe fn for_each_msg_modify(
+    storage: &mut MidiStorageCore,
+    callback_fn: usize,
+    callback_ctx: usize,
+) {
     if callback_fn == 0 {
         return;
     }
     let cb: ForEachModifyCallback = std::mem::transmute(callback_fn);
-    
+
     let n_events = storage.n_events();
     let capacity = storage.capacity();
     if n_events == 0 || capacity == 0 {
         return;
     }
-    
+
     let tail = storage.raw_tail();
     for i in 0..n_events {
         let phys_idx = (tail + i) % capacity;
