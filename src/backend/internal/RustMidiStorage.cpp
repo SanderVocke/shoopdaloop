@@ -32,9 +32,9 @@ void RustMidiStorage::sync_rust_state() {
     uint32_t pos = m_tail;
     for (uint32_t i = 0; i < m_n_events; ++i) {
         auto& dst = m_data[pos];
-        dst.time = backend_rust::get_elem_time(*m_rust_core, pos);
-        dst.size = backend_rust::get_elem_size(*m_rust_core, pos);
-        backend_rust::get_elem_bytes(*m_rust_core, pos, dst.bytes, 4);
+        dst.time = backend_rust::get_elem_time_at_physical_offset(*m_rust_core, pos);
+        dst.size = backend_rust::get_elem_size_at_physical_offset(*m_rust_core, pos);
+        backend_rust::get_elem_bytes_at_physical_offset(*m_rust_core, pos, dst.bytes, 4);
         pos = (pos + 1) % cap;
     }
 }
@@ -49,18 +49,28 @@ void RustMidiStorage::sync_rust_state() {
 #define DEBUG_PRINT(msg) 
 #endif
 
-::MidiStorageElem* RustMidiStorage::get_elem(uint32_t idx) {
-    // Physical indexing: idx is a raw physical index into the data array.
-    // Used by cursor which works with raw offsets (tail, head, etc.)
-    DEBUG_PRINT("RustMidiStorage::get_elem(phys=" << idx << ") n_events=" << m_n_events << ", cap=" << m_data.size());
+::MidiStorageElem* RustMidiStorage::get_elem_at_physical_offset(uint32_t idx) {
+    DEBUG_PRINT("RustMidiStorage::get_elem_at_physical_offset(phys=" << idx << ") n_events=" << m_n_events << ", cap=" << m_data.size());
     if (m_data.empty()) return nullptr;
     return &m_data[idx % m_data.size()];
 }
 
-const ::MidiStorageElem* RustMidiStorage::get_elem(uint32_t idx) const {
-    // Physical indexing: idx is a raw physical index into the data array.
+const ::MidiStorageElem* RustMidiStorage::get_elem_at_physical_offset(uint32_t idx) const {
     if (m_data.empty()) return nullptr;
     return &m_data[idx % m_data.size()];
+}
+
+::MidiStorageElem* RustMidiStorage::get_elem_logical(uint32_t idx) {
+    DEBUG_PRINT("RustMidiStorage::get_elem_logical(logical=" << idx << ") n_events=" << m_n_events);
+    if (idx >= m_n_events || m_data.empty()) return nullptr;
+    uint32_t phys_idx = (m_tail + idx) % m_data.size();
+    return &m_data[phys_idx];
+}
+
+const ::MidiStorageElem* RustMidiStorage::get_elem_logical(uint32_t idx) const {
+    if (idx >= m_n_events || m_data.empty()) return nullptr;
+    uint32_t phys_idx = (m_tail + idx) % m_data.size();
+    return &m_data[phys_idx];
 }
 
 // Static trampoline function that forwards to the stored std::function
@@ -158,25 +168,20 @@ void RustMidiStorage::copy(IMidiStorageCore& target) const {
         DEBUG_PRINT("  target is MidiStorage");
         t->clear();
         
-        // Copy elements by querying Rust state
+        // Copy elements by iterating physically from tail
         uint32_t n = m_rust_core->n_events();
-        uint32_t cap = m_rust_core->capacity();
         
-        DEBUG_PRINT("  n=" << n << ", cap=" << cap << ", m_tail=" << m_tail);
+        DEBUG_PRINT("  n=" << n << ", m_tail=" << m_tail);
         
         uint32_t pos = m_tail;
         for (uint32_t i = 0; i < n; ++i) {
-            if (pos >= cap) {
-                DEBUG_PRINT("  pos=" << pos << " >= cap, breaking");
-                break;
-            }
-            uint32_t time = backend_rust::get_elem_time(*m_rust_core, pos);
-            uint16_t size = backend_rust::get_elem_size(*m_rust_core, pos);
+            uint32_t time = backend_rust::get_elem_time_at_physical_offset(*m_rust_core, pos);
+            uint16_t size = backend_rust::get_elem_size_at_physical_offset(*m_rust_core, pos);
             uint8_t bytes[4];
-            backend_rust::get_elem_bytes(*m_rust_core, pos, bytes, 4);
+            backend_rust::get_elem_bytes_at_physical_offset(*m_rust_core, pos, bytes, 4);
             DEBUG_PRINT("  copying elem[" << i << "] from pos=" << pos << ": t=" << time);
             t->append(time, size, bytes, true, nullptr);
-            pos = (pos + 1) % cap;
+            pos = (pos + 1) % m_data.size();
         }
         DEBUG_PRINT("  done copying, t->n_events()=" << t->n_events());
         return;

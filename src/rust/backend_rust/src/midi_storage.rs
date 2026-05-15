@@ -259,12 +259,37 @@ impl MidiStorageCore {
         self.n_events == self.data.len() as u32
     }
 
-    pub fn get_elem(&mut self, idx: u32) -> Option<&mut MidiStorageElem> {
+    /// Get element at a raw physical offset (0 to capacity-1).
+    /// This is the actual array index, not related to logical order.
+    /// Used by cursor which works with raw physical offsets (tail, head, etc.)
+    pub fn get_elem_at_physical_offset(&mut self, idx: u32) -> Option<&mut MidiStorageElem> {
         self.data.get_mut(idx as usize)
     }
 
-    pub fn get_elem_ref(&self, idx: u32) -> Option<&MidiStorageElem> {
+    /// Get element at a raw physical offset (const version).
+    /// This is the actual array index, not related to logical order.
+    pub fn get_elem_at_physical_offset_ref(&self, idx: u32) -> Option<&MidiStorageElem> {
         self.data.get(idx as usize)
+    }
+
+    /// Get element at logical index (0 = oldest message, increasing toward newest).
+    /// Logical index 0 corresponds to physical offset `tail`, index 1 to `(tail+1) % capacity`, etc.
+    pub fn get_elem_logical(&mut self, idx: u32) -> Option<&mut MidiStorageElem> {
+        if idx >= self.n_events {
+            return None;
+        }
+        let phys_idx = (self.tail + idx) % self.data.len() as u32;
+        self.data.get_mut(phys_idx as usize)
+    }
+
+    /// Get element at logical index (const version).
+    /// Logical index 0 corresponds to physical offset `tail`, index 1 to `(tail+1) % capacity`, etc.
+    pub fn get_elem_logical_ref(&self, idx: u32) -> Option<&MidiStorageElem> {
+        if idx >= self.n_events {
+            return None;
+        }
+        let phys_idx = (self.tail + idx) % self.data.len() as u32;
+        self.data.get(phys_idx as usize)
     }
 
     /// Append a message to the storage.
@@ -751,7 +776,7 @@ impl MidiCursor {
                 }
             }
 
-            if let Some(elem) = storage.get_elem_ref(idx) {
+            if let Some(elem) = storage.get_elem_at_physical_offset_ref(idx) {
                 if pred(elem) {
                     if step > 0 {
                         self.prev_offset = Some(prev_idx);

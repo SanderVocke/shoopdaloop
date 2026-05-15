@@ -47,8 +47,18 @@ public:
     void sync_rust_state();
 
     // Element access - uses C++ storage
-    MidiStorageElem* get_elem(uint32_t idx) override;
-    const MidiStorageElem* get_elem(uint32_t idx) const override;
+    // Physical offset access (raw array index 0 to capacity-1)
+    MidiStorageElem* get_elem_at_physical_offset(uint32_t idx) override;
+    const MidiStorageElem* get_elem_at_physical_offset(uint32_t idx) const override;
+    
+    // Logical index access (0 = oldest, increasing toward newest)
+    MidiStorageElem* get_elem_logical(uint32_t idx) override;
+    const MidiStorageElem* get_elem_logical(uint32_t idx) const override;
+    
+    // Legacy alias for backward compatibility with existing code
+    MidiStorageElem* get_elem(uint32_t idx) override { return get_elem_at_physical_offset(idx); }
+    const MidiStorageElem* get_elem(uint32_t idx) const override { return get_elem_at_physical_offset(idx); }
+    
     std::vector<MidiStorageElem>& data() override { return m_data; }
     const std::vector<MidiStorageElem>& data() const override { return m_data; }
 

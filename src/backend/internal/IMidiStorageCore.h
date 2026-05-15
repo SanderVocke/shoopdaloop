@@ -31,8 +31,18 @@ public:
     virtual bool raw_full() const = 0;
 
     // Element access
+    // Physical offset: raw index into underlying array (0 to capacity-1)
+    virtual MidiStorageElem* get_elem_at_physical_offset(uint32_t idx) = 0;
+    virtual const MidiStorageElem* get_elem_at_physical_offset(uint32_t idx) const = 0;
+    
+    // Logical index: 0 = oldest message, 1 = next oldest, etc.
+    virtual MidiStorageElem* get_elem_logical(uint32_t idx) = 0;
+    virtual const MidiStorageElem* get_elem_logical(uint32_t idx) const = 0;
+    
+    // Legacy alias for backward compatibility
     virtual MidiStorageElem* get_elem(uint32_t idx) = 0;
     virtual const MidiStorageElem* get_elem(uint32_t idx) const = 0;
+    
     virtual std::vector<MidiStorageElem>& data() = 0;
     virtual const std::vector<MidiStorageElem>& data() const = 0;
 };

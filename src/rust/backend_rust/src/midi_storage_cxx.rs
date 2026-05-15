@@ -113,9 +113,15 @@ mod ffi {
         fn time_window_snapshot(window: &MidiTimeWindow, storage: &MidiStorageCore, target: &mut MidiStorageCore, start_offset_from_end: u32);
 
         // Data access for syncing C++ state
-        fn get_elem_time(storage: &MidiStorageCore, idx: u32) -> u32;
-        fn get_elem_size(storage: &MidiStorageCore, idx: u32) -> u16;
-        unsafe fn get_elem_bytes(storage: &MidiStorageCore, idx: u32, out: *mut u8, max_len: usize);
+        // Physical offset access (raw array index)
+        fn get_elem_time_at_physical_offset(storage: &MidiStorageCore, idx: u32) -> u32;
+        fn get_elem_size_at_physical_offset(storage: &MidiStorageCore, idx: u32) -> u16;
+        unsafe fn get_elem_bytes_at_physical_offset(storage: &MidiStorageCore, idx: u32, out: *mut u8, max_len: usize);
+        
+        // Logical index access (0 = oldest, increasing toward newest)
+        fn get_elem_time_at_logical_index(storage: &MidiStorageCore, idx: u32) -> u32;
+        fn get_elem_size_at_logical_index(storage: &MidiStorageCore, idx: u32) -> u16;
+        unsafe fn get_elem_bytes_at_logical_index(storage: &MidiStorageCore, idx: u32, out: *mut u8, max_len: usize);
     }
 }
 
@@ -212,7 +218,7 @@ fn collect_dropped_messages(storage: &MidiStorageCore, time: u32, side: Truncate
                 storage.raw_head() - 1
             };
 
-            if let Some(elem) = storage.get_elem_ref(newest_idx) {
+            if let Some(elem) = storage.get_elem_at_physical_offset_ref(newest_idx) {
                 if elem.time <= time {
                     return dropped;
                 }
@@ -220,7 +226,7 @@ fn collect_dropped_messages(storage: &MidiStorageCore, time: u32, side: Truncate
 
             let mut idx = storage.raw_tail();
             for _ in 0..n_events {
-                if let Some(elem) = storage.get_elem_ref(idx) {
+                if let Some(elem) = storage.get_elem_at_physical_offset_ref(idx) {
                     if elem.time > time {
                         break;
                     }
@@ -230,7 +236,7 @@ fn collect_dropped_messages(storage: &MidiStorageCore, time: u32, side: Truncate
             }
         }
         TruncateSide::TruncateTail => {
-            if let Some(elem) = storage.get_elem_ref(storage.raw_tail()) {
+            if let Some(elem) = storage.get_elem_at_physical_offset_ref(storage.raw_tail()) {
                 if elem.time >= time {
                     return dropped;
                 }
@@ -238,7 +244,7 @@ fn collect_dropped_messages(storage: &MidiStorageCore, time: u32, side: Truncate
 
             let mut idx = storage.raw_tail();
             for _ in 0..n_events {
-                if let Some(elem) = storage.get_elem_ref(idx) {
+                if let Some(elem) = storage.get_elem_at_physical_offset_ref(idx) {
                     if elem.time >= time {
                         break;
                     }
@@ -349,17 +355,33 @@ fn copy_from_storage(storage: &mut MidiStorageCore, source: &MidiStorageCore) {
     storage.copy_from(source);
 }
 
-// Data access for syncing C++ state
-fn get_elem_time(storage: &MidiStorageCore, idx: u32) -> u32 {
-    storage.get_elem_ref(idx).map(|e| e.time).unwrap_or(0)
+// Physical offset data access
+fn get_elem_time_at_physical_offset(storage: &MidiStorageCore, idx: u32) -> u32 {
+    storage.get_elem_at_physical_offset_ref(idx).map(|e| e.time).unwrap_or(0)
 }
 
-fn get_elem_size(storage: &MidiStorageCore, idx: u32) -> u16 {
-    storage.get_elem_ref(idx).map(|e| e.size).unwrap_or(0)
+fn get_elem_size_at_physical_offset(storage: &MidiStorageCore, idx: u32) -> u16 {
+    storage.get_elem_at_physical_offset_ref(idx).map(|e| e.size).unwrap_or(0)
 }
 
-unsafe fn get_elem_bytes(storage: &MidiStorageCore, idx: u32, out: *mut u8, max_len: usize) {
-    if let Some(elem) = storage.get_elem_ref(idx) {
+unsafe fn get_elem_bytes_at_physical_offset(storage: &MidiStorageCore, idx: u32, out: *mut u8, max_len: usize) {
+    if let Some(elem) = storage.get_elem_at_physical_offset_ref(idx) {
+        let len = std::cmp::min(elem.size as usize, max_len);
+        std::ptr::copy_nonoverlapping(elem.data().as_ptr(), out, len);
+    }
+}
+
+// Logical index data access
+fn get_elem_time_at_logical_index(storage: &MidiStorageCore, idx: u32) -> u32 {
+    storage.get_elem_logical_ref(idx).map(|e| e.time).unwrap_or(0)
+}
+
+fn get_elem_size_at_logical_index(storage: &MidiStorageCore, idx: u32) -> u16 {
+    storage.get_elem_logical_ref(idx).map(|e| e.size).unwrap_or(0)
+}
+
+unsafe fn get_elem_bytes_at_logical_index(storage: &MidiStorageCore, idx: u32, out: *mut u8, max_len: usize) {
+    if let Some(elem) = storage.get_elem_logical_ref(idx) {
         let len = std::cmp::min(elem.size as usize, max_len);
         std::ptr::copy_nonoverlapping(elem.data().as_ptr(), out, len);
     }

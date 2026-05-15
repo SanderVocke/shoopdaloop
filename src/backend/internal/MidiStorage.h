@@ -45,8 +45,26 @@ public:
     uint32_t raw_capacity() const override { return m_data.size(); }
     bool raw_full() const override { return m_n_events == m_data.size(); }
 
-    Elem* get_elem(uint32_t idx) override { return &m_data.at(idx); }
-    const Elem* get_elem(uint32_t idx) const override { return &m_data.at(idx); }
+    // Physical offset access (raw array index)
+    Elem* get_elem_at_physical_offset(uint32_t idx) override { return &m_data.at(idx); }
+    const Elem* get_elem_at_physical_offset(uint32_t idx) const override { return &m_data.at(idx); }
+    
+    // Logical index access (0 = oldest, increasing toward newest)
+    Elem* get_elem_logical(uint32_t idx) override {
+        if (idx >= m_n_events) return nullptr;
+        uint32_t phys_idx = (m_tail + idx) % m_data.size();
+        return &m_data[phys_idx];
+    }
+    const Elem* get_elem_logical(uint32_t idx) const override {
+        if (idx >= m_n_events) return nullptr;
+        uint32_t phys_idx = (m_tail + idx) % m_data.size();
+        return &m_data[phys_idx];
+    }
+    
+    // Legacy alias
+    Elem* get_elem(uint32_t idx) override { return get_elem_at_physical_offset(idx); }
+    const Elem* get_elem(uint32_t idx) const override { return get_elem_at_physical_offset(idx); }
+    
     std::vector<Elem>& data() override { return m_data; }
     const std::vector<Elem>& data() const override { return m_data; }
 
@@ -103,8 +121,19 @@ public:
     uint32_t raw_head() const override { return m_core->raw_head(); }
     uint32_t raw_capacity() const override { return m_core->raw_capacity(); }
     bool raw_full() const override { return m_core->raw_full(); }
+    
+    // Physical offset access (delegates to core)
+    MidiStorageElem* get_elem_at_physical_offset(uint32_t idx) override { return m_core->get_elem_at_physical_offset(idx); }
+    const MidiStorageElem* get_elem_at_physical_offset(uint32_t idx) const override { return m_core->get_elem_at_physical_offset(idx); }
+    
+    // Logical index access (delegates to core)
+    MidiStorageElem* get_elem_logical(uint32_t idx) override { return m_core->get_elem_logical(idx); }
+    const MidiStorageElem* get_elem_logical(uint32_t idx) const override { return m_core->get_elem_logical(idx); }
+    
+    // Legacy alias
     MidiStorageElem* get_elem(uint32_t idx) override { return m_core->get_elem(idx); }
     const MidiStorageElem* get_elem(uint32_t idx) const override { return m_core->get_elem(idx); }
+    
     std::vector<MidiStorageElem>& data() override { return m_core->data(); }
     const std::vector<MidiStorageElem>& data() const override { return m_core->data(); }
 
