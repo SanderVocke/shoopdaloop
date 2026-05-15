@@ -76,7 +76,7 @@ pub enum TruncateSide {
 pub struct MidiTimeWindow {
     /// Number of samples in the time window
     n_samples: u32,
-    /// Start time of the current buffer
+    /// Start time of the current buffer (stored, not computed)
     current_buffer_start_time: u32,
     /// End time of the current buffer
     current_buffer_end_time: u32,
@@ -102,8 +102,9 @@ impl MidiTimeWindow {
     }
 
     /// Get the start time of the current buffer
+    /// Returns the stored value, matching C++ behavior where this is set during next_buffer()
     pub fn get_current_start_time(&self) -> u32 {
-        self.current_buffer_end_time.saturating_sub(self.n_samples)
+        self.current_buffer_start_time
     }
 
     /// Get the end time of the current buffer
@@ -120,34 +121,41 @@ impl MidiTimeWindow {
         mut dropped_cb: Option<C>,
         user_data: *mut std::ffi::c_void,
     ) {
+        // Capture n_samples for non-overflow path
+        let n_samples = self.n_samples;
         let old_end = self.current_buffer_end_time;
-        let (new_end, _) = old_end.overflowing_add(n_frames);
+        let (new_end, overflow) = old_end.overflowing_add(n_frames);
 
-        // Check for overflow and handle timestamp shift
-        let adjusted_new_end = if new_end < old_end {
-            // Overflow - need to shift all timestamps
-            let shifted_new_end = self.n_samples;
-            let shift = shifted_new_end as i32 - new_end as i32;
+        let adjusted_new_end: u32;
+        if overflow {
+            // Overflow detected: re-read n_samples fresh (matching C++ behavior)
+            let n_samples_fresh = self.n_samples;
+            let shift = n_samples_fresh as i32 - new_end as i32;
             
             // Shift all messages in storage
             storage.for_each_msg_modify(|t, _s, _d| {
                 *t = (*t as i32 + shift) as u32;
             });
-            shifted_new_end
+            adjusted_new_end = n_samples_fresh;
         } else {
-            new_end
-        };
+            adjusted_new_end = new_end;
+        }
 
         // Truncate old messages (TruncateTail) and report dropped ones
-        let min_time = adjusted_new_end.saturating_sub(self.n_samples);
+        // Use captured n_samples value for truncation boundary
+        let min_time = adjusted_new_end.saturating_sub(n_samples);
         storage.truncate(min_time, TruncateSide::TruncateTail, dropped_cb.as_mut(), user_data);
 
+        // Store the start time (matching C++: current_buffer_start_time = old_end)
         self.current_buffer_start_time = old_end;
         self.current_buffer_end_time = adjusted_new_end;
     }
 
     /// Put a message at a specific frame within the current buffer.
     /// Callback is invoked if the append drops a message (buffer was full).
+    /// 
+    /// Note: Uses the stored current_buffer_start_time for timestamp calculation,
+    /// matching C++ behavior where this value is set during next_buffer().
     pub fn put<C: FnMut(u32, u16, *const u8, *mut std::ffi::c_void)>(
         &mut self,
         storage: &mut MidiStorageCore,
@@ -157,7 +165,8 @@ impl MidiTimeWindow {
         mut dropped_cb: Option<C>,
         user_data: *mut std::ffi::c_void,
     ) -> bool {
-        let time = self.get_current_start_time() + frame_in_current_buffer;
+        // Use stored current_buffer_start_time, matching C++ behavior
+        let time = self.current_buffer_start_time + frame_in_current_buffer;
         
         // Check if time is in range
         if time > self.current_buffer_end_time {
