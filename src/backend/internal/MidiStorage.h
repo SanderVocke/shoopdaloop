@@ -164,6 +164,20 @@ private:
     shoop_shared_ptr<IMidiStorage> m_storage = nullptr;
 
 public:
+    // Get current offset value (INVALID_OFFSET if not valid)
+    uint32_t get_raw_offset() const { 
+        return m_offset.value_or(INVALID_OFFSET); 
+    }
+    // Get current prev_offset value (INVALID_OFFSET if not valid)
+    uint32_t get_raw_prev_offset() const { 
+        return m_prev_offset.value_or(INVALID_OFFSET); 
+    }
+    // Check if offset is valid
+    bool is_offset_valid() const { 
+        return m_offset.has_value() && m_offset.value() != INVALID_OFFSET; 
+    }
+
+public:
     MidiStorageCursor(shoop_shared_ptr<IMidiStorage> _storage);
     
     // For backward compatibility with MidiStorage

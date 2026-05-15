@@ -440,21 +440,27 @@ MidiStorageCursor::MidiStorageCursor(
     : m_storage(_storage) {}
 
 bool MidiStorageCursor::valid() const {
-    return m_offset.has_value();
+    return m_offset.has_value() && m_offset != INVALID_OFFSET;
 }
 
 std::optional<uint32_t> MidiStorageCursor::offset() const {
-    return m_offset;
+    if (m_offset.has_value() && m_offset != INVALID_OFFSET) {
+        return m_offset;
+    }
+    return std::nullopt;
 }
 
 std::optional<uint32_t>
 MidiStorageCursor::prev_offset() const {
-    return m_prev_offset;
+    if (m_prev_offset.has_value() && m_prev_offset != INVALID_OFFSET) {
+        return m_prev_offset;
+    }
+    return std::nullopt;
 }
 
 void MidiStorageCursor::invalidate() {
-    m_offset.reset();
-    m_prev_offset.reset();
+    m_offset = std::nullopt;
+    m_prev_offset = std::nullopt;
 }
 
 bool MidiStorageCursor::is_at_start() const {
