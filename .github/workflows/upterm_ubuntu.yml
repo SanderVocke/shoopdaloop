@@ -1,4 +1,4 @@
-name: Ubuntu TMate test session
+name: Ubuntu Upterm test session
 
 on: workflow_dispatch
 
@@ -7,10 +7,12 @@ permissions:
   checks: write
 
 jobs:
-  tmate:
+  upterm:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
       uses: actions/checkout@v3
-    - name: Setup tmate session
-      uses: SanderVocke/action-tmate@master
+    - name: Setup upterm session
+      uses: owenthereal/action-upterm@v1
+      with:
+        limit-access-to-actor: true

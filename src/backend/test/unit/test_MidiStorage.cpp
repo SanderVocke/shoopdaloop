@@ -1,5 +1,6 @@
 #include "MidiStorage.h"
-#include "MidiMessage.h"
+#include "MidiStorage.h"
+#include "shoop_shared_ptr.h"
 
 #include <iostream>
 #include <sstream>
@@ -22,21 +23,27 @@ namespace Catch {
     };
 
     template<>
-    struct StringMaker<MidiMessage<uint32_t, uint32_t>> {
-        static std::string convert(const MidiMessage<uint32_t, uint32_t>& e) {
+    struct StringMaker<MidiStorageElem> {
+        static std::string convert(const MidiStorageElem& e) {
             std::ostringstream oss;
-            oss << "{ t:" << e.time << ", s:" << e.size << ", d:" << StringMaker<std::vector<uint8_t>>::convert(e.data) << " }";
+            oss << "{ t:" << e.time << ", s:" << e.size << ", d:";
+            oss << "[";
+            for (size_t i=0; i<e.size; i++) {
+                if (i>0) { oss << ", "; }
+                oss << (int)e.bytes[i];
+            }
+            oss << "] }";
             return oss.str();
         }
     };
 
     template<>
-    struct StringMaker<std::vector<MidiMessage<uint32_t, uint32_t>>> {
-        static std::string convert(const std::vector<MidiMessage<uint32_t, uint32_t>>& vec) {
+    struct StringMaker<std::vector<MidiStorageElem>> {
+        static std::string convert(const std::vector<MidiStorageElem>& vec) {
             std::ostringstream oss;
             oss << "[\n";
             for (auto &e : vec) {
-                oss << "  " << StringMaker<MidiMessage<uint32_t, uint32_t>>::convert(e) << "\n";
+                oss << "  " << StringMaker<MidiStorageElem>::convert(e) << "\n";
             }
             oss << "]";
             return oss.str();
@@ -44,34 +51,41 @@ namespace Catch {
     };
 }
 
+inline MidiStorageElem make_msg(uint32_t time, std::initializer_list<uint8_t> data) {
+    MidiStorageElem msg;
+    msg.time = time;
+    msg.size = static_cast<uint16_t>(data.size());
+    memcpy(msg.bytes, data.begin(), data.size());
+    return msg;
+}
+
 TEST_CASE("MidiStorage - Round-trip", "[MidiStorage]") {
-    using Msg = MidiMessage<uint32_t, uint32_t>;
     using Storage = MidiStorage;
 
-    std::vector<Msg> in = {
-        Msg(0, 3, {0, 1, 2}),
-        Msg(1, 3, {3, 4, 5}),
-        Msg(10, 1, {10})
+    std::vector<MidiStorageElem> in = {
+        make_msg(0, {0, 1, 2}),
+        make_msg(1, {3, 4, 5}),
+        make_msg(10, {10})
     };
     uint32_t total_data_size = in.size() * sizeof(Storage::Elem);
 
     auto s = shoop_make_shared<Storage>(total_data_size);
 
-    for(auto &i: in) { s->append(i.time, i.size, i.data.data()); }
+    for(auto &i: in) { s->append(i.time, i.size, i.bytes); }
 
     CHECK(s->bytes_occupied() == s->bytes_capacity());
     CHECK(s->bytes_free() == 0);
     CHECK(s->n_events() == 3);
 
-    std::vector<Msg> out;
+    std::vector<MidiStorageElem> out;
     auto cursor = s->create_cursor();
     while (cursor->valid()) {
         auto elem = cursor->get();
-        out.push_back(Msg(
-            elem->storage_time,
-            elem->size,
-            std::vector<uint8_t>(elem->data(), elem->data() + elem->size)
-        ));
+        MidiStorageElem msg;
+        msg.time = elem->time;
+        msg.size = elem->size;
+        memcpy(msg.bytes, elem->bytes, elem->size);
+        out.push_back(msg);
         cursor->next();
         if(cursor->is_at_start()) { break; }
     }
@@ -80,43 +94,42 @@ TEST_CASE("MidiStorage - Round-trip", "[MidiStorage]") {
 };
 
 TEST_CASE("MidiStorage - prepend", "[MidiStorage]") {
-    using Msg = MidiMessage<uint32_t, uint32_t>;
     using Storage = MidiStorage;
 
-    std::vector<Msg> in = {
-        Msg(10, 3, {0, 1, 2}),
-        Msg(11, 3, {3, 4, 5})
+    std::vector<MidiStorageElem> in = {
+        make_msg(10, {0, 1, 2}),
+        make_msg(11, {3, 4, 5})
     };
-    std::vector<Msg> prepend = {
-        Msg(9, 1, {10}),
-        Msg(8, 1, {10}),
+    std::vector<MidiStorageElem> prepend = {
+        make_msg(9, {10}),
+        make_msg(8, {10}),
     };
-    std::vector<Msg> expect_result = {
-        Msg(8, 1, {10}),
-        Msg(9, 1, {10}),
-        Msg(10, 3, {0, 1, 2}),
-        Msg(11, 3, {3, 4, 5})
+    std::vector<MidiStorageElem> expect_result = {
+        make_msg(8, {10}),
+        make_msg(9, {10}),
+        make_msg(10, {0, 1, 2}),
+        make_msg(11, {3, 4, 5})
     };
     uint32_t total_data_size = (in.size() + prepend.size()) * sizeof(Storage::Elem);
 
     auto s = shoop_make_shared<Storage>(total_data_size);
 
-    for(auto &i: in) { s->append(i.time, i.size, i.data.data()); }
-    for(auto &i: prepend) { s->prepend(i.time, i.size, i.data.data()); }
+    for(auto &i: in) { s->append(i.time, i.size, i.bytes); }
+    for(auto &i: prepend) { s->prepend(i.time, i.size, i.bytes); }
 
     CHECK(s->bytes_occupied() == s->bytes_capacity());
     CHECK(s->bytes_free() == 0);
     CHECK(s->n_events() == 4);
 
-    std::vector<Msg> out;
+    std::vector<MidiStorageElem> out;
     auto cursor = s->create_cursor();
     while (cursor->valid()) {
         auto elem = cursor->get();
-        out.push_back(Msg(
-            elem->storage_time,
-            elem->size,
-            std::vector<uint8_t>(elem->data(), elem->data() + elem->size)
-        ));
+        MidiStorageElem msg;
+        msg.time = elem->time;
+        msg.size = elem->size;
+        memcpy(msg.bytes, elem->bytes, elem->size);
+        out.push_back(msg);
         cursor->next();
         if(cursor->is_at_start()) { break; }
     }
@@ -125,46 +138,45 @@ TEST_CASE("MidiStorage - prepend", "[MidiStorage]") {
 };
 
 TEST_CASE("MidiStorage - replace append", "[MidiStorage]") {
-    using Msg = MidiMessage<uint32_t, uint32_t>;
     using Storage = MidiStorage;
 
-    std::vector<Msg> in = {
-        Msg(0, 3, {0, 1, 2}),
-        Msg(1, 3, {3, 4, 5}),
-        Msg(10, 1, {10})
+    std::vector<MidiStorageElem> in = {
+        make_msg(0, {0, 1, 2}),
+        make_msg(1, {3, 4, 5}),
+        make_msg(10, {10})
     };
-    Msg append = Msg(11, 3, {4, 5, 6});
-    std::vector<Msg> expect_result = {
-        Msg(1, 3, {3, 4, 5}),
-        Msg(10, 1, {10}),
-        Msg(11, 3, {4, 5, 6})
+    MidiStorageElem append = make_msg(11, {4, 5, 6});
+    std::vector<MidiStorageElem> expect_result = {
+        make_msg(1, {3, 4, 5}),
+        make_msg(10, {10}),
+        make_msg(11, {4, 5, 6})
     };
     uint32_t total_data_size = in.size() * sizeof(Storage::Elem);
 
     auto s = shoop_make_shared<Storage>(total_data_size);
 
-    for(auto &i: in) { s->append(i.time, i.size, i.data.data()); }
+    for(auto &i: in) { s->append(i.time, i.size, i.bytes); }
 
     CHECK(s->bytes_occupied() == s->bytes_capacity());
     CHECK(s->bytes_free() == 0);
     CHECK(s->n_events() == 3);
 
-    CHECK(s->append(append.time, append.size, append.data.data()) == false);
-    CHECK(s->append(append.time, append.size, append.data.data(), true) == true);
+    CHECK(s->append(append.time, append.size, append.bytes) == false);
+    CHECK(s->append(append.time, append.size, append.bytes, true) == true);
 
     CHECK(s->bytes_occupied() == s->bytes_capacity());
     CHECK(s->bytes_free() == 0);
     CHECK(s->n_events() == 3);
 
-    std::vector<Msg> out;
+    std::vector<MidiStorageElem> out;
     auto cursor = s->create_cursor();
     while (cursor->valid()) {
         auto elem = cursor->get();
-        out.push_back(Msg(
-            elem->storage_time,
-            elem->size,
-            std::vector<uint8_t>(elem->data(), elem->data() + elem->size)
-        ));
+        MidiStorageElem msg;
+        msg.time = elem->time;
+        msg.size = elem->size;
+        memcpy(msg.bytes, elem->bytes, elem->size);
+        out.push_back(msg);
         cursor->next();
         if(cursor->is_at_start()) { break; }
     }
@@ -173,7 +185,6 @@ TEST_CASE("MidiStorage - replace append", "[MidiStorage]") {
 };
 
 TEST_CASE("MidiStorage - wrap around", "[MidiStorage]") {
-    using Msg = MidiMessage<uint32_t, uint32_t>;
     using Storage = MidiStorage;
 
     // Buffer holds exactly 3 elements
@@ -197,21 +208,21 @@ TEST_CASE("MidiStorage - wrap around", "[MidiStorage]") {
     s->append(4, 3, d4, true);
     CHECK(s->n_events() == 3);
 
-    std::vector<Msg> expect = {
-        Msg(2, 3, {2, 2, 2}),
-        Msg(3, 3, {3, 3, 3}),
-        Msg(4, 3, {4, 4, 4})
+    std::vector<MidiStorageElem> expect = {
+        make_msg(2, {2, 2, 2}),
+        make_msg(3, {3, 3, 3}),
+        make_msg(4, {4, 4, 4})
     };
 
-    std::vector<Msg> out;
+    std::vector<MidiStorageElem> out;
     auto cursor = s->create_cursor();
     while (cursor->valid()) {
         auto elem = cursor->get();
-        out.push_back(Msg(
-            elem->storage_time,
-            elem->size,
-            std::vector<uint8_t>(elem->data(), elem->data() + elem->size)
-        ));
+        MidiStorageElem msg;
+        msg.time = elem->time;
+        msg.size = elem->size;
+        memcpy(msg.bytes, elem->bytes, elem->size);
+        out.push_back(msg);
         cursor->next();
         if(cursor->is_at_start()) { break; }
     }

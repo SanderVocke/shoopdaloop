@@ -1,13 +1,15 @@
 #pragma once
 #include <jack/types.h>
 #include "JackTestApi.h"
-#include "MidiBufferingInputPort.h"
 #include "JackPort.h"
-#include "MidiSortingReadWritePort.h"
+#include "MidiPort.h"
+#include "MidiBuffer.h"
+#include "MidiSortingBuffer.h"
 #include "PortInterface.h"
 #include "types.h"
 #include <jack_wrappers.h>
 #include <vector>
+#include <atomic>
 
 template<typename API>
 class GenericJackMidiPort : public GenericJackPort<API> {
@@ -22,28 +24,16 @@ public:
 
 template<typename API>
 class GenericJackMidiInputPort : 
-    public virtual MidiBufferingInputPort,
-    public GenericJackMidiPort<API>
+    public GenericJackMidiPort<API>,
+    private MidiPort,
+    private MidiReadableBuffer
 {
     using GenericJackPort<API>::m_port;
     using GenericJackPort<API>::m_buffer;
 
-    class JackMidiReadBuffer : public MidiReadableBufferInterface {
-    public:
-        void* m_jack_buffer;
-
-        JackMidiReadBuffer();
-        
-        bool read_by_reference_supported() const override;
-        uint32_t PROC_get_n_events() const override;
-        MidiSortableMessageInterface const& PROC_get_event_reference(uint32_t idx) override;
-        void PROC_get_event_value(uint32_t idx,
-                                uint32_t &size_out,
-                                uint32_t &time_out,
-                                const uint8_t* &data_out) override;
-    };
-
-    JackMidiReadBuffer m_read_buffer;
+    std::vector<MidiStorageElem> m_messages;
+    std::atomic<bool> m_muted = false;
+    unsigned m_ringbuffer_n_samples = 0;
 public:
     GenericJackMidiInputPort(
         std::string name,
@@ -51,60 +41,63 @@ public:
         shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     );
 
-    MidiReadableBufferInterface *PROC_internal_read_input_data_buffer (uint32_t nframes) override;
-    MidiWriteableBufferInterface *PROC_internal_write_output_data_to_buffer (uint32_t nframes) override { return nullptr; }
-    MidiWriteableBufferInterface *PROC_get_write_data_into_port_buffer (uint32_t nframes) override { return nullptr; }
+    uint32_t n_events() const override;
+    MidiStorageElem get_event(uint32_t idx) const override;
+
+    MidiReadableBuffer *PROC_internal_read_input_data_buffer (uint32_t nframes);
+    MidiReadableBuffer *PROC_get_read_output_data_buffer(uint32_t nframes) override;
+    MidiWriteableBuffer *PROC_internal_write_output_data_to_buffer (uint32_t nframes) { return nullptr; }
+    MidiWriteableBuffer *PROC_get_write_data_into_port_buffer (uint32_t nframes) { return nullptr; }
 
     void PROC_prepare(uint32_t nframes) override;
     void PROC_process(uint32_t nframes) override;
 
     unsigned input_connectability() const override;
     unsigned output_connectability() const override;
+    PortDataType type() const override { return PortDataType::Midi; }
+
+    void set_muted(bool muted) override;
+    bool get_muted() const override;
+    void set_ringbuffer_n_samples(unsigned n) override;
+    unsigned get_ringbuffer_n_samples() const override;
 };
 
 template<typename API>
 class GenericJackMidiOutputPort : 
-    public virtual MidiSortingReadWritePort,
-    public GenericJackMidiPort<API>
+    public GenericJackMidiPort<API>,
+    private MidiPort,
+    private MidiWriteableBuffer
 {
     using GenericJackPort<API>::m_port;
     using GenericJackPort<API>::m_buffer;
 
-    class JackMidiWriteBuffer : public MidiWriteableBufferInterface {
-    public:
-        void* m_jack_buffer = nullptr;
-
-        JackMidiWriteBuffer();
-        
-        bool write_by_reference_supported() const override;
-        bool write_by_value_supported() const override;
-        void PROC_write_event_reference(MidiSortableMessageInterface const& m) override;
-        void PROC_write_event_value(uint32_t size,
-                            uint32_t time,
-                            const uint8_t* data) override;
-    
-    };
-
-    JackMidiWriteBuffer m_write_buffer;
+    shoop_shared_ptr<MidiSortingBuffer> m_sorting_buffer = nullptr;
+    std::atomic<bool> m_muted = false;
+    unsigned m_ringbuffer_n_samples = 0;
 public:
     GenericJackMidiOutputPort(
         std::string name,
         jack_client_t *client,
         shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
-    ) : GenericJackMidiPort<API>(name, ShoopPortDirection_Output, client, all_ports_tracker),
-        MidiSortingReadWritePort(true, true, true),
-        m_write_buffer(JackMidiWriteBuffer{}) {}
+    );
 
-    MidiReadableBufferInterface *PROC_internal_read_input_data_buffer (uint32_t nframes) override { return nullptr; }
-    MidiWriteableBufferInterface *PROC_internal_write_output_data_to_buffer (uint32_t nframes) override;
+    void write_event(MidiStorageElem event) override;
 
-    PortDataType type() const override { return PortDataType::Midi; }
+    MidiReadableBuffer *PROC_internal_read_input_data_buffer (uint32_t nframes) { return nullptr; }
+    MidiWriteableBuffer *PROC_internal_write_output_data_to_buffer (uint32_t nframes);
+    MidiWriteableBuffer *PROC_get_write_data_into_port_buffer (uint32_t nframes);
 
     void PROC_prepare(uint32_t nframes) override;
     void PROC_process(uint32_t nframes) override;
 
     unsigned input_connectability() const override;
     unsigned output_connectability() const override;
+    PortDataType type() const override { return PortDataType::Midi; }
+
+    void set_muted(bool muted) override;
+    bool get_muted() const override;
+    void set_ringbuffer_n_samples(unsigned n) override;
+    unsigned get_ringbuffer_n_samples() const override;
 };
 
 using JackMidiInputPort = GenericJackMidiInputPort<JackApi>;

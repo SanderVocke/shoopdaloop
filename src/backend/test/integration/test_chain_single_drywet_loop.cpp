@@ -507,10 +507,10 @@ TEST_CASE("Chain - DryWet record MIDI basic", "[chain][midi]") {
 TEST_CASE("Chain - DryWet live playback MIDI basic", "[chain][midi]") {
     SingleDryWetLoopTestChain tst;
     
-    std::vector<shoop_types::_MidiMessage> msgs = {
-        create_noteOn<shoop_types::_MidiMessage>(0, 1, 10, 10),
-        create_noteOff<shoop_types::_MidiMessage>(1, 10, 10, 20),
-        create_noteOn<shoop_types::_MidiMessage>(3, 2, 1, 1)
+    std::vector<MidiStorageElem> msgs = {
+        create_noteOn<MidiStorageElem>(0, 1, 10, 10),
+        create_noteOff<MidiStorageElem>(1, 10, 10, 20),
+        create_noteOn<MidiStorageElem>(3, 2, 1, 1)
     };
 
     auto sequence = convert_midi_msgs_to_api(msgs);

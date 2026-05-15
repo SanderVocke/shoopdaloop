@@ -287,16 +287,18 @@ BackendSession::create_fx_chain(shoop_fx_chain_type_t type, const char *title) {
                     // byte / 0xFF).
                     auto &midi = midis[0];
                     auto readbuf = midi->PROC_get_read_output_data_buffer(n);
-                    auto n_msgs = readbuf->PROC_get_n_events();
-                    for (uint32_t i = 0; i < n_msgs; i++) {
-                        auto &msg = readbuf->PROC_get_event_reference(i);
-                        auto time = msg.get_time();
-                        auto data = msg.get_data();
-                        auto size = msg.get_size();
-                        if (size >= 3) {
-                            auto val = data[2] / 255.0f;
-                            out_buf_1[time] += val;
-                            out_buf_2[time] += val;
+                    if (readbuf) {
+                        auto n_msgs = readbuf->n_events();
+                        for (uint32_t i = 0; i < n_msgs; i++) {
+                            auto event = readbuf->get_event(i);
+                            auto time = event.time;
+                            auto data = event.bytes;
+                            auto size = event.size;
+                            if (size >= 3) {
+                                auto val = data[2] / 255.0f;
+                                out_buf_1[time] += val;
+                                out_buf_2[time] += val;
+                            }
                         }
                     }
                     memcpy((void *)outs[0]->PROC_get_buffer(n),

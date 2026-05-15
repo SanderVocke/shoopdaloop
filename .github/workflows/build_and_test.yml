@@ -8,28 +8,32 @@ on:
       branches: [ "master" ]
     workflow_dispatch:
       inputs:
-        build_windows:
-          description: 'build (Windows)'
+        windows:
+          description: 'build and test (Windows)'
           type: boolean
           default: true
-        test_windows:
-          description: 'test (Windows)'
+        linux:
+          description: 'build and test (Linux)'
           type: boolean
           default: true
-        build_linux:
-          description: 'build (Linux)'
+        macos:
+          description: 'build and test (macOS)'
           type: boolean
           default: true
-        test_linux:
-          description: 'test (Linux)'
+        test_enabled:
+          description: 'enable testing (disable to build only)'
           type: boolean
           default: true
-        build_macos:
-          description: 'build (macOS)'
+        release:
+          description: 'build release variant (all OS)'
           type: boolean
           default: true
-        test_macos:
-          description: 'test (macOS)'
+        debug:
+          description: 'build debug variant (all OS)'
+          type: boolean
+          default: true
+        coverage:
+          description: 'build coverage variant (all OS)'
           type: boolean
           default: true
         vcpkg_force_rebuild:
@@ -37,7 +41,7 @@ on:
           type: boolean
           default: false
         checkpoints:
-          description: 'TMate checkpoints (manual debugging)'
+          description: 'Upterm checkpoints (manual debugging)'
           type: boolean
           default: false
         pi_checkpoints:
@@ -68,13 +72,21 @@ permissions:
 # Used by the setup job to resolve inputs.
 # Keep in sync with workflow_dispatch defaults above.
 env:
+  checkpoints_enabled: false
+  # pi coding agent
+  pi_checkpoint_enabled: false
+  PI_MODEL: 'openrouter/openai/gpt-oss-20b:free'
+  PI_TIMEOUT: 600
+  OPENCODE_API_KEY: ''
+  OPENROUTER_API_KEY: ''
   # Defaults for push / PR / schedule triggers
-  BUILD_WINDOWS_DEFAULT: 'true'
-  TEST_WINDOWS_DEFAULT: 'true'
-  BUILD_LINUX_DEFAULT: 'true'
-  TEST_LINUX_DEFAULT: 'true'
-  BUILD_MACOS_DEFAULT: 'true'
-  TEST_MACOS_DEFAULT: 'true'
+  WINDOWS_DEFAULT: 'true'
+  LINUX_DEFAULT: 'true'
+  MACOS_DEFAULT: 'true'
+  TEST_ENABLED_DEFAULT: 'true'
+  RELEASE_DEFAULT: 'true'
+  DEBUG_DEFAULT: 'true'
+  COVERAGE_DEFAULT: 'true'
   VCPKG_FORCE_REBUILD_DEFAULT: 'false'
   CHECKPOINTS_DEFAULT: 'false'
   PI_CHECKPOINTS_DEFAULT: 'false'
@@ -94,12 +106,13 @@ jobs:
   setup:
     runs-on: ubuntu-latest
     outputs:
-      build_windows: ${{ steps.resolve.outputs.build_windows }}
-      test_windows: ${{ steps.resolve.outputs.test_windows }}
-      build_linux: ${{ steps.resolve.outputs.build_linux }}
-      test_linux: ${{ steps.resolve.outputs.test_linux }}
-      build_macos: ${{ steps.resolve.outputs.build_macos }}
-      test_macos: ${{ steps.resolve.outputs.test_macos }}
+      windows: ${{ steps.resolve.outputs.windows }}
+      linux: ${{ steps.resolve.outputs.linux }}
+      macos: ${{ steps.resolve.outputs.macos }}
+      test_enabled: ${{ steps.resolve.outputs.test_enabled }}
+      release: ${{ steps.resolve.outputs.release }}
+      debug: ${{ steps.resolve.outputs.debug }}
+      coverage: ${{ steps.resolve.outputs.coverage }}
       vcpkg_force_rebuild: ${{ steps.resolve.outputs.vcpkg_force_rebuild }}
       checkpoints: ${{ steps.resolve.outputs.checkpoints }}
       pi_checkpoints: ${{ steps.resolve.outputs.pi_checkpoints }}
@@ -109,13 +122,9 @@ jobs:
         id: resolve
         shell: bash
         run: |
-          # Helper: resolve a boolean input with a fallback default.
-          # github.event.inputs.xxx is the user's choice (workflow_dispatch)
-          # or empty string (push/PR/schedule).
           resolve() {
             local name="$1"
             local default="$2"
-            # Get the workflow_dispatch input value (empty string if not dispatch)
             local input_val="${{ github.event.inputs[format('{0}', env.name)] }}"
             if [ -n "$input_val" ]; then
               echo "$name=$input_val" >> "$GITHUB_OUTPUT"
@@ -123,12 +132,13 @@ jobs:
               echo "$name=$default" >> "$GITHUB_OUTPUT"
             fi
           }
-          resolve build_windows "${{ env.BUILD_WINDOWS_DEFAULT }}"
-          resolve test_windows "${{ env.TEST_WINDOWS_DEFAULT }}"
-          resolve build_linux "${{ env.BUILD_LINUX_DEFAULT }}"
-          resolve test_linux "${{ env.TEST_LINUX_DEFAULT }}"
-          resolve build_macos "${{ env.BUILD_MACOS_DEFAULT }}"
-          resolve test_macos "${{ env.TEST_MACOS_DEFAULT }}"
+          resolve windows "${{ env.WINDOWS_DEFAULT }}"
+          resolve linux "${{ env.LINUX_DEFAULT }}"
+          resolve macos "${{ env.MACOS_DEFAULT }}"
+          resolve test_enabled "${{ env.TEST_ENABLED_DEFAULT }}"
+          resolve release "${{ env.RELEASE_DEFAULT }}"
+          resolve debug "${{ env.DEBUG_DEFAULT }}"
+          resolve coverage "${{ env.COVERAGE_DEFAULT }}"
           resolve vcpkg_force_rebuild "${{ env.VCPKG_FORCE_REBUILD_DEFAULT }}"
           resolve checkpoints "${{ env.CHECKPOINTS_DEFAULT }}"
           resolve pi_checkpoints "${{ env.PI_CHECKPOINTS_DEFAULT }}"
@@ -239,10 +249,15 @@ jobs:
       volumes: ${{ matrix.container.volumes }}
     env:
       PATH_SEPARATOR: ":"
-      COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
+      COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _
+      pi_checkpoint_enabled: ${{ needs.setup.outputs.pi_checkpoints }}
+      PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
+      PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
     needs: [maybe_create_release, setup]
-    if: ${{ needs.setup.outputs.build_linux == 'true' }}
+    if: ${{ needs.setup.outputs.linux == 'true' && needs.setup.outputs.release == 'true' }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -276,6 +291,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
     - uses: ./.github/actions/checkpoint
+      if: always()
+    - uses: ./.github/actions/upload_coding_agent_artifact
       if: always()
 
   test_linux:
@@ -317,12 +334,17 @@ jobs:
               scripts/run_and_generate_coverage.sh
     runs-on: ubuntu-latest
     needs: [build_linux, setup]
-    if: ${{ needs.setup.outputs.test_linux == 'true' }}
+    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.linux == 'true' && (needs.setup.outputs.release == 'true' || needs.setup.outputs.debug == 'true' || needs.setup.outputs.coverage == 'true') }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
     env:
-      checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
+      checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
+      pi_checkpoint_enabled: ${{ needs.setup.outputs.pi_checkpoints }}
+      PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
+      PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -348,8 +370,8 @@ jobs:
         sentry_build_type: ${{ matrix.kind.sentry_build_type }}
     - uses: ./.github/actions/checkpoint
       if: always()
-
-
+    - uses: ./.github/actions/upload_coding_agent_artifact
+      if: always()
 
 
 
@@ -403,11 +425,16 @@ jobs:
           #   platform: macos-arm
     runs-on: ${{ matrix.kind.os }}
     needs: [maybe_create_release, setup]
-    if: ${{ needs.setup.outputs.build_macos == 'true' }}
+    if: ${{ needs.setup.outputs.macos == 'true' && needs.setup.outputs.release == 'true' }}
     env:
        PATH_SEPARATOR: ":"
-       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
-       checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
+       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _
+       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
+       pi_checkpoint_enabled: ${{ needs.setup.outputs.pi_checkpoints }}
+       PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
+       PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
+       OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -437,6 +464,8 @@ jobs:
         vcpkg_rebuild: ${{ needs.setup.outputs.vcpkg_force_rebuild }}
         sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
     - uses: ./.github/actions/checkpoint
+      if: always()
+    - uses: ./.github/actions/upload_coding_agent_artifact
       if: always()
 
   test_macos:
@@ -472,13 +501,18 @@ jobs:
           #   second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
     runs-on: ${{ matrix.kind.os }}
     needs: [build_macos, setup]
-    if: ${{ needs.setup.outputs.test_macos == 'true' }}
+    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.macos == 'true' && needs.setup.outputs.release == 'true' }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
     env:
       PATH_SEPARATOR: ":"
-      checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
+      checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
+      pi_checkpoint_enabled: ${{ needs.setup.outputs.pi_checkpoints }}
+      PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
+      PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -562,10 +596,15 @@ jobs:
     env:
       NATIVE_SHELL_CMD: "powershell -Command"
       PATH_SEPARATOR: ";"
-      CONVERT_PATH_FN: bash -c "cygpath -w \$1 | sed 's/\\\\/\\\\\\\\/g'" _ 
-      COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
+      CONVERT_PATH_FN: bash -c "cygpath -w \$1 | sed 's/\\\\/\\\\\\\\/g'" _
+      COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _
+      pi_checkpoint_enabled: ${{ needs.setup.outputs.pi_checkpoints }}
+      PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
+      PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
-    if: ${{ needs.setup.outputs.build_windows == 'true' }}
+    if: ${{ needs.setup.outputs.windows == 'true' && (needs.setup.outputs.release == 'true' || needs.setup.outputs.debug == 'true') }}
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /
@@ -596,6 +635,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
     - uses: ./.github/actions/checkpoint
+    - uses: ./.github/actions/upload_coding_agent_artifact
+      if: always()
 
   test_windows:
     strategy:
@@ -628,8 +669,13 @@ jobs:
     runs-on: ${{ matrix.kind.os }}
     needs: [build_windows, setup]
     env:
+      pi_checkpoint_enabled: ${{ needs.setup.outputs.pi_checkpoints }}
+      PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
+      PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
-    if: ${{ needs.setup.outputs.test_windows == 'true' }}
+    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.windows == 'true' && (needs.setup.outputs.release == 'true' || needs.setup.outputs.debug == 'true') }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null

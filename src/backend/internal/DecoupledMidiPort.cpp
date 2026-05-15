@@ -25,18 +25,12 @@ void DecoupledMidiPort<TimeType, SizeType>::PROC_process(uint32_t n_frames) {
         port->PROC_prepare(n_frames);
         port->PROC_process(n_frames);
         auto buf = port->PROC_get_read_output_data_buffer(n_frames);
-        auto n = buf->PROC_get_n_events();
+        auto n = buf->n_events();
         if (n>0) {
             log<log_level_debug>("Got {} MIDI events", n);
         }
         for (uint32_t idx = 0; idx < n; idx++) {
-            Message m;
-            const uint8_t *data;
-            uint32_t time;
-            uint32_t size;
-            buf->PROC_get_event_reference(idx).get(size, time, data);
-            m.data = std::vector<uint8_t>(size);
-            memcpy((void *)m.data.data(), (void *)data, size);
+            Message m = buf->get_event(idx);
             ma_queue.push(m);
         }
     } else if (direction == shoop_port_direction_t::ShoopPortDirection_Output) {
@@ -44,7 +38,7 @@ void DecoupledMidiPort<TimeType, SizeType>::PROC_process(uint32_t n_frames) {
         auto buf = port->PROC_get_write_data_into_port_buffer(n_frames);
         Message m;
         while (ma_queue.pop(m)) {
-            buf->PROC_write_event_value(m.data.size(), 0, m.data.data());
+            buf->write_event(m);
         }
         port->PROC_process(n_frames);
     }

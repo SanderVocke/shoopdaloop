@@ -26,7 +26,6 @@
 #include "AudioMidiDriver.h"
 #include "ProcessingChainInterface.h"
 #include "LoggingBackend.h"
-#include "MidiMessage.h"
 #include "MidiPort.h"
 #include "MidiSortingBuffer.h"
 #include "PortInterface.h"
@@ -172,7 +171,7 @@ shoop_midi_sequence_t *external_midi_data(shoop_types::LoopMidiChannel::Contents
         auto e = alloc_midi_event(m.recorded_msgs[idx].size);
         e->size = m.recorded_msgs[idx].size;
         e->time = m.recorded_msgs[idx].time;
-        memcpy((void*)e->data, (void*)m.recorded_msgs[idx].data.data(), m.recorded_msgs[idx].size);
+        memcpy((void*)e->data, (void*)m.recorded_msgs[idx].bytes, m.recorded_msgs[idx].size);
         d->events[idx + m.starting_state_msg_datas.size()] = e;
     }
 
@@ -194,11 +193,10 @@ shoop_types::LoopMidiChannel::Contents internal_midi_data(shoop_midi_sequence_t 
           memcpy((void*)data.data(), (void*)from.data, from.size);
           rval.starting_state_msg_datas.push_back(data);
         } else {
-          _MidiMessage m(
-            from.time,
-            from.size,
-            std::vector<uint8_t>(from.size));
-          memcpy((void*)m.data.data(), (void*)from.data, from.size);
+          MidiStorageElem m;
+          m.time = from.time;
+          m.size = from.size;
+          memcpy(m.bytes, from.data, from.size);
           rval.recorded_msgs.push_back(m);
         }
     }
@@ -1358,11 +1356,9 @@ shoop_midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_port_t *port) 
     auto &_port = *internal_decoupled_midi_port(port);
     auto m = _port.pop_incoming();
     if (m.has_value()) {
-        auto r = alloc_midi_event(m->data.size());
-        r->time = 0;
-        r->size = m->data.size();
-        r->data = (uint8_t*)malloc(r->size);
-        memcpy((void*)r->data, (void*)m->data.data(), r->size);
+        auto r = alloc_midi_event(m->size);
+        r->time = m->time;
+        memcpy((void*)r->data, (void*)m->data(), r->size);
         return r;
     } else {
         return (shoop_midi_event_t*)nullptr;
@@ -1401,9 +1397,10 @@ const char* get_decoupled_midi_port_name(shoopdaloop_decoupled_midi_port_t *port
 void send_decoupled_midi(shoopdaloop_decoupled_midi_port_t *port, unsigned length, unsigned char *data) {
   return api_impl<void>("send_decoupled_midi", [&]() {
     auto &_port = *internal_decoupled_midi_port(port);
-    DecoupledMidiMessage m;
-    m.data.resize(length);
-    memcpy((void*)m.data.data(), (void*)data, length);
+    MidiStorageElem m;
+    m.size = length;
+    m.time = 0;
+    memcpy(m.bytes, data, length);
     _port.push_outgoing(m);
   });
 }
@@ -2129,7 +2126,7 @@ shoop_midi_sequence_t *dummy_midi_port_dequeue_data(shoopdaloop_midi_port_t *por
             auto &e = msgs[i];
             rval->events[i] = alloc_midi_event(e.get_size());
             rval->events[i]->size = e.get_size();
-            rval->events[i]->time = e.get_time();
+            rval->events[i]->time = e.time;
             memcpy((void*)rval->events[i]->data, (void*)e.get_data(), e.get_size());
         }
         rval->n_events = msgs.size();
