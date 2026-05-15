@@ -9,6 +9,7 @@ pub struct GlobalQmlSettings {
     pub test_grab_screens_dir: Option<PathBuf>,
     pub developer_mode: bool,
     pub quit_after: Option<i32>,
+    pub panic_after: Option<i32>,
     pub monkey_tester: bool,
     pub qml_dir: String,
     pub lua_dir: String,
@@ -54,6 +55,10 @@ impl GlobalQmlSettings {
         .chain(iter::once((
             QString::from("quit_after"),
             option_i32_to_qvariant(self.quit_after),
+        )))
+        .chain(iter::once((
+            QString::from("panic_after"),
+            option_i32_to_qvariant(self.panic_after),
         )))
         .chain(iter::once((
             QString::from("monkey_tester"),

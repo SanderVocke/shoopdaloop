@@ -78,6 +78,16 @@ pub struct DeveloperOptions {
     #[clap(short = 'q', long = "quit-after", help_heading = "Developer options")]
     pub quit_after: Option<i32>,
 
+    /// For debugging: trigger a panic X seconds after app is fully loaded.
+    /// This is useful for testing the crash handler functionality.
+    #[clap(
+        short = 'P',
+        long = "panic-after",
+        help_heading = "Developer options",
+        value_name = "SECONDS"
+    )]
+    pub panic_after: Option<i32>,
+
     /// Start the monkey tester, which will randomly, rapidly perform actions on the session.
     #[clap(long = "monkey-tester", help_heading = "Developer options")]
     pub monkey_tester: bool,
