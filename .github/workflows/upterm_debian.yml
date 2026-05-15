@@ -1,4 +1,4 @@
-name: Debian TMate test session
+name: Debian Upterm test session
 
 on: workflow_dispatch
 
@@ -7,7 +7,7 @@ permissions:
   checks: write
 
 jobs:
-  tmate:
+  upterm:
     runs-on: ubuntu-latest
     container:
       image: debian:latest
@@ -15,6 +15,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v3
-    - name: Setup tmate session
-      uses: SanderVocke/action-tmate@master
+    - name: Setup upterm session
+      uses: owenthereal/action-upterm@v1
+      with:
+        limit-access-to-actor: true
   
