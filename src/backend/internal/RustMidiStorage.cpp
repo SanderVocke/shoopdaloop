@@ -63,38 +63,39 @@ const ::MidiStorageElem* RustMidiStorage::get_elem(uint32_t idx) const {
     return &m_data[idx % m_data.size()];
 }
 
+// Static trampoline function that forwards to the stored std::function
+static void dropped_cb_trampoline(uint32_t time, uint16_t size, const uint8_t* data, uintptr_t ctx) {
+    auto* cb = reinterpret_cast<DroppedMsgCallback*>(ctx);
+    if (*cb) {
+        (*cb)(time, size, data);
+    }
+}
+
 bool RustMidiStorage::append(uint32_t time, uint16_t size,
                               const uint8_t* data, bool allow_replace,
                               DroppedMsgCallback dropped_msg_cb) {
     if (m_data.empty()) return false;
     
-    // Delegate to Rust - returns flags byte: bit 0=success, bit 1=dropped
-    uint8_t flags = backend_rust::append(*m_rust_core, time, size, data, allow_replace);
+    // Prepare callback context
+    DroppedMsgCallback cb_store = dropped_msg_cb;
+    uintptr_t cb_fn = dropped_msg_cb ? reinterpret_cast<uintptr_t>(&dropped_cb_trampoline) : 0;
+    uintptr_t cb_ctx = dropped_msg_cb ? reinterpret_cast<uintptr_t>(&cb_store) : 0;
     
-    bool success = flags & 1;
-    bool dropped = flags & 2;
+    // Delegate to Rust - returns bool success
+    bool success = backend_rust::append(
+        *m_rust_core, time, size, data, allow_replace,
+        cb_fn, cb_ctx
+    );
     
     // Sync state from Rust to C++
     sync_rust_state();
     
-    DEBUG_PRINT("RustMidiStorage::append: time=" << time << ", size=" << size << ", success=" << success << ", dropped=" << dropped);
+    DEBUG_PRINT("RustMidiStorage::append: time=" << time << ", size=" << size << ", success=" << success);
     DEBUG_PRINT("  after sync: n_events=" << m_n_events << ", tail=" << m_tail << ", head=" << m_head);
     DEBUG_PRINT("  data contents:");
     for (uint32_t i = 0; i < m_n_events; ++i) {
         uint32_t phys = (m_tail + i) % m_data.size();
         DEBUG_PRINT("    [" << i << "] phys=" << phys << ": t=" << m_data[phys].time << ", s=" << m_data[phys].size);
-    }
-    
-    // Handle dropped message callback if provided
-    if (dropped && dropped_msg_cb) {
-        uint32_t dropped_idx = backend_rust::get_last_dropped_elem(*m_rust_core);
-        if (dropped_idx != UINT32_MAX) {
-            uint32_t time = backend_rust::get_elem_time(*m_rust_core, dropped_idx);
-            uint16_t size = backend_rust::get_elem_size(*m_rust_core, dropped_idx);
-            uint8_t bytes[4];
-            backend_rust::get_elem_bytes(*m_rust_core, dropped_idx, bytes, 4);
-            dropped_msg_cb(time, size, bytes);
-        }
     }
     
     return success;
@@ -199,29 +200,15 @@ void RustMidiStorage::copy_from(const IMidiStorageCore& from) {
 
 void RustMidiStorage::truncate(uint32_t time, MidiStorageTruncateSide side,
                                 DroppedMsgCallback dropped_msg_cb) {
-    // Use the preview-then-act pattern:
-    // 1. Get preview of what would be dropped
-    // 2. Handle dropped messages
-    // 3. Perform actual truncate
-    
     uint8_t rust_side = (side == MidiStorageTruncateSide::TruncateTail) ? 0 : 1;
     
-    // Get preview
-    uint32_t count = backend_rust::truncate_preview(*m_rust_core, time, rust_side);
+    // Prepare callback context
+    DroppedMsgCallback cb_store = dropped_msg_cb;
+    uintptr_t cb_fn = dropped_msg_cb ? reinterpret_cast<uintptr_t>(&dropped_cb_trampoline) : 0;
+    uintptr_t cb_ctx = dropped_msg_cb ? reinterpret_cast<uintptr_t>(&cb_store) : 0;
     
-    // Handle dropped messages if any
-    for (uint32_t i = 0; i < count; ++i) {
-        if (dropped_msg_cb) {
-            uint32_t time = backend_rust::get_preview_elem_time(*m_rust_core, i);
-            uint16_t size = backend_rust::get_preview_elem_size(*m_rust_core, i);
-            uint8_t bytes[4];
-            backend_rust::get_preview_elem_bytes(*m_rust_core, i, bytes, 4);
-            dropped_msg_cb(time, size, bytes);
-        }
-    }
-    
-    // Perform actual truncate
-    backend_rust::truncate_doit(*m_rust_core, time, rust_side);
+    // Delegate to Rust - callback is invoked for each dropped message
+    backend_rust::truncate(*m_rust_core, time, rust_side, cb_fn, cb_ctx);
     
     // Sync C++ state
     sync_rust_state();
@@ -327,9 +314,8 @@ void RustMidiStorage::set_n_samples(uint32_t n) {
     uint32_t end = backend_rust::time_window_get_current_end_time(*m_time_window);
     uint32_t min_time = end - std::min(end, n);
     
-    uint8_t rust_side = 0; // TruncateTail
-    backend_rust::truncate_preview(*m_rust_core, min_time, rust_side);
-    backend_rust::truncate_doit(*m_rust_core, min_time, rust_side);
+    // Use atomic truncate with no callback (we don't report drops from set_n_samples)
+    backend_rust::truncate(*m_rust_core, min_time, 0, 0, 0);
     sync_rust_state();
 }
 
@@ -346,22 +332,13 @@ uint32_t RustMidiStorage::get_current_end_time() const {
 }
 
 void RustMidiStorage::next_buffer(uint32_t n_frames, DroppedMsgCallback dropped_msg_cb) {
-    // Use preview-then-act pattern
-    uint32_t count = backend_rust::time_window_next_buffer_preview(*m_time_window, *m_rust_core, n_frames);
+    // Prepare callback context
+    DroppedMsgCallback cb_store = dropped_msg_cb;
+    uintptr_t cb_fn = dropped_msg_cb ? reinterpret_cast<uintptr_t>(&dropped_cb_trampoline) : 0;
+    uintptr_t cb_ctx = dropped_msg_cb ? reinterpret_cast<uintptr_t>(&cb_store) : 0;
     
-    // Handle dropped messages
-    for (uint32_t i = 0; i < count; ++i) {
-        if (dropped_msg_cb) {
-            uint32_t time = backend_rust::time_window_get_preview_elem_time(*m_time_window, i);
-            uint16_t size = backend_rust::time_window_get_preview_elem_size(*m_time_window, i);
-            uint8_t bytes[4];
-            backend_rust::time_window_get_preview_elem_bytes(*m_time_window, i, bytes, 4);
-            dropped_msg_cb(time, size, bytes);
-        }
-    }
-    
-    // Perform actual next_buffer
-    backend_rust::time_window_next_buffer_doit(*m_time_window, *m_rust_core, n_frames);
+    // Delegate to Rust - callback is invoked for each dropped message
+    backend_rust::time_window_next_buffer(*m_time_window, *m_rust_core, n_frames, cb_fn, cb_ctx);
     
     // Sync C++ state
     sync_rust_state();
@@ -369,26 +346,19 @@ void RustMidiStorage::next_buffer(uint32_t n_frames, DroppedMsgCallback dropped_
 
 bool RustMidiStorage::put(uint32_t frame_in_current_buffer, uint16_t size, const uint8_t* data,
                          DroppedMsgCallback dropped_msg_cb) {
-    // Delegate to Rust time_window_put
-    uint8_t flags = backend_rust::time_window_put(*m_time_window, *m_rust_core, frame_in_current_buffer, size, data);
+    // Prepare callback context
+    DroppedMsgCallback cb_store = dropped_msg_cb;
+    uintptr_t cb_fn = dropped_msg_cb ? reinterpret_cast<uintptr_t>(&dropped_cb_trampoline) : 0;
+    uintptr_t cb_ctx = dropped_msg_cb ? reinterpret_cast<uintptr_t>(&cb_store) : 0;
     
-    bool success = flags & 1;
-    bool dropped = flags & 2;
+    // Delegate to Rust
+    bool success = backend_rust::time_window_put(
+        *m_time_window, *m_rust_core, frame_in_current_buffer, size, data,
+        cb_fn, cb_ctx
+    );
     
     // Sync state
     sync_rust_state();
-    
-    // Handle dropped message
-    if (dropped && dropped_msg_cb) {
-        uint32_t dropped_idx = backend_rust::get_last_dropped_elem(*m_rust_core);
-        if (dropped_idx != UINT32_MAX) {
-            uint32_t time = backend_rust::get_elem_time(*m_rust_core, dropped_idx);
-            uint16_t size = backend_rust::get_elem_size(*m_rust_core, dropped_idx);
-            uint8_t bytes[4];
-            backend_rust::get_elem_bytes(*m_rust_core, dropped_idx, bytes, 4);
-            dropped_msg_cb(time, size, bytes);
-        }
-    }
     
     return success;
 }

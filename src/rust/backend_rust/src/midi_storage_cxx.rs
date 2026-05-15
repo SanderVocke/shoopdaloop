@@ -52,43 +52,27 @@ mod ffi {
         fn find_result_n_processed(res: &FindResult) -> u32;
         fn find_result_found_valid_elem(res: &FindResult) -> bool;
 
-        // Append operation with optional dropped message
-        // Returns: bit 0 = success, bit 1 = dropped
+        // Append operation - returns true on success
+        // dropped_cb_fn: raw function pointer (usize) to call for dropped messages (0 = no callback)
+        // dropped_cb_ctx: user data passed to the callback function
         unsafe fn append(
             storage: &mut MidiStorageCore,
             time: u32,
             size: u16,
             data: *const u8,
             allow_replace: bool,
-        ) -> u8;  // lower 8 bits: success (bit 0), dropped (bit 1)
+            dropped_cb_fn: usize,
+            dropped_cb_ctx: usize,
+        ) -> bool;
         
-        // Get info about the last dropped element from append (if any)
-        fn get_last_dropped_elem(storage: &MidiStorageCore) -> u32;  // returns 0 if no dropped, else index into storage
-        
-        // Truncate preview - returns count of messages that would be dropped
-        fn truncate_preview(
+        // Truncate operation - removes messages and calls dropped_cb for each removed
+        unsafe fn truncate(
             storage: &mut MidiStorageCore,
             time: u32,
             side: u8,  // 0 = TruncateTail, 1 = TruncateHead
-        ) -> u32;
-        
-        // Get preview element at index
-        fn get_preview_elem_at(storage: &MidiStorageCore, idx: u32) -> *const MidiStorageElem;
-        
-        // Get preview element fields
-        fn get_preview_elem_time(storage: &MidiStorageCore, idx: u32) -> u32;
-        fn get_preview_elem_size(storage: &MidiStorageCore, idx: u32) -> u16;
-        unsafe fn get_preview_elem_bytes(storage: &MidiStorageCore, idx: u32, out: *mut u8, max_len: usize);
-        
-        // Perform actual truncate (call after handling preview)
-        fn truncate_doit(
-            storage: &mut MidiStorageCore,
-            time: u32,
-            side: u8,
+            dropped_cb_fn: usize,
+            dropped_cb_ctx: usize,
         );
-        
-        // Clear preview buffer
-        fn clear_preview(storage: &mut MidiStorageCore);
         
         fn clear_storage(storage: &mut MidiStorageCore);
         
@@ -104,28 +88,168 @@ mod ffi {
         fn time_window_get_current_start_time(window: &MidiTimeWindow) -> u32;
         fn time_window_get_current_end_time(window: &MidiTimeWindow) -> u32;
         
-        // next_buffer with preview-then-act pattern
-        fn time_window_next_buffer_preview(window: &mut MidiTimeWindow, storage: &mut MidiStorageCore, n_frames: u32) -> u32;
-        fn time_window_next_buffer_doit(window: &mut MidiTimeWindow, storage: &mut MidiStorageCore, n_frames: u32);
+        // next_buffer - advances time and truncates old messages
+        // dropped_cb_fn/dropped_cb_ctx: callback for each dropped message
+        unsafe fn time_window_next_buffer(
+            window: &mut MidiTimeWindow,
+            storage: &mut MidiStorageCore,
+            n_frames: u32,
+            dropped_cb_fn: usize,
+            dropped_cb_ctx: usize,
+        );
         
-        // put operation (returns success flag, use storage's get_last_dropped_idx for dropped msg)
-        unsafe fn time_window_put(window: &mut MidiTimeWindow, storage: &mut MidiStorageCore, frame: u32, size: u16, data: *const u8) -> u8;
+        // put operation - adds a message to the current buffer
+        unsafe fn time_window_put(
+            window: &mut MidiTimeWindow,
+            storage: &mut MidiStorageCore,
+            frame: u32,
+            size: u16,
+            data: *const u8,
+            dropped_cb_fn: usize,
+            dropped_cb_ctx: usize,
+        ) -> bool;
         
-        // snapshot operation
+        // snapshot operation - copies storage to target with adjusted timestamps
         fn time_window_snapshot(window: &MidiTimeWindow, storage: &MidiStorageCore, target: &mut MidiStorageCore, start_offset_from_end: u32);
-        
-        // get time window preview dropped elements (for next_buffer)
-        fn time_window_get_preview_count(window: &MidiTimeWindow) -> u32;
-        fn time_window_get_preview_elem_time(window: &MidiTimeWindow, idx: u32) -> u32;
-        fn time_window_get_preview_elem_size(window: &MidiTimeWindow, idx: u32) -> u16;
-        unsafe fn time_window_get_preview_elem_bytes(window: &MidiTimeWindow, idx: u32, out: *mut u8, max_len: usize);
-        fn time_window_clear_preview(window: &mut MidiTimeWindow);
 
         // Data access for syncing C++ state
         fn get_elem_time(storage: &MidiStorageCore, idx: u32) -> u32;
         fn get_elem_size(storage: &MidiStorageCore, idx: u32) -> u16;
         unsafe fn get_elem_bytes(storage: &MidiStorageCore, idx: u32, out: *mut u8, max_len: usize);
     }
+}
+
+// Type for the callback function pointer
+// Signature: void callback(uint32_t time, uint16_t size, const uint8_t* data, usize ctx)
+type DroppedCbFn = unsafe extern "C" fn(u32, u16, *const u8, usize);
+
+// Helper to call the dropped callback if provided
+unsafe fn call_dropped_cb(
+    cb_fn: usize,
+    ctx: usize,
+    time: u32,
+    size: u16,
+    data_ptr: *const u8,
+) {
+    if cb_fn != 0 {
+        let fn_ptr: unsafe extern "C" fn(u32, u16, *const u8, usize) = std::mem::transmute(cb_fn);
+        fn_ptr(time, size, data_ptr, ctx);
+    }
+}
+
+/// Append operation with callback
+unsafe fn append(
+    storage: &mut MidiStorageCore,
+    time: u32,
+    size: u16,
+    data: *const u8,
+    allow_replace: bool,
+    dropped_cb_fn: usize,
+    dropped_cb_ctx: usize,
+) -> bool {
+    let slice = std::slice::from_raw_parts(data, size as usize);
+    
+    // Wrapper callback that calls the FFI callback
+    let mut dropped_called = false;
+    let cb_fn = dropped_cb_fn;
+    let cb_ctx = dropped_cb_ctx;
+    let mut wrapper_cb: Option<Box<dyn FnMut(u32, u16, *const u8, *mut std::ffi::c_void)>> = if cb_fn != 0 {
+        Some(Box::new(move |t: u32, s: u16, d: *const u8, _ud: *mut std::ffi::c_void| {
+            if !dropped_called {
+                call_dropped_cb(cb_fn, cb_ctx, t, s, d);
+                dropped_called = true;
+            }
+        }))
+    } else {
+        None
+    };
+    
+    storage.append(time, size, slice, allow_replace, wrapper_cb.as_mut(), dropped_cb_ctx as *mut std::ffi::c_void)
+}
+
+/// Truncate operation with callback
+unsafe fn truncate(
+    storage: &mut MidiStorageCore,
+    time: u32,
+    side: u8,
+    dropped_cb_fn: usize,
+    dropped_cb_ctx: usize,
+) {
+    let side = if side == 0 { TruncateSide::TruncateTail } else { TruncateSide::TruncateHead };
+    
+    // Collect dropped messages first, then call callback
+    let dropped_messages = if dropped_cb_fn != 0 {
+        collect_dropped_messages(storage, time, side)
+    } else {
+        Vec::new()
+    };
+
+    // Actually truncate
+    storage.truncate_no_callback(time, side);
+
+    // Then call the callback for each dropped message
+    for elem in dropped_messages {
+        let data_ptr = elem.data().as_ptr();
+        call_dropped_cb(dropped_cb_fn, dropped_cb_ctx, elem.time, elem.size, data_ptr);
+    }
+}
+
+// Helper to collect dropped messages before truncating
+fn collect_dropped_messages(storage: &MidiStorageCore, time: u32, side: TruncateSide) -> Vec<MidiStorageElem> {
+    let mut dropped = Vec::new();
+    let capacity = storage.capacity();
+    let n_events = storage.n_events();
+    
+    if capacity == 0 || n_events == 0 {
+        return dropped;
+    }
+
+    match side {
+        TruncateSide::TruncateHead => {
+            let newest_idx = if storage.raw_head() == 0 {
+                (capacity - 1) as u32
+            } else {
+                storage.raw_head() - 1
+            };
+
+            if let Some(elem) = storage.get_elem_ref(newest_idx) {
+                if elem.time <= time {
+                    return dropped;
+                }
+            }
+
+            let mut idx = storage.raw_tail();
+            for _ in 0..n_events {
+                if let Some(elem) = storage.get_elem_ref(idx) {
+                    if elem.time > time {
+                        break;
+                    }
+                    dropped.push(elem.clone());
+                }
+                idx = (idx + 1) % capacity;
+            }
+        }
+        TruncateSide::TruncateTail => {
+            if let Some(elem) = storage.get_elem_ref(storage.raw_tail()) {
+                if elem.time >= time {
+                    return dropped;
+                }
+            }
+
+            let mut idx = storage.raw_tail();
+            for _ in 0..n_events {
+                if let Some(elem) = storage.get_elem_ref(idx) {
+                    if elem.time >= time {
+                        break;
+                    }
+                    dropped.push(elem.clone());
+                }
+                idx = (idx + 1) % capacity;
+            }
+        }
+    }
+    
+    dropped
 }
 
 // MidiStorageCore implementation
@@ -213,64 +337,6 @@ fn cursor_find_time_forward(cursor: &mut MidiCursor, storage: &MidiStorageCore, 
     Box::new(cursor.find_time_forward(storage, time))
 }
 
-// Append operation - returns packed byte with success/dropped flags
-unsafe fn append(storage: &mut MidiStorageCore, time: u32, size: u16, data: *const u8, allow_replace: bool) -> u8 {
-    let slice = unsafe { std::slice::from_raw_parts(data, size as usize) };
-    let result = storage.append(time, size, slice, allow_replace);
-    
-    // Pack result: bit 0 = success, bit 1 = dropped
-    let mut flags = 0u8;
-    if result.success {
-        flags |= 1;
-    }
-    if result.dropped {
-        flags |= 2;
-    }
-    flags
-}
-
-fn get_last_dropped_elem(storage: &MidiStorageCore) -> u32 {
-    storage.get_last_dropped_idx()
-}
-
-fn truncate_preview(storage: &mut MidiStorageCore, time: u32, side: u8) -> u32 {
-    let side = if side == 0 { TruncateSide::TruncateTail } else { TruncateSide::TruncateHead };
-    storage.truncate_preview(time, side)
-}
-
-fn get_preview_elem_at(storage: &MidiStorageCore, idx: u32) -> *const MidiStorageElem {
-    match storage.get_preview_elem(idx) {
-        Some(elem) => elem as *const MidiStorageElem,
-        None => std::ptr::null(),
-    }
-}
-
-fn get_preview_elem_time(storage: &MidiStorageCore, idx: u32) -> u32 {
-    storage.get_preview_elem(idx).map(|e| e.time).unwrap_or(0)
-}
-
-fn get_preview_elem_size(storage: &MidiStorageCore, idx: u32) -> u16 {
-    storage.get_preview_elem(idx).map(|e| e.size).unwrap_or(0)
-}
-
-unsafe fn get_preview_elem_bytes(storage: &MidiStorageCore, idx: u32, out: *mut u8, max_len: usize) {
-    if let Some(elem) = storage.get_preview_elem(idx) {
-        let len = std::cmp::min(elem.size as usize, max_len);
-        unsafe {
-            std::ptr::copy_nonoverlapping(elem.data().as_ptr(), out, len);
-        }
-    }
-}
-
-fn truncate_doit(storage: &mut MidiStorageCore, time: u32, side: u8) {
-    let side = if side == 0 { TruncateSide::TruncateTail } else { TruncateSide::TruncateHead };
-    storage.truncate_doit(time, side);
-}
-
-fn clear_preview(storage: &mut MidiStorageCore) {
-    storage.clear_preview();
-}
-
 fn clear_storage(storage: &mut MidiStorageCore) {
     storage.clear();
 }
@@ -295,9 +361,7 @@ fn get_elem_size(storage: &MidiStorageCore, idx: u32) -> u16 {
 unsafe fn get_elem_bytes(storage: &MidiStorageCore, idx: u32, out: *mut u8, max_len: usize) {
     if let Some(elem) = storage.get_elem_ref(idx) {
         let len = std::cmp::min(elem.size as usize, max_len);
-        unsafe {
-            std::ptr::copy_nonoverlapping(elem.data().as_ptr(), out, len);
-        }
+        std::ptr::copy_nonoverlapping(elem.data().as_ptr(), out, len);
     }
 }
 
@@ -322,54 +386,68 @@ fn time_window_get_current_end_time(window: &MidiTimeWindow) -> u32 {
     window.get_current_end_time()
 }
 
-fn time_window_next_buffer_preview(window: &mut MidiTimeWindow, storage: &mut MidiStorageCore, n_frames: u32) -> u32 {
-    window.next_buffer_preview(storage, n_frames)
+unsafe fn time_window_next_buffer(
+    window: &mut MidiTimeWindow,
+    storage: &mut MidiStorageCore,
+    n_frames: u32,
+    dropped_cb_fn: usize,
+    dropped_cb_ctx: usize,
+) {
+    // Collect dropped messages first due to borrow checker
+    let dropped_messages = if dropped_cb_fn != 0 {
+        let old_end = window.get_current_end_time();
+        let (new_end, _) = old_end.overflowing_add(n_frames);
+        let n_samples = window.get_n_samples();
+        let adjusted_new_end = if new_end < old_end {
+            n_samples
+        } else {
+            new_end
+        };
+        let min_time = adjusted_new_end.saturating_sub(n_samples);
+        collect_dropped_messages(storage, min_time, TruncateSide::TruncateTail)
+    } else {
+        Vec::new()
+    };
+
+    // Call next_buffer (no internal callback since we pre-collected)
+    window.next_buffer::<Box<dyn FnMut(u32, u16, *const u8, *mut std::ffi::c_void)>>(storage, n_frames, None, dropped_cb_ctx as *mut std::ffi::c_void);
+
+    // Call the FFI callback for each dropped message
+    for elem in dropped_messages {
+        let data_ptr = elem.data().as_ptr();
+        call_dropped_cb(dropped_cb_fn, dropped_cb_ctx, elem.time, elem.size, data_ptr);
+    }
 }
 
-fn time_window_next_buffer_doit(window: &mut MidiTimeWindow, storage: &mut MidiStorageCore, n_frames: u32) {
-    window.next_buffer_doit(storage, n_frames);
-}
-
-unsafe fn time_window_put(window: &mut MidiTimeWindow, storage: &mut MidiStorageCore, frame: u32, size: u16, data: *const u8) -> u8 {
+unsafe fn time_window_put(
+    window: &mut MidiTimeWindow,
+    storage: &mut MidiStorageCore,
+    frame: u32,
+    size: u16,
+    data: *const u8,
+    dropped_cb_fn: usize,
+    dropped_cb_ctx: usize,
+) -> bool {
     let slice = std::slice::from_raw_parts(data, size as usize);
-    let result = window.put(storage, frame, size, slice);
     
-    // Pack result: bit 0 = success, bit 1 = dropped
-    let mut flags = 0u8;
-    if result.success {
-        flags |= 1;
-    }
-    if result.dropped {
-        flags |= 2;
-    }
-    flags
+    // Wrapper callback
+    let mut dropped_called = false;
+    let cb_fn = dropped_cb_fn;
+    let cb_ctx = dropped_cb_ctx;
+    let mut wrapper_cb: Option<Box<dyn FnMut(u32, u16, *const u8, *mut std::ffi::c_void)>> = if dropped_cb_fn != 0 {
+        Some(Box::new(move |t: u32, s: u16, d: *const u8, _ud: *mut std::ffi::c_void| {
+            if !dropped_called {
+                call_dropped_cb(cb_fn, cb_ctx, t, s, d);
+                dropped_called = true;
+            }
+        }))
+    } else {
+        None
+    };
+    
+    window.put(storage, frame, size, slice, wrapper_cb.as_mut(), dropped_cb_ctx as *mut std::ffi::c_void)
 }
 
 fn time_window_snapshot(window: &MidiTimeWindow, storage: &MidiStorageCore, target: &mut MidiStorageCore, start_offset_from_end: u32) {
     window.snapshot(storage, target, start_offset_from_end);
-}
-
-fn time_window_get_preview_count(window: &MidiTimeWindow) -> u32 {
-    window.preview_count()
-}
-
-fn time_window_get_preview_elem_time(window: &MidiTimeWindow, idx: u32) -> u32 {
-    window.get_preview_elem(idx).map(|e| e.time).unwrap_or(0)
-}
-
-fn time_window_get_preview_elem_size(window: &MidiTimeWindow, idx: u32) -> u16 {
-    window.get_preview_elem(idx).map(|e| e.size).unwrap_or(0)
-}
-
-unsafe fn time_window_get_preview_elem_bytes(window: &MidiTimeWindow, idx: u32, out: *mut u8, max_len: usize) {
-    if let Some(elem) = window.get_preview_elem(idx) {
-        let len = std::cmp::min(elem.size as usize, max_len);
-        unsafe {
-            std::ptr::copy_nonoverlapping(elem.data().as_ptr(), out, len);
-        }
-    }
-}
-
-fn time_window_clear_preview(window: &mut MidiTimeWindow) {
-    window.clear_preview();
 }
