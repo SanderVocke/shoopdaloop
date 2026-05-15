@@ -37,7 +37,7 @@ on:
           type: boolean
           default: false
         checkpoints:
-          description: 'TMate checkpoints (manual debugging)'
+          description: 'Upterm checkpoints (manual debugging)'
           type: boolean
           default: false
         pi_checkpoints:
