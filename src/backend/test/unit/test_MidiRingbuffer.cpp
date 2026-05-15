@@ -59,24 +59,17 @@ namespace Catch {
 template<typename Storage>
 std::vector<MidiStorageElem> extract_messages(Storage &buf) {
     std::vector<MidiStorageElem> out;
-    std::cerr << "[DEBUG extract_messages] n_events=" << buf.n_events() << std::endl;
     auto cursor = buf.create_cursor();
-    std::cerr << "[DEBUG extract_messages] cursor created, valid=" << cursor->valid() << std::endl;
     while (cursor->valid()) {
         auto elem = cursor->get();
-        std::cerr << "[DEBUG extract_messages] elem at offset=" << (cursor->offset().has_value() ? (int)cursor->offset().value() : -1) << " = " << (elem ? std::to_string(elem->time) : "nullptr") << std::endl;
         MidiStorageElem msg;
         msg.time = elem->time;
         msg.size = elem->size;
         memcpy(msg.bytes, elem->bytes, elem->size);
         out.push_back(msg);
         cursor->next();
-        if(cursor->is_at_start()) { 
-            std::cerr << "[DEBUG extract_messages] is_at_start, breaking" << std::endl;
-            break; 
-        }
+        if(cursor->is_at_start()) { break; }
     }
-    std::cerr << "[DEBUG extract_messages] extracted " << out.size() << " messages" << std::endl;
     return out;
 }
 

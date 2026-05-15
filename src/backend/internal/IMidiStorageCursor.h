@@ -10,10 +10,6 @@ class IMidiStorageCursor;
 
 /**
  * IMidiStorageCursor - Pure virtual interface for MIDI storage cursor operations.
- * 
- * This interface provides cursor-based iteration over MIDI storage elements.
- * It allows Rust implementations to provide cursor functionality while
- * C++ consumers can use the cursor API.
  */
 class IMidiStorageCursor {
 public:
@@ -57,9 +53,6 @@ public:
 
 /**
  * CursorFreeFunctions - Free functions for cursor operations.
- * 
- * These functions work with IMidiStorageCursor and IMidiStorageCore
- * to provide cursor-based iteration functionality.
  */
 class CursorFreeFunctions {
 public:

@@ -9,16 +9,11 @@
 #include <functional>
 #include <vector>
 
-// Forward declarations
 class MidiStorageCursor;
 class MidiRingbuffer;  // Full definition in MidiStorage.h (included by this header's includer)
 
 /**
  * RustMidiStorage - A wrapper that uses Rust for basic queries
- * 
- * This class wraps the Rust MidiStorageCore via CXX bridge.
- * Rust provides: n_events, capacity, full, empty, raw_tail, raw_head, raw_full
- * C++ provides: append, prepend, clear, copy, truncate, iteration
  */
 class RustMidiStorage : public shoop_enable_shared_from_this<RustMidiStorage>,
                         public IMidiStorage {
@@ -46,16 +41,16 @@ public:
 
     // Element access - uses C++ storage
     // Physical offset access (raw array index 0 to capacity-1)
-    MidiStorageElem* get_elem_at_physical_offset(uint32_t idx) override;
-    const MidiStorageElem* get_elem_at_physical_offset(uint32_t idx) const override;
+    MidiStorageElem* get_elem_physical(uint32_t idx) override;
+    const MidiStorageElem* get_elem_physical(uint32_t idx) const override;
     
     // Logical index access (0 = oldest, increasing toward newest)
     MidiStorageElem* get_elem_logical(uint32_t idx) override;
     const MidiStorageElem* get_elem_logical(uint32_t idx) const override;
     
     // Legacy alias for backward compatibility with existing code
-    MidiStorageElem* get_elem(uint32_t idx) override { return get_elem_at_physical_offset(idx); }
-    const MidiStorageElem* get_elem(uint32_t idx) const override { return get_elem_at_physical_offset(idx); }
+    MidiStorageElem* get_elem(uint32_t idx) override { return get_elem_physical(idx); }
+    const MidiStorageElem* get_elem(uint32_t idx) const override { return get_elem_physical(idx); }
     
     std::vector<MidiStorageElem>& data() override { return m_data; }
     const std::vector<MidiStorageElem>& data() const override { return m_data; }

@@ -7,17 +7,13 @@
 #include <vector>
 
 /**
- * IMidiStorageCore - Pure virtual interface for basic storage state access.
- * 
- * This interface exposes the fundamental state of the ringbuffer storage
- * without any mutation operations. It allows Rust implementations to
- * provide storage while C++ consumers can access the state.
+ * IMidiStorageCore - Pure virtual interface for MIDI storage state access.
  */
 class IMidiStorageCore {
 public:
     virtual ~IMidiStorageCore() = default;
 
-    // Basic state queries
+    // state queries
     virtual uint32_t n_events() const = 0;
     virtual uint32_t capacity_elems() const = 0;
     virtual uint32_t bytes_capacity() const = 0;
@@ -32,8 +28,8 @@ public:
 
     // Element access
     // Physical offset: raw index into underlying array (0 to capacity-1)
-    virtual MidiStorageElem* get_elem_at_physical_offset(uint32_t idx) = 0;
-    virtual const MidiStorageElem* get_elem_at_physical_offset(uint32_t idx) const = 0;
+    virtual MidiStorageElem* get_elem_physical(uint32_t idx) = 0;
+    virtual const MidiStorageElem* get_elem_physical(uint32_t idx) const = 0;
     
     // Logical index: 0 = oldest message, 1 = next oldest, etc.
     virtual MidiStorageElem* get_elem_logical(uint32_t idx) = 0;
@@ -47,9 +43,6 @@ public:
     virtual const std::vector<MidiStorageElem>& data() const = 0;
 };
 
-/**
- * TruncateSide - Enum for truncate direction
- */
 enum class MidiStorageTruncateSide {
     TruncateHead, // Remove all messages with time > t from the head
     TruncateTail, // Remove all messages with time < t from the tail
@@ -57,9 +50,6 @@ enum class MidiStorageTruncateSide {
 
 /**
  * IMidiStorageOperations - Pure virtual interface for storage mutation operations.
- * 
- * This interface exposes all the mutating operations on the storage.
- * Dropped messages are reported via callback.
  */
 class IMidiStorageOperations {
 public:
@@ -91,9 +81,6 @@ public:
 
 /**
  * IMidiStorage - Combined interface for storage access and operations.
- * 
- * This is the main interface that C++ consumers and Rust implementations
- * will use for MIDI storage operations.
  */
 class IMidiStorage : public IMidiStorageCore, public IMidiStorageOperations {
 public:

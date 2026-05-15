@@ -1,7 +1,4 @@
 //! CXX bridge for MIDI storage to expose to C++.
-//!
-//! This module provides a minimal FFI bridge between Rust MIDI storage
-//! and the C++ backend via CXX.
 
 #![allow(dead_code)]
 

@@ -279,7 +279,7 @@ impl MidiStorageCore {
     /// Get element at a raw physical offset (0 to capacity-1).
     /// This is the actual array index, not related to logical order.
     /// Used by cursor which works with raw physical offsets (tail, head, etc.)
-    pub fn get_elem_at_physical_offset(&mut self, idx: u32) -> Option<&mut MidiStorageElem> {
+    pub fn get_elem_physical(&mut self, idx: u32) -> Option<&mut MidiStorageElem> {
         self.data.get_mut(idx as usize)
     }
 

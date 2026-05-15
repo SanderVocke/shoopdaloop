@@ -128,7 +128,6 @@ bool MidiStorageCore::prepend(uint32_t time, uint16_t size,
 }
 
 void MidiStorageCore::copy(IMidiStorageCore &to) const {
-    // Cast to MidiStorageCore for internal access
     auto* target = dynamic_cast<MidiStorageCore*>(&to);
     if (!target) {
         throw std::runtime_error("copy target must be MidiStorageCore or implement protected members");

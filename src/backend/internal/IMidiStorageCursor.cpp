@@ -3,8 +3,6 @@
 #include <stdexcept>
 
 IMidiStorageCursor* CursorFreeFunctions::create_cursor(IMidiStorageCore* storage) {
-    // This would need to be implemented with actual cursor creation logic
-    // For now, throw since this requires access to the concrete implementation
     throw std::runtime_error("CursorFreeFunctions::create_cursor not yet implemented for interface");
 }
 

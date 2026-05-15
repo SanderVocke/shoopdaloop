@@ -12,8 +12,6 @@ class IMidiStorage;
 
 /**
  * MidiRingbuffer: A thin C++ wrapper around Rust MIDI storage.
- * All core logic is handled by Rust (MidiTimeWindow + MidiStorageCore).
- * This class provides the C++ interface and FFI callback handling.
  */
 class MidiRingbuffer : public ModuleLoggingEnabled<"Backend.MidiStorage"> {
 public:

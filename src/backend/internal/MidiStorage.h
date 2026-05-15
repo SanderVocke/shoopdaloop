@@ -7,20 +7,14 @@
 #include <memory>
 #include <optional>
 
-// Forward declarations
 class MidiStorageCore;
 class MidiStorageCursor;
 class RustMidiStorage;
 
-// MidiRingbuffer is now in its own header
 #include "MidiRingbuffer.h"
-
-// Include for RustMidiStorage methods used by MidiRingbuffer
 #include "RustMidiStorage.h"
 
 // MidiStorageCore: Contains the raw ringbuffer data and basic operations.
-// This is the core storage that can be easily bridged to Rust.
-// Implements IMidiStorageCore and IMidiStorageOperations for FFI compatibility.
 class MidiStorageCore : public ModuleLoggingEnabled<"Backend.MidiStorage">,
                         public IMidiStorageCore,
                         public IMidiStorageOperations {
@@ -52,8 +46,8 @@ public:
     bool raw_full() const override { return m_n_events == m_data.size(); }
 
     // Physical offset access (raw array index)
-    Elem* get_elem_at_physical_offset(uint32_t idx) override { return &m_data.at(idx); }
-    const Elem* get_elem_at_physical_offset(uint32_t idx) const override { return &m_data.at(idx); }
+    Elem* get_elem_physical(uint32_t idx) override { return &m_data.at(idx); }
+    const Elem* get_elem_physical(uint32_t idx) const override { return &m_data.at(idx); }
     
     // Logical index access (0 = oldest, increasing toward newest)
     Elem* get_elem_logical(uint32_t idx) override {
@@ -68,8 +62,8 @@ public:
     }
     
     // Legacy alias
-    Elem* get_elem(uint32_t idx) override { return get_elem_at_physical_offset(idx); }
-    const Elem* get_elem(uint32_t idx) const override { return get_elem_at_physical_offset(idx); }
+    Elem* get_elem(uint32_t idx) override { return get_elem_physical(idx); }
+    const Elem* get_elem(uint32_t idx) const override { return get_elem_physical(idx); }
     
     std::vector<Elem>& data() override { return m_data; }
     const std::vector<Elem>& data() const override { return m_data; }
@@ -114,7 +108,6 @@ public:
     MidiStorage(uint32_t data_size);
 
     // All methods implement IMidiStorage interface
-    // Note: bytes_occupied/bytes_free are convenience methods
     uint32_t bytes_occupied() const { return m_core->n_events() * sizeof(Elem); }
     uint32_t bytes_free() const { return (m_core->capacity_elems() - m_core->n_events()) * sizeof(Elem); }
 
@@ -129,8 +122,8 @@ public:
     bool raw_full() const override { return m_core->raw_full(); }
     
     // Physical offset access (delegates to core)
-    MidiStorageElem* get_elem_at_physical_offset(uint32_t idx) override { return m_core->get_elem_at_physical_offset(idx); }
-    const MidiStorageElem* get_elem_at_physical_offset(uint32_t idx) const override { return m_core->get_elem_at_physical_offset(idx); }
+    MidiStorageElem* get_elem_physical(uint32_t idx) override { return m_core->get_elem_physical(idx); }
+    const MidiStorageElem* get_elem_physical(uint32_t idx) const override { return m_core->get_elem_physical(idx); }
     
     // Logical index access (delegates to core)
     MidiStorageElem* get_elem_logical(uint32_t idx) override { return m_core->get_elem_logical(idx); }
@@ -160,7 +153,7 @@ public:
     void for_each_msg_modify(std::function<void(uint32_t&, uint16_t&, uint8_t*)> cb) override;
     void for_each_msg(std::function<void(uint32_t, uint16_t, uint8_t*)> cb) override;
 
-    // Copy to/from MidiStorage (convenience)
+    // Copy to/from MidiStorage
     void copy(MidiStorage &to) const { m_core->copy(*to.m_core); }
     void copy_from(const MidiStorage &from) { m_core->copy_from(*from.m_core); }
 
@@ -285,6 +278,4 @@ private:
 };
 
 // MidiRingbuffer: A thin C++ wrapper around Rust MIDI storage.
-// All core logic is handled by Rust (MidiTimeWindow + MidiStorageCore).
-// Full definition is in RustMidiStorage.cpp to avoid circular includes.
 class MidiRingbuffer;

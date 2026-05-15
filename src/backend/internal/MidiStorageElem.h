@@ -5,10 +5,6 @@
 
 /**
  * MidiStorageElem - MIDI message stored in the ringbuffer.
- * 
- * This struct represents a single MIDI message with an inline
- * 4-byte payload. The time field represents the position in the
- * ringbuffer (absolute in storage, relative in output buffers).
  */
 struct MidiStorageElem {
     uint32_t time = 0;        // Position: absolute in storage, relative in buffers
@@ -37,7 +33,6 @@ struct MidiStorageElem {
     }
 };
 
-// Inline implementations for performance
 inline uint8_t* MidiStorageElem::data() {
     return bytes;
 }

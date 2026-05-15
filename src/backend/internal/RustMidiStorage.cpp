@@ -51,13 +51,13 @@ void RustMidiStorage::sync_rust_state() {
 #define DEBUG_PRINT(msg) 
 #endif
 
-::MidiStorageElem* RustMidiStorage::get_elem_at_physical_offset(uint32_t idx) {
-    DEBUG_PRINT("RustMidiStorage::get_elem_at_physical_offset(phys=" << idx << ") n_events=" << m_n_events << ", cap=" << m_data.size());
+::MidiStorageElem* RustMidiStorage::get_elem_physical(uint32_t idx) {
+    DEBUG_PRINT("RustMidiStorage::get_elem_physical(phys=" << idx << ") n_events=" << m_n_events << ", cap=" << m_data.size());
     if (m_data.empty()) return nullptr;
     return &m_data[idx % m_data.size()];
 }
 
-const ::MidiStorageElem* RustMidiStorage::get_elem_at_physical_offset(uint32_t idx) const {
+const ::MidiStorageElem* RustMidiStorage::get_elem_physical(uint32_t idx) const {
     if (m_data.empty()) return nullptr;
     return &m_data[idx % m_data.size()];
 }
@@ -118,8 +118,6 @@ bool RustMidiStorage::prepend(uint32_t time, uint16_t size,
                                DroppedMsgCallback dropped_msg_cb) {
     if (m_data.empty()) return false;
     
-    // For prepend, we'll use C++ implementation since Rust doesn't expose it yet
-    // This maintains the existing behavior
     if (full()) {
         if (dropped_msg_cb) {
             dropped_msg_cb(time, size, data);
@@ -380,7 +378,7 @@ void RustMidiStorage::snapshot(RustMidiStorage& target, std::optional<uint32_t> 
     std::cerr << "[C++ DEBUG]   Messages in source (this):" << std::endl;
     for (uint32_t i = 0; i < n_events(); ++i) {
         uint32_t phys = (raw_tail() + i) % raw_capacity();
-        auto* elem = get_elem_at_physical_offset(phys);
+        auto* elem = get_elem_physical(phys);
         if (elem) {
             std::cerr << "[C++ DEBUG]     logical=" << i << ", phys=" << phys << ", time=" << elem->time << ", size=" << elem->size << std::endl;
         }
@@ -396,7 +394,7 @@ void RustMidiStorage::snapshot(RustMidiStorage& target, std::optional<uint32_t> 
     std::cerr << "[C++ DEBUG]   Messages in target after snapshot:" << std::endl;
     for (uint32_t i = 0; i < target.n_events(); ++i) {
         uint32_t phys = (target.raw_tail() + i) % target.raw_capacity();
-        auto* elem = target.get_elem_at_physical_offset(phys);
+        auto* elem = target.get_elem_physical(phys);
         if (elem) {
             std::cerr << "[C++ DEBUG]     logical=" << i << ", phys=" << phys << ", time=" << elem->time << ", size=" << elem->size << std::endl;
         }
