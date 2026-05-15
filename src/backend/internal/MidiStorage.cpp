@@ -307,24 +307,24 @@ void MidiStorage::copy(IMidiStorageCore& to) const {
         // Try RustMidiStorage - iterate and copy elements using ringbuffer semantics
         auto* rust_storage = dynamic_cast<RustMidiStorage*>(&to);
         if (rust_storage) {
-            rust_storage->m_data.resize(m_core->raw_capacity());
+            uint32_t cap = m_core->raw_capacity();
+            rust_storage->m_data.resize(cap);
             rust_storage->m_n_events = m_core->n_events();
             
-            // Copy raw state
-            rust_storage->m_tail = m_core->raw_tail();
-            rust_storage->m_head = m_core->raw_head();
-            
-            // Copy elements using ringbuffer traversal
-            uint32_t idx = m_core->raw_tail();
-            uint32_t count = 0;
-            while (count < m_core->n_events()) {
-                auto* src_elem = m_core->get_elem(idx);
+            // MidiStorage uses logical indexing: get_elem(i) gives element at logical index i
+            // Convert to physical index: physical = (tail + i) % capacity
+            uint32_t tail = m_core->raw_tail();
+            for (uint32_t logical_idx = 0; logical_idx < m_core->n_events(); ++logical_idx) {
+                uint32_t physical_idx = (tail + logical_idx) % cap;
+                auto* src_elem = m_core->get_elem(logical_idx);
                 if (src_elem) {
-                    rust_storage->m_data[idx] = *src_elem;
+                    rust_storage->m_data[logical_idx] = *src_elem;
                 }
-                idx = (idx + 1) % m_core->raw_capacity();
-                ++count;
             }
+            
+            // Set RustMidiStorage state: elements start at 0, head is at n_events
+            rust_storage->m_tail = 0;
+            rust_storage->m_head = m_core->n_events() % cap;
         } else {
             throw std::runtime_error("copy target must be MidiStorage or RustMidiStorage");
         }

@@ -9,6 +9,7 @@ set(TEST_RUNNER_SOURCES
     unit/test_MidiChannel.cpp
     unit/test_MidiStorage.cpp
     unit/test_MidiRingbuffer.cpp
+    unit/test_RustMidiStorage.cpp
     unit/test_MidiStateDiffTracker.cpp
     integration/test_libshoopdaloop_if.cpp
     integration/test_synced_BasicLoops.cpp

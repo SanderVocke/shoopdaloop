@@ -19,14 +19,24 @@ RustMidiStorage::RustMidiStorage(uint32_t data_size)
 
 RustMidiStorage::~RustMidiStorage() = default;
 
+// Sync Rust core state with C++ state (for future use if we need to query Rust)
+void RustMidiStorage::sync_rust_state() {
+    // Currently we use C++ state for queries, so no sync needed
+    // This function exists for future use if we need to update Rust state
+}
+
 ::MidiStorageElem* RustMidiStorage::get_elem(uint32_t idx) {
-    if (idx >= m_data.size()) return nullptr;
-    return &m_data[idx];
+    // Use physical indexing: logical idx maps to (tail + idx) % capacity
+    if (m_data.empty() || idx >= m_n_events) return nullptr;
+    uint32_t physical_idx = (m_tail + idx) % m_data.size();
+    return &m_data[physical_idx];
 }
 
 const ::MidiStorageElem* RustMidiStorage::get_elem(uint32_t idx) const {
-    if (idx >= m_data.size()) return nullptr;
-    return &m_data[idx];
+    // Use physical indexing: logical idx maps to (tail + idx) % capacity
+    if (m_data.empty() || idx >= m_n_events) return nullptr;
+    uint32_t physical_idx = (m_tail + idx) % m_data.size();
+    return &m_data[physical_idx];
 }
 
 bool RustMidiStorage::append(uint32_t time, uint16_t size,
@@ -254,7 +264,11 @@ void RustMidiStorage::for_each_msg(
 shoop_shared_ptr<MidiStorageCursor> 
 RustMidiStorage::create_cursor() {
     auto self = shared_from_this();
-    return shoop_make_shared<MidiStorageCursor>(self);
+    // Convert to IMidiStorage shared_ptr for cursor
+    shoop_shared_ptr<IMidiStorage> storage_ptr = self;
+    auto cursor = shoop_make_shared<MidiStorageCursor>(storage_ptr);
+    cursor->reset();  // Initialize cursor to valid position
+    return cursor;
 }
 
 shoop_shared_ptr<void>

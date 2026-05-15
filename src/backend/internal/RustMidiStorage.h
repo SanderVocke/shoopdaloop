@@ -31,17 +31,20 @@ public:
     RustMidiStorage(uint32_t data_size);
     virtual ~RustMidiStorage();
 
-    // IMidiStorageCore - uses Rust
-    uint32_t n_events() const override { return m_rust_core->n_events(); }
-    uint32_t capacity_elems() const override { return m_rust_core->capacity(); }
+    // IMidiStorageCore - uses C++ storage state (synced with mutations)
+    uint32_t n_events() const override { return m_n_events; }
+    uint32_t capacity_elems() const override { return m_data.size(); }
     uint32_t bytes_capacity() const override { return capacity_elems() * sizeof(Elem); }
-    bool full() const override { return m_rust_core->full(); }
-    bool empty() const override { return m_rust_core->empty(); }
+    bool full() const override { return m_n_events == m_data.size(); }
+    bool empty() const override { return m_n_events == 0; }
 
-    uint32_t raw_tail() const override { return m_rust_core->raw_tail(); }
-    uint32_t raw_head() const override { return m_rust_core->raw_head(); }
-    uint32_t raw_capacity() const override { return m_rust_core->capacity(); }
-    bool raw_full() const override { return m_rust_core->raw_full(); }
+    uint32_t raw_tail() const override { return m_tail; }
+    uint32_t raw_head() const override { return m_head; }
+    uint32_t raw_capacity() const override { return m_data.size(); }
+    bool raw_full() const override { return m_n_events == m_data.size(); }
+
+    // Also sync Rust core state for any Rust-side queries
+    void sync_rust_state();
 
     // Element access - uses C++ storage
     MidiStorageElem* get_elem(uint32_t idx) override;

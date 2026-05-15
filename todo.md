@@ -253,3 +253,26 @@ cargo build
 - Rust provides basic state queries via CXX bridge
 - C++ handles all mutating operations and cursor logic
 - All 140 tests pass
+
+---
+
+## Phase 8: Update tests for Rust-backed storage (TODO)
+
+**Goal**: Ensure tests validate the Rust-backed storage behavior correctly.
+
+### Tasks
+- [ ] Review existing tests to ensure they properly test RustMidiStorage
+- [ ] Add any missing test coverage for Rust-backed storage edge cases
+- [ ] Verify all tests pass with RustMidiStorage as primary storage
+- [ ] Document any test behavior differences between C++ and Rust implementations
+
+### Build & Test
+```bash
+cargo build
+./target/debug/test_runner   # All tests should pass
+```
+
+### Notes
+- Current tests use RustMidiStorage through MidiChannel
+- MidiStorage tests still test C++ MidiStorage directly (still needed for internal use)
+- Integration tests cover the full path with RustMidiStorage
