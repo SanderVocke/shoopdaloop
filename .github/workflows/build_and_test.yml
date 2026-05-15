@@ -11,11 +11,11 @@ on:
         windows:
           description: 'build and test (Windows)'
           type: boolean
-          default: true
+          default: false
         linux:
           description: 'build and test (Linux)'
           type: boolean
-          default: true
+          default: false
         macos:
           description: 'build and test (macOS)'
           type: boolean
@@ -23,27 +23,27 @@ on:
         test_enabled:
           description: 'enable testing (disable to build only)'
           type: boolean
-          default: true
+          default: false
         windows_release:
           description: 'build release variant (Windows)'
           type: boolean
-          default: true
+          default: false
         windows_debug:
           description: 'build debug variant (Windows)'
           type: boolean
-          default: true
+          default: false
         linux_release:
           description: 'build release variant (Linux)'
           type: boolean
-          default: true
+          default: false
         linux_debug:
           description: 'build debug variant (Linux)'
           type: boolean
-          default: true
+          default: false
         linux_coverage:
           description: 'build coverage variant (Linux)'
           type: boolean
-          default: true
+          default: false
         macos_release:
           description: 'build release variant (macOS)'
           type: boolean
@@ -63,7 +63,7 @@ on:
         pi_checkpoints:
           description: 'Pi coding agent checkpoints (automatic debugging)'
           type: boolean
-          default: false
+          default: true
         pi_model:
           description: 'Model for pi coding agent'
           type: string
@@ -96,10 +96,10 @@ env:
   OPENCODE_API_KEY: ''
   OPENROUTER_API_KEY: ''
   # Defaults for push / PR / schedule triggers
-  WINDOWS_DEFAULT: 'true'
-  LINUX_DEFAULT: 'true'
+  WINDOWS_DEFAULT: 'false'
+  LINUX_DEFAULT: 'false'
   MACOS_DEFAULT: 'true'
-  TEST_ENABLED_DEFAULT: 'true'
+  TEST_ENABLED_DEFAULT: 'false'
   WINDOWS_RELEASE_DEFAULT: 'true'
   WINDOWS_DEBUG_DEFAULT: 'true'
   LINUX_RELEASE_DEFAULT: 'true'
@@ -109,7 +109,7 @@ env:
   MACOS_DEBUG_DEFAULT: 'true'
   VCPKG_FORCE_REBUILD_DEFAULT: 'false'
   CHECKPOINTS_DEFAULT: 'false'
-  PI_CHECKPOINTS_DEFAULT: 'false'
+  PI_CHECKPOINTS_DEFAULT: 'true'
   CREATE_DRAFT_RELEASE_DEFAULT: 'false'
   CONVERT_PATH_FN: "echo"
   RUST_BACKTRACE: "1"
