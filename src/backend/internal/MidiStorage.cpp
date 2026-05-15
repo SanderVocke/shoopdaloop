@@ -594,7 +594,7 @@ MidiStorageCursor::FindResult MidiStorageCursor::find_fn_forward(
     return rval;
 }
 
-// MidiRingbufferCore implementation
+// MidiRingbufferCore implementation - delegates to Rust MidiTimeWindow
 
 MidiRingbufferCore::MidiRingbufferCore(shoop_shared_ptr<IMidiStorage> storage)
     : m_storage(storage)
@@ -606,8 +606,11 @@ MidiRingbufferCore::MidiRingbufferCore(shoop_shared_ptr<IMidiStorage> storage)
 void MidiRingbufferCore::set_n_samples(uint32_t n) {
     log<log_level_debug>("MidiRingbufferCore - set_n_samples: {}", n);
     n_samples = n;
+    // Truncate is handled in Rust time window
+    // Update C++ state
     auto end = current_buffer_end_time.load();
     auto min_time = end - std::min(end, n);
+    // For C++ storage, we delegate to the underlying storage
     m_storage->truncate(min_time, MidiStorageTruncateSide::TruncateTail);
 }
 

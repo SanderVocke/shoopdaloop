@@ -11,6 +11,7 @@ using namespace backend_rust;
 
 RustMidiStorage::RustMidiStorage(uint32_t data_size)
     : m_rust_core(new_midi_storage_core(data_size)),
+      m_time_window(new_midi_time_window()),
       m_data(data_size / sizeof(Elem)),
       m_tail(0),
       m_head(0),
@@ -289,3 +290,82 @@ RustMidiStorage::create_cursor_shared() {
 }
 
 // Note: shared_from_this() is inherited from shoop_enable_shared_from_this<RustMidiStorage>
+
+// Time window operations
+void RustMidiStorage::set_n_samples(uint32_t n) {
+    backend_rust::time_window_set_n_samples(*m_time_window, n);
+    // Truncate storage to the new window
+    uint32_t end = backend_rust::time_window_get_current_end_time(*m_time_window);
+    uint32_t min_time = end - std::min(end, n);
+    
+    uint8_t rust_side = 0; // TruncateTail
+    backend_rust::truncate_preview(*m_rust_core, min_time, rust_side);
+    backend_rust::truncate_doit(*m_rust_core, min_time, rust_side);
+    sync_rust_state();
+}
+
+uint32_t RustMidiStorage::get_n_samples() const {
+    return backend_rust::time_window_get_n_samples(*m_time_window);
+}
+
+uint32_t RustMidiStorage::get_current_start_time() const {
+    return backend_rust::time_window_get_current_start_time(*m_time_window);
+}
+
+uint32_t RustMidiStorage::get_current_end_time() const {
+    return backend_rust::time_window_get_current_end_time(*m_time_window);
+}
+
+void RustMidiStorage::next_buffer(uint32_t n_frames, DroppedMsgCallback dropped_msg_cb) {
+    // Use preview-then-act pattern
+    uint32_t count = backend_rust::time_window_next_buffer_preview(*m_time_window, *m_rust_core, n_frames);
+    
+    // Handle dropped messages
+    for (uint32_t i = 0; i < count; ++i) {
+        if (dropped_msg_cb) {
+            uint32_t time = backend_rust::time_window_get_preview_elem_time(*m_time_window, i);
+            uint16_t size = backend_rust::time_window_get_preview_elem_size(*m_time_window, i);
+            uint8_t bytes[4];
+            backend_rust::time_window_get_preview_elem_bytes(*m_time_window, i, bytes, 4);
+            dropped_msg_cb(time, size, bytes);
+        }
+    }
+    
+    // Perform actual next_buffer
+    backend_rust::time_window_next_buffer_doit(*m_time_window, *m_rust_core, n_frames);
+    
+    // Sync C++ state
+    sync_rust_state();
+}
+
+bool RustMidiStorage::put(uint32_t frame_in_current_buffer, uint16_t size, const uint8_t* data,
+                         DroppedMsgCallback dropped_msg_cb) {
+    // Delegate to Rust time_window_put
+    uint8_t flags = backend_rust::time_window_put(*m_time_window, *m_rust_core, frame_in_current_buffer, size, data);
+    
+    bool success = flags & 1;
+    bool dropped = flags & 2;
+    
+    // Sync state
+    sync_rust_state();
+    
+    // Handle dropped message
+    if (dropped && dropped_msg_cb) {
+        uint32_t dropped_idx = backend_rust::get_last_dropped_elem(*m_rust_core);
+        if (dropped_idx != UINT32_MAX) {
+            uint32_t time = backend_rust::get_elem_time(*m_rust_core, dropped_idx);
+            uint16_t size = backend_rust::get_elem_size(*m_rust_core, dropped_idx);
+            uint8_t bytes[4];
+            backend_rust::get_elem_bytes(*m_rust_core, dropped_idx, bytes, 4);
+            dropped_msg_cb(time, size, bytes);
+        }
+    }
+    
+    return success;
+}
+
+void RustMidiStorage::snapshot(RustMidiStorage& target, std::optional<uint32_t> start_offset_from_end) const {
+    uint32_t offset = start_offset_from_end.value_or(get_n_samples());
+    backend_rust::time_window_snapshot(*m_time_window, *m_rust_core, *target.m_rust_core, offset);
+    target.sync_rust_state();
+}

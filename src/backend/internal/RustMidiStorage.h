@@ -73,9 +73,20 @@ public:
     shoop_shared_ptr<MidiStorageCursor> create_cursor();
     shoop_shared_ptr<void> create_cursor_shared() override;
 
+    // Time window operations (MidiRingbufferCore functionality)
+    void set_n_samples(uint32_t n);
+    uint32_t get_n_samples() const;
+    uint32_t get_current_start_time() const;
+    uint32_t get_current_end_time() const;
+    void next_buffer(uint32_t n_frames, DroppedMsgCallback dropped_msg_cb = nullptr);
+    bool put(uint32_t frame_in_current_buffer, uint16_t size, const uint8_t* data,
+            DroppedMsgCallback dropped_msg_cb = nullptr);
+    void snapshot(RustMidiStorage& target, std::optional<uint32_t> start_offset_from_end = std::nullopt) const;
+
 private:
     friend class MidiStorage;  // For copy operations
     rust::Box<backend_rust::MidiStorageCore> m_rust_core;
+    rust::Box<backend_rust::MidiTimeWindow> m_time_window;
     std::vector<Elem> m_data;
     uint32_t m_tail = 0;
     uint32_t m_head = 0;

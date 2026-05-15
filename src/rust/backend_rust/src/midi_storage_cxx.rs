@@ -5,7 +5,7 @@
 
 #![allow(dead_code)]
 
-use crate::midi_storage::{FindResult, MidiCursor, MidiStorageCore, MidiStorageElem, TruncateSide};
+use crate::midi_storage::{FindResult, MidiCursor, MidiStorageCore, MidiStorageElem, MidiTimeWindow, TruncateSide};
 
 // Sentinel value to represent "no value" / invalid offset
 const INVALID_OFFSET: u32 = 0xFFFFFFFF;
@@ -94,6 +94,32 @@ mod ffi {
         
         fn copy_to_storage(storage: &MidiStorageCore, target: &mut MidiStorageCore);
         fn copy_from_storage(storage: &mut MidiStorageCore, source: &MidiStorageCore);
+
+        // MidiTimeWindow - time-window logic
+        type MidiTimeWindow;
+
+        fn new_midi_time_window() -> Box<MidiTimeWindow>;
+        fn time_window_set_n_samples(window: &mut MidiTimeWindow, n: u32);
+        fn time_window_get_n_samples(window: &MidiTimeWindow) -> u32;
+        fn time_window_get_current_start_time(window: &MidiTimeWindow) -> u32;
+        fn time_window_get_current_end_time(window: &MidiTimeWindow) -> u32;
+        
+        // next_buffer with preview-then-act pattern
+        fn time_window_next_buffer_preview(window: &mut MidiTimeWindow, storage: &mut MidiStorageCore, n_frames: u32) -> u32;
+        fn time_window_next_buffer_doit(window: &mut MidiTimeWindow, storage: &mut MidiStorageCore, n_frames: u32);
+        
+        // put operation (returns success flag, use storage's get_last_dropped_idx for dropped msg)
+        unsafe fn time_window_put(window: &mut MidiTimeWindow, storage: &mut MidiStorageCore, frame: u32, size: u16, data: *const u8) -> u8;
+        
+        // snapshot operation
+        fn time_window_snapshot(window: &MidiTimeWindow, storage: &MidiStorageCore, target: &mut MidiStorageCore, start_offset_from_end: u32);
+        
+        // get time window preview dropped elements (for next_buffer)
+        fn time_window_get_preview_count(window: &MidiTimeWindow) -> u32;
+        fn time_window_get_preview_elem_time(window: &MidiTimeWindow, idx: u32) -> u32;
+        fn time_window_get_preview_elem_size(window: &MidiTimeWindow, idx: u32) -> u16;
+        unsafe fn time_window_get_preview_elem_bytes(window: &MidiTimeWindow, idx: u32, out: *mut u8, max_len: usize);
+        fn time_window_clear_preview(window: &mut MidiTimeWindow);
 
         // Data access for syncing C++ state
         fn get_elem_time(storage: &MidiStorageCore, idx: u32) -> u32;
@@ -273,4 +299,77 @@ unsafe fn get_elem_bytes(storage: &MidiStorageCore, idx: u32, out: *mut u8, max_
             std::ptr::copy_nonoverlapping(elem.data().as_ptr(), out, len);
         }
     }
+}
+
+// MidiTimeWindow implementation
+pub fn new_midi_time_window() -> Box<MidiTimeWindow> {
+    Box::new(MidiTimeWindow::new())
+}
+
+fn time_window_set_n_samples(window: &mut MidiTimeWindow, n: u32) {
+    window.set_n_samples(n);
+}
+
+fn time_window_get_n_samples(window: &MidiTimeWindow) -> u32 {
+    window.get_n_samples()
+}
+
+fn time_window_get_current_start_time(window: &MidiTimeWindow) -> u32 {
+    window.get_current_start_time()
+}
+
+fn time_window_get_current_end_time(window: &MidiTimeWindow) -> u32 {
+    window.get_current_end_time()
+}
+
+fn time_window_next_buffer_preview(window: &mut MidiTimeWindow, storage: &mut MidiStorageCore, n_frames: u32) -> u32 {
+    window.next_buffer_preview(storage, n_frames)
+}
+
+fn time_window_next_buffer_doit(window: &mut MidiTimeWindow, storage: &mut MidiStorageCore, n_frames: u32) {
+    window.next_buffer_doit(storage, n_frames);
+}
+
+unsafe fn time_window_put(window: &mut MidiTimeWindow, storage: &mut MidiStorageCore, frame: u32, size: u16, data: *const u8) -> u8 {
+    let slice = std::slice::from_raw_parts(data, size as usize);
+    let result = window.put(storage, frame, size, slice);
+    
+    // Pack result: bit 0 = success, bit 1 = dropped
+    let mut flags = 0u8;
+    if result.success {
+        flags |= 1;
+    }
+    if result.dropped {
+        flags |= 2;
+    }
+    flags
+}
+
+fn time_window_snapshot(window: &MidiTimeWindow, storage: &MidiStorageCore, target: &mut MidiStorageCore, start_offset_from_end: u32) {
+    window.snapshot(storage, target, start_offset_from_end);
+}
+
+fn time_window_get_preview_count(window: &MidiTimeWindow) -> u32 {
+    window.preview_count()
+}
+
+fn time_window_get_preview_elem_time(window: &MidiTimeWindow, idx: u32) -> u32 {
+    window.get_preview_elem(idx).map(|e| e.time).unwrap_or(0)
+}
+
+fn time_window_get_preview_elem_size(window: &MidiTimeWindow, idx: u32) -> u16 {
+    window.get_preview_elem(idx).map(|e| e.size).unwrap_or(0)
+}
+
+unsafe fn time_window_get_preview_elem_bytes(window: &MidiTimeWindow, idx: u32, out: *mut u8, max_len: usize) {
+    if let Some(elem) = window.get_preview_elem(idx) {
+        let len = std::cmp::min(elem.size as usize, max_len);
+        unsafe {
+            std::ptr::copy_nonoverlapping(elem.data().as_ptr(), out, len);
+        }
+    }
+}
+
+fn time_window_clear_preview(window: &mut MidiTimeWindow) {
+    window.clear_preview();
 }

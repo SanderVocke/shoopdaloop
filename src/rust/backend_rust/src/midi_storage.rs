@@ -85,6 +85,231 @@ impl Default for AppendResult {
     }
 }
 
+/// MidiTimeWindow - Handles time-window logic for MIDI ringbuffer operations.
+/// 
+/// This tracks the current buffer's time range and provides operations for:
+/// - Setting/configuring the time window size (n_samples)
+/// - Advancing time with next_buffer()
+/// - Adding messages with put()
+/// - Creating snapshots with snapshot()
+pub struct MidiTimeWindow {
+    /// Number of samples in the time window
+    n_samples: u32,
+    /// Start time of the current buffer
+    current_buffer_start_time: u32,
+    /// End time of the current buffer
+    current_buffer_end_time: u32,
+    /// Preview buffer for truncate - stores elements that would be dropped
+    preview_dropped: Vec<MidiStorageElem>,
+}
+
+impl MidiTimeWindow {
+    pub fn new() -> Self {
+        MidiTimeWindow {
+            n_samples: 0,
+            current_buffer_start_time: 0,
+            current_buffer_end_time: 0,
+            preview_dropped: Vec::new(),
+        }
+    }
+
+    /// Set the number of samples in the time window
+    pub fn set_n_samples(&mut self, n: u32) {
+        self.n_samples = n;
+    }
+
+    /// Get the number of samples in the time window
+    pub fn get_n_samples(&self) -> u32 {
+        self.n_samples
+    }
+
+    /// Get the start time of the current buffer
+    pub fn get_current_start_time(&self) -> u32 {
+        self.current_buffer_end_time.saturating_sub(self.n_samples)
+    }
+
+    /// Get the end time of the current buffer
+    pub fn get_current_end_time(&self) -> u32 {
+        self.current_buffer_end_time
+    }
+
+    /// Clear the preview buffer
+    pub fn clear_preview(&mut self) {
+        self.preview_dropped.clear();
+    }
+
+    /// Get the number of elements in the preview buffer
+    pub fn preview_count(&self) -> u32 {
+        self.preview_dropped.len() as u32
+    }
+
+    /// Get the nth element from the preview buffer
+    pub fn get_preview_elem(&self, idx: u32) -> Option<&MidiStorageElem> {
+        self.preview_dropped.get(idx as usize)
+    }
+
+    /// Preview what would be dropped when advancing to a new end time.
+    /// Returns the number of messages that would be dropped.
+    /// Call get_preview_elem(0..n) to retrieve each dropped message.
+    /// 
+    /// This is used to allow the caller to handle dropped messages before
+    /// the actual truncation is performed.
+    pub fn truncate_preview(&mut self, storage: &mut MidiStorageCore, new_end: u32) -> u32 {
+        self.clear_preview();
+        
+        if self.n_samples == 0 {
+            return 0;
+        }
+
+        let min_time = new_end.saturating_sub(self.n_samples);
+        
+        // Walk through storage to find elements before min_time (TruncateTail)
+        // This mirrors the C++ truncate_fn behavior
+        let capacity = storage.capacity();
+        let n_events = storage.n_events();
+        
+        if capacity == 0 || n_events == 0 {
+            return 0;
+        }
+
+        let mut idx = storage.raw_tail();
+        for _ in 0..n_events {
+            if let Some(elem) = storage.get_elem_ref(idx) {
+                if elem.time >= min_time {
+                    break; // found element to keep
+                }
+                // This element would be truncated - add to preview
+                self.preview_dropped.push(elem.clone());
+            }
+            idx = (idx + 1) % capacity;
+        }
+        
+        self.preview_dropped.len() as u32
+    }
+
+    /// Perform the actual truncate operation.
+    /// Should be called after truncate_preview() and after handling dropped messages.
+    pub fn truncate_doit(&mut self, storage: &mut MidiStorageCore, new_end: u32) {
+        if self.n_samples == 0 {
+            return;
+        }
+
+        let min_time = new_end.saturating_sub(self.n_samples);
+        storage.truncate_doit(min_time, TruncateSide::TruncateTail);
+    }
+
+    /// Advance time by n_frames and truncate old messages.
+    /// Returns the number of messages that were dropped (for preview).
+    pub fn next_buffer_preview(&mut self, storage: &mut MidiStorageCore, n_frames: u32) -> u32 {
+        let old_end = self.current_buffer_end_time;
+        let (new_end, _overflow) = old_end.overflowing_add(n_frames);
+
+        // Check for overflow and handle timestamp shift
+        let adjusted_new_end = if new_end < old_end {
+            // Overflow - need to shift all timestamps
+            let shifted_new_end = self.n_samples;
+            let shift = shifted_new_end as i32 - new_end as i32;
+            
+            // Shift all messages in storage
+            storage.for_each_msg_modify(|t, _s, _d| {
+                *t = (*t as i32 + shift) as u32;
+            });
+            shifted_new_end
+        } else {
+            new_end
+        };
+
+        // Preview truncate
+        self.truncate_preview(storage, adjusted_new_end)
+    }
+
+    /// Perform the actual next_buffer operation.
+    /// Should be called after next_buffer_preview() and handling dropped messages.
+    pub fn next_buffer_doit(&mut self, storage: &mut MidiStorageCore, n_frames: u32) {
+        let old_end = self.current_buffer_end_time;
+        let (new_end, _overflow) = old_end.overflowing_add(n_frames);
+
+        // Check for overflow and handle timestamp shift
+        let adjusted_new_end = if new_end < old_end {
+            let shifted_new_end = self.n_samples;
+            let shift = shifted_new_end as i32 - new_end as i32;
+            
+            storage.for_each_msg_modify(|t, _s, _d| {
+                *t = (*t as i32 + shift) as u32;
+            });
+            shifted_new_end
+        } else {
+            new_end
+        };
+
+        self.truncate_doit(storage, adjusted_new_end);
+        self.current_buffer_start_time = old_end;
+        self.current_buffer_end_time = adjusted_new_end;
+    }
+
+    /// Put a message at a specific frame within the current buffer.
+    /// Returns (success, dropped_flag).
+    pub fn put(&mut self, storage: &mut MidiStorageCore, frame_in_current_buffer: u32, 
+               size: u16, data: &[u8]) -> AppendResult {
+        let time = self.current_buffer_start_time + frame_in_current_buffer;
+        
+        // Check if time is in range
+        if time > self.current_buffer_end_time {
+            return AppendResult::default();
+        }
+
+        storage.append(time, size, data, true)
+    }
+
+    /// Create a snapshot of the current state.
+    /// Copies messages to the target storage, truncates to the time window,
+    /// and adjusts timestamps so the window start is considered zero.
+    pub fn snapshot(&self, storage: &MidiStorageCore, target: &mut MidiStorageCore,
+                    start_offset_from_end: u32) {
+        // Copy all elements to target
+        storage.copy_to(target);
+
+        // Calculate the minimum time to keep
+        let end = self.current_buffer_end_time;
+        let start_from_end = if start_offset_from_end != 0 {
+            start_offset_from_end
+        } else {
+            self.n_samples
+        };
+        let min_message_time = end.saturating_sub(start_from_end);
+
+        // Truncate to the time window (TruncateTail)
+        // Walk through and remove elements before min_message_time
+        let capacity = target.capacity();
+        let n_events = target.n_events();
+        
+        if capacity == 0 || n_events == 0 {
+            return;
+        }
+
+        let mut idx = target.raw_tail();
+        let mut _drop_count = 0u32;
+        
+        for _ in 0..n_events {
+            if let Some(elem) = target.get_elem_ref(idx) {
+                if elem.time >= min_message_time {
+                    break;
+                }
+            }
+            _drop_count += 1;
+            idx = (idx + 1) % capacity;
+        }
+
+        // Actually truncate
+        target.truncate_doit(min_message_time, TruncateSide::TruncateTail);
+
+        // Adjust timestamps to start from zero
+        target.for_each_msg_modify(|t, _s, _d| {
+            *t = t.saturating_sub(min_message_time);
+        });
+    }
+}
+
 /// Core MIDI storage with ringbuffer implementation.
 pub struct MidiStorageCore {
     data: Vec<MidiStorageElem>,
