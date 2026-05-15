@@ -124,21 +124,31 @@ impl MidiTimeWindow {
         // Capture n_samples for non-overflow path
         let n_samples = self.n_samples;
         let old_end = self.current_buffer_end_time;
-        let (new_end, overflow) = old_end.overflowing_add(n_frames);
+        let new_end = old_end.wrapping_add(n_frames);
+
+        // Check for overflow using wrapping comparison (wrapping add may result in new_end > old_end even on overflow)
+        // Use the standard wrapping comparison: new_end < old_end when there was overflow of unsigned addition
+        let overflow = new_end < old_end;
 
         let adjusted_new_end: u32;
+        let adjusted_old_end: u32;
         if overflow {
             // Overflow detected: re-read n_samples fresh (matching C++ behavior)
+            // Use plain i32 arithmetic to compute shift, matching C++'s (int)moved_new_end - (int)new_end
             let n_samples_fresh = self.n_samples;
-            let shift = n_samples_fresh as i32 - new_end as i32;
+            let shift = (n_samples_fresh as i32).wrapping_sub(new_end as i32);
             
             // Shift all messages in storage
             storage.for_each_msg_modify(|t, _s, _d| {
-                *t = (*t as i32 + shift) as u32;
+                *t = ((*t as i32).wrapping_add(shift)) as u32;
             });
-            adjusted_new_end = n_samples_fresh;
+            
+            // Compute shifted boundary values using wrapping arithmetic (matching C++'s new_end += shift)
+            adjusted_new_end = ((new_end as i32).wrapping_add(shift)) as u32;
+            adjusted_old_end = ((old_end as i32).wrapping_add(shift)) as u32;
         } else {
             adjusted_new_end = new_end;
+            adjusted_old_end = old_end;
         }
 
         // Truncate old messages (TruncateTail) and report dropped ones
@@ -146,8 +156,9 @@ impl MidiTimeWindow {
         let min_time = adjusted_new_end.saturating_sub(n_samples);
         storage.truncate(min_time, TruncateSide::TruncateTail, dropped_cb.as_mut(), user_data);
 
-        // Store the start time (matching C++: current_buffer_start_time = old_end)
-        self.current_buffer_start_time = old_end;
+
+        // Store the shifted start/end times (matching C++ behavior)
+        self.current_buffer_start_time = adjusted_old_end;
         self.current_buffer_end_time = adjusted_new_end;
     }
 
@@ -195,7 +206,7 @@ impl MidiTimeWindow {
         } else {
             self.n_samples
         };
-        let min_message_time = end.saturating_sub(start_from_end);
+        let min_message_time = end.wrapping_sub(std::cmp::min(end, start_from_end));
 
         // Truncate to the time window (TruncateTail) - no dropped callback needed
         // since this is operating on a copy
@@ -203,7 +214,7 @@ impl MidiTimeWindow {
 
         // Adjust timestamps to start from zero
         target.for_each_msg_modify(|t, _s, _d| {
-            *t = t.saturating_sub(min_message_time);
+            *t = t.wrapping_sub(min_message_time);
         });
     }
 }

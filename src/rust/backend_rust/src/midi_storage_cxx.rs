@@ -110,7 +110,7 @@ mod ffi {
         ) -> bool;
         
         // snapshot operation - copies storage to target with adjusted timestamps
-        fn time_window_snapshot(window: &MidiTimeWindow, storage: &MidiStorageCore, target: &mut MidiStorageCore, start_offset_from_end: u32);
+        unsafe fn time_window_snapshot(window: &MidiTimeWindow, storage: &mut MidiStorageCore, target: &mut MidiStorageCore, start_offset_from_end: u32);
 
         // Data access for syncing C++ state
         // Physical offset access (raw array index)
@@ -415,30 +415,20 @@ unsafe fn time_window_next_buffer(
     dropped_cb_fn: usize,
     dropped_cb_ctx: usize,
 ) {
-    // Collect dropped messages first due to borrow checker
-    let dropped_messages = if dropped_cb_fn != 0 {
-        let old_end = window.get_current_end_time();
-        let (new_end, _) = old_end.overflowing_add(n_frames);
-        let n_samples = window.get_n_samples();
-        let adjusted_new_end = if new_end < old_end {
-            n_samples
+    // Wrapper callback to capture dropped messages
+    let mut dropped_cb: Option<Box<dyn FnMut(u32, u16, *const u8, *mut std::ffi::c_void)>> =
+        if dropped_cb_fn != 0 {
+            let cb_fn = dropped_cb_fn;
+            let cb_ctx = dropped_cb_ctx;
+            Some(Box::new(move |t: u32, s: u16, d: *const u8, _ud: *mut std::ffi::c_void| {
+                call_dropped_cb(cb_fn, cb_ctx, t, s, d);
+            }))
         } else {
-            new_end
+            None
         };
-        let min_time = adjusted_new_end.saturating_sub(n_samples);
-        collect_dropped_messages(storage, min_time, TruncateSide::TruncateTail)
-    } else {
-        Vec::new()
-    };
 
-    // Call next_buffer (no internal callback since we pre-collected)
-    window.next_buffer::<Box<dyn FnMut(u32, u16, *const u8, *mut std::ffi::c_void)>>(storage, n_frames, None, dropped_cb_ctx as *mut std::ffi::c_void);
-
-    // Call the FFI callback for each dropped message
-    for elem in dropped_messages {
-        let data_ptr = elem.data().as_ptr();
-        call_dropped_cb(dropped_cb_fn, dropped_cb_ctx, elem.time, elem.size, data_ptr);
-    }
+    // Call next_buffer - the core handles overflow, truncation, and callback
+    window.next_buffer(storage, n_frames, dropped_cb.as_mut(), dropped_cb_ctx as *mut std::ffi::c_void);
 }
 
 unsafe fn time_window_put(
@@ -471,5 +461,8 @@ unsafe fn time_window_put(
 }
 
 fn time_window_snapshot(window: &MidiTimeWindow, storage: &MidiStorageCore, target: &mut MidiStorageCore, start_offset_from_end: u32) {
+    // MidiTimeWindow::snapshot expects (source, target) parameters
+    // C++ calls it as: snapshot(m_storage, target) where m_storage is the ringbuffer source
+    // So we swap the parameters: storage (ringbuffer source) goes to target parameter, and target (snapshot) goes to storage parameter
     window.snapshot(storage, target, start_offset_from_end);
 }

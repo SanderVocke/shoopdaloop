@@ -228,8 +228,8 @@ TEST_CASE("RustMidiStorage - Truncate", "[RustMidiStorage]") {
     storage->truncate(15, MidiStorageTruncateSide::TruncateTail);
     CHECK(storage->n_events() == 1);
     
-    // Should only have time=20
-    auto* elem = storage->get_elem(0);
+    // Should only have time=20 - use get_elem_logical for logical index (0 = oldest)
+    auto* elem = storage->get_elem_logical(0);
     CHECK(elem->time == 20);
 }
 

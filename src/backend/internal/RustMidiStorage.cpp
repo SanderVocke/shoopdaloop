@@ -370,6 +370,7 @@ bool RustMidiStorage::put(uint32_t frame_in_current_buffer, uint16_t size, const
 
 void RustMidiStorage::snapshot(RustMidiStorage& target, std::optional<uint32_t> start_offset_from_end) const {
     uint32_t offset = start_offset_from_end.value_or(get_n_samples());
-    backend_rust::time_window_snapshot(*m_time_window, *m_rust_core, *target.m_rust_core, offset);
+    // Cast away const: Rust needs mutable reference for its copy operation
+    backend_rust::time_window_snapshot(*m_time_window, const_cast<backend_rust::MidiStorageCore&>(*m_rust_core), *target.m_rust_core, offset);
     target.sync_rust_state();
 }
