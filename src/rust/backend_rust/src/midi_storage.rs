@@ -56,7 +56,7 @@ impl MidiStorageElem {
         if self.size != other.size {
             return false;
         }
-        self.bytes[..self.size as usize] == other.bytes[..self.size as usize]
+        self.bytes[..self.size as usize] == other.bytes[..other.size as usize]
     }
 }
 
@@ -67,8 +67,23 @@ pub enum TruncateSide {
     TruncateTail,
 }
 
-/// Callback for dropped messages
-pub type DroppedMsgCallback = Box<dyn Fn(u32, u16, &[u8]) + Send + Sync>;
+/// Result of an append operation, including any dropped message
+#[derive(Clone)]
+pub struct AppendResult {
+    pub success: bool,
+    pub dropped: bool,
+    pub dropped_elem: Option<MidiStorageElem>,
+}
+
+impl Default for AppendResult {
+    fn default() -> Self {
+        AppendResult {
+            success: false,
+            dropped: false,
+            dropped_elem: None,
+        }
+    }
+}
 
 /// Core MIDI storage with ringbuffer implementation.
 pub struct MidiStorageCore {
@@ -76,11 +91,16 @@ pub struct MidiStorageCore {
     tail: u32,
     head: u32,
     n_events: u32,
+    // Preview buffer for truncate - stores elements that would be dropped
+    preview_dropped: Vec<MidiStorageElem>,
+    // Index of last dropped element from append (INVALID_OFFSET if none)
+    last_dropped_idx: u32,
 }
 
 impl MidiStorageCore {
     pub fn new(data_size_bytes: u32) -> Self {
         let capacity = data_size_bytes as usize / std::mem::size_of::<MidiStorageElem>();
+        const INVALID: u32 = 0xFFFFFFFF;
         MidiStorageCore {
             data: vec![MidiStorageElem {
                 time: 0,
@@ -90,6 +110,8 @@ impl MidiStorageCore {
             tail: 0,
             head: 0,
             n_events: 0,
+            preview_dropped: Vec::new(),
+            last_dropped_idx: INVALID,
         }
     }
 
@@ -130,17 +152,19 @@ impl MidiStorageCore {
     }
 
     /// Append a message to the storage.
-    /// Returns true if successful, false if the buffer is full.
+    /// Returns (success, dropped_message_time, dropped_message_size, dropped_message_data).
+    /// Only one message can be dropped from append.
     pub fn append(
         &mut self,
         time: u32,
         size: u16,
         data: &[u8],
         allow_replace: bool,
-        dropped_cb: Option<&DroppedMsgCallback>,
-    ) -> bool {
+    ) -> AppendResult {
+        const INVALID: u32 = 0xFFFFFFFF;
+        
         if self.full() && !allow_replace {
-            return false;
+            return AppendResult::default();
         }
 
         // Check for out-of-order messages
@@ -152,18 +176,15 @@ impl MidiStorageCore {
             };
             if let Some(elem) = self.data.get(newest_idx) {
                 if elem.time > time {
-                    return false;
+                    return AppendResult::default();
                 }
             }
         }
 
-        // Handle buffer full condition
+        // Handle buffer full condition - capture dropped element
+        self.last_dropped_idx = INVALID;
         if self.full() {
-            if let Some(cb) = dropped_cb {
-                if let Some(elem) = self.data.get(self.tail as usize) {
-                    cb(elem.time, elem.size, elem.data());
-                }
-            }
+            self.last_dropped_idx = self.tail;
             self.tail = (self.tail + 1) % self.data.len() as u32;
         }
 
@@ -179,30 +200,53 @@ impl MidiStorageCore {
             self.n_events += 1;
         }
 
-        true
+        let dropped_elem = if self.last_dropped_idx != INVALID {
+            self.data.get(self.last_dropped_idx as usize).map(|e| e.clone())
+        } else {
+            None
+        };
+
+        AppendResult {
+            success: true,
+            dropped: self.last_dropped_idx != INVALID,
+            dropped_elem,
+        }
+    }
+    
+    /// Get the index of the last dropped element (INVALID if none)
+    pub fn get_last_dropped_idx(&self) -> u32 {
+        self.last_dropped_idx
     }
 
     /// Prepend a message to the storage (at the tail).
-    /// Returns true if successful, false if the buffer is full.
+    /// Returns (success, dropped_message_time, dropped_message_size, dropped_message_data).
     pub fn prepend(
         &mut self,
         time: u32,
         size: u16,
         data: &[u8],
-        dropped_cb: Option<&DroppedMsgCallback>,
-    ) -> bool {
+    ) -> AppendResult {
         if self.full() {
-            if let Some(cb) = dropped_cb {
-                cb(time, size, data);
-            }
-            return false;
+            return AppendResult {
+                success: false,
+                dropped: true,  // prepend fails if full
+                dropped_elem: Some(MidiStorageElem {
+                    time,
+                    size,
+                    bytes: {
+                        let mut arr = [0u8; 4];
+                        arr[..size as usize].copy_from_slice(&data[..size as usize]);
+                        arr
+                    },
+                }),
+            };
         }
 
         // Check for out-of-order messages (for prepend, expect earlier times)
         if self.n_events > 0 {
             if let Some(elem) = self.data.get(self.tail as usize) {
                 if elem.time < time {
-                    return false;
+                    return AppendResult::default();
                 }
             }
         }
@@ -221,47 +265,82 @@ impl MidiStorageCore {
             elem.bytes[..size as usize].copy_from_slice(&data[..size as usize]);
         }
 
-        true
+        AppendResult {
+            success: true,
+            dropped: false,
+            dropped_elem: None,
+        }
     }
 
+    /// Clear all elements from the storage.
     pub fn clear(&mut self) {
         self.tail = 0;
         self.head = 0;
         self.n_events = 0;
+        self.preview_dropped.clear();
     }
 
-    pub fn truncate(
-        &mut self,
-        time: u32,
-        side: TruncateSide,
-        dropped_cb: Option<&DroppedMsgCallback>,
-    ) {
+    /// Preview what would be dropped if we truncate to a specific time.
+    /// Returns the number of messages that would be dropped.
+    /// Call get_preview_elem(0..n) to retrieve each dropped message.
+    pub fn truncate_preview(&mut self, time: u32, side: TruncateSide) -> u32 {
+        self.preview_dropped.clear();
+        
+        let capacity = self.data.len() as u32;
+        if capacity == 0 || self.n_events == 0 {
+            return 0;
+        }
+
         match side {
-            TruncateSide::TruncateTail => {
-                self.truncate_fn(
-                    |t, _, _| t < time,
-                    side,
-                    dropped_cb,
-                );
-            }
             TruncateSide::TruncateHead => {
-                self.truncate_fn(
-                    |t, _, _| t > time,
-                    side,
-                    dropped_cb,
-                );
+                // TruncateHead: remove elements where time > target
+                // Walk from tail forward, stop when we find an element to keep
+                let mut idx = self.tail;
+                for _ in 0..self.n_events {
+                    if let Some(elem) = self.data.get(idx as usize) {
+                        if elem.time > time {
+                            break;  // found element to keep
+                        }
+                        // This element would be truncated - add to preview
+                        self.preview_dropped.push(elem.clone());
+                    }
+                    idx = (idx + 1) % capacity;
+                }
+                self.preview_dropped.len() as u32
+            }
+            TruncateSide::TruncateTail => {
+                // TruncateTail: remove elements where time < target
+                // Walk from tail forward, count elements to drop
+                let mut idx = self.tail;
+                for _ in 0..self.n_events {
+                    if let Some(elem) = self.data.get(idx as usize) {
+                        if elem.time >= time {
+                            break;  // found element to keep
+                        }
+                        // This element would be truncated - add to preview
+                        self.preview_dropped.push(elem.clone());
+                    }
+                    idx = (idx + 1) % capacity;
+                }
+                self.preview_dropped.len() as u32
             }
         }
     }
 
-    pub fn truncate_fn<F>(
-        &mut self,
-        should_truncate: F,
-        side: TruncateSide,
-        dropped_cb: Option<&DroppedMsgCallback>,
-    ) where
-        F: Fn(u32, u16, &[u8]) -> bool,
-    {
+    /// Get the nth element from the truncate preview buffer.
+    /// Returns None if idx is out of range.
+    pub fn get_preview_elem(&self, idx: u32) -> Option<&MidiStorageElem> {
+        self.preview_dropped.get(idx as usize)
+    }
+
+    /// Get the number of elements in the truncate preview buffer.
+    pub fn preview_count(&self) -> u32 {
+        self.preview_dropped.len() as u32
+    }
+
+    /// Perform the actual truncate operation.
+    /// Should be called after truncate_preview() and after handling dropped messages.
+    pub fn truncate_doit(&mut self, time: u32, side: TruncateSide) {
         let capacity = self.data.len() as u32;
         if capacity == 0 || self.n_events == 0 {
             return;
@@ -276,7 +355,8 @@ impl MidiStorageCore {
                 };
 
                 if let Some(elem) = self.data.get(newest_idx as usize) {
-                    if !should_truncate(elem.time, elem.size, elem.data()) {
+                    if elem.time <= time {
+                        // Nothing to truncate
                         return;
                     }
                 }
@@ -285,7 +365,7 @@ impl MidiStorageCore {
                 let mut kept = 0u32;
                 for _ in 0..self.n_events {
                     if let Some(elem) = self.data.get(idx as usize) {
-                        if should_truncate(elem.time, elem.size, elem.data()) {
+                        if elem.time > time {
                             break;
                         }
                     }
@@ -293,22 +373,13 @@ impl MidiStorageCore {
                     idx = (idx + 1) % capacity;
                 }
 
-                if let Some(cb) = dropped_cb {
-                    let mut drop_idx = idx;
-                    for _ in kept..self.n_events {
-                        if let Some(elem) = self.data.get(drop_idx as usize) {
-                            cb(elem.time, elem.size, elem.data());
-                        }
-                        drop_idx = (drop_idx + 1) % capacity;
-                    }
-                }
-
                 self.head = idx;
                 self.n_events = kept;
             }
             TruncateSide::TruncateTail => {
                 if let Some(elem) = self.data.get(self.tail as usize) {
-                    if !should_truncate(elem.time, elem.size, elem.data()) {
+                    if elem.time >= time {
+                        // Nothing to truncate
                         return;
                     }
                 }
@@ -317,13 +388,8 @@ impl MidiStorageCore {
                 let mut dropped = 0u32;
                 for _ in 0..self.n_events {
                     if let Some(elem) = self.data.get(idx as usize) {
-                        if !should_truncate(elem.time, elem.size, elem.data()) {
+                        if elem.time >= time {
                             break;
-                        }
-                    }
-                    if let Some(cb) = dropped_cb {
-                        if let Some(elem) = self.data.get(idx as usize) {
-                            cb(elem.time, elem.size, elem.data());
                         }
                     }
                     dropped += 1;
@@ -337,6 +403,14 @@ impl MidiStorageCore {
                 }
             }
         }
+        
+        // Clear preview after truncate
+        self.preview_dropped.clear();
+    }
+
+    /// Clear the preview buffer without performing truncate.
+    pub fn clear_preview(&mut self) {
+        self.preview_dropped.clear();
     }
 
     /// Copy all elements to another storage

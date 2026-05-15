@@ -21,8 +21,21 @@ RustMidiStorage::~RustMidiStorage() = default;
 
 // Sync Rust core state with C++ state (for future use if we need to query Rust)
 void RustMidiStorage::sync_rust_state() {
-    // Currently we use C++ state for queries, so no sync needed
-    // This function exists for future use if we need to update Rust state
+    // Query Rust for current state
+    m_tail = m_rust_core->raw_tail();
+    m_head = m_rust_core->raw_head();
+    m_n_events = m_rust_core->n_events();
+    
+    // Sync data from Rust to C++ for elements that are in use
+    uint32_t cap = m_data.size();
+    uint32_t pos = m_tail;
+    for (uint32_t i = 0; i < m_n_events; ++i) {
+        auto& dst = m_data[pos];
+        dst.time = backend_rust::get_elem_time(*m_rust_core, pos);
+        dst.size = backend_rust::get_elem_size(*m_rust_core, pos);
+        backend_rust::get_elem_bytes(*m_rust_core, pos, dst.bytes, 4);
+        pos = (pos + 1) % cap;
+    }
 }
 
 ::MidiStorageElem* RustMidiStorage::get_elem(uint32_t idx) {
@@ -44,36 +57,28 @@ bool RustMidiStorage::append(uint32_t time, uint16_t size,
                               DroppedMsgCallback dropped_msg_cb) {
     if (m_data.empty()) return false;
     
-    if (full() && !allow_replace) {
-        return false;
+    // Delegate to Rust - returns flags byte: bit 0=success, bit 1=dropped
+    uint8_t flags = backend_rust::append(*m_rust_core, time, size, data, allow_replace);
+    
+    bool success = flags & 1;
+    bool dropped = flags & 2;
+    
+    // Sync state from Rust to C++
+    sync_rust_state();
+    
+    // Handle dropped message callback if provided
+    if (dropped && dropped_msg_cb) {
+        uint32_t dropped_idx = backend_rust::get_last_dropped_elem(*m_rust_core);
+        if (dropped_idx != UINT32_MAX) {
+            uint32_t time = backend_rust::get_elem_time(*m_rust_core, dropped_idx);
+            uint16_t size = backend_rust::get_elem_size(*m_rust_core, dropped_idx);
+            uint8_t bytes[4];
+            backend_rust::get_elem_bytes(*m_rust_core, dropped_idx, bytes, 4);
+            dropped_msg_cb(time, size, bytes);
+        }
     }
     
-    if (m_n_events > 0) {
-        uint32_t newest_idx = (m_head + m_data.size() - 1) % m_data.size();
-        if (m_data[newest_idx].time > time) {
-            return false;
-        }
-    }
-
-    if (full()) {
-        if (dropped_msg_cb) {
-            auto& dropped = m_data[m_tail];
-            dropped_msg_cb(dropped.time, dropped.size, dropped.data());
-        }
-        m_tail = (m_tail + 1) % m_data.size();
-    }
-
-    auto& elem = m_data[m_head];
-    elem.time = time;
-    elem.size = size;
-    memcpy(elem.bytes, data, size);
-
-    m_head = (m_head + 1) % m_data.size();
-    if (m_n_events < m_data.size()) {
-        m_n_events++;
-    }
-
-    return true;
+    return success;
 }
 
 bool RustMidiStorage::prepend(uint32_t time, uint16_t size,
@@ -81,6 +86,8 @@ bool RustMidiStorage::prepend(uint32_t time, uint16_t size,
                                DroppedMsgCallback dropped_msg_cb) {
     if (m_data.empty()) return false;
     
+    // For prepend, we'll use C++ implementation since Rust doesn't expose it yet
+    // This maintains the existing behavior
     if (full()) {
         if (dropped_msg_cb) {
             dropped_msg_cb(time, size, data);
@@ -104,49 +111,42 @@ bool RustMidiStorage::prepend(uint32_t time, uint16_t size,
 }
 
 void RustMidiStorage::clear() {
-    m_head = m_tail = m_n_events = 0;
+    // Delegate to Rust
+    backend_rust::clear_storage(*m_rust_core);
+    
+    // Sync C++ state
+    sync_rust_state();
 }
 
 void RustMidiStorage::copy(IMidiStorageCore& target) const {
     // Handle RustMidiStorage target
     if (auto* t = dynamic_cast<RustMidiStorage*>(&target)) {
-        t->m_data.resize(m_data.size());
-        t->m_tail = 0;
-        t->m_n_events = m_n_events;
-
-        if (m_n_events == 0) {
-            t->m_head = 0;
-            return;
-        }
-
-        uint32_t count = 0;
-        uint32_t idx = m_tail;
-        while (count < m_n_events) {
-            t->m_data[count] = m_data[idx];
-            idx = (idx + 1) % m_data.size();
-            count++;
-        }
-        t->m_head = count % m_data.size();
+        // Use Rust copy operation
+        backend_rust::copy_to_storage(*m_rust_core, *t->m_rust_core);
+        
+        // Sync C++ state
+        t->sync_rust_state();
         return;
     }
     
-    // Handle MidiStorage target - use copy_from by swapping const_cast approach
-    // or delegate to the non-const version
+    // Handle MidiStorage target
     auto* t = dynamic_cast<MidiStorage*>(&target);
     if (t) {
         t->clear();
         
-        // Copy elements manually using ringbuffer traversal
-        uint32_t cap = t->bytes_capacity() / sizeof(::MidiStorageElem);
-        uint32_t idx = 0;
+        // Copy elements by querying Rust state
+        uint32_t n = m_rust_core->n_events();
+        uint32_t cap = m_rust_core->capacity();
         
         uint32_t pos = m_tail;
-        for (uint32_t i = 0; i < m_n_events; ++i) {
-            if (idx >= cap) break;
-            const auto& elem = m_data[pos];
-            t->append(elem.time, elem.size, elem.bytes, true, nullptr);
-            pos = (pos + 1) % m_data.size();
-            ++idx;
+        for (uint32_t i = 0; i < n; ++i) {
+            if (pos >= cap) break;
+            uint32_t time = backend_rust::get_elem_time(*m_rust_core, pos);
+            uint16_t size = backend_rust::get_elem_size(*m_rust_core, pos);
+            uint8_t bytes[4];
+            backend_rust::get_elem_bytes(*m_rust_core, pos, bytes, 4);
+            t->append(time, size, bytes, true, nullptr);
+            pos = (pos + 1) % cap;
         }
         return;
     }
@@ -156,41 +156,53 @@ void RustMidiStorage::copy(IMidiStorageCore& target) const {
 
 void RustMidiStorage::copy_from(const IMidiStorageCore& from) {
     auto* s = dynamic_cast<const RustMidiStorage*>(&from);
-    if (!s) {
+    if (s) {
+        // Use Rust copy operation
+        backend_rust::copy_from_storage(*m_rust_core, *s->m_rust_core);
+        
+        // Sync C++ state
+        sync_rust_state();
+    } else {
         throw std::runtime_error("copy_from source must be RustMidiStorage");
-    }
-    
-    m_data.resize(s->m_data.size());
-    m_tail = s->m_tail;
-    m_head = s->m_head;
-    m_n_events = s->m_n_events;
-
-    if (m_n_events == 0) return;
-
-    uint32_t count = 0;
-    uint32_t idx = s->m_tail;
-    while (count < m_n_events) {
-        m_data[idx] = s->m_data[idx];
-        idx = (idx + 1) % s->m_data.size();
-        count++;
     }
 }
 
 void RustMidiStorage::truncate(uint32_t time, MidiStorageTruncateSide side,
                                 DroppedMsgCallback dropped_msg_cb) {
-    if (side == MidiStorageTruncateSide::TruncateTail) {
-        truncate_fn([time](uint32_t t, uint16_t, const uint8_t*) { return t < time; },
-                    side, dropped_msg_cb);
-    } else {
-        truncate_fn([time](uint32_t t, uint16_t, const uint8_t*) { return t > time; },
-                    side, dropped_msg_cb);
+    // Use the preview-then-act pattern:
+    // 1. Get preview of what would be dropped
+    // 2. Handle dropped messages
+    // 3. Perform actual truncate
+    
+    uint8_t rust_side = (side == MidiStorageTruncateSide::TruncateTail) ? 0 : 1;
+    
+    // Get preview
+    uint32_t count = backend_rust::truncate_preview(*m_rust_core, time, rust_side);
+    
+    // Handle dropped messages if any
+    for (uint32_t i = 0; i < count; ++i) {
+        if (dropped_msg_cb) {
+            uint32_t time = backend_rust::get_preview_elem_time(*m_rust_core, i);
+            uint16_t size = backend_rust::get_preview_elem_size(*m_rust_core, i);
+            uint8_t bytes[4];
+            backend_rust::get_preview_elem_bytes(*m_rust_core, i, bytes, 4);
+            dropped_msg_cb(time, size, bytes);
+        }
     }
+    
+    // Perform actual truncate
+    backend_rust::truncate_doit(*m_rust_core, time, rust_side);
+    
+    // Sync C++ state
+    sync_rust_state();
 }
 
 void RustMidiStorage::truncate_fn(
     std::function<bool(uint32_t, uint16_t, const uint8_t*)> should_truncate_fn,
     MidiStorageTruncateSide side, DroppedMsgCallback dropped_msg_cb) {
     
+    // For truncate_fn with predicate, use C++ implementation
+    // since Rust's truncate doesn't support custom predicates yet
     uint32_t cap = m_data.size();
     if (cap == 0 || m_n_events == 0) return;
 
