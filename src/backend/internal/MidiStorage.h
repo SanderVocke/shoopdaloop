@@ -155,6 +155,9 @@ public:
     using Elem = MidiStorageElem;
     using SharedCursor = shoop_shared_ptr<MidiStorageCursor>;  // Typedef for cursor type
 
+    // Sentinel value for invalid offset (matches Rust's INVALID_OFFSET)
+    static constexpr uint32_t INVALID_OFFSET = 0xFFFFFFFF;
+
 private:
     std::optional<uint32_t> m_offset = std::nullopt;
     std::optional<uint32_t> m_prev_offset = std::nullopt;

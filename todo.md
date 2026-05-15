@@ -1,6 +1,6 @@
-# MIDI Storage & Ringbuffer Refactoring Plan
+# Full Rust Migration Plan
 
-Goal: Refactor C++ MIDI storage classes to enable clean port to Rust using CXX bridges.
+Goal: Migrate all MIDI storage, cursor logic, and time-window logic to Rust.
 
 ---
 
@@ -11,270 +11,319 @@ Goal: Refactor C++ MIDI storage classes to enable clean port to Rust using CXX b
 cargo build
 ```
 
-This builds the application and creates a `test_runner` executable in the `target/` directory.
-
-### Run C++ Unit Tests
+### Run All Tests
 ```bash
 ./target/debug/test_runner
 ```
-Or with release:
+
+### Run Specific Test Groups
 ```bash
-./target/release/test_runner
-```
-
-Run specific tests by name:
-```bash
-./target/debug/test_runner "[MidiStorage]"
-```
-
----
-
-## Phase 1: Flatten inheritance into composition (COMPLETED)
-
-**Goal**: Replace is-a inheritance with has-a composition. This maps better to Rust traits and eliminates the awkward `using Storage = MidiStorage` aliasing.
-
-### Tasks
-- [x] Create standalone `MidiStorageCore` class containing the raw ringbuffer data (`m_data`, `m_tail`, `m_head`, `m_n_events`) and basic operations (`append`, `prepend`, `copy`, `clear`, `full`, `n_events`, `bytes_*`)
-- [x] Remove `MidiStorageBase` class entirely (merged into new `MidiStorageCore`)
-- [x] Refactor `MidiStorage` to **contain** a `MidiStorageCore` via `std::unique_ptr<MidiStorageCore>` instead of inheriting
-- [x] Add cursor management methods to `MidiStorage` that delegate to `MidiStorageCore`
-- [x] Refactor `MidiRingbuffer` to **contain** a `MidiStorage` instead of inheriting
-- [x] Update all includes and constructor calls in consumers
-- [x] Verify all tests pass
-
-### Build & Test
-```bash
-cargo build
-./target/debug/test_runner "[MidiStorage]"
+./target/debug/test_runner "[RustMidiStorage]"
 ./target/debug/test_runner "[MidiRingbuffer]"
-```
-
-✅ All 140 test cases pass
-
----
-
-## Phase 2: Extract IMidiStorageCore interface (COMPLETED)
-
-**Goal**: Define a pure virtual interface that C++ consumers can use and Rust can implement/bridge to.
-
-### Tasks
-- [x] Create `IMidiStorageCore` interface with pure virtual methods:
-  - `n_events() const`
-  - `get_elem(uint32_t idx)` → mutable elem access
-  - `get_elem(uint32_t idx) const` → immutable elem access
-  - `raw_tail()`, `raw_head()`, `raw_capacity()`, `raw_full()`
-- [x] Create `IMidiStorageOperations` interface:
-  - `append(time, size, data, allow_replace, dropped_cb)`
-  - `clear()`
-  - `copy_to(IMidiStorageCore& target)`
-  - `truncate(time, side, dropped_cb)`
-  - `for_each_msg_modify(callback)`
-- [x] Make `MidiStorageCore` implement these interfaces
-- [x] Update consumers to use interfaces where appropriate (not required for all consumers, just for the Rust bridge boundary)
-
-### Build & Test
-```bash
-cargo build
 ./target/debug/test_runner "[MidiStorage]"
-./target/debug/test_runner "[MidiRingbuffer]"
+./target/debug/test_runner "[MidiChannel]"
+./target/debug/test_runner "[chain]"
 ```
-
-✅ All 140 test cases pass
-
-**Files created/modified:**
-- `IMidiStorageCore.h` - Pure virtual interfaces for FFI
-- `MidiStorageElem.h` - Extracted element struct with inline implementations
-- `MidiStorage.h` - MidiStorageCore now implements the interfaces
-- `MidiStorage.cpp` - Updated copy() methods to use interface
 
 ---
 
-## Phase 3: Extract cursor interface (COMPLETED)
+## Phase A: Complete Rust Cursor Implementation
 
-**Goal**: Define cursor operations as free functions working on interfaces, enabling Rust cursor implementation.
+**Goal**: Move cursor logic fully to Rust and make `MidiStorageCursor` a wrapper around Rust cursor.
 
 ### Tasks
-- [x] Create `IMidiStorageCursor` interface:
-  - `valid()`, `offset()`, `invalidate()`, `reset()`
-  - `get()`, `get_prev()`, `next()`
-  - `wrapped()`, `is_at_start()`
-  - `overwrite(offset, prev_offset)`
-- [x] Create `cursor_find_time_forward()` free function
-- [x] Create `cursor_find_fn_forward()` free function
-- [x] Refactor `MidiStorageCursor` to implement `IMidiStorageCursor`
-- [x] Ensure cursor can be created from storage interface
 
-### Build & Test
+- [x] **A.1** Create `MidiCursor` Rust struct with full state management:
+  - [x] `offset: Option<u32>`
+  - [x] `prev_offset: Option<u32>`
+  - [x] Methods: `valid()`, `offset()`, `prev_offset()`, `invalidate()`, `wrapped()`
+  - [x] Methods: `reset()`, `next()`, `overwrite()`
+  - [x] Methods: `find_time_forward()`, `find_fn_forward()`
+
+- [x] **A.2** Update `midi_storage.rs` to implement full cursor logic:
+  - [x] Move `wrapped()` logic to Rust
+  - [x] Move `next()` iteration logic to Rust
+  - [x] Move `find_time_forward()` to Rust
+  - [x] Move `find_fn_forward()` to Rust
+  - [x] Handle ringbuffer wrapping detection
+
+- [x] **A.3** Expose cursor via CXX bridge in `midi_storage_cxx.rs`:
+  - [x] Add `MidiCursor` to FFI exports
+  - [x] Add cursor method bindings
+  - [x] Add `FindResult` to FFI exports
+
+- [ ] **A.4** Update C++ `MidiStorageCursor` to wrap Rust cursor:
+  - [x] Add `m_rust_cursor` member of type `rust::Box<backend_rust::MidiCursor>` (added, not yet delegating)
+  - [ ] Delegate all operations to Rust cursor
+  - [ ] Remove C++ cursor state management
+
+- [x] **A.5** Test cursor operations:
+  - [x] Verify `[RustMidiStorage]` cursor tests pass
+  - [x] Verify `[MidiStorage]` cursor tests pass
+  - [x] Verify `[MidiRingbuffer]` cursor tests pass
+  - [x] Verify integration tests pass
+
+### Verification
 ```bash
 cargo build
-./target/debug/test_runner "[MidiStorage]"
-./target/debug/test_runner "[MidiRingbuffer]"
+./target/debug/test_runner "[RustMidiStorage]"  # All pass
+./target/debug/test_runner "[MidiStorage]"       # All pass
+./target/debug/test_runner "[MidiRingbuffer]"   # All pass
 ```
 
-✅ All 140 test cases pass
-
-**Files created/modified:**
-- `IMidiStorageCursor.h` - Pure virtual interface for cursor operations
-- `IMidiStorageCursor.cpp` - Free function implementations
-- `MidiStorage.h` - MidiStorageCursor now implements IMidiStorageCursor
-- `MidiStorage.cpp` - Updated to use interface FindResult type
+**Expected**: All cursor-related tests pass
 
 ---
 
-## Phase 4: Extract time-window logic from MidiRingbuffer (COMPLETED)
+## Phase B: Complete Rust MidiStorage Operations
 
-**Goal**: Isolate the time-window logic (n_samples tracking, next_buffer, put, snapshot) so it can be easily bridged to Rust independently of the storage core.
+**Goal**: Move all storage mutation operations to Rust (append, prepend, truncate, clear, copy).
 
 ### Tasks
-- [x] Create `IMidiRingbufferTimeWindow` interface:
-  - `set_n_samples(n)`
-  - `get_n_samples() const`
-  - `next_buffer(n_frames, dropped_cb)`
-  - `put(frame_in_buffer, size, data, dropped_cb) -> bool`
-  - `snapshot(target, start_offset_from_end)`
-  - `get_current_start_time()`, `get_current_end_time()`
-- [x] Make `MidiRingbufferCore` implement this interface
-- [x] Refactor `MidiRingbuffer` to contain `MidiRingbufferCore` instead of inheriting from `MidiStorage`
 
-### Build & Test
+- [ ] **B.1** Add mutation operations to Rust storage:
+  - [ ] Move `append()` fully to Rust
+  - [ ] Move `prepend()` fully to Rust
+  - [ ] Move `truncate()` fully to Rust
+  - [ ] Move `clear()` fully to Rust
+  - [ ] Move `copy_to()` and `copy_from()` to Rust
+  - [ ] Move `for_each_msg_modify()` to Rust
+
+- [ ] **B.2** Handle callbacks in Rust:
+  - [ ] Define callback trait in Rust: `Fn(u32, u16, &[u8])`
+  - [ ] Store callback as `Option<Box<dyn Fn...>>` in Rust storage
+  - [ ] Update `append()` to call Rust callback
+  - [ ] Update `truncate()` to call Rust callback
+  - [ ] Expose callback setter via CXX bridge
+
+- [ ] **B.3** Update CXX bridge for all operations:
+  - [ ] Export `append()` with callback support
+  - [ ] Export `prepend()` with callback support
+  - [ ] Export `truncate()` with callback support
+  - [ ] Export `clear()` 
+  - [ ] Export `copy_to()` / `copy_from()`
+  - [ ] Export `for_each_msg_modify()` or make it fully Rust-internal
+
+- [ ] **B.4** Update RustMidiStorage to delegate all operations:
+  - [ ] Remove C++ `append()` implementation, use Rust
+  - [ ] Remove C++ `prepend()` implementation, use Rust
+  - [ ] Remove C++ `truncate()` implementation, use Rust
+  - [ ] Remove C++ `clear()` implementation, use Rust
+  - [ ] Remove C++ `copy()` implementation, use Rust
+  - [ ] Keep C++ `get_elem()` and `for_each_msg()` if needed for compatibility
+
+- [ ] **B.5** Test all storage operations:
+  - [ ] Run `[RustMidiStorage]` tests - all pass
+  - [ ] Run `[MidiStorage]` tests - all pass
+  - [ ] Verify copy between storages still works
+  - [ ] Verify truncate with callbacks works
+
+### Verification
 ```bash
 cargo build
-./target/debug/test_runner "[MidiStorage]"
-./target/debug/test_runner "[MidiRingbuffer]"
+./target/debug/test_runner "[RustMidiStorage]"  # All pass
+./target/debug/test_runner "[MidiStorage]"       # All pass
+./target/debug/test_runner "[MidiChannel]"      # All pass
+./target/debug/test_runner "[MidiRingbuffer]"   # All pass
 ```
 
-✅ All 140 test cases pass
-
-**Files created/modified:**
-- `IMidiRingbufferTimeWindow.h` - Pure virtual interface for time-window operations
-- `MidiStorage.h` - Added MidiRingbufferCore class, updated MidiStorage to implement IMidiStorage
-- `MidiStorage.cpp` - Added MidiRingbufferCore implementation, updated copy() to work with interface
+**Expected**: All storage operation tests pass with Rust implementation
 
 ---
 
-## Phase 5: Clean up remaining integration points (COMPLETED)
+## Phase C: Complete Rust Time-Window Logic
 
-**Goal**: Ensure the bridge boundary is clean before Rust port begins.
+**Goal**: Move `MidiRingbufferCore` time-window operations to Rust.
 
 ### Tasks
-- [x] Remove any remaining inheritance patterns in MIDI storage classes
-- [x] Verify no raw pointer arithmetic that could cause FFI issues
-- [x] Ensure all `std::function` callbacks at the bridge boundary are documented
-- [x] Add `dropped_msg_cb` parameter consistently across all mutating operations
-- [x] Update tests to use refactored classes
-- [x] All tests pass
 
-### Build & Test
+- [ ] **C.1** Create `MidiTimeWindow` Rust struct:
+  - [ ] Fields: `storage`, `n_samples`, `current_buffer_start`, `current_buffer_end`
+  - [ ] Methods: `set_n_samples()`, `get_n_samples()`
+  - [ ] Methods: `get_current_start_time()`, `get_current_end_time()`
+  - [ ] Methods: `next_buffer()`, `put()`, `snapshot()`
+
+- [ ] **C.2** Implement time-window logic in Rust:
+  - [ ] Time overflow detection and handling
+  - [ ] Buffer truncation on `next_buffer()`
+  - [ ] Message storage in `put()`
+  - [ ] Snapshot with time offset calculation
+  - [ ] Handle callbacks for truncated messages
+
+- [ ] **C.3** Expose time-window via CXX bridge:
+  - [ ] Add `MidiTimeWindow` to FFI exports
+  - [ ] Export all time-window methods
+  - [ ] Export callback support
+
+- [ ] **C.4** Update C++ `MidiRingbufferCore`:
+  - [ ] Remove time-window state (`n_samples`, `current_buffer_*`)
+  - [ ] Add `rust::Box<backend_rust::MidiTimeWindow> m_rust_window`
+  - [ ] Delegate all `IMidiRingbufferTimeWindow` methods to Rust
+  - [ ] Remove C++ time-window logic
+
+- [ ] **C.5** Test time-window operations:
+  - [ ] Run `[MidiRingbuffer]` tests - all pass
+  - [ ] Verify `put()` stores messages correctly
+  - [ ] Verify `next_buffer()` truncates and advances time
+  - [ ] Verify `snapshot()` returns correct data
+
+### Verification
 ```bash
 cargo build
-./target/debug/test_runner   # Run all tests to ensure nothing is broken
+./target/debug/test_runner "[MidiRingbuffer]"  # All pass
+./target/debug/test_runner "[chain]"            # All pass
 ```
 
-✅ All 140 test cases pass
-
-**Changes made:**
-- Added `dropped_msg_cb` parameter to `prepend()` method in `IMidiStorageCore`, `MidiStorageCore`, and `MidiStorage`
-- All mutating operations now consistently support dropped message callbacks
-- All `std::function` callbacks at bridge boundaries are now documented via interface headers
+**Expected**: All MidiRingbuffer and chain integration tests pass
 
 ---
 
-## Phase 6: Add Rust storage implementation with CXX bridge (COMPLETED)
+## Phase D: Eliminate C++ MidiStorage
 
-**Goal**: Implement MIDI storage logic in Rust and expose via CXX.
+**Goal**: Remove C++ `MidiStorage` class and make `RustMidiStorage` the only implementation.
 
 ### Tasks
-- [x] Create `midi_storage.rs` with `MidiStorageCore` struct
-- [x] Create `midi_storage_cxx.rs` with CXX bridge
-- [x] Implement `MidiStorageElem` serialization if needed (using repr(C) for FFI compatibility)
-- [x] Add C++ wrapper classes that delegate to Rust
-- [ ] Implement cursor logic in Rust (optional future work)
-- [ ] Implement time-window logic in Rust (optional future work)
-- [x] Verify all tests pass with hybrid implementation
 
-### Build & Test
+- [ ] **D.1** Make `MidiStorage` a typedef/alias:
+  - [ ] Change `class MidiStorage` to be `using MidiStorage = RustMidiStorage`
+  - [ ] Or create thin wrapper if interface differences exist
+  - [ ] Update `MidiStorageCursor` to work directly with RustMidiStorage
+
+- [ ] **D.2** Update `MidiRingbuffer` to use Rust time-window directly:
+  - [ ] `MidiRingbuffer` currently creates `MidiStorage` internally
+  - [ ] Update to create `RustMidiStorage` directly
+  - [ ] Remove dependency on C++ `MidiStorageCore`
+
+- [ ] **D.3** Remove C++ storage files (optional, or keep as stubs):
+  - [ ] Keep `MidiStorage.h` with typedefs/interfaces
+  - [ ] Keep `MidiStorage.cpp` minimal (or remove if empty)
+  - [ ] Keep `MidiStorageElem.h` (shared with Rust)
+
+- [ ] **D.4** Update all consumers:
+  - [ ] `MidiChannel` already uses `RustMidiStorage`
+  - [ ] `MidiPort` uses `IMidiStorage` interface - no changes needed
+  - [ ] `MidiRingbuffer` - update to use Rust storage
+  - [ ] Any other direct `MidiStorage` users
+
+- [ ] **D.5** Final integration test:
+  - [ ] All 149 tests pass
+  - [ ] No C++ storage code path remains
+  - [ ] Build clean with no warnings about unused code
+
+### Verification
 ```bash
 cargo build
-./target/debug/test_runner   # All tests should pass
+./target/debug/test_runner  # All 149 tests pass
 ```
 
-✅ All 140 test cases pass
-
-**Files created/modified:**
-- `src/rust/backend_rust/src/midi_storage.rs` - Core MIDI storage implementation in Rust
-- `src/rust/backend_rust/src/midi_storage_cxx.rs` - CXX bridge for FFI
-- `src/rust/backend_rust/src/lib.rs` - Updated to include new modules
-- `src/rust/backend_rust/build.rs` - Added midi_storage_cxx.rs to CXX bridges
-- `src/backend/internal/RustMidiStorage.h` - C++ wrapper header
-- `src/backend/internal/RustMidiStorage.cpp` - C++ wrapper implementation
-
-**Current Status:**
-- Hybrid implementation: Rust provides basic state queries, C++ handles callbacks/mutations
-- `RustMidiStorage` class wraps Rust `MidiStorageCore` via CXX bridge
-- Mutable iteration (`for_each_msg_modify`) and callbacks remain in C++ due to closure signature limitations
-- Cursor and time-window logic remain in C++ (can be migrated to Rust later)
-- All existing tests pass with the new infrastructure
+**Expected**: Clean build, all tests pass
 
 ---
 
-## Phase 7: Wire RustMidiStorage as primary storage (COMPLETED)
+## Phase E: Polish and Documentation
 
-**Goal**: After Rust implementation is validated, update consumers to use Rust-backed classes.
+**Goal**: Clean up any remaining issues and document the final architecture.
 
 ### Tasks
-- [x] Verify Rust implementation passes all tests
-- [x] Update MidiChannel to use RustMidiStorage instead of MidiStorage
-- [x] Ensure MidiRingbuffer still works with RustMidiStorage storage
-- [x] Update MidiPort::PROC_snapshot_ringbuffer_into to use IMidiStorage interface
-- [x] Final test suite passes
 
-### Build & Test
+- [ ] **E.1** Remove unused code:
+  - [ ] Identify and remove dead C++ storage code
+  - [ ] Clean up any `#ifdef` guards for old implementations
+  - [ ] Remove any temporary debugging code
+
+- [ ] **E.2** Update FFI documentation:
+  - [ ] Document callback semantics in Rust
+  - [ ] Document error handling approach
+  - [ ] Document memory ownership rules
+
+- [ ] **E.3** Verify no memory leaks:
+  - [ ] Run valgrind or address sanitizer if available
+  - [ ] Verify all shared_ptr cycles are broken
+  - [ ] Verify Rust Box cleanup on C++ destruction
+
+- [ ] **E.4** Performance comparison:
+  - [ ] Compare before/after performance if benchmarks exist
+  - [ ] Verify Rust implementation is competitive
+
+- [ ] **E.5** Update main todo.md:
+  - [ ] Mark all phases complete
+  - [ ] Document final architecture
+  - [ ] Note any remaining considerations
+
+### Verification
 ```bash
-cargo build
-./target/debug/test_runner   # All tests should pass
+cargo build --release
+./target/release/test_runner  # All tests pass
 ```
 
-✅ All 140 test cases pass (5833 assertions)
-
-**Changes made:**
-- `MidiChannel.h`: Changed `using Storage = RustMidiStorage` to use Rust-backed storage
-- `MidiChannel.h`: Updated StorageCursor typedef
-- `MidiStorage.h`: MidiStorageCursor now works with IMidiStorage (not just MidiStorage)
-- `IMidiStorageCore.h`: Added `create_cursor_shared()` virtual method
-- `MidiPort.h/cpp`: Updated `PROC_snapshot_ringbuffer_into` to use `IMidiStorage`
-- `MidiRingbuffer`: Updated `snapshot()` to use `IMidiStorage`
-- `RustMidiStorage.cpp`: Updated `copy()` to handle MidiStorage target
-- `MidiStorage.cpp`: Updated `copy()` to handle RustMidiStorage target
-
-**Current Status:**
-- MidiChannel uses RustMidiStorage for primary storage
-- Cursor operations use MidiStorageCursor which works with IMidiStorage interface
-- MidiRingbuffer still internally uses MidiStorage but can snapshot to any IMidiStorage
-- Rust provides basic state queries via CXX bridge
-- C++ handles all mutating operations and cursor logic
-- All 140 tests pass
+**Expected**: Clean release build, all tests pass
 
 ---
 
-## Phase 8: Update tests for Rust-backed storage (TODO)
+## Final Architecture Target
 
-**Goal**: Ensure tests validate the Rust-backed storage behavior correctly.
-
-### Tasks
-- [ ] Review existing tests to ensure they properly test RustMidiStorage
-- [ ] Add any missing test coverage for Rust-backed storage edge cases
-- [ ] Verify all tests pass with RustMidiStorage as primary storage
-- [ ] Document any test behavior differences between C++ and Rust implementations
-
-### Build & Test
-```bash
-cargo build
-./target/debug/test_runner   # All tests should pass
+```
+┌──────────────────────────────────────────────────────────────┐
+│                     C++ Consumers                            │
+│   MidiChannel, MidiPort, etc.                               │
+└──────────────────────────────┬───────────────────────────────┘
+                             │
+                             ▼
+┌──────────────────────────────────────────────────────────────┐
+│               IMidiStorage Interface (C++)                    │
+│   Abstract interface - no implementation                     │
+│   + n_events(), capacity(), full()                            │
+│   + raw_* accessors                                         │
+│   + all operations                                          │
+│   + create_cursor_shared()                                   │
+└──────────────────────────────┬───────────────────────────────┘
+                             │
+                             ▼
+┌──────────────────────────────────────────────────────────────┐
+│               RustMidiStorage (Rust via CXX)                │
+│   Full implementation in Rust                               │
+│   + MidiStorageCore state                                   │
+│   + MidiCursor for iteration                                │
+│   + all storage operations                                  │
+└──────────────────────────────────────────────────────────────┘
+                             │
+                             ▼
+┌──────────────────────────────────────────────────────────────┐
+│               MidiTimeWindow (Rust)                         │
+│   Time-window logic in Rust                                 │
+│   + n_samples tracking                                      │
+│   + buffer management                                      │
+│   + snapshot operations                                    │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-### Notes
-- Current tests use RustMidiStorage through MidiChannel
-- MidiStorage tests still test C++ MidiStorage directly (still needed for internal use)
-- Integration tests cover the full path with RustMidiStorage
+---
 
-✅ Phase 8 completed: 9 new test cases (61 assertions) for RustMidiStorage added, all 149 tests pass
+## Estimated Test Count After Migration
+- **No change expected**: 149 test cases, ~5894 assertions
+- All existing tests should pass with Rust implementations
+- May add new tests for edge cases discovered during migration
+
+---
+
+## Notes
+
+### Callback Handling in Rust
+The main challenge is handling C++ `std::function` callbacks from Rust. Options:
+1. **Store callbacks in C++**: Keep callback handling in C++ wrapper
+2. **Trait objects**: Use `Box<dyn Fn(...) + Send + Sync>` in Rust
+3. **Raw function pointers**: Pass function pointers + user data via FFI
+
+Current plan: Use trait objects with CXX extern type for callbacks.
+
+### Memory Management
+- CXX handles most memory ownership automatically
+- `rust::Box<T>` for Rust-owned objects passed to C++
+- `shared_from_this()` pattern for cursor creation
+- Verify no use-after-free bugs during migration
+
+### Testing Strategy
+Each phase should leave all tests passing. If tests break:
+1. Identify which operation broke
+2. Fix Rust implementation
+3. Re-run tests before proceeding

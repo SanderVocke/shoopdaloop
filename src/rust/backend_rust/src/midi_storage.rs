@@ -468,6 +468,127 @@ impl MidiCursor {
             _ => false,
         }
     }
+
+    /// Reset cursor to the beginning of storage
+    pub fn reset(&mut self, storage: &MidiStorageCore) {
+        let n_events = storage.n_events();
+        if n_events == 0 {
+            self.invalidate();
+        } else {
+            self.offset = Some(storage.raw_tail());
+            self.prev_offset = None;
+        }
+    }
+
+    /// Move to the next element
+    pub fn next(&mut self, storage: &MidiStorageCore) {
+        if !self.offset.is_some() {
+            return;
+        }
+        
+        let cap = storage.capacity();
+        if cap == 0 {
+            self.invalidate();
+            return;
+        }
+
+        let curr = self.offset.unwrap();
+        let next = (curr + 1) % cap;
+
+        let raw_full = storage.raw_full();
+        let head = storage.raw_head();
+        let tail = storage.raw_tail();
+
+        // Edge case: single element capacity
+        if cap == 1 {
+            self.invalidate();
+            return;
+        }
+
+        // Check if we've reached the end
+        if !raw_full && next == head {
+            self.invalidate();
+            return;
+        }
+
+        if raw_full && next == tail && self.prev_offset.is_some() {
+            self.invalidate();
+            return;
+        }
+
+        self.prev_offset = self.offset;
+        self.offset = Some(next);
+    }
+
+    /// Overwrite cursor position
+    pub fn overwrite(&mut self, offset: u32, prev_offset: u32) {
+        self.offset = Some(offset);
+        self.prev_offset = Some(prev_offset);
+    }
+
+    /// Find first element where time >= target
+    pub fn find_time_forward(&mut self, storage: &MidiStorageCore, time: u32) -> FindResult {
+        self.find_fn_forward(storage, |elem| elem.time >= time)
+    }
+
+    /// Find first element matching predicate function
+    pub fn find_fn_forward<F>(&mut self, storage: &MidiStorageCore, mut pred: F) -> FindResult
+    where
+        F: FnMut(&MidiStorageElem) -> bool,
+    {
+        let mut rval = FindResult {
+            n_processed: 0,
+            found_valid_elem: false,
+        };
+
+        if !self.valid() {
+            return rval;
+        }
+
+        let cap = storage.capacity();
+        let n_events = storage.n_events();
+        if cap == 0 {
+            self.invalidate();
+            return rval;
+        }
+
+        let head = storage.raw_head();
+        let tail = storage.raw_tail();
+        let raw_full = storage.raw_full();
+
+        let mut idx = self.offset.unwrap();
+        let mut prev_idx = idx;
+        
+        for step in 0..n_events {
+            // Check if we've gone past the end (except for first iteration from current pos)
+            if step > 0 {
+                if !raw_full && idx == head {
+                    break;
+                }
+                if raw_full && idx == tail {
+                    break;
+                }
+            }
+
+            if let Some(elem) = storage.get_elem_ref(idx) {
+                if pred(elem) {
+                    if step > 0 {
+                        self.prev_offset = Some(prev_idx);
+                        self.offset = Some(idx);
+                    }
+                    rval.found_valid_elem = true;
+                    return rval;
+                }
+            }
+
+            prev_idx = idx;
+            idx = (idx + 1) % cap;
+            rval.n_processed += 1;
+        }
+
+        self.invalidate();
+        rval
+    }
 }
 
 /// FindResult for cursor search operations
