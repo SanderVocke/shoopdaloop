@@ -67,7 +67,7 @@ pub enum TruncateSide {
 }
 
 /// MidiTimeWindow - Handles time-window logic for MIDI ringbuffer operations.
-/// 
+///
 /// This tracks the current buffer's time range and provides operations for:
 /// - Setting/configuring the time window size (n_samples)
 /// - Advancing time with next_buffer()
@@ -137,12 +137,12 @@ impl MidiTimeWindow {
             // Use plain i32 arithmetic to compute shift, matching C++'s (int)moved_new_end - (int)new_end
             let n_samples_fresh = self.n_samples;
             let shift = (n_samples_fresh as i32).wrapping_sub(new_end as i32);
-            
+
             // Shift all messages in storage
             storage.for_each_msg_modify(|t, _s, _d| {
                 *t = ((*t as i32).wrapping_add(shift)) as u32;
             });
-            
+
             // Compute shifted boundary values using wrapping arithmetic (matching C++'s new_end += shift)
             adjusted_new_end = ((new_end as i32).wrapping_add(shift)) as u32;
             adjusted_old_end = ((old_end as i32).wrapping_add(shift)) as u32;
@@ -154,8 +154,12 @@ impl MidiTimeWindow {
         // Truncate old messages (TruncateTail) and report dropped ones
         // Use captured n_samples value for truncation boundary
         let min_time = adjusted_new_end.saturating_sub(n_samples);
-        storage.truncate(min_time, TruncateSide::TruncateTail, dropped_cb.as_mut(), user_data);
-
+        storage.truncate(
+            min_time,
+            TruncateSide::TruncateTail,
+            dropped_cb.as_mut(),
+            user_data,
+        );
 
         // Store the shifted start/end times (matching C++ behavior)
         self.current_buffer_start_time = adjusted_old_end;
@@ -164,7 +168,7 @@ impl MidiTimeWindow {
 
     /// Put a message at a specific frame within the current buffer.
     /// Callback is invoked if the append drops a message (buffer was full).
-    /// 
+    ///
     /// Note: Uses the stored current_buffer_start_time for timestamp calculation,
     /// matching C++ behavior where this value is set during next_buffer().
     pub fn put<C: FnMut(u32, u16, *const u8, *mut std::ffi::c_void)>(
@@ -178,7 +182,7 @@ impl MidiTimeWindow {
     ) -> bool {
         // Use stored current_buffer_start_time, matching C++ behavior
         let time = self.current_buffer_start_time + frame_in_current_buffer;
-        
+
         // Check if time is in range
         if time > self.current_buffer_end_time {
             return false;
@@ -231,11 +235,14 @@ impl MidiStorageCore {
     pub fn new(data_size_bytes: u32) -> Self {
         let capacity = data_size_bytes as usize / std::mem::size_of::<MidiStorageElem>();
         MidiStorageCore {
-            data: vec![MidiStorageElem {
-                time: 0,
-                size: 0,
-                bytes: [0; 4],
-            }; capacity],
+            data: vec![
+                MidiStorageElem {
+                    time: 0,
+                    size: 0,
+                    bytes: [0; 4],
+                };
+                capacity
+            ],
             tail: 0,
             head: 0,
             n_events: 0,
@@ -337,9 +344,14 @@ impl MidiStorageCore {
         if self.full() {
             let dropped_elem = self.data[self.tail as usize].clone();
             self.tail = (self.tail + 1) % self.data.len() as u32;
-            
+
             if let Some(ref mut cb) = dropped_cb {
-                cb(dropped_elem.time, dropped_elem.size, dropped_elem.data().as_ptr(), user_data);
+                cb(
+                    dropped_elem.time,
+                    dropped_elem.size,
+                    dropped_elem.data().as_ptr(),
+                    user_data,
+                );
             }
         }
 
@@ -359,12 +371,7 @@ impl MidiStorageCore {
     }
 
     /// Prepend a message to the storage (at the tail).
-    pub fn prepend(
-        &mut self,
-        time: u32,
-        size: u16,
-        data: &[u8],
-    ) -> bool {
+    pub fn prepend(&mut self, time: u32, size: u16, data: &[u8]) -> bool {
         if self.full() {
             return false;
         }
@@ -558,11 +565,14 @@ impl MidiStorageCore {
 
     /// Copy all elements to another storage
     pub fn copy_to(&self, target: &mut MidiStorageCore) {
-        target.data.resize(self.data.len(), MidiStorageElem {
-            time: 0,
-            size: 0,
-            bytes: [0; 4],
-        });
+        target.data.resize(
+            self.data.len(),
+            MidiStorageElem {
+                time: 0,
+                size: 0,
+                bytes: [0; 4],
+            },
+        );
         target.tail = 0;
         target.n_events = self.n_events;
 
@@ -583,11 +593,14 @@ impl MidiStorageCore {
 
     /// Copy all elements from another storage
     pub fn copy_from(&mut self, source: &MidiStorageCore) {
-        self.data.resize(source.data.len(), MidiStorageElem {
-            time: 0,
-            size: 0,
-            bytes: [0; 4],
-        });
+        self.data.resize(
+            source.data.len(),
+            MidiStorageElem {
+                time: 0,
+                size: 0,
+                bytes: [0; 4],
+            },
+        );
         self.tail = source.tail;
         self.head = source.head;
         self.n_events = source.n_events;
@@ -702,7 +715,7 @@ impl MidiCursor {
         if !self.offset.is_some() {
             return;
         }
-        
+
         let cap = storage.capacity();
         if cap == 0 {
             self.invalidate();
@@ -775,7 +788,7 @@ impl MidiCursor {
 
         let mut idx = self.offset.unwrap();
         let mut prev_idx = idx;
-        
+
         for step in 0..n_events {
             // Check if we've gone past the end (except for first iteration from current pos)
             if step > 0 {
