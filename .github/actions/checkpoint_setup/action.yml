@@ -45,6 +45,13 @@ runs:
       else
         echo "Warning: pi command not found after installation attempt"
       fi
+  - name: Install pi streaming extension
+    if: env.pi_checkpoint_enabled == 'true'
+    shell: bash
+    run: |
+      mkdir -p ~/.pi/agent/extensions
+      cp .github/pi_coding_agent/streaming_output.ts ~/.pi/agent/extensions/stream.ts
+      echo "Pi streaming extension installed"
   - name: Background tmate
     if: always() && env.checkpoints_enabled == 'true'
     uses: SanderVocke/action-tmate@master
