@@ -183,7 +183,7 @@ unsigned MidiPort::get_ringbuffer_n_samples() const {
     return m_midi_ringbuffer ? m_midi_ringbuffer->get_n_samples() : 0;
 }
 
-void MidiPort::PROC_snapshot_ringbuffer_into(MidiStorage &s) const {
+void MidiPort::PROC_snapshot_ringbuffer_into(IMidiStorage &s) const {
     if (m_midi_ringbuffer) {
         auto n = m_midi_ringbuffer->n_events();
         log<log_level_debug_trace>("snapshot ringbuffer ({} msgs) into storage", n);

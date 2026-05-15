@@ -1,4 +1,4 @@
-#include "MidiRingbuffer.h"
+#include "MidiStorage.h"
 #include "MidiStorage.h"
 #include "shoop_shared_ptr.h"
 
