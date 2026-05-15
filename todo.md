@@ -24,11 +24,11 @@ cargo build
 |-------|-------------|--------|
 | A | Rust Cursor Implementation | ✅ Complete |
 | B | Rust MidiStorage Operations | ✅ Complete |
-| C | Rust Time-Window Logic | ⬜ Not Started |
+| C | Rust Time-Window Logic | ✅ Complete |
 | D | Eliminate C++ MidiStorage | ⬜ Not Started |
 | E | Polish and Documentation | ⬜ Not Started |
 
-**Overall**: 2/5 phases complete. All 149 tests pass (5894 assertions).
+**Overall**: 3/5 phases complete. All 149 tests pass (5894 assertions).
 
 ---
 
@@ -68,27 +68,41 @@ fn clear_preview(storage)
 
 ---
 
-## Phase C: Rust Time-Window Logic (NOT STARTED)
+## Phase C: Rust Time-Window Logic ✅
 
-**Goal**: Move `MidiRingbufferCore` time-window operations to Rust.
+**Completed**: `MidiTimeWindow` Rust struct created and integrated.
 
-### Tasks
-- [ ] **C.1** Create `MidiTimeWindow` Rust struct
-- [ ] **C.2** Implement time-window logic (overflow, truncation, snapshot)
-- [ ] **C.3** Expose via CXX bridge
-- [ ] **C.4** Update C++ `MidiRingbufferCore` to delegate
-- [ ] **C.5** Test all time-window operations
+### What's Done
+- `MidiTimeWindow` struct with `set_n_samples()`, `get_n_samples()`, `get_current_start_time()`, `get_current_end_time()`
+- `next_buffer_preview()` + `next_buffer_doit()` - preview-then-act for time progression
+- `put()` - delegates to `append()` on underlying storage
+- `snapshot()` - copies, truncates, and adjusts timestamps
+- Preview buffer for dropped message reporting
+- Exposed via CXX bridge in `midi_storage_cxx.rs`
+- Added time-window methods to `RustMidiStorage` (C++ wrapper)
 
-### Implementation Notes
-- Similar pattern to Phase B: use preview-then-act for any callbacks
-- `next_buffer()` will need to truncate, following the same pattern
-- `put()` delegates to `append()` on underlying storage
-- `snapshot()` combines copy + truncate + time offset adjustment
+### Key FFI Functions Added
+```rust
+// Time window management
+fn time_window_set_n_samples(window, n)
+fn time_window_get_n_samples(window) -> u32
+fn time_window_get_current_start_time(window) -> u32
+fn time_window_get_current_end_time(window) -> u32
 
-### Verification
-```bash
-./target/debug/test_runner "[MidiRingbuffer]"  # All pass
-./target/debug/test_runner "[chain]"           # All pass
+// next_buffer with preview-then-act pattern
+fn time_window_next_buffer_preview(window, storage, n_frames) -> u32  // count of dropped
+fn time_window_next_buffer_doit(window, storage, n_frames)
+
+// put operation
+unsafe fn time_window_put(window, storage, frame, size, data) -> u8  // flags
+
+// snapshot operation
+fn time_window_snapshot(window, storage, target, start_offset_from_end)
+
+// Preview access for dropped messages
+fn time_window_get_preview_count(window) -> u32
+fn time_window_get_preview_elem_time/size/bytes(window, idx) -> ...
+fn time_window_clear_preview(window)
 ```
 
 ---
@@ -158,10 +172,10 @@ cargo build --release
 │   + Preview buffers for truncate                             │
 └──────────────────────────────────────────────────────────────┘
                              │
-                    (Phase C will add)
+                    (Phase C complete!)
                              ▼
 ┌──────────────────────────────────────────────────────────────┐
-│               MidiTimeWindow (Rust) - FUTURE                │
+│               MidiTimeWindow (Rust) - DONE ✅               │
 │   Time-window logic                                          │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -201,8 +215,8 @@ All Rust functions exposed via CXX use:
 
 ## Next Steps
 
-1. **Start Phase C**: Create `MidiTimeWindow` Rust struct
-2. Implement `set_n_samples()`, `get_n_samples()`, `next_buffer()`, `put()`, `snapshot()`
-3. Use same preview-then-act pattern for any dropped messages
-4. Test with `[MidiRingbuffer]` and `[chain]` test suites
-5. Continue to Phase D when C is complete
+1. **Start Phase D**: Eliminate C++ MidiStorage, use RustMidiStorage everywhere
+2. Update `MidiRingbuffer` to use `RustMidiStorage` directly
+3. Update all consumers to use `RustMidiStorage`
+4. Run full test suite
+5. Continue to Phase E (Polish and Documentation)

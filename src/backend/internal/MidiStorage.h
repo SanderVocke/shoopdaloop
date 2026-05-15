@@ -10,6 +10,7 @@
 // Forward declarations
 class MidiStorageCore;
 class MidiStorageCursor;
+class RustMidiStorage;
 
 // MidiStorageCore: Contains the raw ringbuffer data and basic operations.
 // This is the core storage that can be easily bridged to Rust.
@@ -254,7 +255,7 @@ public:
     using Storage = MidiStorage;
 
 private:
-    shoop_shared_ptr<MidiStorage> m_storage;
+    shoop_shared_ptr<IMidiStorage> m_storage;
     std::unique_ptr<MidiRingbufferCore> m_time_window;
 
 public:
@@ -286,17 +287,18 @@ public:
         m_time_window->snapshot(target, start_offset_from_end);
     }
 
-    // Access underlying storage
-    MidiStorage& storage() { return *m_storage; }
-    const MidiStorage& storage() const { return *m_storage; }
+    // Access underlying storage (via IMidiStorage interface)
+    IMidiStorage& storage() { return *m_storage; }
+    const IMidiStorage& storage() const { return *m_storage; }
 
     // Delegating methods for backward compatibility with consumers that use MidiStorage methods
     uint32_t n_events() const { return m_storage->n_events(); }
     uint32_t bytes_capacity() const { return m_storage->bytes_capacity(); }
     bool full() const { return m_storage->full(); }
 
-    // Cursor creation delegates to the underlying storage
-    MidiStorage::SharedCursor create_cursor() { return m_storage->create_cursor(); }
+    // Cursor creation - returns MidiStorageCursor compatible cursor
+    // Note: m_storage can be MidiStorage or RustMidiStorage, both create MidiStorageCursor
+    shoop_shared_ptr<MidiStorageCursor> create_cursor();
 
 private:
     // Helper to create a shared_ptr from MidiRingbuffer itself for cursor creation

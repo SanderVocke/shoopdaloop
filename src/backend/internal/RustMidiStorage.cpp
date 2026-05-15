@@ -39,18 +39,28 @@ void RustMidiStorage::sync_rust_state() {
     }
 }
 
+// Debug flag - set to 1 to enable debug prints, 0 to disable
+#define DEBUG_MIDI_STORAGE 0
+
+#if DEBUG_MIDI_STORAGE
+#include <iostream>
+#define DEBUG_PRINT(msg) std::cerr << "[DEBUG] " << msg << std::endl
+#else
+#define DEBUG_PRINT(msg) 
+#endif
+
 ::MidiStorageElem* RustMidiStorage::get_elem(uint32_t idx) {
-    // Use physical indexing: logical idx maps to (tail + idx) % capacity
-    if (m_data.empty() || idx >= m_n_events) return nullptr;
-    uint32_t physical_idx = (m_tail + idx) % m_data.size();
-    return &m_data[physical_idx];
+    // Physical indexing: idx is a raw physical index into the data array.
+    // Used by cursor which works with raw offsets (tail, head, etc.)
+    DEBUG_PRINT("RustMidiStorage::get_elem(phys=" << idx << ") n_events=" << m_n_events << ", cap=" << m_data.size());
+    if (m_data.empty()) return nullptr;
+    return &m_data[idx % m_data.size()];
 }
 
 const ::MidiStorageElem* RustMidiStorage::get_elem(uint32_t idx) const {
-    // Use physical indexing: logical idx maps to (tail + idx) % capacity
-    if (m_data.empty() || idx >= m_n_events) return nullptr;
-    uint32_t physical_idx = (m_tail + idx) % m_data.size();
-    return &m_data[physical_idx];
+    // Physical indexing: idx is a raw physical index into the data array.
+    if (m_data.empty()) return nullptr;
+    return &m_data[idx % m_data.size()];
 }
 
 bool RustMidiStorage::append(uint32_t time, uint16_t size,
@@ -66,6 +76,14 @@ bool RustMidiStorage::append(uint32_t time, uint16_t size,
     
     // Sync state from Rust to C++
     sync_rust_state();
+    
+    DEBUG_PRINT("RustMidiStorage::append: time=" << time << ", size=" << size << ", success=" << success << ", dropped=" << dropped);
+    DEBUG_PRINT("  after sync: n_events=" << m_n_events << ", tail=" << m_tail << ", head=" << m_head);
+    DEBUG_PRINT("  data contents:");
+    for (uint32_t i = 0; i < m_n_events; ++i) {
+        uint32_t phys = (m_tail + i) % m_data.size();
+        DEBUG_PRINT("    [" << i << "] phys=" << phys << ": t=" << m_data[phys].time << ", s=" << m_data[phys].size);
+    }
     
     // Handle dropped message callback if provided
     if (dropped && dropped_msg_cb) {
@@ -120,8 +138,11 @@ void RustMidiStorage::clear() {
 }
 
 void RustMidiStorage::copy(IMidiStorageCore& target) const {
+    DEBUG_PRINT("RustMidiStorage::copy called, this m_n_events=" << m_n_events << ", m_tail=" << m_tail << ", m_head=" << m_head);
+    
     // Handle RustMidiStorage target
     if (auto* t = dynamic_cast<RustMidiStorage*>(&target)) {
+        DEBUG_PRINT("  target is RustMidiStorage");
         // Use Rust copy operation
         backend_rust::copy_to_storage(*m_rust_core, *t->m_rust_core);
         
@@ -133,22 +154,30 @@ void RustMidiStorage::copy(IMidiStorageCore& target) const {
     // Handle MidiStorage target
     auto* t = dynamic_cast<MidiStorage*>(&target);
     if (t) {
+        DEBUG_PRINT("  target is MidiStorage");
         t->clear();
         
         // Copy elements by querying Rust state
         uint32_t n = m_rust_core->n_events();
         uint32_t cap = m_rust_core->capacity();
         
+        DEBUG_PRINT("  n=" << n << ", cap=" << cap << ", m_tail=" << m_tail);
+        
         uint32_t pos = m_tail;
         for (uint32_t i = 0; i < n; ++i) {
-            if (pos >= cap) break;
+            if (pos >= cap) {
+                DEBUG_PRINT("  pos=" << pos << " >= cap, breaking");
+                break;
+            }
             uint32_t time = backend_rust::get_elem_time(*m_rust_core, pos);
             uint16_t size = backend_rust::get_elem_size(*m_rust_core, pos);
             uint8_t bytes[4];
             backend_rust::get_elem_bytes(*m_rust_core, pos, bytes, 4);
+            DEBUG_PRINT("  copying elem[" << i << "] from pos=" << pos << ": t=" << time);
             t->append(time, size, bytes, true, nullptr);
             pos = (pos + 1) % cap;
         }
+        DEBUG_PRINT("  done copying, t->n_events()=" << t->n_events());
         return;
     }
     
