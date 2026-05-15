@@ -78,7 +78,7 @@ MidiChannel &MidiChannel::operator=(MidiChannel const &other) {
     ma_start_offset = other.ma_start_offset.load();
     ma_data_length = other.ma_data_length.load();
     mp_prev_process_flags = other.mp_prev_process_flags;
-    *mp_prerecord_storage = *other.mp_prerecord_storage;
+    mp_prerecord_storage->copy_from(*other.mp_prerecord_storage);
     ma_prerecord_data_length = other.ma_prerecord_data_length.load();
     *mp_input_midi_state = *other.mp_input_midi_state;
     mp_profiling_item = other.mp_profiling_item;

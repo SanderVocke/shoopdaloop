@@ -1,5 +1,6 @@
 #pragma once
 #include "MidiStorage.h"
+#include "RustMidiStorage.h"
 #include "MidiBuffer.h"
 #include "ChannelInterface.h"
 #include "WithCommandQueue.h"
