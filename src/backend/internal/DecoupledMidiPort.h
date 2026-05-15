@@ -1,6 +1,7 @@
 #pragma once
 #include "LoggingEnabled.h"
 #include "MidiPort.h"
+#include "MidiBuffer.h"
 #include <memory>
 #include <vector>
 #include <stdint.h>
@@ -10,20 +11,14 @@
 
 class AudioMidiDriver;
 
-// We discard time information for decoupled midi messages.
-// The intended use cases is controllers, where the time is
-// not very relevant.
-struct DecoupledMidiMessage {
-    std::vector<unsigned char> data;
-};
-
 // A decoupled MIDI port is a MIDI port with message queues attached to it.
 // Incoming messages are stored into the queue and outgoing ones taken form a queue.
 // This way, port messaging can be easily handled outside of the processing thread.
+// Time information is discarded for decoupled messages (intended for controllers).
 template<typename TimeType, typename SizeType>
 class DecoupledMidiPort : public shoop_enable_shared_from_this<DecoupledMidiPort<TimeType, SizeType>>,
                           private ModuleLoggingEnabled<"Backend.DecoupledMidiPort"> {
-    using Message = DecoupledMidiMessage;
+    using Message = MidiStorageElem;
     using Queue = boost::lockfree::spsc_queue<Message>;
 
     const shoop_shared_ptr<MidiPort> port;

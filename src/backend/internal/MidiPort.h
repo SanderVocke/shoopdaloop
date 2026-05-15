@@ -6,7 +6,7 @@
 #include "PortInterface.h"
 #include <atomic>
 #include "MidiStateTracker.h"
-#include "MidiBufferInterfaces.h"
+#include "MidiBuffer.h"
 #include "MidiRingbuffer.h"
 #include "LoggingBackend.h"
 #include "shoop_shared_ptr.h"
@@ -16,11 +16,10 @@
 struct MidiPortTestHelper;
 
 class MidiPort : public virtual PortInterface, private ModuleLoggingEnabled<"Backend.MidiPort"> {
-    std::atomic<MidiWriteableBufferInterface *> ma_write_data_into_port_buffer = nullptr;
-    std::atomic<MidiReadWriteBufferInterface *> ma_processing_buffer = nullptr;
-    std::atomic<MidiReadableBufferInterface *> ma_read_output_data_buffer = nullptr;
-    std::atomic<MidiReadableBufferInterface *> ma_internal_read_input_data_buffer = nullptr;
-    std::atomic<MidiWriteableBufferInterface *> ma_internal_write_output_data_to_buffer = nullptr;
+    std::atomic<MidiWriteableBuffer*> ma_write_data_into_port_buffer = nullptr;
+    std::atomic<MidiReadableBuffer*> ma_read_output_data_buffer = nullptr;
+    std::atomic<MidiReadableBuffer*> ma_internal_read_input_data_buffer = nullptr;
+    std::atomic<MidiWriteableBuffer*> ma_internal_write_output_data_to_buffer = nullptr;
     std::atomic<bool> ma_muted = false;
 
     // The current MIDI state on the port.
@@ -51,16 +50,15 @@ public:
 
     // Midi ports can have buffering or not. Multiple buffers are defined, although they
     // don't have to exist (nullptr) or can point to the same buffer.
-    virtual MidiWriteableBufferInterface *PROC_get_write_data_into_port_buffer  (uint32_t n_frames);
-    virtual MidiReadWriteBufferInterface *PROC_get_processing_buffer (uint32_t n_frames);
-    virtual MidiReadableBufferInterface *PROC_get_read_output_data_buffer (uint32_t n_frames);
+    virtual MidiWriteableBuffer *PROC_get_write_data_into_port_buffer  (uint32_t n_frames);
+    virtual MidiReadableBuffer *PROC_get_read_output_data_buffer (uint32_t n_frames);
     // Below buffers are for internal use
-    virtual MidiReadableBufferInterface *PROC_internal_read_input_data_buffer (uint32_t n_frames);
-    virtual MidiWriteableBufferInterface *PROC_internal_write_output_data_to_buffer (uint32_t n_frames);
+    virtual MidiReadableBuffer *PROC_internal_read_input_data_buffer (uint32_t n_frames);
+    virtual MidiWriteableBuffer *PROC_internal_write_output_data_to_buffer (uint32_t n_frames);
 
     // Buffer which the port will push messages into during the process step (e.g. to send MIDI
     // messages out to JACK)
-    virtual MidiWriteableBufferInterface *PROC_maybe_get_send_out_buffer (uint32_t n_frames);
+    virtual MidiWriteableBuffer *PROC_maybe_get_send_out_buffer (uint32_t n_frames);
 
     PortDataType type() const override;
 

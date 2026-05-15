@@ -2,7 +2,7 @@
 #include "MidiPort.h"
 #include <lv2_evbuf.h>
 
-class InternalLV2MidiOutputPort : public MidiPort, public MidiWriteableBufferInterface {
+class InternalLV2MidiOutputPort : public MidiPort, public MidiWriteableBuffer {
     std::string m_name = "";
     shoop_port_direction_t m_direction = ShoopPortDirection_Input;
     LV2_Evbuf *m_evbuf = nullptr;
@@ -22,8 +22,8 @@ public:
         uint32_t midi_event_type_urid = 0
     );
 
-    MidiReadableBufferInterface *PROC_get_read_output_data_buffer  (uint32_t n_frames) override;
-    MidiWriteableBufferInterface *PROC_get_write_data_into_port_buffer (uint32_t n_frames) override;
+    MidiReadableBuffer *PROC_get_read_output_data_buffer  (uint32_t n_frames) override;
+    MidiWriteableBuffer *PROC_get_write_data_into_port_buffer (uint32_t n_frames) override;
 
     const char* name() const override;
     void close() override;
@@ -34,14 +34,7 @@ public:
     void connect_external(std::string name) override;
     void disconnect_external(std::string name) override;
 
-    void PROC_write_event_value(uint32_t size,
-                         uint32_t time,
-                         const uint8_t* data) override;
-
-    void PROC_write_event_reference(MidiSortableMessageInterface const& m) override;
-
-    bool write_by_reference_supported() const override;
-    bool write_by_value_supported() const override;
+    void write_event(MidiStorageElem event) override;
 
     bool has_internal_read_access() const override { return false; }
     bool has_internal_write_access() const override { return true; }

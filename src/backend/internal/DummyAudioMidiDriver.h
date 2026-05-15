@@ -7,7 +7,6 @@
 #include "PortInterface.h"
 #include "LoggingEnabled.h"
 #include "WithCommandQueue.h"
-#include "MidiMessage.h"
 #include "types.h"
 #include <memory>
 #include <memory>

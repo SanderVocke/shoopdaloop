@@ -1,6 +1,6 @@
 #include "GraphMidiPort.h"
 #include "LoggingEnabled.h"
-#include "MidiBufferInterfaces.h"
+#include "MidiBuffer.h"
 #include "MidiPort.h"
 #include "PortInterface.h"
 #include "types.h"
@@ -38,7 +38,7 @@ void GraphMidiPort::PROC_internal_connections(uint32_t n_frames) {
     if (n_frames == 0) { return; }
     
     log<log_level_debug_trace>("process MIDI internal connections ({} samples)", n_frames);
-    auto get_buf = [&](auto &maybe_to) -> MidiWriteableBufferInterface* {
+    auto get_buf = [&](auto &maybe_to) -> MidiWriteableBuffer* {
         if(auto _to = maybe_to.lock()) {
             if(auto port = _to->maybe_midi_port()) {
                 return port->PROC_get_write_data_into_port_buffer(n_frames);
@@ -51,21 +51,12 @@ void GraphMidiPort::PROC_internal_connections(uint32_t n_frames) {
     if (m_passthrough_enabled) {
         for (auto &p : mp_internal_port_connections) {
             if(auto buf = get_buf(p)) {
-                bool write_refs = buf->write_by_reference_supported();
-                auto n = from_buf->PROC_get_n_events();
+                auto n = from_buf->n_events();
                 log<log_level_debug_trace>("process MIDI internal connections: we have {} msgs total", n);
                 for(decltype(n) i = 0; i<n; i++) {
-                    auto &msg = from_buf->PROC_get_event_reference(i);
-                    log<log_level_debug_trace>("process MIDI internal connections: send msg @ {}", msg.get_time());
-                    if (write_refs) {
-                        buf->PROC_write_event_reference(msg);
-                    } else {
-                        buf->PROC_write_event_value(
-                            msg.get_size(),
-                            msg.get_time(),
-                            msg.get_data()
-                        );
-                    }
+                    auto event = from_buf->get_event(i);
+                    log<log_level_debug_trace>("process MIDI internal connections: send msg @ {}", event.time);
+                    buf->write_event(event);
                 }
             } else {
                 log<log_level_debug_trace>("process MIDI internal connections: did not find target buffer.");
