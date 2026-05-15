@@ -124,7 +124,7 @@ void DummyMidiPort::PROC_prepare(uint32_t nframes) {
     for (auto const& msg : m_queued_msgs) {
         if (msg.time < nframes) {
             input_checksum += checksum::compute_midi_message_checksum(
-                msg.time, msg.size, msg.data.data());
+                msg.time, msg.size, msg.data());
         }
     }
     ma_input_checksum = input_checksum;
@@ -142,7 +142,7 @@ void DummyMidiPort::PROC_process(uint32_t nframes) {
     double output_checksum = 0.0;
     for (auto const& msg : m_buffer_data) {
         output_checksum += checksum::compute_midi_message_checksum(
-            msg.time, msg.size, msg.data.data());
+            msg.time, msg.size, msg.data());
     }
 
     if (m_direction == shoop_port_direction_t::ShoopPortDirection_Output) {

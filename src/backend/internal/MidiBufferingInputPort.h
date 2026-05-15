@@ -3,6 +3,7 @@
 #include "MidiPort.h"
 #include <stdint.h>
 #include <vector>
+#include "TracingRegistry.h"
 
 // A MIDI buffer that can be read from. It buffers messages from another
 // input source so that they can be passed on and sorted downstream.
@@ -11,6 +12,7 @@ class MidiBufferingInputPort : public MidiPort,
                                private ModuleLoggingEnabled<"Backend.MidiBufferingInputPort"> {
 protected:
     std::vector<MidiStorageElem> m_temp_midi_storage;
+    TracyPlotter m_plot_buffered_messages{"buffered_messages"};
 public:
 
     uint32_t n_events() const override;

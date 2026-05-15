@@ -44,7 +44,7 @@ void DecoupledMidiPort<TimeType, SizeType>::PROC_process(uint32_t n_frames) {
         for (uint32_t idx = 0; idx < n; idx++) {
             Message m = buf->get_event(idx);
             ma_queue.push(m);
-            input_checksum += checksum::compute_midi_message_checksum(m.time, m.size, m.data.data());
+            input_checksum += checksum::compute_midi_message_checksum(m.time, m.size, m.data());
         }
         ma_input_checksum = input_checksum;
         const char* port_name = port->name();
@@ -59,7 +59,7 @@ void DecoupledMidiPort<TimeType, SizeType>::PROC_process(uint32_t n_frames) {
         Message m;
         while (ma_queue.pop(m)) {
             buf->write_event(m);
-            output_checksum += checksum::compute_midi_message_checksum(m.time, m.size, m.data.data());
+            output_checksum += checksum::compute_midi_message_checksum(m.time, m.size, m.data());
         }
         ma_output_checksum = output_checksum;
         const char* port_name = port->name();
