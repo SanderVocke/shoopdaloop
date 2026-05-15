@@ -1,0 +1,14 @@
+name: Upload Coding Agent Artifact
+description: Upload the coding_agent folder as a build artifact
+
+runs:
+  using: "composite"
+  steps:
+  - name: Upload coding_agent artifact
+    if: always() && env.pi_checkpoint_enabled == 'true'
+    uses: actions/upload-artifact@v4
+    with:
+      name: coding_agent_${{ github.job }}_${{ github.run_number }}
+      path: coding_agent
+      retention-days: 7
+      if-no-files-found: warn
