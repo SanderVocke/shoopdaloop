@@ -96,6 +96,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
             .map(|s| PathBuf::from(s)),
         developer_mode: cli_args.developer_options.developer,
         quit_after: cli_args.developer_options.quit_after,
+        panic_after: cli_args.developer_options.panic_after,
         monkey_tester: cli_args.developer_options.monkey_tester,
         lua_dir: config.lua_dir.clone(),
         qml_dir: config.qml_dir.clone(),
