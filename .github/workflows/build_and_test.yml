@@ -24,32 +24,16 @@ on:
           description: 'enable testing (disable to build only)'
           type: boolean
           default: true
-        windows_release:
-          description: 'build release variant (Windows)'
+        release:
+          description: 'build release variant (all OS)'
           type: boolean
           default: true
-        windows_debug:
-          description: 'build debug variant (Windows)'
+        debug:
+          description: 'build debug variant (all OS)'
           type: boolean
           default: true
-        linux_release:
-          description: 'build release variant (Linux)'
-          type: boolean
-          default: true
-        linux_debug:
-          description: 'build debug variant (Linux)'
-          type: boolean
-          default: true
-        linux_coverage:
-          description: 'build coverage variant (Linux)'
-          type: boolean
-          default: true
-        macos_release:
-          description: 'build release variant (macOS)'
-          type: boolean
-          default: true
-        macos_debug:
-          description: 'build debug variant (macOS)'
+        coverage:
+          description: 'build coverage variant (all OS)'
           type: boolean
           default: true
         vcpkg_force_rebuild:
@@ -100,13 +84,9 @@ env:
   LINUX_DEFAULT: 'true'
   MACOS_DEFAULT: 'true'
   TEST_ENABLED_DEFAULT: 'true'
-  WINDOWS_RELEASE_DEFAULT: 'true'
-  WINDOWS_DEBUG_DEFAULT: 'true'
-  LINUX_RELEASE_DEFAULT: 'true'
-  LINUX_DEBUG_DEFAULT: 'true'
-  LINUX_COVERAGE_DEFAULT: 'true'
-  MACOS_RELEASE_DEFAULT: 'true'
-  MACOS_DEBUG_DEFAULT: 'true'
+  RELEASE_DEFAULT: 'true'
+  DEBUG_DEFAULT: 'true'
+  COVERAGE_DEFAULT: 'true'
   VCPKG_FORCE_REBUILD_DEFAULT: 'false'
   CHECKPOINTS_DEFAULT: 'false'
   PI_CHECKPOINTS_DEFAULT: 'false'
@@ -130,13 +110,9 @@ jobs:
       linux: ${{ steps.resolve.outputs.linux }}
       macos: ${{ steps.resolve.outputs.macos }}
       test_enabled: ${{ steps.resolve.outputs.test_enabled }}
-      windows_release: ${{ steps.resolve.outputs.windows_release }}
-      windows_debug: ${{ steps.resolve.outputs.windows_debug }}
-      linux_release: ${{ steps.resolve.outputs.linux_release }}
-      linux_debug: ${{ steps.resolve.outputs.linux_debug }}
-      linux_coverage: ${{ steps.resolve.outputs.linux_coverage }}
-      macos_release: ${{ steps.resolve.outputs.macos_release }}
-      macos_debug: ${{ steps.resolve.outputs.macos_debug }}
+      release: ${{ steps.resolve.outputs.release }}
+      debug: ${{ steps.resolve.outputs.debug }}
+      coverage: ${{ steps.resolve.outputs.coverage }}
       vcpkg_force_rebuild: ${{ steps.resolve.outputs.vcpkg_force_rebuild }}
       checkpoints: ${{ steps.resolve.outputs.checkpoints }}
       pi_checkpoints: ${{ steps.resolve.outputs.pi_checkpoints }}
@@ -160,13 +136,9 @@ jobs:
           resolve linux "${{ env.LINUX_DEFAULT }}"
           resolve macos "${{ env.MACOS_DEFAULT }}"
           resolve test_enabled "${{ env.TEST_ENABLED_DEFAULT }}"
-          resolve windows_release "${{ env.WINDOWS_RELEASE_DEFAULT }}"
-          resolve windows_debug "${{ env.WINDOWS_DEBUG_DEFAULT }}"
-          resolve linux_release "${{ env.LINUX_RELEASE_DEFAULT }}"
-          resolve linux_debug "${{ env.LINUX_DEBUG_DEFAULT }}"
-          resolve linux_coverage "${{ env.LINUX_COVERAGE_DEFAULT }}"
-          resolve macos_release "${{ env.MACOS_RELEASE_DEFAULT }}"
-          resolve macos_debug "${{ env.MACOS_DEBUG_DEFAULT }}"
+          resolve release "${{ env.RELEASE_DEFAULT }}"
+          resolve debug "${{ env.DEBUG_DEFAULT }}"
+          resolve coverage "${{ env.COVERAGE_DEFAULT }}"
           resolve vcpkg_force_rebuild "${{ env.VCPKG_FORCE_REBUILD_DEFAULT }}"
           resolve checkpoints "${{ env.CHECKPOINTS_DEFAULT }}"
           resolve pi_checkpoints "${{ env.PI_CHECKPOINTS_DEFAULT }}"
@@ -285,7 +257,7 @@ jobs:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
     needs: [maybe_create_release, setup]
-    if: ${{ needs.setup.outputs.linux == 'true' && needs.setup.outputs.linux_release == 'true' }}
+    if: ${{ needs.setup.outputs.linux == 'true' && needs.setup.outputs.release == 'true' }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -362,7 +334,7 @@ jobs:
               scripts/run_and_generate_coverage.sh
     runs-on: ubuntu-latest
     needs: [build_linux, setup]
-    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.linux == 'true' && needs.setup.outputs.linux_release == 'true' }}
+    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.linux == 'true' && (needs.setup.outputs.release == 'true' || needs.setup.outputs.debug == 'true' || needs.setup.outputs.coverage == 'true') }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
@@ -453,7 +425,7 @@ jobs:
           #   platform: macos-arm
     runs-on: ${{ matrix.kind.os }}
     needs: [maybe_create_release, setup]
-    if: ${{ needs.setup.outputs.macos == 'true' && needs.setup.outputs.macos_release == 'true' }}
+    if: ${{ needs.setup.outputs.macos == 'true' && needs.setup.outputs.release == 'true' }}
     env:
        PATH_SEPARATOR: ":"
        COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _
@@ -529,7 +501,7 @@ jobs:
           #   second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
     runs-on: ${{ matrix.kind.os }}
     needs: [build_macos, setup]
-    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.macos == 'true' && needs.setup.outputs.macos_release == 'true' }}
+    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.macos == 'true' && needs.setup.outputs.release == 'true' }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
@@ -632,7 +604,7 @@ jobs:
       OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
-    if: ${{ needs.setup.outputs.windows == 'true' && needs.setup.outputs.windows_release == 'true' }}
+    if: ${{ needs.setup.outputs.windows == 'true' && (needs.setup.outputs.release == 'true' || needs.setup.outputs.debug == 'true') }}
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /
@@ -703,7 +675,7 @@ jobs:
       OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
-    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.windows == 'true' && needs.setup.outputs.windows_release == 'true' }}
+    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.windows == 'true' && (needs.setup.outputs.release == 'true' || needs.setup.outputs.debug == 'true') }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
