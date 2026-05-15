@@ -5,34 +5,23 @@ runs:
   using: "composite"
   steps:
 
-  - name: Checkpoint message (manual mode)
+  - name: Checkpoint message
     if: always() && env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true'
     shell: bash
     run: |
       export -p > checkpoint_env
-      echo "Failure detected at checkpoint. Connect to the already-running upterm session. If you want to continue the workflow after fixing things, run the following command before exiting:"
-      echo "Be aware the env in the original upterm session is not up-to-date. To load the env at the time of this message: \"source checkpoint_env\""
+      echo "Failure detected at checkpoint. Connect to the already-running tmate session. If you want to continue the workflow after fixing things, run the following command before exiting:"
+      echo "Be aware the env in the original tmate session is not up-to-date. To load the env at the time of this message: \"source checkpoint_env\""
       echo "Also, keep the terminal open if you continue the session - you won't be able to re-connect again."
       echo "echo \"failure_status=\" >> \$GITHUB_ENV"
 
-  - name: Pause on checkpoint (manual mode)
+  - name: Pause on checkpoint
     if: always() && env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true'
     shell: bash
     run: |
-      while [ ! -f checkpoint_continue ] && pgrep -f upterm > /dev/null; do sleep 5; echo "Waiting for upterm to finish..."; done
+      while [ ! -f checkpoint_continue ] && [ ! -f tmate_finished ]; do sleep 5; echo "Waiting for tmate to finish..."; done
       rm -f checkpoint_continue
       echo "Disabling further checkpoints"
       echo "failure_status=handled" >> $GITHUB_ENV
-
-  - name: Checkpoint message (pi agent mode)
-    if: always() && env.failure_status == 'handled' && env.pi_checkpoint_enabled == 'true'
-    shell: bash
-    run: |
-      echo "Pi coding agent was invoked to handle the failure."
-      echo "Check the coding_agent directory for logs and analysis."
-      if [ -f coding_agent/pi_output.log ]; then
-        echo "=== Pi coding agent output (last 100 lines) ==="
-        tail -100 coding_agent/pi_output.log
-      fi
 
 

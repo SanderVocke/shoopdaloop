@@ -126,9 +126,6 @@ runs:
       echo "Preparing environment"
       echo "=========================================="
       printf "\n\n\n\n\n\n"
-  - name: Install Tracy capture tool
-    if: always()
-    uses: ./.github/actions/install_tracy
   - name: Retrieve info context for coverage analysis
     if: always() && inputs.coverage
     uses: actions/download-artifact@v4
@@ -344,13 +341,3 @@ runs:
     with:
       name: coverage_reports
       path: coverage_reports
-  - name: Upload profiling traces
-    if: always()
-    uses: actions/upload-artifact@v4
-    env:
-       GHA_RUN_ALWAYS: 1
-    with:
-      name: tracing_traces_${{ inputs.name }}
-      path: "**/*.tracy"
-      retention-days: 30
-      if-no-files-found: ignore
