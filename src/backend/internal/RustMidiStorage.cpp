@@ -40,7 +40,7 @@ void RustMidiStorage::sync_rust_state() {
 }
 
 // Debug flag - set to 1 to enable debug prints, 0 to disable
-#define DEBUG_MIDI_STORAGE 0
+#define DEBUG_MIDI_STORAGE 1
 
 #if DEBUG_MIDI_STORAGE
 #include <iostream>
@@ -370,7 +370,33 @@ bool RustMidiStorage::put(uint32_t frame_in_current_buffer, uint16_t size, const
 
 void RustMidiStorage::snapshot(RustMidiStorage& target, std::optional<uint32_t> start_offset_from_end) const {
     uint32_t offset = start_offset_from_end.value_or(get_n_samples());
+    std::cerr << "[C++ DEBUG] RustMidiStorage::snapshot called, offset=" << offset << std::endl;
+    std::cerr << "[C++ DEBUG]   this n_events=" << n_events() << ", tail=" << raw_tail() << ", head=" << raw_head() << std::endl;
+    std::cerr << "[C++ DEBUG]   target n_events before=" << target.n_events() << std::endl;
+    
+    // Print all messages in this (source) storage
+    std::cerr << "[C++ DEBUG]   Messages in source (this):" << std::endl;
+    for (uint32_t i = 0; i < n_events(); ++i) {
+        uint32_t phys = (raw_tail() + i) % raw_capacity();
+        auto* elem = get_elem_at_physical_offset(phys);
+        if (elem) {
+            std::cerr << "[C++ DEBUG]     logical=" << i << ", phys=" << phys << ", time=" << elem->time << ", size=" << elem->size << std::endl;
+        }
+    }
+    
     // Cast away const: Rust needs mutable reference for its copy operation
     backend_rust::time_window_snapshot(*m_time_window, const_cast<backend_rust::MidiStorageCore&>(*m_rust_core), *target.m_rust_core, offset);
     target.sync_rust_state();
+    
+    std::cerr << "[C++ DEBUG]   target n_events after=" << target.n_events() << std::endl;
+    
+    // Print all messages in target after snapshot
+    std::cerr << "[C++ DEBUG]   Messages in target after snapshot:" << std::endl;
+    for (uint32_t i = 0; i < target.n_events(); ++i) {
+        uint32_t phys = (target.raw_tail() + i) % target.raw_capacity();
+        auto* elem = target.get_elem_at_physical_offset(phys);
+        if (elem) {
+            std::cerr << "[C++ DEBUG]     logical=" << i << ", phys=" << phys << ", time=" << elem->time << ", size=" << elem->size << std::endl;
+        }
+    }
 }
