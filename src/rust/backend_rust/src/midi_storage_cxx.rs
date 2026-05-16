@@ -11,6 +11,13 @@ const INVALID_OFFSET: u32 = 0xFFFFFFFF;
 
 #[cxx::bridge(namespace = "backend_rust")]
 mod ffi {
+    // Shared struct for MIDI storage elements (mirrored from midi_storage.rs)
+    struct MidiStorageElem {
+        time: u32,
+        size: u16,
+        bytes: [u8; 4],
+    }
+
     extern "Rust" {
         // MidiStorageCore - the main storage type
         type MidiStorageCore;
@@ -27,9 +34,6 @@ mod ffi {
         fn raw_tail(self: &MidiStorageCore) -> u32;
         fn raw_head(self: &MidiStorageCore) -> u32;
         fn raw_full(self: &MidiStorageCore) -> bool;
-
-        // MidiStorageElem - element type (shared struct)
-        type MidiStorageElem;
 
         // MidiCursor - cursor for iteration
         type MidiCursor;
