@@ -1,4 +1,6 @@
 pub mod midi_helpers;
+pub mod midi_sorting_buffer;
+pub mod midi_sorting_buffer_cxx;
 pub mod midi_state_diff_tracker;
 pub mod midi_state_diff_tracker_cxx;
 pub mod midi_state_tracker;
