@@ -1,6 +1,9 @@
 import QtQuick 6.6
+import ShoopDaLoop.Rust
 
 Item {
+    property var logger : ShoopRustLogger { name: "Frontend.Qml.SelectedLoops" }
+
     RegistryLookup {
         id: selected_loop_ids_lookup
         registry: AppRegistries.state_registry
