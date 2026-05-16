@@ -19,7 +19,7 @@ class GraphFXChain;
 class BackendSession;
 class MidiReadableBufferInterface;
 class MidiWriteableBufferInterface;
-class MidiSortingBuffer;
+class RustMidiSortingBuffer;
 class MidiStateTracker;
 
 template<typename A, typename B> class MidiMessage;
