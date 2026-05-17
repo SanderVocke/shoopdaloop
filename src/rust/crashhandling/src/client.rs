@@ -173,6 +173,62 @@ pub fn crashhandling_client(
                 std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("shoopdaloop"));
             eprintln!("[CRASH_DBG] Client: exe path: {:?}", exe);
 
+            // On macOS, check if a socket already exists before spawning a new server.
+            // If the socket file exists, it means a server is likely already running
+            // on this socket (from a previous attempt), so we should not spawn another.
+            // The client will retry connecting to the existing server.
+            #[cfg(target_os = "macos")]
+            {
+                use std::os::unix::fs::MetadataExt;
+                use std::path::Path;
+                let socket_path = Path::new(socket_name.as_str());
+                if socket_path.exists() {
+                    eprintln!("[CRASH_DBG] Client: macOS: socket file already exists at '{}', NOT spawning another server (existing server likely still running)", socket_name);
+                    // Don't spawn a new server - just wait and retry connecting
+                    std::thread::sleep(Duration::from_millis(100));
+
+                    // Check if we've exceeded max attempts
+                    static ATTEMPT_COUNT: std::sync::atomic::AtomicUsize =
+                        std::sync::atomic::AtomicUsize::new(0);
+                    let attempts =
+                        ATTEMPT_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                    eprintln!(
+                        "[CRASH_DBG] Client: connection attempt {} of {}",
+                        attempts, MAX_CONNECTION_ATTEMPTS
+                    );
+
+                    if attempts >= MAX_CONNECTION_ATTEMPTS {
+                        let is_strict = std::env::var("SHOOP_CRASH_HANDLING_STRICT")
+                            .map(|v| v == "1")
+                            .unwrap_or(false);
+
+                        static LOGGED: std::sync::atomic::AtomicBool =
+                            std::sync::atomic::AtomicBool::new(false);
+                        if LOGGED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                            if is_strict {
+                                panic!(
+                                    "FATAL: Failed to connect to crash handling server after {} attempts - socket exists but server not responding (SHOOP_CRASH_HANDLING_STRICT=1)",
+                                    MAX_CONNECTION_ATTEMPTS
+                                );
+                            } else {
+                                error!(
+                                    "Failed to connect to crash handling server after {} attempts - socket exists but server not responding, continuing without crash handling",
+                                    MAX_CONNECTION_ATTEMPTS
+                                );
+                            }
+                        }
+                        debug!(
+                            "Crash handling client: giving up on server connection, exiting thread"
+                        );
+                        return;
+                    }
+                    continue; // Skip spawning, go back to retry connection
+                }
+                eprintln!(
+                    "[CRASH_DBG] Client: macOS: socket file does not exist, spawning new server"
+                );
+            }
+
             #[cfg(any(target_os = "linux", target_os = "android"))]
             {
                 use std::os::unix::process::CommandExt;
