@@ -1,6 +1,7 @@
 #pragma once
 #include "MidiBuffer.h"
 #include "MidiPort.h"
+#include "IMidiReadableBuffer.h"
 #include <stdint.h>
 #include <vector>
 
@@ -15,6 +16,8 @@ public:
 
     uint32_t n_events() const override;
     MidiStorageElem get_event(uint32_t idx) const override;
+    
+    IMidiReadableBuffer *get_readable_buffer() override;
     
     MidiBufferingInputPort(uint32_t reserve_size=1024);
     virtual ~MidiBufferingInputPort() {}

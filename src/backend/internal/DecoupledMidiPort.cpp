@@ -46,7 +46,7 @@ void DecoupledMidiPort<TimeType, SizeType>::PROC_process(uint32_t n_frames) {
 
 template <typename TimeType, typename SizeType>
 const char* DecoupledMidiPort<TimeType, SizeType>::name() const {
-    return port->name();
+    return static_cast<PortInterface*>(port.get())->name();
 }
 
 template <typename TimeType, typename SizeType>
@@ -71,7 +71,7 @@ void DecoupledMidiPort<TimeType, SizeType>::push_outgoing(
 
 template <typename TimeType, typename SizeType>
 void DecoupledMidiPort<TimeType, SizeType>::close() {
-    port->close();
+    static_cast<PortInterface*>(port.get())->close();
 }
 
 template <typename TimeType, typename SizeType>
