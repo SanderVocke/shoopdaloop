@@ -1,4 +1,6 @@
 pub mod midi_helpers;
+pub mod midi_port_base;
+pub mod midi_port_base_cxx;
 pub mod midi_traits;
 pub mod midi_sorting_buffer;
 pub mod midi_sorting_buffer_cxx;

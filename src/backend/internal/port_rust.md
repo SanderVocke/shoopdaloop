@@ -69,11 +69,11 @@ pub struct MidiStorageElem { /* ... */ }
 
 ---
 
-## Step 2: Port MidiPortBase
+## Step 2: Port MidiPortBase ✅
 
 Port the core logic holder that holds state tracking, ringbuffer, and event counters.
 
-### 2.1 Create `backend_rust/src/midi_port_base.rs`
+### 2.1 Create `backend_rust/src/midi_port_base.rs` ✅
 
 Corresponds to C++ `MidiPortBase.h/cpp`. Key fields from C++:
 - `m_maybe_midi_state: shoop_shared_ptr<MidiStateTracker>`
@@ -89,13 +89,13 @@ Implement:
 
 Use `Arc<AtomicU32>` for atomic counters and `Arc<Mutex<T>>` or `parking_lot::Mutex<T>` for shared state.
 
-- [ ] Create `backend_rust/src/midi_port_base.rs`
-- [ ] Implement struct with all fields from C++ MidiPortBase
-- [ ] Implement `MidiStateTracking` trait
-- [ ] Implement `MidiRingbufferOps` trait
-- [ ] Add internal helper methods
+- [x] Create `backend_rust/src/midi_port_base.rs`
+- [x] Implement struct with all fields from C++ MidiPortBase
+- [x] Implement `MidiStateTracking` trait
+- [x] Implement `MidiRingbufferOps` trait
+- [x] Add internal helper methods
 
-### 2.2 Create `backend_rust/src/midi_port_base_cxx.rs`
+### 2.2 Create `backend_rust/src/midi_port_base_cxx.rs` ✅
 
 Create CXX bridge to expose `MidiPortBase` to C++.
 
@@ -124,10 +124,10 @@ mod ffi {
 }
 ```
 
-- [ ] Create `backend_rust/src/midi_port_base_cxx.rs` with CXX bridge
-- [ ] Update `backend_rust/src/lib.rs` to include new modules
-- [ ] **Build:** `cargo build` - must succeed
-- [ ] Verify CXX header generation
+- [x] Create `backend_rust/src/midi_port_base_cxx.rs` with CXX bridge
+- [x] Update `backend_rust/src/lib.rs` to include new modules
+- [x] **Build:** `cargo build` - must succeed ✅
+- [x] Verify CXX header generation ✅
 
 ---
 

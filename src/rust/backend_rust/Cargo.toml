@@ -9,6 +9,7 @@ crate-type = ["rlib", "staticlib"]
 [dependencies]
 cxx = { workspace = true }
 log = { workspace = true }
+parking_lot = "0.12"
 
 [build-dependencies]
 cxx-build = { workspace = true }
