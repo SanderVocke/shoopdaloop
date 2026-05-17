@@ -14,15 +14,6 @@ class IMidiStorage;
 
 /**
  * MidiPortBase - Core implementation of MIDI port logic.
- * 
- * This class contains the core state tracking, ringbuffer management,
- * and event counting logic that can be composed into different MIDI port
- * implementations (MidiPort, DummyMidiPort, etc.).
- * 
- * Does NOT inherit from PortInterface - maintains separate identity to
- * support composition without diamond inheritance issues.
- * 
- * This class is thread-safe for atomic members (event counts, muted state).
  */
 class MidiPortBase : public IMidiStateTracking,
                      public IMidiRingbuffer,

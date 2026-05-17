@@ -9,10 +9,6 @@ class PortInterface;
 
 /**
  * IPortCore - Pure virtual interface for core port functionality.
- * 
- * This interface defines the minimal contract that all ports must implement,
- * providing basic identification, lifecycle, and access control.
- * It is designed to be compatible with Rust trait-based composition.
  */
 class IPortCore {
 public:

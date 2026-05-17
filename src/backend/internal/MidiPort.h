@@ -21,13 +21,6 @@ struct MidiPortTestHelper;
 
 /**
  * MidiPort - Main MIDI port implementation.
- * 
- * Uses Rust MidiPort via CXX bridge for core state tracking, event counting,
- * and ringbuffer management. Maintains MidiPortBase for ringbuffer access
- * and direct state tracker access (for tests and compatibility).
- * 
- * This class maintains full backward compatibility - same class name and API
- * as before the refactoring.
  */
 class MidiPort : public virtual PortInterface,
                  public virtual IMidiStateTracking,

@@ -5,9 +5,6 @@
 
 /**
  * MidiReadableBuffer - Base class for readable MIDI buffers.
- * 
- * Provides default empty implementations of IMidiReadableBuffer.
- * Subclasses should override n_events() and get_event() as needed.
  */
 class MidiReadableBuffer : public IMidiReadableBuffer {
 public:
@@ -23,9 +20,6 @@ public:
 
 /**
  * MidiWriteableBuffer - Base class for writeable MIDI buffers.
- * 
- * Provides default empty implementations of IMidiWriteableBuffer.
- * Subclasses should override write_event() as needed.
  */
 class MidiWriteableBuffer : public IMidiWriteableBuffer {
 public:
