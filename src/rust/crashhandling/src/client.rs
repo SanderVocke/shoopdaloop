@@ -179,7 +179,6 @@ pub fn crashhandling_client(
             // The client will retry connecting to the existing server.
             #[cfg(target_os = "macos")]
             {
-                use std::os::unix::fs::MetadataExt;
                 use std::path::Path;
                 let socket_path = Path::new(socket_name.as_str());
                 if socket_path.exists() {
