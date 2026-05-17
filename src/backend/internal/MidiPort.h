@@ -19,12 +19,6 @@ struct MidiPortTestHelper;
 
 /**
  * MidiPort - Main MIDI port implementation.
- * 
- * Uses composition to delegate IMidiStateTracking and IMidiRingbuffer
- * functionality to an internal MidiPortBase instance.
- * 
- * This class maintains full backward compatibility - same class name and API
- * as before the refactoring.
  */
 class MidiPort : public virtual PortInterface,
                  public virtual IMidiStateTracking,
