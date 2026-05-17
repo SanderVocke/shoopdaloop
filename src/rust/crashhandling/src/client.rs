@@ -228,6 +228,48 @@ pub fn crashhandling_client(
                 );
             }
 
+            // Even on non-macOS, don't spawn a new server if one has already been spawned.
+            // Just keep retrying the connection. This prevents the race where a server
+            // is starting up but we spawn another one.
+            if server.is_some() {
+                eprintln!("[CRASH_DBG] Client: server process already spawned (pid={}), not spawning another, retrying connection", server.as_ref().map(|s| s.id()).unwrap_or(0));
+                std::thread::sleep(Duration::from_millis(100));
+
+                // Check if we've exceeded max attempts
+                static ATTEMPT_COUNT: std::sync::atomic::AtomicUsize =
+                    std::sync::atomic::AtomicUsize::new(0);
+                let attempts = ATTEMPT_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                eprintln!(
+                    "[CRASH_DBG] Client: connection attempt {} of {}",
+                    attempts, MAX_CONNECTION_ATTEMPTS
+                );
+
+                if attempts >= MAX_CONNECTION_ATTEMPTS {
+                    let is_strict = std::env::var("SHOOP_CRASH_HANDLING_STRICT")
+                        .map(|v| v == "1")
+                        .unwrap_or(false);
+
+                    static LOGGED: std::sync::atomic::AtomicBool =
+                        std::sync::atomic::AtomicBool::new(false);
+                    if LOGGED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                        if is_strict {
+                            panic!(
+                                "FATAL: Failed to connect to crash handling server after {} attempts (SHOOP_CRASH_HANDLING_STRICT=1)",
+                                MAX_CONNECTION_ATTEMPTS
+                            );
+                        } else {
+                            error!(
+                                "Failed to connect to crash handling server after {} attempts, continuing without crash handling",
+                                MAX_CONNECTION_ATTEMPTS
+                            );
+                        }
+                    }
+                    debug!("Crash handling client: giving up on server connection, exiting thread");
+                    return;
+                }
+                continue; // Skip spawning, go back to retry connection
+            }
+
             #[cfg(any(target_os = "linux", target_os = "android"))]
             {
                 use std::os::unix::process::CommandExt;
@@ -505,7 +547,10 @@ pub fn crashhandling_client(
                         eprintln!("[CRASH_DBG] Client: request_dump FAILED: {:?}", e);
                     }
                 }
-                eprintln!("[CRASH_DBG] Client: request_dump complete, handled={}", handled);
+                eprintln!(
+                    "[CRASH_DBG] Client: request_dump complete, handled={}",
+                    handled
+                );
 
                 // Send additional crash data if possible over the 2nd connection
                 if let Some(on_crash_callback) = &on_crash_callback {
