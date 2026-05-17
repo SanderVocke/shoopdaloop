@@ -73,7 +73,7 @@ Pure virtual interface for writing audio data.
 
 - [x] **Build:** `cargo build` succeeds
 - [x] **Tests:** `target/debug/test_runner` passes
-- [ ] **Integration:** `shoopdaloop_dev.sh --self-test` passes
+- [x] **Integration:** `shoopdaloop_dev.sh --self-test` passes
 
 ---
 
