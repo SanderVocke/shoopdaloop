@@ -12,3 +12,5 @@ pub mod midi_state_tracker;
 pub mod midi_state_tracker_cxx;
 pub mod midi_storage;
 pub mod midi_storage_cxx;
+pub mod dummy_midi_port;
+pub mod dummy_midi_port_cxx;
