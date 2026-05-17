@@ -3,6 +3,8 @@
 #include "PortInterface.h"
 #include "IAudioReadableBuffer.h"
 #include "IAudioWriteableBuffer.h"
+#include "IAudioStateTracking.h"
+#include "IAudioRingbuffer.h"
 #include <atomic>
 #include "BufferQueue.h"
 #include "BufferPool.h"
@@ -11,7 +13,9 @@
 template<typename SampleT>
 class AudioPort : public virtual PortInterface,
                   public virtual IAudioReadableBuffer,
-                  public virtual IAudioWriteableBuffer {
+                  public virtual IAudioWriteableBuffer,
+                  public virtual IAudioStateTracking,
+                  public virtual IAudioRingbuffer<SampleT> {
     std::atomic<float> ma_input_peak = 0.0f;
     std::atomic<float> ma_output_peak = 0.0f;
     std::atomic<float> ma_gain = 1.0f;
@@ -35,19 +39,22 @@ public:
 
     void PROC_process(uint32_t nframes) override;
 
-    void set_gain(float gain);
-    float get_gain() const;
-
-    void set_muted(bool muted) override;
+    // IAudioStateTracking implementation
+    IAudioStateTracking* get_state_tracking() override { return this; }
+    float get_input_peak() const override;
+    void reset_input_peak() override;
+    float get_output_peak() const override;
+    void reset_output_peak() override;
+    float get_gain() const override;
+    void set_gain(float gain) override;
     bool get_muted() const override;
+    void set_muted(bool muted) override;
 
-    float get_input_peak() const;
-    void reset_input_peak();
-    float get_output_peak() const;
-    void reset_output_peak();
-
+    // IAudioRingbuffer implementation
+    IAudioRingbuffer<SampleT>* get_ringbuffer() override { return this; }
     void set_ringbuffer_n_samples(unsigned n) override;
     unsigned get_ringbuffer_n_samples() const override;
+    typename BufferQueue<SampleT>::Snapshot get_ringbuffer_contents() override;
 
     // IAudioReadableBuffer implementation
     IAudioReadableBuffer* get_readable_buffer() override { return this; }
@@ -59,8 +66,6 @@ public:
     IAudioWriteableBuffer* get_writeable_buffer() override { return this; }
     audio_sample_t* get_write_ptr() override;
     uint32_t capacity() const override;
-
-    typename BufferQueue<SampleT>::Snapshot PROC_get_ringbuffer_contents();
 };
 
 #ifndef IMPLEMENT_AUDIOPORT_H

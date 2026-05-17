@@ -100,7 +100,7 @@ unsigned AudioPort<SampleT>::get_ringbuffer_n_samples() const {
 }
 
 template<typename SampleT>
-typename BufferQueue<SampleT>::Snapshot AudioPort<SampleT>::PROC_get_ringbuffer_contents() {
+typename BufferQueue<SampleT>::Snapshot AudioPort<SampleT>::get_ringbuffer_contents() {
     return mp_always_record_ringbuffer.PROC_get();
 }
 

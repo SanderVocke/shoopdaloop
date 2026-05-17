@@ -118,7 +118,7 @@ TEST_CASE("Ports - Internal Audio - get ringbuffer data", "[InternalAudioPort][p
     port.PROC_process(4);
 
     // Get the ringbuffer content
-    auto s = port.PROC_get_ringbuffer_contents();
+    auto s = port.get_ringbuffer_contents();
     CHECK(s.n_samples >= 4);
     CHECK(s.data->back()->at(0) == 0.0f);
     CHECK(s.data->back()->at(1) == 0.1f);

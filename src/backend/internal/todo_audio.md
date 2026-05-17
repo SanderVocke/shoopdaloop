@@ -83,8 +83,8 @@ Pure virtual interface for writing audio data.
 
 Interface for audio state (peak, gain, mute).
 
-- [ ] Create `src/backend/internal/IAudioStateTracking.h`
-- [ ] Define methods:
+- [x] Create `src/backend/internal/IAudioStateTracking.h`
+- [x] Define methods:
   - `float get_input_peak() const`
   - `void reset_input_peak()`
   - `float get_output_peak() const`
@@ -93,25 +93,25 @@ Interface for audio state (peak, gain, mute).
   - `void set_gain(float)`
   - `bool get_muted() const`
   - `void set_muted(bool)`
-- [ ] Update `AudioPort<SampleT>` to implement this interface
-- [ ] Document interface with docstrings
+- [x] Update `AudioPort<SampleT>` to implement this interface
+- [x] Document interface with docstrings
 
 ### 2.2 Create `IAudioRingbuffer.h`
 
 Interface for audio ringbuffer operations.
 
-- [ ] Create `src/backend/internal/IAudioRingbuffer.h`
-- [ ] Define methods:
+- [x] Create `src/backend/internal/IAudioRingbuffer.h`
+- [x] Define methods:
   - `void set_ringbuffer_n_samples(unsigned n)`
   - `unsigned get_ringbuffer_n_samples() const`
   - `BufferQueue<SampleT>::Snapshot get_ringbuffer_contents()`
-- [ ] Update `AudioPort<SampleT>` to implement this interface
-- [ ] Document interface with docstrings
+- [x] Update `AudioPort<SampleT>` to implement this interface
+- [x] Document interface with docstrings
 
 ### 2.3 Verify compilation and tests
 
-- [ ] **Build:** `cargo build` succeeds
-- [ ] **Tests:** `target/debug/test_runner` passes
+- [x] **Build:** `cargo build` succeeds
+- [x] **Tests:** `target/debug/test_runner` passes
 
 ---
 
