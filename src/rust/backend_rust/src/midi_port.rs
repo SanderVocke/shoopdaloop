@@ -36,6 +36,7 @@ impl Default for MidiPortBuffers {
 ///
 /// Maintains full backward compatibility with the C++ implementation.
 /// Contains a MidiPortBase for core logic and atomic buffer pointers.
+#[allow(dead_code)]
 pub struct MidiPort {
     // Composed core logic holder (contains mute state, ringbuffer, state tracking)
     base: MidiPortBase,
@@ -172,7 +173,7 @@ mod tests {
     #[test]
     fn test_mute_state() {
         let port = MidiPort::new(true, true, true);
-        
+
         assert!(!port.get_muted());
         port.set_muted(true);
         assert!(port.get_muted());
@@ -183,19 +184,19 @@ mod tests {
     #[test]
     fn test_event_counters() {
         let port = MidiPort::new(true, true, true);
-        
+
         assert_eq!(port.get_n_input_events(), 0);
         assert_eq!(port.get_n_output_events(), 0);
-        
+
         port.increment_input_events(5);
         port.increment_output_events(10);
-        
+
         assert_eq!(port.get_n_input_events(), 5);
         assert_eq!(port.get_n_output_events(), 10);
-        
+
         port.reset_n_input_events();
         assert_eq!(port.get_n_input_events(), 0);
-        
+
         port.reset_n_output_events();
         assert_eq!(port.get_n_output_events(), 0);
     }
@@ -203,9 +204,9 @@ mod tests {
     #[test]
     fn test_ringbuffer_operations() {
         let mut port = MidiPort::new(true, true, true);
-        
+
         assert_eq!(port.get_ringbuffer_n_samples(), 0);
-        
+
         port.set_ringbuffer_n_samples(1024);
         assert_eq!(port.get_ringbuffer_n_samples(), 1024);
     }
@@ -220,7 +221,7 @@ mod tests {
     fn test_output_notes_active_muted() {
         let port = MidiPort::new(true, true, true);
         assert_eq!(port.get_n_output_notes_active(), 0);
-        
+
         port.set_muted(true);
         assert_eq!(port.get_n_output_notes_active(), 0); // Should be 0 when muted
     }

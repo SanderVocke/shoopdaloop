@@ -10,7 +10,11 @@ mod ffi {
         type MidiPort;
 
         // Constructors
-        fn new_midi_port(track_notes: bool, track_controls: bool, track_programs: bool) -> Box<MidiPort>;
+        fn new_midi_port(
+            track_notes: bool,
+            track_controls: bool,
+            track_programs: bool,
+        ) -> Box<MidiPort>;
 
         // State tracking methods
         fn n_notes_active(self: &MidiPort) -> u32;
@@ -31,11 +35,7 @@ mod ffi {
     }
 }
 
-fn new_midi_port(
-    track_notes: bool,
-    track_controls: bool,
-    track_programs: bool,
-) -> Box<MidiPort> {
+fn new_midi_port(track_notes: bool, track_controls: bool, track_programs: bool) -> Box<MidiPort> {
     Box::new(MidiPort::new(track_notes, track_controls, track_programs))
 }
 

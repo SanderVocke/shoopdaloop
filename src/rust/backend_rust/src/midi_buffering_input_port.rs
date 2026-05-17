@@ -56,7 +56,11 @@ impl MidiBufferingInputPort {
     }
 
     /// Buffer events from another readable buffer
-    pub fn buffer_from_buffer(&mut self, n_events: u32, get_event_fn: impl Fn(u32) -> Option<MidiStorageElem>) {
+    pub fn buffer_from_buffer(
+        &mut self,
+        n_events: u32,
+        get_event_fn: impl Fn(u32) -> Option<MidiStorageElem>,
+    ) {
         for i in 0..n_events {
             if let Some(event) = get_event_fn(i) {
                 self.buffer_event(event);
@@ -145,7 +149,7 @@ mod tests {
         let mut port = MidiBufferingInputPort::new(1024);
         let event = MidiStorageElem::new(100, 3, &[0x90, 0x3C, 0x7F]).unwrap();
         port.buffer_event(event.clone());
-        
+
         let retrieved = port.get_event(0);
         assert!(retrieved.is_some());
         assert_eq!(retrieved.unwrap().time, 100);
@@ -154,12 +158,12 @@ mod tests {
     #[test]
     fn test_buffer_multiple_events() {
         let mut port = MidiBufferingInputPort::new(1024);
-        
+
         for i in 0..5 {
             let event = MidiStorageElem::new(i * 100, 3, &[0x90, 0x3C, 0x7F]).unwrap();
             port.buffer_event(event);
         }
-        
+
         assert_eq!(port.n_events(), 5);
     }
 }

@@ -12,7 +12,11 @@ mod ffi {
         type TrackingConfig;
 
         // Constructors
-        fn new_midi_port_base(track_notes: bool, track_controls: bool, track_programs: bool) -> Box<MidiPortBase>;
+        fn new_midi_port_base(
+            track_notes: bool,
+            track_controls: bool,
+            track_programs: bool,
+        ) -> Box<MidiPortBase>;
 
         // IMidiStateTracking interface
         fn n_notes_active(port: &MidiPortBase) -> u32;
@@ -58,7 +62,11 @@ fn new_midi_port_base(
     track_controls: bool,
     track_programs: bool,
 ) -> Box<MidiPortBase> {
-    Box::new(MidiPortBase::new_with_flags(track_notes, track_controls, track_programs))
+    Box::new(MidiPortBase::new_with_flags(
+        track_notes,
+        track_controls,
+        track_programs,
+    ))
 }
 
 // IMidiStateTracking interface
@@ -120,11 +128,15 @@ unsafe fn process_msg_to_state(port: &mut MidiPortBase, data: *const u8, size: u
 
 // Ringbuffer storage access for C++ interop (returns raw pointer as usize)
 unsafe fn maybe_midi_storage(port: &mut MidiPortBase) -> usize {
-    port.maybe_midi_storage().map(|s| s as *mut MidiStorageCore as usize).unwrap_or(0)
+    port.maybe_midi_storage()
+        .map(|s| s as *mut MidiStorageCore as usize)
+        .unwrap_or(0)
 }
 
 unsafe fn maybe_midi_ringbuffer_time_window(port: &mut MidiPortBase) -> usize {
-    port.maybe_midi_ringbuffer_time_window().map(|w| w as *mut MidiTimeWindow as usize).unwrap_or(0)
+    port.maybe_midi_ringbuffer_time_window()
+        .map(|w| w as *mut MidiTimeWindow as usize)
+        .unwrap_or(0)
 }
 
 // Snapshot ringbuffer into target (target is a RustMidiStorage wrapped storage)

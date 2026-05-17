@@ -104,7 +104,8 @@ impl DummyMidiPort {
             panic!("Previous request not yet completed");
         }
         self.n_requested_frames.store(n_frames, Ordering::SeqCst);
-        self.n_original_requested_frames.store(n_frames, Ordering::SeqCst);
+        self.n_original_requested_frames
+            .store(n_frames, Ordering::SeqCst);
     }
 
     /// Get messages written during the requested period
@@ -121,14 +122,16 @@ impl DummyMidiPort {
 
     /// Get time of written message at index
     pub fn get_written_msg_time(&self, idx: u32) -> u32 {
-        self.written_requested_msgs.get(idx as usize)
+        self.written_requested_msgs
+            .get(idx as usize)
             .map(|e| e.time)
             .unwrap_or(u32::MAX)
     }
 
     /// Get size of written message at index
     pub fn get_written_msg_size(&self, idx: u32) -> u16 {
-        self.written_requested_msgs.get(idx as usize)
+        self.written_requested_msgs
+            .get(idx as usize)
             .map(|e| e.size)
             .unwrap_or(u16::MAX)
     }
@@ -156,11 +159,15 @@ impl DummyMidiPort {
     /// Prepare for processing
     pub fn prepare(&mut self, nframes: u32) {
         self.buffer_data.clear();
-        
+
         let progress_by = self.n_processed_last_round.load(Ordering::SeqCst);
         let mut new_progress = progress_by;
-        new_progress = new_progress.saturating_sub(self.n_requested_frames.load(Ordering::SeqCst).min(progress_by));
-        
+        new_progress = new_progress.saturating_sub(
+            self.n_requested_frames
+                .load(Ordering::SeqCst)
+                .min(progress_by),
+        );
+
         if new_progress > 0 && !self.queued_msgs.is_empty() {
             // Truncate old messages
             self.queued_msgs.retain(|msg| msg.time >= new_progress);
@@ -169,7 +176,7 @@ impl DummyMidiPort {
                 msg.time = msg.time.saturating_sub(new_progress);
             }
         }
-        
+
         self.n_processed_last_round.store(0, Ordering::SeqCst);
         self.current_buf_frames.store(nframes, Ordering::SeqCst);
     }
@@ -179,11 +186,11 @@ impl DummyMidiPort {
         if self.direction == PortDirection::Output {
             // Sort buffer data by time
             self.buffer_data.sort_by(|a, b| a.time.cmp(&b.time));
-            
+
             if !self.base.get_muted() {
                 let n_requested = self.n_requested_frames.load(Ordering::SeqCst);
                 let n_original = self.n_original_requested_frames.load(Ordering::SeqCst);
-                
+
                 for msg in &self.buffer_data {
                     if msg.time < n_requested {
                         let new_time = msg.time + (n_original.saturating_sub(n_requested));
@@ -196,10 +203,11 @@ impl DummyMidiPort {
                 }
             }
         }
-        
+
         self.n_processed_last_round.store(nframes, Ordering::SeqCst);
         let n_req = self.n_requested_frames.load(Ordering::SeqCst);
-        self.n_requested_frames.store(n_req.saturating_sub(nframes.min(n_req)), Ordering::SeqCst);
+        self.n_requested_frames
+            .store(n_req.saturating_sub(nframes.min(n_req)), Ordering::SeqCst);
     }
 
     /// Get the direction
@@ -327,7 +335,7 @@ mod tests {
         let mut port = DummyMidiPort::new(PortDirection::Input);
         port.queue_msg(50, 3, &[0x90, 0x3C, 0x7F]);
         port.queue_msg(100, 3, &[0x90, 0x40, 0x7F]);
-        
+
         port.prepare(200);
         assert_eq!(port.n_events(), 2);
     }

@@ -19,13 +19,23 @@ mod ffi {
 
         // Buffer management
         fn clear(self: &mut MidiBufferingInputPort);
-        fn buffer_event_with_params(self: &mut MidiBufferingInputPort, time: u32, size: u16, data: &[u8; 4]);
+        fn buffer_event_with_params(
+            self: &mut MidiBufferingInputPort,
+            time: u32,
+            size: u16,
+            data: &[u8; 4],
+        );
 
         // MidiReadableBuffer
         fn n_events(self: &MidiBufferingInputPort) -> u32;
         fn get_event_time(self: &MidiBufferingInputPort, idx: u32) -> u32;
         fn get_event_size(self: &MidiBufferingInputPort, idx: u32) -> u16;
-        unsafe fn get_event_bytes(self: &MidiBufferingInputPort, idx: u32, out: *mut u8, max_len: usize);
+        unsafe fn get_event_bytes(
+            self: &MidiBufferingInputPort,
+            idx: u32,
+            out: *mut u8,
+            max_len: usize,
+        );
     }
 }
 
@@ -49,7 +59,12 @@ fn clear(port: &mut MidiBufferingInputPort) {
     port.clear();
 }
 
-fn buffer_event_with_params(port: &mut MidiBufferingInputPort, time: u32, size: u16, data: &[u8; 4]) {
+fn buffer_event_with_params(
+    port: &mut MidiBufferingInputPort,
+    time: u32,
+    size: u16,
+    data: &[u8; 4],
+) {
     let slice = &data[..size as usize];
     port.buffer_event_with_params(time, size, slice);
 }

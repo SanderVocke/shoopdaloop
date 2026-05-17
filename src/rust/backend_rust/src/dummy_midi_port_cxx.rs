@@ -28,7 +28,12 @@ mod ffi {
         fn get_n_written_requested_msgs(self: &DummyMidiPort) -> u32;
         fn get_written_msg_time(self: &DummyMidiPort, idx: u32) -> u32;
         fn get_written_msg_size(self: &DummyMidiPort, idx: u32) -> u16;
-        unsafe fn get_written_msg_bytes(self: &DummyMidiPort, idx: u32, out: *mut u8, max_len: usize);
+        unsafe fn get_written_msg_bytes(
+            self: &DummyMidiPort,
+            idx: u32,
+            out: *mut u8,
+            max_len: usize,
+        );
         fn clear_written_msgs(self: &mut DummyMidiPort);
 
         // Processing

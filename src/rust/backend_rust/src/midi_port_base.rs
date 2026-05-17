@@ -8,7 +8,7 @@
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
-use crate::midi_state_tracker::{MidiStateTracker, new_midi_state_tracker};
+use crate::midi_state_tracker::{new_midi_state_tracker, MidiStateTracker};
 use crate::midi_storage::{MidiStorageCore, MidiTimeWindow};
 use crate::midi_traits::{MidiRingbufferOps, MidiStateTracking};
 
@@ -74,11 +74,16 @@ pub struct MidiPortBase {
 impl MidiPortBase {
     /// Create a new MidiPortBase with configuration
     pub fn new(config: &TrackingConfig) -> Self {
-        let maybe_midi_state = if config.track_notes || config.track_controls || config.track_programs {
-            Some(new_midi_state_tracker(config.track_notes, config.track_controls, config.track_programs))
-        } else {
-            None
-        };
+        let maybe_midi_state =
+            if config.track_notes || config.track_controls || config.track_programs {
+                Some(new_midi_state_tracker(
+                    config.track_notes,
+                    config.track_controls,
+                    config.track_programs,
+                ))
+            } else {
+                None
+            };
 
         let ringbuffer_tail_state = Some(new_midi_state_tracker(
             config.track_notes,
@@ -100,7 +105,11 @@ impl MidiPortBase {
 
     /// Create a new MidiPortBase with individual tracking flags (backward compatible)
     pub fn new_with_flags(track_notes: bool, track_controls: bool, track_programs: bool) -> Self {
-        Self::new(&TrackingConfig::new(track_notes, track_controls, track_programs))
+        Self::new(&TrackingConfig::new(
+            track_notes,
+            track_controls,
+            track_programs,
+        ))
     }
 
     // State tracker accessors
@@ -291,7 +300,7 @@ mod tests {
     fn test_midi_port_base_creation() {
         let config = TrackingConfig::new(true, true, true);
         let port = MidiPortBase::new(&config);
-        
+
         assert!(!port.get_muted());
         assert_eq!(port.get_n_input_events(), 0);
         assert_eq!(port.get_n_output_events(), 0);
@@ -308,7 +317,7 @@ mod tests {
     #[test]
     fn test_mute_state() {
         let port = MidiPortBase::new_with_flags(true, true, true);
-        
+
         assert!(!port.get_muted());
         port.set_muted(true);
         assert!(port.get_muted());
@@ -319,19 +328,19 @@ mod tests {
     #[test]
     fn test_event_counters() {
         let port = MidiPortBase::new_with_flags(true, true, true);
-        
+
         assert_eq!(port.get_n_input_events(), 0);
         assert_eq!(port.get_n_output_events(), 0);
-        
+
         port.increment_input_events(5);
         port.increment_output_events(10);
-        
+
         assert_eq!(port.get_n_input_events(), 5);
         assert_eq!(port.get_n_output_events(), 10);
-        
+
         port.reset_n_input_events();
         assert_eq!(port.get_n_input_events(), 0);
-        
+
         port.reset_n_output_events();
         assert_eq!(port.get_n_output_events(), 0);
     }
@@ -339,14 +348,14 @@ mod tests {
     #[test]
     fn test_ringbuffer_operations() {
         let mut port = MidiPortBase::new_with_flags(true, true, true);
-        
+
         // Initially no ringbuffer
         assert_eq!(port.get_n_samples(), 0);
-        
+
         // Set n_samples should initialize ringbuffer
         port.set_n_samples(1024);
         assert_eq!(port.get_n_samples(), 1024);
-        
+
         // Get n_samples should return 1024
         assert_eq!(port.get_n_samples(), 1024);
     }
@@ -354,7 +363,7 @@ mod tests {
     #[test]
     fn test_midi_state_tracking_trait() {
         let port = MidiPortBase::new_with_flags(true, true, true);
-        
+
         // Should implement MidiStateTracking
         assert_eq!(port.n_notes_active(), 0); // No notes yet
         assert_eq!(port.input_event_count(), 0);
@@ -364,7 +373,7 @@ mod tests {
     #[test]
     fn test_midi_ringbuffer_ops_trait() {
         let mut port = MidiPortBase::new_with_flags(true, true, true);
-        
+
         // Should implement MidiRingbufferOps
         port.set_n_samples(512);
         assert_eq!(port.get_n_samples(), 512);
