@@ -8,6 +8,7 @@
 #include <cstring>
 #include <stdexcept>
 #include "BufferQueue.h"
+#include "shoop_globals.h"
 
 #ifdef _WIN32
 #undef min
@@ -103,5 +104,48 @@ typename BufferQueue<SampleT>::Snapshot AudioPort<SampleT>::PROC_get_ringbuffer_
     return mp_always_record_ringbuffer.PROC_get();
 }
 
+// IAudioReadableBuffer implementation
+// Note: get_read_ptr() and get_write_ptr() return audio_sample_t* (float*)
+// This is only valid for AudioPort<audio_sample_t> (float)
+template<typename SampleT>
+audio_sample_t* AudioPort<SampleT>::get_read_ptr() {
+    // Only valid when SampleT == audio_sample_t (float)
+    if constexpr (std::is_same_v<SampleT, audio_sample_t>) {
+        return reinterpret_cast<audio_sample_t*>(PROC_get_buffer(0));
+    } else {
+        // Not supported for non-float types - return nullptr
+        return nullptr;
+    }
+}
+
+template<typename SampleT>
+uint32_t AudioPort<SampleT>::n_samples() const {
+    return mp_always_record_ringbuffer.n_samples();
+}
+
+template<typename SampleT>
+void AudioPort<SampleT>::get_peak(float& in_peak, float& out_peak) {
+    in_peak = ma_input_peak.load();
+    out_peak = ma_output_peak.load();
+}
+
+// IAudioWriteableBuffer implementation
+template<typename SampleT>
+audio_sample_t* AudioPort<SampleT>::get_write_ptr() {
+    // Only valid when SampleT == audio_sample_t (float)
+    if constexpr (std::is_same_v<SampleT, audio_sample_t>) {
+        return reinterpret_cast<audio_sample_t*>(PROC_get_buffer(0));
+    } else {
+        // Not supported for non-float types - return nullptr
+        return nullptr;
+    }
+}
+
+template<typename SampleT>
+uint32_t AudioPort<SampleT>::capacity() const {
+    return mp_always_record_ringbuffer.single_buffer_size();
+}
+
+// Explicit template instantiation for both types
 template class AudioPort<float>;
 template class AudioPort<int>;

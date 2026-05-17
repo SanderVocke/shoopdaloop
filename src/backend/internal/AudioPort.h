@@ -1,13 +1,17 @@
 #pragma once
 #include <stdint.h>
 #include "PortInterface.h"
+#include "IAudioReadableBuffer.h"
+#include "IAudioWriteableBuffer.h"
 #include <atomic>
 #include "BufferQueue.h"
 #include "BufferPool.h"
 #include "shoop_shared_ptr.h"
 
 template<typename SampleT>
-class AudioPort : public virtual PortInterface {
+class AudioPort : public virtual PortInterface,
+                  public virtual IAudioReadableBuffer,
+                  public virtual IAudioWriteableBuffer {
     std::atomic<float> ma_input_peak = 0.0f;
     std::atomic<float> ma_output_peak = 0.0f;
     std::atomic<float> ma_gain = 1.0f;
@@ -44,7 +48,18 @@ public:
 
     void set_ringbuffer_n_samples(unsigned n) override;
     unsigned get_ringbuffer_n_samples() const override;
-    
+
+    // IAudioReadableBuffer implementation
+    IAudioReadableBuffer* get_readable_buffer() override { return this; }
+    audio_sample_t* get_read_ptr() override;
+    uint32_t n_samples() const override;
+    void get_peak(float& in_peak, float& out_peak) override;
+
+    // IAudioWriteableBuffer implementation
+    IAudioWriteableBuffer* get_writeable_buffer() override { return this; }
+    audio_sample_t* get_write_ptr() override;
+    uint32_t capacity() const override;
+
     typename BufferQueue<SampleT>::Snapshot PROC_get_ringbuffer_contents();
 };
 

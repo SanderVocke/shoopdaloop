@@ -50,29 +50,29 @@ PortInterface (pure virtual)
 
 Pure virtual interface for reading audio data.
 
-- [ ] Create `src/backend/internal/IAudioReadableBuffer.h`
-- [ ] Define methods: `audio_sample_t* get_read_ptr()`, `uint32_t n_samples()`, `void get_peak(float& in_peak, float& out_peak)`
-- [ ] Document interface with docstrings
+- [x] Create `src/backend/internal/IAudioReadableBuffer.h`
+- [x] Define methods: `audio_sample_t* get_read_ptr()`, `uint32_t n_samples()`, `void get_peak(float& in_peak, float& out_peak)`
+- [x] Document interface with docstrings
 
 ### 1.2 Create `IAudioWriteableBuffer.h`
 
 Pure virtual interface for writing audio data.
 
-- [ ] Create `src/backend/internal/IAudioWriteableBuffer.h`
-- [ ] Define methods: `audio_sample_t* get_write_ptr()`, `uint32_t capacity()`, `void set_gain(float)`
-- [ ] Document interface with docstrings
+- [x] Create `src/backend/internal/IAudioWriteableBuffer.h`
+- [x] Define methods: `audio_sample_t* get_write_ptr()`, `uint32_t capacity()`, `void set_gain(float)`
+- [x] Document interface with docstrings
 
 ### 1.3 Update `AudioPort.h` to implement interfaces
 
-- [ ] Make `AudioPort<SampleT>` implement `IAudioReadableBuffer` and `IAudioWriteableBuffer`
-- [ ] Add `get_readable_buffer()` returning `IAudioReadableBuffer*`
-- [ ] Add `get_writeable_buffer()` returning `IAudioWriteableBuffer*`
-- [ ] Update `DummyAudioPort` to delegate buffer methods
+- [x] Make `AudioPort<SampleT>` implement `IAudioReadableBuffer` and `IAudioWriteableBuffer`
+- [x] Add `get_readable_buffer()` returning `IAudioReadableBuffer*`
+- [x] Add `get_writeable_buffer()` returning `IAudioWriteableBuffer*`
+- [x] Update `DummyAudioPort` to delegate buffer methods
 
 ### 1.4 Verify compilation and tests
 
-- [ ] **Build:** `cargo build` succeeds
-- [ ] **Tests:** `target/debug/test_runner` passes
+- [x] **Build:** `cargo build` succeeds
+- [x] **Tests:** `target/debug/test_runner` passes
 - [ ] **Integration:** `shoopdaloop_dev.sh --self-test` passes
 
 ---
