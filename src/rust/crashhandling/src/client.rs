@@ -84,16 +84,13 @@ pub fn crashhandling_client(
 
     let handle = thread::spawn(move || {
         #[cfg(unix)]
-        eprintln!(
-            "[CRASH_DBG] Client thread started: pid={}, ppid={}",
+        debug!(
+            "Client thread started: pid={}, ppid={}",
             std::process::id(),
             unsafe { libc::getppid() }
         );
         #[cfg(not(unix))]
-        eprintln!(
-            "[CRASH_DBG] Client thread started: pid={}",
-            std::process::id()
-        );
+        debug!("Client thread started: pid={}", std::process::id());
         let mut server: Option<std::process::Child> = None;
 
         // Determine which socket to open
@@ -103,7 +100,6 @@ pub fn crashhandling_client(
             let dir = match tempfile::tempdir() {
                 Ok(d) => d.keep(),
                 Err(e) => {
-                    eprintln!("[CRASH_DBG] Client: Unable to create temporary dir for crash handling socket: {}", e);
                     error!(
                         "Unable to create temporary dir for crash handling socket: {}",
                         e
@@ -114,18 +110,17 @@ pub fn crashhandling_client(
             let dirpath = dir.join("shoop.crashsocket");
             match dirpath.to_str() {
                 Some(s) => {
-                    eprintln!("[CRASH_DBG] Client: socket will be at: {}", s);
+                    debug!("Client: socket will be at: {}", s);
                     s.to_string()
                 }
                 None => {
-                    eprintln!("[CRASH_DBG] Client: Unable to convert temporary dir path to string");
                     error!("Unable to convert temporary dir path to string");
                     return;
                 }
             }
         };
 
-        eprintln!("[CRASH_DBG] Client: crash handling socket: {}", socket_name);
+        eprintln!("Client: crash handling socket: {}", socket_name);
         // Instead of just one, we create two client connections to the crash
         // handling server. This is because:
         // - The first and most important thing we want to do on crash is to request a minidump.
@@ -141,37 +136,28 @@ pub fn crashhandling_client(
 
         // Attempt to connect to the server
         let (client, mut _server) = loop {
-            eprintln!(
-                "[CRASH_DBG] Client: attempting Client::with_name('{}')",
-                socket_name
-            );
             match Client::with_name(socket_name.as_str()) {
                 Ok(client) => {
-                    eprintln!(
-                        "[CRASH_DBG] Client: Connected to crash server on socket {}",
+                    debug!(
+                        "client: connected to crash server on socket {}",
                         socket_name
                     );
                     if let Some(s) = server {
-                        eprintln!("[CRASH_DBG] Client: Server child pid={}", s.id());
-                        debug!("Server child pid={}", s.id());
+                        debug!("client: server child pid={}", s.id());
                         break (client, Some(s));
                     } else {
                         // Connected to a pre-existing server (not spawned by us).
-                        eprintln!(
-                            "[CRASH_DBG] Client: Connected to external server (no child handle)"
-                        );
                         debug!("Connected to external server (no child handle)");
                         break (client, server);
                     }
                 }
                 Err(e) => {
-                    eprintln!("[CRASH_DBG] Client: Client::with_name failed: {:?}", e);
+                    warn!("client: client::with_name failed: {:?}", e);
                 }
             }
 
             let exe =
                 std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("shoopdaloop"));
-            eprintln!("[CRASH_DBG] Client: exe path: {:?}", exe);
 
             // On macOS, check if a socket already exists before spawning a new server.
             // If the socket file exists, it means a server is likely already running
@@ -182,7 +168,7 @@ pub fn crashhandling_client(
                 use std::path::Path;
                 let socket_path = Path::new(socket_name.as_str());
                 if socket_path.exists() {
-                    eprintln!("[CRASH_DBG] Client: macOS: socket file already exists at '{}', NOT spawning another server (existing server likely still running)", socket_name);
+                    debug!("Client: macOS: socket file already exists at '{}', NOT spawning another server (existing server likely still running)", socket_name);
                     // Don't spawn a new server - just wait and retry connecting
                     std::thread::sleep(Duration::from_millis(100));
 
@@ -191,8 +177,8 @@ pub fn crashhandling_client(
                         std::sync::atomic::AtomicUsize::new(0);
                     let attempts =
                         ATTEMPT_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-                    eprintln!(
-                        "[CRASH_DBG] Client: connection attempt {} of {}",
+                    debug!(
+                        "Client: connection attempt {} of {}",
                         attempts, MAX_CONNECTION_ATTEMPTS
                     );
 
@@ -223,24 +209,22 @@ pub fn crashhandling_client(
                     }
                     continue; // Skip spawning, go back to retry connection
                 }
-                eprintln!(
-                    "[CRASH_DBG] Client: macOS: socket file does not exist, spawning new server"
-                );
+                debug!("Client: macOS: socket file does not exist, spawning new server");
             }
 
             // Even on non-macOS, don't spawn a new server if one has already been spawned.
             // Just keep retrying the connection. This prevents the race where a server
             // is starting up but we spawn another one.
             if server.is_some() {
-                eprintln!("[CRASH_DBG] Client: server process already spawned (pid={}), not spawning another, retrying connection", server.as_ref().map(|s| s.id()).unwrap_or(0));
+                debug!("Client: server process already spawned (pid={}), not spawning another, retrying connection", server.as_ref().map(|s| s.id()).unwrap_or(0));
                 std::thread::sleep(Duration::from_millis(100));
 
                 // Check if we've exceeded max attempts
                 static ATTEMPT_COUNT: std::sync::atomic::AtomicUsize =
                     std::sync::atomic::AtomicUsize::new(0);
                 let attempts = ATTEMPT_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-                eprintln!(
-                    "[CRASH_DBG] Client: connection attempt {} of {}",
+                debug!(
+                    "Client: connection attempt {} of {}",
                     attempts, MAX_CONNECTION_ATTEMPTS
                 );
 
@@ -264,7 +248,7 @@ pub fn crashhandling_client(
                             );
                         }
                     }
-                    debug!("Crash handling client: giving up on server connection, exiting thread");
+                    debug!("client: giving up on server connection, exiting thread");
                     return;
                 }
                 continue; // Skip spawning, go back to retry connection
@@ -273,8 +257,8 @@ pub fn crashhandling_client(
             #[cfg(any(target_os = "linux", target_os = "android"))]
             {
                 use std::os::unix::process::CommandExt;
-                eprintln!(
-                    "[CRASH_DBG] Client: Spawning server (Linux/Android path) with args: {:?} {:?}",
+                debug!(
+                    "Client: Spawning server (Linux/Android path) with args: {:?} {:?}",
                     start_server_arg, socket_name
                 );
                 server = match unsafe {
@@ -291,10 +275,6 @@ pub fn crashhandling_client(
                 } {
                     Ok(child) => {
                         let pid = child.id();
-                        eprintln!(
-                            "[CRASH_DBG] Client: Server child spawned successfully: pid={}",
-                            pid
-                        );
                         debug!(
                             "Spawned server child: pid={}, cmd={:?} {:?}",
                             pid,
@@ -307,7 +287,6 @@ pub fn crashhandling_client(
                         // Register atexit handler (once) to ensure the server child
                         // is reaped even though the OnceLock prevents Drop from running.
                         if !ATEXIT_REGISTERED.swap(true, Ordering::SeqCst) {
-                            eprintln!("[CRASH_DBG] Client: Registering atexit handler to reap server child");
                             debug!("Registering atexit handler to reap server child");
                             unsafe {
                                 libc::atexit(reap_server_atexit);
@@ -317,7 +296,6 @@ pub fn crashhandling_client(
                         Some(child)
                     }
                     Err(e) => {
-                        eprintln!("[CRASH_DBG] Client: Unable to spawn server process: {}", e);
                         error!("unable to spawn server process: {}", e);
                         None
                     }
@@ -326,7 +304,10 @@ pub fn crashhandling_client(
 
             #[cfg(all(unix, not(any(target_os = "linux", target_os = "android"))))]
             {
-                eprintln!("[CRASH_DBG] Client: Spawning server (macOS/other Unix path) with args: {:?} {:?}", start_server_arg, socket_name);
+                debug!(
+                    "Client: Spawning server (macOS/other Unix path) with args: {:?} {:?}",
+                    start_server_arg, socket_name
+                );
                 server = match std::process::Command::new(&exe)
                     .arg(start_server_arg.as_str())
                     .arg(socket_name.as_str())
@@ -334,10 +315,7 @@ pub fn crashhandling_client(
                 {
                     Ok(child) => {
                         let pid = child.id();
-                        eprintln!(
-                            "[CRASH_DBG] Client: Server child spawned successfully: pid={}",
-                            pid
-                        );
+                        debug!("Client: Server child spawned successfully: pid={}", pid);
                         debug!(
                             "Spawned server child: pid={}, cmd={:?} {:?}",
                             pid,
@@ -347,7 +325,6 @@ pub fn crashhandling_client(
                         // Store PID for atexit handler (macOS etc.)
                         SERVER_PID.store(pid as i32, Ordering::SeqCst);
                         if !ATEXIT_REGISTERED.swap(true, Ordering::SeqCst) {
-                            eprintln!("[CRASH_DBG] Client: Registering atexit handler to reap server child");
                             debug!("Registering atexit handler to reap server child");
                             unsafe {
                                 libc::atexit(reap_server_atexit);
@@ -356,7 +333,6 @@ pub fn crashhandling_client(
                         Some(child)
                     }
                     Err(e) => {
-                        eprintln!("[CRASH_DBG] Client: Unable to spawn server process: {}", e);
                         error!("unable to spawn server process: {}", e);
                         None
                     }
@@ -387,7 +363,7 @@ pub fn crashhandling_client(
             }
 
             // Give it time to start
-            eprintln!("[CRASH_DBG] Client: waiting for server to start (100ms)...");
+            debug!("Client: waiting for server to start (100ms)...");
             std::thread::sleep(Duration::from_millis(100));
 
             // Check if we've exceeded max attempts and server is still None
@@ -396,8 +372,8 @@ pub fn crashhandling_client(
             static ATTEMPT_COUNT: std::sync::atomic::AtomicUsize =
                 std::sync::atomic::AtomicUsize::new(0);
             let attempts = ATTEMPT_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-            eprintln!(
-                "[CRASH_DBG] Client: connection attempt {} of {}",
+            debug!(
+                "Client: connection attempt {} of {}",
                 attempts, MAX_CONNECTION_ATTEMPTS
             );
 
@@ -435,36 +411,31 @@ pub fn crashhandling_client(
         SECOND_ATTEMPT_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
 
         // Attempt to connect to the server (client 2)
-        eprintln!("[CRASH_DBG] Client: Connecting second client to server...");
         debug!("Connecting second client to server...");
         let client2 = loop {
-            eprintln!(
-                "[CRASH_DBG] Client: attempting second Client::with_name('{}')",
+            debug!(
+                "Client: attempting second Client::with_name('{}')",
                 socket_name
             );
             match Client::with_name(socket_name.as_str()) {
                 Ok(client) => {
-                    eprintln!("[CRASH_DBG] Client: Second client connected");
                     debug!("Second client connected");
                     break client;
                 }
                 Err(e) => {
-                    eprintln!(
-                        "[CRASH_DBG] Client: second Client::with_name failed: {:?}",
-                        e
-                    );
+                    debug!("Client: second Client::with_name failed: {:?}", e);
                 }
             }
 
             // Give it time to start
-            eprintln!("[CRASH_DBG] Client: waiting for server for second client (100ms)...");
+            debug!("Client: waiting for server for second client (100ms)...");
             std::thread::sleep(Duration::from_millis(100));
 
             // Check if we've exceeded max attempts for second client
             let attempts =
                 SECOND_ATTEMPT_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-            eprintln!(
-                "[CRASH_DBG] Client: second client connection attempt {} of {}",
+            debug!(
+                "Client: second client connection attempt {} of {}",
                 attempts, MAX_SECOND_CLIENT_ATTEMPTS
             );
 
@@ -503,7 +474,7 @@ pub fn crashhandling_client(
         #[allow(unsafe_code)]
         let handler_closure = unsafe {
             crash_handler::make_crash_event(move |crash_context: &crash_handler::CrashContext| {
-                eprintln!("[CRASH_DBG] Client: crash_handler callback invoked!");
+                eprintln!("Client: crash_handler callback invoked!");
                 let guard = handler_clients_access
                     .as_ref()
                     .lock()
@@ -532,25 +503,22 @@ pub fn crashhandling_client(
                 }
 
                 println!("Crash detected - requesting minidump");
-                eprintln!("[CRASH_DBG] Client: calling client1.request_dump()...");
+                eprintln!("Client: calling client1.request_dump()...");
 
                 let handled: bool;
                 match client1.request_dump(crash_context) {
                     Ok(_) => {
                         handled = true;
                         println!("Requested minidump.");
-                        eprintln!("[CRASH_DBG] Client: request_dump succeeded!");
+                        eprintln!("Client: request_dump succeeded!");
                     }
                     Err(e) => {
                         handled = false;
                         println!("Failed to report crash to handling process: {e}");
-                        eprintln!("[CRASH_DBG] Client: request_dump FAILED: {:?}", e);
+                        eprintln!("Client: request_dump FAILED: {:?}", e);
                     }
                 }
-                eprintln!(
-                    "[CRASH_DBG] Client: request_dump complete, handled={}",
-                    handled
-                );
+                eprintln!("Client: request_dump complete, handled={}", handled);
 
                 // Send additional crash data if possible over the 2nd connection
                 if let Some(on_crash_callback) = &on_crash_callback {
