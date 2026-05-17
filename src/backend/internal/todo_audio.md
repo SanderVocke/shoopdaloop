@@ -213,15 +213,15 @@ Update `AudioPort<SampleT>` to use composition.
 
 ### 6.1 Update test expectations
 
-- [ ] Review audio-related test cases
-- [ ] Verify audio port tests pass with new composition model
+- [x] Review audio-related test cases
+- [x] Verify audio port tests pass with new composition model
 - [ ] Add tests for new interfaces if needed
 
 ### 6.2 Verify test coverage
 
-- [ ] **Build:** `cargo build` succeeds
-- [ ] **Tests:** `target/debug/test_runner` passes (all assertions)
-- [ ] **Integration:** `shoopdaloop_dev.sh --self-test` passes
+- [x] **Build:** `cargo build` succeeds
+- [x] **Tests:** `target/debug/test_runner` passes (all assertions)
+- [x] **Integration:** `shoopdaloop_dev.sh --self-test` passes
 
 ---
 
@@ -229,14 +229,14 @@ Update `AudioPort<SampleT>` to use composition.
 
 ### 7.1 Document interfaces
 
-- [ ] Add docstrings to `IAudioReadableBuffer.h`
-- [ ] Add docstrings to `IAudioWriteableBuffer.h`
-- [ ] Add docstrings to `IAudioStateTracking.h`
-- [ ] Add docstrings to `IAudioRingbuffer.h`
+- [x] Add docstrings to `IAudioReadableBuffer.h`
+- [x] Add docstrings to `IAudioWriteableBuffer.h`
+- [x] Add docstrings to `IAudioStateTracking.h`
+- [x] Add docstrings to `IAudioRingbuffer.h`
 
 ### 7.2 Document composition pattern
 
-- [ ] Add docstrings to `AudioPortBase.h` explaining role
+- [x] Add docstrings to `AudioPortBase.h` explaining role
 - [ ] Update `AudioPort.h` docstrings explaining delegation
 - [ ] Update `DummyAudioPort.h` explaining inheritance structure
 - [ ] Update `InternalAudioPort.h` explaining inheritance structure
@@ -245,9 +245,9 @@ Update `AudioPort<SampleT>` to use composition.
 
 ## Final Verification
 
-- [ ] **Build:** `cargo build` succeeds with no warnings in refactored code
-- [ ] **Unit Tests:** `target/debug/test_runner` passes
-- [ ] **Integration Tests:** `./target/debug/shoopdaloop_dev.sh --self-test` passes
+- [x] **Build:** `cargo build` succeeds with no warnings in refactored code
+- [x] **Unit Tests:** `target/debug/test_runner` passes
+- [x] **Integration Tests:** `./target/debug/shoopdaloop_dev.sh --self-test` passes
 - [ ] Rust porting notes documented (see `port_rust.md` for MIDI, create `port_rust_audio.md` if needed)
 
 ---
