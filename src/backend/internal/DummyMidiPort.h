@@ -6,17 +6,25 @@
 #include "LoggingEnabled.h"
 #include "WithCommandQueue.h"
 #include "MidiBuffer.h"
+#include "IMidiReadableBuffer.h"
+#include "IMidiWriteableBuffer.h"
 #include "types.h"
-#include <memory>
 #include <memory>
 #include <set>
 #include <thread>
 #include <vector>
-#include <memory>
 #include <stdint.h>
 #include <mutex>
 
-class DummyMidiPort : public virtual MidiPort,
+/**
+ * DummyMidiPort - A MIDI port implementation for testing and development.
+ * 
+ * Inherits from MidiPort which uses composition (MidiPortBase) for state tracking
+ * and ringbuffer functionality.
+ * 
+ * Maintains WithCommandQueue as inherited mixin (works well with composition).
+ */
+class DummyMidiPort : public MidiPort,
                       public DummyPort,
                       public MidiReadableBuffer,
                       public MidiWriteableBuffer,
@@ -42,10 +50,18 @@ private:
     std::atomic<uint32_t> n_original_requested_frames = 0;
 
 public:
+    // MidiReadableBuffer interface implementation
     uint32_t n_events() const override;
     MidiStorageElem get_event(uint32_t idx) const override;
+    
+    // MidiWriteableBuffer interface implementation
     void write_event(MidiStorageElem event) override;
-
+    
+    // Buffer interface accessors
+    IMidiReadableBuffer *get_readable_buffer() override;
+    IMidiWriteableBuffer *get_writeable_buffer() override;
+    
+    // Buffer accessors for port
     MidiWriteableBuffer *PROC_get_write_data_into_port_buffer(uint32_t n_frames) override;
     MidiReadableBuffer *PROC_get_read_output_data_buffer(uint32_t n_frames) override;
 
@@ -69,6 +85,7 @@ public:
 
     ~DummyMidiPort() override;
 
+    // PortInterface methods (from DummyPort base, but need explicit override due to MidiPort also having these)
     bool has_internal_read_access() const override { return true; }
     bool has_internal_write_access() const override { return true; }
     bool has_implicit_input_source() const override { return true; }

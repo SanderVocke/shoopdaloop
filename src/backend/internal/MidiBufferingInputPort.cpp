@@ -13,7 +13,11 @@ MidiBufferingInputPort::MidiBufferingInputPort(uint32_t reserve_size) : MidiPort
 }
 
 MidiReadableBuffer *MidiBufferingInputPort::PROC_get_read_output_data_buffer (uint32_t nframes) {
-    return static_cast<MidiReadableBuffer*>(this);
+    return this;
+}
+
+IMidiReadableBuffer *MidiBufferingInputPort::get_readable_buffer() {
+    return this;
 }
 
 void MidiBufferingInputPort::PROC_prepare(uint32_t nframes) {

@@ -32,7 +32,7 @@ void DummyMidiPort::write_event(MidiStorageElem event) {
 DummyMidiPort::DummyMidiPort(std::string name, shoop_port_direction_t direction, shoop_weak_ptr<DummyExternalConnections> external_connections)
     : MidiPort(true, true, true),
       DummyPort(name, direction, PortDataType::Midi, external_connections),
-      WithCommandQueue(100) {}
+      WithCommandQueue(100, 1000, 1000) {}
 
 unsigned DummyMidiPort::input_connectability() const {
     return (m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
@@ -67,7 +67,7 @@ void DummyMidiPort::queue_msg(uint32_t size, uint32_t time, uint8_t const *data)
 
 bool DummyMidiPort::get_queue_empty() {
     bool is_empty = false;
-    exec_process_thread_command([=,&is_empty]() {
+    exec_process_thread_command([=, &is_empty]() {
         is_empty = this->m_queued_msgs.empty();
     });
     return is_empty;
@@ -128,6 +128,8 @@ void DummyMidiPort::PROC_process(uint32_t nframes) {
                     MidiStorageElem out_msg = msg;
                     out_msg.time = new_time;
                     m_written_requested_msgs.push_back(out_msg);
+                    // Track event through base
+                    base().increment_output_events(1);
                 }
             }
         } else {
@@ -141,14 +143,24 @@ void DummyMidiPort::PROC_process(uint32_t nframes) {
 
 MidiReadableBuffer *
 DummyMidiPort::PROC_get_read_output_data_buffer(uint32_t n_frames) {
-    return (static_cast<MidiReadableBuffer *>(this));
+    return this;
+}
+
+IMidiReadableBuffer *
+DummyMidiPort::get_readable_buffer() {
+    return this;
 }
 
 MidiWriteableBuffer *
 DummyMidiPort::PROC_get_write_data_into_port_buffer(uint32_t n_frames) {
     current_buf_frames = n_frames;
     m_buffer_data.clear();
-    return (static_cast<MidiWriteableBuffer *>(this));
+    return this;
+}
+
+IMidiWriteableBuffer *
+DummyMidiPort::get_writeable_buffer() {
+    return this;
 }
 
 uint32_t DummyMidiPort::n_events() const {
@@ -168,7 +180,7 @@ uint32_t DummyMidiPort::n_events() const {
 
 std::vector<DummyMidiPort::StoredMessage> DummyMidiPort::get_written_requested_msgs() {
     std::vector<DummyMidiPort::StoredMessage> result;
-    exec_process_thread_command([=,&result]() {
+    exec_process_thread_command([=, &result]() {
         ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Dequeue (have {} msgs)", this->m_written_requested_msgs.size());
         result = this->m_written_requested_msgs;
         this->m_written_requested_msgs.clear();
