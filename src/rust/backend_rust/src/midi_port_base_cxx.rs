@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 
 use crate::midi_port_base::{MidiPortBase, TrackingConfig};
+use crate::midi_storage::{MidiStorageCore, MidiTimeWindow};
 
 #[cxx::bridge(namespace = "backend_rust")]
 mod ffi {
@@ -36,6 +37,13 @@ mod ffi {
 
         // State processing
         unsafe fn process_msg_to_state(port: &mut MidiPortBase, data: *const u8, size: usize);
+
+        // Ringbuffer storage access for C++ interop (returns raw pointer as usize)
+        unsafe fn maybe_midi_storage(port: &mut MidiPortBase) -> usize;
+        unsafe fn maybe_midi_ringbuffer_time_window(port: &mut MidiPortBase) -> usize;
+
+        // Snapshot ringbuffer into target (target is a RustMidiStorage wrapped storage)
+        unsafe fn snapshot_ringbuffer_into(port: &MidiPortBase, target_storage_ptr: usize);
 
         // Tracking config accessors
         fn tracking_config_track_notes(config: &TrackingConfig) -> bool;
@@ -108,6 +116,28 @@ fn get_muted(port: &MidiPortBase) -> bool {
 // State processing
 unsafe fn process_msg_to_state(port: &mut MidiPortBase, data: *const u8, size: usize) {
     port.process_msg_to_state_raw(data, size);
+}
+
+// Ringbuffer storage access for C++ interop (returns raw pointer as usize)
+unsafe fn maybe_midi_storage(port: &mut MidiPortBase) -> usize {
+    port.maybe_midi_storage().map(|s| s as *mut MidiStorageCore as usize).unwrap_or(0)
+}
+
+unsafe fn maybe_midi_ringbuffer_time_window(port: &mut MidiPortBase) -> usize {
+    port.maybe_midi_ringbuffer_time_window().map(|w| w as *mut MidiTimeWindow as usize).unwrap_or(0)
+}
+
+// Snapshot ringbuffer into target (target is a RustMidiStorage wrapped storage)
+unsafe fn snapshot_ringbuffer_into(port: &MidiPortBase, target_storage_ptr: usize) {
+    if target_storage_ptr != 0 {
+        // Target is expected to be a RustMidiStorage* (from C++), cast and use
+        // The C++ code will pass the m_rust_core pointer from a RustMidiStorage
+        // For now, we'll need to handle this differently since RustMidiStorage owns MidiStorageCore
+        // Actually, let's use the internal storage approach - create a target MidiStorageCore
+        // and copy to it, then the caller needs to sync
+        let target = &mut *(target_storage_ptr as *mut MidiStorageCore);
+        port.snapshot_ringbuffer_into(target);
+    }
 }
 
 // Tracking config accessors

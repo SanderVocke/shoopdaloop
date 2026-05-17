@@ -14,14 +14,17 @@
 #include "LoggingBackend.h"
 #include "shoop_shared_ptr.h"
 #include "MidiPortBase.h"
+#include "backend_rust/src/midi_storage_cxx.rs.h"  // For rust::Box
+#include "backend_rust/src/midi_port_cxx.rs.h"  // Rust CXX bridge for MidiPort
 
 struct MidiPortTestHelper;
 
 /**
  * MidiPort - Main MIDI port implementation.
  * 
- * Uses composition to delegate IMidiStateTracking and IMidiRingbuffer
- * functionality to an internal MidiPortBase instance.
+ * Uses Rust MidiPort via CXX bridge for core state tracking, event counting,
+ * and ringbuffer management. Maintains MidiPortBase for ringbuffer access
+ * and direct state tracker access (for tests and compatibility).
  * 
  * This class maintains full backward compatibility - same class name and API
  * as before the refactoring.
@@ -35,7 +38,10 @@ class MidiPort : public virtual PortInterface,
     std::atomic<MidiReadableBuffer*> ma_internal_read_input_data_buffer = nullptr;
     std::atomic<MidiWriteableBuffer*> ma_internal_write_output_data_to_buffer = nullptr;
 
-    // Composed core logic holder (contains mute state, ringbuffer, state tracking)
+    // Rust implementation for core logic
+    rust::Box<backend_rust::MidiPort> m_rust_port;
+
+    // Ringbuffer access (still in C++ for tests and direct access)
     MidiPortBase m_base;
 
 public:
@@ -105,6 +111,7 @@ public:
 };
 
 struct MidiPortTestHelper {
+    // Get ringbuffer from port - delegates to C++ MidiPortBase for test compatibility
     static shoop_shared_ptr<MidiRingbuffer> &get_ringbuffer(MidiPort &port) {
         return port.m_base.m_midi_ringbuffer;
     }
