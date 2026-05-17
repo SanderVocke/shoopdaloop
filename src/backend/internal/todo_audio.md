@@ -121,30 +121,31 @@ Create a non-template base class to hold core audio port logic.
 
 ### 3.1 Create `AudioPortBase.h`
 
-- [ ] Create `src/backend/internal/AudioPortBase.h`
-- [ ] Non-template class for `float` samples only
-- [ ] Contains atomic state:
+
+- [x] Create `src/backend/internal/AudioPortBase.h`
+- [x] Non-template class for `float` samples only
+- [x] Contains atomic state:
   - `std::atomic<float> m_input_peak`
   - `std::atomic<float> m_output_peak`
   - `std::atomic<float> m_gain`
   - `std::atomic<bool> m_muted`
-- [ ] Contains `BufferQueue<float> mp_always_record_ringbuffer`
-- [ ] Implement `IAudioStateTracking` interface
-- [ ] Implement `IAudioRingbuffer` interface
-- [ ] Add methods: `process_samples()`, `get_ringbuffer_contents()`
-- [ ] Document: "For float samples only - if int support needed, create AudioPortBaseInt"
+- [x] Contains `BufferQueue<float> mp_always_record_ringbuffer`
+- [x] Implement `IAudioStateTracking` interface
+- [x] Implement `IAudioRingbuffer` interface
+- [x] Add methods: `process_samples()`, `get_ringbuffer_contents()`
+- [x] Document: "For float samples only - if int support needed, create AudioPortBaseInt"
 
 ### 3.2 Create `AudioPortBase.cpp`
 
-- [ ] Create `src/backend/internal/AudioPortBase.cpp`
-- [ ] Implement all methods from header
-- [ ] Implement `BufferQueue<float>` ringbuffer integration
-- [ ] Implement sample processing (peak tracking, gain, mute)
+- [x] Create `src/backend/internal/AudioPortBase.cpp`
+- [x] Implement all methods from header
+- [x] Implement `BufferQueue<float>` ringbuffer integration
+- [x] Implement sample processing (peak tracking, gain, mute)
 
 ### 3.4 Verify compilation
 
-- [ ] **Build:** `cargo build` succeeds
-- [ ] **Tests:** `target/debug/test_runner` passes
+- [x] **Build:** `cargo build` succeeds
+- [x] **Tests:** `target/debug/test_runner` passes
 
 ---
 
