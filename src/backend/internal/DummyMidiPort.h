@@ -18,11 +18,6 @@
 
 /**
  * DummyMidiPort - A MIDI port implementation for testing and development.
- * 
- * Inherits from MidiPort which uses composition (MidiPortBase) for state tracking
- * and ringbuffer functionality.
- * 
- * Maintains WithCommandQueue as inherited mixin (works well with composition).
  */
 class DummyMidiPort : public MidiPort,
                       public DummyPort,
