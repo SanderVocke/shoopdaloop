@@ -461,6 +461,7 @@ pub fn crashhandling_client(
         #[allow(unsafe_code)]
         let handler_closure = unsafe {
             crash_handler::make_crash_event(move |crash_context: &crash_handler::CrashContext| {
+                eprintln!("[CRASH_DBG] Client: crash_handler callback invoked!");
                 let guard = handler_clients_access
                     .as_ref()
                     .lock()
@@ -489,18 +490,22 @@ pub fn crashhandling_client(
                 }
 
                 println!("Crash detected - requesting minidump");
+                eprintln!("[CRASH_DBG] Client: calling client1.request_dump()...");
 
                 let handled: bool;
                 match client1.request_dump(crash_context) {
                     Ok(_) => {
                         handled = true;
                         println!("Requested minidump.");
+                        eprintln!("[CRASH_DBG] Client: request_dump succeeded!");
                     }
                     Err(e) => {
                         handled = false;
                         println!("Failed to report crash to handling process: {e}");
+                        eprintln!("[CRASH_DBG] Client: request_dump FAILED: {:?}", e);
                     }
                 }
+                eprintln!("[CRASH_DBG] Client: request_dump complete, handled={}", handled);
 
                 // Send additional crash data if possible over the 2nd connection
                 if let Some(on_crash_callback) = &on_crash_callback {

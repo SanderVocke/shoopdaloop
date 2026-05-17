@@ -174,6 +174,7 @@ pub fn crashhandling_server() {
         fn create_minidump_file(
             &self,
         ) -> Result<(std::fs::File, std::path::PathBuf), std::io::Error> {
+            eprintln!("[CRASH_DBG] Server: create_minidump_file() called");
             let maybe_dump_folder: Option<String> = std::env::var("SHOOP_CRASHDUMP_DIR").ok();
 
             let (dumpfile, dumpfilepath) = (if let Some(dump_folder) = maybe_dump_folder.as_ref() {
@@ -211,6 +212,7 @@ pub fn crashhandling_server() {
             &self,
             result: Result<minidumper::MinidumpBinary, minidumper::Error>,
         ) -> minidumper::LoopAction {
+            eprintln!("[CRASH_DBG] Server: on_minidump_created() called");
             match result {
                 Ok(mut md_bin) => {
                     use std::io::Write;
@@ -260,6 +262,7 @@ pub fn crashhandling_server() {
         }
 
         fn on_message(&self, kind: u32, buffer: Vec<u8>) {
+            eprintln!("[CRASH_DBG] Server: on_message called, kind={}", kind);
             let content = match String::from_utf8(buffer) {
                 Ok(s) => s,
                 Err(e) => {
