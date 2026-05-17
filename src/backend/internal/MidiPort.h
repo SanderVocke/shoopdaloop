@@ -104,7 +104,6 @@ public:
 };
 
 struct MidiPortTestHelper {
-    // Get ringbuffer from port - delegates to C++ MidiPortBase for test compatibility
     static shoop_shared_ptr<MidiRingbuffer> &get_ringbuffer(MidiPort &port) {
         return port.m_base.m_midi_ringbuffer;
     }
