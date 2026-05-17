@@ -1,4 +1,6 @@
 pub mod midi_helpers;
+pub mod midi_buffering_input_port;
+pub mod midi_buffering_input_port_cxx;
 pub mod midi_port;
 pub mod midi_port_base;
 pub mod midi_port_base_cxx;
