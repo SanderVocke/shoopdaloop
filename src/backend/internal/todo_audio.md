@@ -30,10 +30,17 @@ PortInterface (pure virtual)
                     └── InternalAudioPort (inherits AudioPort)
 ```
 
-### Key Challenges
-- `AudioPort<SampleT>` is templated - need type erasure or base class pattern
-- Audio buffers (`AudioBuffer<SampleT>`) use Rust buffers via CXX
-- `BufferQueue<SampleT>` already wraps audio buffers
+### Key Findings
+- Only `AudioPort<float>` is actively used in the codebase
+- `AudioPort<int>` has `extern template` but **zero instantiations**
+- JACK backend uses `jack_default_audio_sample_t` which maps to `float` on Linux
+- Therefore: Create concrete non-template `AudioPortBase` for `float` only
+
+### Architecture Decision
+- **AudioPortBase** will be a non-template class for `float` samples
+- **AudioPort<float>** (the only instantiation) will delegate to `AudioPortBase`
+- This matches the MIDI pattern: `MidiPortBase` (concrete) → `MidiPort`
+- If `int` support ever needed, create separate `AudioPortBaseInt`
 
 ---
 
@@ -112,36 +119,27 @@ Interface for audio ringbuffer operations.
 
 Create a non-template base class to hold core audio port logic.
 
-### 3.1 Design Type-Erased Core
-
-Because `AudioPort<SampleT>` is templated on `SampleT`, we need a non-templated base.
-
-Options:
-1. **Type erasure**: Use `void*` or `std::any` for sample data
-2. **Separate base per type**: `AudioPortBaseFloat`, `AudioPortBaseInt`
-3. **Non-template base with template internals**: Base holds void* + templates handle specifics
-
-Recommended: Option 3 - create `AudioPortBase` that contains atomic state and delegates sample operations to template internals.
-
-### 3.2 Create `AudioPortBase.h`
+### 3.1 Create `AudioPortBase.h`
 
 - [ ] Create `src/backend/internal/AudioPortBase.h`
-- [ ] Implement non-template base:
+- [ ] Non-template class for `float` samples only
+- [ ] Contains atomic state:
   - `std::atomic<float> m_input_peak`
   - `std::atomic<float> m_output_peak`
   - `std::atomic<float> m_gain`
   - `std::atomic<bool> m_muted`
-  - Ringbuffer pointer (non-template interface)
+- [ ] Contains `BufferQueue<float> mp_always_record_ringbuffer`
 - [ ] Implement `IAudioStateTracking` interface
 - [ ] Implement `IAudioRingbuffer` interface
-- [ ] Add virtual methods for sample operations (to be overridden)
-- [ ] Document composition pattern
+- [ ] Add methods: `process_samples()`, `get_ringbuffer_contents()`
+- [ ] Document: "For float samples only - if int support needed, create AudioPortBaseInt"
 
-### 3.3 Create `AudioPortBase.cpp`
+### 3.2 Create `AudioPortBase.cpp`
 
 - [ ] Create `src/backend/internal/AudioPortBase.cpp`
 - [ ] Implement all methods from header
-- [ ] Handle ringbuffer delegation
+- [ ] Implement `BufferQueue<float>` ringbuffer integration
+- [ ] Implement sample processing (peak tracking, gain, mute)
 
 ### 3.4 Verify compilation
 
@@ -156,19 +154,22 @@ Update `AudioPort<SampleT>` to use composition.
 
 ### 4.1 Update `AudioPort.h`
 
-- [ ] Change `AudioPort<SampleT>` to contain `AudioPortBase` internally
-- [ ] Remove direct atomic members (now in AudioPortBase)
+- [ ] Change `AudioPort<float>` (primary instantiation) to inherit from `AudioPortBase`
+- [ ] Remove duplicate atomic members (now in AudioPortBase)
 - [ ] Delegate `IAudioStateTracking` methods to AudioPortBase
 - [ ] Delegate `IAudioRingbuffer` methods to AudioPortBase
-- [ ] Keep template-specific methods (PROC_get_buffer, etc.)
+- [ ] Keep template-specific: `PROC_get_buffer()`, `UsedBufferPool`
+- [ ] `AudioPort<int>` remains separate (rarely used) - can delegate to AudioPortBaseFloat if needed
 - [ ] Maintain full backward compatibility
+
+**Note:** Only `AudioPort<float>` will use full delegation. Other types are optional.
 
 ### 4.2 Update `AudioPort.cpp`
 
-- [ ] Remove atomic member initializations from constructor
+- [ ] Remove atomic member initializations from `AudioPort<float>` constructor
 - [ ] Delegate all state/gain/mute methods to AudioPortBase
-- [ ] Keep sample-processing logic (template-specific)
-- [ ] Handle BufferQueue integration with AudioPortBase
+- [ ] Keep sample-processing in template (delegates to base for peak/gain/mute)
+- [ ] Handle BufferQueue integration via AudioPortBase
 
 ### 4.3 Verify compilation and tests
 
@@ -266,13 +267,13 @@ Update `AudioPort<SampleT>` to use composition.
 
 | Aspect | MIDI (Refactored) | Audio (Target) |
 |--------|-------------------|----------------|
-| Base class | `MidiPortBase` | `AudioPortBase` |
+| Base class | `MidiPortBase` (concrete) | `AudioPortBase` (concrete, float only) |
 | State interface | `IMidiStateTracking` | `IAudioStateTracking` |
 | Ringbuffer interface | `IMidiRingbuffer` | `IAudioRingbuffer` |
 | Readable buffer interface | `IMidiReadableBuffer` | `IAudioReadableBuffer` |
 | Writeable buffer interface | `IMidiWriteableBuffer` | `IAudioWriteableBuffer` |
-| Template | No | Yes (SampleT) |
-| Graph wrapper | `GraphMidiPort` (composition) | `GraphAudioPort` (composition) ✓ |
+| Template | No | Yes (`float` only actively used) |
+| Graph wrapper | `GraphMidiPort` (composition) ✓ | `GraphAudioPort` (composition) ✓ |
 | Dummy port | `DummyMidiPort` | `DummyAudioPort` |
 
 ---
@@ -285,9 +286,11 @@ Update `AudioPort<SampleT>` to use composition.
 | `IAudioWriteableBuffer.h` | New - writeable audio buffer interface |
 | `IAudioStateTracking.h` | New - audio state (peak, gain, mute) interface |
 | `IAudioRingbuffer.h` | New - audio ringbuffer interface |
-| `AudioPortBase.h` | New - non-template base class |
+| `AudioPortBase.h` | New - non-template base for `float` only |
 | `AudioPortBase.cpp` | New - implementation |
-| `AudioPort.h` | Modified - add composition |
-| `AudioPort.cpp` | Modified - add delegation |
+| `AudioPort.h` | Modified - AudioPort<float> inherits AudioPortBase |
+| `AudioPort.cpp` | Modified - delegation to AudioPortBase |
 | `DummyAudioPort.h/cpp` | Review - inheritance unchanged |
 | `InternalAudioPort.h/cpp` | Review - inheritance unchanged |
+
+**Note:** Only `AudioPort<float>` is actively used in codebase. `AudioPort<int>` has zero instantiations.
