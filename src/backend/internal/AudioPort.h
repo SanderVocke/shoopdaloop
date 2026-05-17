@@ -9,6 +9,10 @@
 #include "BufferQueue.h"
 #include "BufferPool.h"
 #include "shoop_shared_ptr.h"
+#include "shoop_globals.h"
+
+// Forward declaration
+class AudioPortBase;
 
 template<typename SampleT>
 class AudioPort : public virtual PortInterface,
@@ -33,7 +37,7 @@ public:
     AudioPort(shoop_shared_ptr<UsedBufferPool> maybe_ringbuffer_buffer_pool);
     virtual ~AudioPort();
 
-    virtual SampleT *PROC_get_buffer(uint32_t n_frames) = 0;
+    virtual SampleT* PROC_get_buffer(uint32_t n_frames) = 0;
 
     PortDataType type() const override;
 

@@ -7,6 +7,7 @@
 #include <atomic>
 #include <cstring>
 #include <stdexcept>
+#include <cmath>
 #include "BufferQueue.h"
 #include "shoop_globals.h"
 
@@ -49,7 +50,7 @@ void AudioPort<SampleT>::PROC_process(uint32_t nframes) {
         if (muted) {
             buf[i] = 0.0f;
         } else {
-            buf[i] *= gain;
+            buf[i] = static_cast<SampleT>(buf[i] * gain);
         } 
     }
     ma_input_peak = input_peak;
@@ -105,8 +106,6 @@ typename BufferQueue<SampleT>::Snapshot AudioPort<SampleT>::get_ringbuffer_conte
 }
 
 // IAudioReadableBuffer implementation
-// Note: get_read_ptr() and get_write_ptr() return audio_sample_t* (float*)
-// This is only valid for AudioPort<audio_sample_t> (float)
 template<typename SampleT>
 audio_sample_t* AudioPort<SampleT>::get_read_ptr() {
     // Only valid when SampleT == audio_sample_t (float)
