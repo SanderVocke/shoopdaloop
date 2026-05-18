@@ -129,7 +129,7 @@ void DummyMidiPort::PROC_process(uint32_t nframes) {
                     out_msg.time = new_time;
                     m_written_requested_msgs.push_back(out_msg);
                     // Track event through base
-                    base().increment_output_events(1);
+                    increment_output_events(1);
                 }
             }
         } else {
