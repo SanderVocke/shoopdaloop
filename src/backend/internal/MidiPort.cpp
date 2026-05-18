@@ -55,14 +55,14 @@ uint32_t MidiPort::n_notes_active() const {
     return m_rust_port->n_notes_active(); 
 }
 
-uint32_t MidiPort::get_n_input_notes_active() const {
+uint32_t MidiPort::get_n_input_notes_active() {
     auto tracker_ptr = backend_rust::get_maybe_midi_state_tracker(*m_rust_port);
     if (!tracker_ptr) return 0;
     auto* tracker = (MidiStateTracker*)tracker_ptr;
     return tracker->n_notes_active();
 }
 
-uint32_t MidiPort::get_n_output_notes_active() const {
+uint32_t MidiPort::get_n_output_notes_active() {
     auto tracker_ptr = backend_rust::get_maybe_midi_state_tracker(*m_rust_port);
     if (!tracker_ptr) return 0;
     auto* tracker = (MidiStateTracker*)tracker_ptr;

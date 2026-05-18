@@ -75,8 +75,8 @@ public:
     uint32_t get_n_output_events() const;
     uint32_t get_output_event_count() const override;
 
-    uint32_t get_n_input_notes_active() const;
-    uint32_t get_n_output_notes_active() const;
+    uint32_t get_n_input_notes_active();
+    uint32_t get_n_output_notes_active();
 
     // Ringbuffer methods
     void set_ringbuffer_n_samples(unsigned n) override;
