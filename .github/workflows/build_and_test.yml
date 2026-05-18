@@ -257,7 +257,7 @@ jobs:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
     needs: [maybe_create_release, setup]
-    if: ${{ needs.setup.outputs.linux == 'true' && needs.setup.outputs.release == 'true' }}
+    if: ${{ needs.setup.outputs.linux == 'true' && (needs.setup.outputs.release == 'true' || needs.setup.outputs.debug == 'true' || needs.setup.outputs.coverage == 'true') }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -400,14 +400,14 @@ jobs:
             os: macos-15-intel
             upload_release_assets: true
             platform: macos-x64
-          # - name: macos_debug
-          #   release_build: false
-          #   package_kind: portable_folder
-          #   second_package_kind: test_binaries
-          #   # third_package_kind: dmg
-          #   os: macos-15-intel
-          #   upload_release_assets: true
-          #   platform: macos-x64
+          - name: macos_debug
+            release_build: false
+            package_kind: portable_folder
+            second_package_kind: test_binaries
+            # third_package_kind: dmg
+            os: macos-15-intel
+            upload_release_assets: true
+            platform: macos-x64
           - name: macos_release_arm
             release_build: true
             package_kind: portable_folder
@@ -416,16 +416,16 @@ jobs:
             os: macos-15
             upload_release_assets: true
             platform: macos-arm
-          # - name: macos_debug_arm
-          #   release_build: false
-          #   package_kind: portable_folder
-          #   second_package_kind: test_binaries
-          #   os: macos-15
-          #   upload_release_assets: true
-          #   platform: macos-arm
+          - name: macos_debug_arm
+            release_build: false
+            package_kind: portable_folder
+            second_package_kind: test_binaries
+            os: macos-15
+            upload_release_assets: true
+            platform: macos-arm
     runs-on: ${{ matrix.kind.os }}
     needs: [maybe_create_release, setup]
-    if: ${{ needs.setup.outputs.macos == 'true' && needs.setup.outputs.release == 'true' }}
+    if: ${{ needs.setup.outputs.macos == 'true' && (needs.setup.outputs.release == 'true' || needs.setup.outputs.debug == 'true') }}
     env:
        PATH_SEPARATOR: ":"
        COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _
@@ -480,12 +480,13 @@ jobs:
             package: shoopdaloop.*.release-macos-arm.portable.tar.gz
             second_package: shoopdaloop.*.release-macos-arm.test_binaries.tar.gz
             sentry_build_type: release
-          # - name: debug_macos_arm
-          #   python: python3
-          #   container: null
-          #   os: macos-15
-          #   package: shoopdaloop.*.debug-macos-arm.portable.tar.gz
-          #   second_package: shoopdaloop.*.debug-macos-arm.test_binaries.tar.gz
+          - name: debug_macos_arm
+            python: python3
+            container: null
+            os: macos-15
+            package: shoopdaloop.*.debug-macos-arm.portable.tar.gz
+            second_package: shoopdaloop.*.debug-macos-arm.test_binaries.tar.gz
+            sentry_build_type: debug
           - name: release_macos
             python: python3
             container: null
@@ -493,15 +494,16 @@ jobs:
             package: shoopdaloop.*.release-macos-x64.portable.tar.gz
             second_package: shoopdaloop.*.release-macos-x64.test_binaries.tar.gz
             sentry_build_type: release
-          # - name: debug_macos
-          #   python: python3
-          #   container: null
-          #   os: macos-15-intel
-          #   package: shoopdaloop.*.debug-macos-x64.portable.tar.gz
-          #   second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
+          - name: debug_macos
+            python: python3
+            container: null
+            os: macos-15-intel
+            package: shoopdaloop.*.debug-macos-x64.portable.tar.gz
+            second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
+            sentry_build_type: debug
     runs-on: ${{ matrix.kind.os }}
     needs: [build_macos, setup]
-    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.macos == 'true' && needs.setup.outputs.release == 'true' }}
+    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.macos == 'true' && (needs.setup.outputs.release == 'true' || needs.setup.outputs.debug == 'true') }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
