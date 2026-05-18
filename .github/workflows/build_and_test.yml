@@ -6,6 +6,7 @@ on:
       tags: "v*.*.*"
     pull_request:
       branches: [ "master" ]
+      types: [opened, synchronize, reopened, ready_for_review]
     workflow_dispatch:
       inputs:
         windows:
@@ -143,6 +144,12 @@ jobs:
           resolve checkpoints "${{ env.CHECKPOINTS_DEFAULT }}" "${{ github.event.inputs.checkpoints }}"
           resolve pi_checkpoints "${{ env.PI_CHECKPOINTS_DEFAULT }}" "${{ github.event.inputs.pi_checkpoints }}"
           resolve create_draft_release "${{ env.CREATE_DRAFT_RELEASE_DEFAULT }}" "${{ github.event.inputs.create_draft_release }}"
+
+          # For draft PRs, only run debug builds and tests (no release/coverage)
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.draft }}" = "true" ]; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "coverage=false" >> "$GITHUB_OUTPUT"
+          fi
 
   ##############################################################
   ## Release creation for tag pushes
