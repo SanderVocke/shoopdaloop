@@ -1,0 +1,1 @@
+When you read this, read .agents/index.md as well. It will give an overview of project-specific information.
