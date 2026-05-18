@@ -153,6 +153,31 @@ mod ffi {
             callback_fn: usize,
             callback_ctx: usize,
         );
+
+        // prepend - adds a message at the tail (earlier in time)
+        // dropped_cb_fn/dropped_cb_ctx: callback for dropped messages when buffer is full (0 = no callback)
+        unsafe fn prepend(
+            storage: &mut MidiStorageCore,
+            time: u32,
+            size: u16,
+            data: *const u8,
+            dropped_cb_fn: usize,
+            dropped_cb_ctx: usize,
+        ) -> bool;
+
+        // truncate_fn - truncate with a predicate function
+        // predicate_fn: raw function pointer to call for each message
+        //   returns true if the message should be dropped
+        //   callback takes: (time: u32, size: u16, data: *const u8, ctx: usize) -> bool
+        // dropped_cb_fn/dropped_cb_ctx: callback for each dropped message (0 = no callback)
+        unsafe fn truncate_fn(
+            storage: &mut MidiStorageCore,
+            predicate_fn: usize,
+            predicate_ctx: usize,
+            side: u8, // 0 = TruncateTail, 1 = TruncateHead
+            dropped_cb_fn: usize,
+            dropped_cb_ctx: usize,
+        );
     }
 }
 
@@ -596,4 +621,166 @@ fn time_window_snapshot(
     // C++ calls it as: snapshot(m_storage, target) where m_storage is the ringbuffer source
     // So we swap the parameters: storage (ringbuffer source) goes to target parameter, and target (snapshot) goes to storage parameter
     window.snapshot(storage, target, start_offset_from_end);
+}
+
+// Callback type for truncate_fn predicate
+// Signature: bool predicate(uint32_t time, uint16_t size, const uint8_t* data, usize ctx)
+type TruncatePredicate = unsafe extern "C" fn(u32, u16, *const u8, usize) -> bool;
+
+/// Prepend operation - adds a message at the tail (earlier in time)
+/// Returns true on success, false if buffer is full or out-of-order
+/// Note: prepend does not drop messages, so dropped_cb is not used here
+unsafe fn prepend(
+    storage: &mut MidiStorageCore,
+    time: u32,
+    size: u16,
+    data: *const u8,
+    _dropped_cb_fn: usize, // Not used - prepend doesn't drop
+    _dropped_cb_ctx: usize,
+) -> bool {
+    let slice = std::slice::from_raw_parts(data, size as usize);
+    storage.prepend(time, size, slice)
+}
+
+/// Truncate operation with a predicate function
+/// The predicate is called for each message and returns true if it should be dropped
+unsafe fn truncate_fn(
+    storage: &mut MidiStorageCore,
+    predicate_fn: usize,
+    predicate_ctx: usize,
+    side: u8,
+    dropped_cb_fn: usize,
+    dropped_cb_ctx: usize,
+) {
+    let side = if side == 0 {
+        TruncateSide::TruncateTail
+    } else {
+        TruncateSide::TruncateHead
+    };
+
+    let capacity = storage.capacity();
+    let n_events = storage.n_events();
+    if capacity == 0 || n_events == 0 {
+        return;
+    }
+
+    let pred_fn = if predicate_fn != 0 {
+        Some(std::mem::transmute::<usize, TruncatePredicate>(
+            predicate_fn,
+        ))
+    } else {
+        None
+    };
+
+    // Helper to call predicate
+    let should_drop = |time: u32, size: u16, data: *const u8| -> bool {
+        if let Some(fn_ptr) = pred_fn {
+            unsafe { fn_ptr(time, size, data, predicate_ctx) }
+        } else {
+            // If no predicate, keep everything
+            false
+        }
+    };
+
+    // First pass: identify what to drop and collect dropped messages
+    let mut to_drop: Vec<MidiStorageElem> = Vec::new();
+    let mut kept_tail = 0u32;
+    let mut kept_head = 0u32;
+    let mut kept_count = 0u32;
+    let _ = (&kept_tail, &kept_head, &kept_count); // Used after match
+
+    match side {
+        TruncateSide::TruncateHead => {
+            // TruncateHead: drop from the oldest (tail), keep newer (head)
+            // Find the first element that should NOT be dropped
+            let mut idx = storage.raw_tail();
+            let mut first_keep_idx = idx;
+            let mut found_keep = false;
+
+            for _ in 0..n_events {
+                if let Some(elem) = storage.get_elem_at_physical_offset_ref(idx) {
+                    if !should_drop(elem.time, elem.size, elem.data().as_ptr()) {
+                        first_keep_idx = idx;
+                        found_keep = true;
+                        break;
+                    }
+                    to_drop.push(elem.clone());
+                }
+                idx = (idx + 1) % capacity;
+            }
+
+            if found_keep {
+                kept_tail = first_keep_idx;
+                // New head is at the original head position
+                kept_head = storage.raw_head();
+                kept_count = n_events - to_drop.len() as u32;
+            } else {
+                // Drop everything
+                to_drop.clear();
+                for i in 0..n_events {
+                    let idx = (storage.raw_tail() + i) % capacity;
+                    if let Some(elem) = storage.get_elem_at_physical_offset_ref(idx) {
+                        to_drop.push(elem.clone());
+                    }
+                }
+                kept_tail = storage.raw_head();
+                kept_head = kept_tail;
+                kept_count = 0;
+            }
+        }
+        TruncateSide::TruncateTail => {
+            // TruncateTail: drop from the newest (head), keep older (tail)
+            // Find the first element that should NOT be dropped
+            let mut idx = storage.raw_tail();
+
+            for _ in 0..n_events {
+                if let Some(elem) = storage.get_elem_at_physical_offset_ref(idx) {
+                    if should_drop(elem.time, elem.size, elem.data().as_ptr()) {
+                        // This element should be dropped - handled below
+                    }
+                }
+                idx = (idx + 1) % capacity;
+            }
+
+            // Now we know: drop from tail until we find an element to keep
+            // Actually, the C++ logic is: iterate from tail, drop while predicate is true
+            // Then keep the rest
+
+            // Reset and do it correctly
+            let mut idx = storage.raw_tail();
+
+            for _ in 0..n_events {
+                if let Some(elem) = storage.get_elem_at_physical_offset_ref(idx) {
+                    if should_drop(elem.time, elem.size, elem.data().as_ptr()) {
+                        // Drop this element - advance tail
+                        kept_tail = (kept_tail + 1) % capacity;
+                        // Call dropped callback
+                        to_drop.push(elem.clone());
+                    } else {
+                        // Keep this element
+                        kept_count += 1;
+                        kept_head = (idx + 1) % capacity; // head is one past last element
+                    }
+                }
+                idx = (idx + 1) % capacity;
+            }
+        }
+    }
+
+    // Actually update the storage state using setters
+    storage.set_raw_tail(kept_tail);
+    storage.set_raw_head(kept_head);
+    storage.set_n_events(kept_count);
+
+    // Call dropped callback for each dropped message
+    for elem in &to_drop {
+        let data_ptr = elem.data().as_ptr();
+        call_dropped_cb(
+            dropped_cb_fn,
+            dropped_cb_ctx,
+            elem.time,
+            elem.size,
+            data_ptr,
+        );
+    }
 }

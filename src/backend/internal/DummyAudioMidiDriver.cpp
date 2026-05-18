@@ -43,9 +43,9 @@ DummyAudioMidiDriverMode DummyAudioMidiDriver<Time, Size>::get_mode() const {
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::controlled_mode_request_samples(uint32_t samples) {
-    exec_process_thread_command([=]() {
-        this->m_controlled_mode_samples_to_process += samples;
-        uint32_t requested = this->m_controlled_mode_samples_to_process.load();
+    exec_process_thread_command([this, samples]() {
+        m_controlled_mode_samples_to_process += samples;
+        uint32_t requested = m_controlled_mode_samples_to_process.load();
         Log::log<log_level_debug>("DummyAudioMidiDriver: request {} samples ({} total)", samples, requested);
     });
 }
@@ -60,11 +60,11 @@ template <typename Time, typename Size>
 DummyAudioMidiDriver<Time, Size>::DummyAudioMidiDriver(void (*maybe_process_callback)())
     : AudioMidiDriver(maybe_process_callback),
       m_finish(false),
-      m_paused(false),
       m_mode(DummyAudioMidiDriverMode::Automatic),
       m_controlled_mode_samples_to_process(0),
-      m_audio_port_closed_cb(nullptr), m_audio_port_opened_cb(nullptr),
-      m_midi_port_closed_cb(nullptr), m_midi_port_opened_cb(nullptr),
+      m_paused(false),
+      m_audio_port_opened_cb(nullptr), m_midi_port_opened_cb(nullptr),
+      m_audio_port_closed_cb(nullptr), m_midi_port_closed_cb(nullptr),
       m_external_connections(shoop_make_shared<DummyExternalConnections>())
 {
     m_audio_ports.clear();

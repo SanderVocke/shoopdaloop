@@ -11,7 +11,7 @@
 #include "MidiBuffer.h"
 #include "IMidiReadableBuffer.h"
 #include "IMidiWriteableBuffer.h"
-#include "MidiStorage.h"
+#include "MidiStorageElem.h"
 #include "LoggingBackend.h"
 #include "shoop_shared_ptr.h"
 #include "MidiRingbuffer.h"

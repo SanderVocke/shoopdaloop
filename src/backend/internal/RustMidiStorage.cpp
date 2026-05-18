@@ -1,6 +1,6 @@
 #include "MidiRingbuffer.h"
 #include "RustMidiStorage.h"
-#include "MidiStorage.h"  // For MidiStorage and MidiStorageCursor
+#include "MidiStorageCursor.h"  // For MidiStorageCursor
 #include "MidiStorageElem.h"
 #include "IMidiStorageCore.h"
 #include "backend_rust/src/midi_storage_cxx.rs.h"
@@ -97,26 +97,21 @@ bool RustMidiStorage::prepend(uint32_t time, uint16_t size,
                                DroppedMsgCallback dropped_msg_cb) {
     if (m_data.empty()) return false;
     
-    if (full()) {
-        if (dropped_msg_cb) {
-            dropped_msg_cb(time, size, data);
-        }
-        return false;
-    }
-
-    if (m_n_events > 0 && m_data[m_tail].time < time) {
-        return false;
-    }
-
-    m_tail = (m_tail + m_data.size() - 1) % m_data.size();
-    m_n_events++;
-
-    auto& elem = m_data[m_tail];
-    elem.time = time;
-    elem.size = size;
-    memcpy(elem.bytes, data, size);
-
-    return true;
+    // Prepare callback context (prepend doesn't use dropped callback, but we pass 0)
+    DroppedMsgCallback cb_store = dropped_msg_cb;
+    uintptr_t cb_fn = 0;  // prepend doesn't invoke dropped callback
+    uintptr_t cb_ctx = 0;
+    (void)cb_store;  // Suppress unused warning
+    
+    // Delegate to Rust - returns bool success
+    bool success = backend_rust::prepend(
+        *m_rust_core, time, size, data, cb_fn, cb_ctx
+    );
+    
+    // Sync state from Rust to C++
+    sync_rust_state();
+    
+    return success;
 }
 
 void RustMidiStorage::clear() {
@@ -138,27 +133,7 @@ void RustMidiStorage::copy(IMidiStorageCore& target) const {
         return;
     }
     
-    // Handle MidiStorage target
-    auto* t = dynamic_cast<MidiStorage*>(&target);
-    if (t) {
-        t->clear();
-        
-        // Copy elements by iterating physically from tail
-        uint32_t n = m_rust_core->n_events();
-        
-        uint32_t pos = m_tail;
-        for (uint32_t i = 0; i < n; ++i) {
-            uint32_t time = backend_rust::get_elem_time_at_physical_offset(*m_rust_core, pos);
-            uint16_t size = backend_rust::get_elem_size_at_physical_offset(*m_rust_core, pos);
-            uint8_t bytes[4];
-            backend_rust::get_elem_bytes_at_physical_offset(*m_rust_core, pos, bytes, 4);
-            t->append(time, size, bytes, true, nullptr);
-            pos = (pos + 1) % m_data.size();
-        }
-        return;
-    }
-    
-    throw std::runtime_error("copy target must be RustMidiStorage or MidiStorage");
+    throw std::runtime_error("copy target must be RustMidiStorage");
 }
 
 void RustMidiStorage::copy_from(const IMidiStorageCore& from) {
@@ -194,57 +169,37 @@ void RustMidiStorage::truncate_fn(
     std::function<bool(uint32_t, uint16_t, const uint8_t*)> should_truncate_fn,
     MidiStorageTruncateSide side, DroppedMsgCallback dropped_msg_cb) {
     
-    // For truncate_fn with predicate, use C++ implementation
-    // since Rust's truncate doesn't support custom predicates yet
-    uint32_t cap = m_data.size();
-    if (cap == 0 || m_n_events == 0) return;
-
-    if (side == MidiStorageTruncateSide::TruncateHead) {
-        uint32_t newest_idx = (m_head + cap - 1) % cap;
-        auto& e = m_data[newest_idx];
-        if (!should_truncate_fn(e.time, e.size, e.data())) return;
-
-        uint32_t idx = m_tail;
-        uint32_t kept = 0;
-        for (uint32_t i = 0; i < m_n_events; ++i) {
-            auto& elem = m_data[idx];
-            if (should_truncate_fn(elem.time, elem.size, elem.data())) break;
-            kept++;
-            idx = (idx + 1) % cap;
+    uint8_t rust_side = (side == MidiStorageTruncateSide::TruncateTail) ? 0 : 1;
+    
+    // Create a trampoline for the predicate function
+    // We need to store the std::function somewhere accessible from the trampoline
+    static thread_local std::function<bool(uint32_t, uint16_t, const uint8_t*)>* g_predicate = nullptr;
+    
+    auto predicate_fn = +[](uint32_t time, uint16_t size, const uint8_t* data, uintptr_t ctx) -> bool {
+        if (g_predicate) {
+            return (*g_predicate)(time, size, data);
         }
-
-        if (dropped_msg_cb) {
-            uint32_t drop_idx = idx;
-            for (uint32_t i = kept; i < m_n_events; ++i) {
-                auto& elem = m_data[drop_idx];
-                dropped_msg_cb(elem.time, elem.size, elem.data());
-                drop_idx = (drop_idx + 1) % cap;
-            }
-        }
-
-        m_head = idx;
-        m_n_events = kept;
-
-    } else if (side == MidiStorageTruncateSide::TruncateTail) {
-        auto& e = m_data[m_tail];
-        if (!should_truncate_fn(e.time, e.size, e.data())) return;
-
-        uint32_t idx = m_tail;
-        uint32_t dropped = 0;
-        for (uint32_t i = 0; i < m_n_events; ++i) {
-            auto& elem = m_data[idx];
-            if (!should_truncate_fn(elem.time, elem.size, elem.data())) break;
-            if (dropped_msg_cb) {
-                dropped_msg_cb(elem.time, elem.size, elem.data());
-            }
-            dropped++;
-            idx = (idx + 1) % cap;
-        }
-
-        m_tail = idx;
-        m_n_events -= dropped;
-        if (m_n_events == 0) m_head = m_tail;
-    }
+        return false; // Don't drop if no predicate
+    };
+    
+    // Prepare callback context for predicate
+    g_predicate = &should_truncate_fn;
+    uintptr_t pred_fn = reinterpret_cast<uintptr_t>(&predicate_fn);
+    uintptr_t pred_ctx = 0;  // Predicate uses the global
+    
+    // Prepare callback context for dropped messages
+    DroppedMsgCallback cb_store = dropped_msg_cb;
+    uintptr_t cb_fn = dropped_msg_cb ? reinterpret_cast<uintptr_t>(&dropped_cb_trampoline) : 0;
+    uintptr_t cb_ctx = dropped_msg_cb ? reinterpret_cast<uintptr_t>(&cb_store) : 0;
+    
+    // Delegate to Rust - predicate and dropped_cb are invoked for each message
+    backend_rust::truncate_fn(*m_rust_core, pred_fn, pred_ctx, rust_side, cb_fn, cb_ctx);
+    
+    // Clear the static predicate
+    g_predicate = nullptr;
+    
+    // Sync C++ state
+    sync_rust_state();
 }
 
 void RustMidiStorage::for_each_msg_modify(

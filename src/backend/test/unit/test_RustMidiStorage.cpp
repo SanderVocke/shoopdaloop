@@ -1,5 +1,5 @@
 #include "RustMidiStorage.h"
-#include "MidiStorage.h"
+#include "MidiStorageCursor.h"
 #include "shoop_shared_ptr.h"
 
 #include <iostream>
@@ -101,10 +101,10 @@ TEST_CASE("RustMidiStorage - Clear", "[RustMidiStorage]") {
     CHECK(storage->empty() == true);
 }
 
-TEST_CASE("RustMidiStorage - Copy to MidiStorage", "[RustMidiStorage]") {
-    auto rust_storage = shoop_make_shared<RustMidiStorage>(128);
+TEST_CASE("RustMidiStorage - Copy to RustMidiStorage", "[RustMidiStorage]") {
+    auto source = shoop_make_shared<RustMidiStorage>(128);
     
-    // Add messages to RustMidiStorage
+    // Add messages to source
     auto msgs = {
         make_msg(0, {0x90, 0x3C, 0x64}),
         make_msg(10, {0x90, 0x40, 0x64}),
@@ -112,29 +112,29 @@ TEST_CASE("RustMidiStorage - Copy to MidiStorage", "[RustMidiStorage]") {
     };
     
     for (auto& msg : msgs) {
-        rust_storage->append(msg.time, msg.size, msg.bytes);
+        source->append(msg.time, msg.size, msg.bytes);
     }
-    CHECK(rust_storage->n_events() == 3);
+    CHECK(source->n_events() == 3);
     
-    // Copy to C++ MidiStorage
-    auto cpp_storage = shoop_make_shared<MidiStorage>(128);
-    rust_storage->copy(*cpp_storage);
+    // Copy to target RustMidiStorage
+    auto target = shoop_make_shared<RustMidiStorage>(128);
+    source->copy(*target);
     
-    CHECK(cpp_storage->n_events() == 3);
+    CHECK(target->n_events() == 3);
     
     // Verify contents
-    auto* elem = cpp_storage->get_elem_physical(0);
+    auto* elem = target->get_elem_physical(0);
     CHECK(elem->time == 0);
-    elem = cpp_storage->get_elem_physical(1);
+    elem = target->get_elem_physical(1);
     CHECK(elem->time == 10);
-    elem = cpp_storage->get_elem_physical(2);
+    elem = target->get_elem_physical(2);
     CHECK(elem->time == 20);
 }
 
-TEST_CASE("RustMidiStorage - Copy from MidiStorage", "[RustMidiStorage]") {
-    auto cpp_storage = shoop_make_shared<MidiStorage>(128);
+TEST_CASE("RustMidiStorage - Copy from RustMidiStorage", "[RustMidiStorage]") {
+    auto source = shoop_make_shared<RustMidiStorage>(128);
     
-    // Add messages to C++ MidiStorage
+    // Add messages to source
     auto msgs = {
         make_msg(0, {0x90, 0x3C, 0x64}),
         make_msg(10, {0x90, 0x40, 0x64}),
@@ -142,22 +142,22 @@ TEST_CASE("RustMidiStorage - Copy from MidiStorage", "[RustMidiStorage]") {
     };
     
     for (auto& msg : msgs) {
-        cpp_storage->append(msg.time, msg.size, msg.bytes);
+        source->append(msg.time, msg.size, msg.bytes);
     }
-    CHECK(cpp_storage->n_events() == 3);
+    CHECK(source->n_events() == 3);
     
-    // Copy to RustMidiStorage
-    auto rust_storage = shoop_make_shared<RustMidiStorage>(128);
-    cpp_storage->copy(*rust_storage);
+    // Copy to target RustMidiStorage
+    auto target = shoop_make_shared<RustMidiStorage>(128);
+    target->copy_from(*source);
     
-    CHECK(rust_storage->n_events() == 3);
+    CHECK(target->n_events() == 3);
     
-    // Verify contents via RustMidiStorage
-    auto* elem = rust_storage->get_elem_physical(0);
+    // Verify contents via target
+    auto* elem = target->get_elem_physical(0);
     CHECK(elem->time == 0);
-    elem = rust_storage->get_elem_physical(1);
+    elem = target->get_elem_physical(1);
     CHECK(elem->time == 10);
-    elem = rust_storage->get_elem_physical(2);
+    elem = target->get_elem_physical(2);
     CHECK(elem->time == 20);
 }
 
