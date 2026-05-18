@@ -1,9 +1,8 @@
-#include "MidiStorage.h"
+#include "RustMidiStorage.h"
 #include "MidiStorage.h"
 #include "shoop_shared_ptr.h"
 
 #include <iostream>
-#include <sstream>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -59,8 +58,9 @@ inline MidiStorageElem make_msg(uint32_t time, std::initializer_list<uint8_t> da
     return msg;
 }
 
-TEST_CASE("MidiStorage - Round-trip", "[MidiStorage]") {
-    using Storage = MidiStorage;
+// Test MidiStorage interface via FFI to Rust implementation (RustMidiStorage)
+TEST_CASE("MidiStorage via Rust - Round-trip", "[MidiStorage]") {
+    using Storage = RustMidiStorage;
 
     std::vector<MidiStorageElem> in = {
         make_msg(0, {0, 1, 2}),
@@ -93,8 +93,8 @@ TEST_CASE("MidiStorage - Round-trip", "[MidiStorage]") {
     CHECK(out == in);
 };
 
-TEST_CASE("MidiStorage - prepend", "[MidiStorage]") {
-    using Storage = MidiStorage;
+TEST_CASE("MidiStorage via Rust - prepend", "[MidiStorage]") {
+    using Storage = RustMidiStorage;
 
     std::vector<MidiStorageElem> in = {
         make_msg(10, {0, 1, 2}),
@@ -137,8 +137,8 @@ TEST_CASE("MidiStorage - prepend", "[MidiStorage]") {
     CHECK(out == expect_result);
 };
 
-TEST_CASE("MidiStorage - replace append", "[MidiStorage]") {
-    using Storage = MidiStorage;
+TEST_CASE("MidiStorage via Rust - replace append", "[MidiStorage]") {
+    using Storage = RustMidiStorage;
 
     std::vector<MidiStorageElem> in = {
         make_msg(0, {0, 1, 2}),
@@ -184,8 +184,8 @@ TEST_CASE("MidiStorage - replace append", "[MidiStorage]") {
     CHECK(out == expect_result);
 };
 
-TEST_CASE("MidiStorage - wrap around", "[MidiStorage]") {
-    using Storage = MidiStorage;
+TEST_CASE("MidiStorage via Rust - wrap around", "[MidiStorage]") {
+    using Storage = RustMidiStorage;
 
     // Buffer holds exactly 3 elements
     auto s = shoop_make_shared<Storage>(3 * sizeof(Storage::Elem));

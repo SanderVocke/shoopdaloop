@@ -133,23 +133,34 @@ void RustMidiStorage::copy(IMidiStorageCore& target) const {
         return;
     }
     
-    // Handle MidiStorage target
-    auto* t = dynamic_cast<MidiStorage*>(&target);
-    if (t) {
-        t->clear();
-        
-        // Copy elements by iterating physically from tail
-        uint32_t n = m_rust_core->n_events();
-        
-        uint32_t pos = m_tail;
-        for (uint32_t i = 0; i < n; ++i) {
-            uint32_t time = backend_rust::get_elem_time_at_physical_offset(*m_rust_core, pos);
-            uint16_t size = backend_rust::get_elem_size_at_physical_offset(*m_rust_core, pos);
-            uint8_t bytes[4];
-            backend_rust::get_elem_bytes_at_physical_offset(*m_rust_core, pos, bytes, 4);
-            t->append(time, size, bytes, true, nullptr);
-            pos = (pos + 1) % m_data.size();
+    // Handle MidiStorage target (C++) - iterate and copy elements preserving ringbuffer positions
+    auto* cpp_storage = dynamic_cast<MidiStorage*>(&target);
+    if (cpp_storage) {
+        // Get access to the C++ storage core
+        MidiStorageCore* cpp_core = cpp_storage->core();
+        if (!cpp_core) {
+            throw std::runtime_error("Failed to get C++ MidiStorage core");
         }
+        
+        uint32_t cap = m_data.size();
+        
+        // Resize target data to match capacity
+        cpp_core->m_data.resize(cap);
+        cpp_core->m_tail = m_tail;
+        cpp_core->m_n_events = m_n_events;
+        
+        if (m_n_events == 0) {
+            cpp_core->m_head = 0;
+            return;
+        }
+        
+        // Copy elements preserving their physical ringbuffer positions
+        uint32_t pos = m_tail;
+        for (uint32_t i = 0; i < m_n_events; ++i) {
+            cpp_core->m_data[pos] = m_data[pos];
+            pos = (pos + 1) % cap;
+        }
+        cpp_core->m_head = pos;
         return;
     }
     
