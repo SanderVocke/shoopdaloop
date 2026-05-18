@@ -1,9 +1,11 @@
 //! CXX bridge for MidiPortBase to expose to C++.
+//!
+//! Note: Most MidiPortBase methods are delegated through MidiPort bridge.
+//! This bridge exposes only what's needed for direct C++ interop (tests).
 
 #![allow(dead_code)]
 
 use crate::midi_port_base::{MidiPortBase, TrackingConfig};
-use crate::midi_storage::{MidiStorageCore, MidiTimeWindow};
 
 #[cxx::bridge(namespace = "backend_rust")]
 mod ffi {
@@ -18,36 +20,9 @@ mod ffi {
             track_programs: bool,
         ) -> Box<MidiPortBase>;
 
-        // IMidiStateTracking interface
-        fn n_notes_active(port: &MidiPortBase) -> u32;
-        fn get_input_event_count(port: &MidiPortBase) -> u32;
-        fn get_output_event_count(port: &MidiPortBase) -> u32;
-
-        // IMidiRingbuffer interface
-        fn set_n_samples(port: &mut MidiPortBase, n: u32);
-        fn get_n_samples(port: &MidiPortBase) -> u32;
-        fn get_current_n_samples(port: &MidiPortBase) -> u32;
-
-        // Event counter management
-        fn reset_n_input_events(port: &MidiPortBase);
-        fn increment_input_events(port: &MidiPortBase, count: u32);
-
-        fn reset_n_output_events(port: &MidiPortBase);
-        fn increment_output_events(port: &MidiPortBase, count: u32);
-
         // Mute state
         fn set_muted(port: &MidiPortBase, muted: bool);
         fn get_muted(port: &MidiPortBase) -> bool;
-
-        // State processing
-        unsafe fn process_msg_to_state(port: &mut MidiPortBase, data: *const u8, size: usize);
-
-        // Ringbuffer storage access for C++ interop (returns raw pointer as usize)
-        unsafe fn maybe_midi_storage(port: &mut MidiPortBase) -> usize;
-        unsafe fn maybe_midi_ringbuffer_time_window(port: &mut MidiPortBase) -> usize;
-
-        // Snapshot ringbuffer into target (target is a RustMidiStorage wrapped storage)
-        unsafe fn snapshot_ringbuffer_into(port: &MidiPortBase, target_storage_ptr: usize);
 
         // Tracking config accessors
         fn tracking_config_track_notes(config: &TrackingConfig) -> bool;
@@ -69,49 +44,6 @@ fn new_midi_port_base(
     ))
 }
 
-// IMidiStateTracking interface
-fn n_notes_active(port: &MidiPortBase) -> u32 {
-    port.n_notes_active_direct()
-}
-
-fn get_input_event_count(port: &MidiPortBase) -> u32 {
-    port.get_n_input_events()
-}
-
-fn get_output_event_count(port: &MidiPortBase) -> u32 {
-    port.get_n_output_events()
-}
-
-// IMidiRingbuffer interface
-fn set_n_samples(port: &mut MidiPortBase, n: u32) {
-    port.set_n_samples_direct(n);
-}
-
-fn get_n_samples(port: &MidiPortBase) -> u32 {
-    port.get_n_samples_direct()
-}
-
-fn get_current_n_samples(port: &MidiPortBase) -> u32 {
-    port.get_current_n_samples_direct()
-}
-
-// Event counter management
-fn reset_n_input_events(port: &MidiPortBase) {
-    port.reset_n_input_events();
-}
-
-fn increment_input_events(port: &MidiPortBase, count: u32) {
-    port.increment_input_events(count);
-}
-
-fn reset_n_output_events(port: &MidiPortBase) {
-    port.reset_n_output_events();
-}
-
-fn increment_output_events(port: &MidiPortBase, count: u32) {
-    port.increment_output_events(count);
-}
-
 // Mute state
 fn set_muted(port: &MidiPortBase, muted: bool) {
     port.set_muted(muted);
@@ -119,37 +51,6 @@ fn set_muted(port: &MidiPortBase, muted: bool) {
 
 fn get_muted(port: &MidiPortBase) -> bool {
     port.get_muted()
-}
-
-// State processing
-unsafe fn process_msg_to_state(port: &mut MidiPortBase, data: *const u8, size: usize) {
-    port.process_msg_to_state_raw(data, size);
-}
-
-// Ringbuffer storage access for C++ interop (returns raw pointer as usize)
-unsafe fn maybe_midi_storage(port: &mut MidiPortBase) -> usize {
-    port.maybe_midi_storage()
-        .map(|s| s as *mut MidiStorageCore as usize)
-        .unwrap_or(0)
-}
-
-unsafe fn maybe_midi_ringbuffer_time_window(port: &mut MidiPortBase) -> usize {
-    port.maybe_midi_ringbuffer_time_window()
-        .map(|w| w as *mut MidiTimeWindow as usize)
-        .unwrap_or(0)
-}
-
-// Snapshot ringbuffer into target (target is a RustMidiStorage wrapped storage)
-unsafe fn snapshot_ringbuffer_into(port: &MidiPortBase, target_storage_ptr: usize) {
-    if target_storage_ptr != 0 {
-        // Target is expected to be a RustMidiStorage* (from C++), cast and use
-        // The C++ code will pass the m_rust_core pointer from a RustMidiStorage
-        // For now, we'll need to handle this differently since RustMidiStorage owns MidiStorageCore
-        // Actually, let's use the internal storage approach - create a target MidiStorageCore
-        // and copy to it, then the caller needs to sync
-        let target = &mut *(target_storage_ptr as *mut MidiStorageCore);
-        port.snapshot_ringbuffer_into(target);
-    }
 }
 
 // Tracking config accessors
