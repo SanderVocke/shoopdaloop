@@ -55,7 +55,7 @@ impl MidiStorageElem {
         if self.size != other.size {
             return false;
         }
-        self.bytes[..self.size as usize] == other.bytes[..other.size as usize]
+        self.bytes[..self.size as usize] == other.bytes[..self.size as usize]
     }
 }
 
@@ -694,7 +694,8 @@ impl MidiCursor {
     }
 
     pub fn valid(&self) -> bool {
-        self.offset.is_some()
+        let result = self.offset.is_some();
+        result
     }
 
     pub fn offset(&self) -> Option<u32> {
@@ -728,6 +729,17 @@ impl MidiCursor {
         }
     }
 
+    /// Check if cursor is at the start (offset == tail and prev_offset is None)
+    pub fn is_at_start(&self, storage: &MidiStorageCore) -> bool {
+        match self.offset {
+            Some(offset) => {
+                let result = offset == storage.raw_tail() && self.prev_offset.is_none();
+                result
+            }
+            None => false,
+        }
+    }
+
     /// Move to the next element
     pub fn next(&mut self, storage: &MidiStorageCore) {
         if !self.offset.is_some() {
@@ -742,7 +754,6 @@ impl MidiCursor {
 
         let curr = self.offset.unwrap();
         let next = (curr + 1) % cap;
-
         let raw_full = storage.raw_full();
         let head = storage.raw_head();
         let tail = storage.raw_tail();
@@ -763,7 +774,6 @@ impl MidiCursor {
             self.invalidate();
             return;
         }
-
         self.prev_offset = self.offset;
         self.offset = Some(next);
     }
@@ -776,7 +786,8 @@ impl MidiCursor {
 
     /// Find first element where time >= target
     pub fn find_time_forward(&mut self, storage: &MidiStorageCore, time: u32) -> FindResult {
-        self.find_fn_forward(storage, |elem| elem.time >= time)
+        let result = self.find_fn_forward(storage, |elem| elem.time >= time);
+        result
     }
 
     /// Find first element matching predicate function
@@ -833,7 +844,73 @@ impl MidiCursor {
             idx = (idx + 1) % cap;
             rval.n_processed += 1;
         }
+        self.invalidate();
+        rval
+    }
 
+    /// Find first element matching predicate, with skip callback
+    /// For each element that doesn't match, calls skip_cb
+    pub fn find_fn_forward_with_skip<F, S>(
+        &mut self,
+        storage: &MidiStorageCore,
+        mut pred: F,
+        mut skip_cb: S,
+    ) -> FindResult
+    where
+        F: FnMut(&MidiStorageElem) -> bool,
+        S: FnMut(&MidiStorageElem),
+    {
+        let mut rval = FindResult {
+            n_processed: 0,
+            found_valid_elem: false,
+        };
+
+        if !self.valid() {
+            return rval;
+        }
+
+        let cap = storage.capacity();
+        let n_events = storage.n_events();
+        if cap == 0 {
+            self.invalidate();
+            return rval;
+        }
+
+        let head = storage.raw_head();
+        let tail = storage.raw_tail();
+        let raw_full = storage.raw_full();
+
+        let mut idx = self.offset.unwrap();
+        let mut prev_idx = idx;
+
+        for step in 0..n_events {
+            // Check if we've gone past the end (except for first iteration from current pos)
+            if step > 0 {
+                if !raw_full && idx == head {
+                    break;
+                }
+                if raw_full && idx == tail {
+                    break;
+                }
+            }
+
+            if let Some(elem) = storage.get_elem_at_physical_offset_ref(idx) {
+                if pred(elem) {
+                    if step > 0 {
+                        self.prev_offset = Some(prev_idx);
+                        self.offset = Some(idx);
+                    }
+                    rval.found_valid_elem = true;
+                    return rval;
+                }
+                // Call skip callback for non-matching elements
+                skip_cb(elem);
+            }
+
+            prev_idx = idx;
+            idx = (idx + 1) % cap;
+            rval.n_processed += 1;
+        }
         self.invalidate();
         rval
     }
