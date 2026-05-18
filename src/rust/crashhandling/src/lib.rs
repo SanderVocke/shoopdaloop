@@ -23,7 +23,7 @@ pub fn init_crashhandling(
     start_server_arg: &str,
     on_crash_callback: Option<client::CrashCallback>,
 ) {
-    drop(format!("[CRASH_DBG] init_crashhandling called: is_server={is_server}, start_server_arg={start_server_arg}, pid={}", std::process::id()));
+    info!("init_crashhandling called: is_server={is_server}, start_server_arg={start_server_arg}, pid={}", std::process::id());
 
     let maybe_dump_folder: Option<String> = std::env::var("SHOOP_CRASHDUMP_DIR").ok();
     if let Some(dump_folder) = maybe_dump_folder.as_ref() {
@@ -31,9 +31,6 @@ pub fn init_crashhandling(
         let path = std::path::PathBuf::from(dump_folder);
         if !path.exists() || !path.is_dir() {
             warn!("Dump folder {path:?} does not exist or is not a directory - crash handler not enabled.");
-            drop(format!(
-                "[CRASH_DBG] Dump folder missing/disabled, crash handler NOT enabled"
-            ));
             return;
         }
     } else {
@@ -41,20 +38,18 @@ pub fn init_crashhandling(
     }
 
     if is_server {
-        drop(format!("[CRASH_DBG] Entering server mode"));
+        debug!("Entering server mode");
         crashhandling_server();
 
         // Unreachable
         return;
     }
 
-    drop(format!("[CRASH_DBG] Entering client mode"));
+    debug!("Entering client mode");
     let handle = crashhandling_client(start_server_arg, on_crash_callback);
     let _ =
         CLIENTSIDE_HANDLE.get_or_init(|| -> Option<client::CrashHandlerHandle> { Some(handle) });
-    drop(format!(
-        "[CRASH_DBG] Client handle stored in CLIENTSIDE_HANDLE, thread is running"
-    ));
+    debug!("Client handle stored in CLIENTSIDE_HANDLE, thread is running");
 }
 
 pub fn set_crash_json_partial(partial_json: JsonValue) {

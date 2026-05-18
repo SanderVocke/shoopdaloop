@@ -120,7 +120,7 @@ pub fn crashhandling_client(
             }
         };
 
-        eprintln!("Client: crash handling socket: {}", socket_name);
+        debug!("Client: crash handling socket: {}", socket_name);
         // Instead of just one, we create two client connections to the crash
         // handling server. This is because:
         // - The first and most important thing we want to do on crash is to request a minidump.
