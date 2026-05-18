@@ -127,10 +127,7 @@ pub fn crashhandling_server() {
         unsafe { libc::getppid() }
     );
     #[cfg(not(unix))]
-    debug!(
-        "Server process starting: pid={}",
-        std::process::id()
-    );
+    debug!("Server process starting: pid={}", std::process::id());
     debug!("Starting crash handling server");
 
     let socket_name = match try_get_socket_name() {
