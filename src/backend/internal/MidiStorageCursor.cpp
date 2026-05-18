@@ -147,7 +147,11 @@ const ::MidiStorageElem* MidiStorageCursor::get() const {
 
 ::MidiStorageElem* MidiStorageCursor::get(uint32_t raw_offset) {
     if (!m_storage) return nullptr;
-    return m_storage->get_elem_physical(raw_offset);
+    auto* elem = m_storage->get_elem_physical(raw_offset);
+    if (elem) {
+    } else {
+    }
+    return elem;
 }
 
 const ::MidiStorageElem* MidiStorageCursor::get(uint32_t raw_offset) const {
@@ -188,13 +192,46 @@ MidiStorageCursor::FindResult MidiStorageCursor::find_time_forward(
         };
         
         uintptr_t pred_ctx = time;
-        auto result = backend_rust::cursor_find_fn_forward(
-            *m_rust_cursor, *rust_storage->m_rust_core,
-            reinterpret_cast<uintptr_t>(pred_fn), pred_ctx
-        );
         
-        rval.n_processed = backend_rust::find_result_n_processed(*result);
-        rval.found_valid_elem = backend_rust::find_result_found_valid_elem(*result);
+        if (maybe_skip_msg_callback) {
+            // Use the variant that also calls the skip callback
+            
+            // Create a C callback that will invoke the C++ std::function
+            auto skip_fn = +[](uint32_t t, uint16_t s, const uint8_t* d, uintptr_t ctx) {
+                (void)d;
+                ::MidiStorageElem elem;
+                elem.time = t;
+                elem.size = s;
+                memcpy(elem.bytes, d, s);
+                auto* callback = reinterpret_cast<std::function<void(::MidiStorageElem*)>*>(ctx);
+                (*callback)(&elem);
+            };
+            uintptr_t skip_ctx = reinterpret_cast<uintptr_t>(&maybe_skip_msg_callback);
+            
+            auto result = backend_rust::cursor_find_fn_forward_with_skip(
+                *m_rust_cursor, *rust_storage->m_rust_core,
+                reinterpret_cast<uintptr_t>(pred_fn), pred_ctx,
+                reinterpret_cast<uintptr_t>(skip_fn), skip_ctx
+            );
+            
+            rval.n_processed = backend_rust::find_result_n_processed(*result);
+            rval.found_valid_elem = backend_rust::find_result_found_valid_elem(*result);
+        } else {
+            // No skip callback needed, use the simpler variant
+            auto pred_fn = +[](uint32_t t, uint16_t s, const uint8_t* d, uintptr_t ctx) -> bool {
+                (void)d;
+                uint32_t target_time = static_cast<uint32_t>(ctx);
+                return t >= target_time;
+            };
+            uintptr_t pred_ctx = time;
+            auto result = backend_rust::cursor_find_fn_forward(
+                *m_rust_cursor, *rust_storage->m_rust_core,
+                reinterpret_cast<uintptr_t>(pred_fn), pred_ctx
+            );
+            
+            rval.n_processed = backend_rust::find_result_n_processed(*result);
+            rval.found_valid_elem = backend_rust::find_result_found_valid_elem(*result);
+        }
         return rval;
     }
     
