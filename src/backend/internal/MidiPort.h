@@ -14,6 +14,8 @@
 #include "LoggingBackend.h"
 #include "shoop_shared_ptr.h"
 #include "MidiPortBase.h"
+#include "backend_rust/src/midi_storage_cxx.rs.h"  // For rust::Box
+#include "backend_rust/src/midi_port_cxx.rs.h"  // Rust CXX bridge for MidiPort
 
 struct MidiPortTestHelper;
 
@@ -29,7 +31,10 @@ class MidiPort : public virtual PortInterface,
     std::atomic<MidiReadableBuffer*> ma_internal_read_input_data_buffer = nullptr;
     std::atomic<MidiWriteableBuffer*> ma_internal_write_output_data_to_buffer = nullptr;
 
-    // Composed core logic holder (contains mute state, ringbuffer, state tracking)
+    // Rust implementation for core logic
+    rust::Box<backend_rust::MidiPort> m_rust_port;
+
+    // Ringbuffer access (still in C++ for tests and direct access)
     MidiPortBase m_base;
 
 public:

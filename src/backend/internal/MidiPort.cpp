@@ -20,20 +20,45 @@ void MidiPort::set_muted(bool muted) {
     if (muted != m_base.get_muted()) {
         log<log_level_debug>("muted -> {}", muted);
     }
+    m_rust_port->set_muted(muted);
     m_base.set_muted(muted);
 }
 
-bool MidiPort::get_muted() const { return m_base.get_muted(); }
+bool MidiPort::get_muted() const { 
+    // Prefer Rust state
+    return m_rust_port->get_muted(); 
+}
 
-void MidiPort::reset_n_input_events() { m_base.reset_n_input_events(); }
-uint32_t MidiPort::get_n_input_events() const { return m_base.get_n_input_events(); }
-uint32_t MidiPort::get_input_event_count() const { return m_base.get_input_event_count(); }
+void MidiPort::reset_n_input_events() { 
+    m_rust_port->reset_n_input_events();
+    m_base.reset_n_input_events(); 
+}
 
-void MidiPort::reset_n_output_events() { m_base.reset_n_output_events(); }
-uint32_t MidiPort::get_n_output_events() const { return m_base.get_n_output_events(); }
-uint32_t MidiPort::get_output_event_count() const { return m_base.get_output_event_count(); }
+uint32_t MidiPort::get_n_input_events() const { 
+    // Prefer Rust state
+    return m_rust_port->input_event_count(); 
+}
 
-uint32_t MidiPort::n_notes_active() const { return m_base.n_notes_active(); }
+uint32_t MidiPort::get_input_event_count() const { 
+    return m_rust_port->input_event_count(); 
+}
+
+void MidiPort::reset_n_output_events() { 
+    m_rust_port->reset_n_output_events();
+    m_base.reset_n_output_events(); 
+}
+
+uint32_t MidiPort::get_n_output_events() const { 
+    return m_rust_port->output_event_count(); 
+}
+
+uint32_t MidiPort::get_output_event_count() const { 
+    return m_rust_port->output_event_count(); 
+}
+
+uint32_t MidiPort::n_notes_active() const { 
+    return m_rust_port->n_notes_active(); 
+}
 
 uint32_t MidiPort::get_n_input_notes_active() const {
     auto &m = m_base.maybe_midi_state_tracker();
@@ -164,6 +189,7 @@ MidiPort::MidiPort(
     bool track_controls,
     bool track_programs
 ) : ModuleLoggingEnabled<"Backend.MidiPort">(),
+    m_rust_port(backend_rust::new_midi_port(track_notes, track_controls, track_programs)),
     m_base(track_notes, track_controls, track_programs)
 {
 }
