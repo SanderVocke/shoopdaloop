@@ -3,8 +3,8 @@
 #![allow(dead_code)]
 
 use crate::midi_port::MidiPort;
-use crate::midi_state_tracker::MidiStateTracker;
 use crate::midi_port_base::MidiPortBase;
+use crate::midi_state_tracker::MidiStateTracker;
 
 #[cxx::bridge(namespace = "backend_rust")]
 mod ffi {
@@ -60,7 +60,8 @@ mod ffi {
         // Copy ringbuffer tail state to a target MidiStateTracker by pointer
         // target_ptr is a raw pointer to the target MidiStateTracker
         // Returns true if the tail state was copied, false if no tail state exists
-        unsafe fn copy_tail_state_to_tracker_by_ptr(port: &mut MidiPort, target_ptr: usize) -> bool;
+        unsafe fn copy_tail_state_to_tracker_by_ptr(port: &mut MidiPort, target_ptr: usize)
+            -> bool;
     }
 }
 
@@ -128,14 +129,16 @@ fn get_current_n_samples(port: &MidiPort) -> u32 {
 // C++ is responsible for lifetime management (same lifetime as MidiPort)
 unsafe fn get_maybe_midi_state_tracker(port: &mut MidiPort) -> usize {
     // SAFETY: Caller ensures MidiPort lifetime covers the returned pointer
-    port.base_mut().maybe_midi_state_tracker()
+    port.base_mut()
+        .maybe_midi_state_tracker()
         .map(|t| t as *mut MidiStateTracker as usize)
         .unwrap_or(0)
 }
 
 unsafe fn get_maybe_ringbuffer_tail_state_tracker(port: &mut MidiPort) -> usize {
     // SAFETY: Caller ensures MidiPort lifetime covers the returned pointer
-    port.base_mut().maybe_ringbuffer_tail_state_tracker()
+    port.base_mut()
+        .maybe_ringbuffer_tail_state_tracker()
         .map(|t| t as *mut MidiStateTracker as usize)
         .unwrap_or(0)
 }
@@ -168,7 +171,8 @@ unsafe fn copy_tail_state_to_tracker_by_ptr(port: &mut MidiPort, target_ptr: usi
 }
 
 fn get_state_tracker_n_notes_active(port: &mut MidiPort) -> u32 {
-    port.base_mut().maybe_midi_state_tracker()
+    port.base_mut()
+        .maybe_midi_state_tracker()
         .map(|t| t.n_notes_active())
         .unwrap_or(0)
 }
