@@ -1,5 +1,4 @@
 #include "IMidiStorageCursor.h"
-#include "MidiStorage.h"
 #include <stdexcept>
 
 IMidiStorageCursor* CursorFreeFunctions::create_cursor(IMidiStorageCore* storage) {

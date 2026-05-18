@@ -1,11 +1,11 @@
 #include "MidiChannel.h"
-#include "MidiStorage.h"
+#include "RustMidiStorage.h"
 #include "helpers.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 TEST_CASE("MidiChannel - Set Contents - Indefinite size", "[MidiChannel]") {
-    using Storage = MidiStorage;
+    using Storage = RustMidiStorage;
     using Channel = MidiChannel;
     using Contents = Channel::Contents;
 

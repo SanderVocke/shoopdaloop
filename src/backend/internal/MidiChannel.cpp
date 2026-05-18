@@ -5,7 +5,7 @@
 #include "MidiBuffer.h"
 #include "MidiStateDiffTracker.h"
 #include "MidiStateTracker.h"
-#include "MidiStorage.h"
+#include "MidiStorageElem.h"
 #include "channel_mode_helpers.h"
 #include "types.h"
 #include <memory>
@@ -703,7 +703,7 @@ MidiChannel::adopt_ringbuffer_contents(shoop_shared_ptr<PortInterface> from_port
             auto so = ma_start_offset.load();
             mp_storage->truncate(
                 so - std::min((int)so, (int)keep_samples_before_start_offset.value()),
-                MidiStorage::TruncateSide::TruncateTail,
+                Storage::TruncateSide::TruncateTail,
                 [this, maybe_start_tracking_state](uint32_t time, uint16_t size, const uint8_t* data) {
                     if (maybe_start_tracking_state) {
                         maybe_start_tracking_state->process_msg(data);

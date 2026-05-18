@@ -1,5 +1,5 @@
 #pragma once
-#include "MidiStorage.h"
+#include "MidiStorageElem.h"
 #include "IMidiReadableBuffer.h"
 #include "IMidiWriteableBuffer.h"
 

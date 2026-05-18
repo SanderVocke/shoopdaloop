@@ -1,8 +1,8 @@
 #include "RustMidiStorage.h"
-#include "MidiStorage.h"
 #include "shoop_shared_ptr.h"
 
 #include <iostream>
+#include <sstream>
 
 #include <catch2/catch_test_macros.hpp>
 

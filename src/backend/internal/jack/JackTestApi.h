@@ -5,7 +5,7 @@
 #include <map>
 #include <set>
 #include "LoggingBackend.h"
-#include "MidiStorage.h"
+#include "MidiStorageElem.h"
 #include <vector>
 
 #ifdef _WIN32

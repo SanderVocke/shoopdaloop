@@ -1,5 +1,5 @@
 #pragma once
-#include "MidiStorage.h"
+#include "MidiStorageElem.h"
 
 /**
  * IMidiReadableBuffer - Pure virtual interface for readable MIDI buffers.

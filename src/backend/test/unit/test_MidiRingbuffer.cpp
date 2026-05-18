@@ -1,5 +1,4 @@
-#include "MidiStorage.h"
-#include "MidiStorage.h"
+#include "RustMidiStorage.h"
 #include "shoop_shared_ptr.h"
 
 #include <iostream>
@@ -272,7 +271,7 @@ TEST_CASE("MidiRingbuffer - Put then overflow then snapshot", "[MidiRingbuffer]"
 
     b->next_buffer(10);
 
-    auto copy = shoop_make_shared<MidiStorage>(b->bytes_capacity());
+    auto copy = shoop_make_shared<RustMidiStorage>(b->bytes_capacity());
     b->snapshot(*copy, 8);
 
     std::vector<MidiStorageElem> expect_b = {
@@ -311,7 +310,7 @@ TEST_CASE("MidiRingbuffer - Put then truncated snapshot", "[MidiRingbuffer]") {
 
     b->next_buffer(10);
 
-    auto copy = shoop_make_shared<MidiStorage>(b->bytes_capacity());
+    auto copy = shoop_make_shared<RustMidiStorage>(b->bytes_capacity());
     b->snapshot(*copy, 17);
 
     std::vector<MidiStorageElem> expect_b = {
