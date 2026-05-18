@@ -9,6 +9,7 @@
 #include "IMidiReadableBuffer.h"
 #include "IMidiWriteableBuffer.h"
 #include "types.h"
+#include "backend_rust/src/dummy_midi_port_cxx.rs.h"  // Rust CXX bridge for DummyMidiPort
 #include <memory>
 #include <set>
 #include <thread>
@@ -18,6 +19,9 @@
 
 /**
  * DummyMidiPort - A MIDI port implementation for testing and development.
+ * 
+ * This is a thin C++ wrapper that delegates to the Rust implementation
+ * in src/rust/backend_rust/src/dummy_midi_port.rs via the CXX bridge.
  */
 class DummyMidiPort : public MidiPort,
                       public DummyPort,
@@ -30,19 +34,8 @@ public:
 
 private:
 
-    // Queued messages as external input to the port
-    std::vector<StoredMessage> m_queued_msgs;
-
-    std::vector<StoredMessage> m_buffer_data;
-    std::vector<StoredMessage> m_written_requested_msgs;
-
-    std::atomic<uint32_t> current_buf_frames = 0;
-
-    // Amount of frames requested for reading externally out of the port
-    std::atomic<uint32_t> n_requested_frames = 0;
-
-    std::atomic<uint32_t> n_processed_last_round = 0;
-    std::atomic<uint32_t> n_original_requested_frames = 0;
+    // Rust implementation (delegates all logic here)
+    rust::Box<backend_rust::DummyMidiPort> m_rust;
 
 public:
     // MidiReadableBuffer interface implementation
@@ -91,4 +84,8 @@ public:
 
     unsigned input_connectability() const override;
     unsigned output_connectability() const override;
+
+    // Override from MidiPort to delegate to our Rust implementation
+    void set_muted(bool muted) override;
+    bool get_muted() const override;
 };

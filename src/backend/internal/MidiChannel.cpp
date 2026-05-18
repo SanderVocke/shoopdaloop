@@ -684,12 +684,14 @@ MidiChannel::adopt_ringbuffer_contents(shoop_shared_ptr<PortInterface> from_port
 
     auto fn = [midiport, reverse_start_offset, keep_samples_before_start_offset, this]() {
         shoop_shared_ptr<MidiStateTracker> maybe_start_tracking_state = nullptr;
-        if (auto const& state = midiport->maybe_ringbuffer_tail_state_tracker()) {
+        auto tail_state_ptr = midiport->maybe_ringbuffer_tail_state_tracker();
+        if (tail_state_ptr) {
             // What was the ringbuffer tail state should now become the recorded messages
             // start state of this channel.
+            // Use bridge function to copy state directly from Rust to avoid raw pointer issues
             log<log_level_debug_trace>("adopting ringbuffer state tracker");
             maybe_start_tracking_state = shoop_make_shared<MidiStateTracker>(true, true, true);
-            maybe_start_tracking_state->copy_relevant_state(*state);
+            backend_rust::copy_tail_state_to_tracker_by_ptr(*midiport->m_rust_port, (size_t)maybe_start_tracking_state->raw_ptr());
         }
 
         midiport->PROC_snapshot_ringbuffer_into(*mp_storage);

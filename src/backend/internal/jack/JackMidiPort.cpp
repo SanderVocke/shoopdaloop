@@ -134,8 +134,8 @@ void GenericJackMidiInputPort<API>::PROC_process(uint32_t nframes) {
         memcpy(elem.bytes, jack_event.buffer, jack_event.size);
         m_messages.push_back(elem);
         
-        // Process state changes for note tracking via MidiPort's state tracker
-        maybe_midi_state_tracker()->process_msg(elem.bytes);
+        // Process state changes for note tracking via Rust bridge
+        backend_rust::process_msg_raw_to_state(*m_rust_port, elem.bytes);
     }
     
     // Sort by time
