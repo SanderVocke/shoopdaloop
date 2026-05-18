@@ -72,11 +72,13 @@ bool MidiStateTracker::tracking_anything() const {
 }
 
 void MidiStateTracker::subscribe(shoop_shared_ptr<MidiStateDiffTracker> s) {
+    (void)s;
     // No-op: subscriptions are managed entirely inside Rust via
     // synchronous trait callbacks. See midi_state_tracker.rs.
 }
 
 void MidiStateTracker::unsubscribe(shoop_shared_ptr<MidiStateDiffTracker> s) {
+    (void)s;
     // No-op: see subscribe() above.
 }
 

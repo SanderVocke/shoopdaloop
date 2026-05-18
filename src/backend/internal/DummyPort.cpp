@@ -28,7 +28,9 @@ DummyPort::DummyPort(
     shoop_port_direction_t direction,
     PortDataType type,
     shoop_weak_ptr<DummyExternalConnections> external_connections
-) : m_name(name), m_direction(direction), m_external_connections(external_connections) {}
+) : m_name(name), m_direction(direction), m_external_connections(external_connections) {
+    (void)type;
+}
 
 const char* DummyPort::name() const { return m_name.c_str(); }
 

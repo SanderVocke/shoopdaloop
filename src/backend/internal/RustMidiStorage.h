@@ -19,6 +19,7 @@ class RustMidiStorage : public shoop_enable_shared_from_this<RustMidiStorage>,
                         public IMidiStorage {
 public:
     using Elem = MidiStorageElem;
+    using Cursor = MidiStorageCursor;  // Alias for backward compatibility
     using TruncateSide = MidiStorageTruncateSide;  // For compatibility with MidiStorage
 
     RustMidiStorage(uint32_t data_size);
@@ -28,8 +29,8 @@ public:
     uint32_t n_events() const override { return m_n_events; }
     uint32_t capacity_elems() const override { return m_data.size(); }
     uint32_t bytes_capacity() const override { return capacity_elems() * sizeof(Elem); }
-    uint32_t bytes_occupied() const override { return m_n_events * sizeof(Elem); }
-    uint32_t bytes_free() const override { return (m_data.size() - m_n_events) * sizeof(Elem); }
+    uint32_t bytes_occupied() const { return m_n_events * sizeof(Elem); }
+    uint32_t bytes_free() const { return (m_data.size() - m_n_events) * sizeof(Elem); }
     bool full() const override { return m_n_events == m_data.size(); }
     bool empty() const override { return m_n_events == 0; }
 

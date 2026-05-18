@@ -1,6 +1,6 @@
 #include "MidiRingbuffer.h"
 #include "RustMidiStorage.h"
-#include "MidiStorage.h"  // For MidiStorage and MidiStorageCursor
+#include "MidiStorageCursor.h"  // For MidiStorageCursor
 #include "MidiStorageElem.h"
 #include "IMidiStorageCore.h"
 #include "backend_rust/src/midi_storage_cxx.rs.h"

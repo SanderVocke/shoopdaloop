@@ -47,13 +47,9 @@ public:
         backend_rust::sorting_buffer_clear(*m_rust);
     }
 
-    void PROC_process(uint32_t nframes) {
-        PROC_sort();
-    }
+    void PROC_process(uint32_t nframes) { (void)nframes; PROC_sort(); }
 
-    void PROC_prepare(uint32_t nframes) {
-        PROC_clear();
-    }
+    void PROC_prepare(uint32_t nframes) { (void)nframes; PROC_clear(); }
 
 private:
     rust::Box<backend_rust::MidiSortingBuffer> m_rust;

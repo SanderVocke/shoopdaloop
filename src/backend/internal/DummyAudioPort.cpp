@@ -11,9 +11,10 @@
 
 
 DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction, shoop_shared_ptr<AudioPort<audio_sample_t>::UsedBufferPool> buffer_pool, shoop_weak_ptr<DummyExternalConnections> external_connections)
-    : AudioPort<audio_sample_t>(buffer_pool), m_name(name),
+    : AudioPort<audio_sample_t>(buffer_pool),
       DummyPort(name, direction, PortDataType::Audio, external_connections),
       WithCommandQueue(100),
+      m_name(name),
       m_direction(direction),
       m_queued_data(128) { }
 
@@ -27,21 +28,21 @@ float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames) {
 }
 
 void DummyAudioPort::queue_data(uint32_t n_frames, audio_sample_t const *data) {
-    exec_process_thread_command([=]() {
-        auto s = this->m_queued_data.read_available();
+    exec_process_thread_command([this, n_frames, data]() {
+        auto s = m_queued_data.read_available();
         auto v = std::vector<audio_sample_t>(data, data + n_frames);
         log<log_level_debug>("Queueing {} samples, {} sets queued total", n_frames, s);
         if (should_log<log_level_debug_trace>()) {
             log<log_level_debug_trace>("--> Queued samples: {}", v);
         }
-        this->m_queued_data.push(v);
+        m_queued_data.push(v);
     });
 }
 
 bool DummyAudioPort::get_queue_empty() {
     bool is_empty = false;
-    exec_process_thread_command([=,&is_empty]() {
-        is_empty = this->m_queued_data.empty();
+    exec_process_thread_command([this, &is_empty]() {
+        is_empty = m_queued_data.empty();
     });
     return is_empty;
 }
@@ -95,14 +96,14 @@ void DummyAudioPort::PROC_prepare(uint32_t n_frames) {
 }
 
 void DummyAudioPort::request_data(uint32_t n_frames) {
-    exec_process_thread_command([=]() {
-        this->m_n_requested_samples += n_frames;
+    exec_process_thread_command([this, n_frames]() {
+        m_n_requested_samples += n_frames;
     });
 }
 
 std::vector<audio_sample_t> DummyAudioPort::dequeue_data(uint32_t n) {
     std::vector<audio_sample_t> rval;
-    exec_process_thread_command([=,&rval]() {
+    exec_process_thread_command([this, n, &rval]() {
         auto s = m_retained_samples.size();
         if (n > s) {
             throw_error<std::runtime_error>("Not enough retained samples");

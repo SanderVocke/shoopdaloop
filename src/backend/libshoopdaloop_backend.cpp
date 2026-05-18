@@ -1249,9 +1249,10 @@ shoopdaloop_midi_port_t *open_driver_midi_port (shoop_backend_session_t *backend
 
 shoopdaloop_midi_port_t *open_internal_midi_port (shoop_backend_session_t *backend, const char* name_hint, unsigned min_always_on_ringbuffer_samples) {
   return api_impl<shoopdaloop_midi_port_t*>("open_internal_midi_port", [&]() -> shoopdaloop_midi_port_t* {
+    (void)name_hint;
+    (void)min_always_on_ringbuffer_samples;
     auto _backend = internal_backend_session(backend);
     if (!_backend) { return nullptr; }
-    auto port = nullptr;
     throw std::runtime_error("Creating internal MIDI ports not yet supported");
   }, (shoopdaloop_midi_port_t*) nullptr);
 }
@@ -1964,6 +1965,7 @@ void destroy_midi_channel(shoopdaloop_loop_midi_channel_t *d) {
 }
 
 void destroy_shoopdaloop_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *d) {
+  (void)d;
   return api_impl<void, log_level_debug_trace, log_level_warning>("destroy_shoopdaloop_decoupled_midi_port", [&]() {
     // No-op - handles are intentionally leaked to avoid dangling pointer issues.
     // Actual cleanup is done by close_decoupled_midi_port().
@@ -2018,7 +2020,7 @@ void destroy_profiling_report(shoop_profiling_report_t *d) {
 
 void destroy_external_port_descriptors(shoop_external_port_descriptors_t *d) {
   return api_impl<void, log_level_debug_trace>("destroy_profiling_report", [&]() {
-    for(int i=0; i<d->n_ports; i++) {
+    for(unsigned int i=0; i<d->n_ports; i++) {
       free((void*)d->ports[i].name);
     }
     free(d->ports);
@@ -2292,6 +2294,7 @@ void wait_process(shoop_audio_driver_t *driver) {
 }
 
 void destroy_logger(shoopdaloop_logger_t* logger) {
+  (void)logger;
   return api_impl<void, log_level_debug_trace>("destroy_logger", [&]() {
 #ifndef _WIN32
     // free ((void*)logger);

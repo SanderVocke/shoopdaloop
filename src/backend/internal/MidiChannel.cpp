@@ -3,6 +3,7 @@
 #include "MidiChannel.h"
 #include "MidiPort.h"
 #include "MidiBuffer.h"
+#include "MidiStorageCursor.h"
 #include "MidiStateDiffTracker.h"
 #include "MidiStateTracker.h"
 #include "MidiStorageElem.h"

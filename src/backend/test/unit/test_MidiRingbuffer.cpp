@@ -1,4 +1,6 @@
 #include "RustMidiStorage.h"
+#include "MidiRingbuffer.h"
+#include "MidiStorageCursor.h"
 #include "shoop_shared_ptr.h"
 
 #include <iostream>
