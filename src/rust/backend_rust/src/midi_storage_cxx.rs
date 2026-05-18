@@ -687,6 +687,7 @@ unsafe fn truncate_fn(
     let mut kept_tail = 0u32;
     let mut kept_head = 0u32;
     let mut kept_count = 0u32;
+    let _ = (&kept_tail, &kept_head, &kept_count); // Used after match
 
     match side {
         TruncateSide::TruncateHead => {
@@ -731,24 +732,12 @@ unsafe fn truncate_fn(
             // TruncateTail: drop from the newest (head), keep older (tail)
             // Find the first element that should NOT be dropped
             let mut idx = storage.raw_tail();
-            let mut kept = 0u32;
-            let mut found_keep = false;
 
             for _ in 0..n_events {
                 if let Some(elem) = storage.get_elem_at_physical_offset_ref(idx) {
                     if should_drop(elem.time, elem.size, elem.data().as_ptr()) {
-                        // This element should be dropped
-                        if !found_keep {
-                            // Haven't found any to keep yet, just count it
-                            kept = 0;
-                        }
-                    } else {
-                        // This element should be kept - we found the boundary
-                        found_keep = true;
+                        // This element should be dropped - handled below
                     }
-                }
-                if found_keep {
-                    kept += 1;
                 }
                 idx = (idx + 1) % capacity;
             }
@@ -758,11 +747,8 @@ unsafe fn truncate_fn(
             // Then keep the rest
 
             // Reset and do it correctly
-            kept_tail = storage.raw_tail();
-            kept_count = 0;
-            kept_head = storage.raw_tail();
-
             let mut idx = storage.raw_tail();
+
             for _ in 0..n_events {
                 if let Some(elem) = storage.get_elem_at_physical_offset_ref(idx) {
                     if should_drop(elem.time, elem.size, elem.data().as_ptr()) {
