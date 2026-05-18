@@ -44,12 +44,23 @@ mod ffi {
 
         // Direct state tracker access (returns raw pointer as usize, 0 = None)
         // C++ is responsible for lifetime management (same lifetime as MidiPort)
-        // Note: Accepts immutable reference since this is just reading a pointer
-        unsafe fn get_maybe_midi_state_tracker(port: &MidiPort) -> usize;
-        unsafe fn get_maybe_ringbuffer_tail_state_tracker(port: &MidiPort) -> usize;
+        unsafe fn get_maybe_midi_state_tracker(port: &mut MidiPort) -> usize;
+        unsafe fn get_maybe_ringbuffer_tail_state_tracker(port: &mut MidiPort) -> usize;
 
-        // State processing for C++ callers
-        unsafe fn process_msg_to_state(port: &mut MidiPort, data: *const u8, size: usize);
+        // Get n_notes_active directly from the state tracker
+        // This avoids the raw pointer issue when calling from C++
+        fn get_state_tracker_n_notes_active(port: &mut MidiPort) -> u32;
+
+        // State processing for C++ callers - calls Rust directly
+        unsafe fn process_msg_raw_to_state(port: &mut MidiPort, data: *const u8);
+
+        // Ringbuffer tail state processing - calls Rust directly
+        unsafe fn process_msg_raw_to_tail_state(port: &mut MidiPort, data: *const u8);
+
+        // Copy ringbuffer tail state to a target MidiStateTracker by pointer
+        // target_ptr is a raw pointer to the target MidiStateTracker
+        // Returns true if the tail state was copied, false if no tail state exists
+        unsafe fn copy_tail_state_to_tracker_by_ptr(port: &mut MidiPort, target_ptr: usize) -> bool;
     }
 }
 
@@ -115,25 +126,49 @@ fn get_current_n_samples(port: &MidiPort) -> u32 {
 
 // Direct state tracker access (returns raw pointer as usize, 0 = None)
 // C++ is responsible for lifetime management (same lifetime as MidiPort)
-// Note: Takes immutable reference since this is just reading a pointer
-unsafe fn get_maybe_midi_state_tracker(port: &MidiPort) -> usize {
+unsafe fn get_maybe_midi_state_tracker(port: &mut MidiPort) -> usize {
     // SAFETY: Caller ensures MidiPort lifetime covers the returned pointer
-    // We need to get mutable access to base's state tracker from an immutable reference
-    let base_ptr = port.base() as *const MidiPortBase as *mut MidiPortBase;
-    (*base_ptr).maybe_midi_state_tracker()
+    port.base_mut().maybe_midi_state_tracker()
         .map(|t| t as *mut MidiStateTracker as usize)
         .unwrap_or(0)
 }
 
-unsafe fn get_maybe_ringbuffer_tail_state_tracker(port: &MidiPort) -> usize {
+unsafe fn get_maybe_ringbuffer_tail_state_tracker(port: &mut MidiPort) -> usize {
     // SAFETY: Caller ensures MidiPort lifetime covers the returned pointer
-    let base_ptr = port.base() as *const MidiPortBase as *mut MidiPortBase;
-    (*base_ptr).maybe_ringbuffer_tail_state_tracker()
+    port.base_mut().maybe_ringbuffer_tail_state_tracker()
         .map(|t| t as *mut MidiStateTracker as usize)
         .unwrap_or(0)
 }
 
-// State processing for C++ callers
-unsafe fn process_msg_to_state(port: &mut MidiPort, data: *const u8, size: usize) {
-    port.process_msg_to_state(data, size);
+// State processing for C++ callers - calls Rust directly
+unsafe fn process_msg_raw_to_state(port: &mut MidiPort, data: *const u8) {
+    if let Some(tracker) = port.base_mut().maybe_midi_state_tracker() {
+        tracker.process_msg_raw(data);
+    }
+}
+
+unsafe fn process_msg_raw_to_tail_state(port: &mut MidiPort, data: *const u8) {
+    if let Some(tracker) = port.base_mut().maybe_ringbuffer_tail_state_tracker() {
+        tracker.process_msg_raw(data);
+    }
+}
+
+unsafe fn copy_tail_state_to_tracker_by_ptr(port: &mut MidiPort, target_ptr: usize) -> bool {
+    if target_ptr == 0 {
+        return false;
+    }
+    // SAFETY: Caller ensures target_ptr is a valid pointer to a MidiStateTracker
+    let target = unsafe { &mut *(target_ptr as *mut MidiStateTracker) };
+    if let Some(tail_state) = port.base_mut().maybe_ringbuffer_tail_state_tracker() {
+        target.copy_relevant_state(tail_state);
+        true
+    } else {
+        false
+    }
+}
+
+fn get_state_tracker_n_notes_active(port: &mut MidiPort) -> u32 {
+    port.base_mut().maybe_midi_state_tracker()
+        .map(|t| t.n_notes_active())
+        .unwrap_or(0)
 }

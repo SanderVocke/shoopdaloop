@@ -1,10 +1,12 @@
 # Progress: Porting MidiPortBase to Rust
 
-## Status: Implementation Complete, Testing Issues to Investigate
+## Status: COMPLETE ✅
+
+All tests pass. The SIGSEGV issue has been fixed.
 
 ## Summary
 
-Successfully removed `MidiPortBase` from C++ and moved state management to Rust side. However, some C++ integration tests are failing with SIGSEGV and need investigation.
+Successfully ported `MidiPortBase` from C++ to Rust and fixed the SIGSEGV issues that appeared during testing.
 
 ## Checklist
 
@@ -18,53 +20,47 @@ Successfully removed `MidiPortBase` from C++ and moved state management to Rust 
 - [x] 2.1 Update MidiPort.h (remove m_base, add m_midi_ringbuffer)
 - [x] 2.2 Update MidiPort.cpp (delegate all methods to m_rust_port via bridge)
 - [x] 2.3 Update DummyMidiPort.cpp (use increment_output_events instead of base())
-- [x] 2.4 Update MidiChannel.cpp (no changes needed - uses existing interfaces)
+- [x] 2.4 Update MidiChannel.cpp (use bridge for state tracker operations)
 
 ### Phase 3: Cleanup ✅
 - [x] 3.1 Delete MidiPortBase.h
 - [x] 3.2 Delete MidiPortBase.cpp
 - [x] 3.3 Update CMakeLists.txt (not needed - no explicit MidiPortBase entries)
 
-### Phase 4: Build & Test
+### Phase 4: Build & Test ✅
 - [x] 4.1 cargo build ✅
-- [ ] 4.2 Run test_runner ⚠️ - Some C++ tests failing with SIGSEGV
-- [x] 4.3 cargo test ✅ (45 Rust tests pass)
+- [x] 4.2 Run test_runner ✅ - All 149 tests pass!
+- [x] 4.3 cargo test ✅ - All 45 Rust tests pass
 
-## Test Results
+## Final Test Results
 
 ### Rust Tests: ALL PASS ✅
 ```
-cargo test -p backend_rust
 test result: ok. 45 passed; 0 failed
 ```
 
-### C++ Tests: PARTIAL ⚠️
+### C++ Tests: ALL PASS ✅
 ```
-[RustMidiStorage]      - 9 tests, 61 assertions - ALL PASS
-[JackPorts][midi]      - Multiple tests - ALL PASS
-[AudioMidiLoop][midi]  - Some tests - ALL PASS
-[chain][midi]           - Mixed results:
-  - Chain - Midi port passthrough - FAIL (SIGSEGV)
-  - Chain - Direct adopt MIDI ringbuffer - FAIL (SIGSEGV)
+test cases: 149 | All passed
+assertions: 5894 | All passed
 ```
 
-## Known Issues
+## Root Cause of SIGSEGV
 
-### 1. SIGSEGV in chain tests
-The following tests fail with SIGSEGV:
-- `Chain - Midi port passthrough`
-- `Chain - Direct adopt MIDI ringbuffer - no sync loop - 0 samples`
+The SIGSEGV occurred because C++ code was calling `MidiStateTracker` methods through raw pointers obtained from Rust via CXX bridge. The issue was:
 
-These tests involve DummyMidiPort and MidiChannel::adopt_ringbuffer_contents.
-Likely related to:
-- How state tracker pointers are retrieved and used
-- The shared_ptr wrapper for raw pointers
-- Potential null pointer access in the processing chain
+1. C++ `MidiPort` wraps a `rust::Box<backend_rust::MidiPort>`
+2. The Rust `MidiPort` contains `MidiStateTracker` as `Option<Box<MidiStateTracker>>`
+3. When C++ tried to get a raw pointer to the tracker and use it via C++ `MidiStateTracker::process_msg()`, the FFI boundary caused memory corruption
 
-### 2. Investigation Needed
-- Verify that maybe_midi_state_tracker() returns valid pointer
-- Check if shared_ptr wrapper is keeping pointer valid
-- Review MidiPort::PROC_process for potential nullptr issues
+## Solution
+
+Created bridge functions that call Rust directly instead of going through C++ wrappers:
+
+1. **`process_msg_raw_to_state`**: Calls Rust's `process_msg_raw` directly on the state tracker
+2. **`process_msg_raw_to_tail_state`**: For ringbuffer tail state tracking
+3. **`get_state_tracker_n_notes_active`**: Gets note count directly from Rust
+4. **`copy_tail_state_to_tracker_by_ptr`**: Copies state between trackers via Rust
 
 ## Files Changed
 
@@ -73,27 +69,26 @@ Likely related to:
 - `src/backend/internal/MidiPortBase.cpp`
 
 ### Modified (Rust)
-- `src/rust/backend_rust/src/midi_port_cxx.rs` - Added bridge methods:
-  - `get_n_input_events`, `get_n_output_events`
-  - `increment_input_events`, `increment_output_events`
-  - `get_current_n_samples`
-  - `get_maybe_midi_state_tracker`, `get_maybe_ringbuffer_tail_state_tracker`
-  - `process_msg_to_state`
-- `src/rust/backend_rust/src/midi_port_base_cxx.rs` - Simplified (removed duplicates)
+- `src/rust/backend_rust/src/midi_port_cxx.rs`:
+  - Changed `get_maybe_midi_state_tracker` and `get_maybe_ringbuffer_tail_state_tracker` to use `&mut MidiPort`
+  - Added `process_msg_raw_to_state`, `process_msg_raw_to_tail_state`
+  - Added `get_state_tracker_n_notes_active`, `copy_tail_state_to_tracker_by_ptr`
 
 ### Modified (C++)
 - `src/backend/internal/MidiPort.h`:
-  - Removed `MidiPortBase.h` include
-  - Added `MidiRingbuffer.h` include
+  - Removed `MidiPortBase.h` include, added `MidiRingbuffer.h` include
   - Removed `m_base` member, added `m_midi_ringbuffer`
   - Added `increment_input_events`, `increment_output_events` methods
-  - Added `get_maybe_midi_state_tracker_raw`, `get_maybe_ringbuffer_tail_state_tracker_raw`
-  - Updated `MidiPortTestHelper::get_ringbuffer`
+  - Made `m_rust_port` accessible to `MidiChannel` and `GenericJackMidiInputPort` (via friend)
 - `src/backend/internal/MidiPort.cpp`:
   - All methods use bridge functions: `backend_rust::function(*m_rust_port)`
-  - State tracker access via raw pointer conversion
+  - State tracker access via direct Rust calls
 - `src/backend/internal/DummyMidiPort.cpp`:
   - Changed `base().increment_output_events(1)` to `increment_output_events(1)`
+- `src/backend/internal/MidiChannel.cpp`:
+  - Use `copy_tail_state_to_tracker_by_ptr` for state copying
+- `src/backend/internal/jack/JackMidiPort.cpp`:
+  - Use `process_msg_raw_to_state` for state tracking
 
 ## Architecture Change
 
@@ -111,8 +106,12 @@ C++ MidiPort
 └── m_midi_ringbuffer (C++ MidiRingbuffer for tests)
 ```
 
-## Next Steps
+State tracker operations now go through Rust bridge functions to avoid FFI boundary issues.
 
-1. Investigate SIGSEGV in chain tests
-2. Fix any null pointer issues in state tracker access
-3. Verify all MIDI processing paths work correctly
+## Commits on this branch
+
+1. `99b9c322` - Port MidiPortBase to Rust - eliminate state duplication
+2. `a8862050` - Add build and testing instructions to plan
+3. `f2403dbd` - Initial plan: Port MidiPortBase to Rust and eliminate state duplication
+4. `06f95bcc` - Fix MidiPort method signatures for mutable bridge access
+5. `1fdc7683` - Fix SIGSEGV by using Rust bridge for state tracker operations
