@@ -6,6 +6,7 @@
 #include "PortInterface.h"
 #include "JackAllPorts.h"
 #include "JackApi.h"
+#include "shoop_shared_ptr.h"
 #include <memory>
 
 template<typename API>

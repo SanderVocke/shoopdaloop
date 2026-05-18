@@ -33,12 +33,14 @@ void GraphLoop::PROC_process(uint32_t n_frames) {
 }
 
 void GraphLoop::delete_audio_channel_idx(uint32_t idx, bool thread_safe) {
+    (void)thread_safe;
     auto chaninfo = mp_audio_channels.at(idx);
     delete_midi_channel(chaninfo, false);
     get_backend().set_graph_node_changes_pending();
 }
 
 void GraphLoop::delete_midi_channel_idx(uint32_t idx, bool thread_safe) {
+    (void)thread_safe;
     auto chaninfo = mp_midi_channels.at(idx);
     delete_midi_channel(chaninfo, false);
     get_backend().set_graph_node_changes_pending();

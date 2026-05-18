@@ -276,6 +276,19 @@ impl MidiStorageCore {
         self.n_events == self.data.len() as u32
     }
 
+    // Direct setters for ringbuffer state (used by truncate_fn via CXX bridge)
+    pub fn set_raw_tail(&mut self, tail: u32) {
+        self.tail = tail;
+    }
+
+    pub fn set_raw_head(&mut self, head: u32) {
+        self.head = head;
+    }
+
+    pub fn set_n_events(&mut self, n: u32) {
+        self.n_events = n;
+    }
+
     /// Get element at a raw physical offset (0 to capacity-1).
     /// This is the actual array index, not related to logical order.
     /// Used by cursor which works with raw physical offsets (tail, head, etc.)

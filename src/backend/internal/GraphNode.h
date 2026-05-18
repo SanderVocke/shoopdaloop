@@ -29,7 +29,7 @@ public:
     virtual std::string graph_node_name() const { return "GraphNode"; }
 
     // Processing implementation to be overridden by children.
-    virtual void graph_node_process(uint32_t nframes) {}
+    virtual void graph_node_process(uint32_t nframes) { (void)nframes; }
 
     // Process and time the processing.
     void PROC_process(uint32_t nframes) {
@@ -46,7 +46,7 @@ public:
 
     // Function to call in order to process this node with its co-process nodes.
     virtual void graph_node_co_process(std::set<shoop_shared_ptr<GraphNode>> const& nodes,
-        uint32_t nframes) {}
+        uint32_t nframes) { (void)nodes; (void)nframes; }
     
     // Process and time the processing.
     void PROC_co_process(std::set<shoop_shared_ptr<GraphNode>> const& nodes,
@@ -84,8 +84,8 @@ shoop_shared_ptr<Target> graph_node_parent_as(GraphNode &node) {
 
 class NotifyProcessParametersInterface {
 public:
-    virtual void PROC_notify_changed_buffer_size(uint32_t buffer_size) {}
-    virtual void PROC_notify_changed_sample_rate(uint32_t sample_rate) {}
+    virtual void PROC_notify_changed_buffer_size(uint32_t buffer_size) { (void)buffer_size; }
+    virtual void PROC_notify_changed_sample_rate(uint32_t sample_rate) { (void)sample_rate; }
 };
 
 class HasGraphNodesInterface : public NotifyProcessParametersInterface {
@@ -144,9 +144,9 @@ class HasGraphNode : public HasGraphNodesInterface, public shoop_enable_shared_f
     virtual WeakGraphNodeSet graph_node_outgoing_edges() { return WeakGraphNodeSet(); };
     virtual WeakGraphNodeSet graph_node_incoming_edges() { return WeakGraphNodeSet(); };
     virtual WeakGraphNodeSet graph_node_co_process_nodes() { return WeakGraphNodeSet(); };
-    virtual void graph_node_process(uint32_t nframes) {}
+    virtual void graph_node_process(uint32_t nframes) { (void)nframes; }
     virtual void graph_node_co_process(std::set<shoop_shared_ptr<GraphNode>> const& nodes,
-        uint32_t nframes) {}
+        uint32_t nframes) { (void)nodes; (void)nframes; }
 
     SharedGraphNodeSet all_graph_nodes() override {
         if (!m_node) { m_node = shoop_make_shared<Node>(weak_from_this()); }
@@ -249,17 +249,17 @@ class HasTwoGraphNodes : public HasGraphNodesInterface, public shoop_enable_shar
     virtual WeakGraphNodeSet graph_node_0_outgoing_edges() { return WeakGraphNodeSet(); };
     virtual WeakGraphNodeSet graph_node_0_incoming_edges() { return WeakGraphNodeSet(); };
     virtual WeakGraphNodeSet graph_node_0_co_process_nodes() { return WeakGraphNodeSet(); };
-    virtual void graph_node_0_process(uint32_t nframes) {}
+    virtual void graph_node_0_process(uint32_t nframes) { (void)nframes; }
     virtual void graph_node_0_co_process(std::set<shoop_shared_ptr<GraphNode>> const& nodes,
-        uint32_t nframes) {}
+        uint32_t nframes) { (void)nodes; (void)nframes; }
     
     virtual std::string graph_node_1_name() const { return "GraphNode"; }
     virtual WeakGraphNodeSet graph_node_1_outgoing_edges() { return WeakGraphNodeSet(); };
     virtual WeakGraphNodeSet graph_node_1_incoming_edges() { return WeakGraphNodeSet(); };
     virtual WeakGraphNodeSet graph_node_1_co_process_nodes() { return WeakGraphNodeSet(); };
-    virtual void graph_node_1_process(uint32_t nframes) {}
+    virtual void graph_node_1_process(uint32_t nframes) { (void)nframes; }
     virtual void graph_node_1_co_process(std::set<shoop_shared_ptr<GraphNode>> const& nodes,
-        uint32_t nframes) {}
+        uint32_t nframes) { (void)nodes; (void)nframes; }
 
     inline void ensure_nodes() {
         if (!m_firstnode) { m_firstnode = shoop_make_shared<FirstNode>(weak_from_this()); }

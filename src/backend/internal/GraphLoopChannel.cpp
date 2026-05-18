@@ -54,16 +54,19 @@ bool GraphLoopChannel::get_data_dirty() const {
 }
 
 void GraphLoopChannel::connect_output_port(shoop_shared_ptr<GraphPort> port, bool thread_safe) {
+    (void)thread_safe;
     mp_output_port_mapping = port;
     get_backend().set_graph_node_changes_pending();
 }
 
 void GraphLoopChannel::connect_input_port(shoop_shared_ptr<GraphPort> port, bool thread_safe) {
+    (void)thread_safe;
     mp_input_port_mapping = port;
     get_backend().set_graph_node_changes_pending();
 }
 
 void GraphLoopChannel::disconnect_output_port(shoop_shared_ptr<GraphPort> port, bool thread_safe) {
+    (void)thread_safe;
     auto locked = mp_output_port_mapping.lock();
     if (locked) {
         if (port != locked) {
@@ -75,6 +78,7 @@ void GraphLoopChannel::disconnect_output_port(shoop_shared_ptr<GraphPort> port, 
 }
 
 void GraphLoopChannel::disconnect_port(shoop_shared_ptr<GraphPort> port, bool thread_safe) {
+    (void)thread_safe;
     auto in_locked = mp_input_port_mapping.lock();
     auto out_locked = mp_output_port_mapping.lock();
     if (in_locked && in_locked == port) {
@@ -87,11 +91,13 @@ void GraphLoopChannel::disconnect_port(shoop_shared_ptr<GraphPort> port, bool th
 }
 
 void GraphLoopChannel::disconnect_output_ports(bool thread_safe) {
+    (void)thread_safe;
     mp_output_port_mapping.reset();
     get_backend().set_graph_node_changes_pending();
 }
 
 void GraphLoopChannel::disconnect_input_port(shoop_shared_ptr<GraphPort> port, bool thread_safe) {
+    (void)thread_safe;
     auto locked = mp_input_port_mapping.lock();
     if (locked) {
         if (port != locked) {
@@ -103,6 +109,7 @@ void GraphLoopChannel::disconnect_input_port(shoop_shared_ptr<GraphPort> port, b
 }
 
 void GraphLoopChannel::disconnect_input_ports(bool thread_safe) {
+    (void)thread_safe;
     mp_input_port_mapping.reset();
     get_backend().set_graph_node_changes_pending();
 }
@@ -202,6 +209,7 @@ WeakGraphNodeSet GraphLoopChannel::graph_node_0_outgoing_edges() {
 }
 
 void GraphLoopChannel::PROC_process(uint32_t nframes) {
+    (void)nframes;
     channel->PROC_finalize_process();
 }
 

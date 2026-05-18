@@ -101,14 +101,15 @@ struct BackendSession::RecalculateGraphThread {
 };
 
 BackendSession::BackendSession()
-    : WithCommandQueue(), profiler(shoop_make_shared<profiling::Profiler>()),
+    : WithCommandQueue(),
+      ma_state(State::Active),
+      m_recalculate_graph_thread(std::make_unique<RecalculateGraphThread>(*this)),
+      profiler(shoop_make_shared<profiling::Profiler>()),
       top_profiling_item(profiler->maybe_get_profiling_item("Process")),
       graph_profiling_item(profiler->maybe_get_profiling_item("Process.Graph")),
-      cmds_profiling_item(
-          profiler->maybe_get_profiling_item("Process.Commands")),
-      ma_state(State::Active), ma_graph_id(0), ma_graph_request_id(0),
-      m_recalculate_graph_thread(
-          std::make_unique<RecalculateGraphThread>(*this)) {
+      cmds_profiling_item(profiler->maybe_get_profiling_item("Process.Commands")),
+      ma_graph_request_id(0), ma_graph_id(0)
+{
     audio_buffer_pool = shoop_static_pointer_cast<AudioBufferPool>(
         shoop_make_shared<BufferPool<shoop_types::audio_sample_t>>(
             n_buffers_in_pool, (n_buffers_in_pool * 2) / 3, audio_buffer_size));

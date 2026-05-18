@@ -1,8 +1,8 @@
 #include "IMidiStorageCursor.h"
-#include "MidiStorage.h"
 #include <stdexcept>
 
 IMidiStorageCursor* CursorFreeFunctions::create_cursor(IMidiStorageCore* storage) {
+    (void)storage;
     throw std::runtime_error("CursorFreeFunctions::create_cursor not yet implemented for interface");
 }
 

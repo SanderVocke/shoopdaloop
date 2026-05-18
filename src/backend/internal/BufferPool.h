@@ -15,12 +15,12 @@ public:
     BufferPool(size_t capacity,
                size_t low_water_mark,
                size_t elems_per_buffer) :
-        m_elems_per_buffer(elems_per_buffer),
         pool(refilling_pool::new_buffer_pool(
             capacity,
             low_water_mark,
             elems_per_buffer * sizeof(Elem)
-        ))
+        )),
+        m_elems_per_buffer(elems_per_buffer)
     {}
 
     shoop_shared_ptr<AudioBuffer<Elem>> get_shared_buffer() {

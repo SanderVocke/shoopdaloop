@@ -1,5 +1,4 @@
 #pragma once
-#include "MidiStorage.h"
 #include "RustMidiStorage.h"
 #include "MidiBuffer.h"
 #include "ChannelInterface.h"
@@ -15,7 +14,7 @@ class MidiChannel : public ChannelInterface,
                     private WithCommandQueue,
                     private ModuleLoggingEnabled<"Backend.MidiChannel"> {
 public:
-    using Storage = MidiStorage;
+    using Storage = RustMidiStorage;
     using StorageCursor = typename Storage::Cursor;
 
 private:

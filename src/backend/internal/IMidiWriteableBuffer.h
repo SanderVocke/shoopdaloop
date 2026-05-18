@@ -1,5 +1,5 @@
 #pragma once
-#include "MidiStorage.h"
+#include "MidiStorageElem.h"
 
 /**
  * IMidiWriteableBuffer - Pure virtual interface for writeable MIDI buffers.
