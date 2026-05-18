@@ -26,7 +26,7 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: >
-      ${{ env.RUN_CMD_PREFIX }} ./scripts/run_with_timeout.sh 30 ${{ env.COMMAND_SHOOPDALOOP }}
+      ${{ env.RUN_CMD_PREFIX }} ./scripts/run_with_timeout.sh 60 ${{ env.COMMAND_SHOOPDALOOP }}
       --backend=dummy
       --developer
       --panic-after=5

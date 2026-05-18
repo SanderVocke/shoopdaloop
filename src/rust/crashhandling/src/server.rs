@@ -47,26 +47,96 @@ fn try_get_socket_name() -> Option<String> {
 }
 
 fn try_create_server(name: &str) -> Option<Server> {
-    Server::with_name(name).ok()
+    eprintln!(
+        "[CRASH_DBG] try_create_server: attempting to create server with name='{}'",
+        name
+    );
+
+    // On macOS, log additional debugging info about the socket path
+    #[cfg(target_os = "macos")]
+    {
+        use std::path::Path;
+        let path = Path::new(name);
+        eprintln!("[CRASH_DBG] macOS: socket path components:");
+        eprintln!("[CRASH_DBG]   - is_absolute: {}", path.is_absolute());
+        eprintln!("[CRASH_DBG]   - exists: {}", path.exists());
+        if let Some(parent) = path.parent() {
+            eprintln!("[CRASH_DBG]   - parent exists: {}", parent.exists());
+            if parent.exists() {
+                use std::os::unix::fs::PermissionsExt;
+                if let Ok(metadata) = parent.metadata() {
+                    eprintln!(
+                        "[CRASH_DBG]   - parent permissions: {:o}",
+                        metadata.permissions().mode()
+                    );
+                }
+            }
+        }
+        eprintln!("[CRASH_DBG]   - path len: {}", name.len());
+        if name.len() > 100 {
+            eprintln!("[CRASH_DBG]   - WARNING: path is very long (>100 chars), may exceed macOS socket path limit");
+        }
+
+        // Try to remove any stale socket file
+        if path.exists() {
+            eprintln!("[CRASH_DBG] macOS: socket file already exists, attempting unlink...");
+            if let Err(e) = std::fs::remove_file(name) {
+                eprintln!("[CRASH_DBG] macOS: failed to unlink stale socket: {}", e);
+            } else {
+                eprintln!("[CRASH_DBG] macOS: successfully unlinked stale socket");
+            }
+        }
+    }
+
+    match Server::with_name(name) {
+        Ok(server) => {
+            eprintln!("[CRASH_DBG] try_create_server: SUCCESS");
+            Some(server)
+        }
+        Err(e) => {
+            eprintln!("[CRASH_DBG] try_create_server: FAILED with error: {:?}", e);
+
+            // Try to get more details about why it failed
+            #[cfg(target_os = "macos")]
+            {
+                use std::os::unix::fs::MetadataExt;
+                use std::path::Path;
+                let path = Path::new(name);
+                if path.exists() {
+                    eprintln!("[CRASH_DBG] macOS: socket file exists but server creation failed - may be a permissions or in-use issue");
+                    if let Ok(metadata) = path.metadata() {
+                        eprintln!(
+                            "[CRASH_DBG] macOS: socket metadata - mode: {:o}, size: {}",
+                            metadata.mode(),
+                            metadata.size()
+                        );
+                    }
+                }
+            }
+
+            None
+        }
+    }
 }
 
 pub fn crashhandling_server() {
     #[cfg(unix)]
-    drop(format!(
+    eprintln!(
         "[CRASH_DBG] Server process starting: pid={}, ppid={}",
         std::process::id(),
         unsafe { libc::getppid() }
-    ));
+    );
     #[cfg(not(unix))]
-    drop(format!(
+    eprintln!(
         "[CRASH_DBG] Server process starting: pid={}",
         std::process::id()
-    ));
+    );
     debug!("Starting crash handling server");
 
     let socket_name = match try_get_socket_name() {
         Some(s) => s,
         None => {
+            eprintln!("[CRASH_DBG] Server: no socket name provided");
             error!("no socket name provided");
             drop(format!(
                 "[CRASH_DBG] Server: no socket name provided, exiting with code 1"
@@ -74,7 +144,7 @@ pub fn crashhandling_server() {
             std::process::exit(1);
         }
     };
-    drop(format!("[CRASH_DBG] Server: socket name = {socket_name}"));
+    eprintln!("[CRASH_DBG] Server: socket name = {}", socket_name);
 
     debug!("Server: crash handling socket: {socket_name}");
 
@@ -104,6 +174,7 @@ pub fn crashhandling_server() {
         fn create_minidump_file(
             &self,
         ) -> Result<(std::fs::File, std::path::PathBuf), std::io::Error> {
+            eprintln!("[CRASH_DBG] Server: create_minidump_file() called");
             let maybe_dump_folder: Option<String> = std::env::var("SHOOP_CRASHDUMP_DIR").ok();
 
             let (dumpfile, dumpfilepath) = (if let Some(dump_folder) = maybe_dump_folder.as_ref() {
@@ -141,6 +212,7 @@ pub fn crashhandling_server() {
             &self,
             result: Result<minidumper::MinidumpBinary, minidumper::Error>,
         ) -> minidumper::LoopAction {
+            eprintln!("[CRASH_DBG] Server: on_minidump_created() called");
             match result {
                 Ok(mut md_bin) => {
                     use std::io::Write;
@@ -190,6 +262,7 @@ pub fn crashhandling_server() {
         }
 
         fn on_message(&self, kind: u32, buffer: Vec<u8>) {
+            eprintln!("[CRASH_DBG] Server: on_message called, kind={}", kind);
             let content = match String::from_utf8(buffer) {
                 Ok(s) => s,
                 Err(e) => {
@@ -259,12 +332,17 @@ pub fn crashhandling_server() {
             };
         }
 
-        fn on_client_disconnected(&self, _num_clients: usize) -> minidumper::LoopAction {
-            debug!("Client disconnected, # -> {_num_clients}");
+        fn on_client_disconnected(&self, num_clients: usize) -> minidumper::LoopAction {
+            eprintln!(
+                "[CRASH_DBG] Server: on_client_disconnected called, remaining clients = {}",
+                num_clients
+            );
+            debug!("Client disconnected, # -> {num_clients}");
             drop(format!(
-                "[CRASH_DBG] Server: client disconnected, remaining clients = {_num_clients}"
+                "[CRASH_DBG] Server: client disconnected, remaining clients = {num_clients}"
             ));
-            if _num_clients == 0 {
+            if num_clients == 0 {
+                eprintln!("[CRASH_DBG] Server: no clients left, returning Exit");
                 drop(format!(
                     "[CRASH_DBG] Server: no clients left, returning Exit"
                 ));
@@ -274,10 +352,14 @@ pub fn crashhandling_server() {
             }
         }
 
-        fn on_client_connected(&self, _num_clients: usize) -> minidumper::LoopAction {
-            debug!("Client connected, # -> {_num_clients}");
+        fn on_client_connected(&self, num_clients: usize) -> minidumper::LoopAction {
+            eprintln!(
+                "[CRASH_DBG] Server: on_client_connected called, total clients = {}",
+                num_clients
+            );
+            debug!("Client connected, # -> {num_clients}");
             drop(format!(
-                "[CRASH_DBG] Server: client connected, total clients = {_num_clients}"
+                "[CRASH_DBG] Server: client connected, total clients = {num_clients}"
             ));
             minidumper::LoopAction::Continue
         }
@@ -296,6 +378,8 @@ pub fn crashhandling_server() {
     #[cfg(target_os = "windows")]
     watchdog::start();
 
+    eprintln!("[CRASH_DBG] Server: About to create Handler struct and call server.run()");
+
     // NOTE: don't put any logging beyond this point. On Windows,
     // it may cause deadlocks because of trying to write to the
     // nonexistent parent process' output stream.
@@ -309,7 +393,10 @@ pub fn crashhandling_server() {
         Some(std::time::Duration::from_millis(5000)),
     );
 
+    eprintln!("[CRASH_DBG] Server: server.run() returned");
+
     if let Err(e) = result {
+        eprintln!("[CRASH_DBG] Server: run() failed: {:?}", e);
         error!("failed to run server: {}", e);
         drop(format!(
             "[CRASH_DBG] Server: run() failed: {e}, exiting with code 1"
@@ -318,6 +405,7 @@ pub fn crashhandling_server() {
     }
 
     // ensure that we will exit
+    eprintln!("[CRASH_DBG] Server: run() completed normally, about to exit(0)");
     drop(format!(
         "[CRASH_DBG] Server: run() completed normally, about to exit(0)"
     ));
