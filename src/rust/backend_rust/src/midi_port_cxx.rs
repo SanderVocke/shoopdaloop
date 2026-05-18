@@ -3,7 +3,6 @@
 #![allow(dead_code)]
 
 use crate::midi_port::MidiPort;
-use crate::midi_port_base::MidiPortBase;
 use crate::midi_state_tracker::MidiStateTracker;
 
 #[cxx::bridge(namespace = "backend_rust")]
