@@ -304,13 +304,13 @@ unsafe fn cursor_find_fn_forward(
             found_valid_elem: false,
         });
     }
-    
+
     let pred_fn = std::mem::transmute::<usize, CursorPredicateFn>(predicate_fn);
-    
+
     let pred = |elem: &MidiStorageElem| -> bool {
         pred_fn(elem.time, elem.size, elem.data().as_ptr(), predicate_ctx)
     };
-    
+
     Box::new(cursor.find_fn_forward(storage, pred))
 }
 
@@ -337,18 +337,20 @@ unsafe fn cursor_find_fn_forward_with_skip(
             found_valid_elem: false,
         });
     }
-    
+
     let pred_fn = std::mem::transmute::<usize, CursorPredicateFn>(predicate_fn);
-    
+
     let mut skip_callback: Option<CursorSkipCallbackFn> = None;
     if skip_cb_fn != 0 {
-        skip_callback = Some(std::mem::transmute::<usize, CursorSkipCallbackFn>(skip_cb_fn));
+        skip_callback = Some(std::mem::transmute::<usize, CursorSkipCallbackFn>(
+            skip_cb_fn,
+        ));
     }
-    
+
     let pred = |elem: &MidiStorageElem| -> bool {
         pred_fn(elem.time, elem.size, elem.data().as_ptr(), predicate_ctx)
     };
-    
+
     Box::new(cursor.find_fn_forward_with_skip(storage, pred, |elem| {
         if let Some(ref cb) = skip_callback {
             cb(elem.time, elem.size, elem.data().as_ptr(), skip_cb_ctx);
@@ -379,13 +381,9 @@ unsafe fn append(
     dropped_cb_ctx: usize,
 ) -> bool {
     let data_slice = std::slice::from_raw_parts(data, size as usize);
-    
-    let mut dropped_cb: Option<AppendDroppedCb> = None;
-    if dropped_cb_fn != 0 {
-        dropped_cb = Some(std::mem::transmute(dropped_cb_fn));
-    }
-    
-    let mut dropped_cb_wrapper: Option<Box<dyn FnMut(u32, u16, *const u8, *mut std::ffi::c_void)>> = None;
+
+    let mut dropped_cb_wrapper: Option<Box<dyn FnMut(u32, u16, *const u8, *mut std::ffi::c_void)>> =
+        None;
     if dropped_cb_fn != 0 {
         let cb_fn = dropped_cb_fn;
         let cb_ctx = dropped_cb_ctx;
@@ -394,8 +392,15 @@ unsafe fn append(
             cb(t, s, d, cb_ctx);
         }));
     }
-    
-    storage.append(time, size, data_slice, allow_replace, dropped_cb_wrapper.as_mut(), std::ptr::null_mut() as *mut std::ffi::c_void)
+
+    storage.append(
+        time,
+        size,
+        data_slice,
+        allow_replace,
+        dropped_cb_wrapper.as_mut(),
+        std::ptr::null_mut() as *mut std::ffi::c_void,
+    )
 }
 
 // Truncate dropped callback type
@@ -415,8 +420,9 @@ unsafe fn truncate(
     } else {
         TruncateSide::TruncateHead
     };
-    
-    let mut dropped_cb_wrapper: Option<Box<dyn FnMut(u32, u16, *const u8, *mut std::ffi::c_void)>> = None;
+
+    let mut dropped_cb_wrapper: Option<Box<dyn FnMut(u32, u16, *const u8, *mut std::ffi::c_void)>> =
+        None;
     if dropped_cb_fn != 0 {
         let cb_fn = dropped_cb_fn;
         let cb_ctx = dropped_cb_ctx;
@@ -425,8 +431,13 @@ unsafe fn truncate(
             cb(t, s, d, cb_ctx);
         }));
     }
-    
-    storage.truncate(time, truncate_side, dropped_cb_wrapper.as_mut(), std::ptr::null_mut() as *mut std::ffi::c_void)
+
+    storage.truncate(
+        time,
+        truncate_side,
+        dropped_cb_wrapper.as_mut(),
+        std::ptr::null_mut() as *mut std::ffi::c_void,
+    )
 }
 
 fn clear_storage(storage: &mut MidiStorageCore) {
@@ -595,7 +606,8 @@ unsafe fn time_window_next_buffer(
     dropped_cb_fn: usize,
     dropped_cb_ctx: usize,
 ) {
-    let mut dropped_cb_wrapper: Option<Box<dyn FnMut(u32, u16, *const u8, *mut std::ffi::c_void)>> = None;
+    let mut dropped_cb_wrapper: Option<Box<dyn FnMut(u32, u16, *const u8, *mut std::ffi::c_void)>> =
+        None;
     if dropped_cb_fn != 0 {
         let cb_fn = dropped_cb_fn;
         let cb_ctx = dropped_cb_ctx;
@@ -604,8 +616,13 @@ unsafe fn time_window_next_buffer(
             cb(t, s, d, cb_ctx);
         }));
     }
-    
-    window.next_buffer(storage, n_frames, dropped_cb_wrapper.as_mut(), std::ptr::null_mut() as *mut std::ffi::c_void)
+
+    window.next_buffer(
+        storage,
+        n_frames,
+        dropped_cb_wrapper.as_mut(),
+        std::ptr::null_mut() as *mut std::ffi::c_void,
+    )
 }
 
 unsafe fn time_window_put(
@@ -618,8 +635,9 @@ unsafe fn time_window_put(
     dropped_cb_ctx: usize,
 ) -> bool {
     let data_slice = std::slice::from_raw_parts(data, size as usize);
-    
-    let mut dropped_cb_wrapper: Option<Box<dyn FnMut(u32, u16, *const u8, *mut std::ffi::c_void)>> = None;
+
+    let mut dropped_cb_wrapper: Option<Box<dyn FnMut(u32, u16, *const u8, *mut std::ffi::c_void)>> =
+        None;
     if dropped_cb_fn != 0 {
         let cb_fn = dropped_cb_fn;
         let cb_ctx = dropped_cb_ctx;
@@ -628,8 +646,15 @@ unsafe fn time_window_put(
             cb(t, s, d, cb_ctx);
         }));
     }
-    
-    window.put(storage, frame_in_current_buffer, size, data_slice, dropped_cb_wrapper.as_mut(), std::ptr::null_mut() as *mut std::ffi::c_void)
+
+    window.put(
+        storage,
+        frame_in_current_buffer,
+        size,
+        data_slice,
+        dropped_cb_wrapper.as_mut(),
+        std::ptr::null_mut() as *mut std::ffi::c_void,
+    )
 }
 
 unsafe fn time_window_snapshot(
@@ -643,7 +668,6 @@ unsafe fn time_window_snapshot(
 
 // Callback type for truncate_fn predicate
 type TruncatePredicate = unsafe extern "C" fn(u32, u16, *const u8, usize) -> bool;
-
 
 /// Prepend operation - adds a message at the tail (earlier in time)
 /// Returns true on success, false if buffer is full or out-of-order
@@ -674,19 +698,19 @@ unsafe fn truncate_fn(
     } else {
         TruncateSide::TruncateHead
     };
-    
+
     let capacity = storage.capacity();
     let n_events = storage.n_events();
     if capacity == 0 || n_events == 0 {
         return;
     }
-    
+
     let pred_fn: Option<TruncatePredicate> = if predicate_fn != 0 {
         Some(std::mem::transmute(predicate_fn))
     } else {
         None
     };
-    
+
     // Helper to call predicate
     let should_drop = |time: u32, size: u16, data: *const u8| -> bool {
         if let Some(fn_ptr) = pred_fn {
@@ -695,20 +719,20 @@ unsafe fn truncate_fn(
             false
         }
     };
-    
+
     // First pass: identify what to drop and collect dropped messages
     let mut to_drop: Vec<MidiStorageElem> = Vec::new();
     let mut kept_tail = storage.raw_tail();
     let mut kept_head = storage.raw_head();
     let mut kept_count = 0u32;
-    
+
     match truncate_side {
         TruncateSide::TruncateHead => {
             // TruncateHead: drop from the oldest (tail), keep newer (head)
             let mut idx = storage.raw_tail();
             let mut first_keep_idx = idx;
             let mut found_keep = false;
-            
+
             for _ in 0..n_events {
                 if let Some(elem) = storage.get_elem_at_physical_offset_ref(idx) {
                     if !should_drop(elem.time, elem.size, elem.data().as_ptr()) {
@@ -720,7 +744,7 @@ unsafe fn truncate_fn(
                 }
                 idx = (idx + 1) % capacity;
             }
-            
+
             if found_keep {
                 kept_tail = first_keep_idx;
                 kept_head = storage.raw_head();
@@ -743,7 +767,7 @@ unsafe fn truncate_fn(
         TruncateSide::TruncateTail => {
             // TruncateTail: drop from the head side, keep older elements
             let mut idx = storage.raw_tail();
-            
+
             for _ in 0..n_events {
                 if let Some(elem) = storage.get_elem_at_physical_offset_ref(idx) {
                     if should_drop(elem.time, elem.size, elem.data().as_ptr()) {
@@ -757,12 +781,12 @@ unsafe fn truncate_fn(
             }
         }
     }
-    
+
     // Update storage state
     storage.set_raw_tail(kept_tail);
     storage.set_raw_head(kept_head);
     storage.set_n_events(kept_count);
-    
+
     // Call dropped callback for each dropped message
     for elem in &to_drop {
         if dropped_cb_fn != 0 {

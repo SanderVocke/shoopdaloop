@@ -736,9 +736,7 @@ impl MidiCursor {
                 let result = offset == storage.raw_tail() && self.prev_offset.is_none();
                 result
             }
-            None => {
-                false
-            }
+            None => false,
         }
     }
 
@@ -852,7 +850,12 @@ impl MidiCursor {
 
     /// Find first element matching predicate, with skip callback
     /// For each element that doesn't match, calls skip_cb
-    pub fn find_fn_forward_with_skip<F, S>(&mut self, storage: &MidiStorageCore, mut pred: F, mut skip_cb: S) -> FindResult
+    pub fn find_fn_forward_with_skip<F, S>(
+        &mut self,
+        storage: &MidiStorageCore,
+        mut pred: F,
+        mut skip_cb: S,
+    ) -> FindResult
     where
         F: FnMut(&MidiStorageElem) -> bool,
         S: FnMut(&MidiStorageElem),
