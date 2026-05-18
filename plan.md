@@ -1,5 +1,11 @@
 # Plan: Porting MidiPortBase to Rust
 
+## Overview
+
+This plan documents the work to port `MidiPortBase` from C++ to Rust, eliminating the state duplication issue in `MidiPort`.
+
+**Build system**: `cargo build` builds everything (C++ and Rust). C++ unit tests are in `test_runner` executable (in `target/`). Rust tests via `cargo test`.
+
 ## Problem Statement
 
 `MidiPort` currently maintains state in TWO places:
@@ -239,12 +245,25 @@ MODIFY:
 - src/backend/CMakeLists.txt                   (remove MidiPortBase from build)
 ```
 
+## Building and Testing
+
+### Build Commands
+- **Build everything (C++ and Rust)**: `cargo build` in the top-level directory
+- **C++ unit tests**: Built as `test_runner` executable (found in `target/` directory)
+- **Rust unit tests**: `cargo test`
+
+### Build System Notes
+- The build uses Cargo for both C++ (via `cc` crate) and Rust (via native Cargo)
+- CXX bridge code is generated during build via `cxx-build`
+- Generated headers are placed in `src/rust/backend_rust/src/` (e.g., `midi_port_cxx.rs.h`)
+
 ## Testing Considerations
 
-1. **State consistency tests**: Verify that methods like `get_muted()`, `get_n_input_events()` return the same values as before
-2. **Note tracking tests**: Verify `n_notes_active()` still works after processing messages
-3. **Ringbuffer tests**: Verify `set_n_samples()`, `snapshot()` still work
-4. **Jack integration tests**: Verify MIDI input/output still works with JACK backend
+1. **State consistency tests** (C++): Run `test_runner` to verify `get_muted()`, `get_n_input_events()` return same values as before
+2. **Note tracking tests** (C++): Run `test_runner` to verify `n_notes_active()` still works after processing messages
+3. **Ringbuffer tests** (C++): Run `test_runner` to verify `set_n_samples()`, `snapshot()` still work
+4. **Jack integration tests** (manual): Verify MIDI input/output still works with JACK backend
+5. **Rust tests**: `cargo test` to verify Rust-side MidiPort and MidiPortBase logic
 
 ## Risks and Mitigations
 
