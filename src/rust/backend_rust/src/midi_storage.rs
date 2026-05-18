@@ -728,6 +728,14 @@ impl MidiCursor {
         }
     }
 
+    /// Check if cursor is at the start (offset == tail and prev_offset is None)
+    pub fn is_at_start(&self, storage: &MidiStorageCore) -> bool {
+        match self.offset {
+            Some(offset) => offset == storage.raw_tail() && self.prev_offset.is_none(),
+            None => false,
+        }
+    }
+
     /// Move to the next element
     pub fn next(&mut self, storage: &MidiStorageCore) {
         if !self.offset.is_some() {

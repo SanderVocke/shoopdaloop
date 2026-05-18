@@ -45,12 +45,23 @@ mod ffi {
         fn cursor_invalidate(cursor: &mut MidiCursor);
         fn cursor_wrapped(cursor: &MidiCursor) -> bool;
         fn cursor_reset(cursor: &mut MidiCursor, storage: &MidiStorageCore);
+        fn cursor_is_at_start(cursor: &MidiCursor, storage: &MidiStorageCore) -> bool;
         fn cursor_next(cursor: &mut MidiCursor, storage: &MidiStorageCore);
         fn cursor_overwrite(cursor: &mut MidiCursor, offset: u32, prev_offset: u32);
         fn cursor_find_time_forward(
             cursor: &mut MidiCursor,
             storage: &MidiStorageCore,
             time: u32,
+        ) -> Box<FindResult>;
+
+        // find_fn_forward - find first element matching predicate
+        // predicate_fn: raw function pointer (usize) to call for each message
+        //   callback takes: (time: u32, size: u16, data: *const u8) -> bool (true = match/found)
+        unsafe fn cursor_find_fn_forward(
+            cursor: &mut MidiCursor,
+            storage: &MidiStorageCore,
+            predicate_fn: usize,
+            predicate_ctx: usize,
         ) -> Box<FindResult>;
 
         // FindResult - search result type
@@ -117,9 +128,10 @@ mod ffi {
         ) -> bool;
 
         // snapshot operation - copies storage to target with adjusted timestamps
+        // Note: storage parameter is const (we're reading from it, not modifying)
         unsafe fn time_window_snapshot(
             window: &MidiTimeWindow,
-            storage: &mut MidiStorageCore,
+            storage: &MidiStorageCore,
             target: &mut MidiStorageCore,
             start_offset_from_end: u32,
         );
@@ -144,6 +156,26 @@ mod ffi {
             out: *mut u8,
             max_len: usize,
         );
+
+        // Get element at physical offset - returns (time, size, bytes[4]) as separate outputs
+        // Returns true if element exists, false if idx is out of range or storage is empty
+        unsafe fn get_elem_at_physical_offset(
+            storage: &MidiStorageCore,
+            idx: u32,
+            out_time: &mut u32,
+            out_size: &mut u16,
+            out_bytes: &mut [u8; 4],
+        ) -> bool;
+
+        // Get element at logical index (0 = oldest)
+        // Returns true if element exists, false if idx is out of range or storage is empty
+        unsafe fn get_elem_at_logical_index(
+            storage: &MidiStorageCore,
+            idx: u32,
+            out_time: &mut u32,
+            out_size: &mut u16,
+            out_bytes: &mut [u8; 4],
+        ) -> bool;
 
         // for_each_msg_modify - iterates and modifies all messages in storage
         // callback_fn: raw function pointer (usize) to call for each message
@@ -405,6 +437,10 @@ fn cursor_reset(cursor: &mut MidiCursor, storage: &MidiStorageCore) {
     cursor.reset(storage);
 }
 
+fn cursor_is_at_start(cursor: &MidiCursor, storage: &MidiStorageCore) -> bool {
+    cursor.is_at_start(storage)
+}
+
 fn cursor_next(cursor: &mut MidiCursor, storage: &MidiStorageCore) {
     cursor.next(storage);
 }
@@ -419,6 +455,36 @@ fn cursor_find_time_forward(
     time: u32,
 ) -> Box<FindResult> {
     Box::new(cursor.find_time_forward(storage, time))
+}
+
+// Predicate callback type for cursor_find_fn_forward
+// Signature: bool predicate(uint32_t time, uint16_t size, const uint8_t* data, usize ctx)
+type CursorPredicateFn = unsafe extern "C" fn(u32, u16, *const u8, usize) -> bool;
+
+/// Find first element matching predicate function
+/// predicate_fn: raw function pointer to call for each message
+///   returns true if the element matches (found, stop searching)
+///   callback takes: (time: u32, size: u16, data: *const u8, ctx: usize) -> bool
+unsafe fn cursor_find_fn_forward(
+    cursor: &mut MidiCursor,
+    storage: &MidiStorageCore,
+    predicate_fn: usize,
+    predicate_ctx: usize,
+) -> Box<FindResult> {
+    if predicate_fn == 0 {
+        return Box::new(crate::midi_storage::FindResult {
+            n_processed: 0,
+            found_valid_elem: false,
+        });
+    }
+    
+    let pred_fn = std::mem::transmute::<usize, CursorPredicateFn>(predicate_fn);
+    
+    let pred = |elem: &MidiStorageElem| -> bool {
+        unsafe { pred_fn(elem.time, elem.size, elem.data().as_ptr(), predicate_ctx) }
+    };
+    
+    Box::new(cursor.find_fn_forward(storage, pred))
 }
 
 fn clear_storage(storage: &mut MidiStorageCore) {
@@ -484,6 +550,44 @@ unsafe fn get_elem_bytes_at_logical_index(
     if let Some(elem) = storage.get_elem_logical_ref(idx) {
         let len = std::cmp::min(elem.size as usize, max_len);
         std::ptr::copy_nonoverlapping(elem.data().as_ptr(), out, len);
+    }
+}
+
+/// Get element at physical offset - returns all fields via output parameters
+/// Returns true if element exists, false otherwise
+unsafe fn get_elem_at_physical_offset(
+    storage: &MidiStorageCore,
+    idx: u32,
+    out_time: &mut u32,
+    out_size: &mut u16,
+    out_bytes: &mut [u8; 4],
+) -> bool {
+    if let Some(elem) = storage.get_elem_at_physical_offset_ref(idx) {
+        *out_time = elem.time;
+        *out_size = elem.size;
+        out_bytes.copy_from_slice(&elem.bytes);
+        true
+    } else {
+        false
+    }
+}
+
+/// Get element at logical index (0 = oldest) - returns all fields via output parameters
+/// Returns true if element exists, false otherwise
+unsafe fn get_elem_at_logical_index(
+    storage: &MidiStorageCore,
+    idx: u32,
+    out_time: &mut u32,
+    out_size: &mut u16,
+    out_bytes: &mut [u8; 4],
+) -> bool {
+    if let Some(elem) = storage.get_elem_logical_ref(idx) {
+        *out_time = elem.time;
+        *out_size = elem.size;
+        out_bytes.copy_from_slice(&elem.bytes);
+        true
+    } else {
+        false
     }
 }
 
