@@ -251,6 +251,12 @@ link_directories(${REFILLING_POOL_CXX_LIBDIR})
 include_directories(${BACKEND_RUST_CXX_INCLUDE})
 link_directories(${BACKEND_RUST_CXX_LIBDIR})
 
+# Define the backend_rust_cxx library explicitly as imported
+add_library(backend_rust_cxx STATIC IMPORTED)
+set_target_properties(backend_rust_cxx PROPERTIES
+    IMPORTED_LOCATION "${BACKEND_RUST_CXX_LIBDIR}/libbackend_rust_cxx.a"
+)
+
 add_subdirectory(test)
 
 add_library(shoopdaloop_backend_internals STATIC libshoopdaloop_backend.cpp ${INTERNAL_SOURCES})

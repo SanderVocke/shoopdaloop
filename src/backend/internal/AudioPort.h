@@ -2,8 +2,9 @@
 #include <stdint.h>
 #include "PortInterface.h"
 #include <atomic>
-#include "BufferQueue.h"
 #include "BufferPool.h"
+#include "RustAudioBufferQueue.h"  // Must be before BufferQueue.h for template selector
+#include "BufferQueue.h"            // Still needed for int specialization
 #include "shoop_shared_ptr.h"
 
 template<typename SampleT>
@@ -16,10 +17,12 @@ class AudioPort : public virtual PortInterface {
     // Always-active FIFO queue acting as a ring buffer of sorts: data coming
     // in is always recorded until dropped from the queue.
     // Can be used for retroactive recording.
-    BufferQueue<SampleT> mp_always_record_ringbuffer;
+    // Note: BufferQueueSelector is defined in RustAudioBufferQueue.h
+    using RingbufferType = typename BufferQueueSelector<SampleT>::Type;
+    RingbufferType mp_always_record_ringbuffer;
 
 public:
-    using RingbufferSnapshot = typename BufferQueue<SampleT>::Snapshot;
+    using RingbufferSnapshot = typename RingbufferType::Snapshot;
     using UsedBufferPool = BufferPool<SampleT>;
 
     AudioPort(shoop_shared_ptr<UsedBufferPool> maybe_ringbuffer_buffer_pool);
@@ -45,7 +48,7 @@ public:
     void set_ringbuffer_n_samples(unsigned n) override;
     unsigned get_ringbuffer_n_samples() const override;
     
-    typename BufferQueue<SampleT>::Snapshot PROC_get_ringbuffer_contents();
+    RingbufferSnapshot PROC_get_ringbuffer_contents();
 };
 
 #ifndef IMPLEMENT_AUDIOPORT_H

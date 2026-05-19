@@ -1,3 +1,5 @@
+pub mod audio_buffer_queue;
+pub mod audio_buffer_queue_cxx;
 pub mod dummy_midi_port;
 pub mod dummy_midi_port_cxx;
 pub mod midi_buffering_input_port;
