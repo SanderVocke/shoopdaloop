@@ -1,12 +1,11 @@
 #pragma once
-#include "AudioPort.h"
+#include "RustAudioPort.h"
 #include <vector>
 #include "shoop_shared_ptr.h"
 
-template<typename SampleT>
-class InternalAudioPort : public AudioPort<SampleT> {
+class InternalAudioPort : public RustAudioPortF32 {
     std::string m_name = "";
-    std::vector<SampleT> m_buffer;
+    std::vector<float> m_buffer;
     unsigned m_input_connectability = 0;
     unsigned m_output_connectability = 0;
 
@@ -19,10 +18,10 @@ public:
         uint32_t n_frames,
         unsigned input_connectability,
         unsigned output_connectability,
-        shoop_shared_ptr<typename AudioPort<SampleT>::UsedBufferPool> maybe_ringbuffer_buffer_pool
+        shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> maybe_ringbuffer_buffer_pool
     );
     
-    SampleT *PROC_get_buffer(uint32_t n_frames) override;
+    float* PROC_get_buffer(uint32_t n_frames) override;
 
     const char* name() const override;
     void close() override;
@@ -44,6 +43,3 @@ public:
     unsigned input_connectability() const override;
     unsigned output_connectability() const override;
 };
-
-extern template class InternalAudioPort<float>;
-extern template class InternalAudioPort<int>;

@@ -1,7 +1,6 @@
 #pragma once
 #include "AudioMidiDriver.h"
-#include "MidiPort.h"
-#include "AudioPort.h"
+#include "RustAudioPort.h"
 #include "DummyAudioPort.h"
 #include "DummyMidiPort.h"
 #include "PortInterface.h"
@@ -9,12 +8,10 @@
 #include "WithCommandQueue.h"
 #include "types.h"
 #include <memory>
-#include <memory>
 #include <set>
 #include <thread>
 #include <vector>
 #include <boost/lockfree/spsc_queue.hpp>
-#include <memory>
 #include <stdint.h>
 #include "shoop_shared_ptr.h"
 
@@ -59,10 +56,10 @@ public:
 
     void start(AudioMidiDriverSettingsInterface &settings) override;
 
-    shoop_shared_ptr<AudioPort<audio_sample_t>> open_audio_port(
+    shoop_shared_ptr<RustAudioPortF32> open_audio_port(
         std::string name,
         shoop_port_direction_t direction,
-        shoop_shared_ptr<typename AudioPort<audio_sample_t>::UsedBufferPool> buffer_pool
+        shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool
     ) override;
 
     shoop_shared_ptr<MidiPort> open_midi_port(

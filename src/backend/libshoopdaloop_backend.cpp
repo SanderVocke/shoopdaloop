@@ -1037,7 +1037,7 @@ shoopdaloop_audio_port_t *open_internal_audio_port (shoop_backend_session_t *bac
   return api_impl<shoopdaloop_audio_port_t*>("open_internal_audio_port", [&]() -> shoopdaloop_audio_port_t* {
     auto _backend = internal_backend_session(backend);
     if (!_backend) { return nullptr; }
-    auto port = shoop_make_shared<InternalAudioPort<audio_sample_t>>(
+    auto port = shoop_make_shared<InternalAudioPort>(
       std::string(name_hint),
       _backend->m_buffer_size,
       ShoopPortConnectability_Internal,

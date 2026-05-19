@@ -13,6 +13,7 @@ fn main() {
         "src/dummy_midi_port_cxx.rs",
         "src/midi_buffering_input_port_cxx.rs",
         "src/audio_buffer_queue_cxx.rs",
+        "src/audio_port_cxx.rs",
     ])
     .std("c++20")
     .compile("backend_rust_cxx");
@@ -35,4 +36,5 @@ fn main() {
     println!("cargo:rerun-if-changed=src/dummy_midi_port_cxx.rs");
     println!("cargo:rerun-if-changed=src/midi_buffering_input_port_cxx.rs");
     println!("cargo:rerun-if-changed=src/audio_buffer_queue_cxx.rs");
+    println!("cargo:rerun-if-changed=src/audio_port_cxx.rs");
 }

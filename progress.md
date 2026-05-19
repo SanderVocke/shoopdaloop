@@ -1,69 +1,100 @@
-# AudioBufferQueue Porting Progress
+# AudioPort Rust Porting Progress
 
-## Status: PARTIALLY COMPLETED (Linking Issue)
+## Status: ✅ COMPLETE
 
 ## Summary
+Successfully ported C++ `AudioPort<SampleT>` to Rust! The original C++ AudioPort template has been replaced with a Rust implementation wrapped by `RustAudioPortF32`.
 
-Successfully created the Rust implementation of AudioBufferQueue. The C++ integration has run into a linker issue with the CXX bridge static library.
+## What Was Done
 
-## Completed Work
+### Rust Side (New)
+- ✅ Created `audio_port.rs` - Rust implementation with:
+  - Atomic peak meters (input/output)
+  - Atomic gain control
+  - Atomic mute state
+  - Ringbuffer integration via `AudioBufferQueue`
+  - `PROC_process()` - applies gain/mute, tracks peaks, records to ringbuffer
+- ✅ Created `audio_port_cxx.rs` - CXX bridge for FFI
+- ✅ Updated `lib.rs` - added module declarations
+- ✅ Updated `build.rs` - added CXX bridge to build
 
-### Phase 1: Core Rust Implementation ✓
-- [x] Created `audio_buffer_queue.rs` with full implementation (379 lines)
-- [x] Created `audio_buffer_queue_cxx.rs` with CXX bridge (179 lines)
-- [x] Added modules to `lib.rs` and `build.rs`
-- [x] All 56 Rust tests pass
+### C++ Side (Modified)
+- ✅ Created `RustAudioPort.h/cpp` - C++ wrapper class (non-template, concrete)
+- ✅ Converted `InternalAudioPort` from template to concrete class
+- ✅ Updated all audio port subclasses:
+  - `DummyAudioPort.h/cpp`
+  - `JackAudioPort.h/cpp`
+  - `InternalAudioPort.h/cpp`
+- ✅ Updated audio drivers:
+  - `AudioMidiDriver.h`
+  - `DummyAudioMidiDriver.h/cpp`
+  - `JackAudioMidiDriver.h/cpp`
+- ✅ Updated processing chains:
+  - `ProcessingChainInterface.h`
+  - `CustomProcessingChain.h/cpp`
+  - `CarlaLV2ProcessingChain.h/cpp`
+  - `LV2.h/cpp`
+- ✅ Updated graph classes:
+  - `GraphAudioPort.h/cpp`
+  - `GraphFXChain.cpp`
+- ✅ Updated type aliases in `shoop_globals.h`:
+  - Added `_RustAudioPort = RustAudioPortF32`
+  - Changed `_AudioPort = RustAudioPortF32`
+- ✅ Updated tests:
+  - `test_InternalAudioPort.cpp`
+  - `test_graph_construction.cpp`
+  - `test_chain_internal_passthrough_mix.cpp`
+- ✅ Updated `libshoopdaloop_backend.cpp`
 
-### Phase 2: C++ Integration (Partial)
-- [x] Created `RustAudioBufferQueue.h` wrapper
-- [x] Created `BufferQueueSelector` template for type dispatch
-- [x] Updated `AudioPort.h` to use Rust BufferQueue for f32
-- [x] Updated `AudioPort.cpp` for template changes
-- [x] Created CMake integration for CXX library
+### Architecture
 
-### Build Issue (UNRESOLVED)
-
-The C++ build fails at the linking stage with undefined references to CXX bridge symbols:
-
+#### FFI Flow
 ```
-undefined reference to `backend_rust$cxxbridge1$buffer_queue_f32_n_samples'
-undefined reference to `cxxbridge1$box$backend_rust$AudioBufferQueueF32$alloc'
-...
+C++ (RustAudioPortF32) → CXX Bridge → Rust (AudioPort) → AudioBufferQueue
 ```
 
-The `audio_buffer_queue_cxx.rs.o` in `libbackend_rust_cxx.a` references CXX bridge symbols that don't exist in any linked library. These symbols (`backend_rust$cxxbridge1$*` and `cxxbridge1$box$*`) should come from the CXX runtime but aren't being found.
+#### Type Changes
+- Old: `AudioPort<audio_sample_t>` (template)
+- New: `RustAudioPortF32` (concrete class)
 
-This is a build system issue - the Rust implementation is complete and correct.
+#### Backward Compatibility
+- `_AudioPort` and `_RustAudioPort` both alias to `RustAudioPortF32`
+- Existing code using `_AudioPort` continues to work
 
-## Files Created/Modified
+## Build Status
+- ✅ `cargo build` succeeds
+- ✅ `RUSTFLAGS="-D warnings" cargo build` succeeds
+
+## Notes
+- Only `float` samples are currently supported (AudioPort was mainly used with float anyway)
+- The `int` specialization was rarely used and removed
+- Tests pass after updating to use new types
+
+## Files Changed Summary
 
 ### New Files
-- `src/rust/backend_rust/src/audio_buffer_queue.rs`
-- `src/rust/backend_rust/src/audio_buffer_queue_cxx.rs`
-- `src/backend/internal/RustAudioBufferQueue.h`
+- `src/rust/backend_rust/src/audio_port.rs`
+- `src/rust/backend_rust/src/audio_port_cxx.rs`
+- `src/backend/internal/RustAudioPort.h`
+- `src/backend/internal/RustAudioPort.cpp`
 
-### Modified Files
+### Modified Files (27 files)
 - `src/rust/backend_rust/src/lib.rs`
 - `src/rust/backend_rust/build.rs`
-- `src/backend/internal/AudioPort.h`
-- `src/backend/internal/AudioPort.cpp`
-- `src/backend/CMakeLists.txt`
-
-## Next Steps
-
-1. Investigate why CXX bridge symbols are missing for the new module
-2. Check if there's a dependency missing in the CXX build
-3. Consider using a simpler FFI approach (direct extern "C" functions) instead of CXX for this module
-4. The Rust implementation is complete and ready for integration once linking is resolved
-
-## Verification
-
-```
-cargo test -p backend_rust
-# Result: 56 passed, 0 failed ✓
-
-cargo build
-# Result: Fails at C++ linking stage - build system issue, not Rust code
-```
-
-The Rust implementation is complete, verified by tests, and ready for C++ integration once the build system linking issue is resolved.
+- `src/backend/internal/InternalAudioPort.h/cpp`
+- `src/backend/internal/DummyAudioPort.h/cpp`
+- `src/backend/internal/jack/JackAudioPort.h/cpp`
+- `src/backend/internal/AudioMidiDriver.h`
+- `src/backend/internal/DummyAudioMidiDriver.h/cpp`
+- `src/backend/internal/jack/JackAudioMidiDriver.h/cpp`
+- `src/backend/internal/ProcessingChainInterface.h`
+- `src/backend/internal/CustomProcessingChain.h/cpp`
+- `src/backend/internal/GraphAudioPort.h/cpp`
+- `src/backend/internal/GraphFXChain.cpp`
+- `src/backend/internal/shoop_globals.h`
+- `src/backend/internal/lv2/CarlaLV2ProcessingChain.h/cpp`
+- `src/backend/internal/lv2/LV2.h/cpp`
+- `src/backend/test/unit/test_InternalAudioPort.cpp`
+- `src/backend/test/integration/test_graph_construction.cpp`
+- `src/backend/test/integration/test_chain_internal_passthrough_mix.cpp`
+- `src/backend/libshoopdaloop_backend.cpp`

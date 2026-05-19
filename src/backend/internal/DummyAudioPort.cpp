@@ -1,4 +1,3 @@
-
 #include "DummyAudioPort.h"
 #include <algorithm>
 #include "fmt/format.h"
@@ -10,8 +9,8 @@
 #endif
 
 
-DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction, shoop_shared_ptr<AudioPort<audio_sample_t>::UsedBufferPool> buffer_pool, shoop_weak_ptr<DummyExternalConnections> external_connections)
-    : AudioPort<audio_sample_t>(buffer_pool),
+DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction, shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool, shoop_weak_ptr<DummyExternalConnections> external_connections)
+    : RustAudioPortF32(buffer_pool, 32),
       DummyPort(name, direction, PortDataType::Audio, external_connections),
       WithCommandQueue(100),
       m_name(name),
@@ -54,7 +53,8 @@ void DummyAudioPort::PROC_process(uint32_t n_frames) {
         log<log_level_debug_trace>("Process {} frames", n_frames);
     }
 
-    AudioPort<audio_sample_t>::PROC_process(n_frames);
+    // Call base class process
+    RustAudioPortF32::PROC_process(n_frames);
 
     auto buf = PROC_get_buffer(n_frames);
     uint32_t to_store = std::min(n_frames, m_n_requested_samples.load());
@@ -124,4 +124,16 @@ unsigned DummyAudioPort::input_connectability() const {
 
 unsigned DummyAudioPort::output_connectability() const {
     return (m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_Internal : ShoopPortConnectability_External;
+}
+
+PortExternalConnectionStatus DummyAudioPort::get_external_connection_status() const {
+    return PortExternalConnectionStatus();
+}
+
+void DummyAudioPort::connect_external(std::string name) {
+    throw std::runtime_error("DummyAudioPort does not support external connections.");
+}
+
+void DummyAudioPort::disconnect_external(std::string name) {
+    throw std::runtime_error("DummyAudioPort does not support external connections.");
 }

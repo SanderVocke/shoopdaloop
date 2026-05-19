@@ -5,7 +5,7 @@
 #include "MidiPort.h"
 #include <string>
 #include <map>
-#include "AudioPort.h"
+#include "RustAudioPort.h"
 #include "InternalAudioPort.h"
 #include <functional>
 #include "shoop_shared_ptr.h"
@@ -13,8 +13,7 @@
 template<typename TimeType, typename SizeType>
 class ProcessingChainInterface {
 public:
-    using _InternalAudioPort = InternalAudioPort<float>;
-    using SharedInternalAudioPort = shoop_shared_ptr<InternalAudioPort<float>>;
+    using SharedInternalAudioPort = shoop_shared_ptr<InternalAudioPort>;
     using SharedMidiPort = shoop_shared_ptr<MidiPort>;
 
     ProcessingChainInterface() {}

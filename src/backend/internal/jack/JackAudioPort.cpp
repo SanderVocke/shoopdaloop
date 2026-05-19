@@ -15,8 +15,9 @@
 template<typename API>
 GenericJackAudioPort<API>::GenericJackAudioPort(std::string name, shoop_port_direction_t direction,
                              jack_client_t *client, shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker,
-                             shoop_shared_ptr<typename AudioPort<jack_default_audio_sample_t>::UsedBufferPool> buffer_pool)
-    : AudioPort<float>(buffer_pool), GenericJackPort<API>(name, direction, PortDataType::Audio, client, all_ports_tracker) {}
+                             shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool)
+    : RustAudioPortF32(buffer_pool, 32), 
+      GenericJackPort<API>(name, direction, PortDataType::Audio, client, all_ports_tracker) {}
 
 template<typename API>
 void GenericJackAudioPort<API>::PROC_prepare(uint32_t nframes) {
@@ -47,7 +48,8 @@ float *GenericJackAudioPort<API>::PROC_get_buffer(uint32_t n_frames) {
 
 template<typename API>
 void GenericJackAudioPort<API>::PROC_process(uint32_t nframes) {
-    AudioPort<jack_default_audio_sample_t>::PROC_process(nframes);
+    // Call base class process
+    RustAudioPortF32::PROC_process(nframes);
 }
 
 template<typename API>

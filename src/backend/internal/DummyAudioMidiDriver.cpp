@@ -144,14 +144,14 @@ DummyAudioMidiDriver<Time, Size>::~DummyAudioMidiDriver() {
 }
 
 template <typename Time, typename Size>
-shoop_shared_ptr<AudioPort<audio_sample_t>>
+shoop_shared_ptr<RustAudioPortF32>
 DummyAudioMidiDriver<Time, Size>::open_audio_port(std::string name,
                                               shoop_port_direction_t direction,
-                                              shoop_shared_ptr<typename AudioPort<audio_sample_t>::UsedBufferPool> buffer_pool) {
+                                              shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool) {
     Log::log<log_level_debug>("DummyAudioMidiDriver : add audio port");
     auto rval = shoop_make_shared<DummyAudioPort>(name, direction, buffer_pool, m_external_connections);
     m_audio_ports.insert(rval);
-    return shoop_static_pointer_cast<AudioPort<audio_sample_t>>(rval);
+    return shoop_static_pointer_cast<RustAudioPortF32>(rval);
 }
 
 template <typename Time, typename Size>
