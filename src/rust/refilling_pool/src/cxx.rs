@@ -57,6 +57,14 @@ pub struct BufferPool {
     pool: RefillingPool<BufferHandle>,
 }
 
+impl Debug for BufferPool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BufferPool")
+            .field("n_available", &self.pool.n_buffers_available())
+            .finish()
+    }
+}
+
 /// The concrete Rust type for the opaque `BufferHandle`.
 /// This must be a distinct struct, not a type alias, for cxx.
 pub struct BufferHandle(Vec<u8>);
@@ -84,17 +92,29 @@ fn new_buffer_pool(
     Ok(Box::new(BufferPool { pool }))
 }
 
+/// Creates a new buffer pool, panics on error.
+pub fn create_buffer_pool(
+    capacity: usize,
+    low_water_mark: usize,
+    buffer_size: usize,
+) -> BufferPool {
+    let factory = move || Box::new(BufferHandle(vec![0u8; buffer_size]));
+    let pool = RefillingPool::new(capacity, low_water_mark, factory)
+        .expect("Failed to create buffer pool");
+    BufferPool { pool }
+}
+
 impl BufferPool {
     /// Acquires a `Box<BufferHandle>`, consumes it, and returns a raw pointer,
     /// transferring ownership to the C++ side until `release_buffer` is called.
-    fn get_buffer(&mut self) -> *mut BufferHandle {
+    pub fn get_buffer(&mut self) -> *mut BufferHandle {
         let buffer_box = self.pool.get();
         Box::into_raw(buffer_box)
     }
 
     /// Takes a raw pointer from C++, reconstructs the `Box<BufferHandle>`,
     /// and returns it to the pool for reuse.
-    fn release_buffer(&mut self, handle: *mut BufferHandle) {
+    pub fn release_buffer(&mut self, handle: *mut BufferHandle) {
         // This is safe under the assumption that the pointer was obtained
         // from `get_buffer` and has not been released yet.
         let buffer_box = unsafe { Box::from_raw(handle) };
@@ -102,18 +122,18 @@ impl BufferPool {
     }
 
     /// Number of buffers waiting in the queue.
-    fn n_buffers_available(self: &BufferPool) -> usize {
+    pub(crate) fn n_buffers_available(&self) -> usize {
         self.pool.n_buffers_available()
     }
 
     /// Number of buffers allocated since the last call to this method.
-    fn n_buffers_created_since_last_checked(self: &BufferPool) -> usize {
+    pub(crate) fn n_buffers_created_since_last_checked(&self) -> usize {
         self.pool.n_buffers_created_since_last_checked()
     }
 }
 
 /// Free function to access buffer data from C++.
-fn get_buffer_data(handle: *mut BufferHandle) -> ffi::Buffer {
+pub(crate) fn get_buffer_data(handle: *mut BufferHandle) -> ffi::Buffer {
     // This is safe as long as C++ provides a valid handle.
     // We get a mutable reference to the BufferHandle behind the raw pointer.
     let buffer_handle = unsafe { &mut *handle };

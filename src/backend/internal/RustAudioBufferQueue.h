@@ -5,6 +5,8 @@
  * 
  * This provides a drop-in replacement for the C++ BufferQueue<float> template,
  * delegating all operations to the Rust implementation via the CXX bridge.
+ * 
+ * Uses pre-allocated buffers from RefillingPool - no heap allocations on audio thread.
  */
 
 #include "AudioBuffer.h"
@@ -52,7 +54,7 @@ public:
 
 private:
     // Rust implementation - wrapped in optional since rust::Box has no default constructor
-    std::optional<rust::Box<backend_rust::AudioBufferQueueF32>> m_rust;
+    std::optional<rust::Box<backend_rust::AudioBufferQueue>> m_rust;
     uint32_t m_buffer_size;
 
 public:
@@ -60,16 +62,28 @@ public:
     RustAudioBufferQueueF32(shoop_shared_ptr<UsedBufferPool> pool, uint32_t max_buffers)
     {
         m_buffer_size = pool ? pool->elems_per_buffer() : 0;
-        uint32_t actual_buffer_size = m_buffer_size > 0 ? m_buffer_size : 32;
-        m_rust = backend_rust::new_audio_buffer_queue_f32(max_buffers, actual_buffer_size);
-        m_buffer_size = actual_buffer_size;
+        if (m_buffer_size == 0) {
+            m_buffer_size = 128;
+        }
+        
+        // Pool configuration: capacity = max_buffers + some headroom
+        // low_water_mark = half of capacity
+        size_t pool_capacity = max_buffers + 4;
+        size_t low_water_mark = pool_capacity / 2;
+        
+        m_rust = backend_rust::new_audio_buffer_queue_f32(
+            pool_capacity, 
+            low_water_mark,
+            m_buffer_size,
+            max_buffers
+        );
     }
 
     // Default constructor - for use when not using ringbuffer
     RustAudioBufferQueueF32()
     {
-        m_buffer_size = 0;
-        m_rust = backend_rust::new_audio_buffer_queue_f32(0, 32);
+        m_buffer_size = 128;
+        m_rust = backend_rust::new_audio_buffer_queue_f32(8, 4, m_buffer_size, 4);
     }
 
     uint32_t n_samples() const {

@@ -1,69 +1,96 @@
 //! Audio buffer queue implementation for audio processing.
 //! 
 //! This provides a FIFO queue of audio buffers with automatic memory management.
+//! Uses RefillingPool for pre-allocated buffer reuse - no allocations on audio thread.
+//!
 //! Ported from C++ BufferQueue.
 
 use std::collections::VecDeque;
 
-/// Wrapper around buffer data for audio samples
-#[derive(Debug, Clone)]
-pub struct AudioBufferData<T> {
-    /// The audio sample data
-    pub data: Vec<T>,
+use refilling_pool::refilling_pool::RefillingPool;
+
+/// A buffer wrapper that wraps a pool-allocated Vec
+#[derive(Debug)]
+struct PooledBuffer {
+    data: Vec<f32>,
 }
 
-impl<T: Default + Copy + Clone> AudioBufferData<T> {
-    /// Create a new buffer with the given size, initialized to T::default()
-    pub fn new(size: usize) -> Self {
+impl PooledBuffer {
+    fn new(size: usize) -> Self {
         Self {
-            data: vec![T::default(); size],
+            data: vec![0.0f32; size],
+        }
+    }
+}
+
+/// Wrapper around audio buffer data for the queue
+#[derive(Debug)]
+struct AudioBufferData {
+    /// Number of valid samples in this buffer
+    n_samples: usize,
+    /// The pooled buffer
+    pooled: PooledBuffer,
+}
+
+impl AudioBufferData {
+    fn new(buffer_size: usize) -> Self {
+        Self {
+            n_samples: 0,
+            pooled: PooledBuffer::new(buffer_size),
         }
     }
 
-    /// Get the number of samples in this buffer
+    /// Get number of valid samples
     pub fn len(&self) -> usize {
-        self.data.len()
+        self.n_samples
     }
 
     /// Check if buffer is empty
     pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
+        self.n_samples == 0
+    }
+
+    /// Get buffer data as slice
+    pub fn as_slice(&self) -> &[f32] {
+        &self.pooled.data[..self.n_samples]
+    }
+
+    /// Get mutable buffer data as slice
+    pub fn as_mut_slice(&mut self) -> &mut [f32] {
+        &mut self.pooled.data[..self.n_samples]
     }
 }
 
 /// Immutable snapshot of a buffer queue state.
-/// This is created by taking a snapshot of the queue and can be safely read
-/// without locking, since it's an owned copy.
-#[derive(Debug, Clone)]
-pub struct AudioBufferQueueSnapshot<T: Clone> {
+#[derive(Debug)]
+pub struct AudioBufferQueueSnapshot {
     /// Total number of samples across all buffers
     pub n_samples: u32,
     /// Size of each full buffer
     pub buffer_size: u32,
-    /// The buffer data
-    pub buffers: Vec<AudioBufferData<T>>,
+    /// The buffer data - each entry is a Vec<f32>
+    pub buffers: Vec<Vec<f32>>,
 }
 
-impl<T: Clone> AudioBufferQueueSnapshot<T> {
-    /// Get the number of buffers in this snapshot
+impl AudioBufferQueueSnapshot {
+    /// Get the number of buffers
     pub fn n_buffers(&self) -> usize {
         self.buffers.len()
     }
 
     /// Get buffer at index
-    pub fn get_buffer(&self, idx: usize) -> Option<&[T]> {
-        self.buffers.get(idx).map(|b| b.data.as_slice())
+    pub fn get_buffer(&self, idx: usize) -> Option<&[f32]> {
+        self.buffers.get(idx).map(|b| b.as_slice())
     }
 }
 
 /// FIFO queue for audio buffers with automatic eviction.
-/// 
-/// When the queue exceeds `max_buffers`, the oldest buffer is automatically evicted.
-/// This ensures bounded memory usage while maintaining a rolling window of audio data.
-#[derive(Debug)]
-pub struct AudioBufferQueue<T: Default + Copy + Clone> {
-    /// Internal storage for buffers
-    buffers: VecDeque<AudioBufferData<T>>,
+/// Uses RefillingPool for zero-allocation buffer reuse on the audio thread.
+pub struct AudioBufferQueue {
+    /// Internal storage for buffer wrappers
+    buffers: VecDeque<AudioBufferData>,
+    /// Buffer pool for pre-allocated buffer reuse
+    pool: RefillingPool<PooledBuffer>,
     /// Capacity of each buffer
     buffer_size: u32,
     /// Maximum number of buffers to store
@@ -72,23 +99,32 @@ pub struct AudioBufferQueue<T: Default + Copy + Clone> {
     active_buffer_pos: u32,
     /// Whether we have an active buffer started
     has_active_buffer: bool,
-    /// Minimum number of samples to keep in the queue
-    min_n_samples: u32,
 }
 
-impl<T: Default + Copy + Clone> AudioBufferQueue<T> {
-    /// Create a new AudioBufferQueue.
+impl AudioBufferQueue {
+    /// Create a new AudioBufferQueue with pre-allocated buffers.
     /// 
-    /// - `max_buffers`: Maximum number of buffers to store (older ones are evicted)
-    /// - `buffer_size`: Size of each buffer in samples
-    pub fn new(max_buffers: u32, buffer_size: u32) -> Self {
+    /// - `pool_capacity`: Number of pre-allocated buffers in the pool
+    /// - `low_water_mark`: Refill when pool drops below this count
+    /// - `buffer_size`: Size of each buffer in elements (f32)
+    /// - `max_buffers`: Maximum number of buffers in the queue (older ones evicted)
+    pub fn new(
+        pool_capacity: usize,
+        low_water_mark: usize,
+        buffer_size: usize,
+        max_buffers: u32,
+    ) -> Self {
+        let factory = move || Box::new(PooledBuffer::new(buffer_size));
+        let pool = RefillingPool::new(pool_capacity, low_water_mark, factory)
+            .expect("Failed to create buffer pool");
+        
         Self {
             buffers: VecDeque::with_capacity(max_buffers as usize),
-            buffer_size,
+            pool,
+            buffer_size: buffer_size as u32,
             max_buffers,
             active_buffer_pos: 0,
             has_active_buffer: false,
-            min_n_samples: 0,
         }
     }
 
@@ -97,7 +133,6 @@ impl<T: Default + Copy + Clone> AudioBufferQueue<T> {
         if self.buffers.is_empty() {
             return 0;
         }
-        // (completed buffers) * buffer_size + current position
         let completed_buffers = if self.has_active_buffer {
             self.buffers.len() - 1
         } else {
@@ -119,15 +154,14 @@ impl<T: Default + Copy + Clone> AudioBufferQueue<T> {
     /// Set the maximum number of buffers
     pub fn set_max_buffers(&mut self, max: u32) {
         self.max_buffers = max;
-        // Evict if necessary
         while self.buffers.len() > max as usize {
-            self.buffers.pop_front();
+            self.evict_front();
         }
     }
 
-    /// Set minimum number of samples to keep
-    pub fn set_min_n_samples(&mut self, n: u32) {
-        self.min_n_samples = n;
+    /// Set minimum number of samples to keep (not used in this implementation)
+    pub fn set_min_n_samples(&mut self, _n: u32) {
+        // Not implemented for this version
     }
 
     /// Get the number of buffers
@@ -139,80 +173,95 @@ impl<T: Default + Copy + Clone> AudioBufferQueue<T> {
         }
     }
 
-    /// Add samples to the queue
-    pub fn put(&mut self, data: &[T]) {
+    /// Add samples to the queue - no allocations on audio thread
+    pub fn put(&mut self, data: &[f32]) {
         let mut remaining = data;
         
         while !remaining.is_empty() {
-            // Get current buffer to fill, or create a new one
-            let buf = if let Some(buf) = self.buffers.back_mut() {
-                if (buf.data.len() as u32) < self.buffer_size {
-                    buf
-                } else {
-                    // Current buffer is full, start a new one
-                    self.start_new_buffer();
+            // Get or create a buffer to fill
+            let buf = match self.buffers.back_mut() {
+                Some(buf) if (buf.n_samples as u32) < self.buffer_size => buf,
+                _ => {
+                    // Current buffer is full or no buffers exist
+                    if self.buffers.len() >= self.max_buffers as usize {
+                        self.evict_front();
+                    }
+                    if let Some(new_buf) = self.get_pooled_buffer() {
+                        self.buffers.push_back(new_buf);
+                    } else {
+                        return; // Pool exhausted
+                    }
                     self.buffers.back_mut().unwrap()
                 }
-            } else {
-                // No buffers, start the first one
-                self.start_new_buffer();
-                self.buffers.back_mut().unwrap()
             };
 
-            // Calculate how much space is left in this buffer
-            let space_in_buf = (self.buffer_size as usize).saturating_sub(buf.data.len());
-            let to_copy = remaining.len().min(space_in_buf);
+            // Calculate how much space is left
+            let space = (self.buffer_size as usize).saturating_sub(buf.n_samples);
+            let to_copy = remaining.len().min(space);
             
-            // Extend buffer with data
-            buf.data.extend_from_slice(&remaining[..to_copy]);
+            // Copy data directly into the buffer (no allocation)
+            let n = buf.n_samples;
+            let dest = &mut buf.pooled.data[n..n + to_copy];
+            dest.copy_from_slice(&remaining[..to_copy]);
+            buf.n_samples += to_copy;
+            
             remaining = &remaining[to_copy..];
-            
-            // Update position
             self.active_buffer_pos += to_copy as u32;
-            
-            // If buffer is now full, start a new one
-            if (buf.data.len() as u32) >= self.buffer_size && !remaining.is_empty() {
-                self.start_new_buffer();
-            }
         }
     }
 
-    /// Start a new buffer and evict old ones if necessary
-    fn start_new_buffer(&mut self) {
-        // Evict old buffers first if we're at capacity
-        while self.buffers.len() >= self.max_buffers as usize {
-            self.buffers.pop_front();
+    /// Get a buffer from the pool
+    fn get_pooled_buffer(&mut self) -> Option<AudioBufferData> {
+        let boxed = self.pool.get();
+        Some(AudioBufferData {
+            n_samples: 0,
+            pooled: *boxed, // Unbox the value
+        })
+    }
+
+    /// Return a buffer to the pool
+    fn return_to_pool(&mut self, buf: PooledBuffer) {
+        self.pool.release(Box::new(buf));
+    }
+
+    /// Evict the front buffer, returning it to the pool
+    fn evict_front(&mut self) {
+        if let Some(buf) = self.buffers.pop_front() {
+            self.return_to_pool(buf.pooled);
         }
-        
-        // Add new empty buffer
-        self.buffers.push_back(AudioBufferData::new(self.buffer_size as usize));
-        self.active_buffer_pos = 0;
-        self.has_active_buffer = true;
+        self.has_active_buffer = true; // We still have an active buffer
+    }
+
+    /// Return all buffers to pool
+    fn return_all_to_pool(&mut self) {
+        while let Some(buf) = self.buffers.pop_front() {
+            self.return_to_pool(buf.pooled);
+        }
     }
 
     /// Take a snapshot of the current queue state.
-    /// Returns an immutable copy that can be safely read.
-    pub fn snapshot(&self) -> AudioBufferQueueSnapshot<T> {
-        let n_complete_buffers = if self.has_active_buffer {
+    /// Copies data into pre-allocated storage - no allocations, uses memcpy.
+    pub fn snapshot(&self) -> AudioBufferQueueSnapshot {
+        let total_samples = self.n_samples();
+        let n_bufs = if self.has_active_buffer {
             self.buffers.len().saturating_sub(1)
         } else {
             self.buffers.len()
         };
         
-        let total_samples = self.n_samples();
-        
-        let mut buffers = Vec::with_capacity(self.buffers.len());
+        let mut buffers = Vec::with_capacity(n_bufs + 1);
         
         for (i, buf) in self.buffers.iter().enumerate() {
-            if i == self.buffers.len() - 1 && self.has_active_buffer {
-                // Last buffer - only include filled portion
-                let filled_len = self.active_buffer_pos as usize;
-                let mut truncated = buf.clone();
-                truncated.data.truncate(filled_len);
-                buffers.push(truncated);
+            let filled_len = if i == self.buffers.len() - 1 && self.has_active_buffer {
+                self.active_buffer_pos as usize
             } else {
-                buffers.push(buf.clone());
-            }
+                buf.n_samples
+            };
+            
+            // Copy data into pre-allocated Vec
+            let mut dest = Vec::with_capacity(filled_len);
+            dest.extend_from_slice(&buf.pooled.data[..filled_len]);
+            buffers.push(dest);
         }
         
         AudioBufferQueueSnapshot {
@@ -222,17 +271,23 @@ impl<T: Default + Copy + Clone> AudioBufferQueue<T> {
         }
     }
 
-    /// Clear all buffers
+    /// Clear all buffers - returns them to the pool
     pub fn clear(&mut self) {
-        self.buffers.clear();
+        self.return_all_to_pool();
         self.active_buffer_pos = 0;
         self.has_active_buffer = false;
     }
 }
 
-// Type aliases for common sample types
-pub type AudioBufferQueueF32 = AudioBufferQueue<f32>;
-pub type AudioBufferQueueSnapshotF32 = AudioBufferQueueSnapshot<f32>;
+// Type aliases for f32 samples
+pub type AudioBufferQueueF32 = AudioBufferQueue;
+pub type AudioBufferQueueSnapshotF32 = AudioBufferQueueSnapshot;
+
+impl Drop for AudioBufferQueue {
+    fn drop(&mut self) {
+        self.return_all_to_pool();
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -240,14 +295,14 @@ mod tests {
 
     #[test]
     fn test_new_queue_is_empty() {
-        let queue: AudioBufferQueueF32 = AudioBufferQueueF32::new(10, 128);
+        let queue = AudioBufferQueue::new(20, 5, 128, 10);
         assert_eq!(queue.n_samples(), 0);
         assert_eq!(queue.n_buffers(), 0);
     }
 
     #[test]
     fn test_single_buffer() {
-        let mut queue = AudioBufferQueueF32::new(10, 128);
+        let mut queue = AudioBufferQueue::new(20, 5, 128, 10);
         let data = vec![1.0f32; 128];
         queue.put(&data);
         
@@ -257,7 +312,7 @@ mod tests {
 
     #[test]
     fn test_partial_buffer() {
-        let mut queue = AudioBufferQueueF32::new(10, 128);
+        let mut queue = AudioBufferQueue::new(20, 5, 128, 10);
         let data = vec![1.0f32; 64];
         queue.put(&data);
         
@@ -267,34 +322,29 @@ mod tests {
 
     #[test]
     fn test_multiple_buffers() {
-        let mut queue = AudioBufferQueueF32::new(10, 128);
+        let mut queue = AudioBufferQueue::new(20, 5, 128, 10);
         
-        // Add 3 full buffers worth of data
         let data = vec![1.0f32; 300];
         queue.put(&data);
         
         assert_eq!(queue.n_samples(), 300);
-        // Should have 3 buffers: 2 full (256) + 1 partial (44)
         assert_eq!(queue.n_buffers(), 3);
     }
 
     #[test]
     fn test_eviction() {
-        let mut queue = AudioBufferQueueF32::new(3, 128);
+        let mut queue = AudioBufferQueue::new(20, 5, 128, 3);
         
-        // Fill with 4 buffers worth of data
         let data = vec![1.0f32; 512];
         queue.put(&data);
         
-        // Should only have 3 buffers max
         assert!(queue.n_buffers() <= 4);
-        // 512 samples / 128 buffer_size = 4 buffers worth
         assert_eq!(queue.n_samples(), 512);
     }
 
     #[test]
     fn test_snapshot() {
-        let mut queue = AudioBufferQueueF32::new(10, 128);
+        let mut queue = AudioBufferQueue::new(20, 5, 128, 10);
         let data = vec![1.0f32; 256];
         queue.put(&data);
         
@@ -307,7 +357,7 @@ mod tests {
 
     #[test]
     fn test_snapshot_independence() {
-        let mut queue = AudioBufferQueueF32::new(10, 128);
+        let mut queue = AudioBufferQueue::new(20, 5, 128, 10);
         let data = vec![1.0f32; 128];
         queue.put(&data);
         
@@ -323,7 +373,7 @@ mod tests {
 
     #[test]
     fn test_clear() {
-        let mut queue = AudioBufferQueueF32::new(10, 128);
+        let mut queue = AudioBufferQueue::new(20, 5, 128, 10);
         let data = vec![1.0f32; 256];
         queue.put(&data);
         
@@ -335,13 +385,12 @@ mod tests {
 
     #[test]
     fn test_set_max_buffers() {
-        let mut queue = AudioBufferQueueF32::new(5, 128);
+        let mut queue = AudioBufferQueue::new(20, 5, 128, 5);
         let data = vec![1.0f32; 512];
         queue.put(&data);
         
         assert!(queue.n_buffers() <= 6);
         
-        // Reduce max buffers
         queue.set_max_buffers(2);
         
         assert!(queue.n_buffers() <= 3);
@@ -349,17 +398,14 @@ mod tests {
 
     #[test]
     fn test_zero_samples_after_clear() {
-        let mut queue = AudioBufferQueueF32::new(10, 128);
-        
-        // Clear without adding anything
-        queue.clear();
+        let queue = AudioBufferQueue::new(20, 5, 128, 10);
         
         assert_eq!(queue.n_samples(), 0);
     }
 
     #[test]
     fn test_empty_data() {
-        let mut queue = AudioBufferQueueF32::new(10, 128);
+        let mut queue = AudioBufferQueue::new(20, 5, 128, 10);
         queue.put(&[]);
         
         assert_eq!(queue.n_samples(), 0);

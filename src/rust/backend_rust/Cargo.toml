@@ -10,6 +10,7 @@ crate-type = ["rlib", "staticlib"]
 cxx = { workspace = true }
 log = { workspace = true }
 parking_lot = "0.12"
+refilling_pool = { path = "../refilling_pool" }
 
 [build-dependencies]
 cxx-build = { workspace = true }
