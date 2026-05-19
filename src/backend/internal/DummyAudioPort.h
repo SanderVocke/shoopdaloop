@@ -4,7 +4,7 @@
 #include "DummyPort.h"
 #include "PortInterface.h"
 #include "LoggingEnabled.h"
-#include "WithCommandQueue.h"
+#include "CommandQueue.h"
 #include "types.h"
 #include <memory>
 #include <set>
@@ -13,10 +13,8 @@
 #include <stdint.h>
 #include "shoop_shared_ptr.h"
 
-class DummyAudioPort : public virtual RustAudioPortF32,
-                       public DummyPort,
-                       private ModuleLoggingEnabled<"Backend.DummyAudioPort">,
-                       private WithCommandQueue {
+class DummyAudioPort : public RustAudioPortF32,
+                       private ModuleLoggingEnabled<"Backend.DummyAudioPort"> {
 
     std::string m_name = "";
     shoop_port_direction_t m_direction = ShoopPortDirection_Input;
@@ -24,6 +22,10 @@ class DummyAudioPort : public virtual RustAudioPortF32,
     std::atomic<uint32_t> m_n_requested_samples = 0;
     std::vector<audio_sample_t> m_retained_samples;
     std::vector<audio_sample_t> m_buffer_data;
+
+    // Composition replacing former base classes
+    DummyPortCore m_dummy_port_core;
+    CommandQueue  m_command_queue;
 
 public:
     DummyAudioPort(
@@ -35,11 +37,11 @@ public:
     audio_sample_t *PROC_get_buffer(uint32_t n_frames) override;
     ~DummyAudioPort() override;
 
-    // PortInterface overrides (via RustAudioPortF32)
+    // PortInterface overrides
     PortDataType type() const override { return PortDataType::Audio; }
-    const char* name() const override { return m_name.c_str(); }
-    void close() override { DummyPort::close(); }
-    void* maybe_driver_handle() const override { return nullptr; }
+    const char* name() const override { return m_dummy_port_core.name(); }
+    void close() override { m_dummy_port_core.close(); }
+    void* maybe_driver_handle() const override { return m_dummy_port_core.maybe_driver_handle(); }
 
     PortExternalConnectionStatus get_external_connection_status() const override;
     void connect_external(std::string name) override;

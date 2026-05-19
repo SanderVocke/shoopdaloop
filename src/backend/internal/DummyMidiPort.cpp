@@ -36,16 +36,16 @@ DummyMidiPort::DummyMidiPort(
     shoop_port_direction_t direction,
     shoop_weak_ptr<DummyExternalConnections> external_connections
 ) : MidiPort(true, true, true),
-    DummyPort(name, direction, PortDataType::Midi, external_connections),
-    WithCommandQueue(100, 1000, 1000),
-    m_rust(backend_rust::new_dummy_midi_port(direction == ShoopPortDirection_Output)) {}
+    m_rust(backend_rust::new_dummy_midi_port(direction == ShoopPortDirection_Output)),
+    m_dummy_port_core(name, direction, this, external_connections),
+    m_command_queue(100, 1000, 1000) {}
 
 unsigned DummyMidiPort::input_connectability() const {
-    return (m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
+    return (m_dummy_port_core.m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
 }
 
 unsigned DummyMidiPort::output_connectability() const {
-    return (m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_Internal : ShoopPortConnectability_External;
+    return (m_dummy_port_core.m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_Internal : ShoopPortConnectability_External;
 }
 
 void DummyMidiPort::clear_queues() {
@@ -69,7 +69,7 @@ void DummyMidiPort::request_data(uint32_t n_frames) {
 }
 
 void DummyMidiPort::PROC_prepare(uint32_t nframes) {
-    PROC_handle_command_queue();
+    m_command_queue.PROC_exec_all();
     m_rust->prepare(nframes);
     MidiPort::PROC_prepare(nframes);
 }
@@ -137,8 +137,8 @@ std::vector<DummyMidiPort::StoredMessage> DummyMidiPort::get_written_requested_m
     return result;
 }
 
-DummyMidiPort::~DummyMidiPort() { 
-    DummyPort::close();
+DummyMidiPort::~DummyMidiPort() {
+    m_dummy_port_core.close();
 }
 
 void DummyMidiPort::set_muted(bool muted) {
