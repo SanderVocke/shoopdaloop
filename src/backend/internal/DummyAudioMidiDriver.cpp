@@ -254,7 +254,7 @@ ExternalPortDescriptor &DummyExternalConnections::get_port(std::string name) {
     return *it;
 }
 
-void DummyExternalConnections::connect(DummyPort* port, std::string external_port_name) {
+void DummyExternalConnections::connect(DummyPortCore* port, std::string external_port_name) {
     auto pname = port->name();
     log<log_level_debug>("connect {} to {}", pname, external_port_name);
     auto &desc = get_port(external_port_name);
@@ -264,7 +264,7 @@ void DummyExternalConnections::connect(DummyPort* port, std::string external_por
     }
 }
 
-void DummyExternalConnections::disconnect(DummyPort* port, std::string external_port_name) {
+void DummyExternalConnections::disconnect(DummyPortCore* port, std::string external_port_name) {
     auto pname = port->name();
     log<log_level_debug>("disconnect {} from {}", pname, external_port_name);
     auto &desc = get_port(external_port_name);
@@ -273,7 +273,7 @@ void DummyExternalConnections::disconnect(DummyPort* port, std::string external_
     m_external_connections.erase(new_end, m_external_connections.end());
 }
 
-PortExternalConnectionStatus DummyExternalConnections::connection_status_of(const DummyPort* port) {
+PortExternalConnectionStatus DummyExternalConnections::connection_status_of(const DummyPortCore* port) {
     log<log_level_debug>("getting connection status of {}", port->name());
     PortExternalConnectionStatus rval;
     for (auto &conn : m_external_connections) {
