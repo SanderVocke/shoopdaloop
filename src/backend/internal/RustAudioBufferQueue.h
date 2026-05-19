@@ -7,6 +7,7 @@
  * delegating all operations to the Rust implementation via the CXX bridge.
  * 
  * Uses pre-allocated buffers from RefillingPool - no heap allocations on audio thread.
+ * Snapshot returns Vec<BufferPtrInfo> for thin-copy semantics.
  */
 
 #include "AudioBuffer.h"
@@ -15,6 +16,7 @@
 #include "backend_rust/src/audio_buffer_queue_cxx.rs.h"
 
 #include <cstdint>
+#include <cstring>
 #include <optional>
 #include <vector>
 #include <algorithm>
@@ -108,25 +110,24 @@ public:
         Snapshot s;
         s.data = shoop_make_shared<std::vector<SharedBuffer>>();
         
-        auto rust_snap = backend_rust::buffer_queue_f32_snapshot(**m_rust);
-        s.n_samples = backend_rust::snapshot_f32_n_samples(*rust_snap);
-        s.buffer_size = backend_rust::snapshot_f32_buffer_size(*rust_snap);
+        // Get snapshot - returns Vec<BufferPtrInfo> with raw pointers
+        auto buffer_infos = backend_rust::buffer_queue_f32_snapshot(**m_rust);
         
-        size_t n_bufs = backend_rust::snapshot_f32_n_buffers(*rust_snap);
+        s.n_samples = backend_rust::buffer_queue_f32_n_samples(**m_rust);
+        s.buffer_size = m_buffer_size;
         
-        // Reconstruct AudioBuffer objects from the Rust snapshot
-        for (size_t i = 0; i < n_bufs; i++) {
-            // Allocate buffer of appropriate size
+        // Process each buffer info
+        for (size_t i = 0; i < buffer_infos.size(); i++) {
+            const auto& info = buffer_infos[i];
+            
+            // Allocate AudioBuffer of appropriate size
             auto ab = shoop_make_shared<BufferObj>(s.buffer_size);
             
-            // Get actual data length (may be less than buffer_size for last buffer)
-            size_t actual_len = std::min((size_t)s.buffer_size, (size_t)(s.n_samples - i * s.buffer_size));
-            
-            // Copy data from Rust snapshot into the AudioBuffer
-            size_t copied = backend_rust::snapshot_f32_get_buffer(
-                *rust_snap, i, ab->data(), actual_len
-            );
-            (void)copied; // Ignore return value for now
+            // Copy data from Rust buffer into AudioBuffer
+            size_t to_copy = std::min(info.len, (size_t)s.buffer_size);
+            if (info.data_ptr && ab->data() && to_copy > 0) {
+                memcpy(ab->data(), info.data_ptr, to_copy * sizeof(float));
+            }
             
             s.data->push_back(ab);
         }

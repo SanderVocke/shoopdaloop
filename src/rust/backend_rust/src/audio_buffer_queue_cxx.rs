@@ -1,39 +1,20 @@
 //! CXX bridge for AudioBufferQueue to expose to C++.
 
-#![allow(dead_code)]
-
-use crate::audio_buffer_queue::{AudioBufferQueue, AudioBufferQueueSnapshot};
+use crate::audio_buffer_queue::AudioBufferQueue;
 
 #[cxx::bridge(namespace = "backend_rust")]
 mod ffi {
+    // Buffer info struct - thin copy with just pointers
+    struct BufferPtrInfo {
+        data_ptr: *const f32,
+        len: usize,
+    }
+
     extern "Rust" {
-        // Snapshot type
-        type AudioBufferQueueSnapshot;
-
-        // Snapshot accessors
-        fn snapshot_f32_n_samples(snap: &AudioBufferQueueSnapshot) -> u32;
-        fn snapshot_f32_buffer_size(snap: &AudioBufferQueueSnapshot) -> u32;
-        fn snapshot_f32_n_buffers(snap: &AudioBufferQueueSnapshot) -> usize;
-
-        // Get buffer data as slice - returns number of elements copied
-        // out_data: pointer to output buffer
-        // max_len: maximum elements to copy
-        // Returns: actual number of elements copied
-        unsafe fn snapshot_f32_get_buffer(
-            snap: &AudioBufferQueueSnapshot,
-            buffer_idx: usize,
-            out_data: *mut f32,
-            max_len: usize,
-        ) -> usize;
-
         // Main BufferQueue type
         type AudioBufferQueue;
 
-        // Constructor - takes pool configuration
-        // pool_capacity: number of pre-allocated buffers
-        // low_water_mark: refill when below this count
-        // buffer_size: size of each buffer in elements (f32)
-        // max_buffers: max buffers in queue
+        // Constructor
         fn new_audio_buffer_queue_f32(
             pool_capacity: usize,
             low_water_mark: usize,
@@ -48,8 +29,6 @@ mod ffi {
         fn buffer_queue_f32_n_buffers(queue: &AudioBufferQueue) -> usize;
 
         // Mutations
-        // data: pointer to sample data
-        // length: number of samples
         unsafe fn buffer_queue_f32_put(
             queue: &mut AudioBufferQueue,
             data: *const f32,
@@ -60,15 +39,13 @@ mod ffi {
         fn buffer_queue_f32_set_max_buffers(queue: &mut AudioBufferQueue, max: u32);
         fn buffer_queue_f32_set_min_n_samples(queue: &mut AudioBufferQueue, n: u32);
 
-        // Snapshot
-        fn buffer_queue_f32_snapshot(queue: &AudioBufferQueue) -> Box<AudioBufferQueueSnapshot>;
+        // Snapshot - returns vector of buffer pointers (thin copies)
+        fn buffer_queue_f32_snapshot(queue: &AudioBufferQueue) -> Vec<BufferPtrInfo>;
 
         // Clear
         fn buffer_queue_f32_clear(queue: &mut AudioBufferQueue);
     }
 }
-
-// Snapshot implementation
 
 fn new_audio_buffer_queue_f32(
     pool_capacity: usize,
@@ -112,37 +89,28 @@ fn buffer_queue_f32_set_min_n_samples(queue: &mut AudioBufferQueue, n: u32) {
     queue.set_min_n_samples(n);
 }
 
-fn buffer_queue_f32_snapshot(queue: &AudioBufferQueue) -> Box<AudioBufferQueueSnapshot> {
-    Box::new(queue.snapshot())
-}
-
-// Snapshot accessors
-
-fn snapshot_f32_n_samples(snap: &AudioBufferQueueSnapshot) -> u32 {
-    snap.n_samples
-}
-
-fn snapshot_f32_buffer_size(snap: &AudioBufferQueueSnapshot) -> u32 {
-    snap.buffer_size
-}
-
-fn snapshot_f32_n_buffers(snap: &AudioBufferQueueSnapshot) -> usize {
-    snap.buffers.len()
-}
-
-unsafe fn snapshot_f32_get_buffer(
-    snap: &AudioBufferQueueSnapshot,
-    buffer_idx: usize,
-    out_data: *mut f32,
-    max_len: usize,
-) -> usize {
-    if buffer_idx >= snap.buffers.len() {
-        return 0;
+fn buffer_queue_f32_snapshot(queue: &AudioBufferQueue) -> Vec<ffi::BufferPtrInfo> {
+    let mut result = Vec::new();
+    
+    let n_buffers = queue.n_buffers();
+    let active_pos = queue.active_buffer_pos();
+    
+    for (i, buf) in queue.iter_buffers().enumerate() {
+        let filled_len = if i == n_buffers.saturating_sub(1) && n_buffers > 0 {
+            active_pos as usize
+        } else {
+            buf.len()
+        };
+        
+        if filled_len > 0 {
+            result.push(ffi::BufferPtrInfo {
+                data_ptr: buf.data_ptr(),
+                len: filled_len,
+            });
+        }
     }
-    let buf = &snap.buffers[buffer_idx];
-    let to_copy = buf.len().min(max_len);
-    std::ptr::copy_nonoverlapping(buf.as_ptr(), out_data, to_copy);
-    to_copy
+    
+    result
 }
 
 fn buffer_queue_f32_clear(queue: &mut AudioBufferQueue) {
