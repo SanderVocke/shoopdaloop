@@ -102,8 +102,16 @@ impl AudioBufferData {
 
 /// FIFO queue for audio buffers with automatic eviction.
 /// Uses RefillingPool for zero-allocation buffer reuse on the audio thread.
+/// 
+/// # Architecture
+/// - `buffers`: Completed buffers ready for consumption (FIFO)
+/// - `active_buffer`: Buffer currently being filled (not yet committed)
+/// - `active_buffer.n_samples`: Current fill position in active_buffer
+/// 
+/// This matches the C++ BufferQueue which stores only completed buffers,
+/// and tracks the fill position separately.
 pub struct AudioBufferQueue {
-    /// Internal storage for buffer wrappers
+    /// Completed buffers ready for consumption
     buffers: VecDeque<AudioBufferData>,
     /// Buffer pool for pre-allocated buffer reuse
     pool: RefillingPool<PooledBuffer>,
@@ -111,10 +119,8 @@ pub struct AudioBufferQueue {
     buffer_size: u32,
     /// Maximum number of buffers to store
     max_buffers: u32,
-    /// Current position within the active buffer
-    active_buffer_pos: u32,
-    /// Whether we have an active buffer started
-    has_active_buffer: bool,
+    /// Buffer currently being filled (None when fully flushed)
+    active_buffer: Option<AudioBufferData>,
 }
 
 impl AudioBufferQueue {
@@ -134,22 +140,21 @@ impl AudioBufferQueue {
             pool,
             buffer_size: buffer_size as u32,
             max_buffers,
-            active_buffer_pos: 0,
-            has_active_buffer: false,
+            active_buffer: None,
         }
     }
 
     /// Get the number of samples currently in the queue
     pub fn n_samples(&self) -> u32 {
-        if self.buffers.is_empty() {
-            return 0;
-        }
-        let completed_buffers = if self.has_active_buffer {
-            self.buffers.len() - 1
-        } else {
-            self.buffers.len()
-        };
-        (completed_buffers as u32) * self.buffer_size + self.active_buffer_pos
+        // Match C++ semantics:
+        // - Completed buffers contribute full buffer_size each
+        // - Active buffer contributes active_buffer_pos (current fill position)
+        // - When active_buffer is None, no samples in progress
+        let completed_samples = (self.buffers.len() as u32) * self.buffer_size;
+        let active_samples = self.active_buffer.as_ref()
+            .map(|b| b.n_samples as u32)
+            .unwrap_or(0);
+        completed_samples + active_samples
     }
 
     /// Get the buffer size
@@ -177,11 +182,11 @@ impl AudioBufferQueue {
 
     /// Get the number of buffers
     pub fn n_buffers(&self) -> usize {
-        if self.has_active_buffer {
-            self.buffers.len() + 1
-        } else {
-            self.buffers.len()
-        }
+        // Match C++: completed buffers + potentially active buffer
+        // If there's an active buffer with data, count it
+        let completed = self.buffers.len();
+        let has_active = self.active_buffer.is_some();
+        completed + if has_active { 1 } else { 0 }
     }
 
     /// Add samples to the queue - no allocations on audio thread
@@ -189,35 +194,57 @@ impl AudioBufferQueue {
         let mut remaining = data;
 
         while !remaining.is_empty() {
-            // Get or create a buffer to fill
-            let buf = match self.buffers.back_mut() {
-                Some(buf) if (buf.n_samples as u32) < self.buffer_size => buf,
-                _ => {
-                    // Current buffer is full or no buffers exist
-                    if self.buffers.len() >= self.max_buffers as usize {
-                        self.evict_front();
-                    }
-                    if let Some(new_buf) = self.get_pooled_buffer() {
-                        self.buffers.push_back(new_buf);
-                    } else {
-                        return; // Pool exhausted
-                    }
-                    self.buffers.back_mut().unwrap()
+            // If no active buffer, create one
+            if self.active_buffer.is_none() {
+                if let Some(new_buf) = self.get_pooled_buffer() {
+                    self.active_buffer = Some(new_buf);
+                } else {
+                    return; // Pool exhausted
                 }
-            };
+            }
 
-            // Calculate how much space is left
-            let space = (self.buffer_size as usize).saturating_sub(buf.n_samples);
+            // Get the active buffer
+            let active = self.active_buffer.as_mut().unwrap();
+            
+            // Check if active buffer is full
+            if (active.n_samples as u32) >= self.buffer_size {
+                // Commit the full buffer and create a new one
+                self.commit_active_buffer();
+                continue; // Will create new buffer on next iteration
+            }
+
+            // Calculate how much space is left in active buffer
+            let space = (self.buffer_size as usize).saturating_sub(active.n_samples);
             let to_copy = remaining.len().min(space);
 
             // Copy data directly into the buffer (no allocation)
-            let n = buf.n_samples;
-            let dest = &mut buf.pooled.data[n..n + to_copy];
+            let n = active.n_samples;
+            let dest = &mut active.pooled.data[n..n + to_copy];
             dest.copy_from_slice(&remaining[..to_copy]);
-            buf.n_samples += to_copy;
+            active.n_samples += to_copy;
 
             remaining = &remaining[to_copy..];
-            self.active_buffer_pos += to_copy as u32;
+        }
+        
+        // After putting data, if active buffer is now full, commit it
+        // Check by looking at n_samples before committing
+        let needs_commit = self.active_buffer.as_ref()
+            .map(|b| (b.n_samples as u32) >= self.buffer_size)
+            .unwrap_or(false);
+        if needs_commit {
+            self.commit_active_buffer();
+        }
+    }
+
+    /// Commit the active buffer to the completed buffers deque
+    fn commit_active_buffer(&mut self) {
+        if let Some(buf) = self.active_buffer.take() {
+            self.buffers.push_back(buf);
+            // C++ evicts AFTER push: while (buffers->size() > max_buffers)
+            // This means when size == max, after push we do one eviction
+            while (self.buffers.len() > self.max_buffers as usize) {
+                self.evict_front();
+            }
         }
     }
 
@@ -240,7 +267,6 @@ impl AudioBufferQueue {
         if let Some(buf) = self.buffers.pop_front() {
             self.return_to_pool(buf.pooled);
         }
-        self.has_active_buffer = true;
     }
 
     /// Return all buffers to pool
@@ -248,23 +274,24 @@ impl AudioBufferQueue {
         while let Some(buf) = self.buffers.pop_front() {
             self.return_to_pool(buf.pooled);
         }
+        if let Some(buf) = self.active_buffer.take() {
+            self.return_to_pool(buf.pooled);
+        }
     }
 
     /// Clear all buffers - returns them to the pool
     pub fn clear(&mut self) {
         self.return_all_to_pool();
-        self.active_buffer_pos = 0;
-        self.has_active_buffer = false;
     }
 
-    /// Get iterator over buffers for snapshot creation
+    /// Get iterator over all buffers (completed + active)
     pub fn iter_buffers(&self) -> impl Iterator<Item = &AudioBufferData> {
-        self.buffers.iter()
+        self.buffers.iter().chain(self.active_buffer.as_ref())
     }
 
-    /// Get active buffer position (filled samples in current buffer)
+    /// Get active buffer position (filled samples in active buffer)
     pub fn active_buffer_pos(&self) -> u32 {
-        self.active_buffer_pos
+        self.active_buffer.as_ref().map(|b| b.n_samples as u32).unwrap_or(0)
     }
 }
 
@@ -295,6 +322,18 @@ mod tests {
         queue.put(&data);
 
         assert_eq!(queue.n_samples(), 128);
+        // After putting exactly one buffer, it's the active buffer
+        // n_buffers counts active buffer
+        assert_eq!(queue.n_buffers(), 1);
+    }
+
+    #[test]
+    fn test_partial_buffer() {
+        let mut queue = AudioBufferQueue::new(20, 5, 128, 10);
+        let data = vec![1.0f32; 64];
+        queue.put(&data);
+
+        assert_eq!(queue.n_samples(), 64);
         assert_eq!(queue.n_buffers(), 1);
     }
 
@@ -305,8 +344,22 @@ mod tests {
         let data = vec![1.0f32; 300];
         queue.put(&data);
 
+        // 256 samples = 2 completed buffers (128 each) + 44 samples in active
         assert_eq!(queue.n_samples(), 300);
-        assert_eq!(queue.n_buffers(), 3);
+        assert_eq!(queue.n_buffers(), 3); // 2 completed + 1 active
+    }
+
+    #[test]
+    fn test_full_buffers() {
+        let mut queue = AudioBufferQueue::new(20, 5, 128, 10);
+        
+        // Fill 2 full buffers
+        let data = vec![1.0f32; 256];
+        queue.put(&data);
+
+        // 128 samples in each of 2 buffers
+        assert_eq!(queue.n_samples(), 256);
+        assert_eq!(queue.n_buffers(), 2);
     }
 
     #[test]
@@ -316,8 +369,11 @@ mod tests {
         let data = vec![1.0f32; 512];
         queue.put(&data);
 
-        assert!(queue.n_buffers() <= 4);
-        assert_eq!(queue.n_samples(), 512);
+        // With max_buffers=3:
+        // After 4 full buffers, the oldest is evicted
+        // Result: 3 completed buffers (384 samples)
+        assert_eq!(queue.n_samples(), 384);
+        assert_eq!(queue.n_buffers(), 3); // 3 completed, no active
     }
 
     #[test]
@@ -335,13 +391,16 @@ mod tests {
     #[test]
     fn test_set_max_buffers() {
         let mut queue = AudioBufferQueue::new(20, 5, 128, 5);
-        let data = vec![1.0f32; 512];
+        let data = vec![1.0f32; 640]; // 5 full buffers
         queue.put(&data);
 
-        assert!(queue.n_buffers() <= 6);
+        // After 5 full buffers: 4 completed + 1 active
+        assert_eq!(queue.n_buffers(), 5);
+        assert_eq!(queue.n_samples(), 640);
 
         queue.set_max_buffers(2);
 
-        assert!(queue.n_buffers() <= 3);
+        // Should now have 1 completed + 1 active
+        assert!(queue.n_buffers() <= 2);
     }
 }

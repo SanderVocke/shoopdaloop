@@ -110,20 +110,12 @@ fn buffer_queue_f32_set_min_n_samples(queue: &mut AudioBufferQueue, n: u32) {
 fn buffer_queue_f32_snapshot(queue: &AudioBufferQueue) -> Vec<ffi::BufferPtrInfo> {
     let mut result = Vec::new();
 
-    let n_buffers = queue.n_buffers();
-    let active_pos = queue.active_buffer_pos();
-
-    for (i, buf) in queue.iter_buffers().enumerate() {
-        let filled_len = if i == n_buffers.saturating_sub(1) && n_buffers > 0 {
-            active_pos as usize
-        } else {
-            buf.len()
-        };
-
-        if filled_len > 0 {
+    // Iterate over all buffers: completed + active
+    for buf in queue.iter_buffers() {
+        if buf.len() > 0 {
             result.push(ffi::BufferPtrInfo {
                 data_ptr: buf.data_ptr(),
-                len: filled_len,
+                len: buf.len(),
             });
         }
     }
