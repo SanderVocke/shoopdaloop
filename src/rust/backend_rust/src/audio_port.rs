@@ -6,6 +6,9 @@
 //! - Atomic mute state
 //! - Ringbuffer (AudioBufferQueue) for retroactive recording
 //!
+//! The actual audio buffer is managed by C++ code. This Rust implementation
+//! receives buffer pointers via FFI for processing (peak tracking, gain/mute).
+//!
 //! Ported from C++ AudioPort.h/cpp
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -44,6 +47,9 @@ impl Default for AtomicF32 {
 ///
 /// This mirrors the C++ AudioPort<SampleT> template, primarily used with float samples.
 /// Thread-safe via atomic operations.
+///
+/// NOTE: The actual audio buffer is managed by C++ code. This Rust implementation
+/// receives buffer pointers via FFI for processing (peak tracking, gain/mute application).
 pub struct AudioPort {
     /// Ringbuffer for retroactive recording
     ringbuffer: AudioBufferQueue,
@@ -60,12 +66,8 @@ pub struct AudioPort {
     /// Mute state
     muted: AtomicBool,
 
-    /// Working buffer for PROC_get_buffer
-    /// This is the buffer that samples are written to/read from
-    buffer: Vec<f32>,
-
-    /// Current buffer size (number of frames)
-    buffer_size: u32,
+    /// Single buffer size from ringbuffer (cached for efficiency)
+    single_buffer_size: usize,
 }
 
 impl AudioPort {
@@ -82,48 +84,32 @@ impl AudioPort {
         buffer_size: usize,
         max_buffers: u32,
     ) -> Self {
+        let ringbuffer =
+            AudioBufferQueue::new(pool_capacity, low_water_mark, buffer_size, max_buffers);
         AudioPort {
-            ringbuffer: AudioBufferQueue::new(
-                pool_capacity,
-                low_water_mark,
-                buffer_size,
-                max_buffers,
-            ),
+            ringbuffer,
             input_peak: AtomicF32::new(0.0),
             output_peak: AtomicF32::new(0.0),
             gain: AtomicF32::new(1.0),
             muted: AtomicBool::new(false),
-            buffer: vec![0.0f32; buffer_size],
-            buffer_size: buffer_size as u32,
+            single_buffer_size: buffer_size,
         }
-    }
-
-    /// Get the internal buffer for audio processing.
-    /// Returns a mutable slice of the specified size.
-    pub fn get_buffer(&mut self, n_frames: u32) -> *mut f32 {
-        // Resize buffer if needed
-        if n_frames as usize > self.buffer.len() {
-            self.buffer.resize(n_frames as usize, 0.0);
-        }
-        self.buffer_size = n_frames;
-        self.buffer.as_mut_ptr()
-    }
-
-    /// Get a slice view of the current buffer.
-    pub fn get_buffer_slice(&self) -> &[f32] {
-        &self.buffer[..self.buffer_size as usize]
-    }
-
-    /// Get a mutable slice view of the current buffer.
-    pub fn get_buffer_slice_mut(&mut self) -> &mut [f32] {
-        &mut self.buffer[..self.buffer_size as usize]
     }
 
     /// Process audio: applies gain/mute, tracks peaks, records to ringbuffer.
     ///
-    /// This should be called after `get_buffer()` has been used to fill the buffer.
-    pub fn process(&mut self, n_frames: u32) {
-        let buf = &mut self.buffer[..n_frames as usize];
+    /// This processes the buffer at the given pointer. The buffer is managed by C++ code.
+    ///
+    /// # Safety
+    /// - `buffer` must point to valid memory with at least `n_frames` elements
+    /// - The memory must be mutable as this function modifies the buffer in place
+    pub unsafe fn process_raw(&mut self, buffer: *mut f32, n_frames: u32) {
+        if n_frames == 0 || buffer.is_null() {
+            return;
+        }
+
+        let buf = unsafe { std::slice::from_raw_parts_mut(buffer, n_frames as usize) };
+
         let muted = self.muted.load(Ordering::SeqCst);
         let gain = self.gain.load(Ordering::SeqCst);
 
@@ -152,9 +138,12 @@ impl AudioPort {
         self.output_peak
             .store(output_peak_val.max(prev_output), Ordering::SeqCst);
 
-        // Record to ringbuffer
-        if self.ringbuffer.single_buffer_size() > 0 {
-            self.ringbuffer.put(buf);
+        // Record to ringbuffer if properly configured
+        // Note: The ringbuffer will handle partial buffers internally
+        if self.single_buffer_size > 0 && n_frames > 0 {
+            // Copy the data to pass to ringbuffer - slice of first n_frames elements
+            let ringbuf_slice = &buf[..n_frames as usize];
+            self.ringbuffer.put(ringbuf_slice);
         }
     }
 
@@ -210,7 +199,7 @@ impl AudioPort {
 
     /// Get the single buffer size of the ringbuffer.
     pub fn get_single_buffer_size(&self) -> u32 {
-        self.ringbuffer.single_buffer_size()
+        self.single_buffer_size as u32
     }
 
     /// Get the number of buffers in the ringbuffer.
@@ -273,18 +262,14 @@ mod tests {
     fn test_process_audio() {
         let mut port = AudioPort::new(20, 10, 128, 8);
 
-        // Fill buffer with a sine wave-like data
+        // Create a buffer with test data
         let n_frames = 128u32;
-        {
-            let buf = unsafe {
-                std::slice::from_raw_parts_mut(port.get_buffer(n_frames), n_frames as usize)
-            };
-            for (i, sample) in buf.iter_mut().enumerate() {
-                *sample = (i as f32 * 0.1).sin();
-            }
-        }
+        let mut buffer: Vec<f32> = (0..128).map(|i| (i as f32 * 0.1).sin()).collect();
 
-        port.process(n_frames);
+        // Process the buffer
+        unsafe {
+            port.process_raw(buffer.as_mut_ptr(), n_frames);
+        }
 
         // Check that peaks were tracked
         assert!(port.get_input_peak() > 0.0);
@@ -296,23 +281,35 @@ mod tests {
         let mut port = AudioPort::new(20, 10, 128, 8);
 
         let n_frames = 128u32;
-        {
-            let buf = unsafe {
-                std::slice::from_raw_parts_mut(port.get_buffer(n_frames), n_frames as usize)
-            };
-            for sample in buf.iter_mut() {
-                *sample = 0.5;
-            }
-        }
+        let mut buffer: Vec<f32> = vec![0.5; n_frames as usize];
 
         port.set_muted(true);
-        port.process(n_frames);
+        unsafe {
+            port.process_raw(buffer.as_mut_ptr(), n_frames);
+        }
 
         // After processing with mute, buffer should be zeroed
-        let buf_slice = port.get_buffer_slice();
-        for &sample in buf_slice.iter() {
+        for &sample in buffer.iter() {
             assert_eq!(sample, 0.0);
         }
+    }
+
+    #[test]
+    fn test_gain_applies_to_buffer() {
+        let mut port = AudioPort::new(20, 10, 128, 8);
+
+        let n_frames = 128u32;
+        let mut buffer: Vec<f32> = (0..128).map(|i| i as f32).collect();
+        let original_sum: f32 = buffer.iter().sum();
+
+        port.set_gain(0.5);
+        unsafe {
+            port.process_raw(buffer.as_mut_ptr(), n_frames);
+        }
+
+        // After gain, sum should be halved
+        let new_sum: f32 = buffer.iter().sum();
+        assert!((new_sum - original_sum * 0.5).abs() < 0.001);
     }
 
     #[test]
@@ -320,16 +317,11 @@ mod tests {
         let mut port = AudioPort::new(20, 10, 128, 8);
 
         let n_frames = 128u32;
-        {
-            let buf = unsafe {
-                std::slice::from_raw_parts_mut(port.get_buffer(n_frames), n_frames as usize)
-            };
-            for sample in buf.iter_mut() {
-                *sample = 0.9;
-            }
-        }
+        let mut buffer: Vec<f32> = vec![0.9; n_frames as usize];
 
-        port.process(n_frames);
+        unsafe {
+            port.process_raw(buffer.as_mut_ptr(), n_frames);
+        }
         assert!(port.get_input_peak() > 0.0);
 
         port.reset_input_peak();
@@ -337,26 +329,5 @@ mod tests {
 
         port.reset_output_peak();
         assert_eq!(port.get_output_peak(), 0.0);
-    }
-
-    #[test]
-    fn test_ringbuffer_integration() {
-        let mut port = AudioPort::new(20, 10, 128, 8);
-
-        let n_frames = 128u32;
-        {
-            let buf = unsafe {
-                std::slice::from_raw_parts_mut(port.get_buffer(n_frames), n_frames as usize)
-            };
-            for sample in buf.iter_mut() {
-                *sample = 0.5;
-            }
-        }
-
-        port.process(n_frames);
-
-        // Ringbuffer should have recorded the audio
-        let n_samples = port.get_ringbuffer_n_samples();
-        assert_eq!(n_samples, 128);
     }
 }

@@ -41,6 +41,7 @@ RustAudioPortF32::RustAudioPortF32(shoop_shared_ptr<UsedBufferPool> buffer_pool,
         max_buffers
     );
     
+    // Initialize buffer with given buffer_size
     m_buffer.resize(buffer_size);
     m_buffer_size = static_cast<uint32_t>(buffer_size);
 }
@@ -59,10 +60,17 @@ float* RustAudioPortF32::PROC_get_buffer(uint32_t n_frames) {
 }
 
 void RustAudioPortF32::PROC_process(uint32_t n_frames) {
-    if (n_frames == 0) return;
+    if (n_frames == 0 || m_buffer.empty()) {
+        return;
+    }
     
-    // Call Rust process
-    backend_rust::audio_port_process(**m_rust, n_frames);
+    // Verify m_rust is valid
+    if (!m_rust.has_value()) {
+        return;
+    }
+    
+    // Call Rust process with our buffer pointer
+    backend_rust::audio_port_process(**m_rust, m_buffer.data(), n_frames);
 }
 
 void RustAudioPortF32::set_gain(float gain) {

@@ -6,6 +6,9 @@
 //! This bridge exposes the Rust AudioPort implementation to C++.
 //! Uses the same pattern as audio_buffer_queue_cxx.rs for snapshot returns.
 //!
+//! NOTE: The audio buffer is managed by C++ code. The Rust implementation
+//! receives buffer pointers via FFI for processing (peak tracking, gain/mute).
+//!
 //! CXX Limitations:
 //! - snapshot() returns Vec<BufferPtrInfo> with raw pointers
 //! - C++ must memcpy data into AudioBuffer objects (acceptable for consumer thread)
@@ -38,13 +41,11 @@ mod ffi {
             max_buffers: u32,
         ) -> Box<AudioPort>;
 
-        // Get a buffer for audio processing
-        // Returns pointer to internal buffer, resized to n_frames if needed
-        // Note: Must call process() after filling the buffer
-        unsafe fn audio_port_get_buffer(port: &mut AudioPort, n_frames: u32) -> *mut f32;
-
         // Process audio: applies gain/mute, tracks peaks, records to ringbuffer
-        fn audio_port_process(port: &mut AudioPort, n_frames: u32);
+        // Takes a buffer pointer managed by C++ code
+        //
+        // Safety: buffer must point to valid memory with at least n_frames elements
+        unsafe fn audio_port_process(port: &mut AudioPort, buffer: *mut f32, n_frames: u32);
 
         // Gain control
         fn audio_port_set_gain(port: &AudioPort, gain: f32);
@@ -88,14 +89,9 @@ fn new_audio_port(
     ))
 }
 
-// Get buffer for audio processing
-unsafe fn audio_port_get_buffer(port: &mut AudioPort, n_frames: u32) -> *mut f32 {
-    port.get_buffer(n_frames)
-}
-
-// Process audio
-fn audio_port_process(port: &mut AudioPort, n_frames: u32) {
-    port.process(n_frames);
+// Process audio - takes buffer pointer from C++
+unsafe fn audio_port_process(port: &mut AudioPort, buffer: *mut f32, n_frames: u32) {
+    port.process_raw(buffer, n_frames);
 }
 
 // Gain control

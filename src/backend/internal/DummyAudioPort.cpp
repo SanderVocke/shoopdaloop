@@ -1,4 +1,5 @@
 #include "DummyAudioPort.h"
+#include "backend_rust/src/audio_port_cxx.rs.h"
 #include <algorithm>
 #include "fmt/format.h"
 #include <fmt/ranges.h>
@@ -53,8 +54,12 @@ void DummyAudioPort::PROC_process(uint32_t n_frames) {
         log<log_level_debug_trace>("Process {} frames", n_frames);
     }
 
-    // Call base class process
-    RustAudioPortF32::PROC_process(n_frames);
+    // Process our own m_buffer_data (not the base class buffer)
+    if (n_frames > 0 && !m_buffer_data.empty()) {
+        if (m_rust.has_value()) {
+            backend_rust::audio_port_process(**m_rust, m_buffer_data.data(), n_frames);
+        }
+    }
 
     auto buf = PROC_get_buffer(n_frames);
     uint32_t to_store = std::min(n_frames, m_n_requested_samples.load());

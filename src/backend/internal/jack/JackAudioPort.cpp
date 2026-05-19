@@ -1,4 +1,5 @@
 #include "JackAudioPort.h"
+#include "backend_rust/src/audio_port_cxx.rs.h"
 #include <string>
 #include "JackPort.h"
 #include "PortInterface.h"
@@ -48,8 +49,22 @@ float *GenericJackAudioPort<API>::PROC_get_buffer(uint32_t n_frames) {
 
 template<typename API>
 void GenericJackAudioPort<API>::PROC_process(uint32_t nframes) {
-    // Call base class process
-    RustAudioPortF32::PROC_process(nframes);
+    // Get the buffer we're supposed to process
+    auto buf = (float*) m_buffer.load();
+    if (!buf) {
+        buf = m_fallback_buffer.data();
+    }
+    
+    if (!buf || nframes == 0) {
+        return;
+    }
+    
+    if (!m_rust.has_value()) {
+        return;
+    }
+    
+    // Call Rust process with the correct buffer
+    backend_rust::audio_port_process(**m_rust, buf, nframes);
 }
 
 template<typename API>

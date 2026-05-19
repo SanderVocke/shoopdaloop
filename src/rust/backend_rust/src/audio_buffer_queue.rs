@@ -228,15 +228,26 @@ impl AudioBufferQueue {
             remaining = &remaining[to_copy..];
         }
 
-        // After putting data, if active buffer is now full, commit it
-        // Check by looking at n_samples before committing
-        let needs_commit = self
+        // For audio recording, commit the active buffer even if not full
+        // This ensures data is available in the ringbuffer
+        // Only commit if there's actual data and more data might come later
+        let should_commit = self
             .active_buffer
             .as_ref()
-            .map(|b| (b.n_samples as u32) >= self.buffer_size)
+            .map(|b| b.n_samples > 0)
             .unwrap_or(false);
-        if needs_commit {
-            self.commit_active_buffer();
+
+        // Only auto-commit if the data exactly filled the buffer
+        // (indicates end of processing block)
+        if should_commit {
+            let is_full = self
+                .active_buffer
+                .as_ref()
+                .map(|b| b.n_samples >= self.buffer_size as usize)
+                .unwrap_or(false);
+            if is_full {
+                self.commit_active_buffer();
+            }
         }
     }
 

@@ -59,11 +59,11 @@ public:
     using UsedBufferPool = BufferPool<float>;
     using RingbufferSnapshot = RustAudioPortSnapshot;
 
-private:
+protected:
     // Rust implementation - wrapped in optional since rust::Box has no default constructor
     std::optional<rust::Box<backend_rust::AudioPort>> m_rust;
     
-    // Buffer for PROC_get_buffer
+    // Buffer for PROC_get_buffer (used by subclasses)
     std::vector<float> m_buffer;
     uint32_t m_buffer_size = 0;
 

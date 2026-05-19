@@ -13,7 +13,7 @@ Successfully ported C++ `AudioPort<SampleT>` to Rust! The original C++ AudioPort
   - Atomic gain control
   - Atomic mute state
   - Ringbuffer integration via `AudioBufferQueue`
-  - `PROC_process()` - applies gain/mute, tracks peaks, records to ringbuffer
+  - `process_raw()` - processes audio buffer via FFI pointer
 - ✅ Created `audio_port_cxx.rs` - CXX bridge for FFI
 - ✅ Updated `lib.rs` - added module declarations
 - ✅ Updated `build.rs` - added CXX bridge to build
@@ -59,6 +59,8 @@ Successfully ported C++ `AudioPort<SampleT>` to Rust! The original C++ AudioPort
 C++ (RustAudioPortF32) → CXX Bridge → Rust (AudioPort) → AudioBufferQueue
 ```
 
+The key insight is that each C++ audio port subclass manages its own buffer. The Rust implementation receives buffer pointers via FFI for processing (peak tracking, gain/mute application).
+
 #### Type Changes
 - Old: `AudioPort<audio_sample_t>` (template)
 - New: `RustAudioPortF32` (concrete class)
@@ -71,11 +73,15 @@ C++ (RustAudioPortF32) → CXX Bridge → Rust (AudioPort) → AudioBufferQueue
 - ✅ `cargo build` succeeds
 - ✅ `RUSTFLAGS="-D warnings" cargo build` succeeds
 
+## Test Results
+- ✅ All 149 test cases pass
+- ✅ All 5894 assertions pass
+
 ## Notes
 - Only `float` samples are currently supported (AudioPort was mainly used with float anyway)
 - The `int` specialization was rarely used and removed
 - AudioChannel<int> is still supported but adopt_ringbuffer_contents only works for float
-- Tests pass after updating to use new types
+- Each audio port subclass (InternalAudioPort, DummyAudioPort, JackAudioPort) has its own buffer and overrides PROC_process() to use its own buffer instead of the base class buffer
 
 ## Files Changed Summary
 
@@ -92,6 +98,7 @@ C++ (RustAudioPortF32) → CXX Bridge → Rust (AudioPort) → AudioBufferQueue
 ### Modified Files (30+ files)
 - `src/rust/backend_rust/src/lib.rs`
 - `src/rust/backend_rust/build.rs`
+- `src/rust/backend_rust/src/audio_buffer_queue.rs`
 - `src/backend/internal/InternalAudioPort.h/cpp`
 - `src/backend/internal/DummyAudioPort.h/cpp`
 - `src/backend/internal/jack/JackAudioPort.h/cpp`

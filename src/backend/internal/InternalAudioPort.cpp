@@ -56,13 +56,24 @@ void* InternalAudioPort::maybe_driver_handle() const {
 }
 
 void InternalAudioPort::PROC_prepare(uint32_t nframes) {
-    PROC_get_buffer(nframes);
+    if (nframes > m_buffer.size() || m_buffer.size() == 0) {
+        m_buffer.resize(std::max(nframes, (uint32_t)1));
+    }
     memset((void*) m_buffer.data(), 0, nframes * sizeof(float));
 }
 
 void InternalAudioPort::PROC_process(uint32_t nframes) {
-    // Call base class process
-    RustAudioPortF32::PROC_process(nframes);
+    // Process our own m_buffer (not the base class m_buffer)
+    if (nframes == 0 || m_buffer.empty()) {
+        return;
+    }
+    
+    if (!m_rust.has_value()) {
+        return;
+    }
+    
+    // Call Rust process with our (InternalAudioPort's) buffer
+    backend_rust::audio_port_process(**m_rust, m_buffer.data(), nframes);
 }
 
 unsigned InternalAudioPort::input_connectability() const {

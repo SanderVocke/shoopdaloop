@@ -1,5 +1,6 @@
 #pragma once
 #include "RustAudioPort.h"
+#include "backend_rust/src/audio_port_cxx.rs.h"
 #include <vector>
 #include "shoop_shared_ptr.h"
 
