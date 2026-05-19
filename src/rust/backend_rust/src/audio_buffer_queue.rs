@@ -246,7 +246,7 @@ impl AudioBufferQueue {
             self.buffers.push_back(buf);
             // C++ evicts AFTER push: while (buffers->size() > max_buffers)
             // This means when size == max, after push we do one eviction
-            while (self.buffers.len() > self.max_buffers as usize) {
+            while self.buffers.len() > self.max_buffers as usize {
                 self.evict_front();
             }
         }
