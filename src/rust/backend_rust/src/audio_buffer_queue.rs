@@ -102,12 +102,12 @@ impl AudioBufferData {
 
 /// FIFO queue for audio buffers with automatic eviction.
 /// Uses RefillingPool for zero-allocation buffer reuse on the audio thread.
-/// 
+///
 /// # Architecture
 /// - `buffers`: Completed buffers ready for consumption (FIFO)
 /// - `active_buffer`: Buffer currently being filled (not yet committed)
 /// - `active_buffer.n_samples`: Current fill position in active_buffer
-/// 
+///
 /// This matches the C++ BufferQueue which stores only completed buffers,
 /// and tracks the fill position separately.
 pub struct AudioBufferQueue {
@@ -151,7 +151,9 @@ impl AudioBufferQueue {
         // - Active buffer contributes active_buffer_pos (current fill position)
         // - When active_buffer is None, no samples in progress
         let completed_samples = (self.buffers.len() as u32) * self.buffer_size;
-        let active_samples = self.active_buffer.as_ref()
+        let active_samples = self
+            .active_buffer
+            .as_ref()
             .map(|b| b.n_samples as u32)
             .unwrap_or(0);
         completed_samples + active_samples
@@ -205,7 +207,7 @@ impl AudioBufferQueue {
 
             // Get the active buffer
             let active = self.active_buffer.as_mut().unwrap();
-            
+
             // Check if active buffer is full
             if (active.n_samples as u32) >= self.buffer_size {
                 // Commit the full buffer and create a new one
@@ -225,10 +227,12 @@ impl AudioBufferQueue {
 
             remaining = &remaining[to_copy..];
         }
-        
+
         // After putting data, if active buffer is now full, commit it
         // Check by looking at n_samples before committing
-        let needs_commit = self.active_buffer.as_ref()
+        let needs_commit = self
+            .active_buffer
+            .as_ref()
             .map(|b| (b.n_samples as u32) >= self.buffer_size)
             .unwrap_or(false);
         if needs_commit {
@@ -291,7 +295,10 @@ impl AudioBufferQueue {
 
     /// Get active buffer position (filled samples in active buffer)
     pub fn active_buffer_pos(&self) -> u32 {
-        self.active_buffer.as_ref().map(|b| b.n_samples as u32).unwrap_or(0)
+        self.active_buffer
+            .as_ref()
+            .map(|b| b.n_samples as u32)
+            .unwrap_or(0)
     }
 }
 
@@ -352,7 +359,7 @@ mod tests {
     #[test]
     fn test_full_buffers() {
         let mut queue = AudioBufferQueue::new(20, 5, 128, 10);
-        
+
         // Fill 2 full buffers
         let data = vec![1.0f32; 256];
         queue.put(&data);
