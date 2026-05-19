@@ -12,8 +12,8 @@
 
 DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction, shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool, shoop_weak_ptr<DummyExternalConnections> external_connections)
     : RustAudioPortF32(buffer_pool, 32),
-      DummyPort(name, direction, PortDataType::Audio, external_connections),
-      WithCommandQueue(100),
+      m_dummy_port_core(name, direction, this, external_connections),
+      m_command_queue(100, 1000, 1000),
       m_name(name),
       m_direction(direction),
       m_queued_data(128) { }
@@ -28,7 +28,7 @@ float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames) {
 }
 
 void DummyAudioPort::queue_data(uint32_t n_frames, audio_sample_t const *data) {
-    exec_process_thread_command([this, n_frames, data]() {
+    m_command_queue.queue_and_wait([this, n_frames, data]() {
         auto s = m_queued_data.read_available();
         auto v = std::vector<audio_sample_t>(data, data + n_frames);
         log<log_level_debug>("Queueing {} samples, {} sets queued total", n_frames, s);
@@ -41,13 +41,13 @@ void DummyAudioPort::queue_data(uint32_t n_frames, audio_sample_t const *data) {
 
 bool DummyAudioPort::get_queue_empty() {
     bool is_empty = false;
-    exec_process_thread_command([this, &is_empty]() {
+    m_command_queue.queue_and_wait([this, &is_empty]() {
         is_empty = m_queued_data.empty();
     });
     return is_empty;
 }
 
-DummyAudioPort::~DummyAudioPort() { DummyPort::close(); }
+DummyAudioPort::~DummyAudioPort() { m_dummy_port_core.close(); }
 
 void DummyAudioPort::PROC_process(uint32_t n_frames) {
     if (n_frames > 0) {
@@ -76,7 +76,7 @@ void DummyAudioPort::PROC_process(uint32_t n_frames) {
 }
 
 void DummyAudioPort::PROC_prepare(uint32_t n_frames) {
-    PROC_handle_command_queue();
+    m_command_queue.PROC_exec_all();
     auto buf = PROC_get_buffer(n_frames);
     uint32_t filled = 0;
     while (!m_queued_data.empty() && filled < n_frames) {
@@ -101,14 +101,14 @@ void DummyAudioPort::PROC_prepare(uint32_t n_frames) {
 }
 
 void DummyAudioPort::request_data(uint32_t n_frames) {
-    exec_process_thread_command([this, n_frames]() {
+    m_command_queue.queue_and_wait([this, n_frames]() {
         m_n_requested_samples += n_frames;
     });
 }
 
 std::vector<audio_sample_t> DummyAudioPort::dequeue_data(uint32_t n) {
     std::vector<audio_sample_t> rval;
-    exec_process_thread_command([this, n, &rval]() {
+    m_command_queue.queue_and_wait([this, n, &rval]() {
         auto s = m_retained_samples.size();
         if (n > s) {
             throw_error<std::runtime_error>("Not enough retained samples");

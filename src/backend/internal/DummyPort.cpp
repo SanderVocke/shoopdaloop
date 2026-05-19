@@ -23,38 +23,37 @@ std::vector<ExternalPortDescriptor> DummyExternalConnections::find_external_port
 }
 
 
-DummyPort::DummyPort(
+DummyPortCore::DummyPortCore(
     std::string name,
     shoop_port_direction_t direction,
-    PortDataType type,
+    void* driver_handle,
     shoop_weak_ptr<DummyExternalConnections> external_connections
-) : m_name(name), m_direction(direction), m_external_connections(external_connections) {
-    (void)type;
+) : m_name(name), m_direction(direction), m_driver_handle(driver_handle), m_external_connections(external_connections) {
 }
 
-const char* DummyPort::name() const { return m_name.c_str(); }
+const char* DummyPortCore::name() const { return m_name.c_str(); }
 
-void DummyPort::close() {}
+void DummyPortCore::close() {}
 
-PortExternalConnectionStatus DummyPort::get_external_connection_status() const {
+PortExternalConnectionStatus DummyPortCore::get_external_connection_status() const {
     if (auto e = m_external_connections.lock()) {
         return e->connection_status_of(this);
     }
     return PortExternalConnectionStatus();
 }
 
-void DummyPort::connect_external(std::string name) {
+void DummyPortCore::connect_external(std::string name) {
     if (auto e = m_external_connections.lock()) {
         e->connect(this, name);
     }
 }
 
-void DummyPort::disconnect_external(std::string name) {
+void DummyPortCore::disconnect_external(std::string name) {
     if (auto e = m_external_connections.lock()) {
         e->disconnect(this, name);
     }
 }
 
-void *DummyPort::maybe_driver_handle() const {
-    return (void*)this;
+void *DummyPortCore::maybe_driver_handle() const {
+    return m_driver_handle;
 }
