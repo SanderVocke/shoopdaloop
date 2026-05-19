@@ -32,4 +32,9 @@ public:
     void PROC_exec_all();
 
     void clear();
+
+    // Convenience methods (previously provided by WithCommandQueue mixin)
+    void exec_process_thread_command(std::function<void()> fn) { queue_and_wait(std::move(fn)); }
+    void queue_process_thread_command(std::function<void()> fn) { queue(std::move(fn)); }
+    void PROC_handle_command_queue() { PROC_exec_all(); }
 };

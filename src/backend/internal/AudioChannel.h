@@ -2,7 +2,7 @@
 #include "ChannelInterface.h"
 #include "BufferPool.h"
 #include "AudioBuffer.h"
-#include "WithCommandQueue.h"
+#include "CommandQueue.h"
 #include "LoggingEnabled.h"
 #include <stdint.h>
 #include <vector>
@@ -10,7 +10,6 @@
 
 template<typename SampleT>
 class AudioChannel : public ChannelInterface,
-                            private WithCommandQueue,
                             private ModuleLoggingEnabled<"Backend.AudioChannel"> {   
 public:
     typedef AudioBuffer<SampleT> BufferObj;
@@ -18,6 +17,7 @@ public:
     typedef shoop_shared_ptr<BufferObj> Buffer;
 
 private:
+    CommandQueue m_command_queue;
 
     struct Buffers;
 

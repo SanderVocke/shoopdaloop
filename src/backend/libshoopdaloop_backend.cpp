@@ -6,7 +6,7 @@
 #include "GraphAudioPort.h"
 #include "GraphMidiPort.h"
 #include "SerializeableStateInterface.h"
-#include "WithCommandQueue.h"
+#include "CommandQueue.h"
 #include "shoop_globals.h"
 
 // System
@@ -244,14 +244,6 @@ RType evaluate_before_or_after_process(std::function<RType()> fn, bool predicate
     if (predicate) { return fn(); }
     else {
         queue.queue_and_wait([](){});
-        return fn();
-    }
-}
-template<typename RType>
-RType evaluate_before_or_after_process(std::function<RType()> fn, bool predicate, WithCommandQueue &queue) {
-    if (predicate) { return fn(); }
-    else {
-        queue.exec_process_thread_command([](){});
         return fn();
     }
 }
@@ -768,7 +760,7 @@ shoop_audio_channel_data_t *get_audio_channel_data (shoopdaloop_loop_audio_chann
           return external_audio_data(_channel->maybe_audio()->get_data());
         },
         _chan->maybe_audio(),
-        *_backend);
+        _backend->get_command_queue());
   }, nullptr);
 }
 
@@ -785,7 +777,7 @@ shoop_midi_sequence_t *get_midi_channel_data (shoopdaloop_loop_midi_channel_t  *
           return _channel->maybe_midi()->retrieve_contents();
         },
         _chan->maybe_midi(),
-        *_backend);
+        _backend->get_command_queue());
 
     return external_midi_data(contents);
   }, nullptr);
@@ -804,7 +796,7 @@ void load_audio_channel_data  (shoopdaloop_loop_audio_channel_t *channel, shoop_
           _channel->maybe_audio()->load_data(data->data, data->n_samples);
         },
         _chan->maybe_audio(),
-        *_backend);
+        _backend->get_command_queue());
   });
 }
 
@@ -822,7 +814,7 @@ void load_midi_channel_data (shoopdaloop_loop_midi_channel_t  *channel, shoop_mi
           _channel->maybe_midi()->set_contents(contents, data->length_samples);
         },
         _chan->maybe_midi(),
-        *_backend);
+        _backend->get_command_queue());
   });
 }
 
@@ -1462,7 +1454,7 @@ shoop_audio_channel_state_info_t *get_audio_channel_state (shoopdaloop_loop_audi
     auto audio = evaluate_before_or_after_process<LoopAudioChannel*>(
         [&]() { return chan->maybe_audio(); },
         chan->maybe_audio(),
-        *_backend);
+        _backend->get_command_queue());
     if (!audio) { return nullptr; }
     r->output_peak = audio->get_output_peak();
     r->gain = audio->get_gain();
@@ -1488,7 +1480,7 @@ shoop_midi_channel_state_info_t *get_midi_channel_state   (shoopdaloop_loop_midi
     auto midi = evaluate_before_or_after_process<LoopMidiChannel*>(
         [&]() { return chan->maybe_midi(); },
         chan->maybe_midi(),
-        *_backend);
+        _backend->get_command_queue());
     if (!midi) { return nullptr; }
     r->n_events_triggered = midi->get_n_events_triggered();
     r->n_notes_active = midi->get_n_notes_active();

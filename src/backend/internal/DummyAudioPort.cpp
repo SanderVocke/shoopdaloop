@@ -14,8 +14,6 @@ DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t directio
     : RustAudioPortF32(buffer_pool, 32),
       m_dummy_port_core(name, direction, this, external_connections),
       m_command_queue(100, 1000, 1000),
-      m_name(name),
-      m_direction(direction),
       m_queued_data(128) { }
 
 float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames) {
@@ -124,11 +122,11 @@ std::vector<audio_sample_t> DummyAudioPort::dequeue_data(uint32_t n) {
 }
 
 unsigned DummyAudioPort::input_connectability() const {
-    return (m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
+    return (m_dummy_port_core.m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
 }
 
 unsigned DummyAudioPort::output_connectability() const {
-    return (m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_Internal : ShoopPortConnectability_External;
+    return (m_dummy_port_core.m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_Internal : ShoopPortConnectability_External;
 }
 
 PortExternalConnectionStatus DummyAudioPort::get_external_connection_status() const {

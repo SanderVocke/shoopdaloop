@@ -1,5 +1,4 @@
 #include "AudioMidiLoop.h"
-#include "WithCommandQueue.h"
 #include "BufferPool.h"
 #include "shoop_globals.h"
 #include "shoop_shared_ptr.h"
@@ -23,7 +22,7 @@ shoop_shared_ptr<AudioChannel<SampleT>> AudioMidiLoop::add_audio_channel(
         shoop_static_pointer_cast<ChannelInterface>(channel)
     ); };
     if (thread_safe) {
-        exec_process_thread_command(fn);
+        m_command_queue.exec_process_thread_command(fn);
     } else {
         fn();
     }
@@ -42,7 +41,7 @@ AudioMidiLoop::add_midi_channel(uint32_t data_size, shoop_channel_mode_t mode,
         );
     };
     if (thread_safe) {
-        exec_process_thread_command(fn);
+        m_command_queue.exec_process_thread_command(fn);
     } else {
         fn();
     }
@@ -54,7 +53,7 @@ shoop_shared_ptr<MidiChannel>
 AudioMidiLoop::midi_channel(uint32_t idx, bool thread_safe) {
     shoop_shared_ptr<ChannelInterface> iface;
     if (thread_safe) {
-        exec_process_thread_command(
+        m_command_queue.exec_process_thread_command(
             [this, idx, &iface]() { iface = mp_midi_channels.at(idx); });
     } else {
         iface = mp_midi_channels.at(idx);
@@ -74,7 +73,7 @@ shoop_shared_ptr<AudioChannel<SampleT>>
 AudioMidiLoop::audio_channel(uint32_t idx, bool thread_safe) {
     shoop_shared_ptr<ChannelInterface> iface;
     if (thread_safe) {
-        exec_process_thread_command(
+        m_command_queue.exec_process_thread_command(
             [this, idx, &iface]() { iface = shoop_static_pointer_cast<ChannelInterface>(mp_audio_channels.at(idx)); });
     } else {
         iface = mp_audio_channels.at(idx);
@@ -91,7 +90,7 @@ AudioMidiLoop::audio_channel(uint32_t idx, bool thread_safe) {
 uint32_t AudioMidiLoop::n_audio_channels(bool thread_safe) {
     uint32_t rval;
     if (thread_safe) {
-        exec_process_thread_command(
+        m_command_queue.exec_process_thread_command(
             [this, &rval]() { rval = mp_audio_channels.size(); });
     } else {
         rval = mp_audio_channels.size();
@@ -102,7 +101,7 @@ uint32_t AudioMidiLoop::n_audio_channels(bool thread_safe) {
 uint32_t AudioMidiLoop::n_midi_channels(bool thread_safe) {
     uint32_t rval;
     if (thread_safe) {
-        exec_process_thread_command(
+        m_command_queue.exec_process_thread_command(
             [this, &rval]() { rval = mp_midi_channels.size(); });
     } else {
         rval = mp_midi_channels.size();
@@ -117,7 +116,7 @@ void AudioMidiLoop::delete_audio_channel(shoop_shared_ptr<ChannelInterface> chan
                       [&](auto const &e) { return e.get() == chan.get(); });
     };
     if (thread_safe) {
-        exec_process_thread_command(fn);
+        m_command_queue.exec_process_thread_command(fn);
     } else {
         fn();
     }
@@ -130,7 +129,7 @@ void AudioMidiLoop::delete_midi_channel(shoop_shared_ptr<ChannelInterface> chan,
                       [&](auto const &e) { return e.get() == chan.get(); });
     };
     if (thread_safe) {
-        exec_process_thread_command(fn);
+        m_command_queue.exec_process_thread_command(fn);
     } else {
         fn();
     }

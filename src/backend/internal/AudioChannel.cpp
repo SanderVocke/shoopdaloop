@@ -1,6 +1,7 @@
 #include "AudioChannel.h"
 #include "RustAudioPort.h"
 #include "types.h"
+#include "shoop_globals.h"
 #include "channel_mode_helpers.h"
 #include <boost/lockfree/policies.hpp>
 #include <cmath>
@@ -153,7 +154,7 @@ template <typename SampleT>
 AudioChannel<SampleT>::AudioChannel(
     shoop_shared_ptr<UsedBufferPool> buffer_pool, uint32_t initial_max_buffers,
     shoop_channel_mode_t mode)
-    : WithCommandQueue(50), ma_buffer_pool(buffer_pool),
+    : m_command_queue(50, 1000, 1000), ma_buffer_pool(buffer_pool),
       ma_buffers_data_length(0), mp_prerecord_buffers_data_length(0),
       ma_buffer_size(buffer_pool->elems_per_buffer()),
       mp_recording_source_buffer(nullptr), mp_playback_target_buffer(nullptr),
@@ -203,7 +204,7 @@ AudioChannel<SampleT>::operator=(AudioChannel<SampleT> const &other) {
 }
 
 template <typename SampleT>
-AudioChannel<SampleT>::AudioChannel() : ma_buffer_size(1) {}
+AudioChannel<SampleT>::AudioChannel() : m_command_queue(shoop_constants::command_queue_size, 1000, 1000), ma_buffer_size(1) {}
 
 template <typename SampleT> AudioChannel<SampleT>::~AudioChannel() {}
 
@@ -222,7 +223,7 @@ void AudioChannel<SampleT>::PROC_process(
     log<log_level_debug_trace>("process");
 
     // Execute any commands queued from other threads.
-    PROC_handle_command_queue();
+    m_command_queue.PROC_handle_command_queue();
 
     auto process_params = get_channel_process_params(
         mode, maybe_next_mode, maybe_next_mode_delay_cycles,
@@ -428,7 +429,7 @@ void AudioChannel<SampleT>::adopt_ringbuffer_contents(
     };
 
     if (thread_safe) {
-        queue_process_thread_command(fn);
+        m_command_queue.queue_process_thread_command(fn);
     } else {
         fn();
     }
@@ -462,7 +463,7 @@ void AudioChannel<SampleT>::load_data(SampleT *samples, uint32_t len,
     };
 
     if (thread_safe) {
-        exec_process_thread_command(cmd);
+        m_command_queue.exec_process_thread_command(cmd);
     } else {
         cmd();
     }
@@ -478,7 +479,7 @@ std::vector<SampleT> AudioChannel<SampleT>::get_data(bool thread_safe) {
     };
 
     if (thread_safe) {
-        exec_process_thread_command(cmd);
+        m_command_queue.exec_process_thread_command(cmd);
     } else {
         cmd();
     }
