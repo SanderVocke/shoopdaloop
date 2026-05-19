@@ -67,7 +67,24 @@ impl Debug for BufferPool {
 
 /// The concrete Rust type for the opaque `BufferHandle`.
 /// This must be a distinct struct, not a type alias, for cxx.
-pub struct BufferHandle(Vec<u8>);
+pub struct BufferHandle(pub Vec<u8>);
+
+impl BufferHandle {
+    /// Get mutable access to the underlying bytes.
+    pub fn as_bytes_mut(&mut self) -> &mut [u8] {
+        &mut self.0
+    }
+
+    /// Get immutable access to the underlying bytes.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    /// Get the byte length.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
 
 impl Debug for BufferHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

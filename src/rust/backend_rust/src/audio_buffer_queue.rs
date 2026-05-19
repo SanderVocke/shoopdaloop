@@ -1,64 +1,131 @@
 //! Audio buffer queue implementation for audio processing.
 //!
 //! Ported from C++ BufferQueue.
-//! See: src/backend/internal/BufferQueue.cpp (master branch) for exact semantics.
-//!
-//! Key behaviors from C++:
-//! - buffers is a deque of shared buffers
-//! - active buffer position tracked separately
-//! - n_samples = (buffers.size() - 1) * buffer_size + active_pos
-//! - PROC_get returns a snapshot (vector copy) of all buffers
+//! Uses reference-counted buffers (Arc<SharedBufferHandle>) to avoid
+//! deep copies when creating snapshots, matching C++ shared_ptr behavior.
 
+use std::cell::UnsafeCell;
 use std::collections::VecDeque;
+use std::sync::Weak;
 
 use crate::refilling_pool::refilling_pool::RefillingPool;
+use crate::refilling_pool::refilling_pool_cxx::BufferHandle;
 
-/// A buffer wrapper that wraps a pool-allocated Vec
-#[derive(Debug, Clone)]
-pub struct PooledBuffer {
-    data: Vec<f32>,
+/// A reference-counted buffer handle.
+///
+/// Wraps a Box<BufferHandle> from the pool. When the last Arc reference
+/// is dropped, the buffer is returned to the pool for reuse.
+///
+/// This mirrors the C++ pattern where AudioBuffer has a weak reference
+/// back to the BufferPool and returns itself in its destructor.
+pub struct SharedBufferHandle {
+    buffer: UnsafeCell<Option<Box<BufferHandle>>>,
+    pool: Weak<RefillingPool<BufferHandle>>,
 }
 
-impl PooledBuffer {
-    pub fn new(size: usize) -> Self {
+impl SharedBufferHandle {
+    /// Create a shared handle from a Box obtained from the pool.
+    fn new(buffer: Box<BufferHandle>, pool: &std::sync::Arc<RefillingPool<BufferHandle>>) -> Self {
         Self {
-            data: vec![0.0f32; size],
+            buffer: UnsafeCell::new(Some(buffer)),
+            pool: std::sync::Arc::downgrade(pool),
+        }
+    }
+
+    /// Get mutable access to the underlying data as f32 slice.
+    /// SAFETY: This is safe as long as there are no concurrent mutable accesses.
+    /// The AudioBufferQueue ensures exclusive access to the active buffer.
+    pub fn as_f32_mut(&self) -> &mut [f32] {
+        let buf_opt = unsafe { &mut *self.buffer.get() };
+        let buf = buf_opt.as_mut().expect("buffer was already released");
+        let bytes = buf.as_bytes_mut();
+        let len = bytes.len() / std::mem::size_of::<f32>();
+        let ptr = bytes.as_mut_ptr() as *mut f32;
+        unsafe { std::slice::from_raw_parts_mut(ptr, len) }
+    }
+
+    /// Get immutable access to the underlying data as f32 slice.
+    pub fn as_f32(&self) -> &[f32] {
+        let buf_opt = unsafe { &*self.buffer.get() };
+        let buf = buf_opt.as_ref().expect("buffer was already released");
+        let bytes = buf.as_bytes();
+        let len = bytes.len() / std::mem::size_of::<f32>();
+        let ptr = bytes.as_ptr() as *const f32;
+        unsafe { std::slice::from_raw_parts(ptr, len) }
+    }
+
+    /// Get raw pointer to data.
+    pub fn data_ptr(&self) -> *const f32 {
+        let buf_opt = unsafe { &*self.buffer.get() };
+        let buf = buf_opt.as_ref().expect("buffer was already released");
+        buf.as_bytes().as_ptr() as *const f32
+    }
+
+    /// Get total capacity in samples.
+    pub fn capacity(&self) -> usize {
+        let buf_opt = unsafe { &*self.buffer.get() };
+        let buf = buf_opt.as_ref().expect("buffer was already released");
+        buf.len() / std::mem::size_of::<f32>()
+    }
+}
+
+impl Drop for SharedBufferHandle {
+    fn drop(&mut self) {
+        // When the last Arc is dropped, return the buffer to the pool
+        let buf_opt = unsafe { &mut *self.buffer.get() };
+        if let Some(buf) = buf_opt.take() {
+            if let Some(pool) = self.pool.upgrade() {
+                let pool: &RefillingPool<BufferHandle> = &pool;
+                pool.release(buf);
+            }
+            // If pool is gone, buf is dropped and memory is freed
         }
     }
 }
 
-/// Wrapper around audio buffer data for the queue
-#[derive(Debug, Clone)]
+/// Wrapper around audio buffer data for the queue.
+/// Holds an Arc to a SharedBufferHandle for cheap cloning.
+#[derive(Clone)]
 pub struct AudioBufferData {
     /// Number of valid samples in this buffer
     pub n_samples: usize,
-    /// The pooled buffer
-    pooled: PooledBuffer,
+    /// Reference-counted buffer handle
+    buffer: std::sync::Arc<SharedBufferHandle>,
 }
 
 impl AudioBufferData {
-    pub fn new(buffer_size: usize) -> Self {
-        Self {
-            n_samples: 0,
-            pooled: PooledBuffer::new(buffer_size),
-        }
-    }
-
     pub fn len(&self) -> usize {
         self.n_samples
     }
 
     pub fn as_slice(&self) -> &[f32] {
-        &self.pooled.data[..self.n_samples]
+        &self.buffer.as_f32()[..self.n_samples]
     }
 
     pub fn data_ptr(&self) -> *const f32 {
-        self.pooled.data.as_ptr()
+        self.buffer.data_ptr()
     }
 
-    /// Get sample at index (for testing)
+    pub fn capacity(&self) -> usize {
+        self.buffer.capacity()
+    }
+
+    pub fn as_f32_mut(&self) -> &mut [f32] {
+        self.buffer.as_f32_mut()
+    }
+
+    /// Get sample at index (for testing).
     pub fn at(&self, index: usize) -> f32 {
-        self.pooled.data[index]
+        self.as_slice()[index]
+    }
+}
+
+impl std::fmt::Debug for AudioBufferData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AudioBufferData")
+            .field("n_samples", &self.n_samples)
+            .field("capacity", &self.capacity())
+            .finish()
     }
 }
 
@@ -83,11 +150,11 @@ impl Default for Snapshot {
 /// FIFO queue for audio buffers with automatic eviction.
 /// Mirrors C++ BufferQueue semantics exactly.
 pub struct AudioBufferQueue {
-    /// All buffers (completed + active)
+    /// All buffers (completed + active) - reference-counted for cheap snapshots
     buffers: VecDeque<AudioBufferData>,
     /// Buffer pool for pre-allocated buffer reuse
-    pool: RefillingPool<PooledBuffer>,
-    /// Capacity of each buffer
+    pool: std::sync::Arc<RefillingPool<BufferHandle>>,
+    /// Capacity of each buffer in samples
     buffer_size: u32,
     /// Maximum number of buffers allowed
     max_buffers: u32,
@@ -102,9 +169,13 @@ impl AudioBufferQueue {
         buffer_size: usize,
         max_buffers: u32,
     ) -> Self {
-        let factory = move || Box::new(PooledBuffer::new(buffer_size));
+        let factory = move || {
+            let bytes = vec![0u8; buffer_size * std::mem::size_of::<f32>()];
+            Box::new(BufferHandle(bytes))
+        };
         let pool = RefillingPool::new(pool_capacity, low_water_mark, factory)
             .expect("Failed to create buffer pool");
+        let pool = std::sync::Arc::new(pool);
 
         Self {
             buffers: VecDeque::new(),
@@ -135,8 +206,8 @@ impl AudioBufferQueue {
 
     pub fn set_max_buffers(&mut self, max: u32) {
         // Create new empty deque and return all buffers to pool (like C++ queued command)
-        while let Some(buf) = self.buffers.pop_front() {
-            self.return_to_pool(buf.pooled);
+        while let Some(_buf) = self.buffers.pop_front() {
+            // Arc dropped here, SharedBufferHandle::Drop returns to pool
         }
         self.max_buffers = max;
         self.active_pos = self.buffer_size; // Reset to buffer_size (like C++)
@@ -164,12 +235,18 @@ impl AudioBufferQueue {
             let space = buffer_size - self.active_pos as usize;
 
             if space == 0 {
-                // Space is 0, mark active buffer as full
+                // Active buffer is full - mark it as full
                 if let Some(active) = self.buffers.back_mut() {
                     active.n_samples = buffer_size;
                 }
-                // Create new buffer
-                let new_buf = self.get_pooled_buffer();
+                // Create new buffer from pool
+                let boxed = self.pool.get();
+                let shared = SharedBufferHandle::new(boxed, &self.pool);
+                let arc = std::sync::Arc::new(shared);
+                let new_buf = AudioBufferData {
+                    n_samples: 0,
+                    buffer: arc,
+                };
                 self.buffers.push_back(new_buf);
                 self.active_pos = 0;
                 // Evict while over limit
@@ -183,37 +260,27 @@ impl AudioBufferQueue {
             let to_copy = remaining.len().min(space);
             {
                 let active = self.buffers.back_mut().unwrap();
-                let start = self.active_pos as usize;
-                // Copy data into the pooled buffer
-                for i in 0..to_copy {
-                    active.pooled.data[start + i] = remaining[i];
-                }
+                let dest = active.as_f32_mut();
+                let dest_start = self.active_pos as usize;
+                dest[dest_start..dest_start + to_copy].copy_from_slice(&remaining[..to_copy]);
+                // Update n_samples to reflect valid data count
+                active.n_samples = (self.active_pos as usize) + to_copy;
             }
             self.active_pos += to_copy as u32;
             remaining = &remaining[to_copy..];
         }
     }
 
-    fn get_pooled_buffer(&mut self) -> AudioBufferData {
-        let boxed = self.pool.get();
-        AudioBufferData {
-            n_samples: 0,
-            pooled: *boxed,
-        }
-    }
-
-    fn return_to_pool(&mut self, buf: PooledBuffer) {
-        self.pool.release(Box::new(buf));
-    }
-
     fn evict_front(&mut self) {
-        if let Some(buf) = self.buffers.pop_front() {
-            self.return_to_pool(buf.pooled);
+        // Pop front - Arc dropped, SharedBufferHandle::Drop returns to pool
+        if let Some(_buf) = self.buffers.pop_front() {
+            // Dropping the Arc here triggers SharedBufferHandle::Drop
+            // which returns the Box<BufferHandle> to the pool
         }
     }
 
     /// Get snapshot. Mirrors C++ PROC_get exactly.
-    /// Returns vector copy of all buffers.
+    /// Returns vector of Arc-cloned buffers (cheap, no data copy).
     pub fn snapshot(&self) -> Snapshot {
         let mut result = Snapshot {
             data: Vec::with_capacity(self.buffers.len()),
@@ -222,13 +289,9 @@ impl AudioBufferQueue {
         };
 
         for buf in &self.buffers {
-            let mut cloned = AudioBufferData::new(self.buffer_size as usize);
-            cloned.n_samples = buf.n_samples;
-            // Copy all capacity worth of data (C++ buffer has full capacity)
-            for i in 0..self.buffer_size as usize {
-                cloned.pooled.data[i] = buf.pooled.data[i];
-            }
-            result.data.push(cloned);
+            // Clone the Arc - cheap, just increments refcount
+            // Both snapshot and queue now share the same underlying buffer
+            result.data.push(buf.clone());
         }
 
         result
@@ -243,8 +306,8 @@ pub type AudioBufferQueueF32 = AudioBufferQueue;
 
 impl Drop for AudioBufferQueue {
     fn drop(&mut self) {
-        while let Some(buf) = self.buffers.pop_front() {
-            self.return_to_pool(buf.pooled);
+        while let Some(_buf) = self.buffers.pop_front() {
+            // Arc dropped, SharedBufferHandle::Drop returns to pool
         }
     }
 }
@@ -395,5 +458,33 @@ mod tests {
         assert_eq!(clone.n_samples, 4);
         assert!(approx_eq(clone.data[0].at(0), 1.0));
         assert!(approx_eq(clone.data[1].at(0), 3.0));
+    }
+
+    /// Test that snapshot shares data with queue (no deep copy).
+    /// Both should see the same underlying buffer.
+    #[test]
+    fn test_snapshot_shares_data() {
+        let mut queue = AudioBufferQueue::new(10, 5, 10, 10);
+        queue.put(&[1.0, 2.0, 3.0]);
+
+        let snap = queue.snapshot();
+
+        // Snapshots share the same Arc - verify by checking data_ptr
+        assert_eq!(snap.data[0].data_ptr(), queue.buffers[0].data_ptr());
+    }
+
+    /// Test that evicted buffers are returned to pool (pool count recovers).
+    #[test]
+    fn test_eviction_returns_to_pool() {
+        let mut queue = AudioBufferQueue::new(2, 1, 2, 2);
+        queue.put(&[1.0, 2.0, 3.0, 4.0]);
+
+        // 2 buffers in queue, pool should be empty (capacity 2, both taken)
+        assert_eq!(queue.pool.n_buffers_available(), 0);
+
+        // Add more data to trigger eviction
+        queue.put(&[5.0, 6.0]);
+        // First buffer evicted and returned to pool
+        assert_eq!(queue.pool.n_buffers_available(), 1);
     }
 }
