@@ -5,7 +5,6 @@
 #include "DummyMidiPort.h"
 #include "PortInterface.h"
 #include "LoggingEnabled.h"
-#include "WithCommandQueue.h"
 #include "types.h"
 #include <memory>
 #include <set>

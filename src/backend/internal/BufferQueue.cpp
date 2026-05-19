@@ -1,5 +1,5 @@
 #include "BufferQueue.h"
-#include "WithCommandQueue.h"
+#include "shoop_globals.h"
 #include "types.h"
 #include <iostream>
 
@@ -9,7 +9,7 @@
 #endif
 
 template<typename SampleT>
-BufferQueue<SampleT>::BufferQueue(shoop_shared_ptr<BufferPool<SampleT>> pool, uint32_t max_buffers) : pool(pool)
+BufferQueue<SampleT>::BufferQueue(shoop_shared_ptr<BufferPool<SampleT>> pool, uint32_t max_buffers) : m_command_queue(shoop_constants::command_queue_size, 1000, 1000), pool(pool)
 {
     buffers = shoop_make_shared<std::deque<SharedBuffer>>();
     ma_active_buffer_pos.store(pool ? pool->elems_per_buffer() : 0); // put at end of a virtual buffer, ensures new buffer will be created immediately
@@ -69,7 +69,7 @@ void BufferQueue<SampleT>::set_max_buffers(uint32_t max_buffers) {
     log<log_level_debug_trace>("queue set max buffers -> {}", max_buffers);
     auto new_buffers =
         shoop_make_shared<std::deque<SharedBuffer>>();
-    WithCommandQueue::queue_process_thread_command([this, new_buffers, max_buffers]() {
+    m_command_queue.queue_process_thread_command([this, new_buffers, max_buffers]() {
         log<log_level_debug_trace>("set max buffers -> {}", max_buffers);
         buffers = new_buffers;
         ma_max_buffers.store(max_buffers);
@@ -96,7 +96,7 @@ uint32_t BufferQueue<SampleT>::single_buffer_size() const {
 
 template<typename SampleT>
 void BufferQueue<SampleT>::PROC_process() {
-    WithCommandQueue::PROC_handle_command_queue();
+    m_command_queue.PROC_handle_command_queue();
 }
 
 template class BufferQueue<float>;
