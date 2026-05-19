@@ -128,7 +128,7 @@ impl AudioBufferQueue {
         let factory = move || Box::new(PooledBuffer::new(buffer_size));
         let pool = RefillingPool::new(pool_capacity, low_water_mark, factory)
             .expect("Failed to create buffer pool");
-        
+
         Self {
             buffers: VecDeque::with_capacity(max_buffers as usize),
             pool,
@@ -187,7 +187,7 @@ impl AudioBufferQueue {
     /// Add samples to the queue - no allocations on audio thread
     pub fn put(&mut self, data: &[f32]) {
         let mut remaining = data;
-        
+
         while !remaining.is_empty() {
             // Get or create a buffer to fill
             let buf = match self.buffers.back_mut() {
@@ -209,13 +209,13 @@ impl AudioBufferQueue {
             // Calculate how much space is left
             let space = (self.buffer_size as usize).saturating_sub(buf.n_samples);
             let to_copy = remaining.len().min(space);
-            
+
             // Copy data directly into the buffer (no allocation)
             let n = buf.n_samples;
             let dest = &mut buf.pooled.data[n..n + to_copy];
             dest.copy_from_slice(&remaining[..to_copy]);
             buf.n_samples += to_copy;
-            
+
             remaining = &remaining[to_copy..];
             self.active_buffer_pos += to_copy as u32;
         }
@@ -293,7 +293,7 @@ mod tests {
         let mut queue = AudioBufferQueue::new(20, 5, 128, 10);
         let data = vec![1.0f32; 128];
         queue.put(&data);
-        
+
         assert_eq!(queue.n_samples(), 128);
         assert_eq!(queue.n_buffers(), 1);
     }
@@ -301,10 +301,10 @@ mod tests {
     #[test]
     fn test_multiple_buffers() {
         let mut queue = AudioBufferQueue::new(20, 5, 128, 10);
-        
+
         let data = vec![1.0f32; 300];
         queue.put(&data);
-        
+
         assert_eq!(queue.n_samples(), 300);
         assert_eq!(queue.n_buffers(), 3);
     }
@@ -312,10 +312,10 @@ mod tests {
     #[test]
     fn test_eviction() {
         let mut queue = AudioBufferQueue::new(20, 5, 128, 3);
-        
+
         let data = vec![1.0f32; 512];
         queue.put(&data);
-        
+
         assert!(queue.n_buffers() <= 4);
         assert_eq!(queue.n_samples(), 512);
     }
@@ -325,9 +325,9 @@ mod tests {
         let mut queue = AudioBufferQueue::new(20, 5, 128, 10);
         let data = vec![1.0f32; 256];
         queue.put(&data);
-        
+
         queue.clear();
-        
+
         assert_eq!(queue.n_samples(), 0);
         assert_eq!(queue.n_buffers(), 0);
     }
@@ -337,11 +337,11 @@ mod tests {
         let mut queue = AudioBufferQueue::new(20, 5, 128, 5);
         let data = vec![1.0f32; 512];
         queue.put(&data);
-        
+
         assert!(queue.n_buffers() <= 6);
-        
+
         queue.set_max_buffers(2);
-        
+
         assert!(queue.n_buffers() <= 3);
     }
 }
