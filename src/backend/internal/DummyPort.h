@@ -4,6 +4,8 @@
 #include "LoggingEnabled.h"
 #include "types.h"
 #include "shoop_shared_ptr.h"
+#include "backend_rust/src/dummy_external_connections_cxx.rs.h"
+#include "backend_rust/src/port_core_cxx.rs.h"
 #include <memory>
 #include <vector>
 #include <stdint.h>
@@ -11,17 +13,22 @@
 struct DummyPortCore;
 
 struct DummyExternalConnections : private ModuleLoggingEnabled<"Backend.DummyExternalConnections"> {
-    std::vector<std::pair<DummyPortCore*, std::string>> m_external_connections;
-    std::vector<ExternalPortDescriptor> m_external_mock_ports;
+    rust::Box<backend_rust::DummyExternalConnections> m_rust;
 
-    void add_external_mock_port(std::string name, shoop_port_direction_t direction, shoop_port_data_type_t data_type);
-    void remove_external_mock_port(std::string name);
-    void remove_all_external_mock_ports();
+    DummyExternalConnections() : m_rust(backend_rust::new_dummy_external_connections()) {}
+
+    void add_external_mock_port(std::string name, shoop_port_direction_t direction, shoop_port_data_type_t data_type) {
+        m_rust->add_external_mock_port(name, (uint32_t)direction, (uint32_t)data_type);
+    }
+    void remove_external_mock_port(std::string name) {
+        m_rust->remove_external_mock_port(name);
+    }
+    void remove_all_external_mock_ports() {
+        m_rust->remove_all_external_mock_ports();
+    }
 
     void connect(DummyPortCore* port, std::string external_port_name);
     void disconnect(DummyPortCore* port, std::string external_port_name);
-
-    ExternalPortDescriptor &get_port(std::string name);
 
     std::vector<ExternalPortDescriptor> find_external_ports(
         const char* maybe_name_regex,
@@ -43,10 +50,8 @@ struct DummyExternalConnections : private ModuleLoggingEnabled<"Backend.DummyExt
  * maybe_driver_handle() returns a stable identity for the outer object.
  */
 struct DummyPortCore {
-    std::string m_name;
-    shoop_port_direction_t m_direction;
-    shoop_weak_ptr<DummyExternalConnections> m_external_connections;
-    void* m_driver_handle;
+    rust::Box<backend_rust::PortCore> m_rust;
+    shoop_weak_ptr<DummyExternalConnections> m_external_connections_cpp;
 
     DummyPortCore(
         std::string name,
@@ -56,6 +61,7 @@ struct DummyPortCore {
     );
 
     const char* name() const;
+    shoop_port_direction_t direction() const;
     void close();
     void *maybe_driver_handle() const;
 

@@ -189,6 +189,7 @@ dependencies = [
  "cxx-build",
  "log",
  "parking_lot",
+ "regex",
 ]
 
 [[package]]
