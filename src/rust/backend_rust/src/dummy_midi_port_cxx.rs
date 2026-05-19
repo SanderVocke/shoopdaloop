@@ -2,7 +2,8 @@
 
 #![allow(dead_code)]
 
-use crate::dummy_midi_port::{DummyMidiPort, PortDirection};
+use crate::dummy_midi_port::DummyMidiPort;
+use crate::port_direction::PortDirection;
 
 #[cxx::bridge(namespace = "backend_rust")]
 mod ffi {

@@ -41,11 +41,11 @@ DummyMidiPort::DummyMidiPort(
     m_command_queue(100, 1000, 1000) {}
 
 unsigned DummyMidiPort::input_connectability() const {
-    return (m_dummy_port_core.m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
+    return (m_dummy_port_core.direction() == ShoopPortDirection_Input) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
 }
 
 unsigned DummyMidiPort::output_connectability() const {
-    return (m_dummy_port_core.m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_Internal : ShoopPortConnectability_External;
+    return (m_dummy_port_core.direction() == ShoopPortDirection_Input) ? ShoopPortConnectability_Internal : ShoopPortConnectability_External;
 }
 
 void DummyMidiPort::clear_queues() {

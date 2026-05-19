@@ -10,13 +10,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use crate::midi_port::MidiPort;
 use crate::midi_storage::MidiStorageElem;
 use crate::midi_traits::{MidiReadableBuffer, MidiWritableBuffer};
-
-/// Direction for the port
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PortDirection {
-    Input,
-    Output,
-}
+use crate::port_direction::PortDirection;
 
 /// DummyMidiPort - A MIDI port implementation for testing and development.
 ///
