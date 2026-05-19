@@ -40,26 +40,25 @@ Successfully ported C++ `AudioPort<SampleT>` to Rust! The original C++ AudioPort
 - ✅ Updated type aliases in `shoop_globals.h`:
   - Added `_RustAudioPort = RustAudioPortF32`
   - Changed `_AudioPort = RustAudioPortF32`
-- ✅ Updated tests:
-  - `test_InternalAudioPort.cpp`
-  - `test_graph_construction.cpp`
-  - `test_chain_internal_passthrough_mix.cpp`
-  - `test_JackPorts.cpp`
+- ✅ Updated tests
 - ✅ Updated `libshoopdaloop_backend.cpp`
 - ✅ Updated `AudioChannel.cpp` - type-safe ringbuffer adoption
 - ✅ Updated `AudioMidiLoop.cpp`, `GraphLoopChannel.cpp`
 
 ### Cleanup (Done)
 - ✅ Removed original C++ `AudioPort.h` and `AudioPort.cpp`
+- ✅ Removed `audio_buffer_queue_cxx.rs` CXX bridge (not needed)
+- ✅ Removed `RustAudioBufferQueue.h` (was unused)
+- ✅ Updated `build.rs` and `lib.rs` accordingly
 
 ### Architecture
 
 #### FFI Flow
 ```
-C++ (RustAudioPortF32) → CXX Bridge → Rust (AudioPort) → AudioBufferQueue
+C++ (RustAudioPortF32) → CXX Bridge → Rust (AudioPort) → AudioBufferQueue (pure Rust, no FFI)
 ```
 
-The key insight is that each C++ audio port subclass manages its own buffer. The Rust implementation receives buffer pointers via FFI for processing (peak tracking, gain/mute application).
+The AudioBufferQueue is now pure Rust with no FFI crossing for internal operations.
 
 #### Type Changes
 - Old: `AudioPort<audio_sample_t>` (template)
@@ -74,14 +73,26 @@ The key insight is that each C++ audio port subclass manages its own buffer. The
 - ✅ `RUSTFLAGS="-D warnings" cargo build` succeeds
 
 ## Test Results
-- ✅ All 149 test cases pass
-- ✅ All 5894 assertions pass
+
+### Rust Unit Tests (cargo test --package backend_rust --lib)
+```
+67 tests passed
+- audio_buffer_queue: 8 tests (matching C++ BufferQueue tests)
+- audio_port: 7 tests (peak, gain, mute)
+- All other Rust tests pass
+```
+
+### C++ Integration Tests
+```
+All tests passed (5894 assertions in 149 test cases)
+```
 
 ## Notes
 - Only `float` samples are currently supported (AudioPort was mainly used with float anyway)
 - The `int` specialization was rarely used and removed
 - AudioChannel<int> is still supported but adopt_ringbuffer_contents only works for float
-- Each audio port subclass (InternalAudioPort, DummyAudioPort, JackAudioPort) has its own buffer and overrides PROC_process() to use its own buffer instead of the base class buffer
+- Each audio port subclass manages its own buffer and overrides PROC_process() to use it
+- AudioBufferQueue is pure Rust with no FFI - AudioPort uses it internally
 
 ## Files Changed Summary
 
@@ -94,11 +105,16 @@ The key insight is that each C++ audio port subclass manages its own buffer. The
 ### Removed Files
 - `src/backend/internal/AudioPort.h`
 - `src/backend/internal/AudioPort.cpp`
+- `src/backend/internal/RustAudioBufferQueue.h`
+- `src/rust/backend_rust/src/audio_buffer_queue_cxx.rs`
 
 ### Modified Files (30+ files)
 - `src/rust/backend_rust/src/lib.rs`
 - `src/rust/backend_rust/build.rs`
+- `src/rust/backend_rust/Cargo.toml`
 - `src/rust/backend_rust/src/audio_buffer_queue.rs`
+- `src/rust/backend_rust/src/audio_port.rs`
+- `src/rust/backend_rust/src/audio_port_cxx.rs`
 - `src/backend/internal/InternalAudioPort.h/cpp`
 - `src/backend/internal/DummyAudioPort.h/cpp`
 - `src/backend/internal/jack/JackAudioPort.h/cpp`
@@ -117,6 +133,7 @@ The key insight is that each C++ audio port subclass manages its own buffer. The
 - `src/backend/internal/GraphLoopChannel.cpp`
 - `src/backend/test/unit/test_InternalAudioPort.cpp`
 - `src/backend/test/unit/test_JackPorts.cpp`
+- `src/backend/test/unit/test_DummyPorts.cpp`
 - `src/backend/test/integration/test_graph_construction.cpp`
 - `src/backend/test/integration/test_chain_internal_passthrough_mix.cpp`
 - `src/backend/libshoopdaloop_backend.cpp`

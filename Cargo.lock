@@ -183,6 +183,7 @@ dependencies = [
 name = "backend_rust"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "crossbeam-queue",
  "cxx",
  "cxx-build",

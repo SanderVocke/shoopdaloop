@@ -12,7 +12,6 @@ fn main() {
         "src/midi_port_base_cxx.rs",
         "src/dummy_midi_port_cxx.rs",
         "src/midi_buffering_input_port_cxx.rs",
-        "src/audio_buffer_queue_cxx.rs",
         "src/audio_port_cxx.rs",
         "src/refilling_pool/refilling_pool_cxx.rs",
     ])
@@ -36,7 +35,6 @@ fn main() {
     println!("cargo:rerun-if-changed=src/midi_port_base_cxx.rs");
     println!("cargo:rerun-if-changed=src/dummy_midi_port_cxx.rs");
     println!("cargo:rerun-if-changed=src/midi_buffering_input_port_cxx.rs");
-    println!("cargo:rerun-if-changed=src/audio_buffer_queue_cxx.rs");
     println!("cargo:rerun-if-changed=src/audio_port_cxx.rs");
     println!("cargo:rerun-if-changed=src/refilling_pool/refilling_pool_cxx.rs");
 }

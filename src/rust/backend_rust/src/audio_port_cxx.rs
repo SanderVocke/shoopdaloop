@@ -1,18 +1,11 @@
 //! CXX bridge for AudioPort to expose to C++.
 //!
-//! ============================================================================
-//! ## AudioPort CXX Bridge
-//! ============================================================================
 //! This bridge exposes the Rust AudioPort implementation to C++.
-//! Uses the same pattern as audio_buffer_queue_cxx.rs for snapshot returns.
 //!
 //! NOTE: The audio buffer is managed by C++ code. The Rust implementation
 //! receives buffer pointers via FFI for processing (peak tracking, gain/mute).
 //!
-//! CXX Limitations:
-//! - snapshot() returns Vec<BufferPtrInfo> with raw pointers
-//! - C++ must memcpy data into AudioBuffer objects (acceptable for consumer thread)
-//! - Cannot return SharedPtr<Vec<f32>> - CXX doesn't support this pattern
+//! The internal ringbuffer (AudioBufferQueue) is pure Rust with no FFI crossing.
 //! ============================================================================
 
 use crate::audio_port::AudioPort;

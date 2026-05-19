@@ -210,11 +210,13 @@ impl AudioPort {
     /// Get the ringbuffer contents as a vector of buffer pointers.
     /// Each entry contains a pointer to the data and the length.
     pub fn get_ringbuffer_contents_ptrs(&self) -> Vec<(*const f32, usize)> {
-        self.ringbuffer
-            .iter_buffers()
-            .filter(|buf| buf.len() > 0)
-            .map(|buf| (buf.data_ptr(), buf.len()))
-            .collect()
+        let mut result = Vec::new();
+        for buf in self.ringbuffer.iter_buffers() {
+            if buf.len() > 0 {
+                result.push((buf.data_ptr(), buf.len()));
+            }
+        }
+        result
     }
 }
 

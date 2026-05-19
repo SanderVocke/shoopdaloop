@@ -12,6 +12,9 @@ cxx = { workspace = true }
 log = { workspace = true }
 parking_lot = "0.12"
 
+[dev-dependencies]
+anyhow = "1.0"
+
 [build-dependencies]
 cxx-build = { workspace = true }
 
