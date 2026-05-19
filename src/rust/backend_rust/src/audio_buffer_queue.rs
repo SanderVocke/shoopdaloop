@@ -41,7 +41,7 @@
 
 use std::collections::VecDeque;
 
-use refilling_pool::refilling_pool::RefillingPool;
+use crate::refilling_pool::refilling_pool::RefillingPool;
 
 /// A buffer wrapper that wraps a pool-allocated Vec
 #[derive(Debug)]

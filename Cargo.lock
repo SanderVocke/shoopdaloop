@@ -162,7 +162,6 @@ dependencies = [
  "ctor",
  "glob",
  "log",
- "refilling_pool",
 ]
 
 [[package]]
@@ -184,11 +183,11 @@ dependencies = [
 name = "backend_rust"
 version = "0.0.0"
 dependencies = [
+ "crossbeam-queue",
  "cxx",
  "cxx-build",
  "log",
  "parking_lot",
- "refilling_pool",
 ]
 
 [[package]]
@@ -2424,16 +2423,6 @@ dependencies = [
  "parking_lot",
  "percent-encoding",
  "serde_json",
-]
-
-[[package]]
-name = "refilling_pool"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "crossbeam-queue",
- "cxx",
- "cxx-build",
 ]
 
 [[package]]

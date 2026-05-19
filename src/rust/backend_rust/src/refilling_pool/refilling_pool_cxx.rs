@@ -1,4 +1,4 @@
-use crate::refilling_pool::RefillingPool;
+use crate::refilling_pool::refilling_pool::RefillingPool;
 
 #[cxx::bridge(namespace = "refilling_pool")]
 mod ffi {

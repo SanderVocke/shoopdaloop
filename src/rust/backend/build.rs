@@ -13,9 +13,6 @@ fn main_impl() -> Result<(), anyhow::Error> {
     }
 
     // environment
-    let refilling_pool_cxx_include = std::env::var("DEP_REFILLING_POOL_INCLUDE")?;
-    let refilling_pool_cxx_libdir = std::env::var("DEP_REFILLING_POOL_CXX_BRIDGE_LIBDIR")?;
-    let refilling_pool_staticlib = std::env::var("CARGO_STATICLIB_FILE_REFILLING_POOL")?;
     let backend_rust_cxx_include = std::env::var("DEP_BACKEND_RUST_INCLUDE")?;
     let backend_rust_cxx_libdir = std::env::var("DEP_BACKEND_RUST_CXX_BRIDGE_LIBDIR")?;
     let backend_rust_staticlib = std::env::var("CARGO_STATICLIB_FILE_BACKEND_RUST")?;
@@ -40,9 +37,6 @@ fn main_impl() -> Result<(), anyhow::Error> {
             .out_dir(&cmake_output_dir)
             .generator("Ninja")
             .define("CMAKE_INSTALL_PREFIX", install_dir.to_str().unwrap_or(""))
-            .define("REFILLING_POOL_CXX_INCLUDE", refilling_pool_cxx_include)
-            .define("REFILLING_POOL_CXX_LIBDIR", refilling_pool_cxx_libdir)
-            .define("REFILLING_POOL_RUST_LIB", refilling_pool_staticlib)
             .define("BACKEND_RUST_CXX_INCLUDE", backend_rust_cxx_include)
             .define("BACKEND_RUST_CXX_LIBDIR", backend_rust_cxx_libdir)
             .define("BACKEND_RUST_RUST_LIB", backend_rust_staticlib)
@@ -65,7 +59,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
                 },
             )
             // Force cmake rebuild
-            .define("SHOOP_FORCE_REBUILD", "v4");
+            .define("SHOOP_FORCE_REBUILD", "v5");
         let _ = cmake_config_mut.build();
     }
 

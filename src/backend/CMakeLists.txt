@@ -246,8 +246,6 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 find_package(nlohmann_json CONFIG REQUIRED)
 
 # Dependencies provided by in-repo Rust CXX bridges
-include_directories(${REFILLING_POOL_CXX_INCLUDE})
-link_directories(${REFILLING_POOL_CXX_LIBDIR})
 include_directories(${BACKEND_RUST_CXX_INCLUDE})
 link_directories(${BACKEND_RUST_CXX_LIBDIR})
 
@@ -270,8 +268,6 @@ target_link_libraries(shoopdaloop_backend_internals PRIVATE
   fmt::fmt
   zita-resampler::zita-resampler
   Boost::headers
-  ${REFILLING_POOL_RUST_LIB}
-  refilling_pool_cxx
   ${BACKEND_RUST_RUST_LIB}
   backend_rust_cxx
   )
