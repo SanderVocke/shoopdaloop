@@ -44,7 +44,13 @@ Successfully ported C++ `AudioPort<SampleT>` to Rust! The original C++ AudioPort
   - `test_InternalAudioPort.cpp`
   - `test_graph_construction.cpp`
   - `test_chain_internal_passthrough_mix.cpp`
+  - `test_JackPorts.cpp`
 - ✅ Updated `libshoopdaloop_backend.cpp`
+- ✅ Updated `AudioChannel.cpp` - type-safe ringbuffer adoption
+- ✅ Updated `AudioMidiLoop.cpp`, `GraphLoopChannel.cpp`
+
+### Cleanup (Done)
+- ✅ Removed original C++ `AudioPort.h` and `AudioPort.cpp`
 
 ### Architecture
 
@@ -68,6 +74,7 @@ C++ (RustAudioPortF32) → CXX Bridge → Rust (AudioPort) → AudioBufferQueue
 ## Notes
 - Only `float` samples are currently supported (AudioPort was mainly used with float anyway)
 - The `int` specialization was rarely used and removed
+- AudioChannel<int> is still supported but adopt_ringbuffer_contents only works for float
 - Tests pass after updating to use new types
 
 ## Files Changed Summary
@@ -78,7 +85,11 @@ C++ (RustAudioPortF32) → CXX Bridge → Rust (AudioPort) → AudioBufferQueue
 - `src/backend/internal/RustAudioPort.h`
 - `src/backend/internal/RustAudioPort.cpp`
 
-### Modified Files (27 files)
+### Removed Files
+- `src/backend/internal/AudioPort.h`
+- `src/backend/internal/AudioPort.cpp`
+
+### Modified Files (30+ files)
 - `src/rust/backend_rust/src/lib.rs`
 - `src/rust/backend_rust/build.rs`
 - `src/backend/internal/InternalAudioPort.h/cpp`
@@ -94,7 +105,11 @@ C++ (RustAudioPortF32) → CXX Bridge → Rust (AudioPort) → AudioBufferQueue
 - `src/backend/internal/shoop_globals.h`
 - `src/backend/internal/lv2/CarlaLV2ProcessingChain.h/cpp`
 - `src/backend/internal/lv2/LV2.h/cpp`
+- `src/backend/internal/AudioChannel.cpp`
+- `src/backend/internal/AudioMidiLoop.cpp`
+- `src/backend/internal/GraphLoopChannel.cpp`
 - `src/backend/test/unit/test_InternalAudioPort.cpp`
+- `src/backend/test/unit/test_JackPorts.cpp`
 - `src/backend/test/integration/test_graph_construction.cpp`
 - `src/backend/test/integration/test_chain_internal_passthrough_mix.cpp`
 - `src/backend/libshoopdaloop_backend.cpp`
