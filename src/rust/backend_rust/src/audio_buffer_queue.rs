@@ -4,6 +4,40 @@
 //! Uses RefillingPool for pre-allocated buffer reuse - no allocations on audio thread.
 //!
 //! Ported from C++ BufferQueue.
+//!
+//! ============================================================================
+//! ## TODO: Optimize Snapshot When AudioPort is Ported to Rust
+//! ============================================================================
+//! WHEN AudioPort is ported to Rust, we can use Rust-native Arc<Vec<f32>> types
+//! to achieve TRUE thin-copy shared ownership without data copying:
+//!
+//! 1. Change snapshot() to return Vec<Arc<Vec<f32>>> directly
+//! 2. C++ can then wrap Arc<Vec<f32>> in a custom smart pointer
+//! 3. AudioPort in C++ becomes Arc<Vec<f32>> which is zero-copy
+//! 4. Eliminate all memcpy operations in the consumer path
+//!
+//! ## Why Current CXX Bridge Limits Us
+//! ============================================================================
+//! CXX doesn't support these patterns which prevent true shared ownership:
+//!   - SharedPtr<OpaqueRustType> - not supported
+//!   - SharedPtr<Vec<f32>> - not supported
+//!   - Vec<SharedPtr<...>> - Vec can't hold SharedPtr elements
+//!   - Vec<CxxVector<f32>> - Vec can't hold CxxVector elements
+//!   - CxxVector by value in structs - not supported
+//!
+//! Current workaround: snapshot() returns Vec<BufferPtrInfo> with raw pointers.
+//! C++ copies data into AudioBuffer objects - acceptable for consumer thread,
+//! but not ideal for the audio thread path.
+//!
+//! ## Target Architecture (post-AudioPort Rust port)
+//! ============================================================================
+//! AudioBufferQueue::put() -> RefillingPool (zero alloc, lock-free)
+//! AudioBufferQueue::snapshot() -> Vec<Arc<Vec<f32>>> (true thin-copy)
+//!
+//! C++ side:
+//! - AudioPort holds Arc<Vec<f32>> (shared ownership, no copies)
+//! - AudioBuffer is created from Arc<Vec<f32>> (still shared)
+//! ============================================================================
 
 use std::collections::VecDeque;
 

@@ -1,4 +1,25 @@
 //! CXX bridge for AudioBufferQueue to expose to C++.
+//!
+//! ============================================================================
+//! ## IMPORTANT: TODO for AudioPort Rust Port
+//! ============================================================================
+//! When AudioPort is ported to Rust, replace this CXX bridge approach with
+//! Rust-native Arc<Vec<f32>> for TRUE thin-copy semantics:
+//!
+//! Currently (CXX limitation):
+//! - snapshot() returns Vec<BufferPtrInfo> with raw pointers
+//! - C++ must memcpy data into AudioBuffer objects (consumer thread copies)
+//! - put() is zero-allocation (good for audio thread)
+//!
+//! Target (after AudioPort Rust port):
+//! - Use Arc<Vec<f32>> directly in Rust
+//! - Expose via FFI that allows C++ to share ownership
+//! - No memcpy needed - true zero-copy across FFI boundary
+//!
+//! CXX cannot support these patterns:
+//!   - SharedPtr<Vec<f32>> or SharedPtr<CxxVector<f32>>
+//!   - Vec<SharedPtr<...>> or Vec<CxxVector<...>>
+//! ============================================================================
 
 use crate::audio_buffer_queue::AudioBufferQueue;
 
