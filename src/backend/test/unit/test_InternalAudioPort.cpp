@@ -1,9 +1,10 @@
 #include "InternalAudioPort.h"
+#include "BufferPool.h"
 #include "catch2/catch_approx.hpp"
 #include <catch2/catch_test_macros.hpp>
 
 TEST_CASE("Ports - Internal Audio - Properties", "[InternalAudioPort][ports][audio]") {
-    InternalAudioPort<float> port ("dummy", 10, 0, 0, nullptr);
+    InternalAudioPort port ("dummy", 10, 0, 0, nullptr);
 
     CHECK(port.has_internal_read_access());
     CHECK(port.has_internal_write_access());
@@ -12,7 +13,7 @@ TEST_CASE("Ports - Internal Audio - Properties", "[InternalAudioPort][ports][aud
 }
 
 TEST_CASE("Ports - Internal Audio - Gain", "[InternalAudioPort][ports][audio]") {
-    InternalAudioPort<float> port ("dummy", 10, 0, 0, nullptr);
+    InternalAudioPort port ("dummy", 10, 0, 0, nullptr);
 
     audio_sample_t samples[6] = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
@@ -32,7 +33,7 @@ TEST_CASE("Ports - Internal Audio - Gain", "[InternalAudioPort][ports][audio]") 
 }
 
 TEST_CASE("Ports - Internal Audio - Mute", "[InternalAudioPort][ports][audio]") {
-    InternalAudioPort<float> port ("dummy", 10, 0, 0, nullptr);
+    InternalAudioPort port ("dummy", 10, 0, 0, nullptr);
 
     audio_sample_t samples[6] = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
@@ -52,7 +53,7 @@ TEST_CASE("Ports - Internal Audio - Mute", "[InternalAudioPort][ports][audio]") 
 }
 
 TEST_CASE("Ports - Internal Audio - Peak", "[InternalAudioPort][ports][audio]") {
-    InternalAudioPort<float> port ("dummy", 10, 0, 0, nullptr);
+    InternalAudioPort port ("dummy", 10, 0, 0, nullptr);
     std::vector<audio_sample_t> samples = {
         0.0f, 0.5f, 0.9f, 0.5f, 0.0f
     };
@@ -78,7 +79,7 @@ TEST_CASE("Ports - Internal Audio - Peak", "[InternalAudioPort][ports][audio]") 
 }
 
 TEST_CASE("Ports - Internal Audio - Noop Zero", "[InternalAudioPort][ports][audio]") {
-    InternalAudioPort<float> port ("dummy", 10, 0, 0, nullptr);
+    InternalAudioPort port ("dummy", 10, 0, 0, nullptr);
     std::vector<audio_sample_t> samples = {
         0.0f, 0.5f, 0.9f, 0.5f, 0.0f
     };
@@ -105,8 +106,8 @@ TEST_CASE("Ports - Internal Audio - Noop Zero", "[InternalAudioPort][ports][audi
 }
 
 TEST_CASE("Ports - Internal Audio - get ringbuffer data", "[InternalAudioPort][ports][audio]") {
-    auto pool = shoop_make_shared<BufferQueue<float>::UsedBufferPool>(10, 5, 4);
-    InternalAudioPort<float> port ("dummy", 10, 0, 0, pool);
+    auto pool = shoop_make_shared<BufferPool<audio_sample_t>>(10, 5, 4);
+    InternalAudioPort port ("dummy", 10, 0, 0, pool);
 
     // Process 4 samples
     port.PROC_prepare(4);
@@ -124,4 +125,4 @@ TEST_CASE("Ports - Internal Audio - get ringbuffer data", "[InternalAudioPort][p
     CHECK(s.data->back()->at(1) == 0.1f);
     CHECK(s.data->back()->at(2) == 0.2f);
     CHECK(s.data->back()->at(3) == 0.3f);
-};
+}

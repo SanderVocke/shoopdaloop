@@ -1,6 +1,6 @@
 #pragma once
 #include <type_traits>
-#include "refilling_pool/src/cxx.rs.h"
+#include "backend_rust/src/refilling_pool/refilling_pool_cxx.rs.h"
 #include <stddef.h>
 #include <span>
 #include <memory>

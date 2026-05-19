@@ -3,7 +3,7 @@
 #include "ChannelInterface.h"
 #include "GraphLoop.h"
 #include "AudioChannel.h"
-#include "AudioPort.h"
+#include "RustAudioPort.h"
 #include "MidiChannel.h"
 #include "DummyMidiBufs.h"
 #include "MidiPort.h"

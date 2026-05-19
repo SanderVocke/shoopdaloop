@@ -6,6 +6,7 @@
 #include "ExternalUIInterface.h"
 #include "SerializeableStateInterface.h"
 #include "MidiPort.h"
+#include "shoop_globals.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -77,7 +78,6 @@ class CarlaLV2ProcessingChain : public ProcessingChainInterface<TimeType, SizeTy
                                 public ExternalUIInterface,
                                 public SerializeableStateInterface {
 public:
-    using _InternalAudioPort = typename ProcessingChainInterface<TimeType, SizeType>::_InternalAudioPort;
     using SharedInternalAudioPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedInternalAudioPort;
     using MidiOutputPort = InternalLV2MidiOutputPort;
     using SharedMidiOutputPort = shoop_shared_ptr<MidiOutputPort>;
@@ -144,7 +144,7 @@ public:
         uint32_t sample_rate,
         uint32_t buffer_size,
         std::string human_name,
-        shoop_shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::UsedBufferPool> maybe_buffer_pool
+        shoop_shared_ptr<shoop_types::AudioBufferPool> maybe_buffer_pool
     );
 
     void instantiate(uint32_t sample_rate, uint32_t buffer_size);

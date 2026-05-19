@@ -7,7 +7,7 @@
 #include <set>
 #include <atomic>
 #include "LoggingEnabled.h"
-#include "AudioPort.h"
+#include "RustAudioPort.h"
 #include "shoop_shared_ptr.h"
 
 enum class ProcessFunctionResult {
@@ -74,10 +74,10 @@ public:
     virtual void start(AudioMidiDriverSettingsInterface &settings) = 0;
 
     virtual
-    shoop_shared_ptr<AudioPort<audio_sample_t>> open_audio_port(
+    shoop_shared_ptr<RustAudioPortF32> open_audio_port(
         std::string name,
         shoop_port_direction_t direction,
-        shoop_shared_ptr<typename AudioPort<audio_sample_t>::UsedBufferPool> buffer_pool
+        shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool
     ) = 0;
 
     virtual

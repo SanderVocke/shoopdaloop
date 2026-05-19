@@ -1,21 +1,19 @@
 #pragma once
 #include "AudioMidiDriver.h"
-#include "AudioPort.h"
+#include "RustAudioPort.h"
 #include "DummyPort.h"
 #include "PortInterface.h"
 #include "LoggingEnabled.h"
 #include "WithCommandQueue.h"
 #include "types.h"
 #include <memory>
-#include <memory>
 #include <set>
 #include <thread>
 #include <vector>
-#include <memory>
 #include <stdint.h>
 #include "shoop_shared_ptr.h"
 
-class DummyAudioPort : public virtual AudioPort<audio_sample_t>,
+class DummyAudioPort : public virtual RustAudioPortF32,
                        public DummyPort,
                        private ModuleLoggingEnabled<"Backend.DummyAudioPort">,
                        private WithCommandQueue {
@@ -31,11 +29,21 @@ public:
     DummyAudioPort(
         std::string name,
         shoop_port_direction_t direction,
-        shoop_shared_ptr<AudioPort<audio_sample_t>::UsedBufferPool> maybe_ringbuffer_buffer_pool,
+        shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> maybe_ringbuffer_buffer_pool,
         shoop_weak_ptr<DummyExternalConnections> external_connections = shoop_weak_ptr<DummyExternalConnections>());
 
     audio_sample_t *PROC_get_buffer(uint32_t n_frames) override;
     ~DummyAudioPort() override;
+
+    // PortInterface overrides (via RustAudioPortF32)
+    PortDataType type() const override { return PortDataType::Audio; }
+    const char* name() const override { return m_name.c_str(); }
+    void close() override { DummyPort::close(); }
+    void* maybe_driver_handle() const override { return nullptr; }
+
+    PortExternalConnectionStatus get_external_connection_status() const override;
+    void connect_external(std::string name) override;
+    void disconnect_external(std::string name) override;
 
     // For input ports, queue up data to be read from the port.
     void queue_data(uint32_t n_frames, audio_sample_t const* data);

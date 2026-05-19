@@ -1,6 +1,7 @@
 #include "JackAudioMidiDriver.h"
 #include "MidiBuffer.h"
-#include "AudioPort.h"
+#include "RustAudioPort.h"
+#include "shoop_globals.h"
 #include "catch2/catch_approx.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <jack/midiport.h>
@@ -108,7 +109,7 @@ TEST_CASE("Ports - Jack Audio In - Peak", "[JackPorts][ports][audio]") {
 
 TEST_CASE("Ports - Jack Audio In - get ringbuffer data", "[JackPorts][ports][audio]") {
     auto driver = open_test_driver();
-    auto pool = shoop_make_shared<BufferQueue<float>::UsedBufferPool>(10, 5, 4);
+    auto pool = shoop_make_shared<shoop_types::AudioBufferPool>(10, 5, 4);
     auto port = driver->open_audio_port("test", ShoopPortDirection_Input, pool);
 
     // Process 4 samples

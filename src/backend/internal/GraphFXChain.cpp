@@ -5,6 +5,7 @@
 #include "GraphLoopChannel.h"
 #include "ProcessingChainInterface.h"
 #include "GraphNode.h"
+#include "RustAudioPort.h"
 #include "shoop_globals.h"
 
 using namespace shoop_types;
@@ -15,13 +16,13 @@ using namespace shoop_constants;
         for (auto const& port : chain->input_audio_ports()) {
             mc_audio_input_ports.push_back(
                 shoop_static_pointer_cast<GraphPort>(
-                    shoop_make_shared<GraphAudioPort>(shoop_static_pointer_cast<_AudioPort>(port), backend)
+                    shoop_make_shared<GraphAudioPort>(shoop_static_pointer_cast<_RustAudioPort>(port), backend)
                 ));
         }
         for (auto const& port : chain->output_audio_ports()) {
             mc_audio_output_ports.push_back(
                 shoop_static_pointer_cast<GraphPort>(
-                    shoop_make_shared<GraphAudioPort>(shoop_static_pointer_cast<_AudioPort>(port), backend)
+                    shoop_make_shared<GraphAudioPort>(shoop_static_pointer_cast<_RustAudioPort>(port), backend)
                 ));
         }
         for (auto const& port : chain->input_midi_ports()) {
