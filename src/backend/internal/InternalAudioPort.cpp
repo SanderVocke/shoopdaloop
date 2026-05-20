@@ -16,21 +16,15 @@ InternalAudioPort::InternalAudioPort(std::string name,
                                      unsigned input_connectability,
                                      unsigned output_connectability,
                                      shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool)
-    : RustAudioPortF32(buffer_pool, 32), 
-      m_name(name), 
-      m_buffer(n_frames), 
-      m_input_connectability(input_connectability), 
-      m_output_connectability(output_connectability) {}
+    : RustAudioPortF32(buffer_pool, 32),
+      m_rust_internal(backend_rust::new_internal_audio_port(name, n_frames, input_connectability, output_connectability)) {}
 
 float* InternalAudioPort::PROC_get_buffer(uint32_t n_frames) {
-    if (n_frames > m_buffer.size() || m_buffer.size() == 0) {
-        m_buffer.resize(std::max(n_frames, (uint32_t)1));
-    }
-    return m_buffer.data();
+    return m_rust_internal->proc_get_buffer(n_frames);
 }
 
 const char* InternalAudioPort::name() const {
-    return m_name.c_str();
+    return m_rust_internal->name().data();
 }
 
 PortExternalConnectionStatus InternalAudioPort::get_external_connection_status() const {
@@ -38,10 +32,12 @@ PortExternalConnectionStatus InternalAudioPort::get_external_connection_status()
 }
 
 void InternalAudioPort::connect_external(std::string name) {
+    (void)name;
     throw std::runtime_error("Internal ports cannot be externally connected.");
 }
 
 void InternalAudioPort::disconnect_external(std::string name) {
+    (void)name;
     throw std::runtime_error("Internal ports cannot be externally connected.");
 }
 
@@ -56,30 +52,24 @@ void* InternalAudioPort::maybe_driver_handle() const {
 }
 
 void InternalAudioPort::PROC_prepare(uint32_t nframes) {
-    if (nframes > m_buffer.size() || m_buffer.size() == 0) {
-        m_buffer.resize(std::max(nframes, (uint32_t)1));
-    }
-    memset((void*) m_buffer.data(), 0, nframes * sizeof(float));
+    m_rust_internal->proc_prepare(nframes);
 }
 
 void InternalAudioPort::PROC_process(uint32_t nframes) {
-    // Process our own m_buffer (not the base class m_buffer)
-    if (nframes == 0 || m_buffer.empty()) {
+    auto buf = PROC_get_buffer(nframes);
+    if (nframes == 0 || !buf) {
         return;
     }
-    
     if (!m_rust.has_value()) {
         return;
     }
-    
-    // Call Rust process with our (InternalAudioPort's) buffer
-    backend_rust::audio_port_process(**m_rust, m_buffer.data(), nframes);
+    backend_rust::audio_port_process(**m_rust, buf, nframes);
 }
 
 unsigned InternalAudioPort::input_connectability() const {
-    return m_input_connectability;
+    return m_rust_internal->input_connectability();
 }
 
 unsigned InternalAudioPort::output_connectability() const {
-    return m_output_connectability;
+    return m_rust_internal->output_connectability();
 }

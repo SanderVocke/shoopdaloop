@@ -1,14 +1,12 @@
 #pragma once
 #include "RustAudioPort.h"
 #include "backend_rust/src/audio_port_cxx.rs.h"
+#include "backend_rust/src/internal_audio_port_cxx.rs.h"
 #include <vector>
 #include "shoop_shared_ptr.h"
 
 class InternalAudioPort : public RustAudioPortF32 {
-    std::string m_name = "";
-    std::vector<float> m_buffer;
-    unsigned m_input_connectability = 0;
-    unsigned m_output_connectability = 0;
+    rust::Box<backend_rust::InternalAudioPort> m_rust_internal;
 
 public:
     // Note that the port direction for internal ports are defined w.r.t. ShoopDaLoop.
