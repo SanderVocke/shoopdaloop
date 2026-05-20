@@ -128,9 +128,9 @@ jobs:
             local default="$2"
             local input_val="$3"
             if [ -n "$input_val" ]; then
-              echo "$name=$input_val" >> "$GITHUB_OUTPUT"
+              echo "$name=$input_val" | tee -a "$GITHUB_OUTPUT"
             else
-              echo "$name=$default" >> "$GITHUB_OUTPUT"
+              echo "$name=$default" | tee -a "$GITHUB_OUTPUT"
             fi
           }
           resolve windows "${{ env.WINDOWS_DEFAULT }}" "${{ github.event.inputs.windows }}"
@@ -147,8 +147,8 @@ jobs:
 
           # For draft PRs, only run debug builds and tests (no release/coverage)
           if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.draft }}" = "true" ]; then
-            echo "release=false" >> "$GITHUB_OUTPUT"
-            echo "coverage=false" >> "$GITHUB_OUTPUT"
+            echo "release=false" | tee -a "$GITHUB_OUTPUT"
+            echo "coverage=false" | tee -a "$GITHUB_OUTPUT"
           fi
 
   ##############################################################
