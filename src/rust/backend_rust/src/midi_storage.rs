@@ -3,6 +3,7 @@
 /// MIDI storage element - a single MIDI message with inline payload.
 /// Shared with C++ via CXX bridge.
 #[repr(C)]
+#[derive(Debug)]
 pub struct MidiStorageElem {
     /// Position: absolute in storage, relative in buffers
     pub time: u32,
