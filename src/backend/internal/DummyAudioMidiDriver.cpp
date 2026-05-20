@@ -23,10 +23,9 @@ const std::map<DummyAudioMidiDriverMode, const char*> mode_names = {
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::enter_mode(DummyAudioMidiDriverMode mode) {
-    if (m_mode.load() != mode) {
+    if ((DummyAudioMidiDriverMode)m_rust->get_mode() != mode) {
         Log::log<log_level_debug>("DummyAudioMidiDriver: mode -> {}", mode_names.at(mode));
-        m_mode = mode;
-        m_controlled_mode_samples_to_process = 0;
+        m_rust->enter_mode((uint32_t)mode);
 
         // Ensure we finish any processing we were doing
         wait_process();
@@ -35,31 +34,28 @@ void DummyAudioMidiDriver<Time, Size>::enter_mode(DummyAudioMidiDriverMode mode)
 
 template <typename Time, typename Size>
 DummyAudioMidiDriverMode DummyAudioMidiDriver<Time, Size>::get_mode() const {
-    return m_mode;
+    return (DummyAudioMidiDriverMode)m_rust->get_mode();
 }
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::controlled_mode_request_samples(uint32_t samples) {
     this->m_command_queue.exec_process_thread_command([this, samples]() {
-        m_controlled_mode_samples_to_process += samples;
-        uint32_t requested = m_controlled_mode_samples_to_process.load();
+        m_rust->controlled_mode_request_samples(samples);
+        uint32_t requested = m_rust->get_controlled_mode_samples_to_process();
         Log::log<log_level_debug>("DummyAudioMidiDriver: request {} samples ({} total)", samples, requested);
     });
 }
 
 template <typename Time, typename Size>
 uint32_t DummyAudioMidiDriver<Time, Size>::get_controlled_mode_samples_to_process() const {
-    return m_controlled_mode_samples_to_process;
+    return m_rust->get_controlled_mode_samples_to_process();
 }
 
 
 template <typename Time, typename Size>
 DummyAudioMidiDriver<Time, Size>::DummyAudioMidiDriver(void (*maybe_process_callback)())
     : AudioMidiDriver(maybe_process_callback),
-      m_finish(false),
-      m_mode(DummyAudioMidiDriverMode::Automatic),
-      m_controlled_mode_samples_to_process(0),
-      m_paused(false),
+      m_rust(backend_rust::new_dummy_audio_midi_driver()),
       m_audio_port_opened_cb(nullptr), m_midi_port_opened_cb(nullptr),
       m_audio_port_closed_cb(nullptr), m_midi_port_closed_cb(nullptr),
       m_external_connections(shoop_make_shared<DummyExternalConnections>())
@@ -91,18 +87,18 @@ void DummyAudioMidiDriver<Time, Size>::start(
     this->m_command_queue.PROC_exec_all();
 
     m_proc_thread = std::thread([this] {
-        Log::log<log_level_debug>("Starting process thread - {}", mode_names.at(m_mode));
+        Log::log<log_level_debug>("Starting process thread - {}", mode_names.at((DummyAudioMidiDriverMode)m_rust->get_mode()));
         auto bufs_per_second = AudioMidiDriver::get_sample_rate() / AudioMidiDriver::get_buffer_size();
         auto interval = 1.0f / ((float)bufs_per_second);
         auto micros = uint32_t(interval * 1000000.0f);
         float time_taken = 0.0f;
-        while (!this->m_finish) {
+        while (!m_rust->is_finish()) {
             std::this_thread::sleep_for(std::chrono::microseconds((uint32_t)std::ceil(std::max(0.0f, micros - time_taken))));
             this->m_command_queue.PROC_handle_command_queue();
-            if (!m_paused) {
+            if (!m_rust->is_paused()) {
                 auto start = std::chrono::high_resolution_clock::now();
-                auto mode = m_mode.load();
-                auto samples_to_process = m_controlled_mode_samples_to_process.load();
+                auto mode = (DummyAudioMidiDriverMode)m_rust->get_mode();
+                auto samples_to_process = m_rust->get_controlled_mode_samples_to_process();
                 uint32_t to_process = mode == DummyAudioMidiDriverMode::Controlled ?
                     std::min(samples_to_process, AudioMidiDriver::get_buffer_size()) :
                     AudioMidiDriver::get_buffer_size();
@@ -111,7 +107,7 @@ void DummyAudioMidiDriver<Time, Size>::start(
                 }
                 AudioMidiDriver::PROC_process(to_process);
                 if (mode == DummyAudioMidiDriverMode::Controlled) {
-                    m_controlled_mode_samples_to_process -= to_process;
+                    m_rust->controlled_mode_advance(to_process);
                 }
                 auto end = std::chrono::high_resolution_clock::now();
                 time_taken = duration_cast<std::chrono::microseconds>(end - start).count();
@@ -125,14 +121,14 @@ void DummyAudioMidiDriver<Time, Size>::start(
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::pause() {
     Log::log<log_level_debug>("DummyAudioMidiDriver: pause");
-    m_paused = true;
+    m_rust->pause();
     wait_process();
 }
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::resume() {
     Log::log<log_level_debug>("DummyAudioMidiDriver: resume");
-    m_paused = false;
+    m_rust->resume();
 }
 
 template <typename Time, typename Size>
@@ -163,7 +159,7 @@ DummyAudioMidiDriver<Time, Size>::open_midi_port(std::string name,
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::close() {
-    m_finish = true;
+    m_rust->set_finish();
     if (m_proc_thread.joinable()) {
         if (std::this_thread::get_id() != m_proc_thread.get_id()) {
             m_proc_thread.join();
@@ -186,8 +182,8 @@ void DummyAudioMidiDriver<Time, Size>::controlled_mode_run_request(uint32_t time
         ).count() >= timeout;
     };
     while(
-        m_mode == DummyAudioMidiDriverMode::Controlled &&
-        m_controlled_mode_samples_to_process > 0 &&
+        (DummyAudioMidiDriverMode)m_rust->get_mode() == DummyAudioMidiDriverMode::Controlled &&
+        m_rust->get_controlled_mode_samples_to_process() > 0 &&
         !timed_out()
     ) {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -199,7 +195,7 @@ void DummyAudioMidiDriver<Time, Size>::controlled_mode_run_request(uint32_t time
 
     wait_process();
 
-    if (m_controlled_mode_samples_to_process > 0) {
+    if (m_rust->get_controlled_mode_samples_to_process() > 0) {
         Log::log<log_level_error>("DummyAudioMidiDriver: run request failed: requested samples remain");
     }
 }
