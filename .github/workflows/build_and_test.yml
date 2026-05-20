@@ -267,7 +267,7 @@ jobs:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
     needs: [maybe_create_release, setup]
-    if: ${{ needs.setup.outputs.linux == 'true' }}
+    if: ${{ needs.setup.outputs.linux == 'true' && matrix.kind.if }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -348,7 +348,7 @@ jobs:
               scripts/run_and_generate_coverage.sh
     runs-on: ubuntu-latest
     needs: [build_linux, setup]
-    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.linux == 'true' }}
+    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.linux == 'true' && matrix.kind.if }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
@@ -441,7 +441,7 @@ jobs:
           #   platform: macos-arm
     runs-on: ${{ matrix.kind.os }}
     needs: [maybe_create_release, setup]
-    if: ${{ needs.setup.outputs.macos == 'true' }}
+    if: ${{ needs.setup.outputs.macos == 'true' && matrix.kind.if }}
     env:
        PATH_SEPARATOR: ":"
        COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _
@@ -520,7 +520,7 @@ jobs:
           #   second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
     runs-on: ${{ matrix.kind.os }}
     needs: [build_macos, setup]
-    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.macos == 'true' }}
+    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.macos == 'true' && matrix.kind.if }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
@@ -616,7 +616,7 @@ jobs:
           #   platform: windows-msvc-arm
     runs-on: ${{ matrix.kind.os}}
     needs: [maybe_create_release, setup]
-    if: ${{ needs.setup.outputs.windows == 'true' }}
+    if: ${{ needs.setup.outputs.windows == 'true' && matrix.kind.if }}
     env:
       NATIVE_SHELL_CMD: "powershell -Command"
       PATH_SEPARATOR: ";"
@@ -696,7 +696,7 @@ jobs:
             sentry_build_type: debug
     runs-on: ${{ matrix.kind.os }}
     needs: [build_windows, setup]
-    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.windows == 'true' }}
+    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.windows == 'true' && matrix.kind.if }}
     env:
       pi_checkpoint_enabled: ${{ needs.setup.outputs.pi_checkpoints }}
       PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
