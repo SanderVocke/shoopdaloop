@@ -6,7 +6,7 @@ on:
       tags: "v*.*.*"
     pull_request:
       branches: [ "master" ]
-      types: [opened, synchronize, reopened, ready_for_review]
+      types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     workflow_dispatch:
       inputs:
         windows:
@@ -215,7 +215,7 @@ jobs:
       matrix:
         kind:
           - name: linux_release
-            if: needs.setup.outputs.release == 'true'
+            if: ${{ needs.setup.outputs.release == 'true' }}
             release_build: true
             package_kind: portable_folder
             second_package_kind: appimage
@@ -223,7 +223,7 @@ jobs:
             upload_release_assets: true
             platform: linux-x64
           - name: linux_debug
-            if: needs.setup.outputs.debug == 'true'
+            if: ${{ needs.setup.outputs.debug == 'true' }}
             release_build: false
             package_kind: portable_folder
             second_package_kind: test_binaries
@@ -238,7 +238,7 @@ jobs:
           #   cmake_opts: '"ENABLE_ASAN" = "On"'
           #   platform: linux-x64
           - name: linux_coverage
-            if: needs.setup.outputs.coverage == 'true'
+            if: ${{ needs.setup.outputs.coverage == 'true' }}
             release_build: false
             package_kind: portable_folder
             second_package_kind: test_binaries
@@ -284,7 +284,7 @@ jobs:
       with:
         shell: "bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail"
     - name: Build
-      if: always()
+      if: ${{ always() && matrix.kind.if }}
       uses: ./.github/actions/build_toplevel
       with:
         name: ${{ matrix.kind.name }}
@@ -301,9 +301,9 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
     - uses: ./.github/actions/checkpoint
-      if: always()
+      if: ${{ always() && matrix.kind.if }}
     - uses: ./.github/actions/upload_coding_agent_artifact
-      if: always()
+      if: ${{ always() && matrix.kind.if }}
 
   test_linux:
     strategy:
@@ -311,27 +311,27 @@ jobs:
       matrix:
         kind:
           - name: release_debian_stable
-            if: needs.setup.outputs.release == 'true'
+            if: ${{ needs.setup.outputs.release == 'true' }}
             python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.release-linux-x64.portable.tar.gz
             second_package: shoopdaloop.*.release-linux-x64.test_binaries.tar.gz
             sentry_build_type: release
           - name: debug_debian_stable
-            if: needs.setup.outputs.debug == 'true'
+            if: ${{ needs.setup.outputs.debug == 'true' }}
             python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.debug-linux-x64.portable.tar.gz
             second_package: shoopdaloop.*.debug-linux-x64.test_binaries.tar.gz
             sentry_build_type: debug
           - name: release_debian_appimage
-            if: needs.setup.outputs.release == 'true'
+            if: ${{ needs.setup.outputs.release == 'true' }}
             python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.release-linux-x64.AppImage
             sentry_build_type: release
           - name: coverage_debian_bookworm
-            if: needs.setup.outputs.coverage == 'true'
+            if: ${{ needs.setup.outputs.coverage == 'true' }}
             python: python3
             container: docker.io/sandervocke/shoopdaloop_build_base_debian_bookworm_x86_64:latest
             coverage: true
@@ -367,9 +367,9 @@ jobs:
       with:
         shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
     - uses: ./.github/actions/checkpoint
-      if: always()
+      if: ${{ always() && matrix.kind.if }}
     - name: Test
-      if: always()
+      if: ${{ always() && matrix.kind.if }}
       uses: ./.github/actions/test_toplevel
       with:
         name: ${{ matrix.kind.name }}
@@ -383,9 +383,9 @@ jobs:
         sentry_key: ${{ secrets.SENTRY_KEY }}
         sentry_build_type: ${{ matrix.kind.sentry_build_type }}
     - uses: ./.github/actions/checkpoint
-      if: always()
+      if: ${{ always() && matrix.kind.if }}
     - uses: ./.github/actions/upload_coding_agent_artifact
-      if: always()
+      if: ${{ always() && matrix.kind.if }}
 
 
 
@@ -407,7 +407,7 @@ jobs:
       matrix:
         kind:
           - name: macos_release
-            if: needs.setup.outputs.release == 'true'
+            if: ${{ needs.setup.outputs.release == 'true' }}
             release_build: true
             package_kind: portable_folder
             second_package_kind: test_binaries
@@ -424,7 +424,7 @@ jobs:
           #   upload_release_assets: true
           #   platform: macos-x64
           - name: macos_release_arm
-            if: needs.setup.outputs.release == 'true'
+            if: ${{ needs.setup.outputs.release == 'true' }}
             release_build: true
             package_kind: portable_folder
             # second_package_kind: dmg
@@ -461,6 +461,7 @@ jobs:
       with:
         shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
     - name: Build
+      if: ${{ matrix.kind.if }}
       uses: ./.github/actions/build_toplevel
       with:
         name: ${{ matrix.kind.name }}
@@ -480,9 +481,9 @@ jobs:
         vcpkg_rebuild: ${{ needs.setup.outputs.vcpkg_force_rebuild }}
         sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
     - uses: ./.github/actions/checkpoint
-      if: always()
+      if: ${{ always() && matrix.kind.if }}
     - uses: ./.github/actions/upload_coding_agent_artifact
-      if: always()
+      if: ${{ always() && matrix.kind.if }}
 
   test_macos:
     strategy:
@@ -490,7 +491,7 @@ jobs:
       matrix:
         kind:
           - name: release_macos_arm
-            if: needs.setup.outputs.release == 'true'
+            if: ${{ needs.setup.outputs.release == 'true' }}
             python: python3
             container: null
             os: macos-15
@@ -504,7 +505,7 @@ jobs:
           #   package: shoopdaloop.*.debug-macos-arm.portable.tar.gz
           #   second_package: shoopdaloop.*.debug-macos-arm.test_binaries.tar.gz
           - name: release_macos
-            if: needs.setup.outputs.release == 'true'
+            if: ${{ needs.setup.outputs.release == 'true' }}
             python: python3
             container: null
             os: macos-15-intel
@@ -519,7 +520,7 @@ jobs:
           #   second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
     runs-on: ${{ matrix.kind.os }}
     needs: [build_macos, setup]
-    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.macos == 'true' && needs.setup.outputs.release == 'true' }}
+    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.macos == 'true' }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
@@ -539,6 +540,7 @@ jobs:
       with:
         shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
     - name: Test
+      if: ${{ matrix.kind.if }}
       uses: ./.github/actions/test_toplevel
       with:
         name: ${{ matrix.kind.name }}
@@ -550,6 +552,7 @@ jobs:
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
         sentry_build_type: ${{ matrix.kind.sentry_build_type }}
     - uses: ./.github/actions/checkpoint
+      if: ${{ always() && matrix.kind.if }}
 
 
 
@@ -578,7 +581,7 @@ jobs:
       matrix:
         kind:
           - name: windows_release
-            if: needs.setup.outputs.release == 'true'
+            if: ${{ needs.setup.outputs.release == 'true' }}
             os: windows-2022
             python: python.exe
             pip: python.exe -m pip
@@ -591,7 +594,7 @@ jobs:
             upload_release_assets: true
             platform: windows-msvc-x64
           - name: windows_debug
-            if: needs.setup.outputs.debug == 'true'
+            if: ${{ needs.setup.outputs.debug == 'true' }}
             os: windows-2022
             python: python.exe
             pip: python.exe -m pip
@@ -613,6 +616,7 @@ jobs:
           #   platform: windows-msvc-arm
     runs-on: ${{ matrix.kind.os}}
     needs: [maybe_create_release, setup]
+    if: ${{ needs.setup.outputs.windows == 'true' }}
     env:
       NATIVE_SHELL_CMD: "powershell -Command"
       PATH_SEPARATOR: ";"
@@ -624,7 +628,6 @@ jobs:
       OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
-    if: ${{ needs.setup.outputs.windows == 'true' }}
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /
@@ -638,6 +641,7 @@ jobs:
       with:
         shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
     - name: Build
+      if: ${{ matrix.kind.if }}
       uses: ./.github/actions/build_toplevel
       with:
         name: ${{ matrix.kind.name }}
@@ -655,8 +659,9 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
     - uses: ./.github/actions/checkpoint
+      if: ${{ always() && matrix.kind.if }}
     - uses: ./.github/actions/upload_coding_agent_artifact
-      if: always()
+      if: ${{ always() && matrix.kind.if }}
 
   test_windows:
     strategy:
@@ -664,7 +669,7 @@ jobs:
       matrix:
         kind:
           - name: release_windows
-            if: needs.setup.outputs.release == 'true'
+            if: ${{ needs.setup.outputs.release == 'true' }}
             python: python.exe
             container: null
             os: windows-2022
@@ -673,7 +678,7 @@ jobs:
             pathconvert: "| cygpath -u -f -"
             sentry_build_type: release
           - name: release_windows_innosetup
-            if: needs.setup.outputs.release == 'true'
+            if: ${{ needs.setup.outputs.release == 'true' }}
             python: python.exe
             container: null
             os: windows-2022
@@ -681,7 +686,7 @@ jobs:
             pathconvert: "| cygpath -u -f -"
             sentry_build_type: release
           - name: debug_windows
-            if: needs.setup.outputs.debug == 'true'
+            if: ${{ needs.setup.outputs.debug == 'true' }}
             python: python.exe
             container: null
             os: windows-2022
@@ -691,6 +696,7 @@ jobs:
             sentry_build_type: debug
     runs-on: ${{ matrix.kind.os }}
     needs: [build_windows, setup]
+    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.windows == 'true' }}
     env:
       pi_checkpoint_enabled: ${{ needs.setup.outputs.pi_checkpoints }}
       PI_MODEL: ${{ github.event.inputs.pi_model || 'openrouter/openai/gpt-oss-20b:free' }}
@@ -698,7 +704,6 @@ jobs:
       OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
-    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.windows == 'true' }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
@@ -710,6 +715,7 @@ jobs:
       with:
         shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
     - name: Test
+      if: ${{ matrix.kind.if }}
       uses: ./.github/actions/test_toplevel
       with:
         name: ${{ matrix.kind.name }}
@@ -721,6 +727,7 @@ jobs:
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
         sentry_build_type: ${{ matrix.kind.sentry_build_type }}
     - uses: ./.github/actions/checkpoint
+      if: ${{ always() && matrix.kind.if }}
 
 
 
