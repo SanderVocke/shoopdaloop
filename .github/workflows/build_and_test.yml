@@ -252,6 +252,9 @@ jobs:
             options: --privileged --pid=host --user root --workdir /
         arch: [ x86_64 ]
         manylinux_arch: [ x86_64 ]
+        exclude:
+          - kind:
+              if: false
     runs-on: ubuntu-latest
     container:
       image: ${{ matrix.container.image }}
@@ -346,6 +349,9 @@ jobs:
               SHOOP_LOG=QoverageCollectorFactory=debug
               QML_IMPORT_PATH=$(~/.local/bin/qoverage --importpath)
               scripts/run_and_generate_coverage.sh
+        exclude:
+          - kind:
+              if: false
     runs-on: ubuntu-latest
     needs: [build_linux, setup]
     if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.linux == 'true' }}
@@ -439,6 +445,9 @@ jobs:
           #   os: macos-15
           #   upload_release_assets: true
           #   platform: macos-arm
+        exclude:
+          - kind:
+              if: false
     runs-on: ${{ matrix.kind.os }}
     needs: [maybe_create_release, setup]
     if: ${{ needs.setup.outputs.macos == 'true' }}
@@ -518,6 +527,9 @@ jobs:
           #   os: macos-15-intel
           #   package: shoopdaloop.*.debug-macos-x64.portable.tar.gz
           #   second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
+        exclude:
+          - kind:
+              if: false
     runs-on: ${{ matrix.kind.os }}
     needs: [build_macos, setup]
     if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.macos == 'true' }}
@@ -614,6 +626,9 @@ jobs:
           #   package_kind: portable_folder
           #   second_package_kind: test_binaries
           #   platform: windows-msvc-arm
+        exclude:
+          - kind:
+              if: false
     runs-on: ${{ matrix.kind.os}}
     needs: [maybe_create_release, setup]
     if: ${{ needs.setup.outputs.windows == 'true' }}
@@ -694,6 +709,9 @@ jobs:
             second_package: shoopdaloop.*.release-windows-msvc-x64.test_binaries.tar.gz
             pathconvert: "| cygpath -u -f -"
             sentry_build_type: debug
+        exclude:
+          - kind:
+              if: false
     runs-on: ${{ matrix.kind.os }}
     needs: [build_windows, setup]
     if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.windows == 'true' }}
