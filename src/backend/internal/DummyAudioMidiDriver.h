@@ -13,6 +13,7 @@
 #include <boost/lockfree/spsc_queue.hpp>
 #include <stdint.h>
 #include "shoop_shared_ptr.h"
+#include "backend_rust/src/dummy_audio_midi_driver_cxx.rs.h"
 
 struct DummyAudioMidiDriverSettings : public AudioMidiDriverSettingsInterface {
     DummyAudioMidiDriverSettings() {}
@@ -32,10 +33,7 @@ class DummyAudioMidiDriver : public AudioMidiDriver,
                              private ModuleLoggingEnabled<"Backend.DummyAudioMidiDriver"> {
     using Log = ModuleLoggingEnabled<"Backend.DummyAudioMidiDriver">;
 
-    std::atomic<bool> m_finish = false;
-    std::atomic<DummyAudioMidiDriverMode> m_mode = DummyAudioMidiDriverMode::Automatic;
-    std::atomic<uint32_t> m_controlled_mode_samples_to_process = 0;
-    std::atomic<bool> m_paused = false;
+    rust::Box<backend_rust::DummyAudioMidiDriver> m_rust;
     std::thread m_proc_thread;
     std::set<shoop_shared_ptr<DummyAudioPort>> m_audio_ports;
     std::set<shoop_shared_ptr<DummyMidiPort>> m_midi_ports;

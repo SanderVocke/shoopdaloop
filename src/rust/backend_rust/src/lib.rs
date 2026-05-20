@@ -3,6 +3,8 @@ pub mod audio_port;
 pub mod audio_port_cxx;
 pub mod decoupled_midi_port;
 pub mod decoupled_midi_port_cxx;
+pub mod dummy_audio_midi_driver;
+pub mod dummy_audio_midi_driver_cxx;
 pub mod dummy_audio_port;
 pub mod dummy_audio_port_cxx;
 pub mod dummy_external_connections;
