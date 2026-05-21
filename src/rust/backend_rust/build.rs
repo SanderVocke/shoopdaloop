@@ -4,7 +4,7 @@ fn main() {
     }
 
     cxx_build::bridges([
-        "src/midi_state_tracker_cxx.rs",
+        "src/command_queue_cxx.rs",
         "src/midi_state_diff_tracker_cxx.rs",
         "src/midi_storage_cxx.rs",
         "src/midi_sorting_buffer_cxx.rs",
@@ -19,6 +19,7 @@ fn main() {
         "src/internal_midi_port_cxx.rs",
         "src/midi_buffering_input_port_cxx.rs",
         "src/audio_port_cxx.rs",
+        "src/midi_state_tracker_cxx.rs",
         "src/refilling_pool/refilling_pool_cxx.rs",
         "src/dummy_audio_midi_driver_cxx.rs",
     ])
@@ -34,7 +35,7 @@ fn main() {
     );
     println!("cargo:cxx_bridge_libdir={}", out_dir.display());
 
-    println!("cargo:rerun-if-changed=src/midi_state_tracker_cxx.rs");
+    println!("cargo:rerun-if-changed=src/command_queue_cxx.rs");
     println!("cargo:rerun-if-changed=src/midi_state_diff_tracker_cxx.rs");
     println!("cargo:rerun-if-changed=src/midi_storage_cxx.rs");
     println!("cargo:rerun-if-changed=src/midi_sorting_buffer_cxx.rs");
