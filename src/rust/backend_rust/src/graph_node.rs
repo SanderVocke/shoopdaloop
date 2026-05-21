@@ -571,9 +571,7 @@ struct AnnotatedGraphNode {
 ///
 /// This is a variation on Kahn's algorithm for topological sorting.
 #[allow(dead_code)]
-pub fn graph_processing_order(
-    input_nodes: &[SharedGraphNode],
-) -> (Vec<usize>, Vec<Vec<usize>>) {
+pub fn graph_processing_order(input_nodes: &[SharedGraphNode]) -> (Vec<usize>, Vec<Vec<usize>>) {
     use std::collections::HashMap;
 
     // Collect all unique nodes - store both pointer and shared ref

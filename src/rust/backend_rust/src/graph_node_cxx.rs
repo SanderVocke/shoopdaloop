@@ -8,9 +8,7 @@
 
 #![allow(dead_code)]
 
-use crate::graph_node::{
-    GraphNodeVirtual, GraphNodeWrapper,
-};
+use crate::graph_node::{GraphNodeVirtual, GraphNodeWrapper};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -115,7 +113,7 @@ impl GraphNodeVirtual for NamedGraphNode {
     }
 }
 
-/// Thread-local registry to map raw pointers back to Rust GraphNode instances
+// Thread-local registry to map raw pointers back to Rust GraphNode instances
 thread_local! {
     static GRAPH_NODE_REGISTRY: RefCell<HashMap<usize, ()>> = RefCell::new(HashMap::new());
 }
@@ -131,9 +129,7 @@ pub fn register_graph_node(ptr: usize) {
 /// Get a node from the registry by pointer
 #[allow(dead_code)]
 pub fn is_graph_node_registered(ptr: usize) -> bool {
-    GRAPH_NODE_REGISTRY.with(|registry| {
-        registry.borrow().contains_key(&ptr)
-    })
+    GRAPH_NODE_REGISTRY.with(|registry| registry.borrow().contains_key(&ptr))
 }
 
 /// Clear all registered nodes
