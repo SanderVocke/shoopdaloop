@@ -15,16 +15,21 @@
 - [x] Implement `PROC_process()` and `PROC_co_process()` timing wrappers (via base class)
 - [x] Verify RustGraphNode.h compiles without warnings
 
-## Phase 2: Bridge graph_processing_order() [DEFERRED]
-- [ ] Add CXX bridge for `graph_processing_order()` returning raw node pointers (complex return type handling)
-- [ ] Create C++ wrapper that converts return type
-- [ ] Add unit tests for the bridged version
-- [ ] Verify algorithm produces same output as C++ version
+## Phase 2: Bridge graph_processing_order() [COMPLETE ✅]
+- [x] Analyze C++ graph_processing_order.cpp algorithm
+- [x] Analyze Rust algorithm and understand pointer-based approach
+- [x] Add node registration with edge data in Rust registry
+- [x] Add CXX bridge functions for node registration and edge data
+- [x] Implement compute_graph_processing_order() using registry
+- [x] Create C++ wrapper header `RustGraphProcessingOrder.h`
+- [x] Add unit tests for the bridged version (3 new tests pass)
+- [x] Verify algorithm produces same output as C++ version (unit tests pass)
 
-**Note: Deferred - algorithm works correctly on Rust side, integration complexity not justified for current needs.**
+**Note: Full integration would require updating BackendSession.cpp to use the Rust version.**
 
 ## Phase 3: Update Existing C++ Code [DEFERRED]
 - [ ] Find all C++ files using GraphNode: `grep -r "GraphNode" src/backend/internal/*.h`
+- [ ] Update `BackendSession.cpp` to use Rust graph_processing_order (include RustGraphProcessingOrder.h)
 - [ ] Update `GraphLoop` to use Rust-backed type
 - [ ] Update `GraphLoopChannel` to use Rust-backed type
 - [ ] Update `GraphAudioPort` to use Rust-backed type
@@ -32,7 +37,7 @@
 - [ ] Update any other classes using the interface
 - [ ] Run `cargo build` to verify changes compile
 
-**Note: Deferred - existing C++ implementation works correctly with all tests passing.**
+**Note: Deferred - existing C++ implementation works correctly with all tests passing. The Rust graph_processing_order is available via RustGraphProcessingOrder.h when ready to integrate.**
 
 ## Phase 4: Deprecate and Remove C++ GraphNode [PENDING]
 - [ ] Mark `GraphNode.h` as deprecated with `[[deprecated]]`
