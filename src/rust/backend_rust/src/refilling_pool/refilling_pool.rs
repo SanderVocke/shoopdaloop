@@ -540,20 +540,20 @@ mod tests {
     #[test]
     fn test_counters_and_tracking() -> Result<(), anyhow::Error> {
         let pool = RefillingPool::new(2, 0, || Box::new(TestObject(0)))?;
-        
+
         assert_eq!(pool.n_buffers_available(), 2);
         assert_eq!(pool.n_buffers_created_since_last_checked(), 2);
         assert_eq!(pool.n_buffers_created_since_last_checked(), 0); // resets after check
 
         let _ = pool.get();
         let _ = pool.get();
-        
+
         assert_eq!(pool.n_buffers_available(), 0);
         assert_eq!(pool.n_buffers_created_since_last_checked(), 0); // No refill triggered yet
-        
+
         let _ = pool.get(); // Fallback creation
         assert_eq!(pool.n_buffers_created_since_last_checked(), 1);
-        
+
         Ok(())
     }
 
@@ -561,19 +561,19 @@ mod tests {
     #[test]
     fn test_heavy_concurrency_stress() {
         let pool = Arc::new(RefillingPool::new(50, 10, || Box::new(TestObject(0))).unwrap());
-        
+
         let mut handles = vec![];
         for _ in 0..8 {
             let p = Arc::clone(&pool);
             handles.push(thread::spawn(move || {
                 for i in 0..2000 {
                     let item = p.get();
-                    
+
                     // Simulate processing
                     if i % 10 == 0 {
                         thread::yield_now();
                     }
-                    
+
                     // Constantly returning items causes high contention
                     // and frequent queue full scenarios against the refiller thread.
                     if i % 3 != 0 {
@@ -587,7 +587,7 @@ mod tests {
         for h in handles {
             h.join().expect("Thread panicked");
         }
-        
+
         // Ensure the pool didn't enter a corrupted state.
         let _ = pool.get();
     }

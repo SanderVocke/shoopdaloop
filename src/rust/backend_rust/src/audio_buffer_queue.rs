@@ -19,8 +19,8 @@ use crate::refilling_pool::refilling_pool_cxx::BufferHandle;
 /// # Safety and Aliasing Contract
 ///
 /// To support zero-copy snapshots in a concurrent environment, this struct strictly
-/// avoids exposing wide `&mut [f32]` or `&[f32]` slices to the entire underlying capacity. 
-/// Creating a `&mut [f32]` to the whole buffer while another thread concurrently 
+/// avoids exposing wide `&mut [f32]` or `&[f32]` slices to the entire underlying capacity.
+/// Creating a `&mut [f32]` to the whole buffer while another thread concurrently
 /// holds a `&[f32]` snapshot triggers Undefined Behavior under Rust's strict aliasing rules,
 /// even if the threads are accessing completely disjoint indices.
 ///
@@ -99,7 +99,7 @@ impl AudioBufferData {
 
     /// Returns a shared slice of the actively written samples.
     ///
-    /// SAFETY: Relies on the writer contract guaranteeing it has finished mutating 
+    /// SAFETY: Relies on the writer contract guaranteeing it has finished mutating
     /// `0..n_samples` and that no full-capacity `&mut` references are ever constructed.
     pub fn as_slice(&self) -> &[f32] {
         unsafe { std::slice::from_raw_parts(self.buffer.data_ptr(), self.n_samples) }
@@ -264,12 +264,12 @@ impl AudioBufferQueue {
             {
                 let active = self.buffers.back_mut().unwrap();
                 let dest_start = self.active_pos as usize;
-                
+
                 unsafe {
                     let dst_ptr = active.mut_data_ptr().add(dest_start);
                     std::ptr::copy_nonoverlapping(remaining.as_ptr(), dst_ptr, to_copy);
                 }
-                
+
                 // Update n_samples to reflect valid data count
                 active.n_samples = (self.active_pos as usize) + to_copy;
             }
