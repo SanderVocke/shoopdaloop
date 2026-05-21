@@ -41,4 +41,21 @@ public:
 
     unsigned input_connectability() const override;
     unsigned output_connectability() const override;
+    
+    // Gain/mute/peak control - delegate to Rust InternalAudioPort
+    void set_gain(float gain);
+    float get_gain() const;
+    void set_muted(bool muted) override;
+    bool get_muted() const override;
+    float get_input_peak() const;
+    void reset_input_peak();
+    float get_output_peak() const;
+    void reset_output_peak();
+    
+    // Ringbuffer config - delegate to Rust InternalAudioPort
+    void set_ringbuffer_n_samples(unsigned n) override;
+    unsigned get_ringbuffer_n_samples() const override;
+    
+    // Ringbuffer access - delegate to Rust InternalAudioPort
+    RingbufferSnapshot PROC_get_ringbuffer_contents();
 };
