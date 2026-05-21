@@ -16,8 +16,18 @@ use crate::refilling_pool::refilling_pool_cxx::BufferHandle;
 /// Wraps a Box<BufferHandle> from the pool. When the last Arc reference
 /// is dropped, the buffer is returned to the pool for reuse.
 ///
-/// This mirrors the C++ pattern where AudioBuffer has a weak reference
-/// back to the BufferPool and returns itself in its destructor.
+/// # Safety and Aliasing Contract
+///
+/// To support zero-copy snapshots in a concurrent environment, this struct strictly
+/// avoids exposing wide `&mut [f32]` or `&[f32]` slices to the entire underlying capacity.
+/// Creating a `&mut [f32]` to the whole buffer while another thread concurrently
+/// holds a `&[f32]` snapshot triggers Undefined Behavior under Rust's strict aliasing rules,
+/// even if the threads are accessing completely disjoint indices.
+///
+/// Instead, we use raw pointers (`*mut f32` and `*const f32`) coupled with an implicit contract:
+/// 1. **The Writer** promises to only write samples progressively from start to finish using raw memory copies.
+/// 2. **The Reader** promises to only read the subset of samples it knows were already written (via `n_samples`).
+/// 3. **The Writer** promises never to overwrite or mutate a sample once it has been written and made visible.
 pub struct SharedBufferHandle {
     buffer: UnsafeCell<Option<Box<BufferHandle>>>,
     pool: Weak<RefillingPool<BufferHandle>>,
@@ -32,29 +42,14 @@ impl SharedBufferHandle {
         }
     }
 
-    /// Get mutable access to the underlying data as f32 slice.
-    /// SAFETY: This is safe as long as there are no concurrent mutable accesses.
-    /// The AudioBufferQueue ensures exclusive access to the active buffer.
-    pub fn as_f32_mut(&self) -> &mut [f32] {
+    /// Get mutable raw pointer to the underlying data.
+    pub fn mut_data_ptr(&self) -> *mut f32 {
         let buf_opt = unsafe { &mut *self.buffer.get() };
         let buf = buf_opt.as_mut().expect("buffer was already released");
-        let bytes = buf.as_bytes_mut();
-        let len = bytes.len() / std::mem::size_of::<f32>();
-        let ptr = bytes.as_mut_ptr() as *mut f32;
-        unsafe { std::slice::from_raw_parts_mut(ptr, len) }
+        buf.as_bytes_mut().as_mut_ptr() as *mut f32
     }
 
-    /// Get immutable access to the underlying data as f32 slice.
-    pub fn as_f32(&self) -> &[f32] {
-        let buf_opt = unsafe { &*self.buffer.get() };
-        let buf = buf_opt.as_ref().expect("buffer was already released");
-        let bytes = buf.as_bytes();
-        let len = bytes.len() / std::mem::size_of::<f32>();
-        let ptr = bytes.as_ptr() as *const f32;
-        unsafe { std::slice::from_raw_parts(ptr, len) }
-    }
-
-    /// Get raw pointer to data.
+    /// Get immutable raw pointer to the underlying data.
     pub fn data_ptr(&self) -> *const f32 {
         let buf_opt = unsafe { &*self.buffer.get() };
         let buf = buf_opt.as_ref().expect("buffer was already released");
@@ -68,6 +63,10 @@ impl SharedBufferHandle {
         buf.len() / std::mem::size_of::<f32>()
     }
 }
+
+// Ensure the handle can be shared across threads.
+unsafe impl Send for SharedBufferHandle {}
+unsafe impl Sync for SharedBufferHandle {}
 
 impl Drop for SharedBufferHandle {
     fn drop(&mut self) {
@@ -98,20 +97,24 @@ impl AudioBufferData {
         self.n_samples
     }
 
+    /// Returns a shared slice of the actively written samples.
+    ///
+    /// SAFETY: Relies on the writer contract guaranteeing it has finished mutating
+    /// `0..n_samples` and that no full-capacity `&mut` references are ever constructed.
     pub fn as_slice(&self) -> &[f32] {
-        &self.buffer.as_f32()[..self.n_samples]
+        unsafe { std::slice::from_raw_parts(self.buffer.data_ptr(), self.n_samples) }
     }
 
     pub fn data_ptr(&self) -> *const f32 {
         self.buffer.data_ptr()
     }
 
-    pub fn capacity(&self) -> usize {
-        self.buffer.capacity()
+    pub fn mut_data_ptr(&self) -> *mut f32 {
+        self.buffer.mut_data_ptr()
     }
 
-    pub fn as_f32_mut(&self) -> &mut [f32] {
-        self.buffer.as_f32_mut()
+    pub fn capacity(&self) -> usize {
+        self.buffer.capacity()
     }
 
     /// Get sample at index (for testing).
@@ -256,13 +259,17 @@ impl AudioBufferQueue {
                 continue;
             }
 
-            // Copy data to active buffer
+            // Copy data to active buffer securely using raw pointers
             let to_copy = remaining.len().min(space);
             {
                 let active = self.buffers.back_mut().unwrap();
-                let dest = active.as_f32_mut();
                 let dest_start = self.active_pos as usize;
-                dest[dest_start..dest_start + to_copy].copy_from_slice(&remaining[..to_copy]);
+
+                unsafe {
+                    let dst_ptr = active.mut_data_ptr().add(dest_start);
+                    std::ptr::copy_nonoverlapping(remaining.as_ptr(), dst_ptr, to_copy);
+                }
+
                 // Update n_samples to reflect valid data count
                 active.n_samples = (self.active_pos as usize) + to_copy;
             }
@@ -476,7 +483,9 @@ mod tests {
     /// Test that evicted buffers are returned to pool (pool count recovers).
     #[test]
     fn test_eviction_returns_to_pool() {
-        let mut queue = AudioBufferQueue::new(2, 1, 2, 2);
+        // Change low_water_mark to 0 to definitively disable the refiller thread
+        // from refilling the pool right before our assertion.
+        let mut queue = AudioBufferQueue::new(2, 0, 2, 2);
         queue.put(&[1.0, 2.0, 3.0, 4.0]);
 
         // 2 buffers in queue, pool should be empty (capacity 2, both taken)
@@ -484,7 +493,7 @@ mod tests {
 
         // Add more data to trigger eviction
         queue.put(&[5.0, 6.0]);
-        // First buffer evicted and returned to pool
+        // First buffer evicted and returned to pool deterministically
         assert_eq!(queue.pool.n_buffers_available(), 1);
     }
 }

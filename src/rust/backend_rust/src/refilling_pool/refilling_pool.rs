@@ -10,8 +10,8 @@ use crossbeam_queue::ArrayQueue;
 use std::fmt;
 use std::fmt::Debug;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
-use std::thread::{self, JoinHandle};
+use std::sync::Arc;
+use std::thread::{self, JoinHandle, Thread};
 
 /// An error that can occur during the creation of a `RefillingPool`.
 #[derive(Debug, PartialEq, Eq)]
@@ -40,16 +40,16 @@ pub struct RefillingPool<T: Send + Debug + 'static> {
     queue: Arc<ArrayQueue<Box<T>>>,
     /// The user-provided closure to create new objects.
     factory: Arc<dyn Fn() -> Box<T> + Send + Sync>,
-    /// A signal to wake up the refilling thread.
-    refill_signal: Arc<(Mutex<()>, Condvar)>,
-    /// An atomic flag to indicate a refill is needed, avoiding locks on the consumer path.
+    /// An atomic flag to indicate a refill is needed.
     refill_needed: Arc<AtomicBool>,
     /// The number of items at which a refill is triggered.
     low_water_mark: usize,
     /// A signal to gracefully shut down the refilling thread.
     shutdown_signal: Arc<AtomicBool>,
-    /// The handle to the background refilling thread.
+    /// The handle to join the background refilling thread.
     refill_thread: Option<JoinHandle<()>>,
+    /// The thread handle to wait-free unpark the background thread.
+    refill_thread_handle: Thread,
     /// An atomic counter for all newly created buffers.
     buffers_created_counter: Arc<AtomicUsize>,
 }
@@ -109,77 +109,55 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
             }
         }
 
-        let refill_signal = Arc::new((Mutex::new(()), Condvar::new()));
         let shutdown_signal = Arc::new(AtomicBool::new(false));
         let refill_needed = Arc::new(AtomicBool::new(false));
 
         // Clone Arcs for the background thread.
         let queue_clone = Arc::clone(&queue);
         let factory_clone = Arc::clone(&factory);
-        let refill_signal_clone = Arc::clone(&refill_signal);
         let shutdown_signal_clone = Arc::clone(&shutdown_signal);
         let refill_needed_clone = Arc::clone(&refill_needed);
 
         let refill_thread = thread::spawn(move || {
-            let (lock, cvar) = &*refill_signal_clone;
-            let mut guard = match lock.lock() {
-                Ok(g) => g,
-                Err(e) => {
-                    println!("Refiller thread failed to acquire lock (poisoned): {:?}", e);
-                    return;
-                }
-            };
-
             while !shutdown_signal_clone.load(Ordering::Relaxed) {
-                // The classic spurious wakeup loop.
-                // Wait as long as no refill is needed and we are not shutting down.
-                while !refill_needed_clone.load(Ordering::Acquire)
-                    && !shutdown_signal_clone.load(Ordering::Relaxed)
-                {
-                    match cvar.wait(guard) {
-                        Ok(g) => guard = g,
-                        Err(e) => {
-                            println!(
-                                "Refiller thread failed to wait on condvar (poisoned): {:?}",
-                                e
-                            );
-                            return;
+                // Use atomic swap to test and clear the needed flag simultaneously.
+                // This entirely eliminates the blind overwrite race condition.
+                if refill_needed_clone.swap(false, Ordering::Acquire) {
+                    loop {
+                        let items_needed = capacity - queue_clone.len();
+                        if items_needed == 0 {
+                            break; // We are full, exit the refill loop.
+                        }
+
+                        for _ in 0..items_needed {
+                            let new_item = factory_clone();
+                            if queue_clone.push(new_item).is_err() {
+                                // If the queue is suddenly full (e.g., consumer released items),
+                                // break out of the for-loop to re-evaluate items_needed.
+                                break;
+                            }
                         }
                     }
+                } else {
+                    // Park the thread to avoid CPU spinning.
+                    // If `unpark()` is called concurrently just before this, it provides a token
+                    // making `park()` return immediately, preventing the lost wake-up race.
+                    thread::park();
                 }
-
-                if shutdown_signal_clone.load(Ordering::Relaxed) {
-                    break;
-                }
-
-                // This inner loop ensures we refill completely, even if consumers are active.
-                // It will only exit when the queue is at full capacity.
-                loop {
-                    let items_needed = capacity - queue_clone.len();
-                    if items_needed == 0 {
-                        break; // We are full, exit the refill loop.
-                    }
-
-                    for _ in 0..items_needed {
-                        let _ = queue_clone.push(factory_clone());
-                    }
-                    // After pushing items, we loop again to check if consumers have taken more
-                    // items during the refill.
-                }
-
-                // Only reset the flag once we are certain the queue is full.
-                refill_needed_clone.store(false, Ordering::Relaxed);
             }
         });
+
+        // Retain the thread handle to allow wait-free wakeups using `unpark()`.
+        let refill_thread_handle = refill_thread.thread().clone();
 
         Ok(Self {
             queue,
             factory,
-            refill_signal,
             refill_needed,
             low_water_mark,
             shutdown_signal,
             refill_thread: Some(refill_thread),
+            refill_thread_handle,
             buffers_created_counter,
         })
     }
@@ -216,15 +194,13 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
         let _ = self.queue.push(item);
     }
 
-    /// Notifies the background thread that a refill may be needed. This is lock-free.
+    /// Notifies the background thread that a refill may be needed. This is wait-free.
     fn notify_refiller(&self) {
-        // Set the flag first to ensure the refiller sees the need for a refill
-        // even if the notification is missed.
+        // Set the flag first to ensure the refiller sees the need for a refill.
         self.refill_needed.store(true, Ordering::Release);
 
-        // Then, wake up the thread in case it's sleeping.
-        let (_, cvar) = &*self.refill_signal;
-        cvar.notify_one();
+        // Then, wake up the thread. `unpark` provides a token and requires no locks.
+        self.refill_thread_handle.unpark();
     }
 
     /// Returns the number of pre-allocated buffers currently available in the pool.
@@ -254,16 +230,8 @@ impl<T: Send + Debug + 'static> Drop for RefillingPool<T> {
             // 1. Signal the thread to shut down.
             self.shutdown_signal.store(true, Ordering::Relaxed);
 
-            // 2. Wake up the thread from its `condvar.wait()` call.
-            // We MUST acquire the lock here to avoid the "lost wake-up" race.
-            // If the thread is between the check and the wait, it will hold the lock,
-            // so we will block here until it enters the wait (releasing the lock)
-            // or finishes its current loop iteration.
-            {
-                let (lock, cvar) = &*self.refill_signal;
-                let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
-                cvar.notify_all();
-            }
+            // 2. Unpark the thread to ensure it wakes up and sees the shutdown signal.
+            self.refill_thread_handle.unpark();
 
             // 3. Join the thread to ensure it has terminated.
             if let Err(e) = handle.join() {
@@ -312,7 +280,6 @@ mod tests {
     }
 
     /// Tests that the pool is correctly pre-filled to capacity upon creation.
-    /// Tests that the pool is correctly pre-filled to capacity upon creation.
     #[test]
     fn test_initial_state_and_prefill() -> Result<(), anyhow::Error> {
         let creation_counter = Arc::new(AtomicUsize::new(0));
@@ -335,7 +302,6 @@ mod tests {
         Ok(())
     }
 
-    /// Tests the fallback mechanism when the pool is empty.
     /// Tests the fallback mechanism when the pool is empty.
     #[test]
     fn test_get_and_empty_fallback() -> Result<(), anyhow::Error> {
@@ -378,7 +344,6 @@ mod tests {
         Ok(())
     }
 
-    /// Tests the refilling logic deterministically using a channel for synchronization.
     /// Tests the refilling logic deterministically using a channel for synchronization.
     #[test]
     fn test_deterministic_refilling_logic() -> Result<(), anyhow::Error> {
@@ -439,7 +404,6 @@ mod tests {
         Ok(())
     }
 
-    /// Tests that multiple concurrent signals don't confuse the refiller.
     /// Tests that multiple concurrent signals don't confuse the refiller.
     #[test]
     fn test_concurrent_signal() -> Result<(), anyhow::Error> {
@@ -509,7 +473,6 @@ mod tests {
     }
 
     /// Tests that the pool shuts down its background thread cleanly.
-    /// Tests that the pool shuts down its background thread cleanly.
     #[test]
     fn test_clean_shutdown() -> Result<(), anyhow::Error> {
         let (tx, rx) = mpsc::channel();
@@ -551,7 +514,6 @@ mod tests {
     }
 
     /// Tests that releasing an item puts it back in the pool.
-    /// Tests that releasing an item puts it back in the pool.
     #[test]
     fn test_release() -> Result<(), anyhow::Error> {
         let creation_counter = Arc::new(AtomicUsize::new(0));
@@ -572,5 +534,61 @@ mod tests {
         // Verify that releasing the item increases the queue length back to 2.
         assert_eq!(pool.queue.len(), 2);
         Ok(())
+    }
+
+    /// Tests that exposed counters accurately track queue states and new buffer allocations.
+    #[test]
+    fn test_counters_and_tracking() -> Result<(), anyhow::Error> {
+        let pool = RefillingPool::new(2, 0, || Box::new(TestObject(0)))?;
+
+        assert_eq!(pool.n_buffers_available(), 2);
+        assert_eq!(pool.n_buffers_created_since_last_checked(), 2);
+        assert_eq!(pool.n_buffers_created_since_last_checked(), 0); // resets after check
+
+        let _ = pool.get();
+        let _ = pool.get();
+
+        assert_eq!(pool.n_buffers_available(), 0);
+        assert_eq!(pool.n_buffers_created_since_last_checked(), 0); // No refill triggered yet
+
+        let _ = pool.get(); // Fallback creation
+        assert_eq!(pool.n_buffers_created_since_last_checked(), 1);
+
+        Ok(())
+    }
+
+    /// Stress test ensuring no deadlocks or lost wakeups occur under heavy contention.
+    #[test]
+    fn test_heavy_concurrency_stress() {
+        let pool = Arc::new(RefillingPool::new(50, 10, || Box::new(TestObject(0))).unwrap());
+
+        let mut handles = vec![];
+        for _ in 0..8 {
+            let p = Arc::clone(&pool);
+            handles.push(thread::spawn(move || {
+                for i in 0..2000 {
+                    let item = p.get();
+
+                    // Simulate processing
+                    if i % 10 == 0 {
+                        thread::yield_now();
+                    }
+
+                    // Constantly returning items causes high contention
+                    // and frequent queue full scenarios against the refiller thread.
+                    if i % 3 != 0 {
+                        p.release(item);
+                    }
+                }
+            }));
+        }
+
+        // If a wakeup is lost, this will hang indefinitely (caught by test runner timeout).
+        for h in handles {
+            h.join().expect("Thread panicked");
+        }
+
+        // Ensure the pool didn't enter a corrupted state.
+        let _ = pool.get();
     }
 }
