@@ -1,6 +1,6 @@
 # TODO: Bridge Rust GraphNode to C++ and Remove C++ Version
 
-**Status: Phase 1 COMPLETE, Phase 2 IN PROGRESS**
+**Status: Phases 1-2 COMPLETE, Phase 3 INFRASTRUCTURE READY (full integration deferred)**
 
 ## Phase 1: Create C++ Wrapper Header [COMPLETE ✅]
 - [x] Study C++ GraphNode.h interface and RustAudioPort.h pattern
@@ -27,17 +27,16 @@
 
 **Note: Full integration would require updating BackendSession.cpp to use the Rust version.**
 
-## Phase 3: Update Existing C++ Code [DEFERRED]
-- [ ] Find all C++ files using GraphNode: `grep -r "GraphNode" src/backend/internal/*.h`
-- [ ] Update `BackendSession.cpp` to use Rust graph_processing_order (include RustGraphProcessingOrder.h)
-- [ ] Update `GraphLoop` to use Rust-backed type
-- [ ] Update `GraphLoopChannel` to use Rust-backed type
-- [ ] Update `GraphAudioPort` to use Rust-backed type
-- [ ] Update `GraphPort` to use Rust-backed type
-- [ ] Update any other classes using the interface
+## Phase 3: Update Existing C++ Code [PARTIAL - INFRASTRUCTURE READY]
+- [x] Find all C++ files using GraphNode: `grep -r "GraphNode" src/backend/internal/*.h`
+- [x] Create `RustGraphProcessingOrder.h` with `graph_processing_order_rust()` function
+- [ ] Update `BackendSession.cpp` to use Rust graph_processing_order
+  - Would require registering all GraphNode instances in Rust registry first
+  - Nodes must call `backend_rust::register_graph_node()` with edge data
+- [ ] Update `GraphLoop`, `GraphLoopChannel`, `GraphPort`, etc. to register in Rust
 - [ ] Run `cargo build` to verify changes compile
 
-**Note: Deferred - existing C++ implementation works correctly with all tests passing. The Rust graph_processing_order is available via RustGraphProcessingOrder.h when ready to integrate.**
+**Status: Infrastructure ready. Full integration requires modifying all GraphNode classes to register themselves in the Rust registry. This is a larger refactor deferred for now.**
 
 ## Phase 4: Deprecate and Remove C++ GraphNode [PENDING]
 - [ ] Mark `GraphNode.h` as deprecated with `[[deprecated]]`
@@ -60,10 +59,11 @@
 - [x] Document the changes in code comments
 
 ## Completion Criteria
-- [x] All Rust tests pass (115 tests in backend_rust)
+- [x] All Rust tests pass (118 tests in backend_rust)
 - [x] All C++ integration tests pass (153 test cases, 5910 assertions)
 - [x] QML self-tests pass (All test files PASS)
 - [x] No compiler warnings (Full workspace builds with -D warnings)
 - [x] Code is formatted with `cargo fmt`
-- [ ] C++ GraphNode implementation removed (deferred - existing code works correctly)
+- [ ] C++ GraphNode implementation removed (deferred - requires significant refactor)
 - [x] Original C++ functionality preserved and working (all tests pass)
+- [x] Rust graph_processing_order infrastructure ready for integration
