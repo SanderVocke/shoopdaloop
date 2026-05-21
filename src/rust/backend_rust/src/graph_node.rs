@@ -159,6 +159,22 @@ pub trait GraphNodeVirtual: Send + Sync {
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         None
     }
+
+    /// Add an outgoing edge by raw pointer (for CXX bridge compatibility)
+    fn add_outgoing_ptr(&mut self, _ptr: usize) {}
+
+    /// Add an incoming edge by raw pointer (for CXX bridge compatibility)
+    fn add_incoming_ptr(&mut self, _ptr: usize) {}
+
+    /// Get raw outgoing edge pointers
+    fn get_outgoing_ptrs(&self) -> Vec<usize> {
+        vec![]
+    }
+
+    /// Get raw incoming edge pointers
+    fn get_incoming_ptrs(&self) -> Vec<usize> {
+        vec![]
+    }
 }
 
 /// Wrapper struct that provides timing callbacks and owns a boxed virtual trait object.
@@ -187,6 +203,29 @@ impl GraphNodeWrapper {
     /// Set the callback to be called after processing with the time taken in microseconds
     pub fn set_processed_cb(&mut self, cb: Option<ProcessedCallback>) {
         self.processed_cb = cb;
+    }
+
+    /// Add an outgoing edge by raw pointer (stored as usize)
+    /// The pointer is converted back to a WeakGraphNode when needed
+    pub fn add_outgoing_by_ptr(&mut self, target_ptr: usize) {
+        // For now, store the raw pointer in the virtual_node
+        // The actual node resolution happens at graph_processing time
+        self.virtual_node.add_outgoing_ptr(target_ptr);
+    }
+
+    /// Add an incoming edge by raw pointer
+    pub fn add_incoming_by_ptr(&mut self, source_ptr: usize) {
+        self.virtual_node.add_incoming_ptr(source_ptr);
+    }
+
+    /// Get raw outgoing edge pointers
+    pub fn get_outgoing_ptrs(&self) -> Vec<usize> {
+        self.virtual_node.get_outgoing_ptrs()
+    }
+
+    /// Get raw incoming edge pointers
+    pub fn get_incoming_ptrs(&self) -> Vec<usize> {
+        self.virtual_node.get_incoming_ptrs()
     }
 
     /// Get outgoing edges
