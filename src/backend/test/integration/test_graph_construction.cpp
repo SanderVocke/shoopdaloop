@@ -1,7 +1,7 @@
 #include "AudioMidiLoop.h"
 #include "BackendSession.h"
 #include "BasicLoop.h"
-#include "AudioPort.h"
+#include "RustAudioPort.h"
 #include "GraphLoopChannel.h"
 #include "GraphLoop.h"
 #include "GraphAudioPort.h"
@@ -26,7 +26,7 @@ void insert_all(NodesType &n, std::set<GraphNode *> &nodes) {
     }
 };
 
-class TestPort : public AudioPort<float> {
+class TestPort : public RustAudioPortF32 {
   public:
     std::string m_name;
     std::vector<float> m_buffer;
@@ -62,7 +62,7 @@ class TestPort : public AudioPort<float> {
     unsigned input_connectability() const override { return ShoopPortConnectability_Internal | ShoopPortConnectability_External; }
     unsigned output_connectability() const override { return ShoopPortConnectability_Internal | ShoopPortConnectability_External; }
 
-    TestPort(std::string name) : PortInterface(), m_name(name), AudioPort<float>(nullptr) {}
+    TestPort(std::string name) : PortInterface(), m_name(name), RustAudioPortF32(nullptr, 0) {}
     ~TestPort(){};
 };
 

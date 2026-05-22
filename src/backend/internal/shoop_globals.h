@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <functional>
 
+// Forward declarations
 template<typename SampleT> class AudioBuffer;
 template<typename SampleT> class BufferPool;
 template<typename A, typename B> class DummyAudioMidiDriver;
@@ -10,7 +11,6 @@ class ChannelInterface;
 class PortInterface;
 template<typename A> class AudioChannel;
 class MidiChannel;
-template<typename A> class AudioPort;
 class MidiPort;
 class GraphPort;
 class GraphLoop;
@@ -21,6 +21,7 @@ class MidiReadableBufferInterface;
 class MidiWriteableBufferInterface;
 class RustMidiSortingBuffer;
 class MidiStateTracker;
+class RustAudioPortF32;
 
 template<typename A, typename B> class MidiMessage;
 template<typename A, typename B> class DecoupledMidiPort;
@@ -59,7 +60,8 @@ using Size = uint16_t;
 using _DummyAudioMidiDriver = DummyAudioMidiDriver<uint32_t, uint32_t>;
 using LoopAudioChannel = AudioChannel<audio_sample_t>;
 using LoopMidiChannel = MidiChannel;
-using _AudioPort = AudioPort<audio_sample_t>;
+using _RustAudioPort = RustAudioPortF32;
+using _AudioPort = RustAudioPortF32;  // Alias for backward compatibility
 using Command = std::function<void()>;
 using _MidiMessage = MidiMessage<Time, Size>;
 using _DecoupledMidiPort = DecoupledMidiPort<Time, Size>;

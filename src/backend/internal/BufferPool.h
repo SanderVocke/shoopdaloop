@@ -1,6 +1,6 @@
 #pragma once
 #include <type_traits>
-#include "refilling_pool/src/cxx.rs.h"
+#include "backend_rust/src/refilling_pool/refilling_pool_cxx.rs.h"
 #include "AudioBuffer.h"
 #include "shoop_shared_ptr.h"
 #include <optional>

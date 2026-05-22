@@ -40,7 +40,7 @@ struct PassthroughMixingTestChain : public ModuleLoggingEnabled<"Test.Passthroug
 
     shoopdaloop_audio_port_t *api_mixing_port;
     shoop_shared_ptr<GraphPort> int_mixing_port;
-    InternalAudioPort<float>* int_internal_mixing_port;
+    InternalAudioPort* int_internal_mixing_port;
 
     // TODO add MIDI
 
@@ -65,7 +65,7 @@ struct PassthroughMixingTestChain : public ModuleLoggingEnabled<"Test.Passthroug
 
         api_mixing_port = open_internal_audio_port(api_backend_session, "audio_mix", 0);
         int_mixing_port = internal_audio_port(api_mixing_port);
-        int_internal_mixing_port = dynamic_cast<InternalAudioPort<float>*>(&int_mixing_port->get_port());
+        int_internal_mixing_port = dynamic_cast<InternalAudioPort*>(&int_mixing_port->get_port());
         
         api_output_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_out", ShoopPortDirection_Output, 0);
         int_output_port = internal_audio_port(api_output_port);

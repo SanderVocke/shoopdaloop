@@ -1,5 +1,5 @@
 #include "AudioChannel.h"
-#include "AudioPort.h"
+#include "RustAudioPort.h"
 #include "types.h"
 #include "channel_mode_helpers.h"
 #include <boost/lockfree/policies.hpp>
@@ -7,6 +7,7 @@
 #include <cstring>
 #include <memory>
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 #include <optional>
 #include <boost/lockfree/spsc_queue.hpp>
@@ -385,15 +386,17 @@ void AudioChannel<SampleT>::adopt_ringbuffer_contents(
     std::optional<unsigned> keep_samples_before_start_offset,
     bool thread_safe)
 {
+    // RustAudioPortF32 only supports float samples - early return if not castable
+    auto audioport = shoop_dynamic_pointer_cast<RustAudioPortF32>(from_port);
+    if (!audioport) {
+        // Cannot adopt audio ringbuffer from non-float audio port
+        return;
+    }
+
     if (reverse_start_offset.has_value()) {
         log<log_level_debug>("queue adopt ringbuffer @ reverse offset {}", reverse_start_offset.value());
     } else {
         log<log_level_debug>("queue adopt ringbuffer @ begin");
-    }
-    auto audioport = shoop_dynamic_pointer_cast<AudioPort<SampleT>>(from_port);
-    if (!audioport) {
-        log<log_level_error>("Cannot adopt audio ringbuffer from non-audio port");
-        return;
     }
 
     auto fn = [audioport, reverse_start_offset, keep_samples_before_start_offset, this]() {
@@ -410,7 +413,14 @@ void AudioChannel<SampleT>::adopt_ringbuffer_contents(
             }
         }
 
-        mp_buffers.set_contents(data.data);
+        // Type check at runtime to handle both SampleT=float and SampleT=int
+        // For SampleT=int, mp_buffers is a different type than what AudioPort gives
+        if constexpr (std::is_same_v<SampleT, audio_sample_t>) {
+            mp_buffers.set_contents(data.data);
+        } else {
+            // Cannot adopt float ringbuffer into int AudioChannel
+            return;
+        }
         set_start_offset(so);
         PROC_set_length(data.n_samples);
         log<log_level_debug_trace>("adopted ringbuffer: {} of {} samples stored, start offset {}", data.n_samples, ori_len, so);

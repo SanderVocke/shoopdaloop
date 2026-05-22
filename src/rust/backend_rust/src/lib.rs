@@ -1,3 +1,6 @@
+pub mod audio_buffer_queue;
+pub mod audio_port;
+pub mod audio_port_cxx;
 pub mod dummy_midi_port;
 pub mod dummy_midi_port_cxx;
 pub mod midi_buffering_input_port;
@@ -16,3 +19,8 @@ pub mod midi_state_tracker_cxx;
 pub mod midi_storage;
 pub mod midi_storage_cxx;
 pub mod midi_traits;
+pub mod refilling_pool;
+
+// Re-export types for use by other crates (like backend)
+pub use crate::refilling_pool::refilling_pool_cxx::create_buffer_pool;
+pub use crate::refilling_pool::refilling_pool_cxx::{BufferHandle, BufferPool};
