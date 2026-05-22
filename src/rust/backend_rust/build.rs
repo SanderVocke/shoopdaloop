@@ -4,6 +4,7 @@ fn main() {
     }
 
     cxx_build::bridges([
+        "src/backend_api_cxx.rs",
         "src/command_queue_cxx.rs",
         "src/midi_state_diff_tracker_cxx.rs",
         "src/midi_storage_cxx.rs",
@@ -34,6 +35,8 @@ fn main() {
         out_dir.join("cxxbridge/include").display()
     );
     println!("cargo:cxx_bridge_libdir={}", out_dir.display());
+
+    println!("cargo:rerun-if-changed=src/backend_api_cxx.rs");
 
     println!("cargo:rerun-if-changed=src/command_queue_cxx.rs");
     println!("cargo:rerun-if-changed=src/midi_state_diff_tracker_cxx.rs");
