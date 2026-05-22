@@ -27,6 +27,7 @@
 #include "ProcessingChainInterface.h"
 #include "LoggingBackend.h"
 #include "MidiPort.h"
+#include "InternalMidiPort.h"
 #include "MidiSortingBuffer.h"
 #include "PortInterface.h"
 #include "DecoupledMidiPort.h"
@@ -1241,11 +1242,20 @@ shoopdaloop_midi_port_t *open_driver_midi_port (shoop_backend_session_t *backend
 
 shoopdaloop_midi_port_t *open_internal_midi_port (shoop_backend_session_t *backend, const char* name_hint, unsigned min_always_on_ringbuffer_samples) {
   return api_impl<shoopdaloop_midi_port_t*>("open_internal_midi_port", [&]() -> shoopdaloop_midi_port_t* {
-    (void)name_hint;
-    (void)min_always_on_ringbuffer_samples;
     auto _backend = internal_backend_session(backend);
     if (!_backend) { return nullptr; }
-    throw std::runtime_error("Creating internal MIDI ports not yet supported");
+    auto port = shoop_make_shared<InternalMidiPort>(
+      std::string(name_hint),
+      ShoopPortConnectability_Internal,
+      ShoopPortConnectability_Internal,
+      min_always_on_ringbuffer_samples
+    );
+    if (min_always_on_ringbuffer_samples > 0) {
+      port->set_ringbuffer_n_samples(min_always_on_ringbuffer_samples);
+    }
+    auto pi = _backend->add_midi_port(port);
+    _backend->set_graph_node_changes_pending();
+    return external_midi_port(shoop_static_pointer_cast<GraphPort>(pi));
   }, (shoopdaloop_midi_port_t*) nullptr);
 }
 
