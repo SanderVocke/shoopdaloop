@@ -12,35 +12,25 @@
 
 DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction, shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool, shoop_weak_ptr<DummyExternalConnections> external_connections)
     : RustAudioPortF32(buffer_pool, 32),
+      m_rust_dummy(backend_rust::new_dummy_audio_port(name, direction == ShoopPortDirection_Output, reinterpret_cast<size_t>(this))),
       m_dummy_port_core(name, direction, this, external_connections),
-      m_command_queue(100, 1000, 1000),
-      m_queued_data(128) { }
+      m_command_queue(100, 1000, 1000) { }
 
 float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames) {
-    size_t new_size = std::max({m_buffer_data.size(), (size_t)n_frames, (size_t)1});
-    if (new_size > m_buffer_data.size()) {
-        m_buffer_data.resize(new_size);
-    }
-    auto rval = m_buffer_data.data();
-    return rval;
+    return m_rust_dummy->proc_get_buffer(n_frames);
 }
 
 void DummyAudioPort::queue_data(uint32_t n_frames, audio_sample_t const *data) {
     m_command_queue.queue_and_wait([this, n_frames, data]() {
-        auto s = m_queued_data.read_available();
-        auto v = std::vector<audio_sample_t>(data, data + n_frames);
-        log<log_level_debug>("Queueing {} samples, {} sets queued total", n_frames, s);
-        if (should_log<log_level_debug_trace>()) {
-            log<log_level_debug_trace>("--> Queued samples: {}", v);
-        }
-        m_queued_data.push(v);
+        auto slice = rust::Slice<const float>(data, n_frames);
+        m_rust_dummy->queue_data(n_frames, slice);
     });
 }
 
 bool DummyAudioPort::get_queue_empty() {
     bool is_empty = false;
     m_command_queue.queue_and_wait([this, &is_empty]() {
-        is_empty = m_queued_data.empty();
+        is_empty = m_rust_dummy->get_queue_empty();
     });
     return is_empty;
 }
@@ -52,81 +42,47 @@ void DummyAudioPort::PROC_process(uint32_t n_frames) {
         log<log_level_debug_trace>("Process {} frames", n_frames);
     }
 
-    // Process our own m_buffer_data (not the base class buffer)
-    if (n_frames > 0 && !m_buffer_data.empty()) {
+    // Process the buffer using the base class AudioPort (gain/mute/peaks/ringbuffer)
+    auto buf = PROC_get_buffer(n_frames);
+    if (n_frames > 0 && buf) {
         if (m_rust.has_value()) {
-            backend_rust::audio_port_process(**m_rust, m_buffer_data.data(), n_frames);
+            backend_rust::audio_port_process(**m_rust, buf, n_frames);
         }
     }
 
-    auto buf = PROC_get_buffer(n_frames);
-    uint32_t to_store = std::min(n_frames, m_n_requested_samples.load());
-    if (to_store > 0) {
-        log<log_level_debug>("Buffering {} samples ({} total)", to_store, m_retained_samples.size() + to_store);
-        if (should_log<log_level_debug_trace>()) {
-            std::array<audio_sample_t, 16> arr {};
-            std::copy(buf, buf+std::min(to_store, (uint32_t)16), arr.begin());
-            log<log_level_debug_trace>("--> first 16 buffered samples: {}", arr);
-        }
-        m_retained_samples.insert(m_retained_samples.end(), buf, buf+to_store);
-        m_n_requested_samples -= to_store;
-    }
+    // Copy processed buffer to retained samples for output ports
+    m_rust_dummy->proc_process(n_frames);
 }
 
 void DummyAudioPort::PROC_prepare(uint32_t n_frames) {
     m_command_queue.PROC_exec_all();
-    auto buf = PROC_get_buffer(n_frames);
-    uint32_t filled = 0;
-    while (!m_queued_data.empty() && filled < n_frames) {
-        auto &front = m_queued_data.front();
-        uint32_t to_copy = std::min((size_t)(n_frames - filled), front.size());
-        uint32_t total_copyable = m_queued_data.front().size();
-        log<log_level_debug>("Dequeueing {} of {} input samples", to_copy, total_copyable);
-        if (should_log<log_level_debug_trace>()) {
-            log<log_level_debug_trace>("--> Dequeued input samples: {}", front);
-        }
-        memcpy((void *)(buf + filled), (void *)front.data(),
-               sizeof(audio_sample_t) * to_copy);
-        filled += to_copy;
-        front.erase(front.begin(), front.begin() + to_copy);
-        if (front.size() == 0) {
-            m_queued_data.pop();
-            bool another = !m_queued_data.empty();
-            log<log_level_debug>("Pop queue item. Another: {}", another);
-        }
-    }
-    memset((void *)(buf+filled), 0, sizeof(audio_sample_t) * (n_frames - filled));
+    m_rust_dummy->proc_prepare(n_frames);
 }
 
 void DummyAudioPort::request_data(uint32_t n_frames) {
     m_command_queue.queue_and_wait([this, n_frames]() {
-        m_n_requested_samples += n_frames;
+        m_rust_dummy->request_data(n_frames);
     });
 }
 
 std::vector<audio_sample_t> DummyAudioPort::dequeue_data(uint32_t n) {
     std::vector<audio_sample_t> rval;
     m_command_queue.queue_and_wait([this, n, &rval]() {
-        auto s = m_retained_samples.size();
-        if (n > s) {
-            throw_error<std::runtime_error>("Not enough retained samples");
-        }
-        log<log_level_debug>("Yielding {} of {} output samples", n, s);
-        rval = std::vector<audio_sample_t>(m_retained_samples.begin(), m_retained_samples.begin()+n);
-        m_retained_samples.erase(m_retained_samples.begin(), m_retained_samples.begin()+n);
-        if (should_log<log_level_debug_trace>()) {
-            log<log_level_debug_trace>("--> Yielded samples: {}", rval);
+        auto rust_vec = m_rust_dummy->dequeue_data(n);
+        rval.reserve(rust_vec.size());
+        for (auto &sample : rust_vec) {
+            rval.push_back(sample);
         }
     });
     return rval;
 }
 
 unsigned DummyAudioPort::input_connectability() const {
-    return (m_dummy_port_core.m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
+    return (m_dummy_port_core.direction() == ShoopPortDirection_Input) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
 }
 
 unsigned DummyAudioPort::output_connectability() const {
-    return (m_dummy_port_core.m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_Internal : ShoopPortConnectability_External;
+    return (m_dummy_port_core.direction() == ShoopPortDirection_Input) ? ShoopPortConnectability_Internal : ShoopPortConnectability_External;
 }
 
 PortExternalConnectionStatus DummyAudioPort::get_external_connection_status() const {
@@ -134,9 +90,11 @@ PortExternalConnectionStatus DummyAudioPort::get_external_connection_status() co
 }
 
 void DummyAudioPort::connect_external(std::string name) {
+    (void)name;
     throw std::runtime_error("DummyAudioPort does not support external connections.");
 }
 
 void DummyAudioPort::disconnect_external(std::string name) {
+    (void)name;
     throw std::runtime_error("DummyAudioPort does not support external connections.");
 }

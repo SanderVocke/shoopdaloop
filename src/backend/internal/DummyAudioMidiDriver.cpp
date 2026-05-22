@@ -10,8 +10,6 @@
 #include <thread>
 #include "DummyAudioMidiDriver.h"
 #include <map>
-#include <algorithm>
-#include <regex>
 
 #ifdef _WIN32
 #undef min
@@ -214,71 +212,6 @@ std::vector<ExternalPortDescriptor> DummyAudioMidiDriver<Time, Size>::find_exter
     )
 {
     return m_external_connections->find_external_ports(maybe_name_regex, maybe_direction_filter, maybe_data_type_filter);
-}
-
-void DummyExternalConnections::add_external_mock_port(std::string name, shoop_port_direction_t direction, shoop_port_data_type_t data_type) {
-    if (std::find_if(m_external_mock_ports.begin(), m_external_mock_ports.end(), [name](auto &a) { return a.name == name; }) == m_external_mock_ports.end()) {
-        m_external_mock_ports.push_back(ExternalPortDescriptor {
-            .name = name,
-            .direction = direction,
-            .data_type = data_type
-        });
-    }
-}
-
-void DummyExternalConnections::remove_external_mock_port(std::string name) {
-    auto new_end = std::remove_if(m_external_mock_ports.begin(), m_external_mock_ports.end(), [name](auto &a) { return a.name == name; });
-
-    if(!(new_end == m_external_mock_ports.end())) {
-        m_external_mock_ports.erase(new_end, m_external_mock_ports.end());
-        // Remove connections also
-        auto new_conns_end = std::remove_if(m_external_connections.begin(), m_external_connections.end(), [name](auto &a) { return a.second == name; });
-        m_external_connections.erase(
-            new_conns_end,
-            m_external_connections.end()
-        );
-    }
-}
-
-void DummyExternalConnections::remove_all_external_mock_ports() {
-    m_external_mock_ports.clear();
-    m_external_connections.clear();
-}
-
-ExternalPortDescriptor &DummyExternalConnections::get_port(std::string name) {
-    auto it = std::find_if(m_external_mock_ports.begin(), m_external_mock_ports.end(), [name](auto &a) { return a.name == name; });
-    if (it == m_external_mock_ports.end()) {
-        throw std::runtime_error("Port not found");
-    }
-    return *it;
-}
-
-void DummyExternalConnections::connect(DummyPortCore* port, std::string external_port_name) {
-    auto pname = port->name();
-    log<log_level_debug>("connect {} to {}", pname, external_port_name);
-    auto &desc = get_port(external_port_name);
-    auto conn = std::make_pair(port, desc.name);
-    if (std::find(m_external_connections.begin(), m_external_connections.end(), conn) == m_external_connections.end()) {
-        m_external_connections.push_back(conn);
-    }
-}
-
-void DummyExternalConnections::disconnect(DummyPortCore* port, std::string external_port_name) {
-    auto pname = port->name();
-    log<log_level_debug>("disconnect {} from {}", pname, external_port_name);
-    auto &desc = get_port(external_port_name);
-    auto conn = std::make_pair(port, desc.name);
-    auto new_end = std::remove(m_external_connections.begin(), m_external_connections.end(), conn);
-    m_external_connections.erase(new_end, m_external_connections.end());
-}
-
-PortExternalConnectionStatus DummyExternalConnections::connection_status_of(const DummyPortCore* port) {
-    log<log_level_debug>("getting connection status of {}", port->name());
-    PortExternalConnectionStatus rval;
-    for (auto &conn : m_external_connections) {
-        rval[conn.second] = conn.first == port;
-    }
-    return rval;
 }
 
 template <typename Time, typename Size>

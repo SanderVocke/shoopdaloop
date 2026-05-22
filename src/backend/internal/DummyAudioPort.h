@@ -6,9 +6,8 @@
 #include "LoggingEnabled.h"
 #include "CommandQueue.h"
 #include "types.h"
+#include "backend_rust/src/dummy_audio_port_cxx.rs.h"
 #include <memory>
-#include <set>
-#include <thread>
 #include <vector>
 #include <stdint.h>
 #include "shoop_shared_ptr.h"
@@ -16,10 +15,7 @@
 class DummyAudioPort : public RustAudioPortF32,
                        private ModuleLoggingEnabled<"Backend.DummyAudioPort"> {
 
-    boost::lockfree::spsc_queue<std::vector<audio_sample_t>> m_queued_data;
-    std::atomic<uint32_t> m_n_requested_samples = 0;
-    std::vector<audio_sample_t> m_retained_samples;
-    std::vector<audio_sample_t> m_buffer_data;
+    rust::Box<backend_rust::DummyAudioPort> m_rust_dummy;
 
     // Composition replacing former base classes
     DummyPortCore m_dummy_port_core;
@@ -54,10 +50,10 @@ public:
     void request_data(uint32_t n_frames);
     std::vector<audio_sample_t> dequeue_data(uint32_t n);
 
-    bool has_internal_read_access() const override { return m_dummy_port_core.m_direction == ShoopPortDirection_Input; }
-    bool has_internal_write_access() const override { return m_dummy_port_core.m_direction == ShoopPortDirection_Output; }
-    bool has_implicit_input_source() const override { return m_dummy_port_core.m_direction == ShoopPortDirection_Input; }
-    bool has_implicit_output_sink() const override { return m_dummy_port_core.m_direction == ShoopPortDirection_Output; }
+    bool has_internal_read_access() const override { return m_dummy_port_core.direction() == ShoopPortDirection_Input; }
+    bool has_internal_write_access() const override { return m_dummy_port_core.direction() == ShoopPortDirection_Output; }
+    bool has_implicit_input_source() const override { return m_dummy_port_core.direction() == ShoopPortDirection_Input; }
+    bool has_implicit_output_sink() const override { return m_dummy_port_core.direction() == ShoopPortDirection_Output; }
 
     void PROC_prepare(uint32_t nframes) override;
     void PROC_process(uint32_t nframes) override;
