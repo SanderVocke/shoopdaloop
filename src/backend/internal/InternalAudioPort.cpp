@@ -17,6 +17,7 @@ InternalAudioPort::InternalAudioPort(std::string name,
                                      unsigned output_connectability,
                                      shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool)
     : RustAudioPortF32(buffer_pool, 32),
+      m_name(name),
       m_rust_internal(backend_rust::new_internal_audio_port(name, n_frames, input_connectability, output_connectability)) {}
 
 float* InternalAudioPort::PROC_get_buffer(uint32_t n_frames) {
@@ -24,7 +25,7 @@ float* InternalAudioPort::PROC_get_buffer(uint32_t n_frames) {
 }
 
 const char* InternalAudioPort::name() const {
-    return m_rust_internal->name().data();
+    return m_name.c_str();
 }
 
 PortExternalConnectionStatus InternalAudioPort::get_external_connection_status() const {

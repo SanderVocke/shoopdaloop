@@ -14,6 +14,7 @@ InternalMidiPort::InternalMidiPort(
     unsigned /*ringbuffer_n_samples_hint*/
 )
     : MidiPort(true, true, true),
+      m_name(name),
       m_rust_internal(backend_rust::new_internal_midi_port(name, input_connectability, output_connectability)) {}
 
 uint32_t InternalMidiPort::n_events() const {
@@ -67,7 +68,7 @@ void InternalMidiPort::PROC_process(uint32_t nframes) {
 }
 
 const char* InternalMidiPort::name() const {
-    return m_rust_internal->name().data();
+    return m_name.c_str();
 }
 
 PortDataType InternalMidiPort::type() const {

@@ -20,6 +20,7 @@ class InternalMidiPort : public MidiPort,
                          public MidiWriteableBuffer,
                          private ModuleLoggingEnabled<"Backend.InternalMidiPort"> {
     rust::Box<backend_rust::InternalMidiPort> m_rust_internal;
+    std::string m_name;  // Cached name to avoid dangling pointer from Rust String
 
 public:
     InternalMidiPort(

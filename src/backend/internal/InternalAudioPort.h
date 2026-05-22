@@ -7,6 +7,7 @@
 
 class InternalAudioPort : public RustAudioPortF32 {
     rust::Box<backend_rust::InternalAudioPort> m_rust_internal;
+    std::string m_name;  // Cached name to avoid dangling pointer from Rust String
 
 public:
     // Note that the port direction for internal ports are defined w.r.t. ShoopDaLoop.
