@@ -11,6 +11,7 @@
 #include "LoggingEnabled.h"
 #include "RustAudioPort.h"
 #include "shoop_shared_ptr.h"
+#include "backend_rust/src/audio_midi_driver_cxx.rs.h"
 
 enum class ProcessFunctionResult {
     Continue,  // Continue processing next cycle
@@ -38,15 +39,9 @@ public:
 
 class AudioMidiDriver : public ModuleLoggingEnabled<"Backend.AudioMidiDriver">,
                         private shoop_enable_shared_from_this<AudioMidiDriver> {
+    // Rust core for atomic state and processor/decoupled port management
+    rust::Box<backend_rust::AudioMidiDriverCore> m_rust_core;
     shoop_shared_ptr<std::vector<shoop_weak_ptr<HasAudioProcessingFunction>>> m_processors;
-    std::atomic<uint32_t> m_xruns = 0;
-    std::atomic<uint32_t> m_sample_rate = 0;
-    std::atomic<uint32_t> m_buffer_size = 0;
-    std::atomic<float> m_dsp_load = 0.0f;
-    std::atomic<void*> m_maybe_client_handle = nullptr;
-    std::atomic<const char*> m_client_name = nullptr;
-    std::atomic<bool> m_active = false;
-    std::atomic<uint32_t> m_last_processed = 1;
     std::set<shoop_shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports;
     void (*m_maybe_process_callback)() = nullptr;
 

@@ -4,6 +4,7 @@ fn main() {
     }
 
     cxx_build::bridges([
+        "src/audio_midi_driver_cxx.rs",
         "src/backend_api_cxx.rs",
         "src/command_queue_cxx.rs",
         "src/midi_state_diff_tracker_cxx.rs",
@@ -36,6 +37,7 @@ fn main() {
     );
     println!("cargo:cxx_bridge_libdir={}", out_dir.display());
 
+    println!("cargo:rerun-if-changed=src/audio_midi_driver_cxx.rs");
     println!("cargo:rerun-if-changed=src/backend_api_cxx.rs");
 
     println!("cargo:rerun-if-changed=src/command_queue_cxx.rs");

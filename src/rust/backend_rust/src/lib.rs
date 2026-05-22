@@ -1,4 +1,6 @@
 pub mod audio_buffer_queue;
+pub mod audio_midi_driver;
+pub mod audio_midi_driver_cxx;
 pub mod audio_port;
 pub mod audio_port_cxx;
 pub mod backend_api_cxx;
