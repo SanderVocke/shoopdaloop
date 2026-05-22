@@ -1,6 +1,7 @@
 pub mod audio_buffer_queue;
 pub mod audio_port;
 pub mod audio_port_cxx;
+pub mod backend_api_cxx;
 pub mod command_queue;
 pub mod command_queue_cxx;
 pub mod decoupled_midi_port;
