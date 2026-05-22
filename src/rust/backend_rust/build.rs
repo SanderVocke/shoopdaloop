@@ -20,7 +20,7 @@ fn main() {
         "src/midi_buffering_input_port_cxx.rs",
         "src/audio_port_cxx.rs",
         "src/midi_state_tracker_cxx.rs",
-        "src/refilling_pool/refilling_pool_cxx.rs",
+        "src/refilling_pool_cxx.rs",
         "src/dummy_audio_midi_driver_cxx.rs",
     ])
     .std("c++20")
@@ -47,6 +47,6 @@ fn main() {
     println!("cargo:rerun-if-changed=src/internal_midi_port_cxx.rs");
     println!("cargo:rerun-if-changed=src/midi_buffering_input_port_cxx.rs");
     println!("cargo:rerun-if-changed=src/audio_port_cxx.rs");
-    println!("cargo:rerun-if-changed=src/refilling_pool/refilling_pool_cxx.rs");
+    println!("cargo:rerun-if-changed=src/refilling_pool_cxx.rs");
     println!("cargo:rerun-if-changed=src/dummy_audio_midi_driver_cxx.rs");
 }
