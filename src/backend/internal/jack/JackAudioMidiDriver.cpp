@@ -121,7 +121,7 @@ void GenericJackAudioMidiDriver<API>::start(
 
     // Processing the command queue once will ensure that it knows processing is active.
     // That way commands added from now on will be executed on the process thread.
-    ma_queue.PROC_exec_all();
+    this->m_command_queue.PROC_exec_all();
 
     if (API::activate(client)) {
         Log::throw_error<std::runtime_error>("Could not activate JACK client.");

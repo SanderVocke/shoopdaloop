@@ -1,9 +1,10 @@
 #pragma once
 #include <memory>
 #include <vector>
+#include <functional>
 #include "LoggingEnabled.h"
 #include "AudioMidiDriver.h"
-#include "WithCommandQueue.h"
+#include "CommandQueue.h"
 #include "shoop_globals.h"
 #include "types.h"
 #include <set>
@@ -25,7 +26,6 @@ using namespace shoop_types;
 
 class BackendSession : public shoop_enable_shared_from_this<BackendSession>,
                        public HasAudioProcessingFunction,
-                       public WithCommandQueue,
                        public ModuleLoggingEnabled<"Backend.Session"> {
     void recalculate_processing_schedule(unsigned update_id);
 
@@ -56,6 +56,8 @@ public:
     shoop_shared_ptr<profiling::ProfilingItem> top_profiling_item = nullptr;
     shoop_shared_ptr<profiling::ProfilingItem> graph_profiling_item = nullptr;
     shoop_shared_ptr<profiling::ProfilingItem> cmds_profiling_item = nullptr;
+
+    CommandQueue m_command_queue;
 
     // For updating the graph. When node changes are pending, change
     // the update_id. The process thread will trigger a recalculation
@@ -96,4 +98,9 @@ public:
 
     void set_graph_node_changes_pending();
     void wait_graph_up_to_date();
+
+    // Command queue forwarding (for external API usage)
+    void queue_process_thread_command(std::function<void()> fn) { m_command_queue.queue_process_thread_command(std::move(fn)); }
+    void exec_process_thread_command(std::function<void()> fn) { m_command_queue.exec_process_thread_command(std::move(fn)); }
+    CommandQueue &get_command_queue() { return m_command_queue; }
 };

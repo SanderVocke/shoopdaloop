@@ -2,7 +2,9 @@
 #include <memory>
 #include <string>
 #include <stdint.h>
-#include "WithCommandQueue.h"
+#include <functional>
+#include "CommandQueue.h"
+#include "shoop_globals.h"
 #include "types.h"
 #include <set>
 #include <atomic>
@@ -34,8 +36,7 @@ public:
     virtual void PROC_process(uint32_t nframes) = 0;
 };
 
-class AudioMidiDriver : public WithCommandQueue,
-                        private ModuleLoggingEnabled<"Backend.AudioMidiDriver">,
+class AudioMidiDriver : public ModuleLoggingEnabled<"Backend.AudioMidiDriver">,
                         private shoop_enable_shared_from_this<AudioMidiDriver> {
     shoop_shared_ptr<std::vector<shoop_weak_ptr<HasAudioProcessingFunction>>> m_processors;
     std::atomic<uint32_t> m_xruns = 0;
@@ -48,6 +49,9 @@ class AudioMidiDriver : public WithCommandQueue,
     std::atomic<uint32_t> m_last_processed = 1;
     std::set<shoop_shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports;
     void (*m_maybe_process_callback)() = nullptr;
+
+protected:
+    CommandQueue m_command_queue;
 
 protected:
     // Derived class should call these
@@ -107,6 +111,11 @@ public:
     uint32_t get_last_processed() const;
 
     virtual void wait_process();
+
+    // Command queue forwarding (for external API usage)
+    void queue_process_thread_command(std::function<void()> fn) { m_command_queue.queue_process_thread_command(std::move(fn)); }
+    void exec_process_thread_command(std::function<void()> fn) { m_command_queue.exec_process_thread_command(std::move(fn)); }
+    CommandQueue &get_command_queue() { return m_command_queue; }
 
     virtual std::vector<ExternalPortDescriptor> find_external_ports(
         const char* maybe_name_regex,

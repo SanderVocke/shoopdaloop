@@ -2,7 +2,7 @@
 #include "RustMidiStorage.h"
 #include "MidiBuffer.h"
 #include "ChannelInterface.h"
-#include "WithCommandQueue.h"
+#include "CommandQueue.h"
 #include "MidiStateTracker.h"
 #include "LoggingEnabled.h"
 #include "ProcessProfiling.h"
@@ -11,13 +11,13 @@
 #include "shoop_shared_ptr.h"
 
 class MidiChannel : public ChannelInterface,
-                    private WithCommandQueue,
                     private ModuleLoggingEnabled<"Backend.MidiChannel"> {
 public:
     using Storage = RustMidiStorage;
     using StorageCursor = typename Storage::Cursor;
 
 private:
+    CommandQueue m_command_queue;
 
     struct ExternalBufState {
         uint32_t n_events_total = 0;

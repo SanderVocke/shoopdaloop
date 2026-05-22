@@ -5,19 +5,19 @@
 
 #include "AudioBuffer.h"
 #include "BufferPool.h"
-#include "WithCommandQueue.h"
+#include "CommandQueue.h"
 #include "LoggingEnabled.h"
 #include "shoop_shared_ptr.h"
 
 template<typename SampleT>
-struct BufferQueue : private WithCommandQueue,
-                     private ModuleLoggingEnabled<"Backend.BufferQueue"> {
+struct BufferQueue : private ModuleLoggingEnabled<"Backend.BufferQueue"> {
 public:
     typedef AudioBuffer<SampleT> BufferObj;
     typedef BufferPool<SampleT> UsedBufferPool;
     typedef shoop_shared_ptr<BufferObj> SharedBuffer;
 
 private:
+    CommandQueue m_command_queue;
     shoop_shared_ptr<std::deque<SharedBuffer>> buffers;
     shoop_shared_ptr<UsedBufferPool> pool = nullptr;
     std::atomic<uint32_t> ma_active_buffer_pos = 0;

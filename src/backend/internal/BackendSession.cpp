@@ -101,7 +101,7 @@ struct BackendSession::RecalculateGraphThread {
 };
 
 BackendSession::BackendSession()
-    : WithCommandQueue(),
+    : m_command_queue(shoop_constants::command_queue_size, 1000, 1000),
       ma_state(State::Active),
       m_recalculate_graph_thread(std::make_unique<RecalculateGraphThread>(*this)),
       profiler(shoop_make_shared<profiling::Profiler>()),
@@ -139,7 +139,7 @@ void BackendSession::PROC_process(uint32_t nframes) {
             log<log_level_debug_trace>(
                 "Process: execute commands and MIDI control");
             profiling::stopwatch(
-                [this, nframes]() { PROC_handle_command_queue(); },
+                [this, nframes]() { m_command_queue.PROC_handle_command_queue(); },
                 cmds_profiling_item);
 
             auto graph_id = ma_graph_id.load();
@@ -195,7 +195,7 @@ void BackendSession::PROC_process(uint32_t nframes) {
 void BackendSession::destroy() {
     if (ma_state != State::Destroyed) {
         log<log_level_debug>("Destroying backend");
-        ma_queue.passthrough_on();
+        m_command_queue.passthrough_on();
         for (auto &p : ports) {
             if (p) {
                 p->get_port().close();
@@ -441,7 +441,7 @@ void BackendSession::set_buffer_size(uint32_t bs) {
             as_node->PROC_notify_changed_buffer_size(bs);
         }
     };
-    exec_process_thread_command([&, this]() {
+    m_command_queue.exec_process_thread_command([&, this]() {
         for (auto &i : loops) {
             notify(i);
         }
@@ -604,7 +604,7 @@ void BackendSession::recalculate_processing_schedule(unsigned req_id) {
             me->m_processing_schedule = result;
             me->ma_graph_id = req_id;
         };
-        queue_process_thread_command(finish_fn);
+        m_command_queue.queue_process_thread_command(finish_fn);
     }
 }
 

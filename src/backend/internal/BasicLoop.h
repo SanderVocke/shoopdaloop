@@ -1,6 +1,6 @@
 #pragma once
 #include "LoopInterface.h"
-#include "WithCommandQueue.h"
+#include "CommandQueue.h"
 #include "LoggingEnabled.h"
 #include <deque>
 #include <atomic>
@@ -23,7 +23,6 @@ enum BasicPointOfInterestFlags {
 // logic of handling points of interest while processing, planning
 // mode transitions etc.
 class BasicLoop : public LoopInterface,
-                  protected WithCommandQueue,
                   protected ModuleLoggingEnabled<"Backend.Loop"> {
 
 public:
@@ -33,6 +32,8 @@ public:
     };
 
 protected:
+    CommandQueue m_command_queue;
+
     std::optional<PointOfInterest> mp_next_poi = std::nullopt;
     std::optional<uint32_t> mp_next_trigger = std::nullopt;
     shoop_shared_ptr<LoopInterface> mp_sync_source = nullptr;
