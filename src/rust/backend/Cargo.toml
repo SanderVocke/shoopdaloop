@@ -10,14 +10,12 @@ path = "src/bin/print_backend_build_info.rs"
 
 [dependencies]
 common = { path = "../common" }
-refilling_pool = { path = "../refilling_pool" }
 backend_rust = { path = "../backend_rust" }
 log = { workspace = true }
 ctor = { workspace = true }
 
 [build-dependencies]
 common = { path = "../common" }
-refilling_pool = { path = "../refilling_pool", artifact = "staticlib" }
 backend_rust = { path = "../backend_rust", artifact = "staticlib" }
 cmake = { workspace = true }
 anyhow = { workspace = true }
@@ -25,6 +23,6 @@ glob = { workspace = true }
 
 [features]
 # Dummy build to build dependencies only
-prebuild = ["common/prebuild", "refilling_pool/prebuild", "backend_rust/prebuild"]
+prebuild = ["common/prebuild", "backend_rust/prebuild"]
 # Enable code coverage in the CMake build using 
 coverage = []
