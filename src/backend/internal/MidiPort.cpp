@@ -17,38 +17,44 @@ MidiWriteableBuffer *MidiPort::PROC_maybe_get_send_out_buffer (uint32_t n_frames
 PortDataType MidiPort::type() const { return PortDataType::Midi; }
 
 void MidiPort::set_muted(bool muted) { 
-    if (muted != ma_muted.load()) {
+    if (muted != m_base.get_muted()) {
         log<log_level_debug>("muted -> {}", muted);
     }
-    ma_muted = muted;
+    m_base.set_muted(muted);
 }
 
-bool MidiPort::get_muted() const { return ma_muted; }
+bool MidiPort::get_muted() const { return m_base.get_muted(); }
 
-void MidiPort::reset_n_input_events() { n_input_events = 0; }
+void MidiPort::reset_n_input_events() { m_base.reset_n_input_events(); }
+uint32_t MidiPort::get_n_input_events() const { return m_base.get_n_input_events(); }
+uint32_t MidiPort::get_input_event_count() const { return m_base.get_input_event_count(); }
 
-uint32_t MidiPort::get_n_input_events() const { return n_input_events; }
+void MidiPort::reset_n_output_events() { m_base.reset_n_output_events(); }
+uint32_t MidiPort::get_n_output_events() const { return m_base.get_n_output_events(); }
+uint32_t MidiPort::get_output_event_count() const { return m_base.get_output_event_count(); }
 
-void MidiPort::reset_n_output_events() { n_output_events = 0; }
-
-uint32_t MidiPort::get_n_output_events() const { return n_output_events; }
+uint32_t MidiPort::n_notes_active() const { return m_base.n_notes_active(); }
 
 uint32_t MidiPort::get_n_input_notes_active() const {
-    auto &m = m_maybe_midi_state;
+    auto &m = m_base.maybe_midi_state_tracker();
     return m ? m->n_notes_active() : 0;
 }
 
 uint32_t MidiPort::get_n_output_notes_active() const {
-    auto &m = m_maybe_midi_state;
-    return (m && !ma_muted) ? m->n_notes_active() : 0;
+    auto &m = m_base.maybe_midi_state_tracker();
+    return (m && !m_base.get_muted()) ? m->n_notes_active() : 0;
 }
 
 shoop_shared_ptr<MidiStateTracker> &MidiPort::maybe_midi_state_tracker() {
-    return m_maybe_midi_state;
+    return m_base.maybe_midi_state_tracker();
 }
 
 shoop_shared_ptr<MidiStateTracker> &MidiPort::maybe_ringbuffer_tail_state_tracker() {
-    return m_ringbuffer_tail_state;
+    return m_base.maybe_ringbuffer_tail_state_tracker();
+}
+
+shoop_shared_ptr<MidiRingbuffer> &MidiPort::maybe_midi_ringbuffer() {
+    return m_base.maybe_midi_ringbuffer();
 }
 
 void MidiPort::PROC_prepare(uint32_t nframes) {
@@ -59,7 +65,7 @@ void MidiPort::PROC_prepare(uint32_t nframes) {
 }
 
 void MidiPort::PROC_process(uint32_t nframes) {
-    auto muted = ma_muted.load();
+    auto muted = m_base.get_muted();
 
     if (nframes > 0) {
         log<log_level_debug_trace>("process {}", nframes);
@@ -72,11 +78,15 @@ void MidiPort::PROC_process(uint32_t nframes) {
     auto write_out_buf = ma_internal_write_output_data_to_buffer.load();
     bool processed_state = false;
 
-    auto put_in_ringbuf = [this](MidiStorageElem &elem) {
-        if (m_midi_ringbuffer) {
-            m_midi_ringbuffer->put(elem.time, elem.size, elem.bytes,
-            [this](uint32_t time, uint16_t size, const uint8_t *data) {
-                m_ringbuffer_tail_state->process_msg(data);
+    // Get ringbuffer and tail state references from base
+    auto& ringbuffer = m_base.m_midi_ringbuffer;
+    auto& tail_state = m_base.m_ringbuffer_tail_state;
+
+    auto put_in_ringbuf = [&ringbuffer, &tail_state](MidiStorageElem &elem) {
+        if (ringbuffer) {
+            ringbuffer->put(elem.time, elem.size, elem.bytes,
+            [&tail_state](uint32_t time, uint16_t size, const uint8_t *data) {
+                tail_state->process_msg(data);
             });
         }
     };
@@ -84,26 +94,24 @@ void MidiPort::PROC_process(uint32_t nframes) {
     // Count input events from the read output buffer (for input ports) or internal input buffer (for others)
     MidiReadableBuffer *input_buf = read_out_buf ? read_out_buf : read_in_buf;
     uint32_t n_in_events = 0;
-    if (m_midi_ringbuffer) {
-        m_midi_ringbuffer->next_buffer(nframes,
-            [this](uint32_t time, uint16_t size, const uint8_t *data) {
-                m_ringbuffer_tail_state->process_msg(data);
+    if (ringbuffer) {
+        ringbuffer->next_buffer(nframes,
+            [&tail_state](uint32_t time, uint16_t size, const uint8_t *data) {
+                tail_state->process_msg(data);
             });
     }
     if (input_buf) {
         n_in_events = input_buf->n_events();
         // Count events
-        n_input_events += n_in_events;
+        m_base.increment_input_events(n_in_events);
         log<log_level_debug_trace>("# events in input buf: {}", n_in_events);
     }
     if (input_buf) {
         // Process input events for state tracking
         for(uint32_t i=0; i<n_in_events; i++) {
             auto event = input_buf->get_event(i);
-            if(m_maybe_midi_state) {
-                m_maybe_midi_state->process_msg(event.bytes);
-            }
-            if (m_midi_ringbuffer) {
+            m_base.process_msg_to_state(event.bytes);
+            if (ringbuffer) {
                 put_in_ringbuf(event);
             }
         }
@@ -119,7 +127,7 @@ void MidiPort::PROC_process(uint32_t nframes) {
             // For input ports, source == read_out_buf, but we shouldn't count input as output
             // Only count to n_output_events if we have a write_out_buf (actual output)
             if (write_out_buf) {
-                n_output_events += n_events;
+                m_base.increment_output_events(n_events);
             }
 
             if (write_out_buf) {
@@ -127,10 +135,10 @@ void MidiPort::PROC_process(uint32_t nframes) {
                 for(uint32_t i=0; i<n_events; i++) {
                     auto event = source->get_event(i);
                     write_out_buf->write_event(event);
-                    if (!processed_state && m_maybe_midi_state) {
-                        m_maybe_midi_state->process_msg(event.bytes);
+                    if (!processed_state) {
+                        m_base.process_msg_to_state(event.bytes);
                     }
-                    if (!processed_state && m_midi_ringbuffer) {
+                    if (!processed_state && ringbuffer) {
                         put_in_ringbuf(event);
                     }
                 }
@@ -139,14 +147,12 @@ void MidiPort::PROC_process(uint32_t nframes) {
             }
         }
     }
-    if (!muted && !processed_state && m_maybe_midi_state && read_out_buf) {
+    if (!muted && !processed_state && read_out_buf) {
         log<log_level_debug_trace>("processing msgs state from output read buffer");
         for(uint32_t i=0; i<read_out_buf->n_events(); i++) {
             auto event = read_out_buf->get_event(i);
-            if (m_maybe_midi_state) {
-                m_maybe_midi_state->process_msg(event.bytes);
-            }
-            if (m_midi_ringbuffer) {
+            m_base.process_msg_to_state(event.bytes);
+            if (ringbuffer) {
                 put_in_ringbuf(event);
             }
         }
@@ -157,39 +163,25 @@ MidiPort::MidiPort(
     bool track_notes,
     bool track_controls,
     bool track_programs
-) : ModuleLoggingEnabled<"Backend.MidiPort">() {
-    if (track_notes || track_controls || track_programs) {
-        m_maybe_midi_state = shoop_make_shared<MidiStateTracker>(
-            track_notes, track_controls, track_programs
-        );
-    }
-    m_ringbuffer_tail_state = shoop_make_shared<MidiStateTracker>(
-        track_notes, track_controls, track_programs
-    );
+) : ModuleLoggingEnabled<"Backend.MidiPort">(),
+    m_base(track_notes, track_controls, track_programs)
+{
 }
 
 MidiPort::~MidiPort() {};
 
 void MidiPort::set_ringbuffer_n_samples(unsigned n) {
-    if (n > 0 && !m_midi_ringbuffer) {
-        m_midi_ringbuffer = shoop_make_shared<MidiRingbuffer>(shoop_constants::midi_storage_size);
-    }
-    if (m_midi_ringbuffer) {
-        m_midi_ringbuffer->set_n_samples(n);
-    }
+    m_base.set_n_samples(n);
 }
 
 unsigned MidiPort::get_ringbuffer_n_samples() const {
-    return m_midi_ringbuffer ? m_midi_ringbuffer->get_n_samples() : 0;
+    return m_base.get_n_samples();
+}
+
+void MidiPort::snapshot(IMidiStorage& target, std::optional<uint32_t> start_offset_from_end) const {
+    m_base.snapshot(target, start_offset_from_end);
 }
 
 void MidiPort::PROC_snapshot_ringbuffer_into(IMidiStorage &s) const {
-    if (m_midi_ringbuffer) {
-        auto n = m_midi_ringbuffer->n_events();
-        log<log_level_debug_trace>("snapshot ringbuffer ({} msgs) into storage", n);
-        m_midi_ringbuffer->snapshot(s);
-    } else {
-        log<log_level_debug_trace>("ringbuffer snapshot requested but no ringbuffer active");
-        s.clear();
-    }
+    m_base.snapshot_ringbuffer_into(s);
 }

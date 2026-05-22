@@ -26,6 +26,7 @@ public:
     void set_n_samples(uint32_t n);
 
     uint32_t get_n_samples() const;
+    uint32_t get_current_n_samples() const { return get_n_samples(); }
     uint32_t get_current_start_time() const;
     uint32_t get_current_end_time() const;
 
