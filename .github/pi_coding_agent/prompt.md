@@ -25,6 +25,7 @@ you may be running on Linux (possibly containerized), MacOS or Windows, on any k
 ## Available Files
 
 - `coding_agent/log_all.txt` - Full build log so far. Be careful to pinpoint the command that actually failed and led to spawning you - any failure may cascade into further follow-up failures, so it is important to fix the first step that really failed.
+- `.github/pi_coding_agent/build_instructions.md`: general build information and instructions - read on need-to-know basis
 - You are in the checked-out repository, so you can inspect any source files
 
 ## After finishing
