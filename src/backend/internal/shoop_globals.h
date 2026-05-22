@@ -24,7 +24,7 @@ class MidiStateTracker;
 class RustAudioPortF32;
 
 template<typename A, typename B> class MidiMessage;
-template<typename A, typename B> class DecoupledMidiPort;
+class DecoupledMidiPort;
 template<typename A, typename B> class ProcessingChainInterface;
 
 #ifdef SHOOP_HAVE_LV2
@@ -64,7 +64,7 @@ using _RustAudioPort = RustAudioPortF32;
 using _AudioPort = RustAudioPortF32;  // Alias for backward compatibility
 using Command = std::function<void()>;
 using _MidiMessage = MidiMessage<Time, Size>;
-using _DecoupledMidiPort = DecoupledMidiPort<Time, Size>;
+using _DecoupledMidiPort = DecoupledMidiPort;
 using FXChain = ProcessingChainInterface<Time, Size>;
 
 }
