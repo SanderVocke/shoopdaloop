@@ -52,6 +52,7 @@ struct DummyExternalConnections : private ModuleLoggingEnabled<"Backend.DummyExt
 struct DummyPortCore {
     rust::Box<backend_rust::PortCore> m_rust;
     shoop_weak_ptr<DummyExternalConnections> m_external_connections_cpp;
+    std::string m_name;  // Cached name to avoid dangling pointer from Rust String
 
     DummyPortCore(
         std::string name,

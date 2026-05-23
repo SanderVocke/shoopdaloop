@@ -49,10 +49,11 @@ DummyPortCore::DummyPortCore(
     void* driver_handle,
     shoop_weak_ptr<DummyExternalConnections> external_connections
 ) : m_rust(backend_rust::new_port_core(name, direction == ShoopPortDirection_Output, reinterpret_cast<size_t>(driver_handle))),
+    m_name(name),
     m_external_connections_cpp(external_connections) {
 }
 
-const char* DummyPortCore::name() const { return m_rust->name().data(); }
+const char* DummyPortCore::name() const { return m_name.c_str(); }
 
 shoop_port_direction_t DummyPortCore::direction() const {
     return m_rust->is_output() ? ShoopPortDirection_Output : ShoopPortDirection_Input;
