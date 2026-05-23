@@ -5,6 +5,7 @@
 #include <deque>
 #include <atomic>
 #include "shoop_shared_ptr.h"
+#include "backend_rust/src/basic_loop_cxx.rs.h"
 
 #ifdef BASICLOOP_EXPOSE_ALL_FOR_TEST
 #define private public
@@ -33,22 +34,10 @@ public:
 
 protected:
     CommandQueue m_command_queue;
+    rust::Box<backend_rust::BasicLoopCore> m_rust_core;
 
-    std::optional<PointOfInterest> mp_next_poi = std::nullopt;
-    std::optional<uint32_t> mp_next_trigger = std::nullopt;
+    // Sync source is kept in C++ for shared_ptr management
     shoop_shared_ptr<LoopInterface> mp_sync_source = nullptr;
-    std::deque<shoop_loop_mode_t> mp_planned_states;
-    std::deque<int> mp_planned_state_countdowns;
-
-    std::atomic<shoop_loop_mode_t> ma_mode = LoopMode_Stopped;
-    std::atomic<bool> ma_triggering_now = false;
-    std::atomic<bool> ma_already_triggered = false;
-    std::atomic<uint32_t> ma_length = 0;
-    std::atomic<uint32_t> ma_position = 0;
-    
-    // Cached state for easy lock-free reading.
-    std::atomic<shoop_loop_mode_t> ma_maybe_next_planned_mode =  LoopMode_Stopped;
-    std::atomic<int> ma_maybe_next_planned_delay = -1;
 
 public:
 
@@ -102,6 +91,14 @@ public:
 protected:
     static std::optional<PointOfInterest> dominant_poi(std::optional<PointOfInterest> const& a, std::optional<PointOfInterest> const& b);
     static std::optional<PointOfInterest> dominant_poi(std::vector<std::optional<PointOfInterest>> const& pois);
+
+    // Helper methods for AudioMidiLoop to access internal state
+    // These are needed because AudioMidiLoop overrides PROC_update_poi and PROC_handle_poi
+    std::optional<uint32_t> internal_get_next_poi_when() const;
+    std::optional<uint32_t> internal_get_next_trigger_eta() const;
+    shoop_loop_mode_t internal_get_maybe_next_planned_mode() const;
+    int32_t internal_get_maybe_next_planned_delay() const;
+    void internal_set_next_poi(uint32_t when, unsigned type_flags);
 };
 
 #ifdef BASICLOOP_EXPOSE_ALL_FOR_TEST

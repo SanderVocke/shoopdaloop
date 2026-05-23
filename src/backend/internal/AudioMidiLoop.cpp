@@ -159,24 +159,29 @@ void AudioMidiLoop::PROC_process_channels(
 }
 
 void AudioMidiLoop::PROC_update_poi() {
-    BasicLoop::PROC_update_poi(); // sets mp_next_poi, mp_next_trigger
+    BasicLoop::PROC_update_poi(); // updates POI in Rust core
 
     auto merge = [this](std::optional<uint32_t> other) {
-        if (other.has_value() && (!mp_next_poi.has_value() ||
-                                  other.value() < mp_next_poi.value().when)) {
-            mp_next_poi = {other.value(), ChannelPOI};
+        auto current_poi_when = internal_get_next_poi_when();
+        if (other.has_value() && (!current_poi_when.has_value() ||
+                                  other.value() < current_poi_when.value())) {
+            internal_set_next_poi(other.value(), ChannelPOI);
         }
     };
 
+    auto maybe_next_planned_mode = internal_get_maybe_next_planned_mode();
+    auto maybe_next_planned_delay = internal_get_maybe_next_planned_delay();
+    auto next_trigger_eta = internal_get_next_trigger_eta();
+
     for (auto &channel : mp_audio_channels) {
         merge(channel->PROC_get_next_poi(
-            get_mode(), ma_maybe_next_planned_mode, ma_maybe_next_planned_delay,
-            mp_next_trigger, get_length(), get_position()));
+            get_mode(), maybe_next_planned_mode, maybe_next_planned_delay,
+            next_trigger_eta, get_length(), get_position()));
     }
     for (auto &channel : mp_midi_channels) {
         merge(channel->PROC_get_next_poi(
-            get_mode(), ma_maybe_next_planned_mode, ma_maybe_next_planned_delay,
-            mp_next_trigger, get_length(), get_position()));
+            get_mode(), maybe_next_planned_mode, maybe_next_planned_delay,
+            next_trigger_eta, get_length(), get_position()));
     }
 }
 

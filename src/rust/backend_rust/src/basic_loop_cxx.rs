@@ -62,6 +62,16 @@ mod ffi {
         // Triggering state (atomic access)
         fn basic_loop_is_triggering_now_atomic(core: &BasicLoopCore) -> bool;
         fn basic_loop_set_triggering_now(core: &mut BasicLoopCore, val: bool);
+
+        // State accessors (for AudioMidiLoop to use)
+        fn basic_loop_get_next_poi_when(core: &BasicLoopCore) -> u32; // Returns u32::MAX if None
+        fn basic_loop_get_next_poi_type_flags(core: &BasicLoopCore) -> u32; // Returns 0 if None
+        fn basic_loop_set_next_poi(core: &mut BasicLoopCore, when: u32, type_flags: u32); // when=u32::MAX clears
+        fn basic_loop_get_next_trigger(core: &BasicLoopCore) -> u32; // Returns u32::MAX if None
+        fn basic_loop_set_next_trigger(core: &mut BasicLoopCore, val: u32); // val=u32::MAX clears
+        fn basic_loop_get_maybe_next_planned_mode(core: &BasicLoopCore) -> u32;
+        fn basic_loop_get_maybe_next_planned_delay(core: &BasicLoopCore) -> i32;
+        fn basic_loop_get_next_trigger_eta(core: &BasicLoopCore) -> u32; // Returns u32::MAX if None
     }
 }
 
@@ -200,4 +210,54 @@ fn basic_loop_is_triggering_now_atomic(core: &BasicLoopCore) -> bool {
 
 fn basic_loop_set_triggering_now(core: &mut BasicLoopCore, val: bool) {
     core.ma_triggering_now.store(val, Ordering::Relaxed);
+}
+
+// State accessors (for AudioMidiLoop to use)
+fn basic_loop_get_next_poi_when(core: &BasicLoopCore) -> u32 {
+    core.get_next_poi()
+        .as_ref()
+        .map(|poi| poi.when)
+        .unwrap_or(U32_MAX)
+}
+
+fn basic_loop_get_next_poi_type_flags(core: &BasicLoopCore) -> u32 {
+    core.get_next_poi()
+        .as_ref()
+        .map(|poi| poi.type_flags)
+        .unwrap_or(0)
+}
+
+fn basic_loop_set_next_poi(core: &mut BasicLoopCore, when: u32, type_flags: u32) {
+    if when == U32_MAX {
+        core.set_next_poi(None);
+    } else {
+        core.set_next_poi(Some(crate::basic_loop::PointOfInterest {
+            when,
+            type_flags,
+        }));
+    }
+}
+
+fn basic_loop_get_next_trigger(core: &BasicLoopCore) -> u32 {
+    core.get_next_trigger().unwrap_or(U32_MAX)
+}
+
+fn basic_loop_set_next_trigger(core: &mut BasicLoopCore, val: u32) {
+    if val == U32_MAX {
+        core.set_next_trigger(None);
+    } else {
+        core.set_next_trigger(Some(val));
+    }
+}
+
+fn basic_loop_get_maybe_next_planned_mode(core: &BasicLoopCore) -> u32 {
+    core.get_maybe_next_planned_mode().to_u32()
+}
+
+fn basic_loop_get_maybe_next_planned_delay(core: &BasicLoopCore) -> i32 {
+    core.get_maybe_next_planned_delay()
+}
+
+fn basic_loop_get_next_trigger_eta(core: &BasicLoopCore) -> u32 {
+    core.get_next_trigger_eta().unwrap_or(U32_MAX)
 }

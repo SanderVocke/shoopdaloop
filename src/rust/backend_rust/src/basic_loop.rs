@@ -414,11 +414,19 @@ impl BasicLoopCore {
             if let Some(ref mut poi) = self.mp_next_poi {
                 poi.type_flags &= !PointOfInterestFlags::LOOP_END;
             }
-            // If no sync source or sync source not playing, trigger ourselves
-            // The sync source check is handled externally (C++ wrapper)
-            // For now, we trigger unconditionally
-            self.proc_trigger(true);
-            changed = true;
+            // Only trigger ourselves if sync source not active
+            // Sync source check: if mp_sync_source is 0 (null) or sync source is not playing
+            // For now, we can't directly check sync source's mode from Rust, so we need
+            // to handle this via a callback or flag. The C++ wrapper handles this.
+            // We'll trigger only if mp_sync_source is 0.
+            if self.mp_sync_source == 0 {
+                self.proc_trigger(true);
+                changed = true;
+            } else {
+                // Sync source exists, don't auto-trigger.
+                // The C++ wrapper will call PROC_handle_sync() to check if sync source is triggering.
+                changed = true;
+            }
         }
 
         // Clear empty POI
@@ -708,6 +716,45 @@ impl BasicLoopCore {
     /// Get the sync source pointer.
     pub fn get_sync_source(&self) -> usize {
         self.mp_sync_source
+    }
+
+    // ========================================================================
+    // State Accessors (for AudioMidiLoopCore to use)
+    // ========================================================================
+
+    /// Get the next POI (for AudioMidiLoop to merge channel POIs).
+    pub fn get_next_poi(&self) -> Option<PointOfInterest> {
+        self.mp_next_poi.clone()
+    }
+
+    /// Set the next POI (for AudioMidiLoop to merge channel POIs).
+    pub fn set_next_poi(&mut self, poi: Option<PointOfInterest>) {
+        self.mp_next_poi = poi;
+    }
+
+    /// Get the next trigger ETA.
+    pub fn get_next_trigger(&self) -> Option<u32> {
+        self.mp_next_trigger
+    }
+
+    /// Set the next trigger ETA.
+    pub fn set_next_trigger(&mut self, trigger: Option<u32>) {
+        self.mp_next_trigger = trigger;
+    }
+
+    /// Get the cached next planned mode.
+    pub fn get_maybe_next_planned_mode(&self) -> LoopMode {
+        LoopMode::from_u32(self.ma_maybe_next_planned_mode.load(Ordering::Relaxed))
+    }
+
+    /// Get the cached next planned delay (-1 means none).
+    pub fn get_maybe_next_planned_delay(&self) -> i32 {
+        self.ma_maybe_next_planned_delay.load(Ordering::Relaxed)
+    }
+
+    /// Get the next trigger ETA as Option.
+    pub fn get_next_trigger_eta(&self) -> Option<u32> {
+        self.mp_next_trigger
     }
 }
 

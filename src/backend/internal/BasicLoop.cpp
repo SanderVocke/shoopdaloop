@@ -14,119 +14,58 @@
 #undef max
 #endif
 
+// Helper constant for "None" values in FFI
+constexpr uint32_t U32_MAX = UINT32_MAX;
+
 BasicLoop::BasicLoop() :
         m_command_queue(100, 1000, 1000),
-        mp_next_poi(std::nullopt),
-        mp_next_trigger(std::nullopt),
-        ma_mode(LoopMode_Stopped),
-        mp_sync_source(nullptr),
-        ma_triggering_now(false),
-        ma_length(0),
-        ma_position(0),
-        ma_maybe_next_planned_mode(LoopMode_Unknown),
-        ma_maybe_next_planned_delay(-1),
-        ma_already_triggered(false)
+        m_rust_core(backend_rust::new_basic_loop_core()),
+        mp_sync_source(nullptr)
     {
     }
 
 BasicLoop::~BasicLoop() {}
 
 std::optional<uint32_t> BasicLoop::PROC_get_next_poi() const {
-    return mp_next_poi.has_value() ? mp_next_poi.value().when : (std::optional<uint32_t>)std::nullopt;
+    uint32_t when = basic_loop_proc_get_next_poi(*m_rust_core);
+    return when == U32_MAX ? std::nullopt : std::optional<uint32_t>(when);
 }
 
 std::optional<uint32_t> BasicLoop::PROC_predicted_next_trigger_eta() const {
-    return mp_next_trigger;
-}
-
-inline bool is_playing_mode(shoop_loop_mode_t mode) {
-    return mode == LoopMode_Playing ||
-            mode == LoopMode_Replacing ||
-            mode == LoopMode_PlayingDryThroughWet ||
-            mode == LoopMode_RecordingDryIntoWet;
+    uint32_t eta = basic_loop_proc_predicted_next_trigger_eta(*m_rust_core);
+    return eta == U32_MAX ? std::nullopt : std::optional<uint32_t>(eta);
 }
 
 void BasicLoop::PROC_update_trigger_eta() {
-    if (is_playing_mode(ma_mode) && ma_position < ma_length) {
-        mp_next_trigger = ma_length - ma_position;
-    } else {
-        mp_next_trigger = std::nullopt;
-    }
-
+    basic_loop_proc_update_trigger_eta(*m_rust_core);
+    
+    // Handle sync source - merge with sync source's trigger ETA
     if (mp_sync_source) {
         auto ss_next_trigger = mp_sync_source->PROC_predicted_next_trigger_eta();
         if (ss_next_trigger.has_value()) {
-            mp_next_trigger = mp_next_trigger.has_value() ? std::min (mp_next_trigger.value(), ss_next_trigger.value()) : ss_next_trigger;
+            uint32_t our_trigger = basic_loop_get_next_trigger(*m_rust_core);
+            uint32_t merged = our_trigger == U32_MAX ? ss_next_trigger.value() 
+                : std::min(our_trigger, ss_next_trigger.value());
+            basic_loop_set_next_trigger(*m_rust_core, merged);
         }
     }
 }
 
 void BasicLoop::PROC_update_poi() {
-    if(is_playing_mode(ma_mode) && 
-        ma_length == 0) {
-        PROC_handle_transition(LoopMode_Stopped);
-    }
-
-    if(mp_next_poi) {
-        // Loop end an channel POIs will be re-calculated.
-        mp_next_poi->type_flags &= ~(LoopEnd);
-        mp_next_poi->type_flags &= ~(ChannelPOI);
-        if (mp_next_poi->type_flags == 0) {
-            mp_next_poi = std::nullopt;
-        }
-    }
-
-    std::optional<PointOfInterest> loop_end_poi;
-    if (is_playing_mode(ma_mode) && ma_position < ma_length) {
-        std::optional<PointOfInterest> loop_end_poi = PointOfInterest {
-            .when = ma_length - ma_position,
-            .type_flags = LoopEnd
-        };
-        mp_next_poi = dominant_poi(mp_next_poi, loop_end_poi);
-    }
+    basic_loop_proc_update_poi(*m_rust_core);
 }
 
 void BasicLoop::PROC_handle_poi() {
-    // Only handle POIs that are reached right now.
-    if (!mp_next_poi || mp_next_poi.value().when != 0) {
-        return;
-    }
-    bool changed = false;
-
-    mp_next_poi->type_flags &= ~(ChannelPOI);
-
-    if (mp_next_poi->type_flags & Trigger) {
-        PROC_trigger();
-        mp_next_poi->type_flags &= ~(Trigger);
-        changed = true;
-    }
-    if (mp_next_poi->type_flags & LoopEnd) {
-        mp_next_poi->type_flags &= ~(LoopEnd);
-        if (!mp_sync_source || !is_playing_mode(mp_sync_source->get_mode())) {
-            // Trigger ourselves if sync source not active.
-            PROC_trigger();
-        }
-        changed = true;
-    }
-
-    if (mp_next_poi && mp_next_poi->type_flags == 0) {
-        mp_next_poi = std::nullopt;
-        changed = true;
-    }
-
-    if (changed) {
-        PROC_update_poi();
-        PROC_update_trigger_eta();
-    }
+    basic_loop_proc_handle_poi(*m_rust_core);
 }
 
 bool BasicLoop::PROC_is_triggering_now() {
-    if (mp_next_poi.has_value() && mp_next_poi.value().when == 0) {
-        PROC_handle_poi();
+    bool triggering = basic_loop_proc_is_triggering_now(*m_rust_core);
+    // Also check sync source
+    if (mp_sync_source && mp_sync_source->PROC_is_triggering_now()) {
+        return true;
     }
-    if (mp_sync_source && mp_sync_source->PROC_is_triggering_now()) { return true; }
-    if (ma_triggering_now) { return true; }
-    return false;
+    return triggering;
 }
 
 void BasicLoop::PROC_process_channels(
@@ -140,63 +79,21 @@ void BasicLoop::PROC_process_channels(
     uint32_t length_before,
     uint32_t length_after
 ) {
+    // Empty in base class - override in derived classes (AudioMidiLoop)
 }
 
 void BasicLoop::PROC_process(uint32_t n_samples) {
-
-    if (mp_next_poi && n_samples > mp_next_poi.value().when) {
-        throw std::runtime_error("Attempted to process loop beyond its next POI.");
-    }
     m_command_queue.PROC_handle_command_queue();
-
-    ma_triggering_now = false;
-    ma_already_triggered = false;
-
-    uint32_t pos_before = ma_position;
-    uint32_t pos_after = ma_position;
-    uint32_t length_before = ma_length;
-    uint32_t length_after = ma_length;
-
-    shoop_loop_mode_t process_channel_mode = ma_mode;
-
-    switch(ma_mode) {
-        case LoopMode_Recording:
-            length_after += n_samples;
-            break;
-        case LoopMode_Replacing:
-            pos_after += n_samples;
-            length_after = std::max(length_after, pos_after);
-            break;
-        case LoopMode_Playing:
-        case LoopMode_PlayingDryThroughWet:
-        case LoopMode_RecordingDryIntoWet:
-            pos_after = std::min(pos_after + n_samples, length_after);
-            break;
-        default:
-            break;
-    }
-
-    PROC_process_channels(process_channel_mode,
-        ma_maybe_next_planned_mode,
-        ma_maybe_next_planned_delay == -1 ? std::optional<uint32_t>(std::nullopt) : ma_maybe_next_planned_delay.load(),
-        ma_maybe_next_planned_delay == 0 ? PROC_predicted_next_trigger_eta() : std::nullopt,
-        n_samples, pos_before, pos_after,
-        length_before, length_after);
-
-    if (mp_next_poi) { mp_next_poi.value().when -= n_samples; }
-    ma_position = pos_after;
-    ma_length = length_after;
-    if (mp_next_trigger.has_value()) {
-        mp_next_trigger = (uint32_t)(std::max(0, (int)mp_next_trigger.value() - (int)n_samples));
-        if (mp_next_trigger.value() == 0) { mp_next_trigger = std::nullopt; }
-    }
-    PROC_handle_poi();
+    basic_loop_proc_process(*m_rust_core, n_samples);
 }
 
 void BasicLoop::set_sync_source(shoop_shared_ptr<LoopInterface> const& src, bool thread_safe) {
-
     auto fn = [=, this]() {
         mp_sync_source = src;
+        // Pass the sync source pointer to Rust (as usize)
+        // The Rust side only uses it to check if sync source exists
+        size_t ptr = src ? reinterpret_cast<size_t>(src.get()) : 0;
+        basic_loop_set_sync_source(*m_rust_core, ptr);
         PROC_update_trigger_eta();
     };
     if(thread_safe) {
@@ -205,6 +102,7 @@ void BasicLoop::set_sync_source(shoop_shared_ptr<LoopInterface> const& src, bool
         fn();
     }
 }
+
 shoop_shared_ptr<LoopInterface> BasicLoop::get_sync_source(bool thread_safe) {
     if(thread_safe) {
         shoop_shared_ptr<LoopInterface> rval;
@@ -215,88 +113,40 @@ shoop_shared_ptr<LoopInterface> BasicLoop::get_sync_source(bool thread_safe) {
 }
 
 void BasicLoop::PROC_update_planned_transition_cache() {
-
-    ma_maybe_next_planned_mode = mp_planned_states.size() > 0 ?
-        (shoop_loop_mode_t) mp_planned_states.front() : LoopMode_Unknown;
-    ma_maybe_next_planned_delay = mp_planned_state_countdowns.size() > 0 ?
-        mp_planned_state_countdowns.front() : -1;
+    // This is now handled internally by Rust
+    // The cache is updated automatically in plan_transition and PROC_trigger
 }
 
 void BasicLoop::PROC_trigger(bool propagate) {
-
-    if (ma_already_triggered) { return; }
-    ma_already_triggered = true;
-    
-    if (propagate) {
-        ma_triggering_now = true;
-    }
-
-    if (is_playing_mode(ma_mode) && ma_position >= ma_length) {
-        ma_position = 0;
-    }
-
-    for (auto &elem: mp_planned_state_countdowns) {
-        elem--;
-    }
-    while (mp_planned_state_countdowns.size() > 0 && mp_planned_state_countdowns.front() < 0) {
-        PROC_handle_transition(mp_planned_states.front());
-        mp_planned_state_countdowns.pop_front();
-        mp_planned_states.pop_front();
-    }
-    PROC_update_planned_transition_cache();
+    basic_loop_proc_trigger(*m_rust_core, propagate);
 }
 
 void BasicLoop::PROC_handle_sync() {
-
     if (mp_sync_source && mp_sync_source->PROC_is_triggering_now()) {
         PROC_trigger();
     }
 }
 
 void BasicLoop::PROC_handle_transition(shoop_loop_mode_t new_state) {
-
-    if (ma_mode != new_state) {
-        log<log_level_debug>("Transition -> {}", (int)new_state);
-        bool from_playing_to_playing = is_playing_mode(ma_mode) && is_playing_mode(new_state);
-        if (!from_playing_to_playing) {
-            set_position(0, false);
-        }
-        if (new_state == LoopMode_Recording) {
-            // Recording always resets the loop.
-            // Don't bother clearing the channels.
-            set_length(0, false);
-        }
-        ma_mode = new_state;
-        if(ma_mode >= LOOP_MODE_INVALID) {
-            throw_error<std::runtime_error>("invalid mode");
-        }
-        if (ma_mode == LoopMode_Stopped) { ma_position = 0; }
-        if (is_playing_mode(ma_mode) &&
-            ma_position == 0) {
-                ma_triggering_now = true;
-            }
-        mp_next_poi = std::nullopt;
-        PROC_update_poi();
-        PROC_update_trigger_eta();
-    }
+    log<log_level_debug>("Transition -> {}", (int)new_state);
+    basic_loop_proc_handle_transition(*m_rust_core, static_cast<uint32_t>(new_state));
 }
 
 uint32_t BasicLoop::get_n_planned_transitions(bool thread_safe) {
     if (thread_safe) {
         uint32_t rval;
-        m_command_queue.exec_process_thread_command([this, &rval]() { rval = mp_planned_states.size(); });
+        m_command_queue.exec_process_thread_command([this, &rval]() { 
+            rval = basic_loop_get_n_planned_transitions(*m_rust_core); 
+        });
         return rval;
     }
-    return mp_planned_states.size();
+    return basic_loop_get_n_planned_transitions(*m_rust_core);
 }
 
 uint32_t BasicLoop::get_planned_transition_delay(uint32_t idx, bool thread_safe) {
     uint32_t rval;
-    auto fn = [this,idx,&rval]() {
-        if(idx >= mp_planned_state_countdowns.size()) {
-            throw std::runtime_error("Attempted to get out-of-bounds planned transition");
-        }
-        rval = mp_planned_state_countdowns.at(idx);
+    auto fn = [this, idx, &rval]() {
+        rval = basic_loop_get_planned_transition_delay(*m_rust_core, idx);
     };
     if (thread_safe) {
         m_command_queue.exec_process_thread_command(fn);
@@ -309,10 +159,7 @@ uint32_t BasicLoop::get_planned_transition_delay(uint32_t idx, bool thread_safe)
 shoop_loop_mode_t BasicLoop::get_planned_transition_state(uint32_t idx, bool thread_safe) {
     shoop_loop_mode_t rval;
     auto fn = [this, idx, &rval]() {
-        if(idx >= mp_planned_states.size()) {
-            throw std::runtime_error("Attempted to get out-of-bounds planned transition");
-        }
-        rval = mp_planned_states.at(idx);
+        rval = static_cast<shoop_loop_mode_t>(basic_loop_get_planned_transition_state(*m_rust_core, idx));
     };
     if (thread_safe) {
         m_command_queue.exec_process_thread_command(fn);
@@ -323,11 +170,8 @@ shoop_loop_mode_t BasicLoop::get_planned_transition_state(uint32_t idx, bool thr
 }
 
 void BasicLoop::clear_planned_transitions(bool thread_safe) {
-
     auto fn = [this]() { 
-        mp_planned_states.clear();
-        mp_planned_state_countdowns.clear();
-        PROC_update_planned_transition_cache();
+        basic_loop_clear_planned_transitions(*m_rust_core);
     };
     if (thread_safe) {
         m_command_queue.exec_process_thread_command(fn);
@@ -344,47 +188,34 @@ void BasicLoop::plan_transition(
     
     auto fn = [this, mode, maybe_n_cycles_delay, maybe_to_sync_cycle]() {
         bool transitioning_immediately =
-            (!mp_sync_source && ma_mode != LoopMode_Playing) ||
+            (!mp_sync_source && get_mode() != LoopMode_Playing) ||
             (!maybe_n_cycles_delay.has_value()) ||
             (maybe_to_sync_cycle.has_value());
+        
         if (transitioning_immediately) {
-            // Un-synced loops transition immediately from non-playing
-            // states.
+            // Un-synced loops transition immediately from non-playing states.
             PROC_handle_transition(mode);
-            auto sync_source = get_sync_source(false);
-            if (maybe_to_sync_cycle.has_value() && sync_source) {
+            
+            if (maybe_to_sync_cycle.has_value() && mp_sync_source) {
                 // Sync up to our sync source immediately
                 uint32_t pos =
-                    sync_source->get_position() +
-                    maybe_to_sync_cycle.value() * sync_source->get_length();
+                    mp_sync_source->get_position() +
+                    maybe_to_sync_cycle.value() * mp_sync_source->get_length();
                 if (mode == LoopMode_Recording) {
-                    set_position (0, false);
-                    set_length (pos, false);
+                    set_position(0, false);
+                    set_length(pos, false);
                 } else {
                     set_position(pos, false);
                 }
             }
-            mp_planned_states.clear();
-            mp_planned_state_countdowns.clear();
+            clear_planned_transitions(false);
         } else {
-            uint32_t insertion_point;
             uint32_t n_cycles_delay = maybe_n_cycles_delay.value_or(0);
-            for (insertion_point=0; insertion_point <= mp_planned_state_countdowns.size(); insertion_point++) {
-                if (insertion_point < mp_planned_state_countdowns.size() &&
-                    mp_planned_state_countdowns[insertion_point] >= n_cycles_delay) { break; }
-            }
-            if (insertion_point >= mp_planned_state_countdowns.size()) {
-                mp_planned_state_countdowns.push_back(n_cycles_delay);
-                mp_planned_states.push_back(mode);
-            } else {
-                // Replace some planned states
-                mp_planned_state_countdowns[insertion_point] = n_cycles_delay;
-                mp_planned_states[insertion_point] = mode;
-                mp_planned_state_countdowns.resize(insertion_point+1);
-                mp_planned_states.resize(insertion_point+1);
-            }
+            basic_loop_plan_transition(*m_rust_core, 
+                static_cast<uint32_t>(mode),
+                n_cycles_delay,
+                U32_MAX); // no sync cycle
         }
-        PROC_update_planned_transition_cache();
         PROC_update_trigger_eta();
     };
     if (thread_safe) { m_command_queue.exec_process_thread_command(fn); }
@@ -392,37 +223,33 @@ void BasicLoop::plan_transition(
 }
 
 uint32_t BasicLoop::get_position() const {
-    return ma_position;
+    return basic_loop_get_position(*m_rust_core);
 }
 
 void BasicLoop::set_position(uint32_t position, bool thread_safe) {
-
     auto fn = [this, position]() {
-        if (position != ma_position) {
-            mp_next_poi = std::nullopt;
-            mp_next_trigger = std::nullopt;
-            ma_position = position;
-            PROC_update_poi();
-            PROC_update_trigger_eta();
-        }
+        basic_loop_set_position(*m_rust_core, position);
     };
     if (thread_safe) { m_command_queue.exec_process_thread_command(fn); }
     else { fn(); }
 }
 
 uint32_t BasicLoop::get_length() const {
-    return ma_length;
+    return basic_loop_get_length(*m_rust_core);
 }
 
 shoop_loop_mode_t BasicLoop::get_mode() const {
-    return ma_mode;
+    return static_cast<shoop_loop_mode_t>(basic_loop_get_mode(*m_rust_core));
 }
 
 void BasicLoop::get_first_planned_transition(shoop_loop_mode_t &maybe_mode_out, uint32_t &delay_out) {
-    shoop_loop_mode_t maybe_mode = ma_maybe_next_planned_mode;
-    int maybe_delay = ma_maybe_next_planned_delay;
-    if (maybe_delay >= 0 && maybe_mode != LoopMode_Unknown) {
-        maybe_mode_out = maybe_mode;
+    uint32_t maybe_mode = basic_loop_get_first_planned_transition_mode(*m_rust_core);
+    uint32_t maybe_delay = basic_loop_get_first_planned_transition_delay(*m_rust_core);
+    
+    // In Rust, Unknown mode (0) with delay >= 0 means no planned transition
+    // Check: if delay is valid and mode is not Unknown
+    if (maybe_delay > 0 || maybe_mode != static_cast<uint32_t>(LoopMode_Unknown)) {
+        maybe_mode_out = static_cast<shoop_loop_mode_t>(maybe_mode);
         delay_out = maybe_delay;
     } else {
         maybe_mode_out = LoopMode_Unknown;
@@ -435,16 +262,7 @@ void BasicLoop::set_length(uint32_t len, bool thread_safe) {
 
     auto fn = [this, len]() {
         log<log_level_debug_trace>("apply set length: {}", len);
-        if (len != ma_length) {
-            ma_length = len;
-            if (ma_position >= len) {
-                set_position(len == 0 ? 0 : len-1, false);
-            }
-            mp_next_poi = std::nullopt;
-            mp_next_trigger = std::nullopt;
-            PROC_update_poi();
-            PROC_update_trigger_eta();
-        }
+        basic_loop_set_length(*m_rust_core, len);
     };
     if (thread_safe) { m_command_queue.exec_process_thread_command(fn); }
     else { fn(); }
@@ -455,7 +273,7 @@ void BasicLoop::set_mode(shoop_loop_mode_t mode, bool thread_safe) {
 
     auto fn = [this, mode]() {
         log<log_level_debug_trace>("apply set mode: {}", (int)mode);
-        PROC_handle_transition(mode);
+        basic_loop_set_mode(*m_rust_core, static_cast<uint32_t>(mode));
     };
     if (thread_safe) { m_command_queue.exec_process_thread_command(fn); }
     else { fn(); }
@@ -480,4 +298,27 @@ std::optional<BasicLoop::PointOfInterest> BasicLoop::dominant_poi(std::vector<st
     if (pois.size() == 2) { return dominant_poi(pois[0], pois[1]); }
     auto reduced = std::vector<std::optional<PointOfInterest>>(pois.begin()+1, pois.end());
     return dominant_poi(pois[0], dominant_poi(reduced));
+}
+
+// Helper methods for AudioMidiLoop to access internal state
+std::optional<uint32_t> BasicLoop::internal_get_next_poi_when() const {
+    uint32_t when = basic_loop_get_next_poi_when(*m_rust_core);
+    return when == U32_MAX ? std::nullopt : std::optional<uint32_t>(when);
+}
+
+std::optional<uint32_t> BasicLoop::internal_get_next_trigger_eta() const {
+    uint32_t eta = basic_loop_get_next_trigger_eta(*m_rust_core);
+    return eta == U32_MAX ? std::nullopt : std::optional<uint32_t>(eta);
+}
+
+shoop_loop_mode_t BasicLoop::internal_get_maybe_next_planned_mode() const {
+    return static_cast<shoop_loop_mode_t>(basic_loop_get_maybe_next_planned_mode(*m_rust_core));
+}
+
+int32_t BasicLoop::internal_get_maybe_next_planned_delay() const {
+    return basic_loop_get_maybe_next_planned_delay(*m_rust_core);
+}
+
+void BasicLoop::internal_set_next_poi(uint32_t when, unsigned type_flags) {
+    basic_loop_set_next_poi(*m_rust_core, when, static_cast<uint32_t>(type_flags));
 }
