@@ -63,6 +63,10 @@ echo ""
 # We run both to get complete picture:
 # 1. First list imports to see what's needed
 # 2. Then check modules to see resolution status
+#
+# NOTE: Windows API Set DLLs (ext-ms-*, api-ms-*) appear as NOT_FOUND
+# because they're virtual DLLs resolved by the OS loader, not real files.
+# See: https://learn.microsoft.com/en-us/windows/win32/apiindex/api-set-loading
 
 # Capture output for analysis
 IMPORTS_OUTPUT=""
@@ -81,6 +85,14 @@ MODULES_OUTPUT=$(Dependencies.exe -modules "$EXE_PATH" 2>&1) || DEPS_EXIT_CODE=$
 echo "$MODULES_OUTPUT"
 echo ""
 
+# Note about Windows API Set DLLs
+NOT_FOUND_API_SETS=$(echo "$MODULES_OUTPUT" | grep "\[NOT_FOUND\]" | grep -cE "ext-ms-|api-ms-" || true)
+if [[ "$NOT_FOUND_API_SETS" -gt 0 ]]; then
+    echo "Note: $NOT_FOUND_API_SETS [NOT_FOUND] entries are for Windows API Set DLLs (ext-ms-*, api-ms-*)"
+    echo "These are VIRTUAL DLLs resolved by the OS loader - this is NORMAL and expected."
+    echo ""
+fi
+
 # Analyze for unresolved/missing dependencies
 # Common patterns in Dependencies output for missing DLLs:
 # - "not found"
@@ -89,23 +101,33 @@ echo ""
 # - Module listed without a resolved path
 # - Error messages about specific DLLs
 
-MISSING_PATTERNS="not found|unresolved|missing|error|failed|could not|cannot find"
+# IMPORTANT: Windows API Set DLLs (ext-ms-*, api-ms-*) are VIRTUAL DLLs
+# that don't exist as files. They're resolved by the Windows loader at runtime.
+# We should ignore these as they're not actual missing dependencies.
+# See: https://learn.microsoft.com/en-us/windows/win32/apiindex/api-set-loading
+API_SET_PATTERN="^ext-ms-|^api-ms-"
+
 HAS_ISSUES=false
 
-# Check imports output for issues
-if echo "$IMPORTS_OUTPUT" | grep -qiE "$MISSING_PATTERNS"; then
+# Check imports output for issues (but filter out Windows API Set DLLs)
+IMPORTS_ISSUES=$(echo "$IMPORTS_OUTPUT" | grep -iE "not found|unresolved|missing|error|failed" | grep -viE "$API_SET_PATTERN" || true)
+if [[ -n "$IMPORTS_ISSUES" ]]; then
     HAS_ISSUES=true
     echo "::warning::Potential issues detected in imports analysis"
 fi
 
-# Check modules output for issues (this is the definitive check)
-if echo "$MODULES_OUTPUT" | grep -qiE "$MISSING_PATTERNS"; then
+# Check modules output for issues (but filter out Windows API Set DLLs)
+# The [ApiSetSchema] entries are RESOLVED API Sets - those are fine
+MODULES_ISSUES=$(echo "$MODULES_OUTPUT" | grep -iE "\[NOT_FOUND\]" | grep -viE "$API_SET_PATTERN" || true)
+if [[ -n "$MODULES_ISSUES" ]]; then
     HAS_ISSUES=true
 fi
 
-# Additional check: look for DLL names that don't have resolved paths
-# In Dependencies output, unresolved modules often show just the DLL name
-# without a full path, or show "?" or similar indicators
+# Also check for any unresolved entries that aren't API Sets
+UNRESOLVED=$(echo "$MODULES_OUTPUT" | grep -iE "unresolved" | grep -viE "$API_SET_PATTERN" || true)
+if [[ -n "$UNRESOLVED" ]]; then
+    HAS_ISSUES=true
+fi
 
 # Also try to actually run the executable briefly to catch any dynamic load issues
 # that Dependencies might miss (LoadLibrary, etc.)
@@ -146,11 +168,12 @@ if [[ "$HAS_ISSUES" == "true" ]]; then
     echo "Missing/unresolved DLL details:"
     echo ""
 
-    # Extract specific missing DLL lines for clearer error
+    # Extract specific missing DLL lines for clearer error (excluding API Set DLLs)
     {
-        echo "$IMPORTS_OUTPUT" | grep -iE "$MISSING_PATTERNS"
-        echo "$MODULES_OUTPUT" | grep -iE "$MISSING_PATTERNS"
-    } | sort -u | head -30
+        echo "$IMPORTS_ISSUES"
+        echo "$MODULES_ISSUES"
+        echo "$UNRESOLVED"
+    } | grep -v "^$" | sort -u | head -30
 
     echo ""
     echo "Suggested fixes:"
@@ -165,4 +188,7 @@ fi
 echo ""
 echo "✓ All DLL dependencies resolved for $EXE_NAME"
 echo "The executable should be able to start successfully."
+echo ""
+echo "Note: Windows API Set DLLs (ext-ms-*, api-ms-*) are resolved by the OS"
+echo "and are not required to be present as files."
 exit 0
