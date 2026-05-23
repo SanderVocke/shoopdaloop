@@ -131,10 +131,17 @@ runs:
       tar --strip-components=1 -xzf ${{ inputs.package }}
       if [[ "$RUNNER_OS" == "Windows" ]]; then
         CMD_PREFIX="cmake -E env PATH=\"\$PATH:$PORTABLE_FOLDER_INSTALL/lib\""
+        # On Windows, executables need .exe suffix for exact file path reference
+        TEST_RUNNER_EXE="$TEST_BINARIES_INSTALL/test_runner.exe"
+        CARGO_NEXTEST_EXE="$TEST_BINARIES_INSTALL/cargo-nextest.exe"
       elif [[ "$RUNNER_OS" == "macOS" ]]; then
         CMD_PREFIX="cmake -E env DYLD_LIBRARY_PATH=\$DYLD_LIBRARY_PATH:$TEST_BINARIES_INSTALL:$PORTABLE_FOLDER_INSTALL/lib"
+        TEST_RUNNER_EXE="$TEST_BINARIES_INSTALL/test_runner"
+        CARGO_NEXTEST_EXE="$TEST_BINARIES_INSTALL/cargo-nextest"
       else # Linux
         CMD_PREFIX="cmake -E env LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:$PORTABLE_FOLDER_INSTALL/lib:$TEST_BINARIES_INSTALL"
+        TEST_RUNNER_EXE="$TEST_BINARIES_INSTALL/test_runner"
+        CARGO_NEXTEST_EXE="$TEST_BINARIES_INSTALL/cargo-nextest"
       fi
-      echo "COMMAND_TEST_BACKEND=$CMD_PREFIX $TEST_BINARIES_INSTALL/test_runner" | tee -a $GITHUB_ENV
-      echo "COMMAND_TEST_RUST=$CMD_PREFIX $TEST_BINARIES_INSTALL/cargo-nextest nextest run --workspace-remap $WORKSPACE --archive-file $TEST_BINARIES_INSTALL/nextest-archive.tar.zst" | tee -a $GITHUB_ENV
+      echo "COMMAND_TEST_BACKEND=$CMD_PREFIX $TEST_RUNNER_EXE" | tee -a $GITHUB_ENV
+      echo "COMMAND_TEST_RUST=$CMD_PREFIX $CARGO_NEXTEST_EXE nextest run --workspace-remap $WORKSPACE --archive-file $TEST_BINARIES_INSTALL/nextest-archive.tar.zst" | tee -a $GITHUB_ENV
