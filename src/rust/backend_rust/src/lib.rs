@@ -4,6 +4,8 @@ pub mod audio_midi_driver_cxx;
 pub mod audio_port;
 pub mod audio_port_cxx;
 pub mod backend_api_cxx;
+pub mod basic_loop;
+pub mod basic_loop_cxx;
 pub mod command_queue;
 pub mod command_queue_cxx;
 pub mod decoupled_midi_port;
