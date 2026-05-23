@@ -121,8 +121,8 @@ public:
     void set_ringbuffer_n_samples(unsigned n) override;
     unsigned get_ringbuffer_n_samples() const override;
 
-    // Ringbuffer access
-    RingbufferSnapshot PROC_get_ringbuffer_contents();
+    // Ringbuffer access (virtual for InternalAudioPort override)
+    virtual RingbufferSnapshot PROC_get_ringbuffer_contents();
 
     // Name/driver - not used in base class
     const char* name() const override { return ""; }

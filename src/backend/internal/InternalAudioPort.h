@@ -58,5 +58,5 @@ public:
     unsigned get_ringbuffer_n_samples() const override;
     
     // Ringbuffer access - delegate to Rust InternalAudioPort
-    RingbufferSnapshot PROC_get_ringbuffer_contents();
+    RingbufferSnapshot PROC_get_ringbuffer_contents() override;
 };
