@@ -34,6 +34,14 @@ IS_WINDOWS=0
 if [[ "$(uname -s)" == *"MINGW"* ]] || [[ "$(uname -s)" == *"MSYS"* ]] || [[ "$(uname -s)" == *"CYGWIN"* ]]; then
     IS_WINDOWS=1
 fi
+
+# For Windows: create a temporary file to capture stderr separately
+# This helps diagnose DLL load failures which only appear in stderr
+STDERR_CAPTURE_FILE=""
+if [[ $IS_WINDOWS -eq 1 ]]; then
+    STDERR_CAPTURE_FILE="/tmp/run_with_timeout_stderr_$$"
+    echo "[run_with_timeout] Windows detected: stderr will be captured to $STDERR_CAPTURE_FILE"
+fi
 # echo "[run_with_timeout] DEBUG: IS_WINDOWS=$IS_WINDOWS, uname=$(uname -s)"
 
 # Helper function to format seconds as human-readable
@@ -652,7 +660,18 @@ kill_known_problem_processes() {
 # This creates a new session and process group, making cleanup more reliable
 CHILD_PID=""
 
-if command -v setsid &>/dev/null; then
+if [[ $IS_WINDOWS -eq 1 ]] && [[ -n "$STDERR_CAPTURE_FILE" ]]; then
+    # Windows: capture stderr separately to diagnose DLL load failures
+    if command -v setsid &>/dev/null; then
+        setsid "${COMMAND[@]}" 2>"$STDERR_CAPTURE_FILE" &
+        CHILD_PID=$!
+    else
+        set -m  # Enable job control
+        "${COMMAND[@]}" 2>"$STDERR_CAPTURE_FILE" &
+        CHILD_PID=$!
+        set +m
+    fi
+elif command -v setsid &>/dev/null; then
     # echo "[run_with_timeout] DEBUG: launching with setsid"
     setsid "${COMMAND[@]}" &
     CHILD_PID=$!
@@ -696,6 +715,56 @@ while true; do
         wait $CHILD_PID 2>/dev/null || CHILD_EXIT_CODE=$?
         
         # echo "[run_with_timeout] DEBUG: child $CHILD_PID no longer running, raw exit code=$CHILD_EXIT_CODE"
+        
+        # Calculate elapsed time for this diagnostic
+        CURRENT_TIME=$(date +%s)
+        ELAPSED_AT_EXIT=$((CURRENT_TIME - START_TIME))
+        
+        # WINDOWS DLL FAILURE DIAGNOSTIC:
+        # If the command exited quickly (< 10s) with a non-zero code on Windows,
+        # it's likely a DLL load failure. Provide helpful diagnostic.
+        if [[ $IS_WINDOWS -eq 1 ]] && [[ $ELAPSED_AT_EXIT -lt 10 ]] && [[ $CHILD_EXIT_CODE -ne 0 ]] && [[ $CHILD_EXIT_CODE -ne 124 ]]; then
+            echo ""
+            echo "[run_with_timeout] =========================================="
+            echo "[run_with_timeout] WINDOWS DLL LOAD FAILURE DETECTED"
+            echo "[run_with_timeout] =========================================="
+            echo "[run_with_timeout] Command exited after only ${ELAPSED_AT_EXIT}s with code ${CHILD_EXIT_CODE}"
+            echo "[run_with_timeout] This typically indicates a missing DLL dependency."
+            echo ""
+            
+            # Show captured stderr (DLL errors go here)
+            if [[ -n "$STDERR_CAPTURE_FILE" ]] && [[ -f "$STDERR_CAPTURE_FILE" ]]; then
+                STDERR_CONTENT=$(cat "$STDERR_CAPTURE_FILE" 2>/dev/null || true)
+                if [[ -n "$STDERR_CONTENT" ]]; then
+                    echo "[run_with_timeout] STDERR output (may show missing DLL):"
+                    echo "$STDERR_CONTENT"
+                else
+                    echo "[run_with_timeout] STDERR was empty (Windows may not report DLL errors to stderr)"
+                fi
+                rm -f "$STDERR_CAPTURE_FILE" 2>/dev/null || true
+            fi
+            
+            echo ""
+            echo "[run_with_timeout] Diagnostic suggestions:"
+            echo "[run_with_timeout] 1. Check if all required DLLs are in PATH"
+            echo "[run_with_timeout] 2. Use Dependencies.exe to analyze: Dependencies.exe -modules <executable>"
+            echo "[run_with_timeout] 3. Check for Debug/Release DLL mismatch (VCRUNTIME140D vs VCRUNTIME140)"
+            echo "[run_with_timeout] 4. Verify the executable was built for the correct architecture"
+            echo ""
+            
+            # Try to identify the executable from COMMAND
+            EXE_PATH="${COMMAND[0]}"
+            if [[ -n "$EXE_PATH" ]] && command -v Dependencies.exe &>/dev/null; then
+                echo "[run_with_timeout] Running Dependencies.exe on $EXE_PATH..."
+                Dependencies.exe -modules "$EXE_PATH" 2>&1 | head -30 || true
+                echo ""
+            fi
+        fi
+        
+        # Clean up stderr capture file if we created one
+        if [[ -n "$STDERR_CAPTURE_FILE" ]] && [[ -f "$STDERR_CAPTURE_FILE" ]]; then
+            rm -f "$STDERR_CAPTURE_FILE" 2>/dev/null || true
+        fi
         
         # Small delay to let things settle before cleanup
         echo "[run_with_timeout] Main process exited (code $CHILD_EXIT_CODE), waiting 1s before cleanup..."
