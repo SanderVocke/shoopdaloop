@@ -8,8 +8,8 @@ use std::cell::UnsafeCell;
 use std::collections::VecDeque;
 use std::sync::Weak;
 
-use crate::refilling_pool::refilling_pool::RefillingPool;
-use crate::refilling_pool::refilling_pool_cxx::BufferHandle;
+use crate::refilling_pool::RefillingPool;
+use crate::refilling_pool_cxx::BufferHandle;
 
 /// A reference-counted buffer handle.
 ///

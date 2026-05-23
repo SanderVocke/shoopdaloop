@@ -1,6 +1,9 @@
 pub mod audio_buffer_queue;
+pub mod audio_midi_driver;
+pub mod audio_midi_driver_cxx;
 pub mod audio_port;
 pub mod audio_port_cxx;
+pub mod backend_api_cxx;
 pub mod command_queue;
 pub mod command_queue_cxx;
 pub mod decoupled_midi_port;
@@ -37,7 +40,8 @@ pub mod port_core;
 pub mod port_core_cxx;
 pub mod port_direction;
 pub mod refilling_pool;
+pub mod refilling_pool_cxx;
 
 // Re-export types for use by other crates (like backend)
-pub use crate::refilling_pool::refilling_pool_cxx::create_buffer_pool;
-pub use crate::refilling_pool::refilling_pool_cxx::{BufferHandle, BufferPool};
+pub use crate::refilling_pool_cxx::create_buffer_pool;
+pub use crate::refilling_pool_cxx::{BufferHandle, BufferPool};

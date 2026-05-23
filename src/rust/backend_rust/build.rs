@@ -4,6 +4,8 @@ fn main() {
     }
 
     cxx_build::bridges([
+        "src/audio_midi_driver_cxx.rs",
+        "src/backend_api_cxx.rs",
         "src/command_queue_cxx.rs",
         "src/midi_state_diff_tracker_cxx.rs",
         "src/midi_storage_cxx.rs",
@@ -20,7 +22,7 @@ fn main() {
         "src/midi_buffering_input_port_cxx.rs",
         "src/audio_port_cxx.rs",
         "src/midi_state_tracker_cxx.rs",
-        "src/refilling_pool/refilling_pool_cxx.rs",
+        "src/refilling_pool_cxx.rs",
         "src/dummy_audio_midi_driver_cxx.rs",
     ])
     .std("c++20")
@@ -35,6 +37,9 @@ fn main() {
     );
     println!("cargo:cxx_bridge_libdir={}", out_dir.display());
 
+    println!("cargo:rerun-if-changed=src/audio_midi_driver_cxx.rs");
+    println!("cargo:rerun-if-changed=src/backend_api_cxx.rs");
+
     println!("cargo:rerun-if-changed=src/command_queue_cxx.rs");
     println!("cargo:rerun-if-changed=src/midi_state_diff_tracker_cxx.rs");
     println!("cargo:rerun-if-changed=src/midi_storage_cxx.rs");
@@ -47,6 +52,6 @@ fn main() {
     println!("cargo:rerun-if-changed=src/internal_midi_port_cxx.rs");
     println!("cargo:rerun-if-changed=src/midi_buffering_input_port_cxx.rs");
     println!("cargo:rerun-if-changed=src/audio_port_cxx.rs");
-    println!("cargo:rerun-if-changed=src/refilling_pool/refilling_pool_cxx.rs");
+    println!("cargo:rerun-if-changed=src/refilling_pool_cxx.rs");
     println!("cargo:rerun-if-changed=src/dummy_audio_midi_driver_cxx.rs");
 }

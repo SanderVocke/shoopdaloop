@@ -11,6 +11,23 @@ runs:
       mkdir -p reports
       echo "results_xml=reports/backend_tests_results.xml" | tee -a $GITHUB_ENV
 
+  - name: Check DLL dependencies (Windows)
+    if: always() && runner.os == 'Windows' && env.COMMAND_TEST_BACKEND != ''
+    shell: wrap-shell {0}
+    run: |
+      # Extract the test_runner path from COMMAND_TEST_BACKEND
+      # Format: cmake -E env PATH="..." <test_runner_path> ...
+      TEST_RUNNER=$(echo "$COMMAND_TEST_BACKEND" | sed -n 's/.* \([^ ]*test_runner[^ ]*\).*/\1/p')
+      
+      if [[ -n "$TEST_RUNNER" ]]; then
+        echo "=== Pre-flight DLL dependency check ==="
+        chmod +x ./scripts/check_dll_dependencies.sh
+        ./scripts/check_dll_dependencies.sh "$TEST_RUNNER"
+      else
+        echo "Could not extract test_runner path from COMMAND_TEST_BACKEND"
+        echo "COMMAND_TEST_BACKEND: $COMMAND_TEST_BACKEND"
+      fi
+
   - name: Backend tests
     if: always()
     shell: wrap-shell {0}

@@ -8,6 +8,7 @@
 #include "SerializeableStateInterface.h"
 #include "CommandQueue.h"
 #include "shoop_globals.h"
+#include "backend_rust/src/backend_api_cxx.rs.h"
 
 // System
 #include <boost/lockfree/spsc_queue.hpp>
@@ -350,9 +351,7 @@ const char* maybe_driver_instance_name(shoop_audio_driver_t* driver) {
 }
 
 unsigned driver_type_supported(shoop_audio_driver_type_t type) {
-  return api_impl<unsigned, log_level_debug_trace>("driver_type_supported", [&]() {
-        return (unsigned) audio_midi_driver_type_supported(type);
-  }, 0);
+  return (unsigned) backend_rust::driver_type_supported(static_cast<uint32_t>(type));
 }
 
 shoop_external_port_descriptors_t *find_external_ports(

@@ -5,12 +5,13 @@
 #include <thread>
 
 AudioMidiDriver::AudioMidiDriver(void (*maybe_process_callback)()) :
+  m_rust_core(backend_rust::new_audio_midi_driver_core()),
   m_command_queue(shoop_constants::command_queue_size, 1000, 1000),
   m_processors(shoop_make_shared<std::vector<shoop_weak_ptr<HasAudioProcessingFunction>>>()),
-  m_active(false),
-  m_client_name("unknown"),
   m_maybe_process_callback(maybe_process_callback)
 {
+    // Set default client name in Rust core
+    m_rust_core->set_client_name("unknown");
 }
 
 void AudioMidiDriver::add_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) {
@@ -53,12 +54,12 @@ void AudioMidiDriver::PROC_process(uint32_t nframes) {
 }
 
 uint32_t AudioMidiDriver::get_xruns() const {
-    return m_xruns;
+    return m_rust_core->get_xruns();
 }
 
 float AudioMidiDriver::get_dsp_load() {
     maybe_update_dsp_load();
-    return m_dsp_load;
+    return m_rust_core->get_dsp_load();
 }
 
 void AudioMidiDriver::unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port) {
@@ -76,64 +77,68 @@ void AudioMidiDriver::PROC_process_decoupled_midi_ports(uint32_t nframes) {
 
 uint32_t AudioMidiDriver::get_sample_rate() {
     maybe_update_sample_rate();
-    return m_sample_rate;
+    return m_rust_core->get_sample_rate();
 }
 
 uint32_t AudioMidiDriver::get_buffer_size() {
     maybe_update_buffer_size();
-    return m_buffer_size;
+    return m_rust_core->get_buffer_size();
 }
 
 void AudioMidiDriver::reset_xruns() {
-    m_xruns = 0;
+    m_rust_core->reset_xruns();
 }
 
 void AudioMidiDriver::report_xrun() {
-    m_xruns++;
+    m_rust_core->report_xrun();
 }
 
 void AudioMidiDriver::set_dsp_load(float load) {
-    m_dsp_load = load;
+    m_rust_core->set_dsp_load(load);
 }
 
 void AudioMidiDriver::set_sample_rate(uint32_t sample_rate) {
-    m_sample_rate = sample_rate;
+    m_rust_core->set_sample_rate(sample_rate);
 }
 
 void AudioMidiDriver::set_buffer_size(uint32_t buffer_size) {
-    m_buffer_size = buffer_size;
+    m_rust_core->set_buffer_size(buffer_size);
 }
 
 void AudioMidiDriver::set_client_name(const char* name) {
-    m_client_name = name;
+    m_rust_core->set_client_name(name);
 }
 
 void AudioMidiDriver::set_active(bool active) {
-    m_active = active;
+    m_rust_core->set_active(active);
 }
 
 void AudioMidiDriver::set_last_processed(uint32_t nframes) {
-    m_last_processed = nframes;
+    m_rust_core->set_last_processed(nframes);
 }
 
 const char* AudioMidiDriver::get_client_name() const {
-    return m_client_name;
+    // Cache the name in a static string to return const char*
+    // Note: Rust String needs conversion to std::string
+    static std::string cached_name;
+    cached_name = std::string(m_rust_core->get_client_name());
+    return cached_name.c_str();
 }
 
 void AudioMidiDriver::set_maybe_client_handle(void* handle) {
-    m_maybe_client_handle = handle;
+    m_rust_core->set_client_handle(reinterpret_cast<uintptr_t>(handle));
 }
 
 void* AudioMidiDriver::get_maybe_client_handle() const {
-    return m_maybe_client_handle;
+    return reinterpret_cast<void*>(m_rust_core->get_client_handle());
 }
 
 bool AudioMidiDriver::get_active() const {
-    return m_active;
+    return m_rust_core->get_active();
 }
 
 uint32_t AudioMidiDriver::get_last_processed() const {
-    return m_last_processed;
+    return m_rust_core->get_last_processed();
 }
 
 void AudioMidiDriver::wait_process() {
