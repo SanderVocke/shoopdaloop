@@ -75,7 +75,7 @@ void AudioMidiDriver::PROC_process_decoupled_midi_ports(uint32_t nframes) {
     }
 }
 
-uint32_t AudioMidiDriver::get_sample_rate() {
+uint32_t AudioMidiDriver::get_sample_rate() const {
     maybe_update_sample_rate();
     return m_rust_core->get_sample_rate();
 }

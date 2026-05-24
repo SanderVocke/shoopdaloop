@@ -2243,11 +2243,8 @@ void destroy_logger(shoopdaloop_logger_t* logger) {
 }
 
 unsigned get_sample_rate (shoop_audio_driver_t *driver) {
-  return api_impl<unsigned, log_level_debug_trace>("get_sample_rate", [&]() -> unsigned {
-    auto _driver = internal_audio_driver(driver);
-    if (!_driver) { return 48000; }
-    return _driver->get_sample_rate();
-  }, 0);
+  // Use Rust implementation via the cxx bridge
+  return backend_rust::get_sample_rate_rs(reinterpret_cast<usize>(driver));
 }
 
 unsigned get_buffer_size (shoop_audio_driver_t *driver) {

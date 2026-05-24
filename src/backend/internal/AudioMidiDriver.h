@@ -97,7 +97,7 @@ public:
 
     uint32_t get_xruns() const;
     float get_dsp_load();
-    uint32_t get_sample_rate();
+    uint32_t get_sample_rate() const;
     uint32_t get_buffer_size();
     void reset_xruns();
     const char* get_client_name() const;

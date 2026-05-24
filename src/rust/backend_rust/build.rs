@@ -26,6 +26,7 @@ fn main() {
         "src/dummy_audio_midi_driver_cxx.rs",
     ])
     .std("c++20")
+    .flag("-I../../backend")
     .compile("backend_rust_cxx");
 
     let out_dir = std::env::var_os("OUT_DIR").unwrap();
