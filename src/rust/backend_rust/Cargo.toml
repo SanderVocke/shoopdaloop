@@ -9,6 +9,7 @@ crate-type = ["rlib", "staticlib"]
 [dependencies]
 crossbeam-queue = { workspace = true }
 cxx = { workspace = true }
+libc = { workspace = true }
 log = { workspace = true }
 parking_lot = "0.12"
 regex = { workspace = true }
