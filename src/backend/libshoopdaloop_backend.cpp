@@ -1408,13 +1408,7 @@ void send_decoupled_midi(shoopdaloop_decoupled_midi_port_t *port, unsigned lengt
 }
 
 shoop_midi_event_t *alloc_midi_event(unsigned data_bytes) {
-  return api_impl<shoop_midi_event_t*, log_level_debug_trace, log_level_warning>("alloc_midi_event", [&]() {
-    auto r = new shoop_midi_event_t;
-    r->size = data_bytes;
-    r->time = 0;
-    r->data = (unsigned char*) malloc(data_bytes);
-    return r;
-  }, nullptr);
+  return reinterpret_cast<shoop_midi_event_t*>(backend_rust::alloc_midi_event(data_bytes));
 }
 
 shoop_midi_sequence_t *alloc_midi_sequence(unsigned n_events) {
@@ -1428,12 +1422,7 @@ shoop_midi_sequence_t *alloc_midi_sequence(unsigned n_events) {
 }
 
 shoop_audio_channel_data_t *alloc_audio_channel_data(unsigned n_samples) {
-  return api_impl<shoop_audio_channel_data_t*, log_level_debug_trace, log_level_warning>("alloc_audio_channel_data", [&]() {
-    auto r = new shoop_audio_channel_data_t;
-    r->n_samples = n_samples;
-    r->data = (audio_sample_t*) malloc(sizeof(audio_sample_t) * n_samples);
-    return r;
-  }, nullptr);
+  return reinterpret_cast<shoop_audio_channel_data_t*>(backend_rust::alloc_audio_channel_data(n_samples));
 }
 
 void set_audio_channel_gain (shoopdaloop_loop_audio_channel_t *channel, float gain) {
@@ -1836,10 +1825,7 @@ shoopdaloop_midi_port_t *fx_chain_midi_input_port(shoopdaloop_fx_chain_t *chain,
 }
 
 void destroy_midi_event(shoop_midi_event_t *e) {
-  return api_impl<void, log_level_debug_trace, log_level_warning>("destroy_midi_event", [&]() {
-    free(e->data);
-    delete e;
-  });
+  backend_rust::destroy_midi_event(reinterpret_cast<backend_rust::ShoopMidiEvent*>(e));
 }
 
 void destroy_midi_sequence(shoop_midi_sequence_t *d) {
@@ -1853,22 +1839,15 @@ void destroy_midi_sequence(shoop_midi_sequence_t *d) {
 }
 
 void destroy_audio_channel_data(shoop_audio_channel_data_t *d) {
-  return api_impl<void, log_level_debug_trace>("destroy_audio_channel_data", [&]() {
-    free(d->data);
-    delete d;
-  });
+  backend_rust::destroy_audio_channel_data(reinterpret_cast<backend_rust::ShoopAudioChannelData*>(d));
 }
 
 void destroy_audio_channel_state_info(shoop_audio_channel_state_info_t *d) {
-  return api_impl<void, log_level_debug_trace>("destroy_audio_channel_state_info", [&]() {
-    delete d;
-  });
+  backend_rust::destroy_audio_channel_state_info(reinterpret_cast<backend_rust::ShoopAudioChannelStateInfo*>(d));
 }
 
 void destroy_midi_channel_state_info(shoop_midi_channel_state_info_t *d) {
-  return api_impl<void, log_level_debug_trace>("destroy_midi_channel_state_info", [&]() {
-    delete d;
-  });
+  backend_rust::destroy_midi_channel_state_info(reinterpret_cast<backend_rust::ShoopMidiChannelStateInfo*>(d));
 }
 
 void destroy_loop(shoopdaloop_loop_t *d) {
@@ -1977,9 +1956,7 @@ void destroy_shoopdaloop_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *
 }
 
 void destroy_loop_state_info(shoop_loop_state_info_t *state) {
-  return api_impl<void, log_level_debug_trace>("destroy_loop_state_info", [&]() {
-    delete state;
-  });
+  backend_rust::destroy_loop_state_info(reinterpret_cast<backend_rust::ShoopLoopStateInfo*>(state));
 }
 
 void destroy_fx_chain(shoopdaloop_fx_chain_t *chain) {
@@ -1992,21 +1969,15 @@ void destroy_fx_chain(shoopdaloop_fx_chain_t *chain) {
 }
 
 void destroy_fx_chain_state(shoop_fx_chain_state_info_t *d) {
-  return api_impl<void, log_level_debug_trace>("destroy_fx_chain_state", [&]() {
-    delete d;
-  });
+  backend_rust::destroy_fx_chain_state(reinterpret_cast<backend_rust::ShoopFxChainStateInfo*>(d));
 }
 
 void destroy_string(const char* s) {
-  return api_impl<void, log_level_debug_trace>("destroy_string", [&]() {
-    free((void*)s);
-  });
+  backend_rust::destroy_string(const_cast<char*>(s));
 }
 
 void destroy_backend_state_info(shoop_backend_session_state_info_t *d) {
-  return api_impl<void, log_level_debug_trace>("destroy_backend_state_info", [&]() {
-    delete d;
-  });
+  backend_rust::destroy_backend_state_info(reinterpret_cast<backend_rust::ShoopBackendSessionStateInfo*>(d));
 }
 
 void destroy_profiling_report(shoop_profiling_report_t *d) {
@@ -2409,14 +2380,9 @@ shoop_multichannel_audio_t *resample_audio(shoop_multichannel_audio_t *in, unsig
 }
 
 shoop_multichannel_audio_t *alloc_multichannel_audio(unsigned n_channels, unsigned n_frames) {
-  auto rval = new shoop_multichannel_audio_t;
-  rval->n_channels = n_channels;
-  rval->n_frames = n_frames;
-  rval->data = (shoop_types::audio_sample_t*) malloc(sizeof(shoop_types::audio_sample_t) * n_channels * n_frames);
-  return rval;
+  return reinterpret_cast<shoop_multichannel_audio_t*>(backend_rust::alloc_multichannel_audio(n_channels, n_frames));
 }
 
 void destroy_multichannel_audio(shoop_multichannel_audio_t *audio) {
-  free(audio->data);
-  delete audio;
+  backend_rust::destroy_multichannel_audio(reinterpret_cast<backend_rust::ShoopMultichannelAudio*>(audio));
 }

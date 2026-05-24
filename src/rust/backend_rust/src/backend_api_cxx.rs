@@ -7,6 +7,9 @@
 //! Initially, this layer will handle simple query functions that don't involve
 //! object handles. More complex functions will be migrated incrementally.
 
+use std::ffi::c_char;
+use std::mem::size_of;
+
 /// Driver type enum values matching shoop_audio_driver_type_t in types.h
 const DRIVER_TYPE_JACK: u32 = 0;
 const DRIVER_TYPE_JACK_TEST: u32 = 1;
@@ -14,11 +17,87 @@ const DRIVER_TYPE_DUMMY: u32 = 2;
 
 #[cxx::bridge(namespace = "backend_rust")]
 mod ffi {
+    // C structs that we manipulate from Rust
+    // These match the definitions in types.h
+    // Note: cxx automatically handles C-compatible layout
+    struct ShoopMidiEvent {
+        time: i32,
+        size: u32,
+        data: *mut u8,
+    }
+
+    struct ShoopAudioChannelData {
+        n_samples: u32,
+        data: *mut f32,
+    }
+
+    struct ShoopMultichannelAudio {
+        n_channels: u32,
+        n_frames: u32,
+        data: *mut f32,
+    }
+
+    struct ShoopAudioChannelStateInfo {
+        mode: u32, // shoop_channel_mode_t as u32
+        gain: f32,
+        output_peak: f32,
+        length: u32,
+        start_offset: i32,
+        played_back_sample: i32, // -1 is none
+        n_preplay_samples: u32,
+        data_dirty: u32,
+    }
+
+    struct ShoopMidiChannelStateInfo {
+        mode: u32, // shoop_channel_mode_t as u32
+        n_events_triggered: u32,
+        n_notes_active: u32,
+        length: u32,
+        start_offset: i32,
+        played_back_sample: i32, // -1 is none
+        n_preplay_samples: u32,
+        data_dirty: u32,
+    }
+
+    struct ShoopLoopStateInfo {
+        mode: u32, // shoop_loop_mode_t as u32
+        length: u32,
+        position: u32,
+        maybe_next_mode: u32, // shoop_loop_mode_t as u32
+        maybe_next_mode_delay: u32,
+    }
+
+    struct ShoopFxChainStateInfo {
+        ready: u32,
+        active: u32,
+        visible: u32,
+    }
+
+    struct ShoopBackendSessionStateInfo {
+        audio_driver: *mut u8, // opaque pointer (using u8 as void-like)
+        n_audio_buffers_created: u32,
+        n_audio_buffers_available: u32,
+    }
+
     extern "Rust" {
         /// Check if a driver type is supported.
-        /// Takes the driver type as a u32 (matching shoop_audio_driver_type_t enum values).
-        /// Returns true if the driver type is available in this build.
         fn driver_type_supported(driver_type: u32) -> bool;
+
+        // Allocation functions
+        fn alloc_midi_event(data_bytes: u32) -> *mut ShoopMidiEvent;
+        fn alloc_audio_channel_data(n_samples: u32) -> *mut ShoopAudioChannelData;
+        fn alloc_multichannel_audio(n_channels: u32, n_frames: u32) -> *mut ShoopMultichannelAudio;
+
+        // Destroy functions (unsafe due to pointer arguments)
+        unsafe fn destroy_midi_event(e: *mut ShoopMidiEvent);
+        unsafe fn destroy_audio_channel_data(d: *mut ShoopAudioChannelData);
+        unsafe fn destroy_multichannel_audio(audio: *mut ShoopMultichannelAudio);
+        unsafe fn destroy_string(s: *mut c_char);
+        unsafe fn destroy_audio_channel_state_info(d: *mut ShoopAudioChannelStateInfo);
+        unsafe fn destroy_midi_channel_state_info(d: *mut ShoopMidiChannelStateInfo);
+        unsafe fn destroy_loop_state_info(state: *mut ShoopLoopStateInfo);
+        unsafe fn destroy_fx_chain_state(d: *mut ShoopFxChainStateInfo);
+        unsafe fn destroy_backend_state_info(d: *mut ShoopBackendSessionStateInfo);
     }
 }
 
@@ -46,6 +125,153 @@ fn driver_type_supported(driver_type: u32) -> bool {
     }
 }
 
+// =============================================================================
+// Allocation Functions
+// =============================================================================
+
+/// Allocate a MIDI event struct with a data buffer.
+///
+/// Matches the C implementation in libshoopdaloop_backend.cpp.
+/// The returned pointer should be freed with destroy_midi_event.
+fn alloc_midi_event(data_bytes: u32) -> *mut ffi::ShoopMidiEvent {
+    unsafe {
+        let data = libc::malloc(data_bytes as usize) as *mut u8;
+        let event = Box::new(ffi::ShoopMidiEvent {
+            size: data_bytes,
+            time: 0,
+            data,
+        });
+        Box::into_raw(event)
+    }
+}
+
+/// Allocate an audio channel data struct with a sample buffer.
+///
+/// Matches the C implementation in libshoopdaloop_backend.cpp.
+/// The returned pointer should be freed with destroy_audio_channel_data.
+fn alloc_audio_channel_data(n_samples: u32) -> *mut ffi::ShoopAudioChannelData {
+    unsafe {
+        let data = libc::malloc((n_samples as usize) * size_of::<f32>()) as *mut f32;
+        let channel_data = Box::new(ffi::ShoopAudioChannelData { n_samples, data });
+        Box::into_raw(channel_data)
+    }
+}
+
+/// Allocate a multichannel audio struct.
+///
+/// Matches the C implementation in libshoopdaloop_backend.cpp.
+/// Channels are not interleaved.
+/// The returned pointer should be freed with destroy_multichannel_audio.
+fn alloc_multichannel_audio(n_channels: u32, n_frames: u32) -> *mut ffi::ShoopMultichannelAudio {
+    unsafe {
+        let data = libc::malloc((n_channels as usize) * (n_frames as usize) * size_of::<f32>())
+            as *mut f32;
+        let audio = Box::new(ffi::ShoopMultichannelAudio {
+            n_channels,
+            n_frames,
+            data,
+        });
+        Box::into_raw(audio)
+    }
+}
+
+// =============================================================================
+// Destroy Functions
+// =============================================================================
+
+/// Free a MIDI event struct and its data buffer.
+///
+/// Safe to call with null pointer.
+unsafe fn destroy_midi_event(e: *mut ffi::ShoopMidiEvent) {
+    if e.is_null() {
+        return;
+    }
+    let event = Box::from_raw(e);
+    libc::free(event.data as *mut libc::c_void);
+}
+
+/// Free an audio channel data struct and its sample buffer.
+///
+/// Safe to call with null pointer.
+unsafe fn destroy_audio_channel_data(d: *mut ffi::ShoopAudioChannelData) {
+    if d.is_null() {
+        return;
+    }
+    let channel_data = Box::from_raw(d);
+    libc::free(channel_data.data as *mut libc::c_void);
+}
+
+/// Free a multichannel audio struct and its data buffer.
+///
+/// Safe to call with null pointer.
+unsafe fn destroy_multichannel_audio(audio: *mut ffi::ShoopMultichannelAudio) {
+    if audio.is_null() {
+        return;
+    }
+    let mc_audio = Box::from_raw(audio);
+    libc::free(mc_audio.data as *mut libc::c_void);
+}
+
+/// Free a strdup'd string.
+///
+/// Safe to call with null pointer.
+unsafe fn destroy_string(s: *mut c_char) {
+    if s.is_null() {
+        return;
+    }
+    libc::free(s as *mut libc::c_void);
+}
+
+/// Free an audio channel state info struct.
+///
+/// Safe to call with null pointer.
+unsafe fn destroy_audio_channel_state_info(d: *mut ffi::ShoopAudioChannelStateInfo) {
+    if d.is_null() {
+        return;
+    }
+    let _ = Box::from_raw(d);
+}
+
+/// Free a MIDI channel state info struct.
+///
+/// Safe to call with null pointer.
+unsafe fn destroy_midi_channel_state_info(d: *mut ffi::ShoopMidiChannelStateInfo) {
+    if d.is_null() {
+        return;
+    }
+    let _ = Box::from_raw(d);
+}
+
+/// Free a loop state info struct.
+///
+/// Safe to call with null pointer.
+unsafe fn destroy_loop_state_info(state: *mut ffi::ShoopLoopStateInfo) {
+    if state.is_null() {
+        return;
+    }
+    let _ = Box::from_raw(state);
+}
+
+/// Free an FX chain state info struct.
+///
+/// Safe to call with null pointer.
+unsafe fn destroy_fx_chain_state(d: *mut ffi::ShoopFxChainStateInfo) {
+    if d.is_null() {
+        return;
+    }
+    let _ = Box::from_raw(d);
+}
+
+/// Free a backend session state info struct.
+///
+/// Safe to call with null pointer.
+unsafe fn destroy_backend_state_info(d: *mut ffi::ShoopBackendSessionStateInfo) {
+    if d.is_null() {
+        return;
+    }
+    let _ = Box::from_raw(d);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -59,5 +285,97 @@ mod tests {
     fn test_invalid_type_not_supported() {
         assert!(!driver_type_supported(999));
         assert!(!driver_type_supported(3));
+    }
+
+    // Allocation/Destroy tests
+
+    #[test]
+    fn test_alloc_destroy_midi_event() {
+        let event = alloc_midi_event(10);
+        assert!(!event.is_null());
+        unsafe {
+            assert_eq!((*event).size, 10);
+            assert_eq!((*event).time, 0);
+            assert!(!(*event).data.is_null());
+            destroy_midi_event(event);
+        }
+    }
+
+    #[test]
+    fn test_alloc_destroy_midi_event_zero_size() {
+        let event = alloc_midi_event(0);
+        assert!(!event.is_null());
+        unsafe {
+            assert_eq!((*event).size, 0);
+            destroy_midi_event(event);
+        }
+    }
+
+    #[test]
+    fn test_destroy_midi_event_null() {
+        unsafe { destroy_midi_event(std::ptr::null_mut()) };
+    }
+
+    #[test]
+    fn test_alloc_destroy_audio_channel_data() {
+        let data = alloc_audio_channel_data(100);
+        assert!(!data.is_null());
+        unsafe {
+            assert_eq!((*data).n_samples, 100);
+            assert!(!(*data).data.is_null());
+        }
+        unsafe { destroy_audio_channel_data(data) };
+    }
+
+    #[test]
+    fn test_destroy_audio_channel_data_null() {
+        unsafe { destroy_audio_channel_data(std::ptr::null_mut()) };
+    }
+
+    #[test]
+    fn test_alloc_destroy_multichannel_audio() {
+        let audio = alloc_multichannel_audio(2, 1024);
+        assert!(!audio.is_null());
+        unsafe {
+            assert_eq!((*audio).n_channels, 2);
+            assert_eq!((*audio).n_frames, 1024);
+            assert!(!(*audio).data.is_null());
+        }
+        unsafe { destroy_multichannel_audio(audio) };
+    }
+
+    #[test]
+    fn test_destroy_multichannel_audio_null() {
+        unsafe { destroy_multichannel_audio(std::ptr::null_mut()) };
+    }
+
+    #[test]
+    fn test_destroy_string_null() {
+        unsafe { destroy_string(std::ptr::null_mut()) };
+    }
+
+    #[test]
+    fn test_destroy_audio_channel_state_info_null() {
+        unsafe { destroy_audio_channel_state_info(std::ptr::null_mut()) };
+    }
+
+    #[test]
+    fn test_destroy_midi_channel_state_info_null() {
+        unsafe { destroy_midi_channel_state_info(std::ptr::null_mut()) };
+    }
+
+    #[test]
+    fn test_destroy_loop_state_info_null() {
+        unsafe { destroy_loop_state_info(std::ptr::null_mut()) };
+    }
+
+    #[test]
+    fn test_destroy_fx_chain_state_null() {
+        unsafe { destroy_fx_chain_state(std::ptr::null_mut()) };
+    }
+
+    #[test]
+    fn test_destroy_backend_state_info_null() {
+        unsafe { destroy_backend_state_info(std::ptr::null_mut()) };
     }
 }

@@ -187,6 +187,7 @@ dependencies = [
  "crossbeam-queue",
  "cxx",
  "cxx-build",
+ "libc",
  "log",
  "parking_lot",
  "regex",
