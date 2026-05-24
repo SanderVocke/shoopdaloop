@@ -1143,13 +1143,7 @@ shoop_port_connections_state_t *get_decoupled_midi_port_connections_state(shoopd
 }
 
 void destroy_port_connections_state(shoop_port_connections_state_t *d) {
-  return api_impl<void, log_level_debug_trace>("destroy_port_connections_state", [&]() {
-    for (uint32_t idx=0; idx<d->n_ports; idx++) {
-        free((void*)d->ports[idx].name);
-    }
-    delete[] d->ports;
-    delete d;
-  });
+  backend_rust::destroy_port_connections_state(reinterpret_cast<backend_rust::ShoopPortConnectionsState*>(d));
 }
 
 void connect_midi_port_external(shoopdaloop_midi_port_t *ours, const char* external_port_name) {
@@ -1412,13 +1406,7 @@ shoop_midi_event_t *alloc_midi_event(unsigned data_bytes) {
 }
 
 shoop_midi_sequence_t *alloc_midi_sequence(unsigned n_events) {
-  return api_impl<shoop_midi_sequence_t*, log_level_debug_trace, log_level_warning>("alloc_midi_sequence", [&]() {
-    auto r = new shoop_midi_sequence_t;
-    r->n_events = n_events;
-    r->events = (shoop_midi_event_t**)malloc (sizeof(shoop_midi_event_t*) * n_events);
-    r->length_samples = 0;
-    return r;
-  }, nullptr);
+  return reinterpret_cast<shoop_midi_sequence_t*>(backend_rust::alloc_midi_sequence(n_events));
 }
 
 shoop_audio_channel_data_t *alloc_audio_channel_data(unsigned n_samples) {
