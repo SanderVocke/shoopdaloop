@@ -1829,13 +1829,7 @@ void destroy_midi_event(shoop_midi_event_t *e) {
 }
 
 void destroy_midi_sequence(shoop_midi_sequence_t *d) {
-  return api_impl<void, log_level_debug_trace>("destroy_midi_sequence", [&]() {
-    for(uint32_t idx=0; idx<d->n_events; idx++) {
-        destroy_midi_event(d->events[idx]);
-    }
-    free(d->events);
-    delete d;
-  });
+  backend_rust::destroy_midi_sequence(reinterpret_cast<backend_rust::ShoopMidiSequence*>(d));
 }
 
 void destroy_audio_channel_data(shoop_audio_channel_data_t *d) {
@@ -1913,15 +1907,11 @@ void destroy_midi_port(shoopdaloop_midi_port_t *d) {
 }
 
 void destroy_midi_port_state_info(shoop_midi_port_state_info_t *d) {
-  return api_impl<void, log_level_debug_trace>("destroy_midi_port_state_info", [&]() {
-    delete d;
-  });
+  backend_rust::destroy_midi_port_state_info(reinterpret_cast<backend_rust::ShoopMidiPortStateInfo*>(d));
 }
 
 void destroy_audio_port_state_info(shoop_audio_port_state_info_t *d) {
-  return api_impl<void, log_level_debug_trace>("destroy_audio_port_state_info", [&]() {
-    delete d;
-  });
+  backend_rust::destroy_audio_port_state_info(reinterpret_cast<backend_rust::ShoopAudioPortStateInfo*>(d));
 }
 
 void destroy_audio_channel(shoopdaloop_loop_audio_channel_t *d) {
@@ -1981,23 +1971,11 @@ void destroy_backend_state_info(shoop_backend_session_state_info_t *d) {
 }
 
 void destroy_profiling_report(shoop_profiling_report_t *d) {
-  return api_impl<void, log_level_debug_trace>("destroy_profiling_report", [&]() {
-    for(uint32_t idx=0; idx < d->n_items; idx++) {
-        free ((void*)d->items[idx].key);
-    }
-    free(d->items);
-    free(d);
-  });
+  backend_rust::destroy_profiling_report(reinterpret_cast<backend_rust::ShoopProfilingReport*>(d));
 }
 
 void destroy_external_port_descriptors(shoop_external_port_descriptors_t *d) {
-  return api_impl<void, log_level_debug_trace>("destroy_profiling_report", [&]() {
-    for(unsigned int i=0; i<d->n_ports; i++) {
-      free((void*)d->ports[i].name);
-    }
-    free(d->ports);
-    free(d);
-  });
+  backend_rust::destroy_external_port_descriptors(reinterpret_cast<backend_rust::ShoopExternalPortDescriptors*>(d));
 }
 
 shoopdaloop_logger_t *get_logger(const char* name) {
@@ -2293,12 +2271,7 @@ unsigned get_buffer_size (shoop_audio_driver_t *driver) {
 }
 
 void destroy_audio_driver_state(shoop_audio_driver_state_t *state) {
-  return api_impl<void, log_level_debug_trace>("destroy_audio_driver_state", [&]() {
-    if (state->maybe_instance_name) {
-      free((void*)state->maybe_instance_name);
-    }
-    delete state;
-  });
+  backend_rust::destroy_audio_driver_state(reinterpret_cast<backend_rust::ShoopAudioDriverState*>(state));
 }
 
 void destroy_audio_driver(shoop_audio_driver_t *driver) {

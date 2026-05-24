@@ -79,6 +79,68 @@ mod ffi {
         n_audio_buffers_available: u32,
     }
 
+    struct ShoopMidiSequence {
+        n_events: u32,
+        events: *mut *mut ShoopMidiEvent,
+        length_samples: u32,
+    }
+
+    struct ShoopProfilingReportItem {
+        key: *mut c_char,
+        n_samples: f32,
+        average: f32,
+        worst: f32,
+        most_recent: f32,
+    }
+
+    struct ShoopProfilingReport {
+        n_items: u32,
+        items: *mut ShoopProfilingReportItem,
+    }
+
+    struct ShoopExternalPortDescriptor {
+        data_type: u32, // shoop_port_data_type_t as u32
+        direction: u32, // shoop_port_direction_t as u32
+        name: *mut c_char,
+    }
+
+    struct ShoopExternalPortDescriptors {
+        n_ports: u32,
+        ports: *mut ShoopExternalPortDescriptor,
+    }
+
+    struct ShoopAudioDriverState {
+        dsp_load_percent: f32,
+        xruns_since_last: u32,
+        maybe_driver_handle: *mut u8, // void* as *mut u8
+        maybe_instance_name: *mut c_char,
+        sample_rate: u32,
+        buffer_size: u32,
+        active: u32,
+        last_processed: u32,
+    }
+
+    struct ShoopMidiPortStateInfo {
+        n_input_events: u32,
+        n_input_notes_active: u32,
+        n_output_events: u32,
+        n_output_notes_active: u32,
+        muted: u32,
+        passthrough_muted: u32,
+        ringbuffer_n_samples: u32,
+        name: *mut c_char,
+    }
+
+    struct ShoopAudioPortStateInfo {
+        input_peak: f32,
+        output_peak: f32,
+        gain: f32,
+        muted: u32,
+        passthrough_muted: u32,
+        ringbuffer_n_samples: u32,
+        name: *mut c_char,
+    }
+
     extern "Rust" {
         /// Check if a driver type is supported.
         fn driver_type_supported(driver_type: u32) -> bool;
@@ -98,6 +160,14 @@ mod ffi {
         unsafe fn destroy_loop_state_info(state: *mut ShoopLoopStateInfo);
         unsafe fn destroy_fx_chain_state(d: *mut ShoopFxChainStateInfo);
         unsafe fn destroy_backend_state_info(d: *mut ShoopBackendSessionStateInfo);
+
+        // New functions to migrate
+        unsafe fn destroy_midi_sequence(d: *mut ShoopMidiSequence);
+        unsafe fn destroy_profiling_report(d: *mut ShoopProfilingReport);
+        unsafe fn destroy_external_port_descriptors(d: *mut ShoopExternalPortDescriptors);
+        unsafe fn destroy_audio_driver_state(d: *mut ShoopAudioDriverState);
+        unsafe fn destroy_midi_port_state_info(d: *mut ShoopMidiPortStateInfo);
+        unsafe fn destroy_audio_port_state_info(d: *mut ShoopAudioPortStateInfo);
     }
 }
 
@@ -272,6 +342,115 @@ unsafe fn destroy_backend_state_info(d: *mut ffi::ShoopBackendSessionStateInfo) 
     let _ = Box::from_raw(d);
 }
 
+// =============================================================================
+// New Functions Migrated from C++
+// =============================================================================
+
+// Note: alloc_midi_sequence is kept in C++ for now due to cxx struct layout complexities.
+// The destroy_midi_sequence function is migrated since it operates on C++-allocated pointers.
+
+/// Free a MIDI sequence struct and all its events.
+///
+/// Safe to call with null pointer.
+/// Each event is freed using destroy_midi_event.
+/// Uses ptr::read_unaligned to handle potential alignment issues with cxx structs.
+unsafe fn destroy_midi_sequence(d: *mut ffi::ShoopMidiSequence) {
+    if d.is_null() {
+        return;
+    }
+    // Read the struct using ptr::read_unaligned to handle potential alignment issues
+    let sequence = std::ptr::read_unaligned(d);
+    // Free each event
+    for i in 0..sequence.n_events {
+        let event_ptr = std::ptr::read_unaligned(sequence.events.add(i as usize));
+        destroy_midi_event(event_ptr);
+    }
+    // Free the events array (was allocated with malloc in C++)
+    libc::free(sequence.events as *mut libc::c_void);
+    // Free the struct itself (was allocated with new in C++)
+    libc::free(d as *mut libc::c_void);
+}
+
+/// Free a profiling report struct.
+///
+/// Safe to call with null pointer.
+/// Frees all item keys, the items array, and the struct itself.
+unsafe fn destroy_profiling_report(d: *mut ffi::ShoopProfilingReport) {
+    if d.is_null() {
+        return;
+    }
+    // Read the struct using ptr::read_unaligned to handle potential alignment issues
+    let report = std::ptr::read_unaligned(d);
+    // Free each item's key string
+    for i in 0..report.n_items {
+        let item = std::ptr::read_unaligned(report.items.add(i as usize));
+        libc::free(item.key as *mut libc::c_void);
+    }
+    // Free the items array
+    libc::free(report.items as *mut libc::c_void);
+    // Free the struct itself (was allocated with malloc/new in C++)
+    libc::free(d as *mut libc::c_void);
+}
+
+/// Free external port descriptors struct.
+///
+/// Safe to call with null pointer.
+/// Frees all port names, the ports array, and the struct itself.
+unsafe fn destroy_external_port_descriptors(d: *mut ffi::ShoopExternalPortDescriptors) {
+    if d.is_null() {
+        return;
+    }
+    // Read the struct using ptr::read_unaligned to handle potential alignment issues
+    let descriptors = std::ptr::read_unaligned(d);
+    // Free each port's name string
+    for i in 0..descriptors.n_ports {
+        let port = std::ptr::read_unaligned(descriptors.ports.add(i as usize));
+        libc::free(port.name as *mut libc::c_void);
+    }
+    // Free the ports array
+    libc::free(descriptors.ports as *mut libc::c_void);
+    // Free the struct itself (was allocated with malloc/new in C++)
+    libc::free(d as *mut libc::c_void);
+}
+
+/// Free an audio driver state struct.
+///
+/// Safe to call with null pointer.
+/// Frees the instance name string if present, and the struct itself.
+unsafe fn destroy_audio_driver_state(d: *mut ffi::ShoopAudioDriverState) {
+    if d.is_null() {
+        return;
+    }
+    // Read the struct using ptr::read_unaligned to handle potential alignment issues
+    let state = std::ptr::read_unaligned(d);
+    // Free the instance name if present
+    if !state.maybe_instance_name.is_null() {
+        libc::free(state.maybe_instance_name as *mut libc::c_void);
+    }
+    // Free the struct itself (was allocated with new in C++)
+    libc::free(d as *mut libc::c_void);
+}
+
+/// Free a MIDI port state info struct.
+///
+/// Safe to call with null pointer.
+unsafe fn destroy_midi_port_state_info(d: *mut ffi::ShoopMidiPortStateInfo) {
+    if d.is_null() {
+        return;
+    }
+    let _ = Box::from_raw(d);
+}
+
+/// Free an audio port state info struct.
+///
+/// Safe to call with null pointer.
+unsafe fn destroy_audio_port_state_info(d: *mut ffi::ShoopAudioPortStateInfo) {
+    if d.is_null() {
+        return;
+    }
+    let _ = Box::from_raw(d);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -377,5 +556,37 @@ mod tests {
     #[test]
     fn test_destroy_backend_state_info_null() {
         unsafe { destroy_backend_state_info(std::ptr::null_mut()) };
+    }
+
+    // Tests for new migrated functions
+
+    #[test]
+    fn test_destroy_midi_sequence_null() {
+        unsafe { destroy_midi_sequence(std::ptr::null_mut()) };
+    }
+
+    #[test]
+    fn test_destroy_profiling_report_null() {
+        unsafe { destroy_profiling_report(std::ptr::null_mut()) };
+    }
+
+    #[test]
+    fn test_destroy_external_port_descriptors_null() {
+        unsafe { destroy_external_port_descriptors(std::ptr::null_mut()) };
+    }
+
+    #[test]
+    fn test_destroy_audio_driver_state_null() {
+        unsafe { destroy_audio_driver_state(std::ptr::null_mut()) };
+    }
+
+    #[test]
+    fn test_destroy_midi_port_state_info_null() {
+        unsafe { destroy_midi_port_state_info(std::ptr::null_mut()) };
+    }
+
+    #[test]
+    fn test_destroy_audio_port_state_info_null() {
+        unsafe { destroy_audio_port_state_info(std::ptr::null_mut()) };
     }
 }
