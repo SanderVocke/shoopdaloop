@@ -141,12 +141,23 @@ mod ffi {
         name: *mut c_char,
     }
 
+    struct ShoopPortMaybeConnection {
+        name: *mut c_char,
+        connected: u32,
+    }
+
+    struct ShoopPortConnectionsState {
+        n_ports: u32,
+        ports: *mut ShoopPortMaybeConnection,
+    }
+
     extern "Rust" {
         /// Check if a driver type is supported.
         fn driver_type_supported(driver_type: u32) -> bool;
 
         // Allocation functions
         fn alloc_midi_event(data_bytes: u32) -> *mut ShoopMidiEvent;
+        fn alloc_midi_sequence(n_events: u32) -> *mut ShoopMidiSequence;
         fn alloc_audio_channel_data(n_samples: u32) -> *mut ShoopAudioChannelData;
         fn alloc_multichannel_audio(n_channels: u32, n_frames: u32) -> *mut ShoopMultichannelAudio;
 
@@ -168,6 +179,7 @@ mod ffi {
         unsafe fn destroy_audio_driver_state(d: *mut ShoopAudioDriverState);
         unsafe fn destroy_midi_port_state_info(d: *mut ShoopMidiPortStateInfo);
         unsafe fn destroy_audio_port_state_info(d: *mut ShoopAudioPortStateInfo);
+        unsafe fn destroy_port_connections_state(d: *mut ShoopPortConnectionsState);
     }
 }
 
@@ -212,6 +224,24 @@ fn alloc_midi_event(data_bytes: u32) -> *mut ffi::ShoopMidiEvent {
             data,
         });
         Box::into_raw(event)
+    }
+}
+
+/// Allocate a MIDI sequence struct.
+///
+/// Matches the C implementation in libshoopdaloop_backend.cpp.
+/// The events array is allocated but not populated.
+/// The returned pointer should be freed with destroy_midi_sequence.
+fn alloc_midi_sequence(n_events: u32) -> *mut ffi::ShoopMidiSequence {
+    unsafe {
+        let events = libc::malloc((n_events as usize) * size_of::<*mut ffi::ShoopMidiEvent>())
+            as *mut *mut ffi::ShoopMidiEvent;
+        let sequence = Box::new(ffi::ShoopMidiSequence {
+            n_events,
+            events,
+            length_samples: 0,
+        });
+        Box::into_raw(sequence)
     }
 }
 
@@ -346,9 +376,6 @@ unsafe fn destroy_backend_state_info(d: *mut ffi::ShoopBackendSessionStateInfo) 
 // New Functions Migrated from C++
 // =============================================================================
 
-// Note: alloc_midi_sequence is kept in C++ for now due to cxx struct layout complexities.
-// The destroy_midi_sequence function is migrated since it operates on C++-allocated pointers.
-
 /// Free a MIDI sequence struct and all its events.
 ///
 /// Safe to call with null pointer.
@@ -449,6 +476,28 @@ unsafe fn destroy_audio_port_state_info(d: *mut ffi::ShoopAudioPortStateInfo) {
         return;
     }
     let _ = Box::from_raw(d);
+}
+
+/// Free a port connections state struct.
+///
+/// Safe to call with null pointer.
+/// Frees all port name strings, the ports array, and the struct itself.
+/// Matches the C implementation in libshoopdaloop_backend.cpp.
+unsafe fn destroy_port_connections_state(d: *mut ffi::ShoopPortConnectionsState) {
+    if d.is_null() {
+        return;
+    }
+    // Read the struct using ptr::read_unaligned to handle potential alignment issues
+    let state = std::ptr::read_unaligned(d);
+    // Free each port's name string (allocated with strdup)
+    for i in 0..state.n_ports {
+        let port = std::ptr::read_unaligned(state.ports.add(i as usize));
+        libc::free(port.name as *mut libc::c_void);
+    }
+    // Free the ports array (allocated with new[] in C++)
+    libc::free(state.ports as *mut libc::c_void);
+    // Free the struct itself (allocated with new in C++)
+    libc::free(d as *mut libc::c_void);
 }
 
 #[cfg(test)]
@@ -588,5 +637,33 @@ mod tests {
     #[test]
     fn test_destroy_audio_port_state_info_null() {
         unsafe { destroy_audio_port_state_info(std::ptr::null_mut()) };
+    }
+
+    #[test]
+    fn test_alloc_destroy_midi_sequence() {
+        let sequence = alloc_midi_sequence(10);
+        assert!(!sequence.is_null());
+        unsafe {
+            assert_eq!((*sequence).n_events, 10);
+            assert_eq!((*sequence).length_samples, 0);
+            assert!(!(*sequence).events.is_null());
+        }
+        unsafe { destroy_midi_sequence(sequence) };
+    }
+
+    #[test]
+    fn test_alloc_midi_sequence_zero_events() {
+        let sequence = alloc_midi_sequence(0);
+        assert!(!sequence.is_null());
+        unsafe {
+            assert_eq!((*sequence).n_events, 0);
+            assert_eq!((*sequence).length_samples, 0);
+        }
+        unsafe { destroy_midi_sequence(sequence) };
+    }
+
+    #[test]
+    fn test_destroy_port_connections_state_null() {
+        unsafe { destroy_port_connections_state(std::ptr::null_mut()) };
     }
 }
