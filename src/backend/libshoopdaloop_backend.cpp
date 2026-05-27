@@ -304,13 +304,13 @@ shoop_audio_driver_t *create_audio_driver (
 
 shoop_audio_driver_state_t *get_audio_driver_state(shoop_audio_driver_t *driver) {
   return api_impl<shoop_audio_driver_state_t*, log_level_debug_trace>("get_audio_driver_state", [&]() -> shoop_audio_driver_state_t* {
-    auto rval = new shoop_audio_driver_state_t;
+    auto rval = (shoop_audio_driver_state_t*) malloc(sizeof(shoop_audio_driver_state_t));
     auto d = internal_audio_driver(driver);
     if (!d) {
       return nullptr;
     }
     rval->maybe_driver_handle = d->get_maybe_client_handle();
-    rval->maybe_instance_name = d->get_client_name() ? strdup(d->get_client_name()) : "(unknown)";
+    rval->maybe_instance_name = d->get_client_name() ? strdup(d->get_client_name()) : strdup("(unknown)");
     rval->buffer_size = d->get_buffer_size();
     rval->sample_rate = d->get_sample_rate();
     rval->dsp_load_percent = d->get_dsp_load();
@@ -370,7 +370,7 @@ shoop_external_port_descriptors_t *find_external_ports(
       maybe_port_direction_filter,
       maybe_data_type_filter
     );
-    auto rval = new shoop_external_port_descriptors_t;
+    auto rval = (shoop_external_port_descriptors_t*) malloc(sizeof(shoop_external_port_descriptors_t));
     rval->n_ports = ports.size();
     rval->ports = (shoop_external_port_descriptor_t*) malloc(sizeof(shoop_external_port_descriptor_t) * ports.size());
     for(size_t i=0; i<ports.size(); i++) {
@@ -410,7 +410,7 @@ shoop_backend_session_state_info_t *get_backend_session_state(shoop_backend_sess
 
 shoop_profiling_report_t *get_profiling_report(shoop_backend_session_t *backend) {
   return api_impl<shoop_profiling_report_t*, log_level_debug_trace>("get_profiling_report", [&]() -> shoop_profiling_report_t* {
-    auto rval = new shoop_profiling_report_t;
+    auto rval = (shoop_profiling_report_t*) malloc(sizeof(shoop_profiling_report_t));
     auto internal = internal_backend_session(backend);
     if (!internal) {
       return nullptr;
@@ -422,7 +422,7 @@ shoop_profiling_report_t *get_profiling_report(shoop_backend_session_t *backend)
 
     auto r = internal->profiler->report();
 
-    auto items = new shoop_profiling_report_item_t[r.size()];
+    auto items = (shoop_profiling_report_item_t*) malloc(sizeof(shoop_profiling_report_item_t) * r.size());
     for (uint32_t idx=0; idx<r.size(); idx++) {
         auto name_str = (char*) malloc(r[idx].key.size() + 1);
         strcpy(name_str, r[idx].key.c_str());
@@ -436,7 +436,7 @@ shoop_profiling_report_t *get_profiling_report(shoop_backend_session_t *backend)
     rval->items = items;
     rval->n_items = r.size();
     return rval;
-  }, new shoop_profiling_report_t);
+  }, (shoop_profiling_report_t*) calloc(1, sizeof(shoop_profiling_report_t)));
 }
 
 shoopdaloop_loop_t *create_loop(shoop_backend_session_t *backend) {
@@ -1066,15 +1066,16 @@ void close_audio_port (shoop_backend_session_t *backend, shoopdaloop_audio_port_
 shoop_port_connections_state_t *get_audio_port_connections_state(shoopdaloop_audio_port_t *port) {
   return api_impl<shoop_port_connections_state_t*, log_level_debug_trace, log_level_warning>("get_audio_port_connections_state", [&]() {
     auto _port = internal_audio_port(port);
-    auto rval = new shoop_port_connections_state_t;
+    auto rval = (shoop_port_connections_state_t*) malloc(sizeof(shoop_port_connections_state_t));
     rval->n_ports = 0;
+    rval->ports = nullptr;
     if (!_port) {
       return rval;
     }
 
     auto connections = _port->get_port().get_external_connection_status();
     rval->n_ports = connections.size();
-    rval->ports = new shoop_port_maybe_connection_t[rval->n_ports];
+    rval->ports = (shoop_port_maybe_connection_t*) malloc(sizeof(shoop_port_maybe_connection_t) * rval->n_ports);
     uint32_t idx = 0;
     for (auto &pair : connections) {
         auto name = strdup(pair.first.c_str());
@@ -1085,7 +1086,7 @@ shoop_port_connections_state_t *get_audio_port_connections_state(shoopdaloop_aud
         idx++;
     }
     return rval;
-  }, new shoop_port_connections_state_t);
+  }, (shoop_port_connections_state_t*) calloc(1, sizeof(shoop_port_connections_state_t)));
 }
 
 void connect_audio_port_external(shoopdaloop_audio_port_t *ours, const char* external_port_name) {
@@ -1110,9 +1111,9 @@ shoop_port_connections_state_t *get_midi_port_connections_state(shoopdaloop_midi
     if (!port) { return nullptr; }
     auto connections = _port->get_port().get_external_connection_status();
 
-    auto rval = new shoop_port_connections_state_t;
+    auto rval = (shoop_port_connections_state_t*) malloc(sizeof(shoop_port_connections_state_t));
     rval->n_ports = connections.size();
-    rval->ports = new shoop_port_maybe_connection_t[rval->n_ports];
+    rval->ports = (shoop_port_maybe_connection_t*) malloc(sizeof(shoop_port_maybe_connection_t) * rval->n_ports);
     uint32_t idx = 0;
     for (auto &pair : connections) {
         rval->ports[idx].name = strdup(pair.first.c_str());
@@ -1120,7 +1121,7 @@ shoop_port_connections_state_t *get_midi_port_connections_state(shoopdaloop_midi
         idx++;
     }
     return rval;
-  }, new shoop_port_connections_state_t);
+  }, (shoop_port_connections_state_t*) calloc(1, sizeof(shoop_port_connections_state_t)));
 }
 
 shoop_port_connections_state_t *get_decoupled_midi_port_connections_state(shoopdaloop_decoupled_midi_port_t *port) {
@@ -1129,9 +1130,9 @@ shoop_port_connections_state_t *get_decoupled_midi_port_connections_state(shoopd
     if (!port) { return nullptr; }
     auto connections = _port->get_port()->get_external_connection_status();
 
-    auto rval = new shoop_port_connections_state_t;
+    auto rval = (shoop_port_connections_state_t*) malloc(sizeof(shoop_port_connections_state_t));
     rval->n_ports = connections.size();
-    rval->ports = new shoop_port_maybe_connection_t[rval->n_ports];
+    rval->ports = (shoop_port_maybe_connection_t*) malloc(sizeof(shoop_port_maybe_connection_t) * rval->n_ports);
     uint32_t idx = 0;
     for (auto &pair : connections) {
         rval->ports[idx].name = strdup(pair.first.c_str());
@@ -1139,7 +1140,7 @@ shoop_port_connections_state_t *get_decoupled_midi_port_connections_state(shoopd
         idx++;
     }
     return rval;
-  }, new shoop_port_connections_state_t);
+  }, (shoop_port_connections_state_t*) calloc(1, sizeof(shoop_port_connections_state_t)));
 }
 
 void destroy_port_connections_state(shoop_port_connections_state_t *d) {
