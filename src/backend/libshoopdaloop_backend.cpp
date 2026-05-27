@@ -2275,10 +2275,10 @@ void start_dummy_driver(shoop_audio_driver_t *driver, shoop_dummy_audio_driver_s
   return api_impl<void>("start_dummy_driver", [&]() {
     auto _driver = internal_audio_driver(driver);
     if (!_driver) { return; }
-    auto dummy = shoop_dynamic_pointer_cast<shoop_types::_DummyAudioMidiDriver>(_driver);
-    if (!dummy) {
+    if (_driver->driver_type() != Dummy) {
       throw std::runtime_error("Given driver is invalid or not of the correct type (Dummy).");
     }
+    auto* dummy = static_cast<shoop_types::_DummyAudioMidiDriver*>(_driver.get());
     if (dummy->get_active()) {
       throw std::runtime_error("Driver to be started is already running.");
     }
@@ -2295,13 +2295,7 @@ void start_jack_driver(shoop_audio_driver_t *driver, shoop_jack_audio_driver_set
 #ifdef SHOOP_HAVE_BACKEND_JACK
     auto _driver = internal_audio_driver(driver);
     if (!_driver) { return; }
-    auto jack = shoop_dynamic_pointer_cast<JackAudioMidiDriver>(_driver);
-    auto jacktest = shoop_dynamic_pointer_cast<JackTestAudioMidiDriver>(_driver);
-    if (!jack && !jacktest) {
-      throw std::runtime_error("Given driver is invalid or not of the correct type (Jack / JackTest).");
-    }
-
-    auto execute = [settings](auto &jack) {
+    auto execute = [settings](auto *jack) {
       if (jack->get_active()) {
         throw std::runtime_error("Driver to be started is already running.");
       }
@@ -2313,8 +2307,13 @@ void start_jack_driver(shoop_audio_driver_t *driver, shoop_jack_audio_driver_set
       jack->start(s);
     };
 
-    if (jack) { execute(jack); }
-    else if (jacktest) { execute(jacktest); }
+    if (_driver->driver_type() == Jack) {
+      execute(static_cast<JackAudioMidiDriver*>(_driver.get()));
+    } else if (_driver->driver_type() == JackTest) {
+      execute(static_cast<JackTestAudioMidiDriver*>(_driver.get()));
+    } else {
+      throw std::runtime_error("Given driver is invalid or not of the correct type (Jack / JackTest).");
+    }
 #else
     throw std::runtime_error("Jack backend not available.");
 #endif
