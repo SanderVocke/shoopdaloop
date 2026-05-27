@@ -33,6 +33,7 @@
 #include "PortInterface.h"
 #include "DecoupledMidiPort.h"
 #include "CommandQueue.h"
+#include "RustCommandQueue.h"
 #include "types.h"
 #include "BackendSession.h"
 #include "GraphPort.h"
@@ -246,6 +247,15 @@ RType evaluate_before_or_after_process(std::function<RType()> fn, bool predicate
     if (predicate) { return fn(); }
     else {
         queue.queue_and_wait([](){});
+        return fn();
+    }
+}
+
+template<typename RType>
+RType evaluate_before_or_after_process(std::function<RType()> fn, bool predicate, backend_rust::CommandQueue &queue) {
+    if (predicate) { return fn(); }
+    else {
+        rust_command_queue::queue_and_wait(queue, [](){});
         return fn();
     }
 }
