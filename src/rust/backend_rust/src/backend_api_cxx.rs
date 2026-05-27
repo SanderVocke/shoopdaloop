@@ -234,10 +234,8 @@ fn alloc_midi_event(data_bytes: u32) -> *mut ffi::ShoopMidiEvent {
 /// The returned pointer should be freed with destroy_midi_sequence.
 fn alloc_midi_sequence(n_events: u32) -> *mut ffi::ShoopMidiSequence {
     unsafe {
-        let events = libc::calloc(
-            n_events as usize,
-            size_of::<*mut ffi::ShoopMidiEvent>(),
-        ) as *mut *mut ffi::ShoopMidiEvent;
+        let events = libc::calloc(n_events as usize, size_of::<*mut ffi::ShoopMidiEvent>())
+            as *mut *mut ffi::ShoopMidiEvent;
         let sequence = Box::new(ffi::ShoopMidiSequence {
             n_events,
             events,
