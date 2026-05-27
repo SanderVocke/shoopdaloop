@@ -2109,8 +2109,8 @@ void dummy_audio_enter_controlled_mode(shoop_audio_driver_t *driver) {
   return api_impl<void>("dummy_audio_enter_controlled_mode", [&]() {
     auto _driver = internal_audio_driver(driver);
     if (!_driver) { return; }
-    if (auto maybe_dummy = shoop_dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
-        maybe_dummy->enter_mode(DummyAudioMidiDriverMode::Controlled);
+    if (_driver->driver_type() == Dummy) {
+        static_cast<_DummyAudioMidiDriver*>(_driver.get())->enter_mode(DummyAudioMidiDriverMode::Controlled);
     } else {
         logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_audio_enter_controlled_mode called on non-dummy backend");
     }
@@ -2121,8 +2121,8 @@ void dummy_audio_enter_automatic_mode(shoop_audio_driver_t *driver) {
   return api_impl<void>("dummy_audio_enter_automatic_mode", [&]() {
     auto _driver = internal_audio_driver(driver);
     if (!_driver) { return; }
-    if (auto maybe_dummy = shoop_dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
-        maybe_dummy->enter_mode(DummyAudioMidiDriverMode::Automatic);
+    if (_driver->driver_type() == Dummy) {
+        static_cast<_DummyAudioMidiDriver*>(_driver.get())->enter_mode(DummyAudioMidiDriverMode::Automatic);
     } else {
         logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_audio_enter_automatic_mode called on non-dummy backend");
     }
@@ -2133,7 +2133,8 @@ unsigned dummy_audio_is_in_controlled_mode(shoop_audio_driver_t *driver) {
   return api_impl<unsigned>("dummy_audio_is_in_controlled_mode", [&]() -> unsigned {
     auto _driver = internal_audio_driver(driver);
     if (!_driver) { return 0; }
-    if (auto maybe_dummy = shoop_dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
+    if (_driver->driver_type() == Dummy) {
+        auto* maybe_dummy = static_cast<_DummyAudioMidiDriver*>(_driver.get());
         return (unsigned) (maybe_dummy->get_mode() == DummyAudioMidiDriverMode::Controlled);
     } else {
         logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_audio_is_in_controlled_mode called on non-dummy backend");
@@ -2146,8 +2147,8 @@ void dummy_audio_request_controlled_frames(shoop_audio_driver_t *driver, unsigne
   return api_impl<void>("dummy_audio_request_controlled_frames", [&]() {
     auto _driver = internal_audio_driver(driver);
     if (!_driver) { return; }
-    if (auto maybe_dummy = shoop_dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
-        maybe_dummy->controlled_mode_request_samples(n_frames);
+    if (_driver->driver_type() == Dummy) {
+        static_cast<_DummyAudioMidiDriver*>(_driver.get())->controlled_mode_request_samples(n_frames);
     } else {
         logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_audio_request_controlled_frames called on non-dummy backend");
     }
@@ -2158,8 +2159,8 @@ void dummy_audio_run_requested_frames(shoop_audio_driver_t *driver) {
   return api_impl<void>("dummy_audio_run_requested_frames", [&]() {
     auto _driver = internal_audio_driver(driver);
     if (!_driver) { return; }
-    if (auto maybe_dummy = shoop_dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
-        maybe_dummy->controlled_mode_run_request();
+    if (_driver->driver_type() == Dummy) {
+        static_cast<_DummyAudioMidiDriver*>(_driver.get())->controlled_mode_run_request();
     } else {
         logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_audio_request_controlled_frames called on non-dummy backend");
     }
@@ -2170,8 +2171,8 @@ unsigned dummy_audio_n_requested_frames(shoop_audio_driver_t *driver) {
   return api_impl<unsigned>("dummy_audio_n_requested_frames", [&]() -> unsigned  {
     auto _driver = internal_audio_driver(driver);
     if (!_driver) { return 0; }
-    if (auto maybe_dummy = shoop_dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
-        return maybe_dummy->get_controlled_mode_samples_to_process();
+    if (_driver->driver_type() == Dummy) {
+        return static_cast<_DummyAudioMidiDriver*>(_driver.get())->get_controlled_mode_samples_to_process();
     } else {
         logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_audio_n_requested_frames called on non-dummy backend");
         return 0;
@@ -2183,8 +2184,8 @@ void dummy_driver_add_external_mock_port(shoop_audio_driver_t* driver, const cha
   return api_impl<void>("dummy_driver_add_external_mock_port", [&]()  {
     auto _driver = internal_audio_driver(driver);
     if (!_driver) { return; }
-    if (auto maybe_dummy = shoop_dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
-        maybe_dummy->add_external_mock_port(std::string(name), direction, data_type);
+    if (_driver->driver_type() == Dummy) {
+        static_cast<_DummyAudioMidiDriver*>(_driver.get())->add_external_mock_port(std::string(name), direction, data_type);
     } else {
         logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_driver_add_external_mock_port called on non-dummy backend");
     }
@@ -2195,8 +2196,8 @@ void dummy_driver_remove_external_mock_port(shoop_audio_driver_t* driver, const 
   return api_impl<void>("dummy_driver_remove_external_mock_port", [&]()  {
     auto _driver = internal_audio_driver(driver);
     if (!_driver) { return; }
-    if (auto maybe_dummy = shoop_dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
-        maybe_dummy->remove_external_mock_port(std::string(name));
+    if (_driver->driver_type() == Dummy) {
+        static_cast<_DummyAudioMidiDriver*>(_driver.get())->remove_external_mock_port(std::string(name));
     } else {
         logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_driver_remove_external_mock_port called on non-dummy backend");
     }
@@ -2207,8 +2208,8 @@ void dummy_driver_remove_all_external_mock_ports(shoop_audio_driver_t* driver) {
   return api_impl<void>("dummy_driver_remove_all_external_mock_ports", [&]()  {
     auto _driver = internal_audio_driver(driver);
     if (!_driver) { return; }
-    if (auto maybe_dummy = shoop_dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
-        maybe_dummy->remove_all_external_mock_ports();
+    if (_driver->driver_type() == Dummy) {
+        static_cast<_DummyAudioMidiDriver*>(_driver.get())->remove_all_external_mock_ports();
     } else {
         logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_driver_remove_all_external_mock_ports called on non-dummy backend");
     }
