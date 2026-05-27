@@ -172,12 +172,26 @@ impl AudioBufferQueue {
         buffer_size: usize,
         max_buffers: u32,
     ) -> Self {
+        Self::new_internal(pool_capacity, low_water_mark, buffer_size, max_buffers, true)
+    }
+
+    fn new_internal(
+        pool_capacity: usize,
+        low_water_mark: usize,
+        buffer_size: usize,
+        max_buffers: u32,
+        enable_refill_thread: bool,
+    ) -> Self {
         let factory = move || {
             let bytes = vec![0u8; buffer_size * std::mem::size_of::<f32>()];
             Box::new(BufferHandle(bytes))
         };
-        let pool = RefillingPool::new(pool_capacity, low_water_mark, factory)
-            .expect("Failed to create buffer pool");
+        let pool = if enable_refill_thread {
+            RefillingPool::new(pool_capacity, low_water_mark, factory)
+        } else {
+            RefillingPool::new_without_refill_thread(pool_capacity, low_water_mark, factory)
+        }
+        .expect("Failed to create buffer pool");
         let pool = std::sync::Arc::new(pool);
 
         Self {
@@ -485,7 +499,7 @@ mod tests {
     fn test_eviction_returns_to_pool() {
         // Change low_water_mark to 0 to definitively disable the refiller thread
         // from refilling the pool right before our assertion.
-        let mut queue = AudioBufferQueue::new(2, 0, 2, 2);
+        let mut queue = AudioBufferQueue::new_internal(2, 0, 2, 2, false);
         queue.put(&[1.0, 2.0, 3.0, 4.0]);
 
         // 2 buffers in queue, pool should be empty (capacity 2, both taken)
