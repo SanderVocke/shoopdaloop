@@ -1,4 +1,5 @@
 #include "InternalAudioPort.h"
+#include "BufferPool.h"
 #include "catch2/catch_approx.hpp"
 #include <catch2/catch_test_macros.hpp>
 
@@ -105,7 +106,8 @@ TEST_CASE("Ports - Internal Audio - Noop Zero", "[InternalAudioPort][ports][audi
 }
 
 TEST_CASE("Ports - Internal Audio - get ringbuffer data", "[InternalAudioPort][ports][audio]") {
-    InternalAudioPort port ("dummy", 10, 0, 0, nullptr);
+    auto pool = shoop_make_shared<BufferPool<audio_sample_t>>(10, 5, 4);
+    InternalAudioPort port ("dummy", 10, 0, 0, pool);
 
     // Process 4 samples
     port.PROC_prepare(4);
@@ -119,8 +121,8 @@ TEST_CASE("Ports - Internal Audio - get ringbuffer data", "[InternalAudioPort][p
     // Get the ringbuffer content
     auto s = port.PROC_get_ringbuffer_contents();
     CHECK(s.n_samples >= 4);
-    CHECK(s.data->back()->at(0) == Catch::Approx(0.0f));
-    CHECK(s.data->back()->at(1) == Catch::Approx(0.1f));
-    CHECK(s.data->back()->at(2) == Catch::Approx(0.2f));
-    CHECK(s.data->back()->at(3) == Catch::Approx(0.3f));
+    CHECK(s.data->back()->at(0) == 0.0f);
+    CHECK(s.data->back()->at(1) == 0.1f);
+    CHECK(s.data->back()->at(2) == 0.2f);
+    CHECK(s.data->back()->at(3) == 0.3f);
 }

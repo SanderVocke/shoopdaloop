@@ -103,26 +103,26 @@ public:
      */
     virtual void PROC_process(uint32_t n_frames);
 
-    // Gain control (virtual for InternalAudioPort override)
-    virtual void set_gain(float gain);
-    virtual float get_gain() const;
+    // Gain control
+    void set_gain(float gain);
+    float get_gain() const;
 
     // Mute control
     void set_muted(bool muted) override;
     bool get_muted() const override;
 
-    // Peak meters (virtual for InternalAudioPort override)
-    virtual float get_input_peak() const;
-    virtual void reset_input_peak();
-    virtual float get_output_peak() const;
-    virtual void reset_output_peak();
+    // Peak meters
+    float get_input_peak() const;
+    void reset_input_peak();
+    float get_output_peak() const;
+    void reset_output_peak();
 
     // Ringbuffer configuration
     void set_ringbuffer_n_samples(unsigned n) override;
     unsigned get_ringbuffer_n_samples() const override;
 
-    // Ringbuffer access (virtual for InternalAudioPort override)
-    virtual RingbufferSnapshot PROC_get_ringbuffer_contents();
+    // Ringbuffer access
+    RingbufferSnapshot PROC_get_ringbuffer_contents();
 
     // Name/driver - not used in base class
     const char* name() const override { return ""; }
