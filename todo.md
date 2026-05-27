@@ -10,6 +10,6 @@
 - [ ] Migrate call sites in backend API/factory code from inheritance/dynamic-cast dependencies toward explicit type tags and ops-based dispatch. (Partial: added `AudioMidiDriver::driver_type()` and switched `audio_system_type(...)` in `libshoopdaloop_backend.cpp` away from RTTI.)
 - [ ] Remove/deprecate obsolete inheritance-coupled code paths once all call sites are migrated.
 - [x] Run milestone build/tests after Phase A compatibility work: `cargo build`, `cargo test`, backend `test_runner`. (Completed: `cargo build`, `cargo test`, and `target/debug/build/backend-d69d389e7aa85137/out/cmake_build/build/test/test_runner`.)
-- [ ] Run milestone build/tests after handle migration: `cargo build`, `cargo test`, backend `test_runner`, `./target/debug/shoopdaloop_dev.sh --self-test`.
-- [ ] Final cleanup and verification: `cargo fmt --all`, `RUSTFLAGS="-D warnings" cargo build`, rerun relevant tests (`cargo test`, backend `test_runner`, self-test).
-- [ ] Ensure final state: all tests passing, no warnings, Rust code formatted, behavior unchanged.
+- [x] Run milestone build/tests after handle migration: `cargo build`, `cargo test`, backend `test_runner`, `./target/debug/shoopdaloop_dev.sh --self-test`. (After merging `origin/rust_backend_new`, all commands passed.)
+- [x] Final cleanup and verification: `cargo fmt --all`, `RUSTFLAGS="-D warnings" cargo build`, rerun relevant tests (`cargo test`, backend `test_runner`, self-test). (Completed; all test suites passed.)
+- [x] Ensure final state: all tests passing, no warnings, Rust code formatted, behavior unchanged. (All configured tests passed; only external linker deprecation notice remains.)
