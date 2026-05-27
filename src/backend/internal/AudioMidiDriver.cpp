@@ -72,11 +72,12 @@ void AudioMidiDriver::PROC_process(uint32_t nframes) {
     }
     m_command_queue.PROC_handle_command_queue();
     PROC_process_decoupled_midi_ports(nframes);
-    auto ps_lock = m_processors;
-    for(auto & weak_p : *ps_lock) {
-        if (auto p = weak_p.lock()) {
-            p->PROC_process(nframes);
-        }
+    // Migration path: process via handle snapshot from Rust core to avoid
+    // interface smart-pointer coupling in the RT loop.
+    for (auto handle : processor_handles()) {
+        if (!handle) { continue; }
+        auto* p = reinterpret_cast<HasAudioProcessingFunction*>(handle);
+        p->PROC_process(nframes);
     }
     set_last_processed(nframes);
 }
