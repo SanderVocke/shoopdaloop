@@ -172,7 +172,13 @@ impl AudioBufferQueue {
         buffer_size: usize,
         max_buffers: u32,
     ) -> Self {
-        Self::new_internal(pool_capacity, low_water_mark, buffer_size, max_buffers, true)
+        Self::new_internal(
+            pool_capacity,
+            low_water_mark,
+            buffer_size,
+            max_buffers,
+            true,
+        )
     }
 
     fn new_internal(
