@@ -5,22 +5,20 @@
 - [x] Add C++ command-handle helpers and FFI functions in `src/backend/internal/CommandToken.h/.cpp`
 - [x] Migrate `src/backend/internal/CommandQueue.cpp` to handle-based bridge calls
 - [x] Remove static callback registration use from C++ facade
-- [x] Resolve CXX include-path/header visibility mismatch by:
-  - keeping `include!("internal/CommandToken.h")` in Rust bridge,
-  - adding backend include path in `backend_rust/build.rs`,
-  - adding Rust bridge header include dir in backend CMake.
+- [x] Resolve CXX include-path/header visibility mismatch
 - [x] Build milestone: run `cargo build` and fix compile issues
 - [x] Build + test milestone: run `cargo test`
-- [ ] Build + test milestone: run backend `test_runner` (not yet executed explicitly)
+- [x] Build + test milestone: run backend `test_runner`
 - [ ] Remove legacy/raw transitional artifacts and ensure single final API surface
 - [ ] Migrate C++ classes to direct Rust queue ownership (`rust::Box<backend_rust::CommandQueue>`) and replace facade method calls using shared token helper
 - [ ] Delete `src/backend/internal/CommandQueue.h` and `src/backend/internal/CommandQueue.cpp`; update includes/references
 - [ ] Add/extend tests for clear/drop cleanup, queue-and-wait, passthrough, inactivity fallback with C++ enqueued commands
-- [ ] Test milestone: run `./target/debug/shoopdaloop_dev.sh --self-test`
+- [ ] Test milestone: run `./target/debug/shoopdaloop_dev.sh --self-test` (fails in current environment: crash handling connection refused, abort)
 - [ ] Documentation cleanup for ownership/threading semantics and stale callback/SPSC wording
 - [x] Final format/build gate: `cargo fmt --all` then `RUSTFLAGS="-D warnings" cargo build`
 - [ ] Confirm no warnings, all tests passing, and migration complete
 
-Status note:
-- The pivoted command-ownership fix is now compiling and tested at Rust test level.
-- The larger architectural phases (removing C++ `CommandQueue` facade and migrating all C++ callsites to direct Rust queue ownership) remain unfinished and are substantial follow-up work.
+Execution status:
+- Command queue ownership/lifetime fix is implemented and validated by build + Rust tests + backend Catch2 test runner.
+- Full facade removal and broad C++ callsite migration is not yet implemented; this is a larger, invasive refactor spanning many backend classes.
+- QML self-test currently aborts due to runtime crash-handling startup issue in this environment.
