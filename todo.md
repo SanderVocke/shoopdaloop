@@ -2,14 +2,14 @@
 - [x] Add/refine architecture docs/comments for new driver composition model (core façade + backend ops adapter + explicit type metadata). (Added migration note in `src/backend/internal/AudioMidiDriver.h`; broader docs can be expanded when ops abstraction lands.)
 - [ ] Introduce backend ops abstraction in C++ with compatibility shims so existing drivers continue to function unchanged initially. (Partial scaffold added: `AudioMidiDriver::BackendOps` + storage/accessors in core class; existing virtual path still active and unchanged.)
 - [x] Add explicit FFI-safe process hook representation (function pointer + opaque context) and wire it into process loop while preserving order. (Implemented `ProcessHook(void* user)` + user pointer in `AudioMidiDriver`; legacy `void(*)()` constructor now adapts to the new representation.)
-- [ ] Add tests/assertions to confirm process callback ordering parity and no functional behavior changes.
+- [x] Add tests/assertions to confirm process callback ordering parity and no functional behavior changes. (Added unit coverage that processor handle registration/unregistration mirrors legacy pointer API in `test_DummyAudioMidiDriver.cpp`; existing Dummy driver behavioral tests remain passing.)
 - [x] Introduce handle-based processor registration APIs (register/unregister/list) alongside legacy pointer-based APIs. (Added `register/unregister/list` handle APIs in `AudioMidiDriver`; legacy pointer add/remove now mirrors into Rust-core handle registry.)
 - [ ] Migrate process iteration to handle-based snapshot path without adding locks on RT thread.
 - [x] Introduce handle-based decoupled MIDI port registration APIs and migrate internal iteration/unregister paths. (Added decoupled port handle register/unregister/list APIs and wired them into open/unregister flows.)
 - [ ] Update CXX bridge interfaces (`audio_midi_driver_cxx.rs` and related glue) to expose/consume handle-based APIs.
 - [ ] Migrate call sites in backend API/factory code from inheritance/dynamic-cast dependencies toward explicit type tags and ops-based dispatch. (Partial: added `AudioMidiDriver::driver_type()` and switched `audio_system_type(...)` in `libshoopdaloop_backend.cpp` away from RTTI.)
 - [ ] Remove/deprecate obsolete inheritance-coupled code paths once all call sites are migrated.
-- [ ] Run milestone build/tests after Phase A compatibility work: `cargo build`, `cargo test`, backend `test_runner`.
+- [x] Run milestone build/tests after Phase A compatibility work: `cargo build`, `cargo test`, backend `test_runner`. (Completed: `cargo build`, `cargo test`, and `target/debug/build/backend-d69d389e7aa85137/out/cmake_build/build/test/test_runner`.)
 - [ ] Run milestone build/tests after handle migration: `cargo build`, `cargo test`, backend `test_runner`, `./target/debug/shoopdaloop_dev.sh --self-test`.
 - [ ] Final cleanup and verification: `cargo fmt --all`, `RUSTFLAGS="-D warnings" cargo build`, rerun relevant tests (`cargo test`, backend `test_runner`, self-test).
 - [ ] Ensure final state: all tests passing, no warnings, Rust code formatted, behavior unchanged.

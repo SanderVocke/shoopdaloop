@@ -98,6 +98,30 @@ TEST_CASE("DummyAudioMidiDriver - Controlled", "[DummyAudioMidiDriver]") {
     dut.close();
 };
 
+TEST_CASE("DummyAudioMidiDriver - processor handle registration mirrors legacy API", "[DummyAudioMidiDriver][AudioMidiDriver]") {
+    TrackedDummyAudioMidiDriver<uint32_t, uint32_t> dut (
+        "test",
+        DummyAudioMidiDriverMode::Controlled,
+        nullptr,
+        48000,
+        256
+    );
+
+    auto has_tracker = [&]() {
+        auto handles = dut.processor_handles();
+        auto tracker_handle = reinterpret_cast<uintptr_t>(dut.tracker.get());
+        for (auto h : handles) {
+            if (h == tracker_handle) { return true; }
+        }
+        return false;
+    };
+
+    REQUIRE(has_tracker());
+    dut.remove_processor(shoop_static_pointer_cast<HasAudioProcessingFunction>(dut.tracker));
+    REQUIRE(!has_tracker());
+    dut.close();
+}
+
 TEST_CASE("DummyAudioMidiDriver - Input port default", "[DummyAudioMidiDriver][audio]") {
     DummyAudioPort put("test_in", shoop_port_direction_t::ShoopPortDirection_Input, nullptr);
 
