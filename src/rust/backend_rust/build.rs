@@ -3,6 +3,9 @@ fn main() {
         return;
     }
 
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let backend_include = format!("{}/../../backend", manifest_dir);
+
     cxx_build::bridges([
         "src/audio_midi_driver_cxx.rs",
         "src/backend_api_cxx.rs",
@@ -25,6 +28,7 @@ fn main() {
         "src/refilling_pool_cxx.rs",
         "src/dummy_audio_midi_driver_cxx.rs",
     ])
+    .include(&backend_include)
     .std("c++20")
     .compile("backend_rust_cxx");
 

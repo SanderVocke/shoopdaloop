@@ -1,0 +1,26 @@
+- [x] Read and understand current CommandQueue bridge and all C++ callsites
+- [x] Pivoted implementation approach from `UniquePtr<CxxCommandToken>` to `usize` handle + explicit execute/destroy callbacks (required because `UniquePtr<opaque>` is not `Send`)
+- [x] Implement Rust CXX bridge changes for `cxx_command_execute_ptr` / `cxx_command_destroy_ptr` and `cxx_queue*` handle APIs
+- [x] Implement Rust command wrapper/drop semantics for exactly-once execute-or-destroy in `src/rust/backend_rust/src/command_queue.rs`
+- [x] Add C++ command-handle helpers and FFI functions in `src/backend/internal/CommandToken.h/.cpp`
+- [x] Migrate `src/backend/internal/CommandQueue.cpp` to handle-based bridge calls
+- [x] Remove static callback registration use from C++ facade
+- [x] Resolve CXX include-path/header visibility mismatch by:
+  - keeping `include!("internal/CommandToken.h")` in Rust bridge,
+  - adding backend include path in `backend_rust/build.rs`,
+  - adding Rust bridge header include dir in backend CMake.
+- [x] Build milestone: run `cargo build` and fix compile issues
+- [x] Build + test milestone: run `cargo test`
+- [ ] Build + test milestone: run backend `test_runner` (not yet executed explicitly)
+- [ ] Remove legacy/raw transitional artifacts and ensure single final API surface
+- [ ] Migrate C++ classes to direct Rust queue ownership (`rust::Box<backend_rust::CommandQueue>`) and replace facade method calls using shared token helper
+- [ ] Delete `src/backend/internal/CommandQueue.h` and `src/backend/internal/CommandQueue.cpp`; update includes/references
+- [ ] Add/extend tests for clear/drop cleanup, queue-and-wait, passthrough, inactivity fallback with C++ enqueued commands
+- [ ] Test milestone: run `./target/debug/shoopdaloop_dev.sh --self-test`
+- [ ] Documentation cleanup for ownership/threading semantics and stale callback/SPSC wording
+- [x] Final format/build gate: `cargo fmt --all` then `RUSTFLAGS="-D warnings" cargo build`
+- [ ] Confirm no warnings, all tests passing, and migration complete
+
+Status note:
+- The pivoted command-ownership fix is now compiling and tested at Rust test level.
+- The larger architectural phases (removing C++ `CommandQueue` facade and migrating all C++ callsites to direct Rust queue ownership) remain unfinished and are substantial follow-up work.
