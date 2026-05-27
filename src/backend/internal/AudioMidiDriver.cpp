@@ -30,6 +30,7 @@ void AudioMidiDriver::add_processor(shoop_shared_ptr<HasAudioProcessingFunction>
     *_new = *old;
     _new->push_back(p);
     m_processors = _new;
+    register_processor_handle(reinterpret_cast<uintptr_t>(p.get()));
 }
 
 void AudioMidiDriver::remove_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) {
@@ -41,10 +42,27 @@ void AudioMidiDriver::remove_processor(shoop_shared_ptr<HasAudioProcessingFuncti
         }
     }
     m_processors = _new;
+    unregister_processor_handle(reinterpret_cast<uintptr_t>(p.get()));
 }
 
 std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> AudioMidiDriver::processors() const {
     return *m_processors;
+}
+
+void AudioMidiDriver::register_processor_handle(uintptr_t handle) {
+    m_rust_core->add_processor(handle);
+}
+
+void AudioMidiDriver::unregister_processor_handle(uintptr_t handle) {
+    m_rust_core->remove_processor(handle);
+}
+
+std::vector<uintptr_t> AudioMidiDriver::processor_handles() const {
+    auto vals = m_rust_core->get_processors();
+    std::vector<uintptr_t> out;
+    out.reserve(vals.size());
+    for (size_t i = 0; i < vals.size(); i++) { out.push_back(vals[i]); }
+    return out;
 }
 
 void AudioMidiDriver::PROC_process(uint32_t nframes) {
@@ -73,6 +91,7 @@ float AudioMidiDriver::get_dsp_load() {
 }
 
 void AudioMidiDriver::unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port) {
+    unregister_decoupled_midi_port_handle(reinterpret_cast<uintptr_t>(port.get()));
     m_command_queue.exec_process_thread_command([this, port]() {
         m_decoupled_midi_ports.erase(port);
     });
@@ -128,8 +147,6 @@ void AudioMidiDriver::set_last_processed(uint32_t nframes) {
 }
 
 const char* AudioMidiDriver::get_client_name() const {
-    // Cache the name in a static string to return const char*
-    // Note: Rust String needs conversion to std::string
     static std::string cached_name;
     cached_name = std::string(m_rust_core->get_client_name());
     return cached_name.c_str();
@@ -152,14 +169,27 @@ uint32_t AudioMidiDriver::get_last_processed() const {
 }
 
 void AudioMidiDriver::wait_process() {
-    // To ensure a complete process cycle was done, execute two commands with
-    // a small delay in-between. Each command will end up in a separate process
-    // iteration.
     log<log_level_debug_trace>("AudioMidiDriver::wait_process");
     m_command_queue.exec_process_thread_command([]() { ; });
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
     m_command_queue.exec_process_thread_command([]() { ; });
     log<log_level_debug_trace>("AudioMidiDriver::wait_process done");
+}
+
+void AudioMidiDriver::register_decoupled_midi_port_handle(uintptr_t handle) {
+    m_rust_core->register_decoupled_port(handle);
+}
+
+void AudioMidiDriver::unregister_decoupled_midi_port_handle(uintptr_t handle) {
+    m_rust_core->unregister_decoupled_port(handle);
+}
+
+std::vector<uintptr_t> AudioMidiDriver::decoupled_midi_port_handles() const {
+    auto vals = m_rust_core->get_decoupled_ports();
+    std::vector<uintptr_t> out;
+    out.reserve(vals.size());
+    for (size_t i = 0; i < vals.size(); i++) { out.push_back(vals[i]); }
+    return out;
 }
 
 shoop_shared_ptr<shoop_types::_DecoupledMidiPort> AudioMidiDriver::open_decoupled_midi_port(std::string name, shoop_port_direction_t direction) {
@@ -170,6 +200,7 @@ shoop_shared_ptr<shoop_types::_DecoupledMidiPort> AudioMidiDriver::open_decouple
         weak_from_this(),
         decoupled_midi_port_queue_size,
         direction);
+    register_decoupled_midi_port_handle(reinterpret_cast<uintptr_t>(decoupled.get()));
     m_command_queue.queue_process_thread_command([this, decoupled](){ m_decoupled_midi_ports.insert(decoupled); });
     return decoupled;
 }

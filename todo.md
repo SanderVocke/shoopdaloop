@@ -1,11 +1,11 @@
 - [x] Inspect current branch deltas around `AudioMidiDriver`, Dummy, Jack, and Rust bridge files to confirm assumptions before coding. (No functional deltas detected on checked-out branch for these files; only new planning docs were untracked.)
 - [x] Add/refine architecture docs/comments for new driver composition model (core façade + backend ops adapter + explicit type metadata). (Added migration note in `src/backend/internal/AudioMidiDriver.h`; broader docs can be expanded when ops abstraction lands.)
-- [ ] Introduce backend ops abstraction in C++ with compatibility shims so existing drivers continue to function unchanged initially.
+- [ ] Introduce backend ops abstraction in C++ with compatibility shims so existing drivers continue to function unchanged initially. (Partial scaffold added: `AudioMidiDriver::BackendOps` + storage/accessors in core class; existing virtual path still active and unchanged.)
 - [x] Add explicit FFI-safe process hook representation (function pointer + opaque context) and wire it into process loop while preserving order. (Implemented `ProcessHook(void* user)` + user pointer in `AudioMidiDriver`; legacy `void(*)()` constructor now adapts to the new representation.)
 - [ ] Add tests/assertions to confirm process callback ordering parity and no functional behavior changes.
-- [ ] Introduce handle-based processor registration APIs (register/unregister/list) alongside legacy pointer-based APIs.
+- [x] Introduce handle-based processor registration APIs (register/unregister/list) alongside legacy pointer-based APIs. (Added `register/unregister/list` handle APIs in `AudioMidiDriver`; legacy pointer add/remove now mirrors into Rust-core handle registry.)
 - [ ] Migrate process iteration to handle-based snapshot path without adding locks on RT thread.
-- [ ] Introduce handle-based decoupled MIDI port registration APIs and migrate internal iteration/unregister paths.
+- [x] Introduce handle-based decoupled MIDI port registration APIs and migrate internal iteration/unregister paths. (Added decoupled port handle register/unregister/list APIs and wired them into open/unregister flows.)
 - [ ] Update CXX bridge interfaces (`audio_midi_driver_cxx.rs` and related glue) to expose/consume handle-based APIs.
 - [ ] Migrate call sites in backend API/factory code from inheritance/dynamic-cast dependencies toward explicit type tags and ops-based dispatch. (Partial: added `AudioMidiDriver::driver_type()` and switched `audio_system_type(...)` in `libshoopdaloop_backend.cpp` away from RTTI.)
 - [ ] Remove/deprecate obsolete inheritance-coupled code paths once all call sites are migrated.

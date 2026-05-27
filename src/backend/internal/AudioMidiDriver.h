@@ -43,6 +43,25 @@ public:
 // metadata, while this class remains the owner of shared core sequencing/state.
 class AudioMidiDriver : public ModuleLoggingEnabled<"Backend.AudioMidiDriver">,
                         private shoop_enable_shared_from_this<AudioMidiDriver> {
+public:
+    // Backend ops compatibility scaffold for migration away from inheritance.
+    // Implementations can progressively expose these operations while virtual
+    // methods remain the compatibility path.
+    struct BackendOps {
+        void* ctx = nullptr;
+        void (*start)(void* ctx, AudioMidiDriverSettingsInterface &settings) = nullptr;
+        shoop_shared_ptr<RustAudioPortF32> (*open_audio_port)(
+            void* ctx,
+            std::string name,
+            shoop_port_direction_t direction,
+            shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool) = nullptr;
+        shoop_shared_ptr<MidiPort> (*open_midi_port)(
+            void* ctx,
+            std::string name,
+            shoop_port_direction_t direction) = nullptr;
+        void (*close)(void* ctx) = nullptr;
+    };
+private:
     // Rust core for atomic state and processor/decoupled port management
     rust::Box<backend_rust::AudioMidiDriverCore> m_rust_core;
     shoop_shared_ptr<std::vector<shoop_weak_ptr<HasAudioProcessingFunction>>> m_processors;
@@ -51,9 +70,14 @@ class AudioMidiDriver : public ModuleLoggingEnabled<"Backend.AudioMidiDriver">,
     using ProcessHook = void (*)(void* user);
     ProcessHook m_maybe_process_hook = nullptr;
     void* m_maybe_process_hook_user = nullptr;
+    BackendOps m_backend_ops{};
 
 protected:
     CommandQueue m_command_queue;
+
+    void set_backend_ops(BackendOps ops) { m_backend_ops = std::move(ops); }
+    const BackendOps& backend_ops() const { return m_backend_ops; }
+    bool has_backend_ops() const { return m_backend_ops.ctx != nullptr; }
 
 protected:
     // Derived class should call these
@@ -77,6 +101,11 @@ public:
     void remove_processor(shoop_shared_ptr<HasAudioProcessingFunction> p);
     std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> processors() const;
 
+    // Handle-based APIs for Rust-port migration (ownership remains local).
+    void register_processor_handle(uintptr_t handle);
+    void unregister_processor_handle(uintptr_t handle);
+    std::vector<uintptr_t> processor_handles() const;
+
     virtual void start(AudioMidiDriverSettingsInterface &settings) = 0;
 
     virtual
@@ -99,6 +128,9 @@ public:
 
     void PROC_process_decoupled_midi_ports(uint32_t nframes);
     void unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port);
+    void register_decoupled_midi_port_handle(uintptr_t handle);
+    void unregister_decoupled_midi_port_handle(uintptr_t handle);
+    std::vector<uintptr_t> decoupled_midi_port_handles() const;
 
     virtual void close() = 0;
 
