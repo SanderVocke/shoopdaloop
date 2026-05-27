@@ -9,6 +9,7 @@
 #include <map>
 #include <atomic>
 #include <optional>
+#include <type_traits>
 
 struct JackAudioMidiDriverSettings : public AudioMidiDriverSettingsInterface {
     JackAudioMidiDriverSettings() {}
@@ -66,6 +67,12 @@ public:
     ) override;
 
     void close() override;
+
+    shoop_audio_driver_type_t driver_type() const override {
+        if constexpr (std::is_same_v<API, JackApi>) { return Jack; }
+        else if constexpr (std::is_same_v<API, JackTestApi>) { return JackTest; }
+        else { return Dummy; }
+    }
 
     std::vector<ExternalPortDescriptor> find_external_ports(
         const char* maybe_name_regex,

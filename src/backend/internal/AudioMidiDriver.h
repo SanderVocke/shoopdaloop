@@ -37,13 +37,20 @@ public:
     virtual void PROC_process(uint32_t nframes) = 0;
 };
 
+// NOTE (Rust-port migration): this class is progressively being turned into a
+// composition-oriented driver façade. Backend-specific behavior (e.g. JACK,
+// Dummy) should move behind explicit adapter/ops boundaries and stable type
+// metadata, while this class remains the owner of shared core sequencing/state.
 class AudioMidiDriver : public ModuleLoggingEnabled<"Backend.AudioMidiDriver">,
                         private shoop_enable_shared_from_this<AudioMidiDriver> {
     // Rust core for atomic state and processor/decoupled port management
     rust::Box<backend_rust::AudioMidiDriverCore> m_rust_core;
     shoop_shared_ptr<std::vector<shoop_weak_ptr<HasAudioProcessingFunction>>> m_processors;
     std::set<shoop_shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports;
-    void (*m_maybe_process_callback)() = nullptr;
+
+    using ProcessHook = void (*)(void* user);
+    ProcessHook m_maybe_process_hook = nullptr;
+    void* m_maybe_process_hook_user = nullptr;
 
 protected:
     CommandQueue m_command_queue;
@@ -95,6 +102,9 @@ public:
 
     virtual void close() = 0;
 
+    // Stable backend type metadata to avoid RTTI/dynamic_cast based dispatch.
+    virtual shoop_audio_driver_type_t driver_type() const = 0;
+
     uint32_t get_xruns() const;
     float get_dsp_load();
     uint32_t get_sample_rate();
@@ -119,5 +129,6 @@ public:
     ) = 0;
 
     AudioMidiDriver(void (*maybe_process_callback)()=nullptr);
+    AudioMidiDriver(ProcessHook maybe_process_hook, void* maybe_process_hook_user);
     virtual ~AudioMidiDriver() {}
 };

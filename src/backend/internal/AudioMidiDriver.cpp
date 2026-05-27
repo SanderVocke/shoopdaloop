@@ -5,10 +5,20 @@
 #include <thread>
 
 AudioMidiDriver::AudioMidiDriver(void (*maybe_process_callback)()) :
+    AudioMidiDriver(
+        maybe_process_callback ? +[](void* user) {
+            auto fn = reinterpret_cast<void (*)()>(user);
+            fn();
+        } : nullptr,
+        reinterpret_cast<void*>(maybe_process_callback)
+    ) {}
+
+AudioMidiDriver::AudioMidiDriver(ProcessHook maybe_process_hook, void* maybe_process_hook_user) :
   m_rust_core(backend_rust::new_audio_midi_driver_core()),
   m_command_queue(shoop_constants::command_queue_size, 1000, 1000),
   m_processors(shoop_make_shared<std::vector<shoop_weak_ptr<HasAudioProcessingFunction>>>()),
-  m_maybe_process_callback(maybe_process_callback)
+  m_maybe_process_hook(maybe_process_hook),
+  m_maybe_process_hook_user(maybe_process_hook_user)
 {
     // Set default client name in Rust core
     m_rust_core->set_client_name("unknown");
@@ -39,8 +49,8 @@ std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> AudioMidiDriver::process
 
 void AudioMidiDriver::PROC_process(uint32_t nframes) {
     log<log_level_debug_trace>("AudioMidiDriver::process {}", nframes);
-    if (m_maybe_process_callback) {
-        m_maybe_process_callback();
+    if (m_maybe_process_hook) {
+        m_maybe_process_hook(m_maybe_process_hook_user);
     }
     m_command_queue.PROC_handle_command_queue();
     PROC_process_decoupled_midi_ports(nframes);

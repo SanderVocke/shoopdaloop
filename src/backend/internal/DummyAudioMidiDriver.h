@@ -66,6 +66,8 @@ public:
 
     void close() override;
 
+    shoop_audio_driver_type_t driver_type() const override { return Dummy; }
+
     std::vector<ExternalPortDescriptor> find_external_ports(
         const char* maybe_name_regex,
         shoop_port_direction_t maybe_direction_filter,

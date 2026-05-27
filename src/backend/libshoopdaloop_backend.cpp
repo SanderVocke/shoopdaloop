@@ -222,16 +222,7 @@ std::optional<shoop_audio_driver_type_t> audio_system_type(AudioMidiDriver *sys)
     if (!sys) {
         return std::nullopt;
     }
-#ifdef SHOOP_HAVE_BACKEND_JACK
-    else if (dynamic_cast<JackAudioMidiDriver*>(sys)) {
-        return Jack;
-    }
-#endif
-    else if (dynamic_cast<_DummyAudioMidiDriver*>(sys)) {
-        return Dummy;
-    } else {
-        throw std::runtime_error("Unimplemented");
-    }
+    return sys->driver_type();
 }
 
 // A lot of the API functions queue operations to be executed in the process thread.
