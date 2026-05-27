@@ -24,6 +24,7 @@ fn main() {
         "src/midi_state_tracker_cxx.rs",
         "src/refilling_pool_cxx.rs",
         "src/dummy_audio_midi_driver_cxx.rs",
+        "src/driver_runtime_cxx.rs",
     ])
     .std("c++20")
     .compile("backend_rust_cxx");
@@ -54,4 +55,5 @@ fn main() {
     println!("cargo:rerun-if-changed=src/audio_port_cxx.rs");
     println!("cargo:rerun-if-changed=src/refilling_pool_cxx.rs");
     println!("cargo:rerun-if-changed=src/dummy_audio_midi_driver_cxx.rs");
+    println!("cargo:rerun-if-changed=src/driver_runtime_cxx.rs");
 }

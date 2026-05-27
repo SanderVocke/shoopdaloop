@@ -16,6 +16,7 @@ pub mod dummy_external_connections;
 pub mod dummy_external_connections_cxx;
 pub mod dummy_midi_port;
 pub mod dummy_midi_port_cxx;
+pub mod driver_runtime_cxx;
 pub mod internal_audio_port;
 pub mod internal_audio_port_cxx;
 pub mod internal_midi_port;

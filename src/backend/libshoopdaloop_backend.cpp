@@ -9,6 +9,7 @@
 #include "CommandQueue.h"
 #include "shoop_globals.h"
 #include "backend_rust/src/backend_api_cxx.rs.h"
+#include "backend_rust/src/driver_runtime_cxx.rs.h"
 
 // System
 #include <boost/lockfree/spsc_queue.hpp>
@@ -57,6 +58,21 @@ using namespace shoop_types;
 namespace {
 std::set<shoop_shared_ptr<BackendSession>> g_active_backends;
 std::set<shoop_shared_ptr<AudioMidiDriver>> g_active_drivers;
+
+enum class DriverHandleKind : uint32_t {
+    CppWeakPtr = 0,
+    RustRuntimeId = 1,
+};
+
+struct DriverHandle {
+    DriverHandleKind kind = DriverHandleKind::CppWeakPtr;
+    void* cpp_weak_ptr = nullptr;
+    uint64_t rust_runtime_id = 0;
+};
+
+DriverHandle* as_driver_handle(shoop_audio_driver_t *driver) {
+    return reinterpret_cast<DriverHandle*>(driver);
+}
 }
 
 std::set<shoop_shared_ptr<BackendSession>> &get_active_backends() {
@@ -71,7 +87,20 @@ shoop_shared_ptr<BackendSession> internal_backend_session(shoop_backend_session_
 
 shoop_shared_ptr<AudioMidiDriver> internal_audio_driver(shoop_audio_driver_t *driver) {
     if (!driver) { return nullptr; }
-    return ((shoop_weak_ptr<AudioMidiDriver> *)driver)->lock();
+    auto* h = reinterpret_cast<DriverHandle*>(driver);
+    if (h->kind != DriverHandleKind::CppWeakPtr || !h->cpp_weak_ptr) {
+        return nullptr;
+    }
+    return ((shoop_weak_ptr<AudioMidiDriver> *)h->cpp_weak_ptr)->lock();
+}
+
+std::optional<uint64_t> internal_rust_audio_driver_id(shoop_audio_driver_t *driver) {
+    if (!driver) { return std::nullopt; }
+    auto* h = reinterpret_cast<DriverHandle*>(driver);
+    if (h->kind != DriverHandleKind::RustRuntimeId || !h->rust_runtime_id) {
+        return std::nullopt;
+    }
+    return h->rust_runtime_id;
 }
 
 shoop_shared_ptr<GraphPort> internal_audio_port(shoopdaloop_audio_port_t *port) {
@@ -112,7 +141,11 @@ shoop_backend_session_t *external_backend_session(shoop_shared_ptr<BackendSessio
 
 shoop_audio_driver_t *external_audio_driver(shoop_shared_ptr<AudioMidiDriver> driver) {
     auto weak = new shoop_weak_ptr<AudioMidiDriver>(driver);
-    return (shoop_audio_driver_t*) weak;
+    auto* h = new DriverHandle();
+    h->kind = DriverHandleKind::CppWeakPtr;
+    h->cpp_weak_ptr = weak;
+    h->rust_runtime_id = backend_rust::rt_create_driver(static_cast<uint32_t>(driver->driver_type()));
+    return reinterpret_cast<shoop_audio_driver_t*>(h);
 }
 
 shoopdaloop_audio_port_t* external_audio_port(shoop_shared_ptr<GraphPort> port) {
@@ -297,18 +330,29 @@ shoop_audio_driver_state_t *get_audio_driver_state(shoop_audio_driver_t *driver)
   return api_impl<shoop_audio_driver_state_t*, log_level_debug_trace>("get_audio_driver_state", [&]() -> shoop_audio_driver_state_t* {
     auto rval = (shoop_audio_driver_state_t*) malloc(sizeof(shoop_audio_driver_state_t));
     auto d = internal_audio_driver(driver);
-    if (!d) {
-      return nullptr;
+    if (d) {
+      rval->maybe_driver_handle = d->get_maybe_client_handle();
+      rval->maybe_instance_name = d->get_client_name() ? strdup(d->get_client_name()) : strdup("(unknown)");
+      rval->buffer_size = d->get_buffer_size();
+      rval->sample_rate = d->get_sample_rate();
+      rval->dsp_load_percent = d->get_dsp_load();
+      rval->xruns_since_last = d->get_xruns();
+      d->reset_xruns();
+      rval->active = d->get_active();
+      rval->last_processed = d->get_last_processed();
+      return rval;
     }
-    rval->maybe_driver_handle = d->get_maybe_client_handle();
-    rval->maybe_instance_name = d->get_client_name() ? strdup(d->get_client_name()) : strdup("(unknown)");
-    rval->buffer_size = d->get_buffer_size();
-    rval->sample_rate = d->get_sample_rate();
-    rval->dsp_load_percent = d->get_dsp_load();
-    rval->xruns_since_last = d->get_xruns();
-    d->reset_xruns();
-    rval->active = d->get_active();
-    rval->last_processed = d->get_last_processed();
+
+    auto rust_id = internal_rust_audio_driver_id(driver);
+    if (!rust_id) { return nullptr; }
+    rval->maybe_driver_handle = nullptr;
+    rval->maybe_instance_name = strdup("(rust-driver)");
+    rval->buffer_size = backend_rust::rt_get_buffer_size(*rust_id);
+    rval->sample_rate = backend_rust::rt_get_sample_rate(*rust_id);
+    rval->dsp_load_percent = 0.0f;
+    rval->xruns_since_last = 0;
+    rval->active = backend_rust::rt_get_active(*rust_id) ? 1 : 0;
+    rval->last_processed = 0;
     return rval;
   }, (shoop_audio_driver_state_t*) nullptr);
 }
@@ -328,16 +372,17 @@ void destroy_backend_session(shoop_backend_session_t *backend) {
 void* maybe_driver_handle(shoop_audio_driver_t* driver) {
   return api_impl<void*, log_level_debug_trace>("maybe_driver_handle", [&]() -> void* {
     auto internal = internal_audio_driver(driver);
-    if (!internal) { return nullptr; }
-    return internal->get_maybe_client_handle();
+    if (internal) { return internal->get_maybe_client_handle(); }
+    return nullptr;
   }, (void*) nullptr);
 }
 
 const char* maybe_driver_instance_name(shoop_audio_driver_t* driver) {
   return api_impl<const char*, log_level_debug_trace>("maybe_driver_instance_name", [&]() {
     auto internal = internal_audio_driver(driver);
-    if (!internal) { return "unknown"; }
-    return internal->get_client_name();
+    if (internal) { return internal->get_client_name(); }
+    if (internal_rust_audio_driver_id(driver)) { return "rust-driver"; }
+    return "unknown";
   }, (const char*) nullptr);
 }
 
@@ -2238,16 +2283,18 @@ void destroy_logger(shoopdaloop_logger_t* logger) {
 unsigned get_sample_rate (shoop_audio_driver_t *driver) {
   return api_impl<unsigned, log_level_debug_trace>("get_sample_rate", [&]() -> unsigned {
     auto _driver = internal_audio_driver(driver);
-    if (!_driver) { return 48000; }
-    return _driver->get_sample_rate();
+    if (_driver) { return _driver->get_sample_rate(); }
+    if (auto rust_id = internal_rust_audio_driver_id(driver)) { return backend_rust::rt_get_sample_rate(*rust_id); }
+    return 48000;
   }, 0);
 }
 
 unsigned get_buffer_size (shoop_audio_driver_t *driver) {
   return api_impl<unsigned, log_level_debug_trace>("get_buffer_size", [&]() -> unsigned {
     auto _driver = internal_audio_driver(driver);
-    if (!_driver) { return 1024; }
-    return _driver->get_buffer_size();
+    if (_driver) { return _driver->get_buffer_size(); }
+    if (auto rust_id = internal_rust_audio_driver_id(driver)) { return backend_rust::rt_get_buffer_size(*rust_id); }
+    return 1024;
   }, 0);
 }
 
@@ -2257,18 +2304,30 @@ void destroy_audio_driver_state(shoop_audio_driver_state_t *state) {
 
 void destroy_audio_driver(shoop_audio_driver_t *driver) {
   return api_impl<void, log_level_debug_trace>("destroy_audio_driver", [&]() {
-      auto _driver = internal_audio_driver(driver);
-      if (!_driver) { return; }
-      g_active_drivers.erase(_driver);
-      _driver->close();
+      auto* h = reinterpret_cast<DriverHandle*>(driver);
+      if (!h) { return; }
+
+      if (h->kind == DriverHandleKind::CppWeakPtr) {
+          auto _driver = internal_audio_driver(driver);
+          if (_driver) {
+              g_active_drivers.erase(_driver);
+              _driver->close();
+          }
+          delete reinterpret_cast<shoop_weak_ptr<AudioMidiDriver>*>(h->cpp_weak_ptr);
+      }
+      if (h->rust_runtime_id) {
+          backend_rust::rt_destroy_driver(h->rust_runtime_id);
+      }
+      delete h;
   });
 }
 
 unsigned get_driver_active(shoop_audio_driver_t *driver) {
-  return api_impl<unsigned, log_level_debug_trace>("get_driver_active", [&]() {
+  return api_impl<unsigned, log_level_debug_trace>("get_driver_active", [&]() -> unsigned {
     auto _driver = internal_audio_driver(driver);
-    if (!_driver) { return false; }
-    return _driver->get_active();
+    if (_driver) { return (unsigned)_driver->get_active(); }
+    if (auto rust_id = internal_rust_audio_driver_id(driver)) { return (unsigned)backend_rust::rt_get_active(*rust_id); }
+    return 0;
   }, 0);
 }
 

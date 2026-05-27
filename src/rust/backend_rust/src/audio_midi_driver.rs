@@ -85,6 +85,7 @@ impl Default for AudioMidiDriverState {
 /// which owns the CommandQueue (as a wrapper around a Rust CommandQueue).
 pub struct AudioMidiDriverCore {
     state: AudioMidiDriverState,
+    driver_kind: AtomicU32,
     processors: RwLock<Vec<usize>>,
     decoupled_ports: RwLock<Vec<usize>>,
 }
@@ -94,6 +95,7 @@ impl AudioMidiDriverCore {
     pub fn new() -> Self {
         AudioMidiDriverCore {
             state: AudioMidiDriverState::new(),
+            driver_kind: AtomicU32::new(2), // Dummy default (matches types.h)
             processors: RwLock::new(Vec::new()),
             decoupled_ports: RwLock::new(Vec::new()),
         }
@@ -139,6 +141,10 @@ impl AudioMidiDriverCore {
         self.state.client_handle.load(Ordering::SeqCst) as usize
     }
 
+    pub fn get_driver_kind(&self) -> u32 {
+        self.driver_kind.load(Ordering::SeqCst)
+    }
+
     // ========================================================================
     // State setters
     // ========================================================================
@@ -177,6 +183,10 @@ impl AudioMidiDriverCore {
         self.state
             .client_handle
             .store(handle as *mut (), Ordering::SeqCst);
+    }
+
+    pub fn set_driver_kind(&self, kind: u32) {
+        self.driver_kind.store(kind, Ordering::SeqCst);
     }
 
     // ========================================================================
@@ -327,6 +337,11 @@ mod tests {
         assert_eq!(core.get_client_handle(), 0);
         core.set_client_handle(0x1234);
         assert_eq!(core.get_client_handle(), 0x1234);
+
+        // Test driver_kind metadata
+        assert_eq!(core.get_driver_kind(), 2);
+        core.set_driver_kind(0);
+        assert_eq!(core.get_driver_kind(), 0);
     }
 
     #[test]

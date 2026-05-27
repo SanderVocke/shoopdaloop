@@ -24,6 +24,7 @@ mod ffi {
         fn get_last_processed(self: &AudioMidiDriverCore) -> u32;
         fn get_client_name(self: &AudioMidiDriverCore) -> String;
         fn get_client_handle(self: &AudioMidiDriverCore) -> usize;
+        fn get_driver_kind(self: &AudioMidiDriverCore) -> u32;
 
         // State setters
         fn set_xruns(self: &AudioMidiDriverCore, val: u32);
@@ -34,6 +35,7 @@ mod ffi {
         fn set_last_processed(self: &AudioMidiDriverCore, val: u32);
         fn set_client_name(self: &AudioMidiDriverCore, name: &str);
         fn set_client_handle(self: &AudioMidiDriverCore, handle: usize);
+        fn set_driver_kind(self: &AudioMidiDriverCore, kind: u32);
 
         // Xrun management
         fn report_xrun(self: &AudioMidiDriverCore);
@@ -89,6 +91,10 @@ fn get_client_handle(core: &AudioMidiDriverCore) -> usize {
     core.get_client_handle()
 }
 
+fn get_driver_kind(core: &AudioMidiDriverCore) -> u32 {
+    core.get_driver_kind()
+}
+
 // State setters
 fn set_xruns(core: &AudioMidiDriverCore, val: u32) {
     core.set_xruns(val);
@@ -120,6 +126,10 @@ fn set_client_name(core: &AudioMidiDriverCore, name: &str) {
 
 fn set_client_handle(core: &AudioMidiDriverCore, handle: usize) {
     core.set_client_handle(handle);
+}
+
+fn set_driver_kind(core: &AudioMidiDriverCore, kind: u32) {
+    core.set_driver_kind(kind);
 }
 
 // Xrun management
