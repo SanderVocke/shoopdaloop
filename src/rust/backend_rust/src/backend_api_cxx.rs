@@ -234,8 +234,10 @@ fn alloc_midi_event(data_bytes: u32) -> *mut ffi::ShoopMidiEvent {
 /// The returned pointer should be freed with destroy_midi_sequence.
 fn alloc_midi_sequence(n_events: u32) -> *mut ffi::ShoopMidiSequence {
     unsafe {
-        let events = libc::malloc((n_events as usize) * size_of::<*mut ffi::ShoopMidiEvent>())
-            as *mut *mut ffi::ShoopMidiEvent;
+        let events = libc::calloc(
+            n_events as usize,
+            size_of::<*mut ffi::ShoopMidiEvent>(),
+        ) as *mut *mut ffi::ShoopMidiEvent;
         let sequence = Box::new(ffi::ShoopMidiSequence {
             n_events,
             events,
@@ -385,17 +387,16 @@ unsafe fn destroy_midi_sequence(d: *mut ffi::ShoopMidiSequence) {
     if d.is_null() {
         return;
     }
-    // Read the struct using ptr::read_unaligned to handle potential alignment issues
-    let sequence = std::ptr::read_unaligned(d);
+    // Struct allocated via Box::into_raw in Rust: reclaim with Box::from_raw.
+    let sequence = Box::from_raw(d);
     // Free each event
     for i in 0..sequence.n_events {
         let event_ptr = std::ptr::read_unaligned(sequence.events.add(i as usize));
         destroy_midi_event(event_ptr);
     }
-    // Free the events array (was allocated with malloc in C++)
+    // Events array was allocated with malloc.
     libc::free(sequence.events as *mut libc::c_void);
-    // Free the struct itself (was allocated with new in C++)
-    libc::free(d as *mut libc::c_void);
+    // sequence is dropped here
 }
 
 /// Free a profiling report struct.
@@ -406,16 +407,12 @@ unsafe fn destroy_profiling_report(d: *mut ffi::ShoopProfilingReport) {
     if d.is_null() {
         return;
     }
-    // Read the struct using ptr::read_unaligned to handle potential alignment issues
     let report = std::ptr::read_unaligned(d);
-    // Free each item's key string
     for i in 0..report.n_items {
         let item = std::ptr::read_unaligned(report.items.add(i as usize));
         libc::free(item.key as *mut libc::c_void);
     }
-    // Free the items array
     libc::free(report.items as *mut libc::c_void);
-    // Free the struct itself (was allocated with malloc/new in C++)
     libc::free(d as *mut libc::c_void);
 }
 
@@ -427,16 +424,12 @@ unsafe fn destroy_external_port_descriptors(d: *mut ffi::ShoopExternalPortDescri
     if d.is_null() {
         return;
     }
-    // Read the struct using ptr::read_unaligned to handle potential alignment issues
     let descriptors = std::ptr::read_unaligned(d);
-    // Free each port's name string
     for i in 0..descriptors.n_ports {
         let port = std::ptr::read_unaligned(descriptors.ports.add(i as usize));
         libc::free(port.name as *mut libc::c_void);
     }
-    // Free the ports array
     libc::free(descriptors.ports as *mut libc::c_void);
-    // Free the struct itself (was allocated with malloc/new in C++)
     libc::free(d as *mut libc::c_void);
 }
 
@@ -448,13 +441,10 @@ unsafe fn destroy_audio_driver_state(d: *mut ffi::ShoopAudioDriverState) {
     if d.is_null() {
         return;
     }
-    // Read the struct using ptr::read_unaligned to handle potential alignment issues
     let state = std::ptr::read_unaligned(d);
-    // Free the instance name if present
     if !state.maybe_instance_name.is_null() {
         libc::free(state.maybe_instance_name as *mut libc::c_void);
     }
-    // Free the struct itself (was allocated with new in C++)
     libc::free(d as *mut libc::c_void);
 }
 
@@ -487,16 +477,12 @@ unsafe fn destroy_port_connections_state(d: *mut ffi::ShoopPortConnectionsState)
     if d.is_null() {
         return;
     }
-    // Read the struct using ptr::read_unaligned to handle potential alignment issues
     let state = std::ptr::read_unaligned(d);
-    // Free each port's name string (allocated with strdup)
     for i in 0..state.n_ports {
         let port = std::ptr::read_unaligned(state.ports.add(i as usize));
         libc::free(port.name as *mut libc::c_void);
     }
-    // Free the ports array (allocated with new[] in C++)
     libc::free(state.ports as *mut libc::c_void);
-    // Free the struct itself (allocated with new in C++)
     libc::free(d as *mut libc::c_void);
 }
 
