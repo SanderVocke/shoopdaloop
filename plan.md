@@ -1,93 +1,111 @@
-# Refactor Plan: Full migration from C++ `CommandQueue` facade to direct Rust queue ownership
+# Plan: staged Rust port of `AudioMidiDriver` and `DummyAudioMidiDriver` with thin C++ wrappers
 
 ## Goal
-Remove `src/backend/internal/CommandQueue.h/.cpp` completely and make all backend C++ classes use `backend_rust::CommandQueue` through a shared helper API. Preserve behavior and fix ownership/lifetime guarantees for queued C++ commands.
+Port orchestration and runtime logic of `AudioMidiDriver` and `DummyAudioMidiDriver` to Rust while preserving existing C++ API/signatures and minimizing changes in other C++ modules. Use callback trampolines where needed so Rust can invoke existing C++ objects (`HasAudioProcessingFunction`, `DecoupledMidiPort`, existing port classes).
 
-## Current status (already completed)
-- Rust/C++ bridge now uses explicit execute/destroy callbacks with `usize user_data` handles:
-  - Rust calls C++ `cxx_command_execute_ptr` / `cxx_command_destroy_ptr`.
-  - Rust wrapper ensures exactly-once execute-or-destroy semantics even on `clear()`/drop.
-- Static global callback registration path is removed from active flow.
-- Added C++ command handle helpers:
-  - `src/backend/internal/CommandToken.h/.cpp`
-- Added shared direct helper API:
-  - `src/backend/internal/RustCommandQueue.h`
-- Header visibility issues between cxxbridge compile and backend CMake compile resolved.
-- Baseline validations pass: `cargo build`, `cargo test`, backend `test_runner`.
+The end state for this task is a concrete staged migration design plus implementation-ready bridge/API steps that can be executed incrementally without breaking downstream C++ code.
 
-## Key migration insight
-Directly converting base classes like `AudioMidiDriver` first causes broad breakage in template-derived classes (`DummyAudioMidiDriver`, `JackAudioMidiDriver`, etc.) because many callsites currently assume facade methods (`PROC_exec_all`, `exec_process_thread_command`, etc.).
+## Where the relevant code lives
+- C++ driver base and dummy driver:
+  - `src/backend/internal/AudioMidiDriver.h`
+  - `src/backend/internal/AudioMidiDriver.cpp`
+  - `src/backend/internal/DummyAudioMidiDriver.h`
+  - `src/backend/internal/DummyAudioMidiDriver.cpp`
+- Existing Rust bridges for these classes:
+  - `src/rust/backend_rust/src/audio_midi_driver_cxx.rs`
+  - `src/rust/backend_rust/src/dummy_audio_midi_driver_cxx.rs`
+- Existing related C++ objects invoked in process loop:
+  - `src/backend/internal/DecoupledMidiPort.h`
+  - `src/backend/internal/*Port*.h/.cpp` as needed
+- Rust backend crate root:
+  - `src/rust/backend_rust/src/` (driver runtime modules to add/extend here)
 
-Therefore full migration should proceed by introducing and using shared helper calls incrementally, then swapping member types, then deleting facade.
+## Constraints and compatibility strategy
+- Keep existing C++ class names, inheritance, and public methods unchanged for now.
+- Keep current C++ return types (`shoop_shared_ptr<RustAudioPortF32>`, `shoop_shared_ptr<MidiPort>`, etc.).
+- Do not require broad refactors in other C++ modules.
+- Use `cxx` bridge trampolines with opaque pointer handles (`uintptr_t`/`usize`) for callback into C++ objects.
+- Move logic first; optimize architecture later.
 
-## Final target API shape
-- Queue ownership in C++ classes:
-  - `rust::Box<backend_rust::CommandQueue> m_command_queue;`
-- Queue operations always via helper functions in `RustCommandQueue.h`:
-  - `make(...)`, `queue(...)`, `queue_and_wait(...)`, `exec_all(...)`, `passthrough_on(...)`, `clear(...)`
-- No class should call facade-style methods (`PROC_exec_all`, `queue_process_thread_command`, etc.) on queue objects.
+## Implementation phases
 
-## Detailed staged execution
+### Phase 1: Rust runtime for `AudioMidiDriver` process orchestration
+Create/extend Rust runtime object that performs what C++ `AudioMidiDriver::PROC_process` currently does:
+- optional process callback hook trigger (if represented through trampoline)
+- execute process-thread command queue hook
+- process decoupled midi ports list
+- process processors list
+- set `last_processed`
 
-### Stage A: Stabilize helper-first call pattern everywhere
-1. Keep existing `CommandQueue` facade in place temporarily.
-2. Replace direct queue method invocations across backend code with helper-style calls wherever feasible, especially in template-heavy files:
-   - `DummyAudioMidiDriver.cpp`
-   - `jack/JackAudioMidiDriver.cpp`
-   - `AudioChannel.cpp`, `MidiChannel.cpp`, `BasicLoop.cpp`, `BufferQueue.cpp`
-   - `DummyAudioPort.cpp`, `DummyMidiPort.cpp`, etc.
-3. For API glue expecting `CommandQueue&` (e.g. `evaluate_before_or_after_process`), support both temporary types during transition (already started).
-4. Build/test after each subgroup migration.
+Keep C++ `AudioMidiDriver` as wrapper/facade that forwards to Rust runtime.
 
-### Stage B: Migrate non-template core owners fully
-1. Migrate `BackendSession` and `AudioMidiDriver` members and forwarding methods to direct Rust box type.
-2. Update getters return type to `backend_rust::CommandQueue&`.
-3. Update constructor initialization to `rust_command_queue::make(...)`.
-4. Ensure all member operations route through helper wrappers.
+#### Phase 1 bridge work
+Add `extern "C++"` trampoline functions in CXX bridge, implemented in C++:
+- invoke `HasAudioProcessingFunction::PROC_process(nframes)` for a stored handle
+- invoke `DecoupledMidiPort::PROC_process(nframes)` for a stored handle
+- optional no-op/process callback thunk if needed
 
-### Stage C: Migrate remaining owners and utilities
-1. Migrate all classes with `CommandQueue m_command_queue` to Rust box ownership:
-   - `AudioChannel`, `MidiChannel`, `BasicLoop`, `BufferQueue`, `DummyAudioPort`, `DummyMidiPort`, etc.
-2. Replace includes from `CommandQueue.h` to `RustCommandQueue.h` (and bridge headers as needed).
-3. Replace any lingering facade-style methods with helper calls.
+Rust stores opaque handles (`usize`) for processor/decoupled port entries and iterates them during process cycle.
 
-### Stage D: Delete facade and clean references
-1. Remove all includes/usages of `CommandQueue.h` from codebase.
-2. Delete:
-   - `src/backend/internal/CommandQueue.h`
-   - `src/backend/internal/CommandQueue.cpp`
-3. Update CMake/source lists as needed.
-4. Ensure no symbol/type dependency remains on `CommandQueue` class.
+#### Phase 1 C++ changes
+- `AudioMidiDriver` keeps current public API.
+- Replace body of `AudioMidiDriver::PROC_process` with a thin Rust runtime call.
+- Keep registration/removal APIs (`add_processor`, `remove_processor`, decoupled register/unregister) but forward bookkeeping to Rust runtime handle sets.
+- Preserve command queue behavior and ordering relative to processing.
 
-### Stage E: Tests for ownership/lifetime semantics
-Add/adjust tests to confirm behavior remains correct after full migration:
-1. Clearing queue destroys pending C++ command allocations without executing them.
-2. Queue destruction with pending commands destroys commands.
-3. queue-and-wait completion and fallback behavior remain unchanged.
-4. passthrough mode and inactivity logic unchanged from caller perspective.
+### Phase 2: Rust-owned process thread for `DummyAudioMidiDriver`
+Move dummy processing loop (sleep/tick/controlled mode advancement/pause/finish handling) from C++ `std::thread` into Rust.
 
-### Stage F: Documentation cleanup
-1. Update comments in Rust queue and bridge files for current handle-based model.
-2. Remove stale wording about old callback registration.
-3. Document final ownership model clearly.
+C++ `DummyAudioMidiDriver` methods (`start`, `close`, `pause`, `resume`, controlled-mode methods) remain and delegate to Rust.
 
-## Build/test checkpoints
-At each stage milestone run:
-1. `cargo build`
-2. `cargo test`
-3. backend Catch2 test runner:
-   - `target/debug/build/backend-*/out/cmake_build/build/test/test_runner` (resolved built path)
+#### Phase 2 bridge work
+Add callbacks from Rust to C++ for one processing tick if needed:
+- call into base-driver process function/trampoline with `nframes`
+- preserve same per-cycle semantics and command-queue execution points
 
-Final gate:
+Ensure close/join semantics match existing behavior (avoid self-join issues).
+
+### Phase 3: Keep C++ port objects, migrate only driver-owned bookkeeping
+Do not port `DummyAudioPort` / `DummyMidiPort` now.
+- Continue creating and returning the same C++ port objects.
+- If needed, shift only driver-side tracking collections to Rust via opaque handles.
+
+This avoids downstream C++ API churn.
+
+### Phase 4: Decoupled MIDI registration ownership in Rust
+Migrate decoupled-midi port registration/unregistration bookkeeping from C++ set storage to Rust runtime storage, still using C++ object trampolines for per-cycle processing.
+
+### Phase 5: Thin-wrapper cleanup
+Once behavior matches and tests pass:
+- keep C++ wrappers extremely thin
+- document which responsibilities are Rust-owned vs C++-forwarded
+- defer broader redesign (templates/inheritance flattening, full port migration) to later work
+
+## Behavioral invariants to preserve
+- Process-cycle order remains equivalent to current C++ implementation.
+- Command queue commands still execute on process thread as expected.
+- `wait_process()` semantics remain unchanged for callers.
+- Controlled mode behavior in dummy driver remains unchanged.
+- Existing C++ pointers/ownership expectations for ports/processors remain valid.
+
+## Build and test instructions (project-specific)
+From repo root:
+1. Regular build during development: `cargo build`
+2. Rust tests: `cargo test`
+3. Backend C++ tests (Catch2 `test_runner` produced by backend build); run built `test_runner` under `target/.../test/test_runner`
+4. Optional app self-test: `./target/debug/shoopdaloop_dev.sh --self-test`
+
+Final verification for completion:
 1. `cargo fmt --all`
 2. `RUSTFLAGS="-D warnings" cargo build`
 3. `cargo test`
 4. backend `test_runner`
-5. `./target/debug/shoopdaloop_dev.sh --self-test` (if it fails due to known environment crash-handling startup issue, report as environment/runtime blocker with logs).
+5. app self-test if environment supports it
 
-## Expected end state
-- `CommandQueue.h/.cpp` removed.
-- All backend users own/use `backend_rust::CommandQueue` directly.
-- Unified helper API used for queue operations from C++.
-- Exactly-once execute-or-destroy semantics maintained for queued C++ commands.
-- All available builds/tests pass; final warnings gate passes.
+If external dependency/toolchain failures occur outside project code, report environment setup issue and stop.
+
+## Deliverables for this migration effort
+- Extended Rust runtime + CXX bridges for driver orchestration callbacks.
+- C++ wrappers for `AudioMidiDriver` and `DummyAudioMidiDriver` forwarding logic to Rust.
+- No required interface changes in other C++ modules.
+- Passing build/tests with preserved behavior.

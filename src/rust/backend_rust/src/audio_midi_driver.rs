@@ -250,6 +250,33 @@ impl AudioMidiDriverCore {
             .map(|guard| guard.clone())
             .unwrap_or_default()
     }
+
+    pub fn process_cycle(&self, maybe_process_callback_ptr: usize, command_queue_ptr: usize, nframes: u32) {
+        unsafe {
+            crate::audio_midi_driver_cxx::ffi::audiomididriver_invoke_maybe_process_callback(
+                maybe_process_callback_ptr,
+            );
+            crate::audio_midi_driver_cxx::ffi::audiomididriver_exec_command_queue(command_queue_ptr);
+        }
+
+        for port in self.get_decoupled_ports() {
+            unsafe {
+                crate::audio_midi_driver_cxx::ffi::audiomididriver_process_decoupled_port(
+                    port, nframes,
+                );
+            }
+        }
+
+        for processor in self.get_processors() {
+            unsafe {
+                crate::audio_midi_driver_cxx::ffi::audiomididriver_process_processor(
+                    processor, nframes,
+                );
+            }
+        }
+
+        self.set_last_processed(nframes);
+    }
 }
 
 // =============================================================================

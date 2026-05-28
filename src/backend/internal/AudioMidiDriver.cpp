@@ -3,6 +3,33 @@
 #include <cstdint>
 #include "shoop_globals.h"
 #include <thread>
+#include "AudioMidiDriverCxxTrampolines.h"
+
+namespace backend_rust {
+void audiomididriver_invoke_maybe_process_callback(uintptr_t maybe_fn_ptr) {
+    if (!maybe_fn_ptr) { return; }
+    auto fn = reinterpret_cast<void (*)()>(maybe_fn_ptr);
+    fn();
+}
+
+void audiomididriver_exec_command_queue(uintptr_t command_queue_ptr) {
+    if (!command_queue_ptr) { return; }
+    auto *queue = reinterpret_cast<backend_rust::CommandQueue *>(command_queue_ptr);
+    rust_command_queue::exec_all(*queue);
+}
+
+void audiomididriver_process_processor(uintptr_t processor_ptr, uint32_t nframes) {
+    if (!processor_ptr) { return; }
+    auto *processor = reinterpret_cast<HasAudioProcessingFunction *>(processor_ptr);
+    processor->PROC_process(nframes);
+}
+
+void audiomididriver_process_decoupled_port(uintptr_t decoupled_port_ptr, uint32_t nframes) {
+    if (!decoupled_port_ptr) { return; }
+    auto *port = reinterpret_cast<::DecoupledMidiPort *>(decoupled_port_ptr);
+    port->PROC_process(nframes);
+}
+}
 
 AudioMidiDriver::AudioMidiDriver(void (*maybe_process_callback)()) :
   m_rust_core(backend_rust::new_audio_midi_driver_core()),
@@ -20,6 +47,7 @@ void AudioMidiDriver::add_processor(shoop_shared_ptr<HasAudioProcessingFunction>
     *_new = *old;
     _new->push_back(p);
     m_processors = _new;
+    m_rust_core->add_processor(reinterpret_cast<uintptr_t>(p.get()));
 }
 
 void AudioMidiDriver::remove_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) {
@@ -31,6 +59,7 @@ void AudioMidiDriver::remove_processor(shoop_shared_ptr<HasAudioProcessingFuncti
         }
     }
     m_processors = _new;
+    m_rust_core->remove_processor(reinterpret_cast<uintptr_t>(p.get()));
 }
 
 std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> AudioMidiDriver::processors() const {
@@ -39,18 +68,10 @@ std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> AudioMidiDriver::process
 
 void AudioMidiDriver::PROC_process(uint32_t nframes) {
     log<log_level_debug_trace>("AudioMidiDriver::process {}", nframes);
-    if (m_maybe_process_callback) {
-        m_maybe_process_callback();
-    }
-    rust_command_queue::exec_all(*m_command_queue);
-    PROC_process_decoupled_midi_ports(nframes);
-    auto ps_lock = m_processors;
-    for(auto & weak_p : *ps_lock) {
-        if (auto p = weak_p.lock()) {
-            p->PROC_process(nframes);
-        }
-    }
-    set_last_processed(nframes);
+    m_rust_core->process_cycle(
+        reinterpret_cast<uintptr_t>(m_maybe_process_callback),
+        reinterpret_cast<uintptr_t>(&(*m_command_queue)),
+        nframes);
 }
 
 uint32_t AudioMidiDriver::get_xruns() const {
@@ -64,14 +85,15 @@ float AudioMidiDriver::get_dsp_load() {
 
 void AudioMidiDriver::unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port) {
     rust_command_queue::queue_and_wait(*m_command_queue, [this, port]() {
-        m_decoupled_midi_ports.erase(port);
+        m_rust_core->unregister_decoupled_port(reinterpret_cast<uintptr_t>(port.get()));
     });
 }
 
 void AudioMidiDriver::PROC_process_decoupled_midi_ports(uint32_t nframes) {
-    auto lock = m_decoupled_midi_ports;
-    for(auto &p : lock) {
-        p->PROC_process(nframes);
+    auto ports = m_rust_core->get_decoupled_ports();
+    for (auto p : ports) {
+        auto *port = reinterpret_cast<shoop_types::_DecoupledMidiPort *>(p);
+        port->PROC_process(nframes);
     }
 }
 
@@ -160,6 +182,8 @@ shoop_shared_ptr<shoop_types::_DecoupledMidiPort> AudioMidiDriver::open_decouple
         weak_from_this(),
         decoupled_midi_port_queue_size,
         direction);
-    rust_command_queue::queue(*m_command_queue, [this, decoupled](){ m_decoupled_midi_ports.insert(decoupled); });
+    rust_command_queue::queue(*m_command_queue, [this, decoupled](){
+        m_rust_core->register_decoupled_port(reinterpret_cast<uintptr_t>(decoupled.get()));
+    });
     return decoupled;
 }

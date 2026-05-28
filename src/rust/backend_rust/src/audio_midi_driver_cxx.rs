@@ -8,7 +8,16 @@
 use crate::audio_midi_driver::AudioMidiDriverCore;
 
 #[cxx::bridge(namespace = "backend_rust")]
-mod ffi {
+pub mod ffi {
+    unsafe extern "C++" {
+        include!("internal/AudioMidiDriverCxxTrampolines.h");
+
+        unsafe fn audiomididriver_invoke_maybe_process_callback(maybe_fn_ptr: usize);
+        unsafe fn audiomididriver_exec_command_queue(command_queue_ptr: usize);
+        unsafe fn audiomididriver_process_processor(processor_ptr: usize, nframes: u32);
+        unsafe fn audiomididriver_process_decoupled_port(decoupled_port_ptr: usize, nframes: u32);
+    }
+
     extern "Rust" {
         type AudioMidiDriverCore;
 
@@ -48,6 +57,13 @@ mod ffi {
         fn register_decoupled_port(self: &AudioMidiDriverCore, ptr: usize);
         fn unregister_decoupled_port(self: &AudioMidiDriverCore, ptr: usize);
         fn get_decoupled_ports(self: &AudioMidiDriverCore) -> Vec<usize>;
+
+        unsafe fn process_cycle(
+            self: &AudioMidiDriverCore,
+            maybe_process_callback_ptr: usize,
+            command_queue_ptr: usize,
+            nframes: u32,
+        );
     }
 }
 
@@ -155,4 +171,13 @@ fn unregister_decoupled_port(core: &AudioMidiDriverCore, ptr: usize) {
 
 fn get_decoupled_ports(core: &AudioMidiDriverCore) -> Vec<usize> {
     core.get_decoupled_ports()
+}
+
+unsafe fn process_cycle(
+    core: &AudioMidiDriverCore,
+    maybe_process_callback_ptr: usize,
+    command_queue_ptr: usize,
+    nframes: u32,
+) {
+    core.process_cycle(maybe_process_callback_ptr, command_queue_ptr, nframes);
 }

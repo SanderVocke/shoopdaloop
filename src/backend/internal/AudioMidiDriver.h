@@ -42,7 +42,6 @@ class AudioMidiDriver : public ModuleLoggingEnabled<"Backend.AudioMidiDriver">,
     // Rust core for atomic state and processor/decoupled port management
     rust::Box<backend_rust::AudioMidiDriverCore> m_rust_core;
     shoop_shared_ptr<std::vector<shoop_weak_ptr<HasAudioProcessingFunction>>> m_processors;
-    std::set<shoop_shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports;
     void (*m_maybe_process_callback)() = nullptr;
 
 protected:
