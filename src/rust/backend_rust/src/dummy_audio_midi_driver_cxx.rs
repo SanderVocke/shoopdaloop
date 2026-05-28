@@ -26,7 +26,12 @@ pub mod ffi {
         fn controlled_mode_request_samples(self: &DummyAudioMidiDriver, samples: u32);
         fn get_controlled_mode_samples_to_process(self: &DummyAudioMidiDriver) -> u32;
         fn controlled_mode_advance(self: &DummyAudioMidiDriver, samples: u32);
-        fn start_process_thread(self: &DummyAudioMidiDriver, owner_ptr: usize, sample_rate: u32, buffer_size: u32);
+        fn start_process_thread(
+            self: &DummyAudioMidiDriver,
+            owner_ptr: usize,
+            sample_rate: u32,
+            buffer_size: u32,
+        );
         fn stop_process_thread(self: &DummyAudioMidiDriver);
     }
 }

@@ -31,13 +31,22 @@
   - [x] `cargo build`
   - [x] backend `test_runner`
 
-- [ ] Migrate decoupled MIDI registration ownership/bookkeeping to Rust runtime
-- [ ] Verify unregister/close lifecycle safety with command queue thread constraints
-- [ ] Build/test milestone: `cargo build`, `cargo test`, backend `test_runner`
+- [x] Migrate decoupled MIDI registration ownership/bookkeeping to Rust runtime
+- [x] Verify unregister/close lifecycle safety with command queue thread constraints
+- [x] Build/test milestone: `cargo build`, `cargo test`, backend `test_runner`
+  - [x] `cargo build`
+  - [x] `cargo test`
+  - [x] backend `test_runner`
+  - nuance: removed dead C++-side decoupled processing helper (`PROC_process_decoupled_midi_ports`); runtime processing now exclusively flows through Rust `process_cycle` callbacks.
 
-- [ ] Thin-wrapper cleanup pass in C++ (`AudioMidiDriver*`, `DummyAudioMidiDriver*`)
-- [ ] Update comments/docs for new Rust-vs-C++ responsibility split
+- [x] Thin-wrapper cleanup pass in C++ (`AudioMidiDriver*`, `DummyAudioMidiDriver*`)
+- [x] Update comments/docs for new Rust-vs-C++ responsibility split
 
-- [ ] Final formatting and strict warning gate: `cargo fmt --all` then `RUSTFLAGS="-D warnings" cargo build`
-- [ ] Final tests: `cargo test`, backend `test_runner`, `./target/debug/shoopdaloop_dev.sh --self-test` (if environment supports it)
-- [ ] Confirm final state: all tests passing, no warnings, C++ wrappers thin, behavior preserved
+- [x] Final formatting and strict warning gate: `cargo fmt --all` then `RUSTFLAGS="-D warnings" cargo build`
+- [x] Final tests: `cargo test`, backend `test_runner`, `./target/debug/shoopdaloop_dev.sh --self-test` (if environment supports it)
+  - [x] `cargo test`
+  - [x] backend `test_runner`
+  - [x] `./target/debug/shoopdaloop_dev.sh --self-test`
+  - nuance: fixed decoupled MIDI lifetime/race crash by reintroducing C++ keepalive ownership set while ports are registered on Rust runtime handle list.
+- [x] Confirm final state: all tests passing, no warnings, C++ wrappers thin, behavior preserved
+  - nuance: project still emits existing environment/toolchain warning during `cargo test` about deprecated gold linker; strict warnings gate build passed with `RUSTFLAGS='-D warnings'`.

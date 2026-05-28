@@ -86,15 +86,8 @@ float AudioMidiDriver::get_dsp_load() {
 void AudioMidiDriver::unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port) {
     rust_command_queue::queue_and_wait(*m_command_queue, [this, port]() {
         m_rust_core->unregister_decoupled_port(reinterpret_cast<uintptr_t>(port.get()));
+        m_decoupled_midi_ports_keepalive.erase(port);
     });
-}
-
-void AudioMidiDriver::PROC_process_decoupled_midi_ports(uint32_t nframes) {
-    auto ports = m_rust_core->get_decoupled_ports();
-    for (auto p : ports) {
-        auto *port = reinterpret_cast<shoop_types::_DecoupledMidiPort *>(p);
-        port->PROC_process(nframes);
-    }
 }
 
 uint32_t AudioMidiDriver::get_sample_rate() {
@@ -183,6 +176,7 @@ shoop_shared_ptr<shoop_types::_DecoupledMidiPort> AudioMidiDriver::open_decouple
         decoupled_midi_port_queue_size,
         direction);
     rust_command_queue::queue(*m_command_queue, [this, decoupled](){
+        m_decoupled_midi_ports_keepalive.insert(decoupled);
         m_rust_core->register_decoupled_port(reinterpret_cast<uintptr_t>(decoupled.get()));
     });
     return decoupled;

@@ -28,23 +28,51 @@ impl DummyAudioMidiDriver {
         }
     }
 
-    pub fn is_finish(&self) -> bool { self.state.finish.load(Ordering::SeqCst) }
-    pub fn set_finish(&self) { self.state.finish.store(true, Ordering::SeqCst); }
-    pub fn enter_mode(&self, mode: u32) { self.state.mode.store(mode, Ordering::SeqCst); self.state.controlled_samples.store(0, Ordering::SeqCst); }
-    pub fn get_mode(&self) -> u32 { self.state.mode.load(Ordering::SeqCst) }
-    pub fn pause(&self) { self.state.paused.store(true, Ordering::SeqCst); }
-    pub fn resume(&self) { self.state.paused.store(false, Ordering::SeqCst); }
-    pub fn is_paused(&self) -> bool { self.state.paused.load(Ordering::SeqCst) }
-    pub fn controlled_mode_request_samples(&self, samples: u32) { self.state.controlled_samples.fetch_add(samples, Ordering::SeqCst); }
-    pub fn get_controlled_mode_samples_to_process(&self) -> u32 { self.state.controlled_samples.load(Ordering::SeqCst) }
+    pub fn is_finish(&self) -> bool {
+        self.state.finish.load(Ordering::SeqCst)
+    }
+    pub fn set_finish(&self) {
+        self.state.finish.store(true, Ordering::SeqCst);
+    }
+    pub fn enter_mode(&self, mode: u32) {
+        self.state.mode.store(mode, Ordering::SeqCst);
+        self.state.controlled_samples.store(0, Ordering::SeqCst);
+    }
+    pub fn get_mode(&self) -> u32 {
+        self.state.mode.load(Ordering::SeqCst)
+    }
+    pub fn pause(&self) {
+        self.state.paused.store(true, Ordering::SeqCst);
+    }
+    pub fn resume(&self) {
+        self.state.paused.store(false, Ordering::SeqCst);
+    }
+    pub fn is_paused(&self) -> bool {
+        self.state.paused.load(Ordering::SeqCst)
+    }
+    pub fn controlled_mode_request_samples(&self, samples: u32) {
+        self.state
+            .controlled_samples
+            .fetch_add(samples, Ordering::SeqCst);
+    }
+    pub fn get_controlled_mode_samples_to_process(&self) -> u32 {
+        self.state.controlled_samples.load(Ordering::SeqCst)
+    }
     pub fn controlled_mode_advance(&self, samples: u32) {
-        let prev = self.state.controlled_samples.fetch_sub(samples, Ordering::SeqCst);
-        if prev < samples { self.state.controlled_samples.store(0, Ordering::SeqCst); }
+        let prev = self
+            .state
+            .controlled_samples
+            .fetch_sub(samples, Ordering::SeqCst);
+        if prev < samples {
+            self.state.controlled_samples.store(0, Ordering::SeqCst);
+        }
     }
 
     pub fn start_process_thread(&self, owner_ptr: usize, sample_rate: u32, buffer_size: u32) {
         let mut guard = self.process_thread.lock().unwrap();
-        if guard.is_some() { return; }
+        if guard.is_some() {
+            return;
+        }
         self.state.finish.store(false, Ordering::SeqCst);
         let state = Arc::clone(&self.state);
         *guard = Some(thread::spawn(move || {
@@ -54,15 +82,31 @@ impl DummyAudioMidiDriver {
             while !state.finish.load(Ordering::SeqCst) {
                 thread::sleep(Duration::from_micros(micros.saturating_sub(time_taken)));
                 let start = Instant::now();
-                unsafe { crate::dummy_audio_midi_driver_cxx::ffi::dummy_audiomididriver_exec_commands(owner_ptr); }
+                unsafe {
+                    crate::dummy_audio_midi_driver_cxx::ffi::dummy_audiomididriver_exec_commands(
+                        owner_ptr,
+                    );
+                }
                 if !state.paused.load(Ordering::SeqCst) {
                     let mode = state.mode.load(Ordering::SeqCst);
                     let samples = state.controlled_samples.load(Ordering::SeqCst);
-                    let to_process = if mode == 0 { samples.min(buffer_size) } else { buffer_size };
-                    unsafe { crate::dummy_audio_midi_driver_cxx::ffi::dummy_audiomididriver_process(owner_ptr, to_process); }
+                    let to_process = if mode == 0 {
+                        samples.min(buffer_size)
+                    } else {
+                        buffer_size
+                    };
+                    unsafe {
+                        crate::dummy_audio_midi_driver_cxx::ffi::dummy_audiomididriver_process(
+                            owner_ptr, to_process,
+                        );
+                    }
                     if mode == 0 {
-                        let prev = state.controlled_samples.fetch_sub(to_process, Ordering::SeqCst);
-                        if prev < to_process { state.controlled_samples.store(0, Ordering::SeqCst); }
+                        let prev = state
+                            .controlled_samples
+                            .fetch_sub(to_process, Ordering::SeqCst);
+                        if prev < to_process {
+                            state.controlled_samples.store(0, Ordering::SeqCst);
+                        }
                     }
                 }
                 time_taken = start.elapsed().as_micros() as u64;

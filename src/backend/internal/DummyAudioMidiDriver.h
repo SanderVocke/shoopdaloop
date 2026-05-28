@@ -8,7 +8,6 @@
 #include "types.h"
 #include <memory>
 #include <set>
-#include <thread>
 #include <vector>
 #include <boost/lockfree/spsc_queue.hpp>
 #include <stdint.h>
@@ -34,7 +33,6 @@ class DummyAudioMidiDriver : public AudioMidiDriver,
     using Log = ModuleLoggingEnabled<"Backend.DummyAudioMidiDriver">;
 
     rust::Box<backend_rust::DummyAudioMidiDriver> m_rust;
-    std::thread m_proc_thread;
     std::set<shoop_shared_ptr<DummyAudioPort>> m_audio_ports;
     std::set<shoop_shared_ptr<DummyMidiPort>> m_midi_ports;
     std::string m_client_name_str = "";
