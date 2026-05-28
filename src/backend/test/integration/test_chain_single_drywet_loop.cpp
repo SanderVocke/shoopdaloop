@@ -546,6 +546,7 @@ TEST_CASE("Chain - DryWet adopt audio ringbuffer - no sync loop", "[chain][audio
 
     tst.int_driver->controlled_mode_request_samples(8);
     tst.int_driver->controlled_mode_run_request();
+    tst.int_driver->wait_process();
 
     // Grab the ringbuffer
     adopt_ringbuffer_contents(tst.api_loop, 0, 1, 0, LoopMode_Unknown);
@@ -584,6 +585,7 @@ TEST_CASE("Chain - DryWet adopt audio ringbuffer - one cycle", "[chain][audio]")
 
     tst.int_driver->controlled_mode_request_samples(7); // Two cycles and 1 sample
     tst.int_driver->controlled_mode_run_request();
+    tst.int_driver->wait_process();
 
     // Grab the ringbuffer. Offset 1 means last completed cycle.
     adopt_ringbuffer_contents(tst.api_loop, 1, 1, 0, LoopMode_Unknown);
@@ -597,7 +599,7 @@ TEST_CASE("Chain - DryWet adopt audio ringbuffer - one cycle", "[chain][audio]")
 
     CHECK(tst.int_loop->loop->get_length() == 3);
     auto dry_so = tst.int_dry_audio_chan->get_start_offset();
-    auto wet_so = tst.int_dry_audio_chan->get_start_offset();
+    auto wet_so = tst.int_wet_audio_chan->get_start_offset();
     CHECK(dry_data.size() >= 3);
     CHECK(wet_data.size() >= 3);
     REQUIRE((int)dry_data.size() - (int)dry_so >= 3); // 3 samples available

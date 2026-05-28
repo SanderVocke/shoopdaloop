@@ -189,6 +189,7 @@ TEST_CASE("Chain - Direct adopt audio ringbuffer - no sync loop", "[chain][audio
     tst.int_dummy_input_port->queue_data(8, input_data.data());
     tst.int_driver->controlled_mode_request_samples(8);
     tst.int_driver->controlled_mode_run_request();
+    tst.int_driver->wait_process();
 
     // Grab the ringbuffer
     adopt_ringbuffer_contents(tst.api_loop, 0, 1, 0, LoopMode_Unknown);
@@ -222,6 +223,7 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - no sync loop - 0 samples", "[c
     // Process 8 samples in stopped mode
     tst.int_driver->controlled_mode_request_samples(8);
     tst.int_driver->controlled_mode_run_request();
+    tst.int_driver->wait_process();
 
     // Grab the ringbuffer
     adopt_ringbuffer_contents(tst.api_loop, 0, 1, 0, LoopMode_Unknown);
@@ -254,6 +256,7 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - no sync loop", "[chain][midi]"
     // Process 8 samples in stopped mode
     tst.int_driver->controlled_mode_request_samples(8);
     tst.int_driver->controlled_mode_run_request();
+    tst.int_driver->wait_process();
 
     // Grab the ringbuffer
     adopt_ringbuffer_contents(tst.api_loop, 0, 1, 0, LoopMode_Unknown);
@@ -301,6 +304,7 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - no sync loop - integer time ov
     // Process 8 samples in stopped mode
     tst.int_driver->controlled_mode_request_samples(8);
     tst.int_driver->controlled_mode_run_request();
+    tst.int_driver->wait_process();
 
     // Grab the ringbuffer
     adopt_ringbuffer_contents(tst.api_loop, 0, 1, 0, LoopMode_Unknown);
@@ -329,6 +333,7 @@ TEST_CASE("Chain - Direct adopt audio ringbuffer - one cycle", "[chain][audio]")
 
     tst.int_driver->controlled_mode_request_samples(7); // Two cycles and 1 sample
     tst.int_driver->controlled_mode_run_request();
+    tst.int_driver->wait_process();
 
     // Grab the ringbuffer. Offset 1 means last completed cycle.
     adopt_ringbuffer_contents(tst.api_loop, 1, 1, 0, LoopMode_Unknown);
@@ -378,6 +383,7 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - one cycle", "[chain][midi]") {
     // Process 8 samples in stopped mode
     tst.int_driver->controlled_mode_request_samples(10); // Process cycles R-1, R, 2 frames of R+1
     tst.int_driver->controlled_mode_run_request();
+    tst.int_driver->wait_process();
 
     // Grab the ringbuffer
     adopt_ringbuffer_contents(tst.api_loop, 1, 1, 0, LoopMode_Unknown);
@@ -447,6 +453,7 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - one cycle with state restore",
     // Process 8 samples in stopped mode
     tst.int_driver->controlled_mode_request_samples(10); // Process cycles R-1, R, 2 frames of R+1
     tst.int_driver->controlled_mode_run_request();
+    tst.int_driver->wait_process();
 
     // Grab the ringbuffer
     adopt_ringbuffer_contents(tst.api_loop, 1, 1, 0, LoopMode_Unknown);
@@ -515,6 +522,7 @@ TEST_CASE("Chain - Direct adopt audio ringbuffer - current cycle", "[chain][audi
 
     tst.int_driver->controlled_mode_request_samples(8); // Two cycles and 2 samples
     tst.int_driver->controlled_mode_run_request();
+    tst.int_driver->wait_process();
 
     // Grab the ringbuffer. Offset 0 means currently running cycle (which has 2 samples so far)
     adopt_ringbuffer_contents(tst.api_loop, 0, 1, 0, LoopMode_Unknown);
@@ -566,6 +574,7 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - current cycle", "[chain][midi]
     // Process 8 samples in stopped mode
     tst.int_driver->controlled_mode_request_samples(10); // Process cycles R-2, R-1, 2 frames of R
     tst.int_driver->controlled_mode_run_request();
+    tst.int_driver->wait_process();
 
     // Grab the ringbuffer
     adopt_ringbuffer_contents(tst.api_loop, 0, 1, 0, LoopMode_Unknown);
@@ -595,6 +604,7 @@ TEST_CASE("Chain - Direct adopt audio ringbuffer - prev cycle", "[chain][audio]"
 
     tst.int_driver->controlled_mode_request_samples(7); // Three cycles and 1 sample
     tst.int_driver->controlled_mode_run_request();
+    tst.int_driver->wait_process();
 
     // Grab the ringbuffer.
     adopt_ringbuffer_contents(tst.api_loop, 2, 1, 0, LoopMode_Unknown);
@@ -644,6 +654,7 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - prev cycle", "[chain][midi]") 
     // Process 8 samples in stopped mode
     tst.int_driver->controlled_mode_request_samples(10); // Process cycles R, R+1, 2 frames of R+2
     tst.int_driver->controlled_mode_run_request();
+    tst.int_driver->wait_process();
 
     // Grab the ringbuffer
     adopt_ringbuffer_contents(tst.api_loop, 2, 1, 0, LoopMode_Unknown);
@@ -675,6 +686,7 @@ TEST_CASE("Chain - Direct adopt audio ringbuffer - prev 2 cycles", "[chain][audi
 
     tst.int_driver->controlled_mode_request_samples(7); // Three cycles and 1 sample
     tst.int_driver->controlled_mode_run_request();
+    tst.int_driver->wait_process();
 
     // Grab the ringbuffer.
     adopt_ringbuffer_contents(tst.api_loop, 2, 2, 0, LoopMode_Unknown);
@@ -724,6 +736,7 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - prev 2 cycles", "[chain][midi]
     // Process 8 samples in stopped mode
     tst.int_driver->controlled_mode_request_samples(10); // Process cycles R, R+1, 2 frames of R+2
     tst.int_driver->controlled_mode_run_request();
+    tst.int_driver->wait_process();
 
     // Grab the ringbuffer
     adopt_ringbuffer_contents(tst.api_loop, 2, 2, 0, LoopMode_Unknown);
