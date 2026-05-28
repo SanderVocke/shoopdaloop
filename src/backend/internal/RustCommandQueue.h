@@ -21,15 +21,14 @@ inline void queue_and_wait(backend_rust::CommandQueue &queue, std::function<void
     queue.cxx_queue_and_wait(backend_rust::make_command_token_ptr(std::move(fn)));
 }
 
-inline void exec_all(backend_rust::CommandQueue &queue) {
-    queue.exec_all();
-}
+inline void exec_all(backend_rust::CommandQueue &queue) { queue.exec_all(); }
+inline void passthrough_on(backend_rust::CommandQueue &queue) { queue.passthrough_on(); }
+inline void clear(backend_rust::CommandQueue &queue) { queue.clear(); }
 
-inline void passthrough_on(backend_rust::CommandQueue &queue) {
-    queue.passthrough_on();
-}
+inline void queue(rust::Box<backend_rust::CommandQueue> &q, std::function<void()> fn) { queue(*q, std::move(fn)); }
+inline void queue_and_wait(rust::Box<backend_rust::CommandQueue> &q, std::function<void()> fn) { queue_and_wait(*q, std::move(fn)); }
+inline void exec_all(rust::Box<backend_rust::CommandQueue> &q) { exec_all(*q); }
+inline void passthrough_on(rust::Box<backend_rust::CommandQueue> &q) { passthrough_on(*q); }
+inline void clear(rust::Box<backend_rust::CommandQueue> &q) { clear(*q); }
 
-inline void clear(backend_rust::CommandQueue &queue) {
-    queue.clear();
-}
 }

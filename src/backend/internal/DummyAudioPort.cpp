@@ -1,4 +1,5 @@
 #include "DummyAudioPort.h"
+#include "RustCommandQueue.h"
 #include "backend_rust/src/audio_port_cxx.rs.h"
 #include <algorithm>
 #include "fmt/format.h"
@@ -14,14 +15,14 @@ DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t directio
     : RustAudioPortF32(buffer_pool, 32),
       m_rust_dummy(backend_rust::new_dummy_audio_port(name, direction == ShoopPortDirection_Output, reinterpret_cast<size_t>(this))),
       m_dummy_port_core(name, direction, this, external_connections),
-      m_command_queue(100, 1000, 1000) { }
+      m_command_queue(rust_command_queue::make(100, 1000, 1000)) { }
 
 float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames) {
     return m_rust_dummy->proc_get_buffer(n_frames);
 }
 
 void DummyAudioPort::queue_data(uint32_t n_frames, audio_sample_t const *data) {
-    m_command_queue.queue_and_wait([this, n_frames, data]() {
+    rust_command_queue::queue_and_wait(m_command_queue, [this, n_frames, data]() {
         auto slice = rust::Slice<const float>(data, n_frames);
         m_rust_dummy->queue_data(n_frames, slice);
     });
@@ -29,7 +30,7 @@ void DummyAudioPort::queue_data(uint32_t n_frames, audio_sample_t const *data) {
 
 bool DummyAudioPort::get_queue_empty() {
     bool is_empty = false;
-    m_command_queue.queue_and_wait([this, &is_empty]() {
+    rust_command_queue::queue_and_wait(m_command_queue, [this, &is_empty]() {
         is_empty = m_rust_dummy->get_queue_empty();
     });
     return is_empty;
@@ -55,19 +56,19 @@ void DummyAudioPort::PROC_process(uint32_t n_frames) {
 }
 
 void DummyAudioPort::PROC_prepare(uint32_t n_frames) {
-    m_command_queue.PROC_exec_all();
+    rust_command_queue::exec_all(m_command_queue);
     m_rust_dummy->proc_prepare(n_frames);
 }
 
 void DummyAudioPort::request_data(uint32_t n_frames) {
-    m_command_queue.queue_and_wait([this, n_frames]() {
+    rust_command_queue::queue_and_wait(m_command_queue, [this, n_frames]() {
         m_rust_dummy->request_data(n_frames);
     });
 }
 
 std::vector<audio_sample_t> DummyAudioPort::dequeue_data(uint32_t n) {
     std::vector<audio_sample_t> rval;
-    m_command_queue.queue_and_wait([this, n, &rval]() {
+    rust_command_queue::queue_and_wait(m_command_queue, [this, n, &rval]() {
         auto rust_vec = m_rust_dummy->dequeue_data(n);
         rval.reserve(rust_vec.size());
         for (auto &sample : rust_vec) {

@@ -1,4 +1,5 @@
 #include "DummyMidiPort.h"
+#include "RustCommandQueue.h"
 
 #ifdef _WIN32
 #undef min
@@ -38,7 +39,7 @@ DummyMidiPort::DummyMidiPort(
 ) : MidiPort(true, true, true),
     m_rust(backend_rust::new_dummy_midi_port(direction == ShoopPortDirection_Output)),
     m_dummy_port_core(name, direction, this, external_connections),
-    m_command_queue(100, 1000, 1000) {}
+    m_command_queue(rust_command_queue::make(100, 1000, 1000)) {}
 
 unsigned DummyMidiPort::input_connectability() const {
     return (m_dummy_port_core.direction() == ShoopPortDirection_Input) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
@@ -69,7 +70,7 @@ void DummyMidiPort::request_data(uint32_t n_frames) {
 }
 
 void DummyMidiPort::PROC_prepare(uint32_t nframes) {
-    m_command_queue.PROC_exec_all();
+    rust_command_queue::exec_all(m_command_queue);
     m_rust->prepare(nframes);
     MidiPort::PROC_prepare(nframes);
 }

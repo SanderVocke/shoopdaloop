@@ -1,4 +1,5 @@
 #include <utility>
+#include "RustCommandQueue.h"
 #include "LoggingBackend.h"
 #include "MidiChannel.h"
 #include "MidiPort.h"
@@ -36,7 +37,7 @@ uint32_t MidiChannel::ExternalBufState::events_left() const {
 }
 
 MidiChannel::MidiChannel(uint32_t data_size, shoop_channel_mode_t mode)
-    : m_command_queue(50, 1000, 1000),
+    : m_command_queue(rust_command_queue::make(50, 1000, 1000)),
       mp_playback_target_buffer(std::make_pair(ExternalBufState(), nullptr)),
       mp_recording_source_buffer(std::make_pair(ExternalBufState(), nullptr)),
       mp_storage(shoop_make_shared<Storage>(data_size)),
@@ -129,7 +130,7 @@ MidiChannel::PROC_process(shoop_loop_mode_t mode, std::optional<shoop_loop_mode_
                   std::optional<uint32_t> maybe_next_mode_eta, uint32_t n_samples,
                   uint32_t pos_before, uint32_t pos_after, uint32_t length_before,
                   uint32_t length_after) {
-    m_command_queue.PROC_handle_command_queue();
+    rust_command_queue::exec_all(m_command_queue);
 
     auto process_params = get_channel_process_params(
         mode, maybe_next_mode, maybe_next_mode_delay_cycles,
@@ -370,7 +371,7 @@ MidiChannel::clear(bool thread_safe) {
         data_changed();
     };
     if (thread_safe) {
-        m_command_queue.exec_process_thread_command(fn);
+        rust_command_queue::queue_and_wait(m_command_queue, fn);
     } else {
         fn();
     }
@@ -572,7 +573,7 @@ MidiChannel::retrieve_contents(bool thread_safe) {
         state.copy_relevant_state(*mp_recording_start_state_tracker->state);
     };
     if (thread_safe) {
-        m_command_queue.exec_process_thread_command(fn);
+        rust_command_queue::queue_and_wait(m_command_queue, fn);
     } else {
         fn();
     }
@@ -621,7 +622,7 @@ MidiChannel::set_contents(Contents contents, uint32_t length_samples,
     };
 
     if (thread_safe) {
-        m_command_queue.exec_process_thread_command(fn);
+        rust_command_queue::queue_and_wait(m_command_queue, fn);
     } else {
         fn();
     }
@@ -730,7 +731,7 @@ MidiChannel::adopt_ringbuffer_contents(shoop_shared_ptr<PortInterface> from_port
     };
 
     if (thread_safe) {
-        m_command_queue.queue_process_thread_command(fn);
+        rust_command_queue::queue(m_command_queue, fn);
     } else {
         fn();
     }

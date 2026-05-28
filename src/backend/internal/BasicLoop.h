@@ -1,6 +1,6 @@
 #pragma once
 #include "LoopInterface.h"
-#include "CommandQueue.h"
+#include "RustCommandQueue.h"
 #include "LoggingEnabled.h"
 #include <deque>
 #include <atomic>
@@ -32,7 +32,7 @@ public:
     };
 
 protected:
-    CommandQueue m_command_queue;
+    rust::Box<backend_rust::CommandQueue> m_command_queue;
 
     std::optional<PointOfInterest> mp_next_poi = std::nullopt;
     std::optional<uint32_t> mp_next_trigger = std::nullopt;

@@ -10,21 +10,37 @@
 - [x] Build + test milestone: run `cargo test`
 - [x] Build + test milestone: run backend `test_runner`
 
-Refined execution sequence for full facade removal:
-- [x] Pass 1: Introduce a shared direct-Rust queue helper API for C++ callsites (new header/cpp), while keeping existing `CommandQueue` facade intact
-- [x] Pass 1 milestone: build and run `cargo test` + backend `test_runner`
-- [~] Pass 2: Migrate non-templated core classes to direct Rust queue ownership (`rust::Box<backend_rust::CommandQueue>`) and remove direct `CommandQueue` type dependencies in those classes (BackendSession migrated; AudioMidiDriver intentionally deferred to Pass 3 due broad derived/template dependency surface)
-- [x] Pass 2 milestone: build and run backend `test_runner`
-- [ ] Pass 3: Migrate templated/internal utility classes (`AudioChannel`, `BufferQueue`, etc.) and remaining callsites
-- [ ] Pass 3 milestone: build and run `cargo test` + backend `test_runner`
-- [ ] Pass 4: Remove legacy C++ `CommandQueue.h/.cpp` and update all includes/references
-- [ ] Pass 4 milestone: full build with `RUSTFLAGS="-D warnings" cargo build`
-- [ ] Pass 5: Add/extend tests for clear/drop cleanup, queue-and-wait, passthrough, inactivity fallback with C++-enqueued commands
-- [ ] Pass 5 milestone: run backend `test_runner`
-- [ ] Pass 6: Documentation cleanup for ownership/threading semantics and stale callback/SPSC wording
-- [ ] Pass 6 milestone: `cargo fmt --all`, `cargo test`, backend `test_runner`
-- [ ] Final milestone: run `./target/debug/shoopdaloop_dev.sh --self-test` (if environment allows)
+Migration insights applied:
+- Base-first migration (e.g. `AudioMidiDriver`) causes large template-derived breakage.
+- Safer path is helper-first call migration, then owner type migration, then facade deletion.
+- Keep dual compatibility shims temporarily (e.g. overloaded helper use in API glue) until all owners are migrated.
+
+Execution tracker (refined)
+- [x] Pass 1: Introduce shared direct-Rust queue helper API (`RustCommandQueue.h`) while keeping facade
+- [x] Pass 1 milestone: `cargo build`, `cargo test`, backend `test_runner`
+- [~] Pass 2: Migrate non-templated core owners incrementally
+  - [x] `BackendSession` migrated to direct `rust::Box<backend_rust::CommandQueue>` usage
+  - [ ] `AudioMidiDriver` migration deferred until template-derived callsites are migrated in same pass set
+- [x] Pass 2 milestone: build + backend `test_runner`
+
+Next concrete steps to reach full Rust migration
+- [~] Pass 3A: Migrate template/derived users to helper-call style (without changing owner type yet)
+  - [x] `DummyAudioMidiDriver.cpp`
+  - [x] `jack/JackAudioMidiDriver.cpp`
+  - [ ] other template-heavy queue callsites
+- [x] Pass 3A milestone: `cargo build`, backend `test_runner`
+- [ ] Pass 3B: Migrate `AudioMidiDriver` owner type to direct Rust queue after Pass 3A callsite compatibility
+- [ ] Pass 3B milestone: `cargo build`, `cargo test`, backend `test_runner`
+- [ ] Pass 4: Migrate remaining queue owners (`AudioChannel`, `MidiChannel`, `BasicLoop`, `BufferQueue`, `Dummy*Port`, etc.) to direct Rust box ownership
+- [ ] Pass 4 milestone: `cargo build`, `cargo test`, backend `test_runner`
+- [ ] Pass 5: Remove all remaining dependencies on C++ facade API methods and includes
+- [ ] Pass 6: Delete `src/backend/internal/CommandQueue.h/.cpp`, update build/source references
+- [ ] Pass 6 milestone: `RUSTFLAGS="-D warnings" cargo build`
+- [ ] Pass 7: Add/adjust tests for clear/drop cleanup and queue semantics through C++ enqueue path
+- [ ] Pass 7 milestone: backend `test_runner`
+- [ ] Pass 8: Documentation cleanup for ownership/threading semantics and stale comments
+- [ ] Final: `cargo fmt --all`, `cargo test`, backend `test_runner`, and `./target/debug/shoopdaloop_dev.sh --self-test`
 - [ ] Confirm no warnings, all tests passing, and migration complete
 
-Status note:
-- QML self-test previously aborted in this environment due to crash-handling startup (`Connection refused` then abort). If this persists, report as environment/runtime issue after all code-level milestones pass.
+Environment note
+- QML self-test may abort in this environment due to crash-handling startup (`Connection refused` then abort). If still present at final stage, report as runtime environment blocker with logs.

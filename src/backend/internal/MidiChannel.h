@@ -2,7 +2,7 @@
 #include "RustMidiStorage.h"
 #include "MidiBuffer.h"
 #include "ChannelInterface.h"
-#include "CommandQueue.h"
+#include "RustCommandQueue.h"
 #include "MidiStateTracker.h"
 #include "LoggingEnabled.h"
 #include "ProcessProfiling.h"
@@ -17,7 +17,7 @@ public:
     using StorageCursor = typename Storage::Cursor;
 
 private:
-    CommandQueue m_command_queue;
+    rust::Box<backend_rust::CommandQueue> m_command_queue;
 
     struct ExternalBufState {
         uint32_t n_events_total = 0;

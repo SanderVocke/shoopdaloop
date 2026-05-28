@@ -6,7 +6,6 @@
 #include "GraphAudioPort.h"
 #include "GraphMidiPort.h"
 #include "SerializeableStateInterface.h"
-#include "CommandQueue.h"
 #include "shoop_globals.h"
 #include "backend_rust/src/backend_api_cxx.rs.h"
 
@@ -32,7 +31,6 @@
 #include "MidiSortingBuffer.h"
 #include "PortInterface.h"
 #include "DecoupledMidiPort.h"
-#include "CommandQueue.h"
 #include "RustCommandQueue.h"
 #include "types.h"
 #include "BackendSession.h"
@@ -242,15 +240,6 @@ std::optional<shoop_audio_driver_type_t> audio_system_type(AudioMidiDriver *sys)
 // waiting for one process iteration and then getting it.
 // The use-case is if you think some result may already be there to use, but
 // if it isn't, you are sure it will be there after the next process thread iteration.
-template<typename RType>
-RType evaluate_before_or_after_process(std::function<RType()> fn, bool predicate, CommandQueue &queue) {
-    if (predicate) { return fn(); }
-    else {
-        queue.queue_and_wait([](){});
-        return fn();
-    }
-}
-
 template<typename RType>
 RType evaluate_before_or_after_process(std::function<RType()> fn, bool predicate, backend_rust::CommandQueue &queue) {
     if (predicate) { return fn(); }

@@ -1,4 +1,5 @@
 #include "BasicLoop.h"
+#include "RustCommandQueue.h"
 #include "LoggingBackend.h"
 #include "types.h"
 #include <cstring>
@@ -15,7 +16,7 @@
 #endif
 
 BasicLoop::BasicLoop() :
-        m_command_queue(100, 1000, 1000),
+        m_command_queue(rust_command_queue::make(100, 1000, 1000)),
         mp_next_poi(std::nullopt),
         mp_next_trigger(std::nullopt),
         ma_mode(LoopMode_Stopped),
@@ -147,7 +148,7 @@ void BasicLoop::PROC_process(uint32_t n_samples) {
     if (mp_next_poi && n_samples > mp_next_poi.value().when) {
         throw std::runtime_error("Attempted to process loop beyond its next POI.");
     }
-    m_command_queue.PROC_handle_command_queue();
+    rust_command_queue::exec_all(m_command_queue);
 
     ma_triggering_now = false;
     ma_already_triggered = false;
@@ -200,7 +201,7 @@ void BasicLoop::set_sync_source(shoop_shared_ptr<LoopInterface> const& src, bool
         PROC_update_trigger_eta();
     };
     if(thread_safe) {
-        m_command_queue.exec_process_thread_command(fn);
+        rust_command_queue::queue_and_wait(m_command_queue, fn);
     } else {
         fn();
     }
@@ -208,7 +209,7 @@ void BasicLoop::set_sync_source(shoop_shared_ptr<LoopInterface> const& src, bool
 shoop_shared_ptr<LoopInterface> BasicLoop::get_sync_source(bool thread_safe) {
     if(thread_safe) {
         shoop_shared_ptr<LoopInterface> rval;
-        m_command_queue.exec_process_thread_command([this, &rval]() { rval = mp_sync_source; });
+        rust_command_queue::queue_and_wait(m_command_queue, [this, &rval]() { rval = mp_sync_source; });
         return rval;
     }
     return mp_sync_source;
@@ -284,7 +285,7 @@ void BasicLoop::PROC_handle_transition(shoop_loop_mode_t new_state) {
 uint32_t BasicLoop::get_n_planned_transitions(bool thread_safe) {
     if (thread_safe) {
         uint32_t rval;
-        m_command_queue.exec_process_thread_command([this, &rval]() { rval = mp_planned_states.size(); });
+        rust_command_queue::queue_and_wait(m_command_queue, [this, &rval]() { rval = mp_planned_states.size(); });
         return rval;
     }
     return mp_planned_states.size();
@@ -299,7 +300,7 @@ uint32_t BasicLoop::get_planned_transition_delay(uint32_t idx, bool thread_safe)
         rval = mp_planned_state_countdowns.at(idx);
     };
     if (thread_safe) {
-        m_command_queue.exec_process_thread_command(fn);
+        rust_command_queue::queue_and_wait(m_command_queue, fn);
     } else {
         fn();
     }
@@ -315,7 +316,7 @@ shoop_loop_mode_t BasicLoop::get_planned_transition_state(uint32_t idx, bool thr
         rval = mp_planned_states.at(idx);
     };
     if (thread_safe) {
-        m_command_queue.exec_process_thread_command(fn);
+        rust_command_queue::queue_and_wait(m_command_queue, fn);
     } else {
         fn();
     }
@@ -330,7 +331,7 @@ void BasicLoop::clear_planned_transitions(bool thread_safe) {
         PROC_update_planned_transition_cache();
     };
     if (thread_safe) {
-        m_command_queue.exec_process_thread_command(fn);
+        rust_command_queue::queue_and_wait(m_command_queue, fn);
     } else {
         fn();
     }
@@ -387,7 +388,7 @@ void BasicLoop::plan_transition(
         PROC_update_planned_transition_cache();
         PROC_update_trigger_eta();
     };
-    if (thread_safe) { m_command_queue.exec_process_thread_command(fn); }
+    if (thread_safe) { rust_command_queue::queue_and_wait(m_command_queue, fn); }
     else { fn(); }
 }
 
@@ -406,7 +407,7 @@ void BasicLoop::set_position(uint32_t position, bool thread_safe) {
             PROC_update_trigger_eta();
         }
     };
-    if (thread_safe) { m_command_queue.exec_process_thread_command(fn); }
+    if (thread_safe) { rust_command_queue::queue_and_wait(m_command_queue, fn); }
     else { fn(); }
 }
 
@@ -446,7 +447,7 @@ void BasicLoop::set_length(uint32_t len, bool thread_safe) {
             PROC_update_trigger_eta();
         }
     };
-    if (thread_safe) { m_command_queue.exec_process_thread_command(fn); }
+    if (thread_safe) { rust_command_queue::queue_and_wait(m_command_queue, fn); }
     else { fn(); }
 }
 
@@ -457,7 +458,7 @@ void BasicLoop::set_mode(shoop_loop_mode_t mode, bool thread_safe) {
         log<log_level_debug_trace>("apply set mode: {}", (int)mode);
         PROC_handle_transition(mode);
     };
-    if (thread_safe) { m_command_queue.exec_process_thread_command(fn); }
+    if (thread_safe) { rust_command_queue::queue_and_wait(m_command_queue, fn); }
     else { fn(); }
 }
 

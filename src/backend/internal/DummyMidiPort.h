@@ -4,7 +4,7 @@
 #include "DummyPort.h"
 #include "PortInterface.h"
 #include "LoggingEnabled.h"
-#include "CommandQueue.h"
+#include "RustCommandQueue.h"
 #include "MidiBuffer.h"
 #include "IMidiReadableBuffer.h"
 #include "IMidiWriteableBuffer.h"
@@ -37,7 +37,7 @@ private:
 
     // Composition replacing former base classes
     DummyPortCore m_dummy_port_core;
-    CommandQueue  m_command_queue;
+    rust::Box<backend_rust::CommandQueue> m_command_queue;
 
 public:
     // MidiReadableBuffer interface implementation

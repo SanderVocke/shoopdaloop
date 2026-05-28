@@ -2,8 +2,9 @@
 #include "ChannelInterface.h"
 #include "BufferPool.h"
 #include "AudioBuffer.h"
-#include "CommandQueue.h"
+#include "RustCommandQueue.h"
 #include "LoggingEnabled.h"
+#include <boost/lockfree/spsc_queue.hpp>
 #include <stdint.h>
 #include <vector>
 #include "shoop_shared_ptr.h"
@@ -17,7 +18,7 @@ public:
     typedef shoop_shared_ptr<BufferObj> Buffer;
 
 private:
-    CommandQueue m_command_queue;
+    rust::Box<backend_rust::CommandQueue> m_command_queue;
 
     struct Buffers;
 

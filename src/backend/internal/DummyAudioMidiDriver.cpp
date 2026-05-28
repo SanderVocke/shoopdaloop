@@ -9,6 +9,7 @@
 #include <string>
 #include <thread>
 #include "DummyAudioMidiDriver.h"
+#include "RustCommandQueue.h"
 #include <map>
 
 #ifdef _WIN32
@@ -39,7 +40,7 @@ DummyAudioMidiDriverMode DummyAudioMidiDriver<Time, Size>::get_mode() const {
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::controlled_mode_request_samples(uint32_t samples) {
-    this->m_command_queue.exec_process_thread_command([this, samples]() {
+    rust_command_queue::queue_and_wait(this->m_command_queue, [this, samples]() {
         m_rust->controlled_mode_request_samples(samples);
         uint32_t requested = m_rust->get_controlled_mode_samples_to_process();
         Log::log<log_level_debug>("DummyAudioMidiDriver: request {} samples ({} total)", samples, requested);
@@ -84,7 +85,7 @@ void DummyAudioMidiDriver<Time, Size>::start(
 
     // Processing the command queue once will ensure that it knows processing is active.
     // That way commands added from now on will be executed on the process thread.
-    this->m_command_queue.PROC_exec_all();
+    rust_command_queue::exec_all(this->m_command_queue);
 
     m_proc_thread = std::thread([this] {
         Log::log<log_level_debug>("Starting process thread - {}", mode_names.at((DummyAudioMidiDriverMode)m_rust->get_mode()));
@@ -94,7 +95,7 @@ void DummyAudioMidiDriver<Time, Size>::start(
         float time_taken = 0.0f;
         while (!m_rust->is_finish()) {
             std::this_thread::sleep_for(std::chrono::microseconds((uint32_t)std::ceil(std::max(0.0f, micros - time_taken))));
-            this->m_command_queue.PROC_handle_command_queue();
+            rust_command_queue::exec_all(this->m_command_queue);
             if (!m_rust->is_paused()) {
                 auto start = std::chrono::high_resolution_clock::now();
                 auto mode = (DummyAudioMidiDriverMode)m_rust->get_mode();
