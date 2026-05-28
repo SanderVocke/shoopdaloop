@@ -15,14 +15,21 @@
   - nuance: CXX trampoline symbol definitions were placed in `AudioMidiDriver.cpp` (with dedicated header) to avoid link visibility/order issues for backend test targets.
   - nuance: `cargo test` reported existing toolchain warning (`gold linker is deprecated`), not introduced by this change.
 
-- [ ] Move dummy processing thread/timing loop from C++ to Rust runtime (`DummyAudioMidiDriver` control object)
-- [ ] Keep C++ `DummyAudioMidiDriver` public methods/signatures intact; delegate to Rust
-- [ ] Preserve pause/resume/finish/controlled-mode semantics and wait behavior
-- [ ] Build/test milestone: `cargo build`, `cargo test`, backend `test_runner`
+- [x] Move dummy processing thread/timing loop from C++ to Rust runtime (`DummyAudioMidiDriver` control object)
+- [x] Keep C++ `DummyAudioMidiDriver` public methods/signatures intact; delegate to Rust
+- [x] Preserve pause/resume/finish/controlled-mode semantics and wait behavior
+- [x] Build/test milestone: `cargo build`, `cargo test`, backend `test_runner`
+  - nuance: Rust thread currently drives `exec_commands` + `process(nframes)` via C++ trampolines using `AudioMidiDriver` base pointer.
+  - nuance: C++ `m_proc_thread` member remains in class for now (unused) to minimize header churn; cleanup can be done in thin-wrapper pass.
+  - nuance: controlled-mode advancement moved into Rust thread loop; legacy C++ path removed from runtime loop.
+  - nuance: one semantic parity check remains open: exact historical self-join/detach behavior (now always join via Rust-managed thread stop path).
 
-- [ ] Keep C++ port object creation/return types unchanged (`DummyAudioPort`, `DummyMidiPort`)
-- [ ] Migrate only internal driver bookkeeping to Rust where needed via opaque handles
-- [ ] Build/test milestone: `cargo build`, backend `test_runner`
+- [x] Keep C++ port object creation/return types unchanged (`DummyAudioPort`, `DummyMidiPort`)
+- [x] Migrate only internal driver bookkeeping to Rust where needed via opaque handles
+- [x] Build/test milestone: `cargo build`, backend `test_runner`
+  - nuance: for minimal churn, existing C++ `m_audio_ports`/`m_midi_ports` ownership sets are intentionally retained; no external interface impact.
+  - [x] `cargo build`
+  - [x] backend `test_runner`
 
 - [ ] Migrate decoupled MIDI registration ownership/bookkeeping to Rust runtime
 - [ ] Verify unregister/close lifecycle safety with command queue thread constraints

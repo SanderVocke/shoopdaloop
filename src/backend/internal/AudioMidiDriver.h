@@ -106,6 +106,10 @@ public:
 
     virtual void wait_process();
 
+    // Trampoline helpers for Rust-owned process loops
+    void trampoline_exec_commands() { rust_command_queue::exec_all(*m_command_queue); }
+    void trampoline_process(uint32_t nframes) { PROC_process(nframes); }
+
     // Command queue forwarding (for external API usage)
     void queue_process_thread_command(std::function<void()> fn) { rust_command_queue::queue(*m_command_queue, std::move(fn)); }
     void exec_process_thread_command(std::function<void()> fn) { rust_command_queue::queue_and_wait(*m_command_queue, std::move(fn)); }
