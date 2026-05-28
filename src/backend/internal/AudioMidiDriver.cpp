@@ -6,7 +6,7 @@
 
 AudioMidiDriver::AudioMidiDriver(void (*maybe_process_callback)()) :
   m_rust_core(backend_rust::new_audio_midi_driver_core()),
-  m_command_queue(shoop_constants::command_queue_size, 1000, 1000),
+  m_command_queue(rust_command_queue::make(shoop_constants::command_queue_size, 1000, 1000)),
   m_processors(shoop_make_shared<std::vector<shoop_weak_ptr<HasAudioProcessingFunction>>>()),
   m_maybe_process_callback(maybe_process_callback)
 {
@@ -42,7 +42,7 @@ void AudioMidiDriver::PROC_process(uint32_t nframes) {
     if (m_maybe_process_callback) {
         m_maybe_process_callback();
     }
-    m_command_queue.PROC_handle_command_queue();
+    rust_command_queue::exec_all(*m_command_queue);
     PROC_process_decoupled_midi_ports(nframes);
     auto ps_lock = m_processors;
     for(auto & weak_p : *ps_lock) {
@@ -63,7 +63,7 @@ float AudioMidiDriver::get_dsp_load() {
 }
 
 void AudioMidiDriver::unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port) {
-    m_command_queue.exec_process_thread_command([this, port]() {
+    rust_command_queue::queue_and_wait(*m_command_queue, [this, port]() {
         m_decoupled_midi_ports.erase(port);
     });
 }
@@ -146,9 +146,9 @@ void AudioMidiDriver::wait_process() {
     // a small delay in-between. Each command will end up in a separate process
     // iteration.
     log<log_level_debug_trace>("AudioMidiDriver::wait_process");
-    m_command_queue.exec_process_thread_command([]() { ; });
+    rust_command_queue::queue_and_wait(*m_command_queue, []() { ; });
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    m_command_queue.exec_process_thread_command([]() { ; });
+    rust_command_queue::queue_and_wait(*m_command_queue, []() { ; });
     log<log_level_debug_trace>("AudioMidiDriver::wait_process done");
 }
 
@@ -160,6 +160,6 @@ shoop_shared_ptr<shoop_types::_DecoupledMidiPort> AudioMidiDriver::open_decouple
         weak_from_this(),
         decoupled_midi_port_queue_size,
         direction);
-    m_command_queue.queue_process_thread_command([this, decoupled](){ m_decoupled_midi_ports.insert(decoupled); });
+    rust_command_queue::queue(*m_command_queue, [this, decoupled](){ m_decoupled_midi_ports.insert(decoupled); });
     return decoupled;
 }

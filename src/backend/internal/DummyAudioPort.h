@@ -4,7 +4,7 @@
 #include "DummyPort.h"
 #include "PortInterface.h"
 #include "LoggingEnabled.h"
-#include "CommandQueue.h"
+#include "RustCommandQueue.h"
 #include "types.h"
 #include "backend_rust/src/dummy_audio_port_cxx.rs.h"
 #include <memory>
@@ -19,7 +19,7 @@ class DummyAudioPort : public RustAudioPortF32,
 
     // Composition replacing former base classes
     DummyPortCore m_dummy_port_core;
-    CommandQueue  m_command_queue;
+    rust::Box<backend_rust::CommandQueue> m_command_queue;
 
 public:
     DummyAudioPort(

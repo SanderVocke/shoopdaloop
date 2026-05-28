@@ -4,7 +4,7 @@
 #include <functional>
 #include "LoggingEnabled.h"
 #include "AudioMidiDriver.h"
-#include "CommandQueue.h"
+#include "RustCommandQueue.h"
 #include "shoop_globals.h"
 #include "types.h"
 #include <set>
@@ -57,7 +57,7 @@ public:
     shoop_shared_ptr<profiling::ProfilingItem> graph_profiling_item = nullptr;
     shoop_shared_ptr<profiling::ProfilingItem> cmds_profiling_item = nullptr;
 
-    CommandQueue m_command_queue;
+    rust::Box<backend_rust::CommandQueue> m_command_queue;
 
     // For updating the graph. When node changes are pending, change
     // the update_id. The process thread will trigger a recalculation
@@ -100,7 +100,7 @@ public:
     void wait_graph_up_to_date();
 
     // Command queue forwarding (for external API usage)
-    void queue_process_thread_command(std::function<void()> fn) { m_command_queue.queue_process_thread_command(std::move(fn)); }
-    void exec_process_thread_command(std::function<void()> fn) { m_command_queue.exec_process_thread_command(std::move(fn)); }
-    CommandQueue &get_command_queue() { return m_command_queue; }
+    void queue_process_thread_command(std::function<void()> fn) { rust_command_queue::queue(*m_command_queue, std::move(fn)); }
+    void exec_process_thread_command(std::function<void()> fn) { rust_command_queue::queue_and_wait(*m_command_queue, std::move(fn)); }
+    backend_rust::CommandQueue &get_command_queue() { return *m_command_queue; }
 };

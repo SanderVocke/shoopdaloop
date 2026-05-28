@@ -247,6 +247,8 @@ find_package(nlohmann_json CONFIG REQUIRED)
 
 # Dependencies provided by in-repo Rust CXX bridges
 include_directories(${BACKEND_RUST_CXX_INCLUDE})
+# Bridge-facing headers used by cxx::bridge include!(...) declarations
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../rust/backend_rust/src)
 link_directories(${BACKEND_RUST_CXX_LIBDIR})
 
 # Define the backend_rust_cxx library explicitly as imported

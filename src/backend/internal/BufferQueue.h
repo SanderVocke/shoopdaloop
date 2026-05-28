@@ -5,7 +5,7 @@
 
 #include "AudioBuffer.h"
 #include "BufferPool.h"
-#include "CommandQueue.h"
+#include "RustCommandQueue.h"
 #include "LoggingEnabled.h"
 #include "shoop_shared_ptr.h"
 
@@ -17,7 +17,7 @@ public:
     typedef shoop_shared_ptr<BufferObj> SharedBuffer;
 
 private:
-    CommandQueue m_command_queue;
+    rust::Box<backend_rust::CommandQueue> m_command_queue;
     shoop_shared_ptr<std::deque<SharedBuffer>> buffers;
     shoop_shared_ptr<UsedBufferPool> pool = nullptr;
     std::atomic<uint32_t> ma_active_buffer_pos = 0;
