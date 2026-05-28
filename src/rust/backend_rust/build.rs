@@ -46,8 +46,14 @@ fn main() {
     println!("cargo:rerun-if-changed=src/backend_api_cxx.rs");
 
     println!("cargo:rerun-if-changed=src/command_queue_cxx.rs");
-    println!("cargo:rerun-if-changed={}/internal/CommandToken.cpp", backend_include);
-    println!("cargo:rerun-if-changed={}/internal/CommandToken.h", backend_include);
+    println!(
+        "cargo:rerun-if-changed={}/internal/CommandToken.cpp",
+        backend_include
+    );
+    println!(
+        "cargo:rerun-if-changed={}/internal/CommandToken.h",
+        backend_include
+    );
     println!("cargo:rerun-if-changed=src/midi_state_diff_tracker_cxx.rs");
     println!("cargo:rerun-if-changed=src/midi_storage_cxx.rs");
     println!("cargo:rerun-if-changed=src/midi_sorting_buffer_cxx.rs");
