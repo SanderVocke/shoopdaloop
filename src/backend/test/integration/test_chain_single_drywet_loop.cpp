@@ -556,16 +556,17 @@ TEST_CASE("Chain - DryWet adopt audio ringbuffer - no sync loop", "[chain][audio
 
     // Since the sync loop is empty, the fallback behavior here should be that the
     // whole ringbuffer is adopted and start offset is 0.
-    auto n_ringbuffer_samples = tst.int_dummy_input_port->get_ringbuffer_n_samples();
+    auto dry_n_ringbuffer_samples = tst.int_dummy_input_port->get_ringbuffer_n_samples();
+    auto wet_n_ringbuffer_samples = tst.int_fx_out->get_port().get_ringbuffer_n_samples();
     auto dry_data = tst.int_dry_audio_chan->get_data(true);
     auto wet_data = tst.int_wet_audio_chan->get_data(true);
     
     CHECK(tst.int_dry_audio_chan->get_start_offset() == 0);
     CHECK(tst.int_wet_audio_chan->get_start_offset() == 0);
-    CHECK(tst.int_loop->loop->get_length() == n_ringbuffer_samples);
+    CHECK(tst.int_loop->loop->get_length() == dry_n_ringbuffer_samples);
 
-    REQUIRE(dry_data.size() == n_ringbuffer_samples);
-    REQUIRE(wet_data.size() == n_ringbuffer_samples);
+    REQUIRE(dry_data.size() == dry_n_ringbuffer_samples);
+    REQUIRE(wet_data.size() == wet_n_ringbuffer_samples);
     auto last_eight_dry = std::vector<float>(dry_data.end() - 8, dry_data.end());
     auto last_eight_wet = std::vector<float>(wet_data.end() - 8, wet_data.end());
     CHECK(last_eight_dry == input_data);
