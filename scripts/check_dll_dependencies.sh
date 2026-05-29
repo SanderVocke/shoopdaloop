@@ -85,15 +85,6 @@ MODULES_OUTPUT=$(Dependencies.exe -modules "$EXE_PATH" 2>&1) || DEPS_EXIT_CODE=$
 echo "$MODULES_OUTPUT"
 echo ""
 
-# Note about Windows API Set DLLs and optional components
-NOT_FOUND_IGNORED=$(echo "$MODULES_OUTPUT" | grep -cE "\[NOT_FOUND\].*$IGNORE_DLLS_PATTERN" || true)
-if [[ "$NOT_FOUND_IGNORED" -gt 0 ]]; then
-    echo "Note: $NOT_FOUND_IGNORED [NOT_FOUND] entries are being ignored:"
-    echo "- Windows API Set DLLs (ext-ms-*, api-ms-*) - virtual DLLs resolved by OS"
-    echo "- Optional Windows components (HvsiFileTrust, UpdateAPI, WFDSConMgr)"
-    echo ""
-fi
-
 # Analyze for unresolved/missing dependencies
 # Common patterns in Dependencies output for missing DLLs:
 # - "not found"
@@ -113,6 +104,15 @@ fi
 API_SET_PATTERN="ext-ms-|api-ms-"
 OPTIONAL_WINDOWS_DLLS="HvsiFileTrust|UpdateAPI|WFDSConMgr|wpaxholder"
 IGNORE_DLLS_PATTERN="$API_SET_PATTERN|$OPTIONAL_WINDOWS_DLLS"
+
+# Note about Windows API Set DLLs and optional components
+NOT_FOUND_IGNORED=$(echo "$MODULES_OUTPUT" | grep -cE "\[NOT_FOUND\].*$IGNORE_DLLS_PATTERN" || true)
+if [[ "$NOT_FOUND_IGNORED" -gt 0 ]]; then
+    echo "Note: $NOT_FOUND_IGNORED [NOT_FOUND] entries are being ignored:"
+    echo "- Windows API Set DLLs (ext-ms-*, api-ms-*) - virtual DLLs resolved by OS"
+    echo "- Optional Windows components (HvsiFileTrust, UpdateAPI, WFDSConMgr)"
+    echo ""
+fi
 
 HAS_ISSUES=false
 

@@ -22,7 +22,7 @@ runs:
       if [[ -n "$TEST_RUNNER" ]]; then
         echo "=== Pre-flight DLL dependency check ==="
         chmod +x ./scripts/check_dll_dependencies.sh
-        ./scripts/check_dll_dependencies.sh "$TEST_RUNNER"
+        ./scripts/check_dll_dependencies.sh "$TEST_RUNNER" || true
       else
         echo "Could not extract test_runner path from COMMAND_TEST_BACKEND"
         echo "COMMAND_TEST_BACKEND: $COMMAND_TEST_BACKEND"

@@ -42,7 +42,15 @@ if [[ $IS_WINDOWS -eq 1 ]]; then
     STDERR_CAPTURE_FILE="/tmp/run_with_timeout_stderr_$$"
     echo "[run_with_timeout] Windows detected: stderr will be captured to $STDERR_CAPTURE_FILE"
 fi
-# echo "[run_with_timeout] DEBUG: IS_WINDOWS=$IS_WINDOWS, uname=$(uname -s)"
+
+# macOS/BSD ps may not support "sid" output field name; use "sess" there.
+PS_SESSION_FIELD="sid"
+if [[ $IS_WINDOWS -eq 0 ]]; then
+    if ! ps -o sid= -p $$ >/dev/null 2>&1; then
+        PS_SESSION_FIELD="sess"
+    fi
+fi
+# echo "[run_with_timeout] DEBUG: IS_WINDOWS=$IS_WINDOWS, uname=$(uname -s), PS_SESSION_FIELD=$PS_SESSION_FIELD"
 
 # Helper function to format seconds as human-readable
 format_time() {
@@ -271,7 +279,7 @@ dump_process_tree() {
         fi
         echo "[run_with_timeout]   Session processes (sid=${STORED_SID:-N/A}):"
         if [[ -n "${STORED_SID:-}" ]]; then
-            ps -s "$STORED_SID" -o pid,ppid,pgid,sid,comm,args 2>/dev/null || true
+            ps -s "$STORED_SID" -o pid,ppid,pgid,${PS_SESSION_FIELD},comm,args 2>/dev/null || true
         fi
     fi
 }
@@ -694,8 +702,10 @@ STORED_Pgid=""
 if [[ $IS_WINDOWS -eq 0 ]]; then
     # Wait a tiny bit for the process to fully start
     sleep 0.1
-    STORED_SID=$(ps -o sid= -p $CHILD_PID 2>/dev/null | tr -d ' ') || true
+    STORED_SID=$(ps -o ${PS_SESSION_FIELD}= -p $CHILD_PID 2>/dev/null | tr -d ' ') || true
     STORED_Pgid=$(ps -o pgid= -p $CHILD_PID 2>/dev/null | tr -d ' ') || true
+    if [[ ! "${STORED_SID:-}" =~ ^[0-9]+$ ]]; then STORED_SID=""; fi
+    if [[ ! "${STORED_Pgid:-}" =~ ^[0-9]+$ ]]; then STORED_Pgid=""; fi
     echo "[run_with_timeout] Stored Session: ${STORED_SID:-unknown}, Stored Process Group: ${STORED_Pgid:-unknown}"
 else
     : # echo "[run_with_timeout] DEBUG: Windows path: skipping sid/pgid storage (not applicable)"
