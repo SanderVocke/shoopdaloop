@@ -37,15 +37,22 @@ runs:
     shell: wrap-shell {0}
     run: |
       echo "=== Checking for minidump ==="
-      find crash_handler_test_dumps -name "*.dmp" -type f
-      if [ $(find crash_handler_test_dumps -name "*.dmp" -type f | wc -l) -gt 0 ]; then
-        echo "MINIDUMP_FOUND=true" | tee -a $GITHUB_OUTPUT
-        echo "SUCCESS: Minidump file was created"
-      else
-        echo "MINIDUMP_FOUND=false" | tee -a $GITHUB_OUTPUT
-        echo "FAILURE: No minidump file found in crash_handler_test_dumps/"
-        exit 1
-      fi
+      for i in 1 2 3 4 5; do
+        find crash_handler_test_dumps -name "*.dmp" -type f
+        if [ $(find crash_handler_test_dumps -name "*.dmp" -type f | wc -l) -gt 0 ]; then
+          echo "MINIDUMP_FOUND=true" | tee -a $GITHUB_OUTPUT
+          echo "SUCCESS: Minidump file was created"
+          break
+        fi
+        if [ "$i" -lt 5 ]; then
+          echo "Minidump not found yet, retrying in 1s ($i/5)..."
+          sleep 1
+        else
+          echo "MINIDUMP_FOUND=false" | tee -a $GITHUB_OUTPUT
+          echo "FAILURE: No minidump file found in crash_handler_test_dumps/"
+          exit 1
+        fi
+      done
 
   - name: Check for QML stack trace attachment
     if: always()
@@ -53,17 +60,24 @@ runs:
     run: |
       echo "=== Checking for QML stack trace attachment ==="
       # The QML stack trace is written as a separate attachment file with pattern: *.dmp.attach.qml_stack
-      find crash_handler_test_dumps -name "*.dmp.attach.qml_stack" -type f
-      if [ $(find crash_handler_test_dumps -name "*.dmp.attach.qml_stack" -type f | wc -l) -gt 0 ]; then
-        echo "QML_STACK_FOUND=true" | tee -a $GITHUB_OUTPUT
-        echo "SUCCESS: QML stack trace attachment file was created"
-        echo "=== QML stack content preview ==="
-        head -50 "$(find crash_handler_test_dumps -name '*.dmp.attach.qml_stack' | head -n1)"
-      else
-        echo "QML_STACK_FOUND=false" | tee -a $GITHUB_OUTPUT
-        echo "FAILURE (IGNORED): QML stack trace attachment file not found"
-        exit 0
-      fi
+      for i in 1 2 3 4 5; do
+        find crash_handler_test_dumps -name "*.dmp.attach.qml_stack" -type f
+        if [ $(find crash_handler_test_dumps -name "*.dmp.attach.qml_stack" -type f | wc -l) -gt 0 ]; then
+          echo "QML_STACK_FOUND=true" | tee -a $GITHUB_OUTPUT
+          echo "SUCCESS: QML stack trace attachment file was created"
+          echo "=== QML stack content preview ==="
+          head -50 "$(find crash_handler_test_dumps -name '*.dmp.attach.qml_stack' | head -n1)"
+          break
+        fi
+        if [ "$i" -lt 5 ]; then
+          echo "QML stack attachment not found yet, retrying in 1s ($i/5)..."
+          sleep 1
+        else
+          echo "QML_STACK_FOUND=false" | tee -a $GITHUB_OUTPUT
+          echo "FAILURE (IGNORED): QML stack trace attachment file not found"
+          exit 0
+        fi
+      done
 
   - name: Verify app crashed as expected
     if: always()
