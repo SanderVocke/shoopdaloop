@@ -55,3 +55,31 @@ TEST_CASE("LibShoopdaloop - Channels not destroyed with loop", "[LibShoopdaloop]
         destroy_backend_session(c_backend);
     }
 };
+
+TEST_CASE("LibShoopdaloop - Decoupled MIDI stale handle access is safe", "[LibShoopdaloop][midi][decoupled]") {
+    shoop_audio_driver_t *c_driver = create_audio_driver(Dummy, nullptr);
+    shoop_dummy_audio_driver_settings_t settings{};
+    settings.sample_rate = 48000;
+    settings.buffer_size = 256;
+    settings.client_name = "test";
+    start_dummy_driver(c_driver, settings);
+
+    auto c_port = open_decoupled_midi_port(c_driver, "decoupled", ShoopPortDirection_Output);
+    REQUIRE(c_port != nullptr);
+
+    close_decoupled_midi_port(c_port);
+
+    // Stale-handle API calls should not crash and should return safe defaults.
+    auto ev = maybe_next_message(c_port);
+    CHECK(ev == nullptr);
+
+    auto name = get_decoupled_midi_port_name(c_port);
+    CHECK(name != nullptr);
+
+    auto state = get_decoupled_midi_port_connections_state(c_port);
+    CHECK(state != nullptr);
+    destroy_port_connections_state(state);
+
+    destroy_shoopdaloop_decoupled_midi_port(c_port);
+    destroy_audio_driver(c_driver);
+}

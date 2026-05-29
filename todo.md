@@ -1,52 +1,52 @@
-- [ ] Confirm current baseline: `cargo build`, `cargo test`, backend `test_runner`
-- [x] Add/extend Rust runtime type for `AudioMidiDriver` orchestration in `src/rust/backend_rust/src/`
-- [x] Add CXX bridge API for Rust runtime process-cycle entrypoint and handle registration/removal
-- [x] Add C++ trampoline functions callable from Rust for:
-  - [x] `HasAudioProcessingFunction::PROC_process`
-  - [x] `DecoupledMidiPort::PROC_process`
-  - [x] process callback thunk and command queue exec thunk
-- [x] Refactor `AudioMidiDriver::PROC_process` to thin Rust-forwarding wrapper
-- [x] Forward processor and decoupled-port bookkeeping to Rust runtime handle sets while preserving C++ API
-- [x] Build/test milestone: `cargo build`, `cargo test`, backend `test_runner`
+- [x] Baseline sanity before next migration steps:
   - [x] `cargo build`
-  - [x] `cargo test`
-  - [x] backend `test_runner`
-  - nuance: C++ still keeps `m_processors` weak-list for `processors()` API compatibility; process-cycle execution path now runs through Rust runtime callbacks.
-  - nuance: CXX trampoline symbol definitions were placed in `AudioMidiDriver.cpp` (with dedicated header) to avoid link visibility/order issues for backend test targets.
-  - nuance: `cargo test` reported existing toolchain warning (`gold linker is deprecated`), not introduced by this change.
-
-- [x] Move dummy processing thread/timing loop from C++ to Rust runtime (`DummyAudioMidiDriver` control object)
-- [x] Keep C++ `DummyAudioMidiDriver` public methods/signatures intact; delegate to Rust
-- [x] Preserve pause/resume/finish/controlled-mode semantics and wait behavior
-- [x] Build/test milestone: `cargo build`, `cargo test`, backend `test_runner`
-  - nuance: Rust thread currently drives `exec_commands` + `process(nframes)` via C++ trampolines using `AudioMidiDriver` base pointer.
-  - nuance: C++ `m_proc_thread` member remains in class for now (unused) to minimize header churn; cleanup can be done in thin-wrapper pass.
-  - nuance: controlled-mode advancement moved into Rust thread loop; legacy C++ path removed from runtime loop.
-  - nuance: one semantic parity check remains open: exact historical self-join/detach behavior (now always join via Rust-managed thread stop path).
-
-- [x] Keep C++ port object creation/return types unchanged (`DummyAudioPort`, `DummyMidiPort`)
-- [x] Migrate only internal driver bookkeeping to Rust where needed via opaque handles
-- [x] Build/test milestone: `cargo build`, backend `test_runner`
-  - nuance: for minimal churn, existing C++ `m_audio_ports`/`m_midi_ports` ownership sets are intentionally retained; no external interface impact.
-  - [x] `cargo build`
-  - [x] backend `test_runner`
-
-- [x] Migrate decoupled MIDI registration ownership/bookkeeping to Rust runtime
-- [x] Verify unregister/close lifecycle safety with command queue thread constraints
-- [x] Build/test milestone: `cargo build`, `cargo test`, backend `test_runner`
-  - [x] `cargo build`
-  - [x] `cargo test`
-  - [x] backend `test_runner`
-  - nuance: removed dead C++-side decoupled processing helper (`PROC_process_decoupled_midi_ports`); runtime processing now exclusively flows through Rust `process_cycle` callbacks.
-
-- [x] Thin-wrapper cleanup pass in C++ (`AudioMidiDriver*`, `DummyAudioMidiDriver*`)
-- [x] Update comments/docs for new Rust-vs-C++ responsibility split
-
-- [x] Final formatting and strict warning gate: `cargo fmt --all` then `RUSTFLAGS="-D warnings" cargo build`
-- [x] Final tests: `cargo test`, backend `test_runner`, `./target/debug/shoopdaloop_dev.sh --self-test` (if environment supports it)
   - [x] `cargo test`
   - [x] backend `test_runner`
   - [x] `./target/debug/shoopdaloop_dev.sh --self-test`
-  - nuance: fixed decoupled MIDI lifetime/race crash by reintroducing C++ keepalive ownership set while ports are registered on Rust runtime handle list.
-- [x] Confirm final state: all tests passing, no warnings, C++ wrappers thin, behavior preserved
-  - nuance: project still emits existing environment/toolchain warning during `cargo test` about deprecated gold linker; strict warnings gate build passed with `RUSTFLAGS='-D warnings'`.
+  - nuance: ran as one end-to-end command chain; self-test passed (186/186).
+
+- [x] Phase A: Add regression coverage for decoupled MIDI lifetime/race behavior
+  - [x] Add backend tests for close/unregister during active processing
+  - [x] Add repeated open/close + message queue stress test
+  - [x] Add stale handle access behavior tests in API layer where applicable
+  - [x] Milestone: `cargo test`, backend `test_runner`, self-test
+    - [x] `cargo test`
+    - [x] backend `test_runner`
+    - [x] self-test
+  - nuance: implemented as new unit test `DummyAudioMidiDriver - decoupled midi open/close stress` in `test_DummyAudioMidiDriver.cpp` (200 open/close/unregister iterations while processing).
+  - nuance: added API-level stale-handle safety test in `test_libshoopdaloop_if.cpp`; after close, stale operations are asserted to be safe (no crash) with current returned default values.
+
+- [ ] Phase B: Move decoupled MIDI ownership to Rust-managed lifecycle
+  - [ ] Introduce Rust-side decoupled port registry/handle ownership
+  - [ ] Refactor C++ decoupled wrapper to thin handle-forwarding role
+  - [ ] Route pop/push/process/close through Rust-owned state
+  - [ ] Remove C++ decoupled keepalive set once safety is guaranteed
+  - [ ] Milestone: `cargo build`, `cargo test`, backend `test_runner`, self-test
+
+- [ ] Phase C: Formalize processor callback handle lifecycle
+  - [ ] Replace raw pointer assumptions with explicit stable registration handles/tokens
+  - [ ] Guarantee safe unregister semantics under concurrent process-thread activity
+  - [ ] Keep trampoline callback behavior but with stricter lifetime boundaries
+  - [ ] Milestone: `cargo test`, backend `test_runner`
+
+- [ ] Phase D: Shrink `AudioMidiDriver` C++ to forwarding-only shell
+  - [ ] Move remaining mutable state responsibilities to Rust runtime
+  - [ ] Keep C++ signatures and virtual API compatibility unchanged
+  - [ ] Remove non-essential C++ state containers/logic
+  - [ ] Milestone: `cargo build`, `cargo test`, backend `test_runner`, self-test
+
+- [ ] Phase E: Simplify dummy wrapper/template/settings boundary
+  - [ ] Route template instantiations to shared Rust backend path
+  - [ ] Replace unchecked settings cast with typed bridge/config conversion
+  - [ ] Keep wrapper externally compatible and thin
+  - [ ] Milestone: `cargo test`, backend `test_runner`, self-test
+
+- [ ] Phase F: Cleanup and final verification
+  - [ ] Remove dead code and stale comments
+  - [ ] Update docs/comments for Rust-vs-C++ ownership split
+  - [ ] Run `cargo fmt --all`
+  - [ ] Run `RUSTFLAGS="-D warnings" cargo build`
+  - [ ] Run `cargo test`
+  - [ ] Run backend `test_runner`
+  - [ ] Run `./target/debug/shoopdaloop_dev.sh --self-test`
+  - [ ] Confirm end state: all tests pass, no warnings in strict gate, C++ wrappers are thin

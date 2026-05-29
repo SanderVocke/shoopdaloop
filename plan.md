@@ -1,111 +1,134 @@
-# Plan: staged Rust port of `AudioMidiDriver` and `DummyAudioMidiDriver` with thin C++ wrappers
+# Plan: complete migration to Rust-backed `AudioMidiDriver` with ultra-thin C++ wrappers
 
 ## Goal
-Port orchestration and runtime logic of `AudioMidiDriver` and `DummyAudioMidiDriver` to Rust while preserving existing C++ API/signatures and minimizing changes in other C++ modules. Use callback trampolines where needed so Rust can invoke existing C++ objects (`HasAudioProcessingFunction`, `DecoupledMidiPort`, existing port classes).
+Finish the migration so `AudioMidiDriver` and `DummyAudioMidiDriver` are effectively Rust-owned implementations with only minimal C++ forwarding/wrapper code for ABI/API compatibility.
 
-The end state for this task is a concrete staged migration design plus implementation-ready bridge/API steps that can be executed incrementally without breaking downstream C++ code.
+Current state already achieved:
+- `AudioMidiDriver` process-cycle orchestration moved to Rust runtime (`process_cycle`) with C++ trampolines.
+- `DummyAudioMidiDriver` process thread/timing loop moved to Rust, C++ methods delegate.
+- Decoupled MIDI registration bookkeeping moved to Rust, with C++ keepalive reintroduced to fix a lifetime race.
+- Build/test gates currently pass including QML self-test after the keepalive fix.
 
-## Where the relevant code lives
-- C++ driver base and dummy driver:
-  - `src/backend/internal/AudioMidiDriver.h`
-  - `src/backend/internal/AudioMidiDriver.cpp`
-  - `src/backend/internal/DummyAudioMidiDriver.h`
-  - `src/backend/internal/DummyAudioMidiDriver.cpp`
-- Existing Rust bridges for these classes:
-  - `src/rust/backend_rust/src/audio_midi_driver_cxx.rs`
-  - `src/rust/backend_rust/src/dummy_audio_midi_driver_cxx.rs`
-- Existing related C++ objects invoked in process loop:
-  - `src/backend/internal/DecoupledMidiPort.h`
-  - `src/backend/internal/*Port*.h/.cpp` as needed
-- Rust backend crate root:
-  - `src/rust/backend_rust/src/` (driver runtime modules to add/extend here)
+## Scope and compatibility constraints
+- Keep external C API and C++ call signatures stable during migration.
+- Minimize changes in unrelated C++ modules.
+- Use callback trampolines/opaque handles where required.
+- Prioritize correctness and lifetime safety over immediate architectural purity.
+- Perform migration in small verifiable steps with tests at each milestone.
 
-## Constraints and compatibility strategy
-- Keep existing C++ class names, inheritance, and public methods unchanged for now.
-- Keep current C++ return types (`shoop_shared_ptr<RustAudioPortF32>`, `shoop_shared_ptr<MidiPort>`, etc.).
-- Do not require broad refactors in other C++ modules.
-- Use `cxx` bridge trampolines with opaque pointer handles (`uintptr_t`/`usize`) for callback into C++ objects.
-- Move logic first; optimize architecture later.
+## Key remaining blockers to a truly thin C++ layer
+1. Processor dispatch still relies on C++ polymorphic objects and raw pointer handles.
+2. Decoupled MIDI object lifetime/logic still crosses C++/Rust ownership in fragile ways.
+3. Port creation/ownership still rooted in C++ classes (`DummyAudioPort`, `DummyMidiPort`) and C++ return types.
+4. `AudioMidiDriver` remains a C++ abstract base with stateful responsibilities.
+5. Settings boundary still uses C++ interface + unchecked cast pattern.
+6. Dummy template shell (`DummyAudioMidiDriver<Time, Size>`) remains part of wrapper surface.
 
-## Implementation phases
+## Suggested execution phases
 
-### Phase 1: Rust runtime for `AudioMidiDriver` process orchestration
-Create/extend Rust runtime object that performs what C++ `AudioMidiDriver::PROC_process` currently does:
-- optional process callback hook trigger (if represented through trampoline)
-- execute process-thread command queue hook
-- process decoupled midi ports list
-- process processors list
-- set `last_processed`
+### Phase A: harden lifetime/race behavior first
+Add targeted tests to lock in decoupled MIDI safety and avoid regressions before further ownership migration.
 
-Keep C++ `AudioMidiDriver` as wrapper/facade that forwards to Rust runtime.
+Work:
+- Add backend tests that exercise:
+  - close/unregister while processing is active
+  - repeated open/close cycles with queued MIDI messages
+  - stale handle access behavior from API side
+- Ensure no panic/abort behavior in Rust queue paths.
 
-#### Phase 1 bridge work
-Add `extern "C++"` trampoline functions in CXX bridge, implemented in C++:
-- invoke `HasAudioProcessingFunction::PROC_process(nframes)` for a stored handle
-- invoke `DecoupledMidiPort::PROC_process(nframes)` for a stored handle
-- optional no-op/process callback thunk if needed
+Acceptance:
+- `cargo test` and backend `test_runner` include explicit race/lifetime coverage.
+- QML self-test remains green.
 
-Rust stores opaque handles (`usize`) for processor/decoupled port entries and iterates them during process cycle.
+### Phase B: move decoupled MIDI object ownership to Rust
+Keep existing API shape but migrate actual decoupled port lifetime/queue ownership from C++-anchored object lifetime to Rust-owned object/state.
 
-#### Phase 1 C++ changes
-- `AudioMidiDriver` keeps current public API.
-- Replace body of `AudioMidiDriver::PROC_process` with a thin Rust runtime call.
-- Keep registration/removal APIs (`add_processor`, `remove_processor`, decoupled register/unregister) but forward bookkeeping to Rust runtime handle sets.
-- Preserve command queue behavior and ordering relative to processing.
+Work:
+- Introduce Rust-side decoupled-port registry with stable IDs/handles.
+- Keep C++ wrapper object minimal and non-owning (or ownership only of handle token).
+- Route push/pop/process/close through Rust-owned state.
+- Remove C++ keepalive set once ownership is fully Rust and lifecycle safe.
 
-### Phase 2: Rust-owned process thread for `DummyAudioMidiDriver`
-Move dummy processing loop (sleep/tick/controlled mode advancement/pause/finish handling) from C++ `std::thread` into Rust.
+Acceptance:
+- No raw C++ decoupled object pointers required by Rust process-cycle for decoupled logic.
+- Existing API functions (`open_decoupled_midi_port`, `maybe_next_message`, `close_decoupled_midi_port`, etc.) preserve behavior.
 
-C++ `DummyAudioMidiDriver` methods (`start`, `close`, `pause`, `resume`, controlled-mode methods) remain and delegate to Rust.
+### Phase C: formalize processor handle lifecycle and callback bridge
+Keep C++ processors for now but make Rust-side registration robust and explicit.
 
-#### Phase 2 bridge work
-Add callbacks from Rust to C++ for one processing tick if needed:
-- call into base-driver process function/trampoline with `nframes`
-- preserve same per-cycle semantics and command-queue execution points
+Work:
+- Replace ad-hoc raw pointer assumptions with stable registration tokens (or validated handle table).
+- Ensure unregister removes any possibility of callback after destruction.
+- Keep trampoline invocation but with stronger lifetime contracts.
 
-Ensure close/join semantics match existing behavior (avoid self-join issues).
+Acceptance:
+- Processor add/remove cycles safe under concurrent process-thread command activity.
+- No use-after-free hazards via stale callback handles.
 
-### Phase 3: Keep C++ port objects, migrate only driver-owned bookkeeping
-Do not port `DummyAudioPort` / `DummyMidiPort` now.
-- Continue creating and returning the same C++ port objects.
-- If needed, shift only driver-side tracking collections to Rust via opaque handles.
+### Phase D: collapse `AudioMidiDriver` C++ class into forwarding-only wrapper
+Reduce C++ class responsibilities to argument conversion + delegation.
 
-This avoids downstream C++ API churn.
+Work:
+- Move remaining mutable state/storage responsibilities to Rust runtime object(s).
+- Keep C++ virtual methods/signature compatibility but forward directly.
+- Remove any C++ state containers not strictly required for ABI wrappers.
 
-### Phase 4: Decoupled MIDI registration ownership in Rust
-Migrate decoupled-midi port registration/unregistration bookkeeping from C++ set storage to Rust runtime storage, still using C++ object trampolines for per-cycle processing.
+Acceptance:
+- `AudioMidiDriver.cpp` contains mostly delegation/trampolines.
+- Process ordering, command queue semantics, and wait behavior unchanged.
 
-### Phase 5: Thin-wrapper cleanup
-Once behavior matches and tests pass:
-- keep C++ wrappers extremely thin
-- document which responsibilities are Rust-owned vs C++-forwarded
-- defer broader redesign (templates/inheritance flattening, full port migration) to later work
+### Phase E: simplify dummy wrapper/template/settings boundary
+Preserve external compatibility while removing internal C++ complexity.
 
-## Behavioral invariants to preserve
-- Process-cycle order remains equivalent to current C++ implementation.
-- Command queue commands still execute on process thread as expected.
-- `wait_process()` semantics remain unchanged for callers.
-- Controlled mode behavior in dummy driver remains unchanged.
-- Existing C++ pointers/ownership expectations for ports/processors remain valid.
+Work:
+- Keep template instantiations for ABI compatibility but route all to one shared Rust backend path.
+- Replace unchecked settings cast boundary with typed bridge/config conversion.
+- Ensure dummy wrapper has minimal non-forwarding code.
 
-## Build and test instructions (project-specific)
-From repo root:
-1. Regular build during development: `cargo build`
+Acceptance:
+- No behavior changes for existing users.
+- Wrapper becomes declarative, not stateful.
+
+### Phase F: final cleanup and documentation
+Work:
+- Remove dead code paths and obsolete comments.
+- Update docs/comments for Rust-vs-C++ responsibility split.
+- Confirm all final gates pass.
+
+Acceptance:
+- Clean codebase with explicit ownership model and lifecycle guarantees.
+
+## Where relevant code is located
+- C++ wrappers/drivers:
+  - `src/backend/internal/AudioMidiDriver.h/.cpp`
+  - `src/backend/internal/DummyAudioMidiDriver.h/.cpp`
+  - `src/backend/internal/DecoupledMidiPort.h/.cpp`
+  - trampoline headers in `src/backend/internal/*CxxTrampolines.h`
+- C++ API layer:
+  - `src/backend/libshoopdaloop_backend.cpp`
+- Rust backend core/bridges:
+  - `src/rust/backend_rust/src/audio_midi_driver*.rs`
+  - `src/rust/backend_rust/src/dummy_audio_midi_driver*.rs`
+  - `src/rust/backend_rust/src/decoupled_midi_port*.rs`
+
+## Build/test instructions (project-specific)
+From repository root:
+1. Iterative build: `cargo build`
 2. Rust tests: `cargo test`
-3. Backend C++ tests (Catch2 `test_runner` produced by backend build); run built `test_runner` under `target/.../test/test_runner`
-4. Optional app self-test: `./target/debug/shoopdaloop_dev.sh --self-test`
+3. Backend C++ tests: run backend Catch2 `test_runner` built under `target/.../test/test_runner`
+4. App self-test: `./target/debug/shoopdaloop_dev.sh --self-test`
 
-Final verification for completion:
+Final gate at completion:
 1. `cargo fmt --all`
 2. `RUSTFLAGS="-D warnings" cargo build`
 3. `cargo test`
 4. backend `test_runner`
-5. app self-test if environment supports it
+5. `./target/debug/shoopdaloop_dev.sh --self-test`
 
-If external dependency/toolchain failures occur outside project code, report environment setup issue and stop.
+If external environment/dependency issues occur outside project code, report as environment blocker with logs and stop.
 
-## Deliverables for this migration effort
-- Extended Rust runtime + CXX bridges for driver orchestration callbacks.
-- C++ wrappers for `AudioMidiDriver` and `DummyAudioMidiDriver` forwarding logic to Rust.
-- No required interface changes in other C++ modules.
-- Passing build/tests with preserved behavior.
+## Deliverable criteria
+- `AudioMidiDriver` and `DummyAudioMidiDriver` operationally Rust-owned.
+- C++ wrapper logic reduced to thin forwarding/trampoline layer.
+- No known decoupled MIDI lifetime race/panic paths.
+- Full test suite and self-test pass under final gate commands.
