@@ -1,6 +1,9 @@
 use crate::types::*;
 use minidumper::Client;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering as AtomicOrdering},
+    mpsc, Arc, Mutex,
+};
 use std::thread;
 use std::time::Duration;
 
@@ -9,7 +12,7 @@ shoop_log_unit!("CrashHandlingClient");
 
 /// On unix, store the server child PID for reaping using atexit
 #[cfg(unix)]
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::atomic::{AtomicI32, Ordering};
 #[cfg(unix)]
 static SERVER_PID: AtomicI32 = AtomicI32::new(-1);
 #[cfg(unix)]
@@ -470,81 +473,26 @@ pub fn crashhandling_client(
         let clients_access: Arc<Mutex<(Client, Client)>> = Arc::new(Mutex::new((client, client2)));
         let handler_clients_access = clients_access.clone();
         let ping_clients_access = clients_access.clone();
+        let crash_seen = Arc::new(AtomicBool::new(false));
+        let dump_requested = Arc::new(AtomicBool::new(false));
+        let attachments_sent = Arc::new(AtomicBool::new(false));
+
+        let handler_crash_seen = crash_seen.clone();
+        let handler_dump_requested = dump_requested.clone();
 
         #[allow(unsafe_code)]
         let handler_closure = unsafe {
             crash_handler::make_crash_event(move |crash_context: &crash_handler::CrashContext| {
-                eprintln!("Client: crash_handler callback invoked!");
+                handler_crash_seen.store(true, AtomicOrdering::SeqCst);
                 let guard = handler_clients_access
                     .as_ref()
                     .lock()
                     .unwrap_or_else(|e| e.into_inner());
-                let (client1, client2) = &*guard;
+                let (client1, _) = &*guard;
 
-                let thread_name = crate::registered_threads::current_thread_registered_name()
-                    .unwrap_or("unknown".to_string());
-                if let Err(e) = client1.send_message(
-                    CrashHandlingMessageType::SetJson as u32,
-                    format!("{{\"tags\":{{\"thread_name\":\"{thread_name}\"}}}}"),
-                ) {
-                    eprintln!("Failed to send thread name to crash handler: {}", e);
-                }
-
-                // Send a ping to the server, this ensures that all messages that have been sent
-                // are "flushed" before the crash event is sent. This is only really useful
-                // on macos where messages and crash events are sent via different, unsynchronized,
-                // methods which can result in the crash event closing the server before
-                // the non-crash messages are received/processed
-                if let Err(e) = client1.ping() {
-                    eprintln!("Failed to ping client1: {}", e);
-                }
-                if let Err(e) = client2.ping() {
-                    eprintln!("Failed to ping client2: {}", e);
-                }
-
-                println!("Crash detected - requesting minidump");
-                eprintln!("Client: calling client1.request_dump()...");
-
-                let handled: bool;
-                match client1.request_dump(crash_context) {
-                    Ok(_) => {
-                        handled = true;
-                        println!("Requested minidump.");
-                        eprintln!("Client: request_dump succeeded!");
-                    }
-                    Err(e) => {
-                        handled = false;
-                        println!("Failed to report crash to handling process: {e}");
-                        eprintln!("Client: request_dump FAILED: {:?}", e);
-                    }
-                }
-                eprintln!("Client: request_dump complete, handled={}", handled);
-
-                // Send additional crash data if possible over the 2nd connection
-                if let Some(on_crash_callback) = &on_crash_callback {
-                    for additional_info in on_crash_callback() {
-                        let id = &additional_info.id;
-                        println!("Got additional crash info '{id}'");
-
-                        let buf = match serde_json::to_string(&additional_info) {
-                            Ok(s) => s,
-                            Err(e) => {
-                                eprintln!("Failed to serialize additional info: {}", e);
-                                continue;
-                            }
-                        };
-                        match client2.send_message(
-                            CrashHandlingMessageType::AdditionalCrashAttachment as usize as u32,
-                            buf,
-                        ) {
-                            Ok(_) => {
-                                println!("Sent additional crash info message");
-                            }
-                            Err(err) => {
-                                println!("Failed to send additional crash info message: {}", err)
-                            }
-                        }
-                    }
+                let handled = client1.request_dump(crash_context).is_ok();
+                if handled {
+                    handler_dump_requested.store(true, AtomicOrdering::SeqCst);
                 }
 
                 crash_handler::CrashEventResult::Handled(handled)
@@ -621,6 +569,31 @@ pub fn crashhandling_client(
                     match client2.ping() {
                         Ok(_) => (),
                         Err(e) => warn!("Failed to ping crash handling server. {}", e),
+                    }
+
+                    if crash_seen.load(AtomicOrdering::SeqCst)
+                        && dump_requested.load(AtomicOrdering::SeqCst)
+                        && !attachments_sent.load(AtomicOrdering::SeqCst)
+                    {
+                        if let Some(on_crash_callback) = &on_crash_callback {
+                            for additional_info in on_crash_callback() {
+                                let buf = match serde_json::to_string(&additional_info) {
+                                    Ok(s) => s,
+                                    Err(e) => {
+                                        warn!("Failed to serialize additional crash info: {}", e);
+                                        continue;
+                                    }
+                                };
+                                if let Err(err) = client2.send_message(
+                                    CrashHandlingMessageType::AdditionalCrashAttachment as usize
+                                        as u32,
+                                    buf,
+                                ) {
+                                    warn!("Failed to send additional crash info message: {}", err);
+                                }
+                            }
+                        }
+                        attachments_sent.store(true, AtomicOrdering::SeqCst);
                     }
 
                     // Periodically check if the server child has exited and reap it.
