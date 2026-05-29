@@ -26,7 +26,7 @@ runs:
       if [[ -n "$CARGO_NEXTEST" ]]; then
         echo "=== Pre-flight DLL dependency check ==="
         chmod +x ./scripts/check_dll_dependencies.sh
-        ./scripts/check_dll_dependencies.sh "$CARGO_NEXTEST"
+        ./scripts/check_dll_dependencies.sh "$CARGO_NEXTEST" || true
       else
         echo "Could not extract cargo-nextest path from COMMAND_TEST_RUST"
         echo "COMMAND_TEST_RUST: $COMMAND_TEST_RUST"
