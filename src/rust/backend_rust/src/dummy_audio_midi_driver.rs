@@ -118,11 +118,7 @@ impl DummyAudioMidiDriver {
         self.set_finish();
         let mut guard = self.process_thread.lock().unwrap();
         if let Some(handle) = guard.take() {
-            if handle.thread().id() == thread::current().id() {
-                drop(handle);
-            } else {
-                let _ = handle.join();
-            }
+            let _ = handle.join();
         }
     }
 }
