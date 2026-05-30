@@ -269,6 +269,7 @@ jobs:
       OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
+      TRACY_NO_INVARIANT_CHECK: 1
     needs: [maybe_create_release, setup]
     if: ${{ needs.setup.outputs.linux == 'true' }}
     steps:
@@ -460,6 +461,7 @@ jobs:
        PI_TIMEOUT: ${{ github.event.inputs.pi_timeout || 600 }}
        OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+       TRACY_NO_INVARIANT_CHECK: 1
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -643,6 +645,7 @@ jobs:
       OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       checkpoints_enabled: ${{ needs.setup.outputs.checkpoints }}
+      TRACY_NO_INVARIANT_CHECK: 1
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /
