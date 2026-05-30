@@ -263,6 +263,13 @@ else()
     set(ENV{RUSTFLAGS} "${SHOOP_CORROSION_RUSTFLAGS}")
   endif()
 
+  # Isolate Corrosion/Cargo artifacts per CMake backend build directory.
+  # This avoids stale/colliding cxxbridge-generated sources on parallel/multi-config CI builds.
+  set(SHOOP_CORROSION_CARGO_TARGET_DIR "${CMAKE_CURRENT_BINARY_DIR}/cargo")
+  file(MAKE_DIRECTORY "${SHOOP_CORROSION_CARGO_TARGET_DIR}")
+  set(ENV{CARGO_TARGET_DIR} "${SHOOP_CORROSION_CARGO_TARGET_DIR}")
+  message(STATUS "Corrosion CARGO_TARGET_DIR=${SHOOP_CORROSION_CARGO_TARGET_DIR}")
+
   include(FetchContent)
   FetchContent_Declare(
     corrosion
