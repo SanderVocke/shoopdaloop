@@ -9,6 +9,10 @@ use common::logging::macros::*;
 shoop_log_unit!("Main");
 
 pub fn main() {
+    if std::env::args().any(|arg| arg == "--tracing") {
+        common::tracing_helpers::set_tracing_enabled(true);
+    }
+
     if let Err(e) = common::init() {
         eprintln!("Failed to initialize common: {}", e);
         std::process::exit(1);

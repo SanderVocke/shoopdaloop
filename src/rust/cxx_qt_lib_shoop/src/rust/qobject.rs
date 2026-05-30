@@ -187,6 +187,9 @@ pub trait FromQObject {
     }
 }
 
+// Helper functions that wrap the FFI calls
+// These work with cxx_qt::QObject which is identical to QObjectHelper at the C++ level
+
 pub unsafe fn qobject_parent(obj: &QObject) -> Result<*mut QObject, cxx::Exception> {
     // Cast QObject reference to QObjectHelper reference (they're the same C++ type)
     let obj_helper: &QObjectHelper = &*(obj as *const QObject as *const QObjectHelper);

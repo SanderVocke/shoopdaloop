@@ -42,6 +42,7 @@ where
     }
 }
 
+// Direct implementation for QObject itself
 impl QObjectOrConvertible for crate::qobject::QObject {
     fn qobject_mut(&mut self) -> *mut ffi::QObject {
         self as *mut ffi::QObject

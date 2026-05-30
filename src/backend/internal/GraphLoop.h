@@ -6,6 +6,7 @@
 #include "GraphNode.h"
 #include "LoggingEnabled.h"
 #include "shoop_shared_ptr.h"
+#include "TracyPlotter.h"
 
 class AudioMidiLoop;
 class GraphLoopChannel;
@@ -21,6 +22,11 @@ public:
     std::vector<shoop_shared_ptr<GraphLoopChannel>>  mp_midi_channels;
     shoop_weak_ptr<BackendSession> backend;
     std::function<WeakGraphNodeSet()> m_get_co_process_nodes = nullptr;
+
+    // Tracy plotters for graph loop debugging
+    TracyPlotter m_plot_frames_processed{"GraphLoop/frames_processed"};
+    TracyPlotter m_plot_n_audio_channels{"GraphLoop/n_audio_channels"};
+    TracyPlotter m_plot_n_midi_channels{"GraphLoop/n_midi_channels"};
 
     GraphLoop(shoop_shared_ptr<BackendSession> backend,
              shoop_shared_ptr<AudioMidiLoop> loop) :

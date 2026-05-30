@@ -10,6 +10,8 @@
 #include "MidiRingbuffer.h"
 #include "LoggingBackend.h"
 #include "shoop_shared_ptr.h"
+#include "TracyPlotter.h"
+#include "Checksum.h"
 
 struct MidiPortTestHelper;
 
@@ -30,6 +32,19 @@ class MidiPort : public virtual PortInterface, private ModuleLoggingEnabled<"Bac
     shoop_shared_ptr<MidiRingbuffer> m_midi_ringbuffer;
     std::atomic<uint32_t> n_input_events = 0;
     std::atomic<uint32_t> n_output_events = 0;
+
+    // Checksum tracking for data consistency verification
+    std::atomic<double> ma_input_checksum{0.0};
+    std::atomic<double> ma_output_checksum{0.0};
+
+    // Tracy plotters for MIDI port debugging (suffixes only, base identifier from name())
+    TracyPlotter m_plot_input_events{"input_events"};
+    TracyPlotter m_plot_output_events{"output_events"};
+    TracyPlotter m_plot_notes_active{"notes_active"};
+    TracyPlotter m_plot_muted{"muted"};
+    TracyPlotter m_plot_frames_processed{"frames_processed"};
+    TracyPlotter m_plot_input_checksum{"input_checksum"};
+    TracyPlotter m_plot_output_checksum{"output_checksum"};
 public:
     friend class MidiPortTestHelper;
 
@@ -55,6 +70,9 @@ public:
 
     void reset_n_output_events();
     uint32_t get_n_output_events() const;
+
+    double get_input_checksum() const { return ma_input_checksum.load(); }
+    double get_output_checksum() const { return ma_output_checksum.load(); }
 
     uint32_t get_n_input_notes_active() const;
     uint32_t get_n_output_notes_active() const;

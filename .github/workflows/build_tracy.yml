@@ -19,12 +19,16 @@ jobs:
       matrix:
         include:
           - name: linux
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             artifact: tracy-linux-x64.tar.gz
             qt_pkg: qt6-base-dev
           - name: macos
             os: macos-15-intel
             artifact: tracy-macos-x64.tar.gz
+            qt_pkg: qt@6
+          - name: macos-arm64
+            os: macos-15
+            artifact: tracy-macos-arm64.tar.gz
             qt_pkg: qt@6
           - name: windows
             os: windows-2022
@@ -44,6 +48,7 @@ jobs:
         sudo apt-get install -y \
           libcapstone-dev \
           libcurl4-openssl-dev \
+          libdbus-1-dev \
           libfreetype-dev \
           libglfw3-dev \
           liblz4-dev \
@@ -73,79 +78,129 @@ jobs:
       run: |
         choco install -y ninja
 
+    - name: Setup Qt (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        echo "Qt6_DIR=/usr/lib/x86_64-linux-gnu/cmake/Qt6" >> $GITHUB_ENV
+
     - name: Setup Qt (macOS)
       if: runner.os == 'macOS'
       run: |
         echo "/opt/homebrew/opt/qt@6/bin" >> $GITHUB_PATH
         echo "CMAKE_PREFIX_PATH=/opt/homebrew/opt/qt@6" >> $GITHUB_ENV
 
+    - name: Setup MSVC
+      if: runner.os == 'Windows'
+      uses: ilammy/msvc-dev-cmd@v1
+
     - name: Setup Qt (Windows)
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
-        # Use Qt installer for Windows
-        curl -L "https://download.qt.io/official_releases/qt/6.8/6.8.1/qt-unified-windows-x64-online.exe" -o qt-installer.exe
-        .\qt-installer.exe --verbose --root C:\Qt --al --accept-licenses --default-answer default --confirm-command install qt.base.qt6
+        pip install aqtinstall
+        aqt install-qt --outputdir C:\Qt windows desktop 6.8.1 win64_msvc2022_64
         echo "C:\Qt\6.8.1\msvc2022_64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8
-        echo "CMAKE_PREFIX_PATH=C:\Qt\6.8.1\msvc2022_64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
+        echo "CMAKE_PREFIX_PATH=C:\Qt\6.8.1\msvc2022_64" | Out-File -FilePath $env:GITHUB_ENV
 
     - name: Clone Tracy
       shell: bash
       run: |
         git clone --depth 1 --branch ${{ inputs.tracy_version }} https://github.com/wolfpld/tracy.git
-        cd tracy
-        echo "Built version: $(git describe --tags 2>/dev/null || git rev-parse HEAD)"
 
-    - name: Configure and build (Linux/macOS)
-      if: runner.os != 'Windows'
+    - name: Build all Tracy components (macOS)
+      if: runner.os == 'macOS'
       shell: bash
       run: |
-        cd tracy
-        mkdir -p build
-        cmake -S . -B build \
-          -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_PREFIX_PATH="${{ env.CMAKE_PREFIX_PATH }}" \
-          -DTRACY_ONLY=ON
-        cmake --build build --config Release --parallel
+        for component in capture csvexport import profiler update; do
+          CMAKE_ARGS=(-G Ninja -DCMAKE_BUILD_TYPE=Release)
+          if [ -n "${CMAKE_PREFIX_PATH}" ]; then
+            CMAKE_ARGS+=(-DCMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH}")
+          fi
+          cmake -S tracy/${component} -B tracy/${component}/build "${CMAKE_ARGS[@]}"
+          cmake --build tracy/${component}/build --config Release --parallel
+        done
 
-    - name: Configure and build (Windows)
+    - name: Build all Tracy components (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        for component in capture csvexport import update; do
+          CMAKE_ARGS=(-G Ninja -DCMAKE_BUILD_TYPE=Release)
+          if [ -n "${Qt6_DIR}" ]; then
+            CMAKE_ARGS+=(-DQt6_DIR="${Qt6_DIR}")
+          fi
+          cmake -S tracy/${component} -B tracy/${component}/build "${CMAKE_ARGS[@]}"
+          cmake --build tracy/${component}/build --config Release --parallel
+        done
+        # Build profiler with Wayland disabled (wl_display_dispatch_timeout missing
+        # even on systems with wayland >= 1.21 due to symbol visibility issues)
+        PROFILER_ARGS=(-G Ninja -DCMAKE_BUILD_TYPE=Release -DLEGACY=ON)
+        if [ -n "${Qt6_DIR}" ]; then
+          PROFILER_ARGS+=(-DQt6_DIR="${Qt6_DIR}")
+        fi
+        cmake -S tracy/profiler -B tracy/profiler/build "${PROFILER_ARGS[@]}"
+        cmake --build tracy/profiler/build --config Release --parallel
+
+    - name: Build all Tracy components (Windows)
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
-        cd tracy
-        mkdir -Force build | Out-Null
-        cmake -S . -B build `
-          -G "Ninja" `
-          -DCMAKE_BUILD_TYPE=Release `
-          -DCMAKE_PREFIX_PATH="${{ env.CMAKE_PREFIX_PATH }}" `
-          -DTRACY_ONLY=ON
-        cmake --build build --config Release --parallel
+        $components = @("capture", "csvexport", "import", "profiler", "update")
+        foreach ($component in $components) {
+          $cmakeArgs = @("-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release")
+          if ($env:CMAKE_PREFIX_PATH) { $cmakeArgs += "-DCMAKE_PREFIX_PATH=$env:CMAKE_PREFIX_PATH" }
+          cmake -S tracy/$component -B tracy/$component/build @cmakeArgs
+          cmake --build tracy/$component/build --config Release --parallel
+        }
 
     - name: Collect and compress (Linux)
       if: runner.os == 'Linux'
       shell: bash
       run: |
         mkdir -p dist
-        cp tracy/build/tracy dist/
-        strip dist/tracy
-        tar -czf ${{ matrix.artifact }} -C dist tracy
+        cp tracy/profiler/build/tracy-profiler  dist/
+        cp tracy/capture/build/tracy-capture    dist/
+        cp tracy/csvexport/build/tracy-csvexport dist/
+        cp tracy/import/build/tracy-import-chrome dist/
+        cp tracy/import/build/tracy-import-fuchsia dist/
+        cp tracy/update/build/tracy-update      dist/
+        for bin in dist/tracy-*; do strip "$bin"; done
+        tar -czf ${{ matrix.artifact }} -C dist .
 
     - name: Collect and compress (macOS)
       if: runner.os == 'macOS'
       shell: bash
       run: |
         mkdir -p dist
-        cp tracy/build/tracy dist/
-        tar -czf ${{ matrix.artifact }} -C dist tracy
+        cp tracy/profiler/build/tracy-profiler  dist/
+        cp tracy/capture/build/tracy-capture    dist/
+        cp tracy/csvexport/build/tracy-csvexport dist/
+        cp tracy/import/build/tracy-import-chrome dist/
+        cp tracy/import/build/tracy-import-fuchsia dist/
+        cp tracy/update/build/tracy-update      dist/
+        tar -czf ${{ matrix.artifact }} -C dist .
 
     - name: Collect and compress (Windows)
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
         mkdir -Force dist | Out-Null
-        Copy-Item tracy/build/Release/tracy.exe dist/
-        Copy-Item tracy/build/tracy.exe dist/ -ErrorAction SilentlyContinue
+        $components = @(
+            @{ src="tracy/profiler/build/Release/tracy-profiler.exe"; dst="dist/" },
+            @{ src="tracy/capture/build/Release/tracy-capture.exe"; dst="dist/" },
+            @{ src="tracy/csvexport/build/Release/tracy-csvexport.exe"; dst="dist/" },
+            @{ src="tracy/import/build/Release/tracy-import-chrome.exe"; dst="dist/" },
+            @{ src="tracy/import/build/Release/tracy-import-fuchsia.exe"; dst="dist/" },
+            @{ src="tracy/update/build/Release/tracy-update.exe"; dst="dist/" }
+        )
+        foreach ($c in $components) {
+            Copy-Item $c.src $c.dst -ErrorAction SilentlyContinue
+        }
+        # Fallback: non-Release paths (Ninja may not use config subdirs with MSVC)
+        foreach ($c in $components) {
+            $fallback = $c.src -replace '/Release/', '/'
+            Copy-Item $fallback $c.dst -ErrorAction SilentlyContinue
+        }
         Compress-Archive -Path dist/* -DestinationPath ${{ matrix.artifact }}
 
     - name: Upload artifact

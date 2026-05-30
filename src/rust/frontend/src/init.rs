@@ -23,6 +23,7 @@ fn register_qml_types_and_singletons() {
     qobj_settings_io::register_qml_singleton(&mdl, "ShoopRustSettingsIO");
     qobj_enums::register_qml_singleton(&mdl, "ShoopRustConstants");
     qobj_test_screen_grabber::register_qml_singleton(&mdl, "ShoopRustTestScreenGrabber");
+    qobj_tracing_capture::register_qml_singleton(&mdl, "ShoopRustTracingCapture");
 
     // Types (register BEFORE QML singletons which may use them)
     qobj_dummy_process_helper::register_qml_type(&mdl, "ShoopRustDummyProcessHelper");

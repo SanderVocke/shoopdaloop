@@ -7,6 +7,8 @@
 #include <stdint.h>
 #include <vector>
 #include "shoop_shared_ptr.h"
+#include "TracyPlotter.h"
+#include "Checksum.h"
 
 template<typename SampleT>
 class AudioChannel : public ChannelInterface,
@@ -49,6 +51,23 @@ private:
     uint32_t   mp_recording_source_buffer_size = 0;
 
     unsigned mp_prev_process_flags = 0;
+
+    // Tracy plotters for audio channel debugging
+    TracyPlotter m_plot_data_length{"data_length"};
+    TracyPlotter m_plot_position{"position"};
+    TracyPlotter m_plot_mode{"mode"};
+    TracyPlotter m_plot_output_peak{"output_peak"};
+    TracyPlotter m_plot_process_flags{"process_flags"};
+    TracyPlotter m_plot_n_buffers{"n_buffers"};
+
+    // Checksum tracking for recorded/playback data consistency verification
+    std::atomic<double> ma_recorded_checksum{0.0};
+    std::atomic<double> ma_playback_checksum{0.0};
+    TracyPlotter m_plot_recorded_checksum{"recorded_checksum"};
+    TracyPlotter m_plot_playback_checksum{"playback_checksum"};
+
+    // Name/identifier for tracing
+    std::string m_name;
 
     enum class ProcessingCommandType {
         RawCopy,
@@ -132,7 +151,10 @@ public:
     AudioChannel(
             shoop_shared_ptr<UsedBufferPool> buffer_pool,
             uint32_t initial_max_buffers,
-            shoop_channel_mode_t mode);
+            shoop_channel_mode_t mode,
+            std::string name = "audio_channel");
+
+    const char* name() const override;
 
     virtual void set_pre_play_samples(uint32_t samples) override;
     virtual uint32_t get_pre_play_samples() const override;
@@ -140,7 +162,7 @@ public:
     // NOTE: only use on process thread!
     AudioChannel<SampleT>& operator= (AudioChannel<SampleT> const& other);
 
-    AudioChannel();
+    AudioChannel(std::string name = "audio_channel");
     ~AudioChannel() override;
 
     void data_changed();
@@ -199,6 +221,9 @@ public:
     void set_gain(float gain);
 
     float get_gain();
+
+    double get_recorded_checksum() const { return ma_recorded_checksum.load(); }
+    double get_playback_checksum() const { return ma_playback_checksum.load(); }
     
     void set_start_offset(int offset) override;
 

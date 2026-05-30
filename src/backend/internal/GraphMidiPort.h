@@ -1,9 +1,22 @@
 #pragma once
 #include "GraphPort.h"
 #include "shoop_shared_ptr.h"
+#include "TracyPlotter.h"
+#include "Checksum.h"
 
 class GraphMidiPort : public GraphPort {
     const shoop_shared_ptr<MidiPort> port = nullptr;
+
+    // Tracy plotters for graph midi port debugging
+    TracyPlotter m_plot_frames_processed;
+    TracyPlotter m_plot_input_events;
+    TracyPlotter m_plot_output_events;
+    TracyPlotter m_plot_notes_active;
+    TracyPlotter m_plot_internal_connections;
+
+    // Checksum tracking for data consistency verification
+    TracyPlotter m_plot_input_checksum;
+    TracyPlotter m_plot_output_checksum;
 public:
     GraphMidiPort (shoop_shared_ptr<MidiPort> const& port,
                    shoop_shared_ptr<BackendSession> const& backend);

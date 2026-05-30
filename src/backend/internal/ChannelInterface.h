@@ -81,6 +81,9 @@ public:
         bool thread_safe
     ) = 0;
 
+    // Get the channel name/identifier for tracing/debugging purposes.
+    virtual const char* name() const = 0;
+
     ChannelInterface() = default;
     virtual ~ChannelInterface() {}
 };

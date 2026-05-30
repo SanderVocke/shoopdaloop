@@ -1,5 +1,6 @@
 use backend_bindings::{Loop as BackendLoop, LoopState};
 use common::logging::macros::*;
+use common::tracing_helpers::TracyPlotter;
 
 shoop_log_unit!("Frontend.Loop");
 
@@ -259,6 +260,13 @@ pub struct LoopBackendRust {
     pub backend_loop: Option<BackendLoop>,
     pub prev_state: LoopState,
     pub prev_cycle_nr: i32,
+    pub plotter_position: TracyPlotter,
+    pub plotter_mode: TracyPlotter,
+    pub plotter_length: TracyPlotter,
+    pub plotter_next_mode: TracyPlotter,
+    pub plotter_next_delay: TracyPlotter,
+    pub plotter_cycle_nr: TracyPlotter,
+    pub plotter_sync_source: TracyPlotter,
 }
 
 impl Default for LoopBackendRust {
@@ -271,6 +279,13 @@ impl Default for LoopBackendRust {
             prev_state: LoopState::default(),
             prev_cycle_nr: 0,
             sync_source: std::ptr::null_mut(),
+            plotter_position: TracyPlotter::new("position"),
+            plotter_mode: TracyPlotter::new("mode"),
+            plotter_length: TracyPlotter::new("length"),
+            plotter_next_mode: TracyPlotter::new("next_mode"),
+            plotter_next_delay: TracyPlotter::new("next_delay"),
+            plotter_cycle_nr: TracyPlotter::new("cycle_nr"),
+            plotter_sync_source: TracyPlotter::new("sync_source"),
         }
     }
 }

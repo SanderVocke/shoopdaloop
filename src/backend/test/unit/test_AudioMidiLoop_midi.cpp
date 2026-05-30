@@ -101,8 +101,8 @@ inline Msg note_off_msg (uint32_t time, uint8_t channel, uint8_t note, uint8_t v
 };
 
 TEST_CASE("AudioMidiLoop - Midi - Stop", "[AudioMidiLoop][midi]") {
-    AudioMidiLoop loop;
-    loop.add_midi_channel(512, ChannelMode_Direct, false);
+    AudioMidiLoop loop("test_loop");
+    loop.add_midi_channel(512, ChannelMode_Direct, "test_channel", false);
     auto &channel = *loop.midi_channel(0);
 
     CHECK(loop.get_mode() == LoopMode_Stopped);
@@ -119,8 +119,8 @@ TEST_CASE("AudioMidiLoop - Midi - Stop", "[AudioMidiLoop][midi]") {
 };
 
 TEST_CASE("AudioMidiLoop - Midi - Record", "[AudioMidiLoop][midi]") {
-    AudioMidiLoop loop;
-    loop.add_midi_channel(512, ChannelMode_Direct, false);
+    AudioMidiLoop loop("test_loop");
+    loop.add_midi_channel(512, ChannelMode_Direct, "test_channel", false);
     auto &channel = *loop.midi_channel(0);
 
     CHECK(loop.get_mode() == LoopMode_Stopped);
@@ -159,8 +159,8 @@ TEST_CASE("AudioMidiLoop - Midi - Record", "[AudioMidiLoop][midi]") {
 };
 
 TEST_CASE("AudioMidiLoop - Midi - Record Append Out-of-order", "[AudioMidiLoop][midi]") {
-    AudioMidiLoop loop;
-    loop.add_midi_channel(512, ChannelMode_Direct, false);
+    AudioMidiLoop loop("test_loop");
+    loop.add_midi_channel(512, ChannelMode_Direct, "test_channel", false);
     auto &channel = *loop.midi_channel(0);
     using Message = MidiStorageElem;
 
@@ -193,8 +193,8 @@ TEST_CASE("AudioMidiLoop - Midi - Record Append Out-of-order", "[AudioMidiLoop][
 };
 
 TEST_CASE("AudioMidiLoop - Midi - Record multiple source buffers", "[AudioMidiLoop][midi]") {
-    AudioMidiLoop loop;
-    loop.add_midi_channel(512, ChannelMode_Direct, false);
+    AudioMidiLoop loop("test_loop");
+    loop.add_midi_channel(512, ChannelMode_Direct, "test_channel", false);
     auto &channel = *loop.midi_channel(0);
 
     CHECK(loop.get_mode() == LoopMode_Stopped);
@@ -283,8 +283,8 @@ inline Msg at_time(Msg const& m, uint32_t time) {
 }
 
 TEST_CASE("AudioMidiLoop - Midi - Record onto longer buffer", "[AudioMidiLoop][midi]") {
-    AudioMidiLoop loop;
-    loop.add_midi_channel(1024, ChannelMode_Direct, false);
+    AudioMidiLoop loop("test_loop");
+    loop.add_midi_channel(1024, ChannelMode_Direct, "test_channel", false);
     auto &channel = *loop.midi_channel(0);
     using Message = MidiStorageElem;
     MidiChannel::Contents contents;
@@ -340,8 +340,8 @@ TEST_CASE("AudioMidiLoop - Midi - Record onto longer buffer", "[AudioMidiLoop][m
 };
 
 TEST_CASE("AudioMidiLoop - Midi - Playback", "[AudioMidiLoop][midi]") {
-    AudioMidiLoop loop;
-    loop.add_midi_channel(512, ChannelMode_Direct, false);
+    AudioMidiLoop loop("test_loop");
+    loop.add_midi_channel(512, ChannelMode_Direct, "test_channel", false);
     auto &channel = *loop.midi_channel(0);
     using Message = MidiStorageElem;
     MidiChannel::Contents contents;
@@ -385,7 +385,7 @@ TEST_CASE("AudioMidiLoop - Midi - Playback", "[AudioMidiLoop][midi]") {
 };
 
 TEST_CASE("AudioMidiLoop - Midi - Prerecord", "[AudioMidiLoop][midi]") {
-    AudioMidiLoop loop;
+    AudioMidiLoop loop("test_loop");
     auto sync_source = shoop_make_shared<AudioMidiLoop>();
     sync_source->set_length(100);
     sync_source->plan_transition(LoopMode_Playing);
@@ -396,7 +396,7 @@ TEST_CASE("AudioMidiLoop - Midi - Prerecord", "[AudioMidiLoop][midi]") {
     loop.PROC_update_trigger_eta();
     CHECK(loop.PROC_predicted_next_trigger_eta().value_or(999) == 100);
 
-    loop.add_midi_channel(512, ChannelMode_Direct, false);
+    loop.add_midi_channel(512, ChannelMode_Direct, "test_channel", false);
     auto &chan = *loop.midi_channel(0);
 
     auto source_buf = MidiTestBuffer();
@@ -468,7 +468,7 @@ TEST_CASE("AudioMidiLoop - Midi - Preplay", "[AudioMidiLoop][midi]") {
     loop.PROC_update_trigger_eta();
     CHECK(loop.PROC_predicted_next_trigger_eta().value_or(999) == 100);
 
-    auto chan = loop.add_midi_channel(100000, ChannelMode_Direct, false);
+    auto chan = loop.add_midi_channel(100000, ChannelMode_Direct, "test_channel", false);
 
     using Message = MidiStorageElem;
     MidiChannel::Contents contents;
@@ -699,8 +699,8 @@ TEST_CASE("AudioMidiLoop - Midi - CC State tracking", "[AudioMidiLoop][midi]") {
     StateTrackingTestcaseData testdata =
         GENERATE(pb_from_first_sample, pb_from_40th_to_50th);
 
-    AudioMidiLoop loop;
-    loop.add_midi_channel(100000, ChannelMode_Direct, false);
+    AudioMidiLoop loop("test_loop");
+    loop.add_midi_channel(100000, ChannelMode_Direct, "test_channel", false);
     auto &chan = *loop.midi_channel(0);
     using Message = MidiStorageElem;
 
@@ -808,8 +808,8 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started before loop boundar
     // If a note started being played before the loop boundary, but ended inside - we should
     // playback a Note On when the loop starts, such that the note is not "lost".
 
-    AudioMidiLoop loop;
-    loop.add_midi_channel(512, ChannelMode_Direct, false);
+    AudioMidiLoop loop("test_loop");
+    loop.add_midi_channel(512, ChannelMode_Direct, "test_channel", false);
     auto &channel = *loop.midi_channel(0);
 
     CHECK(loop.get_mode() == LoopMode_Stopped);
@@ -938,7 +938,7 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
         process_loops<decltype(loops)::iterator>(loops.begin(), loops.end(), n_samples);
     };
 
-    loop.add_midi_channel(512, ChannelMode_Direct, false);
+    loop.add_midi_channel(512, ChannelMode_Direct, "test_channel", false);
     auto &channel = *loop.midi_channel(0);
 
     CHECK(loop.get_mode() == LoopMode_Stopped);
@@ -1076,7 +1076,7 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note pre-recorded but no preplay
         process_loops<decltype(loops)::iterator>(loops.begin(), loops.end(), n_samples);
     };
 
-    loop.add_midi_channel(512, ChannelMode_Direct, false);
+    loop.add_midi_channel(512, ChannelMode_Direct, "test_channel", false);
     auto &channel = *loop.midi_channel(0);
 
     CHECK(loop.get_mode() == LoopMode_Stopped);

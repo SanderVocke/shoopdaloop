@@ -9,6 +9,8 @@
 #include "TrackedRelativeMidiState.h"
 #include <stdint.h>
 #include "shoop_shared_ptr.h"
+#include "TracyPlotter.h"
+#include "Checksum.h"
 
 class MidiChannel : public ChannelInterface,
                     private WithCommandQueue,
@@ -16,6 +18,7 @@ class MidiChannel : public ChannelInterface,
 public:
     using Storage = MidiStorage;
     using StorageCursor = typename Storage::Cursor;
+    using Message = MidiMessage<uint32_t, uint16_t>;
 
 private:
 
@@ -75,8 +78,26 @@ private:
     std::atomic<uint32_t> ma_pre_play_samples = 0;
     std::atomic<int> ma_last_played_back_sample = 0;
 
+    // Tracy plotters for MIDI channel debugging
+    TracyPlotter m_plot_data_length{"data_length"};
+    TracyPlotter m_plot_events_triggered{"events_triggered"};
+    TracyPlotter m_plot_mode{"mode"};
+    TracyPlotter m_plot_notes_active{"notes_active"};
+    TracyPlotter m_plot_process_flags{"process_flags"};
+    TracyPlotter m_plot_n_storage_events{"n_storage_events"};
+
+    // Checksum tracking for recorded/playback data consistency verification
+    std::atomic<double> ma_recorded_checksum{0.0};
+    std::atomic<double> ma_playback_checksum{0.0};
+    TracyPlotter m_plot_recorded_checksum{"recorded_checksum"};
+    TracyPlotter m_plot_playback_checksum{"playback_checksum"};
+
+    // Name/identifier for tracing
+    std::string m_name;
+
 public:
-    MidiChannel(uint32_t data_size, shoop_channel_mode_t mode);
+    MidiChannel(uint32_t data_size, shoop_channel_mode_t mode, std::string name = "midi_channel");
+    const char* name() const override;
     ~MidiChannel();
 
     // NOTE: only use on process thread
@@ -122,7 +143,7 @@ public:
 
     void PROC_send_message(MidiWriteableBuffer &buf, MidiStorageElem event);
 
-    void PROC_process_playback(uint32_t our_pos, uint32_t our_length, uint32_t n_samples, bool muted);
+    void PROC_process_playback(uint32_t our_pos, uint32_t our_length, uint32_t n_samples, bool muted, double *checksum_out = nullptr);
 
     std::optional<uint32_t> PROC_get_next_poi(shoop_loop_mode_t mode,
                                                std::optional<shoop_loop_mode_t> maybe_next_mode,
@@ -158,6 +179,9 @@ public:
     uint32_t get_n_notes_active() const;
 
     uint32_t get_n_events_triggered();
+
+    double get_recorded_checksum() const { return ma_recorded_checksum.load(); }
+    double get_playback_checksum() const { return ma_playback_checksum.load(); }
 
     void set_start_offset(int offset) override;
 

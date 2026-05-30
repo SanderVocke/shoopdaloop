@@ -2,6 +2,8 @@
 #include "AudioPort.h"
 #include <vector>
 #include "shoop_shared_ptr.h"
+#include "TracyPlotter.h"
+#include "Checksum.h"
 
 template<typename SampleT>
 class InternalAudioPort : public AudioPort<SampleT> {
@@ -9,6 +11,17 @@ class InternalAudioPort : public AudioPort<SampleT> {
     std::vector<SampleT> m_buffer;
     unsigned m_input_connectability = 0;
     unsigned m_output_connectability = 0;
+
+    // Tracy plotters for internal audio port debugging
+    TracyPlotter m_plot_frames_processed;
+    TracyPlotter m_plot_input_peak;
+    TracyPlotter m_plot_output_peak;
+
+    // Checksum tracking for data consistency verification
+    std::atomic<double> ma_input_checksum{0.0};
+    std::atomic<double> ma_output_checksum{0.0};
+    TracyPlotter m_plot_input_checksum;
+    TracyPlotter m_plot_output_checksum;
 
 public:
     // Note that the port direction for internal ports are defined w.r.t. ShoopDaLoop.

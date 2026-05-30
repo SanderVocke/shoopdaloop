@@ -41,6 +41,8 @@ enum-iterator = { workspace = true }
 num_enum = { workspace = true }
 jsonschema = { workspace = true }
 rodio = { workspace = true }
+tracing = { workspace = true }
+tracy-client = { workspace = true }
 
 [build-dependencies]
 macros = { path = "../macros" }

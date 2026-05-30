@@ -8,7 +8,15 @@
 
 GraphMidiPort::GraphMidiPort (shoop_shared_ptr<MidiPort> const& port,
                     shoop_shared_ptr<BackendSession> const& backend) :
-    GraphPort(backend), port(port) {}
+    GraphPort(backend),
+    port(port),
+    m_plot_frames_processed("frames_processed"),
+    m_plot_input_events("input_events"),
+    m_plot_output_events("output_events"),
+    m_plot_notes_active("notes_active"),
+    m_plot_internal_connections("internal_connections"),
+    m_plot_input_checksum("input_checksum"),
+    m_plot_output_checksum("output_checksum") {}
 
 PortInterface &GraphMidiPort::get_port() const {
     return static_cast<PortInterface&>(*port);
@@ -66,4 +74,15 @@ void GraphMidiPort::PROC_prepare(uint32_t n_frames) {
 void GraphMidiPort::PROC_process(uint32_t n_frames) {
     port->PROC_process(n_frames);
     PROC_internal_connections(n_frames);
+
+    // Plot metrics (use port name as base identifier for Tracy grouping)
+    const char* port_name = port->name();
+    m_plot_frames_processed.plot(static_cast<double>(n_frames), port_name);
+    m_plot_input_events.plot(static_cast<double>(port->get_n_input_events()), port_name);
+    m_plot_output_events.plot(static_cast<double>(port->get_n_output_events()), port_name);
+    m_plot_notes_active.plot(static_cast<double>(port->get_n_output_notes_active()), port_name);
+    m_plot_internal_connections.plot(static_cast<double>(mp_internal_port_connections.size()), port_name);
+    // Plot checksums from the underlying MidiPort
+    m_plot_input_checksum.plot(port->get_input_checksum(), port_name);
+    m_plot_output_checksum.plot(port->get_output_checksum(), port_name);
 }

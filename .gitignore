@@ -6,6 +6,7 @@
 *.cxxflags
 *.files
 *.includes
+*.tracy
 .qtc_clangd
 build
 .cache/

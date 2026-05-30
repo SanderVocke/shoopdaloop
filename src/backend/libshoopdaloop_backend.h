@@ -1,3 +1,6 @@
+#ifndef SHOOP_LIBSHOOPDALOOP_BACKEND_H
+#define SHOOP_LIBSHOOPDALOOP_BACKEND_H
+
 #include "types.h"
 
 #ifdef _WIN32
@@ -37,9 +40,9 @@ SHOOP_EXPORT shoop_profiling_report_t* get_profiling_report(shoop_backend_sessio
 SHOOP_EXPORT shoop_result_t set_audio_driver(shoop_backend_session_t *session, shoop_audio_driver_t *driver);
 
 // Loops
-SHOOP_EXPORT shoopdaloop_loop_t *create_loop(shoop_backend_session_t *backend);
-SHOOP_EXPORT shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, shoop_channel_mode_t mode);
-SHOOP_EXPORT shoopdaloop_loop_midi_channel_t  *add_midi_channel  (shoopdaloop_loop_t *loop, shoop_channel_mode_t mode);
+SHOOP_EXPORT shoopdaloop_loop_t *create_loop(shoop_backend_session_t *backend, const char *name);
+SHOOP_EXPORT shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, shoop_channel_mode_t mode, const char *name);
+SHOOP_EXPORT shoopdaloop_loop_midi_channel_t  *add_midi_channel  (shoopdaloop_loop_t *loop, shoop_channel_mode_t mode, const char *name);
 SHOOP_EXPORT unsigned          get_n_audio_channels     (shoopdaloop_loop_t *loop);
 SHOOP_EXPORT unsigned          get_n_midi_channels      (shoopdaloop_loop_t *loop);
 SHOOP_EXPORT void              clear_loop               (shoopdaloop_loop_t *loop, unsigned length);
@@ -238,6 +241,17 @@ SHOOP_EXPORT void dummy_driver_remove_all_external_mock_ports(shoop_audio_driver
 // Resampling
 SHOOP_EXPORT shoop_multichannel_audio_t *resample_audio(shoop_multichannel_audio_t *in, unsigned new_n_frames);
 
+// Tracing
+typedef struct {
+    unsigned (*is_tracing_enabled)(void);
+    unsigned (*register_plot_name)(const char* name, unsigned len);
+    void (*plot_by_id)(unsigned id, double value);
+} shoop_tracing_callbacks;
+
+SHOOP_EXPORT void shoop_register_tracing(const shoop_tracing_callbacks* cb);
+
 #ifdef __cplusplus
 }
 #endif
+
+#endif // SHOOP_LIBSHOOPDALOOP_BACKEND_H

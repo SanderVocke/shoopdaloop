@@ -30,6 +30,11 @@ void GraphLoop::PROC_process(uint32_t n_frames) {
     for (auto &chan : mp_midi_channels) {
         chan->PROC_process(n_frames);
     }
+
+    // Plot metrics
+    m_plot_frames_processed.plot(static_cast<double>(n_frames));
+    m_plot_n_audio_channels.plot(static_cast<double>(mp_audio_channels.size()));
+    m_plot_n_midi_channels.plot(static_cast<double>(mp_midi_channels.size()));
 }
 
 void GraphLoop::delete_audio_channel_idx(uint32_t idx, bool thread_safe) {

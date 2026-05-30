@@ -32,7 +32,12 @@ void DummyMidiPort::write_event(MidiStorageElem event) {
 DummyMidiPort::DummyMidiPort(std::string name, shoop_port_direction_t direction, shoop_weak_ptr<DummyExternalConnections> external_connections)
     : MidiPort(true, true, true),
       DummyPort(name, direction, PortDataType::Midi, external_connections),
-      WithCommandQueue(100) {}
+      WithCommandQueue(100),
+      m_plot_input_queued("input_queued"),
+      m_plot_output_written("output_written"),
+      m_plot_frames_requested("frames_requested"),
+      m_plot_input_checksum("input_checksum"),
+      m_plot_output_checksum("output_checksum") {}
 
 unsigned DummyMidiPort::input_connectability() const {
     return (m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
@@ -62,6 +67,7 @@ void DummyMidiPort::queue_msg(uint32_t size, uint32_t time, uint8_t const *data)
         std::stable_sort(this->m_queued_msgs.begin(), this->m_queued_msgs.end(), [](const MidiStorageElem &a, const MidiStorageElem &b) {
             return a.time < b.time;
         });
+        this->m_plot_input_queued.plot(static_cast<double>(m_queued_msgs.size()), this->name());
     });
 }
 
@@ -81,6 +87,7 @@ void DummyMidiPort::request_data(uint32_t n_frames) {
         ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("request {} frames", n_frames);
         this->n_requested_frames = n_frames;
         this->n_original_requested_frames = n_frames;
+        this->m_plot_frames_requested.plot(static_cast<double>(n_frames), this->name());
     });
 }
 
@@ -107,8 +114,22 @@ void DummyMidiPort::PROC_prepare(uint32_t nframes) {
             msg.time = new_val;
         });
     }
+    const char* port_name = name();
+    m_plot_input_queued.plot(static_cast<double>(m_queued_msgs.size()), port_name);
     n_processed_last_round = 0;
     current_buf_frames = nframes;
+
+    // Compute input checksum from queued messages
+    double input_checksum = 0.0;
+    for (auto const& msg : m_queued_msgs) {
+        if (msg.time < nframes) {
+            input_checksum += checksum::compute_midi_message_checksum(
+                msg.time, msg.size, msg.data());
+        }
+    }
+    ma_input_checksum = input_checksum;
+    m_plot_input_checksum.plot(input_checksum, port_name);
+
     MidiPort::PROC_prepare(nframes);
 }
 
@@ -116,6 +137,14 @@ void DummyMidiPort::PROC_process(uint32_t nframes) {
     if (nframes > 0) {
         ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("Process {}", nframes);
     }
+
+    // Compute output checksum from buffer data
+    double output_checksum = 0.0;
+    for (auto const& msg : m_buffer_data) {
+        output_checksum += checksum::compute_midi_message_checksum(
+            msg.time, msg.size, msg.data());
+    }
+
     if (m_direction == shoop_port_direction_t::ShoopPortDirection_Output) {
         std::stable_sort(m_buffer_data.begin(), m_buffer_data.end(), [](const MidiStorageElem &a, const MidiStorageElem &b) {
             return a.time < b.time;
@@ -130,12 +159,18 @@ void DummyMidiPort::PROC_process(uint32_t nframes) {
                     m_written_requested_msgs.push_back(out_msg);
                 }
             }
+            m_plot_output_written.plot(static_cast<double>(m_written_requested_msgs.size()), name());
         } else {
             ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("{} messages not propagated to external due to being muted", m_buffer_data.size());
         }
     }
     n_processed_last_round = nframes;
     n_requested_frames -= std::min(nframes, n_requested_frames.load());
+
+    // Store and plot output checksum
+    ma_output_checksum = output_checksum;
+    m_plot_output_checksum.plot(output_checksum, name());
+
     MidiPort::PROC_process(nframes);
 }
 
@@ -172,6 +207,7 @@ std::vector<DummyMidiPort::StoredMessage> DummyMidiPort::get_written_requested_m
         ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Dequeue (have {} msgs)", this->m_written_requested_msgs.size());
         result = this->m_written_requested_msgs;
         this->m_written_requested_msgs.clear();
+        this->m_plot_output_written.plot(0.0, this->name());
     });
     return result;
 }

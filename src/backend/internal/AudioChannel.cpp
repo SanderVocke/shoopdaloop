@@ -151,7 +151,7 @@ void AudioChannel<SampleT>::throw_if_commands_queued() const {
 template <typename SampleT>
 AudioChannel<SampleT>::AudioChannel(
     shoop_shared_ptr<UsedBufferPool> buffer_pool, uint32_t initial_max_buffers,
-    shoop_channel_mode_t mode)
+    shoop_channel_mode_t mode, std::string name)
     : WithCommandQueue(50), ma_buffer_pool(buffer_pool),
       ma_buffers_data_length(0), mp_prerecord_buffers_data_length(0),
       ma_buffer_size(buffer_pool->elems_per_buffer()),
@@ -161,7 +161,13 @@ AudioChannel<SampleT>::AudioChannel(
       ma_data_seq_nr(0), ma_pre_play_samples(0),
       mp_buffers(buffer_pool, initial_max_buffers),
       mp_prerecord_buffers(buffer_pool, initial_max_buffers),
-      mp_prev_process_flags(0), ma_last_played_back_sample(-1) {
+      mp_prev_process_flags(0), ma_last_played_back_sample(-1),
+      m_name(name) {
+}
+
+template <typename SampleT>
+const char* AudioChannel<SampleT>::name() const {
+    return m_name.c_str();
 }
 
 template <typename SampleT>
@@ -202,7 +208,7 @@ AudioChannel<SampleT>::operator=(AudioChannel<SampleT> const &other) {
 }
 
 template <typename SampleT>
-AudioChannel<SampleT>::AudioChannel() : ma_buffer_size(1) {}
+AudioChannel<SampleT>::AudioChannel(std::string name) : ma_buffer_size(1), m_name(name) {}
 
 template <typename SampleT> AudioChannel<SampleT>::~AudioChannel() {}
 
@@ -222,6 +228,10 @@ void AudioChannel<SampleT>::PROC_process(
 
     // Execute any commands queued from other threads.
     PROC_handle_command_queue();
+
+    // Reset per-cycle checksums
+    double recorded_checksum = 0.0;
+    double playback_checksum = 0.0;
 
     auto process_params = get_channel_process_params(
         mode, maybe_next_mode, maybe_next_mode_delay_cycles,
@@ -266,10 +276,12 @@ void AudioChannel<SampleT>::PROC_process(
         PROC_process_playback(
             process_params.position, length_before, n_samples, false,
             mp_playback_target_buffer, mp_playback_target_buffer_size);
+        playback_checksum = checksum::compute_audio_checksum(mp_playback_target_buffer, n_samples);
     } else {
         ma_last_played_back_sample = -1;
     }
     if (process_flags & ChannelRecord) {
+        recorded_checksum = checksum::compute_audio_checksum(mp_recording_source_buffer, n_samples);
         PROC_process_record(n_samples,
                             ((int)length_before + ma_start_offset),
                             mp_buffers, ma_buffers_data_length,
@@ -277,6 +289,7 @@ void AudioChannel<SampleT>::PROC_process(
                             mp_recording_source_buffer_size);
     }
     if (process_flags & ChannelReplace) {
+        recorded_checksum = checksum::compute_audio_checksum(mp_recording_source_buffer, n_samples);
         PROC_process_replace(process_params.position, length_before,
                                 n_samples, mp_recording_source_buffer,
                                 mp_recording_source_buffer_size);
@@ -285,6 +298,7 @@ void AudioChannel<SampleT>::PROC_process(
         if (!(mp_prev_process_flags & ChannelPreRecord)) {
             log<log_level_debug>("Pre-record start");
         }
+        recorded_checksum = checksum::compute_audio_checksum(mp_recording_source_buffer, n_samples);
         PROC_process_record(n_samples, mp_prerecord_buffers_data_length,
                             mp_prerecord_buffers,
                             mp_prerecord_buffers_data_length,
@@ -303,6 +317,21 @@ void AudioChannel<SampleT>::PROC_process(
         mp_playback_target_buffer += n_samples;
         mp_playback_target_buffer_size -= n_samples;
     }
+
+    // Store and plot checksums
+    const char* chan_name = name();
+    ma_recorded_checksum = recorded_checksum;
+    ma_playback_checksum = playback_checksum;
+    m_plot_recorded_checksum.plot(recorded_checksum, chan_name);
+    m_plot_playback_checksum.plot(playback_checksum, chan_name);
+
+    // Plot metrics
+    m_plot_data_length.plot(static_cast<double>(ma_buffers_data_length.load()), chan_name);
+    m_plot_position.plot(static_cast<double>(process_params.position), chan_name);
+    m_plot_mode.plot(static_cast<double>(ma_mode.load()), chan_name);
+    m_plot_output_peak.plot(static_cast<double>(ma_output_peak.load()), chan_name);
+    m_plot_process_flags.plot(static_cast<double>(process_flags), chan_name);
+    m_plot_n_buffers.plot(static_cast<double>(mp_buffers.n_buffers()), chan_name);
 }
 
 template <typename SampleT>
@@ -429,6 +458,8 @@ void AudioChannel<SampleT>::load_data(SampleT *samples, uint32_t len,
                                       bool thread_safe) {
     log<log_level_debug_trace>("load data ({} samples)", len);
 
+    double loaded_checksum = checksum::compute_audio_checksum(samples, len);
+
     // Convert to internal storage layout
     auto buffers =
         Buffers(ma_buffer_pool, std::ceil((float)len / (float)ma_buffer_size));
@@ -443,11 +474,12 @@ void AudioChannel<SampleT>::load_data(SampleT *samples, uint32_t len,
                sizeof(SampleT) * n_elems);
     }
 
-    auto cmd = [this, buffers, len]() {
+    auto cmd = [this, buffers, len, loaded_checksum]() {
         mp_buffers = buffers;
         ma_buffers_data_length = len;
         mp_prerecord_buffers_data_length = 0;
         ma_start_offset = 0;
+        ma_recorded_checksum = loaded_checksum;  // Set checksum to loaded data sum
         data_changed();
     };
 
@@ -702,6 +734,8 @@ void AudioChannel<SampleT>::PROC_clear(uint32_t length) {
     mp_buffers.ensure_available(length);
     ma_buffers_data_length = length;
     ma_start_offset = 0;
+    ma_recorded_checksum = 0.0;
+    ma_playback_checksum = 0.0;
     data_changed();
 }
 

@@ -21,6 +21,7 @@ use std::pin::Pin;
 
 use crate::audio_driver_names::get_audio_driver_from_name;
 use crate::global_qml_settings::GlobalQmlSettings;
+use common::tracing_capture;
 
 shoop_log_unit!("Main");
 
@@ -341,6 +342,25 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
         }
     };
 
+    if cli_args.developer_options.tracing {
+        common::tracing_helpers::set_tracing_enabled(true);
+    }
+
+    // Start tracing capture process if requested
+    if cli_args.developer_options.tracing_capture {
+        let capture_result = tracing_capture::start_tracing_capture(
+            cli_args.developer_options.tracing_capture_tool.as_deref(),
+            cli_args.developer_options.tracing_capture_args.as_deref(),
+        );
+        if let Err(e) = capture_result {
+            error!("Failed to start tracing capture: {}", e);
+        }
+    }
+
+    // Register tracing callbacks with the backend .so so that C++
+    // code can plot to the same tracy-client instance owned by Rust.
+    register_backend_tracing();
+
     if cli_args.print_backends {
         println!("Available backends:\n");
         let all_audio_driver_types = crate::audio_driver_names::all_audio_driver_types();
@@ -387,8 +407,23 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
     app_main(&cli_args, config)
 }
 
+/// Guard to ensure tracing capture is stopped when the app exits.
+struct TracingCaptureCleanupGuard;
+
+impl Drop for TracingCaptureCleanupGuard {
+    fn drop(&mut self) {
+        tracing_capture::stop_tracing_capture();
+    }
+}
+
 #[cfg(not(feature = "prebuild"))]
 pub fn shoopdaloop_main(config: ShoopConfig) -> i32 {
+    // Note: cxx_qt init_crate calls are now handled in #[ctor] static initializer in lib.rs
+    // This ensures they run even in test builds and creates proper linker references
+
+    // Create cleanup guard that will stop tracing capture when the app exits
+    let _tracing_guard = TracingCaptureCleanupGuard;
+
     match entry_point(config) {
         Ok(r) => {
             return r;
@@ -397,5 +432,22 @@ pub fn shoopdaloop_main(config: ShoopConfig) -> i32 {
             error!("Error: {:?}\nBacktrace:\n{:?}", e, e.backtrace());
             return 1;
         }
+    }
+}
+
+/// Register tracing function-pointer callbacks with the backend .so
+/// so that C++ code can plot to the same tracy-client instance owned by Rust.
+#[cfg(not(feature = "prebuild"))]
+fn register_backend_tracing() {
+    use backend_bindings::ffi::shoop_tracing_callbacks;
+
+    let callbacks = shoop_tracing_callbacks {
+        is_tracing_enabled: Some(common::tracing_helpers::shoop_tracing_is_enabled),
+        register_plot_name: Some(common::tracing_helpers::shoop_tracing_register_plot_name),
+        plot_by_id: Some(common::tracing_helpers::shoop_tracing_plot_by_id),
+    };
+
+    unsafe {
+        backend_bindings::ffi::shoop_register_tracing(std::ptr::addr_of!(callbacks));
     }
 }

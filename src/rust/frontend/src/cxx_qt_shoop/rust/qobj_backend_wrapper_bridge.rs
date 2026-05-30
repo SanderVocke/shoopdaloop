@@ -176,6 +176,8 @@ pub mod ffi {
 pub use ffi::BackendWrapper;
 use ffi::*;
 
+use common::tracing_helpers::TracyPlotter;
+
 #[derive(Copy, Clone)]
 pub struct BackendWrapperUpdateData {
     pub xruns: i32,
@@ -209,6 +211,11 @@ pub struct BackendWrapperRust {
     pub update_data: Option<BackendWrapperUpdateData>,
     pub closed: bool,
     pub last_updated: Option<time::Instant>,
+
+    // Tracy plotters for concurrency debugging
+    pub plotter_mode: TracyPlotter,
+    pub plotter_samples_requested: TracyPlotter,
+    pub plotter_samples_pending: TracyPlotter,
 }
 
 impl Default for BackendWrapperRust {
@@ -236,6 +243,11 @@ impl Default for BackendWrapperRust {
             update_data: None,
             closed: false,
             last_updated: None,
+
+            // Tracy plotters
+            plotter_mode: TracyPlotter::new("mode"),
+            plotter_samples_requested: TracyPlotter::new("samples_requested"),
+            plotter_samples_pending: TracyPlotter::new("samples_pending"),
         }
     }
 }

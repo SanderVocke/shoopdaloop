@@ -80,6 +80,10 @@ fn main_impl() -> Result<(), anyhow::Error> {
         return Ok(());
     }
 
+    // Note: shoopdaloop crate has no #[qobject] types, so we don't need CxxQtBuilder here.
+    // The frontend and cxx_qt_lib_shoop dependencies' initializers are picked up via their
+    // exported manifest.json files and linked via the extern crate declarations in lib.rs.
+
     println!("Creating dev launcher script");
     let dev_launcher_script = generate_dev_launcher_script()?;
     println!("cargo:rustc-env=SHOOPDALOOP_DEV_LAUNCHER_SCRIPT={dev_launcher_script:?}");

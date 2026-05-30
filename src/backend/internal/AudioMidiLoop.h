@@ -6,6 +6,7 @@
 #include "ProcessProfiling.h"
 #include <optional>
 #include "shoop_shared_ptr.h"
+#include "TracyPlotter.h"
 
 template<typename SampleT> class AudioPort;
 
@@ -14,13 +15,18 @@ class AudioMidiLoop : public BasicLoop {
     std::vector<shoop_shared_ptr<ChannelInterface>> mp_audio_channels;
     std::vector<shoop_shared_ptr<ChannelInterface>> mp_midi_channels;
 
+    // Tracy plotters for audio-midi loop debugging (suffix only)
+    TracyPlotter m_plot_n_audio_channels{"n_audio_channels"};
+    TracyPlotter m_plot_n_midi_channels{"n_midi_channels"};
+
   public:
-    AudioMidiLoop();
+    AudioMidiLoop(std::string name = "loop");
 
     template <typename SampleT>
     shoop_shared_ptr<AudioChannel<SampleT>>
     add_audio_channel(shoop_shared_ptr<BufferPool<SampleT>> const &buffer_pool,
                       uint32_t initial_max_buffers, shoop_channel_mode_t mode,
+                      std::string name,
                       bool thread_safe = true);
 
     template <typename SampleT>
@@ -29,6 +35,7 @@ class AudioMidiLoop : public BasicLoop {
 
     shoop_shared_ptr<MidiChannel>
     add_midi_channel(uint32_t data_size, shoop_channel_mode_t mode,
+                     std::string name,
                      bool thread_safe = true);
 
     shoop_shared_ptr<MidiChannel>
@@ -60,11 +67,13 @@ class AudioMidiLoop : public BasicLoop {
 extern template shoop_shared_ptr<AudioChannel<float>> AudioMidiLoop::add_audio_channel(
     shoop_shared_ptr<BufferPool<float>> const &buffer_pool,
     uint32_t initial_max_buffers, shoop_channel_mode_t mode,
+    std::string name,
     bool thread_safe
 );
 extern template shoop_shared_ptr<AudioChannel<int>> AudioMidiLoop::add_audio_channel(
     shoop_shared_ptr<BufferPool<int>> const &buffer_pool,
     uint32_t initial_max_buffers, shoop_channel_mode_t mode,
+    std::string name,
     bool thread_safe
 );
 extern template shoop_shared_ptr<AudioChannel<float>> AudioMidiLoop::audio_channel(uint32_t idx, bool thread_safe);

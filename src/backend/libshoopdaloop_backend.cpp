@@ -447,16 +447,16 @@ shoop_profiling_report_t *get_profiling_report(shoop_backend_session_t *backend)
   }, new shoop_profiling_report_t);
 }
 
-shoopdaloop_loop_t *create_loop(shoop_backend_session_t *backend) {
+shoopdaloop_loop_t *create_loop(shoop_backend_session_t *backend, const char *name) {
   return api_impl<shoopdaloop_loop_t*>("create_loop", [&]() -> shoopdaloop_loop_t* {
     auto _backend = internal_backend_session(backend);
     if (!_backend) { return nullptr; }
-    auto rval = external_loop(_backend->create_loop());
+    auto rval = external_loop(_backend->create_loop(std::string(name ? name : "loop")));
     return rval;
   }, nullptr);
 }
 
-shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, shoop_channel_mode_t mode) {
+shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, shoop_channel_mode_t mode, const char *name) {
   return api_impl<shoopdaloop_loop_audio_channel_t*>("add_audio_channel", [&]() -> shoopdaloop_loop_audio_channel_t* {
     // Note: we jump through hoops here to pre-create a shared ptr and then
     // queue a copy-assignment of its value. This allows us to return before
@@ -466,12 +466,14 @@ shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, s
     if (!loop_info) { return nullptr; }
     auto &backend = loop_info->get_backend();
     auto r = backend.add_loop_channel(loop_info, nullptr);
-    backend.queue_process_thread_command([r, loop_info, mode]() {
+    std::string channel_name(name ? name : "audio_channel");
+    backend.queue_process_thread_command([r, loop_info, mode, channel_name]() {
         auto _backend = loop_info->backend.lock();
         if (!_backend) { return; }
         auto chan = loop_info->loop->add_audio_channel<audio_sample_t>(_backend->audio_buffer_pool,
                                                         audio_channel_initial_buffers,
                                                         mode,
+                                                        channel_name,
                                                         false);
         r->channel = shoop_static_pointer_cast<ChannelInterface>(chan);
         loop_info->mp_audio_channels.push_back(r);
@@ -482,7 +484,7 @@ shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, s
   }, nullptr);
 }
 
-shoopdaloop_loop_midi_channel_t *add_midi_channel (shoopdaloop_loop_t *loop, shoop_channel_mode_t mode) {
+shoopdaloop_loop_midi_channel_t *add_midi_channel (shoopdaloop_loop_t *loop, shoop_channel_mode_t mode, const char *name) {
   return api_impl<shoopdaloop_loop_midi_channel_t*>("add_midi_channel", [&]() -> shoopdaloop_loop_midi_channel_t* {
     // Note: we jump through hoops here to pre-create a shared ptr and then
     // queue a copy-assignment of its value. This allows us to return before
@@ -492,8 +494,9 @@ shoopdaloop_loop_midi_channel_t *add_midi_channel (shoopdaloop_loop_t *loop, sho
     if (!loop_info) { return nullptr; }
     auto &backend = loop_info->get_backend();
     auto r = backend.add_loop_channel(loop_info, nullptr);
-    backend.queue_process_thread_command([loop_info, mode, r]() {
-        auto chan = loop_info->loop->add_midi_channel(midi_storage_size, mode, false);
+    std::string channel_name(name ? name : "midi_channel");
+    backend.queue_process_thread_command([loop_info, mode, r, channel_name]() {
+        auto chan = loop_info->loop->add_midi_channel(midi_storage_size, mode, channel_name, false);
         r->channel = shoop_static_pointer_cast<ChannelInterface>(chan);
         loop_info->mp_midi_channels.push_back(r);
         logging::log<"Backend.API", log_level_debug>(std::nullopt, std::nullopt, "add_midi_channel: executed on process thread");
@@ -2415,4 +2418,24 @@ shoop_multichannel_audio_t *alloc_multichannel_audio(unsigned n_channels, unsign
 void destroy_multichannel_audio(shoop_multichannel_audio_t *audio) {
   free(audio->data);
   delete audio;
+}
+
+// ── Tracing registration ───────────────────────────────────────────────
+#include "TracingRegistry.h"
+
+void shoop_register_tracing(const shoop_tracing_callbacks* cb) {
+  if (cb) {
+    // Store a copy of the callbacks on the heap so it
+    // outlives this call.  We use a function-local static pointer
+    // to keep exactly one copy alive at a time.
+    static auto* stored = new TracingCallbacks;
+    // Copy function pointers directly. They are just addresses,
+    // so they remain valid after cb goes out of scope.
+    stored->is_tracing_enabled = cb->is_tracing_enabled;
+    stored->register_plot_name = cb->register_plot_name;
+    stored->plot_by_id = cb->plot_by_id;
+    TracingRegistry::register_callbacks(stored);
+  } else {
+    TracingRegistry::register_callbacks(nullptr);
+  }
 }

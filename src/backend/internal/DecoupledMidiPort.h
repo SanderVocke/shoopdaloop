@@ -6,6 +6,8 @@
 #include <vector>
 #include <stdint.h>
 #include <boost/lockfree/spsc_queue.hpp>
+#include "TracyPlotter.h"
+#include "Checksum.h"
 
 class AudioMidiDriver;
 
@@ -23,6 +25,16 @@ class DecoupledMidiPort : public shoop_enable_shared_from_this<DecoupledMidiPort
     const shoop_port_direction_t direction;
     Queue ma_queue;
     shoop_weak_ptr<AudioMidiDriver> maybe_driver;
+
+    // Tracy plotters for decoupled midi port debugging
+    TracyPlotter m_plot_incoming_queue_size;
+    TracyPlotter m_plot_outgoing_queue_size;
+
+    // Checksum tracking for data consistency verification
+    std::atomic<double> ma_input_checksum{0.0};
+    std::atomic<double> ma_output_checksum{0.0};
+    TracyPlotter m_plot_input_checksum;
+    TracyPlotter m_plot_output_checksum;
 public:
     DecoupledMidiPort (shoop_shared_ptr<MidiPort> port,
                        shoop_weak_ptr<AudioMidiDriver> driver,

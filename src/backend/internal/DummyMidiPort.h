@@ -15,6 +15,8 @@
 #include <memory>
 #include <stdint.h>
 #include <mutex>
+#include "TracyPlotter.h"
+#include "Checksum.h"
 
 class DummyMidiPort : public virtual MidiPort,
                       public DummyPort,
@@ -40,6 +42,17 @@ private:
 
     std::atomic<uint32_t> n_processed_last_round = 0;
     std::atomic<uint32_t> n_original_requested_frames = 0;
+
+    // Tracy plotters for data flow analysis (constructed with port name)
+    TracyPlotter m_plot_input_queued;
+    TracyPlotter m_plot_output_written;
+    TracyPlotter m_plot_frames_requested;
+
+    // Checksum tracking for data consistency verification
+    std::atomic<double> ma_input_checksum{0.0};
+    std::atomic<double> ma_output_checksum{0.0};
+    TracyPlotter m_plot_input_checksum;
+    TracyPlotter m_plot_output_checksum;
 
 public:
     uint32_t n_events() const override;
