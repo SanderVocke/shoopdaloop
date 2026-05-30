@@ -274,6 +274,7 @@ else()
   corrosion_import_crate(
     MANIFEST_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../rust/backend_rust/Cargo.toml
     CRATES backend_rust
+    LOCKED
   )
 
   # Corrosion target names are crate-name based; map them to names used below.
