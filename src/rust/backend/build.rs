@@ -2,7 +2,35 @@ use anyhow::anyhow;
 use cmake::Config;
 use common;
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+fn short_cmake_output_dir(out_dir: &Path, profile: &str) -> PathBuf {
+    // Cargo's OUT_DIR is deeply nested, e.g.
+    // target/<profile>/build/backend-<hash>/out. Corrosion places its Cargo
+    // target dir under the CMake binary dir, and cxx-build then appends more
+    // generated path components. On Windows release-with-debug builds this can
+    // exceed MAX_PATH for long bridge names. Keep the CMake binary dir near the
+    // Cargo profile dir while preserving uniqueness per backend build-script hash.
+    let build_hash = out_dir
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|name| name.to_str())
+        .unwrap_or("backend")
+        .trim_start_matches("backend-");
+    let short_hash = &build_hash[..build_hash.len().min(8)];
+
+    if let Some(target_profile_dir) = out_dir
+        .parent()
+        .and_then(Path::parent)
+        .and_then(Path::parent)
+    {
+        target_profile_dir.join(format!("b-{short_hash}"))
+    } else {
+        PathBuf::from("target")
+            .join(profile)
+            .join(format!("b-{short_hash}"))
+    }
+}
 
 // For now, Rust "back-end" is just a set of C bindings to the
 // C++ back-end.
@@ -21,7 +49,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
 
     let install_dir = out_dir.join("cmake_install");
     let cmake_backend_dir = "../../backend";
-    let cmake_output_dir = out_dir.join("cmake_build");
+    let cmake_output_dir = short_cmake_output_dir(&out_dir, &profile);
 
     if !["debug", "release"].contains(&profile.as_str()) {
         return Err(anyhow!("Unknown build profile: {}", &profile));
