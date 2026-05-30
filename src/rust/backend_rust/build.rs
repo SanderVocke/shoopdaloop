@@ -1,3 +1,38 @@
+use std::fs;
+use std::path::Path;
+
+fn copy_dir_recursive(src: &Path, dst: &Path) {
+    if let Err(e) = fs::create_dir_all(dst) {
+        panic!("Failed to create dir {}: {}", dst.display(), e);
+    }
+    for entry in
+        fs::read_dir(src).unwrap_or_else(|e| panic!("Failed to read dir {}: {}", src.display(), e))
+    {
+        let entry = entry
+            .unwrap_or_else(|e| panic!("Failed to read dir entry in {}: {}", src.display(), e));
+        let ty = entry.file_type().unwrap_or_else(|e| {
+            panic!(
+                "Failed to get file type for {}: {}",
+                entry.path().display(),
+                e
+            )
+        });
+        let dst_path = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_recursive(&entry.path(), &dst_path);
+        } else if ty.is_file() {
+            fs::copy(entry.path(), &dst_path).unwrap_or_else(|e| {
+                panic!(
+                    "Failed to copy {} -> {}: {}",
+                    entry.path().display(),
+                    dst_path.display(),
+                    e
+                )
+            });
+        }
+    }
+}
+
 fn main() {
     if cfg!(feature = "prebuild") {
         return;
@@ -41,6 +76,36 @@ fn main() {
         out_dir.join("cxxbridge/include").display()
     );
     println!("cargo:cxx_bridge_libdir={}", out_dir.display());
+
+    if let Ok(corrosion_build_dir) = std::env::var("CORROSION_BUILD_DIR") {
+        let corrosion_dir = Path::new(&corrosion_build_dir);
+        let src_include = out_dir.join("cxxbridge/include");
+        let dst_include = corrosion_dir.join("backend_rust_cxx_include");
+        if src_include.exists() {
+            copy_dir_recursive(&src_include, &dst_include);
+            println!(
+                "cargo:warning=Copied cxxbridge include dir to {}",
+                dst_include.display()
+            );
+        }
+
+        let src_cxx_lib = out_dir.join("libbackend_rust_cxx.a");
+        let dst_cxx_lib = corrosion_dir.join("libbackend_rust_cxx.a");
+        if src_cxx_lib.exists() {
+            fs::copy(&src_cxx_lib, &dst_cxx_lib).unwrap_or_else(|e| {
+                panic!(
+                    "Failed to copy {} -> {}: {}",
+                    src_cxx_lib.display(),
+                    dst_cxx_lib.display(),
+                    e
+                )
+            });
+            println!(
+                "cargo:warning=Copied cxx bridge lib to {}",
+                dst_cxx_lib.display()
+            );
+        }
+    }
 
     println!("cargo:rerun-if-changed=src/audio_midi_driver_cxx.rs");
     println!("cargo:rerun-if-changed=src/backend_api_cxx.rs");

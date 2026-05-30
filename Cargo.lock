@@ -156,7 +156,6 @@ name = "backend"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "backend_rust",
  "cmake",
  "common",
  "ctor",

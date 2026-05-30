@@ -13,10 +13,9 @@ fn main_impl() -> Result<(), anyhow::Error> {
     }
 
     // environment
-    let backend_rust_cxx_include = std::env::var("DEP_BACKEND_RUST_INCLUDE")?;
-    let backend_rust_cxx_libdir = std::env::var("DEP_BACKEND_RUST_CXX_BRIDGE_LIBDIR")?;
-    let backend_rust_staticlib = std::env::var("CARGO_STATICLIB_FILE_BACKEND_RUST")?;
     let profile = std::env::var("PROFILE")?;
+    let rustflags = std::env::var("RUSTFLAGS").unwrap_or_default();
+    let cargo_encoded_rustflags = std::env::var("CARGO_ENCODED_RUSTFLAGS").unwrap_or_default();
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     let build_time_link_dirs_raw = option_env!("SHOOP_BUILD_TIME_LINK_DIRS").unwrap_or_default();
     let runtime_link_dirs_raw = option_env!("SHOOP_RUNTIME_LINK_DIRS").unwrap_or_default();
@@ -37,9 +36,9 @@ fn main_impl() -> Result<(), anyhow::Error> {
             .out_dir(&cmake_output_dir)
             .generator("Ninja")
             .define("CMAKE_INSTALL_PREFIX", install_dir.to_str().unwrap_or(""))
-            .define("BACKEND_RUST_CXX_INCLUDE", backend_rust_cxx_include)
-            .define("BACKEND_RUST_CXX_LIBDIR", backend_rust_cxx_libdir)
-            .define("BACKEND_RUST_RUST_LIB", backend_rust_staticlib)
+            .define("SHOOP_USE_CORROSION_BACKEND_RUST", "ON")
+            .define("SHOOP_CORROSION_RUSTFLAGS", rustflags)
+            .define("SHOOP_CORROSION_ENCODED_RUSTFLAGS", cargo_encoded_rustflags)
             .define(
                 "ENABLE_COVERAGE",
                 if cfg!(feature = "coverage") {

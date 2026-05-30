@@ -245,17 +245,62 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 find_package(nlohmann_json CONFIG REQUIRED)
 
+option(SHOOP_USE_CORROSION_BACKEND_RUST "Build backend_rust via Corrosion from CMake" OFF)
+
 # Dependencies provided by in-repo Rust CXX bridges
-include_directories(${BACKEND_RUST_CXX_INCLUDE})
+# Legacy path: injected by Rust build.rs
+if (NOT SHOOP_USE_CORROSION_BACKEND_RUST)
+  include_directories(${BACKEND_RUST_CXX_INCLUDE})
+  link_directories(${BACKEND_RUST_CXX_LIBDIR})
+
+  # Define the backend_rust_cxx library explicitly as imported
+  add_library(backend_rust_cxx STATIC IMPORTED)
+  set_target_properties(backend_rust_cxx PROPERTIES
+      IMPORTED_LOCATION "${BACKEND_RUST_CXX_LIBDIR}/libbackend_rust_cxx.a"
+  )
+else()
+  if (NOT "${SHOOP_CORROSION_RUSTFLAGS}" STREQUAL "")
+    set(ENV{RUSTFLAGS} "${SHOOP_CORROSION_RUSTFLAGS}")
+  endif()
+  if (NOT "${SHOOP_CORROSION_ENCODED_RUSTFLAGS}" STREQUAL "")
+    set(ENV{CARGO_ENCODED_RUSTFLAGS} "${SHOOP_CORROSION_ENCODED_RUSTFLAGS}")
+  endif()
+
+  include(FetchContent)
+  FetchContent_Declare(
+    corrosion
+    GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
+    GIT_TAG v0.5.1
+  )
+  FetchContent_MakeAvailable(corrosion)
+
+  corrosion_import_crate(
+    MANIFEST_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../rust/backend_rust/Cargo.toml
+    CRATES backend_rust
+  )
+
+  # Corrosion target names are crate-name based; map them to names used below.
+  if (TARGET backend_rust)
+    set(BACKEND_RUST_RUST_LIB backend_rust)
+  endif()
+  if (TARGET backend_rust_cxx)
+    # already available as target
+  endif()
+endif()
+
 # Bridge-facing headers used by cxx::bridge include!(...) declarations
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../rust/backend_rust/src)
-link_directories(${BACKEND_RUST_CXX_LIBDIR})
+if (SHOOP_USE_CORROSION_BACKEND_RUST)
+  # backend_rust/build.rs mirrors generated cxxbridge headers and cxx static lib here in Corrosion mode.
+  include_directories(${CMAKE_CURRENT_BINARY_DIR}/backend_rust_cxx_include)
 
-# Define the backend_rust_cxx library explicitly as imported
-add_library(backend_rust_cxx STATIC IMPORTED)
-set_target_properties(backend_rust_cxx PROPERTIES
-    IMPORTED_LOCATION "${BACKEND_RUST_CXX_LIBDIR}/libbackend_rust_cxx.a"
-)
+  if (NOT TARGET backend_rust_cxx)
+    add_library(backend_rust_cxx STATIC IMPORTED)
+    set_target_properties(backend_rust_cxx PROPERTIES
+      IMPORTED_LOCATION "${CMAKE_CURRENT_BINARY_DIR}/libbackend_rust_cxx.a"
+    )
+  endif()
+endif()
 
 add_subdirectory(test)
 
@@ -271,8 +316,14 @@ target_link_libraries(shoopdaloop_backend_internals PRIVATE
   zita-resampler::zita-resampler
   Boost::headers
   ${BACKEND_RUST_RUST_LIB}
-  backend_rust_cxx
   )
+if (SHOOP_USE_CORROSION_BACKEND_RUST)
+  if (TARGET backend_rust)
+    add_dependencies(shoopdaloop_backend_internals backend_rust)
+  endif()
+else()
+  target_link_libraries(shoopdaloop_backend_internals PRIVATE backend_rust_cxx)
+endif()
 if(B64_FOUND)
     target_link_libraries(shoopdaloop_backend_internals PUBLIC b64::b64)
 endif()
