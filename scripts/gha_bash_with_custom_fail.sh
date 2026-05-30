@@ -58,7 +58,7 @@ if [ ${RESULT} -ne 0 ]; then
     export PI_MODEL
     export OPENCODE_API_KEY
     export OPENROUTER_API_KEY
-    pi --no-session --model "$PI_MODEL" -p "Read .github/pi_coding_agent/prompt.md and complete the task(s) inside." 2>&1 | tee "coding_agent/pi_output.log"
+    pi --stream=all --no-session --model "$PI_MODEL" -p "Read .github/pi_coding_agent/prompt.md and complete the task(s) inside." 2>&1 | tee "coding_agent/pi_output.log"
 
     PI_EXIT_CODE=${PIPESTATUS[0]}
 

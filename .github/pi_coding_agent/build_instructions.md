@@ -1,0 +1,4 @@
+- building the whole project: "cargo build" in the top level. This builds Rust, C++, all of it. if it fails with some dependency or permission issue, there is an issue with your environment settings - stop and report.
+- the build also produces a "test_runner" executable as a side effect, somewhere nested in the target/ dir. It executes the back-end C++ unit tests (Catch2).
+- "cargo test" runs the Rust unit tests.
+- "./target/debug/shoopdaloop_dev.sh --self-test" runs the QML self-tests (integration level).

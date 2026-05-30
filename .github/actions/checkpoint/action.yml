@@ -24,4 +24,15 @@ runs:
       echo "Disabling further checkpoints"
       echo "failure_status=handled" >> $GITHUB_ENV
 
+  - name: Checkpoint message (pi agent mode)
+    if: always() && env.failure_status == 'handled' && env.pi_checkpoint_enabled == 'true'
+    shell: bash
+    run: |
+      echo "Pi coding agent was invoked to handle the failure."
+      echo "Check the coding_agent directory for logs and analysis."
+      if [ -f coding_agent/pi_output.log ]; then
+        echo "=== Pi coding agent output (last 100 lines) ==="
+        tail -100 coding_agent/pi_output.log
+      fi
+
 
