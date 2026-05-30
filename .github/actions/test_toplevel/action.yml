@@ -160,6 +160,9 @@ runs:
       echo "LLVM_PROFDATA=$(find $(rustc --print sysroot) -name llvm-profdata)" | tee -a $GITHUB_ENV
   - uses: ./.github/actions/checkpoint
     if: always()
+  - name: Install Tracy capture tool
+    if: always()
+    uses: ./.github/actions/install_tracy
   - name: Install Qoverage
     if: always() && inputs.coverage
     uses: ./.github/actions/install_qoverage
