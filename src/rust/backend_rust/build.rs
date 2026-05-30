@@ -1,6 +1,37 @@
 use std::fs;
 use std::path::Path;
 
+fn print_cxxbridge_sources_status(out_dir: &Path) {
+    let cxx_src_dir = out_dir.join("cxxbridge/sources/backend_rust/src");
+    let tracked = cxx_src_dir.join("midi_state_diff_tracker_cxx.rs.cc");
+    println!(
+        "cargo:warning=cxxbridge source dir exists: {} ({})",
+        cxx_src_dir.display(),
+        cxx_src_dir.exists()
+    );
+    println!(
+        "cargo:warning=tracked cxxbridge source exists: {} ({})",
+        tracked.display(),
+        tracked.exists()
+    );
+    if cxx_src_dir.exists() {
+        match fs::read_dir(&cxx_src_dir) {
+            Ok(entries) => {
+                for entry in entries.flatten() {
+                    println!("cargo:warning=cxxbridge source file: {}", entry.path().display());
+                }
+            }
+            Err(e) => {
+                println!(
+                    "cargo:warning=failed to list cxxbridge source dir {}: {}",
+                    cxx_src_dir.display(),
+                    e
+                );
+            }
+        }
+    }
+}
+
 fn copy_dir_recursive(src: &Path, dst: &Path) {
     if let Err(e) = fs::create_dir_all(dst) {
         panic!("Failed to create dir {}: {}", dst.display(), e);
@@ -41,6 +72,9 @@ fn main() {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     let backend_include = format!("{}/../../backend", manifest_dir);
 
+    let out_dir = std::env::var_os("OUT_DIR").unwrap();
+    let out_dir = std::path::Path::new(&out_dir);
+
     cxx_build::bridges([
         "src/audio_midi_driver_cxx.rs",
         "src/backend_api_cxx.rs",
@@ -68,8 +102,7 @@ fn main() {
     .std("c++20")
     .compile("backend_rust_cxx");
 
-    let out_dir = std::env::var_os("OUT_DIR").unwrap();
-    let out_dir = std::path::Path::new(&out_dir);
+    print_cxxbridge_sources_status(out_dir);
 
     println!(
         "cargo:include={}",
