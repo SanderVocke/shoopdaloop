@@ -35,6 +35,12 @@ impl std::error::Error for PoolCreationError {}
 /// pulls a ready-to-use object from a queue. If the queue is empty, it
 /// creates a new object on-the-fly as a fallback, preventing the consumer
 /// from ever blocking.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefillPolicy {
+    Auto,
+    Manual,
+}
+
 pub struct RefillingPool<T: Send + Debug + 'static> {
     /// The lock-free queue holding the pre-allocated objects.
     queue: Arc<ArrayQueue<Box<T>>>,
@@ -55,26 +61,28 @@ pub struct RefillingPool<T: Send + Debug + 'static> {
 }
 
 impl<T: Send + Debug + 'static> RefillingPool<T> {
-    /// Creates a new `RefillingPool`.
-    ///
-    /// The pool is immediately pre-filled to its `capacity`. A background thread is
-    /// spawned to handle refilling.
-    ///
-    /// # Arguments
-    ///
-    /// * `capacity`: The target number of objects the pool should hold. The queue will
-    ///   be sized to this value.
-    /// * `low_water_mark`: When the number of objects in the pool drops to this
-    ///   level, the background thread will be signaled to refill it.
-    /// * `factory`: A closure that produces new `Box<T>` instances.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `PoolCreationError` if `low_water_mark` is greater than or
-    /// equal to `capacity`.
+    /// Creates a new `RefillingPool` with automatic background refilling.
     pub fn new<F>(
         capacity: usize,
         low_water_mark: usize,
+        factory: F,
+    ) -> Result<Self, PoolCreationError>
+    where
+        F: Fn() -> Box<T> + Send + Sync + 'static,
+    {
+        Self::new_with_policy(capacity, low_water_mark, RefillPolicy::Auto, factory)
+    }
+
+    /// Creates a new `RefillingPool` with configurable refill behavior.
+    ///
+    /// The pool is immediately pre-filled to its `capacity`.
+    /// If `refill_policy` is [`RefillPolicy::Auto`], a background thread is
+    /// spawned to keep it refilled. If it is [`RefillPolicy::Manual`], no
+    /// background refiller is started.
+    pub fn new_with_policy<F>(
+        capacity: usize,
+        low_water_mark: usize,
+        refill_policy: RefillPolicy,
         factory: F,
     ) -> Result<Self, PoolCreationError>
     where
@@ -120,57 +128,60 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
         let shutdown_signal_clone = Arc::clone(&shutdown_signal);
         let refill_needed_clone = Arc::clone(&refill_needed);
 
-        let refill_thread = thread::spawn(move || {
-            let (lock, cvar) = &*refill_signal_clone;
-            let mut guard = match lock.lock() {
-                Ok(g) => g,
-                Err(e) => {
-                    println!("Refiller thread failed to acquire lock (poisoned): {:?}", e);
-                    return;
-                }
-            };
+        let refill_thread = match refill_policy {
+            RefillPolicy::Auto => Some(thread::spawn(move || {
+                let (lock, cvar) = &*refill_signal_clone;
+                let mut guard = match lock.lock() {
+                    Ok(g) => g,
+                    Err(e) => {
+                        println!("Refiller thread failed to acquire lock (poisoned): {:?}", e);
+                        return;
+                    }
+                };
 
-            while !shutdown_signal_clone.load(Ordering::Relaxed) {
-                // The classic spurious wakeup loop.
-                // Wait as long as no refill is needed and we are not shutting down.
-                while !refill_needed_clone.load(Ordering::Acquire)
-                    && !shutdown_signal_clone.load(Ordering::Relaxed)
-                {
-                    match cvar.wait(guard) {
-                        Ok(g) => guard = g,
-                        Err(e) => {
-                            println!(
-                                "Refiller thread failed to wait on condvar (poisoned): {:?}",
-                                e
-                            );
-                            return;
+                while !shutdown_signal_clone.load(Ordering::Relaxed) {
+                    // The classic spurious wakeup loop.
+                    // Wait as long as no refill is needed and we are not shutting down.
+                    while !refill_needed_clone.load(Ordering::Acquire)
+                        && !shutdown_signal_clone.load(Ordering::Relaxed)
+                    {
+                        match cvar.wait(guard) {
+                            Ok(g) => guard = g,
+                            Err(e) => {
+                                println!(
+                                    "Refiller thread failed to wait on condvar (poisoned): {:?}",
+                                    e
+                                );
+                                return;
+                            }
                         }
                     }
-                }
 
-                if shutdown_signal_clone.load(Ordering::Relaxed) {
-                    break;
-                }
-
-                // This inner loop ensures we refill completely, even if consumers are active.
-                // It will only exit when the queue is at full capacity.
-                loop {
-                    let items_needed = capacity - queue_clone.len();
-                    if items_needed == 0 {
-                        break; // We are full, exit the refill loop.
+                    if shutdown_signal_clone.load(Ordering::Relaxed) {
+                        break;
                     }
 
-                    for _ in 0..items_needed {
-                        let _ = queue_clone.push(factory_clone());
-                    }
-                    // After pushing items, we loop again to check if consumers have taken more
-                    // items during the refill.
-                }
+                    // This inner loop ensures we refill completely, even if consumers are active.
+                    // It will only exit when the queue is at full capacity.
+                    loop {
+                        let items_needed = capacity - queue_clone.len();
+                        if items_needed == 0 {
+                            break; // We are full, exit the refill loop.
+                        }
 
-                // Only reset the flag once we are certain the queue is full.
-                refill_needed_clone.store(false, Ordering::Relaxed);
-            }
-        });
+                        for _ in 0..items_needed {
+                            let _ = queue_clone.push(factory_clone());
+                        }
+                        // After pushing items, we loop again to check if consumers have taken more
+                        // items during the refill.
+                    }
+
+                    // Only reset the flag once we are certain the queue is full.
+                    refill_needed_clone.store(false, Ordering::Relaxed);
+                }
+            })),
+            RefillPolicy::Manual => None,
+        };
 
         Ok(Self {
             queue,
@@ -179,7 +190,7 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
             refill_needed,
             low_water_mark,
             shutdown_signal,
-            refill_thread: Some(refill_thread),
+            refill_thread,
             buffers_created_counter,
         })
     }
@@ -202,7 +213,7 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
         });
 
         // In either case, check if we need to signal the refiller.
-        if self.queue.len() <= self.low_water_mark {
+        if self.refill_thread.is_some() && self.queue.len() <= self.low_water_mark {
             self.notify_refiller();
         }
         item
@@ -350,7 +361,8 @@ mod tests {
 
         // Use low_water_mark = 0 to prevent the background refiller from racing.
         // This ensures the fallback path in get() is exercised deterministically.
-        let pool = RefillingPool::new(2, 0, factory).map_err(|e| anyhow!(e.to_string()))?;
+        let pool = RefillingPool::new_with_policy(2, 0, RefillPolicy::Manual, factory)
+            .map_err(|e| anyhow!(e.to_string()))?;
         assert_eq!(creation_counter.load(Ordering::SeqCst), 2);
 
         // Take the two pre-allocated objects
@@ -563,7 +575,8 @@ mod tests {
             }
         };
 
-        let pool = RefillingPool::new(2, 1, factory).map_err(|e| anyhow!(e.to_string()))?;
+        let pool = RefillingPool::new_with_policy(2, 1, RefillPolicy::Manual, factory)
+            .map_err(|e| anyhow!(e.to_string()))?;
         let item = pool.get();
         assert_eq!(pool.queue.len(), 1);
 
