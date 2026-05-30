@@ -5,7 +5,13 @@
 use crate::dummy_audio_midi_driver::DummyAudioMidiDriver;
 
 #[cxx::bridge(namespace = "backend_rust")]
-mod ffi {
+pub mod ffi {
+    unsafe extern "C++" {
+        include!("internal/DummyAudioMidiDriverCxxTrampolines.h");
+        unsafe fn dummy_audiomididriver_exec_commands(owner_ptr: usize);
+        unsafe fn dummy_audiomididriver_process(owner_ptr: usize, nframes: u32);
+    }
+
     extern "Rust" {
         type DummyAudioMidiDriver;
 
@@ -20,6 +26,13 @@ mod ffi {
         fn controlled_mode_request_samples(self: &DummyAudioMidiDriver, samples: u32);
         fn get_controlled_mode_samples_to_process(self: &DummyAudioMidiDriver) -> u32;
         fn controlled_mode_advance(self: &DummyAudioMidiDriver, samples: u32);
+        fn start_process_thread(
+            self: &DummyAudioMidiDriver,
+            owner_ptr: usize,
+            sample_rate: u32,
+            buffer_size: u32,
+        );
+        fn stop_process_thread(self: &DummyAudioMidiDriver);
     }
 }
 

@@ -10,7 +10,8 @@
 //!
 //! Ported from C++ AudioMidiDriver.h/cpp
 
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Mutex, RwLock};
 
 /// Wrapper for atomic f32 operations using AtomicU32 internally.
@@ -85,8 +86,10 @@ impl Default for AudioMidiDriverState {
 /// which owns the CommandQueue (as a wrapper around a Rust CommandQueue).
 pub struct AudioMidiDriverCore {
     state: AudioMidiDriverState,
-    processors: RwLock<Vec<usize>>,
-    decoupled_ports: RwLock<Vec<usize>>,
+    processors: RwLock<HashMap<u64, usize>>,
+    next_processor_handle: AtomicU64,
+    decoupled_ports: RwLock<HashMap<u64, usize>>,
+    next_decoupled_handle: AtomicU64,
 }
 
 impl AudioMidiDriverCore {
@@ -94,8 +97,10 @@ impl AudioMidiDriverCore {
     pub fn new() -> Self {
         AudioMidiDriverCore {
             state: AudioMidiDriverState::new(),
-            processors: RwLock::new(Vec::new()),
-            decoupled_ports: RwLock::new(Vec::new()),
+            processors: RwLock::new(HashMap::new()),
+            next_processor_handle: AtomicU64::new(1),
+            decoupled_ports: RwLock::new(HashMap::new()),
+            next_decoupled_handle: AtomicU64::new(1),
         }
     }
 
@@ -195,30 +200,24 @@ impl AudioMidiDriverCore {
     // Processor management
     // ========================================================================
 
-    /// Add a processor pointer.
-    /// The pointer is stored as usize; C++ is responsible for the actual object.
-    pub fn add_processor(&self, ptr: usize) {
+    pub fn add_processor(&self, ptr: usize) -> u64 {
+        let handle = self.next_processor_handle.fetch_add(1, Ordering::SeqCst);
         if let Ok(mut guard) = self.processors.write() {
-            // Check if already present
-            if !guard.contains(&ptr) {
-                guard.push(ptr);
-            }
+            guard.insert(handle, ptr);
+        }
+        handle
+    }
+
+    pub fn remove_processor(&self, handle: u64) {
+        if let Ok(mut guard) = self.processors.write() {
+            guard.remove(&handle);
         }
     }
 
-    /// Remove a processor pointer.
-    pub fn remove_processor(&self, ptr: usize) {
-        if let Ok(mut guard) = self.processors.write() {
-            guard.retain(|&p| p != ptr);
-        }
-    }
-
-    /// Get a copy of the processor pointers list.
-    /// Used by C++ to iterate and call processors.
-    pub fn get_processors(&self) -> Vec<usize> {
+    pub fn get_processor_handles(&self) -> Vec<u64> {
         self.processors
             .read()
-            .map(|guard| guard.clone())
+            .map(|guard| guard.keys().copied().collect())
             .unwrap_or_default()
     }
 
@@ -226,29 +225,109 @@ impl AudioMidiDriverCore {
     // Decoupled port management
     // ========================================================================
 
-    /// Register a decoupled MIDI port pointer.
-    pub fn register_decoupled_port(&self, ptr: usize) {
+    /// Register a decoupled MIDI port pointer and return a stable handle.
+    pub fn register_decoupled_port(&self, ptr: usize) -> u64 {
+        let handle = self.next_decoupled_handle.fetch_add(1, Ordering::SeqCst);
         if let Ok(mut guard) = self.decoupled_ports.write() {
-            if !guard.contains(&ptr) {
-                guard.push(ptr);
+            guard.insert(handle, ptr);
+        }
+        handle
+    }
+
+    /// Unregister a decoupled MIDI port by handle.
+    pub fn unregister_decoupled_port(&self, handle: u64) {
+        if let Ok(mut guard) = self.decoupled_ports.write() {
+            guard.remove(&handle);
+        }
+    }
+
+    /// Process one decoupled port by stable handle.
+    pub fn process_decoupled_port(&self, handle: u64, nframes: u32) -> bool {
+        let ptr = self
+            .decoupled_ports
+            .read()
+            .ok()
+            .and_then(|guard| guard.get(&handle).copied());
+        if let Some(port) = ptr {
+            unsafe {
+                crate::audio_midi_driver_cxx::ffi::audiomididriver_process_decoupled_port(
+                    port, nframes,
+                );
             }
+            true
+        } else {
+            false
         }
     }
 
-    /// Unregister a decoupled MIDI port pointer.
-    pub fn unregister_decoupled_port(&self, ptr: usize) {
-        if let Ok(mut guard) = self.decoupled_ports.write() {
-            guard.retain(|&p| p != ptr);
+    /// Close one decoupled port by stable handle.
+    pub fn close_decoupled_port(&self, handle: u64) -> bool {
+        let ptr = self
+            .decoupled_ports
+            .read()
+            .ok()
+            .and_then(|guard| guard.get(&handle).copied());
+        if let Some(port) = ptr {
+            unsafe {
+                crate::audio_midi_driver_cxx::ffi::audiomididriver_close_decoupled_port(port);
+            }
+            true
+        } else {
+            false
         }
     }
 
-    /// Get a copy of the decoupled port pointers list.
-    /// Used by C++ to iterate and process decoupled ports.
+    /// Get a copy of registered decoupled port handles.
+    pub fn get_decoupled_port_handles(&self) -> Vec<u64> {
+        self.decoupled_ports
+            .read()
+            .map(|guard| guard.keys().copied().collect())
+            .unwrap_or_default()
+    }
+
+    /// Get a copy of decoupled port pointers list used for processing.
     pub fn get_decoupled_ports(&self) -> Vec<usize> {
         self.decoupled_ports
             .read()
-            .map(|guard| guard.clone())
+            .map(|guard| guard.values().copied().collect())
             .unwrap_or_default()
+    }
+
+    pub fn process_cycle(
+        &self,
+        maybe_process_callback_ptr: usize,
+        command_queue_ptr: usize,
+        nframes: u32,
+    ) {
+        unsafe {
+            crate::audio_midi_driver_cxx::ffi::audiomididriver_invoke_maybe_process_callback(
+                maybe_process_callback_ptr,
+            );
+            crate::audio_midi_driver_cxx::ffi::audiomididriver_exec_command_queue(
+                command_queue_ptr,
+            );
+        }
+
+        for handle in self.get_decoupled_port_handles() {
+            self.process_decoupled_port(handle, nframes);
+        }
+
+        for handle in self.get_processor_handles() {
+            let ptr = self
+                .processors
+                .read()
+                .ok()
+                .and_then(|guard| guard.get(&handle).copied());
+            if let Some(processor) = ptr {
+                unsafe {
+                    crate::audio_midi_driver_cxx::ffi::audiomididriver_process_processor(
+                        processor, nframes,
+                    );
+                }
+            }
+        }
+
+        self.set_last_processed(nframes);
     }
 }
 
@@ -351,28 +430,26 @@ mod tests {
         let core = AudioMidiDriverCore::new();
 
         // Initially empty
-        assert!(core.get_processors().is_empty());
+        assert!(core.get_processor_handles().is_empty());
 
         // Add processors
-        core.add_processor(100);
-        core.add_processor(200);
-        core.add_processor(300);
+        let h1 = core.add_processor(100);
+        let h2 = core.add_processor(200);
+        let _h3 = core.add_processor(300);
 
-        let procs = core.get_processors();
-        assert_eq!(procs.len(), 3);
-        assert!(procs.contains(&100));
-        assert!(procs.contains(&200));
-        assert!(procs.contains(&300));
+        let handles = core.get_processor_handles();
+        assert_eq!(handles.len(), 3);
+        assert!(handles.contains(&h1));
+        assert!(handles.contains(&h2));
 
-        // Adding duplicate should not increase count
-        core.add_processor(100);
-        assert_eq!(core.get_processors().len(), 3);
+        // same pointer can be registered with another handle
+        let _h4 = core.add_processor(100);
+        assert_eq!(core.get_processor_handles().len(), 4);
 
-        // Remove processor
-        core.remove_processor(200);
-        let procs = core.get_processors();
-        assert_eq!(procs.len(), 2);
-        assert!(!procs.contains(&200));
+        // Remove processor by handle
+        core.remove_processor(h2);
+        let handles = core.get_processor_handles();
+        assert_eq!(handles.len(), 3);
     }
 
     #[test]
@@ -383,22 +460,21 @@ mod tests {
         assert!(core.get_decoupled_ports().is_empty());
 
         // Add ports
-        core.register_decoupled_port(1000);
-        core.register_decoupled_port(2000);
+        let h1 = core.register_decoupled_port(1000);
+        let _h2 = core.register_decoupled_port(2000);
 
         let ports = core.get_decoupled_ports();
         assert_eq!(ports.len(), 2);
         assert!(ports.contains(&1000));
         assert!(ports.contains(&2000));
 
-        // Adding duplicate should not increase count
-        core.register_decoupled_port(1000);
-        assert_eq!(core.get_decoupled_ports().len(), 2);
+        // Registering the same pointer gets a distinct stable handle
+        let _h3 = core.register_decoupled_port(1000);
+        assert_eq!(core.get_decoupled_ports().len(), 3);
 
-        // Remove port
-        core.unregister_decoupled_port(1000);
+        // Remove one handle
+        core.unregister_decoupled_port(h1);
         let ports = core.get_decoupled_ports();
-        assert_eq!(ports.len(), 1);
-        assert!(!ports.contains(&1000));
+        assert_eq!(ports.len(), 2);
     }
 }

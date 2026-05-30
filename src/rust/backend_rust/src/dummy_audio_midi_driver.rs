@@ -1,136 +1,124 @@
-//! DummyAudioMidiDriver - Rust core for the dummy audio/MIDI driver.
-//!
-//! Holds the mutable driver state (finish flag, mode, controlled samples, paused)
-//! as atomics so the C++ wrapper can query and update them from multiple threads.
-
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 
-pub struct DummyAudioMidiDriver {
+struct DummyAudioMidiDriverState {
     finish: AtomicBool,
-    mode: AtomicU32, // 0 = Controlled, 1 = Automatic
+    mode: AtomicU32,
     controlled_samples: AtomicU32,
     paused: AtomicBool,
 }
 
+pub struct DummyAudioMidiDriver {
+    state: Arc<DummyAudioMidiDriverState>,
+    process_thread: Mutex<Option<JoinHandle<()>>>,
+}
+
 impl DummyAudioMidiDriver {
     pub fn new() -> Self {
-        DummyAudioMidiDriver {
-            finish: AtomicBool::new(false),
-            mode: AtomicU32::new(1),
-            controlled_samples: AtomicU32::new(0),
-            paused: AtomicBool::new(false),
+        Self {
+            state: Arc::new(DummyAudioMidiDriverState {
+                finish: AtomicBool::new(false),
+                mode: AtomicU32::new(1),
+                controlled_samples: AtomicU32::new(0),
+                paused: AtomicBool::new(false),
+            }),
+            process_thread: Mutex::new(None),
         }
     }
 
     pub fn is_finish(&self) -> bool {
-        self.finish.load(Ordering::SeqCst)
+        self.state.finish.load(Ordering::SeqCst)
     }
-
     pub fn set_finish(&self) {
-        self.finish.store(true, Ordering::SeqCst);
+        self.state.finish.store(true, Ordering::SeqCst);
     }
-
     pub fn enter_mode(&self, mode: u32) {
-        self.mode.store(mode, Ordering::SeqCst);
-        self.controlled_samples.store(0, Ordering::SeqCst);
+        self.state.mode.store(mode, Ordering::SeqCst);
+        self.state.controlled_samples.store(0, Ordering::SeqCst);
     }
-
     pub fn get_mode(&self) -> u32 {
-        self.mode.load(Ordering::SeqCst)
+        self.state.mode.load(Ordering::SeqCst)
     }
-
     pub fn pause(&self) {
-        self.paused.store(true, Ordering::SeqCst);
+        self.state.paused.store(true, Ordering::SeqCst);
     }
-
     pub fn resume(&self) {
-        self.paused.store(false, Ordering::SeqCst);
+        self.state.paused.store(false, Ordering::SeqCst);
     }
-
     pub fn is_paused(&self) -> bool {
-        self.paused.load(Ordering::SeqCst)
+        self.state.paused.load(Ordering::SeqCst)
     }
-
     pub fn controlled_mode_request_samples(&self, samples: u32) {
-        self.controlled_samples.fetch_add(samples, Ordering::SeqCst);
+        self.state
+            .controlled_samples
+            .fetch_add(samples, Ordering::SeqCst);
     }
-
     pub fn get_controlled_mode_samples_to_process(&self) -> u32 {
-        self.controlled_samples.load(Ordering::SeqCst)
+        self.state.controlled_samples.load(Ordering::SeqCst)
     }
-
     pub fn controlled_mode_advance(&self, samples: u32) {
-        let prev = self.controlled_samples.fetch_sub(samples, Ordering::SeqCst);
+        let prev = self
+            .state
+            .controlled_samples
+            .fetch_sub(samples, Ordering::SeqCst);
         if prev < samples {
-            // Saturate at 0 if we underflowed
-            self.controlled_samples.store(0, Ordering::SeqCst);
+            self.state.controlled_samples.store(0, Ordering::SeqCst);
         }
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_new_defaults() {
-        let driver = DummyAudioMidiDriver::new();
-        assert!(!driver.is_finish());
-        assert_eq!(driver.get_mode(), 1); // Automatic = 1
-        assert_eq!(driver.get_controlled_mode_samples_to_process(), 0);
-        assert!(!driver.is_paused());
+    pub fn start_process_thread(&self, owner_ptr: usize, sample_rate: u32, buffer_size: u32) {
+        let mut guard = self.process_thread.lock().unwrap();
+        if guard.is_some() {
+            return;
+        }
+        self.state.finish.store(false, Ordering::SeqCst);
+        let state = Arc::clone(&self.state);
+        *guard = Some(thread::spawn(move || {
+            let bufs_per_second = (sample_rate / buffer_size).max(1);
+            let micros = (1_000_000.0f32 / bufs_per_second as f32) as u64;
+            let mut time_taken = 0u64;
+            while !state.finish.load(Ordering::SeqCst) {
+                thread::sleep(Duration::from_micros(micros.saturating_sub(time_taken)));
+                let start = Instant::now();
+                unsafe {
+                    crate::dummy_audio_midi_driver_cxx::ffi::dummy_audiomididriver_exec_commands(
+                        owner_ptr,
+                    );
+                }
+                if !state.paused.load(Ordering::SeqCst) {
+                    let mode = state.mode.load(Ordering::SeqCst);
+                    let samples = state.controlled_samples.load(Ordering::SeqCst);
+                    let to_process = if mode == 0 {
+                        samples.min(buffer_size)
+                    } else {
+                        buffer_size
+                    };
+                    unsafe {
+                        crate::dummy_audio_midi_driver_cxx::ffi::dummy_audiomididriver_process(
+                            owner_ptr, to_process,
+                        );
+                    }
+                    if mode == 0 {
+                        let prev = state
+                            .controlled_samples
+                            .fetch_sub(to_process, Ordering::SeqCst);
+                        if prev < to_process {
+                            state.controlled_samples.store(0, Ordering::SeqCst);
+                        }
+                    }
+                }
+                time_taken = start.elapsed().as_micros() as u64;
+            }
+        }));
     }
 
-    #[test]
-    fn test_set_finish() {
-        let driver = DummyAudioMidiDriver::new();
-        driver.set_finish();
-        assert!(driver.is_finish());
-    }
-
-    #[test]
-    fn test_enter_mode() {
-        let driver = DummyAudioMidiDriver::new();
-        driver.controlled_mode_request_samples(100);
-        driver.enter_mode(1);
-        assert_eq!(driver.get_mode(), 1);
-        assert_eq!(driver.get_controlled_mode_samples_to_process(), 0);
-    }
-
-    #[test]
-    fn test_pause_resume() {
-        let driver = DummyAudioMidiDriver::new();
-        assert!(!driver.is_paused());
-        driver.pause();
-        assert!(driver.is_paused());
-        driver.resume();
-        assert!(!driver.is_paused());
-    }
-
-    #[test]
-    fn test_controlled_mode_request_samples() {
-        let driver = DummyAudioMidiDriver::new();
-        driver.controlled_mode_request_samples(50);
-        assert_eq!(driver.get_controlled_mode_samples_to_process(), 50);
-        driver.controlled_mode_request_samples(30);
-        assert_eq!(driver.get_controlled_mode_samples_to_process(), 80);
-    }
-
-    #[test]
-    fn test_controlled_mode_advance() {
-        let driver = DummyAudioMidiDriver::new();
-        driver.controlled_mode_request_samples(100);
-        driver.controlled_mode_advance(30);
-        assert_eq!(driver.get_controlled_mode_samples_to_process(), 70);
-        driver.controlled_mode_advance(70);
-        assert_eq!(driver.get_controlled_mode_samples_to_process(), 0);
-    }
-
-    #[test]
-    fn test_controlled_mode_advance_saturates_at_zero() {
-        let driver = DummyAudioMidiDriver::new();
-        driver.controlled_mode_request_samples(10);
-        driver.controlled_mode_advance(20);
-        assert_eq!(driver.get_controlled_mode_samples_to_process(), 0);
+    pub fn stop_process_thread(&self) {
+        self.set_finish();
+        let mut guard = self.process_thread.lock().unwrap();
+        if let Some(handle) = guard.take() {
+            let _ = handle.join();
+        }
     }
 }

@@ -2,6 +2,7 @@
 #include "DummyAudioMidiDriver.h"
 #include "PortInterface.h"
 #include "AudioMidiDriver.h"
+#include "DecoupledMidiPort.h"
 #include <functional>
 #include <thread>
 #include <chrono>
@@ -152,4 +153,27 @@ TEST_CASE("DummyAudioMidiDriver - Input port queue consume combine", "[DummyAudi
         auto bufvec = std::vector<float>(buf, buf+10);
         REQUIRE(bufvec == std::vector<float>({1, 2, 3, 4, 1, 2, 3, 4, 0, 0}));
     }
+};
+
+TEST_CASE("DummyAudioMidiDriver - decoupled midi open/close stress", "[DummyAudioMidiDriver][midi][decoupled]") {
+    TrackedDummyAudioMidiDriver<uint32_t, uint32_t> dut(
+        "test",
+        DummyAudioMidiDriverMode::Automatic,
+        nullptr,
+        48000,
+        256
+    );
+
+    constexpr int n_iters = 200;
+    for (int i = 0; i < n_iters; i++) {
+        auto port = dut.open_decoupled_midi_port("decoupled", shoop_port_direction_t::ShoopPortDirection_Output);
+        dut.wait_process();
+        port->close();
+        dut.unregister_decoupled_midi_port(port);
+        port->forget_driver();
+        dut.wait_process();
+    }
+
+    dut.close();
+    REQUIRE(dut.tracker->total_samples_processed.load() > 0);
 };

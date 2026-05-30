@@ -86,3 +86,11 @@ shoop_shared_ptr<AudioMidiDriver> DecoupledMidiPort::
 void DecoupledMidiPort::forget_driver() {
     maybe_driver.reset();
 }
+
+void DecoupledMidiPort::set_registry_handle(uint64_t handle) {
+    m_registry_handle = handle;
+}
+
+uint64_t DecoupledMidiPort::registry_handle() const {
+    return m_registry_handle;
+}

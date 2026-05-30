@@ -7,18 +7,18 @@ edition = "2021"
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
-crossbeam-queue = { workspace = true }
-cxx = { workspace = true }
-libc = { workspace = true }
-log = { workspace = true }
+crossbeam-queue = "0.3"
+cxx = "=1.0.194"
+libc = "0.2"
+log = "0.4"
 parking_lot = "0.12"
-regex = { workspace = true }
+regex = "1.10"
 
 [dev-dependencies]
 anyhow = "1.0"
 
 [build-dependencies]
-cxx-build = { workspace = true }
+cxx-build = "=1.0.194"
 
 [features]
 prebuild = []

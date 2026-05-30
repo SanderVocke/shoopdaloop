@@ -6,7 +6,7 @@
 #include "RustCommandQueue.h"
 #include "shoop_globals.h"
 #include "types.h"
-#include <set>
+#include <unordered_map>
 #include <atomic>
 #include "LoggingEnabled.h"
 #include "RustAudioPort.h"
@@ -41,8 +41,10 @@ class AudioMidiDriver : public ModuleLoggingEnabled<"Backend.AudioMidiDriver">,
                         private shoop_enable_shared_from_this<AudioMidiDriver> {
     // Rust core for atomic state and processor/decoupled port management
     rust::Box<backend_rust::AudioMidiDriverCore> m_rust_core;
-    shoop_shared_ptr<std::vector<shoop_weak_ptr<HasAudioProcessingFunction>>> m_processors;
-    std::set<shoop_shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports;
+    std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> m_processors;
+    std::unordered_map<HasAudioProcessingFunction*, uint64_t> m_processor_handles;
+    // Keeps registered decoupled ports alive keyed by Rust handle.
+    std::unordered_map<uint64_t, shoop_shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports;
     void (*m_maybe_process_callback)() = nullptr;
 
 protected:
@@ -90,7 +92,6 @@ public:
         shoop_port_direction_t direction
     );
 
-    void PROC_process_decoupled_midi_ports(uint32_t nframes);
     void unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port);
 
     virtual void close() = 0;
@@ -106,6 +107,10 @@ public:
     uint32_t get_last_processed() const;
 
     virtual void wait_process();
+
+    // Trampoline helpers for Rust-owned process loops
+    void trampoline_exec_commands() { rust_command_queue::exec_all(*m_command_queue); }
+    void trampoline_process(uint32_t nframes) { PROC_process(nframes); }
 
     // Command queue forwarding (for external API usage)
     void queue_process_thread_command(std::function<void()> fn) { rust_command_queue::queue(*m_command_queue, std::move(fn)); }

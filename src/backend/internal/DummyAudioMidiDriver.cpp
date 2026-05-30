@@ -8,9 +8,22 @@
 #include <cstdint>
 #include <string>
 #include <thread>
+#include <stdexcept>
 #include "DummyAudioMidiDriver.h"
 #include "RustCommandQueue.h"
+#include "DummyAudioMidiDriverCxxTrampolines.h"
 #include <map>
+
+namespace backend_rust {
+void dummy_audiomididriver_exec_commands(uintptr_t owner_ptr) {
+    auto *owner = reinterpret_cast<AudioMidiDriver *>(owner_ptr);
+    owner->trampoline_exec_commands();
+}
+void dummy_audiomididriver_process(uintptr_t owner_ptr, uint32_t nframes) {
+    auto *owner = reinterpret_cast<AudioMidiDriver *>(owner_ptr);
+    owner->trampoline_process(nframes);
+}
+}
 
 #ifdef _WIN32
 #undef min
@@ -71,7 +84,10 @@ template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::start(
     AudioMidiDriverSettingsInterface &settings
 ) {
-    auto p_settings = (DummyAudioMidiDriverSettings*)&settings;
+    auto *p_settings = dynamic_cast<DummyAudioMidiDriverSettings*>(&settings);
+    if (!p_settings) {
+        throw std::runtime_error("Wrong settings type passed to DummyAudioMidiDriver");
+    }
     auto &_settings = *p_settings;
 
     AudioMidiDriver::set_sample_rate(_settings.sample_rate);
@@ -87,35 +103,10 @@ void DummyAudioMidiDriver<Time, Size>::start(
     // That way commands added from now on will be executed on the process thread.
     rust_command_queue::exec_all(this->m_command_queue);
 
-    m_proc_thread = std::thread([this] {
-        Log::log<log_level_debug>("Starting process thread - {}", mode_names.at((DummyAudioMidiDriverMode)m_rust->get_mode()));
-        auto bufs_per_second = AudioMidiDriver::get_sample_rate() / AudioMidiDriver::get_buffer_size();
-        auto interval = 1.0f / ((float)bufs_per_second);
-        auto micros = uint32_t(interval * 1000000.0f);
-        float time_taken = 0.0f;
-        while (!m_rust->is_finish()) {
-            std::this_thread::sleep_for(std::chrono::microseconds((uint32_t)std::ceil(std::max(0.0f, micros - time_taken))));
-            rust_command_queue::exec_all(this->m_command_queue);
-            if (!m_rust->is_paused()) {
-                auto start = std::chrono::high_resolution_clock::now();
-                auto mode = (DummyAudioMidiDriverMode)m_rust->get_mode();
-                auto samples_to_process = m_rust->get_controlled_mode_samples_to_process();
-                uint32_t to_process = mode == DummyAudioMidiDriverMode::Controlled ?
-                    std::min(samples_to_process, AudioMidiDriver::get_buffer_size()) :
-                    AudioMidiDriver::get_buffer_size();
-                if (to_process > 0) {
-                    Log::log<log_level_debug_trace>("Process {}", to_process);
-                }
-                AudioMidiDriver::PROC_process(to_process);
-                if (mode == DummyAudioMidiDriverMode::Controlled) {
-                    m_rust->controlled_mode_advance(to_process);
-                }
-                auto end = std::chrono::high_resolution_clock::now();
-                time_taken = duration_cast<std::chrono::microseconds>(end - start).count();
-            }
-        }
-        Log::log<log_level_debug>("Ending process thread");
-    });
+    m_rust->start_process_thread(
+        reinterpret_cast<uintptr_t>(this),
+        AudioMidiDriver::get_sample_rate(),
+        AudioMidiDriver::get_buffer_size());
     AudioMidiDriver::set_active(true);
 }
 
@@ -160,14 +151,7 @@ DummyAudioMidiDriver<Time, Size>::open_midi_port(std::string name,
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::close() {
-    m_rust->set_finish();
-    if (m_proc_thread.joinable()) {
-        if (std::this_thread::get_id() != m_proc_thread.get_id()) {
-            m_proc_thread.join();
-        } else {
-            m_proc_thread.detach();
-        }
-    }
+    m_rust->stop_process_thread();
 }
 
 template <typename Time, typename Size>
