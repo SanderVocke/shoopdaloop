@@ -7,6 +7,7 @@ Current state already achieved:
 - `AudioMidiDriver` process-cycle orchestration moved to Rust runtime (`process_cycle`) with C++ trampolines.
 - `DummyAudioMidiDriver` process thread/timing loop moved to Rust, C++ methods delegate.
 - Decoupled MIDI registration bookkeeping moved to Rust, with C++ keepalive reintroduced to fix a lifetime race.
+- Incremental Phase B handle-lifecycle scaffolding added: Rust per-handle decoupled dispatch APIs for process/close and a C++ close trampoline; unregister path now closes via Rust handle dispatch before unregister.
 - Build/test gates currently pass including QML self-test after the keepalive fix.
 
 ## Scope and compatibility constraints

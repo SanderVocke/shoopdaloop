@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <string>
 #include <thread>
+#include <stdexcept>
 #include "DummyAudioMidiDriver.h"
 #include "RustCommandQueue.h"
 #include "DummyAudioMidiDriverCxxTrampolines.h"
@@ -83,7 +84,10 @@ template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::start(
     AudioMidiDriverSettingsInterface &settings
 ) {
-    auto p_settings = (DummyAudioMidiDriverSettings*)&settings;
+    auto *p_settings = dynamic_cast<DummyAudioMidiDriverSettings*>(&settings);
+    if (!p_settings) {
+        throw std::runtime_error("Wrong settings type passed to DummyAudioMidiDriver");
+    }
     auto &_settings = *p_settings;
 
     AudioMidiDriver::set_sample_rate(_settings.sample_rate);

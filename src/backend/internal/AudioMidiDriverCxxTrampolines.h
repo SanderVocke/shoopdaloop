@@ -15,5 +15,6 @@ void audiomididriver_invoke_maybe_process_callback(uintptr_t maybe_fn_ptr);
 void audiomididriver_exec_command_queue(uintptr_t command_queue_ptr);
 void audiomididriver_process_processor(uintptr_t processor_ptr, uint32_t nframes);
 void audiomididriver_process_decoupled_port(uintptr_t decoupled_port_ptr, uint32_t nframes);
+void audiomididriver_close_decoupled_port(uintptr_t decoupled_port_ptr);
 
 }

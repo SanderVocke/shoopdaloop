@@ -21,6 +21,7 @@ class DecoupledMidiPort : public shoop_enable_shared_from_this<DecoupledMidiPort
     const shoop_port_direction_t direction;
     rust::Box<backend_rust::DecoupledMidiPort> m_rust;
     shoop_weak_ptr<AudioMidiDriver> maybe_driver;
+    uint64_t m_registry_handle = 0;
 public:
     DecoupledMidiPort (shoop_shared_ptr<MidiPort> port,
                        shoop_weak_ptr<AudioMidiDriver> driver,
@@ -39,4 +40,6 @@ public:
     void push_outgoing (Message m);
 
     shoop_shared_ptr<MidiPort> const& get_port();
+    void set_registry_handle(uint64_t handle);
+    uint64_t registry_handle() const;
 };

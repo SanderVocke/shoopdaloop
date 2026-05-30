@@ -6,7 +6,7 @@
 #include "RustCommandQueue.h"
 #include "shoop_globals.h"
 #include "types.h"
-#include <set>
+#include <unordered_map>
 #include <atomic>
 #include "LoggingEnabled.h"
 #include "RustAudioPort.h"
@@ -41,9 +41,10 @@ class AudioMidiDriver : public ModuleLoggingEnabled<"Backend.AudioMidiDriver">,
                         private shoop_enable_shared_from_this<AudioMidiDriver> {
     // Rust core for atomic state and processor/decoupled port management
     rust::Box<backend_rust::AudioMidiDriverCore> m_rust_core;
-    shoop_shared_ptr<std::vector<shoop_weak_ptr<HasAudioProcessingFunction>>> m_processors;
-    // Keeps decoupled ports alive while registered on process thread.
-    std::set<shoop_shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports_keepalive;
+    std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> m_processors;
+    std::unordered_map<HasAudioProcessingFunction*, uint64_t> m_processor_handles;
+    // Keeps registered decoupled ports alive keyed by Rust handle.
+    std::unordered_map<uint64_t, shoop_shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports;
     void (*m_maybe_process_callback)() = nullptr;
 
 protected:
