@@ -119,25 +119,39 @@ ShoopTestFile {
                 return r
             }
 
+            function clearable_channels(s=session) {
+                return [
+                    ...dt_loop_channels(s),
+                    ...(mt_midi_channels(s) || []),
+                    ...dwt_dry_loop_channels(s),
+                    ...dwt_wet_loop_channels(s)
+                ]
+            }
+
+            function all_clear(s=session) {
+                return clearable_channels(s).every(c => c && c.data_length == 0) &&
+                       dt_loop(s).length == 0 &&
+                       mt_loop(s).length == 0 &&
+                       dwt_loop(s).length == 0
+            }
+
             function clear_all(s=session) {
-                dt_loop_channels()[0].clear(0)
-                dt_loop_channels()[1].clear(0)
-                mt_midi_channels()[0].clear(0)
-                dwt_dry_loop_channels()[0].clear(0)
-                dwt_dry_loop_channels()[1].clear(0)
-                dwt_wet_loop_channels()[0].clear(0)
-                dwt_wet_loop_channels()[1].clear(0)
-                dt_loop().clear(0)
-                mt_loop().clear(0)
-                dwt_loop().clear(0)
-                testcase.wait_updated(session.backend)
-                verify_eq(dt_loop_channels()[0].data_length, 0)
-                verify_eq(dt_loop_channels()[1].data_length, 0)
-                verify_eq(mt_midi_channels()[0].data_length, 0)
-                verify_eq(dwt_dry_loop_channels()[0].data_length, 0)
-                verify_eq(dwt_dry_loop_channels()[1].data_length, 0)
-                verify_eq(dwt_wet_loop_channels()[0].data_length, 0)
-                verify_eq(dwt_wet_loop_channels()[1].data_length, 0)
+                clearable_channels(s).forEach(c => c.clear(0))
+                dt_loop(s).clear(0)
+                mt_loop(s).clear(0)
+                dwt_loop(s).clear(0)
+                testcase.wait_condition(
+                    () => all_clear(s),
+                    5000,
+                    "loop/channel clear did not settle in time"
+                )
+                verify_eq(dt_loop_channels(s)[0].data_length, 0)
+                verify_eq(dt_loop_channels(s)[1].data_length, 0)
+                verify_eq(mt_midi_channels(s)[0].data_length, 0)
+                verify_eq(dwt_dry_loop_channels(s)[0].data_length, 0)
+                verify_eq(dwt_dry_loop_channels(s)[1].data_length, 0)
+                verify_eq(dwt_wet_loop_channels(s)[0].data_length, 0)
+                verify_eq(dwt_wet_loop_channels(s)[1].data_length, 0)
             }
 
             RegistryLookup {
@@ -282,6 +296,7 @@ ShoopTestFile {
 
                     session.load_session(filename)
                     testcase.wait_session_loaded(session)
+                    testcase.wait_session_io_done()
                     testcase.wait_updated(session.backend)
 
                     verify_true(dt_loop_2().maybe_composite_loop)
@@ -342,6 +357,7 @@ ShoopTestFile {
                     // Load into the other session, which has 3/4 the sample rate of this one
                     other_session.load_session(filename, true)
                     testcase.wait_session_loaded(other_session)
+                    testcase.wait_session_io_done()
                     testcase.wait_updated(session.backend)
                     testcase.wait_updated(other_session.backend)
 
@@ -408,6 +424,7 @@ ShoopTestFile {
 
                     session.load_session(filename)
                     testcase.wait_session_loaded(session)
+                    testcase.wait_session_io_done()
                     testcase.wait_updated(session.backend)
 
                     verify_eq(mt().control_widget.mute, true)
