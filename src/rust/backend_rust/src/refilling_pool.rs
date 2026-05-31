@@ -35,6 +35,12 @@ impl std::error::Error for PoolCreationError {}
 /// pulls a ready-to-use object from a queue. If the queue is empty, it
 /// creates a new object on-the-fly as a fallback, preventing the consumer
 /// from ever blocking.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefillPolicy {
+    Auto,
+    Manual,
+}
+
 pub struct RefillingPool<T: Send + Debug + 'static> {
     /// The lock-free queue holding the pre-allocated objects.
     queue: Arc<ArrayQueue<Box<T>>>,
@@ -55,10 +61,7 @@ pub struct RefillingPool<T: Send + Debug + 'static> {
 }
 
 impl<T: Send + Debug + 'static> RefillingPool<T> {
-    /// Creates a new `RefillingPool`.
-    ///
-    /// The pool is immediately pre-filled to its `capacity`. A background thread is
-    /// spawned to handle refilling.
+    /// Creates a new `RefillingPool` with automatic background refilling.
     pub fn new<F>(
         capacity: usize,
         low_water_mark: usize,
@@ -67,7 +70,7 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
     where
         F: Fn() -> Box<T> + Send + Sync + 'static,
     {
-        Self::new_impl(capacity, low_water_mark, factory, true)
+        Self::new_with_policy(capacity, low_water_mark, RefillPolicy::Auto, factory)
     }
 
     /// Creates a pool without spawning the background refill thread.
@@ -80,14 +83,15 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
     where
         F: Fn() -> Box<T> + Send + Sync + 'static,
     {
-        Self::new_impl(capacity, low_water_mark, factory, false)
+        Self::new_with_policy(capacity, low_water_mark, RefillPolicy::Manual, factory)
     }
 
-    fn new_impl<F>(
+    /// Creates a new `RefillingPool` with configurable refill behavior.
+    pub fn new_with_policy<F>(
         capacity: usize,
         low_water_mark: usize,
+        refill_policy: RefillPolicy,
         factory: F,
-        enable_refill_thread: bool,
     ) -> Result<Self, PoolCreationError>
     where
         F: Fn() -> Box<T> + Send + Sync + 'static,
@@ -124,7 +128,7 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
         let shutdown_signal = Arc::new(AtomicBool::new(false));
         let refill_needed = Arc::new(AtomicBool::new(false));
 
-        let (refill_thread, refill_thread_handle) = if enable_refill_thread {
+        let (refill_thread, refill_thread_handle) = if refill_policy == RefillPolicy::Auto {
             // Clone Arcs for the background thread.
             let queue_clone = Arc::clone(&queue);
             let factory_clone = Arc::clone(&factory);
@@ -189,7 +193,7 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
         });
 
         // In either case, check if we need to signal the refiller.
-        if self.queue.len() <= self.low_water_mark {
+        if self.refill_thread.is_some() && self.queue.len() <= self.low_water_mark {
             self.notify_refiller();
         }
         item
