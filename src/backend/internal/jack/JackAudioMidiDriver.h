@@ -1,6 +1,6 @@
 #pragma once
 #include "AudioMidiDriver.h"
-#include "AudioPort.h"
+#include "RustAudioPort.h"
 #include "JackAllPorts.h"
 #include "JackApi.h"
 #include "JackTestApi.h"
@@ -54,10 +54,10 @@ public:
     
     void start(AudioMidiDriverSettingsInterface &settings) override;
 
-    shoop_shared_ptr<AudioPort<float>> open_audio_port(
+    shoop_shared_ptr<RustAudioPortF32> open_audio_port(
         std::string name,
         shoop_port_direction_t direction,
-        shoop_shared_ptr<typename AudioPort<jack_default_audio_sample_t>::UsedBufferPool>
+        shoop_shared_ptr<RustAudioPortF32::UsedBufferPool>
     ) override;
 
     shoop_shared_ptr<MidiPort> open_midi_port(

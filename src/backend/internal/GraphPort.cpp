@@ -9,8 +9,8 @@ using namespace shoop_types;
 using namespace shoop_constants;
 
 GraphPort::GraphPort (shoop_shared_ptr<BackendSession> const& backend) :
-    m_passthrough_enabled(true),
-    backend(shoop_weak_ptr<BackendSession>(backend)) {}
+    backend(shoop_weak_ptr<BackendSession>(backend)),
+    m_passthrough_enabled(true) {}
 
 BackendSession &GraphPort::get_backend() {
     auto b = backend.lock();
@@ -38,7 +38,7 @@ void GraphPort::set_passthrough_enabled(bool enabled) {
     m_passthrough_enabled = enabled;
 }
 
-void GraphPort::PROC_notify_changed_buffer_size(uint32_t buffer_size) {}
+void GraphPort::PROC_notify_changed_buffer_size(uint32_t buffer_size) { (void)buffer_size; }
 
 void GraphPort::graph_node_0_process(uint32_t nframes) {
     get_port().PROC_prepare(nframes);

@@ -26,7 +26,6 @@ Item {
     property bool registered: false
 
     property string name: 'UnnamedTestCase'
-    property bool skip: false
 
     onWhenChanged: update_next_cycle.trigger()
 

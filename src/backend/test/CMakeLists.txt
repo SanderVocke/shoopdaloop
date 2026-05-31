@@ -5,10 +5,12 @@ set(TEST_RUNNER_SOURCES
     unit/test_BasicLoop.cpp
     unit/test_DummyAudioMidiDriver.cpp
     unit/test_InternalAudioPort.cpp
+    unit/test_InternalMidiPort.cpp
     unit/test_BufferQueue.cpp
     unit/test_MidiChannel.cpp
     unit/test_MidiStorage.cpp
     unit/test_MidiRingbuffer.cpp
+    unit/test_RustMidiStorage.cpp
     unit/test_MidiStateDiffTracker.cpp
     integration/test_libshoopdaloop_if.cpp
     integration/test_synced_BasicLoops.cpp

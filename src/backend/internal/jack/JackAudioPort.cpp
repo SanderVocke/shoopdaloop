@@ -1,4 +1,5 @@
 #include "JackAudioPort.h"
+#include "backend_rust/src/audio_port_cxx.rs.h"
 #include <string>
 #include "JackPort.h"
 #include "PortInterface.h"
@@ -15,8 +16,9 @@
 template<typename API>
 GenericJackAudioPort<API>::GenericJackAudioPort(std::string name, shoop_port_direction_t direction,
                              jack_client_t *client, shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker,
-                             shoop_shared_ptr<typename AudioPort<jack_default_audio_sample_t>::UsedBufferPool> buffer_pool)
-    : AudioPort<float>(buffer_pool), GenericJackPort<API>(name, direction, PortDataType::Audio, client, all_ports_tracker) {}
+                             shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool)
+    : RustAudioPortF32(buffer_pool, 32), 
+      GenericJackPort<API>(name, direction, PortDataType::Audio, client, all_ports_tracker) {}
 
 template<typename API>
 void GenericJackAudioPort<API>::PROC_prepare(uint32_t nframes) {
@@ -47,7 +49,22 @@ float *GenericJackAudioPort<API>::PROC_get_buffer(uint32_t n_frames) {
 
 template<typename API>
 void GenericJackAudioPort<API>::PROC_process(uint32_t nframes) {
-    AudioPort<jack_default_audio_sample_t>::PROC_process(nframes);
+    // Get the buffer we're supposed to process
+    auto buf = (float*) m_buffer.load();
+    if (!buf) {
+        buf = m_fallback_buffer.data();
+    }
+    
+    if (!buf || nframes == 0) {
+        return;
+    }
+    
+    if (!m_rust.has_value()) {
+        return;
+    }
+    
+    // Call Rust process with the correct buffer
+    backend_rust::audio_port_process(**m_rust, buf, nframes);
 }
 
 template<typename API>

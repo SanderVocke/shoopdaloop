@@ -2,15 +2,15 @@
 #include "ChannelInterface.h"
 #include "BufferPool.h"
 #include "AudioBuffer.h"
-#include "WithCommandQueue.h"
+#include "RustCommandQueue.h"
 #include "LoggingEnabled.h"
+#include <boost/lockfree/spsc_queue.hpp>
 #include <stdint.h>
 #include <vector>
 #include "shoop_shared_ptr.h"
 
 template<typename SampleT>
 class AudioChannel : public ChannelInterface,
-                            private WithCommandQueue,
                             private ModuleLoggingEnabled<"Backend.AudioChannel"> {   
 public:
     typedef AudioBuffer<SampleT> BufferObj;
@@ -18,6 +18,7 @@ public:
     typedef shoop_shared_ptr<BufferObj> Buffer;
 
 private:
+    rust::Box<backend_rust::CommandQueue> m_command_queue;
 
     struct Buffers;
 

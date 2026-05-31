@@ -1,4 +1,5 @@
 #include "JackAudioMidiDriver.h"
+#include "RustCommandQueue.h"
 #include "AudioMidiDriver.h"
 #include "LoggingBackend.h"
 #include "MidiPort.h"
@@ -121,7 +122,7 @@ void GenericJackAudioMidiDriver<API>::start(
 
     // Processing the command queue once will ensure that it knows processing is active.
     // That way commands added from now on will be executed on the process thread.
-    ma_queue.PROC_exec_all();
+    rust_command_queue::exec_all(this->m_command_queue);
 
     if (API::activate(client)) {
         Log::throw_error<std::runtime_error>("Could not activate JACK client.");
@@ -142,14 +143,14 @@ GenericJackAudioMidiDriver<API>::~GenericJackAudioMidiDriver() {
 }
 
 template<typename API>
-shoop_shared_ptr<AudioPort<float>>GenericJackAudioMidiDriver<API>::open_audio_port(std::string name, shoop_port_direction_t direction,
-    shoop_shared_ptr<typename AudioPort<jack_default_audio_sample_t>::UsedBufferPool> buffer_pool) {
+shoop_shared_ptr<RustAudioPortF32>GenericJackAudioMidiDriver<API>::open_audio_port(std::string name, shoop_port_direction_t direction,
+    shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool) {
     shoop_shared_ptr<PortInterface> port =
         shoop_static_pointer_cast<PortInterface>(
             shoop_make_shared<GenericJackAudioPort<API>>(name, direction, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker, buffer_pool)
         );
     m_ports[port->name()] = port;
-    return shoop_dynamic_pointer_cast<AudioPort<float>>(port);
+    return shoop_dynamic_pointer_cast<RustAudioPortF32>(port);
 }
 
 template<typename API>

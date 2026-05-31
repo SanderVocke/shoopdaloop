@@ -4,48 +4,54 @@
 #include "DummyPort.h"
 #include "PortInterface.h"
 #include "LoggingEnabled.h"
-#include "WithCommandQueue.h"
+#include "RustCommandQueue.h"
 #include "MidiBuffer.h"
+#include "IMidiReadableBuffer.h"
+#include "IMidiWriteableBuffer.h"
 #include "types.h"
-#include <memory>
+#include "backend_rust/src/dummy_midi_port_cxx.rs.h"  // Rust CXX bridge for DummyMidiPort
 #include <memory>
 #include <set>
 #include <thread>
 #include <vector>
-#include <memory>
 #include <stdint.h>
 #include <mutex>
 
-class DummyMidiPort : public virtual MidiPort,
-                      public DummyPort,
+/**
+ * DummyMidiPort - A MIDI port implementation for testing and development.
+ *
+ * This is a thin C++ wrapper that delegates to the Rust implementation
+ * in src/rust/backend_rust/src/dummy_midi_port.rs via the CXX bridge.
+ */
+class DummyMidiPort : public MidiPort,
                       public MidiReadableBuffer,
                       public MidiWriteableBuffer,
-                      public WithCommandQueue,
                       private ModuleLoggingEnabled<"Backend.DummyMidiPort"> {
 public:
     using StoredMessage = MidiStorageElem;
 
 private:
 
-    // Queued messages as external input to the port
-    std::vector<StoredMessage> m_queued_msgs;
+    // Rust implementation (delegates all logic here)
+    rust::Box<backend_rust::DummyMidiPort> m_rust;
 
-    std::vector<StoredMessage> m_buffer_data;
-    std::vector<StoredMessage> m_written_requested_msgs;
-
-    std::atomic<uint32_t> current_buf_frames = 0;
-
-    // Amount of frames requested for reading externally out of the port
-    std::atomic<uint32_t> n_requested_frames = 0;
-
-    std::atomic<uint32_t> n_processed_last_round = 0;
-    std::atomic<uint32_t> n_original_requested_frames = 0;
+    // Composition replacing former base classes
+    DummyPortCore m_dummy_port_core;
+    rust::Box<backend_rust::CommandQueue> m_command_queue;
 
 public:
+    // MidiReadableBuffer interface implementation
     uint32_t n_events() const override;
     MidiStorageElem get_event(uint32_t idx) const override;
+
+    // MidiWriteableBuffer interface implementation
     void write_event(MidiStorageElem event) override;
 
+    // Buffer interface accessors
+    IMidiReadableBuffer *get_readable_buffer() override;
+    IMidiWriteableBuffer *get_writeable_buffer() override;
+
+    // Buffer accessors for port
     MidiWriteableBuffer *PROC_get_write_data_into_port_buffer(uint32_t n_frames) override;
     MidiReadableBuffer *PROC_get_read_output_data_buffer(uint32_t n_frames) override;
 
@@ -69,6 +75,15 @@ public:
 
     ~DummyMidiPort() override;
 
+    // PortInterface methods — delegate to m_dummy_port_core where applicable,
+    // MidiPort base for the rest.
+    const char* name() const override { return m_dummy_port_core.name(); }
+    void close() override { m_dummy_port_core.close(); }
+    void* maybe_driver_handle() const override { return m_dummy_port_core.maybe_driver_handle(); }
+    PortExternalConnectionStatus get_external_connection_status() const override { return m_dummy_port_core.get_external_connection_status(); }
+    void connect_external(std::string name) override { m_dummy_port_core.connect_external(name); }
+    void disconnect_external(std::string name) override { m_dummy_port_core.disconnect_external(name); }
+
     bool has_internal_read_access() const override { return true; }
     bool has_internal_write_access() const override { return true; }
     bool has_implicit_input_source() const override { return true; }
@@ -79,4 +94,8 @@ public:
 
     unsigned input_connectability() const override;
     unsigned output_connectability() const override;
+
+    // Override from MidiPort to delegate to our Rust implementation
+    void set_muted(bool muted) override;
+    bool get_muted() const override;
 };

@@ -1,22 +1,18 @@
 #pragma once
 #include "AudioMidiDriver.h"
-#include "MidiPort.h"
-#include "AudioPort.h"
+#include "RustAudioPort.h"
 #include "DummyAudioPort.h"
 #include "DummyMidiPort.h"
 #include "PortInterface.h"
 #include "LoggingEnabled.h"
-#include "WithCommandQueue.h"
 #include "types.h"
 #include <memory>
-#include <memory>
 #include <set>
-#include <thread>
 #include <vector>
 #include <boost/lockfree/spsc_queue.hpp>
-#include <memory>
 #include <stdint.h>
 #include "shoop_shared_ptr.h"
+#include "backend_rust/src/dummy_audio_midi_driver_cxx.rs.h"
 
 struct DummyAudioMidiDriverSettings : public AudioMidiDriverSettingsInterface {
     DummyAudioMidiDriverSettings() {}
@@ -36,11 +32,7 @@ class DummyAudioMidiDriver : public AudioMidiDriver,
                              private ModuleLoggingEnabled<"Backend.DummyAudioMidiDriver"> {
     using Log = ModuleLoggingEnabled<"Backend.DummyAudioMidiDriver">;
 
-    std::atomic<bool> m_finish = false;
-    std::atomic<DummyAudioMidiDriverMode> m_mode = DummyAudioMidiDriverMode::Automatic;
-    std::atomic<uint32_t> m_controlled_mode_samples_to_process = 0;
-    std::atomic<bool> m_paused = false;
-    std::thread m_proc_thread;
+    rust::Box<backend_rust::DummyAudioMidiDriver> m_rust;
     std::set<shoop_shared_ptr<DummyAudioPort>> m_audio_ports;
     std::set<shoop_shared_ptr<DummyMidiPort>> m_midi_ports;
     std::string m_client_name_str = "";
@@ -59,10 +51,10 @@ public:
 
     void start(AudioMidiDriverSettingsInterface &settings) override;
 
-    shoop_shared_ptr<AudioPort<audio_sample_t>> open_audio_port(
+    shoop_shared_ptr<RustAudioPortF32> open_audio_port(
         std::string name,
         shoop_port_direction_t direction,
-        shoop_shared_ptr<typename AudioPort<audio_sample_t>::UsedBufferPool> buffer_pool
+        shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool
     ) override;
 
     shoop_shared_ptr<MidiPort> open_midi_port(

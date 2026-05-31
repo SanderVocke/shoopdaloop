@@ -124,7 +124,6 @@ local BUTTON_device = 71
 -- constants: redefined button IDs for ShoopDaLoop.
 local BUTTON_grab = BUTTON_mute
 local BUTTON_record = BUTTON_rec_arm
-local BUTTON_sync_loop = BUTTON_blank_2
 local BUTTON_sync = BUTTON_blank_1
 local BUTTON_dry = BUTTON_send
 local BUTTON_n_cycles = BUTTON_device
@@ -160,7 +159,7 @@ local send_fn = nil
 
 -- Convert a MIDI note to the corresponding loop location on the grid
 local note_to_loop_coords = function(note)
-    if note == BUTTON_sync_loop then return {-1,0} end -- Special case for sync loop button
+    if note == 7 then return {-1,0} end -- Bottom-rightmost loop button is now sync loop
     if note >= 64 or note < 0 then return nil end
     local x = note % 8
     local y = 7 - note // 8
@@ -178,7 +177,7 @@ local led_message = function(coords, color)
             if color == LED_yellow then
                 color = LED_off
             end
-            return {0x90, BUTTON_sync_loop, color}
+            return {0x90, 7, color}
         else
             print_warning("led_message: invalid coords: (" .. x .. "," .. y .. ")")
             return {}

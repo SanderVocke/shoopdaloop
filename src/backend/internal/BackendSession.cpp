@@ -101,14 +101,15 @@ struct BackendSession::RecalculateGraphThread {
 };
 
 BackendSession::BackendSession()
-    : WithCommandQueue(), profiler(shoop_make_shared<profiling::Profiler>()),
+    : m_command_queue(rust_command_queue::make(shoop_constants::command_queue_size, 1000, 1000)),
+      ma_state(State::Active),
+      m_recalculate_graph_thread(std::make_unique<RecalculateGraphThread>(*this)),
+      profiler(shoop_make_shared<profiling::Profiler>()),
       top_profiling_item(profiler->maybe_get_profiling_item("Process")),
       graph_profiling_item(profiler->maybe_get_profiling_item("Process.Graph")),
-      cmds_profiling_item(
-          profiler->maybe_get_profiling_item("Process.Commands")),
-      ma_state(State::Active), ma_graph_id(0), ma_graph_request_id(0),
-      m_recalculate_graph_thread(
-          std::make_unique<RecalculateGraphThread>(*this)) {
+      cmds_profiling_item(profiler->maybe_get_profiling_item("Process.Commands")),
+      ma_graph_request_id(0), ma_graph_id(0)
+{
     audio_buffer_pool = shoop_static_pointer_cast<AudioBufferPool>(
         shoop_make_shared<BufferPool<shoop_types::audio_sample_t>>(
             n_buffers_in_pool, (n_buffers_in_pool * 2) / 3, audio_buffer_size));
@@ -138,7 +139,7 @@ void BackendSession::PROC_process(uint32_t nframes) {
             log<log_level_debug_trace>(
                 "Process: execute commands and MIDI control");
             profiling::stopwatch(
-                [this, nframes]() { PROC_handle_command_queue(); },
+                [this, nframes]() { rust_command_queue::exec_all(*m_command_queue); },
                 cmds_profiling_item);
 
             auto graph_id = ma_graph_id.load();
@@ -194,7 +195,7 @@ void BackendSession::PROC_process(uint32_t nframes) {
 void BackendSession::destroy() {
     if (ma_state != State::Destroyed) {
         log<log_level_debug>("Destroying backend");
-        ma_queue.passthrough_on();
+        rust_command_queue::passthrough_on(*m_command_queue);
         for (auto &p : ports) {
             if (p) {
                 p->get_port().close();
@@ -440,7 +441,7 @@ void BackendSession::set_buffer_size(uint32_t bs) {
             as_node->PROC_notify_changed_buffer_size(bs);
         }
     };
-    exec_process_thread_command([&, this]() {
+    rust_command_queue::queue_and_wait(*m_command_queue, [&, this]() {
         for (auto &i : loops) {
             notify(i);
         }
@@ -603,7 +604,7 @@ void BackendSession::recalculate_processing_schedule(unsigned req_id) {
             me->m_processing_schedule = result;
             me->ma_graph_id = req_id;
         };
-        queue_process_thread_command(finish_fn);
+        rust_command_queue::queue(*m_command_queue, finish_fn);
     }
 }
 

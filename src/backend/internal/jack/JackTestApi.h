@@ -5,7 +5,7 @@
 #include <map>
 #include <set>
 #include "LoggingBackend.h"
-#include "MidiStorage.h"
+#include "MidiStorageElem.h"
 #include <vector>
 
 #ifdef _WIN32
@@ -52,7 +52,7 @@ public:
         std::vector<float> audio_buffer;
         std::vector<MidiStorageElem> midi_buffer;
 
-        Port(std::string name, Client &client, Type type, Direction direction) : name(name), type(type), direction(direction), valid(true), client(client) {}
+        Port(std::string name, Client &client, Type type, Direction direction) : name(name), type(type), direction(direction), client(client), valid(true) {}
         Port(Port const& other) = delete;
 
         void* get_buffer(uint32_t nframes) {
@@ -89,7 +89,7 @@ public:
             ports.try_emplace(name, name, *this, type, direction);
             return ports.at(name);
         }
-        void close_port(std::string name) {}
+        void close_port(std::string name) { (void)name; }
         bool has_port(jack_port_t* p) {
             for( auto &pp: ports ) {
                 if(pp.second.as_ptr() == p) { return true; }

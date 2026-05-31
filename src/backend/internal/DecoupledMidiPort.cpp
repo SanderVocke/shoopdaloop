@@ -5,22 +5,20 @@
 #include <optional>
 #include <cstring>
 #include <iostream>
+#include <array>
 
-template <typename TimeType, typename SizeType>
-DecoupledMidiPort<TimeType, SizeType>::DecoupledMidiPort(
+DecoupledMidiPort::DecoupledMidiPort(
     shoop_shared_ptr<MidiPort> port,
     shoop_weak_ptr<AudioMidiDriver> driver,
     uint32_t queue_size,
     shoop_port_direction_t direction)
-    : port(port), ma_queue(queue_size), direction(direction), maybe_driver(driver) {};
+    : port(port), direction(direction), m_rust(backend_rust::new_decoupled_midi_port(queue_size, static_cast<uint32_t>(direction))), maybe_driver(driver) {};
 
-template <typename TimeType, typename SizeType>
-shoop_shared_ptr<MidiPort> const& DecoupledMidiPort<TimeType, SizeType>::get_port() {
+shoop_shared_ptr<MidiPort> const& DecoupledMidiPort::get_port() {
     return port;
 }
 
-template <typename TimeType, typename SizeType>
-void DecoupledMidiPort<TimeType, SizeType>::PROC_process(uint32_t n_frames) {
+void DecoupledMidiPort::PROC_process(uint32_t n_frames) {
     if (direction == shoop_port_direction_t::ShoopPortDirection_Input) {
         port->PROC_prepare(n_frames);
         port->PROC_process(n_frames);
@@ -31,61 +29,68 @@ void DecoupledMidiPort<TimeType, SizeType>::PROC_process(uint32_t n_frames) {
         }
         for (uint32_t idx = 0; idx < n; idx++) {
             Message m = buf->get_event(idx);
-            ma_queue.push(m);
+            std::array<uint8_t, 4> data = {m.bytes[0], m.bytes[1], m.bytes[2], m.bytes[3]};
+            backend_rust::decoupled_push(*m_rust, m.time, m.size, data);
         }
     } else if (direction == shoop_port_direction_t::ShoopPortDirection_Output) {
         port->PROC_prepare(n_frames);
         auto buf = port->PROC_get_write_data_into_port_buffer(n_frames);
+        uint32_t time = 0;
+        uint16_t size = 0;
         Message m;
-        while (ma_queue.pop(m)) {
+        while (backend_rust::decoupled_pop(*m_rust, time, size, m.bytes)) {
+            m.time = time;
+            m.size = size;
             buf->write_event(m);
         }
         port->PROC_process(n_frames);
     }
 }
 
-template <typename TimeType, typename SizeType>
-const char* DecoupledMidiPort<TimeType, SizeType>::name() const {
-    return port->name();
+const char* DecoupledMidiPort::name() const {
+    return static_cast<PortInterface*>(port.get())->name();
 }
 
-template <typename TimeType, typename SizeType>
-std::optional<typename DecoupledMidiPort<TimeType, SizeType>::Message>
-DecoupledMidiPort<TimeType, SizeType>::pop_incoming() {
+std::optional<DecoupledMidiPort::Message>
+DecoupledMidiPort::pop_incoming() {
     if (direction != shoop_port_direction_t::ShoopPortDirection_Input) {
         throw std::runtime_error(
             "Attempt to pop input message from output port");
     }
+    uint32_t time = 0;
+    uint16_t size = 0;
     Message m;
-    if (ma_queue.pop(m)) {
+    if (backend_rust::decoupled_pop(*m_rust, time, size, m.bytes)) {
+        m.time = time;
+        m.size = size;
         return m;
     }
     return std::nullopt;
 }
 
-template <typename TimeType, typename SizeType>
-void DecoupledMidiPort<TimeType, SizeType>::push_outgoing(
-    typename DecoupledMidiPort<TimeType, SizeType>::Message m) {
-    ma_queue.push(m);
+void DecoupledMidiPort::push_outgoing(
+    DecoupledMidiPort::Message m) {
+    std::array<uint8_t, 4> data = {m.bytes[0], m.bytes[1], m.bytes[2], m.bytes[3]};
+    backend_rust::decoupled_push(*m_rust, m.time, m.size, data);
 }
 
-template <typename TimeType, typename SizeType>
-void DecoupledMidiPort<TimeType, SizeType>::close() {
-    port->close();
+void DecoupledMidiPort::close() {
+    static_cast<PortInterface*>(port.get())->close();
 }
 
-template <typename TimeType, typename SizeType>
-shoop_shared_ptr<AudioMidiDriver> DecoupledMidiPort<TimeType, SizeType>::
+shoop_shared_ptr<AudioMidiDriver> DecoupledMidiPort::
     get_maybe_driver() const {
     return maybe_driver.lock();
 }
 
-template <typename TimeType, typename SizeType>
-void DecoupledMidiPort<TimeType, SizeType>::forget_driver() {
+void DecoupledMidiPort::forget_driver() {
     maybe_driver.reset();
 }
 
-template class DecoupledMidiPort<uint32_t, uint16_t>;
-template class DecoupledMidiPort<uint32_t, uint32_t>;
-template class DecoupledMidiPort<uint16_t, uint16_t>;
-template class DecoupledMidiPort<uint16_t, uint32_t>;
+void DecoupledMidiPort::set_registry_handle(uint64_t handle) {
+    m_registry_handle = handle;
+}
+
+uint64_t DecoupledMidiPort::registry_handle() const {
+    return m_registry_handle;
+}

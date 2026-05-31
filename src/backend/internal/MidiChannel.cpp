@@ -1,11 +1,13 @@
 #include <utility>
+#include "RustCommandQueue.h"
 #include "LoggingBackend.h"
 #include "MidiChannel.h"
 #include "MidiPort.h"
 #include "MidiBuffer.h"
+#include "MidiStorageCursor.h"
 #include "MidiStateDiffTracker.h"
 #include "MidiStateTracker.h"
-#include "MidiStorage.h"
+#include "MidiStorageElem.h"
 #include "channel_mode_helpers.h"
 #include "types.h"
 #include <memory>
@@ -35,7 +37,7 @@ uint32_t MidiChannel::ExternalBufState::events_left() const {
 }
 
 MidiChannel::MidiChannel(uint32_t data_size, shoop_channel_mode_t mode)
-    : WithCommandQueue(50),
+    : m_command_queue(rust_command_queue::make(50, 1000, 1000)),
       mp_playback_target_buffer(std::make_pair(ExternalBufState(), nullptr)),
       mp_recording_source_buffer(std::make_pair(ExternalBufState(), nullptr)),
       mp_storage(shoop_make_shared<Storage>(data_size)),
@@ -78,7 +80,7 @@ MidiChannel &MidiChannel::operator=(MidiChannel const &other) {
     ma_start_offset = other.ma_start_offset.load();
     ma_data_length = other.ma_data_length.load();
     mp_prev_process_flags = other.mp_prev_process_flags;
-    *mp_prerecord_storage = *other.mp_prerecord_storage;
+    mp_prerecord_storage->copy_from(*other.mp_prerecord_storage);
     ma_prerecord_data_length = other.ma_prerecord_data_length.load();
     *mp_input_midi_state = *other.mp_input_midi_state;
     mp_profiling_item = other.mp_profiling_item;
@@ -128,7 +130,7 @@ MidiChannel::PROC_process(shoop_loop_mode_t mode, std::optional<shoop_loop_mode_
                   std::optional<uint32_t> maybe_next_mode_eta, uint32_t n_samples,
                   uint32_t pos_before, uint32_t pos_after, uint32_t length_before,
                   uint32_t length_after) {
-    PROC_handle_command_queue();
+    rust_command_queue::exec_all(m_command_queue);
 
     auto process_params = get_channel_process_params(
         mode, maybe_next_mode, maybe_next_mode_delay_cycles,
@@ -369,7 +371,7 @@ MidiChannel::clear(bool thread_safe) {
         data_changed();
     };
     if (thread_safe) {
-        exec_process_thread_command(fn);
+        rust_command_queue::queue_and_wait(m_command_queue, fn);
     } else {
         fn();
     }
@@ -571,7 +573,7 @@ MidiChannel::retrieve_contents(bool thread_safe) {
         state.copy_relevant_state(*mp_recording_start_state_tracker->state);
     };
     if (thread_safe) {
-        exec_process_thread_command(fn);
+        rust_command_queue::queue_and_wait(m_command_queue, fn);
     } else {
         fn();
     }
@@ -620,7 +622,7 @@ MidiChannel::set_contents(Contents contents, uint32_t length_samples,
     };
 
     if (thread_safe) {
-        exec_process_thread_command(fn);
+        rust_command_queue::queue_and_wait(m_command_queue, fn);
     } else {
         fn();
     }
@@ -684,12 +686,14 @@ MidiChannel::adopt_ringbuffer_contents(shoop_shared_ptr<PortInterface> from_port
 
     auto fn = [midiport, reverse_start_offset, keep_samples_before_start_offset, this]() {
         shoop_shared_ptr<MidiStateTracker> maybe_start_tracking_state = nullptr;
-        if (auto const& state = midiport->maybe_ringbuffer_tail_state_tracker()) {
+        auto tail_state_ptr = midiport->maybe_ringbuffer_tail_state_tracker();
+        if (tail_state_ptr) {
             // What was the ringbuffer tail state should now become the recorded messages
             // start state of this channel.
+            // Use bridge function to copy state directly from Rust to avoid raw pointer issues
             log<log_level_debug_trace>("adopting ringbuffer state tracker");
             maybe_start_tracking_state = shoop_make_shared<MidiStateTracker>(true, true, true);
-            maybe_start_tracking_state->copy_relevant_state(*state);
+            backend_rust::copy_tail_state_to_tracker_by_ptr(*midiport->m_rust_port, (size_t)maybe_start_tracking_state->raw_ptr());
         }
 
         midiport->PROC_snapshot_ringbuffer_into(*mp_storage);
@@ -701,7 +705,7 @@ MidiChannel::adopt_ringbuffer_contents(shoop_shared_ptr<PortInterface> from_port
             auto so = ma_start_offset.load();
             mp_storage->truncate(
                 so - std::min((int)so, (int)keep_samples_before_start_offset.value()),
-                MidiStorage::TruncateSide::TruncateTail,
+                Storage::TruncateSide::TruncateTail,
                 [this, maybe_start_tracking_state](uint32_t time, uint16_t size, const uint8_t* data) {
                     if (maybe_start_tracking_state) {
                         maybe_start_tracking_state->process_msg(data);
@@ -727,7 +731,7 @@ MidiChannel::adopt_ringbuffer_contents(shoop_shared_ptr<PortInterface> from_port
     };
 
     if (thread_safe) {
-        queue_process_thread_command(fn);
+        rust_command_queue::queue(m_command_queue, fn);
     } else {
         fn();
     }

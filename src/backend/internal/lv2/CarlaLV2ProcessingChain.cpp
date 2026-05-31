@@ -222,7 +222,7 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::maybe_cleanup_ui() {
 template <typename TimeType, typename SizeType>
 CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
     LilvWorld *lilv_world, shoop_fx_chain_type_t type, uint32_t sample_rate, uint32_t buffer_size,
-    std::string human_name, shoop_shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::UsedBufferPool> maybe_buffer_pool)
+    std::string human_name, shoop_shared_ptr<shoop_types::AudioBufferPool> maybe_buffer_pool)
     : m_internal_buffers_size(carla_constants::max_buffer_size), m_human_name(human_name),
       m_unique_name(human_name + "_" + random_string(6)) {
 
@@ -282,7 +282,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
             }
             m_audio_in_lilv_ports.push_back(p);
             m_audio_in_port_indices.push_back(lilv_port_get_index(m_plugin, p));
-            auto internal = shoop_make_shared<_InternalAudioPort>(
+            auto internal = shoop_make_shared<InternalAudioPort>(
                 sym, m_internal_buffers_size, ShoopPortConnectability_Internal, 0, nullptr);
             m_input_audio_ports.push_back(internal);
         }
@@ -298,7 +298,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
                 lilv_port_get_index(m_plugin, p));
             // This port gets a buffer pool to create a ringbuffer, because other downstream
             // channels may want to grab it
-            auto internal = shoop_make_shared<_InternalAudioPort>(
+            auto internal = shoop_make_shared<InternalAudioPort>(
                 sym, m_internal_buffers_size, 0, ShoopPortConnectability_Internal, maybe_buffer_pool);
             m_output_audio_ports.push_back(internal);
         }

@@ -5,7 +5,7 @@
 #include <memory>
 #include <vector>
 #include <stdint.h>
-#include <boost/lockfree/spsc_queue.hpp>
+#include "backend_rust/src/decoupled_midi_port_cxx.rs.h"
 
 class AudioMidiDriver;
 
@@ -13,16 +13,15 @@ class AudioMidiDriver;
 // Incoming messages are stored into the queue and outgoing ones taken form a queue.
 // This way, port messaging can be easily handled outside of the processing thread.
 // Time information is discarded for decoupled messages (intended for controllers).
-template<typename TimeType, typename SizeType>
-class DecoupledMidiPort : public shoop_enable_shared_from_this<DecoupledMidiPort<TimeType, SizeType>>,
+class DecoupledMidiPort : public shoop_enable_shared_from_this<DecoupledMidiPort>,
                           private ModuleLoggingEnabled<"Backend.DecoupledMidiPort"> {
     using Message = MidiStorageElem;
-    using Queue = boost::lockfree::spsc_queue<Message>;
 
     const shoop_shared_ptr<MidiPort> port;
     const shoop_port_direction_t direction;
-    Queue ma_queue;
+    rust::Box<backend_rust::DecoupledMidiPort> m_rust;
     shoop_weak_ptr<AudioMidiDriver> maybe_driver;
+    uint64_t m_registry_handle = 0;
 public:
     DecoupledMidiPort (shoop_shared_ptr<MidiPort> port,
                        shoop_weak_ptr<AudioMidiDriver> driver,
@@ -41,9 +40,6 @@ public:
     void push_outgoing (Message m);
 
     shoop_shared_ptr<MidiPort> const& get_port();
+    void set_registry_handle(uint64_t handle);
+    uint64_t registry_handle() const;
 };
-
-extern template class DecoupledMidiPort<uint32_t, uint16_t>;
-extern template class DecoupledMidiPort<uint32_t, uint32_t>;
-extern template class DecoupledMidiPort<uint16_t, uint16_t>;
-extern template class DecoupledMidiPort<uint16_t, uint32_t>;

@@ -1,14 +1,13 @@
 #pragma once
-#include "AudioPort.h"
+#include "RustAudioPort.h"
+#include "backend_rust/src/audio_port_cxx.rs.h"
+#include "backend_rust/src/internal_audio_port_cxx.rs.h"
 #include <vector>
 #include "shoop_shared_ptr.h"
 
-template<typename SampleT>
-class InternalAudioPort : public AudioPort<SampleT> {
-    std::string m_name = "";
-    std::vector<SampleT> m_buffer;
-    unsigned m_input_connectability = 0;
-    unsigned m_output_connectability = 0;
+class InternalAudioPort : public RustAudioPortF32 {
+    rust::Box<backend_rust::InternalAudioPort> m_rust_internal;
+    std::string m_name;  // Cached name to avoid dangling pointer from Rust String
 
 public:
     // Note that the port direction for internal ports are defined w.r.t. ShoopDaLoop.
@@ -19,10 +18,10 @@ public:
         uint32_t n_frames,
         unsigned input_connectability,
         unsigned output_connectability,
-        shoop_shared_ptr<typename AudioPort<SampleT>::UsedBufferPool> maybe_ringbuffer_buffer_pool
+        shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> maybe_ringbuffer_buffer_pool
     );
     
-    SampleT *PROC_get_buffer(uint32_t n_frames) override;
+    float* PROC_get_buffer(uint32_t n_frames) override;
 
     const char* name() const override;
     void close() override;
@@ -43,7 +42,21 @@ public:
 
     unsigned input_connectability() const override;
     unsigned output_connectability() const override;
+    
+    // Gain/mute/peak control - delegate to Rust InternalAudioPort
+    void set_gain(float gain) override;
+    float get_gain() const override;
+    void set_muted(bool muted) override;
+    bool get_muted() const override;
+    float get_input_peak() const override;
+    void reset_input_peak() override;
+    float get_output_peak() const override;
+    void reset_output_peak() override;
+    
+    // Ringbuffer config - delegate to Rust InternalAudioPort
+    void set_ringbuffer_n_samples(unsigned n) override;
+    unsigned get_ringbuffer_n_samples() const override;
+    
+    // Ringbuffer access - delegate to Rust InternalAudioPort
+    RingbufferSnapshot PROC_get_ringbuffer_contents() override;
 };
-
-extern template class InternalAudioPort<float>;
-extern template class InternalAudioPort<int>;

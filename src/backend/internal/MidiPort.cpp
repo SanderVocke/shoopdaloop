@@ -17,38 +17,83 @@ MidiWriteableBuffer *MidiPort::PROC_maybe_get_send_out_buffer (uint32_t n_frames
 PortDataType MidiPort::type() const { return PortDataType::Midi; }
 
 void MidiPort::set_muted(bool muted) { 
-    if (muted != ma_muted.load()) {
+    if (muted != m_rust_port->get_muted()) {
         log<log_level_debug>("muted -> {}", muted);
     }
-    ma_muted = muted;
+    m_rust_port->set_muted(muted);
 }
 
-bool MidiPort::get_muted() const { return ma_muted; }
-
-void MidiPort::reset_n_input_events() { n_input_events = 0; }
-
-uint32_t MidiPort::get_n_input_events() const { return n_input_events; }
-
-void MidiPort::reset_n_output_events() { n_output_events = 0; }
-
-uint32_t MidiPort::get_n_output_events() const { return n_output_events; }
-
-uint32_t MidiPort::get_n_input_notes_active() const {
-    auto &m = m_maybe_midi_state;
-    return m ? m->n_notes_active() : 0;
+bool MidiPort::get_muted() const { 
+    return m_rust_port->get_muted(); 
 }
 
-uint32_t MidiPort::get_n_output_notes_active() const {
-    auto &m = m_maybe_midi_state;
-    return (m && !ma_muted) ? m->n_notes_active() : 0;
+void MidiPort::reset_n_input_events() { 
+    m_rust_port->reset_n_input_events();
 }
 
-shoop_shared_ptr<MidiStateTracker> &MidiPort::maybe_midi_state_tracker() {
-    return m_maybe_midi_state;
+uint32_t MidiPort::get_n_input_events() const { 
+    return m_rust_port->input_event_count(); 
 }
 
-shoop_shared_ptr<MidiStateTracker> &MidiPort::maybe_ringbuffer_tail_state_tracker() {
-    return m_ringbuffer_tail_state;
+uint32_t MidiPort::get_input_event_count() const { 
+    return m_rust_port->input_event_count(); 
+}
+
+void MidiPort::reset_n_output_events() { 
+    m_rust_port->reset_n_output_events();
+}
+
+uint32_t MidiPort::get_n_output_events() const { 
+    return m_rust_port->output_event_count(); 
+}
+
+uint32_t MidiPort::get_output_event_count() const { 
+    return m_rust_port->output_event_count(); 
+}
+
+uint32_t MidiPort::n_notes_active() const { 
+    return m_rust_port->n_notes_active(); 
+}
+
+uint32_t MidiPort::get_n_input_notes_active() {
+    return backend_rust::get_state_tracker_n_notes_active(*m_rust_port);
+}
+
+uint32_t MidiPort::get_n_output_notes_active() {
+    auto n = backend_rust::get_state_tracker_n_notes_active(*m_rust_port);
+    return m_rust_port->get_muted() ? 0 : n;
+}
+
+shoop_shared_ptr<MidiRingbuffer> &MidiPort::maybe_midi_ringbuffer() {
+    return m_midi_ringbuffer;
+}
+
+size_t MidiPort::get_maybe_midi_state_tracker_raw() {
+    return backend_rust::get_maybe_midi_state_tracker(*m_rust_port);
+}
+
+size_t MidiPort::get_maybe_ringbuffer_tail_state_tracker_raw() {
+    return backend_rust::get_maybe_ringbuffer_tail_state_tracker(*m_rust_port);
+}
+
+shoop_shared_ptr<MidiStateTracker> MidiPort::maybe_midi_state_tracker() {
+    auto ptr = backend_rust::get_maybe_midi_state_tracker(*m_rust_port);
+    if (!ptr) return nullptr;
+    return shoop_shared_ptr<MidiStateTracker>((MidiStateTracker*)ptr, [](MidiStateTracker*){});
+}
+
+shoop_shared_ptr<MidiStateTracker> MidiPort::maybe_ringbuffer_tail_state_tracker() {
+    auto ptr = backend_rust::get_maybe_ringbuffer_tail_state_tracker(*m_rust_port);
+    if (!ptr) return nullptr;
+    return shoop_shared_ptr<MidiStateTracker>((MidiStateTracker*)ptr, [](MidiStateTracker*){});
+}
+
+void MidiPort::increment_input_events(uint32_t count) {
+    backend_rust::increment_input_events(*m_rust_port, count);
+}
+
+void MidiPort::increment_output_events(uint32_t count) {
+    backend_rust::increment_output_events(*m_rust_port, count);
 }
 
 void MidiPort::PROC_prepare(uint32_t nframes) {
@@ -59,7 +104,7 @@ void MidiPort::PROC_prepare(uint32_t nframes) {
 }
 
 void MidiPort::PROC_process(uint32_t nframes) {
-    auto muted = ma_muted.load();
+    auto muted = m_rust_port->get_muted();
 
     if (nframes > 0) {
         log<log_level_debug_trace>("process {}", nframes);
@@ -72,11 +117,22 @@ void MidiPort::PROC_process(uint32_t nframes) {
     auto write_out_buf = ma_internal_write_output_data_to_buffer.load();
     bool processed_state = false;
 
-    auto put_in_ringbuf = [this](MidiStorageElem &elem) {
-        if (m_midi_ringbuffer) {
-            m_midi_ringbuffer->put(elem.time, elem.size, elem.bytes,
+    // Get ringbuffer and tail state references
+    auto& ringbuffer = m_midi_ringbuffer;
+    
+    // Get tail state tracker via bridge
+    auto tail_tracker_ptr = backend_rust::get_maybe_ringbuffer_tail_state_tracker(*m_rust_port);
+    std::shared_ptr<MidiStateTracker> tail_state;
+    if (tail_tracker_ptr) {
+        // Wrap raw pointer in shared_ptr with no deleter (lifetime tied to MidiPort)
+        tail_state = std::shared_ptr<MidiStateTracker>((MidiStateTracker*)tail_tracker_ptr, [](MidiStateTracker*){});
+    }
+
+    auto put_in_ringbuf = [this, &ringbuffer, &tail_state](MidiStorageElem &elem) {
+        if (ringbuffer && tail_state) {
+            ringbuffer->put(elem.time, elem.size, elem.bytes,
             [this](uint32_t time, uint16_t size, const uint8_t *data) {
-                m_ringbuffer_tail_state->process_msg(data);
+                backend_rust::process_msg_raw_to_tail_state(*this->m_rust_port, data);
             });
         }
     };
@@ -84,26 +140,33 @@ void MidiPort::PROC_process(uint32_t nframes) {
     // Count input events from the read output buffer (for input ports) or internal input buffer (for others)
     MidiReadableBuffer *input_buf = read_out_buf ? read_out_buf : read_in_buf;
     uint32_t n_in_events = 0;
-    if (m_midi_ringbuffer) {
-        m_midi_ringbuffer->next_buffer(nframes,
+    if (ringbuffer && tail_state) {
+        ringbuffer->next_buffer(nframes,
             [this](uint32_t time, uint16_t size, const uint8_t *data) {
-                m_ringbuffer_tail_state->process_msg(data);
+                backend_rust::process_msg_raw_to_tail_state(*this->m_rust_port, data);
             });
     }
     if (input_buf) {
         n_in_events = input_buf->n_events();
-        // Count events
-        n_input_events += n_in_events;
+        // Count events via Rust bridge
+        backend_rust::increment_input_events(*m_rust_port, n_in_events);
         log<log_level_debug_trace>("# events in input buf: {}", n_in_events);
     }
-    if (input_buf) {
+    
+    // Get state tracker via bridge for processing
+    auto state_tracker_ptr = backend_rust::get_maybe_midi_state_tracker(*m_rust_port);
+    std::shared_ptr<MidiStateTracker> state_tracker;
+    if (state_tracker_ptr) {
+        state_tracker = std::shared_ptr<MidiStateTracker>((MidiStateTracker*)state_tracker_ptr, [](MidiStateTracker*){});
+    }
+    
+    if (input_buf && state_tracker) {
         // Process input events for state tracking
+        // Use bridge function to avoid C++ MidiStateTracker wrapper issues
         for(uint32_t i=0; i<n_in_events; i++) {
             auto event = input_buf->get_event(i);
-            if(m_maybe_midi_state) {
-                m_maybe_midi_state->process_msg(event.bytes);
-            }
-            if (m_midi_ringbuffer) {
+            backend_rust::process_msg_raw_to_state(*m_rust_port, event.bytes);
+            if (ringbuffer) {
                 put_in_ringbuf(event);
             }
         }
@@ -119,18 +182,18 @@ void MidiPort::PROC_process(uint32_t nframes) {
             // For input ports, source == read_out_buf, but we shouldn't count input as output
             // Only count to n_output_events if we have a write_out_buf (actual output)
             if (write_out_buf) {
-                n_output_events += n_events;
+                backend_rust::increment_output_events(*m_rust_port, n_events);
             }
 
-            if (write_out_buf) {
+            if (write_out_buf && state_tracker) {
                 // We need to actively write data to the output.
                 for(uint32_t i=0; i<n_events; i++) {
                     auto event = source->get_event(i);
                     write_out_buf->write_event(event);
-                    if (!processed_state && m_maybe_midi_state) {
-                        m_maybe_midi_state->process_msg(event.bytes);
+                    if (!processed_state) {
+                        backend_rust::process_msg_raw_to_state(*m_rust_port, event.bytes);
                     }
-                    if (!processed_state && m_midi_ringbuffer) {
+                    if (!processed_state && ringbuffer) {
                         put_in_ringbuf(event);
                     }
                 }
@@ -139,14 +202,12 @@ void MidiPort::PROC_process(uint32_t nframes) {
             }
         }
     }
-    if (!muted && !processed_state && m_maybe_midi_state && read_out_buf) {
+    if (!muted && !processed_state && read_out_buf && state_tracker) {
         log<log_level_debug_trace>("processing msgs state from output read buffer");
         for(uint32_t i=0; i<read_out_buf->n_events(); i++) {
             auto event = read_out_buf->get_event(i);
-            if (m_maybe_midi_state) {
-                m_maybe_midi_state->process_msg(event.bytes);
-            }
-            if (m_midi_ringbuffer) {
+            backend_rust::process_msg_raw_to_state(*m_rust_port, event.bytes);
+            if (ringbuffer) {
                 put_in_ringbuf(event);
             }
         }
@@ -157,23 +218,15 @@ MidiPort::MidiPort(
     bool track_notes,
     bool track_controls,
     bool track_programs
-) : ModuleLoggingEnabled<"Backend.MidiPort">() {
-    if (track_notes || track_controls || track_programs) {
-        m_maybe_midi_state = shoop_make_shared<MidiStateTracker>(
-            track_notes, track_controls, track_programs
-        );
-    }
-    m_ringbuffer_tail_state = shoop_make_shared<MidiStateTracker>(
-        track_notes, track_controls, track_programs
-    );
+) : ModuleLoggingEnabled<"Backend.MidiPort">(),
+    m_rust_port(backend_rust::new_midi_port(track_notes, track_controls, track_programs)),
+    m_midi_ringbuffer(shoop_make_shared<MidiRingbuffer>(shoop_constants::midi_storage_size))
+{
 }
 
 MidiPort::~MidiPort() {};
 
 void MidiPort::set_ringbuffer_n_samples(unsigned n) {
-    if (n > 0 && !m_midi_ringbuffer) {
-        m_midi_ringbuffer = shoop_make_shared<MidiRingbuffer>(shoop_constants::midi_storage_size);
-    }
     if (m_midi_ringbuffer) {
         m_midi_ringbuffer->set_n_samples(n);
     }
@@ -183,13 +236,18 @@ unsigned MidiPort::get_ringbuffer_n_samples() const {
     return m_midi_ringbuffer ? m_midi_ringbuffer->get_n_samples() : 0;
 }
 
-void MidiPort::PROC_snapshot_ringbuffer_into(MidiStorage &s) const {
+void MidiPort::snapshot(IMidiStorage& target, std::optional<uint32_t> start_offset_from_end) const {
     if (m_midi_ringbuffer) {
-        auto n = m_midi_ringbuffer->n_events();
-        log<log_level_debug_trace>("snapshot ringbuffer ({} msgs) into storage", n);
+        m_midi_ringbuffer->snapshot(target, start_offset_from_end);
+    } else {
+        target.clear();
+    }
+}
+
+void MidiPort::PROC_snapshot_ringbuffer_into(IMidiStorage &s) const {
+    if (m_midi_ringbuffer) {
         m_midi_ringbuffer->snapshot(s);
     } else {
-        log<log_level_debug_trace>("ringbuffer snapshot requested but no ringbuffer active");
         s.clear();
     }
 }

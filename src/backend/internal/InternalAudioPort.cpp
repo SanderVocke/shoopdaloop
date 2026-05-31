@@ -11,74 +11,133 @@
 #undef max
 #endif
 
-template <typename SampleT>
-InternalAudioPort<SampleT>::InternalAudioPort(std::string name,
-                                              uint32_t n_frames,
-                                              unsigned input_connectability,
-                                              unsigned output_connectability,
-                                              shoop_shared_ptr<typename AudioPort<SampleT>::UsedBufferPool> buffer_pool)
-    : AudioPort<SampleT>(buffer_pool), m_name(name), m_buffer(n_frames), m_input_connectability(input_connectability), m_output_connectability(output_connectability) {}
+InternalAudioPort::InternalAudioPort(std::string name,
+                                     uint32_t n_frames,
+                                     unsigned input_connectability,
+                                     unsigned output_connectability,
+                                     shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool)
+    : RustAudioPortF32(buffer_pool, 32),
+      m_name(name),
+      m_rust_internal(backend_rust::new_internal_audio_port(name, n_frames, input_connectability, output_connectability)) {}
 
-template <typename SampleT>
-SampleT *InternalAudioPort<SampleT>::PROC_get_buffer(uint32_t n_frames) {
-    if (n_frames > m_buffer.size() || m_buffer.size() == 0) {
-        m_buffer.resize(std::max(n_frames, (uint32_t)1));
-    }
-    return m_buffer.data();
+float* InternalAudioPort::PROC_get_buffer(uint32_t n_frames) {
+    return m_rust_internal->proc_get_buffer(n_frames);
 }
 
-template <typename SampleT>
-const char *InternalAudioPort<SampleT>::name() const {
+const char* InternalAudioPort::name() const {
     return m_name.c_str();
 }
 
-template <typename SampleT>
-PortExternalConnectionStatus InternalAudioPort<SampleT>::get_external_connection_status() const {
+PortExternalConnectionStatus InternalAudioPort::get_external_connection_status() const {
     return PortExternalConnectionStatus();
 }
 
-template <typename SampleT>
-void InternalAudioPort<SampleT>::connect_external(std::string name) {
+void InternalAudioPort::connect_external(std::string name) {
+    (void)name;
     throw std::runtime_error("Internal ports cannot be externally connected.");
 }
 
-template <typename SampleT>
-void InternalAudioPort<SampleT>::disconnect_external(std::string name) {
+void InternalAudioPort::disconnect_external(std::string name) {
+    (void)name;
     throw std::runtime_error("Internal ports cannot be externally connected.");
 }
 
-template <typename SampleT>
-PortDataType InternalAudioPort<SampleT>::type() const {
+PortDataType InternalAudioPort::type() const {
     return PortDataType::Audio;
 }
 
-template <typename SampleT> void InternalAudioPort<SampleT>::close() {}
+void InternalAudioPort::close() {}
 
-template <typename SampleT>
-void* InternalAudioPort<SampleT>::maybe_driver_handle() const {
+void* InternalAudioPort::maybe_driver_handle() const {
     return (void*) this;
 }
 
-template <typename SampleT>
-void InternalAudioPort<SampleT>::PROC_prepare(uint32_t nframes) {
-    PROC_get_buffer(nframes);
-    memset((void*) m_buffer.data(), 0, nframes * sizeof(SampleT));
+void InternalAudioPort::PROC_prepare(uint32_t nframes) {
+    m_rust_internal->proc_prepare(nframes);
 }
 
-template <typename SampleT>
-void InternalAudioPort<SampleT>::PROC_process(uint32_t nframes) {
-    AudioPort<SampleT>::PROC_process(nframes);
+void InternalAudioPort::PROC_process(uint32_t nframes) {
+    m_rust_internal->proc_process(nframes);
 }
 
-template <typename SampleT>
-unsigned InternalAudioPort<SampleT>::input_connectability() const {
-    return m_input_connectability;
+unsigned InternalAudioPort::input_connectability() const {
+    return m_rust_internal->input_connectability();
 }
 
-template <typename SampleT>
-unsigned InternalAudioPort<SampleT>::output_connectability() const {
-    return m_output_connectability;
+unsigned InternalAudioPort::output_connectability() const {
+    return m_rust_internal->output_connectability();
 }
 
-template class InternalAudioPort<float>;
-template class InternalAudioPort<int>;
+// Gain/mute/peak control - delegate to Rust InternalAudioPort
+void InternalAudioPort::set_gain(float gain) {
+    m_rust_internal->set_gain(gain);
+}
+
+float InternalAudioPort::get_gain() const {
+    return m_rust_internal->get_gain();
+}
+
+
+void InternalAudioPort::set_muted(bool muted) {
+    m_rust_internal->set_muted(muted);
+}
+
+bool InternalAudioPort::get_muted() const {
+    return m_rust_internal->get_muted();
+}
+
+float InternalAudioPort::get_input_peak() const {
+    return m_rust_internal->get_input_peak();
+}
+
+void InternalAudioPort::reset_input_peak() {
+    m_rust_internal->reset_input_peak();
+}
+
+float InternalAudioPort::get_output_peak() const {
+    return m_rust_internal->get_output_peak();
+}
+
+void InternalAudioPort::reset_output_peak() {
+    m_rust_internal->reset_output_peak();
+}
+// Ringbuffer config - delegate to Rust InternalAudioPort
+void InternalAudioPort::set_ringbuffer_n_samples(unsigned n) {
+    m_rust_internal->set_ringbuffer_n_samples(n);
+}
+
+unsigned InternalAudioPort::get_ringbuffer_n_samples() const {
+    return m_rust_internal->get_ringbuffer_n_samples();
+}
+
+// Ringbuffer access - delegate to Rust InternalAudioPort
+RustAudioPortF32::RingbufferSnapshot InternalAudioPort::PROC_get_ringbuffer_contents() {
+    RingbufferSnapshot s;
+    s.data = shoop_make_shared<std::vector<shoop_shared_ptr<BufferObj>>>();
+    
+    // Get snapshot from Rust
+    auto buffer_infos_vec = backend_rust::take_snapshot(*m_rust_internal);
+    auto& buffer_infos = *buffer_infos_vec;
+    
+    s.n_samples = m_rust_internal->get_ringbuffer_n_samples();
+    s.buffer_size = m_rust_internal->get_ringbuffer_single_buffer_size();
+    
+    // Process each buffer info
+    for (const auto& info : buffer_infos) {
+        // Allocate AudioBuffer of appropriate size
+        auto ab = shoop_make_shared<BufferObj>(info.len);
+        
+        // Copy data from Rust buffer into AudioBuffer
+        size_t to_copy = std::min(info.len, (size_t)s.buffer_size);
+        if (info.data_ptr && ab->data() && to_copy > 0) {
+            memcpy(ab->data(), info.data_ptr, to_copy * sizeof(float));
+        }
+        
+        s.data->push_back(ab);
+    }
+    
+    // Free the Rust-allocated Vec<BufferInfo>
+    delete buffer_infos_vec;
+    
+    return s;
+}
