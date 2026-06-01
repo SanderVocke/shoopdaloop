@@ -60,24 +60,24 @@ void GenericJackAudioMidiDriver<API>::info_cb_static(const char *msg) {
 
 template<typename API>
 int GenericJackAudioMidiDriver<API>::PROC_process_cb_inst(jack_nframes_t nframes) {
-    AudioMidiDriver::PROC_process(nframes);
+    m_runtime.process(nframes);
     return 0;
 }
 
 template<typename API>
 int GenericJackAudioMidiDriver<API>::PROC_xrun_cb_inst() {
-    AudioMidiDriver::report_xrun();
+    m_runtime.report_xrun();
     return 0;
 }
 
 template<typename API>
 void GenericJackAudioMidiDriver<API>::PROC_update_ports_cb_inst() {
-    m_all_ports_tracker->update((jack_client_t*) get_maybe_client_handle());
+    m_all_ports_tracker->update((jack_client_t*) m_runtime.get_maybe_client_handle());
 }
 
 template<typename API>
 GenericJackAudioMidiDriver<API>::GenericJackAudioMidiDriver(void (*maybe_process_callback)()):
-    AudioMidiDriver(maybe_process_callback),
+    m_runtime(maybe_process_callback),
     m_started(false),
     m_all_ports_tracker(shoop_make_shared<GenericJackAllPorts<API>>()) {}
 
@@ -99,8 +99,8 @@ void GenericJackAudioMidiDriver<API>::start(
     if (client == nullptr) {
         Log::throw_error<std::runtime_error>("Unable to open JACK client.");
     }
-    AudioMidiDriver::set_maybe_client_handle((void*) client);
-    AudioMidiDriver::set_client_name(API::get_client_name(client));
+    m_runtime.set_maybe_client_handle((void*) client);
+    m_runtime.set_client_name(API::get_client_name(client));
     
     API::set_process_callback(client, GenericJackAudioMidiDriver<API>::PROC_process_cb_static,
                               (void *)this);
@@ -128,18 +128,18 @@ void GenericJackAudioMidiDriver<API>::start(
         Log::throw_error<std::runtime_error>("Could not activate JACK client.");
     }
 
-    set_maybe_client_handle((void*)client);
-    set_client_name(API::get_client_name(client));
-    set_dsp_load(0.0f);
-    set_sample_rate(API::get_sample_rate(client));
-    set_buffer_size(API::get_buffer_size(client));
-    set_active(true);
+    m_runtime.set_maybe_client_handle((void*)client);
+    m_runtime.set_client_name(API::get_client_name(client));
+    m_runtime.set_dsp_load(0.0f);
+    m_runtime.set_sample_rate(API::get_sample_rate(client));
+    m_runtime.set_buffer_size(API::get_buffer_size(client));
+    m_runtime.set_active(true);
 }
 
 template<typename API>
 GenericJackAudioMidiDriver<API>::~GenericJackAudioMidiDriver() {
     close();
-    AudioMidiDriver::set_maybe_client_handle(nullptr);
+    m_runtime.set_maybe_client_handle(nullptr);
 }
 
 template<typename API>
@@ -147,7 +147,7 @@ shoop_shared_ptr<RustAudioPortF32>GenericJackAudioMidiDriver<API>::open_audio_po
     shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool) {
     shoop_shared_ptr<PortInterface> port =
         shoop_static_pointer_cast<PortInterface>(
-            shoop_make_shared<GenericJackAudioPort<API>>(name, direction, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker, buffer_pool)
+            shoop_make_shared<GenericJackAudioPort<API>>(name, direction, (jack_client_t*)m_runtime.get_maybe_client_handle(), m_all_ports_tracker, buffer_pool)
         );
     m_ports[port->name()] = port;
     return shoop_dynamic_pointer_cast<RustAudioPortF32>(port);
@@ -159,11 +159,11 @@ shoop_shared_ptr<MidiPort> GenericJackAudioMidiDriver<API>::open_midi_port(std::
     
     if (direction == ShoopPortDirection_Input) {
         port = shoop_static_pointer_cast<PortInterface>(
-            shoop_make_shared<GenericJackMidiInputPort<API>>(name, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker)
+            shoop_make_shared<GenericJackMidiInputPort<API>>(name, (jack_client_t*)m_runtime.get_maybe_client_handle(), m_all_ports_tracker)
         );
     } else {
         port = shoop_static_pointer_cast<PortInterface>(
-            shoop_make_shared<GenericJackMidiOutputPort<API>>(name, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker)
+            shoop_make_shared<GenericJackMidiOutputPort<API>>(name, (jack_client_t*)m_runtime.get_maybe_client_handle(), m_all_ports_tracker)
         );
     }
     m_ports[port->name()] = port;
@@ -172,37 +172,37 @@ shoop_shared_ptr<MidiPort> GenericJackAudioMidiDriver<API>::open_midi_port(std::
 
 template<typename API>
 void GenericJackAudioMidiDriver<API>::close() {
-    if (get_maybe_client_handle()) {
+    if (m_runtime.get_maybe_client_handle()) {
         Log::log<log_level_debug>("Closing JACK client.");
         try {
             // First deactivate the client to stop the process callback
-            run_in_thread_with_timeout_unsafe([this]() { API::deactivate((jack_client_t*)get_maybe_client_handle()); }, 5000);
+            run_in_thread_with_timeout_unsafe([this]() { API::deactivate((jack_client_t*)m_runtime.get_maybe_client_handle()); }, 5000);
         } catch (std::exception &e) {
             Log::log<log_level_warning>("Attempt to deactivate JACK client failed: {}. Continuing with close.", e.what());
         }
         try {
             // Then close the client
-            run_in_thread_with_timeout_unsafe([this]() { API::client_close((jack_client_t*)get_maybe_client_handle()); }, 5000);
+            run_in_thread_with_timeout_unsafe([this]() { API::client_close((jack_client_t*)m_runtime.get_maybe_client_handle()); }, 5000);
         } catch (std::exception &e) {
             Log::log<log_level_warning>("Attempt to close JACK client failed: {}. Abandoning.", e.what());
         }
-        set_maybe_client_handle(nullptr);
+        m_runtime.set_maybe_client_handle(nullptr);
     }
 }
 
 template<typename API>
 void GenericJackAudioMidiDriver<API>::maybe_update_sample_rate() {
-    AudioMidiDriver::set_sample_rate(API::get_sample_rate((jack_client_t*) get_maybe_client_handle()));
+    m_runtime.set_sample_rate(API::get_sample_rate((jack_client_t*) m_runtime.get_maybe_client_handle()));
 }
 
 template<typename API>
 void GenericJackAudioMidiDriver<API>::maybe_update_buffer_size() {
-    AudioMidiDriver::set_buffer_size(API::get_buffer_size((jack_client_t*) get_maybe_client_handle()));
+    m_runtime.set_buffer_size(API::get_buffer_size((jack_client_t*) m_runtime.get_maybe_client_handle()));
 }
 
 template<typename API>
 void GenericJackAudioMidiDriver<API>::maybe_update_dsp_load() {
-    AudioMidiDriver::set_dsp_load(API::cpu_load((jack_client_t*) get_maybe_client_handle()));
+    m_runtime.set_dsp_load(API::cpu_load((jack_client_t*) m_runtime.get_maybe_client_handle()));
 };
 
 template<typename API>
@@ -222,7 +222,7 @@ std::vector<ExternalPortDescriptor> GenericJackAudioMidiDriver<API>::find_extern
         (maybe_direction_filter == ShoopPortDirection_Output) ? JackPortIsOutput :
         0;
 
-    auto client = (jack_client_t*) get_maybe_client_handle();
+    auto client = (jack_client_t*) m_runtime.get_maybe_client_handle();
     const char** result = API::get_ports(client, maybe_name_regex, maybe_type_regex, flags);
 
     // First gather up the names
@@ -256,11 +256,67 @@ std::vector<ExternalPortDescriptor> GenericJackAudioMidiDriver<API>::find_extern
 template<typename API>
 void GenericJackAudioMidiDriver<API>::wait_process() {
     if (API::supports_processing) {
-        AudioMidiDriver::wait_process();
+        m_runtime.wait_process();
     } else {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }
+
+template<typename API>
+shoop_shared_ptr<shoop_types::_DecoupledMidiPort> GenericJackAudioMidiDriver<API>::open_decoupled_midi_port(std::string name, shoop_port_direction_t direction) {
+    auto port = open_midi_port(name, direction);
+    return m_runtime.make_decoupled_midi_port(port, this->weak_driver_from_this(), direction);
+}
+
+template<typename API>
+void GenericJackAudioMidiDriver<API>::unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port) {
+    m_runtime.unregister_decoupled_midi_port(port);
+}
+
+template<typename API>
+void GenericJackAudioMidiDriver<API>::add_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) { m_runtime.add_processor(p); }
+
+template<typename API>
+void GenericJackAudioMidiDriver<API>::remove_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) { m_runtime.remove_processor(p); }
+
+template<typename API>
+std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> GenericJackAudioMidiDriver<API>::processors() const { return m_runtime.processors(); }
+
+template<typename API>
+uint32_t GenericJackAudioMidiDriver<API>::get_xruns() const { return m_runtime.get_xruns(); }
+
+template<typename API>
+float GenericJackAudioMidiDriver<API>::get_dsp_load() { maybe_update_dsp_load(); return m_runtime.get_dsp_load(); }
+
+template<typename API>
+uint32_t GenericJackAudioMidiDriver<API>::get_sample_rate() { maybe_update_sample_rate(); return m_runtime.get_sample_rate(); }
+
+template<typename API>
+uint32_t GenericJackAudioMidiDriver<API>::get_buffer_size() { maybe_update_buffer_size(); return m_runtime.get_buffer_size(); }
+
+template<typename API>
+void GenericJackAudioMidiDriver<API>::reset_xruns() { m_runtime.reset_xruns(); }
+
+template<typename API>
+const char* GenericJackAudioMidiDriver<API>::get_client_name() const { return m_runtime.get_client_name(); }
+
+template<typename API>
+void* GenericJackAudioMidiDriver<API>::get_maybe_client_handle() const { return m_runtime.get_maybe_client_handle(); }
+
+template<typename API>
+bool GenericJackAudioMidiDriver<API>::get_active() const { return m_runtime.get_active(); }
+
+template<typename API>
+uint32_t GenericJackAudioMidiDriver<API>::get_last_processed() const { return m_runtime.get_last_processed(); }
+
+template<typename API>
+void GenericJackAudioMidiDriver<API>::queue_process_thread_command(std::function<void()> fn) { m_runtime.queue_process_thread_command(std::move(fn)); }
+
+template<typename API>
+void GenericJackAudioMidiDriver<API>::exec_process_thread_command(std::function<void()> fn) { m_runtime.exec_process_thread_command(std::move(fn)); }
+
+template<typename API>
+backend_rust::CommandQueue &GenericJackAudioMidiDriver<API>::get_command_queue() { return m_runtime.get_command_queue(); }
 
 template class GenericJackAudioMidiDriver<JackApi>;
 template class GenericJackAudioMidiDriver<JackTestApi>;

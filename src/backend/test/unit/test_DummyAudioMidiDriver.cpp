@@ -40,7 +40,7 @@ struct TrackedDummyAudioMidiDriver : public DummyAudioMidiDriver<Time, Size> {
         DummyAudioMidiDriver<Time, Size>(),
         tracker(shoop_make_shared<Tracker>())
     {
-        AudioMidiDriver::add_processor(shoop_static_pointer_cast<HasAudioProcessingFunction>(tracker));
+        this->add_processor(shoop_static_pointer_cast<HasAudioProcessingFunction>(tracker));
         DummyAudioMidiDriverSettings settings;
         settings.buffer_size = buffer_size;
         settings.client_name = client_name;

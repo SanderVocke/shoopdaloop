@@ -1,5 +1,6 @@
 #pragma once
 #include "AudioMidiDriver.h"
+#include "AudioMidiDriverRuntime.h"
 #include "RustAudioPort.h"
 #include "JackAllPorts.h"
 #include "JackApi.h"
@@ -24,6 +25,7 @@ class GenericJackAudioMidiDriver :
 {
     using Log = ModuleLoggingEnabled<"Backend.JackAudioMidiDriver">;
 private:
+    AudioMidiDriverRuntime m_runtime;
     std::map<std::string, shoop_shared_ptr<PortInterface>> m_ports;
     shoop_shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker = nullptr;
     std::atomic<bool> m_started = false;
@@ -42,11 +44,9 @@ private:
     static void error_cb_static(const char* msg);
     static void info_cb_static(const char* msg);
 
-    void maybe_update_sample_rate() override;
-    void maybe_update_buffer_size() override;
-    void maybe_update_dsp_load() override;
-
-    void wait_process() override;
+    void maybe_update_sample_rate();
+    void maybe_update_buffer_size();
+    void maybe_update_dsp_load();
 
 public:
     GenericJackAudioMidiDriver(void (*maybe_process_callback)()=nullptr);
@@ -65,7 +65,34 @@ public:
         shoop_port_direction_t direction
     ) override;
 
+    shoop_shared_ptr<shoop_types::_DecoupledMidiPort> open_decoupled_midi_port(
+        std::string name,
+        shoop_port_direction_t direction
+    ) override;
+
+    void unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port) override;
+
     void close() override;
+
+    void add_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) override;
+    void remove_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) override;
+    std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> processors() const override;
+
+    uint32_t get_xruns() const override;
+    float get_dsp_load() override;
+    uint32_t get_sample_rate() override;
+    uint32_t get_buffer_size() override;
+    void reset_xruns() override;
+    const char* get_client_name() const override;
+    void* get_maybe_client_handle() const override;
+    bool get_active() const override;
+    uint32_t get_last_processed() const override;
+
+    void wait_process() override;
+
+    void queue_process_thread_command(std::function<void()> fn) override;
+    void exec_process_thread_command(std::function<void()> fn) override;
+    backend_rust::CommandQueue &get_command_queue() override;
 
     std::vector<ExternalPortDescriptor> find_external_ports(
         const char* maybe_name_regex,

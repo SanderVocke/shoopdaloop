@@ -1,5 +1,6 @@
 #pragma once
 #include "AudioMidiDriver.h"
+#include "AudioMidiDriverRuntime.h"
 #include "RustAudioPort.h"
 #include "DummyAudioPort.h"
 #include "DummyMidiPort.h"
@@ -32,6 +33,7 @@ class DummyAudioMidiDriver : public AudioMidiDriver,
                              private ModuleLoggingEnabled<"Backend.DummyAudioMidiDriver"> {
     using Log = ModuleLoggingEnabled<"Backend.DummyAudioMidiDriver">;
 
+    AudioMidiDriverRuntime m_runtime;
     rust::Box<backend_rust::DummyAudioMidiDriver> m_rust;
     std::set<shoop_shared_ptr<DummyAudioPort>> m_audio_ports;
     std::set<shoop_shared_ptr<DummyMidiPort>> m_midi_ports;
@@ -62,7 +64,34 @@ public:
         shoop_port_direction_t direction
     ) override;
 
+    shoop_shared_ptr<shoop_types::_DecoupledMidiPort> open_decoupled_midi_port(
+        std::string name,
+        shoop_port_direction_t direction
+    ) override;
+
+    void unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port) override;
+
     void close() override;
+
+    void add_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) override;
+    void remove_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) override;
+    std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> processors() const override;
+
+    uint32_t get_xruns() const override;
+    float get_dsp_load() override;
+    uint32_t get_sample_rate() override;
+    uint32_t get_buffer_size() override;
+    void reset_xruns() override;
+    const char* get_client_name() const override;
+    void* get_maybe_client_handle() const override;
+    bool get_active() const override;
+    uint32_t get_last_processed() const override;
+
+    void wait_process() override;
+
+    void queue_process_thread_command(std::function<void()> fn) override;
+    void exec_process_thread_command(std::function<void()> fn) override;
+    backend_rust::CommandQueue &get_command_queue() override;
 
     std::vector<ExternalPortDescriptor> find_external_ports(
         const char* maybe_name_regex,

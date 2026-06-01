@@ -6,6 +6,15 @@
 
 #include "AudioMidiDriver.h"
 #include "DecoupledMidiPort.h"
+#include "AudioMidiDriverCxxTrampolines.h"
+
+namespace {
+[[maybe_unused]] auto *force_link_trampoline_1 = &backend_rust::audiomididriver_invoke_maybe_process_callback;
+[[maybe_unused]] auto *force_link_trampoline_2 = &backend_rust::audiomididriver_exec_command_queue;
+[[maybe_unused]] auto *force_link_trampoline_3 = &backend_rust::audiomididriver_process_processor;
+[[maybe_unused]] auto *force_link_trampoline_4 = &backend_rust::audiomididriver_process_decoupled_port;
+[[maybe_unused]] auto *force_link_trampoline_5 = &backend_rust::audiomididriver_close_decoupled_port;
+}
 
 AudioMidiDriverRuntime::AudioMidiDriverRuntime(void (*maybe_process_callback)())
     : m_rust_core(backend_rust::new_audio_midi_driver_core()),
