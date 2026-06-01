@@ -1,307 +1,370 @@
-# Plan: make `AudioMidiDriver` a pure abstract interface with shared Rust-backed runtime by composition
+# Plan: introduce bridge strong/weak handles for processors and decoupled MIDI ports
 
 ## Goal
 
-Refactor the current C++ audio/MIDI driver hierarchy so that `AudioMidiDriver` becomes a pure abstract interface and no longer owns shared implementation state. The shared behavior that currently lives in `AudioMidiDriver` should be extracted into a composed helper object, tentatively named `AudioMidiDriverRuntime`, which owns the Rust-backed `backend_rust::AudioMidiDriverCore`, the Rust command queue, processor registration bookkeeping, and decoupled MIDI registration bookkeeping.
+Introduce the first reusable bridge ownership mechanism for the C++ to Rust migration. The immediate goal is not to remove all raw pointers everywhere. The goal is to establish a typed strong/weak handle system that preserves current C++ `shoop_shared_ptr` / `shoop_weak_ptr` keepalive semantics across the Rust/C++ boundary, then apply it to two object families:
 
-At the end of this task:
+1. audio processing callback objects (`HasAudioProcessingFunction` processors)
+2. decoupled MIDI ports (`DecoupledMidiPort`)
 
-- `AudioMidiDriver` is an interface used by the rest of the backend through `shoop_shared_ptr<AudioMidiDriver>`.
-- `AudioMidiDriver` no longer owns `backend_rust::AudioMidiDriverCore`, `backend_rust::CommandQueue`, processor containers, decoupled MIDI containers, or callback state.
-- `GenericJackAudioMidiDriver<API>` and `DummyAudioMidiDriver<Time, Size>` each own an `AudioMidiDriverRuntime` member and forward shared behavior to it.
-- The current public C++ and C API behavior is preserved.
-- The existing Rust CXX bridges continue to provide the Rust-backed state and process-cycle implementation.
-- The project builds cleanly with warnings denied, Rust code is formatted, and the relevant test suites pass.
+At the end of these milestones, Rust `AudioMidiDriverCore` should not store raw C++ pointers for these two families as lifetime-authoritative references. Instead it should store bridge handles and use C++ trampolines that upgrade/resolve those handles safely.
 
-This is an architecture refactor, not a feature change. Avoid changing external behavior except where needed to preserve correctness during the refactor.
+This plan implements the first concrete steps of the long-term migration vision in `porting.md`.
 
-## Current structure to understand first
+## Current relevant code
 
-Relevant C++ files:
+Core driver/runtime code:
 
 - `src/backend/internal/AudioMidiDriver.h`
 - `src/backend/internal/AudioMidiDriver.cpp`
+- `src/backend/internal/AudioMidiDriverRuntime.h`
+- `src/backend/internal/AudioMidiDriverRuntime.cpp`
 - `src/backend/internal/AudioMidiDriverCxxTrampolines.h`
-- `src/backend/internal/AudioMidiDriverCxxTrampolines.cpp`
-- `src/backend/internal/DummyAudioMidiDriver.h`
-- `src/backend/internal/DummyAudioMidiDriver.cpp`
-- `src/backend/internal/DummyAudioMidiDriverCxxTrampolines.h`
-- `src/backend/internal/jack/JackAudioMidiDriver.h`
-- `src/backend/internal/jack/JackAudioMidiDriver.cpp`
-- `src/backend/internal/DecoupledMidiPort.h`
-- `src/backend/internal/DecoupledMidiPort.cpp`
-- `src/backend/internal/AudioMidiDrivers.h`
-- `src/backend/internal/AudioMidiDrivers.cpp`
-- `src/backend/libshoopdaloop_backend.cpp`
-
-Relevant Rust files:
-
 - `src/rust/backend_rust/src/audio_midi_driver.rs`
 - `src/rust/backend_rust/src/audio_midi_driver_cxx.rs`
-- `src/rust/backend_rust/src/dummy_audio_midi_driver.rs`
-- `src/rust/backend_rust/src/dummy_audio_midi_driver_cxx.rs`
 
-The current `AudioMidiDriver` C++ class is both an abstract base class and a shared implementation class. It owns:
+Processor type:
 
-- `rust::Box<backend_rust::AudioMidiDriverCore> m_rust_core`
-- `rust::Box<backend_rust::CommandQueue> m_command_queue`
-- processor weak pointers and pointer-to-handle mappings
-- decoupled MIDI keepalive and registration mappings
-- the optional process callback pointer
+- `HasAudioProcessingFunction` is declared in `src/backend/internal/AudioMidiDriver.h`.
+- Processor registration currently goes through `AudioMidiDriverRuntime::add_processor/remove_processor`.
 
-It also implements process-cycle delegation, state getters/setters, processor registration, command queue forwarding, wait behavior, and decoupled MIDI port creation/unregistration.
+Decoupled MIDI code:
 
-The Rust `AudioMidiDriverCore` already owns most low-level shared state: atomic driver state, processor handle table, decoupled port handle table, and `process_cycle()`, which calls back into C++ through `AudioMidiDriverCxxTrampolines.h` functions.
+- `src/backend/internal/DecoupledMidiPort.h`
+- `src/backend/internal/DecoupledMidiPort.cpp`
+- `src/rust/backend_rust/src/decoupled_midi_port.rs`
+- `src/rust/backend_rust/src/decoupled_midi_port_cxx.rs`
+- Current decoupled registration is in `AudioMidiDriverRuntime` and `AudioMidiDriverCore`.
 
-The C++ JACK and Dummy drivers currently inherit this shared behavior from `AudioMidiDriver`. This task changes that relationship to composition.
+Factory/API/test areas likely touched:
+
+- `src/backend/libshoopdaloop_backend.cpp`
+- `src/backend/test/unit/test_DummyAudioMidiDriver.cpp`
+- `src/backend/test/integration/test_libshoopdaloop_if.cpp`
 
 ## Design constraints
 
-Keep the external API stable. Existing users of `shoop_shared_ptr<AudioMidiDriver>` and the C API in `libshoopdaloop_backend.cpp` should not need behavior changes.
+Keep the public C API and existing C++ driver interface behavior stable.
 
-Do not duplicate the current shared implementation separately in JACK and Dummy. Extract one composed helper and have both concrete drivers use it.
+Do not attempt to solve Rust-owned objects in the first version. The initial bridge registry may be C++-owned and wrap existing C++ `shoop_shared_ptr` objects.
 
-Keep the Rust CXX bridge ABI as stable as practical. The Rust `AudioMidiDriverCore` and its `audio_midi_driver_cxx.rs` bridge probably do not need substantial changes for this milestone.
+Do not expose C++ templates through CXX. Expose non-template handle structs and non-template bridge functions. Add typed convenience wrappers only on the C++ side.
 
-Preserve process-thread semantics. In particular:
+Preserve current process-cycle behavior and ordering:
 
-- `process_cycle()` must still invoke the optional maybe-process callback before command execution.
-- process-thread commands must still run through the same Rust command queue behavior.
-- decoupled MIDI ports must still be processed each cycle.
-- registered processors must still receive `PROC_process(nframes)`.
-- `wait_process()` must retain its existing synchronization intent.
+- maybe-process callback
+- command queue execution
+- decoupled MIDI port processing
+- processor processing
+- last-processed state update
 
-Preserve `DecoupledMidiPort` behavior. It currently stores a weak pointer to `AudioMidiDriver`; for this milestone it is acceptable for the pure interface to retain `shoop_enable_shared_from_this<AudioMidiDriver>` or a small protected accessor solely to support that relationship. Removing that relationship can be a later migration.
+Keep audio-thread impact documented. The first version may use mutex-protected registries if needed, but avoid adding unnecessary allocation or blocking to hot paths after registration.
 
-Minimize unrelated changes. Port classes, backend session code, and frontend bindings should only be changed if required by compile errors or API forwarding changes.
+Add tests for stale handles and unregister/destroy ordering.
 
-## Phase 1: extract `AudioMidiDriverRuntime` while keeping `AudioMidiDriver` behavior unchanged
+## Milestone 1: bridge handles for processors
 
-The first phase should be a low-risk mechanical extraction. `AudioMidiDriver` may still own the runtime helper in this phase and forward to it. The purpose is to separate the shared implementation from the base class before changing the inheritance architecture.
+### Intended behavior
 
-Create new files under `src/backend/internal/`, for example:
+Current Rust `AudioMidiDriverCore` stores processor raw pointers as `usize`:
 
-- `AudioMidiDriverRuntime.h`
-- `AudioMidiDriverRuntime.cpp`
-
-CMake currently uses `file(GLOB INTERNAL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/*.cpp)` in `src/backend/CMakeLists.txt`, so a new `.cpp` under `internal/` should be picked up automatically by the backend build. Still verify by building.
-
-Move the implementation state from `AudioMidiDriver` into `AudioMidiDriverRuntime`:
-
-- Rust core object: `rust::Box<backend_rust::AudioMidiDriverCore>`
-- Rust command queue: `rust::Box<backend_rust::CommandQueue>`
-- processor weak pointer vector
-- processor pointer-to-handle map
-- decoupled MIDI handle-to-shared-pointer map
-- optional maybe-process callback pointer
-
-Move or recreate these operations on `AudioMidiDriverRuntime`:
-
-- constructor taking `void (*maybe_process_callback)()`
-- `add_processor()`
-- `remove_processor()`
-- `processors()`
-- `process(uint32_t nframes)` corresponding to the old `AudioMidiDriver::PROC_process()`
-- `report_xrun()`
-- `set_dsp_load()` / `get_dsp_load_raw()` or equivalent
-- `set_sample_rate()` / `get_sample_rate_raw()` or equivalent
-- `set_buffer_size()` / `get_buffer_size_raw()` or equivalent
-- `set_maybe_client_handle()` / `get_maybe_client_handle()`
-- `set_client_name()` / `get_client_name()`
-- `set_active()` / `get_active()`
-- `set_last_processed()` / `get_last_processed()`
-- `get_xruns()` / `reset_xruns()`
-- `wait_process()`
-- `queue_process_thread_command()`
-- `exec_process_thread_command()`
-- `get_command_queue()`
-- command-queue trampoline helper, if still needed during phase 1
-- process trampoline helper, if still needed during phase 1
-- decoupled MIDI port creation and unregistration support
-
-For decoupled MIDI creation, avoid making the runtime depend on virtual methods. Prefer an API such as:
-
-```cpp
-shoop_shared_ptr<shoop_types::_DecoupledMidiPort> make_decoupled_midi_port(
-    shoop_shared_ptr<MidiPort> port,
-    shoop_weak_ptr<AudioMidiDriver> driver,
-    shoop_port_direction_t direction);
+```rust
+processors: RwLock<HashMap<u64, usize>>
 ```
 
-Then `AudioMidiDriver::open_decoupled_midi_port()` can remain implemented during phase 1 as:
+This should become bridge-handle based, for example:
 
-```cpp
-auto port = open_midi_port(name, direction);
-return m_runtime.make_decoupled_midi_port(port, weak_from_this(), direction);
+```rust
+processors: RwLock<HashMap<u64, BridgeWeakHandle>>
 ```
 
-Keep the existing trampoline functions declared in `AudioMidiDriverCxxTrampolines.h` available in namespace `backend_rust`:
-
-- `audiomididriver_invoke_maybe_process_callback`
-- `audiomididriver_exec_command_queue`
-- `audiomididriver_process_processor`
-- `audiomididriver_process_decoupled_port`
-- `audiomididriver_close_decoupled_port`
-
-They are currently implemented in `AudioMidiDriver.cpp`. Move them to `AudioMidiDriverRuntime.cpp` or to `AudioMidiDriverCxxTrampolines.cpp`, but ensure the symbols are still linked into all backend targets. The empty `AudioMidiDriverCxxTrampolines.cpp` comment should be updated if the implementation is moved there.
-
-After this extraction, `AudioMidiDriver` should still compile with essentially the same public and protected methods as before, but those methods should forward to `m_runtime`. JACK and Dummy should need minimal changes in phase 1.
-
-Phase 1 acceptance criteria:
-
-- Behavior is intended to be unchanged.
-- `AudioMidiDriver.cpp` is mostly forwarding logic plus any remaining base-specific glue.
-- The Rust bridge compiles without API changes unless a very small bridge adjustment is clearly necessary.
-- `cargo build` succeeds.
-- `cargo test` succeeds.
-- The backend Catch2 `test_runner` succeeds.
-
-## Phase 2: make `AudioMidiDriver` a pure abstract interface and move the runtime into concrete drivers
-
-After phase 1 passes, remove the runtime ownership and implementation forwarding from `AudioMidiDriver`.
-
-Change `AudioMidiDriver.h` so the class is an interface. It should declare virtual methods for the behavior the rest of the backend uses, including at least:
-
-- `start(AudioMidiDriverSettingsInterface &settings)`
-- `open_audio_port(...)`
-- `open_midi_port(...)`
-- `open_decoupled_midi_port(...)`
-- `unregister_decoupled_midi_port(...)`
-- `close()`
-- `add_processor(...)`
-- `remove_processor(...)`
-- `processors() const`
-- `get_xruns() const`
-- `get_dsp_load()`
-- `get_sample_rate()`
-- `get_buffer_size()`
-- `reset_xruns()`
-- `get_client_name() const`
-- `get_maybe_client_handle() const`
-- `get_active() const`
-- `get_last_processed() const`
-- `wait_process()`
-- `queue_process_thread_command(...)`
-- `exec_process_thread_command(...)`
-- `get_command_queue()`
-- `find_external_ports(...)`
-
-Remove implementation-detail methods from the interface where possible. Methods like `report_xrun()`, `set_sample_rate()`, `set_buffer_size()`, `set_dsp_load()`, `set_active()`, `set_last_processed()`, `PROC_process()`, and `trampoline_process()` should become concrete-driver/runtime details rather than base-class behavior.
-
-If `DecoupledMidiPort` still needs a weak pointer to `AudioMidiDriver`, keep `AudioMidiDriver` derived from `shoop_enable_shared_from_this<AudioMidiDriver>` and expose a small protected helper, for example:
+During process-cycle dispatch, Rust should call a C++ trampoline with a weak handle. C++ should attempt to upgrade/resolve that weak handle. If it succeeds, it calls:
 
 ```cpp
-protected:
-    shoop_weak_ptr<AudioMidiDriver> weak_driver_from_this();
+processor->PROC_process(nframes);
 ```
 
-This preserves current decoupled-port API behavior without keeping the Rust core in the base class. Use protected or private inheritance/access as appropriate, but ensure concrete drivers can create decoupled MIDI ports safely.
+If it fails, it should skip safely.
 
-Add an `AudioMidiDriverRuntime m_runtime;` member to both concrete driver families:
+### C++ bridge object infrastructure
 
-- `GenericJackAudioMidiDriver<API>` in `src/backend/internal/jack/JackAudioMidiDriver.h`
-- `DummyAudioMidiDriver<Time, Size>` in `src/backend/internal/DummyAudioMidiDriver.h`
+Add a new small bridge ownership module under `src/backend/internal/`, for example:
 
-Initialize it from each concrete constructor using the `maybe_process_callback` argument.
+- `BridgeObject.h`
+- `BridgeObject.cpp`
 
-For JACK, replace qualified base calls with runtime calls. Examples:
-
-- `AudioMidiDriver::PROC_process(nframes)` becomes `m_runtime.process(nframes)`.
-- `AudioMidiDriver::report_xrun()` becomes `m_runtime.report_xrun()`.
-- `AudioMidiDriver::set_maybe_client_handle(...)` becomes `m_runtime.set_maybe_client_handle(...)`.
-- `AudioMidiDriver::set_client_name(...)` becomes `m_runtime.set_client_name(...)`.
-- `AudioMidiDriver::set_sample_rate(...)` becomes `m_runtime.set_sample_rate(...)`.
-- `AudioMidiDriver::set_buffer_size(...)` becomes `m_runtime.set_buffer_size(...)`.
-- `AudioMidiDriver::set_dsp_load(...)` becomes `m_runtime.set_dsp_load(...)`.
-- `AudioMidiDriver::wait_process()` becomes `m_runtime.wait_process()` where JACK supports processing.
-
-Implement all `AudioMidiDriver` interface methods in `GenericJackAudioMidiDriver<API>`, forwarding shared behavior to `m_runtime` and preserving JACK-specific update hooks. For example, `get_sample_rate()` should still call the JACK API refresh logic before returning the runtime value, and `get_dsp_load()` should still refresh from JACK before returning.
-
-For Dummy, replace qualified base calls with runtime calls. Examples:
-
-- startup state setup should use `m_runtime.set_sample_rate()`, `m_runtime.set_buffer_size()`, `m_runtime.set_client_name()`, `m_runtime.set_dsp_load()`, `m_runtime.set_maybe_client_handle()`, and `m_runtime.set_active()`.
-- calls to `AudioMidiDriver::get_sample_rate()` and `AudioMidiDriver::get_buffer_size()` should become runtime getter calls.
-- `wait_process()`, processor registration, command queue access, and decoupled MIDI methods should be implemented by forwarding to `m_runtime`.
-
-Update the Dummy Rust process-thread trampoline path so it no longer casts `owner_ptr` to `AudioMidiDriver*`. Instead, pass the address of the runtime helper to Rust:
+The first implementation can be C++-owned and non-template internally. It should define CXX-safe POD-ish handle structs, either in a CXX bridge or C++ header included by a CXX bridge:
 
 ```cpp
-m_rust->start_process_thread(
-    reinterpret_cast<uintptr_t>(&m_runtime),
-    m_runtime.get_sample_rate(),
-    m_runtime.get_buffer_size());
+struct BridgeStrongHandle {
+    uint64_t id = 0;
+    uint32_t type_id = 0;
+};
+
+struct BridgeWeakHandle {
+    uint64_t id = 0;
+    uint32_t type_id = 0;
+};
 ```
 
-Then in `DummyAudioMidiDriver.cpp`, implement the existing functions from `DummyAudioMidiDriverCxxTrampolines.h` by casting to `AudioMidiDriverRuntime*` and calling runtime methods:
+Use explicit type IDs for object families, at least:
+
+- processor / `HasAudioProcessingFunction`
+- decoupled MIDI port / `DecoupledMidiPort`
+
+The C++ side should provide typed wrappers or helper functions. For processors, it is enough to support:
+
+- register a strong C++ `shoop_shared_ptr<HasAudioProcessingFunction>` and return a strong bridge handle
+- downgrade a strong bridge handle to a weak bridge handle
+- release a strong bridge handle when it is no longer needed
+- upgrade/resolve a weak handle for the duration of a trampoline call
+
+A simple implementation may use a global or singleton registry protected by a mutex:
+
+- `id -> type_id`
+- `id -> shoop_weak_ptr<void-like-record>` or typed erasure record
+- strong records held by `BridgeStrongHandle` wrappers / registry ref counts
+
+Because `std::shared_ptr<void>` can hold a typed shared pointer while preserving the deleter, the non-template registry can store erased `std::shared_ptr<void>` plus a `type_id`. If `USE_TRACKED_SHARED_PTRS` complicates direct erasure, use a typed holder base class:
 
 ```cpp
-auto *runtime = reinterpret_cast<AudioMidiDriverRuntime *>(owner_ptr);
-runtime->exec_all_commands_for_process_thread();
-runtime->process(nframes);
+struct BridgeHolderBase { virtual ~BridgeHolderBase() = default; };
+template<typename T> struct BridgeHolder : BridgeHolderBase { shoop_shared_ptr<T> ptr; };
 ```
 
-Use the actual runtime method names chosen in phase 1. The Rust bridge in `dummy_audio_midi_driver_cxx.rs` can keep the same extern function names if their C++ implementations now treat `owner_ptr` as a runtime pointer.
+Then the registry stores `std::shared_ptr<BridgeHolderBase>` and returns typed pointers through helper functions that validate `type_id` and `dynamic_cast` to the expected holder.
 
-Update tests and callers that explicitly qualify base-class implementation methods. For example, in `src/backend/test/unit/test_DummyAudioMidiDriver.cpp`, code like:
+### CXX bridge for handle structs
+
+Create or extend a Rust/CXX bridge so Rust can store these handles. Possible file names:
+
+- `src/rust/backend_rust/src/bridge_object.rs`
+- `src/rust/backend_rust/src/bridge_object_cxx.rs`
+
+Expose the handle structs to Rust. Keep them cheap to clone/copy.
+
+If CXX has trouble with shared struct definitions in C++ headers, define the structs inside the CXX bridge and generate the header, then include that generated header from C++ files that need the handles.
+
+### Processor registration flow
+
+Change `AudioMidiDriverRuntime::add_processor` from raw pointer registration to bridge registration.
+
+Current pattern:
 
 ```cpp
-AudioMidiDriver::add_processor(...);
+m_processors.push_back(p);
+auto handle = m_rust_core->add_processor(reinterpret_cast<uintptr_t>(p.get()));
+m_processor_handles[p.get()] = handle;
 ```
 
-must become a virtual/concrete call such as:
+Target pattern:
 
 ```cpp
-this->add_processor(...);
+m_processors.push_back(p);
+auto strong = bridge_register_processor(p);
+auto weak = bridge_downgrade(strong);
+auto handle = m_rust_core->add_processor(weak);
+m_processor_handles[p.get()] = {handle, strong};
 ```
 
-or an explicit concrete-driver call. Search for all `AudioMidiDriver::` qualified calls and update them appropriately. Implementation files should no longer use `AudioMidiDriver::` to reach shared behavior, because the base will not implement it.
+The exact C++ storage can vary. The important points are:
 
-Keep `AudioMidiDrivers.cpp` factory behavior intact. It should still return `shoop_shared_ptr<AudioMidiDriver>` and use `shoop_static_pointer_cast<AudioMidiDriver>` for concrete driver instances.
+- `m_processors` may remain as a compatibility list for the public `processors()` API.
+- Rust receives a weak handle, not a raw pointer.
+- C++ keeps enough registration state to unregister and release any strong registration handle cleanly.
+- Removing a processor unregisters the Rust handle and releases the bridge strong handle.
 
-Keep `libshoopdaloop_backend.cpp` behavior intact. It relies on the abstract driver pointer for public API calls and also uses dynamic casts to concrete dummy/JACK types in some places. Those concrete types should still inherit `AudioMidiDriver` so those casts remain valid.
+Alternatively, if registering a processor should not itself keep the processor alive, store only weak handles in C++ and Rust. However, the existing runtime stores weak pointers in `m_processors` but Rust stores raw pointers; the practical lifetime today depends on external owners. Preserve that intent unless tests indicate registered processors must be strongly kept alive. Document the chosen behavior.
 
-Phase 2 acceptance criteria:
+### Rust `AudioMidiDriverCore` changes for processors
 
-- `AudioMidiDriver` no longer includes the Rust generated `audio_midi_driver_cxx.rs.h` header unless strictly needed for interface declarations.
-- `AudioMidiDriver` has no Rust core member, command queue member, processor containers, decoupled MIDI containers, or maybe-process callback member.
-- JACK and Dummy each own their own `AudioMidiDriverRuntime` member.
-- No shared behavior is duplicated independently between JACK and Dummy.
-- Dummy process-thread trampolines no longer reinterpret the owner pointer as `AudioMidiDriver*`.
-- Existing external APIs and tests continue to work.
+Update `audio_midi_driver.rs`:
 
-## Final cleanup expectations
+- introduce/use `BridgeWeakHandle`
+- replace processor `usize` storage with bridge weak handles
+- update `add_processor` signature in Rust to accept a weak handle
+- update CXX bridge declaration in `audio_midi_driver_cxx.rs`
+- update processing loop to dispatch bridge weak handles
 
-After both phases, remove dead declarations and stale comments from `AudioMidiDriver.h/.cpp`, `AudioMidiDriverCxxTrampolines.cpp`, and any affected driver files.
+The C++ trampoline should change from:
 
-Prefer keeping `AudioMidiDriver.cpp` either empty except for the virtual destructor/protected shared-from-this helper, or deleting most of its former implementation if no longer needed. If an empty `.cpp` remains, keep it intentional and documented.
+```cpp
+void audiomididriver_process_processor(uintptr_t processor_ptr, uint32_t nframes);
+```
 
-Ensure includes are cleaned up. The abstract interface should include as little Rust/CXX bridge detail as possible. The runtime helper should include bridge and command queue details.
+to something like:
 
-If touching Rust files, run Rust formatting before final verification. Even if this task is mostly C++, the final gate requires `cargo fmt --all`.
+```cpp
+void audiomididriver_process_processor_bridge(BridgeWeakHandle processor, uint32_t nframes);
+```
+
+or update the existing function signature if practical. The trampoline should upgrade/resolve the weak handle and call `PROC_process` only if valid.
+
+### Processor tests
+
+Add or update tests to cover:
+
+- normal processor registration and process dispatch still works
+- removing a processor prevents further dispatch
+- destroying a processor after unregister does not leave a stale raw pointer in Rust
+- attempting to process a stale weak handle is safe/no-op
+- repeated add/remove cycles under dummy controlled processing
+
+Existing `test_DummyAudioMidiDriver.cpp` is a good place for unit coverage.
+
+## Milestone 2: bridge handles for decoupled MIDI ports
+
+### Intended behavior
+
+Current Rust `AudioMidiDriverCore` stores decoupled MIDI port raw pointers as `usize` and C++ `AudioMidiDriverRuntime` keeps registered ports alive in a map:
+
+```cpp
+std::unordered_map<uint64_t, shoop_shared_ptr<DecoupledMidiPort>> m_decoupled_midi_ports;
+```
+
+Replace the raw pointer registry with bridge handles. The runtime should register decoupled MIDI ports through the bridge object system and Rust should store handles instead of raw pointers.
+
+A registered decoupled MIDI port should be intentionally kept alive while registered, but that keepalive should be represented by a bridge strong handle rather than an ad hoc map of C++ shared pointers.
+
+### Decoupled registration flow
+
+Current pattern:
+
+```cpp
+auto decoupled = shoop_make_shared<DecoupledMidiPort>(...);
+rust_command_queue::queue(*m_command_queue, [this, decoupled]() {
+    auto handle = m_rust_core->register_decoupled_port(reinterpret_cast<uintptr_t>(decoupled.get()));
+    decoupled->set_registry_handle(handle);
+    m_decoupled_midi_ports[handle] = decoupled;
+});
+```
+
+Target pattern:
+
+```cpp
+auto decoupled = shoop_make_shared<DecoupledMidiPort>(...);
+auto strong = bridge_register_decoupled_midi_port(decoupled);
+auto weak = bridge_downgrade(strong);
+rust_command_queue::queue(*m_command_queue, [this, decoupled, strong, weak]() mutable {
+    auto handle = m_rust_core->register_decoupled_port(weak);
+    decoupled->set_registry_handle(handle);
+    m_decoupled_midi_port_handles[handle] = std::move(strong);
+});
+```
+
+The C++ runtime may still need a map, but it should be a map of bridge strong handles rather than direct `shared_ptr<DecoupledMidiPort>`. This is the intermediate win: keepalive becomes explicit bridge infrastructure and can later move to Rust.
+
+### Rust `AudioMidiDriverCore` changes for decoupled ports
+
+Update decoupled storage in `audio_midi_driver.rs` from raw pointer values to bridge weak handles or strong handles depending on the chosen keepalive policy.
+
+Suggested policy for this milestone:
+
+- Rust stores weak handles for process dispatch.
+- C++ runtime stores strong bridge handles while registered.
+- Unregister removes the Rust weak handle and releases the C++ runtime strong bridge handle.
+
+Update methods:
+
+- `register_decoupled_port`
+- `unregister_decoupled_port`
+- `process_decoupled_port`
+- `close_decoupled_port`
+- `get_decoupled_ports` or replace it with handle-oriented accessors
+- `process_cycle`
+
+### Decoupled trampolines
+
+Change trampolines from raw pointer dispatch:
+
+```cpp
+void audiomididriver_process_decoupled_port(uintptr_t decoupled_port_ptr, uint32_t nframes);
+void audiomididriver_close_decoupled_port(uintptr_t decoupled_port_ptr);
+```
+
+to bridge handle dispatch, for example:
+
+```cpp
+void audiomididriver_process_decoupled_port_bridge(BridgeWeakHandle port, uint32_t nframes);
+void audiomididriver_close_decoupled_port_bridge(BridgeWeakHandle port);
+```
+
+The C++ implementation should upgrade/resolve the handle and call:
+
+```cpp
+port->PROC_process(nframes);
+port->close();
+```
+
+only if the handle is valid.
+
+### Decoupled C++ runtime storage
+
+Replace or rename:
+
+```cpp
+std::unordered_map<uint64_t, shoop_shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports;
+```
+
+with a map that stores bridge strong handles or a small registration record:
+
+```cpp
+struct RegisteredDecoupledPort {
+    BridgeStrongHandle strong;
+    BridgeWeakHandle weak;
+};
+std::unordered_map<uint64_t, RegisteredDecoupledPort> m_decoupled_midi_ports;
+```
+
+The direct `shared_ptr` should not be needed for keepalive after registration.
+
+### Decoupled tests
+
+Add or update tests for:
+
+- normal decoupled MIDI send/receive behavior still works
+- close/unregister during active dummy processing remains safe
+- repeated open/close cycles do not crash
+- stale decoupled handle operations fail safely
+- registered decoupled port remains alive until unregister even if local C++ shared pointer is dropped, if that is the intended behavior
+
+Existing tests in `test_DummyAudioMidiDriver.cpp` and `test_libshoopdaloop_if.cpp` are likely the right places.
+
+## Cleanup expectations
+
+After both milestones:
+
+- Rust `AudioMidiDriverCore` no longer stores processor or decoupled MIDI raw object pointers as `usize`.
+- C++ `AudioMidiDriverRuntime` no longer has ad hoc direct `shared_ptr` keepalive maps for decoupled MIDI ports.
+- C++ trampolines resolve bridge handles safely before invoking C++ object methods.
+- Stale weak handles are safe no-ops.
+- The bridge object module is documented as migration infrastructure.
+
+Avoid expanding the bridge system to unrelated object families in this task.
 
 ## Build and test instructions
 
-Project-specific build and test guidance comes from `AGENTS.md`, `.agents/build.md`, and `.agents/test.md`.
+Project-specific build/test guidance comes from `AGENTS.md`, `.agents/build.md`, and `.agents/test.md`.
 
-From the repository root, use these during development:
+Development commands from the repository root:
 
 - Iterative build: `cargo build`
 - Rust tests: `cargo test`
-- Backend C++ tests: build first, then run the Catch2 `test_runner` executable generated under `target/`. If unsure of the exact path, locate it with `find target -type f -name test_runner` and run the appropriate debug build result.
+- Backend C++ tests: locate the Catch2 runner with `find target -type f -name test_runner`, then run the appropriate `target/.../test_runner`
 - QML/application self-test: `./target/debug/shoopdaloop_dev.sh --self-test`
 
-Recommended phase gates:
+Recommended milestone gates:
 
-- Before starting: run `cargo build` to establish the baseline if time permits.
-- After phase 1 extraction: run `cargo build`, `cargo test`, and backend `test_runner`.
-- After phase 2 interface conversion: run `cargo build`, `cargo test`, backend `test_runner`, and the QML/application self-test.
+- After adding bridge infrastructure but before changing driver code: `cargo build`
+- After processor migration: `cargo build`, `cargo test`, backend `test_runner`
+- After decoupled MIDI migration: `cargo build`, `cargo test`, backend `test_runner`, self-test
 
 Final required gate:
 
 - `cargo fmt --all`
 - `RUSTFLAGS="-D warnings" cargo build`
 - `cargo test`
-- backend Catch2 `test_runner`
+- backend `test_runner`
 - `./target/debug/shoopdaloop_dev.sh --self-test`
 
-If a failure is clearly caused by missing external dependencies or development environment setup outside the project, report the environment blocker with the relevant logs and stop. Otherwise, fix project warnings/errors until the final gate passes.
+If external dependency or environment setup issues occur outside project code, report them with logs and stop. Otherwise, fix project errors and warnings introduced by the task.
