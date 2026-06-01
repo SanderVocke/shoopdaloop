@@ -89,7 +89,7 @@ pub struct AudioMidiDriverCore {
     state: AudioMidiDriverState,
     processors: RwLock<HashMap<u64, BridgeWeakHandle>>,
     next_processor_handle: AtomicU64,
-    decoupled_ports: RwLock<HashMap<u64, usize>>,
+    decoupled_ports: RwLock<HashMap<u64, BridgeWeakHandle>>,
     next_decoupled_handle: AtomicU64,
 }
 
@@ -226,11 +226,11 @@ impl AudioMidiDriverCore {
     // Decoupled port management
     // ========================================================================
 
-    /// Register a decoupled MIDI port pointer and return a stable handle.
-    pub fn register_decoupled_port(&self, ptr: usize) -> u64 {
+    /// Register a decoupled MIDI bridge weak handle and return a stable handle.
+    pub fn register_decoupled_port(&self, weak_id: u64, weak_type_id: u32) -> u64 {
         let handle = self.next_decoupled_handle.fetch_add(1, Ordering::SeqCst);
         if let Ok(mut guard) = self.decoupled_ports.write() {
-            guard.insert(handle, ptr);
+            guard.insert(handle, BridgeWeakHandle { id: weak_id, type_id: weak_type_id });
         }
         handle
     }
@@ -244,15 +244,15 @@ impl AudioMidiDriverCore {
 
     /// Process one decoupled port by stable handle.
     pub fn process_decoupled_port(&self, handle: u64, nframes: u32) -> bool {
-        let ptr = self
+        let weak = self
             .decoupled_ports
             .read()
             .ok()
             .and_then(|guard| guard.get(&handle).copied());
-        if let Some(port) = ptr {
+        if let Some(port) = weak {
             unsafe {
                 crate::audio_midi_driver_cxx::ffi::audiomididriver_process_decoupled_port(
-                    port, nframes,
+                    port.id, port.type_id, nframes,
                 );
             }
             true
@@ -263,14 +263,14 @@ impl AudioMidiDriverCore {
 
     /// Close one decoupled port by stable handle.
     pub fn close_decoupled_port(&self, handle: u64) -> bool {
-        let ptr = self
+        let weak = self
             .decoupled_ports
             .read()
             .ok()
             .and_then(|guard| guard.get(&handle).copied());
-        if let Some(port) = ptr {
+        if let Some(port) = weak {
             unsafe {
-                crate::audio_midi_driver_cxx::ffi::audiomididriver_close_decoupled_port(port);
+                crate::audio_midi_driver_cxx::ffi::audiomididriver_close_decoupled_port(port.id, port.type_id);
             }
             true
         } else {
@@ -286,8 +286,8 @@ impl AudioMidiDriverCore {
             .unwrap_or_default()
     }
 
-    /// Get a copy of decoupled port pointers list used for processing.
-    pub fn get_decoupled_ports(&self) -> Vec<usize> {
+    /// Get a copy of decoupled port weak handles list used for processing.
+    pub fn get_decoupled_ports(&self) -> Vec<BridgeWeakHandle> {
         self.decoupled_ports
             .read()
             .map(|guard| guard.values().copied().collect())
@@ -463,16 +463,16 @@ mod tests {
         assert!(core.get_decoupled_ports().is_empty());
 
         // Add ports
-        let h1 = core.register_decoupled_port(1000);
-        let _h2 = core.register_decoupled_port(2000);
+        let h1 = core.register_decoupled_port(1000, 2);
+        let _h2 = core.register_decoupled_port(2000, 2);
 
         let ports = core.get_decoupled_ports();
         assert_eq!(ports.len(), 2);
-        assert!(ports.contains(&1000));
-        assert!(ports.contains(&2000));
+        assert!(ports.iter().any(|p| p.id == 1000 && p.type_id == 2));
+        assert!(ports.iter().any(|p| p.id == 2000 && p.type_id == 2));
 
-        // Registering the same pointer gets a distinct stable handle
-        let _h3 = core.register_decoupled_port(1000);
+        // Registering the same weak handle id gets a distinct stable handle
+        let _h3 = core.register_decoupled_port(1000, 2);
         assert_eq!(core.get_decoupled_ports().len(), 3);
 
         // Remove one handle

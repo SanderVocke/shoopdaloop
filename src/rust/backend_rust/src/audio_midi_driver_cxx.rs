@@ -15,8 +15,8 @@ pub mod ffi {
         unsafe fn audiomididriver_invoke_maybe_process_callback(maybe_fn_ptr: usize);
         unsafe fn audiomididriver_exec_command_queue(command_queue_ptr: usize);
         unsafe fn audiomididriver_process_processor(processor_id: u64, processor_type_id: u32, nframes: u32);
-        unsafe fn audiomididriver_process_decoupled_port(decoupled_port_ptr: usize, nframes: u32);
-        unsafe fn audiomididriver_close_decoupled_port(decoupled_port_ptr: usize);
+        unsafe fn audiomididriver_process_decoupled_port(decoupled_port_id: u64, decoupled_port_type_id: u32, nframes: u32);
+        unsafe fn audiomididriver_close_decoupled_port(decoupled_port_id: u64, decoupled_port_type_id: u32);
     }
 
     extern "Rust" {
@@ -55,11 +55,11 @@ pub mod ffi {
         fn get_processor_handles(self: &AudioMidiDriverCore) -> Vec<u64>;
 
         // Decoupled port management
-        fn register_decoupled_port(self: &AudioMidiDriverCore, ptr: usize) -> u64;
+        fn register_decoupled_port(self: &AudioMidiDriverCore, weak_id: u64, weak_type_id: u32) -> u64;
         fn unregister_decoupled_port(self: &AudioMidiDriverCore, handle: u64);
         fn process_decoupled_port(self: &AudioMidiDriverCore, handle: u64, nframes: u32) -> bool;
         fn close_decoupled_port(self: &AudioMidiDriverCore, handle: u64) -> bool;
-        fn get_decoupled_ports(self: &AudioMidiDriverCore) -> Vec<usize>;
+        fn get_decoupled_port_handles(self: &AudioMidiDriverCore) -> Vec<u64>;
 
         unsafe fn process_cycle(
             self: &AudioMidiDriverCore,
@@ -164,8 +164,8 @@ fn get_processor_handles(core: &AudioMidiDriverCore) -> Vec<u64> {
 }
 
 // Decoupled port management
-fn register_decoupled_port(core: &AudioMidiDriverCore, ptr: usize) -> u64 {
-    core.register_decoupled_port(ptr)
+fn register_decoupled_port(core: &AudioMidiDriverCore, weak_id: u64, weak_type_id: u32) -> u64 {
+    core.register_decoupled_port(weak_id, weak_type_id)
 }
 
 fn unregister_decoupled_port(core: &AudioMidiDriverCore, handle: u64) {
@@ -180,8 +180,8 @@ fn close_decoupled_port(core: &AudioMidiDriverCore, handle: u64) -> bool {
     core.close_decoupled_port(handle)
 }
 
-fn get_decoupled_ports(core: &AudioMidiDriverCore) -> Vec<usize> {
-    core.get_decoupled_ports()
+fn get_decoupled_port_handles(core: &AudioMidiDriverCore) -> Vec<u64> {
+    core.get_decoupled_port_handles()
 }
 
 unsafe fn process_cycle(

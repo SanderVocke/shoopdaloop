@@ -24,15 +24,15 @@ void audiomididriver_process_processor(uint64_t processor_id, uint32_t processor
     (*maybe)->PROC_process(nframes);
 }
 
-void audiomididriver_process_decoupled_port(uintptr_t decoupled_port_ptr, uint32_t nframes) {
-    if (!decoupled_port_ptr) { return; }
-    auto *port = reinterpret_cast<::DecoupledMidiPort *>(decoupled_port_ptr);
-    port->PROC_process(nframes);
+void audiomididriver_process_decoupled_port(uint64_t decoupled_port_id, uint32_t decoupled_port_type_id, uint32_t nframes) {
+    auto maybe = bridge_object::lock_decoupled_midi_port(bridge_object::BridgeWeakHandle{decoupled_port_id, decoupled_port_type_id});
+    if (!maybe) { return; }
+    (*maybe)->PROC_process(nframes);
 }
 
-void audiomididriver_close_decoupled_port(uintptr_t decoupled_port_ptr) {
-    if (!decoupled_port_ptr) { return; }
-    auto *port = reinterpret_cast<::DecoupledMidiPort *>(decoupled_port_ptr);
-    port->close();
+void audiomididriver_close_decoupled_port(uint64_t decoupled_port_id, uint32_t decoupled_port_type_id) {
+    auto maybe = bridge_object::lock_decoupled_midi_port(bridge_object::BridgeWeakHandle{decoupled_port_id, decoupled_port_type_id});
+    if (!maybe) { return; }
+    (*maybe)->close();
 }
 }

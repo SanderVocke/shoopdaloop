@@ -73,7 +73,11 @@ private:
     std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> m_processors;
     std::unordered_map<HasAudioProcessingFunction*, uint64_t> m_processor_handles;
     std::unordered_map<HasAudioProcessingFunction*, bridge_object::BridgeStrongHandle> m_processor_bridge_strongs;
-    std::unordered_map<uint64_t, shoop_shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports;
+    struct RegisteredDecoupledPort {
+        bridge_object::BridgeStrongHandle strong;
+        bridge_object::BridgeWeakHandle weak;
+    };
+    std::unordered_map<uint64_t, RegisteredDecoupledPort> m_decoupled_midi_ports;
     void (*m_maybe_process_callback)() = nullptr;
     mutable std::string m_client_name_cache;
 };

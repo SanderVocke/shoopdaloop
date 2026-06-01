@@ -13,6 +13,14 @@ class DecoupledMidiPort;
 
 namespace bridge_object {
 
+// First-iteration registry notes:
+// - The bridge registry is protected by a global mutex.
+// - Registration / clone / release operations are not real-time safe.
+// - Weak-handle lock/resolve currently also takes the mutex briefly, so process-thread
+//   use is functionally safe but not RT-hard-safe yet.
+// - This is acceptable for the current migration milestone and should be replaced by
+//   a process-thread-safe policy in a follow-up iteration.
+
 enum class BridgeObjectType : uint32_t {
     Invalid = 0,
     Processor = 1,

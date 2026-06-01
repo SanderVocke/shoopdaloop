@@ -213,3 +213,32 @@ TEST_CASE("DummyAudioMidiDriver - decoupled midi open/close stress", "[DummyAudi
     dut.close();
     REQUIRE(dut.tracker->total_samples_processed.load() > 0);
 };
+
+TEST_CASE("DummyAudioMidiDriver - decoupled midi registration keepalive until unregister", "[DummyAudioMidiDriver][midi][decoupled]") {
+    TrackedDummyAudioMidiDriver<uint32_t, uint32_t> dut(
+        "test",
+        DummyAudioMidiDriverMode::Automatic,
+        nullptr,
+        48000,
+        256
+    );
+
+    auto port = dut.open_decoupled_midi_port("decoupled", shoop_port_direction_t::ShoopPortDirection_Output);
+    auto weak_port = shoop_weak_ptr<shoop_types::_DecoupledMidiPort>(port);
+
+    // Drop local strong ref; registration should keep it alive until explicit unregister.
+    port.reset();
+    dut.wait_process();
+    REQUIRE(weak_port.lock() != nullptr);
+
+    auto locked = weak_port.lock();
+    REQUIRE(locked != nullptr);
+    locked->close();
+    dut.unregister_decoupled_midi_port(locked);
+    locked->forget_driver();
+    locked.reset();
+
+    dut.wait_process();
+    CHECK(weak_port.lock() == nullptr);
+    dut.close();
+}
