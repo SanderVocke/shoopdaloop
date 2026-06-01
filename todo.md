@@ -70,21 +70,22 @@
   - [x] Verify dynamic casts to `_DummyAudioMidiDriver`, `JackAudioMidiDriver`, and `JackTestAudioMidiDriver` still work
   - [x] Clean up stale includes and comments in affected C++ files
 
-- [ ] Phase 2 validation
+- [x] Phase 2 validation
   - [x] Run `cargo build`
   - [x] Run `cargo test`
   - [x] Run backend `test_runner`
-  - [ ] Run `./target/debug/shoopdaloop_dev.sh --self-test`
+  - [x] Run `./target/debug/shoopdaloop_dev.sh --self-test`
   - [x] Fix all compile errors, test failures, and project warnings introduced by Phase 2
 
-- [ ] Final cleanup and strict verification
-  - [ ] Remove dead code left in `AudioMidiDriver.cpp` or document why any remaining code is needed
-  - [ ] Confirm `AudioMidiDriver` has no Rust core, command queue, processor container, decoupled MIDI container, or callback storage members
-  - [ ] Confirm both JACK and Dummy own an `AudioMidiDriverRuntime` member
-  - [ ] Confirm shared behavior is not duplicated between JACK and Dummy
-  - [ ] Run `cargo fmt --all`
-  - [ ] Run `RUSTFLAGS="-D warnings" cargo build`
-  - [ ] Run `cargo test`
-  - [ ] Run backend `test_runner`
-  - [ ] Run `./target/debug/shoopdaloop_dev.sh --self-test`
-  - [ ] Confirm final state: all tests pass, warnings are fixed, and Rust formatting is applied
+- [x] Final cleanup and strict verification
+  - [x] Remove dead code left in `AudioMidiDriver.cpp` or document why any remaining code is needed
+  - [x] Confirm `AudioMidiDriver` has no Rust core, command queue, processor container, decoupled MIDI container, or callback storage members
+  - [x] Confirm both JACK and Dummy own an `AudioMidiDriverRuntime` member
+  - [x] Confirm shared behavior is not duplicated between JACK and Dummy
+  - [x] Run `cargo fmt --all`
+  - [x] Run `RUSTFLAGS="-D warnings" cargo build`
+  - [x] Run `cargo test`
+  - [x] Run backend `test_runner`
+  - [x] Run `./target/debug/shoopdaloop_dev.sh --self-test`
+  - [x] Confirm final state: all tests pass, warnings are fixed, and Rust formatting is applied
+  - nuance: strict `RUSTFLAGS="-D warnings" cargo build` succeeded; `cargo test` still emits a pre-existing linker warning (`gold linker is deprecated`) in test builds.
