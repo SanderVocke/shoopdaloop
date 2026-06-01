@@ -3,15 +3,13 @@
 #include <string>
 #include <stdint.h>
 #include <functional>
-#include "RustCommandQueue.h"
+#include "AudioMidiDriverRuntime.h"
 #include "shoop_globals.h"
 #include "types.h"
-#include <unordered_map>
 #include <atomic>
 #include "LoggingEnabled.h"
 #include "RustAudioPort.h"
 #include "shoop_shared_ptr.h"
-#include "backend_rust/src/audio_midi_driver_cxx.rs.h"
 
 enum class ProcessFunctionResult {
     Continue,  // Continue processing next cycle
@@ -39,16 +37,8 @@ public:
 
 class AudioMidiDriver : public ModuleLoggingEnabled<"Backend.AudioMidiDriver">,
                         private shoop_enable_shared_from_this<AudioMidiDriver> {
-    // Rust core for atomic state and processor/decoupled port management
-    rust::Box<backend_rust::AudioMidiDriverCore> m_rust_core;
-    std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> m_processors;
-    std::unordered_map<HasAudioProcessingFunction*, uint64_t> m_processor_handles;
-    // Keeps registered decoupled ports alive keyed by Rust handle.
-    std::unordered_map<uint64_t, shoop_shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports;
-    void (*m_maybe_process_callback)() = nullptr;
-
 protected:
-    rust::Box<backend_rust::CommandQueue> m_command_queue;
+    AudioMidiDriverRuntime m_runtime;
 
 protected:
     // Derived class should call these
@@ -109,13 +99,13 @@ public:
     virtual void wait_process();
 
     // Trampoline helpers for Rust-owned process loops
-    void trampoline_exec_commands() { rust_command_queue::exec_all(*m_command_queue); }
-    void trampoline_process(uint32_t nframes) { PROC_process(nframes); }
+    void trampoline_exec_commands() { m_runtime.exec_all_commands_for_process_thread(); }
+    void trampoline_process(uint32_t nframes) { m_runtime.process(nframes); }
 
     // Command queue forwarding (for external API usage)
-    void queue_process_thread_command(std::function<void()> fn) { rust_command_queue::queue(*m_command_queue, std::move(fn)); }
-    void exec_process_thread_command(std::function<void()> fn) { rust_command_queue::queue_and_wait(*m_command_queue, std::move(fn)); }
-    backend_rust::CommandQueue &get_command_queue() { return *m_command_queue; }
+    void queue_process_thread_command(std::function<void()> fn) { m_runtime.queue_process_thread_command(std::move(fn)); }
+    void exec_process_thread_command(std::function<void()> fn) { m_runtime.exec_process_thread_command(std::move(fn)); }
+    backend_rust::CommandQueue &get_command_queue() { return m_runtime.get_command_queue(); }
 
     virtual std::vector<ExternalPortDescriptor> find_external_ports(
         const char* maybe_name_regex,

@@ -122,7 +122,7 @@ void GenericJackAudioMidiDriver<API>::start(
 
     // Processing the command queue once will ensure that it knows processing is active.
     // That way commands added from now on will be executed on the process thread.
-    rust_command_queue::exec_all(this->m_command_queue);
+    rust_command_queue::exec_all(this->get_command_queue());
 
     if (API::activate(client)) {
         Log::throw_error<std::runtime_error>("Could not activate JACK client.");

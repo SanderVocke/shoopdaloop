@@ -53,7 +53,7 @@ DummyAudioMidiDriverMode DummyAudioMidiDriver<Time, Size>::get_mode() const {
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::controlled_mode_request_samples(uint32_t samples) {
-    rust_command_queue::queue_and_wait(this->m_command_queue, [this, samples]() {
+    rust_command_queue::queue_and_wait(this->get_command_queue(), [this, samples]() {
         m_rust->controlled_mode_request_samples(samples);
         uint32_t requested = m_rust->get_controlled_mode_samples_to_process();
         Log::log<log_level_debug>("DummyAudioMidiDriver: request {} samples ({} total)", samples, requested);
@@ -101,7 +101,7 @@ void DummyAudioMidiDriver<Time, Size>::start(
 
     // Processing the command queue once will ensure that it knows processing is active.
     // That way commands added from now on will be executed on the process thread.
-    rust_command_queue::exec_all(this->m_command_queue);
+    rust_command_queue::exec_all(this->get_command_queue());
 
     m_rust->start_process_thread(
         reinterpret_cast<uintptr_t>(this),

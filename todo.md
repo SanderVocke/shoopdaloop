@@ -1,64 +1,90 @@
-- [x] Baseline sanity before next migration steps:
-  - [x] `cargo build`
-  - [x] `cargo test`
-  - [x] backend `test_runner`
-  - [x] `./target/debug/shoopdaloop_dev.sh --self-test`
-  - nuance: ran as one end-to-end command chain; self-test passed (186/186).
+# TODO: make `AudioMidiDriver` a pure interface with composed Rust-backed runtime
 
-- [x] Phase A: Add regression coverage for decoupled MIDI lifetime/race behavior
-  - [x] Add backend tests for close/unregister during active processing
-  - [x] Add repeated open/close + message queue stress test
-  - [x] Add stale handle access behavior tests in API layer where applicable
-  - [x] Milestone: `cargo test`, backend `test_runner`, self-test
-    - [x] `cargo test`
-    - [x] backend `test_runner`
-    - [x] self-test
-  - nuance: implemented as new unit test `DummyAudioMidiDriver - decoupled midi open/close stress` in `test_DummyAudioMidiDriver.cpp` (200 open/close/unregister iterations while processing).
-  - nuance: added API-level stale-handle safety test in `test_libshoopdaloop_if.cpp`; after close, stale operations are asserted to be safe (no crash) with current returned default values.
+- [x] Baseline and orientation
+  - [x] Read `AGENTS.md`, `.agents/index.md`, `.agents/build.md`, and `.agents/test.md`
+  - [x] Review current `AudioMidiDriver.h/.cpp`, `DummyAudioMidiDriver.h/.cpp`, `JackAudioMidiDriver.h/.cpp`, `AudioMidiDriverCxxTrampolines.*`, and the Rust bridge files under `src/rust/backend_rust/src/`
+  - [x] Run baseline `cargo build` if the environment is ready
+  - nuance: baseline build attempt reached backend build but failed due environment (`/home/sander/.cargo` registry write is read-only), not project compile errors.
 
-- [x] Phase B: Move decoupled MIDI ownership to Rust-managed lifecycle
-  - [x] Introduce Rust-side decoupled port registry/handle ownership
-  - [x] Refactor C++ decoupled wrapper to thin handle-forwarding role
-  - nuance: replaced Rust decoupled registry `Vec<usize>` with `HashMap<u64, usize>` + `AtomicU64` stable handle allocation; CXX bridge now registers returning `u64` and unregisters by handle.
-  - nuance: decoupled lifecycle handle is now stored on `DecoupledMidiPort`; driver unregister/close paths forward via Rust handle APIs.
-  - [x] Route pop/push/process/close through Rust-owned state
-  - nuance: process and close now dispatch through Rust handle-table APIs (`process_decoupled_port`, `close_decoupled_port`) with C++ trampolines; queue state remains Rust-owned (`backend_rust::DecoupledMidiPort`) and pop/push operate on that queue.
-  - [x] Remove C++ decoupled keepalive set once safety is guaranteed
-  - nuance: removed `m_decoupled_midi_ports_keepalive`; replaced with handle-keyed registration map `m_decoupled_midi_ports`.
-  - [x] Milestone: `cargo build`, `cargo test`, backend `test_runner`, self-test
-  - nuance: all milestone gates pass after completing Phase B (self-test 186/186).
+- [x] Phase 1: extract shared behavior into `AudioMidiDriverRuntime`
+  - [x] Add `src/backend/internal/AudioMidiDriverRuntime.h`
+  - [x] Add `src/backend/internal/AudioMidiDriverRuntime.cpp`
+  - [x] Move the Rust `AudioMidiDriverCore` member from `AudioMidiDriver` into `AudioMidiDriverRuntime`
+  - [x] Move the Rust command queue member from `AudioMidiDriver` into `AudioMidiDriverRuntime`
+  - [x] Move processor weak-pointer storage and processor handle bookkeeping into `AudioMidiDriverRuntime`
+  - [x] Move decoupled MIDI registration/keepalive bookkeeping into `AudioMidiDriverRuntime`
+  - [x] Move maybe-process callback storage into `AudioMidiDriverRuntime`
+  - [x] Implement runtime methods for processor add/remove/list
+  - [x] Implement runtime methods for process-cycle dispatch and command execution
+  - [x] Implement runtime methods for xruns, sample rate, buffer size, DSP load, active state, client name, client handle, and last-processed state
+  - [x] Implement runtime methods for command queue forwarding and `wait_process()`
+  - [x] Implement runtime methods for decoupled MIDI port creation from an already-opened `MidiPort` and for decoupled MIDI unregistration
+  - [x] Move or keep available the `backend_rust::audiomididriver_*` trampoline functions declared in `AudioMidiDriverCxxTrampolines.h`
+  - [x] Update `AudioMidiDriver` so it owns an `AudioMidiDriverRuntime` member and forwards existing behavior to it
+  - [x] Keep JACK and Dummy behavior unchanged except for any necessary include or forwarding adjustments
+  - [x] Remove obsolete direct state members from `AudioMidiDriver`
+  - nuance: trampolines were kept in `AudioMidiDriver.cpp` for link visibility and compatibility with the current Rust bridge.
 
-- [x] Phase C: Formalize processor callback handle lifecycle
-  - [x] Replace raw pointer assumptions with explicit stable registration handles/tokens
-  - [x] Guarantee safe unregister semantics under concurrent process-thread activity
-  - [x] Keep trampoline callback behavior but with stricter lifetime boundaries
-  - [x] Milestone: `cargo test`, backend `test_runner`
-  - nuance: processors are now registered in Rust as handle->pointer mappings; C++ tracks pointer->handle and removes by handle, avoiding raw-pointer identity removal assumptions.
-  - nuance: process-cycle dispatch iterates stable processor handles and resolves current pointers at dispatch time; stale/removed handles are skipped safely.
-
-- [x] Phase D: Shrink `AudioMidiDriver` C++ to forwarding-only shell
-  - [x] Move remaining mutable state responsibilities to Rust runtime
-  - [x] Keep C++ signatures and virtual API compatibility unchanged
-  - [x] Remove non-essential C++ state containers/logic
-  - [x] Milestone: `cargo build`, `cargo test`, backend `test_runner`, self-test
-  - nuance: removed C++ copy-on-write processor container pattern (`shoop_shared_ptr<vector<weak_ptr...>>`) and simplified to thin local list + handle forwarding; processor/decoupled lifecycle/state dispatch remains Rust-owned via handle registries.
-
-- [x] Phase E: Simplify dummy wrapper/template/settings boundary
-  - [x] Route template instantiations to shared Rust backend path
-  - nuance: existing instantiations already route through one shared Rust backend object type (`backend_rust::DummyAudioMidiDriver`), retained for ABI compatibility.
-  - [x] Replace unchecked settings cast with typed bridge/config conversion
-  - nuance: replaced C-style cast in `DummyAudioMidiDriver::start` with checked `dynamic_cast` + explicit error on wrong settings type.
-  - [x] Keep wrapper externally compatible and thin
-  - [x] Milestone: `cargo test`, backend `test_runner`, self-test
-
-- [x] Phase F: Cleanup and final verification
-  - [x] Remove dead code and stale comments
-  - nuance: no additional dead-code/stale-comment removals were required for this migration slice; existing unrelated TODOs outside scope were left untouched.
-  - [x] Update docs/comments for Rust-vs-C++ ownership split
-  - nuance: ownership/lifecycle notes already reflected by prior phase TODO nuances; no extra in-code doc updates were needed in this pass.
-  - [x] Run `cargo fmt --all`
-  - [x] Run `RUSTFLAGS="-D warnings" cargo build`
+- [x] Phase 1 validation
+  - [x] Run `cargo build`
   - [x] Run `cargo test`
+  - [x] Locate backend Catch2 runner with `find target -type f -name test_runner` if needed
   - [x] Run backend `test_runner`
-  - [x] Run `./target/debug/shoopdaloop_dev.sh --self-test`
-  - [x] Confirm end state: all tests pass, no warnings in strict gate, C++ wrappers are thin
+  - [x] Fix all compile errors, test failures, and project warnings introduced by Phase 1
+  - nuance: `cargo test` produced pre-existing linker deprecation warnings (`gold linker is deprecated`) in unrelated crates; no new Phase 1 warnings/errors were introduced.
+
+- [ ] Phase 2: convert `AudioMidiDriver` to a pure abstract interface
+  - [ ] Remove `AudioMidiDriverRuntime` ownership from `AudioMidiDriver`
+  - [ ] Remove shared implementation methods from `AudioMidiDriver.cpp`
+  - [ ] Change `AudioMidiDriver.h` methods used by callers into pure virtual interface methods
+  - [ ] Remove implementation-detail setters and process helpers from the public/protected base interface where possible
+  - [ ] Keep or add only the minimal shared-from-this support needed for `DecoupledMidiPort` weak driver references
+  - [ ] Ensure `AudioMidiDriver` no longer includes Rust CXX bridge headers unless strictly needed for declarations
+
+- [ ] Phase 2: make JACK own and use the runtime
+  - [ ] Add `AudioMidiDriverRuntime m_runtime` to `GenericJackAudioMidiDriver<API>`
+  - [ ] Initialize `m_runtime` from the JACK driver constructor's `maybe_process_callback`
+  - [ ] Replace `AudioMidiDriver::PROC_process(...)` with `m_runtime.process(...)`
+  - [ ] Replace `AudioMidiDriver::report_xrun()` with `m_runtime.report_xrun()`
+  - [ ] Replace `AudioMidiDriver::set_*` and `get_*` shared-state calls with `m_runtime` calls
+  - [ ] Implement all pure `AudioMidiDriver` interface methods in `GenericJackAudioMidiDriver<API>`
+  - [ ] Preserve JACK-specific refresh behavior for sample rate, buffer size, and DSP load
+  - [ ] Preserve JACK-specific `wait_process()` behavior when `API::supports_processing` is false
+  - [ ] Preserve external port discovery behavior
+
+- [ ] Phase 2: make Dummy own and use the runtime
+  - [ ] Add `AudioMidiDriverRuntime m_runtime` to `DummyAudioMidiDriver<Time, Size>`
+  - [ ] Initialize `m_runtime` from the Dummy driver constructor's `maybe_process_callback`
+  - [ ] Replace startup state setup calls with `m_runtime` calls
+  - [ ] Replace shared getters, processor methods, command queue methods, decoupled MIDI methods, and `wait_process()` with runtime forwarding
+  - [ ] Pass `reinterpret_cast<uintptr_t>(&m_runtime)` to the Rust dummy process thread instead of `reinterpret_cast<uintptr_t>(this)`
+  - [ ] Update `dummy_audiomididriver_exec_commands` to cast `owner_ptr` to `AudioMidiDriverRuntime*`
+  - [ ] Update `dummy_audiomididriver_process` to cast `owner_ptr` to `AudioMidiDriverRuntime*`
+  - [ ] Keep Dummy mode, pause/resume, controlled-sample, mock external port, and concrete port creation behavior intact
+
+- [ ] Phase 2: update callers and tests
+  - [ ] Search for `AudioMidiDriver::` qualified calls and remove uses of former base implementation methods
+  - [ ] Update `src/backend/test/unit/test_DummyAudioMidiDriver.cpp` to call processor registration through the concrete/virtual interface instead of `AudioMidiDriver::add_processor(...)`
+  - [ ] Verify `AudioMidiDrivers.cpp` still returns concrete drivers as `shoop_shared_ptr<AudioMidiDriver>`
+  - [ ] Verify `libshoopdaloop_backend.cpp` still compiles and its driver API calls still target the abstract interface
+  - [ ] Verify dynamic casts to `_DummyAudioMidiDriver`, `JackAudioMidiDriver`, and `JackTestAudioMidiDriver` still work
+  - [ ] Clean up stale includes and comments in affected C++ files
+
+- [ ] Phase 2 validation
+  - [ ] Run `cargo build`
+  - [ ] Run `cargo test`
+  - [ ] Run backend `test_runner`
+  - [ ] Run `./target/debug/shoopdaloop_dev.sh --self-test`
+  - [ ] Fix all compile errors, test failures, and project warnings introduced by Phase 2
+
+- [ ] Final cleanup and strict verification
+  - [ ] Remove dead code left in `AudioMidiDriver.cpp` or document why any remaining code is needed
+  - [ ] Confirm `AudioMidiDriver` has no Rust core, command queue, processor container, decoupled MIDI container, or callback storage members
+  - [ ] Confirm both JACK and Dummy own an `AudioMidiDriverRuntime` member
+  - [ ] Confirm shared behavior is not duplicated between JACK and Dummy
+  - [ ] Run `cargo fmt --all`
+  - [ ] Run `RUSTFLAGS="-D warnings" cargo build`
+  - [ ] Run `cargo test`
+  - [ ] Run backend `test_runner`
+  - [ ] Run `./target/debug/shoopdaloop_dev.sh --self-test`
+  - [ ] Confirm final state: all tests pass, warnings are fixed, and Rust formatting is applied
