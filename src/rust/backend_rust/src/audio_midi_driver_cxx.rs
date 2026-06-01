@@ -14,7 +14,7 @@ pub mod ffi {
 
         unsafe fn audiomididriver_invoke_maybe_process_callback(maybe_fn_ptr: usize);
         unsafe fn audiomididriver_exec_command_queue(command_queue_ptr: usize);
-        unsafe fn audiomididriver_process_processor(processor_ptr: usize, nframes: u32);
+        unsafe fn audiomididriver_process_processor(processor_id: u64, processor_type_id: u32, nframes: u32);
         unsafe fn audiomididriver_process_decoupled_port(decoupled_port_ptr: usize, nframes: u32);
         unsafe fn audiomididriver_close_decoupled_port(decoupled_port_ptr: usize);
     }
@@ -50,7 +50,7 @@ pub mod ffi {
         fn reset_xruns(self: &AudioMidiDriverCore);
 
         // Processor management (ptrs as usize)
-        fn add_processor(self: &AudioMidiDriverCore, ptr: usize) -> u64;
+        fn add_processor(self: &AudioMidiDriverCore, weak_id: u64, weak_type_id: u32) -> u64;
         fn remove_processor(self: &AudioMidiDriverCore, handle: u64);
         fn get_processor_handles(self: &AudioMidiDriverCore) -> Vec<u64>;
 
@@ -151,8 +151,8 @@ fn reset_xruns(core: &AudioMidiDriverCore) {
 }
 
 // Processor management
-fn add_processor(core: &AudioMidiDriverCore, ptr: usize) -> u64 {
-    core.add_processor(ptr)
+fn add_processor(core: &AudioMidiDriverCore, weak_id: u64, weak_type_id: u32) -> u64 {
+    core.add_processor(weak_id, weak_type_id)
 }
 
 fn remove_processor(core: &AudioMidiDriverCore, handle: u64) {

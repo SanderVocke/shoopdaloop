@@ -26,8 +26,11 @@ AudioMidiDriverRuntime::AudioMidiDriverRuntime(void (*maybe_process_callback)())
 
 void AudioMidiDriverRuntime::add_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) {
     m_processors.push_back(p);
-    auto handle = m_rust_core->add_processor(reinterpret_cast<uintptr_t>(p.get()));
+    auto strong = bridge_object::register_processor(p);
+    auto weak = bridge_object::downgrade(strong);
+    auto handle = m_rust_core->add_processor(weak.id, weak.type_id);
     m_processor_handles[p.get()] = handle;
+    m_processor_bridge_strongs[p.get()] = strong;
 }
 
 void AudioMidiDriverRuntime::remove_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) {
@@ -41,6 +44,11 @@ void AudioMidiDriverRuntime::remove_processor(shoop_shared_ptr<HasAudioProcessin
     if (it != m_processor_handles.end()) {
         m_rust_core->remove_processor(it->second);
         m_processor_handles.erase(it);
+    }
+    auto sit = m_processor_bridge_strongs.find(p.get());
+    if (sit != m_processor_bridge_strongs.end()) {
+        bridge_object::release_strong(sit->second);
+        m_processor_bridge_strongs.erase(sit);
     }
 }
 

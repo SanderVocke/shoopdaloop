@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "BridgeObject.h"
 #include "LoggingEnabled.h"
 #include "RustCommandQueue.h"
 #include "backend_rust/src/audio_midi_driver_cxx.rs.h"
@@ -71,6 +72,7 @@ private:
     rust::Box<backend_rust::CommandQueue> m_command_queue;
     std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> m_processors;
     std::unordered_map<HasAudioProcessingFunction*, uint64_t> m_processor_handles;
+    std::unordered_map<HasAudioProcessingFunction*, bridge_object::BridgeStrongHandle> m_processor_bridge_strongs;
     std::unordered_map<uint64_t, shoop_shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports;
     void (*m_maybe_process_callback)() = nullptr;
     mutable std::string m_client_name_cache;

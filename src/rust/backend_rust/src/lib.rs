@@ -6,6 +6,7 @@ pub mod audio_port_cxx;
 pub mod backend_api_cxx;
 pub mod command_queue;
 pub mod command_queue_cxx;
+pub mod bridge_object_cxx;
 pub mod decoupled_midi_port;
 pub mod decoupled_midi_port_cxx;
 pub mod dummy_audio_midi_driver;

@@ -12,6 +12,7 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, Ordering};
+use crate::bridge_object_cxx::ffi::BridgeWeakHandle;
 use std::sync::{Mutex, RwLock};
 
 /// Wrapper for atomic f32 operations using AtomicU32 internally.
@@ -86,7 +87,7 @@ impl Default for AudioMidiDriverState {
 /// which owns the CommandQueue (as a wrapper around a Rust CommandQueue).
 pub struct AudioMidiDriverCore {
     state: AudioMidiDriverState,
-    processors: RwLock<HashMap<u64, usize>>,
+    processors: RwLock<HashMap<u64, BridgeWeakHandle>>,
     next_processor_handle: AtomicU64,
     decoupled_ports: RwLock<HashMap<u64, usize>>,
     next_decoupled_handle: AtomicU64,
@@ -200,10 +201,10 @@ impl AudioMidiDriverCore {
     // Processor management
     // ========================================================================
 
-    pub fn add_processor(&self, ptr: usize) -> u64 {
+    pub fn add_processor(&self, weak_id: u64, weak_type_id: u32) -> u64 {
         let handle = self.next_processor_handle.fetch_add(1, Ordering::SeqCst);
         if let Ok(mut guard) = self.processors.write() {
-            guard.insert(handle, ptr);
+            guard.insert(handle, BridgeWeakHandle { id: weak_id, type_id: weak_type_id });
         }
         handle
     }
@@ -321,7 +322,9 @@ impl AudioMidiDriverCore {
             if let Some(processor) = ptr {
                 unsafe {
                     crate::audio_midi_driver_cxx::ffi::audiomididriver_process_processor(
-                        processor, nframes,
+                        processor.id,
+                        processor.type_id,
+                        nframes,
                     );
                 }
             }
@@ -433,9 +436,9 @@ mod tests {
         assert!(core.get_processor_handles().is_empty());
 
         // Add processors
-        let h1 = core.add_processor(100);
-        let h2 = core.add_processor(200);
-        let _h3 = core.add_processor(300);
+        let h1 = core.add_processor(100, 1);
+        let h2 = core.add_processor(200, 1);
+        let _h3 = core.add_processor(300, 1);
 
         let handles = core.get_processor_handles();
         assert_eq!(handles.len(), 3);
@@ -443,7 +446,7 @@ mod tests {
         assert!(handles.contains(&h2));
 
         // same pointer can be registered with another handle
-        let _h4 = core.add_processor(100);
+        let _h4 = core.add_processor(100, 1);
         assert_eq!(core.get_processor_handles().len(), 4);
 
         // Remove processor by handle

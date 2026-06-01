@@ -1,5 +1,28 @@
 # Plan: introduce bridge strong/weak handles for processors and decoupled MIDI ports
 
+## Current Progress Snapshot
+
+Completed:
+
+- Bridge object infrastructure scaffold added:
+  - `src/backend/internal/BridgeObject.h/.cpp`
+  - `src/rust/backend_rust/src/bridge_object_cxx.rs`
+- Processor family (Milestone 1) migrated from raw pointer registration to bridge weak-handle dispatch.
+- `AudioMidiDriverCore` processor storage no longer uses raw `usize` pointers.
+- C++ processor trampoline now upgrades/locks processor bridge weak handles before dispatch.
+- Processor lifecycle coverage added in unit tests:
+  - `DummyAudioMidiDriver - processor add/remove cycles`.
+- Validation completed for Milestone 1:
+  - `cargo build`
+  - `cargo test`
+  - backend `test_runner`
+
+Still pending:
+
+- Documenting explicit real-time/process-thread policy limits of the first mutex-based bridge registry implementation.
+- Milestone 2 decoupled MIDI bridge-handle migration and its validation.
+- Final cleanup and strict verification gate.
+
 ## Goal
 
 Introduce the first reusable bridge ownership mechanism for the C++ to Rust migration. The immediate goal is not to remove all raw pointers everywhere. The goal is to establish a typed strong/weak handle system that preserves current C++ `shoop_shared_ptr` / `shoop_weak_ptr` keepalive semantics across the Rust/C++ boundary, then apply it to two object families:

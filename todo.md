@@ -1,43 +1,46 @@
 # TODO: bridge strong/weak handles for processors and decoupled MIDI ports
 
-- [ ] Orientation and baseline
-  - [ ] Read `porting.md`
-  - [ ] Review current `AudioMidiDriverRuntime`, `AudioMidiDriverCore`, `AudioMidiDriverCxxTrampolines`, and decoupled MIDI files listed in `plan.md`
-  - [ ] Run baseline `cargo build`
+- [x] Orientation and baseline
+  - [x] Read `porting.md`
+  - [x] Review current `AudioMidiDriverRuntime`, `AudioMidiDriverCore`, `AudioMidiDriverCxxTrampolines`, and decoupled MIDI files listed in `plan.md`
+  - [x] Run baseline `cargo build`
 
 - [ ] Add bridge object infrastructure
-  - [ ] Add C++ bridge object module, e.g. `src/backend/internal/BridgeObject.h/.cpp`
-  - [ ] Define CXX-compatible `BridgeStrongHandle` and `BridgeWeakHandle`
-  - [ ] Define type IDs for at least processors and decoupled MIDI ports
-  - [ ] Implement strong handle registration for C++ `shoop_shared_ptr` objects
-  - [ ] Implement strong handle clone/release semantics or an equivalent RAII wrapper
-  - [ ] Implement downgrade from strong to weak
-  - [ ] Implement weak upgrade/resolve with type validation
-  - [ ] Add typed C++ helper/wrapper functions for `HasAudioProcessingFunction`
-  - [ ] Add typed C++ helper/wrapper functions for `DecoupledMidiPort`
-  - [ ] Add Rust/CXX bridge definitions for handle structs and required operations, or expose generated structs in a way both languages can use
+  - [x] Add C++ bridge object module, e.g. `src/backend/internal/BridgeObject.h/.cpp`
+  - [x] Define CXX-compatible `BridgeStrongHandle` and `BridgeWeakHandle`
+  - [x] Define type IDs for at least processors and decoupled MIDI ports
+  - [x] Implement strong handle registration for C++ `shoop_shared_ptr` objects
+  - [x] Implement strong handle clone/release semantics or an equivalent RAII wrapper
+  - [x] Implement downgrade from strong to weak
+  - [x] Implement weak upgrade/resolve with type validation
+  - [x] Add typed C++ helper/wrapper functions for `HasAudioProcessingFunction`
+  - [x] Add typed C++ helper/wrapper functions for `DecoupledMidiPort`
+  - [x] Add Rust/CXX bridge definitions for handle structs and required operations, or expose generated structs in a way both languages can use
   - [ ] Document real-time/process-thread limitations of the first registry implementation
-  - [ ] Milestone build: `cargo build`
+  - [x] Milestone build: `cargo build`
+  - nuance: first registry implementation currently uses a global mutex-protected C++ registry and typed holder erasure; no process-thread policy docs added yet.
 
-- [ ] Milestone 1: migrate processors to bridge weak handles
-  - [ ] Update Rust `AudioMidiDriverCore` processor storage from raw `usize` pointers to bridge weak handles
-  - [ ] Update Rust `add_processor`/`remove_processor` APIs and CXX bridge declarations
-  - [ ] Update Rust process-cycle dispatch to call a processor bridge trampoline instead of raw pointer trampoline
-  - [ ] Update C++ `AudioMidiDriverRuntime::add_processor` to register/downgrade processor handles through the bridge system
-  - [ ] Update C++ `AudioMidiDriverRuntime::remove_processor` to unregister Rust handles and release bridge registration state
-  - [ ] Replace or retire `audiomididriver_process_processor(uintptr_t, ...)` raw pointer dispatch
-  - [ ] Add C++ trampoline that upgrades/resolves processor bridge weak handles and calls `PROC_process` only when valid
-  - [ ] Preserve public `processors()` compatibility behavior
+- [x] Milestone 1: migrate processors to bridge weak handles
+  - [x] Update Rust `AudioMidiDriverCore` processor storage from raw `usize` pointers to bridge weak handles
+  - [x] Update Rust `add_processor`/`remove_processor` APIs and CXX bridge declarations
+  - [x] Update Rust process-cycle dispatch to call a processor bridge trampoline instead of raw pointer trampoline
+  - [x] Update C++ `AudioMidiDriverRuntime::add_processor` to register/downgrade processor handles through the bridge system
+  - [x] Update C++ `AudioMidiDriverRuntime::remove_processor` to unregister Rust handles and release bridge registration state
+  - [x] Replace or retire `audiomididriver_process_processor(uintptr_t, ...)` raw pointer dispatch
+  - [x] Add C++ trampoline that upgrades/resolves processor bridge weak handles and calls `PROC_process` only when valid
+  - [x] Preserve public `processors()` compatibility behavior
+  - nuance: due CXX type limitations, bridge weak handles are passed across Rust/C++ as `(id,type_id)` scalar arguments rather than as a shared bridge-struct type in `audio_midi_driver_cxx.rs` extern signatures.
 
-- [ ] Milestone 1 tests and validation
-  - [ ] Add/adjust tests for normal processor registration and processing
-  - [ ] Add/adjust tests for processor removal preventing further dispatch
-  - [ ] Add/adjust tests for stale processor weak handles being safe no-ops
-  - [ ] Add/adjust tests for repeated processor add/remove cycles under dummy controlled processing
-  - [ ] Run `cargo build`
-  - [ ] Run `cargo test`
-  - [ ] Run backend `test_runner`
-  - [ ] Fix all warnings/errors introduced by processor migration
+- [x] Milestone 1 tests and validation
+  - [x] Add/adjust tests for normal processor registration and processing
+  - [x] Add/adjust tests for processor removal preventing further dispatch
+  - [x] Add/adjust tests for stale processor weak handles being safe no-ops
+  - [x] Add/adjust tests for repeated processor add/remove cycles under dummy controlled processing
+  - [x] Run `cargo build`
+  - [x] Run `cargo test`
+  - [x] Run backend `test_runner`
+  - [x] Fix all warnings/errors introduced by processor migration
+  - nuance: added `DummyAudioMidiDriver - processor add/remove cycles` unit test covering processing after add, no further processing after remove, and repeated add/remove stability.
 
 - [ ] Milestone 2: migrate decoupled MIDI ports to bridge handles
   - [ ] Update Rust `AudioMidiDriverCore` decoupled port storage from raw `usize` pointers to bridge handles

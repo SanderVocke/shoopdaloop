@@ -155,6 +155,42 @@ TEST_CASE("DummyAudioMidiDriver - Input port queue consume combine", "[DummyAudi
     }
 };
 
+TEST_CASE("DummyAudioMidiDriver - processor add/remove cycles", "[DummyAudioMidiDriver][processor]") {
+    TrackedDummyAudioMidiDriver<uint32_t, uint32_t> dut(
+        "test",
+        DummyAudioMidiDriverMode::Automatic,
+        nullptr,
+        48000,
+        256
+    );
+
+    auto extra = shoop_make_shared<Tracker>();
+    dut.add_processor(shoop_static_pointer_cast<HasAudioProcessingFunction>(extra));
+    dut.wait_process();
+    auto processed_with_extra = extra->total_samples_processed.load();
+    REQUIRE(processed_with_extra > 0);
+
+    dut.remove_processor(shoop_static_pointer_cast<HasAudioProcessingFunction>(extra));
+    auto processed_before = extra->total_samples_processed.load();
+    for (int i = 0; i < 5; i++) { dut.wait_process(); }
+    auto processed_after = extra->total_samples_processed.load();
+    REQUIRE(processed_after == processed_before);
+
+    // Re-add/remove cycles should remain stable.
+    for (int i = 0; i < 20; i++) {
+        auto t = shoop_make_shared<Tracker>();
+        dut.add_processor(shoop_static_pointer_cast<HasAudioProcessingFunction>(t));
+        dut.wait_process();
+        REQUIRE(t->total_samples_processed.load() > 0);
+        dut.remove_processor(shoop_static_pointer_cast<HasAudioProcessingFunction>(t));
+        auto before = t->total_samples_processed.load();
+        dut.wait_process();
+        REQUIRE(t->total_samples_processed.load() == before);
+    }
+
+    dut.close();
+}
+
 TEST_CASE("DummyAudioMidiDriver - decoupled midi open/close stress", "[DummyAudioMidiDriver][midi][decoupled]") {
     TrackedDummyAudioMidiDriver<uint32_t, uint32_t> dut(
         "test",
