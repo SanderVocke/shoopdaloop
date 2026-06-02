@@ -74,18 +74,18 @@
   - [x] Run `cargo build`
   - [x] Run backend `test_runner`
 
-- [ ] Phase 5: cleanup and final verification
-  - [ ] Confirm Rust owns processor bridge strong registration records
-  - [ ] Confirm Rust owns decoupled MIDI bridge strong registration records
-  - [ ] Confirm no C++ processor bridge strong keepalive map remains
-  - [ ] Confirm no C++ decoupled bridge strong keepalive map remains
-  - [ ] Confirm no old handle-based processor/decoupled trampolines were reintroduced
-  - [ ] Confirm no lifetime-authoritative raw object pointer storage was introduced
-  - [ ] Clean comments and includes
-  - [ ] Run `cargo fmt --all`
-  - [ ] Run `RUSTFLAGS="-D warnings" cargo build`
+- [x] Phase 5: cleanup and final verification
+  - [x] Confirm Rust owns processor bridge strong registration records
+  - [x] Confirm Rust owns decoupled MIDI bridge strong registration records
+  - [x] Confirm no C++ processor bridge strong keepalive map remains
+  - [x] Confirm no C++ decoupled bridge strong keepalive map remains
+  - [x] Confirm no old handle-based processor/decoupled trampolines were reintroduced
+  - [x] Confirm no lifetime-authoritative raw object pointer storage was introduced
+  - [x] Clean comments and includes
+  - [x] Run `cargo fmt --all`
+  - [x] Run `RUSTFLAGS="-D warnings" cargo build`
   - [x] Run `cargo test`
   - [x] Run backend `test_runner`
   - [x] Run `./target/debug/shoopdaloop_dev.sh --self-test` (ran with `QT_QPA_PLATFORM=offscreen`)
-  - [ ] Fix all warnings/errors introduced by this migration
-  - [ ] Confirm final state: `AudioMidiDriverRuntime` removed, tests pass, strict build passes, formatting applied
+  - [x] Fix all warnings/errors introduced by this migration
+  - [x] Confirm final state: `AudioMidiDriverRuntime` removed, tests pass, strict build passes, formatting applied

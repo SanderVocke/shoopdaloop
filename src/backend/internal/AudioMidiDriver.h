@@ -11,6 +11,10 @@
 #include <memory>
 #include <vector>
 #include "backend_rust/src/command_queue_cxx.rs.h"
+
+class HasAudioProcessingFunction;
+class DecoupledMidiPort;
+
 #include "backend_rust/src/audio_midi_driver_cxx.rs.h"
 
 enum class ProcessFunctionResult {
