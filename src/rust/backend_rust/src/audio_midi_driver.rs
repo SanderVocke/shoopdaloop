@@ -80,16 +80,34 @@ impl Default for AudioMidiDriverState {
 /// Core audio/MIDI driver implementation.
 ///
 /// Holds atomic state and registration records.
-struct ProcessorRegistration {
-    cpp_identity: usize,
-    weak: cxx::UniquePtr<crate::audio_midi_driver_cxx::ffi::ProcessorBridgeWeak>,
-    strong: cxx::UniquePtr<crate::audio_midi_driver_cxx::ffi::ProcessorBridgeStrong>,
+macro_rules! typed_bridge_registration {
+    ($name:ident, $weak:ty, $strong:ty) => {
+        struct $name {
+            weak: cxx::UniquePtr<$weak>,
+            _strong: cxx::UniquePtr<$strong>,
+        }
+    };
+    ($name:ident, $weak:ty, $strong:ty, { $($extra_name:ident : $extra_ty:ty),+ $(,)? }) => {
+        struct $name {
+            $($extra_name: $extra_ty,)+
+            weak: cxx::UniquePtr<$weak>,
+            _strong: cxx::UniquePtr<$strong>,
+        }
+    };
 }
 
-struct DecoupledPortRegistration {
-    weak: cxx::UniquePtr<crate::audio_midi_driver_cxx::ffi::DecoupledMidiPortBridgeWeak>,
-    _strong: cxx::UniquePtr<crate::audio_midi_driver_cxx::ffi::DecoupledMidiPortBridgeStrong>,
-}
+typed_bridge_registration!(
+    ProcessorRegistration,
+    crate::audio_midi_driver_cxx::ffi::ProcessorBridgeWeak,
+    crate::audio_midi_driver_cxx::ffi::ProcessorBridgeStrong,
+    { cpp_identity: usize }
+);
+
+typed_bridge_registration!(
+    DecoupledPortRegistration,
+    crate::audio_midi_driver_cxx::ffi::DecoupledMidiPortBridgeWeak,
+    crate::audio_midi_driver_cxx::ffi::DecoupledMidiPortBridgeStrong
+);
 
 pub struct AudioMidiDriverCore {
     state: AudioMidiDriverState,
@@ -218,7 +236,7 @@ impl AudioMidiDriverCore {
         strong: cxx::UniquePtr<crate::audio_midi_driver_cxx::ffi::ProcessorBridgeStrong>,
     ) -> u64 {
         let handle = self.next_processor_handle.fetch_add(1, Ordering::SeqCst);
-        let reg = ProcessorRegistration { cpp_identity, weak, strong };
+        let reg = ProcessorRegistration { cpp_identity, weak, _strong: strong };
         if let Ok(mut guard) = self.processors.write() {
             guard.insert(handle, reg);
         }
@@ -249,7 +267,7 @@ impl AudioMidiDriverCore {
             if let Ok(mut map) = self.processor_handle_by_cpp_identity.lock() {
                 map.remove(&reg.cpp_identity);
             }
-            drop(reg.strong);
+            drop(reg._strong);
         }
     }
 

@@ -44,47 +44,31 @@ private:
     std::weak_ptr<T> m_ptr;
 };
 
-class ProcessorBridgeWeak;
+#define SHOOP_DECLARE_TYPED_BRIDGE_OBJECT(CppType, StrongType, WeakType, func_prefix, method_suffix) \
+class WeakType; \
+class StrongType final : public BridgeStrong<CppType> { \
+public: \
+    using BridgeStrong<CppType>::BridgeStrong; \
+    std::unique_ptr<WeakType> downgrade_##method_suffix() const; \
+}; \
+class WeakType final : public BridgeWeak<CppType> { \
+public: \
+    using BridgeWeak<CppType>::BridgeWeak; \
+    std::unique_ptr<StrongType> upgrade_##method_suffix() const; \
+}; \
+std::unique_ptr<StrongType> make_##func_prefix##_strong(std::shared_ptr<CppType> p); \
+std::unique_ptr<WeakType> func_prefix##_downgrade(const StrongType &strong); \
+std::unique_ptr<StrongType> func_prefix##_upgrade(const WeakType &weak); \
+std::unique_ptr<WeakType> func_prefix##_clone_weak(const WeakType &weak); \
+std::shared_ptr<CppType> func_prefix##_lock(const WeakType &weak);
 
-class ProcessorBridgeStrong final : public BridgeStrong<HasAudioProcessingFunction> {
-public:
-    using BridgeStrong<HasAudioProcessingFunction>::BridgeStrong;
-    std::unique_ptr<ProcessorBridgeWeak> downgrade_processor() const;
-};
-
-class ProcessorBridgeWeak final : public BridgeWeak<HasAudioProcessingFunction> {
-public:
-    using BridgeWeak<HasAudioProcessingFunction>::BridgeWeak;
-    std::unique_ptr<ProcessorBridgeStrong> upgrade_processor() const;
-};
-
-std::unique_ptr<ProcessorBridgeStrong> make_processor_bridge_strong(std::shared_ptr<HasAudioProcessingFunction> p);
-std::unique_ptr<ProcessorBridgeWeak> processor_bridge_downgrade(const ProcessorBridgeStrong &strong);
-std::unique_ptr<ProcessorBridgeStrong> processor_bridge_upgrade(const ProcessorBridgeWeak &weak);
-std::unique_ptr<ProcessorBridgeWeak> processor_bridge_clone_weak(const ProcessorBridgeWeak &weak);
-std::shared_ptr<HasAudioProcessingFunction> processor_bridge_lock(const ProcessorBridgeWeak &weak);
+SHOOP_DECLARE_TYPED_BRIDGE_OBJECT(HasAudioProcessingFunction, ProcessorBridgeStrong, ProcessorBridgeWeak, processor_bridge, processor)
 void processor_bridge_proc_process(const ProcessorBridgeWeak &weak, uint32_t nframes);
 
-class DecoupledMidiPortBridgeWeak;
-
-class DecoupledMidiPortBridgeStrong final : public BridgeStrong<DecoupledMidiPort> {
-public:
-    using BridgeStrong<DecoupledMidiPort>::BridgeStrong;
-    std::unique_ptr<DecoupledMidiPortBridgeWeak> downgrade_decoupled_midi_port() const;
-};
-
-class DecoupledMidiPortBridgeWeak final : public BridgeWeak<DecoupledMidiPort> {
-public:
-    using BridgeWeak<DecoupledMidiPort>::BridgeWeak;
-    std::unique_ptr<DecoupledMidiPortBridgeStrong> upgrade_decoupled_midi_port() const;
-};
-
-std::unique_ptr<DecoupledMidiPortBridgeStrong> make_decoupled_midi_port_bridge_strong(std::shared_ptr<DecoupledMidiPort> p);
-std::unique_ptr<DecoupledMidiPortBridgeWeak> decoupled_midi_port_bridge_downgrade(const DecoupledMidiPortBridgeStrong &strong);
-std::unique_ptr<DecoupledMidiPortBridgeStrong> decoupled_midi_port_bridge_upgrade(const DecoupledMidiPortBridgeWeak &weak);
-std::unique_ptr<DecoupledMidiPortBridgeWeak> decoupled_midi_port_bridge_clone_weak(const DecoupledMidiPortBridgeWeak &weak);
-std::shared_ptr<DecoupledMidiPort> decoupled_midi_port_bridge_lock(const DecoupledMidiPortBridgeWeak &weak);
+SHOOP_DECLARE_TYPED_BRIDGE_OBJECT(DecoupledMidiPort, DecoupledMidiPortBridgeStrong, DecoupledMidiPortBridgeWeak, decoupled_midi_port_bridge, decoupled_midi_port)
 void decoupled_midi_port_bridge_proc_process(const DecoupledMidiPortBridgeWeak &weak, uint32_t nframes);
 void decoupled_midi_port_bridge_close(const DecoupledMidiPortBridgeWeak &weak);
+
+#undef SHOOP_DECLARE_TYPED_BRIDGE_OBJECT
 
 }
