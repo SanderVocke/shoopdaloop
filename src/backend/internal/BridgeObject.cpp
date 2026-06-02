@@ -13,8 +13,8 @@ struct HolderBase {
 
 template<typename T, BridgeObjectType K>
 struct Holder final : HolderBase {
-    shoop_shared_ptr<T> ptr;
-    explicit Holder(shoop_shared_ptr<T> p) : ptr(std::move(p)) {}
+    std::shared_ptr<T> ptr;
+    explicit Holder(std::shared_ptr<T> p) : ptr(std::move(p)) {}
     uint32_t type_id() const override { return static_cast<uint32_t>(K); }
 };
 
@@ -31,7 +31,7 @@ Registry& registry() {
 }
 
 template<typename T, BridgeObjectType K>
-BridgeStrongHandle reg(shoop_shared_ptr<T> p) {
+BridgeStrongHandle reg(std::shared_ptr<T> p) {
     auto &r = registry();
     auto h = std::make_shared<Holder<T, K>>(std::move(p));
     std::lock_guard<std::mutex> lk(r.mtx);
@@ -42,7 +42,7 @@ BridgeStrongHandle reg(shoop_shared_ptr<T> p) {
 }
 
 template<typename T, BridgeObjectType K>
-std::optional<shoop_shared_ptr<T>> lock_typed(BridgeWeakHandle weak) {
+std::optional<std::shared_ptr<T>> lock_typed(BridgeWeakHandle weak) {
     if (weak.id == 0 || weak.type_id != static_cast<uint32_t>(K)) { return std::nullopt; }
     auto &r = registry();
     std::shared_ptr<HolderBase> b;
@@ -59,11 +59,11 @@ std::optional<shoop_shared_ptr<T>> lock_typed(BridgeWeakHandle weak) {
 }
 }
 
-BridgeStrongHandle register_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) {
+BridgeStrongHandle register_processor(std::shared_ptr<HasAudioProcessingFunction> p) {
     return reg<HasAudioProcessingFunction, BridgeObjectType::Processor>(std::move(p));
 }
 
-BridgeStrongHandle register_decoupled_midi_port(shoop_shared_ptr<DecoupledMidiPort> p) {
+BridgeStrongHandle register_decoupled_midi_port(std::shared_ptr<DecoupledMidiPort> p) {
     return reg<DecoupledMidiPort, BridgeObjectType::DecoupledMidiPort>(std::move(p));
 }
 
@@ -89,12 +89,34 @@ void release_strong(BridgeStrongHandle strong) {
     r.strongs.erase(strong.id);
 }
 
-std::optional<shoop_shared_ptr<HasAudioProcessingFunction>> lock_processor(BridgeWeakHandle weak) {
+std::optional<std::shared_ptr<HasAudioProcessingFunction>> lock_processor(BridgeWeakHandle weak) {
     return lock_typed<HasAudioProcessingFunction, BridgeObjectType::Processor>(weak);
 }
 
-std::optional<shoop_shared_ptr<DecoupledMidiPort>> lock_decoupled_midi_port(BridgeWeakHandle weak) {
+std::optional<std::shared_ptr<DecoupledMidiPort>> lock_decoupled_midi_port(BridgeWeakHandle weak) {
     return lock_typed<DecoupledMidiPort, BridgeObjectType::DecoupledMidiPort>(weak);
+}
+
+std::shared_ptr<HasAudioProcessingFunction> bridge_resolve_processor_for_rust(uint64_t weak_id, uint32_t weak_type_id) {
+    auto maybe = lock_processor(BridgeWeakHandle{weak_id, weak_type_id});
+    return maybe ? *maybe : nullptr;
+}
+
+std::shared_ptr<DecoupledMidiPort> bridge_resolve_decoupled_midi_port_for_rust(uint64_t weak_id, uint32_t weak_type_id) {
+    auto maybe = lock_decoupled_midi_port(BridgeWeakHandle{weak_id, weak_type_id});
+    return maybe ? *maybe : nullptr;
+}
+
+void bridge_processor_proc_process(std::shared_ptr<HasAudioProcessingFunction> processor, uint32_t nframes) {
+    if (processor) { processor->PROC_process(nframes); }
+}
+
+void bridge_decoupled_midi_port_proc_process(std::shared_ptr<DecoupledMidiPort> port, uint32_t nframes) {
+    if (port) { port->PROC_process(nframes); }
+}
+
+void bridge_decoupled_midi_port_close(std::shared_ptr<DecoupledMidiPort> port) {
+    if (port) { port->close(); }
 }
 
 }

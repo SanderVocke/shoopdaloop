@@ -4,8 +4,8 @@
 #include "types.h"
 #include <memory>
 
-GraphAudioPort::GraphAudioPort (shoop_shared_ptr<RustAudioPortF32> const& port,
-                    shoop_shared_ptr<BackendSession> const& backend) :
+GraphAudioPort::GraphAudioPort (std::shared_ptr<RustAudioPortF32> const& port,
+                    std::shared_ptr<BackendSession> const& backend) :
     GraphPort(backend), port(port) {}
 
 PortInterface &GraphAudioPort::get_port() const {
@@ -16,12 +16,12 @@ RustAudioPortF32 *GraphAudioPort::maybe_audio_port() const {
     return port.get();
 }
 
-shoop_shared_ptr<RustAudioPortF32> GraphAudioPort::maybe_shared_audio_port() const {
+std::shared_ptr<RustAudioPortF32> GraphAudioPort::maybe_shared_audio_port() const {
     return port;
 }
 
-shoop_shared_ptr<PortInterface> GraphAudioPort::maybe_shared_port() const {
-    return shoop_static_pointer_cast<PortInterface>(port);
+std::shared_ptr<PortInterface> GraphAudioPort::maybe_shared_port() const {
+    return std::static_pointer_cast<PortInterface>(port);
 }
 
 void GraphAudioPort::PROC_internal_connections(uint32_t n_frames) {

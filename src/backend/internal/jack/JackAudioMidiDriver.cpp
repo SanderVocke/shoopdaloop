@@ -79,7 +79,7 @@ template<typename API>
 GenericJackAudioMidiDriver<API>::GenericJackAudioMidiDriver(void (*maybe_process_callback)()):
     m_runtime(maybe_process_callback),
     m_started(false),
-    m_all_ports_tracker(shoop_make_shared<GenericJackAllPorts<API>>()) {}
+    m_all_ports_tracker(std::make_shared<GenericJackAllPorts<API>>()) {}
 
 template<typename API>
 void GenericJackAudioMidiDriver<API>::start(
@@ -143,31 +143,31 @@ GenericJackAudioMidiDriver<API>::~GenericJackAudioMidiDriver() {
 }
 
 template<typename API>
-shoop_shared_ptr<RustAudioPortF32>GenericJackAudioMidiDriver<API>::open_audio_port(std::string name, shoop_port_direction_t direction,
-    shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool) {
-    shoop_shared_ptr<PortInterface> port =
-        shoop_static_pointer_cast<PortInterface>(
-            shoop_make_shared<GenericJackAudioPort<API>>(name, direction, (jack_client_t*)m_runtime.get_maybe_client_handle(), m_all_ports_tracker, buffer_pool)
+std::shared_ptr<RustAudioPortF32>GenericJackAudioMidiDriver<API>::open_audio_port(std::string name, shoop_port_direction_t direction,
+    std::shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool) {
+    std::shared_ptr<PortInterface> port =
+        std::static_pointer_cast<PortInterface>(
+            std::make_shared<GenericJackAudioPort<API>>(name, direction, (jack_client_t*)m_runtime.get_maybe_client_handle(), m_all_ports_tracker, buffer_pool)
         );
     m_ports[port->name()] = port;
-    return shoop_dynamic_pointer_cast<RustAudioPortF32>(port);
+    return std::dynamic_pointer_cast<RustAudioPortF32>(port);
 }
 
 template<typename API>
-shoop_shared_ptr<MidiPort> GenericJackAudioMidiDriver<API>::open_midi_port(std::string name, shoop_port_direction_t direction) {
-    shoop_shared_ptr<PortInterface> port;
+std::shared_ptr<MidiPort> GenericJackAudioMidiDriver<API>::open_midi_port(std::string name, shoop_port_direction_t direction) {
+    std::shared_ptr<PortInterface> port;
     
     if (direction == ShoopPortDirection_Input) {
-        port = shoop_static_pointer_cast<PortInterface>(
-            shoop_make_shared<GenericJackMidiInputPort<API>>(name, (jack_client_t*)m_runtime.get_maybe_client_handle(), m_all_ports_tracker)
+        port = std::static_pointer_cast<PortInterface>(
+            std::make_shared<GenericJackMidiInputPort<API>>(name, (jack_client_t*)m_runtime.get_maybe_client_handle(), m_all_ports_tracker)
         );
     } else {
-        port = shoop_static_pointer_cast<PortInterface>(
-            shoop_make_shared<GenericJackMidiOutputPort<API>>(name, (jack_client_t*)m_runtime.get_maybe_client_handle(), m_all_ports_tracker)
+        port = std::static_pointer_cast<PortInterface>(
+            std::make_shared<GenericJackMidiOutputPort<API>>(name, (jack_client_t*)m_runtime.get_maybe_client_handle(), m_all_ports_tracker)
         );
     }
     m_ports[port->name()] = port;
-    return shoop_dynamic_pointer_cast<MidiPort>(port);
+    return std::dynamic_pointer_cast<MidiPort>(port);
 }
 
 template<typename API>
@@ -263,24 +263,24 @@ void GenericJackAudioMidiDriver<API>::wait_process() {
 }
 
 template<typename API>
-shoop_shared_ptr<shoop_types::_DecoupledMidiPort> GenericJackAudioMidiDriver<API>::open_decoupled_midi_port(std::string name, shoop_port_direction_t direction) {
+std::shared_ptr<shoop_types::_DecoupledMidiPort> GenericJackAudioMidiDriver<API>::open_decoupled_midi_port(std::string name, shoop_port_direction_t direction) {
     auto port = open_midi_port(name, direction);
     return m_runtime.make_decoupled_midi_port(port, this->weak_driver_from_this(), direction);
 }
 
 template<typename API>
-void GenericJackAudioMidiDriver<API>::unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port) {
+void GenericJackAudioMidiDriver<API>::unregister_decoupled_midi_port(std::shared_ptr<shoop_types::_DecoupledMidiPort> port) {
     m_runtime.unregister_decoupled_midi_port(port);
 }
 
 template<typename API>
-void GenericJackAudioMidiDriver<API>::add_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) { m_runtime.add_processor(p); }
+void GenericJackAudioMidiDriver<API>::add_processor(std::shared_ptr<HasAudioProcessingFunction> p) { m_runtime.add_processor(p); }
 
 template<typename API>
-void GenericJackAudioMidiDriver<API>::remove_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) { m_runtime.remove_processor(p); }
+void GenericJackAudioMidiDriver<API>::remove_processor(std::shared_ptr<HasAudioProcessingFunction> p) { m_runtime.remove_processor(p); }
 
 template<typename API>
-std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> GenericJackAudioMidiDriver<API>::processors() const { return m_runtime.processors(); }
+std::vector<std::weak_ptr<HasAudioProcessingFunction>> GenericJackAudioMidiDriver<API>::processors() const { return m_runtime.processors(); }
 
 template<typename API>
 uint32_t GenericJackAudioMidiDriver<API>::get_xruns() const { return m_runtime.get_xruns(); }

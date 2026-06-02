@@ -41,7 +41,7 @@ TEST_CASE("BridgeObject - type_id and id fields are plain POD", "[BridgeObject][
 }
 
 TEST_CASE("BridgeObject - downgrade produces correct weak handle", "[BridgeObject]") {
-    auto proc = shoop_make_shared<DummyProcessor>();
+    auto proc = std::make_shared<DummyProcessor>();
     auto strong = bridge_object::register_processor(proc);
     CHECK(strong.id != 0);
     CHECK(strong.type_id == static_cast<uint32_t>(bridge_object::BridgeObjectType::Processor));
@@ -54,7 +54,7 @@ TEST_CASE("BridgeObject - downgrade produces correct weak handle", "[BridgeObjec
 }
 
 TEST_CASE("BridgeObject - clone_strong yields another strong to the same object", "[BridgeObject]") {
-    auto proc = shoop_make_shared<DummyProcessor>();
+    auto proc = std::make_shared<DummyProcessor>();
     auto strong1 = bridge_object::register_processor(proc);
 
     auto strong2 = bridge_object::clone_strong(strong1);
@@ -72,7 +72,7 @@ TEST_CASE("BridgeObject - clone_strong yields another strong to the same object"
 }
 
 TEST_CASE("BridgeObject - release_strong makes weak lock fail", "[BridgeObject]") {
-    auto proc = shoop_make_shared<DummyProcessor>();
+    auto proc = std::make_shared<DummyProcessor>();
     auto strong = bridge_object::register_processor(proc);
     auto weak = bridge_object::downgrade(strong);
 
@@ -89,14 +89,14 @@ TEST_CASE("BridgeObject - zero-id handles produce nullopt", "[BridgeObject]") {
 }
 
 TEST_CASE("BridgeObject - wrong type_id for lock fails", "[BridgeObject]") {
-    auto proc = shoop_make_shared<DummyProcessor>();
+    auto proc = std::make_shared<DummyProcessor>();
     auto strong = bridge_object::register_processor(proc);
     auto weak = bridge_object::downgrade(strong);
 
     // Register a decoupled port with type_id == 2.
-    auto dummy_port = shoop_make_shared<DummyMidiPort>("", shoop_port_direction_t::ShoopPortDirection_Input);
-    auto decoupled = shoop_make_shared<shoop_types::_DecoupledMidiPort>(
-        dummy_port, shoop_weak_ptr<AudioMidiDriver>(), 128,
+    auto dummy_port = std::make_shared<DummyMidiPort>("", shoop_port_direction_t::ShoopPortDirection_Input);
+    auto decoupled = std::make_shared<shoop_types::_DecoupledMidiPort>(
+        dummy_port, std::weak_ptr<AudioMidiDriver>(), 128,
         shoop_port_direction_t::ShoopPortDirection_Input);
     auto decoupled_strong = bridge_object::register_decoupled_midi_port(decoupled);
     auto decoupled_weak = bridge_object::downgrade(decoupled_strong);
@@ -115,7 +115,7 @@ TEST_CASE("BridgeObject - wrong type_id for lock fails", "[BridgeObject]") {
 }
 
 TEST_CASE("BridgeObject - handles can be stored in std::vector", "[BridgeObject][container]") {
-    auto proc = shoop_make_shared<DummyProcessor>();
+    auto proc = std::make_shared<DummyProcessor>();
     auto strong = bridge_object::register_processor(proc);
     auto weak = bridge_object::downgrade(strong);
 
@@ -138,8 +138,8 @@ TEST_CASE("BridgeObject - handles can be stored in std::vector", "[BridgeObject]
 }
 
 TEST_CASE("BridgeObject - handles can be stored in std::set with custom comparator", "[BridgeObject][container]") {
-    auto proc1 = shoop_make_shared<DummyProcessor>();
-    auto proc2 = shoop_make_shared<DummyProcessor>();
+    auto proc1 = std::make_shared<DummyProcessor>();
+    auto proc2 = std::make_shared<DummyProcessor>();
 
     auto strong1 = bridge_object::register_processor(proc1);
     auto strong2 = bridge_object::register_processor(proc2);
@@ -167,12 +167,12 @@ TEST_CASE("BridgeObject - handles can be stored in std::set with custom comparat
 }
 
 TEST_CASE("BridgeObject - processor and decoupled port have distinct type IDs", "[BridgeObject]") {
-    auto proc = shoop_make_shared<DummyProcessor>();
-    auto dummy_port = shoop_make_shared<DummyMidiPort>("", shoop_port_direction_t::ShoopPortDirection_Input);
+    auto proc = std::make_shared<DummyProcessor>();
+    auto dummy_port = std::make_shared<DummyMidiPort>("", shoop_port_direction_t::ShoopPortDirection_Input);
 
     auto proc_strong = bridge_object::register_processor(proc);
-    auto decoupled = shoop_make_shared<shoop_types::_DecoupledMidiPort>(
-        dummy_port, shoop_weak_ptr<AudioMidiDriver>(), 128,
+    auto decoupled = std::make_shared<shoop_types::_DecoupledMidiPort>(
+        dummy_port, std::weak_ptr<AudioMidiDriver>(), 128,
         shoop_port_direction_t::ShoopPortDirection_Input);
     auto decoupled_strong = bridge_object::register_decoupled_midi_port(decoupled);
 
@@ -185,7 +185,7 @@ TEST_CASE("BridgeObject - processor and decoupled port have distinct type IDs", 
 }
 
 TEST_CASE("BridgeObject - lock succeeds before release, nullopt after", "[BridgeObject]") {
-    auto proc = shoop_make_shared<DummyProcessor>();
+    auto proc = std::make_shared<DummyProcessor>();
     auto strong = bridge_object::register_processor(proc);
     auto weak = bridge_object::downgrade(strong);
 
@@ -213,7 +213,7 @@ TEST_CASE("BridgeObject - downgrade on empty handle produces empty weak", "[Brid
 }
 
 TEST_CASE("BridgeObject - multiple clones all resolve and share the object", "[BridgeObject]") {
-    auto proc = shoop_make_shared<DummyProcessor>();
+    auto proc = std::make_shared<DummyProcessor>();
     auto strong1 = bridge_object::register_processor(proc);
     auto strong2 = bridge_object::clone_strong(strong1);
     auto strong3 = bridge_object::clone_strong(strong1);
@@ -239,9 +239,9 @@ TEST_CASE("BridgeObject - multiple clones all resolve and share the object", "[B
 }
 
 TEST_CASE("BridgeObject - distinct objects get distinct registry IDs", "[BridgeObject]") {
-    auto proc1 = shoop_make_shared<DummyProcessor>();
-    auto proc2 = shoop_make_shared<DummyProcessor>();
-    auto proc3 = shoop_make_shared<DummyProcessor>();
+    auto proc1 = std::make_shared<DummyProcessor>();
+    auto proc2 = std::make_shared<DummyProcessor>();
+    auto proc3 = std::make_shared<DummyProcessor>();
 
     auto strong1 = bridge_object::register_processor(proc1);
     auto strong2 = bridge_object::register_processor(proc2);
@@ -259,7 +259,7 @@ TEST_CASE("BridgeObject - distinct objects get distinct registry IDs", "[BridgeO
 }
 
 TEST_CASE("BridgeObject - Rust-facing upgrade/release shims operate on C++ registry", "[BridgeObject][rust-facing]") {
-    auto proc = shoop_make_shared<DummyProcessor>();
+    auto proc = std::make_shared<DummyProcessor>();
     auto strong = bridge_object::register_processor(proc);
     auto weak = bridge_object::downgrade(strong);
 
@@ -301,7 +301,7 @@ TEST_CASE("BridgeObject - C++ generic shims reject Rust-owned type mismatches", 
 }
 
 TEST_CASE("BridgeObject - lock on unregistered ID returns nullopt", "[BridgeObject]") {
-    auto proc = shoop_make_shared<DummyProcessor>();
+    auto proc = std::make_shared<DummyProcessor>();
     auto strong = bridge_object::register_processor(proc);
     auto weak = bridge_object::downgrade(strong);
     bridge_object::release_strong(strong);

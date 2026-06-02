@@ -4,8 +4,8 @@ TrackedRelativeMidiState::TrackedRelativeMidiState(bool notes,
                                                             bool controls,
                                                             bool programs)
     : m_valid(false),
-      state(shoop_make_shared<MidiStateTracker>(notes, controls, programs)),
-      diff(shoop_make_shared<MidiStateDiffTracker>()) {}
+      state(std::make_shared<MidiStateTracker>(notes, controls, programs)),
+      diff(std::make_shared<MidiStateDiffTracker>()) {}
 
 TrackedRelativeMidiState &
 TrackedRelativeMidiState::operator=(
@@ -21,17 +21,17 @@ TrackedRelativeMidiState::operator=(
 }
 
 void
-TrackedRelativeMidiState::start_tracking_from(shoop_shared_ptr<MidiStateTracker> &t) {
+TrackedRelativeMidiState::start_tracking_from(std::shared_ptr<MidiStateTracker> &t) {
     state->copy_relevant_state(*t);
     diff->reset(t, state, StateDiffTrackerAction::ClearDiff);
     m_valid = true;
 }
 
 void
-TrackedRelativeMidiState::start_tracking_from_with_state(shoop_shared_ptr<MidiStateTracker> &to_track,
-                                            shoop_shared_ptr<MidiStateTracker> const& starting_state)
+TrackedRelativeMidiState::start_tracking_from_with_state(std::shared_ptr<MidiStateTracker> &to_track,
+                                            std::shared_ptr<MidiStateTracker> const& starting_state)
 {
-    auto tmp_diff = shoop_make_shared<MidiStateDiffTracker>();
+    auto tmp_diff = std::make_shared<MidiStateDiffTracker>();
     tmp_diff->reset(to_track, starting_state, StateDiffTrackerAction::ScanDiff);
 
     start_tracking_from(to_track);

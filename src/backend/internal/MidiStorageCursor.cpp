@@ -6,7 +6,7 @@
 
 using namespace backend_rust;
 
-MidiStorageCursor::MidiStorageCursor(shoop_shared_ptr<IMidiStorage> _storage)
+MidiStorageCursor::MidiStorageCursor(std::shared_ptr<IMidiStorage> _storage)
     : ModuleLoggingEnabled<"Backend.MidiStorage">(),
       m_rust_cursor(new_midi_cursor()),
       m_storage(_storage) {
@@ -14,14 +14,14 @@ MidiStorageCursor::MidiStorageCursor(shoop_shared_ptr<IMidiStorage> _storage)
 }
 
 template<typename StorageType>
-MidiStorageCursor::MidiStorageCursor(shoop_shared_ptr<StorageType> _storage)
+MidiStorageCursor::MidiStorageCursor(std::shared_ptr<StorageType> _storage)
     : ModuleLoggingEnabled<"Backend.MidiStorage">(),
       m_rust_cursor(new_midi_cursor()),
       m_storage(_storage) {
     reset();
 }
 
-void MidiStorageCursor::set_storage(shoop_shared_ptr<IMidiStorage> storage) {
+void MidiStorageCursor::set_storage(std::shared_ptr<IMidiStorage> storage) {
     m_storage = storage;
 }
 

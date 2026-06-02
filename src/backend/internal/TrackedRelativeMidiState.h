@@ -1,5 +1,5 @@
 #pragma once
-#include "shoop_shared_ptr.h"
+#include <memory>
 #include "MidiStateTracker.h"
 #include "MidiStateDiffTracker.h"
 #include <functional>
@@ -10,8 +10,8 @@
 // messages.
 struct TrackedRelativeMidiState {
     bool m_valid = false;
-    shoop_shared_ptr<MidiStateTracker> state = nullptr;
-    shoop_shared_ptr<MidiStateDiffTracker> diff = nullptr;
+    std::shared_ptr<MidiStateTracker> state = nullptr;
+    std::shared_ptr<MidiStateDiffTracker> diff = nullptr;
 
     TrackedRelativeMidiState(bool notes=false, bool controls=false, bool programs=false);
     TrackedRelativeMidiState& operator= (TrackedRelativeMidiState const& other);
@@ -19,14 +19,14 @@ struct TrackedRelativeMidiState {
     // Take the given state tracker's current state as a starting point.
     // Store a reference to it in "state" and start tracking differences to
     // the current state.
-    void start_tracking_from(shoop_shared_ptr<MidiStateTracker> &t);
+    void start_tracking_from(std::shared_ptr<MidiStateTracker> &t);
 
     // Start tracking from the given state, but don't take the current state
     // as a starting point. Rather use another state as the point to later
     // resolve back to.
     // Note that this requires scanning the states for differences.
-    void start_tracking_from_with_state(shoop_shared_ptr<MidiStateTracker> &to_track,
-                                        shoop_shared_ptr<MidiStateTracker> const&starting_state);
+    void start_tracking_from_with_state(std::shared_ptr<MidiStateTracker> &to_track,
+                                        std::shared_ptr<MidiStateTracker> const&starting_state);
 
     void reset();
     bool valid() const;

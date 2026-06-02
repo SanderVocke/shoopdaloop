@@ -14,9 +14,22 @@ pub mod ffi {
 
         unsafe fn audiomididriver_invoke_maybe_process_callback(maybe_fn_ptr: usize);
         unsafe fn audiomididriver_exec_command_queue(command_queue_ptr: usize);
-        unsafe fn audiomididriver_process_processor(processor_id: u64, processor_type_id: u32, nframes: u32);
-        unsafe fn audiomididriver_process_decoupled_port(decoupled_port_id: u64, decoupled_port_type_id: u32, nframes: u32);
-        unsafe fn audiomididriver_close_decoupled_port(decoupled_port_id: u64, decoupled_port_type_id: u32);
+        #[namespace = ""]
+        type HasAudioProcessingFunction;
+        #[namespace = ""]
+        type DecoupledMidiPort;
+
+        #[namespace = "bridge_object"]
+        fn bridge_resolve_processor_for_rust(processor_id: u64, processor_type_id: u32) -> SharedPtr<HasAudioProcessingFunction>;
+        #[namespace = "bridge_object"]
+        fn bridge_resolve_decoupled_midi_port_for_rust(decoupled_port_id: u64, decoupled_port_type_id: u32) -> SharedPtr<DecoupledMidiPort>;
+
+        #[namespace = "bridge_object"]
+        fn bridge_processor_proc_process(processor: SharedPtr<HasAudioProcessingFunction>, nframes: u32);
+        #[namespace = "bridge_object"]
+        fn bridge_decoupled_midi_port_proc_process(port: SharedPtr<DecoupledMidiPort>, nframes: u32);
+        #[namespace = "bridge_object"]
+        fn bridge_decoupled_midi_port_close(port: SharedPtr<DecoupledMidiPort>);
     }
 
     extern "Rust" {

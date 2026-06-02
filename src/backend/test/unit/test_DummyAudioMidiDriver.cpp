@@ -29,7 +29,7 @@ struct Tracker : public HasAudioProcessingFunction {
 
 template <typename Time, typename Size>
 struct TrackedDummyAudioMidiDriver : public DummyAudioMidiDriver<Time, Size> {
-    shoop_shared_ptr<Tracker> tracker;
+    std::shared_ptr<Tracker> tracker;
 
     TrackedDummyAudioMidiDriver(
         std::string client_name,
@@ -38,9 +38,9 @@ struct TrackedDummyAudioMidiDriver : public DummyAudioMidiDriver<Time, Size> {
         uint32_t sample_rate = 48000,
         uint32_t buffer_size = 256) :
         DummyAudioMidiDriver<Time, Size>(),
-        tracker(shoop_make_shared<Tracker>())
+        tracker(std::make_shared<Tracker>())
     {
-        this->add_processor(shoop_static_pointer_cast<HasAudioProcessingFunction>(tracker));
+        this->add_processor(std::static_pointer_cast<HasAudioProcessingFunction>(tracker));
         DummyAudioMidiDriverSettings settings;
         settings.buffer_size = buffer_size;
         settings.client_name = client_name;
@@ -164,13 +164,13 @@ TEST_CASE("DummyAudioMidiDriver - processor add/remove cycles", "[DummyAudioMidi
         256
     );
 
-    auto extra = shoop_make_shared<Tracker>();
-    dut.add_processor(shoop_static_pointer_cast<HasAudioProcessingFunction>(extra));
+    auto extra = std::make_shared<Tracker>();
+    dut.add_processor(std::static_pointer_cast<HasAudioProcessingFunction>(extra));
     dut.wait_process();
     auto processed_with_extra = extra->total_samples_processed.load();
     REQUIRE(processed_with_extra > 0);
 
-    dut.remove_processor(shoop_static_pointer_cast<HasAudioProcessingFunction>(extra));
+    dut.remove_processor(std::static_pointer_cast<HasAudioProcessingFunction>(extra));
     auto processed_before = extra->total_samples_processed.load();
     for (int i = 0; i < 5; i++) { dut.wait_process(); }
     auto processed_after = extra->total_samples_processed.load();
@@ -178,11 +178,11 @@ TEST_CASE("DummyAudioMidiDriver - processor add/remove cycles", "[DummyAudioMidi
 
     // Re-add/remove cycles should remain stable.
     for (int i = 0; i < 20; i++) {
-        auto t = shoop_make_shared<Tracker>();
-        dut.add_processor(shoop_static_pointer_cast<HasAudioProcessingFunction>(t));
+        auto t = std::make_shared<Tracker>();
+        dut.add_processor(std::static_pointer_cast<HasAudioProcessingFunction>(t));
         dut.wait_process();
         REQUIRE(t->total_samples_processed.load() > 0);
-        dut.remove_processor(shoop_static_pointer_cast<HasAudioProcessingFunction>(t));
+        dut.remove_processor(std::static_pointer_cast<HasAudioProcessingFunction>(t));
         auto before = t->total_samples_processed.load();
         dut.wait_process();
         REQUIRE(t->total_samples_processed.load() == before);
@@ -224,7 +224,7 @@ TEST_CASE("DummyAudioMidiDriver - decoupled midi registration keepalive until un
     );
 
     auto port = dut.open_decoupled_midi_port("decoupled", shoop_port_direction_t::ShoopPortDirection_Output);
-    auto weak_port = shoop_weak_ptr<shoop_types::_DecoupledMidiPort>(port);
+    auto weak_port = std::weak_ptr<shoop_types::_DecoupledMidiPort>(port);
 
     // Drop local strong ref; registration should keep it alive until explicit unregister.
     port.reset();

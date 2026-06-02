@@ -35,7 +35,7 @@ void DummyMidiPort::write_event(MidiStorageElem event) {
 DummyMidiPort::DummyMidiPort(
     std::string name,
     shoop_port_direction_t direction,
-    shoop_weak_ptr<DummyExternalConnections> external_connections
+    std::weak_ptr<DummyExternalConnections> external_connections
 ) : MidiPort(true, true, true),
     m_rust(backend_rust::new_dummy_midi_port(direction == ShoopPortDirection_Output)),
     m_dummy_port_core(name, direction, this, external_connections),

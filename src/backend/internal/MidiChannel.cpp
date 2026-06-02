@@ -40,16 +40,16 @@ MidiChannel::MidiChannel(uint32_t data_size, shoop_channel_mode_t mode)
     : m_command_queue(rust_command_queue::make(50, 1000, 1000)),
       mp_playback_target_buffer(std::make_pair(ExternalBufState(), nullptr)),
       mp_recording_source_buffer(std::make_pair(ExternalBufState(), nullptr)),
-      mp_storage(shoop_make_shared<Storage>(data_size)),
-      mp_prerecord_storage(shoop_make_shared<Storage>(data_size)),
+      mp_storage(std::make_shared<Storage>(data_size)),
+      mp_prerecord_storage(std::make_shared<Storage>(data_size)),
       mp_playback_cursor(nullptr), ma_mode(mode), ma_data_length(0),
       mp_output_midi_state(
-          shoop_make_shared<MidiStateTracker>(true, true, true)),
+          std::make_shared<MidiStateTracker>(true, true, true)),
       mp_input_midi_state(
-          shoop_make_shared<MidiStateTracker>(true, true, true)),
-      mp_recording_start_state_tracker(shoop_make_shared<TrackedRelativeMidiState>(true, true, true)),
-      mp_track_state_until_first_msg_playback(shoop_make_shared<TrackedRelativeMidiState>(true, true, true)),
-      mp_temp_prerecording_start_state_tracker(shoop_make_shared<TrackedRelativeMidiState>(true, true, true)),
+          std::make_shared<MidiStateTracker>(true, true, true)),
+      mp_recording_start_state_tracker(std::make_shared<TrackedRelativeMidiState>(true, true, true)),
+      mp_track_state_until_first_msg_playback(std::make_shared<TrackedRelativeMidiState>(true, true, true)),
+      mp_temp_prerecording_start_state_tracker(std::make_shared<TrackedRelativeMidiState>(true, true, true)),
       ma_n_events_triggered(0), ma_start_offset(0), ma_data_seq_nr(0),
       ma_pre_play_samples(0), mp_prev_pos_after(0), mp_prev_process_flags(0),
       ma_last_played_back_sample(0), ma_prerecord_data_length(0) {
@@ -188,7 +188,7 @@ MidiChannel::PROC_process(shoop_loop_mode_t mode, std::optional<shoop_loop_mode_
             log<log_level_debug>("Pre-record end -> discard");
         }
         mp_prerecord_storage =
-            shoop_make_shared<Storage>(mp_storage->bytes_capacity());
+            std::make_shared<Storage>(mp_storage->bytes_capacity());
         ma_prerecord_data_length = 0;
     }
 
@@ -395,8 +395,8 @@ MidiChannel::PROC_send_all_sound_off(unsigned frame) {
 void
 MidiChannel::PROC_reset_midi_state_tracking() {
     log<log_level_debug>("Reset state tracking");
-    mp_output_midi_state = shoop_make_shared<MidiStateTracker>(true, true, true);
-    mp_input_midi_state = shoop_make_shared<MidiStateTracker>(true, true, true);
+    mp_output_midi_state = std::make_shared<MidiStateTracker>(true, true, true);
+    mp_input_midi_state = std::make_shared<MidiStateTracker>(true, true, true);
 }
 
 void
@@ -566,7 +566,7 @@ MidiChannel::PROC_set_recording_buffer(MidiReadableBuffer *buffer,
 typename MidiChannel::Contents
 MidiChannel::retrieve_contents(bool thread_safe) {
     MidiStateTracker state(true, true, true);
-    auto s = shoop_make_shared<Storage>(mp_storage->bytes_capacity());
+    auto s = std::make_shared<Storage>(mp_storage->bytes_capacity());
     auto fn = [this, &s, &state]() {
         log<log_level_debug_trace>("retrieving contents");
         mp_storage->copy(*s);
@@ -594,7 +594,7 @@ MidiChannel::set_contents(Contents contents, uint32_t length_samples,
                   bool thread_safe) {
     size_t n_state_msgs = contents.starting_state_msg_datas.size();
 
-    shoop_shared_ptr<MidiStateTracker> new_start_state = shoop_make_shared<MidiStateTracker>(true, true, true);
+    std::shared_ptr<MidiStateTracker> new_start_state = std::make_shared<MidiStateTracker>(true, true, true);
     for (auto const &data : contents.starting_state_msg_datas) {
         new_start_state->process_msg(data.data());
     }
@@ -605,7 +605,7 @@ MidiChannel::set_contents(Contents contents, uint32_t length_samples,
         min_storage_size += sizeof(MidiStorageElem);
     }
     size_t new_storage_size = std::max((size_t)mp_storage->bytes_capacity(), min_storage_size);
-    auto s = shoop_make_shared<Storage>(new_storage_size);
+    auto s = std::make_shared<Storage>(new_storage_size);
 
     for (auto const &elem : contents.recorded_msgs) {
         s->append(elem.time, elem.size, elem.bytes);
@@ -668,7 +668,7 @@ MidiChannel::get_played_back_sample() const {
 }
 
 void
-MidiChannel::adopt_ringbuffer_contents(shoop_shared_ptr<PortInterface> from_port,
+MidiChannel::adopt_ringbuffer_contents(std::shared_ptr<PortInterface> from_port,
     std::optional<unsigned> reverse_start_offset,
     std::optional<unsigned> keep_samples_before_start_offset,
     bool thread_safe) {
@@ -678,21 +678,21 @@ MidiChannel::adopt_ringbuffer_contents(shoop_shared_ptr<PortInterface> from_port
     } else {
         log<log_level_debug>("queue adopt ringbuffer @ begin");
     }
-    auto midiport = shoop_dynamic_pointer_cast<MidiPort>(from_port);
+    auto midiport = std::dynamic_pointer_cast<MidiPort>(from_port);
     if (!midiport) {
         log<log_level_error>("Cannot adopt MIDI ringbuffer from non-MIDI port");
         return;
     }
 
     auto fn = [midiport, reverse_start_offset, keep_samples_before_start_offset, this]() {
-        shoop_shared_ptr<MidiStateTracker> maybe_start_tracking_state = nullptr;
+        std::shared_ptr<MidiStateTracker> maybe_start_tracking_state = nullptr;
         auto tail_state_ptr = midiport->maybe_ringbuffer_tail_state_tracker();
         if (tail_state_ptr) {
             // What was the ringbuffer tail state should now become the recorded messages
             // start state of this channel.
             // Use bridge function to copy state directly from Rust to avoid raw pointer issues
             log<log_level_debug_trace>("adopting ringbuffer state tracker");
-            maybe_start_tracking_state = shoop_make_shared<MidiStateTracker>(true, true, true);
+            maybe_start_tracking_state = std::make_shared<MidiStateTracker>(true, true, true);
             backend_rust::copy_tail_state_to_tracker_by_ptr(*midiport->m_rust_port, (size_t)maybe_start_tracking_state->raw_ptr());
         }
 

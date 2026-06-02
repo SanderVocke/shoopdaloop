@@ -9,7 +9,7 @@ TEST_CASE("MidiChannel - Set Contents - Indefinite size", "[MidiChannel]") {
     using Channel = MidiChannel;
     using Contents = Channel::Contents;
 
-    auto c = shoop_make_shared<MidiChannel>(1, ChannelMode_Direct);
+    auto c = std::make_shared<MidiChannel>(1, ChannelMode_Direct);
 
     std::vector<MidiStorageElem> data;
     {

@@ -15,8 +15,8 @@
 
 template<typename API>
 GenericJackAudioPort<API>::GenericJackAudioPort(std::string name, shoop_port_direction_t direction,
-                             jack_client_t *client, shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker,
-                             shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool)
+                             jack_client_t *client, std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker,
+                             std::shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool)
     : RustAudioPortF32(buffer_pool, 32), 
       GenericJackPort<API>(name, direction, PortDataType::Audio, client, all_ports_tracker) {}
 

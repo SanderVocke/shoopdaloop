@@ -18,7 +18,7 @@ public:
         std::string name,
         shoop_port_direction_t direction,
         jack_client_t *client,
-        shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
+        std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     ) : GenericJackPort<API>(name, direction, PortDataType::Midi, client, all_ports_tracker) {}
 };
 
@@ -38,7 +38,7 @@ public:
     GenericJackMidiInputPort(
         std::string name,
         jack_client_t *client,
-        shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
+        std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     );
 
     uint32_t n_events() const override;
@@ -71,14 +71,14 @@ class GenericJackMidiOutputPort :
     using GenericJackPort<API>::m_port;
     using GenericJackPort<API>::m_buffer;
 
-    shoop_shared_ptr<MidiSortingBuffer> m_sorting_buffer = nullptr;
+    std::shared_ptr<MidiSortingBuffer> m_sorting_buffer = nullptr;
     std::atomic<bool> m_muted = false;
     unsigned m_ringbuffer_n_samples = 0;
 public:
     GenericJackMidiOutputPort(
         std::string name,
         jack_client_t *client,
-        shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
+        std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     );
 
     void write_event(MidiStorageElem event) override;

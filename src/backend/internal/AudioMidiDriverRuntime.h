@@ -11,7 +11,7 @@
 #include "RustCommandQueue.h"
 #include "backend_rust/src/audio_midi_driver_cxx.rs.h"
 #include "shoop_globals.h"
-#include "shoop_shared_ptr.h"
+#include <memory>
 #include "types.h"
 
 class AudioMidiDriver;
@@ -22,17 +22,17 @@ class AudioMidiDriverRuntime : private ModuleLoggingEnabled<"Backend.AudioMidiDr
 public:
     AudioMidiDriverRuntime(void (*maybe_process_callback)() = nullptr);
 
-    void add_processor(shoop_shared_ptr<HasAudioProcessingFunction> p);
-    void remove_processor(shoop_shared_ptr<HasAudioProcessingFunction> p);
-    std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> processors() const;
+    void add_processor(std::shared_ptr<HasAudioProcessingFunction> p);
+    void remove_processor(std::shared_ptr<HasAudioProcessingFunction> p);
+    std::vector<std::weak_ptr<HasAudioProcessingFunction>> processors() const;
 
     void process(uint32_t nframes);
     void exec_all_commands_for_process_thread();
 
-    void unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port);
-    shoop_shared_ptr<shoop_types::_DecoupledMidiPort> make_decoupled_midi_port(
-        shoop_shared_ptr<MidiPort> port,
-        shoop_weak_ptr<AudioMidiDriver> driver,
+    void unregister_decoupled_midi_port(std::shared_ptr<shoop_types::_DecoupledMidiPort> port);
+    std::shared_ptr<shoop_types::_DecoupledMidiPort> make_decoupled_midi_port(
+        std::shared_ptr<MidiPort> port,
+        std::weak_ptr<AudioMidiDriver> driver,
         shoop_port_direction_t direction
     );
 
@@ -70,7 +70,7 @@ public:
 private:
     rust::Box<backend_rust::AudioMidiDriverCore> m_rust_core;
     rust::Box<backend_rust::CommandQueue> m_command_queue;
-    std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> m_processors;
+    std::vector<std::weak_ptr<HasAudioProcessingFunction>> m_processors;
     std::unordered_map<HasAudioProcessingFunction*, uint64_t> m_processor_handles;
     std::unordered_map<HasAudioProcessingFunction*, bridge_object::BridgeStrongHandle> m_processor_bridge_strongs;
     struct RegisteredDecoupledPort {

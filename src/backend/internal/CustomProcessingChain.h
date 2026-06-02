@@ -4,7 +4,7 @@
 #include <atomic>
 #include "LoggingEnabled.h"
 #include "shoop_globals.h"
-#include "shoop_shared_ptr.h"
+#include <memory>
 
 template<typename TimeType, typename SizeType>
 class CustomProcessingChain : public ProcessingChainInterface<TimeType, SizeType>,
@@ -34,7 +34,7 @@ public:
                           uint32_t n_audio_outputs,
                           uint32_t n_midi_inputs,
                           ProcessFunctor process_callback,
-                          shoop_shared_ptr<shoop_types::AudioBufferPool> maybe_buffer_pool);
+                          std::shared_ptr<shoop_types::AudioBufferPool> maybe_buffer_pool);
     
     std::vector<SharedInternalAudioPort> const& input_audio_ports() const override;
     std::vector<SharedInternalAudioPort> const& output_audio_ports() const override;

@@ -3,7 +3,7 @@
 #include <array>
 #include <functional>
 #include "MidiStateTracker.h"
-#include "shoop_shared_ptr.h"
+#include <memory>
 #include "backend_rust/src/midi_state_diff_tracker_cxx.rs.h"
 
 enum class StateDiffTrackerAction {
@@ -12,8 +12,8 @@ enum class StateDiffTrackerAction {
     None
 };
 
-class MidiStateDiffTracker : public shoop_enable_shared_from_this<MidiStateDiffTracker> {
-    using SharedTracker = shoop_shared_ptr<MidiStateTracker>;
+class MidiStateDiffTracker : public std::enable_shared_from_this<MidiStateDiffTracker> {
+    using SharedTracker = std::shared_ptr<MidiStateTracker>;
     using DifferingState = std::array<uint8_t, 2>;
     using DiffSet = boost::container::flat_set<DifferingState>;
     static const uint32_t default_diffs_size = 256;

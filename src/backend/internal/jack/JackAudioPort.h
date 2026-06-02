@@ -19,8 +19,8 @@ public:
         std::string name,
         shoop_port_direction_t direction,
         jack_client_t *client,
-        shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker,
-        shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> maybe_ringbuffer_buffer_pool
+        std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker,
+        std::shared_ptr<RustAudioPortF32::UsedBufferPool> maybe_ringbuffer_buffer_pool
     );
     
     // Prepare step is used to get the buffer from JACK

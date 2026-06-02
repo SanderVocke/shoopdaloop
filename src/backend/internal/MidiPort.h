@@ -13,7 +13,7 @@
 #include "IMidiWriteableBuffer.h"
 #include "MidiStorageElem.h"
 #include "LoggingBackend.h"
-#include "shoop_shared_ptr.h"
+#include <memory>
 #include "MidiRingbuffer.h"
 #include "backend_rust/src/midi_storage_cxx.rs.h"  // For rust::Box
 #include "backend_rust/src/midi_port_cxx.rs.h"  // Rust CXX bridge for MidiPort
@@ -37,7 +37,7 @@ class MidiPort : public virtual PortInterface,
 
     // Ringbuffer access - owned by MidiPort but wraps Rust storage
     // This is needed for tests and some internal operations
-    shoop_shared_ptr<MidiRingbuffer> m_midi_ringbuffer;
+    std::shared_ptr<MidiRingbuffer> m_midi_ringbuffer;
 
 public:
     friend class MidiPortTestHelper;
@@ -90,7 +90,7 @@ public:
     void PROC_snapshot_ringbuffer_into(IMidiStorage &s) const;
 
     // Ringbuffer accessors for tests and internal use
-    shoop_shared_ptr<MidiRingbuffer> &maybe_midi_ringbuffer();
+    std::shared_ptr<MidiRingbuffer> &maybe_midi_ringbuffer();
 
     // State tracker accessors via Rust bridge
     // Returns raw pointer as size_t (0 = None)
@@ -100,8 +100,8 @@ public:
 
     // Get state tracker as shared_ptr (for convenience)
     // Note: lifetime is tied to MidiPort's m_rust_port
-    shoop_shared_ptr<MidiStateTracker> maybe_midi_state_tracker();
-    shoop_shared_ptr<MidiStateTracker> maybe_ringbuffer_tail_state_tracker();
+    std::shared_ptr<MidiStateTracker> maybe_midi_state_tracker();
+    std::shared_ptr<MidiStateTracker> maybe_ringbuffer_tail_state_tracker();
 
     // Increment event counters (for internal use)
     void increment_input_events(uint32_t count);
@@ -119,7 +119,7 @@ public:
 };
 
 struct MidiPortTestHelper {
-    static shoop_shared_ptr<MidiRingbuffer> &get_ringbuffer(MidiPort &port) {
+    static std::shared_ptr<MidiRingbuffer> &get_ringbuffer(MidiPort &port) {
         return port.m_midi_ringbuffer;
     }
 };

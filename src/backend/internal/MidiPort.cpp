@@ -1,7 +1,7 @@
 #include "MidiPort.h"
 #include "MidiStateTracker.h"
 #include "shoop_globals.h"
-#include "shoop_shared_ptr.h"
+#include <memory>
 #include "types.h"
 
 MidiWriteableBuffer *MidiPort::PROC_get_write_data_into_port_buffer  (uint32_t n_frames) { return nullptr; }
@@ -64,7 +64,7 @@ uint32_t MidiPort::get_n_output_notes_active() {
     return m_rust_port->get_muted() ? 0 : n;
 }
 
-shoop_shared_ptr<MidiRingbuffer> &MidiPort::maybe_midi_ringbuffer() {
+std::shared_ptr<MidiRingbuffer> &MidiPort::maybe_midi_ringbuffer() {
     return m_midi_ringbuffer;
 }
 
@@ -76,16 +76,16 @@ size_t MidiPort::get_maybe_ringbuffer_tail_state_tracker_raw() {
     return backend_rust::get_maybe_ringbuffer_tail_state_tracker(*m_rust_port);
 }
 
-shoop_shared_ptr<MidiStateTracker> MidiPort::maybe_midi_state_tracker() {
+std::shared_ptr<MidiStateTracker> MidiPort::maybe_midi_state_tracker() {
     auto ptr = backend_rust::get_maybe_midi_state_tracker(*m_rust_port);
     if (!ptr) return nullptr;
-    return shoop_shared_ptr<MidiStateTracker>((MidiStateTracker*)ptr, [](MidiStateTracker*){});
+    return std::shared_ptr<MidiStateTracker>((MidiStateTracker*)ptr, [](MidiStateTracker*){});
 }
 
-shoop_shared_ptr<MidiStateTracker> MidiPort::maybe_ringbuffer_tail_state_tracker() {
+std::shared_ptr<MidiStateTracker> MidiPort::maybe_ringbuffer_tail_state_tracker() {
     auto ptr = backend_rust::get_maybe_ringbuffer_tail_state_tracker(*m_rust_port);
     if (!ptr) return nullptr;
-    return shoop_shared_ptr<MidiStateTracker>((MidiStateTracker*)ptr, [](MidiStateTracker*){});
+    return std::shared_ptr<MidiStateTracker>((MidiStateTracker*)ptr, [](MidiStateTracker*){});
 }
 
 void MidiPort::increment_input_events(uint32_t count) {
@@ -220,7 +220,7 @@ MidiPort::MidiPort(
     bool track_programs
 ) : ModuleLoggingEnabled<"Backend.MidiPort">(),
     m_rust_port(backend_rust::new_midi_port(track_notes, track_controls, track_programs)),
-    m_midi_ringbuffer(shoop_make_shared<MidiRingbuffer>(shoop_constants::midi_storage_size))
+    m_midi_ringbuffer(std::make_shared<MidiRingbuffer>(shoop_constants::midi_storage_size))
 {
 }
 

@@ -72,7 +72,7 @@ DummyAudioMidiDriver<Time, Size>::DummyAudioMidiDriver(void (*maybe_process_call
       m_rust(backend_rust::new_dummy_audio_midi_driver()),
       m_audio_port_opened_cb(nullptr), m_midi_port_opened_cb(nullptr),
       m_audio_port_closed_cb(nullptr), m_midi_port_closed_cb(nullptr),
-      m_external_connections(shoop_make_shared<DummyExternalConnections>())
+      m_external_connections(std::make_shared<DummyExternalConnections>())
 {
     m_audio_ports.clear();
     m_midi_ports.clear();
@@ -129,24 +129,24 @@ DummyAudioMidiDriver<Time, Size>::~DummyAudioMidiDriver() {
 }
 
 template <typename Time, typename Size>
-shoop_shared_ptr<RustAudioPortF32>
+std::shared_ptr<RustAudioPortF32>
 DummyAudioMidiDriver<Time, Size>::open_audio_port(std::string name,
                                               shoop_port_direction_t direction,
-                                              shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool) {
+                                              std::shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool) {
     Log::log<log_level_debug>("DummyAudioMidiDriver : add audio port");
-    auto rval = shoop_make_shared<DummyAudioPort>(name, direction, buffer_pool, m_external_connections);
+    auto rval = std::make_shared<DummyAudioPort>(name, direction, buffer_pool, m_external_connections);
     m_audio_ports.insert(rval);
-    return shoop_static_pointer_cast<RustAudioPortF32>(rval);
+    return std::static_pointer_cast<RustAudioPortF32>(rval);
 }
 
 template <typename Time, typename Size>
-shoop_shared_ptr<MidiPort>
+std::shared_ptr<MidiPort>
 DummyAudioMidiDriver<Time, Size>::open_midi_port(std::string name,
                                              shoop_port_direction_t direction) {
     Log::log<log_level_debug>("DummyAudioMidiDriver: add midi port");
-    auto rval = shoop_make_shared<DummyMidiPort>(name, direction, m_external_connections);
+    auto rval = std::make_shared<DummyMidiPort>(name, direction, m_external_connections);
     m_midi_ports.insert(rval);
-    return shoop_static_pointer_cast<MidiPort>(rval);
+    return std::static_pointer_cast<MidiPort>(rval);
 }
 
 template <typename Time, typename Size>
@@ -214,24 +214,24 @@ void DummyAudioMidiDriver<Time, Size>::remove_all_external_mock_ports() {
 }
 
 template <typename Time, typename Size>
-shoop_shared_ptr<shoop_types::_DecoupledMidiPort> DummyAudioMidiDriver<Time, Size>::open_decoupled_midi_port(std::string name, shoop_port_direction_t direction) {
+std::shared_ptr<shoop_types::_DecoupledMidiPort> DummyAudioMidiDriver<Time, Size>::open_decoupled_midi_port(std::string name, shoop_port_direction_t direction) {
     auto port = open_midi_port(name, direction);
     return m_runtime.make_decoupled_midi_port(port, this->weak_driver_from_this(), direction);
 }
 
 template <typename Time, typename Size>
-void DummyAudioMidiDriver<Time, Size>::unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port) {
+void DummyAudioMidiDriver<Time, Size>::unregister_decoupled_midi_port(std::shared_ptr<shoop_types::_DecoupledMidiPort> port) {
     m_runtime.unregister_decoupled_midi_port(port);
 }
 
 template <typename Time, typename Size>
-void DummyAudioMidiDriver<Time, Size>::add_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) { m_runtime.add_processor(p); }
+void DummyAudioMidiDriver<Time, Size>::add_processor(std::shared_ptr<HasAudioProcessingFunction> p) { m_runtime.add_processor(p); }
 
 template <typename Time, typename Size>
-void DummyAudioMidiDriver<Time, Size>::remove_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) { m_runtime.remove_processor(p); }
+void DummyAudioMidiDriver<Time, Size>::remove_processor(std::shared_ptr<HasAudioProcessingFunction> p) { m_runtime.remove_processor(p); }
 
 template <typename Time, typename Size>
-std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> DummyAudioMidiDriver<Time, Size>::processors() const { return m_runtime.processors(); }
+std::vector<std::weak_ptr<HasAudioProcessingFunction>> DummyAudioMidiDriver<Time, Size>::processors() const { return m_runtime.processors(); }
 
 template <typename Time, typename Size>
 uint32_t DummyAudioMidiDriver<Time, Size>::get_xruns() const { return m_runtime.get_xruns(); }

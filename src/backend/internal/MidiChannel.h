@@ -8,7 +8,7 @@
 #include "ProcessProfiling.h"
 #include "TrackedRelativeMidiState.h"
 #include <stdint.h>
-#include "shoop_shared_ptr.h"
+#include <memory>
 
 class MidiChannel : public ChannelInterface,
                     private ModuleLoggingEnabled<"Backend.MidiChannel"> {
@@ -34,25 +34,25 @@ private:
     // Process thread access only (mp*)
     std::optional<std::pair<ExternalBufState, MidiWriteableBuffer*>> mp_playback_target_buffer = std::nullopt;
     std::optional<std::pair<ExternalBufState, MidiReadableBuffer*>> mp_recording_source_buffer = std::nullopt;
-    shoop_shared_ptr<Storage>       mp_storage = nullptr;
-    shoop_shared_ptr<Storage>       mp_prerecord_storage = nullptr;
-    shoop_shared_ptr<StorageCursor> mp_playback_cursor = nullptr;
-    shoop_shared_ptr<profiling::ProfilingItem> mp_profiling_item = nullptr;
+    std::shared_ptr<Storage>       mp_storage = nullptr;
+    std::shared_ptr<Storage>       mp_prerecord_storage = nullptr;
+    std::shared_ptr<StorageCursor> mp_playback_cursor = nullptr;
+    std::shared_ptr<profiling::ProfilingItem> mp_profiling_item = nullptr;
 
     // Holds and updates the current MIDI state on the channel output.
-    shoop_shared_ptr<MidiStateTracker> mp_output_midi_state = nullptr;
+    std::shared_ptr<MidiStateTracker> mp_output_midi_state = nullptr;
 
     // Holds and updates the current MIDI state on the channel input.
-    shoop_shared_ptr<MidiStateTracker> mp_input_midi_state = nullptr;
+    std::shared_ptr<MidiStateTracker> mp_input_midi_state = nullptr;
 
     // Hold the state that the MIDI channel output had at the time of the recording
     // start. Also keep track of the difference between this state and the current state.
-    shoop_shared_ptr<TrackedRelativeMidiState> mp_recording_start_state_tracker;
+    std::shared_ptr<TrackedRelativeMidiState> mp_recording_start_state_tracker;
 
     // While pre-recording, we save our start state tracker separately because it might
     // need to be discarded and the old one kept. Once pre-recording turns into actual
     // recording, the start state tracker will be moved to mp_recording_start_state_tracker.
-    shoop_shared_ptr<TrackedRelativeMidiState> mp_temp_prerecording_start_state_tracker;
+    std::shared_ptr<TrackedRelativeMidiState> mp_temp_prerecording_start_state_tracker;
 
     // When (pre-)playback starts, the channel may be muted or not at its start offset
     // sample yet. Messages may be skipped and not played because of this. Once an actual
@@ -60,7 +60,7 @@ private:
     // to first achieve the state that was supposed to be at this point in playback.
     // This tracker is used to track unplayed MIDI messages as if they were played, so
     // that the correct state can be reached.
-    shoop_shared_ptr<TrackedRelativeMidiState> mp_track_state_until_first_msg_playback;
+    std::shared_ptr<TrackedRelativeMidiState> mp_track_state_until_first_msg_playback;
 
     uint32_t mp_prev_pos_after = 0;
     unsigned mp_prev_process_flags = 0;
@@ -165,7 +165,7 @@ public:
 
     std::optional<uint32_t> get_played_back_sample() const override;
     
-    void adopt_ringbuffer_contents(shoop_shared_ptr<PortInterface> from_port,
+    void adopt_ringbuffer_contents(std::shared_ptr<PortInterface> from_port,
         std::optional<unsigned> keep_samples_before_start_offset,
         std::optional<unsigned> reverse_start_offset,
         bool thread_safe=true) override;

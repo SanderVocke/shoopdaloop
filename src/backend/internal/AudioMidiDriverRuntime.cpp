@@ -11,9 +11,7 @@
 namespace {
 [[maybe_unused]] auto *force_link_trampoline_1 = &backend_rust::audiomididriver_invoke_maybe_process_callback;
 [[maybe_unused]] auto *force_link_trampoline_2 = &backend_rust::audiomididriver_exec_command_queue;
-[[maybe_unused]] auto *force_link_trampoline_3 = &backend_rust::audiomididriver_process_processor;
-[[maybe_unused]] auto *force_link_trampoline_4 = &backend_rust::audiomididriver_process_decoupled_port;
-[[maybe_unused]] auto *force_link_trampoline_5 = &backend_rust::audiomididriver_close_decoupled_port;
+
 }
 
 AudioMidiDriverRuntime::AudioMidiDriverRuntime(void (*maybe_process_callback)())
@@ -24,7 +22,7 @@ AudioMidiDriverRuntime::AudioMidiDriverRuntime(void (*maybe_process_callback)())
     m_rust_core->set_client_name("unknown");
 }
 
-void AudioMidiDriverRuntime::add_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) {
+void AudioMidiDriverRuntime::add_processor(std::shared_ptr<HasAudioProcessingFunction> p) {
     m_processors.push_back(p);
     auto strong = bridge_object::register_processor(p);
     auto weak = bridge_object::downgrade(strong);
@@ -33,7 +31,7 @@ void AudioMidiDriverRuntime::add_processor(shoop_shared_ptr<HasAudioProcessingFu
     m_processor_bridge_strongs[p.get()] = strong;
 }
 
-void AudioMidiDriverRuntime::remove_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) {
+void AudioMidiDriverRuntime::remove_processor(std::shared_ptr<HasAudioProcessingFunction> p) {
     m_processors.erase(
         std::remove_if(m_processors.begin(), m_processors.end(), [&](auto const &wp) {
             auto sp = wp.lock();
@@ -52,7 +50,7 @@ void AudioMidiDriverRuntime::remove_processor(shoop_shared_ptr<HasAudioProcessin
     }
 }
 
-std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> AudioMidiDriverRuntime::processors() const {
+std::vector<std::weak_ptr<HasAudioProcessingFunction>> AudioMidiDriverRuntime::processors() const {
     return m_processors;
 }
 
@@ -68,7 +66,7 @@ void AudioMidiDriverRuntime::exec_all_commands_for_process_thread() {
     rust_command_queue::exec_all(*m_command_queue);
 }
 
-void AudioMidiDriverRuntime::unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port) {
+void AudioMidiDriverRuntime::unregister_decoupled_midi_port(std::shared_ptr<shoop_types::_DecoupledMidiPort> port) {
     rust_command_queue::queue_and_wait(*m_command_queue, [this, port]() {
         auto handle = port->registry_handle();
         if (handle != 0) {
@@ -83,13 +81,13 @@ void AudioMidiDriverRuntime::unregister_decoupled_midi_port(shoop_shared_ptr<sho
     });
 }
 
-shoop_shared_ptr<shoop_types::_DecoupledMidiPort> AudioMidiDriverRuntime::make_decoupled_midi_port(
-    shoop_shared_ptr<MidiPort> port,
-    shoop_weak_ptr<AudioMidiDriver> driver,
+std::shared_ptr<shoop_types::_DecoupledMidiPort> AudioMidiDriverRuntime::make_decoupled_midi_port(
+    std::shared_ptr<MidiPort> port,
+    std::weak_ptr<AudioMidiDriver> driver,
     shoop_port_direction_t direction
 ) {
     constexpr uint32_t decoupled_midi_port_queue_size = 256;
-    auto decoupled = shoop_make_shared<shoop_types::_DecoupledMidiPort>(
+    auto decoupled = std::make_shared<shoop_types::_DecoupledMidiPort>(
         port,
         driver,
         decoupled_midi_port_queue_size,

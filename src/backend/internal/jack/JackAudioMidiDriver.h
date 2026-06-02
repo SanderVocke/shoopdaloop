@@ -26,8 +26,8 @@ class GenericJackAudioMidiDriver :
     using Log = ModuleLoggingEnabled<"Backend.JackAudioMidiDriver">;
 private:
     AudioMidiDriverRuntime m_runtime;
-    std::map<std::string, shoop_shared_ptr<PortInterface>> m_ports;
-    shoop_shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker = nullptr;
+    std::map<std::string, std::shared_ptr<PortInterface>> m_ports;
+    std::shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker = nullptr;
     std::atomic<bool> m_started = false;
 
     static int PROC_process_cb_static (uint32_t nframes,
@@ -54,29 +54,29 @@ public:
     
     void start(AudioMidiDriverSettingsInterface &settings) override;
 
-    shoop_shared_ptr<RustAudioPortF32> open_audio_port(
+    std::shared_ptr<RustAudioPortF32> open_audio_port(
         std::string name,
         shoop_port_direction_t direction,
-        shoop_shared_ptr<RustAudioPortF32::UsedBufferPool>
+        std::shared_ptr<RustAudioPortF32::UsedBufferPool>
     ) override;
 
-    shoop_shared_ptr<MidiPort> open_midi_port(
+    std::shared_ptr<MidiPort> open_midi_port(
         std::string name,
         shoop_port_direction_t direction
     ) override;
 
-    shoop_shared_ptr<shoop_types::_DecoupledMidiPort> open_decoupled_midi_port(
+    std::shared_ptr<shoop_types::_DecoupledMidiPort> open_decoupled_midi_port(
         std::string name,
         shoop_port_direction_t direction
     ) override;
 
-    void unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port) override;
+    void unregister_decoupled_midi_port(std::shared_ptr<shoop_types::_DecoupledMidiPort> port) override;
 
     void close() override;
 
-    void add_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) override;
-    void remove_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) override;
-    std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> processors() const override;
+    void add_processor(std::shared_ptr<HasAudioProcessingFunction> p) override;
+    void remove_processor(std::shared_ptr<HasAudioProcessingFunction> p) override;
+    std::vector<std::weak_ptr<HasAudioProcessingFunction>> processors() const override;
 
     uint32_t get_xruns() const override;
     float get_dsp_load() override;

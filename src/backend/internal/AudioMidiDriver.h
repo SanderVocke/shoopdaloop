@@ -8,7 +8,7 @@
 #include <atomic>
 #include "LoggingEnabled.h"
 #include "RustAudioPort.h"
-#include "shoop_shared_ptr.h"
+#include <memory>
 #include "backend_rust/src/command_queue_cxx.rs.h"
 
 enum class ProcessFunctionResult {
@@ -36,36 +36,36 @@ public:
 };
 
 class AudioMidiDriver : public ModuleLoggingEnabled<"Backend.AudioMidiDriver">,
-                        private shoop_enable_shared_from_this<AudioMidiDriver> {
+                        private std::enable_shared_from_this<AudioMidiDriver> {
 protected:
-    shoop_weak_ptr<AudioMidiDriver> weak_driver_from_this() { return weak_from_this(); }
+    std::weak_ptr<AudioMidiDriver> weak_driver_from_this() { return weak_from_this(); }
 
 public:
-    virtual void add_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) = 0;
-    virtual void remove_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) = 0;
-    virtual std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> processors() const = 0;
+    virtual void add_processor(std::shared_ptr<HasAudioProcessingFunction> p) = 0;
+    virtual void remove_processor(std::shared_ptr<HasAudioProcessingFunction> p) = 0;
+    virtual std::vector<std::weak_ptr<HasAudioProcessingFunction>> processors() const = 0;
 
     virtual void start(AudioMidiDriverSettingsInterface &settings) = 0;
 
     virtual
-    shoop_shared_ptr<RustAudioPortF32> open_audio_port(
+    std::shared_ptr<RustAudioPortF32> open_audio_port(
         std::string name,
         shoop_port_direction_t direction,
-        shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool
+        std::shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool
     ) = 0;
 
     virtual
-    shoop_shared_ptr<MidiPort> open_midi_port(
+    std::shared_ptr<MidiPort> open_midi_port(
         std::string name,
         shoop_port_direction_t direction
     ) = 0;
 
-    virtual shoop_shared_ptr<shoop_types::_DecoupledMidiPort> open_decoupled_midi_port(
+    virtual std::shared_ptr<shoop_types::_DecoupledMidiPort> open_decoupled_midi_port(
         std::string name,
         shoop_port_direction_t direction
     ) = 0;
 
-    virtual void unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port) = 0;
+    virtual void unregister_decoupled_midi_port(std::shared_ptr<shoop_types::_DecoupledMidiPort> port) = 0;
 
     virtual void close() = 0;
 

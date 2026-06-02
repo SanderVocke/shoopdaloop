@@ -250,11 +250,14 @@ impl AudioMidiDriverCore {
             .ok()
             .and_then(|guard| guard.get(&handle).copied());
         if let Some(port) = weak {
-            unsafe {
-                crate::audio_midi_driver_cxx::ffi::audiomididriver_process_decoupled_port(
-                    port.id, port.type_id, nframes,
-                );
-            }
+            let resolved = crate::audio_midi_driver_cxx::ffi::bridge_resolve_decoupled_midi_port_for_rust(
+                port.id,
+                port.type_id,
+            );
+            crate::audio_midi_driver_cxx::ffi::bridge_decoupled_midi_port_proc_process(
+                resolved,
+                nframes,
+            );
             true
         } else {
             false
@@ -269,9 +272,11 @@ impl AudioMidiDriverCore {
             .ok()
             .and_then(|guard| guard.get(&handle).copied());
         if let Some(port) = weak {
-            unsafe {
-                crate::audio_midi_driver_cxx::ffi::audiomididriver_close_decoupled_port(port.id, port.type_id);
-            }
+            let resolved = crate::audio_midi_driver_cxx::ffi::bridge_resolve_decoupled_midi_port_for_rust(
+                port.id,
+                port.type_id,
+            );
+            crate::audio_midi_driver_cxx::ffi::bridge_decoupled_midi_port_close(resolved);
             true
         } else {
             false
@@ -320,13 +325,14 @@ impl AudioMidiDriverCore {
                 .ok()
                 .and_then(|guard| guard.get(&handle).copied());
             if let Some(processor) = ptr {
-                unsafe {
-                    crate::audio_midi_driver_cxx::ffi::audiomididriver_process_processor(
-                        processor.id,
-                        processor.type_id,
-                        nframes,
-                    );
-                }
+                let resolved = crate::audio_midi_driver_cxx::ffi::bridge_resolve_processor_for_rust(
+                    processor.id,
+                    processor.type_id,
+                );
+                crate::audio_midi_driver_cxx::ffi::bridge_processor_proc_process(
+                    resolved,
+                    nframes,
+                );
             }
         }
 

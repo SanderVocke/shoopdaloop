@@ -8,13 +8,13 @@
 #include <array>
 
 DecoupledMidiPort::DecoupledMidiPort(
-    shoop_shared_ptr<MidiPort> port,
-    shoop_weak_ptr<AudioMidiDriver> driver,
+    std::shared_ptr<MidiPort> port,
+    std::weak_ptr<AudioMidiDriver> driver,
     uint32_t queue_size,
     shoop_port_direction_t direction)
     : port(port), direction(direction), m_rust(backend_rust::new_decoupled_midi_port(queue_size, static_cast<uint32_t>(direction))), maybe_driver(driver) {};
 
-shoop_shared_ptr<MidiPort> const& DecoupledMidiPort::get_port() {
+std::shared_ptr<MidiPort> const& DecoupledMidiPort::get_port() {
     return port;
 }
 
@@ -78,7 +78,7 @@ void DecoupledMidiPort::close() {
     static_cast<PortInterface*>(port.get())->close();
 }
 
-shoop_shared_ptr<AudioMidiDriver> DecoupledMidiPort::
+std::shared_ptr<AudioMidiDriver> DecoupledMidiPort::
     get_maybe_driver() const {
     return maybe_driver.lock();
 }

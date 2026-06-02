@@ -3,7 +3,7 @@
 #include "backend_rust/src/audio_port_cxx.rs.h"
 #include "backend_rust/src/internal_audio_port_cxx.rs.h"
 #include <vector>
-#include "shoop_shared_ptr.h"
+#include <memory>
 
 class InternalAudioPort : public RustAudioPortF32 {
     rust::Box<backend_rust::InternalAudioPort> m_rust_internal;
@@ -18,7 +18,7 @@ public:
         uint32_t n_frames,
         unsigned input_connectability,
         unsigned output_connectability,
-        shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> maybe_ringbuffer_buffer_pool
+        std::shared_ptr<RustAudioPortF32::UsedBufferPool> maybe_ringbuffer_buffer_pool
     );
     
     float* PROC_get_buffer(uint32_t n_frames) override;

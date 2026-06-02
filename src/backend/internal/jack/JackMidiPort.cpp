@@ -84,17 +84,17 @@ template<typename API>
 GenericJackMidiOutputPort<API>::GenericJackMidiOutputPort(
         std::string name,
         jack_client_t *client,
-        shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
+        std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     ) : GenericJackMidiPort<API>(name, ShoopPortDirection_Output, client, all_ports_tracker),
         MidiPort(true, true, true),
-        m_sorting_buffer(shoop_make_shared<MidiSortingBuffer>())
+        m_sorting_buffer(std::make_shared<MidiSortingBuffer>())
 {}
 
 template<typename API>
 GenericJackMidiInputPort<API>::GenericJackMidiInputPort(
         std::string name,
         jack_client_t *client,
-        shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
+        std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     ) : GenericJackMidiPort<API>(name, ShoopPortDirection_Input, client, all_ports_tracker),
         MidiPort(true, true, true),
         m_messages()

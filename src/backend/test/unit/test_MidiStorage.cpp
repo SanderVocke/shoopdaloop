@@ -1,6 +1,6 @@
 #include "RustMidiStorage.h"
 #include "MidiStorageCursor.h"
-#include "shoop_shared_ptr.h"
+#include <memory>
 
 #include <iostream>
 #include <sstream>
@@ -70,7 +70,7 @@ TEST_CASE("MidiStorage via Rust - Round-trip", "[MidiStorage]") {
     };
     uint32_t total_data_size = in.size() * sizeof(Storage::Elem);
 
-    auto s = shoop_make_shared<Storage>(total_data_size);
+    auto s = std::make_shared<Storage>(total_data_size);
 
     for(auto &i: in) { s->append(i.time, i.size, i.bytes); }
 
@@ -113,7 +113,7 @@ TEST_CASE("MidiStorage via Rust - prepend", "[MidiStorage]") {
     };
     uint32_t total_data_size = (in.size() + prepend.size()) * sizeof(Storage::Elem);
 
-    auto s = shoop_make_shared<Storage>(total_data_size);
+    auto s = std::make_shared<Storage>(total_data_size);
 
     for(auto &i: in) { s->append(i.time, i.size, i.bytes); }
     for(auto &i: prepend) { s->prepend(i.time, i.size, i.bytes); }
@@ -154,7 +154,7 @@ TEST_CASE("MidiStorage via Rust - replace append", "[MidiStorage]") {
     };
     uint32_t total_data_size = in.size() * sizeof(Storage::Elem);
 
-    auto s = shoop_make_shared<Storage>(total_data_size);
+    auto s = std::make_shared<Storage>(total_data_size);
 
     for(auto &i: in) { s->append(i.time, i.size, i.bytes); }
 
@@ -189,7 +189,7 @@ TEST_CASE("MidiStorage via Rust - wrap around", "[MidiStorage]") {
     using Storage = RustMidiStorage;
 
     // Buffer holds exactly 3 elements
-    auto s = shoop_make_shared<Storage>(3 * sizeof(Storage::Elem));
+    auto s = std::make_shared<Storage>(3 * sizeof(Storage::Elem));
 
     const uint8_t d0[] = {0, 0, 0};
     const uint8_t d1[] = {1, 1, 1};

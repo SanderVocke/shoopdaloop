@@ -12,7 +12,7 @@
 #include <vector>
 #include <boost/lockfree/spsc_queue.hpp>
 #include <stdint.h>
-#include "shoop_shared_ptr.h"
+#include <memory>
 #include "backend_rust/src/dummy_audio_midi_driver_cxx.rs.h"
 
 struct DummyAudioMidiDriverSettings : public AudioMidiDriverSettingsInterface {
@@ -35,8 +35,8 @@ class DummyAudioMidiDriver : public AudioMidiDriver,
 
     AudioMidiDriverRuntime m_runtime;
     rust::Box<backend_rust::DummyAudioMidiDriver> m_rust;
-    std::set<shoop_shared_ptr<DummyAudioPort>> m_audio_ports;
-    std::set<shoop_shared_ptr<DummyMidiPort>> m_midi_ports;
+    std::set<std::shared_ptr<DummyAudioPort>> m_audio_ports;
+    std::set<std::shared_ptr<DummyMidiPort>> m_midi_ports;
     std::string m_client_name_str = "";
 
     std::function<void(std::string, shoop_port_direction_t)> m_audio_port_opened_cb = nullptr;
@@ -46,36 +46,36 @@ class DummyAudioMidiDriver : public AudioMidiDriver,
 
 public:
 
-    shoop_shared_ptr<DummyExternalConnections> m_external_connections;
+    std::shared_ptr<DummyExternalConnections> m_external_connections;
 
     DummyAudioMidiDriver(void (*maybe_process_callback)() = nullptr);
     virtual ~DummyAudioMidiDriver();
 
     void start(AudioMidiDriverSettingsInterface &settings) override;
 
-    shoop_shared_ptr<RustAudioPortF32> open_audio_port(
+    std::shared_ptr<RustAudioPortF32> open_audio_port(
         std::string name,
         shoop_port_direction_t direction,
-        shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool
+        std::shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool
     ) override;
 
-    shoop_shared_ptr<MidiPort> open_midi_port(
+    std::shared_ptr<MidiPort> open_midi_port(
         std::string name,
         shoop_port_direction_t direction
     ) override;
 
-    shoop_shared_ptr<shoop_types::_DecoupledMidiPort> open_decoupled_midi_port(
+    std::shared_ptr<shoop_types::_DecoupledMidiPort> open_decoupled_midi_port(
         std::string name,
         shoop_port_direction_t direction
     ) override;
 
-    void unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port) override;
+    void unregister_decoupled_midi_port(std::shared_ptr<shoop_types::_DecoupledMidiPort> port) override;
 
     void close() override;
 
-    void add_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) override;
-    void remove_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) override;
-    std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> processors() const override;
+    void add_processor(std::shared_ptr<HasAudioProcessingFunction> p) override;
+    void remove_processor(std::shared_ptr<HasAudioProcessingFunction> p) override;
+    std::vector<std::weak_ptr<HasAudioProcessingFunction>> processors() const override;
 
     uint32_t get_xruns() const override;
     float get_dsp_load() override;

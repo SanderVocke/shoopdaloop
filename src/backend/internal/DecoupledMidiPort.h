@@ -13,18 +13,18 @@ class AudioMidiDriver;
 // Incoming messages are stored into the queue and outgoing ones taken form a queue.
 // This way, port messaging can be easily handled outside of the processing thread.
 // Time information is discarded for decoupled messages (intended for controllers).
-class DecoupledMidiPort : public shoop_enable_shared_from_this<DecoupledMidiPort>,
+class DecoupledMidiPort : public std::enable_shared_from_this<DecoupledMidiPort>,
                           private ModuleLoggingEnabled<"Backend.DecoupledMidiPort"> {
     using Message = MidiStorageElem;
 
-    const shoop_shared_ptr<MidiPort> port;
+    const std::shared_ptr<MidiPort> port;
     const shoop_port_direction_t direction;
     rust::Box<backend_rust::DecoupledMidiPort> m_rust;
-    shoop_weak_ptr<AudioMidiDriver> maybe_driver;
+    std::weak_ptr<AudioMidiDriver> maybe_driver;
     uint64_t m_registry_handle = 0;
 public:
-    DecoupledMidiPort (shoop_shared_ptr<MidiPort> port,
-                       shoop_weak_ptr<AudioMidiDriver> driver,
+    DecoupledMidiPort (std::shared_ptr<MidiPort> port,
+                       std::weak_ptr<AudioMidiDriver> driver,
                        uint32_t queue_size,
                        shoop_port_direction_t direction);
 
@@ -33,13 +33,13 @@ public:
     const char* name() const;
     void close();
 
-    shoop_shared_ptr<AudioMidiDriver> get_maybe_driver() const;
+    std::shared_ptr<AudioMidiDriver> get_maybe_driver() const;
     void forget_driver();
 
     std::optional<Message> pop_incoming();
     void push_outgoing (Message m);
 
-    shoop_shared_ptr<MidiPort> const& get_port();
+    std::shared_ptr<MidiPort> const& get_port();
     void set_registry_handle(uint64_t handle);
     uint64_t registry_handle() const;
 };

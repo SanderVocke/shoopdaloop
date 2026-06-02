@@ -8,13 +8,13 @@
 #include "RustAudioPort.h"
 #include "InternalAudioPort.h"
 #include <functional>
-#include "shoop_shared_ptr.h"
+#include <memory>
 
 template<typename TimeType, typename SizeType>
 class ProcessingChainInterface {
 public:
-    using SharedInternalAudioPort = shoop_shared_ptr<InternalAudioPort>;
-    using SharedMidiPort = shoop_shared_ptr<MidiPort>;
+    using SharedInternalAudioPort = std::shared_ptr<InternalAudioPort>;
+    using SharedMidiPort = std::shared_ptr<MidiPort>;
 
     ProcessingChainInterface() {}
     virtual ~ProcessingChainInterface() {}

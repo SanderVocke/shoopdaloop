@@ -45,7 +45,7 @@ struct BackendSession::RecalculateGraphThread {
     std::mutex mutex;
     bool finish;
     std::atomic<unsigned> m_req_id;
-    shoop_weak_ptr<BackendSession> backend;
+    std::weak_ptr<BackendSession> backend;
     BackendSession *tmp_backend;
 
     RecalculateGraphThread(BackendSession &_backend)
@@ -104,14 +104,14 @@ BackendSession::BackendSession()
     : m_command_queue(rust_command_queue::make(shoop_constants::command_queue_size, 1000, 1000)),
       ma_state(State::Active),
       m_recalculate_graph_thread(std::make_unique<RecalculateGraphThread>(*this)),
-      profiler(shoop_make_shared<profiling::Profiler>()),
+      profiler(std::make_shared<profiling::Profiler>()),
       top_profiling_item(profiler->maybe_get_profiling_item("Process")),
       graph_profiling_item(profiler->maybe_get_profiling_item("Process.Graph")),
       cmds_profiling_item(profiler->maybe_get_profiling_item("Process.Commands")),
       ma_graph_request_id(0), ma_graph_id(0)
 {
-    audio_buffer_pool = shoop_static_pointer_cast<AudioBufferPool>(
-        shoop_make_shared<BufferPool<shoop_types::audio_sample_t>>(
+    audio_buffer_pool = std::static_pointer_cast<AudioBufferPool>(
+        std::make_shared<BufferPool<shoop_types::audio_sample_t>>(
             n_buffers_in_pool, (n_buffers_in_pool * 2) / 3, audio_buffer_size));
     loops.reserve(initial_max_loops);
     ports.reserve(initial_max_ports);
@@ -207,9 +207,9 @@ void BackendSession::destroy() {
     }
 }
 
-shoop_shared_ptr<GraphLoop> BackendSession::create_loop() {
-    auto loop = shoop_make_shared<AudioMidiLoop>();
-    auto r = shoop_make_shared<GraphLoop>(shared_from_this(), loop);
+std::shared_ptr<GraphLoop> BackendSession::create_loop() {
+    auto loop = std::make_shared<AudioMidiLoop>();
+    auto r = std::make_shared<GraphLoop>(shared_from_this(), loop);
 
     // Setup profiling
     auto loops_item = profiler->maybe_get_profiling_item("Process.Graph.Loops");
@@ -226,12 +226,12 @@ shoop_shared_ptr<GraphLoop> BackendSession::create_loop() {
     return r;
 }
 
-shoop_shared_ptr<GraphFXChain>
+std::shared_ptr<GraphFXChain>
 BackendSession::create_fx_chain(shoop_fx_chain_type_t type, const char *title) {
 #ifdef SHOOP_HAVE_LV2
     static LV2 lv2;
 #endif
-    shoop_shared_ptr<ProcessingChainInterface<Time, Size>> chain;
+    std::shared_ptr<ProcessingChainInterface<Time, Size>> chain;
     switch (type) {
 #ifdef SHOOP_HAVE_LV2
     case Carla_Rack:
@@ -239,7 +239,7 @@ BackendSession::create_fx_chain(shoop_fx_chain_type_t type, const char *title) {
     case Carla_Patchbay_16x:
         try {
             chain =
-                shoop_static_pointer_cast<ProcessingChainInterface<Time, Size>>(
+                std::static_pointer_cast<ProcessingChainInterface<Time, Size>>(
                     lv2.create_carla_chain<Time, Size>(
                         type, m_sample_rate, m_buffer_size, std::string(title),
                         audio_buffer_pool));
@@ -260,8 +260,8 @@ BackendSession::create_fx_chain(shoop_fx_chain_type_t type, const char *title) {
         break;
 #endif
     case Test2x2x1:
-        chain = shoop_static_pointer_cast<ProcessingChainInterface<Time, Size>>(
-            shoop_make_shared<CustomProcessingChain<Time, Size>>(
+        chain = std::static_pointer_cast<ProcessingChainInterface<Time, Size>>(
+            std::make_shared<CustomProcessingChain<Time, Size>>(
                 2, 2, 1,
                 [this, &chain](uint32_t n, auto &ins, auto &outs, auto &midis) {
                     static std::vector<audio_sample_t> out_buf_1, out_buf_2;
@@ -311,7 +311,7 @@ BackendSession::create_fx_chain(shoop_fx_chain_type_t type, const char *title) {
         break;
     };
 
-    auto info = shoop_make_shared<GraphFXChain>(chain, shared_from_this());
+    auto info = std::make_shared<GraphFXChain>(chain, shared_from_this());
 
     // Setup profiling
     auto fx_item = profiler->maybe_get_profiling_item("Process.Graph.FX");
@@ -365,10 +365,10 @@ BackendSession::create_fx_chain(shoop_fx_chain_type_t type, const char *title) {
     return info;
 }
 
-shoop_shared_ptr<GraphAudioPort>
-BackendSession::add_audio_port(shoop_shared_ptr<shoop_types::_AudioPort> port) {
-    auto rval = shoop_make_shared<GraphAudioPort>(port, shared_from_this());
-    ports.push_back(shoop_static_pointer_cast<GraphPort>(rval));
+std::shared_ptr<GraphAudioPort>
+BackendSession::add_audio_port(std::shared_ptr<shoop_types::_AudioPort> port) {
+    auto rval = std::make_shared<GraphAudioPort>(port, shared_from_this());
+    ports.push_back(std::static_pointer_cast<GraphPort>(rval));
 
     // Setup profiling
     auto ports_item = profiler->maybe_get_profiling_item("Process.Graph.Ports");
@@ -386,10 +386,10 @@ BackendSession::add_audio_port(shoop_shared_ptr<shoop_types::_AudioPort> port) {
     return rval;
 }
 
-shoop_shared_ptr<GraphMidiPort>
-BackendSession::add_midi_port(shoop_shared_ptr<MidiPort> port) {
-    auto rval = shoop_make_shared<GraphMidiPort>(port, shared_from_this());
-    ports.push_back(shoop_static_pointer_cast<GraphPort>(rval));
+std::shared_ptr<GraphMidiPort>
+BackendSession::add_midi_port(std::shared_ptr<MidiPort> port) {
+    auto rval = std::make_shared<GraphMidiPort>(port, shared_from_this());
+    ports.push_back(std::static_pointer_cast<GraphPort>(rval));
 
     // Setup profiling
     auto ports_item = profiler->maybe_get_profiling_item("Process.Graph.Ports");
@@ -407,11 +407,11 @@ BackendSession::add_midi_port(shoop_shared_ptr<MidiPort> port) {
     return rval;
 }
 
-shoop_shared_ptr<GraphLoopChannel>
-BackendSession::add_loop_channel(shoop_shared_ptr<GraphLoop> loop,
-                                 shoop_shared_ptr<ChannelInterface> channel) {
+std::shared_ptr<GraphLoopChannel>
+BackendSession::add_loop_channel(std::shared_ptr<GraphLoop> loop,
+                                 std::shared_ptr<ChannelInterface> channel) {
     auto rval =
-        shoop_make_shared<GraphLoopChannel>(channel, loop, shared_from_this());
+        std::make_shared<GraphLoopChannel>(channel, loop, shared_from_this());
 
     // Setup profiling
     auto loops_item = profiler->maybe_get_profiling_item("Process.Graph.Loops");
@@ -463,7 +463,7 @@ void BackendSession::set_graph_node_changes_pending() {
 void BackendSession::recalculate_processing_schedule(unsigned req_id) {
     using std::chrono::high_resolution_clock;
     using std::chrono::microseconds;
-    auto result = shoop_make_shared<ProcessingSchedule>();
+    auto result = std::make_shared<ProcessingSchedule>();
     result->loops = loops;
     result->ports = ports;
     result->fx_chains = fx_chains;
@@ -473,7 +473,7 @@ void BackendSession::recalculate_processing_schedule(unsigned req_id) {
     WeakGraphNodeSet weak_loop_nodes;
     for (auto &l : result->loops) {
         if (l) {
-            weak_loop_nodes.insert(shoop_weak_ptr<GraphNode>(l->graph_node()));
+            weak_loop_nodes.insert(std::weak_ptr<GraphNode>(l->graph_node()));
         }
     }
     auto get_loop_nodes = [weak_self, weak_loop_nodes]() {
@@ -490,7 +490,7 @@ void BackendSession::recalculate_processing_schedule(unsigned req_id) {
     auto start = high_resolution_clock::now();
 
     // Gather all the nodes
-    std::set<shoop_shared_ptr<GraphNode>> nodes;
+    std::set<std::shared_ptr<GraphNode>> nodes;
     auto insert_all = [&nodes](auto container) {
         for (auto &item : container->all_graph_nodes()) {
             nodes.insert(item->shared_from_this());

@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <mutex>
 
-#include "shoop_shared_ptr.h"
+#include <memory>
 
 class HasAudioProcessingFunction;
 class DecoupledMidiPort;
@@ -37,15 +37,26 @@ struct BridgeWeakHandle {
     uint32_t type_id = 0;
 };
 
-BridgeStrongHandle register_processor(shoop_shared_ptr<HasAudioProcessingFunction> p);
-BridgeStrongHandle register_decoupled_midi_port(shoop_shared_ptr<DecoupledMidiPort> p);
+BridgeStrongHandle register_processor(std::shared_ptr<HasAudioProcessingFunction> p);
+BridgeStrongHandle register_decoupled_midi_port(std::shared_ptr<DecoupledMidiPort> p);
 
 BridgeWeakHandle downgrade(BridgeStrongHandle strong);
 BridgeStrongHandle clone_strong(BridgeStrongHandle strong);
 void release_strong(BridgeStrongHandle strong);
 
-std::optional<shoop_shared_ptr<HasAudioProcessingFunction>> lock_processor(BridgeWeakHandle weak);
-std::optional<shoop_shared_ptr<DecoupledMidiPort>> lock_decoupled_midi_port(BridgeWeakHandle weak);
+std::optional<std::shared_ptr<HasAudioProcessingFunction>> lock_processor(BridgeWeakHandle weak);
+std::optional<std::shared_ptr<DecoupledMidiPort>> lock_decoupled_midi_port(BridgeWeakHandle weak);
+
+// Typed resolvers for CXX/Rust callers. Return empty shared_ptr on stale/type mismatch.
+std::shared_ptr<HasAudioProcessingFunction> bridge_resolve_processor_for_rust(uint64_t weak_id, uint32_t weak_type_id);
+std::shared_ptr<DecoupledMidiPort> bridge_resolve_decoupled_midi_port_for_rust(uint64_t weak_id, uint32_t weak_type_id);
+
+// Typed CXX operation helpers for resolved shared_ptrs. These deliberately take
+// typed shared_ptrs, not bridge handle IDs, so callers demonstrate the resolver
+// pattern and avoid handle-based trampolines.
+void bridge_processor_proc_process(std::shared_ptr<HasAudioProcessingFunction> processor, uint32_t nframes);
+void bridge_decoupled_midi_port_proc_process(std::shared_ptr<DecoupledMidiPort> port, uint32_t nframes);
+void bridge_decoupled_midi_port_close(std::shared_ptr<DecoupledMidiPort> port);
 
 }
 

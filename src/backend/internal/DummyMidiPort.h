@@ -58,7 +58,7 @@ public:
     DummyMidiPort(
         std::string name,
         shoop_port_direction_t direction,
-        shoop_weak_ptr<DummyExternalConnections> external_connections = shoop_weak_ptr<DummyExternalConnections>()
+        std::weak_ptr<DummyExternalConnections> external_connections = std::weak_ptr<DummyExternalConnections>()
     );
 
     void queue_msg(uint32_t size, uint32_t time, const uint8_t* data);

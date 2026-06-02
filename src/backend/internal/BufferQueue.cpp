@@ -10,9 +10,9 @@
 #endif
 
 template<typename SampleT>
-BufferQueue<SampleT>::BufferQueue(shoop_shared_ptr<BufferPool<SampleT>> pool, uint32_t max_buffers) : m_command_queue(rust_command_queue::make(shoop_constants::command_queue_size, 1000, 1000)), pool(pool)
+BufferQueue<SampleT>::BufferQueue(std::shared_ptr<BufferPool<SampleT>> pool, uint32_t max_buffers) : m_command_queue(rust_command_queue::make(shoop_constants::command_queue_size, 1000, 1000)), pool(pool)
 {
-    buffers = shoop_make_shared<std::deque<SharedBuffer>>();
+    buffers = std::make_shared<std::deque<SharedBuffer>>();
     ma_active_buffer_pos.store(pool ? pool->elems_per_buffer() : 0); // put at end of a virtual buffer, ensures new buffer will be created immediately
     ma_max_buffers.store(max_buffers);
 }
@@ -58,7 +58,7 @@ void BufferQueue<SampleT>::PROC_put(const std::initializer_list<SampleT>& list) 
 template<typename SampleT>
 typename BufferQueue<SampleT>::Snapshot BufferQueue<SampleT>::PROC_get() {
     Snapshot s;
-    s.data = shoop_make_shared<std::vector<SharedBuffer>>();
+    s.data = std::make_shared<std::vector<SharedBuffer>>();
     *s.data = std::vector<SharedBuffer>(buffers->begin(), buffers->end());
     s.n_samples = n_samples();
     s.buffer_size = single_buffer_size();
@@ -69,7 +69,7 @@ template<typename SampleT>
 void BufferQueue<SampleT>::set_max_buffers(uint32_t max_buffers) {
     log<log_level_debug_trace>("queue set max buffers -> {}", max_buffers);
     auto new_buffers =
-        shoop_make_shared<std::deque<SharedBuffer>>();
+        std::make_shared<std::deque<SharedBuffer>>();
     rust_command_queue::queue(m_command_queue, [this, new_buffers, max_buffers]() {
         log<log_level_debug_trace>("set max buffers -> {}", max_buffers);
         buffers = new_buffers;
