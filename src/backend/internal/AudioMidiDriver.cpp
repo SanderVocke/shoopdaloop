@@ -74,11 +74,13 @@ std::shared_ptr<shoop_types::_DecoupledMidiPort> AudioMidiDriver::make_decoupled
 ) {
     constexpr uint32_t decoupled_midi_port_queue_size = 256;
     auto decoupled = std::make_shared<shoop_types::_DecoupledMidiPort>(port, driver, decoupled_midi_port_queue_size, direction);
-    auto strong = bridge_object::register_decoupled_midi_port(decoupled);
-    auto weak = bridge_object::downgrade(strong);
+    auto strong = std::make_shared<std::unique_ptr<bridge_object::DecoupledMidiPortBridgeStrong>>(
+        bridge_object::make_decoupled_midi_port_bridge_strong(decoupled));
+    auto weak = std::make_shared<std::unique_ptr<bridge_object::DecoupledMidiPortBridgeWeak>>(
+        bridge_object::decoupled_midi_port_bridge_downgrade(**strong));
     auto *queue = reinterpret_cast<backend_rust::CommandQueue *>(m_rust_core->command_queue_ptr());
     rust_command_queue::queue(*queue, [this, decoupled, strong, weak]() {
-        auto handle = m_rust_core->register_decoupled_port(weak.id, weak.type_id, strong.id, strong.type_id);
+        auto handle = m_rust_core->register_decoupled_port(std::move(*weak), std::move(*strong));
         decoupled->set_registry_handle(handle);
     });
     return decoupled;

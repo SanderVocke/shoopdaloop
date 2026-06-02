@@ -9,12 +9,6 @@ use crate::audio_midi_driver::AudioMidiDriverCore;
 
 #[cxx::bridge(namespace = "backend_rust")]
 pub mod ffi {
-    #[derive(Clone, Copy, Debug)]
-    struct AudioMidiDriverProcessorWeakHandle {
-        id: u64,
-        type_id: u32,
-    }
-
     unsafe extern "C++" {
         include!("internal/AudioMidiDriverCxxTrampolines.h");
 
@@ -35,14 +29,14 @@ pub mod ffi {
         fn processor_bridge_proc_process(processor: &ProcessorBridgeWeak, nframes: u32);
 
         #[namespace = "bridge_object"]
-        fn bridge_resolve_decoupled_midi_port_for_rust(decoupled_port_id: u64, decoupled_port_type_id: u32) -> SharedPtr<DecoupledMidiPort>;
+        type DecoupledMidiPortBridgeStrong;
+        #[namespace = "bridge_object"]
+        type DecoupledMidiPortBridgeWeak;
 
         #[namespace = "bridge_object"]
-        fn bridge_processor_proc_process(processor: SharedPtr<HasAudioProcessingFunction>, nframes: u32);
+        fn decoupled_midi_port_bridge_proc_process(port: &DecoupledMidiPortBridgeWeak, nframes: u32);
         #[namespace = "bridge_object"]
-        fn bridge_decoupled_midi_port_proc_process(port: SharedPtr<DecoupledMidiPort>, nframes: u32);
-        #[namespace = "bridge_object"]
-        fn bridge_decoupled_midi_port_close(port: SharedPtr<DecoupledMidiPort>);
+        fn decoupled_midi_port_bridge_close(port: &DecoupledMidiPortBridgeWeak);
     }
 
     extern "Rust" {
@@ -88,7 +82,7 @@ pub mod ffi {
         fn get_processor_bridge_weak_handle(self: &AudioMidiDriverCore, handle: u64) -> UniquePtr<ProcessorBridgeWeak>;
 
         // Decoupled port management
-        fn register_decoupled_port(self: &AudioMidiDriverCore, weak_id: u64, weak_type_id: u32, strong_id: u64, strong_type_id: u32) -> u64;
+        fn register_decoupled_port(self: &AudioMidiDriverCore, weak: UniquePtr<DecoupledMidiPortBridgeWeak>, strong: UniquePtr<DecoupledMidiPortBridgeStrong>) -> u64;
         fn unregister_decoupled_port(self: &AudioMidiDriverCore, handle: u64);
         fn process_decoupled_port(self: &AudioMidiDriverCore, handle: u64, nframes: u32) -> bool;
         fn close_decoupled_port(self: &AudioMidiDriverCore, handle: u64) -> bool;
@@ -201,8 +195,12 @@ fn get_processor_handles(core: &AudioMidiDriverCore) -> Vec<u64> {
 }
 
 // Decoupled port management
-fn register_decoupled_port(core: &AudioMidiDriverCore, weak_id: u64, weak_type_id: u32, strong_id: u64, strong_type_id: u32) -> u64 {
-    core.register_decoupled_port(weak_id, weak_type_id, strong_id, strong_type_id)
+fn register_decoupled_port(
+    core: &AudioMidiDriverCore,
+    weak: cxx::UniquePtr<ffi::DecoupledMidiPortBridgeWeak>,
+    strong: cxx::UniquePtr<ffi::DecoupledMidiPortBridgeStrong>,
+) -> u64 {
+    core.register_decoupled_port(weak, strong)
 }
 
 fn unregister_decoupled_port(core: &AudioMidiDriverCore, handle: u64) {
