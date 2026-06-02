@@ -274,6 +274,18 @@ impl AudioMidiDriverCore {
             .unwrap_or_default()
     }
 
+    pub fn get_processor_bridge_weak_handles(
+        &self,
+    ) -> Vec<crate::audio_midi_driver_cxx::ffi::AudioMidiDriverProcessorWeakHandle> {
+        self.get_processor_weak_handles()
+            .into_iter()
+            .map(|handle| crate::audio_midi_driver_cxx::ffi::AudioMidiDriverProcessorWeakHandle {
+                id: handle.id,
+                type_id: handle.type_id,
+            })
+            .collect()
+    }
+
     // ========================================================================
     // Decoupled port management
     // ========================================================================
@@ -509,9 +521,9 @@ mod tests {
         assert!(core.get_processor_handles().is_empty());
 
         // Add processors
-        let h1 = core.add_processor(100, 1);
-        let h2 = core.add_processor(200, 1);
-        let _h3 = core.add_processor(300, 1);
+        let h1 = core.add_processor(100, 1, 1, 11, 1);
+        let h2 = core.add_processor(200, 2, 1, 12, 1);
+        let _h3 = core.add_processor(300, 3, 1, 13, 1);
 
         let handles = core.get_processor_handles();
         assert_eq!(handles.len(), 3);
@@ -519,7 +531,7 @@ mod tests {
         assert!(handles.contains(&h2));
 
         // same pointer can be registered with another handle
-        let _h4 = core.add_processor(100, 1);
+        let _h4 = core.add_processor(100, 4, 1, 14, 1);
         assert_eq!(core.get_processor_handles().len(), 4);
 
         // Remove processor by handle

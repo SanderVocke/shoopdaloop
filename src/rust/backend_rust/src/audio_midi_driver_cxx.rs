@@ -9,6 +9,12 @@ use crate::audio_midi_driver::AudioMidiDriverCore;
 
 #[cxx::bridge(namespace = "backend_rust")]
 pub mod ffi {
+    #[derive(Clone, Copy, Debug)]
+    struct AudioMidiDriverProcessorWeakHandle {
+        id: u64,
+        type_id: u32,
+    }
+
     unsafe extern "C++" {
         include!("internal/AudioMidiDriverCxxTrampolines.h");
 
@@ -71,6 +77,7 @@ pub mod ffi {
         fn add_processor(self: &AudioMidiDriverCore, cpp_identity: usize, weak_id: u64, weak_type_id: u32, strong_id: u64, strong_type_id: u32) -> u64;
         fn remove_processor_by_cpp_identity(self: &AudioMidiDriverCore, cpp_identity: usize);
         fn get_processor_handles(self: &AudioMidiDriverCore) -> Vec<u64>;
+        fn get_processor_bridge_weak_handles(self: &AudioMidiDriverCore) -> Vec<AudioMidiDriverProcessorWeakHandle>;
 
         // Decoupled port management
         fn register_decoupled_port(self: &AudioMidiDriverCore, weak_id: u64, weak_type_id: u32, strong_id: u64, strong_type_id: u32) -> u64;

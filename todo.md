@@ -1,91 +1,47 @@
-# TODO: remove AudioMidiDriverRuntime by moving runtime ownership into Rust AudioMidiDriverCore
+# TODO: remove C++ processor mirror list from AudioMidiDriver
 
 - [x] Orientation
   - [x] Review `plan.md`
-  - [x] Review current `AudioMidiDriverRuntime.h/.cpp`
-  - [x] Review `AudioMidiDriver.h/.cpp`, `DummyAudioMidiDriver`, and JACK driver delegation
-  - [x] Review Rust `audio_midi_driver.rs` and `audio_midi_driver_cxx.rs`
-  - [x] Review command queue bridge files
-  - [x] Run baseline `cargo build`
+  - [x] Review `AudioMidiDriver.h/.cpp` processor add/remove/processors implementation
+  - [x] Review Rust `audio_midi_driver.rs` processor registration structures and methods
+  - [x] Review `audio_midi_driver_cxx.rs` CXX bridge patterns and existing exposed structs/methods
+  - [x] Review `BridgeObject.h/.cpp` processor resolver helpers
+  - [x] Search current uses of `processors()` and confirm expected compatibility surface
 
-- [x] Phase 1: move command queue ownership into Rust core
-  - [x] Add owned `CommandQueue` field to `AudioMidiDriverCore`
-  - [x] Update Rust `process_cycle` to execute owned command queue instead of receiving `command_queue_ptr`
-  - [x] Add CXX-exposed Rust core methods for queueing/executing process-thread commands
-  - [x] Update C++ drivers/runtime call sites to use Rust core command queue APIs directly
-  - [x] Preserve `queue_process_thread_command`, `exec_process_thread_command`, and `exec_all_commands_for_process_thread` behavior
+- [x] Phase 1: expose Rust-owned processor weak handles to C++
+  - [x] Add a CXX-local POD struct in `audio_midi_driver_cxx.rs` for processor weak handles, e.g. `{ id: u64, type_id: u32 }`
+  - [x] Add Rust `AudioMidiDriverCore` method to snapshot processor weak handles from Rust registrations (existing method reused)
+  - [x] Expose that method through the CXX bridge
   - [x] Run `cargo build`
-  - [x] Run backend `test_runner` if process/queue behavior changed substantially
-    - validated via `target/debug/build/backend-3ef013a37af9a255/out/cmake_install/tools/shoopdaloop/test_runner`
 
-- [x] Phase 2: move processor registration bookkeeping into Rust core
-  - [x] Add Rust `ProcessorRegistration` storing bridge strong and weak handles
-  - [x] Add Rust map from C++ identity pointer to stable processor handle for removal
-  - [x] Change Rust processor registration API to receive C++ identity plus strong/weak handle scalar fields
-  - [x] Change Rust processor removal API to release stored bridge strong handle
-  - [x] Add C++ free helper for processor bridge registration/downgrade into Rust core
-  - [x] Update C++ `add_processor` paths to stop storing processor bridge strong handles in C++ maps
-  - [x] Update C++ `remove_processor` paths to delegate removal/release to Rust core
-  - [x] Preserve public `processors()` compatibility behavior
-  - [x] Ensure processing still uses bridge weak handle typed resolver pattern
-  - [x] Add/update tests for processor add/remove cycles and stale handle safety if needed
+- [x] Phase 2: remove C++ `m_processors` mirror
+  - [x] Remove `m_processors` member from `AudioMidiDriver`
+  - [x] Update `AudioMidiDriver::add_processor` to stop pushing into a C++ vector
+  - [x] Update `AudioMidiDriver::remove_processor` to stop erasing from a C++ vector
+  - [x] Implement `AudioMidiDriver::processors()` by querying Rust weak handles and resolving each handle to a typed C++ processor pointer
+  - [x] Skip stale/unresolvable handles defensively in `processors()`
+  - [x] Confirm no C++ processor membership mirror list remains
   - [x] Run `cargo build`
+
+- [x] Phase 3: tests
+  - [x] Add or update backend tests for `processors()` empty state
+  - [x] Add or update backend tests for `processors()` after adding one processor
+  - [x] Add or update backend tests for `processors()` after removing a processor
+  - [x] Add or update backend tests for multiple processors without assuming order
   - [x] Run backend `test_runner`
-
-- [x] Phase 3: move decoupled MIDI registration bookkeeping into Rust core
-  - [x] Add Rust `DecoupledPortRegistration` storing bridge strong and weak handles
-  - [x] Change Rust decoupled registration API to receive strong/weak handle scalar fields
-  - [x] Change Rust decoupled unregister API to release stored bridge strong handle
-  - [x] Replace remaining C++ decoupled keepalive ownership with Rust-owned bridge strong records
-  - [x] Replace `AudioMidiDriverRuntime::make_decoupled_midi_port` behavior with small helper/direct driver code
-  - [x] Preserve `DecoupledMidiPort::registry_handle()` behavior
-  - [x] Preserve C API behavior for open/close/destroy decoupled MIDI ports
-  - [x] Ensure processing/close still use bridge weak handle typed resolver pattern
-  - [x] Add/update tests for decoupled keepalive, open/close stress, and stale operations if needed
-  - [x] Run `cargo build`
   - [x] Run `cargo test`
-  - [x] Run backend `test_runner`
 
-- [x] Phase 4: remove `AudioMidiDriverRuntime`
-  - [x] Phase 4A: introduce shared C++ base/helper layer
-    - [x] Add `AudioMidiDriver` base constructor/state for `AudioMidiDriverCore`, maybe-process callback, client-name cache, and `processors()` compatibility vector
-    - [x] Move process-cycle and command-queue helper behavior from `AudioMidiDriverRuntime` into `AudioMidiDriver` base/helper methods
-    - [x] Move processor add/remove compatibility behavior into `AudioMidiDriver` base/helper methods while Rust core remains owner of bridge strong records
-    - [x] Move decoupled MIDI make/unregister helper behavior into `AudioMidiDriver` base/helper methods while Rust core remains owner of bridge strong records
-    - [x] Move state forwarding/delegation methods into `AudioMidiDriver` base/helper methods
-    - [x] Ensure the new base/helper owns no processor bridge strong map and no decoupled bridge strong map
-  - [x] Phase 4B: migrate concrete drivers off `m_runtime`
-    - [x] Remove `AudioMidiDriverRuntime.h` include from `DummyAudioMidiDriver.h`
-    - [x] Remove `AudioMidiDriverRuntime m_runtime` from `DummyAudioMidiDriver`
-    - [x] Initialize `AudioMidiDriver` base/helper with `maybe_process_callback` in `DummyAudioMidiDriver`
-    - [x] Replace all Dummy `m_runtime.*` calls with base/helper/core calls
-    - [x] Remove `AudioMidiDriverRuntime.h` include from `jack/JackAudioMidiDriver.h`
-    - [x] Remove `AudioMidiDriverRuntime m_runtime` from `GenericJackAudioMidiDriver`
-    - [x] Initialize `AudioMidiDriver` base/helper with `maybe_process_callback` in JACK driver
-    - [x] Replace all JACK `m_runtime.*` calls with base/helper/core calls
-    - [x] Preserve public virtual API behavior for processor, decoupled MIDI, state, command queue, and wait methods
-  - [x] Phase 4C: delete old runtime files
-    - [x] Delete `AudioMidiDriverRuntime.h`
-    - [x] Delete `AudioMidiDriverRuntime.cpp`
-    - [x] Update CMake/source lists if needed (not explicitly listed)
-    - [x] Clean includes that referenced `AudioMidiDriverRuntime.h`
-    - [x] Confirm no `AudioMidiDriverRuntime` references remain
-    - [x] Confirm no `m_runtime` members/calls remain
-  - [x] Run `cargo build`
-  - [x] Run backend `test_runner`
-
-- [x] Phase 5: cleanup and final verification
+- [x] Phase 4: cleanup and final verification
   - [x] Confirm Rust owns processor bridge strong registration records
-  - [x] Confirm Rust owns decoupled MIDI bridge strong registration records
-  - [x] Confirm no C++ processor bridge strong keepalive map remains
-  - [x] Confirm no C++ decoupled bridge strong keepalive map remains
-  - [x] Confirm no old handle-based processor/decoupled trampolines were reintroduced
-  - [x] Confirm no lifetime-authoritative raw object pointer storage was introduced
+  - [x] Confirm no C++ processor bridge strong keepalive map was introduced
+  - [x] Confirm no C++ processor membership vector/list mirror remains
+  - [x] Confirm `AudioMidiDriver::processors()` reconstructs from Rust-owned weak handles
+  - [x] Confirm process cycle still uses Rust processor registrations and typed bridge resolver pattern
   - [x] Clean comments and includes
   - [x] Run `cargo fmt --all`
   - [x] Run `RUSTFLAGS="-D warnings" cargo build`
   - [x] Run `cargo test`
   - [x] Run backend `test_runner`
-  - [x] Run `./target/debug/shoopdaloop_dev.sh --self-test` (ran with `QT_QPA_PLATFORM=offscreen`)
-  - [x] Fix all warnings/errors introduced by this migration
-  - [x] Confirm final state: `AudioMidiDriverRuntime` removed, tests pass, strict build passes, formatting applied
+  - [x] Run `QT_QPA_PLATFORM=offscreen ./target/debug/shoopdaloop_dev.sh --self-test` (first 120s attempt timed out; rerun with 300s passed)
+  - [x] Fix all warnings/errors introduced by this task
+  - [x] Confirm final state: no C++ processor mirror list, tests pass, strict build passes, formatting applied

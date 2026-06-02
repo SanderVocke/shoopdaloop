@@ -7,6 +7,7 @@
 #include <thread>
 #include <chrono>
 #include <set>
+#include <algorithm>
 
 struct Tracker : public HasAudioProcessingFunction {
     std::atomic<uint32_t> total_samples_processed = 0;
@@ -154,6 +155,44 @@ TEST_CASE("DummyAudioMidiDriver - Input port queue consume combine", "[DummyAudi
         REQUIRE(bufvec == std::vector<float>({1, 2, 3, 4, 1, 2, 3, 4, 0, 0}));
     }
 };
+
+TEST_CASE("DummyAudioMidiDriver - processors API reflects Rust registrations", "[DummyAudioMidiDriver][processor]") {
+    DummyAudioMidiDriver<uint32_t, uint32_t> dut;
+    DummyAudioMidiDriverSettings settings;
+    settings.buffer_size = 256;
+    settings.client_name = "test";
+    settings.sample_rate = 48000;
+    dut.enter_mode(DummyAudioMidiDriverMode::Controlled);
+    dut.start(settings);
+
+    REQUIRE(dut.processors().empty());
+
+    auto first = std::make_shared<Tracker>();
+    auto second = std::make_shared<Tracker>();
+    dut.add_processor(std::static_pointer_cast<HasAudioProcessingFunction>(first));
+
+    auto one = dut.processors();
+    REQUIRE(one.size() == 1);
+    REQUIRE(one[0].lock() == first);
+
+    dut.add_processor(std::static_pointer_cast<HasAudioProcessingFunction>(second));
+    auto two = dut.processors();
+    REQUIRE(two.size() == 2);
+    std::vector<std::shared_ptr<HasAudioProcessingFunction>> locked;
+    std::transform(two.begin(), two.end(), std::back_inserter(locked), [](auto const &wp) { return wp.lock(); });
+    REQUIRE(std::find(locked.begin(), locked.end(), first) != locked.end());
+    REQUIRE(std::find(locked.begin(), locked.end(), second) != locked.end());
+
+    dut.remove_processor(std::static_pointer_cast<HasAudioProcessingFunction>(first));
+    auto after_remove = dut.processors();
+    REQUIRE(after_remove.size() == 1);
+    REQUIRE(after_remove[0].lock() == second);
+
+    dut.remove_processor(std::static_pointer_cast<HasAudioProcessingFunction>(second));
+    REQUIRE(dut.processors().empty());
+
+    dut.close();
+}
 
 TEST_CASE("DummyAudioMidiDriver - processor add/remove cycles", "[DummyAudioMidiDriver][processor]") {
     TrackedDummyAudioMidiDriver<uint32_t, uint32_t> dut(

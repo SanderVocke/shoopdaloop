@@ -119,7 +119,6 @@ public:
 
 private:
     rust::Box<backend_rust::AudioMidiDriverCore> m_rust_core;
-    std::vector<std::weak_ptr<HasAudioProcessingFunction>> m_processors;
     void (*m_maybe_process_callback)() = nullptr;
     mutable std::string m_client_name_cache;
 };
