@@ -69,7 +69,6 @@ public:
 
 private:
     rust::Box<backend_rust::AudioMidiDriverCore> m_rust_core;
-    rust::Box<backend_rust::CommandQueue> m_command_queue;
     std::vector<std::weak_ptr<HasAudioProcessingFunction>> m_processors;
     std::unordered_map<HasAudioProcessingFunction*, uint64_t> m_processor_handles;
     std::unordered_map<HasAudioProcessingFunction*, bridge_object::BridgeStrongHandle> m_processor_bridge_strongs;

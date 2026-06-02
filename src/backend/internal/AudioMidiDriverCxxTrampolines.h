@@ -16,7 +16,6 @@ class DecoupledMidiPort;
 namespace backend_rust {
 
 void audiomididriver_invoke_maybe_process_callback(uintptr_t maybe_fn_ptr);
-void audiomididriver_exec_command_queue(uintptr_t command_queue_ptr);
 
 
 }

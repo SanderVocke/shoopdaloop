@@ -13,6 +13,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, Ordering};
 use crate::bridge_object_cxx::ffi::BridgeWeakHandle;
+use crate::command_queue::CommandQueue;
 use std::sync::{Mutex, RwLock};
 
 /// Wrapper for atomic f32 operations using AtomicU32 internally.
@@ -83,10 +84,9 @@ impl Default for AudioMidiDriverState {
 /// Processors and ports are stored as usize pointers; actual iteration
 /// and processing happens via callbacks to C++.
 ///
-/// Note: CommandQueue handling is done in C++ via the C++ AudioMidiDriver
-/// which owns the CommandQueue (as a wrapper around a Rust CommandQueue).
 pub struct AudioMidiDriverCore {
     state: AudioMidiDriverState,
+    command_queue: CommandQueue,
     processors: RwLock<HashMap<u64, BridgeWeakHandle>>,
     next_processor_handle: AtomicU64,
     decoupled_ports: RwLock<HashMap<u64, BridgeWeakHandle>>,
@@ -98,6 +98,7 @@ impl AudioMidiDriverCore {
     pub fn new() -> Self {
         AudioMidiDriverCore {
             state: AudioMidiDriverState::new(),
+            command_queue: CommandQueue::new(1024, 1000, 1000),
             processors: RwLock::new(HashMap::new()),
             next_processor_handle: AtomicU64::new(1),
             decoupled_ports: RwLock::new(HashMap::new()),
@@ -302,17 +303,14 @@ impl AudioMidiDriverCore {
     pub fn process_cycle(
         &self,
         maybe_process_callback_ptr: usize,
-        command_queue_ptr: usize,
         nframes: u32,
     ) {
         unsafe {
             crate::audio_midi_driver_cxx::ffi::audiomididriver_invoke_maybe_process_callback(
                 maybe_process_callback_ptr,
             );
-            crate::audio_midi_driver_cxx::ffi::audiomididriver_exec_command_queue(
-                command_queue_ptr,
-            );
         }
+        self.command_queue.exec_all();
 
         for handle in self.get_decoupled_port_handles() {
             self.process_decoupled_port(handle, nframes);
@@ -337,6 +335,22 @@ impl AudioMidiDriverCore {
         }
 
         self.set_last_processed(nframes);
+    }
+
+    pub fn queue_process_thread_command(&self, user_data: usize) {
+        unsafe { self.command_queue.cxx_queue(user_data); }
+    }
+
+    pub fn exec_process_thread_command(&self, user_data: usize) {
+        unsafe { self.command_queue.cxx_exec_process_thread_command(user_data); }
+    }
+
+    pub fn exec_all_commands_for_process_thread(&self) {
+        self.command_queue.exec_all();
+    }
+
+    pub fn command_queue_ptr(&self) -> usize {
+        (&self.command_queue as *const CommandQueue) as usize
     }
 }
 

@@ -13,7 +13,6 @@ pub mod ffi {
         include!("internal/AudioMidiDriverCxxTrampolines.h");
 
         unsafe fn audiomididriver_invoke_maybe_process_callback(maybe_fn_ptr: usize);
-        unsafe fn audiomididriver_exec_command_queue(command_queue_ptr: usize);
         #[namespace = ""]
         type HasAudioProcessingFunction;
         #[namespace = ""]
@@ -62,6 +61,12 @@ pub mod ffi {
         fn report_xrun(self: &AudioMidiDriverCore);
         fn reset_xruns(self: &AudioMidiDriverCore);
 
+        // Command queue
+        fn command_queue_ptr(self: &AudioMidiDriverCore) -> usize;
+        fn queue_process_thread_command(self: &AudioMidiDriverCore, user_data: usize);
+        fn exec_process_thread_command(self: &AudioMidiDriverCore, user_data: usize);
+        fn exec_all_commands_for_process_thread(self: &AudioMidiDriverCore);
+
         // Processor management (ptrs as usize)
         fn add_processor(self: &AudioMidiDriverCore, weak_id: u64, weak_type_id: u32) -> u64;
         fn remove_processor(self: &AudioMidiDriverCore, handle: u64);
@@ -77,7 +82,6 @@ pub mod ffi {
         unsafe fn process_cycle(
             self: &AudioMidiDriverCore,
             maybe_process_callback_ptr: usize,
-            command_queue_ptr: usize,
             nframes: u32,
         );
     }
@@ -197,11 +201,26 @@ fn get_decoupled_port_handles(core: &AudioMidiDriverCore) -> Vec<u64> {
     core.get_decoupled_port_handles()
 }
 
+fn command_queue_ptr(core: &AudioMidiDriverCore) -> usize {
+    core.command_queue_ptr()
+}
+
+fn queue_process_thread_command(core: &AudioMidiDriverCore, user_data: usize) {
+    core.queue_process_thread_command(user_data);
+}
+
+fn exec_process_thread_command(core: &AudioMidiDriverCore, user_data: usize) {
+    core.exec_process_thread_command(user_data);
+}
+
+fn exec_all_commands_for_process_thread(core: &AudioMidiDriverCore) {
+    core.exec_all_commands_for_process_thread();
+}
+
 unsafe fn process_cycle(
     core: &AudioMidiDriverCore,
     maybe_process_callback_ptr: usize,
-    command_queue_ptr: usize,
     nframes: u32,
 ) {
-    core.process_cycle(maybe_process_callback_ptr, command_queue_ptr, nframes);
+    core.process_cycle(maybe_process_callback_ptr, nframes);
 }
