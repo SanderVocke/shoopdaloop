@@ -34,15 +34,12 @@ void AudioMidiDriver::remove_processor(std::shared_ptr<HasAudioProcessingFunctio
     m_rust_core->remove_processor_by_cpp_identity(reinterpret_cast<uintptr_t>(p.get()));
 }
 
-std::vector<std::weak_ptr<HasAudioProcessingFunction>> AudioMidiDriver::processors() const {
-    std::vector<std::weak_ptr<HasAudioProcessingFunction>> result;
+std::vector<bridge_object::BridgeWeakHandle> AudioMidiDriver::processors() const {
+    std::vector<bridge_object::BridgeWeakHandle> result;
     auto handles = m_rust_core->get_processor_bridge_weak_handles();
     result.reserve(handles.size());
     for (auto const &handle : handles) {
-        auto processor = bridge_object::bridge_resolve_processor_for_rust(handle.id, handle.type_id);
-        if (processor) {
-            result.push_back(processor);
-        }
+        result.push_back(bridge_object::BridgeWeakHandle{handle.id, handle.type_id});
     }
     return result;
 }

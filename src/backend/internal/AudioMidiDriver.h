@@ -8,6 +8,7 @@
 #include <atomic>
 #include "LoggingEnabled.h"
 #include "RustAudioPort.h"
+#include "BridgeObject.h"
 #include <memory>
 #include <vector>
 #include "backend_rust/src/command_queue_cxx.rs.h"
@@ -66,7 +67,7 @@ public:
 
     virtual void add_processor(std::shared_ptr<HasAudioProcessingFunction> p);
     virtual void remove_processor(std::shared_ptr<HasAudioProcessingFunction> p);
-    virtual std::vector<std::weak_ptr<HasAudioProcessingFunction>> processors() const;
+    virtual std::vector<bridge_object::BridgeWeakHandle> processors() const;
 
     virtual void start(AudioMidiDriverSettingsInterface &settings) = 0;
 

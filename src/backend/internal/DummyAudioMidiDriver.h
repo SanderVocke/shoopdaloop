@@ -73,7 +73,7 @@ public:
 
     void add_processor(std::shared_ptr<HasAudioProcessingFunction> p) override;
     void remove_processor(std::shared_ptr<HasAudioProcessingFunction> p) override;
-    std::vector<std::weak_ptr<HasAudioProcessingFunction>> processors() const override;
+    std::vector<bridge_object::BridgeWeakHandle> processors() const override;
 
     uint32_t get_xruns() const override;
     float get_dsp_load() override;

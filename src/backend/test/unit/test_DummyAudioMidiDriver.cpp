@@ -3,6 +3,7 @@
 #include "PortInterface.h"
 #include "AudioMidiDriver.h"
 #include "DecoupledMidiPort.h"
+#include "BridgeObject.h"
 #include <functional>
 #include <thread>
 #include <chrono>
@@ -173,20 +174,27 @@ TEST_CASE("DummyAudioMidiDriver - processors API reflects Rust registrations", "
 
     auto one = dut.processors();
     REQUIRE(one.size() == 1);
-    REQUIRE(one[0].lock() == first);
+    auto first_resolved = bridge_object::lock_processor(one[0]);
+    REQUIRE(first_resolved.has_value());
+    REQUIRE(*first_resolved == first);
 
     dut.add_processor(std::static_pointer_cast<HasAudioProcessingFunction>(second));
     auto two = dut.processors();
     REQUIRE(two.size() == 2);
     std::vector<std::shared_ptr<HasAudioProcessingFunction>> locked;
-    std::transform(two.begin(), two.end(), std::back_inserter(locked), [](auto const &wp) { return wp.lock(); });
+    std::transform(two.begin(), two.end(), std::back_inserter(locked), [](auto const &handle) {
+        auto resolved = bridge_object::lock_processor(handle);
+        return resolved.value_or(nullptr);
+    });
     REQUIRE(std::find(locked.begin(), locked.end(), first) != locked.end());
     REQUIRE(std::find(locked.begin(), locked.end(), second) != locked.end());
 
     dut.remove_processor(std::static_pointer_cast<HasAudioProcessingFunction>(first));
     auto after_remove = dut.processors();
     REQUIRE(after_remove.size() == 1);
-    REQUIRE(after_remove[0].lock() == second);
+    auto second_resolved = bridge_object::lock_processor(after_remove[0]);
+    REQUIRE(second_resolved.has_value());
+    REQUIRE(*second_resolved == second);
 
     dut.remove_processor(std::static_pointer_cast<HasAudioProcessingFunction>(second));
     REQUIRE(dut.processors().empty());

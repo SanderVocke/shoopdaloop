@@ -231,7 +231,7 @@ template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::remove_processor(std::shared_ptr<HasAudioProcessingFunction> p) { AudioMidiDriver::remove_processor(p); }
 
 template <typename Time, typename Size>
-std::vector<std::weak_ptr<HasAudioProcessingFunction>> DummyAudioMidiDriver<Time, Size>::processors() const { return AudioMidiDriver::processors(); }
+std::vector<bridge_object::BridgeWeakHandle> DummyAudioMidiDriver<Time, Size>::processors() const { return AudioMidiDriver::processors(); }
 
 template <typename Time, typename Size>
 uint32_t DummyAudioMidiDriver<Time, Size>::get_xruns() const { return AudioMidiDriver::get_xruns(); }
