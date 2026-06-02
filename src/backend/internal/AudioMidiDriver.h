@@ -67,7 +67,7 @@ public:
 
     virtual void add_processor(std::shared_ptr<HasAudioProcessingFunction> p);
     virtual void remove_processor(std::shared_ptr<HasAudioProcessingFunction> p);
-    virtual std::vector<bridge_object::BridgeWeakHandle> processors() const;
+    virtual std::vector<std::unique_ptr<bridge_object::ProcessorBridgeWeak>> processors() const;
 
     virtual void start(AudioMidiDriverSettingsInterface &settings) = 0;
 

@@ -25,21 +25,24 @@ AudioMidiDriver::AudioMidiDriver(void (*maybe_process_callback)())
 }
 
 void AudioMidiDriver::add_processor(std::shared_ptr<HasAudioProcessingFunction> p) {
-    auto strong = bridge_object::register_processor(p);
-    auto weak = bridge_object::downgrade(strong);
-    m_rust_core->add_processor(reinterpret_cast<uintptr_t>(p.get()), weak.id, weak.type_id, strong.id, strong.type_id);
+    auto strong = bridge_object::make_processor_bridge_strong(p);
+    auto weak = bridge_object::processor_bridge_downgrade(*strong);
+    m_rust_core->add_processor(reinterpret_cast<uintptr_t>(p.get()), std::move(weak), std::move(strong));
 }
 
 void AudioMidiDriver::remove_processor(std::shared_ptr<HasAudioProcessingFunction> p) {
     m_rust_core->remove_processor_by_cpp_identity(reinterpret_cast<uintptr_t>(p.get()));
 }
 
-std::vector<bridge_object::BridgeWeakHandle> AudioMidiDriver::processors() const {
-    std::vector<bridge_object::BridgeWeakHandle> result;
-    auto handles = m_rust_core->get_processor_bridge_weak_handles();
+std::vector<std::unique_ptr<bridge_object::ProcessorBridgeWeak>> AudioMidiDriver::processors() const {
+    std::vector<std::unique_ptr<bridge_object::ProcessorBridgeWeak>> result;
+    auto handles = m_rust_core->get_processor_handles();
     result.reserve(handles.size());
     for (auto const &handle : handles) {
-        result.push_back(bridge_object::BridgeWeakHandle{handle.id, handle.type_id});
+        auto weak = m_rust_core->get_processor_bridge_weak_handle(handle);
+        if (weak) {
+            result.push_back(std::move(weak));
+        }
     }
     return result;
 }

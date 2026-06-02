@@ -59,6 +59,44 @@ std::optional<std::shared_ptr<T>> lock_typed(BridgeWeakHandle weak) {
 }
 }
 
+std::unique_ptr<ProcessorBridgeWeak> ProcessorBridgeStrong::downgrade_processor() const {
+    return std::make_unique<ProcessorBridgeWeak>(shared_ptr());
+}
+
+std::unique_ptr<ProcessorBridgeStrong> ProcessorBridgeWeak::upgrade_processor() const {
+    auto strong = BridgeWeak<HasAudioProcessingFunction>::upgrade();
+    if (!strong) { return {}; }
+    return std::make_unique<ProcessorBridgeStrong>(strong->shared_ptr());
+}
+
+std::unique_ptr<ProcessorBridgeStrong> make_processor_bridge_strong(std::shared_ptr<HasAudioProcessingFunction> p) {
+    return std::make_unique<ProcessorBridgeStrong>(std::move(p));
+}
+
+std::unique_ptr<ProcessorBridgeWeak> processor_bridge_downgrade(const ProcessorBridgeStrong &strong) {
+    return strong.downgrade_processor();
+}
+
+std::unique_ptr<ProcessorBridgeStrong> processor_bridge_upgrade(const ProcessorBridgeWeak &weak) {
+    return weak.upgrade_processor();
+}
+
+std::unique_ptr<ProcessorBridgeWeak> processor_bridge_clone_weak(const ProcessorBridgeWeak &weak) {
+    auto strong = weak.upgrade_processor();
+    if (!strong) { return {}; }
+    return strong->downgrade_processor();
+}
+
+std::shared_ptr<HasAudioProcessingFunction> processor_bridge_lock(const ProcessorBridgeWeak &weak) {
+    auto strong = weak.upgrade_processor();
+    return strong ? strong->shared_ptr() : nullptr;
+}
+
+void processor_bridge_proc_process(const ProcessorBridgeWeak &weak, uint32_t nframes) {
+    auto processor = processor_bridge_lock(weak);
+    if (processor) { processor->PROC_process(nframes); }
+}
+
 BridgeStrongHandle register_processor(std::shared_ptr<HasAudioProcessingFunction> p) {
     return reg<HasAudioProcessingFunction, BridgeObjectType::Processor>(std::move(p));
 }

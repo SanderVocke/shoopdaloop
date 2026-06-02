@@ -83,8 +83,8 @@ impl Default for AudioMidiDriverState {
 /// Holds atomic state and registration records.
 struct ProcessorRegistration {
     cpp_identity: usize,
-    weak: BridgeWeakHandle,
-    strong: BridgeStrongHandle,
+    weak: cxx::UniquePtr<crate::audio_midi_driver_cxx::ffi::ProcessorBridgeWeak>,
+    strong: cxx::UniquePtr<crate::audio_midi_driver_cxx::ffi::ProcessorBridgeStrong>,
 }
 
 struct DecoupledPortRegistration {
@@ -215,17 +215,11 @@ impl AudioMidiDriverCore {
     pub fn add_processor(
         &self,
         cpp_identity: usize,
-        weak_id: u64,
-        weak_type_id: u32,
-        strong_id: u64,
-        strong_type_id: u32,
+        weak: cxx::UniquePtr<crate::audio_midi_driver_cxx::ffi::ProcessorBridgeWeak>,
+        strong: cxx::UniquePtr<crate::audio_midi_driver_cxx::ffi::ProcessorBridgeStrong>,
     ) -> u64 {
         let handle = self.next_processor_handle.fetch_add(1, Ordering::SeqCst);
-        let reg = ProcessorRegistration {
-            cpp_identity,
-            weak: BridgeWeakHandle { id: weak_id, type_id: weak_type_id },
-            strong: BridgeStrongHandle { id: strong_id, type_id: strong_type_id },
-        };
+        let reg = ProcessorRegistration { cpp_identity, weak, strong };
         if let Ok(mut guard) = self.processors.write() {
             guard.insert(handle, reg);
         }
@@ -256,7 +250,7 @@ impl AudioMidiDriverCore {
             if let Ok(mut map) = self.processor_handle_by_cpp_identity.lock() {
                 map.remove(&reg.cpp_identity);
             }
-            crate::bridge_object_cxx::ffi::bridge_release_strong_for_rust(reg.strong.id, reg.strong.type_id);
+            drop(reg.strong);
         }
     }
 
@@ -267,23 +261,19 @@ impl AudioMidiDriverCore {
             .unwrap_or_default()
     }
 
-    pub fn get_processor_weak_handles(&self) -> Vec<BridgeWeakHandle> {
+    pub fn get_processor_bridge_weak_handle(
+        &self,
+        handle: u64,
+    ) -> cxx::UniquePtr<crate::audio_midi_driver_cxx::ffi::ProcessorBridgeWeak> {
         self.processors
             .read()
-            .map(|guard| guard.values().map(|reg| reg.weak).collect())
-            .unwrap_or_default()
-    }
-
-    pub fn get_processor_bridge_weak_handles(
-        &self,
-    ) -> Vec<crate::audio_midi_driver_cxx::ffi::AudioMidiDriverProcessorWeakHandle> {
-        self.get_processor_weak_handles()
-            .into_iter()
-            .map(|handle| crate::audio_midi_driver_cxx::ffi::AudioMidiDriverProcessorWeakHandle {
-                id: handle.id,
-                type_id: handle.type_id,
+            .ok()
+            .and_then(|guard| {
+                guard.get(&handle).map(|reg| {
+                    crate::audio_midi_driver_cxx::ffi::processor_bridge_clone_weak(&reg.weak)
+                })
             })
-            .collect()
+            .unwrap_or_else(cxx::UniquePtr::null)
     }
 
     // ========================================================================
@@ -382,20 +372,10 @@ impl AudioMidiDriverCore {
         }
 
         for handle in self.get_processor_handles() {
-            let ptr = self
-                .processors
-                .read()
-                .ok()
-                .and_then(|guard| guard.get(&handle).map(|reg| reg.weak));
-            if let Some(processor) = ptr {
-                let resolved = crate::audio_midi_driver_cxx::ffi::bridge_resolve_processor_for_rust(
-                    processor.id,
-                    processor.type_id,
-                );
-                crate::audio_midi_driver_cxx::ffi::bridge_processor_proc_process(
-                    resolved,
-                    nframes,
-                );
+            if let Ok(guard) = self.processors.read() {
+                if let Some(reg) = guard.get(&handle) {
+                    crate::audio_midi_driver_cxx::ffi::processor_bridge_proc_process(&reg.weak, nframes);
+                }
             }
         }
 
@@ -521,9 +501,9 @@ mod tests {
         assert!(core.get_processor_handles().is_empty());
 
         // Add processors
-        let h1 = core.add_processor(100, 1, 1, 11, 1);
-        let h2 = core.add_processor(200, 2, 1, 12, 1);
-        let _h3 = core.add_processor(300, 3, 1, 13, 1);
+        let h1 = core.add_processor(100, cxx::UniquePtr::null(), cxx::UniquePtr::null());
+        let h2 = core.add_processor(200, cxx::UniquePtr::null(), cxx::UniquePtr::null());
+        let _h3 = core.add_processor(300, cxx::UniquePtr::null(), cxx::UniquePtr::null());
 
         let handles = core.get_processor_handles();
         assert_eq!(handles.len(), 3);
@@ -531,7 +511,7 @@ mod tests {
         assert!(handles.contains(&h2));
 
         // same pointer can be registered with another handle
-        let _h4 = core.add_processor(100, 4, 1, 14, 1);
+        let _h4 = core.add_processor(100, cxx::UniquePtr::null(), cxx::UniquePtr::null());
         assert_eq!(core.get_processor_handles().len(), 4);
 
         // Remove processor by handle

@@ -25,7 +25,15 @@ pub mod ffi {
         type DecoupledMidiPort;
 
         #[namespace = "bridge_object"]
-        fn bridge_resolve_processor_for_rust(processor_id: u64, processor_type_id: u32) -> SharedPtr<HasAudioProcessingFunction>;
+        type ProcessorBridgeStrong;
+        #[namespace = "bridge_object"]
+        type ProcessorBridgeWeak;
+
+        #[namespace = "bridge_object"]
+        fn processor_bridge_clone_weak(processor: &ProcessorBridgeWeak) -> UniquePtr<ProcessorBridgeWeak>;
+        #[namespace = "bridge_object"]
+        fn processor_bridge_proc_process(processor: &ProcessorBridgeWeak, nframes: u32);
+
         #[namespace = "bridge_object"]
         fn bridge_resolve_decoupled_midi_port_for_rust(decoupled_port_id: u64, decoupled_port_type_id: u32) -> SharedPtr<DecoupledMidiPort>;
 
@@ -74,10 +82,10 @@ pub mod ffi {
         fn exec_all_commands_for_process_thread(self: &AudioMidiDriverCore);
 
         // Processor management (ptrs as usize)
-        fn add_processor(self: &AudioMidiDriverCore, cpp_identity: usize, weak_id: u64, weak_type_id: u32, strong_id: u64, strong_type_id: u32) -> u64;
+        fn add_processor(self: &AudioMidiDriverCore, cpp_identity: usize, weak: UniquePtr<ProcessorBridgeWeak>, strong: UniquePtr<ProcessorBridgeStrong>) -> u64;
         fn remove_processor_by_cpp_identity(self: &AudioMidiDriverCore, cpp_identity: usize);
         fn get_processor_handles(self: &AudioMidiDriverCore) -> Vec<u64>;
-        fn get_processor_bridge_weak_handles(self: &AudioMidiDriverCore) -> Vec<AudioMidiDriverProcessorWeakHandle>;
+        fn get_processor_bridge_weak_handle(self: &AudioMidiDriverCore, handle: u64) -> UniquePtr<ProcessorBridgeWeak>;
 
         // Decoupled port management
         fn register_decoupled_port(self: &AudioMidiDriverCore, weak_id: u64, weak_type_id: u32, strong_id: u64, strong_type_id: u32) -> u64;
@@ -175,8 +183,13 @@ fn reset_xruns(core: &AudioMidiDriverCore) {
 }
 
 // Processor management
-fn add_processor(core: &AudioMidiDriverCore, cpp_identity: usize, weak_id: u64, weak_type_id: u32, strong_id: u64, strong_type_id: u32) -> u64 {
-    core.add_processor(cpp_identity, weak_id, weak_type_id, strong_id, strong_type_id)
+fn add_processor(
+    core: &AudioMidiDriverCore,
+    cpp_identity: usize,
+    weak: cxx::UniquePtr<ffi::ProcessorBridgeWeak>,
+    strong: cxx::UniquePtr<ffi::ProcessorBridgeStrong>,
+) -> u64 {
+    core.add_processor(cpp_identity, weak, strong)
 }
 
 fn remove_processor_by_cpp_identity(core: &AudioMidiDriverCore, cpp_identity: usize) {

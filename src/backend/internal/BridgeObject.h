@@ -7,6 +7,7 @@
 #include <mutex>
 
 #include <memory>
+#include <utility>
 
 class HasAudioProcessingFunction;
 class DecoupledMidiPort;
@@ -36,6 +37,61 @@ struct BridgeWeakHandle {
     uint64_t id = 0;
     uint32_t type_id = 0;
 };
+
+template<typename T>
+class BridgeWeak;
+
+template<typename T>
+class BridgeStrong {
+public:
+    BridgeStrong() = default;
+    explicit BridgeStrong(std::shared_ptr<T> ptr) : m_ptr(std::move(ptr)) {}
+
+    BridgeWeak<T> downgrade() const { return BridgeWeak<T>(m_ptr); }
+    std::shared_ptr<T> shared_ptr() const { return m_ptr; }
+    T* ptr() const { return m_ptr.get(); }
+    bool valid() const { return static_cast<bool>(m_ptr); }
+
+private:
+    std::shared_ptr<T> m_ptr;
+};
+
+template<typename T>
+class BridgeWeak {
+public:
+    BridgeWeak() = default;
+    explicit BridgeWeak(std::weak_ptr<T> ptr) : m_ptr(std::move(ptr)) {}
+
+    std::unique_ptr<BridgeStrong<T>> upgrade() const {
+        auto ptr = m_ptr.lock();
+        if (!ptr) { return {}; }
+        return std::make_unique<BridgeStrong<T>>(std::move(ptr));
+    }
+
+private:
+    std::weak_ptr<T> m_ptr;
+};
+
+class ProcessorBridgeWeak;
+
+class ProcessorBridgeStrong final : public BridgeStrong<HasAudioProcessingFunction> {
+public:
+    using BridgeStrong<HasAudioProcessingFunction>::BridgeStrong;
+    std::unique_ptr<ProcessorBridgeWeak> downgrade_processor() const;
+};
+
+class ProcessorBridgeWeak final : public BridgeWeak<HasAudioProcessingFunction> {
+public:
+    using BridgeWeak<HasAudioProcessingFunction>::BridgeWeak;
+    std::unique_ptr<ProcessorBridgeStrong> upgrade_processor() const;
+};
+
+std::unique_ptr<ProcessorBridgeStrong> make_processor_bridge_strong(std::shared_ptr<HasAudioProcessingFunction> p);
+std::unique_ptr<ProcessorBridgeWeak> processor_bridge_downgrade(const ProcessorBridgeStrong &strong);
+std::unique_ptr<ProcessorBridgeStrong> processor_bridge_upgrade(const ProcessorBridgeWeak &weak);
+std::unique_ptr<ProcessorBridgeWeak> processor_bridge_clone_weak(const ProcessorBridgeWeak &weak);
+std::shared_ptr<HasAudioProcessingFunction> processor_bridge_lock(const ProcessorBridgeWeak &weak);
+void processor_bridge_proc_process(const ProcessorBridgeWeak &weak, uint32_t nframes);
 
 BridgeStrongHandle register_processor(std::shared_ptr<HasAudioProcessingFunction> p);
 BridgeStrongHandle register_decoupled_midi_port(std::shared_ptr<DecoupledMidiPort> p);

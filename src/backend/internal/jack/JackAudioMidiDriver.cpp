@@ -280,7 +280,7 @@ template<typename API>
 void GenericJackAudioMidiDriver<API>::remove_processor(std::shared_ptr<HasAudioProcessingFunction> p) { AudioMidiDriver::remove_processor(p); }
 
 template<typename API>
-std::vector<bridge_object::BridgeWeakHandle> GenericJackAudioMidiDriver<API>::processors() const { return AudioMidiDriver::processors(); }
+std::vector<std::unique_ptr<bridge_object::ProcessorBridgeWeak>> GenericJackAudioMidiDriver<API>::processors() const { return AudioMidiDriver::processors(); }
 
 template<typename API>
 uint32_t GenericJackAudioMidiDriver<API>::get_xruns() const { return AudioMidiDriver::get_xruns(); }
