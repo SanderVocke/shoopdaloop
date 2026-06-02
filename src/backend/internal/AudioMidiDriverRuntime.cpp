@@ -56,11 +56,6 @@ void AudioMidiDriverRuntime::unregister_decoupled_midi_port(std::shared_ptr<shoo
         if (handle != 0) {
             m_rust_core->close_decoupled_port(handle);
             m_rust_core->unregister_decoupled_port(handle);
-            auto it = m_decoupled_midi_ports.find(handle);
-            if (it != m_decoupled_midi_ports.end()) {
-                bridge_object::release_strong(it->second.strong);
-                m_decoupled_midi_ports.erase(it);
-            }
         }
     });
 }
@@ -76,9 +71,8 @@ std::shared_ptr<shoop_types::_DecoupledMidiPort> AudioMidiDriverRuntime::make_de
     auto weak = bridge_object::downgrade(strong);
     auto *queue = reinterpret_cast<backend_rust::CommandQueue *>(m_rust_core->command_queue_ptr());
     rust_command_queue::queue(*queue, [this, decoupled, strong, weak]() {
-        auto handle = m_rust_core->register_decoupled_port(weak.id, weak.type_id);
+        auto handle = m_rust_core->register_decoupled_port(weak.id, weak.type_id, strong.id, strong.type_id);
         decoupled->set_registry_handle(handle);
-        m_decoupled_midi_ports[handle] = RegisteredDecoupledPort{strong, weak};
     });
     return decoupled;
 }

@@ -32,19 +32,19 @@
   - [x] Run `cargo build`
   - [x] Run backend `test_runner`
 
-- [ ] Phase 3: move decoupled MIDI registration bookkeeping into Rust core
-  - [ ] Add Rust `DecoupledPortRegistration` storing bridge strong and weak handles
-  - [ ] Change Rust decoupled registration API to receive strong/weak handle scalar fields
-  - [ ] Change Rust decoupled unregister API to release stored bridge strong handle
-  - [ ] Replace remaining C++ decoupled keepalive ownership with Rust-owned bridge strong records
-  - [ ] Replace `AudioMidiDriverRuntime::make_decoupled_midi_port` behavior with small helper/direct driver code
-  - [ ] Preserve `DecoupledMidiPort::registry_handle()` behavior
-  - [ ] Preserve C API behavior for open/close/destroy decoupled MIDI ports
-  - [ ] Ensure processing/close still use bridge weak handle typed resolver pattern
-  - [ ] Add/update tests for decoupled keepalive, open/close stress, and stale operations if needed
-  - [ ] Run `cargo build`
-  - [ ] Run `cargo test`
-  - [ ] Run backend `test_runner`
+- [x] Phase 3: move decoupled MIDI registration bookkeeping into Rust core
+  - [x] Add Rust `DecoupledPortRegistration` storing bridge strong and weak handles
+  - [x] Change Rust decoupled registration API to receive strong/weak handle scalar fields
+  - [x] Change Rust decoupled unregister API to release stored bridge strong handle
+  - [x] Replace remaining C++ decoupled keepalive ownership with Rust-owned bridge strong records
+  - [x] Replace `AudioMidiDriverRuntime::make_decoupled_midi_port` behavior with small helper/direct driver code
+  - [x] Preserve `DecoupledMidiPort::registry_handle()` behavior
+  - [x] Preserve C API behavior for open/close/destroy decoupled MIDI ports
+  - [x] Ensure processing/close still use bridge weak handle typed resolver pattern
+  - [x] Add/update tests for decoupled keepalive, open/close stress, and stale operations if needed
+  - [x] Run `cargo build`
+  - [x] Run `cargo test`
+  - [x] Run backend `test_runner`
 
 - [ ] Phase 4: remove `AudioMidiDriverRuntime`
   - [ ] Remove all `m_runtime` members from concrete drivers/base classes

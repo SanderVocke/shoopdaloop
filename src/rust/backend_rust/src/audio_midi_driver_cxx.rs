@@ -73,7 +73,7 @@ pub mod ffi {
         fn get_processor_handles(self: &AudioMidiDriverCore) -> Vec<u64>;
 
         // Decoupled port management
-        fn register_decoupled_port(self: &AudioMidiDriverCore, weak_id: u64, weak_type_id: u32) -> u64;
+        fn register_decoupled_port(self: &AudioMidiDriverCore, weak_id: u64, weak_type_id: u32, strong_id: u64, strong_type_id: u32) -> u64;
         fn unregister_decoupled_port(self: &AudioMidiDriverCore, handle: u64);
         fn process_decoupled_port(self: &AudioMidiDriverCore, handle: u64, nframes: u32) -> bool;
         fn close_decoupled_port(self: &AudioMidiDriverCore, handle: u64) -> bool;
@@ -181,8 +181,8 @@ fn get_processor_handles(core: &AudioMidiDriverCore) -> Vec<u64> {
 }
 
 // Decoupled port management
-fn register_decoupled_port(core: &AudioMidiDriverCore, weak_id: u64, weak_type_id: u32) -> u64 {
-    core.register_decoupled_port(weak_id, weak_type_id)
+fn register_decoupled_port(core: &AudioMidiDriverCore, weak_id: u64, weak_type_id: u32, strong_id: u64, strong_type_id: u32) -> u64 {
+    core.register_decoupled_port(weak_id, weak_type_id, strong_id, strong_type_id)
 }
 
 fn unregister_decoupled_port(core: &AudioMidiDriverCore, handle: u64) {

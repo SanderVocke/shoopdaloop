@@ -71,11 +71,6 @@ private:
     rust::Box<backend_rust::AudioMidiDriverCore> m_rust_core;
     std::vector<std::weak_ptr<HasAudioProcessingFunction>> m_processors;
     std::unordered_map<HasAudioProcessingFunction*, uint64_t> m_processor_handles;
-    struct RegisteredDecoupledPort {
-        bridge_object::BridgeStrongHandle strong;
-        bridge_object::BridgeWeakHandle weak;
-    };
-    std::unordered_map<uint64_t, RegisteredDecoupledPort> m_decoupled_midi_ports;
     void (*m_maybe_process_callback)() = nullptr;
     mutable std::string m_client_name_cache;
 };

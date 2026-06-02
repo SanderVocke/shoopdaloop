@@ -80,12 +80,14 @@ impl Default for AudioMidiDriverState {
 
 /// Core audio/MIDI driver implementation.
 ///
-/// Holds atomic state and lists of processors/decoupled ports.
-/// Processors and ports are stored as usize pointers; actual iteration
-/// and processing happens via callbacks to C++.
-///
+/// Holds atomic state and registration records.
 struct ProcessorRegistration {
     cpp_identity: usize,
+    weak: BridgeWeakHandle,
+    strong: BridgeStrongHandle,
+}
+
+struct DecoupledPortRegistration {
     weak: BridgeWeakHandle,
     strong: BridgeStrongHandle,
 }
@@ -96,7 +98,7 @@ pub struct AudioMidiDriverCore {
     processors: RwLock<HashMap<u64, ProcessorRegistration>>,
     processor_handle_by_cpp_identity: Mutex<HashMap<usize, u64>>,
     next_processor_handle: AtomicU64,
-    decoupled_ports: RwLock<HashMap<u64, BridgeWeakHandle>>,
+    decoupled_ports: RwLock<HashMap<u64, DecoupledPortRegistration>>,
     next_decoupled_handle: AtomicU64,
 }
 
@@ -277,10 +279,10 @@ impl AudioMidiDriverCore {
     // ========================================================================
 
     /// Register a decoupled MIDI bridge weak handle and return a stable handle.
-    pub fn register_decoupled_port(&self, weak_id: u64, weak_type_id: u32) -> u64 {
+    pub fn register_decoupled_port(&self, weak_id: u64, weak_type_id: u32, strong_id: u64, strong_type_id: u32) -> u64 {
         let handle = self.next_decoupled_handle.fetch_add(1, Ordering::SeqCst);
         if let Ok(mut guard) = self.decoupled_ports.write() {
-            guard.insert(handle, BridgeWeakHandle { id: weak_id, type_id: weak_type_id });
+            guard.insert(handle, DecoupledPortRegistration { weak: BridgeWeakHandle { id: weak_id, type_id: weak_type_id }, strong: BridgeStrongHandle { id: strong_id, type_id: strong_type_id } });
         }
         handle
     }
@@ -288,7 +290,9 @@ impl AudioMidiDriverCore {
     /// Unregister a decoupled MIDI port by handle.
     pub fn unregister_decoupled_port(&self, handle: u64) {
         if let Ok(mut guard) = self.decoupled_ports.write() {
-            guard.remove(&handle);
+            if let Some(reg) = guard.remove(&handle) {
+                crate::bridge_object_cxx::ffi::bridge_release_strong_for_rust(reg.strong.id, reg.strong.type_id);
+            }
         }
     }
 
@@ -298,7 +302,7 @@ impl AudioMidiDriverCore {
             .decoupled_ports
             .read()
             .ok()
-            .and_then(|guard| guard.get(&handle).copied());
+            .and_then(|guard| guard.get(&handle).map(|reg| reg.weak));
         if let Some(port) = weak {
             let resolved = crate::audio_midi_driver_cxx::ffi::bridge_resolve_decoupled_midi_port_for_rust(
                 port.id,
@@ -320,7 +324,7 @@ impl AudioMidiDriverCore {
             .decoupled_ports
             .read()
             .ok()
-            .and_then(|guard| guard.get(&handle).copied());
+            .and_then(|guard| guard.get(&handle).map(|reg| reg.weak));
         if let Some(port) = weak {
             let resolved = crate::audio_midi_driver_cxx::ffi::bridge_resolve_decoupled_midi_port_for_rust(
                 port.id,
@@ -345,7 +349,7 @@ impl AudioMidiDriverCore {
     pub fn get_decoupled_ports(&self) -> Vec<BridgeWeakHandle> {
         self.decoupled_ports
             .read()
-            .map(|guard| guard.values().copied().collect())
+            .map(|guard| guard.values().map(|reg| reg.weak).collect())
             .unwrap_or_default()
     }
 
@@ -532,8 +536,8 @@ mod tests {
         assert!(core.get_decoupled_ports().is_empty());
 
         // Add ports
-        let h1 = core.register_decoupled_port(1000, 2);
-        let _h2 = core.register_decoupled_port(2000, 2);
+        let h1 = core.register_decoupled_port(1000, 2, 5000, 3);
+        let _h2 = core.register_decoupled_port(2000, 2, 5001, 3);
 
         let ports = core.get_decoupled_ports();
         assert_eq!(ports.len(), 2);
@@ -541,7 +545,7 @@ mod tests {
         assert!(ports.iter().any(|p| p.id == 2000 && p.type_id == 2));
 
         // Registering the same weak handle id gets a distinct stable handle
-        let _h3 = core.register_decoupled_port(1000, 2);
+        let _h3 = core.register_decoupled_port(1000, 2, 5002, 3);
         assert_eq!(core.get_decoupled_ports().len(), 3);
 
         // Remove one handle
