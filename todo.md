@@ -47,13 +47,30 @@
   - [x] Run backend `test_runner`
 
 - [ ] Phase 4: remove `AudioMidiDriverRuntime`
-  - [ ] Remove all `m_runtime` members from concrete drivers/base classes
-  - [ ] Move remaining state forwarding/delegation to Rust core or driver/base class methods
-  - [ ] Delete `AudioMidiDriverRuntime.h`
-  - [ ] Delete `AudioMidiDriverRuntime.cpp`
-  - [ ] Update CMake/source lists if needed
-  - [ ] Clean includes that referenced `AudioMidiDriverRuntime.h`
-  - [ ] Confirm no `AudioMidiDriverRuntime` references remain
+  - [ ] Phase 4A: introduce shared C++ base/helper layer
+    - [ ] Add `AudioMidiDriver` base constructor/state for `AudioMidiDriverCore`, maybe-process callback, client-name cache, and `processors()` compatibility vector
+    - [ ] Move process-cycle and command-queue helper behavior from `AudioMidiDriverRuntime` into `AudioMidiDriver` base/helper methods
+    - [ ] Move processor add/remove compatibility behavior into `AudioMidiDriver` base/helper methods while Rust core remains owner of bridge strong records
+    - [ ] Move decoupled MIDI make/unregister helper behavior into `AudioMidiDriver` base/helper methods while Rust core remains owner of bridge strong records
+    - [ ] Move state forwarding/delegation methods into `AudioMidiDriver` base/helper methods
+    - [ ] Ensure the new base/helper owns no processor bridge strong map and no decoupled bridge strong map
+  - [ ] Phase 4B: migrate concrete drivers off `m_runtime`
+    - [ ] Remove `AudioMidiDriverRuntime.h` include from `DummyAudioMidiDriver.h`
+    - [ ] Remove `AudioMidiDriverRuntime m_runtime` from `DummyAudioMidiDriver`
+    - [ ] Initialize `AudioMidiDriver` base/helper with `maybe_process_callback` in `DummyAudioMidiDriver`
+    - [ ] Replace all Dummy `m_runtime.*` calls with base/helper/core calls
+    - [ ] Remove `AudioMidiDriverRuntime.h` include from `jack/JackAudioMidiDriver.h`
+    - [ ] Remove `AudioMidiDriverRuntime m_runtime` from `GenericJackAudioMidiDriver`
+    - [ ] Initialize `AudioMidiDriver` base/helper with `maybe_process_callback` in JACK driver
+    - [ ] Replace all JACK `m_runtime.*` calls with base/helper/core calls
+    - [ ] Preserve public virtual API behavior for processor, decoupled MIDI, state, command queue, and wait methods
+  - [ ] Phase 4C: delete old runtime files
+    - [ ] Delete `AudioMidiDriverRuntime.h`
+    - [ ] Delete `AudioMidiDriverRuntime.cpp`
+    - [ ] Update CMake/source lists if needed
+    - [ ] Clean includes that referenced `AudioMidiDriverRuntime.h`
+    - [ ] Confirm no `AudioMidiDriverRuntime` references remain
+    - [ ] Confirm no `m_runtime` members/calls remain
   - [ ] Run `cargo build`
   - [ ] Run backend `test_runner`
 
