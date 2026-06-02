@@ -277,6 +277,29 @@ TEST_CASE("BridgeObject - Rust-facing upgrade shim rejects invalid weak handles"
     CHECK(!backend_rust::bridge_upgrade_for_rust(99999, 1));
 }
 
+TEST_CASE("BridgeObject - C++ generic shims operate on Rust-owned registry entries", "[BridgeObject][rust-facing]") {
+    constexpr uint32_t type_id = 4242;
+    auto strong = backend_rust::bridge_test_register_rust_object(type_id);
+    CHECK(backend_rust::bridge_is_rust_owned(strong.id));
+
+    std::vector<backend_rust::BridgeStrongHandle> strong_vec{strong};
+    CHECK(strong_vec[0].id == strong.id);
+
+    CHECK(backend_rust::bridge_upgrade_generic(strong.id, strong.type_id));
+    backend_rust::bridge_release_strong_generic(strong.id, strong.type_id);
+
+    // The test helper does not retain an external Arc, so after release the weak is stale.
+    CHECK(!backend_rust::bridge_upgrade_generic(strong.id, strong.type_id));
+}
+
+TEST_CASE("BridgeObject - C++ generic shims reject Rust-owned type mismatches", "[BridgeObject][rust-facing]") {
+    auto strong = backend_rust::bridge_test_register_rust_object(5151);
+    CHECK(backend_rust::bridge_is_rust_owned(strong.id));
+
+    CHECK(!backend_rust::bridge_upgrade_generic(strong.id, 5152));
+    backend_rust::bridge_release_strong_generic(strong.id, strong.type_id);
+}
+
 TEST_CASE("BridgeObject - lock on unregistered ID returns nullopt", "[BridgeObject]") {
     auto proc = shoop_make_shared<DummyProcessor>();
     auto strong = bridge_object::register_processor(proc);

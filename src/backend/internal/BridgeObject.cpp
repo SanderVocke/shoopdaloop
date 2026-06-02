@@ -2,6 +2,7 @@
 
 #include "AudioMidiDriver.h"
 #include "DecoupledMidiPort.h"
+#include "backend_rust/src/bridge_object_cxx.rs.h"
 
 namespace bridge_object {
 namespace {
@@ -107,6 +108,21 @@ bool bridge_upgrade_for_rust(uint64_t weak_id, uint32_t weak_type_id) {
 
 void bridge_release_strong_for_rust(uint64_t strong_id, uint32_t strong_type_id) {
     bridge_object::release_strong(bridge_object::BridgeStrongHandle{strong_id, strong_type_id});
+}
+
+bool bridge_upgrade_generic(uint64_t weak_id, uint32_t weak_type_id) {
+    if (backend_rust::bridge_is_rust_owned(weak_id)) {
+        return backend_rust::bridge_rust_upgrade(weak_id, weak_type_id);
+    }
+    return bridge_upgrade_for_rust(weak_id, weak_type_id);
+}
+
+void bridge_release_strong_generic(uint64_t strong_id, uint32_t strong_type_id) {
+    if (backend_rust::bridge_is_rust_owned(strong_id)) {
+        backend_rust::bridge_rust_release_strong(strong_id, strong_type_id);
+        return;
+    }
+    bridge_release_strong_for_rust(strong_id, strong_type_id);
 }
 
 }

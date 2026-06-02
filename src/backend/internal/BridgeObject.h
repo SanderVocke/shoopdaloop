@@ -57,4 +57,9 @@ namespace backend_rust {
 bool bridge_upgrade_for_rust(uint64_t weak_id, uint32_t weak_type_id);
 void bridge_release_strong_for_rust(uint64_t strong_id, uint32_t strong_type_id);
 
+// Generic scalar shims for C++ callers. These route Rust-owned IDs back into
+// the Rust registry and C++-owned IDs into the C++ registry.
+bool bridge_upgrade_generic(uint64_t weak_id, uint32_t weak_type_id);
+void bridge_release_strong_generic(uint64_t strong_id, uint32_t strong_type_id);
+
 }
