@@ -97,3 +97,16 @@ std::optional<shoop_shared_ptr<DecoupledMidiPort>> lock_decoupled_midi_port(Brid
 }
 
 }
+
+namespace backend_rust {
+
+bool bridge_upgrade_for_rust(uint64_t weak_id, uint32_t weak_type_id) {
+    auto strong = bridge_object::clone_strong(bridge_object::BridgeStrongHandle{weak_id, weak_type_id});
+    return strong.id != 0;
+}
+
+void bridge_release_strong_for_rust(uint64_t strong_id, uint32_t strong_type_id) {
+    bridge_object::release_strong(bridge_object::BridgeStrongHandle{strong_id, strong_type_id});
+}
+
+}

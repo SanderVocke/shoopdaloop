@@ -48,3 +48,13 @@ std::optional<shoop_shared_ptr<HasAudioProcessingFunction>> lock_processor(Bridg
 std::optional<shoop_shared_ptr<DecoupledMidiPort>> lock_decoupled_midi_port(BridgeWeakHandle weak);
 
 }
+
+namespace backend_rust {
+
+// Scalar shims for Rust/CXX. They operate on the C++ bridge registry while
+// avoiding CXX type-identity issues between backend_rust::* generated handle
+// structs and bridge_object::* native handle structs.
+bool bridge_upgrade_for_rust(uint64_t weak_id, uint32_t weak_type_id);
+void bridge_release_strong_for_rust(uint64_t strong_id, uint32_t strong_type_id);
+
+}

@@ -4,6 +4,7 @@
 #include "DummyAudioMidiDriver.h"
 #include "DummyMidiPort.h"
 #include "BridgeObject.h"
+#include "backend_rust/src/bridge_object_cxx.rs.h"
 
 #include <vector>
 #include <set>
@@ -255,6 +256,25 @@ TEST_CASE("BridgeObject - distinct objects get distinct registry IDs", "[BridgeO
     bridge_object::release_strong(strong1);
     bridge_object::release_strong(strong2);
     bridge_object::release_strong(strong3);
+}
+
+TEST_CASE("BridgeObject - Rust-facing upgrade/release shims operate on C++ registry", "[BridgeObject][rust-facing]") {
+    auto proc = shoop_make_shared<DummyProcessor>();
+    auto strong = bridge_object::register_processor(proc);
+    auto weak = bridge_object::downgrade(strong);
+
+    CHECK(backend_rust::bridge_upgrade_for_rust(weak.id, weak.type_id));
+    auto locked_after_upgrade = bridge_object::lock_processor(weak);
+    CHECK(locked_after_upgrade.has_value());
+
+    backend_rust::bridge_release_strong_for_rust(weak.id, weak.type_id);
+    auto locked_after_release = bridge_object::lock_processor(weak);
+    CHECK(!locked_after_release.has_value());
+}
+
+TEST_CASE("BridgeObject - Rust-facing upgrade shim rejects invalid weak handles", "[BridgeObject][rust-facing]") {
+    CHECK(!backend_rust::bridge_upgrade_for_rust(0, 0));
+    CHECK(!backend_rust::bridge_upgrade_for_rust(99999, 1));
 }
 
 TEST_CASE("BridgeObject - lock on unregistered ID returns nullopt", "[BridgeObject]") {
