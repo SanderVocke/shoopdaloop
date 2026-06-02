@@ -1,6 +1,5 @@
 #pragma once
 #include "AudioMidiDriver.h"
-#include "AudioMidiDriverRuntime.h"
 #include "RustAudioPort.h"
 #include "JackAllPorts.h"
 #include "JackApi.h"
@@ -25,7 +24,6 @@ class GenericJackAudioMidiDriver :
 {
     using Log = ModuleLoggingEnabled<"Backend.JackAudioMidiDriver">;
 private:
-    AudioMidiDriverRuntime m_runtime;
     std::map<std::string, std::shared_ptr<PortInterface>> m_ports;
     std::shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker = nullptr;
     std::atomic<bool> m_started = false;

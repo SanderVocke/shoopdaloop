@@ -16,11 +16,11 @@
 
 namespace backend_rust {
 void dummy_audiomididriver_exec_commands(uintptr_t owner_ptr) {
-    auto *owner = reinterpret_cast<AudioMidiDriverRuntime *>(owner_ptr);
+    auto *owner = reinterpret_cast<AudioMidiDriver *>(owner_ptr);
     owner->exec_all_commands_for_process_thread();
 }
 void dummy_audiomididriver_process(uintptr_t owner_ptr, uint32_t nframes) {
-    auto *owner = reinterpret_cast<AudioMidiDriverRuntime *>(owner_ptr);
+    auto *owner = reinterpret_cast<AudioMidiDriver *>(owner_ptr);
     owner->process(nframes);
 }
 }
@@ -68,7 +68,7 @@ uint32_t DummyAudioMidiDriver<Time, Size>::get_controlled_mode_samples_to_proces
 
 template <typename Time, typename Size>
 DummyAudioMidiDriver<Time, Size>::DummyAudioMidiDriver(void (*maybe_process_callback)())
-    : m_runtime(maybe_process_callback),
+    : AudioMidiDriver(maybe_process_callback),
       m_rust(backend_rust::new_dummy_audio_midi_driver()),
       m_audio_port_opened_cb(nullptr), m_midi_port_opened_cb(nullptr),
       m_audio_port_closed_cb(nullptr), m_midi_port_closed_cb(nullptr),
@@ -90,12 +90,12 @@ void DummyAudioMidiDriver<Time, Size>::start(
     }
     auto &_settings = *p_settings;
 
-    m_runtime.set_sample_rate(_settings.sample_rate);
-    m_runtime.set_buffer_size(_settings.buffer_size);
+    set_sample_rate(_settings.sample_rate);
+    set_buffer_size(_settings.buffer_size);
     m_client_name_str = _settings.client_name;
-    m_runtime.set_client_name(m_client_name_str.c_str());
-    m_runtime.set_dsp_load(0.0f);
-    m_runtime.set_maybe_client_handle(nullptr);
+    set_client_name(m_client_name_str.c_str());
+    set_dsp_load(0.0f);
+    set_maybe_client_handle(nullptr);
 
     Log::log<log_level_debug>("Starting (sample rate {}, buf size {})", _settings.sample_rate, _settings.buffer_size);
 
@@ -104,10 +104,10 @@ void DummyAudioMidiDriver<Time, Size>::start(
     rust_command_queue::exec_all(this->get_command_queue());
 
     m_rust->start_process_thread(
-        reinterpret_cast<uintptr_t>(&m_runtime),
-        m_runtime.get_sample_rate(),
-        m_runtime.get_buffer_size());
-    m_runtime.set_active(true);
+        reinterpret_cast<uintptr_t>(static_cast<AudioMidiDriver *>(this)),
+        get_sample_rate(),
+        get_buffer_size());
+    set_active(true);
 }
 
 template <typename Time, typename Size>
@@ -216,61 +216,61 @@ void DummyAudioMidiDriver<Time, Size>::remove_all_external_mock_ports() {
 template <typename Time, typename Size>
 std::shared_ptr<shoop_types::_DecoupledMidiPort> DummyAudioMidiDriver<Time, Size>::open_decoupled_midi_port(std::string name, shoop_port_direction_t direction) {
     auto port = open_midi_port(name, direction);
-    return m_runtime.make_decoupled_midi_port(port, this->weak_driver_from_this(), direction);
+    return make_decoupled_midi_port(port, this->weak_driver_from_this(), direction);
 }
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::unregister_decoupled_midi_port(std::shared_ptr<shoop_types::_DecoupledMidiPort> port) {
-    m_runtime.unregister_decoupled_midi_port(port);
+    AudioMidiDriver::unregister_decoupled_midi_port(port);
 }
 
 template <typename Time, typename Size>
-void DummyAudioMidiDriver<Time, Size>::add_processor(std::shared_ptr<HasAudioProcessingFunction> p) { m_runtime.add_processor(p); }
+void DummyAudioMidiDriver<Time, Size>::add_processor(std::shared_ptr<HasAudioProcessingFunction> p) { AudioMidiDriver::add_processor(p); }
 
 template <typename Time, typename Size>
-void DummyAudioMidiDriver<Time, Size>::remove_processor(std::shared_ptr<HasAudioProcessingFunction> p) { m_runtime.remove_processor(p); }
+void DummyAudioMidiDriver<Time, Size>::remove_processor(std::shared_ptr<HasAudioProcessingFunction> p) { AudioMidiDriver::remove_processor(p); }
 
 template <typename Time, typename Size>
-std::vector<std::weak_ptr<HasAudioProcessingFunction>> DummyAudioMidiDriver<Time, Size>::processors() const { return m_runtime.processors(); }
+std::vector<std::weak_ptr<HasAudioProcessingFunction>> DummyAudioMidiDriver<Time, Size>::processors() const { return AudioMidiDriver::processors(); }
 
 template <typename Time, typename Size>
-uint32_t DummyAudioMidiDriver<Time, Size>::get_xruns() const { return m_runtime.get_xruns(); }
+uint32_t DummyAudioMidiDriver<Time, Size>::get_xruns() const { return AudioMidiDriver::get_xruns(); }
 
 template <typename Time, typename Size>
-float DummyAudioMidiDriver<Time, Size>::get_dsp_load() { return m_runtime.get_dsp_load(); }
+float DummyAudioMidiDriver<Time, Size>::get_dsp_load() { return AudioMidiDriver::get_dsp_load(); }
 
 template <typename Time, typename Size>
-uint32_t DummyAudioMidiDriver<Time, Size>::get_sample_rate() { return m_runtime.get_sample_rate(); }
+uint32_t DummyAudioMidiDriver<Time, Size>::get_sample_rate() { return AudioMidiDriver::get_sample_rate(); }
 
 template <typename Time, typename Size>
-uint32_t DummyAudioMidiDriver<Time, Size>::get_buffer_size() { return m_runtime.get_buffer_size(); }
+uint32_t DummyAudioMidiDriver<Time, Size>::get_buffer_size() { return AudioMidiDriver::get_buffer_size(); }
 
 template <typename Time, typename Size>
-void DummyAudioMidiDriver<Time, Size>::reset_xruns() { m_runtime.reset_xruns(); }
+void DummyAudioMidiDriver<Time, Size>::reset_xruns() { AudioMidiDriver::reset_xruns(); }
 
 template <typename Time, typename Size>
-const char* DummyAudioMidiDriver<Time, Size>::get_client_name() const { return m_runtime.get_client_name(); }
+const char* DummyAudioMidiDriver<Time, Size>::get_client_name() const { return AudioMidiDriver::get_client_name(); }
 
 template <typename Time, typename Size>
-void* DummyAudioMidiDriver<Time, Size>::get_maybe_client_handle() const { return m_runtime.get_maybe_client_handle(); }
+void* DummyAudioMidiDriver<Time, Size>::get_maybe_client_handle() const { return AudioMidiDriver::get_maybe_client_handle(); }
 
 template <typename Time, typename Size>
-bool DummyAudioMidiDriver<Time, Size>::get_active() const { return m_runtime.get_active(); }
+bool DummyAudioMidiDriver<Time, Size>::get_active() const { return AudioMidiDriver::get_active(); }
 
 template <typename Time, typename Size>
-uint32_t DummyAudioMidiDriver<Time, Size>::get_last_processed() const { return m_runtime.get_last_processed(); }
+uint32_t DummyAudioMidiDriver<Time, Size>::get_last_processed() const { return AudioMidiDriver::get_last_processed(); }
 
 template <typename Time, typename Size>
-void DummyAudioMidiDriver<Time, Size>::wait_process() { m_runtime.wait_process(); }
+void DummyAudioMidiDriver<Time, Size>::wait_process() { AudioMidiDriver::wait_process(); }
 
 template <typename Time, typename Size>
-void DummyAudioMidiDriver<Time, Size>::queue_process_thread_command(std::function<void()> fn) { m_runtime.queue_process_thread_command(std::move(fn)); }
+void DummyAudioMidiDriver<Time, Size>::queue_process_thread_command(std::function<void()> fn) { AudioMidiDriver::queue_process_thread_command(std::move(fn)); }
 
 template <typename Time, typename Size>
-void DummyAudioMidiDriver<Time, Size>::exec_process_thread_command(std::function<void()> fn) { m_runtime.exec_process_thread_command(std::move(fn)); }
+void DummyAudioMidiDriver<Time, Size>::exec_process_thread_command(std::function<void()> fn) { AudioMidiDriver::exec_process_thread_command(std::move(fn)); }
 
 template <typename Time, typename Size>
-backend_rust::CommandQueue &DummyAudioMidiDriver<Time, Size>::get_command_queue() { return m_runtime.get_command_queue(); }
+backend_rust::CommandQueue &DummyAudioMidiDriver<Time, Size>::get_command_queue() { return AudioMidiDriver::get_command_queue(); }
 
 template class DummyAudioMidiDriver<uint32_t, uint16_t>;
 template class DummyAudioMidiDriver<uint32_t, uint32_t>;
