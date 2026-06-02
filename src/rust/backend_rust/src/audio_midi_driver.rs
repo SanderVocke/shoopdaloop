@@ -12,7 +12,7 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, Ordering};
-use crate::bridge_object_cxx::ffi::BridgeWeakHandle;
+use crate::bridge_object_cxx::ffi::{BridgeStrongHandle, BridgeWeakHandle};
 use crate::command_queue::CommandQueue;
 use std::sync::{Mutex, RwLock};
 
@@ -84,10 +84,17 @@ impl Default for AudioMidiDriverState {
 /// Processors and ports are stored as usize pointers; actual iteration
 /// and processing happens via callbacks to C++.
 ///
+struct ProcessorRegistration {
+    cpp_identity: usize,
+    weak: BridgeWeakHandle,
+    strong: BridgeStrongHandle,
+}
+
 pub struct AudioMidiDriverCore {
     state: AudioMidiDriverState,
     command_queue: CommandQueue,
-    processors: RwLock<HashMap<u64, BridgeWeakHandle>>,
+    processors: RwLock<HashMap<u64, ProcessorRegistration>>,
+    processor_handle_by_cpp_identity: Mutex<HashMap<usize, u64>>,
     next_processor_handle: AtomicU64,
     decoupled_ports: RwLock<HashMap<u64, BridgeWeakHandle>>,
     next_decoupled_handle: AtomicU64,
@@ -100,6 +107,7 @@ impl AudioMidiDriverCore {
             state: AudioMidiDriverState::new(),
             command_queue: CommandQueue::new(1024, 1000, 1000),
             processors: RwLock::new(HashMap::new()),
+            processor_handle_by_cpp_identity: Mutex::new(HashMap::new()),
             next_processor_handle: AtomicU64::new(1),
             decoupled_ports: RwLock::new(HashMap::new()),
             next_decoupled_handle: AtomicU64::new(1),
@@ -202,17 +210,51 @@ impl AudioMidiDriverCore {
     // Processor management
     // ========================================================================
 
-    pub fn add_processor(&self, weak_id: u64, weak_type_id: u32) -> u64 {
+    pub fn add_processor(
+        &self,
+        cpp_identity: usize,
+        weak_id: u64,
+        weak_type_id: u32,
+        strong_id: u64,
+        strong_type_id: u32,
+    ) -> u64 {
         let handle = self.next_processor_handle.fetch_add(1, Ordering::SeqCst);
+        let reg = ProcessorRegistration {
+            cpp_identity,
+            weak: BridgeWeakHandle { id: weak_id, type_id: weak_type_id },
+            strong: BridgeStrongHandle { id: strong_id, type_id: strong_type_id },
+        };
         if let Ok(mut guard) = self.processors.write() {
-            guard.insert(handle, BridgeWeakHandle { id: weak_id, type_id: weak_type_id });
+            guard.insert(handle, reg);
+        }
+        if let Ok(mut map) = self.processor_handle_by_cpp_identity.lock() {
+            map.insert(cpp_identity, handle);
         }
         handle
     }
 
+    pub fn remove_processor_by_cpp_identity(&self, cpp_identity: usize) {
+        let handle = self
+            .processor_handle_by_cpp_identity
+            .lock()
+            .ok()
+            .and_then(|mut map| map.remove(&cpp_identity));
+        if let Some(handle) = handle {
+            self.remove_processor(handle);
+        }
+    }
+
     pub fn remove_processor(&self, handle: u64) {
-        if let Ok(mut guard) = self.processors.write() {
-            guard.remove(&handle);
+        let reg = self
+            .processors
+            .write()
+            .ok()
+            .and_then(|mut guard| guard.remove(&handle));
+        if let Some(reg) = reg {
+            if let Ok(mut map) = self.processor_handle_by_cpp_identity.lock() {
+                map.remove(&reg.cpp_identity);
+            }
+            crate::bridge_object_cxx::ffi::bridge_release_strong_for_rust(reg.strong.id, reg.strong.type_id);
         }
     }
 
@@ -220,6 +262,13 @@ impl AudioMidiDriverCore {
         self.processors
             .read()
             .map(|guard| guard.keys().copied().collect())
+            .unwrap_or_default()
+    }
+
+    pub fn get_processor_weak_handles(&self) -> Vec<BridgeWeakHandle> {
+        self.processors
+            .read()
+            .map(|guard| guard.values().map(|reg| reg.weak).collect())
             .unwrap_or_default()
     }
 
@@ -321,7 +370,7 @@ impl AudioMidiDriverCore {
                 .processors
                 .read()
                 .ok()
-                .and_then(|guard| guard.get(&handle).copied());
+                .and_then(|guard| guard.get(&handle).map(|reg| reg.weak));
             if let Some(processor) = ptr {
                 let resolved = crate::audio_midi_driver_cxx::ffi::bridge_resolve_processor_for_rust(
                     processor.id,

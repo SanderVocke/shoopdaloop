@@ -68,8 +68,8 @@ pub mod ffi {
         fn exec_all_commands_for_process_thread(self: &AudioMidiDriverCore);
 
         // Processor management (ptrs as usize)
-        fn add_processor(self: &AudioMidiDriverCore, weak_id: u64, weak_type_id: u32) -> u64;
-        fn remove_processor(self: &AudioMidiDriverCore, handle: u64);
+        fn add_processor(self: &AudioMidiDriverCore, cpp_identity: usize, weak_id: u64, weak_type_id: u32, strong_id: u64, strong_type_id: u32) -> u64;
+        fn remove_processor_by_cpp_identity(self: &AudioMidiDriverCore, cpp_identity: usize);
         fn get_processor_handles(self: &AudioMidiDriverCore) -> Vec<u64>;
 
         // Decoupled port management
@@ -168,12 +168,12 @@ fn reset_xruns(core: &AudioMidiDriverCore) {
 }
 
 // Processor management
-fn add_processor(core: &AudioMidiDriverCore, weak_id: u64, weak_type_id: u32) -> u64 {
-    core.add_processor(weak_id, weak_type_id)
+fn add_processor(core: &AudioMidiDriverCore, cpp_identity: usize, weak_id: u64, weak_type_id: u32, strong_id: u64, strong_type_id: u32) -> u64 {
+    core.add_processor(cpp_identity, weak_id, weak_type_id, strong_id, strong_type_id)
 }
 
-fn remove_processor(core: &AudioMidiDriverCore, handle: u64) {
-    core.remove_processor(handle);
+fn remove_processor_by_cpp_identity(core: &AudioMidiDriverCore, cpp_identity: usize) {
+    core.remove_processor_by_cpp_identity(cpp_identity);
 }
 
 fn get_processor_handles(core: &AudioMidiDriverCore) -> Vec<u64> {

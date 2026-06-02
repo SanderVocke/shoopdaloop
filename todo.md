@@ -18,19 +18,19 @@
   - [x] Run backend `test_runner` if process/queue behavior changed substantially
     - validated via `target/debug/build/backend-3ef013a37af9a255/out/cmake_install/tools/shoopdaloop/test_runner`
 
-- [ ] Phase 2: move processor registration bookkeeping into Rust core
-  - [ ] Add Rust `ProcessorRegistration` storing bridge strong and weak handles
-  - [ ] Add Rust map from C++ identity pointer to stable processor handle for removal
-  - [ ] Change Rust processor registration API to receive C++ identity plus strong/weak handle scalar fields
-  - [ ] Change Rust processor removal API to release stored bridge strong handle
-  - [ ] Add C++ free helper for processor bridge registration/downgrade into Rust core
-  - [ ] Update C++ `add_processor` paths to stop storing processor bridge strong handles in C++ maps
-  - [ ] Update C++ `remove_processor` paths to delegate removal/release to Rust core
-  - [ ] Preserve public `processors()` compatibility behavior
-  - [ ] Ensure processing still uses bridge weak handle typed resolver pattern
-  - [ ] Add/update tests for processor add/remove cycles and stale handle safety if needed
-  - [ ] Run `cargo build`
-  - [ ] Run backend `test_runner`
+- [x] Phase 2: move processor registration bookkeeping into Rust core
+  - [x] Add Rust `ProcessorRegistration` storing bridge strong and weak handles
+  - [x] Add Rust map from C++ identity pointer to stable processor handle for removal
+  - [x] Change Rust processor registration API to receive C++ identity plus strong/weak handle scalar fields
+  - [x] Change Rust processor removal API to release stored bridge strong handle
+  - [x] Add C++ free helper for processor bridge registration/downgrade into Rust core
+  - [x] Update C++ `add_processor` paths to stop storing processor bridge strong handles in C++ maps
+  - [x] Update C++ `remove_processor` paths to delegate removal/release to Rust core
+  - [x] Preserve public `processors()` compatibility behavior
+  - [x] Ensure processing still uses bridge weak handle typed resolver pattern
+  - [x] Add/update tests for processor add/remove cycles and stale handle safety if needed
+  - [x] Run `cargo build`
+  - [x] Run backend `test_runner`
 
 - [ ] Phase 3: move decoupled MIDI registration bookkeeping into Rust core
   - [ ] Add Rust `DecoupledPortRegistration` storing bridge strong and weak handles
