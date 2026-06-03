@@ -78,7 +78,7 @@ fn main() {
     let out_dir = std::env::var_os("OUT_DIR").unwrap();
     let out_dir = std::path::Path::new(&out_dir);
 
-    cxx_build::bridges([
+    let mut build = cxx_build::bridges([
         "src/processor_cxx.rs",
         "src/decoupled_midi_port_bridge_cxx.rs",
         "src/audio_midi_driver_cxx.rs",
@@ -101,12 +101,25 @@ fn main() {
         "src/midi_state_tracker_cxx.rs",
         "src/refilling_pool_cxx.rs",
         "src/dummy_audio_midi_driver_cxx.rs",
-    ])
-    .file(format!("{}/internal/CommandToken.cpp", backend_include))
-    .file("cxx/bridge_object_fallback.cpp")
-    .include(&backend_include)
-    .std("c++20")
-    .compile("backend_rust_cxx");
+    ]);
+
+    build
+        .file(format!("{}/internal/CommandToken.cpp", backend_include))
+        .file("cxx/bridge_object_fallback.cpp")
+        .include(&backend_include);
+
+    println!("cargo:rerun-if-env-changed=SHOOP_BACKEND_RUST_CXX_INCLUDE_DIRS");
+    if let Ok(extra_includes) = std::env::var("SHOOP_BACKEND_RUST_CXX_INCLUDE_DIRS") {
+        for include in extra_includes.split('|').filter(|s| !s.is_empty()) {
+            println!(
+                "cargo:warning=Adding C++ include dir from CMake: {}",
+                include
+            );
+            build.include(include);
+        }
+    }
+
+    build.std("c++20").compile("backend_rust_cxx");
 
     print_cxxbridge_sources_status(out_dir);
 

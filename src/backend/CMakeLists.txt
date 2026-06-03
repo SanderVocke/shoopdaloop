@@ -265,11 +265,38 @@ else()
   )
   FetchContent_MakeAvailable(corrosion)
 
+  set(SHOOP_BACKEND_RUST_CXX_INCLUDE_DIRS "")
+  foreach(_target fmt::fmt Boost::headers nlohmann_json::nlohmann_json)
+    if (TARGET ${_target})
+      foreach(_prop INTERFACE_INCLUDE_DIRECTORIES INCLUDE_DIRECTORIES)
+        get_target_property(_target_includes ${_target} ${_prop})
+        if (_target_includes)
+          list(APPEND SHOOP_BACKEND_RUST_CXX_INCLUDE_DIRS ${_target_includes})
+        endif()
+      endforeach()
+    endif()
+  endforeach()
+  find_path(SHOOP_FMT_INCLUDE_DIR fmt/core.h)
+  if (SHOOP_FMT_INCLUDE_DIR)
+    list(APPEND SHOOP_BACKEND_RUST_CXX_INCLUDE_DIRS ${SHOOP_FMT_INCLUDE_DIR})
+  endif()
+  list(FILTER SHOOP_BACKEND_RUST_CXX_INCLUDE_DIRS EXCLUDE REGEX "^\\$<")
+  list(REMOVE_DUPLICATES SHOOP_BACKEND_RUST_CXX_INCLUDE_DIRS)
+  string(JOIN "|" SHOOP_BACKEND_RUST_CXX_INCLUDE_DIRS_ENV ${SHOOP_BACKEND_RUST_CXX_INCLUDE_DIRS})
+  message(STATUS "backend_rust extra C++ include dirs: ${SHOOP_BACKEND_RUST_CXX_INCLUDE_DIRS}")
+  set(ENV{SHOOP_BACKEND_RUST_CXX_INCLUDE_DIRS} "${SHOOP_BACKEND_RUST_CXX_INCLUDE_DIRS_ENV}")
+
   corrosion_import_crate(
     MANIFEST_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../rust/backend_rust/Cargo.toml
     CRATES backend_rust
     LOCKED
   )
+
+  if (COMMAND corrosion_set_env_vars AND TARGET backend_rust)
+    corrosion_set_env_vars(backend_rust
+      "SHOOP_BACKEND_RUST_CXX_INCLUDE_DIRS=${SHOOP_BACKEND_RUST_CXX_INCLUDE_DIRS_ENV}"
+    )
+  endif()
 
   # Corrosion target names are crate-name based; map them to names used below.
   if (TARGET backend_rust)
