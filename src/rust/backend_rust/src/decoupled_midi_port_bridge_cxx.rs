@@ -17,6 +17,7 @@ pub mod ffi {
         fn decoupled_midi_port_bridge_upgrade(
             weak: &DecoupledMidiPortBridgeWeak,
         ) -> UniquePtr<DecoupledMidiPortBridgeStrong>;
+
         fn decoupled_midi_port_bridge_proc_process(
             port: &DecoupledMidiPortBridgeWeak,
             nframes: u32,
