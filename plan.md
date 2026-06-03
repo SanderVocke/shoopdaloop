@@ -5,10 +5,10 @@
 Remove the C++ compatibility mirror list of processors currently stored in `AudioMidiDriver::m_processors`. `AudioMidiDriverCore` already owns the authoritative processor registration records, including bridge strong handles for keepalive and bridge weak handles for processing. The remaining C++ vector duplicates membership state only to implement the legacy C++ API method:
 
 ```cpp
-std::vector<std::weak_ptr<HasAudioProcessingFunction>> AudioMidiDriver::processors() const;
+std::vector<std::weak_ptr<IProcessor>> AudioMidiDriver::processors() const;
 ```
 
-The new design should keep that public API method available, but implement it by querying Rust-owned processor registrations and reconstructing a C++ `std::vector<std::weak_ptr<HasAudioProcessingFunction>>` on demand.
+The new design should keep that public API method available, but implement it by querying Rust-owned processor registrations and reconstructing a C++ `std::vector<std::weak_ptr<IProcessor>>` on demand.
 
 The end state should be:
 
@@ -77,7 +77,7 @@ Those records are the authoritative process-thread data. The C++ mirror list is 
 Keep the public C++ virtual API stable. Do not remove or change the signature of:
 
 ```cpp
-virtual std::vector<std::weak_ptr<HasAudioProcessingFunction>> processors() const;
+virtual std::vector<std::weak_ptr<IProcessor>> processors() const;
 ```
 
 Do not make processors Rust-owned. Processors remain C++ objects registered through bridge handles.
@@ -92,7 +92,7 @@ Keep using the bridge-object typed resolver pattern:
 
 - Rust stores bridge weak handles.
 - C++ or Rust resolves weak handles through typed bridge helpers.
-- C++ operations receive typed `std::shared_ptr<HasAudioProcessingFunction>`.
+- C++ operations receive typed `std::shared_ptr<IProcessor>`.
 
 `processors()` is not a realtime/process-thread path, so it may allocate and briefly lock the bridge registry.
 
@@ -146,7 +146,7 @@ Change `AudioMidiDriver::processors()` to:
 
 1. call `m_rust_core->get_processor_weak_handles()`,
 2. for each returned weak handle, resolve the processor using the existing C++ typed bridge resolver, e.g. `bridge_resolve_processor_for_rust(id, type_id)` or `lock_processor(BridgeWeakHandle{id, type_id})`,
-3. if resolution succeeds, push a `std::weak_ptr<HasAudioProcessingFunction>` into the return vector,
+3. if resolution succeeds, push a `std::weak_ptr<IProcessor>` into the return vector,
 4. skip stale/unresolvable handles defensively.
 
 Because Rust owns strong handles for registered processors, live registrations should normally resolve. Skipping stale handles makes the API robust if cleanup races or stale handles are encountered.

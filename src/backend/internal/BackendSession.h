@@ -4,7 +4,7 @@
 #include <functional>
 #include "LoggingEnabled.h"
 #include "AudioMidiDriver.h"
-#include "HasAudioProcessingFunction.h"
+#include "IProcessor.h"
 #include "RustCommandQueue.h"
 #include "shoop_globals.h"
 #include "types.h"
@@ -26,7 +26,7 @@ class GraphMidiPort;
 using namespace shoop_types;
 
 class BackendSession : public std::enable_shared_from_this<BackendSession>,
-                       public HasAudioProcessingFunction,
+                       public IProcessor,
                        public ModuleLoggingEnabled<"Backend.Session"> {
     void recalculate_processing_schedule(unsigned update_id);
 

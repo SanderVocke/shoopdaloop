@@ -13,7 +13,7 @@
 #include <vector>
 #include "backend_rust/src/command_queue_cxx.rs.h"
 
-class HasAudioProcessingFunction;
+class IProcessor;
 class DecoupledMidiPort;
 
 #include "backend_rust/src/audio_midi_driver_cxx.rs.h"
@@ -57,8 +57,8 @@ public:
         shoop_port_direction_t direction
     );
 
-    virtual void add_processor(std::shared_ptr<HasAudioProcessingFunction> p);
-    virtual void remove_processor(std::shared_ptr<HasAudioProcessingFunction> p);
+    virtual void add_processor(std::shared_ptr<IProcessor> p);
+    virtual void remove_processor(std::shared_ptr<IProcessor> p);
     virtual std::vector<std::unique_ptr<ProcessorBridgeWeak>> processors() const;
 
     virtual void start(AudioMidiDriverSettingsInterface &settings) = 0;

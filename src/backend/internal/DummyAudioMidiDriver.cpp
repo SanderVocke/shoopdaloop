@@ -10,7 +10,7 @@
 #include <thread>
 #include <stdexcept>
 #include "DummyAudioMidiDriver.h"
-#include "HasAudioProcessingFunction.h"
+#include "IProcessor.h"
 #include "RustCommandQueue.h"
 #include "DummyAudioMidiDriverCxxTrampolines.h"
 #include <map>
@@ -226,10 +226,10 @@ void DummyAudioMidiDriver<Time, Size>::unregister_decoupled_midi_port(std::share
 }
 
 template <typename Time, typename Size>
-void DummyAudioMidiDriver<Time, Size>::add_processor(std::shared_ptr<HasAudioProcessingFunction> p) { AudioMidiDriver::add_processor(p); }
+void DummyAudioMidiDriver<Time, Size>::add_processor(std::shared_ptr<IProcessor> p) { AudioMidiDriver::add_processor(p); }
 
 template <typename Time, typename Size>
-void DummyAudioMidiDriver<Time, Size>::remove_processor(std::shared_ptr<HasAudioProcessingFunction> p) { AudioMidiDriver::remove_processor(p); }
+void DummyAudioMidiDriver<Time, Size>::remove_processor(std::shared_ptr<IProcessor> p) { AudioMidiDriver::remove_processor(p); }
 
 template <typename Time, typename Size>
 std::vector<std::unique_ptr<ProcessorBridgeWeak>> DummyAudioMidiDriver<Time, Size>::processors() const { return AudioMidiDriver::processors(); }

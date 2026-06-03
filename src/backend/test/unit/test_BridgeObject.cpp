@@ -4,12 +4,12 @@
 #include "BridgeObject.h"
 #include "DecoupledMidiPort.h"
 #include "DummyMidiPort.h"
-#include "HasAudioProcessingFunction.h"
+#include "IProcessor.h"
 
 #include <memory>
 #include <vector>
 
-struct DummyProcessor : HasAudioProcessingFunction {
+struct DummyProcessor : IProcessor {
     uint32_t processed = 0;
     void PROC_process(uint32_t nframes) override { processed += nframes; }
 };

@@ -3,7 +3,7 @@
 #include "PortInterface.h"
 #include "AudioMidiDriver.h"
 #include "DecoupledMidiPort.h"
-#include "HasAudioProcessingFunction.h"
+#include "IProcessor.h"
 #include "BridgeObject.h"
 #include <functional>
 #include <thread>
@@ -11,7 +11,7 @@
 #include <set>
 #include <algorithm>
 
-struct Tracker : public HasAudioProcessingFunction {
+struct Tracker : public IProcessor {
     std::atomic<uint32_t> total_samples_processed = 0;
     std::vector<uint32_t> each_n_samples_processed;
 
@@ -43,7 +43,7 @@ struct TrackedDummyAudioMidiDriver : public DummyAudioMidiDriver<Time, Size> {
         DummyAudioMidiDriver<Time, Size>(),
         tracker(std::make_shared<Tracker>())
     {
-        this->add_processor(std::static_pointer_cast<HasAudioProcessingFunction>(tracker));
+        this->add_processor(std::static_pointer_cast<IProcessor>(tracker));
         DummyAudioMidiDriverSettings settings;
         settings.buffer_size = buffer_size;
         settings.client_name = client_name;
@@ -171,30 +171,30 @@ TEST_CASE("DummyAudioMidiDriver - processors API reflects Rust registrations", "
 
     auto first = std::make_shared<Tracker>();
     auto second = std::make_shared<Tracker>();
-    dut.add_processor(std::static_pointer_cast<HasAudioProcessingFunction>(first));
+    dut.add_processor(std::static_pointer_cast<IProcessor>(first));
 
     auto one = dut.processors();
     REQUIRE(one.size() == 1);
     auto first_resolved = one[0]->lock();
     REQUIRE(first_resolved == first);
 
-    dut.add_processor(std::static_pointer_cast<HasAudioProcessingFunction>(second));
+    dut.add_processor(std::static_pointer_cast<IProcessor>(second));
     auto two = dut.processors();
     REQUIRE(two.size() == 2);
-    std::vector<std::shared_ptr<HasAudioProcessingFunction>> locked;
+    std::vector<std::shared_ptr<IProcessor>> locked;
     std::transform(two.begin(), two.end(), std::back_inserter(locked), [](auto const &handle) {
         return handle->lock();
     });
     REQUIRE(std::find(locked.begin(), locked.end(), first) != locked.end());
     REQUIRE(std::find(locked.begin(), locked.end(), second) != locked.end());
 
-    dut.remove_processor(std::static_pointer_cast<HasAudioProcessingFunction>(first));
+    dut.remove_processor(std::static_pointer_cast<IProcessor>(first));
     auto after_remove = dut.processors();
     REQUIRE(after_remove.size() == 1);
     auto second_resolved = after_remove[0]->lock();
     REQUIRE(second_resolved == second);
 
-    dut.remove_processor(std::static_pointer_cast<HasAudioProcessingFunction>(second));
+    dut.remove_processor(std::static_pointer_cast<IProcessor>(second));
     REQUIRE(dut.processors().empty());
 
     dut.close();
@@ -210,12 +210,12 @@ TEST_CASE("DummyAudioMidiDriver - processor add/remove cycles", "[DummyAudioMidi
     );
 
     auto extra = std::make_shared<Tracker>();
-    dut.add_processor(std::static_pointer_cast<HasAudioProcessingFunction>(extra));
+    dut.add_processor(std::static_pointer_cast<IProcessor>(extra));
     dut.wait_process();
     auto processed_with_extra = extra->total_samples_processed.load();
     REQUIRE(processed_with_extra > 0);
 
-    dut.remove_processor(std::static_pointer_cast<HasAudioProcessingFunction>(extra));
+    dut.remove_processor(std::static_pointer_cast<IProcessor>(extra));
     auto processed_before = extra->total_samples_processed.load();
     for (int i = 0; i < 5; i++) { dut.wait_process(); }
     auto processed_after = extra->total_samples_processed.load();
@@ -224,10 +224,10 @@ TEST_CASE("DummyAudioMidiDriver - processor add/remove cycles", "[DummyAudioMidi
     // Re-add/remove cycles should remain stable.
     for (int i = 0; i < 20; i++) {
         auto t = std::make_shared<Tracker>();
-        dut.add_processor(std::static_pointer_cast<HasAudioProcessingFunction>(t));
+        dut.add_processor(std::static_pointer_cast<IProcessor>(t));
         dut.wait_process();
         REQUIRE(t->total_samples_processed.load() > 0);
-        dut.remove_processor(std::static_pointer_cast<HasAudioProcessingFunction>(t));
+        dut.remove_processor(std::static_pointer_cast<IProcessor>(t));
         auto before = t->total_samples_processed.load();
         dut.wait_process();
         REQUIRE(t->total_samples_processed.load() == before);

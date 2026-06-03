@@ -24,7 +24,7 @@
 // Internal
 #include "AudioMidiLoop.h"
 #include "AudioMidiDriver.h"
-#include "HasAudioProcessingFunction.h"
+#include "IProcessor.h"
 #include "ProcessingChainInterface.h"
 #include "LoggingBackend.h"
 #include "MidiPort.h"
@@ -327,7 +327,7 @@ void destroy_backend_session(shoop_backend_session_t *backend) {
         auto _backend = internal_backend_session(backend);
         if (!_backend) { return; }
         for (auto &driver : g_active_drivers) {
-          driver->remove_processor(std::static_pointer_cast<HasAudioProcessingFunction>(_backend));
+          driver->remove_processor(std::static_pointer_cast<IProcessor>(_backend));
         }
         _backend->destroy();
         g_active_backends.erase(_backend);
@@ -390,7 +390,7 @@ shoop_result_t set_audio_driver(shoop_backend_session_t *backend, shoop_audio_dr
     _driver->queue_process_thread_command([_backend, _driver]() {
         _backend->set_buffer_size(_driver->get_buffer_size());
         _backend->set_sample_rate(_driver->get_sample_rate());
-        _driver->add_processor(std::static_pointer_cast<HasAudioProcessingFunction>(_backend));
+        _driver->add_processor(std::static_pointer_cast<IProcessor>(_backend));
     });
     return Success;
   }, Failure);

@@ -4,7 +4,7 @@
 
 #include "BridgeObject.h"
 #include "DecoupledMidiPort.h"
-#include "HasAudioProcessingFunction.h"
+#include "IProcessor.h"
 
 namespace backend_rust {
 class CommandQueue;

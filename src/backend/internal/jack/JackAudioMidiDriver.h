@@ -72,8 +72,8 @@ public:
 
     void close() override;
 
-    void add_processor(std::shared_ptr<HasAudioProcessingFunction> p) override;
-    void remove_processor(std::shared_ptr<HasAudioProcessingFunction> p) override;
+    void add_processor(std::shared_ptr<IProcessor> p) override;
+    void remove_processor(std::shared_ptr<IProcessor> p) override;
     std::vector<std::unique_ptr<ProcessorBridgeWeak>> processors() const override;
 
     uint32_t get_xruns() const override;

@@ -5,9 +5,9 @@
 #[cxx::bridge]
 pub mod ffi {
     unsafe extern "C++" {
-        include!("internal/HasAudioProcessingFunction.h");
+        include!("internal/IProcessor.h");
 
-        type HasAudioProcessingFunction;
+        type IProcessor;
 
         type ProcessorBridgeStrong;
         type ProcessorBridgeWeak;

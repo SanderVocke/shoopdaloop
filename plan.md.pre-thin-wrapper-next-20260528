@@ -1,7 +1,7 @@
 # Plan: staged Rust port of `AudioMidiDriver` and `DummyAudioMidiDriver` with thin C++ wrappers
 
 ## Goal
-Port orchestration and runtime logic of `AudioMidiDriver` and `DummyAudioMidiDriver` to Rust while preserving existing C++ API/signatures and minimizing changes in other C++ modules. Use callback trampolines where needed so Rust can invoke existing C++ objects (`HasAudioProcessingFunction`, `DecoupledMidiPort`, existing port classes).
+Port orchestration and runtime logic of `AudioMidiDriver` and `DummyAudioMidiDriver` to Rust while preserving existing C++ API/signatures and minimizing changes in other C++ modules. Use callback trampolines where needed so Rust can invoke existing C++ objects (`IProcessor`, `DecoupledMidiPort`, existing port classes).
 
 The end state for this task is a concrete staged migration design plus implementation-ready bridge/API steps that can be executed incrementally without breaking downstream C++ code.
 
@@ -41,7 +41,7 @@ Keep C++ `AudioMidiDriver` as wrapper/facade that forwards to Rust runtime.
 
 #### Phase 1 bridge work
 Add `extern "C++"` trampoline functions in CXX bridge, implemented in C++:
-- invoke `HasAudioProcessingFunction::PROC_process(nframes)` for a stored handle
+- invoke `IProcessor::PROC_process(nframes)` for a stored handle
 - invoke `DecoupledMidiPort::PROC_process(nframes)` for a stored handle
 - optional no-op/process callback thunk if needed
 

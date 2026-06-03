@@ -274,10 +274,10 @@ void GenericJackAudioMidiDriver<API>::unregister_decoupled_midi_port(std::shared
 }
 
 template<typename API>
-void GenericJackAudioMidiDriver<API>::add_processor(std::shared_ptr<HasAudioProcessingFunction> p) { AudioMidiDriver::add_processor(p); }
+void GenericJackAudioMidiDriver<API>::add_processor(std::shared_ptr<IProcessor> p) { AudioMidiDriver::add_processor(p); }
 
 template<typename API>
-void GenericJackAudioMidiDriver<API>::remove_processor(std::shared_ptr<HasAudioProcessingFunction> p) { AudioMidiDriver::remove_processor(p); }
+void GenericJackAudioMidiDriver<API>::remove_processor(std::shared_ptr<IProcessor> p) { AudioMidiDriver::remove_processor(p); }
 
 template<typename API>
 std::vector<std::unique_ptr<ProcessorBridgeWeak>> GenericJackAudioMidiDriver<API>::processors() const { return AudioMidiDriver::processors(); }

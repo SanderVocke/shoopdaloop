@@ -85,7 +85,7 @@ The bridge ownership system should be introduced incrementally, proving each ste
 
 ### Stage 1: bridge handles for processors
 
-Processor dispatch is the smallest useful proof. Current Rust `AudioMidiDriverCore` stores processor raw pointers and C++ separately keeps weak refs and pointer-to-handle maps. Replace raw pointers with bridge weak handles.
+IProcessor dispatch is the smallest useful proof. Current Rust `AudioMidiDriverCore` stores processor raw pointers and C++ separately keeps weak refs and pointer-to-handle maps. Replace raw pointers with bridge weak handles.
 
 This proves:
 

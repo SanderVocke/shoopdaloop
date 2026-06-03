@@ -2,7 +2,7 @@
 - [x] Add/extend Rust runtime type for `AudioMidiDriver` orchestration in `src/rust/backend_rust/src/`
 - [x] Add CXX bridge API for Rust runtime process-cycle entrypoint and handle registration/removal
 - [x] Add C++ trampoline functions callable from Rust for:
-  - [x] `HasAudioProcessingFunction::PROC_process`
+  - [x] `IProcessor::PROC_process`
   - [x] `DecoupledMidiPort::PROC_process`
   - [x] process callback thunk and command queue exec thunk
 - [x] Refactor `AudioMidiDriver::PROC_process` to thin Rust-forwarding wrapper

@@ -7,7 +7,7 @@
 #include "AudioMidiDriverCxxTrampolines.h"
 #include "BridgeObject.h"
 #include "DecoupledMidiPort.h"
-#include "HasAudioProcessingFunction.h"
+#include "IProcessor.h"
 #include "RustCommandQueue.h"
 
 namespace backend_rust {
@@ -25,13 +25,13 @@ AudioMidiDriver::AudioMidiDriver(void (*maybe_process_callback)())
     m_rust_core->set_client_name("unknown");
 }
 
-void AudioMidiDriver::add_processor(std::shared_ptr<HasAudioProcessingFunction> p) {
+void AudioMidiDriver::add_processor(std::shared_ptr<IProcessor> p) {
     auto strong = std::make_unique<ProcessorBridgeStrong>(p);
     auto weak = strong->downgrade();
     m_rust_core->add_processor(reinterpret_cast<uintptr_t>(p.get()), std::move(weak), std::move(strong));
 }
 
-void AudioMidiDriver::remove_processor(std::shared_ptr<HasAudioProcessingFunction> p) {
+void AudioMidiDriver::remove_processor(std::shared_ptr<IProcessor> p) {
     m_rust_core->remove_processor_by_cpp_identity(reinterpret_cast<uintptr_t>(p.get()));
 }
 
