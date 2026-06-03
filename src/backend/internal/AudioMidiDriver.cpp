@@ -19,15 +19,15 @@ void audiomididriver_invoke_maybe_process_callback(uintptr_t maybe_fn_ptr) {
 }
 
 AudioMidiDriver::AudioMidiDriver(void (*maybe_process_callback)())
-    : m_rust_core(new_audio_midi_driver_core()),
+    : m_rust_core(backend_rust::new_audio_midi_driver_core()),
       m_maybe_process_callback(maybe_process_callback),
       m_client_name_cache("unknown") {
     m_rust_core->set_client_name("unknown");
 }
 
 void AudioMidiDriver::add_processor(std::shared_ptr<HasAudioProcessingFunction> p) {
-    auto strong = bridge_object::make_processor_bridge_strong(p);
-    auto weak = bridge_object::processor_bridge_downgrade(*strong);
+    auto strong = make_processor_bridge_strong(p);
+    auto weak = processor_bridge_downgrade(*strong);
     m_rust_core->add_processor(reinterpret_cast<uintptr_t>(p.get()), std::move(weak), std::move(strong));
 }
 
@@ -35,8 +35,8 @@ void AudioMidiDriver::remove_processor(std::shared_ptr<HasAudioProcessingFunctio
     m_rust_core->remove_processor_by_cpp_identity(reinterpret_cast<uintptr_t>(p.get()));
 }
 
-std::vector<std::unique_ptr<bridge_object::ProcessorBridgeWeak>> AudioMidiDriver::processors() const {
-    std::vector<std::unique_ptr<bridge_object::ProcessorBridgeWeak>> result;
+std::vector<std::unique_ptr<ProcessorBridgeWeak>> AudioMidiDriver::processors() const {
+    std::vector<std::unique_ptr<ProcessorBridgeWeak>> result;
     auto handles = m_rust_core->get_processor_handles();
     result.reserve(handles.size());
     for (auto const &handle : handles) {
@@ -75,10 +75,10 @@ std::shared_ptr<shoop_types::_DecoupledMidiPort> AudioMidiDriver::make_decoupled
 ) {
     constexpr uint32_t decoupled_midi_port_queue_size = 256;
     auto decoupled = std::make_shared<shoop_types::_DecoupledMidiPort>(port, driver, decoupled_midi_port_queue_size, direction);
-    auto strong = std::make_shared<std::unique_ptr<bridge_object::DecoupledMidiPortBridgeStrong>>(
-        bridge_object::make_decoupled_midi_port_bridge_strong(decoupled));
-    auto weak = std::make_shared<std::unique_ptr<bridge_object::DecoupledMidiPortBridgeWeak>>(
-        bridge_object::decoupled_midi_port_bridge_downgrade(**strong));
+    auto strong = std::make_shared<std::unique_ptr<DecoupledMidiPortBridgeStrong>>(
+        make_decoupled_midi_port_bridge_strong(decoupled));
+    auto weak = std::make_shared<std::unique_ptr<DecoupledMidiPortBridgeWeak>>(
+        decoupled_midi_port_bridge_downgrade(**strong));
     auto *queue = reinterpret_cast<backend_rust::CommandQueue *>(m_rust_core->command_queue_ptr());
     rust_command_queue::queue(*queue, [this, decoupled, strong, weak]() {
         auto handle = m_rust_core->register_decoupled_port(std::move(*weak), std::move(*strong));

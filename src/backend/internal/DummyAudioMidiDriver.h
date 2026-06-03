@@ -33,7 +33,7 @@ class DummyAudioMidiDriver : public AudioMidiDriver,
                              private ModuleLoggingEnabled<"Backend.DummyAudioMidiDriver"> {
     using Log = ModuleLoggingEnabled<"Backend.DummyAudioMidiDriver">;
 
-    rust::Box<DummyAudioMidiDriver> m_rust;
+    rust::Box<backend_rust::DummyAudioMidiDriver> m_rust;
     std::set<std::shared_ptr<DummyAudioPort>> m_audio_ports;
     std::set<std::shared_ptr<DummyMidiPort>> m_midi_ports;
     std::string m_client_name_str = "";
@@ -74,7 +74,7 @@ public:
 
     void add_processor(std::shared_ptr<HasAudioProcessingFunction> p) override;
     void remove_processor(std::shared_ptr<HasAudioProcessingFunction> p) override;
-    std::vector<std::unique_ptr<bridge_object::ProcessorBridgeWeak>> processors() const override;
+    std::vector<std::unique_ptr<ProcessorBridgeWeak>> processors() const override;
 
     uint32_t get_xruns() const override;
     float get_dsp_load() override;

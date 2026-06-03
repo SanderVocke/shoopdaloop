@@ -232,7 +232,7 @@ template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::remove_processor(std::shared_ptr<HasAudioProcessingFunction> p) { AudioMidiDriver::remove_processor(p); }
 
 template <typename Time, typename Size>
-std::vector<std::unique_ptr<bridge_object::ProcessorBridgeWeak>> DummyAudioMidiDriver<Time, Size>::processors() const { return AudioMidiDriver::processors(); }
+std::vector<std::unique_ptr<ProcessorBridgeWeak>> DummyAudioMidiDriver<Time, Size>::processors() const { return AudioMidiDriver::processors(); }
 
 template <typename Time, typename Size>
 uint32_t DummyAudioMidiDriver<Time, Size>::get_xruns() const { return AudioMidiDriver::get_xruns(); }
@@ -271,7 +271,7 @@ template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::exec_process_thread_command(std::function<void()> fn) { AudioMidiDriver::exec_process_thread_command(std::move(fn)); }
 
 template <typename Time, typename Size>
-CommandQueue &DummyAudioMidiDriver<Time, Size>::get_command_queue() { return AudioMidiDriver::get_command_queue(); }
+backend_rust::CommandQueue &DummyAudioMidiDriver<Time, Size>::get_command_queue() { return AudioMidiDriver::get_command_queue(); }
 
 template class DummyAudioMidiDriver<uint32_t, uint16_t>;
 template class DummyAudioMidiDriver<uint32_t, uint32_t>;

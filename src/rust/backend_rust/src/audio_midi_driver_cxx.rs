@@ -13,15 +13,15 @@ pub mod ffi {
         include!("internal/AudioMidiDriverCxxTrampolines.h");
 
         unsafe fn audiomididriver_invoke_maybe_process_callback(maybe_fn_ptr: usize);
-        #[namespace = "bridge_object"]
+        #[namespace = ""]
         type ProcessorBridgeStrong = crate::processor_cxx::ffi::ProcessorBridgeStrong;
-        #[namespace = "bridge_object"]
+        #[namespace = ""]
         type ProcessorBridgeWeak = crate::processor_cxx::ffi::ProcessorBridgeWeak;
 
-        #[namespace = "bridge_object"]
+        #[namespace = ""]
         type DecoupledMidiPortBridgeStrong =
             crate::decoupled_midi_port_bridge_cxx::ffi::DecoupledMidiPortBridgeStrong;
-        #[namespace = "bridge_object"]
+        #[namespace = ""]
         type DecoupledMidiPortBridgeWeak =
             crate::decoupled_midi_port_bridge_cxx::ffi::DecoupledMidiPortBridgeWeak;
     }

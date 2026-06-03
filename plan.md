@@ -136,7 +136,7 @@ Remove `m_processors` from `AudioMidiDriver` in `AudioMidiDriver.h`.
 
 Change `AudioMidiDriver::add_processor` so it no longer pushes into `m_processors`. It should continue to:
 
-1. call `bridge_object::register_processor(p)`,
+1. call `register_processor(p)`,
 2. downgrade the strong handle,
 3. call Rust core `add_processor(cpp_identity, weak.id, weak.type_id, strong.id, strong.type_id)`.
 
@@ -145,7 +145,7 @@ Change `AudioMidiDriver::remove_processor` so it no longer erases from `m_proces
 Change `AudioMidiDriver::processors()` to:
 
 1. call `m_rust_core->get_processor_weak_handles()`,
-2. for each returned weak handle, resolve the processor using the existing C++ typed bridge resolver, e.g. `bridge_object::bridge_resolve_processor_for_rust(id, type_id)` or `bridge_object::lock_processor(BridgeWeakHandle{id, type_id})`,
+2. for each returned weak handle, resolve the processor using the existing C++ typed bridge resolver, e.g. `bridge_resolve_processor_for_rust(id, type_id)` or `lock_processor(BridgeWeakHandle{id, type_id})`,
 3. if resolution succeeds, push a `std::weak_ptr<HasAudioProcessingFunction>` into the return vector,
 4. skip stale/unresolvable handles defensively.
 

@@ -58,3 +58,32 @@ std::unique_ptr<WeakType> func_prefix##_downgrade(const StrongType &strong); \
 std::unique_ptr<StrongType> func_prefix##_upgrade(const WeakType &weak); \
 std::unique_ptr<WeakType> func_prefix##_clone_weak(const WeakType &weak); \
 std::shared_ptr<CppType> func_prefix##_lock(const WeakType &weak);
+
+
+#define SHOOP_DEFINE_TYPED_BRIDGE_OBJECT(CppType, StrongType, WeakType, func_prefix, method_suffix) \
+std::unique_ptr<WeakType> StrongType::downgrade_##method_suffix() const { \
+    return std::make_unique<WeakType>(shared_ptr()); \
+} \
+std::unique_ptr<StrongType> WeakType::upgrade_##method_suffix() const { \
+    auto strong = BridgeWeak<CppType>::upgrade(); \
+    if (!strong) { return {}; } \
+    return std::make_unique<StrongType>(strong->shared_ptr()); \
+} \
+std::unique_ptr<StrongType> make_##func_prefix##_strong(std::shared_ptr<CppType> p) { \
+    return std::make_unique<StrongType>(std::move(p)); \
+} \
+std::unique_ptr<WeakType> func_prefix##_downgrade(const StrongType &strong) { \
+    return strong.downgrade_##method_suffix(); \
+} \
+std::unique_ptr<StrongType> func_prefix##_upgrade(const WeakType &weak) { \
+    return weak.upgrade_##method_suffix(); \
+} \
+std::unique_ptr<WeakType> func_prefix##_clone_weak(const WeakType &weak) { \
+    auto strong = weak.upgrade_##method_suffix(); \
+    if (!strong) { return {}; } \
+    return strong->downgrade_##method_suffix(); \
+} \
+std::shared_ptr<CppType> func_prefix##_lock(const WeakType &weak) { \
+    auto strong = weak.upgrade_##method_suffix(); \
+    return strong ? strong->shared_ptr() : nullptr; \
+}

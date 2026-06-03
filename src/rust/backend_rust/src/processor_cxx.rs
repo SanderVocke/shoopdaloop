@@ -2,24 +2,23 @@
 
 #![allow(dead_code)]
 
-#[cxx::bridge(namespace = "backend_rust")]
+#[cxx::bridge]
 pub mod ffi {
     unsafe extern "C++" {
-        include!("internal/AudioMidiDriverCxxTrampolines.h");
         include!("internal/HasAudioProcessingFunction.h");
-        include!("internal/BridgeObject.h");
 
-        #[namespace = ""]
         type HasAudioProcessingFunction;
 
-        type ProcessorBridgeStrong = BridgeStrong<HasAudioProcessingFunction>;
-        type ProcessorBridgeWeak = BridgeWeak<HasAudioProcessingFunction>;
+        type ProcessorBridgeStrong;
+        type ProcessorBridgeWeak;
 
         fn processor_bridge_downgrade(
             strong: &ProcessorBridgeStrong,
         ) -> UniquePtr<ProcessorBridgeWeak>;
+
         fn processor_bridge_upgrade(weak: &ProcessorBridgeWeak)
             -> UniquePtr<ProcessorBridgeStrong>;
+
         fn processor_bridge_clone_weak(
             processor: &ProcessorBridgeWeak,
         ) -> UniquePtr<ProcessorBridgeWeak>;
