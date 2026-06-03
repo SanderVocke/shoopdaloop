@@ -1,4 +1,7 @@
 //! CXX bridge declarations for C++ processor bridge-object handles.
+//!
+//! The bridge handles only expose generic lifetime/access operations. Methods
+//! of the contained C++ `IProcessor` object are exposed by `i_processor_cxx.rs`.
 
 #![allow(dead_code)]
 
@@ -7,7 +10,7 @@ pub mod ffi {
     unsafe extern "C++" {
         include!("internal/IProcessor.h");
 
-        type IProcessor;
+        type IProcessor = crate::i_processor_cxx::ffi::IProcessor;
 
         type ProcessorBridgeStrong;
         type ProcessorBridgeWeak;
@@ -16,6 +19,7 @@ pub mod ffi {
         fn upgrade(self: &ProcessorBridgeWeak) -> UniquePtr<ProcessorBridgeStrong>;
         fn clone(self: &ProcessorBridgeWeak) -> UniquePtr<ProcessorBridgeWeak>;
 
-        fn processor_bridge_proc_process(processor: &ProcessorBridgeWeak, nframes: u32);
+        fn get_ref(self: &ProcessorBridgeStrong) -> &IProcessor;
+        unsafe fn get_pin_mut(self: Pin<&mut ProcessorBridgeStrong>) -> Pin<&mut IProcessor>;
     }
 }

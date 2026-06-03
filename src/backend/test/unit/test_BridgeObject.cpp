@@ -39,12 +39,12 @@ TEST_CASE("BridgeObject - processor weak expires when strong references are gone
     CHECK(!weak->lock());
 }
 
-TEST_CASE("BridgeObject - processor operation helper calls object", "[BridgeObject]") {
+TEST_CASE("BridgeObject - strong handle gives access to contained object", "[BridgeObject]") {
     auto proc = std::make_shared<DummyProcessor>();
     auto strong = std::make_unique<ProcessorBridgeStrong>(proc);
-    auto weak = strong->downgrade();
 
-    processor_bridge_proc_process(*weak, 64);
+    CHECK(&strong->get_ref() == proc.get());
+    strong->get_pin_mut().PROC_process(64);
     CHECK(proc->processed == 64);
 }
 

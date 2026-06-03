@@ -94,13 +94,3 @@ void DecoupledMidiPort::set_registry_handle(uint64_t handle) {
 uint64_t DecoupledMidiPort::registry_handle() const {
     return m_registry_handle;
 }
-
-void decoupled_midi_port_bridge_proc_process(const DecoupledMidiPortBridgeWeak &weak, uint32_t nframes) {
-    auto port = weak.lock();
-    if (port) { port->PROC_process(nframes); }
-}
-
-void decoupled_midi_port_bridge_close(const DecoupledMidiPortBridgeWeak &weak) {
-    auto port = weak.lock();
-    if (port) { port->close(); }
-}

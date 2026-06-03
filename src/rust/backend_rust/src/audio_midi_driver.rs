@@ -331,9 +331,16 @@ impl AudioMidiDriverCore {
     pub fn process_decoupled_port(&self, handle: u64, nframes: u32) -> bool {
         if let Ok(guard) = self.decoupled_ports.read() {
             if let Some(reg) = guard.get(&handle) {
-                crate::decoupled_midi_port_bridge_cxx::ffi::decoupled_midi_port_bridge_proc_process(
-                    &reg.weak, nframes,
-                );
+                if !reg.weak.is_null() {
+                    let mut strong = reg.weak.upgrade();
+                    if let Some(strong) = strong.as_mut() {
+                        // SAFETY: The bridge object only proves that the C++ object is alive.
+                        // The audio driver registry/process-thread discipline is responsible
+                        // for avoiding aliased mutable use of the contained C++ object.
+                        let port = unsafe { strong.get_pin_mut() };
+                        port.PROC_process(nframes);
+                    }
+                }
                 return true;
             }
         }
@@ -344,9 +351,16 @@ impl AudioMidiDriverCore {
     pub fn close_decoupled_port(&self, handle: u64) -> bool {
         if let Ok(guard) = self.decoupled_ports.read() {
             if let Some(reg) = guard.get(&handle) {
-                crate::decoupled_midi_port_bridge_cxx::ffi::decoupled_midi_port_bridge_close(
-                    &reg.weak,
-                );
+                if !reg.weak.is_null() {
+                    let mut strong = reg.weak.upgrade();
+                    if let Some(strong) = strong.as_mut() {
+                        // SAFETY: The bridge object only proves that the C++ object is alive.
+                        // The caller/driver discipline is responsible for avoiding aliased
+                        // mutable use of the contained C++ object while closing.
+                        let port = unsafe { strong.get_pin_mut() };
+                        port.close();
+                    }
+                }
                 return true;
             }
         }
@@ -383,7 +397,16 @@ impl AudioMidiDriverCore {
         for handle in self.get_processor_handles() {
             if let Ok(guard) = self.processors.read() {
                 if let Some(reg) = guard.get(&handle) {
-                    crate::processor_cxx::ffi::processor_bridge_proc_process(&reg.weak, nframes);
+                    if !reg.weak.is_null() {
+                        let mut strong = reg.weak.upgrade();
+                        if let Some(strong) = strong.as_mut() {
+                            // SAFETY: The bridge object only proves that the C++ object is alive.
+                            // The audio driver registry/process-thread discipline is responsible
+                            // for avoiding aliased mutable use of the contained C++ object.
+                            let processor = unsafe { strong.get_pin_mut() };
+                            processor.PROC_process(nframes);
+                        }
+                    }
                 }
             }
         }

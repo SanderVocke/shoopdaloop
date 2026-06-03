@@ -47,5 +47,3 @@ public:
 
 using DecoupledMidiPortBridgeWeak = BridgeWeak<DecoupledMidiPort>;
 using DecoupledMidiPortBridgeStrong = BridgeStrong<DecoupledMidiPort>;
-void decoupled_midi_port_bridge_proc_process(const DecoupledMidiPortBridgeWeak &weak, uint32_t nframes);
-void decoupled_midi_port_bridge_close(const DecoupledMidiPortBridgeWeak &weak);

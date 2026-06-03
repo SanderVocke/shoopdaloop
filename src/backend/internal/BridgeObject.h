@@ -20,6 +20,8 @@ public:
     std::shared_ptr<T> shared_ptr() const { return m_ptr; }
     T* ptr() const { return m_ptr.get(); }
     bool valid() const { return static_cast<bool>(m_ptr); }
+    const T& get_ref() const { return *m_ptr; }
+    T& get_pin_mut() { return *m_ptr; }
 
 private:
     std::shared_ptr<T> m_ptr;
