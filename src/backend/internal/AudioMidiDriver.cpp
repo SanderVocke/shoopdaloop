@@ -7,6 +7,7 @@
 #include "AudioMidiDriverCxxTrampolines.h"
 #include "BridgeObject.h"
 #include "DecoupledMidiPort.h"
+#include "HasAudioProcessingFunction.h"
 #include "RustCommandQueue.h"
 
 namespace backend_rust {
@@ -18,7 +19,7 @@ void audiomididriver_invoke_maybe_process_callback(uintptr_t maybe_fn_ptr) {
 }
 
 AudioMidiDriver::AudioMidiDriver(void (*maybe_process_callback)())
-    : m_rust_core(backend_rust::new_audio_midi_driver_core()),
+    : m_rust_core(new_audio_midi_driver_core()),
       m_maybe_process_callback(maybe_process_callback),
       m_client_name_cache("unknown") {
     m_rust_core->set_client_name("unknown");

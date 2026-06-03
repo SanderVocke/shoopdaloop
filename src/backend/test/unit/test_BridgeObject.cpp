@@ -4,6 +4,7 @@
 #include "BridgeObject.h"
 #include "DecoupledMidiPort.h"
 #include "DummyMidiPort.h"
+#include "HasAudioProcessingFunction.h"
 
 #include <memory>
 #include <vector>

@@ -10,6 +10,7 @@
 #include <thread>
 #include <stdexcept>
 #include "DummyAudioMidiDriver.h"
+#include "HasAudioProcessingFunction.h"
 #include "RustCommandQueue.h"
 #include "DummyAudioMidiDriverCxxTrampolines.h"
 #include <map>
@@ -270,7 +271,7 @@ template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::exec_process_thread_command(std::function<void()> fn) { AudioMidiDriver::exec_process_thread_command(std::move(fn)); }
 
 template <typename Time, typename Size>
-backend_rust::CommandQueue &DummyAudioMidiDriver<Time, Size>::get_command_queue() { return AudioMidiDriver::get_command_queue(); }
+CommandQueue &DummyAudioMidiDriver<Time, Size>::get_command_queue() { return AudioMidiDriver::get_command_queue(); }
 
 template class DummyAudioMidiDriver<uint32_t, uint16_t>;
 template class DummyAudioMidiDriver<uint32_t, uint32_t>;

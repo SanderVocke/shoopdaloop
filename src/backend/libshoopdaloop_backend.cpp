@@ -24,6 +24,7 @@
 // Internal
 #include "AudioMidiLoop.h"
 #include "AudioMidiDriver.h"
+#include "HasAudioProcessingFunction.h"
 #include "ProcessingChainInterface.h"
 #include "LoggingBackend.h"
 #include "MidiPort.h"

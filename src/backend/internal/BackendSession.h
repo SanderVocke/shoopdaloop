@@ -4,6 +4,7 @@
 #include <functional>
 #include "LoggingEnabled.h"
 #include "AudioMidiDriver.h"
+#include "HasAudioProcessingFunction.h"
 #include "RustCommandQueue.h"
 #include "shoop_globals.h"
 #include "types.h"

@@ -1,5 +1,6 @@
 #pragma once
 #include "AudioMidiDriver.h"
+#include "HasAudioProcessingFunction.h"
 #include "RustAudioPort.h"
 #include "DummyAudioPort.h"
 #include "DummyMidiPort.h"
@@ -32,7 +33,7 @@ class DummyAudioMidiDriver : public AudioMidiDriver,
                              private ModuleLoggingEnabled<"Backend.DummyAudioMidiDriver"> {
     using Log = ModuleLoggingEnabled<"Backend.DummyAudioMidiDriver">;
 
-    rust::Box<backend_rust::DummyAudioMidiDriver> m_rust;
+    rust::Box<DummyAudioMidiDriver> m_rust;
     std::set<std::shared_ptr<DummyAudioPort>> m_audio_ports;
     std::set<std::shared_ptr<DummyMidiPort>> m_midi_ports;
     std::string m_client_name_str = "";

@@ -3,6 +3,7 @@
 #include "PortInterface.h"
 #include "AudioMidiDriver.h"
 #include "DecoupledMidiPort.h"
+#include "HasAudioProcessingFunction.h"
 #include "BridgeObject.h"
 #include <functional>
 #include <thread>

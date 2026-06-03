@@ -4,12 +4,12 @@
 
 #include "BridgeObject.h"
 #include "DecoupledMidiPort.h"
+#include "HasAudioProcessingFunction.h"
 
 namespace backend_rust {
 class CommandQueue;
 }
 
-class HasAudioProcessingFunction;
 class DecoupledMidiPort;
 
 namespace backend_rust {

@@ -6,27 +6,23 @@
 pub mod ffi {
     unsafe extern "C++" {
         include!("internal/AudioMidiDriverCxxTrampolines.h");
+        include!("internal/HasAudioProcessingFunction.h");
+        include!("internal/BridgeObject.h");
 
         #[namespace = ""]
         type HasAudioProcessingFunction;
 
-        #[namespace = "bridge_object"]
-        type ProcessorBridgeStrong;
-        #[namespace = "bridge_object"]
-        type ProcessorBridgeWeak;
+        type ProcessorBridgeStrong = BridgeStrong<HasAudioProcessingFunction>;
+        type ProcessorBridgeWeak = BridgeWeak<HasAudioProcessingFunction>;
 
-        #[namespace = "bridge_object"]
         fn processor_bridge_downgrade(
             strong: &ProcessorBridgeStrong,
         ) -> UniquePtr<ProcessorBridgeWeak>;
-        #[namespace = "bridge_object"]
         fn processor_bridge_upgrade(weak: &ProcessorBridgeWeak)
             -> UniquePtr<ProcessorBridgeStrong>;
-        #[namespace = "bridge_object"]
         fn processor_bridge_clone_weak(
             processor: &ProcessorBridgeWeak,
         ) -> UniquePtr<ProcessorBridgeWeak>;
-        #[namespace = "bridge_object"]
         fn processor_bridge_proc_process(processor: &ProcessorBridgeWeak, nframes: u32);
     }
 }

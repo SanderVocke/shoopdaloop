@@ -1,7 +1,7 @@
 #include "BridgeObject.h"
 
-#include "AudioMidiDriver.h"
 #include "DecoupledMidiPort.h"
+#include "HasAudioProcessingFunction.h"
 
 namespace bridge_object {
 

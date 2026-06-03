@@ -34,14 +34,6 @@ struct ExternalPortDescriptor {
     shoop_port_data_type_t data_type;
 };
 
-class HasAudioProcessingFunction {
-public:
-    HasAudioProcessingFunction() {}
-    virtual ~HasAudioProcessingFunction() {}
-
-    virtual void PROC_process(uint32_t nframes) = 0;
-};
-
 class AudioMidiDriver : public ModuleLoggingEnabled<"Backend.AudioMidiDriver">,
                         private std::enable_shared_from_this<AudioMidiDriver> {
 protected:

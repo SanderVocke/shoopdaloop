@@ -5,10 +5,7 @@
 #include <optional>
 #include <utility>
 
-class HasAudioProcessingFunction;
 class DecoupledMidiPort;
-
-namespace bridge_object {
 
 template<typename T>
 class BridgeWeak;
@@ -61,14 +58,3 @@ std::unique_ptr<WeakType> func_prefix##_downgrade(const StrongType &strong); \
 std::unique_ptr<StrongType> func_prefix##_upgrade(const WeakType &weak); \
 std::unique_ptr<WeakType> func_prefix##_clone_weak(const WeakType &weak); \
 std::shared_ptr<CppType> func_prefix##_lock(const WeakType &weak);
-
-SHOOP_DECLARE_TYPED_BRIDGE_OBJECT(HasAudioProcessingFunction, ProcessorBridgeStrong, ProcessorBridgeWeak, processor_bridge, processor)
-void processor_bridge_proc_process(const ProcessorBridgeWeak &weak, uint32_t nframes);
-
-SHOOP_DECLARE_TYPED_BRIDGE_OBJECT(DecoupledMidiPort, DecoupledMidiPortBridgeStrong, DecoupledMidiPortBridgeWeak, decoupled_midi_port_bridge, decoupled_midi_port)
-void decoupled_midi_port_bridge_proc_process(const DecoupledMidiPortBridgeWeak &weak, uint32_t nframes);
-void decoupled_midi_port_bridge_close(const DecoupledMidiPortBridgeWeak &weak);
-
-#undef SHOOP_DECLARE_TYPED_BRIDGE_OBJECT
-
-}
