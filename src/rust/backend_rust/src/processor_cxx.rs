@@ -12,14 +12,10 @@ pub mod ffi {
         type ProcessorBridgeStrong;
         type ProcessorBridgeWeak;
 
-        fn processor_bridge_downgrade(
-            strong: &ProcessorBridgeStrong,
-        ) -> UniquePtr<ProcessorBridgeWeak>;
-        fn processor_bridge_upgrade(weak: &ProcessorBridgeWeak) -> UniquePtr<ProcessorBridgeStrong>;
+        fn downgrade_unique(self: &ProcessorBridgeStrong) -> UniquePtr<ProcessorBridgeWeak>;
+        fn upgrade(self: &ProcessorBridgeWeak) -> UniquePtr<ProcessorBridgeStrong>;
+        fn clone_unique(self: &ProcessorBridgeWeak) -> UniquePtr<ProcessorBridgeWeak>;
 
-        fn processor_bridge_clone_weak(
-            processor: &ProcessorBridgeWeak,
-        ) -> UniquePtr<ProcessorBridgeWeak>;
         fn processor_bridge_proc_process(processor: &ProcessorBridgeWeak, nframes: u32);
     }
 }

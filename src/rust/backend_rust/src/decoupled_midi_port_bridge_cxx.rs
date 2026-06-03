@@ -11,12 +11,13 @@ pub mod ffi {
         type DecoupledMidiPortBridgeStrong;
         type DecoupledMidiPortBridgeWeak;
 
-        fn decoupled_midi_port_bridge_downgrade(
-            strong: &DecoupledMidiPortBridgeStrong,
+        fn downgrade_unique(
+            self: &DecoupledMidiPortBridgeStrong,
         ) -> UniquePtr<DecoupledMidiPortBridgeWeak>;
-        fn decoupled_midi_port_bridge_upgrade(
-            weak: &DecoupledMidiPortBridgeWeak,
-        ) -> UniquePtr<DecoupledMidiPortBridgeStrong>;
+        fn upgrade(self: &DecoupledMidiPortBridgeWeak) -> UniquePtr<DecoupledMidiPortBridgeStrong>;
+        fn clone_unique(
+            self: &DecoupledMidiPortBridgeWeak,
+        ) -> UniquePtr<DecoupledMidiPortBridgeWeak>;
 
         fn decoupled_midi_port_bridge_proc_process(
             port: &DecoupledMidiPortBridgeWeak,

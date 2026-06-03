@@ -37,6 +37,7 @@ public:
         if (!ptr) { return {}; }
         return std::make_unique<BridgeStrong<T>>(std::move(ptr));
     }
+    std::unique_ptr<BridgeWeak<T>> clone_unique() const { return std::make_unique<BridgeWeak<T>>(m_ptr); }
 
 private:
     std::weak_ptr<T> m_ptr;
@@ -46,25 +47,11 @@ private:
 using WeakType = BridgeWeak<CppType>; \
 using StrongType = BridgeStrong<CppType>; \
 std::unique_ptr<StrongType> make_##func_prefix##_strong(std::shared_ptr<CppType> p); \
-std::unique_ptr<WeakType> func_prefix##_downgrade(const StrongType &strong); \
-std::unique_ptr<StrongType> func_prefix##_upgrade(const WeakType &weak); \
-std::unique_ptr<WeakType> func_prefix##_clone_weak(const WeakType &weak); \
 std::shared_ptr<CppType> func_prefix##_lock(const WeakType &weak);
 
 #define SHOOP_DEFINE_TYPED_BRIDGE_OBJECT(CppType, StrongType, WeakType, func_prefix, method_suffix) \
 std::unique_ptr<StrongType> make_##func_prefix##_strong(std::shared_ptr<CppType> p) { \
     return std::make_unique<StrongType>(std::move(p)); \
-} \
-std::unique_ptr<WeakType> func_prefix##_downgrade(const StrongType &strong) { \
-    return strong.downgrade_unique(); \
-} \
-std::unique_ptr<StrongType> func_prefix##_upgrade(const WeakType &weak) { \
-    return weak.upgrade(); \
-} \
-std::unique_ptr<WeakType> func_prefix##_clone_weak(const WeakType &weak) { \
-    auto strong = weak.upgrade(); \
-    if (!strong) { return {}; } \
-    return std::make_unique<WeakType>(strong->downgrade()); \
 } \
 std::shared_ptr<CppType> func_prefix##_lock(const WeakType &weak) { \
     auto strong = weak.upgrade(); \
