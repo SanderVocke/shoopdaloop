@@ -44,6 +44,8 @@ pub mod port_direction;
 pub mod processor_cxx;
 pub mod refilling_pool;
 pub mod refilling_pool_cxx;
+pub mod rust_bridge_object;
+pub mod rust_bridge_object_test_cxx;
 
 // Re-export types for use by other crates (like backend)
 pub use crate::refilling_pool_cxx::create_buffer_pool;
