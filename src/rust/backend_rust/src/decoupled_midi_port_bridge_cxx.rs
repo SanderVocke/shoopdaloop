@@ -11,7 +11,7 @@ pub mod ffi {
         type DecoupledMidiPortBridgeStrong;
         type DecoupledMidiPortBridgeWeak;
 
-        fn downgrade_unique(
+        fn downgrade(
             self: &DecoupledMidiPortBridgeStrong,
         ) -> UniquePtr<DecoupledMidiPortBridgeWeak>;
         fn upgrade(self: &DecoupledMidiPortBridgeWeak) -> UniquePtr<DecoupledMidiPortBridgeStrong>;

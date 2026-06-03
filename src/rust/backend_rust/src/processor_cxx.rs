@@ -12,7 +12,7 @@ pub mod ffi {
         type ProcessorBridgeStrong;
         type ProcessorBridgeWeak;
 
-        fn downgrade_unique(self: &ProcessorBridgeStrong) -> UniquePtr<ProcessorBridgeWeak>;
+        fn downgrade(self: &ProcessorBridgeStrong) -> UniquePtr<ProcessorBridgeWeak>;
         fn upgrade(self: &ProcessorBridgeWeak) -> UniquePtr<ProcessorBridgeStrong>;
         fn clone_unique(self: &ProcessorBridgeWeak) -> UniquePtr<ProcessorBridgeWeak>;
 

@@ -16,8 +16,7 @@ public:
     BridgeStrong() = default;
     explicit BridgeStrong(std::shared_ptr<T> ptr) : m_ptr(std::move(ptr)) {}
 
-    BridgeWeak<T> downgrade() const { return BridgeWeak<T>(m_ptr); }
-    std::unique_ptr<BridgeWeak<T>> downgrade_unique() const { return std::make_unique<BridgeWeak<T>>(m_ptr); }
+    std::unique_ptr<BridgeWeak<T>> downgrade() const { return std::make_unique<BridgeWeak<T>>(m_ptr); }
     std::shared_ptr<T> shared_ptr() const { return m_ptr; }
     T* ptr() const { return m_ptr.get(); }
     bool valid() const { return static_cast<bool>(m_ptr); }
