@@ -95,15 +95,12 @@ uint64_t DecoupledMidiPort::registry_handle() const {
     return m_registry_handle;
 }
 
-
-SHOOP_DEFINE_TYPED_BRIDGE_OBJECT(DecoupledMidiPort, DecoupledMidiPortBridgeStrong, DecoupledMidiPortBridgeWeak, decoupled_midi_port_bridge, decoupled_midi_port)
-
 void decoupled_midi_port_bridge_proc_process(const DecoupledMidiPortBridgeWeak &weak, uint32_t nframes) {
-    auto port = decoupled_midi_port_bridge_lock(weak);
+    auto port = weak.lock();
     if (port) { port->PROC_process(nframes); }
 }
 
 void decoupled_midi_port_bridge_close(const DecoupledMidiPortBridgeWeak &weak) {
-    auto port = decoupled_midi_port_bridge_lock(weak);
+    auto port = weak.lock();
     if (port) { port->close(); }
 }

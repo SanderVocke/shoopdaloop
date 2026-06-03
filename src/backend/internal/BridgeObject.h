@@ -31,29 +31,16 @@ public:
     BridgeWeak() = default;
     explicit BridgeWeak(std::weak_ptr<T> ptr) : m_ptr(std::move(ptr)) {}
 
+    std::shared_ptr<T> lock() const { return m_ptr.lock(); }
+
     std::unique_ptr<BridgeStrong<T>> upgrade() const {
-        auto ptr = m_ptr.lock();
+        auto ptr = lock();
         if (!ptr) { return {}; }
         return std::make_unique<BridgeStrong<T>>(std::move(ptr));
     }
-    std::unique_ptr<BridgeWeak<T>> clone_unique() const { return std::make_unique<BridgeWeak<T>>(m_ptr); }
+
+    std::unique_ptr<BridgeWeak<T>> clone() const { return std::make_unique<BridgeWeak<T>>(m_ptr); }
 
 private:
     std::weak_ptr<T> m_ptr;
 };
-
-#define SHOOP_DECLARE_TYPED_BRIDGE_OBJECT(CppType, StrongType, WeakType, func_prefix, method_suffix) \
-using WeakType = BridgeWeak<CppType>; \
-using StrongType = BridgeStrong<CppType>; \
-std::unique_ptr<StrongType> make_##func_prefix##_strong(std::shared_ptr<CppType> p); \
-std::shared_ptr<CppType> func_prefix##_lock(const WeakType &weak);
-
-#define SHOOP_DEFINE_TYPED_BRIDGE_OBJECT(CppType, StrongType, WeakType, func_prefix, method_suffix) \
-std::unique_ptr<StrongType> make_##func_prefix##_strong(std::shared_ptr<CppType> p) { \
-    return std::make_unique<StrongType>(std::move(p)); \
-} \
-std::shared_ptr<CppType> func_prefix##_lock(const WeakType &weak) { \
-    auto strong = weak.upgrade(); \
-    return strong ? strong->shared_ptr() : nullptr; \
-}
-

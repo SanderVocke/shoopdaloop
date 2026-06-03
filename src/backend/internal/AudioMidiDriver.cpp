@@ -26,7 +26,7 @@ AudioMidiDriver::AudioMidiDriver(void (*maybe_process_callback)())
 }
 
 void AudioMidiDriver::add_processor(std::shared_ptr<HasAudioProcessingFunction> p) {
-    auto strong = make_processor_bridge_strong(p);
+    auto strong = std::make_unique<ProcessorBridgeStrong>(p);
     auto weak = strong->downgrade();
     m_rust_core->add_processor(reinterpret_cast<uintptr_t>(p.get()), std::move(weak), std::move(strong));
 }
@@ -76,7 +76,7 @@ std::shared_ptr<shoop_types::_DecoupledMidiPort> AudioMidiDriver::make_decoupled
     constexpr uint32_t decoupled_midi_port_queue_size = 256;
     auto decoupled = std::make_shared<shoop_types::_DecoupledMidiPort>(port, driver, decoupled_midi_port_queue_size, direction);
     auto strong = std::make_shared<std::unique_ptr<DecoupledMidiPortBridgeStrong>>(
-        make_decoupled_midi_port_bridge_strong(decoupled));
+        std::make_unique<DecoupledMidiPortBridgeStrong>(decoupled));
     auto weak = std::make_shared<std::unique_ptr<DecoupledMidiPortBridgeWeak>>(
         (*strong)->downgrade());
     auto *queue = reinterpret_cast<backend_rust::CommandQueue *>(m_rust_core->command_queue_ptr());

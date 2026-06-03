@@ -14,7 +14,7 @@ pub mod ffi {
 
         fn downgrade(self: &ProcessorBridgeStrong) -> UniquePtr<ProcessorBridgeWeak>;
         fn upgrade(self: &ProcessorBridgeWeak) -> UniquePtr<ProcessorBridgeStrong>;
-        fn clone_unique(self: &ProcessorBridgeWeak) -> UniquePtr<ProcessorBridgeWeak>;
+        fn clone(self: &ProcessorBridgeWeak) -> UniquePtr<ProcessorBridgeWeak>;
 
         fn processor_bridge_proc_process(processor: &ProcessorBridgeWeak, nframes: u32);
     }

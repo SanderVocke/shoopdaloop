@@ -16,7 +16,7 @@ struct DummyProcessor : HasAudioProcessingFunction {
 
 TEST_CASE("BridgeObject - processor strong downgrades and weak upgrades", "[BridgeObject]") {
     auto proc = std::make_shared<DummyProcessor>();
-    auto strong = make_processor_bridge_strong(proc);
+    auto strong = std::make_unique<ProcessorBridgeStrong>(proc);
     auto weak = strong->downgrade();
 
     REQUIRE(strong);
@@ -24,24 +24,24 @@ TEST_CASE("BridgeObject - processor strong downgrades and weak upgrades", "[Brid
     auto upgraded = weak->upgrade();
     REQUIRE(upgraded);
     CHECK(upgraded->shared_ptr() == proc);
-    CHECK(processor_bridge_lock(*weak) == proc);
+    CHECK(weak->lock() == proc);
 }
 
 TEST_CASE("BridgeObject - processor weak expires when strong references are gone", "[BridgeObject]") {
     auto proc = std::make_shared<DummyProcessor>();
-    auto strong = make_processor_bridge_strong(proc);
+    auto strong = std::make_unique<ProcessorBridgeStrong>(proc);
     auto weak = strong->downgrade();
 
     strong.reset();
     proc.reset();
 
     CHECK(!weak->upgrade());
-    CHECK(!processor_bridge_lock(*weak));
+    CHECK(!weak->lock());
 }
 
 TEST_CASE("BridgeObject - processor operation helper calls object", "[BridgeObject]") {
     auto proc = std::make_shared<DummyProcessor>();
-    auto strong = make_processor_bridge_strong(proc);
+    auto strong = std::make_unique<ProcessorBridgeStrong>(proc);
     auto weak = strong->downgrade();
 
     processor_bridge_proc_process(*weak, 64);
@@ -50,15 +50,15 @@ TEST_CASE("BridgeObject - processor operation helper calls object", "[BridgeObje
 
 TEST_CASE("BridgeObject - processor weak handles are moveable containers", "[BridgeObject][container]") {
     auto proc = std::make_shared<DummyProcessor>();
-    auto strong = make_processor_bridge_strong(proc);
+    auto strong = std::make_unique<ProcessorBridgeStrong>(proc);
 
     std::vector<std::unique_ptr<ProcessorBridgeWeak>> handles;
     handles.push_back(strong->downgrade());
     handles.push_back(strong->downgrade());
 
     REQUIRE(handles.size() == 2);
-    CHECK(processor_bridge_lock(*handles[0]) == proc);
-    CHECK(processor_bridge_lock(*handles[1]) == proc);
+    CHECK(handles[0]->lock() == proc);
+    CHECK(handles[1]->lock() == proc);
 }
 
 TEST_CASE("BridgeObject - decoupled MIDI strong downgrades and weak upgrades", "[BridgeObject][decoupled]") {
@@ -67,7 +67,7 @@ TEST_CASE("BridgeObject - decoupled MIDI strong downgrades and weak upgrades", "
         dummy_port, std::weak_ptr<AudioMidiDriver>(), 128,
         shoop_port_direction_t::ShoopPortDirection_Input);
 
-    auto strong = make_decoupled_midi_port_bridge_strong(decoupled);
+    auto strong = std::make_unique<DecoupledMidiPortBridgeStrong>(decoupled);
     auto weak = strong->downgrade();
 
     REQUIRE(strong);
@@ -75,7 +75,7 @@ TEST_CASE("BridgeObject - decoupled MIDI strong downgrades and weak upgrades", "
     auto upgraded = weak->upgrade();
     REQUIRE(upgraded);
     CHECK(upgraded->shared_ptr() == decoupled);
-    CHECK(decoupled_midi_port_bridge_lock(*weak) == decoupled);
+    CHECK(weak->lock() == decoupled);
 }
 
 TEST_CASE("BridgeObject - decoupled MIDI weak expires when strong references are gone", "[BridgeObject][decoupled]") {
@@ -84,12 +84,12 @@ TEST_CASE("BridgeObject - decoupled MIDI weak expires when strong references are
         dummy_port, std::weak_ptr<AudioMidiDriver>(), 128,
         shoop_port_direction_t::ShoopPortDirection_Input);
 
-    auto strong = make_decoupled_midi_port_bridge_strong(decoupled);
+    auto strong = std::make_unique<DecoupledMidiPortBridgeStrong>(decoupled);
     auto weak = strong->downgrade();
 
     strong.reset();
     decoupled.reset();
 
     CHECK(!weak->upgrade());
-    CHECK(!decoupled_midi_port_bridge_lock(*weak));
+    CHECK(!weak->lock());
 }

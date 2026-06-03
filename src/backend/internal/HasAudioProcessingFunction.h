@@ -11,5 +11,6 @@ public:
     virtual void PROC_process(uint32_t nframes) = 0;
 };
 
-SHOOP_DECLARE_TYPED_BRIDGE_OBJECT(HasAudioProcessingFunction, ProcessorBridgeStrong, ProcessorBridgeWeak, processor_bridge, processor)
+using ProcessorBridgeWeak = BridgeWeak<HasAudioProcessingFunction>;
+using ProcessorBridgeStrong = BridgeStrong<HasAudioProcessingFunction>;
 void processor_bridge_proc_process(const ProcessorBridgeWeak &weak, uint32_t nframes);

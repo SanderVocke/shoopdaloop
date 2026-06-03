@@ -175,7 +175,7 @@ TEST_CASE("DummyAudioMidiDriver - processors API reflects Rust registrations", "
 
     auto one = dut.processors();
     REQUIRE(one.size() == 1);
-    auto first_resolved = processor_bridge_lock(*one[0]);
+    auto first_resolved = one[0]->lock();
     REQUIRE(first_resolved == first);
 
     dut.add_processor(std::static_pointer_cast<HasAudioProcessingFunction>(second));
@@ -183,7 +183,7 @@ TEST_CASE("DummyAudioMidiDriver - processors API reflects Rust registrations", "
     REQUIRE(two.size() == 2);
     std::vector<std::shared_ptr<HasAudioProcessingFunction>> locked;
     std::transform(two.begin(), two.end(), std::back_inserter(locked), [](auto const &handle) {
-        return processor_bridge_lock(*handle);
+        return handle->lock();
     });
     REQUIRE(std::find(locked.begin(), locked.end(), first) != locked.end());
     REQUIRE(std::find(locked.begin(), locked.end(), second) != locked.end());
@@ -191,7 +191,7 @@ TEST_CASE("DummyAudioMidiDriver - processors API reflects Rust registrations", "
     dut.remove_processor(std::static_pointer_cast<HasAudioProcessingFunction>(first));
     auto after_remove = dut.processors();
     REQUIRE(after_remove.size() == 1);
-    auto second_resolved = processor_bridge_lock(*after_remove[0]);
+    auto second_resolved = after_remove[0]->lock();
     REQUIRE(second_resolved == second);
 
     dut.remove_processor(std::static_pointer_cast<HasAudioProcessingFunction>(second));

@@ -289,7 +289,7 @@ impl AudioMidiDriverCore {
         self.processors
             .read()
             .ok()
-            .and_then(|guard| guard.get(&handle).map(|reg| reg.weak.clone_unique()))
+            .and_then(|guard| guard.get(&handle).map(|reg| reg.weak.clone()))
             .unwrap_or_else(cxx::UniquePtr::null)
     }
 

@@ -15,7 +15,7 @@ pub mod ffi {
             self: &DecoupledMidiPortBridgeStrong,
         ) -> UniquePtr<DecoupledMidiPortBridgeWeak>;
         fn upgrade(self: &DecoupledMidiPortBridgeWeak) -> UniquePtr<DecoupledMidiPortBridgeStrong>;
-        fn clone_unique(
+        fn clone(
             self: &DecoupledMidiPortBridgeWeak,
         ) -> UniquePtr<DecoupledMidiPortBridgeWeak>;
 

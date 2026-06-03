@@ -45,6 +45,7 @@ public:
     uint64_t registry_handle() const;
 };
 
-SHOOP_DECLARE_TYPED_BRIDGE_OBJECT(DecoupledMidiPort, DecoupledMidiPortBridgeStrong, DecoupledMidiPortBridgeWeak, decoupled_midi_port_bridge, decoupled_midi_port)
+using DecoupledMidiPortBridgeWeak = BridgeWeak<DecoupledMidiPort>;
+using DecoupledMidiPortBridgeStrong = BridgeStrong<DecoupledMidiPort>;
 void decoupled_midi_port_bridge_proc_process(const DecoupledMidiPortBridgeWeak &weak, uint32_t nframes);
 void decoupled_midi_port_bridge_close(const DecoupledMidiPortBridgeWeak &weak);
