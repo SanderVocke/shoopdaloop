@@ -13,30 +13,17 @@ pub mod ffi {
         include!("internal/AudioMidiDriverCxxTrampolines.h");
 
         unsafe fn audiomididriver_invoke_maybe_process_callback(maybe_fn_ptr: usize);
-        #[namespace = ""]
-        type HasAudioProcessingFunction;
-        #[namespace = ""]
-        type DecoupledMidiPort;
+        #[namespace = "bridge_object"]
+        type ProcessorBridgeStrong = crate::processor_cxx::ffi::ProcessorBridgeStrong;
+        #[namespace = "bridge_object"]
+        type ProcessorBridgeWeak = crate::processor_cxx::ffi::ProcessorBridgeWeak;
 
         #[namespace = "bridge_object"]
-        type ProcessorBridgeStrong;
+        type DecoupledMidiPortBridgeStrong =
+            crate::decoupled_midi_port_bridge_cxx::ffi::DecoupledMidiPortBridgeStrong;
         #[namespace = "bridge_object"]
-        type ProcessorBridgeWeak;
-
-        #[namespace = "bridge_object"]
-        fn processor_bridge_clone_weak(processor: &ProcessorBridgeWeak) -> UniquePtr<ProcessorBridgeWeak>;
-        #[namespace = "bridge_object"]
-        fn processor_bridge_proc_process(processor: &ProcessorBridgeWeak, nframes: u32);
-
-        #[namespace = "bridge_object"]
-        type DecoupledMidiPortBridgeStrong;
-        #[namespace = "bridge_object"]
-        type DecoupledMidiPortBridgeWeak;
-
-        #[namespace = "bridge_object"]
-        fn decoupled_midi_port_bridge_proc_process(port: &DecoupledMidiPortBridgeWeak, nframes: u32);
-        #[namespace = "bridge_object"]
-        fn decoupled_midi_port_bridge_close(port: &DecoupledMidiPortBridgeWeak);
+        type DecoupledMidiPortBridgeWeak =
+            crate::decoupled_midi_port_bridge_cxx::ffi::DecoupledMidiPortBridgeWeak;
     }
 
     extern "Rust" {
@@ -76,13 +63,25 @@ pub mod ffi {
         fn exec_all_commands_for_process_thread(self: &AudioMidiDriverCore);
 
         // Processor management (ptrs as usize)
-        fn add_processor(self: &AudioMidiDriverCore, cpp_identity: usize, weak: UniquePtr<ProcessorBridgeWeak>, strong: UniquePtr<ProcessorBridgeStrong>) -> u64;
+        fn add_processor(
+            self: &AudioMidiDriverCore,
+            cpp_identity: usize,
+            weak: UniquePtr<ProcessorBridgeWeak>,
+            strong: UniquePtr<ProcessorBridgeStrong>,
+        ) -> u64;
         fn remove_processor_by_cpp_identity(self: &AudioMidiDriverCore, cpp_identity: usize);
         fn get_processor_handles(self: &AudioMidiDriverCore) -> Vec<u64>;
-        fn get_processor_bridge_weak_handle(self: &AudioMidiDriverCore, handle: u64) -> UniquePtr<ProcessorBridgeWeak>;
+        fn get_processor_bridge_weak_handle(
+            self: &AudioMidiDriverCore,
+            handle: u64,
+        ) -> UniquePtr<ProcessorBridgeWeak>;
 
         // Decoupled port management
-        fn register_decoupled_port(self: &AudioMidiDriverCore, weak: UniquePtr<DecoupledMidiPortBridgeWeak>, strong: UniquePtr<DecoupledMidiPortBridgeStrong>) -> u64;
+        fn register_decoupled_port(
+            self: &AudioMidiDriverCore,
+            weak: UniquePtr<DecoupledMidiPortBridgeWeak>,
+            strong: UniquePtr<DecoupledMidiPortBridgeStrong>,
+        ) -> u64;
         fn unregister_decoupled_port(self: &AudioMidiDriverCore, handle: u64);
         fn process_decoupled_port(self: &AudioMidiDriverCore, handle: u64, nframes: u32) -> bool;
         fn close_decoupled_port(self: &AudioMidiDriverCore, handle: u64) -> bool;

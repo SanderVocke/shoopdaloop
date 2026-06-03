@@ -18,7 +18,10 @@ fn print_cxxbridge_sources_status(out_dir: &Path) {
         match fs::read_dir(&cxx_src_dir) {
             Ok(entries) => {
                 for entry in entries.flatten() {
-                    println!("cargo:warning=cxxbridge source file: {}", entry.path().display());
+                    println!(
+                        "cargo:warning=cxxbridge source file: {}",
+                        entry.path().display()
+                    );
                 }
             }
             Err(e) => {
@@ -76,6 +79,8 @@ fn main() {
     let out_dir = std::path::Path::new(&out_dir);
 
     cxx_build::bridges([
+        "src/processor_cxx.rs",
+        "src/decoupled_midi_port_bridge_cxx.rs",
         "src/audio_midi_driver_cxx.rs",
         "src/backend_api_cxx.rs",
         "src/command_queue_cxx.rs",

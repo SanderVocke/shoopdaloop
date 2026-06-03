@@ -10,9 +10,9 @@
 //!
 //! Ported from C++ AudioMidiDriver.h/cpp
 
+use crate::command_queue::CommandQueue;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, Ordering};
-use crate::command_queue::CommandQueue;
 use std::sync::{Mutex, RwLock};
 
 /// Wrapper for atomic f32 operations using AtomicU32 internally.
@@ -98,15 +98,15 @@ macro_rules! typed_bridge_registration {
 
 typed_bridge_registration!(
     ProcessorRegistration,
-    crate::audio_midi_driver_cxx::ffi::ProcessorBridgeWeak,
-    crate::audio_midi_driver_cxx::ffi::ProcessorBridgeStrong,
+    crate::processor_cxx::ffi::ProcessorBridgeWeak,
+    crate::processor_cxx::ffi::ProcessorBridgeStrong,
     { cpp_identity: usize }
 );
 
 typed_bridge_registration!(
     DecoupledPortRegistration,
-    crate::audio_midi_driver_cxx::ffi::DecoupledMidiPortBridgeWeak,
-    crate::audio_midi_driver_cxx::ffi::DecoupledMidiPortBridgeStrong
+    crate::decoupled_midi_port_bridge_cxx::ffi::DecoupledMidiPortBridgeWeak,
+    crate::decoupled_midi_port_bridge_cxx::ffi::DecoupledMidiPortBridgeStrong
 );
 
 pub struct AudioMidiDriverCore {
@@ -232,11 +232,15 @@ impl AudioMidiDriverCore {
     pub fn add_processor(
         &self,
         cpp_identity: usize,
-        weak: cxx::UniquePtr<crate::audio_midi_driver_cxx::ffi::ProcessorBridgeWeak>,
-        strong: cxx::UniquePtr<crate::audio_midi_driver_cxx::ffi::ProcessorBridgeStrong>,
+        weak: cxx::UniquePtr<crate::processor_cxx::ffi::ProcessorBridgeWeak>,
+        strong: cxx::UniquePtr<crate::processor_cxx::ffi::ProcessorBridgeStrong>,
     ) -> u64 {
         let handle = self.next_processor_handle.fetch_add(1, Ordering::SeqCst);
-        let reg = ProcessorRegistration { cpp_identity, weak, _strong: strong };
+        let reg = ProcessorRegistration {
+            cpp_identity,
+            weak,
+            _strong: strong,
+        };
         if let Ok(mut guard) = self.processors.write() {
             guard.insert(handle, reg);
         }
@@ -281,14 +285,14 @@ impl AudioMidiDriverCore {
     pub fn get_processor_bridge_weak_handle(
         &self,
         handle: u64,
-    ) -> cxx::UniquePtr<crate::audio_midi_driver_cxx::ffi::ProcessorBridgeWeak> {
+    ) -> cxx::UniquePtr<crate::processor_cxx::ffi::ProcessorBridgeWeak> {
         self.processors
             .read()
             .ok()
             .and_then(|guard| {
-                guard.get(&handle).map(|reg| {
-                    crate::audio_midi_driver_cxx::ffi::processor_bridge_clone_weak(&reg.weak)
-                })
+                guard
+                    .get(&handle)
+                    .map(|reg| crate::processor_cxx::ffi::processor_bridge_clone_weak(&reg.weak))
             })
             .unwrap_or_else(cxx::UniquePtr::null)
     }
@@ -300,12 +304,22 @@ impl AudioMidiDriverCore {
     /// Register a decoupled MIDI bridge weak handle and return a stable handle.
     pub fn register_decoupled_port(
         &self,
-        weak: cxx::UniquePtr<crate::audio_midi_driver_cxx::ffi::DecoupledMidiPortBridgeWeak>,
-        strong: cxx::UniquePtr<crate::audio_midi_driver_cxx::ffi::DecoupledMidiPortBridgeStrong>,
+        weak: cxx::UniquePtr<
+            crate::decoupled_midi_port_bridge_cxx::ffi::DecoupledMidiPortBridgeWeak,
+        >,
+        strong: cxx::UniquePtr<
+            crate::decoupled_midi_port_bridge_cxx::ffi::DecoupledMidiPortBridgeStrong,
+        >,
     ) -> u64 {
         let handle = self.next_decoupled_handle.fetch_add(1, Ordering::SeqCst);
         if let Ok(mut guard) = self.decoupled_ports.write() {
-            guard.insert(handle, DecoupledPortRegistration { weak, _strong: strong });
+            guard.insert(
+                handle,
+                DecoupledPortRegistration {
+                    weak,
+                    _strong: strong,
+                },
+            );
         }
         handle
     }
@@ -321,9 +335,8 @@ impl AudioMidiDriverCore {
     pub fn process_decoupled_port(&self, handle: u64, nframes: u32) -> bool {
         if let Ok(guard) = self.decoupled_ports.read() {
             if let Some(reg) = guard.get(&handle) {
-                crate::audio_midi_driver_cxx::ffi::decoupled_midi_port_bridge_proc_process(
-                    &reg.weak,
-                    nframes,
+                crate::decoupled_midi_port_bridge_cxx::ffi::decoupled_midi_port_bridge_proc_process(
+                    &reg.weak, nframes,
                 );
                 return true;
             }
@@ -335,7 +348,9 @@ impl AudioMidiDriverCore {
     pub fn close_decoupled_port(&self, handle: u64) -> bool {
         if let Ok(guard) = self.decoupled_ports.read() {
             if let Some(reg) = guard.get(&handle) {
-                crate::audio_midi_driver_cxx::ffi::decoupled_midi_port_bridge_close(&reg.weak);
+                crate::decoupled_midi_port_bridge_cxx::ffi::decoupled_midi_port_bridge_close(
+                    &reg.weak,
+                );
                 return true;
             }
         }
@@ -351,14 +366,13 @@ impl AudioMidiDriverCore {
     }
 
     pub fn decoupled_port_count(&self) -> usize {
-        self.decoupled_ports.read().map(|guard| guard.len()).unwrap_or_default()
+        self.decoupled_ports
+            .read()
+            .map(|guard| guard.len())
+            .unwrap_or_default()
     }
 
-    pub fn process_cycle(
-        &self,
-        maybe_process_callback_ptr: usize,
-        nframes: u32,
-    ) {
+    pub fn process_cycle(&self, maybe_process_callback_ptr: usize, nframes: u32) {
         unsafe {
             crate::audio_midi_driver_cxx::ffi::audiomididriver_invoke_maybe_process_callback(
                 maybe_process_callback_ptr,
@@ -373,7 +387,7 @@ impl AudioMidiDriverCore {
         for handle in self.get_processor_handles() {
             if let Ok(guard) = self.processors.read() {
                 if let Some(reg) = guard.get(&handle) {
-                    crate::audio_midi_driver_cxx::ffi::processor_bridge_proc_process(&reg.weak, nframes);
+                    crate::processor_cxx::ffi::processor_bridge_proc_process(&reg.weak, nframes);
                 }
             }
         }
@@ -382,11 +396,16 @@ impl AudioMidiDriverCore {
     }
 
     pub fn queue_process_thread_command(&self, user_data: usize) {
-        unsafe { self.command_queue.cxx_queue(user_data); }
+        unsafe {
+            self.command_queue.cxx_queue(user_data);
+        }
     }
 
     pub fn exec_process_thread_command(&self, user_data: usize) {
-        unsafe { self.command_queue.cxx_exec_process_thread_command(user_data); }
+        unsafe {
+            self.command_queue
+                .cxx_exec_process_thread_command(user_data);
+        }
     }
 
     pub fn exec_all_commands_for_process_thread(&self) {
