@@ -215,14 +215,14 @@ void DummyAudioMidiDriver<Time, Size>::remove_all_external_mock_ports() {
 }
 
 template <typename Time, typename Size>
-std::shared_ptr<shoop_types::_DecoupledMidiPort> DummyAudioMidiDriver<Time, Size>::open_decoupled_midi_port(std::string name, shoop_port_direction_t direction) {
+rust::Box<backend_rust::DecoupledMidiPortBridgeStrong> DummyAudioMidiDriver<Time, Size>::open_decoupled_midi_port(std::string name, shoop_port_direction_t direction) {
     auto port = open_midi_port(name, direction);
     return make_decoupled_midi_port(port, this->weak_driver_from_this(), direction);
 }
 
 template <typename Time, typename Size>
-void DummyAudioMidiDriver<Time, Size>::unregister_decoupled_midi_port(std::shared_ptr<shoop_types::_DecoupledMidiPort> port) {
-    AudioMidiDriver::unregister_decoupled_midi_port(port);
+void DummyAudioMidiDriver<Time, Size>::unregister_decoupled_midi_port(uint64_t registry_handle) {
+    AudioMidiDriver::unregister_decoupled_midi_port(registry_handle);
 }
 
 template <typename Time, typename Size>

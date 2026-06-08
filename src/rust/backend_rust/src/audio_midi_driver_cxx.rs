@@ -11,19 +11,13 @@ use crate::audio_midi_driver::AudioMidiDriverCore;
 pub mod ffi {
     unsafe extern "C++" {
         include!("internal/AudioMidiDriverCxxTrampolines.h");
+        include!("backend_rust/src/decoupled_midi_port_cxx.rs.h");
 
         unsafe fn audiomididriver_invoke_maybe_process_callback(maybe_fn_ptr: usize);
         #[namespace = ""]
         type ProcessorBridgeStrong = crate::processor_cxx::ffi::ProcessorBridgeStrong;
         #[namespace = ""]
         type ProcessorBridgeWeak = crate::processor_cxx::ffi::ProcessorBridgeWeak;
-
-        #[namespace = ""]
-        type DecoupledMidiPortBridgeStrong =
-            crate::decoupled_midi_port_bridge_cxx::ffi::DecoupledMidiPortBridgeStrong;
-        #[namespace = ""]
-        type DecoupledMidiPortBridgeWeak =
-            crate::decoupled_midi_port_bridge_cxx::ffi::DecoupledMidiPortBridgeWeak;
     }
 
     extern "Rust" {
@@ -77,10 +71,10 @@ pub mod ffi {
         ) -> UniquePtr<ProcessorBridgeWeak>;
 
         // Decoupled port management
-        fn register_decoupled_port(
+        unsafe fn register_decoupled_port(
             self: &AudioMidiDriverCore,
-            weak: UniquePtr<DecoupledMidiPortBridgeWeak>,
-            strong: UniquePtr<DecoupledMidiPortBridgeStrong>,
+            weak_ptr: usize,
+            strong_ptr: usize,
         ) -> u64;
         fn unregister_decoupled_port(self: &AudioMidiDriverCore, handle: u64);
         fn process_decoupled_port(self: &AudioMidiDriverCore, handle: u64, nframes: u32) -> bool;
@@ -194,12 +188,12 @@ fn get_processor_handles(core: &AudioMidiDriverCore) -> Vec<u64> {
 }
 
 // Decoupled port management
-fn register_decoupled_port(
+unsafe fn register_decoupled_port(
     core: &AudioMidiDriverCore,
-    weak: cxx::UniquePtr<ffi::DecoupledMidiPortBridgeWeak>,
-    strong: cxx::UniquePtr<ffi::DecoupledMidiPortBridgeStrong>,
+    weak_ptr: usize,
+    strong_ptr: usize,
 ) -> u64 {
-    core.register_decoupled_port(weak, strong)
+    core.register_decoupled_port(weak_ptr, strong_ptr)
 }
 
 fn unregister_decoupled_port(core: &AudioMidiDriverCore, handle: u64) {

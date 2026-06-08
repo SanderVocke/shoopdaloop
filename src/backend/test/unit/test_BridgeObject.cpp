@@ -2,7 +2,6 @@
 
 #include "AudioMidiDriver.h"
 #include "BridgeObject.h"
-#include "DecoupledMidiPort.h"
 #include "DummyMidiPort.h"
 #include "IProcessor.h"
 
@@ -61,35 +60,3 @@ TEST_CASE("BridgeObject - processor weak handles are moveable containers", "[Bri
     CHECK(handles[1]->lock() == proc);
 }
 
-TEST_CASE("BridgeObject - decoupled MIDI strong downgrades and weak upgrades", "[BridgeObject][decoupled]") {
-    auto dummy_port = std::make_shared<DummyMidiPort>("", shoop_port_direction_t::ShoopPortDirection_Input);
-    auto decoupled = std::make_shared<shoop_types::_DecoupledMidiPort>(
-        dummy_port, std::weak_ptr<AudioMidiDriver>(), 128,
-        shoop_port_direction_t::ShoopPortDirection_Input);
-
-    auto strong = std::make_unique<DecoupledMidiPortBridgeStrong>(decoupled);
-    auto weak = strong->downgrade();
-
-    REQUIRE(strong);
-    REQUIRE(weak);
-    auto upgraded = weak->upgrade();
-    REQUIRE(upgraded);
-    CHECK(upgraded->shared_ptr() == decoupled);
-    CHECK(weak->lock() == decoupled);
-}
-
-TEST_CASE("BridgeObject - decoupled MIDI weak expires when strong references are gone", "[BridgeObject][decoupled]") {
-    auto dummy_port = std::make_shared<DummyMidiPort>("", shoop_port_direction_t::ShoopPortDirection_Input);
-    auto decoupled = std::make_shared<shoop_types::_DecoupledMidiPort>(
-        dummy_port, std::weak_ptr<AudioMidiDriver>(), 128,
-        shoop_port_direction_t::ShoopPortDirection_Input);
-
-    auto strong = std::make_unique<DecoupledMidiPortBridgeStrong>(decoupled);
-    auto weak = strong->downgrade();
-
-    strong.reset();
-    decoupled.reset();
-
-    CHECK(!weak->upgrade());
-    CHECK(!weak->lock());
-}

@@ -81,8 +81,8 @@ fn main() {
     let mut build = cxx_build::bridges([
         "src/i_processor_cxx.rs",
         "src/processor_cxx.rs",
-        "src/cpp_decoupled_midi_port_cxx.rs",
-        "src/decoupled_midi_port_bridge_cxx.rs",
+        "src/cpp_midi_port_cxx.rs",
+        "src/audio_midi_driver_bridge_cxx.rs",
         "src/audio_midi_driver_cxx.rs",
         "src/backend_api_cxx.rs",
         "src/command_queue_cxx.rs",
@@ -164,12 +164,13 @@ fn main() {
 
     println!("cargo:rerun-if-changed=src/i_processor_cxx.rs");
     println!("cargo:rerun-if-changed=src/processor_cxx.rs");
-    println!("cargo:rerun-if-changed=src/cpp_decoupled_midi_port_cxx.rs");
-    println!("cargo:rerun-if-changed=src/decoupled_midi_port_bridge_cxx.rs");
+    println!("cargo:rerun-if-changed=src/cpp_midi_port_cxx.rs");
+    println!("cargo:rerun-if-changed=src/audio_midi_driver_bridge_cxx.rs");
     println!("cargo:rerun-if-changed=src/audio_midi_driver_cxx.rs");
     println!("cargo:rerun-if-changed=src/backend_api_cxx.rs");
 
     println!("cargo:rerun-if-changed=src/command_queue_cxx.rs");
+    println!("cargo:rerun-if-changed={}/internal/MidiPortCxxBridge.h", backend_include);
     println!(
         "cargo:rerun-if-changed={}/internal/CommandToken.cpp",
         backend_include

@@ -2,7 +2,6 @@
 #include "DummyAudioMidiDriver.h"
 #include "PortInterface.h"
 #include "AudioMidiDriver.h"
-#include "DecoupledMidiPort.h"
 #include "IProcessor.h"
 #include "BridgeObject.h"
 #include <functional>
@@ -249,9 +248,7 @@ TEST_CASE("DummyAudioMidiDriver - decoupled midi open/close stress", "[DummyAudi
     for (int i = 0; i < n_iters; i++) {
         auto port = dut.open_decoupled_midi_port("decoupled", shoop_port_direction_t::ShoopPortDirection_Output);
         dut.wait_process();
-        port->close();
-        dut.unregister_decoupled_midi_port(port);
-        port->forget_driver();
+        backend_rust::decoupled_request_close(*port);
         dut.wait_process();
     }
 
@@ -268,22 +265,21 @@ TEST_CASE("DummyAudioMidiDriver - decoupled midi registration keepalive until un
         256
     );
 
-    auto port = dut.open_decoupled_midi_port("decoupled", shoop_port_direction_t::ShoopPortDirection_Output);
-    auto weak_port = std::weak_ptr<shoop_types::_DecoupledMidiPort>(port);
-
-    // Drop local strong ref; registration should keep it alive until explicit unregister.
-    port.reset();
-    dut.wait_process();
-    REQUIRE(weak_port.lock() != nullptr);
-
-    auto locked = weak_port.lock();
-    REQUIRE(locked != nullptr);
-    locked->close();
-    dut.unregister_decoupled_midi_port(locked);
-    locked->forget_driver();
-    locked.reset();
+    auto weak_port = [&]() {
+        auto port = dut.open_decoupled_midi_port("decoupled", shoop_port_direction_t::ShoopPortDirection_Output);
+        return port->downgrade();
+    }();
 
     dut.wait_process();
-    CHECK(weak_port.lock() == nullptr);
+    REQUIRE(weak_port->valid());
+
+    {
+        auto locked = weak_port->upgrade();
+        REQUIRE(locked->valid());
+        backend_rust::decoupled_request_close(*locked);
+    }
+
+    dut.wait_process();
+    CHECK(!weak_port->valid());
     dut.close();
 }

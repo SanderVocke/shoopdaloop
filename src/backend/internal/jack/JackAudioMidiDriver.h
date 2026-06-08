@@ -63,12 +63,12 @@ public:
         shoop_port_direction_t direction
     ) override;
 
-    std::shared_ptr<shoop_types::_DecoupledMidiPort> open_decoupled_midi_port(
+    rust::Box<backend_rust::DecoupledMidiPortBridgeStrong> open_decoupled_midi_port(
         std::string name,
         shoop_port_direction_t direction
     ) override;
 
-    void unregister_decoupled_midi_port(std::shared_ptr<shoop_types::_DecoupledMidiPort> port) override;
+    void unregister_decoupled_midi_port(uint64_t registry_handle) override;
 
     void close() override;
 

@@ -12,10 +12,11 @@
 #include <memory>
 #include <vector>
 #include "backend_rust/src/command_queue_cxx.rs.h"
+#include "AudioMidiDriverBridgeFwd.h"
 
 class IProcessor;
-class DecoupledMidiPort;
 
+#include "backend_rust/src/decoupled_midi_port_cxx.rs.h"
 #include "backend_rust/src/audio_midi_driver_cxx.rs.h"
 
 enum class ProcessFunctionResult {
@@ -51,7 +52,7 @@ protected:
 public:
     void process(uint32_t nframes);
     void exec_all_commands_for_process_thread();
-    std::shared_ptr<shoop_types::_DecoupledMidiPort> make_decoupled_midi_port(
+    rust::Box<backend_rust::DecoupledMidiPortBridgeStrong> make_decoupled_midi_port(
         std::shared_ptr<MidiPort> port,
         std::weak_ptr<AudioMidiDriver> driver,
         shoop_port_direction_t direction
@@ -76,12 +77,12 @@ public:
         shoop_port_direction_t direction
     ) = 0;
 
-    virtual std::shared_ptr<shoop_types::_DecoupledMidiPort> open_decoupled_midi_port(
+    virtual rust::Box<backend_rust::DecoupledMidiPortBridgeStrong> open_decoupled_midi_port(
         std::string name,
         shoop_port_direction_t direction
     ) = 0;
 
-    virtual void unregister_decoupled_midi_port(std::shared_ptr<shoop_types::_DecoupledMidiPort> port);
+    virtual void unregister_decoupled_midi_port(uint64_t registry_handle);
 
     virtual void close() = 0;
 
@@ -110,8 +111,11 @@ public:
     AudioMidiDriver(void (*maybe_process_callback)() = nullptr);
     virtual ~AudioMidiDriver() {}
 
+    void request_close_decoupled_midi_port(uint64_t registry_handle);
+
 private:
     rust::Box<backend_rust::AudioMidiDriverCore> m_rust_core;
     void (*m_maybe_process_callback)() = nullptr;
     mutable std::string m_client_name_cache;
 };
+

@@ -31,7 +31,6 @@
 #include "InternalMidiPort.h"
 #include "MidiSortingBuffer.h"
 #include "PortInterface.h"
-#include "DecoupledMidiPort.h"
 #include "RustCommandQueue.h"
 #include "types.h"
 #include "BackendSession.h"
@@ -205,14 +204,15 @@ shoop_types::LoopMidiChannel::Contents internal_midi_data(shoop_midi_sequence_t 
     return rval;
 }
 
-shoopdaloop_decoupled_midi_port_t *external_decoupled_midi_port(std::shared_ptr<_DecoupledMidiPort> port) {
-    auto weak = new std::weak_ptr<_DecoupledMidiPort>(port);
-    return (shoopdaloop_decoupled_midi_port_t*) weak;
+shoopdaloop_decoupled_midi_port_t *external_decoupled_midi_port(rust::Box<backend_rust::DecoupledMidiPortBridgeStrong> const& port) {
+    auto weak = new rust::Box<backend_rust::DecoupledMidiPortBridgeWeak>(port->downgrade());
+    return reinterpret_cast<shoopdaloop_decoupled_midi_port_t*>(weak);
 }
 
-std::shared_ptr<_DecoupledMidiPort> internal_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port) {
-    auto rval = ((std::weak_ptr<_DecoupledMidiPort>*)port)->lock();
-    if (!rval) {
+rust::Box<backend_rust::DecoupledMidiPortBridgeStrong> internal_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port) {
+    auto weak = reinterpret_cast<rust::Box<backend_rust::DecoupledMidiPortBridgeWeak>*>(port);
+    auto rval = (*weak)->upgrade();
+    if (!rval->valid()) {
         throw std::runtime_error("Attempt to access an invalid/expired decoupled midi port.");
     }
     return rval;
@@ -1128,7 +1128,8 @@ shoop_port_connections_state_t *get_decoupled_midi_port_connections_state(shoopd
   return api_impl<shoop_port_connections_state_t*, log_level_debug_trace, log_level_warning>("get_decoupled_midi_port_connections_state", [&]() -> shoop_port_connections_state_t* {
     auto _port = internal_decoupled_midi_port(port);
     if (!port) { return nullptr; }
-    auto connections = _port->get_port()->get_external_connection_status();
+    auto midi_port = backend_rust::decoupled_cpp_midi_port(*_port);
+    auto connections = midi_port->get_ref().get_external_connection_status();
 
     auto rval = (shoop_port_connections_state_t*) malloc(sizeof(shoop_port_connections_state_t));
     rval->n_ports = connections.size();
@@ -1166,16 +1167,18 @@ void disconnect_midi_port_external(shoopdaloop_midi_port_t *ours, const char* ex
 void connect_external_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *ours, const char* external_port_name) {
   return api_impl<void>("connect_external_decoupled_midi_port", [&]() {
     auto _port = internal_decoupled_midi_port(ours);
-    if (!_port) { return; }
-    _port->get_port()->connect_external(std::string(external_port_name));
+    auto midi_port = backend_rust::decoupled_cpp_midi_port(*_port);
+    if (!midi_port) { return; }
+    const_cast<MidiPort&>(midi_port->get_ref()).connect_external(std::string(external_port_name));
   });
 }
 
 void disconnect_external_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *ours, const char* external_port_name) {
   return api_impl<void>("disconnect_external_decoupled_midi_port", [&]() {
     auto _port = internal_decoupled_midi_port(ours);
-    if (!_port) { return; }
-    _port->get_port()->disconnect_external(std::string(external_port_name));
+    auto midi_port = backend_rust::decoupled_cpp_midi_port(*_port);
+    if (!midi_port) { return; }
+    const_cast<MidiPort&>(midi_port->get_ref()).disconnect_external(std::string(external_port_name));
   });
 }
 
@@ -1350,12 +1353,14 @@ shoopdaloop_decoupled_midi_port_t *open_decoupled_midi_port(shoop_audio_driver_t
 
 shoop_midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_port_t *port) {
   return api_impl<shoop_midi_event_t*, log_level_debug_trace, log_level_warning>("maybe_next_message", [&]() -> shoop_midi_event_t * {
-    auto &_port = *internal_decoupled_midi_port(port);
-    auto m = _port.pop_incoming();
-    if (m.has_value()) {
-        auto r = alloc_midi_event(m->size);
-        r->time = m->time;
-        memcpy((void*)r->data, (void*)m->data(), r->size);
+    auto _port = internal_decoupled_midi_port(port);
+    uint32_t time = 0;
+    uint16_t size = 0;
+    uint8_t data[4] = {0};
+    if (backend_rust::decoupled_pop(*_port, time, size, data)) {
+        auto r = alloc_midi_event(size);
+        r->time = time;
+        memcpy((void*)r->data, (void*)data, r->size);
         return r;
     } else {
         return (shoop_midi_event_t*)nullptr;
@@ -1365,40 +1370,29 @@ shoop_midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_port_t *port) 
 
 void close_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port) {
   return api_impl<void>("close_decoupled_midi_port", [&]() {
-    std::shared_ptr<_DecoupledMidiPort> _port;
     try {
-        _port = internal_decoupled_midi_port(port);
-    } catch (const std::runtime_error &e) {
-        // Handle already destroyed - weak_ptr has expired
+        auto _port = internal_decoupled_midi_port(port);
+        backend_rust::decoupled_request_close(*_port);
+    } catch (const std::runtime_error &) {
         return;
     }
-    auto _driver = _port->get_maybe_driver();
-    if (!_driver) {
-       // Already closed
-       return;
-    }
-    _driver->queue_process_thread_command([=]() {
-        auto _port = internal_decoupled_midi_port(port);
-        _port->get_maybe_driver()->unregister_decoupled_midi_port(_port);
-        _port->close();
-    });
   });
 }
 
 const char* get_decoupled_midi_port_name(shoopdaloop_decoupled_midi_port_t *port) {
   return api_impl<const char*, log_level_debug_trace, log_level_warning>("get_decoupled_midi_port_name", [&]() {
-    return internal_decoupled_midi_port(port)->name();
+    auto _port = internal_decoupled_midi_port(port);
+    auto midi_port = backend_rust::decoupled_cpp_midi_port(*_port);
+    return midi_port->get_ref().name();
   }, "(invalid)");
 }
 
 void send_decoupled_midi(shoopdaloop_decoupled_midi_port_t *port, unsigned length, unsigned char *data) {
   return api_impl<void>("send_decoupled_midi", [&]() {
-    auto &_port = *internal_decoupled_midi_port(port);
-    MidiStorageElem m;
-    m.size = length;
-    m.time = 0;
-    memcpy(m.bytes, data, length);
-    _port.push_outgoing(m);
+    auto _port = internal_decoupled_midi_port(port);
+    std::array<uint8_t, 4> msg = {0, 0, 0, 0};
+    memcpy(msg.data(), data, std::min<unsigned>(length, 4));
+    backend_rust::decoupled_push(*_port, 0, length, msg);
   });
 }
 
@@ -1924,13 +1918,8 @@ void destroy_midi_channel(shoopdaloop_loop_midi_channel_t *d) {
 }
 
 void destroy_shoopdaloop_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *d) {
-  (void)d;
   return api_impl<void, log_level_debug_trace, log_level_warning>("destroy_shoopdaloop_decoupled_midi_port", [&]() {
-    // No-op - handles are intentionally leaked to avoid dangling pointer issues.
-    // Actual cleanup is done by close_decoupled_midi_port().
-    // See TODO in libshoopdaloop_backend.cpp about proper handle lifecycle management.
-    logging::log<"Backend.API", log_level_debug>(std::nullopt, std::nullopt, 
-        "destroy_shoopdaloop_decoupled_midi_port called (no-op, handle intentionally leaked)");
+    delete reinterpret_cast<rust::Box<backend_rust::DecoupledMidiPortBridgeWeak>*>(d);
   });
 }
 

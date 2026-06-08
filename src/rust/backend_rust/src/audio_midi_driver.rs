@@ -103,11 +103,10 @@ typed_bridge_registration!(
     { cpp_identity: usize }
 );
 
-typed_bridge_registration!(
-    DecoupledPortRegistration,
-    crate::decoupled_midi_port_bridge_cxx::ffi::DecoupledMidiPortBridgeWeak,
-    crate::decoupled_midi_port_bridge_cxx::ffi::DecoupledMidiPortBridgeStrong
-);
+struct DecoupledPortRegistration {
+    weak: Box<crate::decoupled_midi_port_cxx::DecoupledMidiPortBridgeWeak>,
+    _strong: Box<crate::decoupled_midi_port_cxx::DecoupledMidiPortBridgeStrong>,
+}
 
 pub struct AudioMidiDriverCore {
     state: AudioMidiDriverState,
@@ -298,15 +297,19 @@ impl AudioMidiDriverCore {
     // ========================================================================
 
     /// Register a decoupled MIDI bridge weak handle and return a stable handle.
-    pub fn register_decoupled_port(
-        &self,
-        weak: cxx::UniquePtr<
-            crate::decoupled_midi_port_bridge_cxx::ffi::DecoupledMidiPortBridgeWeak,
-        >,
-        strong: cxx::UniquePtr<
-            crate::decoupled_midi_port_bridge_cxx::ffi::DecoupledMidiPortBridgeStrong,
-        >,
-    ) -> u64 {
+    pub fn register_decoupled_port(&self, weak_ptr: usize, strong_ptr: usize) -> u64 {
+        let weak = unsafe {
+            Box::from_raw(
+                weak_ptr
+                    as *mut crate::decoupled_midi_port_cxx::DecoupledMidiPortBridgeWeak,
+            )
+        };
+        let strong = unsafe {
+            Box::from_raw(
+                strong_ptr
+                    as *mut crate::decoupled_midi_port_cxx::DecoupledMidiPortBridgeStrong,
+            )
+        };
         let handle = self.next_decoupled_handle.fetch_add(1, Ordering::SeqCst);
         if let Ok(mut guard) = self.decoupled_ports.write() {
             guard.insert(
@@ -331,15 +334,9 @@ impl AudioMidiDriverCore {
     pub fn process_decoupled_port(&self, handle: u64, nframes: u32) -> bool {
         if let Ok(guard) = self.decoupled_ports.read() {
             if let Some(reg) = guard.get(&handle) {
-                if !reg.weak.is_null() {
-                    let mut strong = reg.weak.upgrade();
-                    if let Some(strong) = strong.as_mut() {
-                        // SAFETY: The bridge object only proves that the C++ object is alive.
-                        // The audio driver registry/process-thread discipline is responsible
-                        // for avoiding aliased mutable use of the contained C++ object.
-                        let port = unsafe { strong.get_pin_mut() };
-                        port.PROC_process(nframes);
-                    }
+                let strong = reg.weak.upgrade();
+                if strong.valid() {
+                    crate::decoupled_midi_port_cxx::decoupled_process(&strong, nframes);
                 }
                 return true;
             }
@@ -351,15 +348,9 @@ impl AudioMidiDriverCore {
     pub fn close_decoupled_port(&self, handle: u64) -> bool {
         if let Ok(guard) = self.decoupled_ports.read() {
             if let Some(reg) = guard.get(&handle) {
-                if !reg.weak.is_null() {
-                    let mut strong = reg.weak.upgrade();
-                    if let Some(strong) = strong.as_mut() {
-                        // SAFETY: The bridge object only proves that the C++ object is alive.
-                        // The caller/driver discipline is responsible for avoiding aliased
-                        // mutable use of the contained C++ object while closing.
-                        let port = unsafe { strong.get_pin_mut() };
-                        port.close();
-                    }
+                let strong = reg.weak.upgrade();
+                if strong.valid() {
+                    crate::decoupled_midi_port_cxx::decoupled_close(&strong);
                 }
                 return true;
             }

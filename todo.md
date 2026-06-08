@@ -1,47 +1,43 @@
-# TODO: remove C++ processor mirror list from AudioMidiDriver
+# TODO: Fully port `DecoupledMidiPort` to Rust
 
-- [x] Orientation
-  - [x] Review `plan.md`
-  - [x] Review `AudioMidiDriver.h/.cpp` processor add/remove/processors implementation
-  - [x] Review Rust `audio_midi_driver.rs` processor registration structures and methods
-  - [x] Review `audio_midi_driver_cxx.rs` CXX bridge patterns and existing exposed structs/methods
-  - [x] Review `BridgeObject.h/.cpp` processor resolver helpers
-  - [x] Search current uses of `processors()` and confirm expected compatibility surface
-
-- [x] Phase 1: expose Rust-owned processor weak handles to C++
-  - [x] Add a CXX-local POD struct in `audio_midi_driver_cxx.rs` for processor weak handles, e.g. `{ id: u64, type_id: u32 }`
-  - [x] Add Rust `AudioMidiDriverCore` method to snapshot processor weak handles from Rust registrations (existing method reused)
-  - [x] Expose that method through the CXX bridge
-  - [x] Run `cargo build`
-
-- [x] Phase 2: remove C++ `m_processors` mirror
-  - [x] Remove `m_processors` member from `AudioMidiDriver`
-  - [x] Update `AudioMidiDriver::add_processor` to stop pushing into a C++ vector
-  - [x] Update `AudioMidiDriver::remove_processor` to stop erasing from a C++ vector
-  - [x] Implement `AudioMidiDriver::processors()` by querying Rust weak handles and resolving each handle to a typed C++ processor pointer
-  - [x] Skip stale/unresolvable handles defensively in `processors()`
-  - [x] Confirm no C++ processor membership mirror list remains
-  - [x] Run `cargo build`
-
-- [x] Phase 3: tests
-  - [x] Add or update backend tests for `processors()` empty state
-  - [x] Add or update backend tests for `processors()` after adding one processor
-  - [x] Add or update backend tests for `processors()` after removing a processor
-  - [x] Add or update backend tests for multiple processors without assuming order
-  - [x] Run backend `test_runner`
-  - [x] Run `cargo test`
-
-- [x] Phase 4: cleanup and final verification
-  - [x] Confirm Rust owns processor bridge strong registration records
-  - [x] Confirm no C++ processor bridge strong keepalive map was introduced
-  - [x] Confirm no C++ processor membership vector/list mirror remains
-  - [x] Confirm `AudioMidiDriver::processors()` reconstructs from Rust-owned weak handles
-  - [x] Confirm process cycle still uses Rust processor registrations and typed bridge resolver pattern
-  - [x] Clean comments and includes
-  - [x] Run `cargo fmt --all`
-  - [x] Run `RUSTFLAGS="-D warnings" cargo build`
-  - [x] Run `cargo test`
-  - [x] Run backend `test_runner`
-  - [x] Run `QT_QPA_PLATFORM=offscreen ./target/debug/shoopdaloop_dev.sh --self-test` (first 120s attempt timed out; rerun with 300s passed)
-  - [x] Fix all warnings/errors introduced by this task
-  - [x] Confirm final state: no C++ processor mirror list, tests pass, strict build passes, formatting applied
+- [x] Add `MidiPortBridgeStrong` and `MidiPortBridgeWeak` aliases for the C++ `MidiPort` class.
+- [x] Add `AudioMidiDriverBridgeStrong` and `AudioMidiDriverBridgeWeak` aliases for the C++ `AudioMidiDriver` class.
+- [x] Add CXX bridge support for owning/calling the C++ `MidiPort` from Rust, including process, prepare, close, readable-buffer, and writable-buffer helpers.
+- [x] Add CXX bridge support needed for Rust to request close/unregister of a decoupled port through the owning `AudioMidiDriver` by registry handle.
+- [x] Register new bridge modules and rerun inputs in `src/rust/backend_rust/build.rs` and `src/rust/backend_rust/src/lib.rs`.
+- [x] Refactor `src/rust/backend_rust/src/decoupled_midi_port.rs` so the current queue logic is preserved as an internal helper or integrated into a full Rust `DecoupledMidiPort` object.
+- [x] Implement Rust `DecoupledMidiPort::process(nframes)` with the same input/output behavior as the old C++ implementation.
+- [x] Implement Rust methods for close, request-close, pop incoming, push outgoing, registry-handle get/set, and access to the underlying C++ `MidiPort` bridge handle.
+- [x] Define Rust-native `DecoupledMidiPortBridgeStrong` and `DecoupledMidiPortBridgeWeak` wrappers using `define_rust_bridge_object_wrappers!`.
+- [x] Expose the Rust decoupled-port constructor, strong/weak wrapper methods, and API operations through the decoupled-port CXX bridge.
+- [x] Run `cargo build` to validate the new CXX bridge generation before changing all C++ call sites. Note: new bridge code compiled successfully; the top-level build currently still fails later in existing C++ tests because `src/backend/test/unit/test_BufferQueue.cpp` includes missing `BufferQueue.h`.
+- [x] Update `AudioMidiDriverCore` to store Rust decoupled-port bridge handles instead of C++ `DecoupledMidiPort` bridge handles.
+- [x] Update `AudioMidiDriverCore::process_decoupled_port`, `close_decoupled_port`, and unregister logic to call Rust decoupled-port methods directly.
+- [x] Update `src/rust/backend_rust/src/audio_midi_driver_cxx.rs` registration APIs to use Rust bridge-object boxes for decoupled ports.
+- [x] Update `src/backend/internal/AudioMidiDriver.h` and `.cpp` so open/make/register/close use Rust decoupled-port bridge handles and registry handles, not `std::shared_ptr<DecoupledMidiPort>`.
+- [x] Update `DummyAudioMidiDriver` decoupled-port open/unregister signatures and implementations.
+- [x] Update `JackAudioMidiDriver` decoupled-port open/unregister signatures and implementations.
+- [x] Run `cargo build` and fix all compile errors in driver/core integration. Removed stale `test_BufferQueue.cpp` from backend test sources; `cargo build` now succeeds.
+- [x] Update `libshoopdaloop_backend.cpp` decoupled-port handle helpers to store heap-allocated Rust weak bridge handles behind `shoopdaloop_decoupled_midi_port_t*`.
+- [x] Update raw C API functions for open, close, destroy, send, maybe-next-message, name, connection state, connect, and disconnect to use Rust bridge handles.
+- [x] Update `libshoopdaloop_test_if.h` helper signatures and any tests that include them.
+- [x] Remove `_DecoupledMidiPort` alias and C++ `DecoupledMidiPort` forward declaration from `shoop_globals.h` once all references are gone.
+- [x] Delete `src/backend/internal/DecoupledMidiPort.h`.
+- [x] Delete `src/backend/internal/DecoupledMidiPort.cpp`.
+- [x] Delete or fully repurpose obsolete C++-object bridge modules, especially `src/rust/backend_rust/src/cpp_decoupled_midi_port_cxx.rs`.
+- [x] Remove all includes of `DecoupledMidiPort.h` from backend code and tests.
+- [x] Run `rg "DecoupledMidiPort|_DecoupledMidiPort|cpp_decoupled_midi_port" src/backend src/rust/backend_rust/src` and eliminate obsolete C++ object references while keeping the Rust object references.
+- [x] Update C++ BridgeObject tests to remove tests for C++ `BridgeStrong<DecoupledMidiPort>` and add appropriate replacement coverage.
+- [x] Update DummyAudioMidiDriver decoupled-port lifecycle tests to use Rust bridge strong/weak validity instead of C++ `std::weak_ptr`.
+- [x] Update raw C API integration tests for decoupled-port open, send/receive, name, connection state, close, and destroy.
+- [x] Add or update Rust unit tests for decoupled MIDI queue behavior.
+- [x] Add or update Rust/C++ tests for Rust decoupled-port bridge strong/weak lifetime behavior.
+- [x] Run `cargo build` and fix remaining compile/link issues.
+- [x] Run `cargo test` and fix Rust test failures.
+- [x] Locate the generated C++ Catch2 `test_runner` under `target` and run it; fix all C++ unit/integration test failures.
+- [ ] If relevant, run `./target/debug/shoopdaloop_dev.sh --self-test` and fix self-test failures.
+- [ ] Run `cargo fmt --all`.
+- [ ] Run final validation with `RUSTFLAGS="-D warnings" cargo build`.
+- [ ] Run final `cargo test`.
+- [ ] Run final C++ Catch2 `test_runner`.
+- [ ] Confirm `rg "#include \"DecoupledMidiPort.h\"|std::shared_ptr<.*DecoupledMidiPort|_DecoupledMidiPort|cpp_decoupled_midi_port" src/backend src/rust/backend_rust/src` finds no obsolete C++ decoupled-port implementation references.

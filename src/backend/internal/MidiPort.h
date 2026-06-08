@@ -17,6 +17,7 @@
 #include "MidiRingbuffer.h"
 #include "backend_rust/src/midi_storage_cxx.rs.h"  // For rust::Box
 #include "backend_rust/src/midi_port_cxx.rs.h"  // Rust CXX bridge for MidiPort
+#include "BridgeObject.h"
 
 struct MidiPortTestHelper;
 
@@ -117,6 +118,9 @@ public:
     );
     virtual ~MidiPort();
 };
+
+using MidiPortBridgeWeak = BridgeWeak<MidiPort>;
+using MidiPortBridgeStrong = BridgeStrong<MidiPort>;
 
 struct MidiPortTestHelper {
     static std::shared_ptr<MidiRingbuffer> &get_ringbuffer(MidiPort &port) {

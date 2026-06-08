@@ -10,6 +10,7 @@
 #include "types.h"
 #include "shoop_globals.h"
 #include "MidiChannel.h"
+#include "backend_rust/src/decoupled_midi_port_cxx.rs.h"
 
 class BackendSession;
 
@@ -51,9 +52,9 @@ std::vector<float> internal_audio_data(shoop_audio_channel_data_t const& d);
 
 shoop_types::LoopMidiChannel::Contents internal_midi_data(shoop_midi_sequence_t const& d);
 
-shoopdaloop_decoupled_midi_port_t *external_decoupled_midi_port(std::shared_ptr<_DecoupledMidiPort> port);
+shoopdaloop_decoupled_midi_port_t *external_decoupled_midi_port(rust::Box<backend_rust::DecoupledMidiPortBridgeStrong> const& port);
 
-std::shared_ptr<_DecoupledMidiPort> internal_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port);
+rust::Box<backend_rust::DecoupledMidiPortBridgeStrong> internal_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port);
 
 std::shared_ptr<AudioMidiDriver> internal_audio_driver(shoop_audio_driver_t *driver);
 
