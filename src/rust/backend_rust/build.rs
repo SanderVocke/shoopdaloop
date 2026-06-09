@@ -126,6 +126,10 @@ fn main() {
         }
     }
 
+    if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+        build.flag("/utf-8");
+    }
+
     build.std("c++20").compile("backend_rust_cxx");
 
     print_cxxbridge_sources_status(out_dir);
