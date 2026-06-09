@@ -221,11 +221,6 @@ rust::Box<backend_rust::DecoupledMidiPortBridgeStrong> DummyAudioMidiDriver<Time
 }
 
 template <typename Time, typename Size>
-void DummyAudioMidiDriver<Time, Size>::unregister_decoupled_midi_port(uint64_t registry_handle) {
-    AudioMidiDriver::unregister_decoupled_midi_port(registry_handle);
-}
-
-template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::add_processor(std::shared_ptr<IProcessor> p) { AudioMidiDriver::add_processor(p); }
 
 template <typename Time, typename Size>

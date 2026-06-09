@@ -29,7 +29,6 @@ pub mod ffi {
 
         fn new_decoupled_midi_port(
             midi_port: UniquePtr<MidiPortBridgeStrong>,
-            maybe_driver_ptr: usize,
             queue_size: u32,
             direction: u32,
         ) -> Box<DecoupledMidiPortBridgeStrong>;
@@ -37,7 +36,8 @@ pub mod ffi {
         fn id(self: &DecoupledMidiPortBridgeStrong) -> u64;
         fn valid(self: &DecoupledMidiPortBridgeStrong) -> bool;
         fn downgrade(self: &DecoupledMidiPortBridgeStrong) -> Box<DecoupledMidiPortBridgeWeak>;
-        fn clone_strong(self: &DecoupledMidiPortBridgeStrong) -> Box<DecoupledMidiPortBridgeStrong>;
+        fn clone_strong(self: &DecoupledMidiPortBridgeStrong)
+            -> Box<DecoupledMidiPortBridgeStrong>;
         fn strong_count(self: &DecoupledMidiPortBridgeStrong) -> usize;
         fn weak_count(self: &DecoupledMidiPortBridgeStrong) -> usize;
 
@@ -64,9 +64,6 @@ pub mod ffi {
             data: &[u8; 4],
         ) -> bool;
         fn decoupled_is_empty(port: &DecoupledMidiPortBridgeStrong) -> bool;
-        fn decoupled_registry_handle(port: &DecoupledMidiPortBridgeStrong) -> u64;
-        fn decoupled_set_registry_handle(port: &DecoupledMidiPortBridgeStrong, handle: u64)
-            -> bool;
         fn decoupled_cpp_midi_port(
             port: &DecoupledMidiPortBridgeStrong,
         ) -> UniquePtr<MidiPortBridgeStrong>;
@@ -75,7 +72,6 @@ pub mod ffi {
 
 fn new_decoupled_midi_port(
     midi_port: cxx::UniquePtr<ffi::MidiPortBridgeStrong>,
-    maybe_driver_ptr: usize,
     queue_size: u32,
     direction: u32,
 ) -> Box<DecoupledMidiPortBridgeStrong> {
@@ -85,7 +81,7 @@ fn new_decoupled_midi_port(
         PortDirection::Input
     };
     Box::new(DecoupledMidiPortBridgeStrong::from_arc(Arc::new(
-        DecoupledMidiPort::new(midi_port, maybe_driver_ptr, queue_size as usize, port_direction),
+        DecoupledMidiPort::new(midi_port, queue_size as usize, port_direction),
     )))
 }
 
@@ -155,17 +151,8 @@ fn decoupled_is_empty(port: &DecoupledMidiPortBridgeStrong) -> bool {
     port.0.with(|inner| inner.is_empty()).unwrap_or(true)
 }
 
-fn decoupled_registry_handle(port: &DecoupledMidiPortBridgeStrong) -> u64 {
-    port.0.with(|inner| inner.registry_handle()).unwrap_or(0)
-}
-
-fn decoupled_set_registry_handle(port: &DecoupledMidiPortBridgeStrong, handle: u64) -> bool {
-    port.0
-        .with(|inner| {
-            inner.set_registry_handle(handle);
-            true
-        })
-        .unwrap_or(false)
+pub(crate) fn decoupled_is_closed(port: &DecoupledMidiPortBridgeStrong) -> bool {
+    port.0.with(|inner| inner.is_closed()).unwrap_or(true)
 }
 
 fn decoupled_cpp_midi_port(

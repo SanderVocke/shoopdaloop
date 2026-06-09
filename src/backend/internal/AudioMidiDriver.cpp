@@ -16,11 +16,6 @@ void audiomididriver_invoke_maybe_process_callback(uintptr_t maybe_fn_ptr) {
     fn();
 }
 
-void audiomididriver_request_close_decoupled_midi_port(uintptr_t driver_ptr, uint64_t registry_handle) {
-    if (!driver_ptr) { return; }
-    auto *driver = reinterpret_cast<AudioMidiDriver *>(driver_ptr);
-    driver->request_close_decoupled_midi_port(registry_handle);
-}
 }
 
 AudioMidiDriver::AudioMidiDriver(void (*maybe_process_callback)())
@@ -62,45 +57,20 @@ void AudioMidiDriver::exec_all_commands_for_process_thread() {
     m_rust_core->exec_all_commands_for_process_thread();
 }
 
-void AudioMidiDriver::unregister_decoupled_midi_port(uint64_t registry_handle) {
-    auto *queue = reinterpret_cast<backend_rust::CommandQueue *>(m_rust_core->command_queue_ptr());
-    rust_command_queue::queue_and_wait(*queue, [this, registry_handle]() {
-        if (registry_handle != 0) {
-            m_rust_core->close_decoupled_port(registry_handle);
-            m_rust_core->unregister_decoupled_port(registry_handle);
-        }
-    });
-}
-
-void AudioMidiDriver::request_close_decoupled_midi_port(uint64_t registry_handle) {
-    if (registry_handle == 0) {
-        return;
-    }
-    auto *queue = reinterpret_cast<backend_rust::CommandQueue *>(m_rust_core->command_queue_ptr());
-    rust_command_queue::queue(*queue, [this, registry_handle]() {
-        m_rust_core->close_decoupled_port(registry_handle);
-        m_rust_core->unregister_decoupled_port(registry_handle);
-    });
-}
-
 rust::Box<backend_rust::DecoupledMidiPortBridgeStrong> AudioMidiDriver::make_decoupled_midi_port(
     std::shared_ptr<MidiPort> port,
     std::weak_ptr<AudioMidiDriver> driver,
     shoop_port_direction_t direction
 ) {
+    (void)driver;
     constexpr uint32_t decoupled_midi_port_queue_size = 256;
     auto port_strong = std::make_unique<MidiPortBridgeStrong>(port);
     auto strong = backend_rust::new_decoupled_midi_port(
         std::move(port_strong),
-        reinterpret_cast<uintptr_t>(this),
         decoupled_midi_port_queue_size,
         static_cast<uint32_t>(direction));
     auto weak = strong->downgrade();
-    auto strong_copy = strong->clone_strong();
-    auto handle = m_rust_core->register_decoupled_port(
-        reinterpret_cast<uintptr_t>(weak.into_raw()),
-        reinterpret_cast<uintptr_t>(strong_copy.into_raw()));
-    backend_rust::decoupled_set_registry_handle(*strong, handle);
+    backend_rust::add_decoupled_port_raw(*m_rust_core, reinterpret_cast<uintptr_t>(weak.into_raw()));
     return strong;
 }
 

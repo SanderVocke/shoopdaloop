@@ -68,8 +68,6 @@ public:
         shoop_port_direction_t direction
     ) override;
 
-    void unregister_decoupled_midi_port(uint64_t registry_handle) override;
-
     void close() override;
 
     void add_processor(std::shared_ptr<IProcessor> p) override;

@@ -3,12 +3,11 @@
 //! Owns a C++ MidiPort through bridge-object handles and maintains a bounded
 //! lock-free queue for decoupled MIDI traffic.
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use crossbeam_queue::ArrayQueue;
 
-use crate::audio_midi_driver_bridge_cxx;
 use crate::cpp_midi_port_cxx;
 use crate::midi_storage::MidiStorageElem;
 use crate::port_direction::PortDirection;
@@ -41,15 +40,12 @@ pub struct DecoupledMidiPort {
     queue: DecoupledMidiQueue,
     direction: PortDirection,
     midi_port: Mutex<cxx::UniquePtr<cpp_midi_port_cxx::ffi::MidiPortBridgeStrong>>,
-    maybe_driver_ptr: usize,
-    registry_handle: AtomicU64,
     closed: AtomicBool,
 }
 
 impl DecoupledMidiPort {
     pub fn new(
         midi_port: cxx::UniquePtr<cpp_midi_port_cxx::ffi::MidiPortBridgeStrong>,
-        maybe_driver_ptr: usize,
         queue_size: usize,
         direction: PortDirection,
     ) -> Self {
@@ -57,8 +53,6 @@ impl DecoupledMidiPort {
             queue: DecoupledMidiQueue::new(queue_size),
             direction,
             midi_port: Mutex::new(midi_port),
-            maybe_driver_ptr,
-            registry_handle: AtomicU64::new(0),
             closed: AtomicBool::new(false),
         }
     }
@@ -96,7 +90,8 @@ impl DecoupledMidiPort {
                         )
                     };
                     if ok {
-                        if let Some(elem) = MidiStorageElem::new(time, size, &data[..size as usize]) {
+                        if let Some(elem) = MidiStorageElem::new(time, size, &data[..size as usize])
+                        {
                             let _ = self.queue.push(elem);
                         }
                     }
@@ -136,15 +131,7 @@ impl DecoupledMidiPort {
     }
 
     pub fn request_close(&self) {
-        let handle = self.registry_handle();
-        if handle == 0 || self.maybe_driver_ptr == 0 {
-            self.close();
-            return;
-        }
-        audio_midi_driver_bridge_cxx::ffi::audiomididriver_request_close_decoupled_midi_port(
-            self.maybe_driver_ptr,
-            handle,
-        );
+        self.close();
     }
 
     pub fn pop_incoming(&self) -> Option<MidiStorageElem> {
@@ -166,12 +153,8 @@ impl DecoupledMidiPort {
         self.direction
     }
 
-    pub fn registry_handle(&self) -> u64 {
-        self.registry_handle.load(Ordering::SeqCst)
-    }
-
-    pub fn set_registry_handle(&self, handle: u64) {
-        self.registry_handle.store(handle, Ordering::SeqCst);
+    pub fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::SeqCst)
     }
 
     pub fn clone_cpp_midi_port(

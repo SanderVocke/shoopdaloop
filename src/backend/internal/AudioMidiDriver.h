@@ -82,8 +82,6 @@ public:
         shoop_port_direction_t direction
     ) = 0;
 
-    virtual void unregister_decoupled_midi_port(uint64_t registry_handle);
-
     virtual void close() = 0;
 
     virtual uint32_t get_xruns() const;
@@ -110,8 +108,6 @@ public:
 
     AudioMidiDriver(void (*maybe_process_callback)() = nullptr);
     virtual ~AudioMidiDriver() {}
-
-    void request_close_decoupled_midi_port(uint64_t registry_handle);
 
 private:
     rust::Box<backend_rust::AudioMidiDriverCore> m_rust_core;

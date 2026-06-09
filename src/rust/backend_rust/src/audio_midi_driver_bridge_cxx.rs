@@ -19,12 +19,5 @@ pub mod ffi {
         unsafe fn get_pin_mut(
             self: Pin<&mut AudioMidiDriverBridgeStrong>,
         ) -> Pin<&mut AudioMidiDriver>;
-
-        fn request_close_decoupled_midi_port(
-            self: Pin<&mut AudioMidiDriver>,
-            registry_handle: u64,
-        );
-        #[namespace = "backend_rust"]
-        fn audiomididriver_request_close_decoupled_midi_port(driver_ptr: usize, registry_handle: u64);
     }
 }

@@ -269,11 +269,6 @@ rust::Box<backend_rust::DecoupledMidiPortBridgeStrong> GenericJackAudioMidiDrive
 }
 
 template<typename API>
-void GenericJackAudioMidiDriver<API>::unregister_decoupled_midi_port(uint64_t registry_handle) {
-    AudioMidiDriver::unregister_decoupled_midi_port(registry_handle);
-}
-
-template<typename API>
 void GenericJackAudioMidiDriver<API>::add_processor(std::shared_ptr<IProcessor> p) { AudioMidiDriver::add_processor(p); }
 
 template<typename API>

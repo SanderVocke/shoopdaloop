@@ -170,7 +170,10 @@ fn main() {
     println!("cargo:rerun-if-changed=src/backend_api_cxx.rs");
 
     println!("cargo:rerun-if-changed=src/command_queue_cxx.rs");
-    println!("cargo:rerun-if-changed={}/internal/MidiPortCxxBridge.h", backend_include);
+    println!(
+        "cargo:rerun-if-changed={}/internal/MidiPortCxxBridge.h",
+        backend_include
+    );
     println!(
         "cargo:rerun-if-changed={}/internal/CommandToken.cpp",
         backend_include
