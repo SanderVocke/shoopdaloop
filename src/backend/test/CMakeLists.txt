@@ -34,11 +34,13 @@ target_link_libraries(test_runner PRIVATE
                       Threads::Threads
                       Boost::headers
                       zita-resampler::zita-resampler)
-if (TARGET backend_rust)
-    target_link_libraries(test_runner PRIVATE backend_rust)
-endif()
-if (TARGET backend_rust_cxx)
-    target_link_libraries(test_runner PRIVATE backend_rust_cxx)
+if (NOT SHOOP_USE_CORROSION_BACKEND_RUST)
+    if (TARGET backend_rust)
+        target_link_libraries(test_runner PRIVATE backend_rust)
+    endif()
+    if (TARGET backend_rust_cxx)
+        target_link_libraries(test_runner PRIVATE backend_rust_cxx)
+    endif()
 endif()
 target_include_directories(test_runner
                         PRIVATE
