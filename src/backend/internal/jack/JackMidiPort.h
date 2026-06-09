@@ -1,44 +1,40 @@
 #pragma once
+#include <atomic>
 #include <jack/types.h>
-#include "JackTestApi.h"
 #include "JackPort.h"
-#include "MidiPort.h"
 #include "MidiBuffer.h"
+#include "MidiPort.h"
 #include "MidiSortingBuffer.h"
 #include "PortInterface.h"
 #include "types.h"
 #include <jack_wrappers.h>
 #include <vector>
-#include <atomic>
 
-template<typename API>
-class GenericJackMidiPort : public GenericJackPort<API> {
+class JackMidiPort : public JackPort {
 public:
-    GenericJackMidiPort(
+    JackMidiPort(
         std::string name,
         shoop_port_direction_t direction,
         jack_client_t *client,
-        std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
-    ) : GenericJackPort<API>(name, direction, PortDataType::Midi, client, all_ports_tracker) {}
+        std::shared_ptr<JackAllPorts> all_ports_tracker,
+        std::shared_ptr<IJackApi> api
+    ) : JackPort(name, direction, PortDataType::Midi, client, std::move(all_ports_tracker), std::move(api)) {}
 };
 
-template<typename API>
-class GenericJackMidiInputPort : 
-    public GenericJackMidiPort<API>,
+class JackMidiInputPort :
+    public JackMidiPort,
     private MidiPort,
     private MidiReadableBuffer
 {
-    using GenericJackPort<API>::m_port;
-    using GenericJackPort<API>::m_buffer;
-
     std::vector<MidiStorageElem> m_messages;
     std::atomic<bool> m_muted = false;
     unsigned m_ringbuffer_n_samples = 0;
 public:
-    GenericJackMidiInputPort(
+    JackMidiInputPort(
         std::string name,
         jack_client_t *client,
-        std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
+        std::shared_ptr<JackAllPorts> all_ports_tracker,
+        std::shared_ptr<IJackApi> api
     );
 
     uint32_t n_events() const override;
@@ -62,23 +58,20 @@ public:
     unsigned get_ringbuffer_n_samples() const override;
 };
 
-template<typename API>
-class GenericJackMidiOutputPort : 
-    public GenericJackMidiPort<API>,
+class JackMidiOutputPort :
+    public JackMidiPort,
     private MidiPort,
     private MidiWriteableBuffer
 {
-    using GenericJackPort<API>::m_port;
-    using GenericJackPort<API>::m_buffer;
-
     std::shared_ptr<MidiSortingBuffer> m_sorting_buffer = nullptr;
     std::atomic<bool> m_muted = false;
     unsigned m_ringbuffer_n_samples = 0;
 public:
-    GenericJackMidiOutputPort(
+    JackMidiOutputPort(
         std::string name,
         jack_client_t *client,
-        std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
+        std::shared_ptr<JackAllPorts> all_ports_tracker,
+        std::shared_ptr<IJackApi> api
     );
 
     void write_event(MidiStorageElem event) override;
@@ -100,12 +93,5 @@ public:
     unsigned get_ringbuffer_n_samples() const override;
 };
 
-using JackMidiInputPort = GenericJackMidiInputPort<JackApi>;
-using JackTestMidiInputPort = GenericJackMidiInputPort<JackTestApi>;
-using JackMidiOutputPort = GenericJackMidiOutputPort<JackApi>;
-using JackTestMidiOutputPort = GenericJackMidiOutputPort<JackTestApi>;
-
-extern template class GenericJackMidiInputPort<JackApi>;
-extern template class GenericJackMidiInputPort<JackTestApi>;
-extern template class GenericJackMidiOutputPort<JackApi>;
-extern template class GenericJackMidiOutputPort<JackTestApi>;
+using JackTestMidiInputPort = JackMidiInputPort;
+using JackTestMidiOutputPort = JackMidiOutputPort;

@@ -42,7 +42,7 @@ class MidiPort : public virtual PortInterface,
 
 public:
     friend class MidiPortTestHelper;
-    template<typename API> friend class GenericJackMidiInputPort;
+    friend class JackMidiInputPort;
     friend class MidiChannel;
 
     // Midi ports can have buffering or not. Multiple buffers are defined, although they

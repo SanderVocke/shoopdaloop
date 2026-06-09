@@ -1,27 +1,26 @@
 #pragma once
+#include <atomic>
 #include <cstdint>
 #include <jack/types.h>
-#include "JackTestApi.h"
-#include "LoggingEnabled.h"
-#include "PortInterface.h"
+#include <memory>
 #include "JackAllPorts.h"
 #include "JackApi.h"
-#include <memory>
-#include <memory>
+#include "LoggingEnabled.h"
+#include "PortInterface.h"
 
-template<typename API>
-class GenericJackPort :
+class JackPort :
     public virtual PortInterface,
     protected ModuleLoggingEnabled<"Backend.JackPort">
 {
 protected:
+    std::shared_ptr<IJackApi> m_api;
     jack_port_t* m_port = nullptr;
     std::atomic<void*> m_buffer = nullptr;
     jack_client_t* m_client = nullptr;
     std::string m_name = "";
     shoop_port_direction_t m_direction = ShoopPortDirection_Input;
     PortDataType m_type;
-    std::shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker;
+    std::shared_ptr<JackAllPorts> m_all_ports_tracker;
 
 public:
     const char* name() const override;
@@ -44,18 +43,13 @@ public:
     // Prepare step will get our JACK buffer.
     void PROC_prepare(uint32_t nframes) override;
 
-    GenericJackPort(
+    JackPort(
         std::string name,
         shoop_port_direction_t direction,
         PortDataType type,
         jack_client_t *client,
-        std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
+        std::shared_ptr<JackAllPorts> all_ports_tracker,
+        std::shared_ptr<IJackApi> api
     );
-    ~GenericJackPort() override;
+    ~JackPort() override;
 };
-
-using JackPort = GenericJackPort<JackApi>;
-using JackTestPort = GenericJackPort<JackTestApi>;
-
-extern template class GenericJackPort<JackApi>;
-extern template class GenericJackPort<JackTestApi>;

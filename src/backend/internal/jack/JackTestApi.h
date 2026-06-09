@@ -7,6 +7,7 @@
 #include "LoggingBackend.h"
 #include "MidiStorageElem.h"
 #include <vector>
+#include "JackApi.h"
 
 #ifdef _WIN32
 #undef min
@@ -237,6 +238,49 @@ public:
     static void free(void* ptr);
 
     static bool port_is_mine(jack_client_t* client, jack_port_t* port);
+};
+
+class JackTestApiInterface : public IJackApi {
+public:
+    bool supports_processing() const override { return false; }
+
+    const char** get_ports(jack_client_t* c, const char* n, const char* t, unsigned long f) override { return JackTestApi::get_ports(c, n, t, f); }
+    jack_port_t* port_by_name(jack_client_t* c, const char* n) override { return JackTestApi::port_by_name(c, n); }
+    int port_flags(const jack_port_t* p) override { return JackTestApi::port_flags(p); }
+    const char* port_type(const jack_port_t* p) override { return JackTestApi::port_type(p); }
+    const char** port_get_all_connections(const jack_client_t* c, const jack_port_t* p) override { return JackTestApi::port_get_all_connections(c, p); }
+    const char** port_get_connections(const jack_port_t* p) override { return JackTestApi::port_get_connections(p); }
+    void* port_get_buffer(jack_port_t* p, jack_nframes_t n) override { return JackTestApi::port_get_buffer(p, n); }
+    void port_get_latency_range(jack_port_t* p, jack_latency_callback_mode_t m, jack_latency_range_t* r) override { JackTestApi::port_get_latency_range(p, m, r); }
+    jack_nframes_t port_get_latency(jack_port_t* p) override { return JackTestApi::port_get_latency(p); }
+    const char* get_client_name(jack_client_t* c) override { return JackTestApi::get_client_name(c); }
+    jack_nframes_t get_sample_rate(jack_client_t* c) override { return JackTestApi::get_sample_rate(c); }
+    jack_nframes_t get_buffer_size(jack_client_t* c) override { return JackTestApi::get_buffer_size(c); }
+    int activate(jack_client_t* c) override { return JackTestApi::activate(c); }
+    int deactivate(jack_client_t* c) override { return JackTestApi::deactivate(c); }
+    int client_close(jack_client_t* c) override { return JackTestApi::client_close(c); }
+    jack_time_t get_time() override { return 0; }
+    int set_process_callback(jack_client_t* c, JackProcessCallback cb, void* arg) override { return JackTestApi::set_process_callback(c, cb, arg); }
+    int set_xrun_callback(jack_client_t* c, JackXRunCallback cb, void* arg) override { return JackTestApi::set_xrun_callback(c, cb, arg); }
+    int set_port_connect_callback(jack_client_t* c, JackPortConnectCallback cb, void* arg) override { return JackTestApi::set_port_connect_callback(c, cb, arg); }
+    int set_port_registration_callback(jack_client_t* c, JackPortRegistrationCallback cb, void* arg) override { return JackTestApi::set_port_registration_callback(c, cb, arg); }
+    int set_port_rename_callback(jack_client_t* c, JackPortRenameCallback cb, void* arg) override { return JackTestApi::set_port_rename_callback(c, cb, arg); }
+    void set_error_function(void (*fn)(const char*)) override { JackTestApi::set_error_function(fn); }
+    void set_info_function(void (*fn)(const char*)) override { JackTestApi::set_info_function(fn); }
+    jack_port_t* port_register(jack_client_t* c, const char* n, const char* t, unsigned long f, unsigned long b) override { return JackTestApi::port_register(c, n, t, f, b); }
+    int port_unregister(jack_client_t* c, jack_port_t* p) override { return JackTestApi::port_unregister(c, p); }
+    const char* port_name(const jack_port_t* p) override { return JackTestApi::port_name(p); }
+    int connect(jack_client_t* c, const char* s, const char* d) override { return JackTestApi::connect(c, s, d); }
+    int disconnect(jack_client_t* c, const char* s, const char* d) override { return JackTestApi::disconnect(c, s, d); }
+    uint32_t midi_get_event_count(void* b) override { return JackTestApi::midi_get_event_count(b); }
+    int midi_event_get(jack_midi_event_t* e, void* b, uint32_t i) override { return JackTestApi::midi_event_get(e, b, i); }
+    void midi_clear_buffer(void* b) override { JackTestApi::midi_clear_buffer(b); }
+    int midi_event_write(void* b, jack_nframes_t t, const jack_midi_data_t* d, size_t s) override { return JackTestApi::midi_event_write(b, t, d, s); }
+    float cpu_load(jack_client_t* c) override { return JackTestApi::cpu_load(c); }
+    bool port_is_mine(jack_client_t* c, jack_port_t* p) override { return JackTestApi::port_is_mine(c, p); }
+    void free(void* p) override { JackTestApi::free(p); }
+    jack_client_t* client_open(const char* n, jack_options_t o, jack_status_t* s) override { return JackTestApi::client_open(n, o, s); }
+    void init() override { JackTestApi::init(); }
 };
 
 namespace jacktestapi_globals {

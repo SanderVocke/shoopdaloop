@@ -223,7 +223,9 @@ std::optional<shoop_audio_driver_type_t> audio_system_type(AudioMidiDriver *sys)
         return std::nullopt;
     }
 #ifdef SHOOP_HAVE_BACKEND_JACK
-    else if (dynamic_cast<JackAudioMidiDriver*>(sys)) {
+    else if (dynamic_cast<JackTestAudioMidiDriver*>(sys)) {
+        return JackTest;
+    } else if (dynamic_cast<JackAudioMidiDriver*>(sys)) {
         return Jack;
     }
 #endif
@@ -2294,25 +2296,19 @@ void start_jack_driver(shoop_audio_driver_t *driver, shoop_jack_audio_driver_set
     auto _driver = internal_audio_driver(driver);
     if (!_driver) { return; }
     auto jack = std::dynamic_pointer_cast<JackAudioMidiDriver>(_driver);
-    auto jacktest = std::dynamic_pointer_cast<JackTestAudioMidiDriver>(_driver);
-    if (!jack && !jacktest) {
+    if (!jack) {
       throw std::runtime_error("Given driver is invalid or not of the correct type (Jack / JackTest).");
     }
 
-    auto execute = [settings](auto &jack) {
-      if (jack->get_active()) {
-        throw std::runtime_error("Driver to be started is already running.");
-      }
-      JackAudioMidiDriverSettings s;
-      s.client_name_hint = settings.client_name_hint;
-      if(settings.maybe_server_name) {
-          s.maybe_server_name_hint = settings.maybe_server_name;
-      }
-      jack->start(s);
-    };
-
-    if (jack) { execute(jack); }
-    else if (jacktest) { execute(jacktest); }
+    if (jack->get_active()) {
+      throw std::runtime_error("Driver to be started is already running.");
+    }
+    JackAudioMidiDriverSettings s;
+    s.client_name_hint = settings.client_name_hint;
+    if(settings.maybe_server_name) {
+        s.maybe_server_name_hint = settings.maybe_server_name;
+    }
+    jack->start(s);
 #else
     throw std::runtime_error("Jack backend not available.");
 #endif

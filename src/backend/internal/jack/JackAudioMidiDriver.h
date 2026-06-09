@@ -17,15 +17,15 @@ struct JackAudioMidiDriverSettings : public AudioMidiDriverSettingsInterface {
     std::optional<std::string> maybe_server_name_hint = std::nullopt;
 };
 
-template<typename API>
-class GenericJackAudioMidiDriver :
+class JackAudioMidiDriver :
     public AudioMidiDriver,
     private ModuleLoggingEnabled<"Backend.JackAudioMidiDriver">
 {
     using Log = ModuleLoggingEnabled<"Backend.JackAudioMidiDriver">;
 private:
+    std::shared_ptr<IJackApi> m_api;
     std::map<std::string, std::shared_ptr<PortInterface>> m_ports;
-    std::shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker = nullptr;
+    std::shared_ptr<JackAllPorts> m_all_ports_tracker = nullptr;
     std::atomic<bool> m_started = false;
 
     static int PROC_process_cb_static (uint32_t nframes,
@@ -47,9 +47,12 @@ private:
     void maybe_update_dsp_load();
 
 public:
-    GenericJackAudioMidiDriver(void (*maybe_process_callback)()=nullptr);
-    ~GenericJackAudioMidiDriver() override;
-    
+    explicit JackAudioMidiDriver(
+        void (*maybe_process_callback)()=nullptr,
+        std::shared_ptr<IJackApi> api=std::make_shared<JackApi>()
+    );
+    ~JackAudioMidiDriver() override;
+
     void start(AudioMidiDriverSettingsInterface &settings) override;
 
     std::shared_ptr<RustAudioPortF32> open_audio_port(
@@ -97,8 +100,7 @@ public:
     ) override;
 };
 
-using JackAudioMidiDriver = GenericJackAudioMidiDriver<JackApi>;
-using JackTestAudioMidiDriver = GenericJackAudioMidiDriver<JackTestApi>;
-
-extern template class GenericJackAudioMidiDriver<JackApi>;
-extern template class GenericJackAudioMidiDriver<JackTestApi>;
+class JackTestAudioMidiDriver : public JackAudioMidiDriver {
+public:
+    explicit JackTestAudioMidiDriver(void (*maybe_process_callback)()=nullptr);
+};

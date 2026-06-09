@@ -7,40 +7,39 @@
 #include <thread>
 #include <chrono>
 
-template<typename API>
-const char* GenericJackPort<API>::name() const { return m_name.c_str(); }
+const char* JackPort::name() const { return m_name.c_str(); }
 
-
-template<typename API>
-void GenericJackPort<API>::close() {
+void JackPort::close() {
     if (m_port) {
         log<log_level_debug>("Closing JACK port: {}", m_name);
-        API::port_unregister(m_client, m_port);
+        m_api->port_unregister(m_client, m_port);
         m_port = nullptr;
     }
 }
 
-template<typename API>
-void *GenericJackPort<API>::maybe_driver_handle() const { return (void*)m_port; }
+void *JackPort::maybe_driver_handle() const { return (void*)m_port; }
 
-template<typename API>
-GenericJackPort<API>::~GenericJackPort() { close(); }
+jack_port_t *JackPort::get_jack_port() const { return m_port; }
 
-template<typename API>
-GenericJackPort<API>::GenericJackPort(std::string name,
+void *JackPort::get_buffer() const { return m_buffer.load(); }
+
+JackPort::~JackPort() { close(); }
+
+JackPort::JackPort(std::string name,
                    shoop_port_direction_t direction,
                    PortDataType type,
                    jack_client_t *client,
-                   std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker)
-    : m_client(client), m_type(type), m_direction(direction), m_all_ports_tracker(all_ports_tracker) {
+                   std::shared_ptr<JackAllPorts> all_ports_tracker,
+                   std::shared_ptr<IJackApi> api)
+    : m_api(std::move(api)), m_client(client), m_type(type), m_direction(direction), m_all_ports_tracker(std::move(all_ports_tracker)) {
 
     log<log_level_debug>("Opening JACK port: {}", name);
 
     jack_port_t* p = nullptr;
-    
+
     // Try a few times, we may have race conditions with previously opened and now closing ports
     for (size_t tries = 0; tries < 10; tries++) {
-        p = API::port_register(
+        p = m_api->port_register(
             m_client,
             name.c_str(),
             m_type == PortDataType::Audio ? JACK_DEFAULT_AUDIO_TYPE : JACK_DEFAULT_MIDI_TYPE,
@@ -56,12 +55,11 @@ GenericJackPort<API>::GenericJackPort(std::string name,
     }
 
     m_port = p;
-    m_name = std::string(API::port_name(m_port));
+    m_name = std::string(m_api->port_name(m_port));
 }
 
-template<typename API>
-PortExternalConnectionStatus GenericJackPort<API>::get_external_connection_status() const {
-    if (!m_port || API::get_client_name(m_client) == nullptr) {
+PortExternalConnectionStatus JackPort::get_external_connection_status() const {
+    if (!m_port || m_api->get_client_name(m_client) == nullptr) {
         return PortExternalConnectionStatus {};
     }
 
@@ -82,7 +80,7 @@ PortExternalConnectionStatus GenericJackPort<API>::get_external_connection_statu
     }
 
     // Get list of port names we are connected to and update/create entries
-    const char ** connected_ports = API::port_get_all_connections(m_client, m_port);
+    const char ** connected_ports = m_api->port_get_all_connections(m_client, m_port);
     for(auto n = connected_ports; n != nullptr && *n != nullptr; n++) {
         std::string _n(*n);
         rval[_n] = true;
@@ -91,36 +89,30 @@ PortExternalConnectionStatus GenericJackPort<API>::get_external_connection_statu
     return rval;
 }
 
-template<typename API>
-void GenericJackPort<API>::connect_external(std::string name) {
-    if (!m_port || API::get_client_name(m_client) == nullptr) {
+void JackPort::connect_external(std::string name) {
+    if (!m_port || m_api->get_client_name(m_client) == nullptr) {
         return;
     }
 
     if (m_direction == shoop_port_direction_t::ShoopPortDirection_Input) {
-        API::connect(m_client, name.c_str(), API::port_name(m_port));
+        m_api->connect(m_client, name.c_str(), m_api->port_name(m_port));
     } else {
-        API::connect(m_client, API::port_name(m_port), name.c_str());
+        m_api->connect(m_client, m_api->port_name(m_port), name.c_str());
     }
 }
 
-template<typename API>
-void GenericJackPort<API>::disconnect_external(std::string name) {
-    if (!m_port || API::get_client_name(m_client) == nullptr) {
+void JackPort::disconnect_external(std::string name) {
+    if (!m_port || m_api->get_client_name(m_client) == nullptr) {
         return;
     }
 
     if (m_direction == shoop_port_direction_t::ShoopPortDirection_Input) {
-        API::disconnect(m_client, name.c_str(), API::port_name(m_port));
+        m_api->disconnect(m_client, name.c_str(), m_api->port_name(m_port));
     } else {
-        API::disconnect(m_client, API::port_name(m_port), name.c_str());
+        m_api->disconnect(m_client, m_api->port_name(m_port), name.c_str());
     }
 }
 
-template<typename API>
-void GenericJackPort<API>::PROC_prepare(uint32_t nframes) {
-    m_buffer = API::port_get_buffer(m_port, nframes);
+void JackPort::PROC_prepare(uint32_t nframes) {
+    m_buffer = m_api->port_get_buffer(m_port, nframes);
 }
-
-template class GenericJackPort<JackApi>;
-template class GenericJackPort<JackTestApi>;
