@@ -10,49 +10,10 @@
 #include <memory>
 #include <atomic>
 #include <thread>
-#include "jack/types.h"
 #include "run_in_thread_with_timeout.h"
 #include "JackAudioPort.h"
 #include "JackMidiPort.h"
 #include "types.h"
-
-int JackAudioMidiDriver::PROC_process_cb_static(jack_nframes_t nframes, void *arg) {
-    auto &inst = *((JackAudioMidiDriver *)arg);
-    return inst.PROC_process_cb_inst(nframes);
-}
-
-int JackAudioMidiDriver::PROC_xrun_cb_static(void *arg) {
-    auto &inst = *((JackAudioMidiDriver *)arg);
-    return inst.PROC_xrun_cb_inst();
-}
-
-void JackAudioMidiDriver::PROC_port_connect_cb_static(jack_port_id_t a, jack_port_id_t b, int connect, void *arg) {
-    (void)a; (void)b; (void)connect;
-    auto &inst = *((JackAudioMidiDriver *)arg);
-    inst.PROC_update_ports_cb_inst();
-}
-
-void JackAudioMidiDriver::PROC_port_registration_cb_static(jack_port_id_t port, int, void *arg) {
-    (void)port;
-    auto &inst = *((JackAudioMidiDriver *)arg);
-    inst.PROC_update_ports_cb_inst();
-}
-
-void JackAudioMidiDriver::PROC_port_rename_cb_static(jack_port_id_t port, const char *old_name, const char *new_name, void *arg) {
-    (void)port; (void)old_name; (void)new_name;
-    auto &inst = *((JackAudioMidiDriver *)arg);
-    inst.PROC_update_ports_cb_inst();
-}
-
-void JackAudioMidiDriver::error_cb_static(const char *msg) {
-    std::string _msg = "JACK error: " + std::string(msg);
-    logging::log<"Backend.JackAudioMidiDriver", log_level_error>(std::nullopt, std::nullopt, _msg);
-}
-
-void JackAudioMidiDriver::info_cb_static(const char *msg) {
-    std::string _msg = "JACK error: " + std::string(msg);
-    logging::log<"Backend.JackAudioMidiDriver", log_level_info>(std::nullopt, std::nullopt, _msg);
-}
 
 int JackAudioMidiDriver::PROC_process_cb_inst(jack_nframes_t nframes) {
     process(nframes);
@@ -65,17 +26,24 @@ int JackAudioMidiDriver::PROC_xrun_cb_inst() {
 }
 
 void JackAudioMidiDriver::PROC_update_ports_cb_inst() {
-    m_all_ports_tracker->update((jack_client_t*) get_maybe_client_handle());
+    m_all_ports_tracker->update(reinterpret_cast<uintptr_t>(get_maybe_client_handle()));
 }
 
-JackAudioMidiDriver::JackAudioMidiDriver(void (*maybe_process_callback)(), std::shared_ptr<IJackApi> api):
+JackAudioMidiDriver::JackAudioMidiDriver(
+    void (*maybe_process_callback)(),
+    rust::Box<backend_rust::JackApiBridgeStrong> api
+):
     AudioMidiDriver(maybe_process_callback),
     m_api(std::move(api)),
     m_started(false),
-    m_all_ports_tracker(std::make_shared<JackAllPorts>(m_api)) {}
+    m_all_ports_tracker(std::make_shared<JackAllPorts>(m_api->clone_strong())) {}
 
 JackTestAudioMidiDriver::JackTestAudioMidiDriver(void (*maybe_process_callback)())
-    : JackAudioMidiDriver(maybe_process_callback, std::make_shared<JackTestApiInterface>()) {}
+    : JackAudioMidiDriver(maybe_process_callback, backend_rust::new_jack_test_api()) {}
+
+rust::Box<backend_rust::JackApiBridgeStrong> JackAudioMidiDriver::clone_jack_api() const {
+    return m_api->clone_strong();
+}
 
 void JackAudioMidiDriver::start(
     AudioMidiDriverSettingsInterface &settings)
@@ -84,50 +52,39 @@ void JackAudioMidiDriver::start(
     if (!p_settings) { throw std::runtime_error("Wrong settings type passed to JACK driver"); }
     auto &_settings = *p_settings;
 
-    m_api->init();
-
-    jack_status_t status;
+    backend_rust::jack_api_init(*m_api);
 
     Log::log<log_level_info>("Opening JACK client with name {}.", _settings.client_name_hint);
-    auto client = m_api->client_open(_settings.client_name_hint.c_str(), JackNullOption, &status);
+    auto client = backend_rust::jack_api_client_open(*m_api, _settings.client_name_hint.c_str());
 
-    if (client == nullptr) {
+    if (client == 0) {
         Log::throw_error<std::runtime_error>("Unable to open JACK client.");
     }
-    set_maybe_client_handle((void*) client);
-    set_client_name(m_api->get_client_name(client));
+    set_maybe_client_handle(reinterpret_cast<void*>(client));
+    auto initial_client_name = backend_rust::jack_api_get_client_name(*m_api, client);
+    set_client_name(initial_client_name.c_str());
 
-    m_api->set_process_callback(client, JackAudioMidiDriver::PROC_process_cb_static,
-                              (void *)this);
-    m_api->set_xrun_callback(client, JackAudioMidiDriver::PROC_xrun_cb_static,
-                           (void *)this);
-    m_api->set_port_connect_callback(client,
-                                   JackAudioMidiDriver::PROC_port_connect_cb_static,
-                                   (void *)this);
-    m_api->set_port_registration_callback(client,
-                                   JackAudioMidiDriver::PROC_port_registration_cb_static,
-                                   (void *)this);
-    m_api->set_port_rename_callback(client,
-                                   JackAudioMidiDriver::PROC_port_rename_cb_static,
-                                   (void *)this);
-    m_api->set_error_function(JackAudioMidiDriver::error_cb_static);
-    m_api->set_info_function(JackAudioMidiDriver::info_cb_static);
+    backend_rust::jack_api_set_process_callback(*m_api, client, reinterpret_cast<uintptr_t>(this));
+    backend_rust::jack_api_set_xrun_callback(*m_api, client, reinterpret_cast<uintptr_t>(this));
+    backend_rust::jack_api_set_port_connect_callback(*m_api, client, reinterpret_cast<uintptr_t>(this));
+    backend_rust::jack_api_set_port_registration_callback(*m_api, client, reinterpret_cast<uintptr_t>(this));
+    backend_rust::jack_api_set_port_rename_callback(*m_api, client, reinterpret_cast<uintptr_t>(this));
+    backend_rust::jack_api_set_error_info_logging(*m_api);
 
     m_all_ports_tracker->update(client);
 
-    // Processing the command queue once will ensure that it knows processing is active.
-    // That way commands added from now on will be executed on the process thread.
     rust_command_queue::exec_all(this->get_command_queue());
 
-    if (m_api->activate(client)) {
+    if (backend_rust::jack_api_activate(*m_api, client)) {
         Log::throw_error<std::runtime_error>("Could not activate JACK client.");
     }
 
-    set_maybe_client_handle((void*)client);
-    set_client_name(m_api->get_client_name(client));
+    set_maybe_client_handle(reinterpret_cast<void*>(client));
+    auto client_name = backend_rust::jack_api_get_client_name(*m_api, client);
+    set_client_name(client_name.c_str());
     set_dsp_load(0.0f);
-    set_sample_rate(m_api->get_sample_rate(client));
-    set_buffer_size(m_api->get_buffer_size(client));
+    set_sample_rate(backend_rust::jack_api_get_sample_rate(*m_api, client));
+    set_buffer_size(backend_rust::jack_api_get_buffer_size(*m_api, client));
     set_active(true);
 }
 
@@ -140,7 +97,13 @@ std::shared_ptr<RustAudioPortF32>JackAudioMidiDriver::open_audio_port(std::strin
     std::shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool) {
     std::shared_ptr<PortInterface> port =
         std::static_pointer_cast<PortInterface>(
-            std::make_shared<JackAudioPort>(name, direction, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker, m_api, buffer_pool)
+            std::make_shared<JackAudioPort>(
+                name,
+                direction,
+                reinterpret_cast<uintptr_t>(get_maybe_client_handle()),
+                m_all_ports_tracker,
+                m_api->clone_strong(),
+                buffer_pool)
         );
     m_ports[port->name()] = port;
     return std::dynamic_pointer_cast<RustAudioPortF32>(port);
@@ -151,11 +114,19 @@ std::shared_ptr<MidiPort> JackAudioMidiDriver::open_midi_port(std::string name, 
 
     if (direction == ShoopPortDirection_Input) {
         port = std::static_pointer_cast<PortInterface>(
-            std::make_shared<JackMidiInputPort>(name, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker, m_api)
+            std::make_shared<JackMidiInputPort>(
+                name,
+                reinterpret_cast<uintptr_t>(get_maybe_client_handle()),
+                m_all_ports_tracker,
+                m_api->clone_strong())
         );
     } else {
         port = std::static_pointer_cast<PortInterface>(
-            std::make_shared<JackMidiOutputPort>(name, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker, m_api)
+            std::make_shared<JackMidiOutputPort>(
+                name,
+                reinterpret_cast<uintptr_t>(get_maybe_client_handle()),
+                m_all_ports_tracker,
+                m_api->clone_strong())
         );
     }
     m_ports[port->name()] = port;
@@ -165,15 +136,14 @@ std::shared_ptr<MidiPort> JackAudioMidiDriver::open_midi_port(std::string name, 
 void JackAudioMidiDriver::close() {
     if (get_maybe_client_handle()) {
         Log::log<log_level_debug>("Closing JACK client.");
+        auto client = reinterpret_cast<uintptr_t>(get_maybe_client_handle());
         try {
-            // First deactivate the client to stop the process callback
-            run_in_thread_with_timeout_unsafe([this]() { m_api->deactivate((jack_client_t*)get_maybe_client_handle()); }, 5000);
+            run_in_thread_with_timeout_unsafe([this, client]() { backend_rust::jack_api_deactivate(*m_api, client); }, 5000);
         } catch (std::exception &e) {
             Log::log<log_level_warning>("Attempt to deactivate JACK client failed: {}. Continuing with close.", e.what());
         }
         try {
-            // Then close the client
-            run_in_thread_with_timeout_unsafe([this]() { m_api->client_close((jack_client_t*)get_maybe_client_handle()); }, 5000);
+            run_in_thread_with_timeout_unsafe([this, client]() { backend_rust::jack_api_client_close(*m_api, client); }, 5000);
         } catch (std::exception &e) {
             Log::log<log_level_warning>("Attempt to close JACK client failed: {}. Abandoning.", e.what());
         }
@@ -182,15 +152,15 @@ void JackAudioMidiDriver::close() {
 }
 
 void JackAudioMidiDriver::maybe_update_sample_rate() {
-    set_sample_rate(m_api->get_sample_rate((jack_client_t*) get_maybe_client_handle()));
+    set_sample_rate(backend_rust::jack_api_get_sample_rate(*m_api, reinterpret_cast<uintptr_t>(get_maybe_client_handle())));
 }
 
 void JackAudioMidiDriver::maybe_update_buffer_size() {
-    set_buffer_size(m_api->get_buffer_size((jack_client_t*) get_maybe_client_handle()));
+    set_buffer_size(backend_rust::jack_api_get_buffer_size(*m_api, reinterpret_cast<uintptr_t>(get_maybe_client_handle())));
 }
 
 void JackAudioMidiDriver::maybe_update_dsp_load() {
-    set_dsp_load(m_api->cpu_load((jack_client_t*) get_maybe_client_handle()));
+    set_dsp_load(backend_rust::jack_api_cpu_load(*m_api, reinterpret_cast<uintptr_t>(get_maybe_client_handle())));
 };
 
 std::vector<ExternalPortDescriptor> JackAudioMidiDriver::find_external_ports(
@@ -199,40 +169,30 @@ std::vector<ExternalPortDescriptor> JackAudioMidiDriver::find_external_ports(
         shoop_port_data_type_t maybe_data_type_filter
     )
 {
-    const char* maybe_type_regex =
-        (maybe_data_type_filter == ShoopPortDataType_Audio) ? JACK_DEFAULT_AUDIO_TYPE :
-        (maybe_data_type_filter == ShoopPortDataType_Midi)  ? JACK_DEFAULT_MIDI_TYPE  :
-        nullptr;
+    auto client = reinterpret_cast<uintptr_t>(get_maybe_client_handle());
+    auto names = backend_rust::jack_api_get_filtered_ports(
+        *m_api,
+        client,
+        maybe_name_regex ? maybe_name_regex : "",
+        maybe_name_regex != nullptr,
+        static_cast<uint32_t>(maybe_direction_filter),
+        maybe_direction_filter != ShoopPortDirection_Any,
+        static_cast<uint32_t>(maybe_data_type_filter),
+        maybe_data_type_filter != ShoopPortDataType_Any);
 
-    unsigned flags =
-        (maybe_direction_filter == ShoopPortDirection_Input)  ? JackPortIsInput  :
-        (maybe_direction_filter == ShoopPortDirection_Output) ? JackPortIsOutput :
-        0;
-
-    auto client = (jack_client_t*) get_maybe_client_handle();
-    const char** result = m_api->get_ports(client, maybe_name_regex, maybe_type_regex, flags);
-
-    // First gather up the names
-    std::vector<std::string> names;
-    for(auto it = result; it != nullptr && *it != nullptr; it++) {
-        ExternalPortDescriptor desc;
-        names.push_back(std::string(*it));
-    }
-    if (result) { m_api->free((void*) result); }
-
-    // Now fill in further data
     std::vector<ExternalPortDescriptor> rval;
-    for (auto &n : names) {
-        jack_port_t *p = m_api->port_by_name(client, n.c_str());
-        if (p && !m_api->port_is_mine(client, p)) {
+    for (auto const &n : names) {
+        auto name = std::string(n);
+        auto p = backend_rust::jack_api_port_by_name(*m_api, client, name);
+        if (p && !backend_rust::jack_api_port_is_mine(*m_api, client, p)) {
             ExternalPortDescriptor desc;
-            desc.name = n;
-            auto flags = m_api->port_flags(p);
-            desc.direction = (flags & JackPortIsInput) ? ShoopPortDirection_Input : ShoopPortDirection_Output;
-            auto type = m_api->port_type(p);
-            if (!strcmp(type, JACK_DEFAULT_AUDIO_TYPE)) { desc.data_type = ShoopPortDataType_Audio; }
-            else if (!strcmp(type, JACK_DEFAULT_MIDI_TYPE)) { desc.data_type = ShoopPortDataType_Midi; }
-            else { continue; /* Ignore other types */ }
+            desc.name = name;
+            desc.direction = backend_rust::jack_api_port_is_input(*m_api, p)
+                ? ShoopPortDirection_Input
+                : ShoopPortDirection_Output;
+            if (backend_rust::jack_api_port_is_audio(*m_api, p)) { desc.data_type = ShoopPortDataType_Audio; }
+            else if (backend_rust::jack_api_port_is_midi(*m_api, p)) { desc.data_type = ShoopPortDataType_Midi; }
+            else { continue; }
             rval.push_back(desc);
         }
     }
@@ -241,7 +201,7 @@ std::vector<ExternalPortDescriptor> JackAudioMidiDriver::find_external_ports(
 }
 
 void JackAudioMidiDriver::wait_process() {
-    if (m_api->supports_processing()) {
+    if (backend_rust::jack_api_supports_processing(*m_api)) {
         AudioMidiDriver::wait_process();
     } else {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));

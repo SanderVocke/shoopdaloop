@@ -1,14 +1,14 @@
 #pragma once
-#include "AudioMidiDriver.h"
-#include "RustAudioPort.h"
+#include "../AudioMidiDriver.h"
+#include "../RustAudioPort.h"
 #include "JackAllPorts.h"
-#include "JackApi.h"
-#include "JackTestApi.h"
-#include "LoggingEnabled.h"
+#include "../LoggingEnabled.h"
+#include "backend_rust/src/jack_api_cxx.rs.h"
 #include <jack/types.h>
 #include <map>
 #include <atomic>
 #include <optional>
+#include <cstdint>
 
 struct JackAudioMidiDriverSettings : public AudioMidiDriverSettingsInterface {
     JackAudioMidiDriverSettings() {}
@@ -23,24 +23,10 @@ class JackAudioMidiDriver :
 {
     using Log = ModuleLoggingEnabled<"Backend.JackAudioMidiDriver">;
 private:
-    std::shared_ptr<IJackApi> m_api;
+    rust::Box<backend_rust::JackApiBridgeStrong> m_api;
     std::map<std::string, std::shared_ptr<PortInterface>> m_ports;
     std::shared_ptr<JackAllPorts> m_all_ports_tracker = nullptr;
     std::atomic<bool> m_started = false;
-
-    static int PROC_process_cb_static (uint32_t nframes,
-                                  void *arg);
-    static int PROC_xrun_cb_static(void *arg);
-    static void PROC_port_connect_cb_static(jack_port_id_t a, jack_port_id_t b, int connect, void *arg);
-    static void PROC_port_registration_cb_static(jack_port_id_t port, int, void *arg);
-    static void PROC_port_rename_cb_static(jack_port_id_t port, const char *old_name, const char *new_name, void *arg);
-
-    int PROC_process_cb_inst (uint32_t nframes);
-    int PROC_xrun_cb_inst ();
-    void PROC_update_ports_cb_inst();
-
-    static void error_cb_static(const char* msg);
-    static void info_cb_static(const char* msg);
 
     void maybe_update_sample_rate();
     void maybe_update_buffer_size();
@@ -49,9 +35,15 @@ private:
 public:
     explicit JackAudioMidiDriver(
         void (*maybe_process_callback)()=nullptr,
-        std::shared_ptr<IJackApi> api=std::make_shared<JackApi>()
+        rust::Box<backend_rust::JackApiBridgeStrong> api=backend_rust::new_jack_api()
     );
     ~JackAudioMidiDriver() override;
+
+    int PROC_process_cb_inst (uint32_t nframes);
+    int PROC_xrun_cb_inst ();
+    void PROC_update_ports_cb_inst();
+
+    rust::Box<backend_rust::JackApiBridgeStrong> clone_jack_api() const;
 
     void start(AudioMidiDriverSettingsInterface &settings) override;
 

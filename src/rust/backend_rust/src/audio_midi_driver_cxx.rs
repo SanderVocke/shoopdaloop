@@ -71,7 +71,11 @@ pub mod ffi {
         ) -> UniquePtr<ProcessorBridgeWeak>;
 
         // Decoupled port management
-        unsafe fn add_decoupled_port_raw(core: &AudioMidiDriverCore, weak_ptr: usize);
+        unsafe fn add_decoupled_port_raw(
+            core: &AudioMidiDriverCore,
+            weak_ptr: usize,
+            strong_ptr: usize,
+        );
 
         unsafe fn process_cycle(
             self: &AudioMidiDriverCore,
@@ -180,11 +184,16 @@ fn get_processor_handles(core: &AudioMidiDriverCore) -> Vec<u64> {
 }
 
 // Decoupled port management
-unsafe fn add_decoupled_port_raw(core: &AudioMidiDriverCore, weak_ptr: usize) {
+unsafe fn add_decoupled_port_raw(core: &AudioMidiDriverCore, weak_ptr: usize, strong_ptr: usize) {
     let weak = unsafe {
         Box::from_raw(weak_ptr as *mut crate::decoupled_midi_port_cxx::DecoupledMidiPortBridgeWeak)
     };
-    core.add_decoupled_port(weak);
+    let strong = unsafe {
+        Box::from_raw(
+            strong_ptr as *mut crate::decoupled_midi_port_cxx::DecoupledMidiPortBridgeStrong,
+        )
+    };
+    core.add_decoupled_port(weak, strong);
 }
 
 fn command_queue_ptr(core: &AudioMidiDriverCore) -> usize {

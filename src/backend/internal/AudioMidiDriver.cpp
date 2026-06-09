@@ -70,7 +70,11 @@ rust::Box<backend_rust::DecoupledMidiPortBridgeStrong> AudioMidiDriver::make_dec
         decoupled_midi_port_queue_size,
         static_cast<uint32_t>(direction));
     auto weak = strong->downgrade();
-    backend_rust::add_decoupled_port_raw(*m_rust_core, reinterpret_cast<uintptr_t>(weak.into_raw()));
+    auto keepalive = strong->clone_strong();
+    backend_rust::add_decoupled_port_raw(
+        *m_rust_core,
+        reinterpret_cast<uintptr_t>(weak.into_raw()),
+        reinterpret_cast<uintptr_t>(keepalive.into_raw()));
     return strong;
 }
 

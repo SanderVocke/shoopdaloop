@@ -27,10 +27,6 @@
 #undef max
 #endif
 
-#ifdef SHOOP_HAVE_BACKEND_JACK
-#include <jack_wrappers.h>
-#endif
-
 #ifdef SHOOP_HAVE_LV2
 #include "LV2.h"
 #endif

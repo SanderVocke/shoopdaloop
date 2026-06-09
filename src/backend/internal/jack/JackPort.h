@@ -1,22 +1,21 @@
 #pragma once
 #include <atomic>
 #include <cstdint>
-#include <jack/types.h>
 #include <memory>
 #include "JackAllPorts.h"
-#include "JackApi.h"
-#include "LoggingEnabled.h"
-#include "PortInterface.h"
+#include "../LoggingEnabled.h"
+#include "../PortInterface.h"
+#include "backend_rust/src/jack_api_cxx.rs.h"
 
 class JackPort :
     public virtual PortInterface,
     protected ModuleLoggingEnabled<"Backend.JackPort">
 {
 protected:
-    std::shared_ptr<IJackApi> m_api;
-    jack_port_t* m_port = nullptr;
+    rust::Box<backend_rust::JackApiBridgeStrong> m_api;
+    uintptr_t m_port = 0;
     std::atomic<void*> m_buffer = nullptr;
-    jack_client_t* m_client = nullptr;
+    uintptr_t m_client = 0;
     std::string m_name = "";
     shoop_port_direction_t m_direction = ShoopPortDirection_Input;
     PortDataType m_type;
@@ -33,7 +32,7 @@ public:
     bool has_implicit_input_source() const override { return m_direction == ShoopPortDirection_Input; }
     bool has_implicit_output_sink() const override { return m_direction == ShoopPortDirection_Output; }
 
-    jack_port_t *get_jack_port() const;
+    uintptr_t get_jack_port() const;
     void *get_buffer() const;
 
     PortExternalConnectionStatus get_external_connection_status() const override;
@@ -47,9 +46,9 @@ public:
         std::string name,
         shoop_port_direction_t direction,
         PortDataType type,
-        jack_client_t *client,
+        uintptr_t client,
         std::shared_ptr<JackAllPorts> all_ports_tracker,
-        std::shared_ptr<IJackApi> api
+        rust::Box<backend_rust::JackApiBridgeStrong> api
     );
     ~JackPort() override;
 };

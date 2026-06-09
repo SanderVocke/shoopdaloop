@@ -3,7 +3,6 @@
 #include <string>
 #include "JackPort.h"
 #include "PortInterface.h"
-#include <jack_wrappers.h>
 #include <stdexcept>
 #include <cstring>
 #include <iostream>
@@ -14,8 +13,8 @@
 #endif
 
 JackAudioPort::JackAudioPort(std::string name, shoop_port_direction_t direction,
-                             jack_client_t *client, std::shared_ptr<JackAllPorts> all_ports_tracker,
-                             std::shared_ptr<IJackApi> api,
+                             uintptr_t client, std::shared_ptr<JackAllPorts> all_ports_tracker,
+                             rust::Box<backend_rust::JackApiBridgeStrong> api,
                              std::shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool)
     : RustAudioPortF32(buffer_pool, 32),
       JackPort(name, direction, PortDataType::Audio, client, std::move(all_ports_tracker), std::move(api)) {}

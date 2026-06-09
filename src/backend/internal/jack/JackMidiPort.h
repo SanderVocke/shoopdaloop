@@ -2,12 +2,12 @@
 #include <atomic>
 #include <jack/types.h>
 #include "JackPort.h"
-#include "MidiBuffer.h"
-#include "MidiPort.h"
-#include "MidiSortingBuffer.h"
-#include "PortInterface.h"
+#include "../MidiBuffer.h"
+#include "../MidiPort.h"
+#include "../MidiSortingBuffer.h"
+#include "../PortInterface.h"
 #include "types.h"
-#include <jack_wrappers.h>
+#include "backend_rust/src/jack_api_cxx.rs.h"
 #include <vector>
 
 class JackMidiPort : public JackPort {
@@ -15,9 +15,9 @@ public:
     JackMidiPort(
         std::string name,
         shoop_port_direction_t direction,
-        jack_client_t *client,
+        uintptr_t client,
         std::shared_ptr<JackAllPorts> all_ports_tracker,
-        std::shared_ptr<IJackApi> api
+        rust::Box<backend_rust::JackApiBridgeStrong> api
     ) : JackPort(name, direction, PortDataType::Midi, client, std::move(all_ports_tracker), std::move(api)) {}
 };
 
@@ -32,9 +32,9 @@ class JackMidiInputPort :
 public:
     JackMidiInputPort(
         std::string name,
-        jack_client_t *client,
+        uintptr_t client,
         std::shared_ptr<JackAllPorts> all_ports_tracker,
-        std::shared_ptr<IJackApi> api
+        rust::Box<backend_rust::JackApiBridgeStrong> api
     );
 
     uint32_t n_events() const override;
@@ -69,9 +69,9 @@ class JackMidiOutputPort :
 public:
     JackMidiOutputPort(
         std::string name,
-        jack_client_t *client,
+        uintptr_t client,
         std::shared_ptr<JackAllPorts> all_ports_tracker,
-        std::shared_ptr<IJackApi> api
+        rust::Box<backend_rust::JackApiBridgeStrong> api
     );
 
     void write_event(MidiStorageElem event) override;

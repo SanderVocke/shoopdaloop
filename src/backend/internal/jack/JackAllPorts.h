@@ -1,7 +1,7 @@
 #pragma once
-#include "PortInterface.h"
-#include "JackApi.h"
-#include <jack/types.h>
+#include "../PortInterface.h"
+#include "backend_rust/src/jack_api_cxx.rs.h"
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -14,13 +14,13 @@ struct JackAllPortsEntry {
 };
 
 class JackAllPorts {
-    std::shared_ptr<IJackApi> m_api;
+    rust::Box<backend_rust::JackApiBridgeStrong> m_api;
     std::vector<JackAllPortsEntry> m_cache;
     std::mutex m_cache_mutex;
 
 public:
-    explicit JackAllPorts(std::shared_ptr<IJackApi> api);
+    explicit JackAllPorts(rust::Box<backend_rust::JackApiBridgeStrong> api);
 
-    void update(jack_client_t *client);
+    void update(uintptr_t client);
     std::vector<JackAllPortsEntry> get();
 };

@@ -67,9 +67,9 @@ void JackMidiOutputPort::write_event(MidiStorageElem event) {
 
 JackMidiOutputPort::JackMidiOutputPort(
         std::string name,
-        jack_client_t *client,
+        uintptr_t client,
         std::shared_ptr<JackAllPorts> all_ports_tracker,
-        std::shared_ptr<IJackApi> api
+        rust::Box<backend_rust::JackApiBridgeStrong> api
     ) : JackMidiPort(name, ShoopPortDirection_Output, client, std::move(all_ports_tracker), std::move(api)),
         MidiPort(true, true, true),
         m_sorting_buffer(std::make_shared<MidiSortingBuffer>())
@@ -77,9 +77,9 @@ JackMidiOutputPort::JackMidiOutputPort(
 
 JackMidiInputPort::JackMidiInputPort(
         std::string name,
-        jack_client_t *client,
+        uintptr_t client,
         std::shared_ptr<JackAllPorts> all_ports_tracker,
-        std::shared_ptr<IJackApi> api
+        rust::Box<backend_rust::JackApiBridgeStrong> api
     ) : JackMidiPort(name, ShoopPortDirection_Input, client, std::move(all_ports_tracker), std::move(api)),
         MidiPort(true, true, true),
         m_messages()
@@ -88,15 +88,13 @@ JackMidiInputPort::JackMidiInputPort(
 }
 
 void JackMidiInputPort::PROC_prepare(uint32_t nframes) {
-    // sets m_port
     JackMidiPort::PROC_prepare(nframes);
     m_messages.clear();
 }
 
 void JackMidiInputPort::PROC_process(uint32_t nframes) {
     (void)nframes;
-    // Read events directly from JACK buffer and copy into our vector
-    auto* jack_buffer = m_buffer.load();
+    auto* jack_buffer = reinterpret_cast<void*>(m_buffer.load());
     if (!jack_buffer) return;
 
     if (m_muted.load()) {
@@ -104,25 +102,29 @@ void JackMidiInputPort::PROC_process(uint32_t nframes) {
         return;
     }
 
-    uint32_t n_events = m_api->midi_get_event_count(jack_buffer);
+    uint32_t n_events = backend_rust::jack_api_midi_get_event_count(*m_api, reinterpret_cast<uintptr_t>(jack_buffer));
 
     m_messages.reserve(m_messages.size() + n_events);
 
     for (uint32_t i = 0; i < n_events; ++i) {
-        jack_midi_event_t jack_event;
-        m_api->midi_event_get(&jack_event, jack_buffer, i);
-
         MidiStorageElem elem;
-        elem.time = jack_event.time;
-        elem.size = jack_event.size;
-        memcpy(elem.bytes, jack_event.buffer, jack_event.size);
+        uint32_t time = 0;
+        uint16_t size = 0;
+        if (!backend_rust::jack_api_midi_event_get(
+                *m_api,
+                reinterpret_cast<uintptr_t>(jack_buffer),
+                i,
+                time,
+                size,
+                elem.bytes)) {
+            continue;
+        }
+        elem.time = time;
+        elem.size = size;
         m_messages.push_back(elem);
-
-        // Process state changes for note tracking via Rust bridge
         backend_rust::process_msg_raw_to_state(*m_rust_port, elem.bytes);
     }
 
-    // Sort by time
     std::stable_sort(m_messages.begin(), m_messages.end(), [](const MidiStorageElem &a, const MidiStorageElem &b) {
         return a.time < b.time;
     });
@@ -150,7 +152,7 @@ MidiWriteableBuffer *JackMidiOutputPort::PROC_get_write_data_into_port_buffer(ui
 
 void JackMidiOutputPort::PROC_prepare(uint32_t nframes) {
     JackMidiPort::PROC_prepare(nframes);
-    m_api->midi_clear_buffer(m_buffer.load());
+    backend_rust::jack_api_midi_clear_buffer(*m_api, reinterpret_cast<uintptr_t>(m_buffer.load()));
     m_sorting_buffer->PROC_clear();
 }
 
@@ -162,13 +164,17 @@ void JackMidiOutputPort::PROC_process(uint32_t nframes) {
 
     m_sorting_buffer->PROC_process(nframes);
 
-    // Write sorted messages to JACK output buffer
     auto* jack_buffer = m_buffer.load();
     if (!jack_buffer) return;
 
     uint32_t n_events = m_sorting_buffer->n_events();
     for (uint32_t i = 0; i < n_events; ++i) {
         MidiStorageElem event = m_sorting_buffer->get_event(i);
-        m_api->midi_event_write(jack_buffer, event.time, event.bytes, event.size);
+        backend_rust::jack_api_midi_event_write(
+            *m_api,
+            reinterpret_cast<uintptr_t>(jack_buffer),
+            event.time,
+            event.size,
+            event.bytes);
     }
 }

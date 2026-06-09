@@ -24,6 +24,8 @@ pub mod internal_audio_port;
 pub mod internal_audio_port_cxx;
 pub mod internal_midi_port;
 pub mod internal_midi_port_cxx;
+pub mod jack_api;
+pub mod jack_api_cxx;
 pub mod midi_buffering_input_port;
 pub mod midi_buffering_input_port_cxx;
 pub mod midi_helpers;

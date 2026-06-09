@@ -103,13 +103,18 @@ typed_bridge_registration!(
     { cpp_identity: usize }
 );
 
+struct DecoupledPortRegistration {
+    weak: Box<crate::decoupled_midi_port_cxx::DecoupledMidiPortBridgeWeak>,
+    _strong: Box<crate::decoupled_midi_port_cxx::DecoupledMidiPortBridgeStrong>,
+}
+
 pub struct AudioMidiDriverCore {
     state: AudioMidiDriverState,
     command_queue: CommandQueue,
     processors: RwLock<HashMap<u64, ProcessorRegistration>>,
     processor_handle_by_cpp_identity: Mutex<HashMap<usize, u64>>,
     next_processor_handle: AtomicU64,
-    decoupled_ports: RwLock<Vec<Box<crate::decoupled_midi_port_cxx::DecoupledMidiPortBridgeWeak>>>,
+    decoupled_ports: RwLock<Vec<DecoupledPortRegistration>>,
 }
 
 impl AudioMidiDriverCore {
@@ -293,17 +298,21 @@ impl AudioMidiDriverCore {
     pub fn add_decoupled_port(
         &self,
         weak: Box<crate::decoupled_midi_port_cxx::DecoupledMidiPortBridgeWeak>,
+        strong: Box<crate::decoupled_midi_port_cxx::DecoupledMidiPortBridgeStrong>,
     ) {
         if let Ok(mut guard) = self.decoupled_ports.write() {
-            guard.push(weak);
+            guard.push(DecoupledPortRegistration {
+                weak,
+                _strong: strong,
+            });
         }
     }
 
     /// Process all live, non-closed decoupled ports and prune expired/closed weak objects.
     pub fn process_decoupled_ports(&self, nframes: u32) {
         if let Ok(mut guard) = self.decoupled_ports.write() {
-            guard.retain(|weak| {
-                let strong = weak.upgrade();
+            guard.retain(|registration| {
+                let strong = registration.weak.upgrade();
                 if !strong.valid() || crate::decoupled_midi_port_cxx::decoupled_is_closed(&strong) {
                     return false;
                 }

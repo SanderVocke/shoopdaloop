@@ -1,10 +1,10 @@
 #pragma once
 #include <atomic>
 #include <jack/types.h>
-#include "JackApi.h"
 #include "JackPort.h"
-#include "RustAudioPort.h"
+#include "../RustAudioPort.h"
 #include "types.h"
+#include "backend_rust/src/jack_api_cxx.rs.h"
 
 class JackAudioPort : public virtual RustAudioPortF32, public virtual JackPort {
     using JackPort::m_buffer;
@@ -15,9 +15,9 @@ public:
     JackAudioPort(
         std::string name,
         shoop_port_direction_t direction,
-        jack_client_t *client,
+        uintptr_t client,
         std::shared_ptr<JackAllPorts> all_ports_tracker,
-        std::shared_ptr<IJackApi> api,
+        rust::Box<backend_rust::JackApiBridgeStrong> api,
         std::shared_ptr<RustAudioPortF32::UsedBufferPool> maybe_ringbuffer_buffer_pool
     );
 

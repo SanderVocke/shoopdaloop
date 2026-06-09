@@ -98,6 +98,7 @@ fn main() {
         "src/dummy_audio_port_cxx.rs",
         "src/internal_audio_port_cxx.rs",
         "src/internal_midi_port_cxx.rs",
+        "src/jack_api_cxx.rs",
         "src/midi_buffering_input_port_cxx.rs",
         "src/audio_port_cxx.rs",
         "src/midi_state_tracker_cxx.rs",
@@ -109,7 +110,10 @@ fn main() {
     build
         .file(format!("{}/internal/CommandToken.cpp", backend_include))
         .file("cxx/bridge_object_fallback.cpp")
-        .include(&backend_include);
+        .file("cxx/jack_api_trampolines.cpp")
+        .include(&backend_include)
+        .include(format!("{}/internal", backend_include))
+        .include(format!("{}/internal/jack", backend_include));
 
     println!("cargo:rerun-if-env-changed=SHOOP_BACKEND_RUST_CXX_INCLUDE_DIRS");
     if let Ok(extra_includes) = std::env::var("SHOOP_BACKEND_RUST_CXX_INCLUDE_DIRS") {
@@ -191,10 +195,13 @@ fn main() {
     println!("cargo:rerun-if-changed=src/decoupled_midi_port_cxx.rs");
     println!("cargo:rerun-if-changed=src/internal_audio_port_cxx.rs");
     println!("cargo:rerun-if-changed=src/internal_midi_port_cxx.rs");
+    println!("cargo:rerun-if-changed=src/jack_api_cxx.rs");
     println!("cargo:rerun-if-changed=src/midi_buffering_input_port_cxx.rs");
     println!("cargo:rerun-if-changed=src/audio_port_cxx.rs");
     println!("cargo:rerun-if-changed=src/refilling_pool_cxx.rs");
     println!("cargo:rerun-if-changed=src/dummy_audio_midi_driver_cxx.rs");
     println!("cargo:rerun-if-changed=src/rust_bridge_object.rs");
     println!("cargo:rerun-if-changed=src/rust_bridge_object_test_cxx.rs");
+    println!("cargo:rerun-if-changed={}/internal/jack/JackApiCxxTrampolines.h", backend_include);
+    println!("cargo:rerun-if-changed=cxx/jack_api_trampolines.cpp");
 }
