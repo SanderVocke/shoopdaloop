@@ -2,13 +2,15 @@
 #include "DummyAudioMidiDriver.h"
 #include "PortInterface.h"
 #include "AudioMidiDriver.h"
-#include "DecoupledMidiPort.h"
+#include "IProcessor.h"
+#include "BridgeObject.h"
 #include <functional>
 #include <thread>
 #include <chrono>
 #include <set>
+#include <algorithm>
 
-struct Tracker : public HasAudioProcessingFunction {
+struct Tracker : public IProcessor {
     std::atomic<uint32_t> total_samples_processed = 0;
     std::vector<uint32_t> each_n_samples_processed;
 
@@ -29,7 +31,7 @@ struct Tracker : public HasAudioProcessingFunction {
 
 template <typename Time, typename Size>
 struct TrackedDummyAudioMidiDriver : public DummyAudioMidiDriver<Time, Size> {
-    shoop_shared_ptr<Tracker> tracker;
+    std::shared_ptr<Tracker> tracker;
 
     TrackedDummyAudioMidiDriver(
         std::string client_name,
@@ -38,9 +40,9 @@ struct TrackedDummyAudioMidiDriver : public DummyAudioMidiDriver<Time, Size> {
         uint32_t sample_rate = 48000,
         uint32_t buffer_size = 256) :
         DummyAudioMidiDriver<Time, Size>(),
-        tracker(shoop_make_shared<Tracker>())
+        tracker(std::make_shared<Tracker>())
     {
-        AudioMidiDriver::add_processor(shoop_static_pointer_cast<HasAudioProcessingFunction>(tracker));
+        this->add_processor(std::static_pointer_cast<IProcessor>(tracker));
         DummyAudioMidiDriverSettings settings;
         settings.buffer_size = buffer_size;
         settings.client_name = client_name;
@@ -155,6 +157,84 @@ TEST_CASE("DummyAudioMidiDriver - Input port queue consume combine", "[DummyAudi
     }
 };
 
+TEST_CASE("DummyAudioMidiDriver - processors API reflects Rust registrations", "[DummyAudioMidiDriver][processor]") {
+    DummyAudioMidiDriver<uint32_t, uint32_t> dut;
+    DummyAudioMidiDriverSettings settings;
+    settings.buffer_size = 256;
+    settings.client_name = "test";
+    settings.sample_rate = 48000;
+    dut.enter_mode(DummyAudioMidiDriverMode::Controlled);
+    dut.start(settings);
+
+    REQUIRE(dut.processors().empty());
+
+    auto first = std::make_shared<Tracker>();
+    auto second = std::make_shared<Tracker>();
+    dut.add_processor(std::static_pointer_cast<IProcessor>(first));
+
+    auto one = dut.processors();
+    REQUIRE(one.size() == 1);
+    auto first_resolved = one[0]->lock();
+    REQUIRE(first_resolved == first);
+
+    dut.add_processor(std::static_pointer_cast<IProcessor>(second));
+    auto two = dut.processors();
+    REQUIRE(two.size() == 2);
+    std::vector<std::shared_ptr<IProcessor>> locked;
+    std::transform(two.begin(), two.end(), std::back_inserter(locked), [](auto const &handle) {
+        return handle->lock();
+    });
+    REQUIRE(std::find(locked.begin(), locked.end(), first) != locked.end());
+    REQUIRE(std::find(locked.begin(), locked.end(), second) != locked.end());
+
+    dut.remove_processor(std::static_pointer_cast<IProcessor>(first));
+    auto after_remove = dut.processors();
+    REQUIRE(after_remove.size() == 1);
+    auto second_resolved = after_remove[0]->lock();
+    REQUIRE(second_resolved == second);
+
+    dut.remove_processor(std::static_pointer_cast<IProcessor>(second));
+    REQUIRE(dut.processors().empty());
+
+    dut.close();
+}
+
+TEST_CASE("DummyAudioMidiDriver - processor add/remove cycles", "[DummyAudioMidiDriver][processor]") {
+    TrackedDummyAudioMidiDriver<uint32_t, uint32_t> dut(
+        "test",
+        DummyAudioMidiDriverMode::Automatic,
+        nullptr,
+        48000,
+        256
+    );
+
+    auto extra = std::make_shared<Tracker>();
+    dut.add_processor(std::static_pointer_cast<IProcessor>(extra));
+    dut.wait_process();
+    auto processed_with_extra = extra->total_samples_processed.load();
+    REQUIRE(processed_with_extra > 0);
+
+    dut.remove_processor(std::static_pointer_cast<IProcessor>(extra));
+    auto processed_before = extra->total_samples_processed.load();
+    for (int i = 0; i < 5; i++) { dut.wait_process(); }
+    auto processed_after = extra->total_samples_processed.load();
+    REQUIRE(processed_after == processed_before);
+
+    // Re-add/remove cycles should remain stable.
+    for (int i = 0; i < 20; i++) {
+        auto t = std::make_shared<Tracker>();
+        dut.add_processor(std::static_pointer_cast<IProcessor>(t));
+        dut.wait_process();
+        REQUIRE(t->total_samples_processed.load() > 0);
+        dut.remove_processor(std::static_pointer_cast<IProcessor>(t));
+        auto before = t->total_samples_processed.load();
+        dut.wait_process();
+        REQUIRE(t->total_samples_processed.load() == before);
+    }
+
+    dut.close();
+}
+
 TEST_CASE("DummyAudioMidiDriver - decoupled midi open/close stress", "[DummyAudioMidiDriver][midi][decoupled]") {
     TrackedDummyAudioMidiDriver<uint32_t, uint32_t> dut(
         "test",
@@ -168,12 +248,38 @@ TEST_CASE("DummyAudioMidiDriver - decoupled midi open/close stress", "[DummyAudi
     for (int i = 0; i < n_iters; i++) {
         auto port = dut.open_decoupled_midi_port("decoupled", shoop_port_direction_t::ShoopPortDirection_Output);
         dut.wait_process();
-        port->close();
-        dut.unregister_decoupled_midi_port(port);
-        port->forget_driver();
+        backend_rust::decoupled_request_close(*port);
         dut.wait_process();
     }
 
     dut.close();
     REQUIRE(dut.tracker->total_samples_processed.load() > 0);
 };
+
+TEST_CASE("DummyAudioMidiDriver - decoupled midi registration keepalive until unregister", "[DummyAudioMidiDriver][midi][decoupled]") {
+    TrackedDummyAudioMidiDriver<uint32_t, uint32_t> dut(
+        "test",
+        DummyAudioMidiDriverMode::Automatic,
+        nullptr,
+        48000,
+        256
+    );
+
+    auto weak_port = [&]() {
+        auto port = dut.open_decoupled_midi_port("decoupled", shoop_port_direction_t::ShoopPortDirection_Output);
+        return port->downgrade();
+    }();
+
+    dut.wait_process();
+    REQUIRE(weak_port->valid());
+
+    {
+        auto locked = weak_port->upgrade();
+        REQUIRE(locked->valid());
+        backend_rust::decoupled_request_close(*locked);
+    }
+
+    dut.wait_process();
+    CHECK(!weak_port->valid());
+    dut.close();
+}

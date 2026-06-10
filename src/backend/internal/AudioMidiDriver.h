@@ -3,14 +3,20 @@
 #include <string>
 #include <stdint.h>
 #include <functional>
-#include "RustCommandQueue.h"
 #include "shoop_globals.h"
 #include "types.h"
-#include <unordered_map>
 #include <atomic>
 #include "LoggingEnabled.h"
 #include "RustAudioPort.h"
-#include "shoop_shared_ptr.h"
+#include "BridgeObject.h"
+#include <memory>
+#include <vector>
+#include "backend_rust/src/command_queue_cxx.rs.h"
+#include "AudioMidiDriverBridgeFwd.h"
+
+class IProcessor;
+
+#include "backend_rust/src/decoupled_midi_port_cxx.rs.h"
 #include "backend_rust/src/audio_midi_driver_cxx.rs.h"
 
 enum class ProcessFunctionResult {
@@ -29,93 +35,70 @@ struct ExternalPortDescriptor {
     shoop_port_data_type_t data_type;
 };
 
-class HasAudioProcessingFunction {
-public:
-    HasAudioProcessingFunction() {}
-    virtual ~HasAudioProcessingFunction() {}
-
-    virtual void PROC_process(uint32_t nframes) = 0;
-};
-
 class AudioMidiDriver : public ModuleLoggingEnabled<"Backend.AudioMidiDriver">,
-                        private shoop_enable_shared_from_this<AudioMidiDriver> {
-    // Rust core for atomic state and processor/decoupled port management
-    rust::Box<backend_rust::AudioMidiDriverCore> m_rust_core;
-    std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> m_processors;
-    std::unordered_map<HasAudioProcessingFunction*, uint64_t> m_processor_handles;
-    // Keeps registered decoupled ports alive keyed by Rust handle.
-    std::unordered_map<uint64_t, shoop_shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports;
-    void (*m_maybe_process_callback)() = nullptr;
-
+                        private std::enable_shared_from_this<AudioMidiDriver> {
 protected:
-    rust::Box<backend_rust::CommandQueue> m_command_queue;
+    std::weak_ptr<AudioMidiDriver> weak_driver_from_this() { return weak_from_this(); }
 
-protected:
-    // Derived class should call these
-    void report_xrun();
     void set_dsp_load(float load);
     void set_sample_rate(uint32_t sample_rate);
     void set_buffer_size(uint32_t buffer_size);
-    void set_maybe_client_handle(void* handle);
     void set_client_name(const char* name);
+    void set_maybe_client_handle(void* handle);
     void set_active(bool active);
     void set_last_processed(uint32_t nframes);
-
-    virtual void maybe_update_sample_rate() {};
-    virtual void maybe_update_buffer_size() {};
-    virtual void maybe_update_dsp_load() {};
-
-    void PROC_process(uint32_t nframes);
+    void report_xrun();
 
 public:
-    void add_processor(shoop_shared_ptr<HasAudioProcessingFunction> p);
-    void remove_processor(shoop_shared_ptr<HasAudioProcessingFunction> p);
-    std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> processors() const;
+    void process(uint32_t nframes);
+    void exec_all_commands_for_process_thread();
+    rust::Box<backend_rust::DecoupledMidiPortBridgeStrong> make_decoupled_midi_port(
+        std::shared_ptr<MidiPort> port,
+        std::weak_ptr<AudioMidiDriver> driver,
+        shoop_port_direction_t direction
+    );
+
+    virtual void add_processor(std::shared_ptr<IProcessor> p);
+    virtual void remove_processor(std::shared_ptr<IProcessor> p);
+    virtual std::vector<std::unique_ptr<ProcessorBridgeWeak>> processors() const;
 
     virtual void start(AudioMidiDriverSettingsInterface &settings) = 0;
 
     virtual
-    shoop_shared_ptr<RustAudioPortF32> open_audio_port(
+    std::shared_ptr<RustAudioPortF32> open_audio_port(
         std::string name,
         shoop_port_direction_t direction,
-        shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool
+        std::shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool
     ) = 0;
 
     virtual
-    shoop_shared_ptr<MidiPort> open_midi_port(
+    std::shared_ptr<MidiPort> open_midi_port(
         std::string name,
         shoop_port_direction_t direction
     ) = 0;
 
-    shoop_shared_ptr<shoop_types::_DecoupledMidiPort> open_decoupled_midi_port(
+    virtual rust::Box<backend_rust::DecoupledMidiPortBridgeStrong> open_decoupled_midi_port(
         std::string name,
         shoop_port_direction_t direction
-    );
-
-    void unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port);
+    ) = 0;
 
     virtual void close() = 0;
 
-    uint32_t get_xruns() const;
-    float get_dsp_load();
-    uint32_t get_sample_rate();
-    uint32_t get_buffer_size();
-    void reset_xruns();
-    const char* get_client_name() const;
-    void* get_maybe_client_handle() const;
-    bool get_active() const;
-    uint32_t get_last_processed() const;
+    virtual uint32_t get_xruns() const;
+    virtual float get_dsp_load();
+    virtual uint32_t get_sample_rate();
+    virtual uint32_t get_buffer_size();
+    virtual void reset_xruns();
+    virtual const char* get_client_name() const;
+    virtual void* get_maybe_client_handle() const;
+    virtual bool get_active() const;
+    virtual uint32_t get_last_processed() const;
 
     virtual void wait_process();
 
-    // Trampoline helpers for Rust-owned process loops
-    void trampoline_exec_commands() { rust_command_queue::exec_all(*m_command_queue); }
-    void trampoline_process(uint32_t nframes) { PROC_process(nframes); }
-
-    // Command queue forwarding (for external API usage)
-    void queue_process_thread_command(std::function<void()> fn) { rust_command_queue::queue(*m_command_queue, std::move(fn)); }
-    void exec_process_thread_command(std::function<void()> fn) { rust_command_queue::queue_and_wait(*m_command_queue, std::move(fn)); }
-    backend_rust::CommandQueue &get_command_queue() { return *m_command_queue; }
+    virtual void queue_process_thread_command(std::function<void()> fn);
+    virtual void exec_process_thread_command(std::function<void()> fn);
+    virtual backend_rust::CommandQueue &get_command_queue();
 
     virtual std::vector<ExternalPortDescriptor> find_external_ports(
         const char* maybe_name_regex,
@@ -123,6 +106,12 @@ public:
         shoop_port_data_type_t maybe_data_type_filter
     ) = 0;
 
-    AudioMidiDriver(void (*maybe_process_callback)()=nullptr);
+    AudioMidiDriver(void (*maybe_process_callback)() = nullptr);
     virtual ~AudioMidiDriver() {}
+
+private:
+    rust::Box<backend_rust::AudioMidiDriverCore> m_rust_core;
+    void (*m_maybe_process_callback)() = nullptr;
+    mutable std::string m_client_name_cache;
 };
+

@@ -6,12 +6,13 @@ set(TEST_RUNNER_SOURCES
     unit/test_DummyAudioMidiDriver.cpp
     unit/test_InternalAudioPort.cpp
     unit/test_InternalMidiPort.cpp
-    unit/test_BufferQueue.cpp
     unit/test_MidiChannel.cpp
     unit/test_MidiStorage.cpp
     unit/test_MidiRingbuffer.cpp
     unit/test_RustMidiStorage.cpp
     unit/test_MidiStateDiffTracker.cpp
+    unit/test_BridgeObject.cpp
+    unit/test_RustBridgeObject.cpp
     integration/test_libshoopdaloop_if.cpp
     integration/test_synced_BasicLoops.cpp
     integration/test_chain_single_direct_loop.cpp
@@ -33,6 +34,14 @@ target_link_libraries(test_runner PRIVATE
                       Threads::Threads
                       Boost::headers
                       zita-resampler::zita-resampler)
+if (NOT SHOOP_USE_CORROSION_BACKEND_RUST)
+    if (TARGET backend_rust)
+        target_link_libraries(test_runner PRIVATE backend_rust)
+    endif()
+    if (TARGET backend_rust_cxx)
+        target_link_libraries(test_runner PRIVATE backend_rust_cxx)
+    endif()
+endif()
 target_include_directories(test_runner
                         PRIVATE
                         ${JACK_INCLUDE_DIRS}

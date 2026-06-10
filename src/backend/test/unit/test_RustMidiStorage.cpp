@@ -1,6 +1,6 @@
 #include "RustMidiStorage.h"
 #include "MidiStorageCursor.h"
-#include "shoop_shared_ptr.h"
+#include <memory>
 
 #include <iostream>
 
@@ -32,7 +32,7 @@ inline MidiStorageElem make_msg(uint32_t time, std::initializer_list<uint8_t> da
 }
 
 TEST_CASE("RustMidiStorage - Basic append and query", "[RustMidiStorage]") {
-    auto storage = shoop_make_shared<RustMidiStorage>(64);
+    auto storage = std::make_shared<RustMidiStorage>(64);
     
     // Test empty state
     CHECK(storage->empty() == true);
@@ -60,7 +60,7 @@ TEST_CASE("RustMidiStorage - Basic append and query", "[RustMidiStorage]") {
 }
 
 TEST_CASE("RustMidiStorage - Multiple appends", "[RustMidiStorage]") {
-    auto storage = shoop_make_shared<RustMidiStorage>(128);
+    auto storage = std::make_shared<RustMidiStorage>(128);
     
     // Append multiple messages
     auto msgs = {
@@ -88,7 +88,7 @@ TEST_CASE("RustMidiStorage - Multiple appends", "[RustMidiStorage]") {
 }
 
 TEST_CASE("RustMidiStorage - Clear", "[RustMidiStorage]") {
-    auto storage = shoop_make_shared<RustMidiStorage>(64);
+    auto storage = std::make_shared<RustMidiStorage>(64);
     
     // Add some messages
     auto msg = make_msg(100, {0x90, 0x3C, 0x64});
@@ -102,7 +102,7 @@ TEST_CASE("RustMidiStorage - Clear", "[RustMidiStorage]") {
 }
 
 TEST_CASE("RustMidiStorage - Copy to RustMidiStorage", "[RustMidiStorage]") {
-    auto source = shoop_make_shared<RustMidiStorage>(128);
+    auto source = std::make_shared<RustMidiStorage>(128);
     
     // Add messages to source
     auto msgs = {
@@ -117,7 +117,7 @@ TEST_CASE("RustMidiStorage - Copy to RustMidiStorage", "[RustMidiStorage]") {
     CHECK(source->n_events() == 3);
     
     // Copy to target RustMidiStorage
-    auto target = shoop_make_shared<RustMidiStorage>(128);
+    auto target = std::make_shared<RustMidiStorage>(128);
     source->copy(*target);
     
     CHECK(target->n_events() == 3);
@@ -132,7 +132,7 @@ TEST_CASE("RustMidiStorage - Copy to RustMidiStorage", "[RustMidiStorage]") {
 }
 
 TEST_CASE("RustMidiStorage - Copy from RustMidiStorage", "[RustMidiStorage]") {
-    auto source = shoop_make_shared<RustMidiStorage>(128);
+    auto source = std::make_shared<RustMidiStorage>(128);
     
     // Add messages to source
     auto msgs = {
@@ -147,7 +147,7 @@ TEST_CASE("RustMidiStorage - Copy from RustMidiStorage", "[RustMidiStorage]") {
     CHECK(source->n_events() == 3);
     
     // Copy to target RustMidiStorage
-    auto target = shoop_make_shared<RustMidiStorage>(128);
+    auto target = std::make_shared<RustMidiStorage>(128);
     target->copy_from(*source);
     
     CHECK(target->n_events() == 3);
@@ -162,7 +162,7 @@ TEST_CASE("RustMidiStorage - Copy from RustMidiStorage", "[RustMidiStorage]") {
 }
 
 TEST_CASE("RustMidiStorage - Cursor operations", "[RustMidiStorage]") {
-    auto storage = shoop_make_shared<RustMidiStorage>(128);
+    auto storage = std::make_shared<RustMidiStorage>(128);
     
     // Add messages
     auto msgs = {
@@ -203,7 +203,7 @@ TEST_CASE("RustMidiStorage - Cursor operations", "[RustMidiStorage]") {
 }
 
 TEST_CASE("RustMidiStorage - Truncate", "[RustMidiStorage]") {
-    auto storage = shoop_make_shared<RustMidiStorage>(128);
+    auto storage = std::make_shared<RustMidiStorage>(128);
     
     // Add messages with times 0, 10, 20, 30, 40
     for (int i = 0; i < 5; i++) {
@@ -234,7 +234,7 @@ TEST_CASE("RustMidiStorage - Truncate", "[RustMidiStorage]") {
 }
 
 TEST_CASE("RustMidiStorage - Out of order rejection", "[RustMidiStorage]") {
-    auto storage = shoop_make_shared<RustMidiStorage>(64);
+    auto storage = std::make_shared<RustMidiStorage>(64);
     
     // Add first message
     auto msg1 = make_msg(100, {0x90, 0x3C, 0x64});
@@ -250,7 +250,7 @@ TEST_CASE("RustMidiStorage - Out of order rejection", "[RustMidiStorage]") {
 }
 
 TEST_CASE("RustMidiStorage - Capacity queries", "[RustMidiStorage]") {
-    auto storage = shoop_make_shared<RustMidiStorage>(256);
+    auto storage = std::make_shared<RustMidiStorage>(256);
     
     // Check capacity
     uint32_t cap = storage->capacity_elems();

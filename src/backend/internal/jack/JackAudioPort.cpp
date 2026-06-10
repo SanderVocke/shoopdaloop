@@ -3,7 +3,6 @@
 #include <string>
 #include "JackPort.h"
 #include "PortInterface.h"
-#include <jack_wrappers.h>
 #include <stdexcept>
 #include <cstring>
 #include <iostream>
@@ -13,19 +12,18 @@
 #undef max
 #endif
 
-template<typename API>
-GenericJackAudioPort<API>::GenericJackAudioPort(std::string name, shoop_port_direction_t direction,
-                             jack_client_t *client, shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker,
-                             shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool)
-    : RustAudioPortF32(buffer_pool, 32), 
-      GenericJackPort<API>(name, direction, PortDataType::Audio, client, all_ports_tracker) {}
+JackAudioPort::JackAudioPort(std::string name, shoop_port_direction_t direction,
+                             uintptr_t client, std::shared_ptr<JackAllPorts> all_ports_tracker,
+                             rust::Box<backend_rust::JackApiBridgeStrong> api,
+                             std::shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool)
+    : RustAudioPortF32(buffer_pool, 32),
+      JackPort(name, direction, PortDataType::Audio, client, std::move(all_ports_tracker), std::move(api)) {}
 
-template<typename API>
-void GenericJackAudioPort<API>::PROC_prepare(uint32_t nframes) {
-    GenericJackPort<API>::PROC_prepare(nframes);
+void JackAudioPort::PROC_prepare(uint32_t nframes) {
+    JackPort::PROC_prepare(nframes);
     auto buf = m_buffer.load();
     if (!buf) {
-        // If JACK fails to give us a buffer, provide an internall fallback.
+        // If JACK fails to give us a buffer, provide an internal fallback.
         m_fallback_buffer.resize(std::max(nframes, (uint32_t) m_fallback_buffer.size()));
         m_buffer = (void*)m_fallback_buffer.data();
     }
@@ -35,8 +33,7 @@ void GenericJackAudioPort<API>::PROC_prepare(uint32_t nframes) {
     }
 }
 
-template<typename API>
-float *GenericJackAudioPort<API>::PROC_get_buffer(uint32_t n_frames) {
+float *JackAudioPort::PROC_get_buffer(uint32_t n_frames) {
     auto rval = (float*) m_buffer.load();
     if (!rval) {
         if(m_fallback_buffer.size() < std::max(n_frames, (uint32_t)1)) {
@@ -47,35 +44,29 @@ float *GenericJackAudioPort<API>::PROC_get_buffer(uint32_t n_frames) {
     return rval;
 }
 
-template<typename API>
-void GenericJackAudioPort<API>::PROC_process(uint32_t nframes) {
+void JackAudioPort::PROC_process(uint32_t nframes) {
     // Get the buffer we're supposed to process
     auto buf = (float*) m_buffer.load();
     if (!buf) {
         buf = m_fallback_buffer.data();
     }
-    
+
     if (!buf || nframes == 0) {
         return;
     }
-    
+
     if (!m_rust.has_value()) {
         return;
     }
-    
+
     // Call Rust process with the correct buffer
     backend_rust::audio_port_process(**m_rust, buf, nframes);
 }
 
-template<typename API>
-unsigned GenericJackAudioPort<API>::input_connectability() const {
+unsigned JackAudioPort::input_connectability() const {
     return (m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
 }
 
-template<typename API>
-unsigned GenericJackAudioPort<API>::output_connectability() const {
+unsigned JackAudioPort::output_connectability() const {
     return (m_direction == ShoopPortDirection_Output) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
 }
-
-template class GenericJackAudioPort<JackApi>;
-template class GenericJackAudioPort<JackTestApi>;

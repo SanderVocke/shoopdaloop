@@ -8,8 +8,8 @@
 using namespace shoop_types;
 using namespace shoop_constants;
 
-GraphPort::GraphPort (shoop_shared_ptr<BackendSession> const& backend) :
-    backend(shoop_weak_ptr<BackendSession>(backend)),
+GraphPort::GraphPort (std::shared_ptr<BackendSession> const& backend) :
+    backend(std::weak_ptr<BackendSession>(backend)),
     m_passthrough_enabled(true) {}
 
 BackendSession &GraphPort::get_backend() {
@@ -20,14 +20,14 @@ BackendSession &GraphPort::get_backend() {
     return *b;
 }
 
-void GraphPort::connect_internal(const shoop_shared_ptr<GraphPort> &other) {
+void GraphPort::connect_internal(const std::shared_ptr<GraphPort> &other) {
     for (auto &_other : mp_internal_port_connections) {
         if(auto __other = _other.lock()) {
             if (__other.get() == other.get()) { return; } // already connected
         }
     }
     log<log_level_debug>("connect internally: {} -> {}", get_port().name(), other->get_port().name());
-    mp_internal_port_connections.push_back(shoop_static_pointer_cast<GraphPort>(other));
+    mp_internal_port_connections.push_back(std::static_pointer_cast<GraphPort>(other));
     get_backend().set_graph_node_changes_pending();
 }
 

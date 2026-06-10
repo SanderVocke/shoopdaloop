@@ -80,7 +80,7 @@ class CarlaLV2ProcessingChain : public ProcessingChainInterface<TimeType, SizeTy
 public:
     using SharedInternalAudioPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedInternalAudioPort;
     using MidiOutputPort = InternalLV2MidiOutputPort;
-    using SharedMidiOutputPort = shoop_shared_ptr<MidiOutputPort>;
+    using SharedMidiOutputPort = std::shared_ptr<MidiOutputPort>;
     using SharedMidiPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedMidiPort;
 
 private:
@@ -107,7 +107,7 @@ private:
     std::atomic<bool> m_active = false;
     std::atomic<bool> m_state_restore_active = false;
     std::atomic<bool> m_busy_making_visible = false;
-    shoop_shared_ptr<profiling::ProfilingItem> m_maybe_profiling_item = nullptr;
+    std::shared_ptr<profiling::ProfilingItem> m_maybe_profiling_item = nullptr;
 
     const LV2UI_Descriptor * m_ui_descriptor = nullptr;
 
@@ -144,7 +144,7 @@ public:
         uint32_t sample_rate,
         uint32_t buffer_size,
         std::string human_name,
-        shoop_shared_ptr<shoop_types::AudioBufferPool> maybe_buffer_pool
+        std::shared_ptr<shoop_types::AudioBufferPool> maybe_buffer_pool
     );
 
     void instantiate(uint32_t sample_rate, uint32_t buffer_size);

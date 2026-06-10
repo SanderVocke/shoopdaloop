@@ -81,12 +81,12 @@ get_names(std::vector<std::set<GraphNode *>> const &schedule) {
 }
 
 TEST_CASE("Graph Construction - Two Ports", "[GraphConstruct]") {
-    auto backend = shoop_make_shared<BackendSession>();
-    auto _p1 = shoop_make_shared<TestPort>("p1");
-    auto _p2 = shoop_make_shared<TestPort>("p2");
-    auto port1 = shoop_make_shared<GraphAudioPort>(shoop_static_pointer_cast<_AudioPort>(_p1), backend);
-    auto port2 = shoop_make_shared<GraphAudioPort>(shoop_static_pointer_cast<_AudioPort>(_p2), backend);
-    port1->connect_internal(shoop_static_pointer_cast<GraphPort>(port2));
+    auto backend = std::make_shared<BackendSession>();
+    auto _p1 = std::make_shared<TestPort>("p1");
+    auto _p2 = std::make_shared<TestPort>("p2");
+    auto port1 = std::make_shared<GraphAudioPort>(std::static_pointer_cast<_AudioPort>(_p1), backend);
+    auto port2 = std::make_shared<GraphAudioPort>(std::static_pointer_cast<_AudioPort>(_p2), backend);
+    port1->connect_internal(std::static_pointer_cast<GraphPort>(port2));
 
     std::set<GraphNode *> nodes;
     insert_all(*port1, nodes);
@@ -104,16 +104,16 @@ TEST_CASE("Graph Construction - Two Ports", "[GraphConstruct]") {
 };
 
 TEST_CASE("Graph Construction - Direct Loop", "[GraphConstruct]") {
-    auto backend = shoop_make_shared<BackendSession>();
-    auto _p1 = shoop_make_shared<TestPort>("p1");
-    auto _p2 = shoop_make_shared<TestPort>("p2");
-    auto port1 = shoop_make_shared<GraphAudioPort>(shoop_static_pointer_cast<_AudioPort>(_p1), backend);
-    auto port2 = shoop_make_shared<GraphAudioPort>(shoop_static_pointer_cast<_AudioPort>(_p2), backend);
-    port1->connect_internal(shoop_static_pointer_cast<GraphPort>(port2));
+    auto backend = std::make_shared<BackendSession>();
+    auto _p1 = std::make_shared<TestPort>("p1");
+    auto _p2 = std::make_shared<TestPort>("p2");
+    auto port1 = std::make_shared<GraphAudioPort>(std::static_pointer_cast<_AudioPort>(_p1), backend);
+    auto port2 = std::make_shared<GraphAudioPort>(std::static_pointer_cast<_AudioPort>(_p2), backend);
+    port1->connect_internal(std::static_pointer_cast<GraphPort>(port2));
     auto loop = backend->create_loop();
-    auto chan = shoop_make_shared<GraphLoopChannel>(nullptr, loop, backend);
-    chan->connect_input_port(shoop_static_pointer_cast<GraphPort>(port1), false);
-    chan->connect_output_port(shoop_static_pointer_cast<GraphPort>(port2), false);
+    auto chan = std::make_shared<GraphLoopChannel>(nullptr, loop, backend);
+    chan->connect_input_port(std::static_pointer_cast<GraphPort>(port1), false);
+    chan->connect_output_port(std::static_pointer_cast<GraphPort>(port2), false);
 
     std::set<GraphNode *> nodes;
     insert_all(*port1, nodes);
@@ -136,23 +136,23 @@ TEST_CASE("Graph Construction - Direct Loop", "[GraphConstruct]") {
 };
 
 TEST_CASE("Graph Construction - Two Direct Loops", "[GraphConstruct]") {
-    auto backend = shoop_make_shared<BackendSession>();
-    auto _p1 = shoop_make_shared<TestPort>("p1");
-    auto _p2 = shoop_make_shared<TestPort>("p2");
-    auto port1 = shoop_make_shared<GraphAudioPort>(shoop_static_pointer_cast<_AudioPort>(_p1), backend);
-    auto port2 = shoop_make_shared<GraphAudioPort>(shoop_static_pointer_cast<_AudioPort>(_p2), backend);
-    port1->connect_internal(shoop_static_pointer_cast<GraphPort>(port2));
+    auto backend = std::make_shared<BackendSession>();
+    auto _p1 = std::make_shared<TestPort>("p1");
+    auto _p2 = std::make_shared<TestPort>("p2");
+    auto port1 = std::make_shared<GraphAudioPort>(std::static_pointer_cast<_AudioPort>(_p1), backend);
+    auto port2 = std::make_shared<GraphAudioPort>(std::static_pointer_cast<_AudioPort>(_p2), backend);
+    port1->connect_internal(std::static_pointer_cast<GraphPort>(port2));
     auto loop1 = backend->create_loop();
-    auto chan1 = shoop_make_shared<GraphLoopChannel>(nullptr, loop1, backend);
+    auto chan1 = std::make_shared<GraphLoopChannel>(nullptr, loop1, backend);
     auto loop2 = backend->create_loop();
-    auto chan2 = shoop_make_shared<GraphLoopChannel>(nullptr, loop2, backend);
+    auto chan2 = std::make_shared<GraphLoopChannel>(nullptr, loop2, backend);
     WeakGraphNodeSet loops { loop1->graph_node(), loop2->graph_node() };
     loop1->set_get_co_process_nodes_cb([&]() { return loops; });
     loop2->set_get_co_process_nodes_cb([&]() { return loops; });
-    chan1->connect_input_port(shoop_static_pointer_cast<GraphPort>(port1), false);
-    chan1->connect_output_port(shoop_static_pointer_cast<GraphPort>(port2), false);
-    chan2->connect_input_port(shoop_static_pointer_cast<GraphPort>(port1), false);
-    chan2->connect_output_port(shoop_static_pointer_cast<GraphPort>(port2), false);
+    chan1->connect_input_port(std::static_pointer_cast<GraphPort>(port1), false);
+    chan1->connect_output_port(std::static_pointer_cast<GraphPort>(port2), false);
+    chan2->connect_input_port(std::static_pointer_cast<GraphPort>(port1), false);
+    chan2->connect_output_port(std::static_pointer_cast<GraphPort>(port2), false);
 
     std::set<GraphNode *> nodes;
     insert_all(*port1, nodes);

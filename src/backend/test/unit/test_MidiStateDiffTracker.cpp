@@ -6,11 +6,11 @@
 
 TEST_CASE("MidiStateDiffTracker - channel pressure diff uses correct status byte", "[MidiStateDiffTracker][channel_pressure]") {
     // Create two state trackers that track controls (which includes channel pressure)
-    auto tracker_a = shoop_make_shared<MidiStateTracker>(false, true, false);
-    auto tracker_b = shoop_make_shared<MidiStateTracker>(false, true, false);
+    auto tracker_a = std::make_shared<MidiStateTracker>(false, true, false);
+    auto tracker_b = std::make_shared<MidiStateTracker>(false, true, false);
 
     // Create the diff tracker using default constructor
-    auto diff_tracker = shoop_make_shared<MidiStateDiffTracker>();
+    auto diff_tracker = std::make_shared<MidiStateDiffTracker>();
     // Wire them up with reset
     diff_tracker->reset(tracker_a, tracker_b, StateDiffTrackerAction::None);
 
@@ -41,10 +41,10 @@ TEST_CASE("MidiStateDiffTracker - channel pressure diff uses correct status byte
 }
 
 TEST_CASE("MidiStateDiffTracker - channel pressure diff is independent from pitch wheel", "[MidiStateDiffTracker][channel_pressure][pitch_wheel]") {
-    auto tracker_a = shoop_make_shared<MidiStateTracker>(false, true, false);
-    auto tracker_b = shoop_make_shared<MidiStateTracker>(false, true, false);
+    auto tracker_a = std::make_shared<MidiStateTracker>(false, true, false);
+    auto tracker_b = std::make_shared<MidiStateTracker>(false, true, false);
 
-    auto diff_tracker = shoop_make_shared<MidiStateDiffTracker>();
+    auto diff_tracker = std::make_shared<MidiStateDiffTracker>();
     diff_tracker->reset(tracker_a, tracker_b, StateDiffTrackerAction::None);
 
     // Set same initial state for both channel pressure and pitch wheel
@@ -75,10 +75,10 @@ TEST_CASE("MidiStateDiffTracker - channel pressure diff is independent from pitc
 }
 
 TEST_CASE("MidiStateDiffTracker - check_channel_pressure uses correct byte", "[MidiStateDiffTracker][channel_pressure]") {
-    auto tracker_a = shoop_make_shared<MidiStateTracker>(false, true, false);
-    auto tracker_b = shoop_make_shared<MidiStateTracker>(false, true, false);
+    auto tracker_a = std::make_shared<MidiStateTracker>(false, true, false);
+    auto tracker_b = std::make_shared<MidiStateTracker>(false, true, false);
 
-    auto diff_tracker = shoop_make_shared<MidiStateDiffTracker>();
+    auto diff_tracker = std::make_shared<MidiStateDiffTracker>();
     diff_tracker->reset(tracker_a, tracker_b, StateDiffTrackerAction::None);
 
     // Set different channel pressure values directly via process_msg

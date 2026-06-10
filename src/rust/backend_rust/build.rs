@@ -18,7 +18,10 @@ fn print_cxxbridge_sources_status(out_dir: &Path) {
         match fs::read_dir(&cxx_src_dir) {
             Ok(entries) => {
                 for entry in entries.flatten() {
-                    println!("cargo:warning=cxxbridge source file: {}", entry.path().display());
+                    println!(
+                        "cargo:warning=cxxbridge source file: {}",
+                        entry.path().display()
+                    );
                 }
             }
             Err(e) => {
@@ -75,7 +78,11 @@ fn main() {
     let out_dir = std::env::var_os("OUT_DIR").unwrap();
     let out_dir = std::path::Path::new(&out_dir);
 
-    cxx_build::bridges([
+    let mut build = cxx_build::bridges([
+        "src/i_processor_cxx.rs",
+        "src/processor_cxx.rs",
+        "src/cpp_midi_port_cxx.rs",
+        "src/audio_midi_driver_bridge_cxx.rs",
         "src/audio_midi_driver_cxx.rs",
         "src/backend_api_cxx.rs",
         "src/command_queue_cxx.rs",
@@ -91,16 +98,39 @@ fn main() {
         "src/dummy_audio_port_cxx.rs",
         "src/internal_audio_port_cxx.rs",
         "src/internal_midi_port_cxx.rs",
+        "src/jack_api_cxx.rs",
         "src/midi_buffering_input_port_cxx.rs",
         "src/audio_port_cxx.rs",
         "src/midi_state_tracker_cxx.rs",
         "src/refilling_pool_cxx.rs",
         "src/dummy_audio_midi_driver_cxx.rs",
-    ])
-    .file(format!("{}/internal/CommandToken.cpp", backend_include))
-    .include(&backend_include)
-    .std("c++20")
-    .compile("backend_rust_cxx");
+        "src/rust_bridge_object_test_cxx.rs",
+    ]);
+
+    build
+        .file(format!("{}/internal/CommandToken.cpp", backend_include))
+        .file("cxx/bridge_object_fallback.cpp")
+        .file("cxx/jack_api_trampolines.cpp")
+        .include(&backend_include)
+        .include(format!("{}/internal", backend_include))
+        .include(format!("{}/internal/jack", backend_include));
+
+    println!("cargo:rerun-if-env-changed=SHOOP_BACKEND_RUST_CXX_INCLUDE_DIRS");
+    if let Ok(extra_includes) = std::env::var("SHOOP_BACKEND_RUST_CXX_INCLUDE_DIRS") {
+        for include in extra_includes.split('|').filter(|s| !s.is_empty()) {
+            println!(
+                "cargo:warning=Adding C++ include dir from CMake: {}",
+                include
+            );
+            build.include(include);
+        }
+    }
+
+    if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+        build.flag("/utf-8");
+    }
+
+    build.std("c++20").compile("backend_rust_cxx");
 
     print_cxxbridge_sources_status(out_dir);
 
@@ -140,10 +170,18 @@ fn main() {
         }
     }
 
+    println!("cargo:rerun-if-changed=src/i_processor_cxx.rs");
+    println!("cargo:rerun-if-changed=src/processor_cxx.rs");
+    println!("cargo:rerun-if-changed=src/cpp_midi_port_cxx.rs");
+    println!("cargo:rerun-if-changed=src/audio_midi_driver_bridge_cxx.rs");
     println!("cargo:rerun-if-changed=src/audio_midi_driver_cxx.rs");
     println!("cargo:rerun-if-changed=src/backend_api_cxx.rs");
 
     println!("cargo:rerun-if-changed=src/command_queue_cxx.rs");
+    println!(
+        "cargo:rerun-if-changed={}/internal/MidiPortCxxBridge.h",
+        backend_include
+    );
     println!(
         "cargo:rerun-if-changed={}/internal/CommandToken.cpp",
         backend_include
@@ -161,8 +199,13 @@ fn main() {
     println!("cargo:rerun-if-changed=src/decoupled_midi_port_cxx.rs");
     println!("cargo:rerun-if-changed=src/internal_audio_port_cxx.rs");
     println!("cargo:rerun-if-changed=src/internal_midi_port_cxx.rs");
+    println!("cargo:rerun-if-changed=src/jack_api_cxx.rs");
     println!("cargo:rerun-if-changed=src/midi_buffering_input_port_cxx.rs");
     println!("cargo:rerun-if-changed=src/audio_port_cxx.rs");
     println!("cargo:rerun-if-changed=src/refilling_pool_cxx.rs");
     println!("cargo:rerun-if-changed=src/dummy_audio_midi_driver_cxx.rs");
+    println!("cargo:rerun-if-changed=src/rust_bridge_object.rs");
+    println!("cargo:rerun-if-changed=src/rust_bridge_object_test_cxx.rs");
+    println!("cargo:rerun-if-changed={}/internal/jack/JackApiCxxTrampolines.h", backend_include);
+    println!("cargo:rerun-if-changed=cxx/jack_api_trampolines.cpp");
 }

@@ -7,65 +7,61 @@
 #include <thread>
 #include <chrono>
 
-template<typename API>
-const char* GenericJackPort<API>::name() const { return m_name.c_str(); }
+const char* JackPort::name() const { return m_name.c_str(); }
 
-
-template<typename API>
-void GenericJackPort<API>::close() {
+void JackPort::close() {
     if (m_port) {
         log<log_level_debug>("Closing JACK port: {}", m_name);
-        API::port_unregister(m_client, m_port);
-        m_port = nullptr;
+        backend_rust::jack_api_port_unregister(*m_api, m_client, m_port);
+        m_port = 0;
     }
 }
 
-template<typename API>
-void *GenericJackPort<API>::maybe_driver_handle() const { return (void*)m_port; }
+void *JackPort::maybe_driver_handle() const { return reinterpret_cast<void*>(m_port); }
 
-template<typename API>
-GenericJackPort<API>::~GenericJackPort() { close(); }
+uintptr_t JackPort::get_jack_port() const { return m_port; }
 
-template<typename API>
-GenericJackPort<API>::GenericJackPort(std::string name,
+void *JackPort::get_buffer() const { return m_buffer.load(); }
+
+JackPort::~JackPort() { close(); }
+
+JackPort::JackPort(std::string name,
                    shoop_port_direction_t direction,
                    PortDataType type,
-                   jack_client_t *client,
-                   shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker)
-    : m_client(client), m_type(type), m_direction(direction), m_all_ports_tracker(all_ports_tracker) {
+                   uintptr_t client,
+                   std::shared_ptr<JackAllPorts> all_ports_tracker,
+                   rust::Box<backend_rust::JackApiBridgeStrong> api)
+    : m_api(std::move(api)), m_client(client), m_type(type), m_direction(direction), m_all_ports_tracker(std::move(all_ports_tracker)) {
 
     log<log_level_debug>("Opening JACK port: {}", name);
 
-    jack_port_t* p = nullptr;
-    
-    // Try a few times, we may have race conditions with previously opened and now closing ports
+    uintptr_t p = 0;
+
     for (size_t tries = 0; tries < 10; tries++) {
-        p = API::port_register(
+        p = backend_rust::jack_api_port_register(
+            *m_api,
             m_client,
-            name.c_str(),
-            m_type == PortDataType::Audio ? JACK_DEFAULT_AUDIO_TYPE : JACK_DEFAULT_MIDI_TYPE,
-            direction == shoop_port_direction_t::ShoopPortDirection_Input ? JackPortIsInput : JackPortIsOutput,
-            0);
-        if (p != nullptr) { break; }
+            name,
+            m_type == PortDataType::Audio ? 0u : 1u,
+            direction == shoop_port_direction_t::ShoopPortDirection_Input ? 0u : 1u);
+        if (p != 0) { break; }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
 
-    if (p == nullptr) {
+    if (p == 0) {
         throw std::runtime_error("Unable to open port: " + name);
     }
 
     m_port = p;
-    m_name = std::string(API::port_name(m_port));
+    m_name = std::string(backend_rust::jack_api_port_name(*m_api, m_port));
 }
 
-template<typename API>
-PortExternalConnectionStatus GenericJackPort<API>::get_external_connection_status() const {
-    if (!m_port || API::get_client_name(m_client) == nullptr) {
+PortExternalConnectionStatus JackPort::get_external_connection_status() const {
+    if (!m_port || backend_rust::jack_api_get_client_name(*m_api, m_client).empty()) {
         return PortExternalConnectionStatus {};
     }
 
-    // Get list of ports we can connect to
     auto entries = m_all_ports_tracker->get();
     decltype(entries) eligible_ports;
     std::copy_if (entries.begin(), entries.end(), std::back_inserter(eligible_ports),
@@ -75,52 +71,45 @@ PortExternalConnectionStatus GenericJackPort<API>::get_external_connection_statu
         }
     );
 
-    // Create entries
     PortExternalConnectionStatus rval;
     for (auto const& n : eligible_ports) {
         rval[n.name] = false;
     }
 
-    // Get list of port names we are connected to and update/create entries
-    const char ** connected_ports = API::port_get_all_connections(m_client, m_port);
-    for(auto n = connected_ports; n != nullptr && *n != nullptr; n++) {
-        std::string _n(*n);
-        rval[_n] = true;
+    auto connected_ports = backend_rust::jack_api_port_get_all_connections(*m_api, m_client, m_port);
+    for (auto const &n : connected_ports) {
+        rval[std::string(n)] = true;
     }
 
     return rval;
 }
 
-template<typename API>
-void GenericJackPort<API>::connect_external(std::string name) {
-    if (!m_port || API::get_client_name(m_client) == nullptr) {
+void JackPort::connect_external(std::string name) {
+    if (!m_port || backend_rust::jack_api_get_client_name(*m_api, m_client).empty()) {
         return;
     }
 
+    auto port_name = std::string(backend_rust::jack_api_port_name(*m_api, m_port));
     if (m_direction == shoop_port_direction_t::ShoopPortDirection_Input) {
-        API::connect(m_client, name.c_str(), API::port_name(m_port));
+        backend_rust::jack_api_connect(*m_api, m_client, name, port_name);
     } else {
-        API::connect(m_client, API::port_name(m_port), name.c_str());
+        backend_rust::jack_api_connect(*m_api, m_client, port_name, name);
     }
 }
 
-template<typename API>
-void GenericJackPort<API>::disconnect_external(std::string name) {
-    if (!m_port || API::get_client_name(m_client) == nullptr) {
+void JackPort::disconnect_external(std::string name) {
+    if (!m_port || backend_rust::jack_api_get_client_name(*m_api, m_client).empty()) {
         return;
     }
 
+    auto port_name = std::string(backend_rust::jack_api_port_name(*m_api, m_port));
     if (m_direction == shoop_port_direction_t::ShoopPortDirection_Input) {
-        API::disconnect(m_client, name.c_str(), API::port_name(m_port));
+        backend_rust::jack_api_disconnect(*m_api, m_client, name, port_name);
     } else {
-        API::disconnect(m_client, API::port_name(m_port), name.c_str());
+        backend_rust::jack_api_disconnect(*m_api, m_client, port_name, name);
     }
 }
 
-template<typename API>
-void GenericJackPort<API>::PROC_prepare(uint32_t nframes) {
-    m_buffer = API::port_get_buffer(m_port, nframes);
+void JackPort::PROC_prepare(uint32_t nframes) {
+    m_buffer = reinterpret_cast<void*>(backend_rust::jack_api_port_get_buffer(*m_api, m_port, nframes));
 }
-
-template class GenericJackPort<JackApi>;
-template class GenericJackPort<JackTestApi>;

@@ -1,9 +1,10 @@
 #pragma once
-#include "PortInterface.h"
-#include "JackApi.h"
-#include "JackTestApi.h"
-#include <vector>
+#include "../PortInterface.h"
+#include "backend_rust/src/jack_api_cxx.rs.h"
+#include <cstdint>
+#include <memory>
 #include <mutex>
+#include <vector>
 
 struct JackAllPortsEntry {
     std::string name = "";
@@ -12,20 +13,14 @@ struct JackAllPortsEntry {
     std::vector<std::string> connections;
 };
 
-template<typename API>
-class GenericJackAllPorts {
+class JackAllPorts {
+    rust::Box<backend_rust::JackApiBridgeStrong> m_api;
     std::vector<JackAllPortsEntry> m_cache;
     std::mutex m_cache_mutex;
 
 public:
-    GenericJackAllPorts();
+    explicit JackAllPorts(rust::Box<backend_rust::JackApiBridgeStrong> api);
 
-    void update(jack_client_t *client);
+    void update(uintptr_t client);
     std::vector<JackAllPortsEntry> get();
 };
-
-using JackAllPorts = GenericJackAllPorts<JackApi>;
-using JackTestAllPorts = GenericJackAllPorts<JackTestApi>;
-
-extern template class GenericJackAllPorts<JackApi>;
-extern template class GenericJackAllPorts<JackTestApi>;

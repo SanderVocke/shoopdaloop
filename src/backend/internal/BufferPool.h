@@ -2,11 +2,11 @@
 #include <type_traits>
 #include "backend_rust/src/refilling_pool_cxx.rs.h"
 #include "AudioBuffer.h"
-#include "shoop_shared_ptr.h"
+#include <memory>
 #include <optional>
 
 template<typename Elem>
-class BufferPool : public shoop_enable_shared_from_this<BufferPool<Elem>> {
+class BufferPool : public std::enable_shared_from_this<BufferPool<Elem>> {
     ::rust::Box<refilling_pool::BufferPool> pool;
     size_t m_elems_per_buffer;
     
@@ -23,9 +23,9 @@ public:
         m_elems_per_buffer(elems_per_buffer)
     {}
 
-    shoop_shared_ptr<AudioBuffer<Elem>> get_shared_buffer() {
+    std::shared_ptr<AudioBuffer<Elem>> get_shared_buffer() {
         auto handle = pool->get_buffer();
-        return shoop_make_shared<AudioBuffer<Elem>>(handle, this->shared_from_this());
+        return std::make_shared<AudioBuffer<Elem>>(handle, this->shared_from_this());
     }
 
     AudioBuffer<Elem> get_buffer() {

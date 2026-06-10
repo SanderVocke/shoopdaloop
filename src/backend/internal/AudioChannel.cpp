@@ -37,10 +37,10 @@ inline void AudioChannel<SampleT>::trace_print_data(std::string msg, SampleT *da
 }
 
 template <typename SampleT>
-AudioChannel<SampleT>::Buffers::Buffers(shoop_shared_ptr<UsedBufferPool> pool,
+AudioChannel<SampleT>::Buffers::Buffers(std::shared_ptr<UsedBufferPool> pool,
                                         uint32_t initial_max_buffers)
     : pool(pool), buffers_size(pool->elems_per_buffer()) {
-    buffers = shoop_make_shared<std::vector<Buffer>>();
+    buffers = std::make_shared<std::vector<Buffer>>();
     buffers->reserve(initial_max_buffers);
     reset();
 }
@@ -50,7 +50,7 @@ template <typename SampleT> void AudioChannel<SampleT>::Buffers::reset() {
     buffers->push_back(get_new_buffer());
 }
 
-template <typename SampleT> void AudioChannel<SampleT>::Buffers::set_contents(shoop_shared_ptr<std::vector<Buffer>> contents) {
+template <typename SampleT> void AudioChannel<SampleT>::Buffers::set_contents(std::shared_ptr<std::vector<Buffer>> contents) {
     buffers = contents;
 }
 
@@ -68,7 +68,7 @@ template <typename SampleT> std::vector<SampleT> AudioChannel<SampleT>::Buffers:
 }
 
 template <typename SampleT> AudioChannel<SampleT>::Buffers::Buffers() {
-    buffers = shoop_make_shared<std::vector<Buffer>>();
+    buffers = std::make_shared<std::vector<Buffer>>();
 }
 
 template <typename SampleT>
@@ -100,7 +100,7 @@ bool AudioChannel<SampleT>::Buffers::ensure_available(uint32_t offset,
 template <typename SampleT>
 typename AudioChannel<SampleT>::Buffer
 AudioChannel<SampleT>::Buffers::create_new_buffer() const {
-    return shoop_make_shared<BufferObj>(buffers_size);
+    return std::make_shared<BufferObj>(buffers_size);
 }
 
 template <typename SampleT>
@@ -153,7 +153,7 @@ void AudioChannel<SampleT>::throw_if_commands_queued() const {
 
 template <typename SampleT>
 AudioChannel<SampleT>::AudioChannel(
-    shoop_shared_ptr<UsedBufferPool> buffer_pool, uint32_t initial_max_buffers,
+    std::shared_ptr<UsedBufferPool> buffer_pool, uint32_t initial_max_buffers,
     shoop_channel_mode_t mode)
     : m_command_queue(rust_command_queue::make(50, 1000, 1000)), ma_buffer_pool(buffer_pool),
       ma_buffers_data_length(0), mp_prerecord_buffers_data_length(0),
@@ -383,13 +383,13 @@ void AudioChannel<SampleT>::PROC_finalize_process() {
 
 template <typename SampleT>
 void AudioChannel<SampleT>::adopt_ringbuffer_contents(
-    shoop_shared_ptr<PortInterface> from_port,
+    std::shared_ptr<PortInterface> from_port,
     std::optional<unsigned> reverse_start_offset,
     std::optional<unsigned> keep_samples_before_start_offset,
     bool thread_safe)
 {
     // RustAudioPortF32 only supports float samples - early return if not castable
-    auto audioport = shoop_dynamic_pointer_cast<RustAudioPortF32>(from_port);
+    auto audioport = std::dynamic_pointer_cast<RustAudioPortF32>(from_port);
     if (!audioport) {
         // Cannot adopt audio ringbuffer from non-float audio port
         return;
@@ -448,7 +448,7 @@ void AudioChannel<SampleT>::load_data(SampleT *samples, uint32_t len,
 
     for (uint32_t idx = 0; idx < buffers.n_buffers(); idx++) {
         auto &buf = buffers.buffers->at(idx);
-        buf = shoop_make_shared<AudioBuffer<SampleT>>(ma_buffer_size);
+        buf = std::make_shared<AudioBuffer<SampleT>>(ma_buffer_size);
         uint32_t already_copied = idx * ma_buffer_size;
         uint32_t n_elems = std::min(ma_buffer_size, len - already_copied);
         memcpy(buf->data(), samples + (idx * ma_buffer_size),

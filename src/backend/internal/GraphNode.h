@@ -6,14 +6,14 @@
 #include <functional>
 #include <iterator>
 #include <chrono>
-#include "shoop_shared_ptr.h"
+#include <memory>
 
 class GraphNode;
 
-using SharedGraphNodeSet = std::set<shoop_shared_ptr<GraphNode>>;
-using WeakGraphNodeSet = std::set<shoop_weak_ptr<GraphNode>, std::owner_less<shoop_weak_ptr<GraphNode>>>;
+using SharedGraphNodeSet = std::set<std::shared_ptr<GraphNode>>;
+using WeakGraphNodeSet = std::set<std::weak_ptr<GraphNode>, std::owner_less<std::weak_ptr<GraphNode>>>;
 
-class GraphNode : public shoop_enable_shared_from_this<GraphNode> {
+class GraphNode : public std::enable_shared_from_this<GraphNode> {
     std::function<void(uint32_t)> m_processed_cb = nullptr; // arg is process time in us
 public:
     GraphNode() {};
@@ -45,11 +45,11 @@ public:
     }
 
     // Function to call in order to process this node with its co-process nodes.
-    virtual void graph_node_co_process(std::set<shoop_shared_ptr<GraphNode>> const& nodes,
+    virtual void graph_node_co_process(std::set<std::shared_ptr<GraphNode>> const& nodes,
         uint32_t nframes) { (void)nodes; (void)nframes; }
     
     // Process and time the processing.
-    void PROC_co_process(std::set<shoop_shared_ptr<GraphNode>> const& nodes,
+    void PROC_co_process(std::set<std::shared_ptr<GraphNode>> const& nodes,
         uint32_t nframes) {
         if (m_processed_cb) {
             auto start = std::chrono::high_resolution_clock::now();
@@ -69,17 +69,17 @@ public:
 template<typename Parent>
 class NodeWithParent : public GraphNode {
     protected:
-    shoop_weak_ptr<Parent> m_parent = nullptr;
-    NodeWithParent(shoop_weak_ptr<Parent> parent) : m_parent(parent) {};
+    std::weak_ptr<Parent> m_parent = nullptr;
+    NodeWithParent(std::weak_ptr<Parent> parent) : m_parent(parent) {};
 
     public:
-    shoop_weak_ptr<Parent> parent() { return m_parent; }
+    std::weak_ptr<Parent> parent() { return m_parent; }
 };
 
 template<typename Target, typename Parent>
-shoop_shared_ptr<Target> graph_node_parent_as(GraphNode &node) {
+std::shared_ptr<Target> graph_node_parent_as(GraphNode &node) {
     auto converted = static_cast<NodeWithParent<Parent>&>(node);
-    return shoop_dynamic_pointer_cast<Target>(converted.parent().lock());
+    return std::dynamic_pointer_cast<Target>(converted.parent().lock());
 }
 
 class NotifyProcessParametersInterface {
@@ -94,10 +94,10 @@ public:
 
     virtual SharedGraphNodeSet all_graph_nodes() { return SharedGraphNodeSet(); }
 };
-class HasGraphNode : public HasGraphNodesInterface, public shoop_enable_shared_from_this<HasGraphNode> {
+class HasGraphNode : public HasGraphNodesInterface, public std::enable_shared_from_this<HasGraphNode> {
     class Node : public NodeWithParent<HasGraphNode> {
     public:
-        Node(shoop_weak_ptr<HasGraphNode> parent) : NodeWithParent<HasGraphNode>(parent) {};
+        Node(std::weak_ptr<HasGraphNode> parent) : NodeWithParent<HasGraphNode>(parent) {};
         std::string graph_node_name() const override {
             if (auto parent = m_parent.lock()) {
                 return parent->graph_node_name();
@@ -127,14 +127,14 @@ class HasGraphNode : public HasGraphNodesInterface, public shoop_enable_shared_f
                 parent->graph_node_process(nframes);
             }
         }
-        void graph_node_co_process(std::set<shoop_shared_ptr<GraphNode>> const& nodes,
+        void graph_node_co_process(std::set<std::shared_ptr<GraphNode>> const& nodes,
             uint32_t nframes) override {
             if (auto parent = m_parent.lock()) {
                 parent->graph_node_co_process(nodes, nframes);
             }
         }
     };
-    shoop_shared_ptr<Node> m_node = nullptr;
+    std::shared_ptr<Node> m_node = nullptr;
 
     public:
     HasGraphNode() {};
@@ -145,23 +145,23 @@ class HasGraphNode : public HasGraphNodesInterface, public shoop_enable_shared_f
     virtual WeakGraphNodeSet graph_node_incoming_edges() { return WeakGraphNodeSet(); };
     virtual WeakGraphNodeSet graph_node_co_process_nodes() { return WeakGraphNodeSet(); };
     virtual void graph_node_process(uint32_t nframes) { (void)nframes; }
-    virtual void graph_node_co_process(std::set<shoop_shared_ptr<GraphNode>> const& nodes,
+    virtual void graph_node_co_process(std::set<std::shared_ptr<GraphNode>> const& nodes,
         uint32_t nframes) { (void)nodes; (void)nframes; }
 
     SharedGraphNodeSet all_graph_nodes() override {
-        if (!m_node) { m_node = shoop_make_shared<Node>(weak_from_this()); }
-        return SharedGraphNodeSet({shoop_static_pointer_cast<GraphNode>(m_node)});
+        if (!m_node) { m_node = std::make_shared<Node>(weak_from_this()); }
+        return SharedGraphNodeSet({std::static_pointer_cast<GraphNode>(m_node)});
     }
-    shoop_shared_ptr<GraphNode> graph_node() {
-        if (!m_node) { m_node = shoop_make_shared<Node>(weak_from_this()); }
-        return shoop_static_pointer_cast<GraphNode>(m_node);
+    std::shared_ptr<GraphNode> graph_node() {
+        if (!m_node) { m_node = std::make_shared<Node>(weak_from_this()); }
+        return std::static_pointer_cast<GraphNode>(m_node);
     }
 };
 
-class HasTwoGraphNodes : public HasGraphNodesInterface, public shoop_enable_shared_from_this<HasTwoGraphNodes> {
+class HasTwoGraphNodes : public HasGraphNodesInterface, public std::enable_shared_from_this<HasTwoGraphNodes> {
     class FirstNode : public NodeWithParent<HasTwoGraphNodes> {
     public:
-        FirstNode(shoop_weak_ptr<HasTwoGraphNodes> parent) : NodeWithParent<HasTwoGraphNodes>(parent) {};
+        FirstNode(std::weak_ptr<HasTwoGraphNodes> parent) : NodeWithParent<HasTwoGraphNodes>(parent) {};
         std::string graph_node_name() const override {
             if (auto parent = m_parent.lock()) {
                 return parent->graph_node_0_name();
@@ -191,7 +191,7 @@ class HasTwoGraphNodes : public HasGraphNodesInterface, public shoop_enable_shar
                 parent->graph_node_0_process(nframes);
             }
         }
-        void graph_node_co_process(std::set<shoop_shared_ptr<GraphNode>> const& nodes,
+        void graph_node_co_process(std::set<std::shared_ptr<GraphNode>> const& nodes,
             uint32_t nframes) override {
             if (auto parent = m_parent.lock()) {
                 parent->graph_node_0_co_process(nodes, nframes);
@@ -201,7 +201,7 @@ class HasTwoGraphNodes : public HasGraphNodesInterface, public shoop_enable_shar
 
     class SecondNode : public NodeWithParent<HasTwoGraphNodes> {
     public:
-        SecondNode(shoop_weak_ptr<HasTwoGraphNodes> parent) : NodeWithParent<HasTwoGraphNodes>(parent) {};
+        SecondNode(std::weak_ptr<HasTwoGraphNodes> parent) : NodeWithParent<HasTwoGraphNodes>(parent) {};
         std::string graph_node_name() const override {
             if (auto parent = m_parent.lock()) {
                 return parent->graph_node_1_name();
@@ -231,15 +231,15 @@ class HasTwoGraphNodes : public HasGraphNodesInterface, public shoop_enable_shar
                 parent->graph_node_1_process(nframes);
             }
         }
-        void graph_node_co_process(std::set<shoop_shared_ptr<GraphNode>> const& nodes,
+        void graph_node_co_process(std::set<std::shared_ptr<GraphNode>> const& nodes,
             uint32_t nframes) override {
             if (auto parent = m_parent.lock()) {
                 parent->graph_node_1_co_process(nodes, nframes);
             }
         }
     };
-    shoop_shared_ptr<FirstNode> m_firstnode = nullptr;
-    shoop_shared_ptr<SecondNode> m_secondnode = nullptr;
+    std::shared_ptr<FirstNode> m_firstnode = nullptr;
+    std::shared_ptr<SecondNode> m_secondnode = nullptr;
 
     public:
     HasTwoGraphNodes() {}
@@ -250,7 +250,7 @@ class HasTwoGraphNodes : public HasGraphNodesInterface, public shoop_enable_shar
     virtual WeakGraphNodeSet graph_node_0_incoming_edges() { return WeakGraphNodeSet(); };
     virtual WeakGraphNodeSet graph_node_0_co_process_nodes() { return WeakGraphNodeSet(); };
     virtual void graph_node_0_process(uint32_t nframes) { (void)nframes; }
-    virtual void graph_node_0_co_process(std::set<shoop_shared_ptr<GraphNode>> const& nodes,
+    virtual void graph_node_0_co_process(std::set<std::shared_ptr<GraphNode>> const& nodes,
         uint32_t nframes) { (void)nodes; (void)nframes; }
     
     virtual std::string graph_node_1_name() const { return "GraphNode"; }
@@ -258,27 +258,27 @@ class HasTwoGraphNodes : public HasGraphNodesInterface, public shoop_enable_shar
     virtual WeakGraphNodeSet graph_node_1_incoming_edges() { return WeakGraphNodeSet(); };
     virtual WeakGraphNodeSet graph_node_1_co_process_nodes() { return WeakGraphNodeSet(); };
     virtual void graph_node_1_process(uint32_t nframes) { (void)nframes; }
-    virtual void graph_node_1_co_process(std::set<shoop_shared_ptr<GraphNode>> const& nodes,
+    virtual void graph_node_1_co_process(std::set<std::shared_ptr<GraphNode>> const& nodes,
         uint32_t nframes) { (void)nodes; (void)nframes; }
 
     inline void ensure_nodes() {
-        if (!m_firstnode) { m_firstnode = shoop_make_shared<FirstNode>(weak_from_this()); }
-        if (!m_secondnode) { m_secondnode = shoop_make_shared<SecondNode>(weak_from_this()); }
+        if (!m_firstnode) { m_firstnode = std::make_shared<FirstNode>(weak_from_this()); }
+        if (!m_secondnode) { m_secondnode = std::make_shared<SecondNode>(weak_from_this()); }
     }
 
     SharedGraphNodeSet all_graph_nodes() override {
         ensure_nodes();
         return SharedGraphNodeSet({
-            shoop_static_pointer_cast<GraphNode>(m_firstnode),
-            shoop_static_pointer_cast<GraphNode>(m_secondnode)
+            std::static_pointer_cast<GraphNode>(m_firstnode),
+            std::static_pointer_cast<GraphNode>(m_secondnode)
         });
     }
-    shoop_shared_ptr<GraphNode> first_graph_node() {
+    std::shared_ptr<GraphNode> first_graph_node() {
         ensure_nodes();
-        return shoop_static_pointer_cast<GraphNode>(m_firstnode);
+        return std::static_pointer_cast<GraphNode>(m_firstnode);
     }
-    shoop_shared_ptr<GraphNode> second_graph_node() {
+    std::shared_ptr<GraphNode> second_graph_node() {
         ensure_nodes();
-        return shoop_static_pointer_cast<GraphNode>(m_secondnode);
+        return std::static_pointer_cast<GraphNode>(m_secondnode);
     }
 };

@@ -3,7 +3,7 @@
 #include "PortInterface.h"
 #include "LoggingEnabled.h"
 #include "types.h"
-#include "shoop_shared_ptr.h"
+#include <memory>
 #include "backend_rust/src/dummy_external_connections_cxx.rs.h"
 #include "backend_rust/src/port_core_cxx.rs.h"
 #include <memory>
@@ -51,14 +51,14 @@ struct DummyExternalConnections : private ModuleLoggingEnabled<"Backend.DummyExt
  */
 struct DummyPortCore {
     rust::Box<backend_rust::PortCore> m_rust;
-    shoop_weak_ptr<DummyExternalConnections> m_external_connections_cpp;
+    std::weak_ptr<DummyExternalConnections> m_external_connections_cpp;
     std::string m_name;  // Cached name to avoid dangling pointer from Rust String
 
     DummyPortCore(
         std::string name,
         shoop_port_direction_t direction,
         void* driver_handle,
-        shoop_weak_ptr<DummyExternalConnections> external_connections = shoop_weak_ptr<DummyExternalConnections>()
+        std::weak_ptr<DummyExternalConnections> external_connections = std::weak_ptr<DummyExternalConnections>()
     );
 
     const char* name() const;

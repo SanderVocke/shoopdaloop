@@ -230,16 +230,16 @@ void RustMidiStorage::for_each_msg(
 }
 
 // Cursor creation
-shoop_shared_ptr<MidiStorageCursor> 
+std::shared_ptr<MidiStorageCursor> 
 RustMidiStorage::create_cursor() {
     auto self = shared_from_this();
-    shoop_shared_ptr<IMidiStorage> storage_ptr = self;
-    auto cursor = shoop_make_shared<MidiStorageCursor>(storage_ptr);
+    std::shared_ptr<IMidiStorage> storage_ptr = self;
+    auto cursor = std::make_shared<MidiStorageCursor>(storage_ptr);
     cursor->reset();
     return cursor;
 }
 
-shoop_shared_ptr<void>
+std::shared_ptr<void>
 RustMidiStorage::create_cursor_shared() {
     return create_cursor();
 }
@@ -297,7 +297,7 @@ void RustMidiStorage::snapshot(RustMidiStorage& target, std::optional<uint32_t> 
 
 // MidiRingbuffer implementation
 MidiRingbuffer::MidiRingbuffer(uint32_t data_size)
-    : m_storage(shoop_make_shared<RustMidiStorage>(data_size))
+    : m_storage(std::make_shared<RustMidiStorage>(data_size))
 {}
 
 void MidiRingbuffer::set_n_samples(uint32_t n) {
@@ -341,6 +341,6 @@ const IMidiStorage& MidiRingbuffer::storage() const {
     return *m_storage;
 }
 
-shoop_shared_ptr<MidiStorageCursor> MidiRingbuffer::create_cursor() {
+std::shared_ptr<MidiStorageCursor> MidiRingbuffer::create_cursor() {
     return m_storage->create_cursor();
 }

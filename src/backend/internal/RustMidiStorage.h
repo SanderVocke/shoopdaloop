@@ -2,7 +2,7 @@
 
 #include "MidiStorageElem.h"
 #include "IMidiStorageCore.h"
-#include "shoop_shared_ptr.h"
+#include <memory>
 #include "backend_rust/src/midi_storage_cxx.rs.h"
 #include <cstdint>
 #include <memory>
@@ -20,7 +20,7 @@ class MidiRingbuffer;
  * that queries Rust via the CXX FFI bridge. No data is duplicated between
  * C++ and Rust.
  */
-class RustMidiStorage : public shoop_enable_shared_from_this<RustMidiStorage>,
+class RustMidiStorage : public std::enable_shared_from_this<RustMidiStorage>,
                         public IMidiStorage {
 public:
     using Elem = MidiStorageElem;
@@ -75,8 +75,8 @@ public:
     void for_each_msg(std::function<void(uint32_t, uint16_t, uint8_t*)> cb) override;
 
     // Cursor creation
-    shoop_shared_ptr<MidiStorageCursor> create_cursor();
-    shoop_shared_ptr<void> create_cursor_shared() override;
+    std::shared_ptr<MidiStorageCursor> create_cursor();
+    std::shared_ptr<void> create_cursor_shared() override;
 
     // Time window operations
     void set_n_samples(uint32_t n);

@@ -15,7 +15,7 @@ InternalAudioPort::InternalAudioPort(std::string name,
                                      uint32_t n_frames,
                                      unsigned input_connectability,
                                      unsigned output_connectability,
-                                     shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool)
+                                     std::shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool)
     : RustAudioPortF32(buffer_pool, 32),
       m_name(name),
       m_rust_internal(backend_rust::new_internal_audio_port(name, n_frames, input_connectability, output_connectability)) {}
@@ -113,7 +113,7 @@ unsigned InternalAudioPort::get_ringbuffer_n_samples() const {
 // Ringbuffer access - delegate to Rust InternalAudioPort
 RustAudioPortF32::RingbufferSnapshot InternalAudioPort::PROC_get_ringbuffer_contents() {
     RingbufferSnapshot s;
-    s.data = shoop_make_shared<std::vector<shoop_shared_ptr<BufferObj>>>();
+    s.data = std::make_shared<std::vector<std::shared_ptr<BufferObj>>>();
     
     // Get snapshot from Rust
     auto buffer_infos_vec = backend_rust::take_snapshot(*m_rust_internal);
@@ -125,7 +125,7 @@ RustAudioPortF32::RingbufferSnapshot InternalAudioPort::PROC_get_ringbuffer_cont
     // Process each buffer info
     for (const auto& info : buffer_infos) {
         // Allocate AudioBuffer of appropriate size
-        auto ab = shoop_make_shared<BufferObj>(info.len);
+        auto ab = std::make_shared<BufferObj>(info.len);
         
         // Copy data from Rust buffer into AudioBuffer
         size_t to_copy = std::min(info.len, (size_t)s.buffer_size);

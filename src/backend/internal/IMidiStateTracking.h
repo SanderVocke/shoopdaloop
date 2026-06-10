@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <optional>
 #include <vector>
-#include "shoop_shared_ptr.h"
+#include <memory>
 
 /**
  * IMidiStateTracking - Pure virtual interface for MIDI state of a port.

@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <optional>
 #include <vector>
-#include "shoop_shared_ptr.h"
+#include <memory>
 #include "backend_rust/src/midi_state_tracker_cxx.rs.h"
 
 class MidiStateDiffTracker;
@@ -29,8 +29,8 @@ public:
     bool tracking_programs() const;
     std::optional<uint8_t> maybe_program_value(uint8_t channel);
     bool tracking_anything() const;
-    void subscribe(shoop_shared_ptr<MidiStateDiffTracker> s);
-    void unsubscribe(shoop_shared_ptr<MidiStateDiffTracker> s);
+    void subscribe(std::shared_ptr<MidiStateDiffTracker> s);
+    void unsubscribe(std::shared_ptr<MidiStateDiffTracker> s);
     std::vector<std::vector<uint8_t>> state_as_messages();
 
     backend_rust::MidiStateTracker* raw_ptr() { return m_rust.operator->(); }

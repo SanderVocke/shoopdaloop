@@ -1,46 +1,176 @@
-//! DecoupledMidiPort - Lock-free SPSC queue for MIDI messages.
+//! Rust-native DecoupledMidiPort.
 //!
-//! Replaces boost::lockfree::spsc_queue with crossbeam_queue::ArrayQueue.
-//! The queue is bounded; messages are silently dropped when full.
+//! Owns a C++ MidiPort through bridge-object handles and maintains a bounded
+//! lock-free queue for decoupled MIDI traffic.
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 use crossbeam_queue::ArrayQueue;
 
+use crate::cpp_midi_port_cxx;
 use crate::midi_storage::MidiStorageElem;
 use crate::port_direction::PortDirection;
 
-pub struct DecoupledMidiPort {
+pub struct DecoupledMidiQueue {
     queue: ArrayQueue<MidiStorageElem>,
-    direction: PortDirection,
 }
 
-impl DecoupledMidiPort {
-    pub fn new(queue_size: usize, direction: PortDirection) -> Self {
-        DecoupledMidiPort {
+impl DecoupledMidiQueue {
+    pub fn new(queue_size: usize) -> Self {
+        Self {
             queue: ArrayQueue::new(queue_size),
-            direction,
         }
     }
 
-    /// Push a message into the queue.
-    /// Returns true if queued, false if the queue was full (message dropped).
     pub fn push(&self, msg: MidiStorageElem) -> bool {
         self.queue.push(msg).is_ok()
     }
 
-    /// Pop a message from the queue.
-    /// Returns Some(msg) if a message was available, None if empty.
     pub fn pop(&self) -> Option<MidiStorageElem> {
         self.queue.pop()
     }
 
-    /// Check if the queue is empty.
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+}
+
+pub struct DecoupledMidiPort {
+    queue: DecoupledMidiQueue,
+    direction: PortDirection,
+    midi_port: Mutex<cxx::UniquePtr<cpp_midi_port_cxx::ffi::MidiPortBridgeStrong>>,
+    closed: AtomicBool,
+}
+
+impl DecoupledMidiPort {
+    pub fn new(
+        midi_port: cxx::UniquePtr<cpp_midi_port_cxx::ffi::MidiPortBridgeStrong>,
+        queue_size: usize,
+        direction: PortDirection,
+    ) -> Self {
+        Self {
+            queue: DecoupledMidiQueue::new(queue_size),
+            direction,
+            midi_port: Mutex::new(midi_port),
+            closed: AtomicBool::new(false),
+        }
+    }
+
+    pub fn process(&self, nframes: u32) {
+        if self.closed.load(Ordering::SeqCst) {
+            return;
+        }
+        let Ok(mut guard) = self.midi_port.lock() else {
+            return;
+        };
+        let Some(strong) = guard.as_mut() else {
+            return;
+        };
+        let mut port = unsafe { strong.get_pin_mut() };
+
+        match self.direction {
+            PortDirection::Input => {
+                cpp_midi_port_cxx::ffi::midi_port_prepare(port.as_mut(), nframes);
+                cpp_midi_port_cxx::ffi::midi_port_process(port.as_mut(), nframes);
+                let buf_ptr =
+                    cpp_midi_port_cxx::ffi::midi_port_get_read_output_data_buffer(port, nframes);
+                let n_events = cpp_midi_port_cxx::ffi::midi_readable_buffer_n_events(buf_ptr);
+                for idx in 0..n_events {
+                    let mut time = 0u32;
+                    let mut size = 0u16;
+                    let mut data = [0u8; 4];
+                    let ok = unsafe {
+                        cpp_midi_port_cxx::ffi::midi_readable_buffer_get_event(
+                            buf_ptr,
+                            idx,
+                            &mut time,
+                            &mut size,
+                            data.as_mut_ptr(),
+                        )
+                    };
+                    if ok {
+                        if let Some(elem) = MidiStorageElem::new(time, size, &data[..size as usize])
+                        {
+                            let _ = self.queue.push(elem);
+                        }
+                    }
+                }
+            }
+            PortDirection::Output => {
+                cpp_midi_port_cxx::ffi::midi_port_prepare(port.as_mut(), nframes);
+                let buf_ptr = cpp_midi_port_cxx::ffi::midi_port_get_write_data_into_port_buffer(
+                    port.as_mut(),
+                    nframes,
+                );
+                while let Some(msg) = self.queue.pop() {
+                    let _ = unsafe {
+                        cpp_midi_port_cxx::ffi::midi_writeable_buffer_write_event(
+                            buf_ptr,
+                            msg.time,
+                            msg.size,
+                            msg.data().as_ptr(),
+                        )
+                    };
+                }
+                cpp_midi_port_cxx::ffi::midi_port_process(port, nframes);
+            }
+        }
+    }
+
+    pub fn close(&self) {
+        if self.closed.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        if let Ok(mut guard) = self.midi_port.lock() {
+            if let Some(strong) = guard.as_mut() {
+                let port = unsafe { strong.get_pin_mut() };
+                cpp_midi_port_cxx::ffi::midi_port_close(port);
+            }
+        }
+    }
+
+    pub fn request_close(&self) {
+        self.close();
+    }
+
+    pub fn pop_incoming(&self) -> Option<MidiStorageElem> {
+        if self.direction != PortDirection::Input {
+            return None;
+        }
+        self.queue.pop()
+    }
+
+    pub fn push_outgoing(&self, msg: MidiStorageElem) -> bool {
+        self.queue.push(msg)
+    }
+
     pub fn is_empty(&self) -> bool {
         self.queue.is_empty()
     }
 
-    /// Get the port direction.
     pub fn direction(&self) -> PortDirection {
         self.direction
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::SeqCst)
+    }
+
+    pub fn clone_cpp_midi_port(
+        &self,
+    ) -> cxx::UniquePtr<cpp_midi_port_cxx::ffi::MidiPortBridgeStrong> {
+        let Ok(guard) = self.midi_port.lock() else {
+            return cxx::UniquePtr::null();
+        };
+        let Some(strong) = guard.as_ref() else {
+            return cxx::UniquePtr::null();
+        };
+        let weak = strong.downgrade();
+        if weak.is_null() {
+            return cxx::UniquePtr::null();
+        }
+        weak.upgrade()
     }
 }
 
@@ -49,53 +179,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_creation() {
-        let port = DecoupledMidiPort::new(4, PortDirection::Input);
-        assert!(port.is_empty());
-    }
-
-    #[test]
-    fn test_push_and_pop() {
-        let port = DecoupledMidiPort::new(4, PortDirection::Input);
+    fn test_queue_push_and_pop() {
+        let queue = DecoupledMidiQueue::new(4);
         let msg = MidiStorageElem::new(100, 3, &[0x90, 0x3C, 0x7F]).unwrap();
-        assert!(port.push(msg.clone()));
-        assert!(!port.is_empty());
-
-        let popped = port.pop();
-        assert!(popped.is_some());
-        assert_eq!(popped.unwrap(), msg);
-        assert!(port.is_empty());
+        assert!(queue.push(msg.clone()));
+        assert_eq!(queue.pop(), Some(msg));
+        assert!(queue.is_empty());
     }
 
     #[test]
-    fn test_push_drops_when_full() {
-        let port = DecoupledMidiPort::new(2, PortDirection::Output);
+    fn test_queue_drops_when_full() {
+        let queue = DecoupledMidiQueue::new(1);
         let msg1 = MidiStorageElem::new(10, 1, &[0x90]).unwrap();
         let msg2 = MidiStorageElem::new(20, 1, &[0x91]).unwrap();
-        let msg3 = MidiStorageElem::new(30, 1, &[0x92]).unwrap();
-
-        assert!(port.push(msg1.clone()));
-        assert!(port.push(msg2.clone()));
-        // Queue is now full; next push should fail/drop
-        assert!(!port.push(msg3.clone()));
-
-        // Only the first two messages should be retrievable
-        assert_eq!(port.pop(), Some(msg1));
-        assert_eq!(port.pop(), Some(msg2));
-        assert_eq!(port.pop(), None);
-    }
-
-    #[test]
-    fn test_empty_pop_returns_none() {
-        let port = DecoupledMidiPort::new(4, PortDirection::Input);
-        assert_eq!(port.pop(), None);
-    }
-
-    #[test]
-    fn test_direction() {
-        let input_port = DecoupledMidiPort::new(4, PortDirection::Input);
-        let output_port = DecoupledMidiPort::new(4, PortDirection::Output);
-        assert_eq!(input_port.direction(), PortDirection::Input);
-        assert_eq!(output_port.direction(), PortDirection::Output);
+        assert!(queue.push(msg1.clone()));
+        assert!(!queue.push(msg2));
+        assert_eq!(queue.pop(), Some(msg1));
     }
 }

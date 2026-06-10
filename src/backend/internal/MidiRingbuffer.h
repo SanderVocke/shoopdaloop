@@ -1,7 +1,7 @@
 #pragma once
 
 #include "LoggingEnabled.h"
-#include "shoop_shared_ptr.h"
+#include <memory>
 #include "RustMidiStorage.h"  // Need full definition of RustMidiStorage
 #include <memory>
 #include <optional>
@@ -18,7 +18,7 @@ public:
     using Storage = RustMidiStorage;
 
 private:
-    shoop_shared_ptr<RustMidiStorage> m_storage;
+    std::shared_ptr<RustMidiStorage> m_storage;
 
 public:
     MidiRingbuffer(uint32_t data_size);
@@ -41,10 +41,10 @@ public:
     uint32_t bytes_capacity() const { return m_storage->bytes_capacity(); }
     bool full() const { return m_storage->full(); }
 
-    shoop_shared_ptr<MidiStorageCursor> create_cursor();
+    std::shared_ptr<MidiStorageCursor> create_cursor();
 
 private:
-    shoop_shared_ptr<MidiRingbuffer> shared_from_this() {
-        return shoop_shared_ptr<MidiRingbuffer>(this, [](MidiRingbuffer*){});
+    std::shared_ptr<MidiRingbuffer> shared_from_this() {
+        return std::shared_ptr<MidiRingbuffer>(this, [](MidiRingbuffer*){});
     }
 };

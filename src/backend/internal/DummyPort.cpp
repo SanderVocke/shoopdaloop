@@ -47,7 +47,7 @@ DummyPortCore::DummyPortCore(
     std::string name,
     shoop_port_direction_t direction,
     void* driver_handle,
-    shoop_weak_ptr<DummyExternalConnections> external_connections
+    std::weak_ptr<DummyExternalConnections> external_connections
 ) : m_rust(backend_rust::new_port_core(name, direction == ShoopPortDirection_Output, reinterpret_cast<size_t>(driver_handle))),
     m_name(name),
     m_external_connections_cpp(external_connections) {

@@ -7,7 +7,7 @@
 #include <boost/lockfree/spsc_queue.hpp>
 #include <stdint.h>
 #include <vector>
-#include "shoop_shared_ptr.h"
+#include <memory>
 
 template<typename SampleT>
 class AudioChannel : public ChannelInterface,
@@ -15,7 +15,7 @@ class AudioChannel : public ChannelInterface,
 public:
     typedef AudioBuffer<SampleT> BufferObj;
     typedef BufferPool<SampleT> UsedBufferPool;
-    typedef shoop_shared_ptr<BufferObj> Buffer;
+    typedef std::shared_ptr<BufferObj> Buffer;
 
 private:
     rust::Box<backend_rust::CommandQueue> m_command_queue;
@@ -23,7 +23,7 @@ private:
     struct Buffers;
 
     // Members which may be accessed from any thread (ma prefix)
-    shoop_shared_ptr<UsedBufferPool> ma_buffer_pool = nullptr;
+    std::shared_ptr<UsedBufferPool> ma_buffer_pool = nullptr;
     const uint32_t ma_buffer_size;
     std::atomic<int> ma_start_offset = 0;
     std::atomic<uint32_t> ma_pre_play_samples = 0;
@@ -73,11 +73,11 @@ private:
     struct Buffers : private ModuleLoggingEnabled<"Backend.AudioChannel.Buffers"> {
 
         uint32_t buffers_size = 0;
-        shoop_shared_ptr<std::vector<Buffer>> buffers;
-        shoop_shared_ptr<UsedBufferPool> pool = nullptr;
+        std::shared_ptr<std::vector<Buffer>> buffers;
+        std::shared_ptr<UsedBufferPool> pool = nullptr;
 
         Buffers();
-        Buffers(shoop_shared_ptr<UsedBufferPool> pool, uint32_t initial_max_buffers);
+        Buffers(std::shared_ptr<UsedBufferPool> pool, uint32_t initial_max_buffers);
 
         Buffers& operator= (Buffers const& other);
         
@@ -89,7 +89,7 @@ private:
         uint32_t n_buffers() const;
         uint32_t n_samples() const;
         uint32_t buf_space_for_sample(uint32_t offset) const;
-        void set_contents(shoop_shared_ptr<std::vector<Buffer>> buffers);
+        void set_contents(std::shared_ptr<std::vector<Buffer>> buffers);
         std::vector<SampleT> contiguous_copy(uint32_t max_length) const;
     };
 
@@ -131,7 +131,7 @@ private:
 public:
 
     AudioChannel(
-            shoop_shared_ptr<UsedBufferPool> buffer_pool,
+            std::shared_ptr<UsedBufferPool> buffer_pool,
             uint32_t initial_max_buffers,
             shoop_channel_mode_t mode);
 
@@ -209,7 +209,7 @@ public:
 
     std::optional<uint32_t> get_played_back_sample() const override;
 
-    void adopt_ringbuffer_contents(shoop_shared_ptr<PortInterface> from_port,
+    void adopt_ringbuffer_contents(std::shared_ptr<PortInterface> from_port,
                                    std::optional<unsigned> reverse_start_offset,
                                    std::optional<unsigned> keep_samples_before_start_offset,
                                    bool thread_safe=true) override;

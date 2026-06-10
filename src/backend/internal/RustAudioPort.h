@@ -17,7 +17,7 @@
 #include "PortInterface.h"
 #include "AudioBuffer.h"
 #include "BufferPool.h"
-#include "shoop_shared_ptr.h"
+#include <memory>
 #include "backend_rust/src/audio_port_cxx.rs.h"
 
 #include <cstdint>
@@ -38,7 +38,7 @@ struct RustAudioPortBufferInfo {
 
 // Snapshot structure matching AudioPort's RingbufferSnapshot
 struct RustAudioPortSnapshot {
-    shoop_shared_ptr<std::vector<shoop_shared_ptr<AudioBuffer<float>>>> data;
+    std::shared_ptr<std::vector<std::shared_ptr<AudioBuffer<float>>>> data;
     uint32_t n_samples;
     uint32_t buffer_size;
 };
@@ -74,7 +74,7 @@ public:
      * @param buffer_pool Pool for ringbuffer allocations (can be nullptr for no ringbuffer)
      * @param max_buffers Maximum number of ringbuffer buffers
      */
-    RustAudioPortF32(shoop_shared_ptr<UsedBufferPool> buffer_pool, uint32_t max_buffers = 32);
+    RustAudioPortF32(std::shared_ptr<UsedBufferPool> buffer_pool, uint32_t max_buffers = 32);
     
     /**
      * Default constructor - creates port with default ringbuffer settings

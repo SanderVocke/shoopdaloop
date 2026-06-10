@@ -11,7 +11,7 @@
 #endif
 
 
-DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction, shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool, shoop_weak_ptr<DummyExternalConnections> external_connections)
+DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction, std::shared_ptr<RustAudioPortF32::UsedBufferPool> buffer_pool, std::weak_ptr<DummyExternalConnections> external_connections)
     : RustAudioPortF32(buffer_pool, 32),
       m_rust_dummy(backend_rust::new_dummy_audio_port(name, direction == ShoopPortDirection_Output, reinterpret_cast<size_t>(this))),
       m_dummy_port_core(name, direction, this, external_connections),

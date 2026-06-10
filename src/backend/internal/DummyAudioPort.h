@@ -10,7 +10,7 @@
 #include <memory>
 #include <vector>
 #include <stdint.h>
-#include "shoop_shared_ptr.h"
+#include <memory>
 
 class DummyAudioPort : public RustAudioPortF32,
                        private ModuleLoggingEnabled<"Backend.DummyAudioPort"> {
@@ -25,8 +25,8 @@ public:
     DummyAudioPort(
         std::string name,
         shoop_port_direction_t direction,
-        shoop_shared_ptr<RustAudioPortF32::UsedBufferPool> maybe_ringbuffer_buffer_pool,
-        shoop_weak_ptr<DummyExternalConnections> external_connections = shoop_weak_ptr<DummyExternalConnections>());
+        std::shared_ptr<RustAudioPortF32::UsedBufferPool> maybe_ringbuffer_buffer_pool,
+        std::weak_ptr<DummyExternalConnections> external_connections = std::weak_ptr<DummyExternalConnections>());
 
     audio_sample_t *PROC_get_buffer(uint32_t n_frames) override;
     ~DummyAudioPort() override;
