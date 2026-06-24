@@ -179,6 +179,9 @@ impl PortBackend {
             let idx = self
                 .fx_chain_port_idx
                 .ok_or(anyhow!("no fx chain port index set"))?;
+            let min_n_ringbuffer_samples = self
+                .min_n_ringbuffer_samples
+                .ok_or(anyhow!("min_n_ringbuffer_samples not set"))?;
             let output_connectability = self
                 .output_connectability
                 .as_ref()
@@ -234,6 +237,9 @@ impl PortBackend {
                     )
                 }
             };
+
+            // Apply the descriptor's requested ringbuffer size to internal FX ports.
+            port.set_ringbuffer_n_samples(min_n_ringbuffer_samples as u32);
 
             // To push any state that was already set on us before initializing
             let state = &self.prev_state;
