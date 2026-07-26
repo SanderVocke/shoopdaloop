@@ -1,0 +1,69 @@
+//! Realtime looping engine: graph, loops, channels, ports.
+//!
+//! Pure logic, no FFI. Driver and plugin-host bindings live in separate crates
+//! so this one can forbid unsafe code.
+#![forbid(unsafe_code)]
+
+pub mod audio_channel;
+pub mod audio_midi_loop;
+pub mod basic_loop;
+pub mod buffer_queue;
+pub mod channel_mode;
+pub mod chunked_samples;
+pub mod control;
+#[cfg(feature = "cpal")]
+pub mod cpal_driver;
+pub mod decoupled_midi_port;
+pub mod driver;
+pub mod dummy_driver;
+pub mod dummy_midi_port;
+pub mod dummy_port;
+pub mod engine;
+pub mod external_audio_port;
+pub mod external_midi_port;
+pub mod fx_chain;
+pub mod graph;
+pub mod graph_build;
+pub mod internal_audio_port;
+#[cfg(feature = "jack")]
+pub mod jack_driver;
+pub mod loop_mode;
+pub mod midi;
+pub mod midi_buffering_input_port;
+pub mod midi_channel;
+pub mod midi_port;
+pub mod midi_ringbuffer;
+pub mod midi_sorting_buffer;
+pub mod midi_state;
+pub mod midi_storage;
+#[cfg(feature = "midir")]
+pub mod midir_driver;
+pub mod port;
+pub mod profiling;
+pub mod resample;
+pub mod session;
+pub mod wave_generator;
+
+pub use audio_channel::{AudioChannel, ChannelError};
+pub use audio_midi_loop::{AudioMidiLoop, LoopError};
+pub use basic_loop::{BasicLoop, PoiFlags, PointOfInterest, SyncSourceState};
+pub use buffer_queue::{BufferQueue, Snapshot};
+pub use channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
+pub use chunked_samples::ChunkedSamples;
+pub use decoupled_midi_port::DecoupledMidiPort;
+pub use dummy_driver::{DriverMode, DriverSettings, DummyDriver};
+pub use dummy_midi_port::DummyMidiPort;
+pub use dummy_port::{DummyAudioPort, DummyExternalConnections, DummyPortError, PortId};
+pub use graph::{processing_order, GraphError, NodeIdx, NodeSpec};
+pub use graph_build::{ChannelDesc, GraphDesc, LoopDesc, PortDesc};
+pub use internal_audio_port::InternalAudioPort;
+pub use loop_mode::LoopMode;
+pub use midi_buffering_input_port::MidiBufferingInputPort;
+pub use midi_channel::{MidiChannel, MidiChannelError};
+pub use midi_port::MidiPort;
+pub use midi_ringbuffer::MidiRingbuffer;
+pub use midi_sorting_buffer::MidiSortingBuffer;
+pub use midi_state::{MidiStateTracker, TrackWhat};
+pub use midi_storage::{Cursor, CursorFindResult, MidiStorage, MidiStorageElem, TruncateSide};
+pub use port::{AudioPort, PortConnectability, PortDataType, PortDirection};
+pub use session::{Port, Session, SessionError};

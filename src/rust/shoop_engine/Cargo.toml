@@ -1,0 +1,27 @@
+[package]
+name = "shoop_engine"
+edition = "2021"
+
+[lib]
+
+[dependencies]
+thiserror = { workspace = true }
+regex = { workspace = true }
+rtrb = { workspace = true }
+rubato = { workspace = true }
+# Optional so the engine builds and tests without libjack present.
+jack = { workspace = true, optional = true }
+# Optional too, though cpal needs no system library on macOS or Windows.
+cpal = { workspace = true, optional = true }
+# MIDI for hosts without JACK. Optional for the same reason.
+midir = { workspace = true, optional = true }
+
+[features]
+jack = ["dep:jack"]
+cpal = ["dep:cpal"]
+midir = ["dep:midir"]
+
+[dev-dependencies]
+assert2 = { workspace = true }
+rtrb = { workspace = true }
+assert_no_alloc = { workspace = true }

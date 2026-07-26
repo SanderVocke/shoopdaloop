@@ -10,7 +10,9 @@
 #include "types.h"
 #include <algorithm>
 #include <array>
-#include <fmt/core.h>
+// fmt/format.h, not fmt/core.h: since fmt 11 the latter provides only base.h
+// and no longer declares fmt::format without FMT_DEPRECATED_HEAVY_CORE.
+#include <fmt/format.h>
 #include <utility>
 
 #ifdef __INTELLISENSE__

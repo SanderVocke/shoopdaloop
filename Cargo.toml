@@ -53,6 +53,24 @@ rodio = "0.21"
 libc = "0.2"
 winapi = "0.3"
 crossbeam-queue = "0.3"
+assert2 = "0.3"
+assert_no_alloc = "1.1"
+rtrb = "0.3"
+jack = "0.13"
+# Pinned to what rodio (used by the frontend) already brings in: cpal declares
+# links = "alsa", so two versions cannot coexist in one workspace.
+cpal = "0.16"
+midir = "0.11"
+# `accesskit` is required, not optional: egui_kittest enables egui's accesskit feature, and without
+# the matching one here egui-winit compiles a `PlatformOutput` pattern that no longer fits.
+eframe = { version = "0.35", default-features = false, features = ["default_fonts", "glow", "wayland", "x11", "accesskit"] }
+egui = "0.35"
+# Must match egui exactly: the harness drives egui's own types.
+egui_kittest = "0.35"
+# 0.16 rather than 4.0: the 4.x API works through audioadapter traits instead of
+# plain sample planes, which buys nothing here.
+rubato = "0.16"
+thiserror = "2.0"
 
 [patch.crates-io]
 # Patched qt-build-utils to handle Windows debug Qt library "d" suffix

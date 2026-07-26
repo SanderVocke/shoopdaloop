@@ -243,7 +243,7 @@ typedef struct {
 typedef struct {
     unsigned n_channels;
     unsigned n_frames;
-    audio_sample_t *data; // Channels are not interleaved
+    audio_sample_t *data; // Interleaved: frame * n_channels + channel
 } shoop_multichannel_audio_t;
 
 typedef struct {
