@@ -103,7 +103,22 @@ pub enum BackendResult { Success = 0, Failure = 1 }
 pub enum LogLevel { DebugTrace = 0, AlwaysTrace = 1, Debug = 2, Info = 3, Warn = 4, Err = 5 }
 
 pub struct Logger { name: String }
-impl Logger { pub fn new(name: &str) -> Result<Self> { Ok(Self { name: name.to_string() }) } pub fn should_log(&self, _level: LogLevel) -> bool { let _ = &self.name; true } pub fn log(&self, _level: LogLevel, _msg: &str) {} }
+impl Logger {
+    pub fn new(name: &str) -> Result<Self> { Ok(Self { name: name.to_string() }) }
+    pub fn should_log(&self, level: LogLevel) -> bool { matches!(level, LogLevel::Info | LogLevel::Warn | LogLevel::Err) }
+    pub fn log(&self, level: LogLevel, msg: &str) {
+        if !self.should_log(level) { return; }
+        let level = match level {
+            LogLevel::DebugTrace | LogLevel::AlwaysTrace => "trace",
+            LogLevel::Debug => "debug",
+            LogLevel::Info => "info",
+            LogLevel::Warn => "warning",
+            LogLevel::Err => "error",
+        };
+        use std::io::Write;
+        let _ = writeln!(std::io::stdout(), "[{}] [{}] {}", self.name, level, msg);
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MidiEvent { pub time: i32, pub data: Vec<u8> }
@@ -166,12 +181,12 @@ impl AudioDriver {
     pub fn active(&self) -> bool { self.inner.lock().unwrap().active }
     pub fn wait_process(&self) {}
     pub fn get_state(&self) -> AudioDriverState { let i = self.inner.lock().unwrap(); AudioDriverState { dsp_load_percent: 0.0, xruns_since_last: 0, maybe_instance_name: i.settings.client_name.clone(), sample_rate: i.settings.sample_rate, buffer_size: i.settings.buffer_size, active: i.active as u32, last_processed: i.last_processed } }
-    pub fn dummy_enter_controlled_mode(&self) { let mut i = self.inner.lock().unwrap(); i.controlled = true; i.requested = 0; }
+    pub fn dummy_enter_controlled_mode(&self) { let mut i = self.inner.lock().unwrap(); i.controlled = true; i.requested = 0; i.last_processed = 0; }
     pub fn dummy_enter_automatic_mode(&self) { let mut i = self.inner.lock().unwrap(); i.controlled = false; i.requested = 0; }
     pub fn dummy_is_controlled(&self) -> bool { self.inner.lock().unwrap().controlled }
     pub fn dummy_request_controlled_frames(&self, n: u32) { self.inner.lock().unwrap().requested += n; }
     pub fn dummy_n_requested_frames(&self) -> u32 { self.inner.lock().unwrap().requested }
-    pub fn dummy_run_requested_frames(&self) { loop { let (session, n) = { let mut i = self.inner.lock().unwrap(); if !i.active { return; } let n = if i.controlled { i.requested.min(i.settings.buffer_size) } else { i.settings.buffer_size }; if n == 0 { return; } if i.controlled { i.requested -= n; } i.last_processed = n; (i.session.as_ref().and_then(|w| w.upgrade()), n) }; if let Some(shared) = session { let mut s = shared.lock(); s.set_sample_rate(self.get_sample_rate()); s.set_buffer_size(self.get_buffer_size()); s.apply_graph_changes().ok(); let _ = s.process(n as usize); } if !self.dummy_is_controlled() { return; } } }
+    pub fn dummy_run_requested_frames(&self) { loop { let (session, n) = { let mut i = self.inner.lock().unwrap(); if !i.active { i.last_processed = 0; return; } let n = if i.controlled { i.requested.min(i.settings.buffer_size) } else { i.settings.buffer_size }; if n == 0 { i.last_processed = 0; return; } if i.controlled { i.requested -= n; } i.last_processed = n; (i.session.as_ref().and_then(|w| w.upgrade()), n) }; if let Some(shared) = session { let mut s = shared.lock(); s.set_sample_rate(self.get_sample_rate()); s.set_buffer_size(self.get_buffer_size()); s.apply_graph_changes().ok(); let _ = s.process(n as usize); } if !self.dummy_is_controlled() { return; } } }
     pub fn dummy_add_external_mock_port(&self, name: &str, direction: u32, data_type: u32) { let mut i = self.inner.lock().unwrap(); i.external.add_mock_port(name, PortDirection::try_from(direction as i32).unwrap_or(PortDirection::Any).into(), PortDataType::try_from(data_type as i32).unwrap_or(PortDataType::Any).into()); }
     pub fn dummy_remove_external_mock_port(&self, name: &str) { self.inner.lock().unwrap().external.remove_mock_port(name); }
     pub fn dummy_remove_all_external_mock_ports(&self) { self.inner.lock().unwrap().external.remove_all_mock_ports(); }
@@ -191,7 +206,17 @@ impl Loop {
     pub fn get_state(&self) -> Result<LoopState> { let s = self.shared.lock(); let l = s.loop_(self.idx).ok_or_else(|| anyhow!("no loop"))?; let next = l.first_planned_transition(); Ok(LoopState { mode: l.mode().into(), length: l.length(), position: l.position(), maybe_next_mode: next.map(|(m, _)| m.into()), maybe_next_mode_delay: next.map(|(_, d)| d) }) }
     pub fn set_length(&self, length: u32) -> Result<()> { if let Some(l) = self.shared.lock().loop_mut(self.idx) { l.set_length(length); } Ok(()) }
     pub fn set_position(&self, position: u32) -> Result<()> { if let Some(l) = self.shared.lock().loop_mut(self.idx) { l.set_position(position); } Ok(()) }
-    pub fn clear(&self, length: u32) -> Result<()> { if let Some(l) = self.shared.lock().loop_mut(self.idx) { l.clear(length); } Ok(()) }
+    pub fn clear(&self, length: u32) -> Result<()> {
+        let mut s = self.shared.lock();
+        if let Some(l) = s.loop_mut(self.idx) {
+            l.clear(length);
+            l.clear_planned_transitions();
+            l.set_mode(engine::LoopMode::Stopped);
+            l.set_position(0);
+        }
+        s.apply_graph_changes().ok();
+        Ok(())
+    }
     pub fn set_sync_source(&self, src: Option<&Loop>) -> Result<()> { let _ = self.shared.lock().set_loop_sync_source(self.idx, src.map(|l| l.idx)); Ok(()) }
     pub fn adopt_ringbuffer_contents(&self, _reverse_start_cycle: Option<i32>, _cycles_length: Option<i32>, _go_to_cycle: Option<i32>, go_to_mode: LoopMode) -> Result<()> { self.transition(go_to_mode, -1, -1) }
 }
