@@ -12,6 +12,7 @@ anyhow = { workspace = true }
 enum-iterator = { workspace = true }
 log = { workspace = true }
 ctor = { workspace = true }
+jack = { workspace = true }
 
 
 [features]

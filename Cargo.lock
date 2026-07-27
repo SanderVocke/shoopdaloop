@@ -211,6 +211,7 @@ dependencies = [
  "common",
  "ctor",
  "enum-iterator",
+ "jack",
  "log",
  "num_enum",
  "shoop_engine",
