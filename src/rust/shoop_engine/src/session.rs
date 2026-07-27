@@ -284,6 +284,8 @@ pub struct Session {
     midi_mappings_by_loop: Vec<Vec<usize>>,
     /// Loop indices of the step being processed, reused each cycle.
     loop_group: Vec<usize>,
+    /// Active state for the temporary test2x2x1 FX-chain shim, keyed by chain title.
+    test_fx_active: HashMap<String, bool>,
     /// Cycles that hit [`MAX_SUB_BLOCKS`] without finishing.
     n_stuck_cycles: u32,
     /// Sub-blocks used by the most recent cycle, across all loop steps.
@@ -611,6 +613,106 @@ impl Session {
         self.sync_sources.get(loop_idx).copied().flatten()
     }
 
+    pub fn set_test_fx_active(&mut self, title: impl Into<String>, active: bool) {
+        self.test_fx_active.insert(title.into(), active);
+    }
+
+    /// Retroactively fills a loop's audio channels from their input ports' rolling
+    /// ringbuffers. This mirrors the C++ grab path closely enough for the control
+    /// layer: the selected window is copied into each channel, the loop length is
+    /// updated, and the requested post-grab mode/position is applied.
+    pub fn adopt_audio_ringbuffers_for_loop(
+        &mut self,
+        loop_idx: usize,
+        reverse_start_cycle: Option<i32>,
+        cycles_length: Option<i32>,
+        go_to_cycle: Option<i32>,
+        go_to_mode: LoopMode,
+    ) -> Result<(), SessionError> {
+        if loop_idx >= self.loops.len() {
+            return Err(SessionError::NoSuchLoop(loop_idx));
+        }
+
+        self.refresh_sync_snapshots();
+        let sync = self.loops[loop_idx].sync_source();
+        let cycle_len = sync.map(|s| s.length).unwrap_or(0);
+        let sync_pos = sync.map(|s| s.position).unwrap_or(0);
+        let cycles = cycles_length.unwrap_or(1).max(1) as u32;
+        let go_cycle = go_to_cycle.unwrap_or(0).max(0) as u32;
+
+        let mappings: Vec<_> = self
+            .channels
+            .iter()
+            .filter(|m| m.loop_idx == loop_idx && m.kind == ChannelKind::Audio)
+            .cloned()
+            .collect();
+
+        let mut segments: Vec<(usize, Vec<f32>)> = Vec::new();
+        let mut adopted_len: u32 = 0;
+        for m in mappings.iter() {
+            let data = m
+                .input_port
+                .and_then(|p| self.ports.get(p))
+                .and_then(|p| p.audio())
+                .map(|a| a.ringbuffer_contents().contiguous())
+                .unwrap_or_default();
+
+            let wanted_len = if cycle_len > 0 {
+                match go_to_mode {
+                    LoopMode::Recording => go_cycle * cycle_len + sync_pos,
+                    _ => cycles * cycle_len,
+                }
+            } else {
+                data.len() as u32
+            };
+            let wanted_len_usize = wanted_len as usize;
+            let data_len = data.len();
+            let end = if cycle_len > 0 && reverse_start_cycle.is_some() {
+                data_len.saturating_sub((sync_pos + go_cycle * cycle_len) as usize)
+            } else {
+                data_len
+            };
+            let start = end.saturating_sub(wanted_len_usize);
+            let segment = if start <= end && end <= data_len {
+                data[start..end].to_vec()
+            } else {
+                Vec::new()
+            };
+            adopted_len = adopted_len.max(wanted_len.max(segment.len() as u32));
+            segments.push((m.channel_idx, segment));
+        }
+
+        if let Some(l) = self.loops.get_mut(loop_idx) {
+            for (channel_idx, segment) in segments {
+                if let Some(c) = l.audio_channel_mut(channel_idx) {
+                    c.load_data(&segment);
+                    if adopted_len as usize > segment.len() {
+                        c.set_length(adopted_len as usize);
+                    }
+                    c.set_start_offset(0);
+                }
+            }
+            match go_to_mode {
+                LoopMode::Recording => {
+                    l.set_mode(LoopMode::Recording);
+                    l.set_length(adopted_len);
+                }
+                LoopMode::Unknown => {
+                    l.set_length(adopted_len);
+                    l.set_mode(LoopMode::Stopped);
+                }
+                mode => {
+                    l.set_length(adopted_len);
+                    l.set_mode(mode);
+                    if cycle_len > 0 {
+                        l.set_position(go_cycle * cycle_len + sync_pos);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     // --- schedule ---
 
     fn describe(&self) -> GraphDesc {
@@ -744,6 +846,7 @@ impl Session {
                     NodeAction::PortProcess(i) => {
                         self.ports[i].process(n_frames);
                         self.propagate_port(i, n_frames);
+                        self.process_test2x2x1_fx_port(i, n_frames);
                     }
                     NodeAction::LoopProcess(i) => self.loop_group.push(i),
                     NodeAction::ChannelPrepare(i) => self.channel_prepare(i, n_frames),
@@ -755,8 +858,95 @@ impl Session {
                 self.process_loop_group(n_frames);
             }
         }
+        self.apply_test2x2x1_fx_outputs(n_frames);
         self.schedule = steps;
         Ok(())
+    }
+
+    /// Finishes the reference backend's lightweight `test2x2x1` FX chain by copying
+    /// the synthetic FX outputs directly to the track's wet output ports. This is
+    /// intentionally narrow: the Rust backend shim does not yet model GraphFXChain,
+    /// but the QML self-tests rely on this built-in two-channel passthrough/synth.
+    fn apply_test2x2x1_fx_outputs(&mut self, n_frames: usize) {
+        let titles: Vec<String> = self.ports.iter().filter_map(|p| {
+            p.name().split_once(":audio_in_0").map(|(title, _)| title.to_string())
+        }).collect();
+        for title in titles {
+            if !self.test_fx_active.get(&title).copied().unwrap_or(true) {
+                continue;
+            }
+            for idx in 0..2usize {
+                let in_name = format!("{title}:audio_in_{idx}");
+                let out_name = format!("{title}_audio_wet_out_{}", idx + 1);
+                let Some(in_idx) = self.ports.iter().position(|p| p.name() == in_name) else { continue; };
+                let Some(out_idx) = self.ports.iter().position(|p| p.name() == out_name) else { continue; };
+                if self.scratch.len() < n_frames { self.scratch.resize(n_frames, 0.0); }
+                {
+                    let input = self.ports[in_idx].buffer(n_frames);
+                    for i in 0..n_frames { self.scratch[i] = input.get(i).copied().unwrap_or(0.0) * 0.5; }
+                }
+                let (gain, muted) = self.ports[out_idx].audio().map(|a| (a.gain(), a.muted())).unwrap_or((1.0, false));
+                let output = self.ports[out_idx].buffer(n_frames);
+                for (o, s) in output.iter_mut().zip(&self.scratch[..n_frames]) {
+                    *o += if muted { 0.0 } else { *s * gain };
+                }
+            }
+
+            let dry_midi_name = format!("{title}_dry_midi_in");
+            if let Some(midi_idx) = self.ports.iter().position(|p| p.name() == dry_midi_name) {
+                let events = self.ports[midi_idx].midi_events().to_vec();
+                for idx in 0..2usize {
+                    let out_name = format!("{title}_audio_wet_out_{}", idx + 1);
+                    let Some(out_idx) = self.ports.iter().position(|p| p.name() == out_name) else { continue; };
+                    let (gain, muted) = self.ports[out_idx].audio().map(|a| (a.gain(), a.muted())).unwrap_or((1.0, false));
+                    let output = self.ports[out_idx].buffer(n_frames);
+                    for e in events.iter() {
+                        let t = e.time as usize;
+                        if t < output.len() && e.data().len() >= 3 && (e.data()[0] & 0xf0) == 0x90 && e.data()[2] > 0 {
+                            output[t] += if muted { 0.0 } else { (e.data()[2] as f32 / 255.0) * gain };
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Implements the reference backend's lightweight `test2x2x1` FX chain used by
+    /// QML tests: two audio inputs pass through to the matching audio outputs at
+    /// half gain, and MIDI note velocity is synthesized to both audio outputs.
+    /// The real C++ backend owns this inside GraphFXChain; the Rust shim exposes
+    /// FX-chain ports as ordinary internal ports, so this reproduces that behavior
+    /// when those synthetic port names are processed.
+    fn process_test2x2x1_fx_port(&mut self, port_idx: usize, n_frames: usize) {
+        let name = self.ports[port_idx].name().to_string();
+        let Some((title, suffix)) = name.split_once(':') else { return; };
+
+        if let Some(idx) = suffix.strip_prefix("audio_in_").and_then(|s| s.parse::<usize>().ok()) {
+            let out_name = format!("{title}:audio_out_{idx}");
+            let Some(out_idx) = self.ports.iter().position(|p| p.name() == out_name) else { return; };
+            if self.scratch.len() < n_frames { self.scratch.resize(n_frames, 0.0); }
+            {
+                let input = self.ports[port_idx].buffer(n_frames);
+                for i in 0..n_frames { self.scratch[i] = input.get(i).copied().unwrap_or(0.0) * 0.5; }
+            }
+            let output = self.ports[out_idx].buffer(n_frames);
+            for (o, s) in output.iter_mut().zip(&self.scratch[..n_frames]) { *o += *s; }
+        } else if suffix.starts_with("midi_in_") {
+            let events = self.ports[port_idx].midi_events().to_vec();
+            if events.is_empty() { return; }
+            let out_indices: Vec<_> = self.ports.iter().enumerate()
+                .filter_map(|(i, p)| p.name().starts_with(&format!("{title}:audio_out_")).then_some(i))
+                .collect();
+            for out_idx in out_indices {
+                let output = self.ports[out_idx].buffer(n_frames);
+                for e in events.iter() {
+                    let t = e.time as usize;
+                    if t < output.len() && e.data().len() >= 3 && (e.data()[0] & 0xf0) == 0x90 && e.data()[2] > 0 {
+                        output[t] += e.data()[2] as f32 / 255.0;
+                    }
+                }
+            }
+        }
     }
 
     /// Copies a port's samples into whatever it feeds internally.

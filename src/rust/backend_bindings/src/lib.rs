@@ -180,7 +180,17 @@ impl AudioDriver {
     pub fn get_buffer_size(&self) -> u32 { self.inner.lock().unwrap().settings.buffer_size }
     pub fn active(&self) -> bool { self.inner.lock().unwrap().active }
     pub fn wait_process(&self) {}
-    pub fn get_state(&self) -> AudioDriverState { let i = self.inner.lock().unwrap(); AudioDriverState { dsp_load_percent: 0.0, xruns_since_last: 0, maybe_instance_name: i.settings.client_name.clone(), sample_rate: i.settings.sample_rate, buffer_size: i.settings.buffer_size, active: i.active as u32, last_processed: i.last_processed } }
+    pub fn get_state(&self) -> AudioDriverState {
+        let should_run = {
+            let i = self.inner.lock().unwrap();
+            i.active && ((!i.controlled) || i.requested > 0)
+        };
+        if should_run {
+            self.dummy_run_requested_frames();
+        }
+        let i = self.inner.lock().unwrap();
+        AudioDriverState { dsp_load_percent: 0.0, xruns_since_last: 0, maybe_instance_name: i.settings.client_name.clone(), sample_rate: i.settings.sample_rate, buffer_size: i.settings.buffer_size, active: i.active as u32, last_processed: i.last_processed }
+    }
     pub fn dummy_enter_controlled_mode(&self) { let mut i = self.inner.lock().unwrap(); i.controlled = true; i.requested = 0; i.last_processed = 0; }
     pub fn dummy_enter_automatic_mode(&self) { let mut i = self.inner.lock().unwrap(); i.controlled = false; i.requested = 0; }
     pub fn dummy_is_controlled(&self) -> bool { self.inner.lock().unwrap().controlled }
@@ -218,7 +228,12 @@ impl Loop {
         Ok(())
     }
     pub fn set_sync_source(&self, src: Option<&Loop>) -> Result<()> { let _ = self.shared.lock().set_loop_sync_source(self.idx, src.map(|l| l.idx)); Ok(()) }
-    pub fn adopt_ringbuffer_contents(&self, _reverse_start_cycle: Option<i32>, _cycles_length: Option<i32>, _go_to_cycle: Option<i32>, go_to_mode: LoopMode) -> Result<()> { self.transition(go_to_mode, -1, -1) }
+    pub fn adopt_ringbuffer_contents(&self, reverse_start_cycle: Option<i32>, cycles_length: Option<i32>, go_to_cycle: Option<i32>, go_to_mode: LoopMode) -> Result<()> {
+        let mut s = self.shared.lock();
+        s.adopt_audio_ringbuffers_for_loop(self.idx, reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode.into())?;
+        s.apply_graph_changes().ok();
+        Ok(())
+    }
 }
 pub fn transition_multiple_loops(loops: &[&Loop], to_state: LoopMode, maybe_cycles_delay: i32, maybe_to_sync_at_cycle: i32) -> Result<()> { for l in loops { l.transition(to_state, maybe_cycles_delay, maybe_to_sync_at_cycle)?; } Ok(()) }
 
@@ -312,7 +327,10 @@ pub struct FXChain { shared: Arc<SharedSession>, title: String, state: Arc<Mutex
 impl FXChain {
     pub fn available(&self) -> bool { true }
     pub fn set_visible(&self, visible: bool) { self.state.lock().unwrap().visible = visible as u32 }
-    pub fn set_active(&self, active: bool) { self.state.lock().unwrap().active = active as u32 }
+    pub fn set_active(&self, active: bool) {
+        self.state.lock().unwrap().active = active as u32;
+        self.shared.lock().set_test_fx_active(self.title.clone(), active);
+    }
     pub fn get_state(&self) -> Option<FXChainState> { let mut s = self.state.lock().unwrap().clone(); s.ready = 1; Some(s) }
     pub fn get_state_str(&self) -> Option<String> { Some(String::new()) }
     pub fn restore_state(&self, _state: &str) {}
