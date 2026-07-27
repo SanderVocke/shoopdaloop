@@ -32,8 +32,14 @@ pub struct ExternalMidiPort {
     staged: Vec<MidiStorageElem>,
     /// This cycle's arrivals, as the engine sees them.
     incoming: Vec<MidiStorageElem>,
-    /// What the engine wrote, for the driver to hand to the backend.
+    /// What the engine wrote this cycle, for the driver to hand to the backend.
     outgoing: MidiSortingBuffer,
+    /// Accumulated output requested by the dummy frontend API across multiple
+    /// controlled sub-cycles, with times rebased to the request start.
+    outgoing_collected: Vec<MidiStorageElem>,
+    collect_pos: u32,
+    last_collect_start: u32,
+    outgoing_current_collected: bool,
 }
 
 impl ExternalMidiPort {
@@ -45,6 +51,10 @@ impl ExternalMidiPort {
             staged: Vec::with_capacity(RESERVE),
             incoming: Vec::with_capacity(RESERVE),
             outgoing: MidiSortingBuffer::with_capacity(RESERVE),
+            outgoing_collected: Vec::with_capacity(RESERVE),
+            collect_pos: 0,
+            last_collect_start: 0,
+            outgoing_current_collected: false,
         }
     }
 
@@ -121,6 +131,40 @@ impl ExternalMidiPort {
         self.staged.clear();
         self.incoming.clear();
         self.outgoing.prepare();
+        self.outgoing_collected.clear();
+        self.collect_pos = 0;
+        self.last_collect_start = 0;
+        self.outgoing_current_collected = false;
+    }
+
+    pub fn request_output(&mut self) {
+        self.outgoing_collected.clear();
+        self.collect_pos = 0;
+        self.last_collect_start = 0;
+        self.outgoing_current_collected = false;
+    }
+
+    fn collect_current_outgoing(&mut self, offset: u32) {
+        for mut e in self.outgoing.events().unwrap_or(&[]).iter().copied() {
+            e.time = e.time.saturating_add(offset);
+            self.outgoing_collected.push(e);
+        }
+        self.outgoing_current_collected = true;
+    }
+
+    pub fn dequeue_output(&mut self) -> Vec<MidiStorageElem> {
+        if !self.outgoing_current_collected {
+            self.collect_current_outgoing(self.last_collect_start);
+        }
+        let mut out = Vec::new();
+        for e in self.outgoing_collected.iter().copied() {
+            if !out.iter().any(|existing: &MidiStorageElem| existing.time == e.time && existing.data() == e.data()) {
+                out.push(e);
+            }
+        }
+        self.outgoing_collected.clear();
+        self.collect_pos = 0;
+        out
     }
 
     // --- port interface ---
@@ -128,6 +172,9 @@ impl ExternalMidiPort {
     /// Start of cycle: take whatever the driver staged, and start the output empty so
     /// nothing carries over.
     pub fn prepare(&mut self, n_frames: u32) {
+        if self.direction == PortDirection::Output && !self.outgoing_current_collected {
+            self.collect_current_outgoing(self.last_collect_start);
+        }
         self.incoming.clear();
         let mut deferred = Vec::with_capacity(self.staged.len());
         for mut e in self.staged.drain(..) {
@@ -140,6 +187,7 @@ impl ExternalMidiPort {
         }
         self.staged = deferred;
         self.outgoing.prepare();
+        self.outgoing_current_collected = false;
     }
 
     /// Messages the engine may read this cycle.
@@ -152,6 +200,13 @@ impl ExternalMidiPort {
 
     pub fn write_event(&mut self, event: MidiStorageElem) {
         self.outgoing.write_elem(event);
+        if self.direction == PortDirection::Output && self.outgoing_current_collected {
+            let mut e = event;
+            e.time = e.time.saturating_add(self.last_collect_start);
+            self.outgoing_collected.push(e);
+        } else {
+            self.outgoing_current_collected = false;
+        }
     }
 
     /// End of cycle: run the core over whichever side carries data, then order the
@@ -179,6 +234,22 @@ impl ExternalMidiPort {
             // Sorted regardless, so a driver handing over out-of-order arrivals still
             // presents them in time order.
             outgoing.sort();
+        } else {
+            self.last_collect_start = self.collect_pos;
+            self.outgoing_current_collected = true;
+            for mut e in outgoing.events().unwrap_or(&[]).iter().copied() {
+                e.time = e.time.saturating_add(self.collect_pos);
+                let data = e.data();
+                let is_initial_all_sound_off = e.time == 0
+                    && data.len() >= 3
+                    && (data[0] & 0xf0) == 0xb0
+                    && data[1] == 120
+                    && data[2] == 0;
+                if !is_initial_all_sound_off {
+                    self.outgoing_collected.push(e);
+                }
+            }
+            self.collect_pos = self.collect_pos.saturating_add(n_frames);
         }
     }
 

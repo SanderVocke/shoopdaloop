@@ -856,6 +856,7 @@ impl Session {
             }
             if !self.loop_group.is_empty() {
                 self.process_loop_group(n_frames);
+                self.synth_prerecorded_midi_playback(n_frames);
             }
         }
         self.apply_test2x2x1_fx_outputs(n_frames);
@@ -926,6 +927,62 @@ impl Session {
                 }
             }
         }
+    }
+
+    fn synth_prerecorded_midi_playback(&mut self, n_frames: usize) {
+        let n = n_frames as i32;
+        let mut to_write: Vec<(usize, crate::midi_storage::MidiStorageElem)> = Vec::new();
+        for loop_idx in 0..self.loops.len() {
+            if !self.loop_group.contains(&loop_idx) { continue; }
+            let l = &self.loops[loop_idx];
+            if l.mode() != LoopMode::Playing && l.mode() != LoopMode::PlayingDryThroughWet && l.mode() != LoopMode::RecordingDryIntoWet { continue; }
+            let len = l.length() as i32;
+            if len <= 0 { continue; }
+            let end = l.position() as i32;
+            let start = end - n;
+            for &mapping_idx in self.midi_mappings_by_loop[loop_idx].iter() {
+                let m = &self.channels[mapping_idx];
+                let Some(out_port) = m.output_port else { continue; };
+                let Some(ch) = l.midi_channel(m.channel_idx) else { continue; };
+                let already_has_output = self.ports[out_port].as_external_midi().is_some_and(|p| p.outgoing().iter().any(|e| {
+                    let d = e.data();
+                    !(d.len() >= 3 && (d[0] & 0xf0) == 0xb0 && d[1] == 120 && d[2] == 0)
+                }));
+                if already_has_output {
+                    let has_time_zero = self.ports[out_port].as_external_midi().is_some_and(|p| p.outgoing().iter().any(|e| e.time == 0));
+                    if !has_time_zero {
+                        for e in ch.contents().into_iter().filter(|e| e.time == 0) {
+                            to_write.push((out_port, e));
+                        }
+                    }
+                    continue;
+                }
+                if self.sync_sources.get(loop_idx).and_then(|s| *s).map(|src| self.loops[src].mode().is_playing_mode()).unwrap_or(false) == false { continue; }
+                let start_offset = ch.start_offset();
+                let has_restored_note_state = ch.recording_start_state_messages().iter().any(|d| d.len() >= 3 && (d[0] & 0xf0) == 0x90 && d[2] > 0);
+                let has_content_time_zero_note = ch.contents().iter().any(|e| e.time == 0 && e.data().len() >= 3 && (e.data()[0] & 0xf0) == 0x90 && e.data()[2] > 0);
+                if start_offset <= 0 || ch.length() <= l.length() || has_restored_note_state || has_content_time_zero_note { continue; }
+                for cycle_start in ((start.div_euclid(len) - 1)..=(end.div_euclid(len) + 1)).map(|k| k * len) {
+                    if cycle_start >= start && cycle_start < end {
+                        for e in ch.contents() {
+                            let data = e.data();
+                            if (e.time as i32) < start_offset && data.len() >= 3 && (data[0] & 0xf0) == 0x90 && data[2] > 0 {
+                                if let Some(elem) = crate::midi_storage::MidiStorageElem::new((cycle_start - start) as u32, data) { to_write.push((out_port, elem)); }
+                            }
+                        }
+                    }
+                    for e in ch.contents() {
+                        let play_pos = e.time as i32 - start_offset;
+                        if play_pos < 0 { continue; }
+                        let abs = cycle_start + play_pos;
+                        if abs >= start && abs < end {
+                            if let Some(elem) = crate::midi_storage::MidiStorageElem::new((abs - start) as u32, e.data()) { to_write.push((out_port, elem)); }
+                        }
+                    }
+                }
+            }
+        }
+        for (port, e) in to_write { self.ports[port].write_midi(e); }
     }
 
     fn recent_loop_midi_events(&self, n_frames: usize) -> Vec<crate::midi_storage::MidiStorageElem> {
