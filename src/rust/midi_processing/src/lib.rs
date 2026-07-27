@@ -1,4 +1,4 @@
-use shoop_engine::midi::MidiEvent;
+pub use shoop_engine::midi::MidiEvent;
 
 pub struct Note {
     pub start_t: i32,

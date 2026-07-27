@@ -1,12 +1,12 @@
 use anyhow::anyhow;
 use std::pin::Pin;
 
-use backend_bindings::MidiEvent;
+use backend_bindings::MidiEvent as BackendMidiEvent;
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::QRectF;
 use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qsharedpointer_qvector_qvariant;
-use midi_processing::msgs_to_notes;
+use midi_processing::{msgs_to_notes, MidiEvent};
 shoop_log_unit!("Frontend.RenderMidiSequence");
 
 use crate::{
@@ -104,7 +104,8 @@ impl RenderMidiSequence {
             rust_mut.notes = msgs_to_notes(
                 vector
                     .iter()
-                    .filter_map(|v| MidiEvent::from_qvariant(&v).ok()),
+                    .filter_map(|v| BackendMidiEvent::from_qvariant(&v).ok())
+                    .map(|e| MidiEvent::new(e.time, e.data)),
             )
             .iter()
             .map(|note| Note {

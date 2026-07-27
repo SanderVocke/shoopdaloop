@@ -1,4 +1,3 @@
-use backend;
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
@@ -42,10 +41,7 @@ fn generate_dev_config() -> Result<config::ShoopConfig, anyhow::Error> {
         .output()?;
     let qt_qml = String::from_utf8(qt_qml.stdout)?.trim().to_string();
 
-    let dynlib_paths: Vec<String> = backend::runtime_link_dirs()
-        .iter()
-        .map(|p| p.to_string_lossy().to_string())
-        .collect();
+    let dynlib_paths: Vec<String> = Vec::new();
 
     let mut config = config::ShoopConfig::default();
     config.qml_dir = shoop_src_root_dir

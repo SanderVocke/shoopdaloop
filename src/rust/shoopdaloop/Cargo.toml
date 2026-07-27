@@ -37,7 +37,6 @@ cxx-qt = { workspace = true }
 cxx-qt-lib = { workspace = true, features = ["full"] }
 
 [build-dependencies]
-backend = { path = "../backend" }
 common = { path = "../common" }
 config = { path = "../config" }
 cxx-qt-build = { workspace = true }
@@ -55,6 +54,5 @@ ctor = { workspace = true }
 # Dummy build to build dependencies only
 prebuild = ["frontend/prebuild",
             "backend_bindings/prebuild",
-            "backend/prebuild",
             "common/prebuild",
             "crashhandling/prebuild"]

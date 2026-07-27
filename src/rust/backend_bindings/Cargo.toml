@@ -6,19 +6,13 @@ edition = "2021"
 
 [dependencies]
 common = { path = "../common" }
-backend = { path = "../backend" }
+shoop_engine = { path = "../shoop_engine" }
 num_enum = { workspace = true }
 anyhow = { workspace = true }
-static_assertions = { workspace = true }
 enum-iterator = { workspace = true }
 log = { workspace = true }
 ctor = { workspace = true }
 
-[build-dependencies]
-backend = { path = "../backend" }
-
-bindgen = { workspace = true }
-anyhow = { workspace = true }
 
 [features]
 # Dummy build to build dependencies only
