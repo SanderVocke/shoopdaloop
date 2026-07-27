@@ -6,6 +6,7 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 use shoop_engine as engine;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
 #[repr(i32)]
@@ -135,8 +136,13 @@ pub struct ProfilingReport { pub items: Vec<ProfilingReportItem> }
 #[derive(Debug, Clone)]
 pub struct BackendSessionState { pub audio_driver: *mut (), pub n_audio_buffers_created: u32, pub n_audio_buffers_available: u32 }
 
-struct SharedSession { session: Mutex<engine::Session> }
-impl SharedSession { fn lock(&self) -> MutexGuard<'_, engine::Session> { self.session.lock().unwrap_or_else(|e| e.into_inner()) } }
+struct SharedSession { session: Mutex<engine::Session>, external: Mutex<Option<Arc<Mutex<engine::DummyExternalConnections>>>> }
+impl SharedSession {
+    fn lock(&self) -> MutexGuard<'_, engine::Session> { self.session.lock().unwrap_or_else(|e| e.into_inner()) }
+    fn external(&self) -> Option<Arc<Mutex<engine::DummyExternalConnections>>> { self.external.lock().unwrap_or_else(|e| e.into_inner()).clone() }
+}
+fn compat_port_id(idx: usize) -> engine::PortId { engine::PortId(idx as u64 + 1) }
+fn opposite_direction(direction: PortDirection) -> PortDirection { match direction { PortDirection::Input => PortDirection::Output, PortDirection::Output => PortDirection::Input, PortDirection::Any => PortDirection::Any } }
 
 pub struct BackendSession { shared: Arc<SharedSession> }
 unsafe impl Send for BackendSession {}
@@ -146,9 +152,9 @@ impl BackendSession {
     pub fn create() -> Result<Self> {
         let mut s = engine::Session::default();
         s.apply_graph_changes().ok();
-        Ok(Self { shared: Arc::new(SharedSession { session: Mutex::new(s) }) })
+        Ok(Self { shared: Arc::new(SharedSession { session: Mutex::new(s), external: Mutex::new(None) }) })
     }
-    pub fn set_audio_driver(&self, driver: &AudioDriver) -> Result<()> { driver.attach_session(&self.shared); Ok(()) }
+    pub fn set_audio_driver(&self, driver: &AudioDriver) -> Result<()> { driver.attach_session(&self.shared); *self.shared.external.lock().unwrap_or_else(|e| e.into_inner()) = Some(driver.external()); Ok(()) }
     pub fn get_state(&self) -> BackendSessionState { BackendSessionState { audio_driver: std::ptr::null_mut(), n_audio_buffers_created: 0, n_audio_buffers_available: 0 } }
     pub fn create_loop(&self) -> Result<Loop> { let mut s = self.shared.lock(); let idx = s.create_loop(); s.apply_graph_changes().ok(); Ok(Loop { shared: self.shared.clone(), idx }) }
     pub fn create_fx_chain(&self, _chain_type: shoop_fx_chain_type_t, title: &str) -> Result<FXChain> { Ok(FXChain { shared: self.shared.clone(), title: title.to_string(), state: Arc::new(Mutex::new(FXChainState::default())) }) }
@@ -168,14 +174,15 @@ impl std::fmt::Debug for AudioDriverSettings { fn fmt(&self, f: &mut std::fmt::F
 pub struct AudioDriverState { pub dsp_load_percent: f32, pub xruns_since_last: u32, pub maybe_instance_name: String, pub sample_rate: u32, pub buffer_size: u32, pub active: u32, pub last_processed: u32 }
 
 type ProcessCallback = unsafe extern "C" fn();
-struct DriverInner { driver_type: AudioDriverType, settings: engine::DriverSettings, active: bool, controlled: bool, requested: u32, last_processed: u32, session: Option<Weak<SharedSession>>, external: engine::DummyExternalConnections }
+struct DriverInner { driver_type: AudioDriverType, settings: engine::DriverSettings, active: bool, controlled: bool, requested: u32, last_processed: u32, session: Option<Weak<SharedSession>>, external: Arc<Mutex<engine::DummyExternalConnections>> }
 pub struct AudioDriver { inner: Mutex<DriverInner> }
 unsafe impl Send for AudioDriver {}
 unsafe impl Sync for AudioDriver {}
 impl AudioDriver {
-    pub fn new(driver_type: AudioDriverType, _maybe_callback: Option<ProcessCallback>) -> Result<Self> { Ok(Self { inner: Mutex::new(DriverInner { driver_type, settings: engine::DriverSettings::default(), active: false, controlled: false, requested: 0, last_processed: 0, session: None, external: engine::DummyExternalConnections::default() }) }) }
+    pub fn new(driver_type: AudioDriverType, _maybe_callback: Option<ProcessCallback>) -> Result<Self> { Ok(Self { inner: Mutex::new(DriverInner { driver_type, settings: engine::DriverSettings::default(), active: false, controlled: false, requested: 0, last_processed: 0, session: None, external: Arc::new(Mutex::new(engine::DummyExternalConnections::default())) }) }) }
+    fn external(&self) -> Arc<Mutex<engine::DummyExternalConnections>> { self.inner.lock().unwrap_or_else(|e| e.into_inner()).external.clone() }
     fn attach_session(&self, shared: &Arc<SharedSession>) { self.inner.lock().unwrap().session = Some(Arc::downgrade(shared)); }
-    pub fn start(&self, settings: &AudioDriverSettings) -> Result<()> { let mut i = self.inner.lock().unwrap(); match settings { AudioDriverSettings::Dummy(s) => i.settings = engine::DriverSettings { sample_rate: s.sample_rate, buffer_size: s.buffer_size, client_name: s.client_name.clone() }, AudioDriverSettings::Jack(s) => i.settings.client_name = s.client_name_hint.clone() }; i.active = true; Ok(()) }
+    pub fn start(&self, settings: &AudioDriverSettings) -> Result<()> { let mut i = self.inner.lock().unwrap(); match settings { AudioDriverSettings::Dummy(s) => i.settings = engine::DriverSettings { sample_rate: s.sample_rate, buffer_size: s.buffer_size, client_name: s.client_name.clone() }, AudioDriverSettings::Jack(s) => i.settings.client_name = s.client_name_hint.clone() }; if i.driver_type == AudioDriverType::JackTest { let mut ext = i.external.lock().unwrap_or_else(|e| e.into_inner()); ext.remove_all_mock_ports(); for client in ["test_client_1", "test_client_2", i.settings.client_name.as_str()] { ext.add_mock_port(format!("{client}:audio_in"), engine::PortDirection::Input, engine::PortDataType::Audio); ext.add_mock_port(format!("{client}:audio_out"), engine::PortDirection::Output, engine::PortDataType::Audio); ext.add_mock_port(format!("{client}:midi_in"), engine::PortDirection::Input, engine::PortDataType::Midi); ext.add_mock_port(format!("{client}:midi_out"), engine::PortDirection::Output, engine::PortDataType::Midi); } } i.active = true; Ok(()) }
     pub fn get_sample_rate(&self) -> u32 { self.inner.lock().unwrap().settings.sample_rate }
     pub fn get_buffer_size(&self) -> u32 { self.inner.lock().unwrap().settings.buffer_size }
     pub fn active(&self) -> bool { self.inner.lock().unwrap().active }
@@ -197,10 +204,10 @@ impl AudioDriver {
     pub fn dummy_request_controlled_frames(&self, n: u32) { self.inner.lock().unwrap().requested += n; }
     pub fn dummy_n_requested_frames(&self) -> u32 { self.inner.lock().unwrap().requested }
     pub fn dummy_run_requested_frames(&self) { loop { let (session, n) = { let mut i = self.inner.lock().unwrap(); if !i.active { i.last_processed = 0; return; } let n = if i.controlled { i.requested.min(i.settings.buffer_size) } else { i.settings.buffer_size }; if n == 0 { i.last_processed = 0; return; } if i.controlled { i.requested -= n; } i.last_processed = n; (i.session.as_ref().and_then(|w| w.upgrade()), n) }; if let Some(shared) = session { let mut s = shared.lock(); s.set_sample_rate(self.get_sample_rate()); s.set_buffer_size(self.get_buffer_size()); s.apply_graph_changes().ok(); let _ = s.process(n as usize); } if !self.dummy_is_controlled() { return; } } }
-    pub fn dummy_add_external_mock_port(&self, name: &str, direction: u32, data_type: u32) { let mut i = self.inner.lock().unwrap(); i.external.add_mock_port(name, PortDirection::try_from(direction as i32).unwrap_or(PortDirection::Any).into(), PortDataType::try_from(data_type as i32).unwrap_or(PortDataType::Any).into()); }
-    pub fn dummy_remove_external_mock_port(&self, name: &str) { self.inner.lock().unwrap().external.remove_mock_port(name); }
-    pub fn dummy_remove_all_external_mock_ports(&self) { self.inner.lock().unwrap().external.remove_all_mock_ports(); }
-    pub fn find_external_ports(&self, pat: Option<&str>, direction: u32, data_type: u32) -> Vec<ExternalPortDescriptor> { let i = self.inner.lock().unwrap(); i.external.find_external_ports(pat, PortDirection::try_from(direction as i32).unwrap_or(PortDirection::Any).into(), PortDataType::try_from(data_type as i32).unwrap_or(PortDataType::Any).into()).unwrap_or_default().into_iter().map(|d| ExternalPortDescriptor { name: d.name, direction: d.direction.into(), data_type: match d.data_type { engine::PortDataType::Audio => PortDataType::Audio, engine::PortDataType::Midi => PortDataType::Midi, engine::PortDataType::Any => PortDataType::Any } }).collect() }
+    pub fn dummy_add_external_mock_port(&self, name: &str, direction: u32, data_type: u32) { let ext = self.external(); ext.lock().unwrap_or_else(|e| e.into_inner()).add_mock_port(name, PortDirection::try_from(direction as i32).unwrap_or(PortDirection::Any).into(), PortDataType::try_from(data_type as i32).unwrap_or(PortDataType::Any).into()); }
+    pub fn dummy_remove_external_mock_port(&self, name: &str) { let ext = self.external(); ext.lock().unwrap_or_else(|e| e.into_inner()).remove_mock_port(name); }
+    pub fn dummy_remove_all_external_mock_ports(&self) { let ext = self.external(); ext.lock().unwrap_or_else(|e| e.into_inner()).remove_all_mock_ports(); }
+    pub fn find_external_ports(&self, pat: Option<&str>, direction: u32, data_type: u32) -> Vec<ExternalPortDescriptor> { let ext = self.external(); let ports = ext.lock().unwrap_or_else(|e| e.into_inner()).find_external_ports(pat, PortDirection::try_from(direction as i32).unwrap_or(PortDirection::Any).into(), PortDataType::try_from(data_type as i32).unwrap_or(PortDataType::Any).into()).unwrap_or_default(); ports.into_iter().map(|d| ExternalPortDescriptor { name: d.name, direction: d.direction.into(), data_type: match d.data_type { engine::PortDataType::Audio => PortDataType::Audio, engine::PortDataType::Midi => PortDataType::Midi, engine::PortDataType::Any => PortDataType::Any } }).collect() }
 }
 pub fn driver_type_supported(driver_type: AudioDriverType) -> bool { matches!(driver_type, AudioDriverType::Dummy | AudioDriverType::Jack | AudioDriverType::JackTest) }
 
@@ -288,9 +295,9 @@ impl AudioPort { pub fn new_driver_port(sess: &BackendSession, _driver: &AudioDr
     pub fn dummy_queue_data(&self, data: &[f32]) { if let Some(p) = self.shared.lock().port_mut(self.idx).and_then(|p| p.as_external_mut()) { p.stage_input(data) } }
     pub fn dummy_dequeue_data(&self, n: u32) -> Vec<f32> { self.shared.lock().port_mut(self.idx).and_then(|p| p.as_external_mut()).map(|p| p.dequeue_output(n as usize)).unwrap_or_default() }
     pub fn dummy_request_data(&self, _n: u32) { if let Some(p) = self.shared.lock().port_mut(self.idx).and_then(|p| p.as_external_mut()) { p.clear_output_queue(); } }
-    pub fn get_connections_state(&self) -> HashMap<String, bool> { HashMap::new() }
-    pub fn connect_external_port(&self, _name: &str) {}
-    pub fn disconnect_external_port(&self, _name: &str) {}
+    pub fn get_connections_state(&self) -> HashMap<String, bool> { let mut out = HashMap::new(); if let Some(ext) = self.shared.external() { let ext = ext.lock().unwrap_or_else(|e| e.into_inner()); let connected = ext.connection_status_of(compat_port_id(self.idx)); if let Ok(ports) = ext.find_external_ports(None, opposite_direction(self.direction).into(), engine::PortDataType::Audio) { for p in ports { out.insert(p.name.clone(), *connected.get(&p.name).unwrap_or(&false)); } } } out }
+    pub fn connect_external_port(&self, name: &str) { if let Some(ext) = self.shared.external() { let _ = ext.lock().unwrap_or_else(|e| e.into_inner()).connect(compat_port_id(self.idx), name); } }
+    pub fn disconnect_external_port(&self, name: &str) { if let Some(ext) = self.shared.external() { let _ = ext.lock().unwrap_or_else(|e| e.into_inner()).disconnect(compat_port_id(self.idx), name); } }
     pub fn set_ringbuffer_n_samples(&self, n: u32) { if let Some(a) = self.shared.lock().port_mut(self.idx).and_then(|p| p.audio_mut()) { a.set_ringbuffer_n_samples(n as usize) } }
     pub fn direction(&self) -> PortDirection { self.direction }
 }
@@ -311,15 +318,16 @@ impl MidiPort { pub fn new_driver_port(sess: &BackendSession, _driver: &AudioDri
     pub fn dummy_queue_msgs(&self, msgs: Vec<MidiEvent>) { let mut s = self.shared.lock(); if let Some(p) = s.port_mut(self.idx).and_then(|p| p.as_external_midi_mut()) { for m in msgs { let _ = p.push_incoming(m.time.max(0) as u32, &m.data); } } }
     pub fn dummy_dequeue_data(&self) -> Vec<MidiEvent> { self.shared.lock().port(self.idx).and_then(|p| p.as_external_midi()).map(|p| p.outgoing().iter().map(|e| MidiEvent { time: e.time as i32, data: e.data().to_vec() }).collect()).unwrap_or_default() }
     pub fn dummy_request_data(&self, _n: u32) {}
-    pub fn get_connections_state(&self) -> HashMap<String, bool> { HashMap::new() }
-    pub fn connect_external_port(&self, _name: &str) {}
-    pub fn disconnect_external_port(&self, _name: &str) {}
+    pub fn get_connections_state(&self) -> HashMap<String, bool> { let mut out = HashMap::new(); if let Some(ext) = self.shared.external() { let ext = ext.lock().unwrap_or_else(|e| e.into_inner()); let connected = ext.connection_status_of(compat_port_id(self.idx)); if let Ok(ports) = ext.find_external_ports(None, opposite_direction(self.direction).into(), engine::PortDataType::Midi) { for p in ports { out.insert(p.name.clone(), *connected.get(&p.name).unwrap_or(&false)); } } } out }
+    pub fn connect_external_port(&self, name: &str) { if let Some(ext) = self.shared.external() { let _ = ext.lock().unwrap_or_else(|e| e.into_inner()).connect(compat_port_id(self.idx), name); } }
+    pub fn disconnect_external_port(&self, name: &str) { if let Some(ext) = self.shared.external() { let _ = ext.lock().unwrap_or_else(|e| e.into_inner()).disconnect(compat_port_id(self.idx), name); } }
     pub fn set_ringbuffer_n_samples(&self, n: u32) { if let Some(m) = self.shared.lock().port_mut(self.idx).and_then(|p| p.midi_mut()) { m.set_ringbuffer_n_samples(n) } }
     pub fn direction(&self) -> PortDirection { self.direction }
 }
 
-pub struct DecoupledMidiPort { name: String, queue: Mutex<Vec<MidiEvent>> }
-impl DecoupledMidiPort { pub fn new_driver_port(_driver: &AudioDriver, name: &str, _direction: &PortDirection) -> Result<Self> { Ok(Self { name: name.to_string(), queue: Mutex::new(Vec::new()) }) } pub fn maybe_next_message(&self) -> Option<MidiEvent> { self.queue.lock().unwrap().pop() } pub fn name(&self) -> String { self.name.clone() } pub fn send_midi(&self, msg: &[u8]) { self.queue.lock().unwrap().push(MidiEvent::new(0, msg.to_vec())) } pub fn get_connections_state(&self) -> HashMap<String, bool> { HashMap::new() } pub fn connect_external_port(&self, _name: &str) {} pub fn disconnect_external_port(&self, _name: &str) {} }
+static NEXT_DECOUPLED_PORT_ID: AtomicU64 = AtomicU64::new(100_000);
+pub struct DecoupledMidiPort { name: String, port_id: engine::PortId, queue: Mutex<Vec<MidiEvent>>, external: Arc<Mutex<engine::DummyExternalConnections>> }
+impl DecoupledMidiPort { pub fn new_driver_port(driver: &AudioDriver, name: &str, _direction: &PortDirection) -> Result<Self> { Ok(Self { name: name.to_string(), port_id: engine::PortId(NEXT_DECOUPLED_PORT_ID.fetch_add(1, Ordering::Relaxed)), queue: Mutex::new(Vec::new()), external: driver.external() }) } pub fn maybe_next_message(&self) -> Option<MidiEvent> { self.queue.lock().unwrap().pop() } pub fn name(&self) -> String { self.name.clone() } pub fn send_midi(&self, msg: &[u8]) { self.queue.lock().unwrap().push(MidiEvent::new(0, msg.to_vec())) } pub fn get_connections_state(&self) -> HashMap<String, bool> { self.external.lock().unwrap_or_else(|e| e.into_inner()).connection_status_of(self.port_id).into_iter().collect() } pub fn connect_external_port(&self, name: &str) { let _ = self.external.lock().unwrap_or_else(|e| e.into_inner()).connect(self.port_id, name); } pub fn disconnect_external_port(&self, name: &str) { let _ = self.external.lock().unwrap_or_else(|e| e.into_inner()).disconnect(self.port_id, name); } }
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct FXChainState { pub ready: u32, pub active: u32, pub visible: u32 }
