@@ -117,16 +117,28 @@ impl ExternalMidiPort {
         self.outgoing.events().unwrap_or(&[])
     }
 
+    pub fn clear_queues(&mut self) {
+        self.staged.clear();
+        self.incoming.clear();
+        self.outgoing.prepare();
+    }
+
     // --- port interface ---
 
     /// Start of cycle: take whatever the driver staged, and start the output empty so
     /// nothing carries over.
-    pub fn prepare(&mut self, _n_frames: u32) {
+    pub fn prepare(&mut self, n_frames: u32) {
         self.incoming.clear();
-        // Swap rather than copy, then clear: both buffers keep their capacity, so
-        // this does not allocate on the audio thread.
-        std::mem::swap(&mut self.incoming, &mut self.staged);
-        self.staged.clear();
+        let mut deferred = Vec::with_capacity(self.staged.len());
+        for mut e in self.staged.drain(..) {
+            if e.time < n_frames {
+                self.incoming.push(e);
+            } else {
+                e.time -= n_frames;
+                deferred.push(e);
+            }
+        }
+        self.staged = deferred;
         self.outgoing.prepare();
     }
 

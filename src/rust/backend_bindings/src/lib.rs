@@ -280,14 +280,14 @@ pub struct AudioPortState { pub input_peak: f32, pub output_peak: f32, pub gain:
 impl AudioPort { pub fn new_driver_port(sess: &BackendSession, _driver: &AudioDriver, name: &str, direction: &PortDirection, ring: u32) -> Result<Self> { let mut s = sess.shared.lock(); let idx = s.add_port(engine::session::Port::External(engine::external_audio_port::ExternalAudioPort::new(name, (*direction).into(), ring as usize))); s.apply_graph_changes().ok(); Ok(Self { shared: sess.shared.clone(), idx, direction: *direction }) }
     pub fn input_connectability(&self) -> PortConnectability { match self.direction { PortDirection::Input => PortConnectability { internal: false, external: true }, PortDirection::Output => PortConnectability { internal: true, external: false }, PortDirection::Any => PortConnectability { internal: true, external: true } } }
     pub fn output_connectability(&self) -> PortConnectability { match self.direction { PortDirection::Input => PortConnectability { internal: true, external: false }, PortDirection::Output => PortConnectability { internal: false, external: true }, PortDirection::Any => PortConnectability { internal: true, external: true } } }
-    pub fn get_state(&self) -> Result<AudioPortState> { let s = self.shared.lock(); let p = s.port(self.idx).ok_or_else(|| anyhow!("no port"))?; let a = p.audio().ok_or_else(|| anyhow!("not audio"))?; Ok(AudioPortState { input_peak: a.input_peak(), output_peak: a.output_peak(), gain: a.gain(), muted: a.muted() as u32, passthrough_muted: 0, ringbuffer_n_samples: a.ringbuffer_n_samples() as u32, name: p.name().to_string() }) }
+    pub fn get_state(&self) -> Result<AudioPortState> { let s = self.shared.lock(); let p = s.port(self.idx).ok_or_else(|| anyhow!("no port"))?; let a = p.audio().ok_or_else(|| anyhow!("not audio"))?; Ok(AudioPortState { input_peak: a.input_peak(), output_peak: a.output_peak(), gain: a.gain(), muted: a.muted() as u32, passthrough_muted: a.passthrough_muted() as u32, ringbuffer_n_samples: a.ringbuffer_n_samples() as u32, name: p.name().to_string() }) }
     pub fn set_gain(&self, gain: f32) { if let Some(a) = self.shared.lock().port_mut(self.idx).and_then(|p| p.audio_mut()) { a.set_gain(gain) } }
     pub fn set_muted(&self, muted: bool) { if let Some(a) = self.shared.lock().port_mut(self.idx).and_then(|p| p.audio_mut()) { a.set_muted(muted) } }
-    pub fn set_passthrough_muted(&self, _muted: bool) {}
+    pub fn set_passthrough_muted(&self, muted: bool) { if let Some(a) = self.shared.lock().port_mut(self.idx).and_then(|p| p.audio_mut()) { a.set_passthrough_muted(muted) } }
     pub fn connect_internal(&self, other: &AudioPort) { let mut s = self.shared.lock(); let _ = s.connect_ports_internal(self.idx, other.idx); s.apply_graph_changes().ok(); }
     pub fn dummy_queue_data(&self, data: &[f32]) { if let Some(p) = self.shared.lock().port_mut(self.idx).and_then(|p| p.as_external_mut()) { p.stage_input(data) } }
-    pub fn dummy_dequeue_data(&self, n: u32) -> Vec<f32> { self.shared.lock().port(self.idx).and_then(|p| p.as_external()).map(|p| p.output(n as usize).to_vec()).unwrap_or_default() }
-    pub fn dummy_request_data(&self, _n: u32) {}
+    pub fn dummy_dequeue_data(&self, n: u32) -> Vec<f32> { self.shared.lock().port_mut(self.idx).and_then(|p| p.as_external_mut()).map(|p| p.dequeue_output(n as usize)).unwrap_or_default() }
+    pub fn dummy_request_data(&self, _n: u32) { if let Some(p) = self.shared.lock().port_mut(self.idx).and_then(|p| p.as_external_mut()) { p.clear_output_queue(); } }
     pub fn get_connections_state(&self) -> HashMap<String, bool> { HashMap::new() }
     pub fn connect_external_port(&self, _name: &str) {}
     pub fn disconnect_external_port(&self, _name: &str) {}
@@ -302,11 +302,11 @@ pub struct MidiPortState { pub n_input_events: u32, pub n_input_notes_active: u3
 impl MidiPort { pub fn new_driver_port(sess: &BackendSession, _driver: &AudioDriver, name: &str, direction: &PortDirection, _ring: u32) -> Result<Self> { let mut s = sess.shared.lock(); let idx = s.add_port(engine::session::Port::ExternalMidi(engine::external_midi_port::ExternalMidiPort::new(name, (*direction).into()))); s.apply_graph_changes().ok(); Ok(Self { shared: sess.shared.clone(), idx, direction: *direction }) }
     pub fn input_connectability(&self) -> PortConnectability { match self.direction { PortDirection::Input => PortConnectability { internal: false, external: true }, PortDirection::Output => PortConnectability { internal: true, external: false }, PortDirection::Any => PortConnectability { internal: true, external: true } } }
     pub fn output_connectability(&self) -> PortConnectability { match self.direction { PortDirection::Input => PortConnectability { internal: true, external: false }, PortDirection::Output => PortConnectability { internal: false, external: true }, PortDirection::Any => PortConnectability { internal: true, external: true } } }
-    pub fn get_state(&self) -> Result<MidiPortState> { let s = self.shared.lock(); let p = s.port(self.idx).ok_or_else(|| anyhow!("no port"))?; let m = p.midi().ok_or_else(|| anyhow!("not midi"))?; Ok(MidiPortState { n_input_events: m.n_input_events(), n_input_notes_active: m.n_notes_active(), n_output_events: m.n_output_events(), n_output_notes_active: 0, muted: m.muted() as u32, passthrough_muted: 0, ringbuffer_n_samples: m.ringbuffer_n_samples(), name: p.name().to_string() }) }
+    pub fn get_state(&self) -> Result<MidiPortState> { let s = self.shared.lock(); let p = s.port(self.idx).ok_or_else(|| anyhow!("no port"))?; let m = p.midi().ok_or_else(|| anyhow!("not midi"))?; Ok(MidiPortState { n_input_events: m.n_input_events(), n_input_notes_active: m.n_notes_active(), n_output_events: m.n_output_events(), n_output_notes_active: 0, muted: m.muted() as u32, passthrough_muted: m.passthrough_muted() as u32, ringbuffer_n_samples: m.ringbuffer_n_samples(), name: p.name().to_string() }) }
     pub fn set_muted(&self, muted: bool) { if let Some(m) = self.shared.lock().port_mut(self.idx).and_then(|p| p.midi_mut()) { m.set_muted(muted) } }
-    pub fn set_passthrough_muted(&self, _muted: bool) {}
+    pub fn set_passthrough_muted(&self, muted: bool) { if let Some(m) = self.shared.lock().port_mut(self.idx).and_then(|p| p.midi_mut()) { m.set_passthrough_muted(muted) } }
     pub fn connect_internal(&self, other: &MidiPort) { let mut s = self.shared.lock(); let _ = s.connect_ports_internal(self.idx, other.idx); s.apply_graph_changes().ok(); }
-    pub fn dummy_clear_queues(&self) {}
+    pub fn dummy_clear_queues(&self) { if let Some(p) = self.shared.lock().port_mut(self.idx).and_then(|p| p.as_external_midi_mut()) { p.clear_queues(); } }
     pub fn dummy_queue_msg(&self, msg: &MidiEvent) { self.dummy_queue_msgs(vec![msg.clone()]) }
     pub fn dummy_queue_msgs(&self, msgs: Vec<MidiEvent>) { let mut s = self.shared.lock(); if let Some(p) = s.port_mut(self.idx).and_then(|p| p.as_external_midi_mut()) { for m in msgs { let _ = p.push_incoming(m.time.max(0) as u32, &m.data); } } }
     pub fn dummy_dequeue_data(&self) -> Vec<MidiEvent> { self.shared.lock().port(self.idx).and_then(|p| p.as_external_midi()).map(|p| p.outgoing().iter().map(|e| MidiEvent { time: e.time as i32, data: e.data().to_vec() }).collect()).unwrap_or_default() }
@@ -334,12 +334,12 @@ impl FXChain {
     pub fn get_state(&self) -> Option<FXChainState> { let mut s = self.state.lock().unwrap().clone(); s.ready = 1; Some(s) }
     pub fn get_state_str(&self) -> Option<String> { Some(String::new()) }
     pub fn restore_state(&self, _state: &str) {}
-    fn make_audio_port(&self, name: String) -> AudioPort { let mut s = self.shared.lock(); let n_frames = s.buffer_size().max(1) as usize; let idx = s.add_port(engine::session::Port::Internal(engine::InternalAudioPort::new(name, n_frames, engine::PortConnectability::INTERNAL, engine::PortConnectability::INTERNAL, 0))); s.apply_graph_changes().ok(); AudioPort { shared: self.shared.clone(), idx, direction: PortDirection::Any } }
-    fn make_midi_port(&self, name: String) -> MidiPort { let mut s = self.shared.lock(); let idx = s.add_port(engine::session::Port::ExternalMidi(engine::external_midi_port::ExternalMidiPort::new(name, engine::PortDirection::Any))); s.apply_graph_changes().ok(); MidiPort { shared: self.shared.clone(), idx, direction: PortDirection::Any } }
-    pub fn get_audio_input_port(&self, idx: u32) -> Option<AudioPort> { Some(self.make_audio_port(format!("{}:audio_in_{}", self.title, idx))) }
-    pub fn get_audio_output_port(&self, idx: u32) -> Option<AudioPort> { Some(self.make_audio_port(format!("{}:audio_out_{}", self.title, idx))) }
-    pub fn get_midi_input_port(&self, idx: u32) -> Option<MidiPort> { Some(self.make_midi_port(format!("{}:midi_in_{}", self.title, idx))) }
-    pub fn get_midi_output_port(&self, idx: u32) -> Option<MidiPort> { Some(self.make_midi_port(format!("{}:midi_out_{}", self.title, idx))) }
+    fn make_audio_port(&self, name: String, direction: PortDirection) -> AudioPort { let mut s = self.shared.lock(); let n_frames = s.buffer_size().max(1) as usize; let idx = s.add_port(engine::session::Port::Internal(engine::InternalAudioPort::new(name, n_frames, engine::PortConnectability::INTERNAL, engine::PortConnectability::INTERNAL, 0))); s.apply_graph_changes().ok(); AudioPort { shared: self.shared.clone(), idx, direction } }
+    fn make_midi_port(&self, name: String, direction: PortDirection) -> MidiPort { let mut s = self.shared.lock(); let idx = s.add_port(engine::session::Port::ExternalMidi(engine::external_midi_port::ExternalMidiPort::new(name, direction.into()))); s.apply_graph_changes().ok(); MidiPort { shared: self.shared.clone(), idx, direction } }
+    pub fn get_audio_input_port(&self, idx: u32) -> Option<AudioPort> { Some(self.make_audio_port(format!("{}:audio_in_{}", self.title, idx), PortDirection::Output)) }
+    pub fn get_audio_output_port(&self, idx: u32) -> Option<AudioPort> { Some(self.make_audio_port(format!("{}:audio_out_{}", self.title, idx), PortDirection::Input)) }
+    pub fn get_midi_input_port(&self, idx: u32) -> Option<MidiPort> { Some(self.make_midi_port(format!("{}:midi_in_{}", self.title, idx), PortDirection::Output)) }
+    pub fn get_midi_output_port(&self, idx: u32) -> Option<MidiPort> { Some(self.make_midi_port(format!("{}:midi_out_{}", self.title, idx), PortDirection::Input)) }
 }
 
 pub struct MultichannelAudio { n_channels: u32, n_frames: u32, data: Mutex<Vec<f32>> }

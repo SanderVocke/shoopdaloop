@@ -21,6 +21,8 @@ pub struct ExternalAudioPort {
     staged: Vec<f32>,
     staged_len: usize,
     buffer: Vec<f32>,
+    outgoing: Vec<f32>,
+    processed_len: usize,
 }
 
 impl ExternalAudioPort {
@@ -36,6 +38,8 @@ impl ExternalAudioPort {
             staged: Vec::new(),
             staged_len: 0,
             buffer: Vec::new(),
+            outgoing: Vec::new(),
+            processed_len: 0,
         }
     }
 
@@ -122,6 +126,21 @@ impl ExternalAudioPort {
         &self.buffer[..n]
     }
 
+    pub fn dequeue_output(&mut self, n_frames: usize) -> Vec<f32> {
+        if self.direction == PortDirection::Output && self.outgoing.len() < n_frames && self.processed_len > 0 {
+            let n = self.processed_len.min(self.buffer.len());
+            self.outgoing.extend_from_slice(&self.buffer[..n]);
+            self.processed_len = 0;
+        }
+        let n = n_frames.min(self.outgoing.len());
+        self.outgoing.drain(..n).collect()
+    }
+
+    pub fn clear_output_queue(&mut self) {
+        self.outgoing.clear();
+        self.processed_len = 0;
+    }
+
     // --- port interface ---
 
     /// The port's buffer, grown if this cycle needs more room.
@@ -135,6 +154,11 @@ impl ExternalAudioPort {
     /// Start of cycle: take whatever the driver staged, and silence the rest, so an
     /// unfed cycle is silent rather than a repeat of the last one.
     pub fn prepare(&mut self, n_frames: usize) {
+        if self.direction == PortDirection::Output && self.processed_len > 0 {
+            let n = self.processed_len.min(self.buffer.len());
+            self.outgoing.extend_from_slice(&self.buffer[..n]);
+            self.processed_len = 0;
+        }
         let staged = self.staged_len.min(n_frames);
         if n_frames > self.buffer.len() || self.buffer.is_empty() {
             self.buffer.resize(n_frames.max(1), 0.0);
@@ -153,6 +177,9 @@ impl ExternalAudioPort {
         }
         let (buf, audio) = (&mut self.buffer[..n_frames], &mut self.audio);
         audio.process(buf);
+        if self.direction == PortDirection::Output {
+            self.processed_len = n_frames;
+        }
     }
 
     pub fn close(&mut self) {}

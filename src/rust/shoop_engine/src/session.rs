@@ -877,28 +877,45 @@ impl Session {
             }
             for idx in 0..2usize {
                 let in_name = format!("{title}:audio_in_{idx}");
+                let fx_out_name = format!("{title}:audio_out_{idx}");
                 let out_name = format!("{title}_audio_wet_out_{}", idx + 1);
                 let Some(in_idx) = self.ports.iter().position(|p| p.name() == in_name) else { continue; };
+                let Some(fx_out_idx) = self.ports.iter().position(|p| p.name() == fx_out_name) else { continue; };
                 let Some(out_idx) = self.ports.iter().position(|p| p.name() == out_name) else { continue; };
                 if self.scratch.len() < n_frames { self.scratch.resize(n_frames, 0.0); }
                 {
                     let input = self.ports[in_idx].buffer(n_frames);
                     for i in 0..n_frames { self.scratch[i] = input.get(i).copied().unwrap_or(0.0) * 0.5; }
                 }
-                let (gain, muted) = self.ports[out_idx].audio().map(|a| (a.gain(), a.muted())).unwrap_or((1.0, false));
+                let target = self.ports[out_idx].audio().map(|a| (a.gain(), a.muted())).unwrap_or((1.0, false));
+                let fx_passthrough_muted = self.ports[fx_out_idx].audio().map(|a| a.passthrough_muted()).unwrap_or(false);
+                let (gain, muted) = (target.0, target.1 || fx_passthrough_muted);
                 let output = self.ports[out_idx].buffer(n_frames);
                 for (o, s) in output.iter_mut().zip(&self.scratch[..n_frames]) {
                     *o += if muted { 0.0 } else { *s * gain };
                 }
             }
 
-            let dry_midi_name = format!("{title}_dry_midi_in");
-            if let Some(midi_idx) = self.ports.iter().position(|p| p.name() == dry_midi_name) {
-                let events = self.ports[midi_idx].midi_events().to_vec();
+            let rerecording = self.loops.iter().any(|l| l.mode() == LoopMode::RecordingDryIntoWet);
+            let mut events = if rerecording { self.recent_loop_midi_events(n_frames) } else { Vec::new() };
+            if !rerecording {
+                let fx_midi_name = format!("{title}:midi_in_0");
+                if let Some(midi_idx) = self.ports.iter().position(|p| p.name() == fx_midi_name) {
+                    events.extend_from_slice(self.ports[midi_idx].midi_events());
+                    if let Some(p) = self.ports[midi_idx].as_external_midi() {
+                        events.extend_from_slice(p.outgoing());
+                    }
+                }
+            }
+            if !events.is_empty() {
                 for idx in 0..2usize {
+                    let fx_out_name = format!("{title}:audio_out_{idx}");
                     let out_name = format!("{title}_audio_wet_out_{}", idx + 1);
+                    let Some(fx_out_idx) = self.ports.iter().position(|p| p.name() == fx_out_name) else { continue; };
                     let Some(out_idx) = self.ports.iter().position(|p| p.name() == out_name) else { continue; };
-                    let (gain, muted) = self.ports[out_idx].audio().map(|a| (a.gain(), a.muted())).unwrap_or((1.0, false));
+                    let target = self.ports[out_idx].audio().map(|a| (a.gain(), a.muted())).unwrap_or((1.0, false));
+                    let fx_passthrough_muted = self.ports[fx_out_idx].audio().map(|a| a.passthrough_muted()).unwrap_or(false);
+                    let (gain, muted) = (target.0, target.1 || fx_passthrough_muted);
                     let output = self.ports[out_idx].buffer(n_frames);
                     for e in events.iter() {
                         let t = e.time as usize;
@@ -909,6 +926,64 @@ impl Session {
                 }
             }
         }
+    }
+
+    fn recent_loop_midi_events(&self, n_frames: usize) -> Vec<crate::midi_storage::MidiStorageElem> {
+        let mut out = Vec::new();
+        for l in self.loops.iter() {
+            let len = l.length();
+            if len == 0 { continue; }
+            let end = l.position() % len;
+            let start = (end + len - (n_frames as u32 % len)) % len;
+            for ch_idx in 0..16usize {
+                let Some(ch) = l.midi_channel(ch_idx) else { break; };
+                for mut e in ch.contents() {
+                    let t = e.time % len;
+                    let in_block = if start <= end { t >= start && t < end } else { t >= start || t < end };
+                    if in_block {
+                        e.time = if t >= start { t - start } else { len - start + t };
+                        out.push(e);
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    fn fill_test2x2x1_fx_output(&mut self, port_idx: usize, n_frames: usize) {
+        let name = self.ports[port_idx].name().to_string();
+        let Some((title, suffix)) = name.split_once(':') else { return; };
+        let Some(idx) = suffix.strip_prefix("audio_out_").and_then(|s| s.parse::<usize>().ok()) else { return; };
+        if !self.test_fx_active.get(title).copied().unwrap_or(true) { return; }
+
+        if self.scratch.len() < n_frames { self.scratch.resize(n_frames, 0.0); }
+        self.scratch[..n_frames].fill(0.0);
+        let in_name = format!("{title}:audio_in_{idx}");
+        if let Some(in_idx) = self.ports.iter().position(|p| p.name() == in_name) {
+            let input = self.ports[in_idx].buffer(n_frames);
+            for i in 0..n_frames { self.scratch[i] += input.get(i).copied().unwrap_or(0.0) * 0.5; }
+        }
+        let rerecording = self.loops.iter().any(|l| l.mode() == LoopMode::RecordingDryIntoWet);
+        let mut midi_events = if rerecording { self.recent_loop_midi_events(n_frames) } else { Vec::new() };
+        if !rerecording {
+            let midi_name = format!("{title}:midi_in_0");
+            if let Some(midi_idx) = self.ports.iter().position(|p| p.name() == midi_name) {
+                midi_events.extend_from_slice(self.ports[midi_idx].midi_events());
+                if let Some(p) = self.ports[midi_idx].as_external_midi() {
+                    midi_events.extend_from_slice(p.outgoing());
+                }
+            }
+            for p in self.ports.iter().filter(|p| p.name().contains("_dry_midi_in")) {
+                midi_events.extend_from_slice(p.midi_events());
+            }
+        }
+        for e in midi_events.iter() {
+            let t = e.time as usize;
+            if t < n_frames && e.data().len() >= 3 && (e.data()[0] & 0xf0) == 0x90 && e.data()[2] > 0 {
+                self.scratch[t] += e.data()[2] as f32 / 255.0;
+            }
+        }
+        self.ports[port_idx].buffer(n_frames).copy_from_slice(&self.scratch[..n_frames]);
     }
 
     /// Implements the reference backend's lightweight `test2x2x1` FX chain used by
@@ -958,9 +1033,23 @@ impl Session {
     /// The map is taken and put back, as the schedule is, so the borrow checker allows reading one
     /// port while writing another without cloning the targets on the audio thread.
     fn propagate_port(&mut self, from: usize, n_frames: usize) {
+        if self.ports[from].audio().is_some_and(|a| a.passthrough_muted())
+            || self.ports[from].midi().is_some_and(|m| m.passthrough_muted())
+        {
+            return;
+        }
         let conns = std::mem::take(&mut self.port_connections);
         if let Some(targets) = conns.get(&from) {
             if !targets.is_empty() {
+                if self.ports[from].midi().is_some() {
+                    let events = self.ports[from].midi_events().to_vec();
+                    for &to in targets {
+                        if to == from || to >= self.ports.len() { continue; }
+                        for msg in events.iter() { self.ports[to].write_midi(*msg); }
+                    }
+                    self.port_connections = conns;
+                    return;
+                }
                 if self.scratch.len() < n_frames {
                     self.scratch.resize(n_frames, 0.0);
                 }
@@ -1166,6 +1255,7 @@ impl Session {
         }
         match m.input_port {
             Some(p) => {
+                self.fill_test2x2x1_fx_output(p, n_frames);
                 let src = self.ports[p].buffer(n_frames);
                 self.scratch[..n_frames].copy_from_slice(src);
             }

@@ -55,6 +55,7 @@ impl PortConnectability {
 pub struct AudioPort {
     gain: f32,
     muted: bool,
+    passthrough_muted: bool,
     input_peak: f32,
     output_peak: f32,
     ringbuffer: BufferQueue,
@@ -72,6 +73,7 @@ impl AudioPort {
         Self {
             gain: 1.0,
             muted: false,
+            passthrough_muted: false,
             input_peak: 0.0,
             output_peak: 0.0,
             fx: None,
@@ -103,6 +105,12 @@ impl AudioPort {
     }
     pub fn set_muted(&mut self, muted: bool) {
         self.muted = muted;
+    }
+    pub fn passthrough_muted(&self) -> bool {
+        self.passthrough_muted
+    }
+    pub fn set_passthrough_muted(&mut self, muted: bool) {
+        self.passthrough_muted = muted;
     }
 
     pub fn input_peak(&self) -> f32 {

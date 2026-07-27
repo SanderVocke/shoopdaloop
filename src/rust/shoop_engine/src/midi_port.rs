@@ -24,6 +24,7 @@ pub const DEFAULT_RINGBUFFER_CAPACITY_ELEMS: usize = 65536 * 8 / 12;
 #[derive(Debug)]
 pub struct MidiPort {
     muted: bool,
+    passthrough_muted: bool,
     /// `None` when nothing is being tracked.
     midi_state: Option<MidiStateTracker>,
     /// State as of the oldest message still in the capture window.
@@ -39,6 +40,7 @@ impl MidiPort {
     pub fn new(track: TrackWhat) -> Self {
         Self {
             muted: false,
+            passthrough_muted: false,
             midi_state: track.anything().then(|| MidiStateTracker::new(track)),
             ringbuffer_tail_state: MidiStateTracker::new(track),
             ringbuffer: None,
@@ -64,6 +66,12 @@ impl MidiPort {
     }
     pub fn set_muted(&mut self, muted: bool) {
         self.muted = muted;
+    }
+    pub fn passthrough_muted(&self) -> bool {
+        self.passthrough_muted
+    }
+    pub fn set_passthrough_muted(&mut self, muted: bool) {
+        self.passthrough_muted = muted;
     }
 
     pub fn n_input_events(&self) -> u32 {
