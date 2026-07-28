@@ -212,6 +212,7 @@ impl CarlaLv2Host {
             .plugin(&uri)
             .ok_or_else(|| anyhow!("Carla LV2 plugin {plugin_uri} not found in LV2_PATH"))?;
         let info = inspect_carla_plugin(&world, &plugin, chain_type, plugin_uri, n_audio)?;
+        validate_external_ui_descriptor(&info)?;
         let mut urid_mapper = Box::new(UridMapper::new());
         let sequence_type = urid_mapper.map_str(&cstr_bytes_to_string(LV2_ATOM__SEQUENCE));
         let midi_event_type = urid_mapper.map_str(&cstr_bytes_to_string(LV2_MIDI__MIDIEVENT));
@@ -986,6 +987,31 @@ fn inspect_carla_plugin(
             .collect(),
         ui: discover_ui(world, plugin)?,
     })
+}
+
+fn validate_external_ui_descriptor(info: &CarlaPluginInfo) -> Result<()> {
+    let ui = info
+        .ui
+        .as_ref()
+        .ok_or_else(|| anyhow!("Carla plugin has no external UI metadata"))?;
+    let binary_path = ui
+        .binary_path
+        .as_ref()
+        .ok_or_else(|| anyhow!("Carla external UI has no binary path"))?;
+    let library = unsafe { libloading::Library::new(binary_path)? };
+    let descriptor_fn: libloading::Symbol<Lv2UiDescriptorFn> =
+        unsafe { library.get(b"lv2ui_descriptor\0")? };
+    for idx in 0..1024u32 {
+        let descriptor = unsafe { descriptor_fn(idx) };
+        if descriptor.is_null() {
+            break;
+        }
+        let uri = unsafe { CStr::from_ptr((*descriptor).uri) }.to_string_lossy();
+        if uri == ui.uri {
+            return Ok(());
+        }
+    }
+    Err(anyhow!("Carla external UI descriptor {} not found", ui.uri))
 }
 
 fn required_ports(
