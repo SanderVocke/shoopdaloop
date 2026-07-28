@@ -2429,6 +2429,34 @@ impl FXChain {
         }
     }
     pub fn restore_state(&self, _state: &str) {}
+    fn n_audio_ports(&self) -> usize {
+        match &self.backend {
+            FXChainBackendKind::Test2x2x1 => 2,
+            #[cfg(feature = "lv2")]
+            FXChainBackendKind::Carla(host) => host
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .info
+                .ports
+                .audio_inputs
+                .len(),
+            FXChainBackendKind::Unavailable { .. } => 0,
+        }
+    }
+    fn n_midi_input_ports(&self) -> usize {
+        match &self.backend {
+            FXChainBackendKind::Test2x2x1 => 1,
+            #[cfg(feature = "lv2")]
+            FXChainBackendKind::Carla(host) => host
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .info
+                .ports
+                .midi_inputs
+                .len(),
+            FXChainBackendKind::Unavailable { .. } => 0,
+        }
+    }
     fn make_audio_port(&self, name: String, direction: PortDirection) -> AudioPort {
         let mut s = self.shared.lock();
         let n_frames = s.buffer_size().max(1) as usize;
@@ -2461,28 +2489,31 @@ impl FXChain {
         }
     }
     pub fn get_audio_input_port(&self, idx: u32) -> Option<AudioPort> {
-        Some(self.make_audio_port(
-            format!("{}:audio_in_{}", self.title, idx),
-            PortDirection::Output,
-        ))
+        ((idx as usize) < self.n_audio_ports()).then(|| {
+            self.make_audio_port(
+                format!("{}:audio_in_{}", self.title, idx),
+                PortDirection::Output,
+            )
+        })
     }
     pub fn get_audio_output_port(&self, idx: u32) -> Option<AudioPort> {
-        Some(self.make_audio_port(
-            format!("{}:audio_out_{}", self.title, idx),
-            PortDirection::Input,
-        ))
+        ((idx as usize) < self.n_audio_ports()).then(|| {
+            self.make_audio_port(
+                format!("{}:audio_out_{}", self.title, idx),
+                PortDirection::Input,
+            )
+        })
     }
     pub fn get_midi_input_port(&self, idx: u32) -> Option<MidiPort> {
-        Some(self.make_midi_port(
-            format!("{}:midi_in_{}", self.title, idx),
-            PortDirection::Output,
-        ))
+        ((idx as usize) < self.n_midi_input_ports()).then(|| {
+            self.make_midi_port(
+                format!("{}:midi_in_{}", self.title, idx),
+                PortDirection::Output,
+            )
+        })
     }
-    pub fn get_midi_output_port(&self, idx: u32) -> Option<MidiPort> {
-        Some(self.make_midi_port(
-            format!("{}:midi_out_{}", self.title, idx),
-            PortDirection::Input,
-        ))
+    pub fn get_midi_output_port(&self, _idx: u32) -> Option<MidiPort> {
+        None
     }
 }
 
@@ -2717,11 +2748,10 @@ mod tests {
         let audio_in = chain.get_audio_input_port(0).expect("audio input port");
         let audio_out = chain.get_audio_output_port(0).expect("audio output port");
         let midi_in = chain.get_midi_input_port(0).expect("midi input port");
-        let midi_out = chain.get_midi_output_port(0).expect("midi output port");
+        assert!(chain.get_midi_output_port(0).is_none());
         assert_eq!(audio_in.direction(), PortDirection::Output);
         assert_eq!(audio_out.direction(), PortDirection::Input);
         assert_eq!(midi_in.direction(), PortDirection::Output);
-        assert_eq!(midi_out.direction(), PortDirection::Input);
         assert!(sess.shared.lock().graph_up_to_date());
     }
 
