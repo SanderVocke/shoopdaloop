@@ -434,6 +434,13 @@ struct CpalMidiInputEndpoint {
     _conn: engine::midir_driver::MidiCaptureConnection,
 }
 
+#[derive(Clone)]
+struct CpalDecoupledMidiPort {
+    port_id: engine::PortId,
+    direction: PortDirection,
+    queue: Arc<Mutex<Vec<MidiEvent>>>,
+}
+
 struct CpalMidiOutputEndpoint {
     name: String,
     playback: engine::midir_driver::MidiPlayback,
@@ -451,6 +458,7 @@ struct CpalBackend {
     capture_names: Vec<String>,
     midi_inputs: Arc<Mutex<Vec<CpalMidiInputEndpoint>>>,
     midi_outputs: Arc<Mutex<Vec<CpalMidiOutputEndpoint>>>,
+    decoupled_midi_ports: Arc<Mutex<Vec<CpalDecoupledMidiPort>>>,
     last_processed: Arc<AtomicU32>,
     xruns: Arc<AtomicU32>,
 }
@@ -622,11 +630,73 @@ fn collect_virtual_audio_outputs(
     }
 }
 
+fn route_virtual_midi_inputs(
+    session: &mut engine::Session,
+    connections: &[(engine::PortId, String)],
+    input_name: &str,
+    events: &[engine::midi_storage::MidiStorageElem],
+    decoupled: &[CpalDecoupledMidiPort],
+) {
+    for (port_id, ext_name) in connections {
+        if ext_name != input_name {
+            continue;
+        }
+        if let Some(session_idx) = port_id.0.checked_sub(1).map(|v| v as usize) {
+            if let Some(port) = session
+                .port_mut(session_idx)
+                .and_then(|p| p.as_external_midi_mut())
+            {
+                for e in events {
+                    let _ = port.push_incoming(0, e.data());
+                }
+            }
+        }
+        for port in decoupled
+            .iter()
+            .filter(|p| p.port_id == *port_id && p.direction == PortDirection::Input)
+        {
+            let mut queue = port.queue.lock().unwrap_or_else(|e| e.into_inner());
+            for e in events {
+                queue.push(MidiEvent::new(0, e.data().to_vec()));
+            }
+        }
+    }
+}
+
+fn drain_decoupled_midi_output_events(
+    connections: &[(engine::PortId, String)],
+    output_name: &str,
+    decoupled: &[CpalDecoupledMidiPort],
+) -> Vec<engine::midi_storage::MidiStorageElem> {
+    let mut out = Vec::new();
+    for port in decoupled
+        .iter()
+        .filter(|p| p.direction == PortDirection::Output)
+    {
+        if !connections
+            .iter()
+            .any(|(id, name)| *id == port.port_id && name == output_name)
+        {
+            continue;
+        }
+        let mut queue = port.queue.lock().unwrap_or_else(|e| e.into_inner());
+        for e in queue.drain(..) {
+            if let Some(elem) =
+                engine::midi_storage::MidiStorageElem::new(e.time.max(0) as u32, &e.data)
+            {
+                out.push(elem);
+            }
+        }
+    }
+    out
+}
+
 impl CpalBackend {
     fn start(
         shared: Weak<SharedSession>,
         settings: &CpalMidiAudioDriverSettings,
         external: Arc<Mutex<engine::DummyExternalConnections>>,
+        decoupled_midi_ports: Arc<Mutex<Vec<CpalDecoupledMidiPort>>>,
         maybe_process_callback: Option<ProcessCallback>,
     ) -> Result<Self> {
         let host = select_cpal_host(&settings.host)?;
@@ -782,6 +852,7 @@ impl CpalBackend {
         let playback_names_cb = playback_names.clone();
         let midi_inputs_cb = Arc::new(Mutex::new(midi_inputs));
         let midi_outputs_cb = Arc::new(Mutex::new(midi_outputs));
+        let decoupled_cb = decoupled_midi_ports.clone();
         let midi_inputs_ret = midi_inputs_cb.clone();
         let midi_outputs_ret = midi_outputs_cb.clone();
         let external_cb = external.clone();
@@ -834,20 +905,22 @@ impl CpalBackend {
                     &capture_scratch[..wanted],
                     n_frames,
                 );
-                for (port_id, ext_name) in &connections {
-                    let Some(session_idx) = port_id.0.checked_sub(1).map(|v| v as usize) else {
-                        continue;
-                    };
-                    if ext_name.starts_with("midir:") && ext_name.ends_with(":output") {
-                        if let Some(port) = session
-                            .port_mut(session_idx)
-                            .and_then(|p| p.as_external_midi_mut())
-                        {
-                            let mut inputs =
-                                midi_inputs_cb.lock().unwrap_or_else(|e| e.into_inner());
-                            for input in inputs.iter_mut().filter(|i| &i.name == ext_name) {
-                                input.capture.drain_into(port);
-                            }
+                {
+                    let decoupled = decoupled_cb
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clone();
+                    let mut inputs = midi_inputs_cb.lock().unwrap_or_else(|e| e.into_inner());
+                    for input in inputs.iter_mut() {
+                        let events = input.capture.drain_pending();
+                        if !events.is_empty() {
+                            route_virtual_midi_inputs(
+                                &mut session,
+                                &connections,
+                                &input.name,
+                                &events,
+                                &decoupled,
+                            );
                         }
                     }
                 }
@@ -862,19 +935,33 @@ impl CpalBackend {
                     data,
                     n_frames,
                 );
-                for (port_id, ext_name) in &connections {
-                    let Some(session_idx) = port_id.0.checked_sub(1).map(|v| v as usize) else {
-                        continue;
-                    };
-                    if ext_name.starts_with("midir:") && ext_name.ends_with(":input") {
-                        if let Some(port) =
-                            session.port(session_idx).and_then(|p| p.as_external_midi())
-                        {
-                            let mut outputs =
-                                midi_outputs_cb.lock().unwrap_or_else(|e| e.into_inner());
-                            for output in outputs.iter_mut().filter(|o| &o.name == ext_name) {
-                                output.playback.send_from(port);
+                {
+                    let decoupled = decoupled_cb
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clone();
+                    let mut outputs = midi_outputs_cb.lock().unwrap_or_else(|e| e.into_inner());
+                    for output in outputs.iter_mut() {
+                        for (port_id, ext_name) in &connections {
+                            if ext_name != &output.name {
+                                continue;
                             }
+                            if let Some(session_idx) = port_id.0.checked_sub(1).map(|v| v as usize)
+                            {
+                                if let Some(port) =
+                                    session.port(session_idx).and_then(|p| p.as_external_midi())
+                                {
+                                    output.playback.send_from(port);
+                                }
+                            }
+                        }
+                        let events = drain_decoupled_midi_output_events(
+                            &connections,
+                            &output.name,
+                            &decoupled,
+                        );
+                        if !events.is_empty() {
+                            output.playback.send_events(&events);
                         }
                     }
                 }
@@ -901,6 +988,7 @@ impl CpalBackend {
             capture_names,
             midi_inputs: midi_inputs_ret,
             midi_outputs: midi_outputs_ret,
+            decoupled_midi_ports,
             last_processed,
             xruns,
         })
@@ -1201,6 +1289,7 @@ struct DriverInner {
     jack: Option<Arc<Mutex<JackBackend>>>,
     cpal: Option<Arc<Mutex<CpalBackend>>>,
     cpal_settings: Option<CpalMidiAudioDriverSettings>,
+    cpal_decoupled_midi_ports: Arc<Mutex<Vec<CpalDecoupledMidiPort>>>,
     maybe_process_callback: Option<ProcessCallback>,
 }
 pub struct AudioDriver {
@@ -1289,6 +1378,7 @@ impl AudioDriver {
                 jack: None,
                 cpal: None,
                 cpal_settings: None,
+                cpal_decoupled_midi_ports: Arc::new(Mutex::new(Vec::new())),
                 maybe_process_callback: _maybe_callback,
             })),
         })
@@ -1330,6 +1420,7 @@ impl AudioDriver {
             Arc::downgrade(shared),
             &settings,
             i.external.clone(),
+            i.cpal_decoupled_midi_ports.clone(),
             i.maybe_process_callback,
         )?;
         i.settings.sample_rate = backend.sample_rate;
@@ -1517,8 +1608,20 @@ impl AudioDriver {
         &self,
         name: &str,
         direction: PortDirection,
+        port_id: engine::PortId,
         queue: Arc<Mutex<Vec<MidiEvent>>>,
     ) -> Result<()> {
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .cpal_decoupled_midi_ports
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(CpalDecoupledMidiPort {
+                port_id,
+                direction,
+                queue: queue.clone(),
+            });
         if let Some(jack) = self.jack() {
             let j = jack.lock().unwrap_or_else(|e| e.into_inner());
             match direction {
@@ -2590,11 +2693,12 @@ impl DecoupledMidiPort {
         direction: &PortDirection,
     ) -> Result<Self> {
         let queue = Arc::new(Mutex::new(Vec::new()));
-        driver.register_decoupled_midi_port(name, *direction, queue.clone())?;
+        let port_id = engine::PortId(NEXT_DECOUPLED_PORT_ID.fetch_add(1, Ordering::Relaxed));
+        driver.register_decoupled_midi_port(name, *direction, port_id, queue.clone())?;
         Ok(Self {
             name: name.to_string(),
             direction: *direction,
-            port_id: engine::PortId(NEXT_DECOUPLED_PORT_ID.fetch_add(1, Ordering::Relaxed)),
+            port_id,
             queue,
             external: driver.external(),
             jack: driver.jack(),
@@ -2860,6 +2964,67 @@ mod tests {
     }
 
     #[test]
+    fn cpal_virtual_midi_input_fans_out_to_session_and_decoupled_ports() {
+        let mut s = engine::Session::default();
+        let input = s.add_port(engine::session::Port::ExternalMidi(
+            engine::external_midi_port::ExternalMidiPort::new("min", engine::PortDirection::Input),
+        ));
+        let decoupled_id = engine::PortId(100_123);
+        let decoupled_queue = Arc::new(Mutex::new(Vec::new()));
+        let decoupled = vec![CpalDecoupledMidiPort {
+            port_id: decoupled_id,
+            direction: PortDirection::Input,
+            queue: decoupled_queue.clone(),
+        }];
+        let input_name = "midir:test:output".to_string();
+        let connections = vec![
+            (compat_port_id(input), input_name.clone()),
+            (decoupled_id, input_name.clone()),
+        ];
+        let events = vec![
+            engine::midi_storage::MidiStorageElem::new(0, &[0x90, 60, 100]).unwrap(),
+            engine::midi_storage::MidiStorageElem::new(0, &[0x80, 60, 0]).unwrap(),
+        ];
+
+        route_virtual_midi_inputs(&mut s, &connections, &input_name, &events, &decoupled);
+
+        let port = s
+            .port_mut(input)
+            .and_then(|p| p.as_external_midi_mut())
+            .unwrap();
+        port.prepare(64);
+        port.process(64);
+        assert_eq!(port.visible_events().len(), 2);
+        let queue = decoupled_queue.lock().unwrap_or_else(|e| e.into_inner());
+        assert_eq!(queue.len(), 2);
+        assert_eq!(queue[0].data, vec![0x90, 60, 100]);
+        assert_eq!(queue[1].data, vec![0x80, 60, 0]);
+    }
+
+    #[test]
+    fn cpal_virtual_midi_output_drains_decoupled_queue_for_connected_output() {
+        let output_name = "midir:test:input".to_string();
+        let decoupled_id = engine::PortId(100_456);
+        let queue = Arc::new(Mutex::new(vec![
+            MidiEvent::new(0, vec![0x90, 64, 127]),
+            MidiEvent::new(2, vec![0x80, 64, 0]),
+        ]));
+        let decoupled = vec![CpalDecoupledMidiPort {
+            port_id: decoupled_id,
+            direction: PortDirection::Output,
+            queue: queue.clone(),
+        }];
+        let connections = vec![(decoupled_id, output_name.clone())];
+
+        let events = drain_decoupled_midi_output_events(&connections, &output_name, &decoupled);
+
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].data(), &[0x90, 64, 127]);
+        assert_eq!(events[1].data(), &[0x80, 64, 0]);
+        assert!(queue.lock().unwrap_or_else(|e| e.into_inner()).is_empty());
+    }
+
+    #[test]
     fn get_state_does_not_advance_dummy_time() {
         let driver = AudioDriver {
             inner: Arc::new(Mutex::new(DriverInner {
@@ -2881,6 +3046,7 @@ mod tests {
                 jack: None,
                 cpal: None,
                 cpal_settings: None,
+                cpal_decoupled_midi_ports: Arc::new(Mutex::new(Vec::new())),
                 maybe_process_callback: None,
             })),
         };

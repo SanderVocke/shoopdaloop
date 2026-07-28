@@ -53,13 +53,23 @@ pub struct MidiCapture {
 }
 
 impl MidiCapture {
+    /// Drains everything pending, all retimed to frame 0 of the next audio cycle.
+    pub fn drain_pending(&mut self) -> Vec<MidiStorageElem> {
+        let mut out = Vec::new();
+        while let Ok(e) = self.rx.pop() {
+            out.push(e.at_time(0));
+        }
+        out
+    }
+
     /// Stages everything pending into `port`, all at frame 0.
     ///
     /// Returns how many were staged. Call from the audio callback before the cycle runs,
     /// so the port's `prepare` picks them up.
     pub fn drain_into(&mut self, port: &mut ExternalMidiPort) -> usize {
+        let events = self.drain_pending();
         let mut n = 0;
-        while let Ok(e) = self.rx.pop() {
+        for e in events {
             if port.push_incoming(0, e.data()) {
                 n += 1;
             }
@@ -183,6 +193,17 @@ impl MidiPlayback {
     pub fn send_from(&mut self, port: &ExternalMidiPort) -> usize {
         let mut n = 0;
         for e in port.outgoing() {
+            match self.conn.send(e.data()) {
+                Ok(()) => n += 1,
+                Err(_) => self.n_failed += 1,
+            }
+        }
+        n
+    }
+
+    pub fn send_events(&mut self, events: &[MidiStorageElem]) -> usize {
+        let mut n = 0;
+        for e in events {
             match self.conn.send(e.data()) {
                 Ok(()) => n += 1,
                 Err(_) => self.n_failed += 1,
