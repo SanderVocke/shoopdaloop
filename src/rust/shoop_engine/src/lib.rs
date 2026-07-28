@@ -58,7 +58,8 @@ pub use decoupled_midi_port::DecoupledMidiPort;
 pub use driver::{
     cpal_host_names, cpal_input_device_names, cpal_input_device_names_for_host,
     cpal_output_device_names, cpal_output_device_names_for_host, driver_type_supported,
-    midir_input_port_names, midir_output_port_names, AudioDriverType,
+    midir_input_port_names, midir_output_port_names, AudioDriverState, AudioDriverType,
+    BackendSessionState,
 };
 pub use dummy_driver::{DriverMode, DriverSettings, DummyDriver};
 pub use dummy_midi_port::DummyMidiPort;

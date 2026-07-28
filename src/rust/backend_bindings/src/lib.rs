@@ -32,12 +32,7 @@ pub struct ExternalPortDescriptor {
     pub data_type: PortDataType,
 }
 
-#[derive(Debug, Clone)]
-pub struct BackendSessionState {
-    pub audio_driver: *mut (),
-    pub n_audio_buffers_created: u32,
-    pub n_audio_buffers_available: u32,
-}
+pub type BackendSessionState = engine::BackendSessionState;
 
 enum JackRegisteredPort {
     AudioIn {
@@ -1024,16 +1019,7 @@ impl std::fmt::Debug for AudioDriverSettings {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct AudioDriverState {
-    pub dsp_load_percent: f32,
-    pub xruns_since_last: u32,
-    pub maybe_instance_name: String,
-    pub sample_rate: u32,
-    pub buffer_size: u32,
-    pub active: u32,
-    pub last_processed: u32,
-}
+pub type AudioDriverState = engine::AudioDriverState;
 
 type ProcessCallback = unsafe extern "C" fn();
 fn driver_uses_dummy_processing(driver_type: AudioDriverType) -> bool {
