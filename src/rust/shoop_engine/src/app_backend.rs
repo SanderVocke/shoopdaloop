@@ -2431,10 +2431,24 @@ impl FXChain {
                 "{{\"chain_type\":\"{:?}\",\"unavailable\":{reason:?}}}",
                 self.chain_type
             )),
+            #[cfg(feature = "lv2")]
+            FXChainBackendKind::Carla(host) => host
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .save_state_string()
+                .ok(),
             _ => Some(String::new()),
         }
     }
-    pub fn restore_state(&self, _state: &str) {}
+    pub fn restore_state(&self, state: &str) {
+        #[cfg(feature = "lv2")]
+        if let FXChainBackendKind::Carla(host) = &self.backend {
+            let _ = host
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .restore_state_string(state);
+        }
+    }
     fn n_audio_ports(&self) -> usize {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 2,

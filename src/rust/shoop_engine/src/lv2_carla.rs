@@ -7,13 +7,15 @@
 
 use crate::FXChainType;
 use anyhow::{anyhow, Result};
+use base64::Engine;
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_void};
+use std::ptr::NonNull;
 use std::sync::Mutex;
 
 use lv2_raw::atom::{LV2Atom, LV2AtomSequence, LV2AtomSequenceBody, LV2_ATOM__SEQUENCE};
-use lv2_raw::core::LV2Feature;
+use lv2_raw::core::{LV2Feature, LV2Handle};
 use lv2_raw::urid::{LV2Urid, LV2UridMap, LV2UridMapHandle, LV2_URID__MAP};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,6 +62,12 @@ const LV2_BUF_SIZE_NOMINAL_BLOCK_LENGTH_URI: &str =
     "http://lv2plug.in/ns/ext/buf-size#nominalBlockLength";
 const LV2_ATOM_INT_URI: &str = "http://lv2plug.in/ns/ext/atom#Int";
 const LV2_OPTIONS_INSTANCE: u32 = 0;
+const LV2_STATE_INTERFACE_URI: &str = "http://lv2plug.in/ns/ext/state#interface";
+const LV2_STATE_IS_POD: u32 = 1 << 0;
+const LV2_STATE_IS_PORTABLE: u32 = 1 << 1;
+const LV2_STATE_SUCCESS: u32 = 0;
+const LV2_STATE_ERR_BAD_FLAGS: u32 = 3;
+const LV2_STATE_ERR_NO_PROPERTY: u32 = 5;
 
 #[repr(C)]
 struct Lv2OptionsOption {
@@ -71,10 +79,45 @@ struct Lv2OptionsOption {
     value: *const c_void,
 }
 
+type Lv2StateStoreFunction = unsafe extern "C" fn(
+    handle: *mut c_void,
+    key: u32,
+    value: *const c_void,
+    size: usize,
+    value_type: u32,
+    flags: u32,
+) -> u32;
+type Lv2StateRetrieveFunction = unsafe extern "C" fn(
+    handle: *mut c_void,
+    key: u32,
+    size: *mut usize,
+    value_type: *mut u32,
+    flags: *mut u32,
+) -> *const c_void;
+
+#[repr(C)]
+struct Lv2StateInterface {
+    save: unsafe extern "C" fn(
+        instance: LV2Handle,
+        store: Lv2StateStoreFunction,
+        handle: *mut c_void,
+        flags: u32,
+        features: *const *const LV2Feature,
+    ) -> u32,
+    restore: unsafe extern "C" fn(
+        instance: LV2Handle,
+        retrieve: Lv2StateRetrieveFunction,
+        handle: *mut c_void,
+        flags: u32,
+        features: *const *const LV2Feature,
+    ) -> u32,
+}
+
 pub struct CarlaLv2Host {
     _world: lilv::World,
     pub info: CarlaPluginInfo,
     instance: Option<lilv::instance::Instance>,
+    state_interface: Option<NonNull<Lv2StateInterface>>,
     audio_inputs: Vec<Vec<f32>>,
     audio_outputs: Vec<Vec<f32>>,
     midi_inputs: Vec<AtomSequenceBuffer>,
@@ -173,11 +216,14 @@ impl CarlaLv2Host {
                 .instantiate(sample_rate.max(1) as f64, [&map_feature, &options_feature])
                 .ok_or_else(|| anyhow!("Carla LV2 plugin {plugin_uri} failed to instantiate"))?
         };
+        let state_interface =
+            unsafe { instance.extension_data::<Lv2StateInterface>(LV2_STATE_INTERFACE_URI) };
 
         let mut host = Self {
             _world: world,
             info,
             instance: Some(instance),
+            state_interface,
             audio_inputs: vec![vec![0.0; CARLA_MAX_BUFFER_SIZE]; n_audio],
             audio_outputs: vec![vec![0.0; CARLA_MAX_BUFFER_SIZE]; n_audio],
             midi_inputs: vec![AtomSequenceBuffer::new(CARLA_MIDI_BUFFER_CAPACITY); 1],
@@ -234,6 +280,58 @@ impl CarlaLv2Host {
 
     pub fn audio_output(&self, idx: usize) -> Option<&[f32]> {
         self.audio_outputs.get(idx).map(Vec::as_slice)
+    }
+
+    pub fn save_state_string(&mut self) -> Result<String> {
+        let state_interface = self
+            .state_interface
+            .ok_or_else(|| anyhow!("No state interface for Carla chain"))?;
+        let instance = self
+            .instance
+            .as_ref()
+            .ok_or_else(|| anyhow!("internal error: Carla LV2 instance temporarily unavailable"))?;
+        let mut state = Lv2StateString::default();
+        let features = [std::ptr::null::<LV2Feature>()];
+        let status = unsafe {
+            (state_interface.as_ref().save)(
+                instance.handle(),
+                lv2_state_store,
+                (&mut state as *mut Lv2StateString).cast::<c_void>(),
+                LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE,
+                features.as_ptr(),
+            )
+        };
+        if status != LV2_STATE_SUCCESS {
+            return Err(anyhow!("Carla LV2 state save failed with status {status}"));
+        }
+        state.serialize(&self._urid_mapper)
+    }
+
+    pub fn restore_state_string(&mut self, s: &str) -> Result<()> {
+        let state_interface = self
+            .state_interface
+            .ok_or_else(|| anyhow!("No state interface for Carla chain"))?;
+        let instance = self
+            .instance
+            .as_ref()
+            .ok_or_else(|| anyhow!("internal error: Carla LV2 instance temporarily unavailable"))?;
+        let mut state = Lv2StateString::deserialize(s, &self._urid_mapper)?;
+        let features = [std::ptr::null::<LV2Feature>()];
+        let status = unsafe {
+            (state_interface.as_ref().restore)(
+                instance.handle(),
+                lv2_state_retrieve,
+                (&mut state as *mut Lv2StateString).cast::<c_void>(),
+                LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE,
+                features.as_ptr(),
+            )
+        };
+        if status != LV2_STATE_SUCCESS {
+            return Err(anyhow!(
+                "Carla LV2 state restore failed with status {status}"
+            ));
+        }
+        Ok(())
     }
 
     fn connect_ports(&mut self) {
@@ -314,6 +412,113 @@ impl AtomSequenceBuffer {
     }
 }
 
+#[derive(Default)]
+struct Lv2StateString {
+    data: HashMap<String, (String, Vec<u8>)>,
+    mapped_data: HashMap<LV2Urid, (LV2Urid, Vec<u8>)>,
+}
+
+impl Lv2StateString {
+    fn serialize(&self, mapper: &UridMapper) -> Result<String> {
+        let mut obj = serde_json::Map::new();
+        for (key_uri, (type_uri, value)) in &self.data {
+            obj.insert(
+                key_uri.clone(),
+                serde_json::json!({
+                    "type": type_uri,
+                    "value": base64::engine::general_purpose::STANDARD.encode(value),
+                }),
+            );
+        }
+        for (key, (value_type, value)) in &self.mapped_data {
+            let key_uri = mapper
+                .unmap(*key)
+                .ok_or_else(|| anyhow!("No URI for saved LV2 state key URID {key}"))?;
+            let type_uri = mapper
+                .unmap(*value_type)
+                .ok_or_else(|| anyhow!("No URI for saved LV2 state type URID {value_type}"))?;
+            obj.insert(
+                key_uri,
+                serde_json::json!({
+                    "type": type_uri,
+                    "value": base64::engine::general_purpose::STANDARD.encode(value),
+                }),
+            );
+        }
+        Ok(serde_json::Value::Object(obj).to_string())
+    }
+
+    fn deserialize(s: &str, mapper: &UridMapper) -> Result<Self> {
+        let value: serde_json::Value = serde_json::from_str(s)?;
+        let obj = value
+            .as_object()
+            .ok_or_else(|| anyhow!("LV2 state string must be a JSON object"))?;
+        let mut mapped_data = HashMap::new();
+        for (key_uri, entry) in obj {
+            let type_uri = entry
+                .get("type")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| anyhow!("LV2 state entry {key_uri} is missing type"))?;
+            let encoded = entry
+                .get("value")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| anyhow!("LV2 state entry {key_uri} is missing value"))?;
+            let data = base64::engine::general_purpose::STANDARD.decode(encoded)?;
+            mapped_data.insert(mapper.map_str(key_uri), (mapper.map_str(type_uri), data));
+        }
+        Ok(Self {
+            data: HashMap::new(),
+            mapped_data,
+        })
+    }
+}
+
+unsafe extern "C" fn lv2_state_store(
+    handle: *mut c_void,
+    key: u32,
+    value: *const c_void,
+    size: usize,
+    value_type: u32,
+    flags: u32,
+) -> u32 {
+    if handle.is_null() || value.is_null() {
+        return LV2_STATE_ERR_NO_PROPERTY;
+    }
+    if (flags & LV2_STATE_IS_POD) == 0 || (flags & LV2_STATE_IS_PORTABLE) == 0 {
+        return LV2_STATE_ERR_BAD_FLAGS;
+    }
+    let state = unsafe { &mut *(handle.cast::<Lv2StateString>()) };
+    let data = unsafe { std::slice::from_raw_parts(value.cast::<u8>(), size) }.to_vec();
+    state.mapped_data.insert(key, (value_type, data));
+    LV2_STATE_SUCCESS
+}
+
+unsafe extern "C" fn lv2_state_retrieve(
+    handle: *mut c_void,
+    key: u32,
+    size: *mut usize,
+    value_type: *mut u32,
+    flags: *mut u32,
+) -> *const c_void {
+    if handle.is_null() {
+        return std::ptr::null();
+    }
+    let state = unsafe { &mut *(handle.cast::<Lv2StateString>()) };
+    let Some((ty, data)) = state.mapped_data.get(&key) else {
+        return std::ptr::null();
+    };
+    if !size.is_null() {
+        unsafe { *size = data.len() };
+    }
+    if !value_type.is_null() {
+        unsafe { *value_type = *ty };
+    }
+    if !flags.is_null() {
+        unsafe { *flags = LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE };
+    }
+    data.as_ptr().cast::<c_void>()
+}
+
 struct UridMapper {
     by_uri: Mutex<HashMap<String, LV2Urid>>,
 }
@@ -336,6 +541,14 @@ impl UridMapper {
             by_uri.insert(uri.to_string(), id);
             id
         }
+    }
+
+    fn unmap(&self, urid: LV2Urid) -> Option<String> {
+        self.by_uri
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .find_map(|(uri, id)| (*id == urid).then(|| uri.clone()))
     }
 }
 
@@ -542,5 +755,9 @@ mod tests {
         host.audio_input_mut(0).expect("audio input")[0] = 0.25;
         host.process(256).expect("active process");
         assert!(host.audio_output(0).is_some());
+        let state = host.save_state_string().expect("save Carla LV2 state");
+        assert!(state.starts_with('{'));
+        host.restore_state_string(&state)
+            .expect("restore Carla LV2 state");
     }
 }

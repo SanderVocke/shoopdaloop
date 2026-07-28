@@ -2893,6 +2893,7 @@ dependencies = [
  "anyhow",
  "assert2",
  "assert_no_alloc",
+ "base64",
  "cpal",
  "enum-iterator",
  "jack",
@@ -2903,6 +2904,7 @@ dependencies = [
  "regex",
  "rtrb",
  "rubato",
+ "serde_json",
  "thiserror 2.0.19",
 ]
 
