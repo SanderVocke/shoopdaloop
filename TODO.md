@@ -7,8 +7,11 @@ This checklist tracks backend-related work that remains after replacing and remo
 - [ ] Implement LV2/Carla plugin hosting.
   - [x] Add Lilv-based Carla plugin discovery and legacy URI/port metadata validation.
   - [x] Instantiate and run Carla LV2 plugins from Rust.
-  - [ ] Expose it through the existing `FxChain`/effect interface.
+  - [x] Expose it through the existing `FxChain`/effect interface.
   - [ ] Validate state serialization, UI handling, dry/wet, bypass and tails.
+    - [x] Implement state serialization/restore plumbing.
+    - [x] Implement external-UI show/hide plumbing.
+    - [ ] Add end-to-end validation for state serialization, UI handling, dry/wet, bypass and tails.
 - [x] Repoint the existing frontend/application stack to `shoop_engine`.
 - [x] Delete the old C backend API and bindgen layer once no callers remain.
 - [x] Complete the current application control API surface over the Rust engine.
@@ -31,6 +34,8 @@ This checklist tracks backend-related work that remains after replacing and remo
   - [x] Do not count dummy ports or `MidiPort` core tests as full JACK coverage.
   - [x] Add tests that exercise actual JACK driver behaviour where practical.
 - [ ] Add tests for LV2/Carla once plugin hosting exists.
+  - [x] Cover discovery, instantiate/run, app handle creation, and state save/restore when Carla is installed.
+  - [ ] Cover audio/MIDI graph routing and UI behavior end-to-end.
 - [ ] Extend `tests/no_alloc.rs` as more engine paths land.
   - [ ] Cover recording past chunk boundaries.
   - [ ] Cover any newly added process-thread/plugin/control handoff paths.
