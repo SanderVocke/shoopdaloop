@@ -1009,29 +1009,49 @@ fn required_ports(
 }
 
 fn discover_ui(world: &lilv::World, plugin: &lilv::plugin::Plugin) -> Result<Option<CarlaUiInfo>> {
-    let Some(uis) = plugin.uis() else {
-        return Ok(None);
-    };
+    let uis = plugin.uis().ok_or_else(|| {
+        anyhow!(
+            "expected exactly one Carla LV2 external UI for {}, found none",
+            plugin.uri().as_uri().unwrap_or("unknown")
+        )
+    })?;
     let external_ui = world.new_uri(EXTERNAL_UI_URI);
     let mut iter = uis.iter();
-    let Some(ui) = iter.next() else {
-        return Ok(None);
-    };
+    let ui = iter.next().ok_or_else(|| {
+        anyhow!(
+            "expected exactly one Carla LV2 external UI for {}, found none",
+            plugin.uri().as_uri().unwrap_or("unknown")
+        )
+    })?;
     if iter.next().is_some() {
         return Err(anyhow!(
-            "expected at most one Carla LV2 UI for {}, found more",
+            "expected exactly one Carla LV2 external UI for {}, found more",
             plugin.uri().as_uri().unwrap_or("unknown")
         ));
     }
+    if !ui.is_a(&external_ui) {
+        return Err(anyhow!(
+            "expected Carla LV2 UI for {} to be external-ui",
+            plugin.uri().as_uri().unwrap_or("unknown")
+        ));
+    }
+    let binary_path = ui
+        .binary_uri()
+        .and_then(|n| n.path().map(|(p, _)| p))
+        .ok_or_else(|| anyhow!("Carla LV2 external UI has no binary path"))?;
+    let bundle_path = ui
+        .bundle_uri()
+        .and_then(|n| n.path().map(|(p, _)| p))
+        .ok_or_else(|| anyhow!("Carla LV2 external UI has no bundle path"))?;
     Ok(Some(CarlaUiInfo {
         uri: ui
             .uri()
             .as_uri()
             .ok_or_else(|| anyhow!("Carla LV2 UI has no URI"))?
             .to_string(),
-        binary_path: ui.binary_uri().and_then(|n| n.path().map(|(p, _)| p)),
-        bundle_path: ui.bundle_uri().and_then(|n| n.path().map(|(p, _)| p)),
-        is_external_ui: ui.is_a(&external_ui),
+        binary_path: Some(binary_path),
+        bundle_path: Some(bundle_path),
+        is_external_ui: true,
     }))
 }
 
@@ -1084,7 +1104,10 @@ mod tests {
             "Carla should declare the URID map feature as required: {:?}",
             info.required_features
         );
-        assert!(info.ui.as_ref().is_none_or(|ui| ui.is_external_ui));
+        let ui = info.ui.as_ref().expect("Carla UI metadata");
+        assert!(ui.is_external_ui);
+        assert!(ui.binary_path.is_some());
+        assert!(ui.bundle_path.is_some());
     }
 
     #[test]
