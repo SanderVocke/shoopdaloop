@@ -9,6 +9,7 @@
 */harfbuzz.dll
 */icu*.dll
 */libcrypto-*.dll
+*/lilv-*.dll
 */libmp3lame.DLL
 */libpng*.dll
 */lua.dll
