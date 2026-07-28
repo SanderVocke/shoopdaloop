@@ -2808,6 +2808,12 @@ mod tests {
         );
         chain.set_active(true);
         assert_eq!(chain.get_state().expect("state").active, 1);
+        let state = chain.get_state_str().expect("state string");
+        assert!(
+            state.starts_with('{'),
+            "Carla state should be JSON: {state}"
+        );
+        chain.restore_state(&state);
     }
 
     #[test]
