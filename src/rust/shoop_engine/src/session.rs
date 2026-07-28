@@ -1061,9 +1061,15 @@ impl Session {
                     }
                 }
             }
+            let rerecording = self
+                .loops
+                .iter()
+                .any(|l| l.mode() == LoopMode::RecordingDryIntoWet);
             for midi_idx in 0..host.info.ports.midi_inputs.len() {
                 let fx_midi_name = format!("{title}:midi_in_{midi_idx}");
-                let events = if let Some(port_idx) =
+                let events = if rerecording {
+                    self.recent_loop_midi_events(n_frames)
+                } else if let Some(port_idx) =
                     self.ports.iter().position(|p| p.name() == fx_midi_name)
                 {
                     let mut events = self.ports[port_idx].midi_events().to_vec();
