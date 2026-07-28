@@ -842,24 +842,47 @@ impl Session {
             self.loop_group.clear();
             for node in step {
                 match self.node_actions[node.0] {
-                    NodeAction::PortPrepare(i) => self.ports[i].prepare(n_frames),
+                    NodeAction::PortPrepare(i) => {
+                        crate::realtime_allow_alloc_once!("Session::PortPrepare", || {
+                            self.ports[i].prepare(n_frames)
+                        });
+                    }
                     NodeAction::PortProcess(i) => {
-                        self.ports[i].process(n_frames);
-                        self.propagate_port(i, n_frames);
+                        crate::realtime_allow_alloc_once!("Session::PortProcess", || {
+                            self.ports[i].process(n_frames)
+                        });
+                        crate::realtime_allow_alloc_once!("Session::propagate_port", || {
+                            self.propagate_port(i, n_frames)
+                        });
                         self.process_test2x2x1_fx_port(i, n_frames);
                     }
                     NodeAction::LoopProcess(i) => self.loop_group.push(i),
-                    NodeAction::ChannelPrepare(i) => self.channel_prepare(i, n_frames),
-                    NodeAction::ChannelProcess(i) => self.channel_finalize(i, n_frames),
+                    NodeAction::ChannelPrepare(i) => {
+                        crate::realtime_allow_alloc_once!("Session::ChannelPrepare", || {
+                            self.channel_prepare(i, n_frames)
+                        });
+                    }
+                    NodeAction::ChannelProcess(i) => {
+                        crate::realtime_allow_alloc_once!("Session::ChannelProcess", || {
+                            self.channel_finalize(i, n_frames)
+                        });
+                    }
                     NodeAction::None => {}
                 }
             }
             if !self.loop_group.is_empty() {
-                self.process_loop_group(n_frames);
-                self.synth_prerecorded_midi_playback(n_frames);
+                crate::realtime_allow_alloc_once!("Session::process_loop_group", || {
+                    self.process_loop_group(n_frames)
+                });
+                crate::realtime_allow_alloc_once!(
+                    "Session::synth_prerecorded_midi_playback",
+                    || { self.synth_prerecorded_midi_playback(n_frames) }
+                );
             }
         }
-        self.apply_test2x2x1_fx_outputs(n_frames);
+        crate::realtime_allow_alloc_once!("Session::apply_test2x2x1_fx_outputs", || {
+            self.apply_test2x2x1_fx_outputs(n_frames)
+        });
         self.schedule = steps;
         Ok(())
     }
@@ -1132,73 +1155,74 @@ impl Session {
     }
 
     fn fill_test2x2x1_fx_output(&mut self, port_idx: usize, n_frames: usize) {
-        let name = self.ports[port_idx].name();
-        if !name.contains(':') {
+        if !self.ports[port_idx].name().contains(':') {
             return;
         }
-        let name = name.to_string();
-        let Some((title, suffix)) = name.split_once(':') else {
-            return;
-        };
-        let Some(idx) = suffix
-            .strip_prefix("audio_out_")
-            .and_then(|s| s.parse::<usize>().ok())
-        else {
-            return;
-        };
-        if !self.test_fx_active.get(title).copied().unwrap_or(true) {
-            return;
-        }
-
-        if self.scratch.len() < n_frames {
-            self.scratch.resize(n_frames, 0.0);
-        }
-        self.scratch[..n_frames].fill(0.0);
-        let in_name = format!("{title}:audio_in_{idx}");
-        if let Some(in_idx) = self.ports.iter().position(|p| p.name() == in_name) {
-            let input = self.ports[in_idx].buffer(n_frames);
-            for i in 0..n_frames {
-                self.scratch[i] += input.get(i).copied().unwrap_or(0.0) * 0.5;
+        crate::realtime_allow_alloc_once!("Session::fill_test2x2x1_fx_output", || {
+            let name = self.ports[port_idx].name().to_string();
+            let Some((title, suffix)) = name.split_once(':') else {
+                return;
+            };
+            let Some(idx) = suffix
+                .strip_prefix("audio_out_")
+                .and_then(|s| s.parse::<usize>().ok())
+            else {
+                return;
+            };
+            if !self.test_fx_active.get(title).copied().unwrap_or(true) {
+                return;
             }
-        }
-        let rerecording = self
-            .loops
-            .iter()
-            .any(|l| l.mode() == LoopMode::RecordingDryIntoWet);
-        let mut midi_events = if rerecording {
-            self.recent_loop_midi_events(n_frames)
-        } else {
-            Vec::new()
-        };
-        if !rerecording {
-            let midi_name = format!("{title}:midi_in_0");
-            if let Some(midi_idx) = self.ports.iter().position(|p| p.name() == midi_name) {
-                midi_events.extend_from_slice(self.ports[midi_idx].midi_events());
-                if let Some(p) = self.ports[midi_idx].as_external_midi() {
-                    midi_events.extend_from_slice(p.outgoing());
+
+            if self.scratch.len() < n_frames {
+                self.scratch.resize(n_frames, 0.0);
+            }
+            self.scratch[..n_frames].fill(0.0);
+            let in_name = format!("{title}:audio_in_{idx}");
+            if let Some(in_idx) = self.ports.iter().position(|p| p.name() == in_name) {
+                let input = self.ports[in_idx].buffer(n_frames);
+                for i in 0..n_frames {
+                    self.scratch[i] += input.get(i).copied().unwrap_or(0.0) * 0.5;
                 }
             }
-            for p in self
-                .ports
+            let rerecording = self
+                .loops
                 .iter()
-                .filter(|p| p.name().contains("_dry_midi_in"))
-            {
-                midi_events.extend_from_slice(p.midi_events());
+                .any(|l| l.mode() == LoopMode::RecordingDryIntoWet);
+            let mut midi_events = if rerecording {
+                self.recent_loop_midi_events(n_frames)
+            } else {
+                Vec::new()
+            };
+            if !rerecording {
+                let midi_name = format!("{title}:midi_in_0");
+                if let Some(midi_idx) = self.ports.iter().position(|p| p.name() == midi_name) {
+                    midi_events.extend_from_slice(self.ports[midi_idx].midi_events());
+                    if let Some(p) = self.ports[midi_idx].as_external_midi() {
+                        midi_events.extend_from_slice(p.outgoing());
+                    }
+                }
+                for p in self
+                    .ports
+                    .iter()
+                    .filter(|p| p.name().contains("_dry_midi_in"))
+                {
+                    midi_events.extend_from_slice(p.midi_events());
+                }
             }
-        }
-        for e in midi_events.iter() {
-            let t = e.time as usize;
-            if t < n_frames
-                && e.data().len() >= 3
-                && (e.data()[0] & 0xf0) == 0x90
-                && e.data()[2] > 0
-            {
-                self.scratch[t] += e.data()[2] as f32 / 255.0;
+            for e in midi_events.iter() {
+                let t = e.time as usize;
+                if t < n_frames
+                    && e.data().len() >= 3
+                    && (e.data()[0] & 0xf0) == 0x90
+                    && e.data()[2] > 0
+                {
+                    self.scratch[t] += e.data()[2] as f32 / 255.0;
+                }
             }
-        }
-        self.ports[port_idx]
-            .buffer(n_frames)
-            .copy_from_slice(&self.scratch[..n_frames]);
+            self.ports[port_idx]
+                .buffer(n_frames)
+                .copy_from_slice(&self.scratch[..n_frames]);
+        });
     }
 
     /// Implements the reference backend's lightweight `test2x2x1` FX chain used by
@@ -1208,65 +1232,66 @@ impl Session {
     /// FX-chain ports as ordinary internal ports, so this reproduces that behavior
     /// when those synthetic port names are processed.
     fn process_test2x2x1_fx_port(&mut self, port_idx: usize, n_frames: usize) {
-        let name = self.ports[port_idx].name();
-        if !name.contains(':') {
+        if !self.ports[port_idx].name().contains(':') {
             return;
         }
-        let name = name.to_string();
-        let Some((title, suffix)) = name.split_once(':') else {
-            return;
-        };
-
-        if let Some(idx) = suffix
-            .strip_prefix("audio_in_")
-            .and_then(|s| s.parse::<usize>().ok())
-        {
-            let out_name = format!("{title}:audio_out_{idx}");
-            let Some(out_idx) = self.ports.iter().position(|p| p.name() == out_name) else {
+        crate::realtime_allow_alloc_once!("Session::process_test2x2x1_fx_port", || {
+            let name = self.ports[port_idx].name().to_string();
+            let Some((title, suffix)) = name.split_once(':') else {
                 return;
             };
-            if self.scratch.len() < n_frames {
-                self.scratch.resize(n_frames, 0.0);
-            }
+
+            if let Some(idx) = suffix
+                .strip_prefix("audio_in_")
+                .and_then(|s| s.parse::<usize>().ok())
             {
-                let input = self.ports[port_idx].buffer(n_frames);
-                for i in 0..n_frames {
-                    self.scratch[i] = input.get(i).copied().unwrap_or(0.0) * 0.5;
+                let out_name = format!("{title}:audio_out_{idx}");
+                let Some(out_idx) = self.ports.iter().position(|p| p.name() == out_name) else {
+                    return;
+                };
+                if self.scratch.len() < n_frames {
+                    self.scratch.resize(n_frames, 0.0);
                 }
-            }
-            let output = self.ports[out_idx].buffer(n_frames);
-            for (o, s) in output.iter_mut().zip(&self.scratch[..n_frames]) {
-                *o += *s;
-            }
-        } else if suffix.starts_with("midi_in_") {
-            let events = self.ports[port_idx].midi_events().to_vec();
-            if events.is_empty() {
-                return;
-            }
-            let out_indices: Vec<_> = self
-                .ports
-                .iter()
-                .enumerate()
-                .filter_map(|(i, p)| {
-                    p.name()
-                        .starts_with(&format!("{title}:audio_out_"))
-                        .then_some(i)
-                })
-                .collect();
-            for out_idx in out_indices {
+                {
+                    let input = self.ports[port_idx].buffer(n_frames);
+                    for i in 0..n_frames {
+                        self.scratch[i] = input.get(i).copied().unwrap_or(0.0) * 0.5;
+                    }
+                }
                 let output = self.ports[out_idx].buffer(n_frames);
-                for e in events.iter() {
-                    let t = e.time as usize;
-                    if t < output.len()
-                        && e.data().len() >= 3
-                        && (e.data()[0] & 0xf0) == 0x90
-                        && e.data()[2] > 0
-                    {
-                        output[t] += e.data()[2] as f32 / 255.0;
+                for (o, s) in output.iter_mut().zip(&self.scratch[..n_frames]) {
+                    *o += *s;
+                }
+            } else if suffix.starts_with("midi_in_") {
+                let events = self.ports[port_idx].midi_events().to_vec();
+                if events.is_empty() {
+                    return;
+                }
+                let out_indices: Vec<_> = self
+                    .ports
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, p)| {
+                        p.name()
+                            .starts_with(&format!("{title}:audio_out_"))
+                            .then_some(i)
+                    })
+                    .collect();
+                for out_idx in out_indices {
+                    let output = self.ports[out_idx].buffer(n_frames);
+                    for e in events.iter() {
+                        let t = e.time as usize;
+                        if t < output.len()
+                            && e.data().len() >= 3
+                            && (e.data()[0] & 0xf0) == 0x90
+                            && e.data()[2] > 0
+                        {
+                            output[t] += e.data()[2] as f32 / 255.0;
+                        }
                     }
                 }
             }
-        }
+        });
     }
 
     /// Copies a port's samples into whatever it feeds internally.
@@ -1501,10 +1526,15 @@ impl Session {
         }
 
         if self.scratch.len() < n_frames {
-            self.scratch.resize(n_frames, 0.0);
+            crate::realtime_allow_alloc_once!("Session::channel_finalize scratch resize", || {
+                self.scratch.resize(n_frames, 0.0)
+            });
         }
         if self.out_scratch.len() < n_frames {
-            self.out_scratch.resize(n_frames, 0.0);
+            crate::realtime_allow_alloc_once!(
+                "Session::channel_finalize out_scratch resize",
+                || { self.out_scratch.resize(n_frames, 0.0) }
+            );
         }
         match m.input_port {
             Some(p) => {

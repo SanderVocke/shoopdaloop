@@ -280,7 +280,9 @@ impl Engine {
     fn apply_commands(&mut self) {
         let mut applied = 0u32;
         while let Ok(mut cmd) = self.commands.pop() {
-            cmd(&mut self.session);
+            crate::realtime_allow_alloc_once!("Engine::apply_commands command execution", || {
+                cmd(&mut self.session)
+            });
             applied += 1;
             // Hand it back to be freed off this thread. Cannot fail: the return
             // queue is as large as the command queue.

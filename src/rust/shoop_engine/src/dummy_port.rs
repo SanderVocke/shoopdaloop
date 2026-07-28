@@ -302,7 +302,9 @@ impl DummyAudioPort {
     fn ensure_buffer(&mut self, n_frames: usize) {
         let needed = self.buffer.len().max(n_frames).max(1);
         if needed > self.buffer.len() {
-            self.buffer.resize(needed, 0.0);
+            crate::realtime_allow_alloc_once!("DummyAudioPort::ensure_buffer resize", || {
+                self.buffer.resize(needed, 0.0)
+            });
         }
     }
 

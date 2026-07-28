@@ -90,7 +90,9 @@ impl InternalAudioPort {
     /// The port's buffer, grown if this cycle needs more room.
     pub fn buffer(&mut self, n_frames: usize) -> &mut [f32] {
         if n_frames > self.buffer.len() || self.buffer.is_empty() {
-            self.buffer.resize(n_frames.max(1), 0.0);
+            crate::realtime_allow_alloc_once!("InternalAudioPort::buffer resize", || {
+                self.buffer.resize(n_frames.max(1), 0.0)
+            });
         }
         &mut self.buffer[..n_frames]
     }
@@ -105,7 +107,9 @@ impl InternalAudioPort {
     /// End of cycle: apply gain/muting, meter and capture.
     pub fn process(&mut self, n_frames: usize) {
         if n_frames > self.buffer.len() || self.buffer.is_empty() {
-            self.buffer.resize(n_frames.max(1), 0.0);
+            crate::realtime_allow_alloc_once!("InternalAudioPort::process buffer resize", || {
+                self.buffer.resize(n_frames.max(1), 0.0)
+            });
         }
         let (buf, audio) = (&mut self.buffer[..n_frames], &mut self.audio);
         audio.process(buf);

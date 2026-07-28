@@ -95,7 +95,9 @@ impl ExternalAudioPort {
     /// buffers does not allocate.
     pub fn stage_input(&mut self, samples: &[f32]) {
         if self.staged.len() < samples.len() {
-            self.staged.resize(samples.len(), 0.0);
+            crate::realtime_allow_alloc_once!("ExternalAudioPort::stage_input resize", || {
+                self.staged.resize(samples.len(), 0.0)
+            });
         }
         self.staged[..samples.len()].copy_from_slice(samples);
         self.staged_len = samples.len();
@@ -112,7 +114,10 @@ impl ExternalAudioPort {
         }
         let n = interleaved.len().saturating_sub(offset).div_ceil(stride);
         if self.staged.len() < n {
-            self.staged.resize(n, 0.0);
+            crate::realtime_allow_alloc_once!(
+                "ExternalAudioPort::stage_input_strided resize",
+                || { self.staged.resize(n, 0.0) }
+            );
         }
         for (i, slot) in self.staged[..n].iter_mut().enumerate() {
             *slot = interleaved[offset + i * stride];
@@ -149,7 +154,9 @@ impl ExternalAudioPort {
     /// The port's buffer, grown if this cycle needs more room.
     pub fn buffer(&mut self, n_frames: usize) -> &mut [f32] {
         if n_frames > self.buffer.len() || self.buffer.is_empty() {
-            self.buffer.resize(n_frames.max(1), 0.0);
+            crate::realtime_allow_alloc_once!("ExternalAudioPort::buffer resize", || {
+                self.buffer.resize(n_frames.max(1), 0.0)
+            });
         }
         &mut self.buffer[..n_frames]
     }
@@ -159,12 +166,16 @@ impl ExternalAudioPort {
     pub fn prepare(&mut self, n_frames: usize) {
         if self.direction == PortDirection::Output && self.processed_len > 0 {
             let n = self.processed_len.min(self.buffer.len());
-            self.outgoing.extend_from_slice(&self.buffer[..n]);
+            crate::realtime_allow_alloc_once!("ExternalAudioPort::prepare outgoing extend", || {
+                self.outgoing.extend_from_slice(&self.buffer[..n])
+            });
             self.processed_len = 0;
         }
         let staged = self.staged_len.min(n_frames);
         if n_frames > self.buffer.len() || self.buffer.is_empty() {
-            self.buffer.resize(n_frames.max(1), 0.0);
+            crate::realtime_allow_alloc_once!("ExternalAudioPort::prepare buffer resize", || {
+                self.buffer.resize(n_frames.max(1), 0.0)
+            });
         }
         self.buffer[..staged].copy_from_slice(&self.staged[..staged]);
         for s in &mut self.buffer[staged..n_frames] {
@@ -176,7 +187,9 @@ impl ExternalAudioPort {
     /// End of cycle: apply gain and muting, meter, and capture.
     pub fn process(&mut self, n_frames: usize) {
         if n_frames > self.buffer.len() || self.buffer.is_empty() {
-            self.buffer.resize(n_frames.max(1), 0.0);
+            crate::realtime_allow_alloc_once!("ExternalAudioPort::process buffer resize", || {
+                self.buffer.resize(n_frames.max(1), 0.0)
+            });
         }
         let (buf, audio) = (&mut self.buffer[..n_frames], &mut self.audio);
         audio.process(buf);

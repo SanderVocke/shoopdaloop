@@ -7,6 +7,7 @@
 //! allowing the CLI to turn allocation aborts on for realtime callbacks.
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Once;
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
 
@@ -44,4 +45,31 @@ pub fn forbid_alloc_if_enabled<T, F: FnOnce() -> T>(f: F) -> T {
 /// is intentional and preferable to aborting under the developer guard.
 pub fn allow_alloc<T, F: FnOnce() -> T>(f: F) -> T {
     assert_no_alloc::permit_alloc(f)
+}
+
+/// Run an exceptional allocation-permitted realtime section and emit a warning
+/// once for that call site while the runtime guard is enabled.
+pub fn allow_alloc_once<T, F: FnOnce() -> T>(site: &'static str, once: &'static Once, f: F) -> T {
+    if enabled() {
+        allow_alloc(|| {
+            once.call_once(|| {
+                eprintln!(
+                    "[RealtimeAllocGuard] WARNING: realtime allocation temporarily allowed at {site}"
+                );
+            });
+            f()
+        })
+    } else {
+        f()
+    }
+}
+
+/// Mark an exceptional realtime section as allocation-permitted and warn once
+/// for this macro invocation while the runtime guard is enabled.
+#[macro_export]
+macro_rules! realtime_allow_alloc_once {
+    ($site:literal, $body:expr) => {{
+        static WARN_ONCE: std::sync::Once = std::sync::Once::new();
+        $crate::realtime_alloc_guard::allow_alloc_once($site, &WARN_ONCE, $body)
+    }};
 }
