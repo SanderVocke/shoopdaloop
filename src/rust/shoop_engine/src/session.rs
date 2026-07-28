@@ -658,17 +658,34 @@ impl Session {
                 .unwrap_or_default();
 
             let wanted_len = if cycle_len > 0 {
-                match go_to_mode {
-                    LoopMode::Recording => go_cycle * cycle_len + sync_pos,
-                    _ => cycles * cycle_len,
+                if reverse_start_cycle == Some(0) {
+                    sync_pos
+                } else {
+                    match go_to_mode {
+                        LoopMode::Recording => go_cycle * cycle_len + sync_pos,
+                        _ => cycles * cycle_len,
+                    }
                 }
             } else {
                 data.len() as u32
             };
             let wanted_len_usize = wanted_len as usize;
             let data_len = data.len();
-            let end = if cycle_len > 0 && reverse_start_cycle.is_some() {
-                data_len.saturating_sub((sync_pos + go_cycle * cycle_len) as usize)
+            let end = if cycle_len > 0 {
+                if let Some(reverse_start_cycle) = reverse_start_cycle {
+                    if reverse_start_cycle == 0 {
+                        data_len
+                    } else {
+                        let cycles_before_current =
+                            (reverse_start_cycle.max(0) as u32).saturating_sub(cycles);
+                        data_len
+                            .saturating_sub((sync_pos + cycles_before_current * cycle_len) as usize)
+                    }
+                } else if go_to_mode == LoopMode::Recording {
+                    data_len
+                } else {
+                    data_len.saturating_sub((sync_pos + go_cycle * cycle_len) as usize)
+                }
             } else {
                 data_len
             };
