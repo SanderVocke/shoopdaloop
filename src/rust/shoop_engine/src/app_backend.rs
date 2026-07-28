@@ -930,8 +930,16 @@ impl BackendSession {
             FXChainType::CarlaRack | FXChainType::CarlaPatchbay | FXChainType::CarlaPatchbay16x => {
                 #[cfg(feature = "lv2")]
                 {
-                    match engine::lv2_carla::discover_carla_plugin(chain_type) {
-                        Ok(info) => FXChainBackendKind::Carla(info),
+                    let s = self.shared.lock();
+                    let sample_rate = s.sample_rate().max(1);
+                    let buffer_size = s.buffer_size().max(1);
+                    drop(s);
+                    match engine::lv2_carla::CarlaLv2Host::instantiate(
+                        chain_type,
+                        sample_rate,
+                        buffer_size,
+                    ) {
+                        Ok(host) => FXChainBackendKind::Carla(Arc::new(Mutex::new(host))),
                         Err(e) => FXChainBackendKind::Unavailable {
                             reason: e.to_string(),
                         },
@@ -2368,11 +2376,10 @@ impl DecoupledMidiPort {
 
 pub type FXChainState = engine::FXChainState;
 
-#[derive(Debug, Clone)]
 enum FXChainBackendKind {
     Test2x2x1,
     #[cfg(feature = "lv2")]
-    Carla(engine::lv2_carla::CarlaPluginInfo),
+    Carla(Arc<Mutex<engine::lv2_carla::CarlaLv2Host>>),
     Unavailable {
         reason: String,
     },
@@ -2394,9 +2401,18 @@ impl FXChain {
     }
     pub fn set_active(&self, active: bool) {
         self.state.lock().unwrap().active = active as u32;
-        self.shared
-            .lock()
-            .set_test_fx_active(self.title.clone(), active);
+        match &self.backend {
+            FXChainBackendKind::Test2x2x1 => self
+                .shared
+                .lock()
+                .set_test_fx_active(self.title.clone(), active),
+            #[cfg(feature = "lv2")]
+            FXChainBackendKind::Carla(host) => host
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .set_active(active),
+            FXChainBackendKind::Unavailable { .. } => {}
+        }
     }
     pub fn get_state(&self) -> Option<FXChainState> {
         let mut s = self.state.lock().unwrap().clone();

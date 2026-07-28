@@ -2897,6 +2897,7 @@ dependencies = [
  "enum-iterator",
  "jack",
  "lilv",
+ "lv2_raw",
  "midir",
  "num_enum",
  "regex",
