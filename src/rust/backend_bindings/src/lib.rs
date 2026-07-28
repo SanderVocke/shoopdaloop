@@ -2,6 +2,7 @@
 
 use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+pub use engine::{ChannelMode, LoopMode, PortDataType, PortDirection};
 use enum_iterator::Sequence;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use shoop_engine as engine;
@@ -18,117 +19,6 @@ pub enum AudioDriverType {
     JackTest = 1,
     Dummy = 2,
     Cpal = 3,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
-#[repr(i32)]
-pub enum LoopMode {
-    Unknown = 0,
-    Stopped = 1,
-    Playing = 2,
-    Recording = 3,
-    Replacing = 4,
-    PlayingDryThroughWet = 5,
-    RecordingDryIntoWet = 6,
-}
-
-impl From<LoopMode> for engine::LoopMode {
-    fn from(v: LoopMode) -> Self {
-        match v {
-            LoopMode::Unknown => Self::Unknown,
-            LoopMode::Stopped => Self::Stopped,
-            LoopMode::Playing => Self::Playing,
-            LoopMode::Recording => Self::Recording,
-            LoopMode::Replacing => Self::Replacing,
-            LoopMode::PlayingDryThroughWet => Self::PlayingDryThroughWet,
-            LoopMode::RecordingDryIntoWet => Self::RecordingDryIntoWet,
-        }
-    }
-}
-impl From<engine::LoopMode> for LoopMode {
-    fn from(v: engine::LoopMode) -> Self {
-        match v {
-            engine::LoopMode::Unknown => Self::Unknown,
-            engine::LoopMode::Stopped => Self::Stopped,
-            engine::LoopMode::Playing => Self::Playing,
-            engine::LoopMode::Recording => Self::Recording,
-            engine::LoopMode::Replacing => Self::Replacing,
-            engine::LoopMode::PlayingDryThroughWet => Self::PlayingDryThroughWet,
-            engine::LoopMode::RecordingDryIntoWet => Self::RecordingDryIntoWet,
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
-#[repr(i32)]
-pub enum ChannelMode {
-    Disabled = 0,
-    Direct = 1,
-    Dry = 2,
-    Wet = 3,
-}
-impl From<ChannelMode> for engine::ChannelMode {
-    fn from(v: ChannelMode) -> Self {
-        match v {
-            ChannelMode::Disabled => Self::Disabled,
-            ChannelMode::Direct => Self::Direct,
-            ChannelMode::Dry => Self::Dry,
-            ChannelMode::Wet => Self::Wet,
-        }
-    }
-}
-impl From<engine::ChannelMode> for ChannelMode {
-    fn from(v: engine::ChannelMode) -> Self {
-        match v {
-            engine::ChannelMode::Disabled => Self::Disabled,
-            engine::ChannelMode::Direct => Self::Direct,
-            engine::ChannelMode::Dry => Self::Dry,
-            engine::ChannelMode::Wet => Self::Wet,
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
-#[repr(i32)]
-pub enum PortDirection {
-    Input = 0,
-    Output = 1,
-    Any = 2,
-}
-impl From<PortDirection> for engine::PortDirection {
-    fn from(v: PortDirection) -> Self {
-        match v {
-            PortDirection::Input => Self::Input,
-            PortDirection::Output => Self::Output,
-            PortDirection::Any => Self::Any,
-        }
-    }
-}
-impl From<engine::PortDirection> for PortDirection {
-    fn from(v: engine::PortDirection) -> Self {
-        match v {
-            engine::PortDirection::Input => Self::Input,
-            engine::PortDirection::Output => Self::Output,
-            engine::PortDirection::Any => Self::Any,
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
-#[repr(i32)]
-pub enum PortDataType {
-    Audio = 0,
-    Midi = 1,
-    Any = 2,
-}
-impl From<PortDataType> for engine::PortDataType {
-    fn from(v: PortDataType) -> Self {
-        match v {
-            PortDataType::Audio => Self::Audio,
-            PortDataType::Midi => Self::Midi,
-            PortDataType::Any => Self::Any,
-        }
-    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]

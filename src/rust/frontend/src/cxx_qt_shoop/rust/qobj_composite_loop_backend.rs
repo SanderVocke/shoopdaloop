@@ -5,7 +5,6 @@ use crate::{
     loop_mode_helpers::{is_recording_mode, is_running_mode},
     references_qobject::ReferencesQObject,
 };
-use backend_bindings::LoopMode;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace, warn as raw_warn,
 };
@@ -18,6 +17,7 @@ use cxx_qt_lib_shoop::{
     qobject::{self, qobject_has_property, AsQObject},
     qvariant_helpers::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
 };
+use shoop_engine::LoopMode;
 use std::{
     cmp::{max, min},
     collections::{BTreeMap, HashMap, HashSet},

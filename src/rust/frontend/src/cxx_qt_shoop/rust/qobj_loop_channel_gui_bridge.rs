@@ -1,5 +1,5 @@
-use backend_bindings::ChannelMode;
 use common::logging::macros::*;
+use shoop_engine::ChannelMode;
 
 shoop_log_unit!("Frontend.LoopChannel");
 

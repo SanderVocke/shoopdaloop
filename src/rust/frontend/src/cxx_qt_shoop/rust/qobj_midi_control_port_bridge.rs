@@ -1,7 +1,8 @@
 use std::collections::HashSet;
 
-use backend_bindings::{DecoupledMidiPort, PortDataType};
+use backend_bindings::DecoupledMidiPort;
 use common::logging::macros::*;
+use shoop_engine::PortDataType;
 shoop_log_unit!("Frontend.MidiControlPort");
 
 #[cxx_qt::bridge]

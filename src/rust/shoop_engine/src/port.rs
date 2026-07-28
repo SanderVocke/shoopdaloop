@@ -9,10 +9,12 @@
 //! with the driver implementations.
 
 use crate::buffer_queue::{BufferQueue, Snapshot};
+use enum_iterator::Sequence;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 /// Kind of data a port carries. Discriminants match `shoop_port_data_type_t`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive, IntoPrimitive, Sequence)]
+#[repr(i32)]
 pub enum PortDataType {
     Audio = 0,
     Midi = 1,
@@ -20,8 +22,8 @@ pub enum PortDataType {
 }
 
 /// Discriminants match `shoop_port_direction_t`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive, IntoPrimitive, Sequence)]
+#[repr(i32)]
 pub enum PortDirection {
     Input = 0,
     Output = 1,

@@ -253,11 +253,11 @@ pub mod ffi {
     }
 }
 
-use backend_bindings::LoopMode;
 use cxx_qt_lib_shoop::qweakpointer_qobject::QWeakPointer_QObject;
 pub use ffi::make_raw_composite_loop_backend;
 pub use ffi::CompositeLoopBackend;
 use ffi::*;
+use shoop_engine::LoopMode;
 
 use crate::composite_loop_schedule::CompositeLoopSchedule;
 

@@ -1,9 +1,9 @@
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.CompositeLoopSchedule");
 use anyhow::anyhow;
-use backend_bindings::LoopMode;
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 use cxx_qt_lib_shoop::qvariant_helpers::*;
+use shoop_engine::LoopMode;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;

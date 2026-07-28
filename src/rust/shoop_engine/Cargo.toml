@@ -16,6 +16,8 @@ cpal = { workspace = true, optional = true }
 # MIDI for hosts without JACK. Optional for the same reason.
 midir = { workspace = true, optional = true }
 assert_no_alloc = { workspace = true }
+enum-iterator = { workspace = true }
+num_enum = { workspace = true }
 
 [features]
 jack = ["dep:jack"]

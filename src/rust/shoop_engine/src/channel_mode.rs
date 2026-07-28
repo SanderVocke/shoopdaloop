@@ -6,12 +6,14 @@
 //! trigger away, a stopped channel may already need to play or record.
 
 use crate::loop_mode::LoopMode;
+use enum_iterator::Sequence;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 /// Role of a channel within its track.
 ///
 /// Discriminants match `shoop_channel_mode_t` in `src/backend/types.h`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TryFromPrimitive, IntoPrimitive, Sequence)]
+#[repr(i32)]
 pub enum ChannelMode {
     Disabled = 0,
     #[default]
