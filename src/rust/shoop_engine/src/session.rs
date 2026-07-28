@@ -2533,6 +2533,46 @@ mod tests {
         check!(s.apply_graph_changes() == Err(SessionError::Graph(GraphError::Cycle)));
     }
 
+    #[cfg(feature = "lv2")]
+    #[test]
+    fn carla_fx_chain_audio_route_runs_from_session_ports_to_wet_output() {
+        let Ok(mut host) =
+            crate::lv2_carla::CarlaLv2Host::instantiate(crate::FXChainType::CarlaRack, 48_000, 64)
+        else {
+            eprintln!("skipping Carla routing test; Carla Rack is not installed in LV2_PATH");
+            return;
+        };
+        host.set_active(true);
+        let host = std::sync::Arc::new(std::sync::Mutex::new(host));
+        let mut s = Session::default();
+        s.set_sample_rate(48_000);
+        s.set_buffer_size(64);
+        s.set_carla_fx_host("carla", host);
+        let audio_in = s.add_port(internal("carla:audio_in_0", 64));
+        let _fx_out = s.add_port(internal("carla:audio_out_0", 64));
+        let wet_out = s.add_port(internal("carla_audio_wet_out_1", 64));
+        let midi_in = s.add_port(dummy_midi(77, "carla:midi_in_0", PortDirection::Input));
+        for (i, sample) in s
+            .port_mut(audio_in)
+            .unwrap()
+            .buffer(64)
+            .iter_mut()
+            .enumerate()
+        {
+            *sample = if i == 0 { 1.0 } else { 0.0 };
+        }
+        let midi = s.port_mut(midi_in).unwrap().as_dummy_midi_mut().unwrap();
+        assert!(midi.queue_msg(3, &[0x90, 60, 100]));
+        midi.prepare(64);
+        midi.process(64);
+
+        s.process_carla_fx_chains(64);
+
+        let wet = s.port_mut(wet_out).unwrap().buffer(64).to_vec();
+        assert_eq!(wet.len(), 64);
+        assert!(wet.iter().all(|s| s.is_finite()));
+    }
+
     #[test]
     fn sample_rate_and_buffer_size_round_trip() {
         let mut s = Session::default();
