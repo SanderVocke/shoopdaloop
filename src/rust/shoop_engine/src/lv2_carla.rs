@@ -1076,11 +1076,11 @@ fn discover_ui(world: &lilv::World, plugin: &lilv::plugin::Plugin) -> Result<Opt
     }
     let binary_path = ui
         .binary_uri()
-        .and_then(|n| n.path().map(|(p, _)| p))
+        .and_then(|n| n.path().map(|(_, p)| p))
         .ok_or_else(|| anyhow!("Carla LV2 external UI has no binary path"))?;
     let bundle_path = ui
         .bundle_uri()
-        .and_then(|n| n.path().map(|(p, _)| p))
+        .and_then(|n| n.path().map(|(_, p)| p))
         .ok_or_else(|| anyhow!("Carla LV2 external UI has no bundle path"))?;
     Ok(Some(CarlaUiInfo {
         uri: ui
@@ -1193,9 +1193,12 @@ mod tests {
             );
             return;
         }
-        let Ok(mut host) = CarlaLv2Host::instantiate(FXChainType::CarlaRack, 48_000, 256) else {
-            eprintln!("skipping Carla UI smoke test; Carla Rack is not installed in LV2_PATH");
-            return;
+        let mut host = match CarlaLv2Host::instantiate(FXChainType::CarlaRack, 48_000, 256) {
+            Ok(host) => host,
+            Err(e) => {
+                eprintln!("skipping Carla UI smoke test; Carla Rack is unavailable: {e}");
+                return;
+            }
         };
         host.set_visible(true).expect("show Carla UI");
         assert!(host.is_visible());
@@ -1205,9 +1208,12 @@ mod tests {
 
     #[test]
     fn instantiates_and_runs_installed_carla_rack_when_available() {
-        let Ok(mut host) = CarlaLv2Host::instantiate(FXChainType::CarlaRack, 48_000, 256) else {
-            eprintln!("skipping Carla LV2 run test; Carla Rack is not installed in LV2_PATH");
-            return;
+        let mut host = match CarlaLv2Host::instantiate(FXChainType::CarlaRack, 48_000, 256) {
+            Ok(host) => host,
+            Err(e) => {
+                eprintln!("skipping Carla LV2 run test; Carla Rack is unavailable: {e}");
+                return;
+            }
         };
         assert_eq!(host.info.chain_type, FXChainType::CarlaRack);
         assert_eq!(host.info.ports.audio_inputs.len(), 2);

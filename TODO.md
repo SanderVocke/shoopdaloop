@@ -13,7 +13,7 @@ This checklist tracks backend-related work that remains after replacing and remo
     - [x] Implement external-UI show/hide plumbing.
     - [x] Add state serialization and dry/wet audio/MIDI graph routing coverage.
     - [x] Add inactive/bypass tail-cutoff coverage matching the old host.
-    - [ ] Run and record real UI behavior validation in an environment with Carla installed and a display.
+    - [x] Run and record real UI behavior validation in an environment with Carla installed and a display.
 - [x] Repoint the existing frontend/application stack to `shoop_engine`.
 - [x] Delete the old C backend API and bindgen layer once no callers remain.
 - [x] Complete the current application control API surface over the Rust engine.
@@ -39,7 +39,7 @@ This checklist tracks backend-related work that remains after replacing and remo
   - [x] Cover discovery, instantiate/run, app handle creation, and state save/restore when Carla is installed.
   - [x] Cover audio/MIDI graph routing when Carla is installed.
   - [x] Add opt-in real UI show/hide smoke coverage (`SHOOP_TEST_CARLA_UI=1`).
-  - [ ] Run and record real UI behavior validation in an environment with a display.
+  - [x] Run and record real UI behavior validation in an environment with a display.
 - [ ] Extend `tests/no_alloc.rs` as more engine paths land.
   - [ ] Cover recording past chunk boundaries.
   - [ ] Cover any newly added process-thread/plugin/control handoff paths.
