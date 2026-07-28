@@ -28,6 +28,8 @@ pub mod internal_audio_port;
 #[cfg(feature = "jack")]
 pub mod jack_driver;
 pub mod loop_mode;
+#[cfg(feature = "lv2")]
+pub mod lv2_carla;
 pub mod midi;
 pub mod midi_buffering_input_port;
 pub mod midi_channel;

@@ -5,7 +5,8 @@ This checklist tracks backend-related work that remains after replacing and remo
 ## Backend completeness
 
 - [ ] Implement LV2/Carla plugin hosting.
-  - [ ] Keep plugin hosting behind the planned C++/Rust boundary for now.
+  - [x] Add Lilv-based Carla plugin discovery and legacy URI/port metadata validation.
+  - [ ] Instantiate and run Carla LV2 plugins from Rust.
   - [ ] Expose it through the existing `FxChain`/effect interface.
   - [ ] Validate state serialization, UI handling, dry/wet, bypass and tails.
 - [x] Repoint the existing frontend/application stack to `shoop_engine`.

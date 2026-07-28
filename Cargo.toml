@@ -61,6 +61,7 @@ jack = "0.13"
 # links = "alsa", so two versions cannot coexist in one workspace.
 cpal = "0.16"
 midir = "0.11"
+lilv = "0.2.4"
 # 0.16 rather than 4.0: the 4.x API works through audioadapter traits instead of
 # plain sample planes, which buys nothing here.
 rubato = "0.16"

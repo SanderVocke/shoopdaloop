@@ -924,10 +924,32 @@ impl BackendSession {
             idx,
         })
     }
-    pub fn create_fx_chain(&self, _chain_type: FXChainType, title: &str) -> Result<FXChain> {
+    pub fn create_fx_chain(&self, chain_type: FXChainType, title: &str) -> Result<FXChain> {
+        let backend = match chain_type {
+            FXChainType::Test2x2x1 => FXChainBackendKind::Test2x2x1,
+            FXChainType::CarlaRack | FXChainType::CarlaPatchbay | FXChainType::CarlaPatchbay16x => {
+                #[cfg(feature = "lv2")]
+                {
+                    match engine::lv2_carla::discover_carla_plugin(chain_type) {
+                        Ok(info) => FXChainBackendKind::Carla(info),
+                        Err(e) => FXChainBackendKind::Unavailable {
+                            reason: e.to_string(),
+                        },
+                    }
+                }
+                #[cfg(not(feature = "lv2"))]
+                {
+                    FXChainBackendKind::Unavailable {
+                        reason: "shoop_engine was built without LV2 support".to_string(),
+                    }
+                }
+            }
+        };
         Ok(FXChain {
             shared: self.shared.clone(),
             title: title.to_string(),
+            chain_type,
+            backend,
             state: Arc::new(Mutex::new(FXChainState::default())),
         })
     }
@@ -2345,14 +2367,27 @@ impl DecoupledMidiPort {
 }
 
 pub type FXChainState = engine::FXChainState;
+
+#[derive(Debug, Clone)]
+enum FXChainBackendKind {
+    Test2x2x1,
+    #[cfg(feature = "lv2")]
+    Carla(engine::lv2_carla::CarlaPluginInfo),
+    Unavailable {
+        reason: String,
+    },
+}
+
 pub struct FXChain {
     shared: Arc<SharedSession>,
     title: String,
+    chain_type: FXChainType,
+    backend: FXChainBackendKind,
     state: Arc<Mutex<FXChainState>>,
 }
 impl FXChain {
     pub fn available(&self) -> bool {
-        true
+        !matches!(self.backend, FXChainBackendKind::Unavailable { .. })
     }
     pub fn set_visible(&self, visible: bool) {
         self.state.lock().unwrap().visible = visible as u32
@@ -2365,11 +2400,17 @@ impl FXChain {
     }
     pub fn get_state(&self) -> Option<FXChainState> {
         let mut s = self.state.lock().unwrap().clone();
-        s.ready = 1;
+        s.ready = self.available() as u32;
         Some(s)
     }
     pub fn get_state_str(&self) -> Option<String> {
-        Some(String::new())
+        match &self.backend {
+            FXChainBackendKind::Unavailable { reason } => Some(format!(
+                "{{\"chain_type\":\"{:?}\",\"unavailable\":{reason:?}}}",
+                self.chain_type
+            )),
+            _ => Some(String::new()),
+        }
     }
     pub fn restore_state(&self, _state: &str) {}
     fn make_audio_port(&self, name: String, direction: PortDirection) -> AudioPort {
