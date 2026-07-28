@@ -86,6 +86,21 @@ pub fn populate_portable_folder(
     copy_dir_merge(qt_qml, &install_qml_dir)?;
 
     info!("Getting dependencies (this may take some time)...");
+    // Build environments expose vcpkg through CMAKE_PREFIX_PATH, but that does
+    // not by itself affect the runtime loader used by the dependency scanners.
+    // Add its runtime directories explicitly, particularly for @rpath
+    // resolution on macOS.
+    if let Some(prefixes) = std::env::var_os("CMAKE_PREFIX_PATH") {
+        for prefix in std::env::split_paths(&prefixes) {
+            for relative in ["lib", "bin"] {
+                let path = prefix.join(relative);
+                if path.is_dir() {
+                    debug!("--> extra vcpkg runtime search path: {:?}", path);
+                    common::env::add_lib_search_path(&path);
+                }
+            }
+        }
+    }
     // Also include search paths to all of Qt's plugin directories
     let plugin_subdirs = std::fs::read_dir(install_plugins_dir)?;
     for entry in plugin_subdirs {
