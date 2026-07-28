@@ -2535,6 +2535,35 @@ mod tests {
 
     #[cfg(feature = "lv2")]
     #[test]
+    fn inactive_carla_fx_chain_bypasses_processing_and_tails_like_legacy_host() {
+        let Ok(host) =
+            crate::lv2_carla::CarlaLv2Host::instantiate(crate::FXChainType::CarlaRack, 48_000, 64)
+        else {
+            eprintln!(
+                "skipping Carla inactive routing test; Carla Rack is not installed in LV2_PATH"
+            );
+            return;
+        };
+        let host = std::sync::Arc::new(std::sync::Mutex::new(host));
+        let mut s = Session::default();
+        s.set_sample_rate(48_000);
+        s.set_buffer_size(64);
+        s.set_carla_fx_host("carla", host);
+        let audio_in = s.add_port(internal("carla:audio_in_0", 64));
+        let _fx_out = s.add_port(internal("carla:audio_out_0", 64));
+        let wet_out = s.add_port(internal("carla_audio_wet_out_1", 64));
+        for sample in s.port_mut(audio_in).unwrap().buffer(64).iter_mut() {
+            *sample = 1.0;
+        }
+
+        s.process_carla_fx_chains(64);
+
+        let wet = s.port_mut(wet_out).unwrap().buffer(64).to_vec();
+        assert!(wet.iter().all(|s| *s == 0.0));
+    }
+
+    #[cfg(feature = "lv2")]
+    #[test]
     fn carla_fx_chain_audio_route_runs_from_session_ports_to_wet_output() {
         let Ok(mut host) =
             crate::lv2_carla::CarlaLv2Host::instantiate(crate::FXChainType::CarlaRack, 48_000, 64)
