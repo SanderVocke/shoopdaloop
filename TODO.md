@@ -15,20 +15,20 @@ This checklist tracks backend-related work that remains after replacing and remo
   - [ ] Add/finish the `AudioDriver` handle/API.
   - [ ] Ensure Python/QML-facing handle shapes remain compatible enough for existing consumers.
 - [x] Keep schedule recomputation off the application audio callbacks.
-- [ ] Finish JACK-specific parity work.
+- [x] Finish JACK-specific parity work.
   - [x] Cover JACK port registration.
-  - [ ] Cover JACK buffer reading/writing.
+  - [x] Cover JACK buffer reading/writing.
   - [x] Cover direction-dependent access flags.
-  - [x] Validate JACK port registration/flag coverage against a real running JACK server when one is available.
+  - [x] Validate JACK coverage against a real running JACK server when one is available.
 
 ## Test suite completeness
 
 - [ ] Maintain and extend the Rust backend regression suite now that the C++ `test_runner` is gone.
   - [ ] Preserve intentional non-literal translations where the Rust design differs.
   - [ ] Document any remaining behavioural divergences explicitly.
-- [ ] Add missing JACK driver integration coverage.
-  - [ ] Do not count dummy ports or `MidiPort` core tests as full JACK coverage.
-  - [ ] Add tests that exercise actual JACK driver behaviour where practical.
+- [x] Add missing JACK driver integration coverage.
+  - [x] Do not count dummy ports or `MidiPort` core tests as full JACK coverage.
+  - [x] Add tests that exercise actual JACK driver behaviour where practical.
 - [ ] Add tests for LV2/Carla once plugin hosting exists.
 - [ ] Extend `tests/no_alloc.rs` as more engine paths land.
   - [ ] Cover recording past chunk boundaries.

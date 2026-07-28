@@ -373,6 +373,20 @@ mod tests {
     use super::*;
     use crate::{PortConnectability, PortDataType};
     use jack::PortSpec;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    fn wait_until(mut done: impl FnMut() -> bool) -> bool {
+        let deadline = Instant::now() + Duration::from_millis(750);
+        while Instant::now() < deadline {
+            if done() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        done()
+    }
 
     fn jack_client(name: &str) -> Option<jack::Client> {
         match jack::Client::new(name, jack::ClientOptions::NO_START_SERVER) {
@@ -540,5 +554,174 @@ mod tests {
         assert_eq!(audio_outputs, vec![format!("{client_name}:audio_out")]);
         assert_eq!(midi_inputs, vec![format!("{client_name}:midi_in")]);
         assert_eq!(midi_outputs, vec![format!("{client_name}:midi_out")]);
+    }
+
+    struct AudioProducer {
+        port: jack::Port<jack::AudioOut>,
+        frames: Arc<AtomicUsize>,
+    }
+
+    impl jack::ProcessHandler for AudioProducer {
+        fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+            let start = self
+                .frames
+                .fetch_add(ps.n_frames() as usize, Ordering::Relaxed);
+            for (idx, sample) in self.port.as_mut_slice(ps).iter_mut().enumerate() {
+                *sample = (start + idx + 1) as f32;
+            }
+            jack::Control::Continue
+        }
+    }
+
+    #[test]
+    fn process_callback_reads_jack_audio_input_into_session_port() {
+        let suffix = std::process::id();
+        let Some(producer_client) = jack_client(&format!("shoop-test-producer-{suffix}")) else {
+            return;
+        };
+        let producer_port = producer_client
+            .register_port("out", jack::AudioOut::default())
+            .expect("producer output");
+        let producer_name = producer_port.name().expect("producer port name");
+        let produced_frames = Arc::new(AtomicUsize::new(0));
+        let producer = producer_client
+            .activate_async(
+                (),
+                AudioProducer {
+                    port: producer_port,
+                    frames: produced_frames.clone(),
+                },
+            )
+            .expect("activate producer");
+
+        let driver_name = format!("shoop-test-reader-{suffix}");
+        let driver = start(
+            &driver_name,
+            Session::default(),
+            16,
+            |client, session, ports| {
+                let input = add_audio_port(
+                    client,
+                    session,
+                    ports,
+                    "in",
+                    PortDirection::Input,
+                    client.buffer_size() as usize,
+                )?;
+                let loop_idx = session.create_loop();
+                let channel = session
+                    .add_audio_channel(loop_idx, 64, crate::ChannelMode::Direct)
+                    .expect("channel");
+                session
+                    .connect_channel_input(channel, input)
+                    .expect("channel input");
+                session
+                    .set_loop_mode(loop_idx, crate::LoopMode::Recording)
+                    .expect("recording");
+                Ok(())
+            },
+        )
+        .expect("start jack driver");
+        driver
+            .connect(&producer_name, &format!("{driver_name}:in"))
+            .expect("connect producer to driver input");
+
+        assert!(wait_until(|| produced_frames.load(Ordering::Relaxed) > 0));
+        std::thread::sleep(Duration::from_millis(100));
+        let session = driver.close().expect("close driver");
+        let data = session
+            .loop_(0)
+            .and_then(|l| l.audio_channel(0))
+            .map(|c| c.data().to_vec())
+            .expect("recorded audio");
+        let _ = producer.deactivate();
+
+        assert!(
+            data.iter().any(|sample| *sample > 0.0),
+            "JACK input should have reached the recording channel"
+        );
+    }
+
+    struct AudioConsumer {
+        port: jack::Port<jack::AudioIn>,
+        captured: Arc<Mutex<Vec<f32>>>,
+    }
+
+    impl jack::ProcessHandler for AudioConsumer {
+        fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+            self.captured
+                .lock()
+                .unwrap()
+                .extend_from_slice(self.port.as_slice(ps));
+            jack::Control::Continue
+        }
+    }
+
+    #[test]
+    fn process_callback_writes_session_output_to_jack_audio_port() {
+        let suffix = std::process::id();
+        let Some(consumer_client) = jack_client(&format!("shoop-test-consumer-{suffix}")) else {
+            return;
+        };
+        let consumer_port = consumer_client
+            .register_port("in", jack::AudioIn::default())
+            .expect("consumer input");
+        let consumer_name = consumer_port.name().expect("consumer port name");
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let consumer = consumer_client
+            .activate_async(
+                (),
+                AudioConsumer {
+                    port: consumer_port,
+                    captured: captured.clone(),
+                },
+            )
+            .expect("activate consumer");
+
+        let driver_name = format!("shoop-test-writer-{suffix}");
+        let driver = start(
+            &driver_name,
+            Session::default(),
+            16,
+            |client, session, ports| {
+                let output =
+                    add_audio_port(client, session, ports, "out", PortDirection::Output, 0)?;
+                let loop_idx = session.create_loop();
+                let channel = session
+                    .add_audio_channel(loop_idx, 64, crate::ChannelMode::Direct)
+                    .expect("channel");
+                session
+                    .connect_channel_output(channel, output)
+                    .expect("channel output");
+                let n = (client.buffer_size() as usize).max(64) * 4;
+                session
+                    .loop_mut(loop_idx)
+                    .unwrap()
+                    .audio_channel_mut(0)
+                    .unwrap()
+                    .load_data(&vec![0.5; n]);
+                session.loop_mut(loop_idx).unwrap().set_length(n as u32);
+                session
+                    .set_loop_mode(loop_idx, crate::LoopMode::Playing)
+                    .expect("playing");
+                Ok(())
+            },
+        )
+        .expect("start jack driver");
+        driver
+            .connect(&format!("{driver_name}:out"), &consumer_name)
+            .expect("connect driver output to consumer");
+
+        assert!(wait_until(|| captured
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|s| *s != 0.0)));
+        let _ = consumer.deactivate();
+        let _ = driver.close();
+        assert!(
+            captured.lock().unwrap().iter().any(|sample| *sample == 0.5),
+            "JACK output should contain samples produced by the session"
+        );
     }
 }
