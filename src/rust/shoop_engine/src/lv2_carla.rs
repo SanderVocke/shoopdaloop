@@ -24,7 +24,7 @@ use lv2_raw::atomutils::lv2_atom_pad_size;
 use lv2_raw::core::{LV2Feature, LV2Handle};
 use lv2_raw::midi::LV2_MIDI__MIDIEVENT;
 use lv2_raw::ui::{LV2UIDescriptorRaw, LV2UIExternalUIHost, LV2UIExternalUIWidget, LV2UIWidget};
-use lv2_raw::urid::{LV2Urid, LV2UridMap, LV2UridMapHandle, LV2_URID__MAP};
+use lv2_raw::urid::{LV2Urid, LV2UridMap, LV2UridMapHandle, LV2_URID__MAP, LV2_URID__UNMAP};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CarlaPortSet {
@@ -79,6 +79,12 @@ const LV2_STATE_IS_PORTABLE: u32 = 1 << 1;
 const LV2_STATE_SUCCESS: u32 = 0;
 const LV2_STATE_ERR_BAD_FLAGS: u32 = 3;
 const LV2_STATE_ERR_NO_PROPERTY: u32 = 5;
+
+#[repr(C)]
+struct Lv2UridUnmap {
+    handle: LV2UridMapHandle,
+    unmap: extern "C" fn(handle: LV2UridMapHandle, urid: LV2Urid) -> *const c_char,
+}
 
 #[repr(C)]
 struct Lv2OptionsOption {
@@ -170,6 +176,7 @@ pub struct CarlaLv2Host {
     midi_outputs: Vec<AtomSequenceBuffer>,
     _urid_mapper: Box<UridMapper>,
     _urid_map: Box<LV2UridMap>,
+    _urid_unmap: Box<Lv2UridUnmap>,
     ui_runtime: Option<CarlaUiRuntime>,
     active: bool,
     visible: bool,
@@ -250,12 +257,21 @@ impl CarlaLv2Host {
             handle: (&mut *urid_mapper as *mut UridMapper).cast::<c_void>(),
             map: map_urid,
         });
+        let mut urid_unmap = Box::new(Lv2UridUnmap {
+            handle: (&mut *urid_mapper as *mut UridMapper).cast::<c_void>(),
+            unmap: unmap_urid,
+        });
         let map_uri = CString::new(LV2_URID__MAP).expect("static URI contains no nul");
+        let unmap_uri = CString::new(LV2_URID__UNMAP).expect("static URI contains no nul");
         let options_uri =
             CString::new(LV2_OPTIONS_OPTIONS_URI).expect("static URI contains no nul");
         let map_feature = LV2Feature {
             uri: map_uri.as_ptr(),
             data: (&mut *urid_map as *mut LV2UridMap).cast::<c_void>(),
+        };
+        let unmap_feature = LV2Feature {
+            uri: unmap_uri.as_ptr(),
+            data: (&mut *urid_unmap as *mut Lv2UridUnmap).cast::<c_void>(),
         };
         let options_feature = LV2Feature {
             uri: options_uri.as_ptr(),
@@ -263,7 +279,10 @@ impl CarlaLv2Host {
         };
         let instance = unsafe {
             plugin
-                .instantiate(sample_rate.max(1) as f64, [&map_feature, &options_feature])
+                .instantiate(
+                    sample_rate.max(1) as f64,
+                    [&map_feature, &unmap_feature, &options_feature],
+                )
                 .ok_or_else(|| anyhow!("Carla LV2 plugin {plugin_uri} failed to instantiate"))?
         };
         let state_interface =
@@ -294,6 +313,7 @@ impl CarlaLv2Host {
             ],
             _urid_mapper: urid_mapper,
             _urid_map: urid_map,
+            _urid_unmap: urid_unmap,
             ui_runtime: None,
             active: false,
             visible: false,
@@ -825,14 +845,19 @@ unsafe extern "C" fn lv2_state_retrieve(
 
 struct UridMapper {
     by_uri: Mutex<HashMap<String, LV2Urid>>,
+    by_id: Mutex<HashMap<LV2Urid, CString>>,
 }
 
 impl UridMapper {
     fn new() -> Self {
-        let mut m = HashMap::new();
-        m.insert(cstr_bytes_to_string(LV2_ATOM__SEQUENCE), 1);
+        let uri = cstr_bytes_to_string(LV2_ATOM__SEQUENCE);
+        let mut by_uri = HashMap::new();
+        by_uri.insert(uri.clone(), 1);
+        let mut by_id = HashMap::new();
+        by_id.insert(1, CString::new(uri).expect("static URI contains no nul"));
         Self {
-            by_uri: Mutex::new(m),
+            by_uri: Mutex::new(by_uri),
+            by_id: Mutex::new(by_id),
         }
     }
 
@@ -843,16 +868,21 @@ impl UridMapper {
         } else {
             let id = by_uri.len() as LV2Urid + 1;
             by_uri.insert(uri.to_string(), id);
+            drop(by_uri);
+            self.by_id
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(id, CString::new(uri).unwrap_or_default());
             id
         }
     }
 
     fn unmap(&self, urid: LV2Urid) -> Option<String> {
-        self.by_uri
+        self.by_id
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .iter()
-            .find_map(|(uri, id)| (*id == urid).then(|| uri.clone()))
+            .get(&urid)
+            .map(|s| s.to_string_lossy().to_string())
     }
 }
 
@@ -861,15 +891,22 @@ extern "C" fn map_urid(handle: LV2UridMapHandle, uri: *const c_char) -> LV2Urid 
         return 0;
     }
     let mapper = unsafe { &*(handle.cast::<UridMapper>()) };
-    let uri = unsafe { CStr::from_ptr(uri) }.to_string_lossy().to_string();
-    let mut by_uri = mapper.by_uri.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(id) = by_uri.get(&uri) {
-        *id
-    } else {
-        let id = by_uri.len() as LV2Urid + 1;
-        by_uri.insert(uri, id);
-        id
+    let uri = unsafe { CStr::from_ptr(uri) }.to_string_lossy();
+    mapper.map_str(&uri)
+}
+
+extern "C" fn unmap_urid(handle: LV2UridMapHandle, urid: LV2Urid) -> *const c_char {
+    if handle.is_null() {
+        return std::ptr::null();
     }
+    let mapper = unsafe { &*(handle.cast::<UridMapper>()) };
+    mapper
+        .by_id
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&urid)
+        .map(|s| s.as_ptr())
+        .unwrap_or(std::ptr::null())
 }
 
 fn cstr_bytes_to_string(bytes: &[u8]) -> String {
