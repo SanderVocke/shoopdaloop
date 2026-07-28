@@ -17,6 +17,18 @@ use crate::session::Session;
 
 use std::sync::Arc;
 
+use enum_iterator::Sequence;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
+#[repr(i32)]
+pub enum AudioDriverType {
+    Jack = 0,
+    JackTest = 1,
+    Dummy = 2,
+    Cpal = 3,
+}
+
 /// Common surface of a running driver.
 pub trait Driver {
     /// Rate the backend is running at, which may not be what was asked for.

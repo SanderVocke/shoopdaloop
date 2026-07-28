@@ -10,6 +10,31 @@
 //! processing only reads and writes. That is why the delay's buffer is sized from a maximum rather
 //! than from its current time -- changing the time must not allocate.
 
+use enum_iterator::Sequence;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
+#[repr(i32)]
+pub enum FXChainType {
+    CarlaRack = 0,
+    CarlaPatchbay = 1,
+    CarlaPatchbay16x = 2,
+    Test2x2x1 = 3,
+}
+
+impl FXChainType {
+    pub fn to_ffi(&self) -> u32 {
+        *self as u32
+    }
+}
+
+impl TryFrom<u32> for FXChainType {
+    type Error = num_enum::TryFromPrimitiveError<FXChainType>;
+    fn try_from(value: u32) -> std::result::Result<Self, Self::Error> {
+        FXChainType::try_from(value as i32)
+    }
+}
+
 /// What an effect does to a signal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EffectKind {

@@ -54,9 +54,11 @@ pub use buffer_queue::{BufferQueue, Snapshot};
 pub use channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 pub use chunked_samples::ChunkedSamples;
 pub use decoupled_midi_port::DecoupledMidiPort;
+pub use driver::AudioDriverType;
 pub use dummy_driver::{DriverMode, DriverSettings, DummyDriver};
 pub use dummy_midi_port::DummyMidiPort;
 pub use dummy_port::{DummyAudioPort, DummyExternalConnections, DummyPortError, PortId};
+pub use fx_chain::FXChainType;
 pub use graph::{processing_order, GraphError, NodeIdx, NodeSpec};
 pub use graph_build::{ChannelDesc, GraphDesc, LoopDesc, PortDesc};
 pub use internal_audio_port::InternalAudioPort;
@@ -70,5 +72,8 @@ pub use midi_sorting_buffer::MidiSortingBuffer;
 pub use midi_state::{MidiStateTracker, TrackWhat};
 pub use midi_storage::{Cursor, CursorFindResult, MidiStorage, MidiStorageElem, TruncateSide};
 pub use multichannel_audio::{MultichannelAudio, MultichannelAudioError};
-pub use port::{AudioPort, PortConnectability, PortDataType, PortDirection};
+pub use port::{
+    AudioPort, PortConnectability, PortConnectabilityKind, PortDataType, PortDirection,
+};
+pub use profiling::{ProfilingReport, ProfilingReportItem};
 pub use session::{Port, Session, SessionError};

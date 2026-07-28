@@ -4,10 +4,8 @@ use crate::cxx_qt_shoop::qobj_enums_bridge::EnumsRust;
 use crate::cxx_qt_shoop::qobj_session_control_handler::{
     GlobalEventType, KeyEventType, LoopEventType,
 };
-use backend_bindings::AudioDriverType;
-use backend_bindings::FXChainType;
-use backend_bindings::PortConnectabilityKind;
 use cxx_qt_lib::{QMap, QMapPair_QString_QVariant, QString, QVariant};
+use shoop_engine::{AudioDriverType, FXChainType, PortConnectabilityKind};
 use shoop_engine::{ChannelMode, LoopMode, PortDataType, PortDirection};
 
 macro_rules! enum_to_map {

@@ -3,7 +3,8 @@
 use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 pub use engine::{
-    ChannelMode, LoopMode, MidiEvent, MultichannelAudio, PortDataType, PortDirection,
+    AudioDriverType, ChannelMode, FXChainType, LoopMode, MidiEvent, MultichannelAudio,
+    PortConnectabilityKind, PortDataType, PortDirection, ProfilingReport, ProfilingReportItem,
 };
 use enum_iterator::Sequence;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -13,23 +14,6 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::thread;
 use std::time::{Duration, Instant};
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
-#[repr(i32)]
-pub enum AudioDriverType {
-    Jack = 0,
-    JackTest = 1,
-    Dummy = 2,
-    Cpal = 3,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
-#[repr(i32)]
-pub enum PortConnectabilityKind {
-    None = 0,
-    Internal = 1,
-    External = 2,
-}
 
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct PortConnectability {
@@ -56,27 +40,7 @@ impl PortConnectability {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
-#[repr(i32)]
-pub enum FXChainType {
-    CarlaRack = 0,
-    CarlaPatchbay = 1,
-    CarlaPatchbay16x = 2,
-    Test2x2x1 = 3,
-}
-impl FXChainType {
-    pub fn to_ffi(&self) -> shoop_fx_chain_type_t {
-        *self
-    }
-}
-impl TryFrom<u32> for FXChainType {
-    type Error = num_enum::TryFromPrimitiveError<FXChainType>;
-    fn try_from(value: u32) -> std::result::Result<Self, Self::Error> {
-        FXChainType::try_from(value as i32)
-    }
-}
 pub type shoop_fx_chain_type_t = FXChainType;
-
 #[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
 #[repr(i32)]
 pub enum BackendResult {
@@ -128,19 +92,6 @@ pub struct ExternalPortDescriptor {
     pub name: String,
     pub direction: PortDirection,
     pub data_type: PortDataType,
-}
-
-#[derive(Debug, Clone)]
-pub struct ProfilingReportItem {
-    pub key: String,
-    pub n_samples: f32,
-    pub average: f32,
-    pub worst: f32,
-    pub most_recent: f32,
-}
-#[derive(Debug, Clone, Default)]
-pub struct ProfilingReport {
-    pub items: Vec<ProfilingReportItem>,
 }
 
 #[derive(Debug, Clone)]

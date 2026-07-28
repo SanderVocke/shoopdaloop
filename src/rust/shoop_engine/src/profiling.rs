@@ -13,6 +13,20 @@
 
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
+#[derive(Debug, Clone)]
+pub struct ProfilingReportItem {
+    pub key: String,
+    pub n_samples: f32,
+    pub average: f32,
+    pub worst: f32,
+    pub most_recent: f32,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ProfilingReport {
+    pub items: Vec<ProfilingReportItem>,
+}
+
 /// Stages of a cycle worth separating. Anything finer would be reporting on the scheduler rather
 /// than on the work.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

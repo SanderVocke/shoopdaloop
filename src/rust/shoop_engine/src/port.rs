@@ -21,6 +21,14 @@ pub enum PortDataType {
     Any = 2,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
+#[repr(i32)]
+pub enum PortConnectabilityKind {
+    None = 0,
+    Internal = 1,
+    External = 2,
+}
+
 /// Discriminants match `shoop_port_direction_t`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive, IntoPrimitive, Sequence)]
 #[repr(i32)]
