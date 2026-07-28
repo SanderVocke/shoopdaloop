@@ -8,5 +8,5 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-      $PYTHON -m pip install pipx
+      $PYTHON -m pip install --break-system-packages --ignore-installed platformdirs pipx
       $PYTHON -m pipx install --force qoverage
