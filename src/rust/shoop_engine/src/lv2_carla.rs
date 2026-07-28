@@ -1088,6 +1088,42 @@ mod tests {
     }
 
     #[test]
+    fn atom_sequence_buffer_roundtrips_midi_events() {
+        let mapper = UridMapper::new();
+        let sequence_type = mapper.map_str(&cstr_bytes_to_string(LV2_ATOM__SEQUENCE));
+        let midi_event_type = mapper.map_str(&cstr_bytes_to_string(LV2_MIDI__MIDIEVENT));
+        let mut buffer = AtomSequenceBuffer::new(256, sequence_type, midi_event_type);
+        buffer
+            .append_midi_event(3, &[0x90, 60, 100])
+            .expect("event 1");
+        buffer
+            .append_midi_event(7, &[0x80, 60, 0])
+            .expect("event 2");
+        assert_eq!(
+            buffer.midi_events().expect("events"),
+            vec![(3, vec![0x90, 60, 100]), (7, vec![0x80, 60, 0])]
+        );
+        buffer.clear();
+        assert!(buffer.midi_events().expect("cleared events").is_empty());
+    }
+
+    #[test]
+    fn state_string_uses_legacy_base64_json_shape() {
+        let mapper = UridMapper::new();
+        let key = "http://example.invalid/key";
+        let ty = "http://example.invalid/type";
+        let state = Lv2StateString::deserialize(
+            r#"{"http://example.invalid/key":{"type":"http://example.invalid/type","value":"AQID"}}"#,
+            &mapper,
+        )
+        .expect("deserialize old backend state shape");
+        let serialized = state.serialize(&mapper).expect("serialize");
+        let value: serde_json::Value = serde_json::from_str(&serialized).expect("json");
+        assert_eq!(value[key]["type"], ty);
+        assert_eq!(value[key]["value"], "AQID");
+    }
+
+    #[test]
     fn instantiates_and_runs_installed_carla_rack_when_available() {
         let Ok(mut host) = CarlaLv2Host::instantiate(FXChainType::CarlaRack, 48_000, 256) else {
             eprintln!("skipping Carla LV2 run test; Carla Rack is not installed in LV2_PATH");
