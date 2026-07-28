@@ -872,10 +872,8 @@ impl CompositeLoopBackend {
                     trace!(self, "Transition self to {mode:?}");
                     self.as_mut().transition(mode as i32, -1, -1);
                 } else {
-                    // The backend shim can currently leave composite schedules with QObject
-                    // pointers that are non-null but no longer safe to invoke. Prefer a test
-                    // failure over crashing the whole self-test process.
-                    warn!(self, "ignoring composite trigger of {loop_iid} to {mode:?}");
+                    trace!(self, "Transition referenced loop {loop_iid} to {mode:?}");
+                    transition_backend_loops(std::iter::once(loop_obj), mode, Some(0), None)?;
                 }
             }
 
