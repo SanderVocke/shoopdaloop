@@ -84,6 +84,20 @@ pub struct CarlaLv2Host {
     active: bool,
 }
 
+// Carla's LV2 instance is owned by this host object and only accessed through
+// mutable methods; app/session users wrap it in a Mutex before sharing it with
+// callback threads.
+unsafe impl Send for CarlaLv2Host {}
+
+impl std::fmt::Debug for CarlaLv2Host {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CarlaLv2Host")
+            .field("info", &self.info)
+            .field("active", &self.active)
+            .finish_non_exhaustive()
+    }
+}
+
 impl CarlaLv2Host {
     pub fn instantiate(
         chain_type: FXChainType,

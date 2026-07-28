@@ -953,6 +953,12 @@ impl BackendSession {
                 }
             }
         };
+        #[cfg(feature = "lv2")]
+        if let FXChainBackendKind::Carla(host) = &backend {
+            self.shared
+                .lock()
+                .set_carla_fx_host(title.to_string(), host.clone());
+        }
         Ok(FXChain {
             shared: self.shared.clone(),
             title: title.to_string(),
@@ -2781,6 +2787,7 @@ mod tests {
         assert_eq!(chain.get_state().expect("state").active, 1);
     }
 
+    #[test]
     fn current_audio_driver_handle_reports_dummy_lifecycle_state() {
         let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
         driver

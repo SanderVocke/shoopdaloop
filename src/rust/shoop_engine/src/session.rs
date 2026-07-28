@@ -13,6 +13,8 @@
 //! Audio only for now: MIDI channels are not yet routed through the session.
 
 use std::collections::HashMap;
+#[cfg(feature = "lv2")]
+use std::sync::{Arc, Mutex};
 
 use crate::audio_midi_loop::AudioMidiLoop;
 use crate::basic_loop::SyncSourceState;
@@ -286,6 +288,9 @@ pub struct Session {
     loop_group: Vec<usize>,
     /// Active state for the temporary test2x2x1 FX-chain shim, keyed by chain title.
     test_fx_active: HashMap<String, bool>,
+    /// Carla LV2 FX-chain processors, keyed by chain title.
+    #[cfg(feature = "lv2")]
+    carla_fx_hosts: HashMap<String, Arc<Mutex<crate::lv2_carla::CarlaLv2Host>>>,
     /// Cycles that hit [`MAX_SUB_BLOCKS`] without finishing.
     n_stuck_cycles: u32,
     /// Sub-blocks used by the most recent cycle, across all loop steps.
@@ -617,6 +622,15 @@ impl Session {
         self.test_fx_active.insert(title.into(), active);
     }
 
+    #[cfg(feature = "lv2")]
+    pub fn set_carla_fx_host(
+        &mut self,
+        title: impl Into<String>,
+        host: Arc<Mutex<crate::lv2_carla::CarlaLv2Host>>,
+    ) {
+        self.carla_fx_hosts.insert(title.into(), host);
+    }
+
     /// Retroactively fills a loop's audio channels from their input ports' rolling
     /// ringbuffers. This mirrors the C++ grab path closely enough for the control
     /// layer: the selected window is copied into each channel, the loop length is
@@ -900,6 +914,10 @@ impl Session {
         crate::realtime_allow_alloc_once!("Session::apply_test2x2x1_fx_outputs", || {
             self.apply_test2x2x1_fx_outputs(n_frames)
         });
+        #[cfg(feature = "lv2")]
+        crate::realtime_allow_alloc_once!("Session::process_carla_fx_chains", || {
+            self.process_carla_fx_chains(n_frames)
+        });
         self.schedule = steps;
         Ok(())
     }
@@ -1013,6 +1031,62 @@ impl Session {
                             };
                         }
                     }
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "lv2")]
+    fn process_carla_fx_chains(&mut self, n_frames: usize) {
+        let chains: Vec<(String, Arc<Mutex<crate::lv2_carla::CarlaLv2Host>>)> = self
+            .carla_fx_hosts
+            .iter()
+            .map(|(title, host)| (title.clone(), host.clone()))
+            .collect();
+        for (title, host) in chains {
+            let mut host = host.lock().unwrap_or_else(|e| e.into_inner());
+            if !host.is_active() {
+                continue;
+            }
+            let n_audio = host.info.ports.audio_inputs.len();
+            for idx in 0..n_audio {
+                let in_name = format!("{title}:audio_in_{idx}");
+                let Some(in_idx) = self.ports.iter().position(|p| p.name() == in_name) else {
+                    continue;
+                };
+                let input = self.ports[in_idx].buffer(n_frames);
+                if let Some(dst) = host.audio_input_mut(idx) {
+                    for (d, s) in dst.iter_mut().zip(input.iter().copied()) {
+                        *d = s;
+                    }
+                }
+            }
+            let _ = host.process(n_frames);
+            for idx in 0..n_audio {
+                let fx_out_name = format!("{title}:audio_out_{idx}");
+                let out_name = format!("{title}_audio_wet_out_{}", idx + 1);
+                let Some(fx_out_idx) = self.ports.iter().position(|p| p.name() == fx_out_name)
+                else {
+                    continue;
+                };
+                let Some(out_idx) = self.ports.iter().position(|p| p.name() == out_name) else {
+                    continue;
+                };
+                let target = self.ports[out_idx]
+                    .audio()
+                    .map(|a| (a.gain(), a.muted()))
+                    .unwrap_or((1.0, false));
+                let fx_passthrough_muted = self.ports[fx_out_idx]
+                    .audio()
+                    .map(|a| a.passthrough_muted())
+                    .unwrap_or(false);
+                let (gain, muted) = (target.0, target.1 || fx_passthrough_muted);
+                let Some(src) = host.audio_output(idx) else {
+                    continue;
+                };
+                let output = self.ports[out_idx].buffer(n_frames);
+                for (o, s) in output.iter_mut().zip(src.iter().copied()) {
+                    *o += if muted { 0.0 } else { s * gain };
                 }
             }
         }
