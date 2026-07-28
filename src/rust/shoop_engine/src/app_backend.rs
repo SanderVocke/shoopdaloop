@@ -20,7 +20,6 @@ use std::time::{Duration, Instant};
 
 pub type PortConnectability = engine::PortConnectability;
 
-pub type shoop_fx_chain_type_t = FXChainType;
 #[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
 #[repr(i32)]
 pub enum BackendResult {
@@ -95,7 +94,6 @@ impl jack::ProcessHandler for JackProcess {
         let mut session = shared.lock();
         session.set_sample_rate(self.sample_rate);
         session.set_buffer_size(n_frames as u32);
-        let _ = session.apply_graph_changes();
         let mut ports = self.ports.lock().unwrap_or_else(|e| e.into_inner());
 
         for p in ports.iter() {
@@ -657,7 +655,6 @@ impl CpalBackend {
                 let mut session = shared.lock();
                 session.set_sample_rate(sample_rate);
                 session.set_buffer_size(n_frames as u32);
-                let _ = session.apply_graph_changes();
 
                 stage_virtual_audio_inputs(
                     &mut session,
@@ -929,11 +926,7 @@ impl BackendSession {
             idx,
         })
     }
-    pub fn create_fx_chain(
-        &self,
-        _chain_type: shoop_fx_chain_type_t,
-        title: &str,
-    ) -> Result<FXChain> {
+    pub fn create_fx_chain(&self, _chain_type: FXChainType, title: &str) -> Result<FXChain> {
         Ok(FXChain {
             shared: self.shared.clone(),
             title: title.to_string(),

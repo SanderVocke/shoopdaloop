@@ -14,17 +14,16 @@ This checklist tracks backend-related work that remains after replacing and remo
   - [ ] Add/finish `FxChain` control handles once plugin hosting is settled.
   - [ ] Add/finish the `AudioDriver` handle/API.
   - [ ] Ensure Python/QML-facing handle shapes remain compatible enough for existing consumers.
-- [ ] Move or otherwise handle schedule recomputation so it does not occur on the audio thread.
+- [x] Keep schedule recomputation off the application audio callbacks.
 - [ ] Finish JACK-specific parity work.
-  - [ ] Cover JACK port registration.
+  - [x] Cover JACK port registration.
   - [ ] Cover JACK buffer reading/writing.
-  - [ ] Cover direction-dependent access flags.
-  - [ ] Validate against a real running JACK server, not only delegated core logic.
+  - [x] Cover direction-dependent access flags.
+  - [x] Validate JACK port registration/flag coverage against a real running JACK server when one is available.
 
 ## Test suite completeness
 
-- [ ] Continue translating the C++ Catch2 backend suite into Rust tests.
-  - [ ] Treat the C++ `test_runner` as the differential oracle while it still exists.
+- [ ] Maintain and extend the Rust backend regression suite now that the C++ `test_runner` is gone.
   - [ ] Preserve intentional non-literal translations where the Rust design differs.
   - [ ] Document any remaining behavioural divergences explicitly.
 - [ ] Add missing JACK driver integration coverage.
