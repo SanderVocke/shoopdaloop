@@ -1,4 +1,11 @@
-#![allow(non_camel_case_types, dead_code)]
+//! Application-facing backend handles used by the QML/frontend layer.
+//!
+//! This module is the compatibility boundary between the CXX-Qt frontend objects and
+//! the Rust engine.  It owns driver/session handles, port/channel/loop handles and
+//! the small amount of JACK/CPAL/midir routing glue the GUI expects, while all actual
+//! loop, graph, port, MIDI and FX processing stays in the core engine modules.
+
+#![allow(dead_code)]
 
 use crate as engine;
 use anyhow::{anyhow, Result};
@@ -10,8 +17,6 @@ pub use engine::{
     LoopMode, MidiEvent, MultichannelAudio, PortConnectabilityKind, PortDataType, PortDirection,
     ProfilingReport, ProfilingReportItem,
 };
-use enum_iterator::Sequence;
-use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
@@ -19,13 +24,6 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 pub type PortConnectability = engine::PortConnectability;
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
-#[repr(i32)]
-pub enum BackendResult {
-    Success = 0,
-    Failure = 1,
-}
 
 #[derive(Debug, Clone)]
 pub struct ExternalPortDescriptor {
