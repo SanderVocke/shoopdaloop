@@ -3025,6 +3025,59 @@ mod tests {
     }
 
     #[test]
+    fn cpal_backend_exposes_virtual_audio_ports_through_app_api_when_device_available() {
+        let driver = AudioDriver::new(AudioDriverType::Cpal, None).expect("driver");
+        let settings = AudioDriverSettings::Cpal(CpalMidiAudioDriverSettings {
+            client_name: "shoop-cpal-test".to_string(),
+            host: "default".to_string(),
+            output_device: "default".to_string(),
+            input_device: "none".to_string(),
+            sample_rate: 0,
+            buffer_size: 0,
+            input_channels: "all".to_string(),
+            output_channels: "all".to_string(),
+            capture_ring_frames: 256,
+            midi_inputs: vec!["none".to_string()],
+            midi_outputs: vec!["none".to_string()],
+        });
+        driver.start(&settings).expect("settings accepted");
+        let sess = BackendSession::new().expect("session");
+        if let Err(e) = sess.set_audio_driver(&driver) {
+            eprintln!("no usable CPAL output device; skipping: {e}");
+            return;
+        }
+
+        let playback_ports = driver.find_external_ports(
+            None,
+            PortDirection::Input as u32,
+            PortDataType::Audio as u32,
+        );
+        assert!(
+            playback_ports
+                .iter()
+                .any(|p| p.name.starts_with("cpal:") && p.name.contains(":playback_")),
+            "no virtual CPAL playback ports: {playback_ports:?}"
+        );
+
+        let app_port =
+            AudioPort::new_driver_port(&sess, &driver, "app_audio_out", &PortDirection::Output, 0)
+                .expect("app port");
+        let target = playback_ports[0].name.clone();
+        let before = app_port.get_connections_state();
+        assert_eq!(before.get(&target), Some(&false));
+        app_port.connect_external_port(&target);
+        let connected = app_port.get_connections_state();
+        assert_eq!(connected.get(&target), Some(&true));
+        app_port.disconnect_external_port(&target);
+        let after = app_port.get_connections_state();
+        assert_eq!(after.get(&target), Some(&false));
+
+        let state = driver.get_state();
+        assert_eq!(state.active, 1);
+        assert!(state.sample_rate > 0);
+    }
+
+    #[test]
     fn get_state_does_not_advance_dummy_time() {
         let driver = AudioDriver {
             inner: Arc::new(Mutex::new(DriverInner {
