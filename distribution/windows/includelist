@@ -20,11 +20,15 @@
 */pcre2-*.dll
 */pthreadVC3*.dll
 */Qt6*.dll
+*/serd-*.dll
 */shoopdaloop_backend.dll
 */sndfile*.dll
+*/sord-*.dll
+*/sratom-*.dll
 */VCRUNTIME*.dll
 */vorbis.dll
 */vorbisenc.dll
 */zlib*.dll
 */zlibd1.dll
+*/zix-*.dll
 */zstd.dll
