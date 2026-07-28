@@ -361,6 +361,80 @@ mod tests {
     }
 
     #[test]
+    fn jack_midi_input_message_counters_reset_and_muting_equivalent() {
+        let mut p = in_port();
+        p.push_incoming(0, &[0, 1, 2]);
+        p.push_incoming(0, &[0, 1, 2]);
+        p.prepare(100);
+        p.process(100);
+        check!(p.visible_events().len() == 2);
+        check!(p.midi().n_input_events() == 2);
+        check!(p.midi().n_output_events() == 0);
+
+        p.midi_mut().reset_n_input_events();
+        p.midi_mut().reset_n_output_events();
+        p.prepare(100);
+        p.process(100);
+        check!(p.midi().n_input_events() == 0);
+        check!(p.midi().n_output_events() == 0);
+
+        p.midi_mut().set_muted(true);
+        p.push_incoming(0, &[0, 1, 2]);
+        p.push_incoming(0, &[0, 1, 2]);
+        p.prepare(100);
+        p.process(100);
+        check!(p.visible_events().is_empty());
+    }
+
+    #[test]
+    fn jack_midi_input_ringbuffer_snapshot_equivalent() {
+        let mut p = in_port();
+        p.midi_mut().set_ringbuffer_n_samples(100);
+        let in_events = [
+            ev(0, &midi::note_on(0, 100, 127)),
+            ev(1, &midi::note_on(0, 110, 127)),
+            ev(2, &midi::note_off(0, 100, 127)),
+            ev(3, &midi::note_off(0, 110, 127)),
+        ];
+        for e in &in_events {
+            p.push_incoming(e.time, e.data());
+        }
+        p.prepare(100);
+        p.process(100);
+
+        let mut snap = crate::midi_storage::MidiStorage::with_capacity_elems(16);
+        p.midi().snapshot_ringbuffer_into(&mut snap);
+        let got: Vec<_> = snap.iter().map(|e| e.data().to_vec()).collect();
+        check!(got == in_events.iter().map(|e| e.data().to_vec()).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn jack_midi_output_message_counters_reset_and_muting_equivalent() {
+        let mut p = out_port();
+        p.prepare(100);
+        p.write_event(ev(0, &[0, 1, 2]));
+        p.write_event(ev(0, &[0, 1, 2]));
+        p.process(100);
+        check!(p.outgoing().len() == 2);
+        check!(p.midi().n_input_events() == 2);
+        check!(p.midi().n_output_events() == 0);
+
+        p.midi_mut().reset_n_input_events();
+        p.midi_mut().reset_n_output_events();
+        p.prepare(100);
+        p.process(100);
+        check!(p.midi().n_input_events() == 0);
+        check!(p.midi().n_output_events() == 0);
+
+        p.midi_mut().set_muted(true);
+        p.prepare(100);
+        p.write_event(ev(0, &[0, 1, 2]));
+        p.write_event(ev(0, &[0, 1, 2]));
+        p.process(100);
+        check!(p.outgoing().is_empty());
+    }
+
+    #[test]
     fn an_output_ports_traffic_is_tracked() {
         let mut p = out_port();
 

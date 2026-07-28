@@ -290,6 +290,49 @@ mod tests {
     }
 
     #[test]
+    fn jack_audio_input_gain_and_mute_equivalent() {
+        let mut p = in_port();
+        p.audio_mut().set_gain(0.5);
+        p.stage_input(&[0.0, 1.0, 2.0]);
+        p.prepare(3);
+        p.process(3);
+        check!(p.buffer(3) == [0.0, 0.5, 1.0]);
+
+        p.audio_mut().set_muted(true);
+        p.stage_input(&[0.0, 1.0, 2.0]);
+        p.prepare(3);
+        p.process(3);
+        check!(p.buffer(3) == [0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn jack_audio_input_ringbuffer_snapshot_equivalent() {
+        let mut p = in_port();
+        p.audio_mut().set_ringbuffer_n_samples(4);
+        p.stage_input(&[0.0, 0.1, 0.2, 0.3]);
+        p.prepare(4);
+        p.process(4);
+
+        let snap = p.audio().ringbuffer_contents();
+        check!(snap.n_samples >= 4);
+        let data = snap.contiguous();
+        check!(data.ends_with(&[0.0, 0.1, 0.2, 0.3]));
+    }
+
+    #[test]
+    fn jack_audio_output_starts_next_cycle_silent_equivalent() {
+        let mut p = out_port();
+        p.prepare(5);
+        p.buffer(5).copy_from_slice(&[0.0, 0.5, 0.9, 0.5, 0.0]);
+        p.process(5);
+        check!(p.output(5) == [0.0, 0.5, 0.9, 0.5, 0.0]);
+
+        p.prepare(5);
+        p.process(5);
+        check!(p.output(5) == [0.0; 5]);
+    }
+
+    #[test]
     fn restaging_the_same_size_does_not_grow_the_buffer() {
         let mut p = in_port();
         p.stage_input(&[1.0, 2.0, 3.0, 4.0]);
