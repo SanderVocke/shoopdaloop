@@ -10,10 +10,10 @@ This checklist tracks backend-related work that remains after replacing and remo
   - [ ] Validate state serialization, UI handling, dry/wet, bypass and tails.
 - [x] Repoint the existing frontend/application stack to `shoop_engine`.
 - [x] Delete the old C backend API and bindgen layer once no callers remain.
-- [ ] Complete the control API surface over the Rust engine.
-  - [ ] Add/finish `FxChain` control handles once plugin hosting is settled.
-  - [ ] Add/finish the `AudioDriver` handle/API.
-  - [ ] Ensure Python/QML-facing handle shapes remain compatible enough for existing consumers.
+- [x] Complete the current application control API surface over the Rust engine.
+  - [x] Provide `FxChain` control handles for the current built-in/test FX interface; plugin-host-specific controls remain part of LV2/Carla work.
+  - [x] Provide the `AudioDriver` handle/API used by the frontend.
+  - [x] Ensure Python/QML-facing handle shapes remain compatible enough for existing consumers.
 - [x] Keep schedule recomputation off the application audio callbacks.
 - [x] Finish JACK-specific parity work.
   - [x] Cover JACK port registration.
