@@ -2432,6 +2432,11 @@ impl FXChain {
     pub fn get_state(&self) -> Option<FXChainState> {
         let mut s = self.state.lock().unwrap().clone();
         s.ready = self.available() as u32;
+        #[cfg(feature = "lv2")]
+        if let FXChainBackendKind::Carla(host) = &self.backend {
+            s.visible = host.lock().unwrap_or_else(|e| e.into_inner()).is_visible() as u32;
+            self.state.lock().unwrap().visible = s.visible;
+        }
         Some(s)
     }
     pub fn get_state_str(&self) -> Option<String> {

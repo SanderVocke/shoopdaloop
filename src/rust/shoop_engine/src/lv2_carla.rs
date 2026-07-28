@@ -333,6 +333,7 @@ impl CarlaLv2Host {
     }
 
     pub fn set_visible(&mut self, visible: bool) -> Result<()> {
+        self.refresh_ui_closed();
         if visible {
             self.show_ui()
         } else {
@@ -341,11 +342,23 @@ impl CarlaLv2Host {
         }
     }
 
-    pub fn is_visible(&self) -> bool {
+    pub fn is_visible(&mut self) -> bool {
+        self.refresh_ui_closed();
         self.visible
     }
 
+    fn refresh_ui_closed(&mut self) {
+        if self
+            .ui_runtime
+            .as_ref()
+            .is_some_and(|runtime| runtime.closed.load(Ordering::Relaxed))
+        {
+            self.hide_ui();
+        }
+    }
+
     fn show_ui(&mut self) -> Result<()> {
+        self.refresh_ui_closed();
         if self.visible {
             return Ok(());
         }
