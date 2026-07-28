@@ -1,8 +1,8 @@
-use backend_bindings::{
-    AudioDriver, AudioPort, AudioPortState, BackendSession, MidiPort, MidiPortState,
-};
+use backend_bindings::{AudioDriver, AudioPort, BackendSession, MidiPort};
 use common::logging::macros::*;
-use shoop_engine::{MidiEvent, PortConnectability, PortDataType, PortDirection};
+use shoop_engine::{
+    AudioPortState, MidiEvent, MidiPortState, PortConnectability, PortDataType, PortDirection,
+};
 use std::collections::HashMap;
 shoop_log_unit!("Frontend.AnyPort");
 pub enum AnyBackendPort {
@@ -234,8 +234,8 @@ impl From<AudioPortState> for AnyBackendPortState {
             input_peak: state.input_peak,
             output_peak: state.output_peak,
             gain: state.gain,
-            muted: state.muted,
-            passthrough_muted: state.passthrough_muted,
+            muted: state.muted as u32,
+            passthrough_muted: state.passthrough_muted as u32,
             ringbuffer_n_samples: state.ringbuffer_n_samples,
             name: state.name.clone(),
             n_input_events: 0,
@@ -252,8 +252,8 @@ impl From<MidiPortState> for AnyBackendPortState {
             input_peak: 0.0,
             output_peak: 0.0,
             gain: 0.0,
-            muted: state.muted,
-            passthrough_muted: state.passthrough_muted,
+            muted: state.muted as u32,
+            passthrough_muted: state.passthrough_muted as u32,
             ringbuffer_n_samples: state.ringbuffer_n_samples,
             name: state.name.clone(),
             n_input_events: state.n_input_events,

@@ -1973,16 +1973,7 @@ pub struct AudioPort {
     idx: usize,
     direction: PortDirection,
 }
-#[derive(Debug)]
-pub struct AudioPortState {
-    pub input_peak: f32,
-    pub output_peak: f32,
-    pub gain: f32,
-    pub muted: u32,
-    pub passthrough_muted: u32,
-    pub ringbuffer_n_samples: u32,
-    pub name: String,
-}
+pub type AudioPortState = engine::AudioPortState;
 impl AudioPort {
     pub fn new_driver_port(
         sess: &BackendSession,
@@ -2030,8 +2021,8 @@ impl AudioPort {
             input_peak: a.input_peak(),
             output_peak: a.output_peak(),
             gain: a.gain(),
-            muted: a.muted() as u32,
-            passthrough_muted: a.passthrough_muted() as u32,
+            muted: a.muted(),
+            passthrough_muted: a.passthrough_muted(),
             ringbuffer_n_samples: a.ringbuffer_n_samples() as u32,
             name: p.name().to_string(),
         })
@@ -2182,17 +2173,7 @@ pub struct MidiPort {
     idx: usize,
     direction: PortDirection,
 }
-#[derive(Debug)]
-pub struct MidiPortState {
-    pub n_input_events: u32,
-    pub n_input_notes_active: u32,
-    pub n_output_events: u32,
-    pub n_output_notes_active: u32,
-    pub muted: u32,
-    pub passthrough_muted: u32,
-    pub ringbuffer_n_samples: u32,
-    pub name: String,
-}
+pub type MidiPortState = engine::MidiPortState;
 impl MidiPort {
     pub fn new_driver_port(
         sess: &BackendSession,
@@ -2237,8 +2218,8 @@ impl MidiPort {
             n_input_notes_active: m.n_notes_active(),
             n_output_events: m.n_output_events(),
             n_output_notes_active: 0,
-            muted: m.muted() as u32,
-            passthrough_muted: m.passthrough_muted() as u32,
+            muted: m.muted(),
+            passthrough_muted: m.passthrough_muted(),
             ringbuffer_n_samples: m.ringbuffer_n_samples(),
             name: p.name().to_string(),
         })

@@ -561,6 +561,7 @@ pub struct AudioPortState {
     pub output_peak: f32,
     pub gain: f32,
     pub muted: bool,
+    pub passthrough_muted: bool,
     /// Samples currently retained for retroactive recording, not the window that was
     /// requested. The C++ getter reports the same thing; the name invites the other
     /// reading, so it is worth saying.
@@ -574,7 +575,9 @@ pub struct MidiPortState {
     pub n_input_events: u32,
     pub n_input_notes_active: u32,
     pub n_output_events: u32,
+    pub n_output_notes_active: u32,
     pub muted: bool,
+    pub passthrough_muted: bool,
     pub ringbuffer_n_samples: u32,
     pub name: String,
 }
@@ -621,6 +624,7 @@ impl Port {
                 output_peak: audio.output_peak(),
                 gain: audio.gain(),
                 muted: audio.muted(),
+                passthrough_muted: audio.passthrough_muted(),
                 ringbuffer_n_samples: audio.ringbuffer_n_samples() as u32,
                 name: p.name().to_string(),
             })
@@ -637,7 +641,9 @@ impl Port {
                 n_input_events: midi.n_input_events(),
                 n_input_notes_active: midi.n_notes_active(),
                 n_output_events: midi.n_output_events(),
+                n_output_notes_active: 0,
                 muted: midi.muted(),
+                passthrough_muted: midi.passthrough_muted(),
                 ringbuffer_n_samples: midi.ringbuffer_n_samples(),
                 name: p.name().to_string(),
             })
