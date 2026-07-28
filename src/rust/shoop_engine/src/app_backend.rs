@@ -2725,7 +2725,32 @@ mod tests {
         assert!(sess.shared.lock().graph_up_to_date());
     }
 
+    #[cfg(feature = "lv2")]
     #[test]
+    fn carla_fx_chain_handle_instantiates_when_plugin_is_available() {
+        let sess = BackendSession::new().expect("session");
+        let chain = sess
+            .create_fx_chain(FXChainType::CarlaRack, "carla")
+            .expect("chain handle");
+        if !chain.available() {
+            eprintln!(
+                "skipping app-backend Carla availability assertion: {}",
+                chain.get_state_str().unwrap_or_default()
+            );
+            return;
+        }
+        assert_eq!(
+            chain.get_state().expect("state"),
+            FXChainState {
+                ready: 1,
+                active: 0,
+                visible: 0,
+            }
+        );
+        chain.set_active(true);
+        assert_eq!(chain.get_state().expect("state").active, 1);
+    }
+
     fn current_audio_driver_handle_reports_dummy_lifecycle_state() {
         let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
         driver
