@@ -80,4 +80,21 @@ runs:
     run: |
       set -x
       . ${BUILD_ENV_FILE}
+      # `cargo test` spawns the freshly linked test binary, which on Linux/macOS
+      # looks up `lilv-0`, `jack`, `sndfile`, ... via the system dynamic linker.
+      # Those libraries live under `${VCPKG_INSTALLED_DIR}/${triplet}/lib` (or
+      # `bin` on Windows), so point the linker at it; without this, the test
+      # fails to launch with `error while loading shared libraries:
+      # liblilv-0.so.0` (or `STATUS_DLL_NOT_FOUND` on Windows).
+      case "$(uname -s)" in
+        Linux)
+          export LD_LIBRARY_PATH="${VCPKG_INSTALLED_DIR}/$(basename "${CMAKE_PREFIX_PATH}")/lib:${LD_LIBRARY_PATH:-}"
+          ;;
+        Darwin)
+          export DYLD_LIBRARY_PATH="${VCPKG_INSTALLED_DIR}/$(basename "${CMAKE_PREFIX_PATH}")/lib:${DYLD_LIBRARY_PATH:-}"
+          ;;
+        MINGW*|MSYS*|CYGWIN*|Windows_NT)
+          export PATH="${VCPKG_INSTALLED_DIR}/$(basename "${CMAKE_PREFIX_PATH}")/bin:${PATH}"
+          ;;
+      esac
       cargo test ${CARGO_BUILD_FLAGS} -p shoop_engine --all-features
