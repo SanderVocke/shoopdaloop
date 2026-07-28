@@ -1081,7 +1081,6 @@ fn process_dummy_driver_iteration(inner: &Arc<Mutex<DriverInner>>) {
         let mut s = shared.lock();
         s.set_sample_rate(sample_rate);
         s.set_buffer_size(buffer_size);
-        s.apply_graph_changes().ok();
         let _ = crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| s.process(n as usize));
     }
 }
@@ -2626,6 +2625,66 @@ mod tests {
         let state = driver.get_state();
         assert_eq!(state.active, 1);
         assert!(state.sample_rate > 0);
+    }
+
+    #[test]
+    fn current_fx_chain_handle_controls_visibility_activity_and_ports() {
+        let sess = BackendSession::new().expect("session");
+        let chain = sess
+            .create_fx_chain(FXChainType::Test2x2x1, "test_fx")
+            .expect("fx chain");
+
+        assert!(chain.available());
+        assert_eq!(
+            chain.get_state().expect("state"),
+            FXChainState {
+                ready: 1,
+                active: 0,
+                visible: 0,
+            }
+        );
+
+        chain.set_visible(true);
+        chain.set_active(true);
+        assert_eq!(
+            chain.get_state().expect("state"),
+            FXChainState {
+                ready: 1,
+                active: 1,
+                visible: 1,
+            }
+        );
+        assert!(chain.get_state_str().expect("state string").is_empty());
+        chain.restore_state("");
+
+        let audio_in = chain.get_audio_input_port(0).expect("audio input port");
+        let audio_out = chain.get_audio_output_port(0).expect("audio output port");
+        let midi_in = chain.get_midi_input_port(0).expect("midi input port");
+        let midi_out = chain.get_midi_output_port(0).expect("midi output port");
+        assert_eq!(audio_in.direction(), PortDirection::Output);
+        assert_eq!(audio_out.direction(), PortDirection::Input);
+        assert_eq!(midi_in.direction(), PortDirection::Output);
+        assert_eq!(midi_out.direction(), PortDirection::Input);
+        assert!(sess.shared.lock().graph_up_to_date());
+    }
+
+    #[test]
+    fn current_audio_driver_handle_reports_dummy_lifecycle_state() {
+        let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
+        driver
+            .start(&AudioDriverSettings::Dummy(DummyAudioDriverSettings {
+                client_name: "api-test".to_string(),
+                sample_rate: 48_000,
+                buffer_size: 128,
+            }))
+            .expect("start driver");
+        let sess = BackendSession::new().expect("session");
+        sess.set_audio_driver(&driver).expect("attach driver");
+        let state = driver.get_state();
+        assert_eq!(state.active, 1);
+        assert_eq!(state.sample_rate, 48_000);
+        assert_eq!(state.buffer_size, 128);
+        assert_eq!(state.maybe_instance_name, "api-test");
     }
 
     #[test]

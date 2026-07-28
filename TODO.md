@@ -14,7 +14,7 @@ This checklist tracks backend-related work that remains after replacing and remo
   - [x] Provide `FxChain` control handles for the current built-in/test FX interface; plugin-host-specific controls remain part of LV2/Carla work.
   - [x] Provide the `AudioDriver` handle/API used by the frontend.
   - [x] Ensure Python/QML-facing handle shapes remain compatible enough for existing consumers.
-- [x] Keep schedule recomputation off the application audio callbacks.
+- [x] Keep schedule recomputation off the realtime/audio callbacks.
 - [x] Finish JACK-specific parity work.
   - [x] Cover JACK port registration.
   - [x] Cover JACK buffer reading/writing.
