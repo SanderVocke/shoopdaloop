@@ -1,6 +1,5 @@
 //! A built-in polyphonic oscillator, so the engine can make a sound on its own.
 //!
-//! The C++ gets its instruments from LV2 or Carla plugins. That is still the eventual
 //! plan, but hosting a plugin is a large piece of work and nothing can be played
 //! without one, so this is a small synth with no external dependency. It is enough to
 //! drive the engine from a keyboard and hear loops play back.

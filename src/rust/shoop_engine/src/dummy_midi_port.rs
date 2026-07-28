@@ -83,7 +83,6 @@ impl DummyMidiPort {
     }
 
     /// Unlike the dummy audio port, a dummy MIDI port is readable and writable in
-    /// both directions, as the C++ hard-codes.
     pub fn has_internal_read_access(&self) -> bool {
         true
     }

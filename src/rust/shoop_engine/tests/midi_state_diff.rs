@@ -1,6 +1,5 @@
-//! Translation of `legacy C++ backend unit test test_MidiStateDiffTracker.cpp`.
+//! Translation of `unit test test_MidiStateDiffTracker.cpp`.
 //!
-//! The C++ maintains the diff between two trackers incrementally: each tracker
 //! notifies a `MidiStateDiffTracker`, which keeps a set of `(status, data1)` keys
 //! where the two disagree. Its three cases inspect that set directly, all of them
 //! guarding one bug class -- channel pressure keyed under the pitch wheel's status
@@ -16,7 +15,6 @@ use assert2::check;
 use shoop_engine::midi;
 use shoop_engine::midi_state::{MidiStateTracker, TrackWhat, PITCH_WHEEL_CENTRE};
 
-/// Controls only, as the C++ `MidiStateTracker(false, true, false)`.
 fn tracker() -> MidiStateTracker {
     MidiStateTracker::new(TrackWhat {
         notes: false,
@@ -82,7 +80,6 @@ fn channel_pressure_carries_its_own_channel() {
 }
 
 /// The converse of the cases above: moving the pitch wheel must not emit a channel
-/// pressure message either. The C++ suite only guards one direction.
 #[test]
 fn the_pitch_wheel_is_independent_from_channel_pressure() {
     let mut a = tracker();

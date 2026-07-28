@@ -44,14 +44,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-        #- language: c-cpp
-        #  build-mode: manual
         - language: javascript-typescript
           build-mode: none
         - language: python
           build-mode: none
-        # CodeQL supports the following values keywords for 'language': 'c-cpp', 'csharp', 'go', 'java-kotlin', 'javascript-typescript', 'python', 'ruby', 'swift'
-        # Use `c-cpp` to analyze code written in C, C++ or both
+        # CodeQL supports the following values keywords for 'language': 'csharp', 'go', 'java-kotlin', 'javascript-typescript', 'python', 'ruby', 'swift'
         # Use 'java-kotlin' to analyze code written in Java, Kotlin or both
         # Use 'javascript-typescript' to analyze code written in JavaScript, TypeScript or both
         # To learn more about changing the languages that are analyzed or customizing the build mode for your analysis,
@@ -88,17 +85,6 @@ jobs:
     - name: Use regular shell
       shell: bash
       run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
-    - name: Build C++
-      if: matrix.build-mode == 'manual'
-      uses: ./.github/actions/build_toplevel
-      with:
-        name: codeql
-        cmake_build_type: "Debug"
-        prepare_kind: 'ubuntu_latest'
-        python: python
-        upload_artifacts: 'false'
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
       with:

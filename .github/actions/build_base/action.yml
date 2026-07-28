@@ -41,7 +41,6 @@ runs:
     if: always() && inputs.coverage == 'true'
     shell: wrap-shell {0}
     run: |
-        echo "CARGO_BUILD_FLAGS=${{ env.CARGO_BUILD_FLAGS }} --features coverage" | tee -a $GITHUB_ENV 
         echo "RUSTFLAGS=$RUSTFLAGS -C instrument-coverage" | tee -a $GITHUB_ENV
 
   - name: Setup build env and build vcpkg packages
@@ -73,12 +72,12 @@ runs:
     run: |
       set -x
       . ${BUILD_ENV_FILE}
-      cargo build ${CARGO_BUILD_FLAGS}
+      cargo build ${CARGO_BUILD_FLAGS} --workspace --all-features
 
-  - name: Build test code
+  - name: Run Rust tests
     if: always()
     shell: wrap-shell {0}
     run: |
       set -x
       . ${BUILD_ENV_FILE}
-      cargo test --no-run ${CARGO_BUILD_FLAGS}
+      cargo test ${CARGO_BUILD_FLAGS} -p shoop_engine --all-features

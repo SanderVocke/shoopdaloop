@@ -5,7 +5,6 @@
 //! performs the moves. That ordering lets every node in a graph step settle its
 //! state before any buffer contents are touched.
 //!
-//! The C++ queue held raw `src`/`dst` pointers. Here commands carry offsets and
 //! are resolved against the cycle's port buffers in `finalize`, which keeps the
 //! crate free of unsafe code.
 
@@ -161,7 +160,6 @@ impl AudioChannel {
         self.data_changed();
     }
 
-    /// As the C++ `PROC_clear`: makes `length` samples addressable and forgets everything past it.
     ///
     /// Does *not* zero the samples, which is only safe because the caller sets the length it means:
     /// `clear(0)` leaves the old audio unreachable. For a length that keeps them reachable, use
@@ -206,7 +204,6 @@ impl AudioChannel {
     /// First point until which this channel can be processed freely: whichever
     /// port buffer runs out first.
     ///
-    /// Mirrors the C++ omission of `Replace` from this calculation, so a
     /// replacing channel can still be asked for more samples than its input
     /// buffer holds; `process` reports that as an error rather than overrunning.
     pub fn next_poi(
@@ -233,7 +230,6 @@ impl AudioChannel {
         let mut merge = |v: usize| poi = Some(poi.map_or(v, |p: usize| p.min(v)));
 
         // An unassigned buffer contributes zero rather than nothing, matching the
-        // C++, where the buffer size is simply 0 until one is assigned and is
         // merged without a null check.
         if params.flags.contains(ProcessFlags::PLAYBACK) {
             merge(self.playback.map_or(0, |b| b.remaining));
@@ -251,7 +247,6 @@ impl AudioChannel {
 
     /// Decides and queues this cycle's copies.
     ///
-    /// `pos_after`/`length_after` from the C++ signature are omitted: that
     /// implementation ignored them.
     #[allow(clippy::too_many_arguments)]
     pub fn process(
@@ -351,7 +346,6 @@ impl AudioChannel {
         let mut at = record_from;
         let mut src = buf.cursor;
         let mut left = n_samples;
-        // One bump per chunk touched, matching the C++ per-recursion call.
         let mut chunks_touched = 0u32;
 
         while left > 0 {
@@ -425,7 +419,6 @@ impl AudioChannel {
             if self.buffers.ensure_available(pos + left) {
                 chunks_touched += 1;
             }
-            // Saturating, unlike the C++ unsigned subtraction: past the recorded
             // length this yields 0 and surfaces as an error below, rather than
             // wrapping and writing outside the recorded region.
             let samples_left = self.data_length.saturating_sub(pos);

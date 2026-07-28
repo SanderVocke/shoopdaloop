@@ -5,7 +5,6 @@
 //! drops the oldest, so it holds a moving window of recent audio.
 //!
 //! Every buffer is allocated when the queue is built, so writing never allocates.
-//! That is why no pool is needed here: the C++ borrowed buffers from a shared
 //! `BufferPool` to avoid allocating mid-capture, and a fixed ring achieves the same
 //! thing without the sharing.
 
@@ -138,7 +137,6 @@ impl BufferQueue {
 
     /// Changes the limit, discarding everything held.
     ///
-    /// Reallocates the ring, so this belongs off the audio thread. The C++ swapped
     /// in a fresh queue rather than trimming, so a resize always restarts the
     /// capture window.
     pub fn set_max_buffers(&mut self, max_buffers: usize) {
@@ -234,7 +232,6 @@ mod tests {
 
     #[test]
     fn zero_limit_still_keeps_one_buffer() {
-        // The C++ pops unconditionally and then dereferences the back buffer, so
         // a zero limit is unsafe there. Here one buffer is always retained.
         let mut q = BufferQueue::new(4, 0);
         q.put(&ramp(0, 6));

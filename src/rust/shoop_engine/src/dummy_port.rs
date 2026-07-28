@@ -2,11 +2,9 @@
 //!
 //! The dummy driver lets tests drive the engine deterministically: input ports
 //! are fed from a queue of sample blocks, and output ports retain what they
-//! produced so it can be dequeued and asserted on. This is what the whole C++
-//! Catch2 suite is built on.
+//! produced so it can be dequeued and asserted on.
 //!
 //! Port identity in the connection registry is an explicit [`PortId`] rather than
-//! the C++ raw `DummyPort*`, which keeps the crate unsafe-free and makes the
 //! registry independent of port lifetimes.
 
 use std::collections::{BTreeMap, VecDeque};
@@ -129,7 +127,6 @@ impl DummyExternalConnections {
     /// Connection status as seen by `port`.
     ///
     /// Every externally connected name appears, including ones connected by other
-    /// ports, marked false. Matching the C++ `std::map`, entries are sorted by
     /// name and a later connection to the same name overwrites an earlier one --
     /// so if two ports share an external name, only the last one is reported as
     /// connected.
@@ -143,7 +140,6 @@ impl DummyExternalConnections {
 
     /// Mock ports matching an optional full-match name pattern and filters.
     ///
-    /// `Any` filters match everything. The pattern is anchored because the C++
     /// used `std::regex_match`, which requires the whole name to match.
     pub fn find_external_ports(
         &self,

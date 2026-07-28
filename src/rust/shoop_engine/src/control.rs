@@ -563,7 +563,6 @@ pub struct AudioPortState {
     pub muted: bool,
     pub passthrough_muted: bool,
     /// Samples currently retained for retroactive recording, not the window that was
-    /// requested. The C++ getter reports the same thing; the name invites the other
     /// reading, so it is worth saying.
     pub ringbuffer_n_samples: u32,
     pub name: String,

@@ -38,7 +38,6 @@ pub struct PointOfInterest {
 
 /// Snapshot of the loop this loop is synced to.
 ///
-/// The C++ backend held a `shared_ptr<LoopInterface>` and re-entered the sync
 /// source on every query. Here the session refreshes a snapshot before
 /// processing dependents, which the graph schedule already orders correctly.
 /// That keeps the hot path free of pointer chasing and refcount traffic, and
@@ -56,7 +55,6 @@ pub struct SyncSourceState {
 }
 
 /// What the owning loop type should do to its channels this cycle. Produced by
-/// [`BasicLoop::process_with`] at the same point the C++ virtual hook fired.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChannelProcessParams {
     pub mode: LoopMode,
@@ -172,7 +170,6 @@ impl BasicLoop {
     /// Folds a channel's point of interest into this loop's.
     ///
     /// A strictly earlier channel POI *replaces* the current one rather than
-    /// unioning flags, matching the C++ override. Owners with channels call this
     /// after every `update_poi`, which is safe because `update_poi` recomputes
     /// loop-end and channel POIs from scratch each time.
     pub fn merge_channel_poi(&mut self, when: u32) {
@@ -304,11 +301,9 @@ impl BasicLoop {
     }
 
     /// Advances the loop by `n_samples`. `on_channels` runs at the point the
-    /// C++ `PROC_process_channels` hook did: after the new position/length are
     /// computed but before they are committed.
     ///
     /// Panics if asked to cross the next POI: that is a scheduler contract
-    /// violation, matching the C++ `std::runtime_error`.
     pub fn process_with(
         &mut self,
         n_samples: u32,
@@ -524,14 +519,10 @@ mod tests {
     use super::*;
     use assert2::check;
 
-    /// Stand-in for the idle second loop the C++ tests construct as a sync
     /// source. Stopped, not triggering, no ETA.
     fn idle_sync_source() -> Option<SyncSourceState> {
         Some(SyncSourceState::default())
     }
-
-    // Translated from legacy C++ backend unit test test_BasicLoop.cpp.
-    // Each test mirrors one Catch2 TEST_CASE, assertion for assertion.
 
     #[test]
     fn stop() {
@@ -739,8 +730,6 @@ mod tests {
 
         check!(l.mode() == LoopMode::Stopped);
     }
-
-    // --- coverage the C++ suite leaves implicit ---
 
     #[test]
     fn dominant_poi_prefers_earlier_and_unions_coincident() {

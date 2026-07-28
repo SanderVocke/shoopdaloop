@@ -1099,7 +1099,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn carla_type_metadata_matches_the_legacy_host() {
+    fn carla_type_metadata_matches_expected_host() {
         assert_eq!(
             carla_plugin_uri(FXChainType::CarlaRack),
             Some(CARLA_RACK_URI)
@@ -1170,7 +1170,7 @@ mod tests {
     }
 
     #[test]
-    fn state_string_uses_legacy_base64_json_shape() {
+    fn state_string_uses_base64_json_shape() {
         let mapper = UridMapper::new();
         let key = "http://example.invalid/key";
         let ty = "http://example.invalid/type";
@@ -1178,7 +1178,7 @@ mod tests {
             r#"{"http://example.invalid/key":{"type":"http://example.invalid/type","value":"AQID"}}"#,
             &mapper,
         )
-        .expect("deserialize old backend state shape");
+        .expect("deserialize state shape");
         let serialized = state.serialize(&mapper).expect("serialize");
         let value: serde_json::Value = serde_json::from_str(&serialized).expect("json");
         assert_eq!(value[key]["type"], ty);

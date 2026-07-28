@@ -1,4 +1,4 @@
-//! Translation of `legacy C++ backend unit test test_BufferQueue.cpp`.
+//! Translation of `unit test test_BufferQueue.cpp`.
 //!
 //! `BufferQueue<int>(pool, n)` takes its buffer size from the pool's third
 //! constructor argument and `n` as the buffer limit. There is no pool here: every
@@ -126,7 +126,6 @@ fn buffer_queue_snapshot_then_drop() {
     let mut q = BufferQueue::new(2, 2);
 
     q.put(&[1.0, 2.0, 3.0, 4.0]);
-    // A snapshot is a copy, so later writes cannot disturb it. The C++ relies on
     // buffers being shared and refcounted for the same guarantee.
     let snapshot = q.snapshot();
     q.put(&[5.0, 6.0]);

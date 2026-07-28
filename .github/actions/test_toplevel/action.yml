@@ -126,11 +126,6 @@ runs:
       echo "Preparing environment"
       echo "=========================================="
       printf "\n\n\n\n\n\n"
-  - name: Retrieve info context for coverage analysis
-    if: always() && inputs.coverage
-    uses: actions/download-artifact@v4
-    with:
-      name: coverage_context
   - uses: ./.github/actions/checkpoint
     if: always()
   - name: Create crashdumps folder
@@ -166,43 +161,6 @@ runs:
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
-    if: always()
-    env:
-       GHA_RUN_ALWAYS: 1
-    run: |
-      printf "\n\n\n\n\n\n"
-      echo "=========================================="
-      echo "Back-end test"
-      echo "=========================================="
-      printf "\n\n\n\n\n\n"
-  - name: Test back-end
-    if: always() && env.COMMAND_TEST_BACKEND != ''
-    uses: ./.github/actions/test_backend
-    env:
-      LCOV_REPORTNAME: backend_cpp_lcov
-      LLVM_REPORTNAME: backend_rust_lcov
-      GHA_RUN_ALWAYS: 1
-  - uses: ./.github/actions/checkpoint
-    if: always()
-  - shell: wrap-shell {0}
-    if: always()
-    env:
-       GHA_RUN_ALWAYS: 1
-    run: |
-      printf "\n\n\n\n\n\n"
-      echo "=========================================="
-      echo "Rust test"
-      echo "=========================================="
-      printf "\n\n\n\n\n\n"
-  - name: Test rust
-    if: always() && env.COMMAND_TEST_RUST != ''
-    uses: ./.github/actions/test_rust
-    env:
-      LLVM_REPORTNAME: rust_lcov
-      GHA_RUN_ALWAYS: 1
-  - uses: ./.github/actions/checkpoint
-    if: always()
-  - shell: wrap-shell {0}
     if: always() && (inputs.do_qml_tests == 'true')
     env:
        GHA_RUN_ALWAYS: 1
@@ -216,7 +174,6 @@ runs:
     if: always() && (inputs.do_qml_tests == 'true')
     uses: ./.github/actions/test_qml
     env:
-      LCOV_REPORTNAME: qml_cpp_lcov
       LLVM_REPORTNAME: qml_rust_lcov
       GHA_RUN_ALWAYS: 1
     with:
@@ -320,28 +277,6 @@ runs:
       sentry_key: ${{ inputs.sentry_key }}
   - uses: ./.github/actions/checkpoint
     if: always()
-  - name: Upload back-end coverage to CodeCov
-    if: always() && inputs.coverage
-    uses: codecov/codecov-action@v3
-    env:
-       GHA_RUN_ALWAYS: 1
-    with:
-      token: ${{ inputs.codecov_token }}
-      flags: back-end
-      files: coverage_reports/backend_cpp_lcov.info,coverage_reports/backend_rust_lcov.info
-      verbose: true
-      fail_ci_if_error: true
-  - name: Upload Rust test coverage to CodeCov
-    if: always() && inputs.coverage
-    uses: codecov/codecov-action@v3
-    env:
-       GHA_RUN_ALWAYS: 1
-    with:
-      token: ${{ inputs.codecov_token }}
-      flags: rust
-      files: coverage_reports/rust_lcov.info
-      verbose: true
-      fail_ci_if_error: true
   - name: Upload QML test coverage to CodeCov
     if: always() && inputs.coverage && (inputs.do_qml_tests == 'true')
     uses: codecov/codecov-action@v3
@@ -350,7 +285,7 @@ runs:
     with:
       token: ${{ inputs.codecov_token }}
       flags: qml
-      files: coverage_reports/qml_cpp_lcov.info,coverage_reports/qml_rust_lcov.info,coverage_reports/qml_qoverage.xml
+      files: coverage_reports/qml_rust_lcov.info,coverage_reports/qml_qoverage.xml
       verbose: true
       fail_ci_if_error: true
   - name: Upload raw coverage reports

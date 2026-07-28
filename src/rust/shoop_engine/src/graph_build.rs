@@ -1,11 +1,9 @@
 //! Turns a description of ports, loops and channels into scheduler nodes.
 //!
-//! The C++ derived edges through virtual methods on each graph node, each walking
 //! `weak_ptr`s to its neighbours. Here the whole topology is stated declaratively
 //! and lowered to [`NodeSpec`]s in one pass, so the edge rules live in one place
 //! and can be read end to end.
 //!
-//! Node layout per entity, matching the C++:
 //!
 //! - a port has two nodes: `prepare` (acquire buffers) and
 //!   `process_and_internal_connections` (apply the signal path, then pass through
@@ -66,7 +64,6 @@ pub struct GraphDesc {
 impl GraphDesc {
     /// Lowers the description to scheduler nodes.
     ///
-    /// Edges are stated on one side only where the C++ did the same; the scheduler
     /// unions both directions, so the result is identical either way.
     pub fn build(&self) -> (Vec<NodeSpec>, NodeMap) {
         let mut map = NodeMap::default();
@@ -172,7 +169,6 @@ mod tests {
     }
 
     // The three cases below are the expected schedules asserted in
-    // legacy C++ backend integration test test_graph_construction.cpp, now reached by
     // describing the same topology rather than hand-stating edges.
 
     #[test]
@@ -268,7 +264,6 @@ mod tests {
     //
     // Some declared edges are redundant for scheduling: the ordering they impose
     // is already implied by other edges in any realistic topology, so no schedule
-    // can distinguish them. They are still what the C++ declares, and dropping
     // them would leave the graph relying on incidental structure, so they are
     // pinned here rather than through a schedule.
 

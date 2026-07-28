@@ -13,28 +13,7 @@
       "name": "jack2"
     },
     {
-      "name": "pthreads"
-    },
-    {
-      "name": "boost-headers"
-    },
-    {
-      "name": "boost-system"
-    },
-    {
-      "name": "boost-lockfree"
-    },
-    {
-      "name": "boost-container"
-    },
-    {
-      "name": "boost-stacktrace"
-    },
-    {
       "name": "libsndfile"
-    },
-    {
-      "name": "catch2"
     },
     {
       "name": "pkgconf",
@@ -43,18 +22,6 @@
     {
       "name": "vcpkg-tool-ninja",
       "host": true
-    },
-    {
-      "name": "nlohmann-json"
-    },
-    {
-      "name": "fmt"
-    },
-    {
-      "name": "b64"
-    },
-    {
-      "name": "zita-resampler"
     },
     {
       "name": "lua"

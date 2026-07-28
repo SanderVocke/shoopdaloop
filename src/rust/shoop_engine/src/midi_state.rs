@@ -6,7 +6,6 @@
 //! channel pressure and program are each tracked optionally, because tracking
 //! costs memory per channel and not every use needs all of it.
 //!
-//! The C++ tracker pushed changes to subscribers through `*mut dyn Subscriber`.
 //! Here the diff is computed by comparing two trackers instead, which needs no
 //! raw pointers and no subscription lifetime to manage.
 

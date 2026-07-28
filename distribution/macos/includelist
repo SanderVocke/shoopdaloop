@@ -1,10 +1,8 @@
 */libb*.dylib*
-*/libb64*.dylib
 */libbrotlidec*.dylib
 */libcrypto*.dylib
 */libdouble-conversion*.dylib
 */libFLAC*.dylib
-*/libfmt*.dylib
 */libfreetype*.dylib
 */libharfbuzz*.dylib
 */libicu*.dylib*
@@ -19,7 +17,6 @@
 */libpng*.dylib
 */libQt6*.dylib*
 */libserd-*.dylib*
-*/libshoopdaloop_backend*.dylib
 */libsndfile*.dylib
 */libsord-*.dylib*
 */libsratom-*.dylib*
@@ -27,6 +24,5 @@
 */libvorbis*.dylib
 */libvorbisenc*.dylib
 */libz*.dylib
-*/libzita-resampler.dylib*
 */libzix-*.dylib*
 */libzstd*.dylib

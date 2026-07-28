@@ -6,7 +6,7 @@
 //! the next cycle. Timing is not meaningful here — these messages are events, not
 //! recorded material.
 //!
-//! The queue is bounded. The C++ pushes into a `boost::lockfree::spsc_queue` and
+//! The queue is bounded. Producers push into a lock-free-style queue and
 //! ignores the result, so a full queue silently loses messages; here the loss is
 //! counted. Making it genuinely lock-free across threads belongs with the driver
 //! work, where the thread boundary actually exists.
@@ -106,7 +106,6 @@ impl DecoupledMidiPort {
 
     /// Queues a message to go out on the next cycle.
     ///
-    /// Not restricted to output ports, matching the C++, which performs no
     /// direction check here.
     pub fn push_outgoing(&mut self, m: MidiStorageElem) -> bool {
         self.push(m)

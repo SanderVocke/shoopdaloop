@@ -219,14 +219,12 @@ jobs:
             release_build: true
             package_kind: portable_folder
             second_package_kind: appimage
-            third_package_kind: test_binaries
             upload_release_assets: true
             platform: linux-x64
           - name: linux_debug
             if: ${{ needs.setup.outputs.debug == 'true' }}
             release_build: false
             package_kind: portable_folder
-            second_package_kind: test_binaries
             upload_release_assets: true
             platform: linux-x64
           # - name: linux_asan
@@ -241,7 +239,6 @@ jobs:
             if: ${{ needs.setup.outputs.coverage == 'true' }}
             release_build: false
             package_kind: portable_folder
-            second_package_kind: test_binaries
             coverage: true
             platform: linux-x64
         container:
@@ -318,14 +315,12 @@ jobs:
             python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.release-linux-x64.portable.tar.gz
-            second_package: shoopdaloop.*.release-linux-x64.test_binaries.tar.gz
             sentry_build_type: release
           - name: debug_debian_stable
             if: ${{ needs.setup.outputs.debug == 'true' }}
             python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.debug-linux-x64.portable.tar.gz
-            second_package: shoopdaloop.*.debug-linux-x64.test_binaries.tar.gz
             sentry_build_type: debug
           - name: release_debian_appimage
             if: ${{ needs.setup.outputs.release == 'true' }}
@@ -339,7 +334,6 @@ jobs:
             container: docker.io/sandervocke/shoopdaloop_build_base_debian_bookworm_x86_64:latest
             coverage: true
             package: shoopdaloop.*.coverage-linux-x64.portable.tar.gz
-            second_package: shoopdaloop.*.coverage-linux-x64.test_binaries.tar.gz
             run_cmd_prefix: >-
               BASEDIR=$(pwd)
               REPORTDIR=coverage_reports
@@ -416,7 +410,6 @@ jobs:
             if: ${{ needs.setup.outputs.release == 'true' }}
             release_build: true
             package_kind: portable_folder
-            second_package_kind: test_binaries
             # third_package_kind: dmg
             os: macos-15-intel
             upload_release_assets: true
@@ -424,7 +417,6 @@ jobs:
           # - name: macos_debug
           #   release_build: false
           #   package_kind: portable_folder
-          #   second_package_kind: test_binaries
           #   # third_package_kind: dmg
           #   os: macos-15-intel
           #   upload_release_assets: true
@@ -434,14 +426,12 @@ jobs:
             release_build: true
             package_kind: portable_folder
             # second_package_kind: dmg
-            third_package_kind: test_binaries
             os: macos-15
             upload_release_assets: true
             platform: macos-arm
           # - name: macos_debug_arm
           #   release_build: false
           #   package_kind: portable_folder
-          #   second_package_kind: test_binaries
           #   os: macos-15
           #   upload_release_assets: true
           #   platform: macos-arm
@@ -505,28 +495,24 @@ jobs:
             container: null
             os: macos-15
             package: shoopdaloop.*.release-macos-arm.portable.tar.gz
-            second_package: shoopdaloop.*.release-macos-arm.test_binaries.tar.gz
             sentry_build_type: release
           # - name: debug_macos_arm
           #   python: python3
           #   container: null
           #   os: macos-15
           #   package: shoopdaloop.*.debug-macos-arm.portable.tar.gz
-          #   second_package: shoopdaloop.*.debug-macos-arm.test_binaries.tar.gz
           - name: release_macos
             if: ${{ needs.setup.outputs.release == 'true' }}
             python: python3
             container: null
             os: macos-15-intel
             package: shoopdaloop.*.release-macos-x64.portable.tar.gz
-            second_package: shoopdaloop.*.release-macos-x64.test_binaries.tar.gz
             sentry_build_type: release
           # - name: debug_macos
           #   python: python3
           #   container: null
           #   os: macos-15-intel
           #   package: shoopdaloop.*.debug-macos-x64.portable.tar.gz
-          #   second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
         exclude:
           - kind:
               if: false
@@ -602,7 +588,6 @@ jobs:
             release_build: true
             package_kind: portable_folder
             second_package_kind: innosetup
-            third_package_kind: test_binaries
             upload_release_assets: true
             platform: windows-msvc-x64
           - name: windows_debug
@@ -614,7 +599,6 @@ jobs:
             prepare: 'windows'
             release_build: false
             package_kind: portable_folder
-            second_package_kind: test_binaries
             platform: windows-msvc-x64
           # - name: windows_arm_debug
           #   os: windows-11-arm
@@ -624,7 +608,6 @@ jobs:
           #   prepare: 'windows'
           #   release_build: false
           #   package_kind: portable_folder
-          #   second_package_kind: test_binaries
           #   platform: windows-msvc-arm
         exclude:
           - kind:
@@ -689,7 +672,6 @@ jobs:
             container: null
             os: windows-2022
             package: shoopdaloop.*.release-windows-msvc-x64.portable.tar.gz
-            second_package: shoopdaloop.*.release-windows-msvc-x64.test_binaries.tar.gz
             pathconvert: "| cygpath -u -f -"
             sentry_build_type: release
           - name: release_windows_innosetup
@@ -706,7 +688,6 @@ jobs:
           #   container: null
           #   os: windows-2022
           #   package: shoopdaloop.*.debug-windows-msvc-x64.portable.tar.gz
-          #   second_package: shoopdaloop.*.debug-windows-msvc-x64.test_binaries.tar.gz
           #   pathconvert: "| cygpath -u -f -"
           #   sentry_build_type: debug
         exclude:

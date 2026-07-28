@@ -258,43 +258,6 @@ def windows_to_bash_paths(windows_paths):
 import platform
 import sys
 
-def find_vcpkg_dynlibs_paths(installed_dir, is_debug_build):
-    dbgpart = "*-*/debug/" if is_debug_build else "*-*/"
-
-    def find_path_based_on_tail(tail, is_debug_build):
-        pattern = f'{installed_dir}/**/{dbgpart}{tail}'
-        print(f"Looking for dynamic libraries by searching for zita-resampler at: {pattern}")
-        zita_paths = glob.glob(pattern, recursive=True)
-        if not zita_paths:
-            return None
-        zita_path = zita_paths[0]
-        dynlib_path = os.path.dirname(zita_path)
-        if sys.platform == "win32":
-            dynlib_path = dynlib_path.replace('/', '\\')
-        print(f"Found dynamic library path at: {dynlib_path}")
-        return dynlib_path
-
-    # TODO: handle MacOS
-    runtime_tail = os.path.join("bin", "zita-resampler.dll") if sys.platform == "win32" \
-           else os.path.join("lib", "libzita-resampler.so") if sys.platform == "linux" \
-           else os.path.join("lib", "libzita-resampler.dylib")
-    compiletime_tail = os.path.join("lib", "zita-resampler.lib") if sys.platform == "win32" \
-           else os.path.join("lib", "libzita-resampler.so") if sys.platform == "linux" \
-           else os.path.join("lib", "libzita-resampler.dylib")
-    
-    runtime = find_path_based_on_tail(runtime_tail, is_debug_build)
-    compiletime = find_path_based_on_tail(compiletime_tail, is_debug_build)
-
-    sep = ';' if sys.platform == 'win32' else ':'
-    
-    # add manually-linked libs (i.e. Catch2)
-    print(f"Looking for manual-link folders")
-    for dir in glob.glob(f"{installed_dir}/**/{dbgpart}/*/manual-link", recursive=True):
-        print(f"Found manual-link folder: {dir}")
-        runtime = f'{runtime}{sep}{dir}'
-
-    return (runtime, compiletime)
-
 def find_vcpkg_pkgconf(installed_dir):
     filename = 'pkgconf'
     if sys.platform == 'win32':
@@ -406,12 +369,6 @@ def build_vcpkg(args, build_env):
 
 def generate_env(args, env, is_debug):
     build_env = env.copy()
-
-    # Find link directories
-    # Tell the build where to find link-time and runtime dependencies
-    (runtime_dirs, compiletime_dirs) = find_vcpkg_dynlibs_paths(args.vcpkg_installed_dir, is_debug)
-    build_env['SHOOP_BUILD_TIME_LINK_DIRS'] = compiletime_dirs
-    build_env['SHOOP_RUNTIME_LINK_DIRS'] = runtime_dirs
 
     # Find qmake
     (qmake_path, qmake_env) = find_qmake(args.vcpkg_installed_dir, is_debug)

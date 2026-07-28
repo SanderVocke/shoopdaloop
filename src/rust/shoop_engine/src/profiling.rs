@@ -1,6 +1,5 @@
 //! Per-stage timing for one cycle, for a profiling display.
 //!
-//! The C++ has a `Profiler` feeding a profiling window; the Rust engine had nothing, so a profiling
 //! UI had nothing to show. This is the smallest thing that answers the question such a window is
 //! opened to answer: *which stage of the cycle is taking the time?*
 //!

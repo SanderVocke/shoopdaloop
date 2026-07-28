@@ -12,7 +12,6 @@ use crate::midi_state::MAX_DIFF_MESSAGES;
 use crate::midi_storage::{sort_by_time, MidiStorageElem};
 
 /// Messages reserved up front. Exceeding it means allocating on the audio
-/// thread, which [`MidiSortingBuffer::n_overflows`] reports rather than the C++
 /// behaviour of printing a warning to stderr.
 ///
 /// Sized to hold a cycle's own events plus a full playback state restore, which is
@@ -79,7 +78,6 @@ impl MidiSortingBuffer {
     /// Adds a message. Returns false if the payload is empty or over
     /// four bytes.
     ///
-    /// The C++ threw on an oversized message; refusing and counting it keeps the
     /// audio thread from unwinding over data it cannot control.
     pub fn write(&mut self, time: u32, data: &[u8]) -> bool {
         let Some(elem) = MidiStorageElem::new(time, data) else {

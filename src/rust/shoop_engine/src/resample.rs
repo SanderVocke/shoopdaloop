@@ -1,14 +1,11 @@
 //! Offline resampling, for loading audio recorded at a different sample rate.
 //!
-//! Replaces the C++ `resample_multi`, which used zita-resampler's `VResampler`. This
 //! is a control-path operation -- it runs when a file is loaded, never in a cycle --
 //! so allocating is fine and no buffer is reused.
 //!
-//! Two behaviours carried over from the C++ because callers depend on them:
 //!
 //! - The output is **exactly** `target_n_frames` long. A resampler's output length
 //!   depends on its filter delay and rounding, so the tail is padded by repeating the
-//!   last frame rather than left short or silent, which is what the C++ does when it
 //!   under-produces.
 //! - The ratio is clamped to `[1/16, 64]`, so an absurd request is bounded instead of
 //!   trying to build a filter for it.
@@ -18,7 +15,6 @@ use rubato::{
 };
 use thiserror::Error;
 
-/// Ratio bounds, as the C++ clamps them.
 const MIN_RATIO: f64 = 1.0 / 16.0;
 const MAX_RATIO: f64 = 64.0;
 
@@ -34,8 +30,6 @@ pub enum ResampleError {
 
 /// Resamples interleaved audio to exactly `target_n_frames` frames.
 ///
-/// Returns an empty vector when there is nothing to produce, matching the C++ null
-/// for zero target frames or zero channels. Silent output for empty input: the C++
 /// zeroes its buffer there, though only the first `target_n_frames` floats of it
 /// rather than all channels, which looks like an oversight and is not copied.
 pub fn resample_interleaved(
@@ -68,7 +62,6 @@ pub fn resample_interleaved(
 
     let sinc_len = 48;
     let params = SincInterpolationParameters {
-        // 48 taps, as the C++ asks zita-resampler for.
         sinc_len,
         f_cutoff: 0.95,
         interpolation: SincInterpolationType::Linear,

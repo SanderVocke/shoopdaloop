@@ -5,7 +5,6 @@
 //! request/applied id pair: mutations bump the request, and [`Session::apply_graph_changes`]
 //! brings the applied id up to it.
 //!
-//! The C++ recomputed the schedule on a dedicated thread and swapped it in from
 //! the audio callback. Here recomputation is an explicit call, because the thread
 //! boundary only exists once a driver does; [`Session::process`] refuses to run a
 //! stale graph rather than silently using one.
@@ -47,7 +46,6 @@ const MIDI_OUT_SCRATCH_CAPACITY: usize = MIDI_SCRATCH_CAPACITY + MAX_DIFF_MESSAG
 ///
 /// A cycle is split at each point of interest, so a loop that ends mid-buffer is
 /// advanced in pieces. The bound catches a loop that keeps reporting a
-/// zero-length point of interest and would otherwise spin. The C++ guard is named
 /// `n_recursive_0_procs` but increments on every recursion, not only zero-length
 /// ones, so it bounds total sub-blocks the same way.
 const MAX_SUB_BLOCKS: u32 = 16;
@@ -588,7 +586,6 @@ impl Session {
     /// Makes `loop_idx` follow `source`'s triggers, or none.
     ///
     /// Cycles are permitted. Sync state reaches a loop as a snapshot refreshed
-    /// between sub-blocks, so a cycle cannot recurse; the C++ queried the source
     /// live through `PROC_is_triggering_now`, where a cycle would recurse until the
     /// stack ran out.
     pub fn set_loop_sync_source(
@@ -632,7 +629,6 @@ impl Session {
     }
 
     /// Retroactively fills a loop's audio channels from their input ports' rolling
-    /// ringbuffers. This mirrors the C++ grab path closely enough for the control
     /// layer: the selected window is copied into each channel, the loop length is
     /// updated, and the requested post-grab mode/position is applied.
     pub fn adopt_audio_ringbuffers_for_loop(
@@ -762,7 +758,6 @@ impl Session {
                 })
                 .collect(),
             // Every loop in a session is co-processed with every other, as the
-            // C++ does by handing all loop nodes to each loop's co-process
             // callback. That is what makes sync work: all loops advance to the
             // same position before any trigger is resolved, so a dependent sees
             // its source's trigger in the same sub-block.
@@ -859,7 +854,6 @@ impl Session {
     /// Runs one cycle.
     ///
     /// Co-processed steps are processed loop-by-loop here. Genuine simultaneous
-    /// co-processing, where loops advance together in sub-blocks, is what the C++
     /// `process_loops` did and is still owed.
     pub fn process(&mut self, n_frames: usize) -> Result<(), SessionError> {
         if !self.graph_up_to_date() {
@@ -922,7 +916,6 @@ impl Session {
         Ok(())
     }
 
-    /// Finishes the reference backend's lightweight `test2x2x1` FX chain by copying
     /// the synthetic FX outputs directly to the track's wet output ports. This is
     /// intentionally narrow: the Rust backend shim does not yet model GraphFXChain,
     /// but the QML self-tests rely on this built-in two-channel passthrough/synth.
@@ -1342,10 +1335,8 @@ impl Session {
         });
     }
 
-    /// Implements the reference backend's lightweight `test2x2x1` FX chain used by
     /// QML tests: two audio inputs pass through to the matching audio outputs at
     /// half gain, and MIDI note velocity is synthesized to both audio outputs.
-    /// The real C++ backend owns this inside GraphFXChain; the Rust shim exposes
     /// FX-chain ports as ordinary internal ports, so this reproduces that behavior
     /// when those synthetic port names are processed.
     fn process_test2x2x1_fx_port(&mut self, port_idx: usize, n_frames: usize) {
@@ -1479,7 +1470,6 @@ impl Session {
     /// The cycle is split at the earliest point of interest across the whole
     /// group, so co-processed loops stay sample-aligned and a loop that ends
     /// mid-buffer is advanced in pieces. Single loops go through the same path:
-    /// the C++ `process_loops` is used for one loop as well as many, and a lone
     /// loop still needs splitting when its end falls inside the buffer.
     fn process_loop_group(&mut self, n_frames: usize) {
         let mut remaining = n_frames;
@@ -1778,7 +1768,6 @@ mod tests {
         let_assert!(Ok(()) = s.connect_channel_output(c, p2));
         let_assert!(Ok(()) = s.apply_graph_changes());
 
-        // Same order the C++ test_graph_construction.cpp asserts.
         check!(
             s.schedule_names()
                 == vec![
@@ -2492,7 +2481,6 @@ mod tests {
         let_assert!(Ok(_) = s.add_audio_channel(a, 64, ChannelMode::Direct));
         let_assert!(Ok(_) = s.add_audio_channel(b, 64, ChannelMode::Direct));
         // Mutual sync. Snapshots make this survivable; querying the source live,
-        // as the C++ does, would recurse until the stack ran out.
         let_assert!(Ok(()) = s.set_loop_sync_source(a, Some(b)));
         let_assert!(Ok(()) = s.set_loop_sync_source(b, Some(a)));
         let_assert!(Ok(()) = s.apply_graph_changes());
@@ -2513,7 +2501,6 @@ mod tests {
             let_assert!(Ok(_) = s.add_audio_channel(l, 64, ChannelMode::Direct));
         }
         let_assert!(Ok(()) = s.apply_graph_changes());
-        // One step holding all three loops, matching the C++, which hands every
         // loop node to every loop's co-process callback.
         let step = s
             .schedule_names()
@@ -2535,7 +2522,7 @@ mod tests {
 
     #[cfg(feature = "lv2")]
     #[test]
-    fn inactive_carla_fx_chain_bypasses_processing_and_tails_like_legacy_host() {
+    fn inactive_carla_fx_chain_bypasses_processing_and_tails() {
         let Ok(host) =
             crate::lv2_carla::CarlaLv2Host::instantiate(crate::FXChainType::CarlaRack, 48_000, 64)
         else {

@@ -38,7 +38,6 @@ pub struct NodeSpec {
 
 /// Disjoint-set over node indices, used to merge co-process constraints.
 ///
-/// The C++ backend merged co-process sets imperatively while walking nodes,
 /// which produced different groupings depending on iteration order when the
 /// constraint was declared asymmetrically. Union-find makes the grouping
 /// order-independent.
@@ -73,7 +72,6 @@ impl UnionFind {
 /// ordering constraint between them.
 ///
 /// Ties within a dependency layer break on the group's lowest node name, which
-/// is what the C++ implementation did and what its expected schedules encode.
 pub fn processing_order(nodes: &[NodeSpec]) -> Result<Vec<Vec<NodeIdx>>, GraphError> {
     let n = nodes.len();
     let check = |i: NodeIdx| {
@@ -204,7 +202,6 @@ mod tests {
     }
 
     // The three topologies below reproduce the expected schedules asserted in
-    // legacy C++ backend integration test test_graph_construction.cpp. The C++ test
     // builds them out of GraphAudioPort/GraphLoopChannel; here the edges are
     // stated directly, so the scheduler is checked against the same vectors
     // without needing those types ported yet.

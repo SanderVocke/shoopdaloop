@@ -64,7 +64,6 @@ impl PortConnectability {
 
 /// Gain, muting, metering and always-on capture for an audio port.
 ///
-/// The C++ `AudioPort` obtained its buffer through a virtual
 /// `PROC_get_buffer`; here the buffer is passed in, so this type needs no
 /// knowledge of where it came from.
 #[derive(Debug)]
@@ -84,7 +83,6 @@ pub struct AudioPort {
 
 impl AudioPort {
     /// `ringbuffer_buffer_size` of zero disables always-on capture, matching a
-    /// C++ port constructed without a buffer pool.
     pub fn new(ringbuffer_buffer_size: usize) -> Self {
         Self {
             gain: 1.0,
@@ -94,7 +92,6 @@ impl AudioPort {
             output_peak: 0.0,
             fx: None,
             fx_scratch: Vec::new(),
-            // 32 buffers is the C++ initial reservation.
             ringbuffer: BufferQueue::new(ringbuffer_buffer_size.max(1), 32),
         }
     }
@@ -146,7 +143,6 @@ impl AudioPort {
     pub fn ringbuffer_n_samples(&self) -> usize {
         self.ringbuffer.n_samples()
     }
-    /// Sets the retained window. Discards what is held, as the C++ does.
     pub fn set_ringbuffer_n_samples(&mut self, n: usize) {
         self.ringbuffer.set_min_n_samples(n);
     }
@@ -170,7 +166,6 @@ impl AudioPort {
     ///
     /// Peaks accumulate until explicitly reset, and `output_peak` is derived from
     /// the accumulated `input_peak` rather than this cycle's alone — faithful to
-    /// the C++, which means a loud earlier cycle keeps inflating it until reset.
     pub fn process(&mut self, buf: &mut [f32]) {
         // The insert runs before gain and muting, so the fader is post-effect and muting silences
         // the effect's output too rather than leaving a tail audible.

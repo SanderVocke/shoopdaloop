@@ -15,8 +15,6 @@ fn qmake_command(qmake_path: &str, argstring: &str) -> Command {
     };
 }
 
-// For now, Rust "back-end" is just a set of C bindings to the
-// C++ back-end.
 fn main_impl() -> Result<(), anyhow::Error> {
     // If we're pre-building, don't do anything
     if cfg!(feature = "prebuild") {

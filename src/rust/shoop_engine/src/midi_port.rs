@@ -1,6 +1,5 @@
 //! MIDI port: state tracking, event metering, muting and always-on capture.
 //!
-//! The C++ `MidiPort` reached its four possible buffers through virtual getters,
 //! which tied the base class to each driver. Here the source events and the
 //! optional output sink are passed into `process`, so this holds only the
 //! driver-independent behaviour.
@@ -17,7 +16,6 @@ use crate::port::PortDataType;
 
 /// Capacity of a port's capture storage, in messages.
 ///
-/// The C++ `shoop_globals::midi_storage_size` is a byte budget (`65536 * 8`)
 /// divided by the element size; expressed directly in elements here.
 pub const DEFAULT_RINGBUFFER_CAPACITY_ELEMS: usize = 65536 * 8 / 12;
 

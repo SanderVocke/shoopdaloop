@@ -1,12 +1,10 @@
-//! One-for-one translation of `legacy C++ backend unit test test_AudioMidiLoop_audio.cpp`.
+//! One-for-one translation of `unit test test_AudioMidiLoop_audio.cpp`.
 //!
-//! The C++ cases use `AudioChannel<int>` so sample comparisons are exact. This
 //! engine is `f32`-only, which keeps them exact anyway: every value these cases use
 //! is a small integer, and those are exactly representable.
 //!
 //! Two mechanical differences:
 //!
-//! - The C++ channels hold pointers to their port buffers, set once by
 //!   `PROC_set_recording_buffer` / `PROC_set_playback_buffer`. Here a channel is
 //!   told only how large the cycle's buffers are, and the buffers themselves are
 //!   passed to `finalize_process`, so each call states its own I/O.
@@ -22,7 +20,6 @@ use shoop_engine::channel_mode::ChannelMode;
 use shoop_engine::loop_mode::LoopMode;
 use shoop_engine::midi_storage::MidiStorageElem;
 
-/// A ramp, as the C++ `create_audio_buf(n, [](pos){ return pos; })`.
 fn ramp(n: usize, offset: usize) -> Vec<f32> {
     (0..n).map(|i| (i + offset) as f32).collect()
 }
@@ -119,9 +116,7 @@ fn audio_record() {
     }
 }
 
-/// The C++ `REQUIRE_THROWS`. Being asked to cross a point of interest is a
 /// scheduler contract violation, not a runtime condition a caller can handle, so
-/// this panics where the C++ throws.
 #[test]
 #[should_panic(expected = "beyond its next POI")]
 fn audio_record_beyond_external_buffer() {
@@ -341,7 +336,6 @@ fn audio_playback_multiple_target() {
     check!(l.position() == 0);
     check!(l.length() == 512);
 
-    // A moving 64-frame window into one output buffer, as the C++ advances
     // `play_buf.data() + processed`.
     let mut play = vec![0.0f32; 512];
     let mut processed = 0usize;
@@ -552,7 +546,6 @@ fn audio_replace_onto_smaller() {
     check!(l.length() == 64);
 
     // Replacing across the loop end, so the second half of the input wraps to the
-    // start. One finalize for both cycles, as the C++ does.
     advance(&mut l, 16);
     l.handle_poi();
     l.resync_poi();
@@ -619,9 +612,7 @@ fn audio_play_dry_through_wet() {
     check!(play[2][..20].iter().all(|&v| v == 0.0));
 }
 
-/// Co-processes a follower and its sync source, as the C++ `process_loops` does.
 ///
-/// Only advances: the C++ cases that use this finalize their channels once at the
 /// end, so the queued copies accumulate across sub-blocks.
 fn advance_synced(l: &mut AudioMidiLoop, sync_source: &mut AudioMidiLoop, n: u32) {
     let mut remaining = n;

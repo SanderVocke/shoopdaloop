@@ -1,4 +1,4 @@
-//! The MIDI half of `legacy C++ backend unit test test_JackPorts.cpp`, re-pointed at the
+//! The MIDI half of `unit test test_JackPorts.cpp`, re-pointed at the
 //! shared port core.
 //!
 //! Those cases open a JACK port against a fake JACK API (`JackTestApi`) and inject
@@ -15,7 +15,6 @@
 //! registration, reading and writing its buffers, and the direction-dependent access
 //! flags, which are a property of the port type rather than of this core. (The dummy
 //! port is no substitute for that: it hard-codes all four access flags to true, as
-//! the C++ `DummyMidiPort` does, and its input queue is rebased per cycle rather than
 //! being a fresh per-cycle buffer.)
 //!
 //! The audio half of that file duplicates `tests/dummy_ports.rs` almost exactly, so
@@ -135,7 +134,6 @@ fn midi_port_receives_a_run_of_messages_in_order() {
     check!(pairs(&got) == pairs(&input));
 }
 
-/// The C++ "Jack Midi Out - Sort" case. Several sources can feed one output port
 /// within a cycle, so what they write has to come out ordered by time.
 #[test]
 fn midi_port_output_is_sorted_by_time() {

@@ -2,7 +2,6 @@
 //!
 //! `BasicLoop` owns loop mechanics; this type owns the channels and keeps the
 //! loop's point of interest in sync with theirs. Every method that can move the
-//! loop re-runs [`AudioMidiLoop::resync_poi`] afterwards, which is what the C++
 //! `PROC_update_poi` override achieved through virtual dispatch. `update_poi`
 //! recomputes loop-end and channel POIs from scratch, so re-running it is
 //! idempotent rather than cumulative.
@@ -147,7 +146,6 @@ impl AudioMidiLoop {
     }
     /// Empties every channel and resets the loop to `length`, stopped.
     ///
-    /// Order follows the C++ `clear_loop`: planned transitions are dropped and a stop
     /// is planned *before* the channels are emptied, so a loop that was mid-playback
     /// does not briefly play whatever the clear leaves behind.
     pub fn clear(&mut self, length: u32) {
@@ -432,7 +430,6 @@ mod tests {
         check!(l.next_poi() == Some(5));
     }
 
-    /// `next_poi` deliberately omits `Replace`, matching the C++, so a replacing
     /// channel is the one case where the loop can outrun a channel's input buffer.
     /// The channel reports it rather than overrunning, and the loop still advances.
     #[test]

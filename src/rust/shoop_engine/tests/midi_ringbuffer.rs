@@ -1,4 +1,4 @@
-//! Translation of `legacy C++ backend unit test test_MidiRingbuffer.cpp`.
+//! Translation of `unit test test_MidiRingbuffer.cpp`.
 //!
 //! `MidiRingbuffer(sizeof(Storage::Elem) * 3)` becomes a capacity of 3 elements, for
 //! the same reason as in `midi_storage.rs`: this storage counts fixed-size elements
@@ -110,7 +110,6 @@ fn midi_ringbuffer_put_then_overflow_then_snapshot() {
     // Advance to just short of overflowing the 32-bit time, so the next buffer
     // forces a rebase.
     //
-    // In one step, not in 512-frame steps. The C++ case looks like it steps, but its
     // `std::min(512, (int)(target - end))` casts a value near 2^32 to a negative
     // `int`, so the first call consumes the whole distance and the current buffer
     // still starts at 0. Its expected values depend on that, so stepping properly

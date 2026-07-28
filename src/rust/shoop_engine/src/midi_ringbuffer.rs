@@ -39,7 +39,6 @@ impl MidiRingbuffer {
     /// Time of the oldest message the window can hold.
     ///
     /// Derived from the window length, not from the current buffer's start time,
-    /// matching the C++ `get_current_start_time`. The two differ whenever the
     /// buffer is shorter than the window.
     pub fn window_start_time(&self) -> u32 {
         self.current_buffer_end_time.saturating_sub(self.n_samples)

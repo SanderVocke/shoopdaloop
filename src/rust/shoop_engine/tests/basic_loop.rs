@@ -1,16 +1,13 @@
-//! One-for-one translation of `legacy C++ backend unit test test_BasicLoop.cpp`.
+//! One-for-one translation of `unit test test_BasicLoop.cpp`.
 //!
-//! The C++ cases keep a real sync source loop alive only so the loop under test
 //! does not transition immediately; nothing is ever read from it. Here a default
 //! `SyncSourceState` snapshot does the same job, since sync is read from a snapshot
 //! rather than by following a pointer.
 //!
 //! `PROC_update_poi` is `update_poi`, and `PROC_process(n)` is `process(n)`.
-//! `PROC_trigger()` defaults `propagate` to true, so the bare C++ call is
 //! `trigger(true)`: it is what makes the loop report itself as triggering, which
 //! two of these cases assert.
 //!
-//! The repeated `PROC_process(1)` calls in the C++ are load-bearing rather than
 //! incidental: a loop refuses to trigger twice in one cycle, so advancing is what
 //! makes the next trigger take effect.
 
@@ -18,7 +15,6 @@ use assert2::check;
 use shoop_engine::basic_loop::{BasicLoop, SyncSourceState};
 use shoop_engine::loop_mode::LoopMode;
 
-/// A loop that will not transition until told to, as the C++ achieves by attaching
 /// an otherwise unused sync source.
 fn synced_recording_loop() -> BasicLoop {
     let mut l = BasicLoop::default();

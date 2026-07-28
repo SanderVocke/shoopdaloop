@@ -1,12 +1,9 @@
-//! One-for-one translation of `legacy C++ backend unit test test_MidiStorage.cpp`.
+//! One-for-one translation of `unit test test_MidiStorage.cpp`.
 //!
-//! As with the loop tests, these assert the C++ suite's own expected values rather
 //! than behaviour derived from reading the implementation.
 //!
-//! One systematic difference: the C++ storage is a byte ring holding
 //! variable-length elements, so its cases size the buffer as
 //! `n * sizeof(Storage::Elem)` and assert on `bytes_occupied` / `bytes_free`. This
-//! storage counts fixed-size elements instead, so as not to depend on C++ struct
 //! padding. `n * sizeof(Elem)` becomes a capacity of `n` elements, and "no bytes
 //! free" becomes `is_full`.
 
@@ -19,7 +16,6 @@ fn msg(time: u32, bytes: &[u8]) -> MidiStorageElem {
 
 /// Everything a cursor yields, walking from the start until it wraps.
 ///
-/// Mirrors the C++ `while (cursor->valid()) { ...; if (is_at_start()) break; }`.
 fn drain(s: &MidiStorage) -> Vec<MidiStorageElem> {
     let mut out = Vec::new();
     let mut cursor = s.create_cursor();

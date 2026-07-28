@@ -1,4 +1,4 @@
-//! Translation of `legacy C++ backend unit test test_DummyAudioMidiDriver.cpp`.
+//! Translation of `unit test test_DummyAudioMidiDriver.cpp`.
 //!
 //! Its first two cases drive a real thread: they start the driver, `wait_process()`
 //! for it to run, and inspect what a tracker recorded. This driver owns no thread --

@@ -1,6 +1,5 @@
 //! An effect slot, and the built-in effects that can fill one.
 //!
-//! The C++ fills this with LV2 or Carla plugins. Hosting a plugin is a large piece of work and
 //! there is nothing to test it against here, so the abstraction is built first around effects that
 //! come with the engine. That makes a plugin *another kind of processor* rather than a prerequisite:
 //! the graph position, the dry/wet handling, the bypass and the session format can all settle

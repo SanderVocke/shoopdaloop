@@ -47,7 +47,7 @@ As such, it obviously has not been used for on-stage performing and definitely s
 The basic features that would be needed for a 1.0.0 release are already there. However, the version won´t go to 1.0.0 until ShoopDaLoop is considered stable for live performing and fully integrated in all target OSs.
 
 To reach this milestone, these are the main goals:
-   * Port C++ code to Rust, such that only Rust + QML + Lua remains.
+   * Stabilize the Rust engine, QML frontend, and Lua control surface.
    * Support additional audio back-ends in addition to Jack, since Jack is not widely used on Windows and MacOS.
    * Iron out robustness issues with plug-in hosting.
    * Bring back NSM session management (this was supported but has become non-functional for the time being)
@@ -109,6 +109,6 @@ This project is only made possible due to many libraries and tools, including bu
    - cxx-qt;
    - libsndfile;
    - JACK audio;
-   - boost::ut;
+   - cargo-nextest;
    - qoverage, coverage for QML / Python code coverage, resp.;
    - many others (see submodules and dependencies)

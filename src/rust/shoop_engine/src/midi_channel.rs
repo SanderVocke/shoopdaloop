@@ -12,7 +12,6 @@
 //! actually sounds.
 //!
 //! Port buffers are passed per call rather than held: a safe channel cannot keep
-//! borrowed buffers across calls. The C++ `ExternalBufState` counters survive,
 //! because one audio cycle is split across several `process` calls at points of
 //! interest.
 
@@ -286,7 +285,6 @@ impl MidiChannel {
         self.play = None;
     }
 
-    /// Whichever port buffer runs out first. As in the C++, `Replace` is not
     /// considered here.
     pub fn next_poi(
         &self,
@@ -310,7 +308,6 @@ impl MidiChannel {
         );
         let mut poi: Option<u32> = None;
         let mut merge = |v: u32| poi = Some(poi.map_or(v, |p: u32| p.min(v)));
-        // An unassigned buffer contributes zero rather than nothing. The C++
         // constructs its buffer state up front with zero frames and only the
         // pointer absent, so a channel asked to record before it has been given a
         // buffer reports a point of interest of 0 -- which surfaces the
@@ -670,7 +667,6 @@ impl MidiChannel {
         }
     }
 
-    /// Emits All Sound Off. Channel 0 only, matching the C++ implementation --
     /// arguably it should cover all 16.
     fn send_all_sound_off(&mut self, out: &mut Vec<MidiStorageElem>, time: u32) {
         let msg = midi::all_sound_off(0);

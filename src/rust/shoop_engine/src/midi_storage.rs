@@ -4,13 +4,11 @@
 //! message; anything longer is rejected rather than heap-allocated, so the
 //! storage never allocates after construction.
 //!
-//! Cursors are plain values rather than the C++ registry of `weak_ptr`s. Instead
 //! of the storage pushing invalidation to registered cursors, a cursor addresses
 //! messages by absolute index and reconciles itself on use via [`Cursor::sync`].
 //! Absolute indices are what make that possible: a ring offset cannot tell
 //! "still the message I was on" from "that slot was refilled".
 
-/// Largest inline payload, in bytes. Matches the C++ element layout.
 pub const MAX_MSG_BYTES: usize = 4;
 
 /// Orders messages by time, stably and without allocating.
@@ -114,9 +112,7 @@ pub struct MidiStorage {
 }
 
 impl MidiStorage {
-    /// Capacity is in elements. The C++ constructor took a byte budget and
     /// divided by the platform's `sizeof(Elem)`; taking elements directly avoids
-    /// depending on C++ struct padding.
     pub fn with_capacity_elems(capacity: usize) -> Self {
         Self {
             data: vec![MidiStorageElem::default(); capacity],
@@ -404,7 +400,6 @@ impl Cursor {
 
     /// Re-anchors a cursor whose message has since been dropped.
     ///
-    /// Stands in for the C++ storage resetting registered cursors when an
     /// overwrite consumed the element they pointed at.
     pub fn sync(&mut self, storage: &MidiStorage) {
         let Some(i) = self.index else { return };

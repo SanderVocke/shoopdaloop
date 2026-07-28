@@ -5,7 +5,6 @@
 //! requested, in buffer-sized chunks, so a test can advance the engine by an
 //! exact number of samples and assert on the result.
 //!
-//! The C++ driver owned a thread that called the engine on a timer. Here the
 //! caller drives the loop and this type only decides chunk sizes, which is the
 //! part that carries behaviour. Threading belongs with a real driver.
 //!

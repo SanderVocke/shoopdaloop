@@ -1,12 +1,8 @@
-//! One-for-one translation of `legacy C++ backend unit test test_AudioMidiLoop_midi.cpp`.
+//! One-for-one translation of `unit test test_AudioMidiLoop_midi.cpp`.
 //!
-//! The engine's other MIDI tests are behavioural, written from reading the C++
-//! implementation. These assert the C++ suite's own expected values instead, which
 //! is a stronger check: it catches places where my reading of the implementation
 //! was self-consistent but wrong.
 //!
-//! Each test keeps the C++ case's name and assertion order. Where the mechanics
-//! differ, the C++ call is named in a comment.
 
 use assert2::{check, let_assert};
 use shoop_engine::audio_midi_loop::AudioMidiLoop;
@@ -34,14 +30,12 @@ fn contents(l: &AudioMidiLoop) -> Vec<(u32, Vec<u8>)> {
         .collect()
 }
 
-/// `MidiStorageElem` with a different time, as the C++ `with_time` / `at_time`.
 fn with_time(m: &MidiStorageElem, time: u32) -> (u32, Vec<u8>) {
     (time, m.data().to_vec())
 }
 
 /// One `PROC_process` call. Returns what the channel emitted.
 ///
-/// The C++ channel held pointers to its buffers; here the input is passed in and
 /// the output comes back, so each call states its own I/O.
 fn process(l: &mut AudioMidiLoop, n: u32, input: &[MidiStorageElem]) -> Vec<MidiStorageElem> {
     let midi_in = vec![input.to_vec()];
@@ -64,7 +58,6 @@ fn set_playback_buffer(l: &mut AudioMidiLoop, n: u32) {
 }
 
 /// Copies the source loop's state into the follower, as the session does between
-/// sub-blocks. The C++ held a pointer and queried it live.
 fn refresh_sync(follower: &mut AudioMidiLoop, source: &AudioMidiLoop) {
     follower.set_sync_source(Some(source.as_sync_source_state()));
 }
@@ -346,7 +339,6 @@ fn midi_record_onto_longer_buffer() {
 
 #[test]
 fn midi_pitch_wheel_round_trips_through_a_recording() {
-    // The C++ harness builds pitch wheel messages by hand; this checks the
     // engine's constructor agrees with what it recorded and played back.
     let mut l = loop_with_channel(512);
     let wheel = midi::pitch_wheel(3, 1000);
@@ -429,7 +421,6 @@ fn midi_prerecord() {
     check!(l.predicted_next_trigger_eta().unwrap_or(999) == 40);
 }
 
-/// Messages on one MIDI channel, as the C++ case's `filter_vector` on `channel()`.
 fn on_channel(out: &[MidiStorageElem], channel: u8) -> Vec<(u32, Vec<u8>)> {
     out.iter()
         .filter(|m| m.data().len() == 3 && (m.data()[0] & 0x0F) == channel)
@@ -437,9 +428,7 @@ fn on_channel(out: &[MidiStorageElem], channel: u8) -> Vec<(u32, Vec<u8>)> {
         .collect()
 }
 
-/// The C++ `StateTrackingTestcaseData`, minus its expectation lists.
 ///
-/// Channel 0's expectation runs to about 130 messages, which the C++ spells out
 /// and this generates from the rule its own comment states, so the sequence is
 /// checked against a stated rule rather than a transcript.
 struct StateTracking {
@@ -588,7 +577,6 @@ fn midi_corner_case_note_started_before_loop_boundary() {
         msg(40, &midi::note_off(0, 100, 60)),
     ];
     // Assigned once and never reset, so its frame accounting accumulates across
-    // every process call below, as the C++ buffer does.
     set_recording_buffer(&mut l, 512);
 
     check!(l.next_poi() == None);
@@ -646,7 +634,6 @@ fn midi_corner_case_note_started_before_loop_boundary() {
     check!(played[4] == (58, midi::note_off(0, 100, 60).to_vec()));
 }
 
-/// Co-processes a follower and its sync source, as the C++ `process_loops` does.
 ///
 /// Splitting the buffer at points of interest and refreshing the sync snapshot
 /// between sub-blocks is what lets a planned transition land on the sync source's

@@ -1,11 +1,10 @@
-//! Translation of `legacy C++ backend unit test test_InternalAudioPort.cpp`.
+//! Translation of `unit test test_InternalAudioPort.cpp`.
 //!
 //! `InternalAudioPort<float>("dummy", 10, 0, 0, pool)` becomes a buffer of 10 frames
 //! with no connectability either way; the pool argument becomes the ringbuffer's
 //! buffer size, since the capture ring allocates its own buffers up front.
 //!
 //! `PROC_get_buffer` handed out a raw pointer that the caller wrote through, so the
-//! C++ cases `memcpy` into it. `buffer()` returns a mutable slice, which is the same
 //! thing with a length attached.
 
 use assert2::check;
@@ -22,7 +21,7 @@ fn port(ringbuffer_buffer_size: usize) -> InternalAudioPort {
     )
 }
 
-/// Catch2's `Approx`, which defaults to a relative epsilon around 1e-5.
+/// Relative epsilon helper for sample comparisons.
 fn close(a: f32, b: f32) -> bool {
     (a - b).abs() <= 1e-5 * a.abs().max(b.abs()).max(1.0)
 }

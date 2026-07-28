@@ -238,7 +238,6 @@ fn a_port_reports_its_state() {
     check!(!state.muted);
     check!(state.name == "in");
     // `ringbuffer_n_samples` reports what is currently *retained*, not the window that
-    // was asked for -- the C++ getter is the same -- so with no audio yet it is zero.
     check!(state.ringbuffer_n_samples == 0);
 
     // Asking an audio port for MIDI counts is an error, not a different answer.

@@ -5,7 +5,6 @@
 //! right for a test that queues a whole sequence up front and wrong for a driver
 //! handing over one cycle at a time.
 //!
-//! Muting gates what the engine can read, matching the C++ JACK port: a muted input
 //! port yields no events at all, rather than passing them on and relying on something
 //! downstream to drop them.
 //!

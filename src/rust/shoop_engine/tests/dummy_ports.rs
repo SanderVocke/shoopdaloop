@@ -1,12 +1,10 @@
-//! Translation of `legacy C++ backend unit test test_DummyPorts.cpp`.
+//! Translation of `unit test test_DummyPorts.cpp`.
 //!
 //! `DummyAudioPort("dummy", dir, pool)` takes an id here as well, since ports are
 //! identified by index rather than by pointer, and the pool argument becomes the
 //! capture ring's buffer size.
 //!
 //! `PROC_get_buffer` returned a raw pointer the caller wrote through; `buffer()`
-//! returns a mutable slice, so the C++ `memcpy` into it becomes `copy_from_slice`.
-//! The C++ `CHECK(buf != nullptr)` and `CHECK(buf == buf2)` assert that asking twice
 //! within a cycle hands back the same storage, which becomes a check that the slice
 //! has the requested length and keeps what was written to it.
 
@@ -27,7 +25,7 @@ fn out_port() -> DummyAudioPort {
     DummyAudioPort::new(PortId(2), "dummy", PortDirection::Output, 4)
 }
 
-/// Catch2's `Approx`, which defaults to a relative epsilon around 1e-5.
+/// Relative epsilon helper for sample comparisons.
 fn close(a: f32, b: f32) -> bool {
     (a - b).abs() <= 1e-5 * a.abs().max(b.abs()).max(1.0)
 }

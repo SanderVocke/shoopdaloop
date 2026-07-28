@@ -2,7 +2,6 @@
 //!
 //! A real driver calls its process callback on a thread it owns, so the session has
 //! to live there and cannot be touched from outside. Control operations are queued
-//! as closures and run at a cycle boundary, mirroring the C++ `WithCommandQueue`,
 //! which queues `std::function<void()>` and drains it from `PROC_handle_command_queue`.
 //!
 //! Two things that queue has to get right and are easy to miss:
@@ -46,7 +45,6 @@ pub enum WaitError {
 
 /// How long [`EngineHandle::send_and_wait`] waits, and how often it looks.
 ///
-/// The same figures the C++ `CommandQueue` uses. It polls rather than waiting on a
 /// condition variable so that the audio thread only ever has to store a result, never
 /// signal anything.
 pub const DEFAULT_WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1000);
@@ -337,7 +335,6 @@ impl EngineHandle {
     /// say. The result comes back through a single-slot queue, so the audio thread
     /// stores it and moves on; this side polls.
     ///
-    /// Times out rather than hanging if nothing is driving the engine. Unlike the C++,
     /// which runs the command on the calling thread when it decides the process thread
     /// is idle, this refuses: the handle has no session to run it against, and reaching
     /// around the engine to find one is how two threads end up in it at once.
