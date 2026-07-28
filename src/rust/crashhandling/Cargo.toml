@@ -26,4 +26,4 @@ winapi = { workspace = true }
 
 [features]
 # Dummy build to build dependencies only
-prebuild = []
+prebuild = ["common/prebuild"]

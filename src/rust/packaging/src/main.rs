@@ -1,12 +1,20 @@
+#[cfg(not(feature = "prebuild"))]
 use anyhow::anyhow;
+#[cfg(not(feature = "prebuild"))]
 use clap::{Parser, Subcommand};
+#[cfg(not(feature = "prebuild"))]
 use common;
+#[cfg(not(feature = "prebuild"))]
 use packaging::binaries_for_test::build_test_binaries_folder;
+#[cfg(not(feature = "prebuild"))]
 use std::path::PathBuf;
 
+#[cfg(not(feature = "prebuild"))]
 use common::logging::macros::*;
+#[cfg(not(feature = "prebuild"))]
 shoop_log_unit!("packaging");
 
+#[cfg(not(feature = "prebuild"))]
 #[derive(Parser)]
 #[command(name = "package")]
 #[command(about = "in-tree packaging tool for ShoopDaLoop")]
@@ -15,6 +23,7 @@ struct Cli {
     command: Option<Commands>,
 }
 
+#[cfg(not(feature = "prebuild"))]
 #[derive(Subcommand)]
 enum Commands {
     BuildPortableFolder {
@@ -54,6 +63,7 @@ enum Commands {
     },
 }
 
+#[cfg(not(feature = "prebuild"))]
 pub fn main_impl() -> Result<(), anyhow::Error> {
     common::init()?;
 
@@ -144,6 +154,7 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
     }
 }
 
+#[cfg(not(feature = "prebuild"))]
 fn main() {
     match main_impl() {
         Ok(()) => (),
@@ -157,3 +168,6 @@ fn main() {
         }
     }
 }
+
+#[cfg(feature = "prebuild")]
+fn main() {}

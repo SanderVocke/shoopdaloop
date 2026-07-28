@@ -1,3 +1,5 @@
+#![cfg(not(feature = "prebuild"))]
+
 pub mod binaries_for_test;
 pub mod dependencies;
 pub mod fs_helpers;

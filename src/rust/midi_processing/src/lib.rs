@@ -1,3 +1,5 @@
+#![cfg(not(feature = "prebuild"))]
+
 pub use shoop_engine::midi::MidiEvent;
 
 pub struct Note {

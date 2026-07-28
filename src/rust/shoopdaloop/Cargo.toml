@@ -57,5 +57,8 @@ ctor = { workspace = true }
 [features]
 # Dummy build to build dependencies only
 prebuild = ["frontend/prebuild",
+            "shoop_engine/prebuild",
             "common/prebuild",
-            "crashhandling/prebuild"]
+            "config/prebuild",
+            "crashhandling/prebuild",
+            "cxx_qt_lib_shoop/prebuild"]

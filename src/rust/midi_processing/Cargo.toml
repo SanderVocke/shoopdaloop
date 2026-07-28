@@ -16,4 +16,4 @@ assert2 = { workspace = true }
 
 [features]
 # Dummy build to build dependencies only
-prebuild = ["common/prebuild"]
+prebuild = ["common/prebuild", "shoop_engine/prebuild"]

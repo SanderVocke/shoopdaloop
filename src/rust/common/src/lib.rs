@@ -1,3 +1,5 @@
+#![cfg(not(feature = "prebuild"))]
+
 pub mod env;
 pub mod logging;
 pub mod util;

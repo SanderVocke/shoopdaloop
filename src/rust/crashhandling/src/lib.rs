@@ -1,3 +1,5 @@
+#![cfg(not(feature = "prebuild"))]
+
 // Note: mostly taken from the example included with the minidumper crate.
 
 pub mod registered_threads;

@@ -1,3 +1,3 @@
-- Rust tests: `cargo test --workspace --all-features`.
+- Rust tests: `cargo test --workspace --features shoop_engine/app_backend`.
 - Frontend/QML integration tests: build first, then run `target/debug/shoopdaloop_dev.sh --self-test`.
 - Use targeted package tests while iterating, then run the broader gates before committing behavior changes.

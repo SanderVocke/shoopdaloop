@@ -29,6 +29,7 @@ num_enum = { workspace = true }
 workspace = true
 
 [features]
+prebuild = []
 jack = ["dep:jack"]
 cpal = ["dep:cpal"]
 midir = ["dep:midir"]

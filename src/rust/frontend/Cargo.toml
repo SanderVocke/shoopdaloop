@@ -54,6 +54,7 @@ cxx-qt-build = { workspace = true }
 # Dummy build to build dependencies only
 prebuild = ["macros/prebuild",
             "common/prebuild",
+            "shoop_engine/prebuild",
             "crashhandling/prebuild",
             "config/prebuild",
             "cxx_qt_lib_shoop/prebuild",

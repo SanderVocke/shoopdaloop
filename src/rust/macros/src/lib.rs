@@ -1,3 +1,5 @@
+#![cfg(not(feature = "prebuild"))]
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, FnArg, ItemFn, Signature};

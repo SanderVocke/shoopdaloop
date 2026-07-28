@@ -1,3 +1,5 @@
+#![cfg(not(feature = "prebuild"))]
+
 //! Realtime looping engine: graph, loops, channels, ports.
 //!
 //! Pure logic plus the application-facing backend driver interface used by the frontend.
