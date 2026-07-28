@@ -1792,16 +1792,7 @@ pub struct AudioChannel {
     chan_idx: usize,
     session_idx: usize,
 }
-pub struct AudioChannelState {
-    pub mode: ChannelMode,
-    pub gain: f32,
-    pub output_peak: f32,
-    pub length: u32,
-    pub start_offset: i32,
-    pub played_back_sample: Option<u32>,
-    pub n_preplay_samples: u32,
-    pub data_dirty: bool,
-}
+pub type AudioChannelState = engine::AudioChannelState;
 impl AudioChannel {
     fn with_mut(&self, f: impl FnOnce(&mut engine::AudioChannel)) {
         if let Some(c) = self
@@ -1851,7 +1842,7 @@ impl AudioChannel {
             output_peak: c.output_peak(),
             length: c.length() as u32,
             start_offset: c.start_offset(),
-            played_back_sample: c.played_back_sample().map(|v| v as u32),
+            played_back_sample: c.played_back_sample(),
             n_preplay_samples: c.pre_play_samples(),
             data_dirty: c.data_seq_nr() != 0,
         })
@@ -1881,16 +1872,7 @@ pub struct MidiChannel {
     chan_idx: usize,
     session_idx: usize,
 }
-pub struct MidiChannelState {
-    pub mode: ChannelMode,
-    pub n_events_triggered: u32,
-    pub n_notes_active: u32,
-    pub length: u32,
-    pub start_offset: i32,
-    pub played_back_sample: Option<u32>,
-    pub n_preplay_samples: u32,
-    pub data_dirty: bool,
-}
+pub type MidiChannelState = engine::MidiChannelState;
 impl MidiChannel {
     fn with_mut(&self, f: impl FnOnce(&mut engine::MidiChannel)) {
         if let Some(c) = self
@@ -1964,7 +1946,7 @@ impl MidiChannel {
             n_notes_active: c.n_notes_active(),
             length: c.length(),
             start_offset: c.start_offset(),
-            played_back_sample: c.played_back_sample().map(|v| v as u32),
+            played_back_sample: c.played_back_sample(),
             n_preplay_samples: c.pre_play_samples(),
             data_dirty: c.data_seq_nr() != 0,
         })

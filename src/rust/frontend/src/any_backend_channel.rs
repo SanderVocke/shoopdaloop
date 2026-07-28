@@ -1,8 +1,6 @@
-use backend_bindings::{
-    AudioChannel, AudioChannelState, AudioPort, ChannelMode, MidiChannel, MidiChannelState,
-    MidiEvent, MidiPort,
-};
+use backend_bindings::{AudioChannel, AudioPort, MidiChannel, MidiPort};
 use common::logging::macros::*;
+use shoop_engine::{AudioChannelState, ChannelMode, MidiChannelState, MidiEvent};
 shoop_log_unit!("Frontend.AnyChannel");
 pub enum AnyBackendChannel {
     Audio(AudioChannel),
@@ -233,7 +231,7 @@ pub struct AnyBackendChannelState {
     pub mode: ChannelMode,
     pub length: u32,
     pub start_offset: i32,
-    pub played_back_sample: Option<u32>,
+    pub played_back_sample: Option<i32>,
     pub n_preplay_samples: u32,
     pub data_dirty: bool,
     pub audio_gain: f32,

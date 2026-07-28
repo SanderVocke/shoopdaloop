@@ -53,6 +53,7 @@ pub use basic_loop::{BasicLoop, PoiFlags, PointOfInterest, SyncSourceState};
 pub use buffer_queue::{BufferQueue, Snapshot};
 pub use channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 pub use chunked_samples::ChunkedSamples;
+pub use control::{AudioChannelState, MidiChannelState};
 pub use decoupled_midi_port::DecoupledMidiPort;
 pub use driver::AudioDriverType;
 pub use dummy_driver::{DriverMode, DriverSettings, DummyDriver};
