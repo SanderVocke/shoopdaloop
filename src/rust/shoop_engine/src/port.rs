@@ -54,6 +54,12 @@ impl PortConnectability {
     pub fn with(self, other: Self) -> Self {
         Self(self.0 | other.0)
     }
+    pub fn from_ffi(v: u32) -> Self {
+        Self(v & (Self::INTERNAL.0 | Self::EXTERNAL.0))
+    }
+    pub fn to_ffi(&self) -> u32 {
+        self.0
+    }
 }
 
 /// Gain, muting, metering and always-on capture for an audio port.

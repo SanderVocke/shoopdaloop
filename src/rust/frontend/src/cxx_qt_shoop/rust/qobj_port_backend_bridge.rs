@@ -1,10 +1,9 @@
 use std::collections::HashSet;
 
 use crate::any_backend_port::{AnyBackendPort, AnyBackendPortState};
-use backend_bindings::PortConnectability;
 use common::logging::macros::*;
 use cxx_qt_lib_shoop::{qobject::AsQObject, qweakpointer_qobject::QWeakPointer_QObject};
-use shoop_engine::PortDataType;
+use shoop_engine::{PortConnectability, PortDataType};
 
 shoop_log_unit!("Frontend.Port");
 

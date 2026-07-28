@@ -21,8 +21,7 @@ use cxx_qt_lib_shoop::{
     qsharedpointer_qobject::QSharedPointer_QObject,
     qvariant_helpers::qvariant_to_qsharedpointer_qobject,
 };
-use shoop_engine::MidiEvent;
-use shoop_engine::{ChannelMode, PortDataType};
+use shoop_engine::{ChannelMode, MidiEvent, PortConnectability, PortDataType};
 use std::{collections::HashSet, pin::Pin};
 shoop_log_unit!("Frontend.LoopChannel");
 
@@ -386,7 +385,10 @@ impl LoopChannelBackend {
             Disconnect,
         }
         let do_port = |channel: &AnyBackendChannel, port: &AnyBackendPort, action: Action| {
-            match port.input_connectability().internal {
+            match port
+                .input_connectability()
+                .contains(PortConnectability::INTERNAL)
+            {
                 true => {
                     // output port
                     match port {

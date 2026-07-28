@@ -1,8 +1,8 @@
 use backend_bindings::{
-    AudioDriver, AudioPort, AudioPortState, BackendSession, MidiEvent, MidiPort, MidiPortState,
-    PortConnectability, PortDataType, PortDirection,
+    AudioDriver, AudioPort, AudioPortState, BackendSession, MidiPort, MidiPortState,
 };
 use common::logging::macros::*;
+use shoop_engine::{MidiEvent, PortConnectability, PortDataType, PortDirection};
 use std::collections::HashMap;
 shoop_log_unit!("Frontend.AnyPort");
 pub enum AnyBackendPort {

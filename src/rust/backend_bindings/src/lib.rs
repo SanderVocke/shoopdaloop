@@ -15,30 +15,7 @@ use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::thread;
 use std::time::{Duration, Instant};
 
-#[derive(Debug, PartialEq, Clone, Default)]
-pub struct PortConnectability {
-    pub internal: bool,
-    pub external: bool,
-}
-impl From<engine::PortConnectability> for PortConnectability {
-    fn from(v: engine::PortConnectability) -> Self {
-        Self {
-            internal: v.contains(engine::PortConnectability::INTERNAL),
-            external: v.contains(engine::PortConnectability::EXTERNAL),
-        }
-    }
-}
-impl PortConnectability {
-    pub fn from_ffi(v: u32) -> Self {
-        Self {
-            internal: v & 1 != 0,
-            external: v & 2 != 0,
-        }
-    }
-    pub fn to_ffi(&self) -> u32 {
-        (self.internal as u32) | ((self.external as u32) << 1)
-    }
-}
+pub type PortConnectability = engine::PortConnectability;
 
 pub type shoop_fx_chain_type_t = FXChainType;
 #[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
@@ -46,45 +23,6 @@ pub type shoop_fx_chain_type_t = FXChainType;
 pub enum BackendResult {
     Success = 0,
     Failure = 1,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
-#[repr(i32)]
-pub enum LogLevel {
-    DebugTrace = 0,
-    AlwaysTrace = 1,
-    Debug = 2,
-    Info = 3,
-    Warn = 4,
-    Err = 5,
-}
-
-pub struct Logger {
-    name: String,
-}
-impl Logger {
-    pub fn new(name: &str) -> Result<Self> {
-        Ok(Self {
-            name: name.to_string(),
-        })
-    }
-    pub fn should_log(&self, level: LogLevel) -> bool {
-        matches!(level, LogLevel::Info | LogLevel::Warn | LogLevel::Err)
-    }
-    pub fn log(&self, level: LogLevel, msg: &str) {
-        if !self.should_log(level) {
-            return;
-        }
-        let level = match level {
-            LogLevel::DebugTrace | LogLevel::AlwaysTrace => "trace",
-            LogLevel::Debug => "debug",
-            LogLevel::Info => "info",
-            LogLevel::Warn => "warning",
-            LogLevel::Err => "error",
-        };
-        use std::io::Write;
-        let _ = writeln!(std::io::stdout(), "[{}] [{}] {}", self.name, level, msg);
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -2090,34 +2028,16 @@ impl AudioPort {
     }
     pub fn input_connectability(&self) -> PortConnectability {
         match self.direction {
-            PortDirection::Input => PortConnectability {
-                internal: false,
-                external: true,
-            },
-            PortDirection::Output => PortConnectability {
-                internal: true,
-                external: false,
-            },
-            PortDirection::Any => PortConnectability {
-                internal: true,
-                external: true,
-            },
+            PortDirection::Input => PortConnectability::EXTERNAL,
+            PortDirection::Output => PortConnectability::INTERNAL,
+            PortDirection::Any => PortConnectability::INTERNAL.with(PortConnectability::EXTERNAL),
         }
     }
     pub fn output_connectability(&self) -> PortConnectability {
         match self.direction {
-            PortDirection::Input => PortConnectability {
-                internal: true,
-                external: false,
-            },
-            PortDirection::Output => PortConnectability {
-                internal: false,
-                external: true,
-            },
-            PortDirection::Any => PortConnectability {
-                internal: true,
-                external: true,
-            },
+            PortDirection::Input => PortConnectability::INTERNAL,
+            PortDirection::Output => PortConnectability::EXTERNAL,
+            PortDirection::Any => PortConnectability::INTERNAL.with(PortConnectability::EXTERNAL),
         }
     }
     pub fn get_state(&self) -> Result<AudioPortState> {
@@ -2314,34 +2234,16 @@ impl MidiPort {
     }
     pub fn input_connectability(&self) -> PortConnectability {
         match self.direction {
-            PortDirection::Input => PortConnectability {
-                internal: false,
-                external: true,
-            },
-            PortDirection::Output => PortConnectability {
-                internal: true,
-                external: false,
-            },
-            PortDirection::Any => PortConnectability {
-                internal: true,
-                external: true,
-            },
+            PortDirection::Input => PortConnectability::EXTERNAL,
+            PortDirection::Output => PortConnectability::INTERNAL,
+            PortDirection::Any => PortConnectability::INTERNAL.with(PortConnectability::EXTERNAL),
         }
     }
     pub fn output_connectability(&self) -> PortConnectability {
         match self.direction {
-            PortDirection::Input => PortConnectability {
-                internal: true,
-                external: false,
-            },
-            PortDirection::Output => PortConnectability {
-                internal: false,
-                external: true,
-            },
-            PortDirection::Any => PortConnectability {
-                internal: true,
-                external: true,
-            },
+            PortDirection::Input => PortConnectability::INTERNAL,
+            PortDirection::Output => PortConnectability::EXTERNAL,
+            PortDirection::Any => PortConnectability::INTERNAL.with(PortConnectability::EXTERNAL),
         }
     }
     pub fn get_state(&self) -> Result<MidiPortState> {
