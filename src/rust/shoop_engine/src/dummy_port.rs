@@ -91,6 +91,19 @@ impl DummyExternalConnections {
         self.connections.len()
     }
 
+    /// All external port names currently connected to `port`.
+    pub fn connections_for(&self, port: PortId) -> Vec<String> {
+        self.connections
+            .iter()
+            .filter_map(|(owner, name)| (*owner == port).then(|| name.clone()))
+            .collect()
+    }
+
+    /// Snapshot of all `(port, external port name)` pairs.
+    pub fn connections(&self) -> Vec<(PortId, String)> {
+        self.connections.clone()
+    }
+
     fn find_port(&self, name: &str) -> Result<&ExternalPortDescriptor, DummyPortError> {
         self.mock_ports
             .iter()

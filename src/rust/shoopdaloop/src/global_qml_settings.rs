@@ -5,6 +5,16 @@ use std::path::PathBuf;
 #[derive(Debug)]
 pub struct GlobalQmlSettings {
     pub backend_type: backend_bindings::AudioDriverType,
+    pub cpal_host: String,
+    pub cpal_output_device: String,
+    pub cpal_input_device: String,
+    pub cpal_sample_rate: u32,
+    pub cpal_buffer_size: u32,
+    pub cpal_input_channels: String,
+    pub cpal_output_channels: String,
+    pub cpal_capture_ring_frames: i32,
+    pub midir_input: String,
+    pub midir_output: String,
     pub load_session_on_startup: Option<PathBuf>,
     pub test_grab_screens_dir: Option<PathBuf>,
     pub developer_mode: bool,
@@ -40,6 +50,46 @@ impl GlobalQmlSettings {
             QString::from("backend_type"),
             QVariant::from(&(self.backend_type as i32)),
         ))
+        .chain(iter::once((
+            QString::from("cpal_host"),
+            QVariant::from(&QString::from(&self.cpal_host)),
+        )))
+        .chain(iter::once((
+            QString::from("cpal_output_device"),
+            QVariant::from(&QString::from(&self.cpal_output_device)),
+        )))
+        .chain(iter::once((
+            QString::from("cpal_input_device"),
+            QVariant::from(&QString::from(&self.cpal_input_device)),
+        )))
+        .chain(iter::once((
+            QString::from("cpal_sample_rate"),
+            QVariant::from(&(self.cpal_sample_rate as i32)),
+        )))
+        .chain(iter::once((
+            QString::from("cpal_buffer_size"),
+            QVariant::from(&(self.cpal_buffer_size as i32)),
+        )))
+        .chain(iter::once((
+            QString::from("cpal_input_channels"),
+            QVariant::from(&QString::from(&self.cpal_input_channels)),
+        )))
+        .chain(iter::once((
+            QString::from("cpal_output_channels"),
+            QVariant::from(&QString::from(&self.cpal_output_channels)),
+        )))
+        .chain(iter::once((
+            QString::from("cpal_capture_ring_frames"),
+            QVariant::from(&self.cpal_capture_ring_frames),
+        )))
+        .chain(iter::once((
+            QString::from("midir_input"),
+            QVariant::from(&QString::from(&self.midir_input)),
+        )))
+        .chain(iter::once((
+            QString::from("midir_output"),
+            QVariant::from(&QString::from(&self.midir_output)),
+        )))
         .chain(iter::once((
             QString::from("load_session_on_startup"),
             option_pathbuf_to_qvariant(self.load_session_on_startup.clone()),

@@ -209,10 +209,12 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "common",
+ "cpal",
  "ctor",
  "enum-iterator",
  "jack",
  "log",
+ "midir",
  "num_enum",
  "shoop_engine",
 ]

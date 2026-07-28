@@ -1,10 +1,11 @@
 #![allow(non_camel_case_types, dead_code)]
 
 use anyhow::{anyhow, Result};
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use enum_iterator::Sequence;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use shoop_engine as engine;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::thread;
@@ -16,6 +17,7 @@ pub enum AudioDriverType {
     Jack = 0,
     JackTest = 1,
     Dummy = 2,
+    Cpal = 3,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
@@ -425,6 +427,34 @@ struct JackBackend {
     xruns: Arc<AtomicU32>,
     maybe_process_callback: Option<ProcessCallback>,
 }
+
+struct CpalMidiInputEndpoint {
+    name: String,
+    capture: engine::midir_driver::MidiCapture,
+    _conn: engine::midir_driver::MidiCaptureConnection,
+}
+
+struct CpalMidiOutputEndpoint {
+    name: String,
+    playback: engine::midir_driver::MidiPlayback,
+}
+
+struct CpalBackend {
+    _output: cpal::Stream,
+    _input: Option<cpal::Stream>,
+    sample_rate: u32,
+    configured_buffer_size: u32,
+    input_ring: Option<Arc<Mutex<VecDeque<f32>>>>,
+    input_channels: usize,
+    output_channels: usize,
+    playback_names: Vec<String>,
+    capture_names: Vec<String>,
+    midi_inputs: Arc<Mutex<Vec<CpalMidiInputEndpoint>>>,
+    midi_outputs: Arc<Mutex<Vec<CpalMidiOutputEndpoint>>>,
+    last_processed: Arc<AtomicU32>,
+    xruns: Arc<AtomicU32>,
+}
+
 impl JackBackend {
     fn client(&self) -> &jack::Client {
         self.active_client
@@ -460,10 +490,428 @@ impl JackBackend {
     }
 }
 
+fn cpal_device_label(device: &cpal::Device) -> String {
+    device.name().unwrap_or_else(|_| "cpal".to_string())
+}
+
+fn cpal_host_label(id: cpal::HostId) -> String {
+    format!("{id:?}").to_lowercase()
+}
+
+fn select_cpal_host(wanted: &str) -> Result<cpal::Host> {
+    if wanted == "default" || wanted.is_empty() {
+        return Ok(cpal::default_host());
+    }
+    let id = cpal::available_hosts()
+        .into_iter()
+        .find(|id| cpal_host_label(*id) == wanted.to_lowercase())
+        .ok_or_else(|| anyhow!("No CPAL host named {wanted}"))?;
+    cpal::host_from_id(id).map_err(|e| anyhow!("Could not open CPAL host {wanted}: {e}"))
+}
+
+fn limit_cpal_channels(current: u16, wanted: &str) -> u16 {
+    if wanted == "all" || wanted.is_empty() {
+        current
+    } else {
+        wanted
+            .parse::<u16>()
+            .ok()
+            .map(|n| n.max(1).min(current))
+            .unwrap_or(current)
+    }
+}
+
+fn apply_cpal_config_options(
+    mut config: cpal::StreamConfig,
+    sample_rate: u32,
+    buffer_size: u32,
+    channels: &str,
+) -> cpal::StreamConfig {
+    if sample_rate > 0 {
+        config.sample_rate = cpal::SampleRate(sample_rate);
+    }
+    if buffer_size > 0 {
+        config.buffer_size = cpal::BufferSize::Fixed(buffer_size);
+    }
+    config.channels = limit_cpal_channels(config.channels, channels);
+    config
+}
+
+fn select_cpal_device<I>(devices: I, wanted: &str) -> Option<cpal::Device>
+where
+    I: IntoIterator<Item = cpal::Device>,
+{
+    if wanted == "default" || wanted.is_empty() {
+        return None;
+    }
+    if let Ok(idx) = wanted.parse::<usize>() {
+        return devices.into_iter().nth(idx);
+    }
+    devices
+        .into_iter()
+        .find(|d| cpal_device_label(d) == wanted || cpal_device_label(d).contains(wanted))
+}
+
+fn selector_is_all(v: &[String]) -> bool {
+    v.is_empty() || v.iter().any(|s| s == "all")
+}
+fn selector_is_none(v: &[String]) -> bool {
+    v.iter().any(|s| s == "none")
+}
+fn selector_matches(v: &[String], idx: usize, name: &str) -> bool {
+    selector_is_all(v)
+        || v.iter()
+            .any(|s| s == &idx.to_string() || s == name || name.contains(s))
+}
+
+fn stage_virtual_audio_inputs(
+    session: &mut engine::Session,
+    connections: &[(engine::PortId, String)],
+    capture_names: &[String],
+    input_channels: usize,
+    capture_interleaved: &[f32],
+    n_frames: usize,
+) {
+    for (port_id, ext_name) in connections {
+        let Some(session_idx) = port_id.0.checked_sub(1).map(|v| v as usize) else {
+            continue;
+        };
+        if let Some(ch) = capture_names.iter().position(|n| n == ext_name) {
+            if let Some(port) = session
+                .port_mut(session_idx)
+                .and_then(|p| p.as_external_mut())
+            {
+                if input_channels > 0 {
+                    let mut plane = Vec::with_capacity(n_frames);
+                    for f in 0..n_frames {
+                        plane.push(
+                            capture_interleaved
+                                .get(f * input_channels + ch)
+                                .copied()
+                                .unwrap_or(0.0),
+                        );
+                    }
+                    port.stage_input(&plane);
+                }
+            }
+        }
+    }
+}
+
+fn collect_virtual_audio_outputs(
+    session: &engine::Session,
+    connections: &[(engine::PortId, String)],
+    playback_names: &[String],
+    output_channels: usize,
+    output_interleaved: &mut [f32],
+    n_frames: usize,
+) {
+    for (port_id, ext_name) in connections {
+        let Some(session_idx) = port_id.0.checked_sub(1).map(|v| v as usize) else {
+            continue;
+        };
+        if let Some(ch) = playback_names.iter().position(|n| n == ext_name) {
+            if let Some(port) = session.port(session_idx).and_then(|p| p.as_external()) {
+                let produced = port.output(n_frames);
+                for f in 0..n_frames {
+                    output_interleaved[f * output_channels + ch] +=
+                        produced.get(f).copied().unwrap_or(0.0);
+                }
+            }
+        }
+    }
+}
+
+impl CpalBackend {
+    fn start(
+        shared: Weak<SharedSession>,
+        settings: &CpalMidiAudioDriverSettings,
+        external: Arc<Mutex<engine::DummyExternalConnections>>,
+        maybe_process_callback: Option<ProcessCallback>,
+    ) -> Result<Self> {
+        let host = select_cpal_host(&settings.host)?;
+        let output_device = if settings.output_device == "none" {
+            return Err(anyhow!("CPAL output device is required"));
+        } else {
+            select_cpal_device(host.output_devices()?, &settings.output_device)
+                .or_else(|| host.default_output_device())
+                .ok_or_else(|| anyhow!("No CPAL output device available"))?
+        };
+        let output_supported_config = output_device.default_output_config()?;
+        let sample_rate = if settings.sample_rate > 0 {
+            settings.sample_rate
+        } else {
+            output_supported_config.sample_rate().0
+        };
+        let output_config = apply_cpal_config_options(
+            output_supported_config.into(),
+            settings.sample_rate,
+            settings.buffer_size,
+            &settings.output_channels,
+        );
+        let output_channels = output_config.channels as usize;
+        let output_device_name = cpal_device_label(&output_device);
+        let playback_names: Vec<String> = (0..output_channels)
+            .map(|c| format!("cpal:{output_device_name}:playback_{}", c + 1))
+            .collect();
+
+        let mut input_stream = None;
+        let mut input_ring = None;
+        let mut input_channels = 0usize;
+        let mut capture_names = Vec::new();
+        let xruns = Arc::new(AtomicU32::new(0));
+        if settings.input_device != "none" {
+            if let Some(input_device) =
+                select_cpal_device(host.input_devices()?, &settings.input_device)
+                    .or_else(|| host.default_input_device())
+            {
+                let input_supported_config = input_device.default_input_config()?;
+                let input_config = apply_cpal_config_options(
+                    input_supported_config.into(),
+                    sample_rate,
+                    settings.buffer_size,
+                    &settings.input_channels,
+                );
+                input_channels = input_config.channels as usize;
+                let input_device_name = cpal_device_label(&input_device);
+                capture_names = (0..input_channels)
+                    .map(|c| format!("cpal:{input_device_name}:capture_{}", c + 1))
+                    .collect();
+                let cap = settings.capture_ring_frames.max(1) as usize * input_channels.max(1);
+                let ring = Arc::new(Mutex::new(VecDeque::with_capacity(cap)));
+                let cb_ring = ring.clone();
+                let cb_xruns_in = xruns.clone();
+                input_stream = Some(input_device.build_input_stream(
+                    &input_config,
+                    move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                        let mut ring = cb_ring.lock().unwrap_or_else(|e| e.into_inner());
+                        for &s in data {
+                            if ring.len() >= cap {
+                                ring.pop_front();
+                                cb_xruns_in.fetch_add(1, Ordering::Relaxed);
+                            }
+                            ring.push_back(s);
+                        }
+                    },
+                    |_| {},
+                    None,
+                )?);
+                input_ring = Some(ring);
+            }
+        }
+
+        {
+            let mut ext = external.lock().unwrap_or_else(|e| e.into_inner());
+            for name in &capture_names {
+                ext.add_mock_port(
+                    name.clone(),
+                    engine::PortDirection::Output,
+                    engine::PortDataType::Audio,
+                );
+            }
+            for name in &playback_names {
+                ext.add_mock_port(
+                    name.clone(),
+                    engine::PortDirection::Input,
+                    engine::PortDataType::Audio,
+                );
+            }
+        }
+
+        let mut midi_inputs = Vec::new();
+        if !selector_is_none(&settings.midi_inputs) {
+            if let Ok(input) = midir::MidiInput::new(&settings.client_name) {
+                for (idx, port) in input.ports().iter().enumerate() {
+                    if let Ok(port_name) = input.port_name(port) {
+                        if selector_matches(&settings.midi_inputs, idx, &port_name) {
+                            if let Ok((capture, conn)) = engine::midir_driver::open_input(
+                                &settings.client_name,
+                                &format!("{}-in-{idx}", settings.client_name),
+                                &port_name,
+                            ) {
+                                let name = format!("midir:{port_name}:output");
+                                external
+                                    .lock()
+                                    .unwrap_or_else(|e| e.into_inner())
+                                    .add_mock_port(
+                                        name.clone(),
+                                        engine::PortDirection::Output,
+                                        engine::PortDataType::Midi,
+                                    );
+                                midi_inputs.push(CpalMidiInputEndpoint {
+                                    name,
+                                    capture,
+                                    _conn: conn,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let mut midi_outputs = Vec::new();
+        if !selector_is_none(&settings.midi_outputs) {
+            if let Ok(output) = midir::MidiOutput::new(&settings.client_name) {
+                for (idx, port) in output.ports().iter().enumerate() {
+                    if let Ok(port_name) = output.port_name(port) {
+                        if selector_matches(&settings.midi_outputs, idx, &port_name) {
+                            if let Ok(playback) = engine::midir_driver::open_output(
+                                &settings.client_name,
+                                &format!("{}-out-{idx}", settings.client_name),
+                                &port_name,
+                            ) {
+                                let name = format!("midir:{port_name}:input");
+                                external
+                                    .lock()
+                                    .unwrap_or_else(|e| e.into_inner())
+                                    .add_mock_port(
+                                        name.clone(),
+                                        engine::PortDirection::Input,
+                                        engine::PortDataType::Midi,
+                                    );
+                                midi_outputs.push(CpalMidiOutputEndpoint { name, playback });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let input_ring_cb = input_ring.clone();
+        let capture_names_cb = capture_names.clone();
+        let playback_names_cb = playback_names.clone();
+        let midi_inputs_cb = Arc::new(Mutex::new(midi_inputs));
+        let midi_outputs_cb = Arc::new(Mutex::new(midi_outputs));
+        let midi_inputs_ret = midi_inputs_cb.clone();
+        let midi_outputs_ret = midi_outputs_cb.clone();
+        let external_cb = external.clone();
+        let last_processed = Arc::new(AtomicU32::new(0));
+        let last_processed_cb = last_processed.clone();
+        let xruns_cb = xruns.clone();
+        let mut capture_scratch = Vec::<f32>::new();
+
+        let output_stream = output_device.build_output_stream(
+            &output_config,
+            move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                let n_frames = data.len().checked_div(output_channels.max(1)).unwrap_or(0);
+                last_processed_cb.store(n_frames as u32, Ordering::Relaxed);
+                for s in data.iter_mut() {
+                    *s = 0.0;
+                }
+                if let Some(callback) = maybe_process_callback {
+                    unsafe {
+                        callback();
+                    }
+                }
+                let Some(shared) = shared.upgrade() else {
+                    return;
+                };
+                let connections = external_cb
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .connections();
+                let wanted = n_frames * input_channels;
+                if capture_scratch.len() < wanted {
+                    capture_scratch.resize(wanted, 0.0);
+                }
+                if let Some(ring) = input_ring_cb.as_ref() {
+                    let mut ring = ring.lock().unwrap_or_else(|e| e.into_inner());
+                    for s in &mut capture_scratch[..wanted] {
+                        *s = ring.pop_front().unwrap_or(0.0);
+                    }
+                }
+
+                let mut session = shared.lock();
+                session.set_sample_rate(sample_rate);
+                session.set_buffer_size(n_frames as u32);
+                let _ = session.apply_graph_changes();
+
+                stage_virtual_audio_inputs(
+                    &mut session,
+                    &connections,
+                    &capture_names_cb,
+                    input_channels,
+                    &capture_scratch[..wanted],
+                    n_frames,
+                );
+                for (port_id, ext_name) in &connections {
+                    let Some(session_idx) = port_id.0.checked_sub(1).map(|v| v as usize) else {
+                        continue;
+                    };
+                    if ext_name.starts_with("midir:") && ext_name.ends_with(":output") {
+                        if let Some(port) = session
+                            .port_mut(session_idx)
+                            .and_then(|p| p.as_external_midi_mut())
+                        {
+                            let mut inputs =
+                                midi_inputs_cb.lock().unwrap_or_else(|e| e.into_inner());
+                            for input in inputs.iter_mut().filter(|i| &i.name == ext_name) {
+                                input.capture.drain_into(port);
+                            }
+                        }
+                    }
+                }
+
+                let _ = session.process(n_frames);
+
+                collect_virtual_audio_outputs(
+                    &session,
+                    &connections,
+                    &playback_names_cb,
+                    output_channels,
+                    data,
+                    n_frames,
+                );
+                for (port_id, ext_name) in &connections {
+                    let Some(session_idx) = port_id.0.checked_sub(1).map(|v| v as usize) else {
+                        continue;
+                    };
+                    if ext_name.starts_with("midir:") && ext_name.ends_with(":input") {
+                        if let Some(port) =
+                            session.port(session_idx).and_then(|p| p.as_external_midi())
+                        {
+                            let mut outputs =
+                                midi_outputs_cb.lock().unwrap_or_else(|e| e.into_inner());
+                            for output in outputs.iter_mut().filter(|o| &o.name == ext_name) {
+                                output.playback.send_from(port);
+                            }
+                        }
+                    }
+                }
+            },
+            move |_| {
+                xruns_cb.fetch_add(1, Ordering::Relaxed);
+            },
+            None,
+        )?;
+        if let Some(stream) = input_stream.as_ref() {
+            stream.play()?;
+        }
+        output_stream.play()?;
+
+        Ok(Self {
+            _output: output_stream,
+            _input: input_stream,
+            sample_rate,
+            configured_buffer_size: settings.buffer_size,
+            input_ring,
+            input_channels,
+            output_channels,
+            playback_names,
+            capture_names,
+            midi_inputs: midi_inputs_ret,
+            midi_outputs: midi_outputs_ret,
+            last_processed,
+            xruns,
+        })
+    }
+}
+
 struct SharedSession {
     session: Mutex<engine::Session>,
     external: Mutex<Option<Arc<Mutex<engine::DummyExternalConnections>>>>,
     jack: Mutex<Option<Arc<Mutex<JackBackend>>>>,
+    cpal: Mutex<Option<Arc<Mutex<CpalBackend>>>>,
 }
 impl SharedSession {
     fn lock(&self) -> MutexGuard<'_, engine::Session> {
@@ -477,6 +925,9 @@ impl SharedSession {
     }
     fn jack(&self) -> Option<Arc<Mutex<JackBackend>>> {
         self.jack.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+    fn cpal(&self) -> Option<Arc<Mutex<CpalBackend>>> {
+        self.cpal.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
     fn activate_jack(&self, shared: &Arc<SharedSession>) -> Result<()> {
         if let Some(j) = self.jack() {
@@ -593,6 +1044,7 @@ impl BackendSession {
                 session: Mutex::new(s),
                 external: Mutex::new(None),
                 jack: Mutex::new(None),
+                cpal: Mutex::new(None),
             }),
         })
     }
@@ -605,6 +1057,8 @@ impl BackendSession {
             .unwrap_or_else(|e| e.into_inner()) = Some(driver.external());
         *self.shared.jack.lock().unwrap_or_else(|e| e.into_inner()) = driver.jack();
         self.shared.activate_jack(&self.shared)?;
+        driver.activate_cpal(&self.shared)?;
+        *self.shared.cpal.lock().unwrap_or_else(|e| e.into_inner()) = driver.cpal();
         Ok(())
     }
     pub fn get_state(&self) -> BackendSessionState {
@@ -658,6 +1112,21 @@ pub struct DummyAudioDriverSettings {
     pub sample_rate: u32,
     pub buffer_size: u32,
 }
+
+#[derive(Clone)]
+pub struct CpalMidiAudioDriverSettings {
+    pub client_name: String,
+    pub host: String,
+    pub output_device: String,
+    pub input_device: String,
+    pub sample_rate: u32,
+    pub buffer_size: u32,
+    pub output_channels: String,
+    pub input_channels: String,
+    pub capture_ring_frames: u32,
+    pub midi_inputs: Vec<String>,
+    pub midi_outputs: Vec<String>,
+}
 impl std::fmt::Debug for DummyAudioDriverSettings {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DummyAudioDriverSettings")
@@ -667,15 +1136,34 @@ impl std::fmt::Debug for DummyAudioDriverSettings {
             .finish()
     }
 }
+impl std::fmt::Debug for CpalMidiAudioDriverSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CpalMidiAudioDriverSettings")
+            .field("client_name", &self.client_name)
+            .field("host", &self.host)
+            .field("output_device", &self.output_device)
+            .field("input_device", &self.input_device)
+            .field("sample_rate", &self.sample_rate)
+            .field("buffer_size", &self.buffer_size)
+            .field("output_channels", &self.output_channels)
+            .field("input_channels", &self.input_channels)
+            .field("capture_ring_frames", &self.capture_ring_frames)
+            .field("midi_inputs", &self.midi_inputs)
+            .field("midi_outputs", &self.midi_outputs)
+            .finish()
+    }
+}
 pub enum AudioDriverSettings {
     Jack(JackAudioDriverSettings),
     Dummy(DummyAudioDriverSettings),
+    Cpal(CpalMidiAudioDriverSettings),
 }
 impl std::fmt::Debug for AudioDriverSettings {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Jack(s) => f.debug_tuple("Jack").field(s).finish(),
             Self::Dummy(s) => f.debug_tuple("Dummy").field(s).finish(),
+            Self::Cpal(s) => f.debug_tuple("Cpal").field(s).finish(),
         }
     }
 }
@@ -711,6 +1199,8 @@ struct DriverInner {
     session: Option<Weak<SharedSession>>,
     external: Arc<Mutex<engine::DummyExternalConnections>>,
     jack: Option<Arc<Mutex<JackBackend>>>,
+    cpal: Option<Arc<Mutex<CpalBackend>>>,
+    cpal_settings: Option<CpalMidiAudioDriverSettings>,
     maybe_process_callback: Option<ProcessCallback>,
 }
 pub struct AudioDriver {
@@ -797,6 +1287,8 @@ impl AudioDriver {
                 session: None,
                 external: Arc::new(Mutex::new(engine::DummyExternalConnections::default())),
                 jack: None,
+                cpal: None,
+                cpal_settings: None,
                 maybe_process_callback: _maybe_callback,
             })),
         })
@@ -815,8 +1307,35 @@ impl AudioDriver {
             .jack
             .clone()
     }
+    fn cpal(&self) -> Option<Arc<Mutex<CpalBackend>>> {
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .cpal
+            .clone()
+    }
     fn attach_session(&self, shared: &Arc<SharedSession>) {
         self.inner.lock().unwrap().session = Some(Arc::downgrade(shared));
+    }
+    fn activate_cpal(&self, shared: &Arc<SharedSession>) -> Result<()> {
+        let mut i = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if i.driver_type != AudioDriverType::Cpal || i.cpal.is_some() {
+            return Ok(());
+        }
+        let settings = i
+            .cpal_settings
+            .clone()
+            .ok_or_else(|| anyhow!("CPAL settings missing"))?;
+        let backend = CpalBackend::start(
+            Arc::downgrade(shared),
+            &settings,
+            i.external.clone(),
+            i.maybe_process_callback,
+        )?;
+        i.settings.sample_rate = backend.sample_rate;
+        i.settings.buffer_size = backend.configured_buffer_size;
+        i.cpal = Some(Arc::new(Mutex::new(backend)));
+        Ok(())
     }
     pub fn start(&self, settings: &AudioDriverSettings) -> Result<()> {
         let mut i = self.inner.lock().unwrap();
@@ -829,6 +1348,7 @@ impl AudioDriver {
                 }
             }
             AudioDriverSettings::Jack(s) => i.settings.client_name = s.client_name_hint.clone(),
+            AudioDriverSettings::Cpal(s) => i.settings.client_name = s.client_name.clone(),
         };
         if i.driver_type == AudioDriverType::Jack {
             let (client, _status) = jack::Client::new(
@@ -849,6 +1369,19 @@ impl AudioDriver {
             })));
         } else {
             i.jack = None;
+        }
+        if i.driver_type == AudioDriverType::Cpal {
+            let cpal_settings = match settings {
+                AudioDriverSettings::Cpal(s) => s.clone(),
+                _ => return Err(anyhow!("CPAL driver requires CPAL settings")),
+            };
+            i.settings.sample_rate = 0;
+            i.settings.buffer_size = 0;
+            i.settings.client_name = cpal_settings.client_name.clone();
+            i.cpal_settings = Some(cpal_settings);
+        } else {
+            i.cpal = None;
+            i.cpal_settings = None;
         }
         if i.driver_type == AudioDriverType::JackTest {
             let mut ext = i.external.lock().unwrap_or_else(|e| e.into_inner());
@@ -1042,6 +1575,12 @@ impl AudioDriver {
                 j.last_processed.load(Ordering::Relaxed),
                 j.xruns.swap(0, Ordering::Relaxed),
             )
+        } else if let Some(c) = i.cpal.as_ref() {
+            let c = c.lock().unwrap_or_else(|e| e.into_inner());
+            (
+                c.last_processed.load(Ordering::Relaxed),
+                c.xruns.swap(0, Ordering::Relaxed),
+            )
         } else {
             (i.last_processed, 0)
         };
@@ -1170,8 +1709,62 @@ impl Drop for AudioDriver {
 pub fn driver_type_supported(driver_type: AudioDriverType) -> bool {
     matches!(
         driver_type,
-        AudioDriverType::Dummy | AudioDriverType::Jack | AudioDriverType::JackTest
+        AudioDriverType::Dummy
+            | AudioDriverType::Jack
+            | AudioDriverType::JackTest
+            | AudioDriverType::Cpal
     )
+}
+
+pub fn cpal_host_names() -> Vec<String> {
+    cpal::available_hosts()
+        .into_iter()
+        .map(cpal_host_label)
+        .collect()
+}
+
+pub fn cpal_output_device_names_for_host(host: &str) -> Vec<String> {
+    select_cpal_host(host)
+        .and_then(|h| h.output_devices().map_err(Into::into))
+        .map(|devices| devices.map(|d| cpal_device_label(&d)).collect())
+        .unwrap_or_default()
+}
+
+pub fn cpal_input_device_names_for_host(host: &str) -> Vec<String> {
+    select_cpal_host(host)
+        .and_then(|h| h.input_devices().map_err(Into::into))
+        .map(|devices| devices.map(|d| cpal_device_label(&d)).collect())
+        .unwrap_or_default()
+}
+
+pub fn cpal_output_device_names() -> Vec<String> {
+    cpal_output_device_names_for_host("default")
+}
+
+pub fn cpal_input_device_names() -> Vec<String> {
+    cpal_input_device_names_for_host("default")
+}
+
+pub fn midir_input_port_names() -> Vec<String> {
+    midir::MidiInput::new("ShoopDaLoop-list")
+        .map(|m| {
+            m.ports()
+                .iter()
+                .filter_map(|p| m.port_name(p).ok())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub fn midir_output_port_names() -> Vec<String> {
+    midir::MidiOutput::new("ShoopDaLoop-list")
+        .map(|m| {
+            m.ports()
+                .iter()
+                .filter_map(|p| m.port_name(p).ok())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 #[derive(Clone)]
@@ -2191,6 +2784,79 @@ mod tests {
         assert!(!driver_uses_dummy_processing(AudioDriverType::Jack));
         assert!(driver_uses_dummy_processing(AudioDriverType::JackTest));
         assert!(driver_uses_dummy_processing(AudioDriverType::Dummy));
+        assert!(!driver_uses_dummy_processing(AudioDriverType::Cpal));
+    }
+
+    #[test]
+    fn cpal_virtual_audio_input_routes_capture_channel_into_session_port() {
+        let mut s = engine::Session::default();
+        let input = s.add_port(engine::session::Port::External(
+            engine::external_audio_port::ExternalAudioPort::new(
+                "input",
+                engine::PortDirection::Input,
+                0,
+            ),
+        ));
+        let l = s.create_loop();
+        let c = s
+            .add_audio_channel(l, 64, engine::ChannelMode::Direct)
+            .expect("channel");
+        s.connect_channel_input(c, input).expect("connect");
+        s.apply_graph_changes().expect("graph");
+        s.set_loop_mode(l, engine::LoopMode::Recording)
+            .expect("mode");
+
+        let capture_names = vec![
+            "cpal:test:capture_1".to_string(),
+            "cpal:test:capture_2".to_string(),
+        ];
+        let connections = vec![(compat_port_id(input), capture_names[1].clone())];
+        let interleaved = [10.0, 20.0, 11.0, 21.0, 12.0, 22.0, 13.0, 23.0];
+        stage_virtual_audio_inputs(&mut s, &connections, &capture_names, 2, &interleaved, 4);
+        s.process(4).expect("process");
+
+        let data = s
+            .loop_(l)
+            .and_then(|l| l.audio_channel(0))
+            .map(|c| c.data().to_vec())
+            .expect("recorded channel");
+        assert_eq!(&data[..4], &[20.0, 21.0, 22.0, 23.0]);
+    }
+
+    #[test]
+    fn cpal_virtual_audio_output_routes_session_port_to_playback_channel() {
+        let mut s = engine::Session::default();
+        let output = s.add_port(engine::session::Port::External(
+            engine::external_audio_port::ExternalAudioPort::new(
+                "output",
+                engine::PortDirection::Output,
+                0,
+            ),
+        ));
+        let l = s.create_loop();
+        let c = s
+            .add_audio_channel(l, 64, engine::ChannelMode::Direct)
+            .expect("channel");
+        s.connect_channel_output(c, output).expect("connect");
+        s.loop_mut(l)
+            .expect("loop")
+            .audio_channel_mut(0)
+            .expect("channel")
+            .load_data(&[1.0, 2.0, 3.0, 4.0]);
+        s.loop_mut(l).expect("loop").set_length(4);
+        s.apply_graph_changes().expect("graph");
+        s.set_loop_mode(l, engine::LoopMode::Playing).expect("mode");
+        s.process(4).expect("process");
+
+        let playback_names = vec![
+            "cpal:test:playback_1".to_string(),
+            "cpal:test:playback_2".to_string(),
+        ];
+        let connections = vec![(compat_port_id(output), playback_names[1].clone())];
+        let mut interleaved = [0.0f32; 8];
+        collect_virtual_audio_outputs(&s, &connections, &playback_names, 2, &mut interleaved, 4);
+
+        assert_eq!(interleaved, [0.0, 1.0, 0.0, 2.0, 0.0, 3.0, 0.0, 4.0]);
     }
 
     #[test]
@@ -2213,6 +2879,8 @@ mod tests {
                 session: None,
                 external: Arc::new(Mutex::new(engine::DummyExternalConnections::default())),
                 jack: None,
+                cpal: None,
+                cpal_settings: None,
                 maybe_process_callback: None,
             })),
         };

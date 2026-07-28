@@ -80,6 +80,47 @@ fn audio_driver_settings_from_qvariantmap(
                 buffer_size,
             });
         }
+        AudioDriverType::Cpal => {
+            let client_name = map
+                .get(&QString::from("client_name_hint"))
+                .ok_or_else(|| anyhow!("No client name setting for driver"))?
+                .value::<QString>()
+                .ok_or_else(|| anyhow!("Wrong type for client name of driver"))?
+                .to_string();
+            let get_string = |key: &str, default: &str| -> Result<String, anyhow::Error> {
+                Ok(map
+                    .get(&QString::from(key))
+                    .and_then(|v| v.value::<QString>())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| default.to_string()))
+            };
+            let get_i32 = |key: &str, default: i32| -> Result<i32, anyhow::Error> {
+                Ok(map
+                    .get(&QString::from(key))
+                    .and_then(|v| v.value::<i32>())
+                    .unwrap_or(default))
+            };
+            let split_selectors = |s: String| -> Vec<String> {
+                s.split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(ToString::to_string)
+                    .collect()
+            };
+            settings = AudioDriverSettings::Cpal(CpalMidiAudioDriverSettings {
+                client_name,
+                host: get_string("cpal_host", "default")?,
+                output_device: get_string("cpal_output_device", "default")?,
+                input_device: get_string("cpal_input_device", "default")?,
+                sample_rate: get_i32("cpal_sample_rate", 0)?.max(0) as u32,
+                buffer_size: get_i32("cpal_buffer_size", 0)?.max(0) as u32,
+                input_channels: get_string("cpal_input_channels", "all")?,
+                output_channels: get_string("cpal_output_channels", "all")?,
+                capture_ring_frames: get_i32("cpal_capture_ring_frames", 4096)?.max(1) as u32,
+                midi_inputs: split_selectors(get_string("midir_input", "all")?),
+                midi_outputs: split_selectors(get_string("midir_output", "all")?),
+            });
+        }
     }
 
     Ok(settings)

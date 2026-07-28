@@ -6,13 +6,15 @@ edition = "2021"
 
 [dependencies]
 common = { path = "../common" }
-shoop_engine = { path = "../shoop_engine" }
+shoop_engine = { path = "../shoop_engine", features = ["midir"] }
 num_enum = { workspace = true }
 anyhow = { workspace = true }
 enum-iterator = { workspace = true }
 log = { workspace = true }
 ctor = { workspace = true }
 jack = { workspace = true }
+cpal = { workspace = true }
+midir = { workspace = true }
 
 
 [features]
