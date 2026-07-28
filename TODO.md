@@ -35,7 +35,9 @@ This checklist tracks backend-related work that remains after replacing and remo
   - [x] Add tests that exercise actual JACK driver behaviour where practical.
 - [ ] Add tests for LV2/Carla once plugin hosting exists.
   - [x] Cover discovery, instantiate/run, app handle creation, and state save/restore when Carla is installed.
-  - [ ] Cover audio/MIDI graph routing and UI behavior end-to-end.
+  - [x] Cover audio/MIDI graph routing when Carla is installed.
+  - [x] Add opt-in real UI show/hide smoke coverage (`SHOOP_TEST_CARLA_UI=1`).
+  - [ ] Run and record real UI behavior validation in an environment with a display.
 - [ ] Extend `tests/no_alloc.rs` as more engine paths land.
   - [ ] Cover recording past chunk boundaries.
   - [ ] Cover any newly added process-thread/plugin/control handoff paths.
