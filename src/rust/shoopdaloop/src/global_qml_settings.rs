@@ -1,10 +1,11 @@
 use cxx_qt_lib::*;
+use shoop_engine::AudioDriverType;
 use std::iter;
 use std::path::PathBuf;
 
 #[derive(Debug)]
 pub struct GlobalQmlSettings {
-    pub backend_type: backend_bindings::AudioDriverType,
+    pub backend_type: AudioDriverType,
     pub cpal_host: String,
     pub cpal_output_device: String,
     pub cpal_input_device: String,

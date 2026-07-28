@@ -16,8 +16,7 @@ path = "src/bin/print_shoopdaloop_out_dir.rs"
 
 [dependencies]
 frontend = { path = "../frontend" }
-backend_bindings = { path = "../backend_bindings" }
-shoop_engine = { path = "../shoop_engine" }
+shoop_engine = { path = "../shoop_engine", features = ["cpal", "midir"] }
 common = { path = "../common" }
 config = { path = "../config" }
 crashhandling = { path = "../crashhandling" }
@@ -55,6 +54,5 @@ ctor = { workspace = true }
 [features]
 # Dummy build to build dependencies only
 prebuild = ["frontend/prebuild",
-            "backend_bindings/prebuild",
             "common/prebuild",
             "crashhandling/prebuild"]

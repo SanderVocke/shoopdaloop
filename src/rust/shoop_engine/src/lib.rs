@@ -55,7 +55,11 @@ pub use channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 pub use chunked_samples::ChunkedSamples;
 pub use control::{AudioChannelState, AudioPortState, MidiChannelState, MidiPortState};
 pub use decoupled_midi_port::DecoupledMidiPort;
-pub use driver::AudioDriverType;
+pub use driver::{
+    cpal_host_names, cpal_input_device_names, cpal_input_device_names_for_host,
+    cpal_output_device_names, cpal_output_device_names_for_host, driver_type_supported,
+    midir_input_port_names, midir_output_port_names, AudioDriverType,
+};
 pub use dummy_driver::{DriverMode, DriverSettings, DummyDriver};
 pub use dummy_midi_port::DummyMidiPort;
 pub use dummy_port::{DummyAudioPort, DummyExternalConnections, DummyPortError, PortId};

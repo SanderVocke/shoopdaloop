@@ -1578,66 +1578,11 @@ impl Drop for AudioDriver {
     }
 }
 
-pub fn driver_type_supported(driver_type: AudioDriverType) -> bool {
-    matches!(
-        driver_type,
-        AudioDriverType::Dummy
-            | AudioDriverType::Jack
-            | AudioDriverType::JackTest
-            | AudioDriverType::Cpal
-    )
-}
-
-pub fn cpal_host_names() -> Vec<String> {
-    cpal::available_hosts()
-        .into_iter()
-        .map(cpal_host_label)
-        .collect()
-}
-
-pub fn cpal_output_device_names_for_host(host: &str) -> Vec<String> {
-    select_cpal_host(host)
-        .and_then(|h| h.output_devices().map_err(Into::into))
-        .map(|devices| devices.map(|d| cpal_device_label(&d)).collect())
-        .unwrap_or_default()
-}
-
-pub fn cpal_input_device_names_for_host(host: &str) -> Vec<String> {
-    select_cpal_host(host)
-        .and_then(|h| h.input_devices().map_err(Into::into))
-        .map(|devices| devices.map(|d| cpal_device_label(&d)).collect())
-        .unwrap_or_default()
-}
-
-pub fn cpal_output_device_names() -> Vec<String> {
-    cpal_output_device_names_for_host("default")
-}
-
-pub fn cpal_input_device_names() -> Vec<String> {
-    cpal_input_device_names_for_host("default")
-}
-
-pub fn midir_input_port_names() -> Vec<String> {
-    midir::MidiInput::new("ShoopDaLoop-list")
-        .map(|m| {
-            m.ports()
-                .iter()
-                .filter_map(|p| m.port_name(p).ok())
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-pub fn midir_output_port_names() -> Vec<String> {
-    midir::MidiOutput::new("ShoopDaLoop-list")
-        .map(|m| {
-            m.ports()
-                .iter()
-                .filter_map(|p| m.port_name(p).ok())
-                .collect()
-        })
-        .unwrap_or_default()
-}
+pub use engine::{
+    cpal_host_names, cpal_input_device_names, cpal_input_device_names_for_host,
+    cpal_output_device_names, cpal_output_device_names_for_host, driver_type_supported,
+    midir_input_port_names, midir_output_port_names,
+};
 
 #[derive(Clone)]
 pub struct Loop {

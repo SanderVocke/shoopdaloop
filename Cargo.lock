@@ -2926,7 +2926,6 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "assert_no_alloc",
- "backend_bindings",
  "clap",
  "common",
  "config",

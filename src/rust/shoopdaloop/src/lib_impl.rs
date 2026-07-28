@@ -1,6 +1,5 @@
 use crate::cli_args::CliArgs;
 use anyhow::anyhow;
-use backend_bindings::AudioDriverType;
 use common::logging::macros::*;
 use config::config::ShoopConfig;
 use cxx_qt_lib::QString;
@@ -15,6 +14,7 @@ use frontend::cxx_qt_shoop::qobj_qmlengine::{
 use frontend::cxx_qt_shoop::test::qobj_test_file_runner::TestFileRunner;
 use glob::glob;
 use once_cell::sync::OnceCell;
+use shoop_engine::AudioDriverType;
 use std::env;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -378,7 +378,7 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
 
     if cli_args.list_cpal_hosts {
         println!("CPAL hosts:");
-        for name in backend_bindings::cpal_host_names() {
+        for name in shoop_engine::cpal_host_names() {
             println!("- {name}");
         }
         return Ok(0);
@@ -386,20 +386,18 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
 
     if cli_args.list_audio_devices {
         println!("Audio output devices:");
-        for (idx, name) in backend_bindings::cpal_output_device_names_for_host(
-            &cli_args.cpal_midir_options.cpal_host,
-        )
-        .iter()
-        .enumerate()
+        for (idx, name) in
+            shoop_engine::cpal_output_device_names_for_host(&cli_args.cpal_midir_options.cpal_host)
+                .iter()
+                .enumerate()
         {
             println!("[{idx}] {name}");
         }
         println!("\nAudio input devices:");
-        for (idx, name) in backend_bindings::cpal_input_device_names_for_host(
-            &cli_args.cpal_midir_options.cpal_host,
-        )
-        .iter()
-        .enumerate()
+        for (idx, name) in
+            shoop_engine::cpal_input_device_names_for_host(&cli_args.cpal_midir_options.cpal_host)
+                .iter()
+                .enumerate()
         {
             println!("[{idx}] {name}");
         }
@@ -408,17 +406,11 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
 
     if cli_args.list_midi_devices {
         println!("MIDI input ports:");
-        for (idx, name) in backend_bindings::midir_input_port_names()
-            .iter()
-            .enumerate()
-        {
+        for (idx, name) in shoop_engine::midir_input_port_names().iter().enumerate() {
             println!("[{idx}] {name}");
         }
         println!("\nMIDI output ports:");
-        for (idx, name) in backend_bindings::midir_output_port_names()
-            .iter()
-            .enumerate()
-        {
+        for (idx, name) in shoop_engine::midir_output_port_names().iter().enumerate() {
             println!("[{idx}] {name}");
         }
         return Ok(0);

@@ -1,4 +1,4 @@
-use backend_bindings::AudioDriverType;
+use shoop_engine::AudioDriverType;
 use std::iter::*;
 
 pub fn get_audio_driver_name(driver_type: AudioDriverType) -> &'static str {
