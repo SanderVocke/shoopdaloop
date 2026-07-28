@@ -127,7 +127,10 @@ impl ExternalAudioPort {
     }
 
     pub fn dequeue_output(&mut self, n_frames: usize) -> Vec<f32> {
-        if self.direction == PortDirection::Output && self.outgoing.len() < n_frames && self.processed_len > 0 {
+        if self.direction == PortDirection::Output
+            && self.outgoing.len() < n_frames
+            && self.processed_len > 0
+        {
             let n = self.processed_len.min(self.buffer.len());
             self.outgoing.extend_from_slice(&self.buffer[..n]);
             self.processed_len = 0;

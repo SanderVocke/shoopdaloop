@@ -838,7 +838,8 @@ impl CompositeLoopBackend {
         unsafe {
             self.as_mut().running_loops_changed(empty_running_loops);
             self.as_mut().iteration_changed(-1);
-            self.as_mut().mode_changed(LoopMode::Stopped as isize as i32);
+            self.as_mut()
+                .mode_changed(LoopMode::Stopped as isize as i32);
             self.as_mut().next_mode_changed(-1);
             self.as_mut().next_transition_delay_changed(-1);
             self.as_mut().n_cycles_changed(0);

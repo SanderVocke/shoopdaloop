@@ -869,9 +869,15 @@ impl Session {
     /// intentionally narrow: the Rust backend shim does not yet model GraphFXChain,
     /// but the QML self-tests rely on this built-in two-channel passthrough/synth.
     fn apply_test2x2x1_fx_outputs(&mut self, n_frames: usize) {
-        let titles: Vec<String> = self.ports.iter().filter_map(|p| {
-            p.name().split_once(":audio_in_0").map(|(title, _)| title.to_string())
-        }).collect();
+        let titles: Vec<String> = self
+            .ports
+            .iter()
+            .filter_map(|p| {
+                p.name()
+                    .split_once(":audio_in_0")
+                    .map(|(title, _)| title.to_string())
+            })
+            .collect();
         for title in titles {
             if !self.test_fx_active.get(&title).copied().unwrap_or(true) {
                 continue;
@@ -880,16 +886,33 @@ impl Session {
                 let in_name = format!("{title}:audio_in_{idx}");
                 let fx_out_name = format!("{title}:audio_out_{idx}");
                 let out_name = format!("{title}_audio_wet_out_{}", idx + 1);
-                let Some(in_idx) = self.ports.iter().position(|p| p.name() == in_name) else { continue; };
-                let Some(fx_out_idx) = self.ports.iter().position(|p| p.name() == fx_out_name) else { continue; };
-                let Some(out_idx) = self.ports.iter().position(|p| p.name() == out_name) else { continue; };
-                if self.scratch.len() < n_frames { self.scratch.resize(n_frames, 0.0); }
+                let Some(in_idx) = self.ports.iter().position(|p| p.name() == in_name) else {
+                    continue;
+                };
+                let Some(fx_out_idx) = self.ports.iter().position(|p| p.name() == fx_out_name)
+                else {
+                    continue;
+                };
+                let Some(out_idx) = self.ports.iter().position(|p| p.name() == out_name) else {
+                    continue;
+                };
+                if self.scratch.len() < n_frames {
+                    self.scratch.resize(n_frames, 0.0);
+                }
                 {
                     let input = self.ports[in_idx].buffer(n_frames);
-                    for i in 0..n_frames { self.scratch[i] = input.get(i).copied().unwrap_or(0.0) * 0.5; }
+                    for i in 0..n_frames {
+                        self.scratch[i] = input.get(i).copied().unwrap_or(0.0) * 0.5;
+                    }
                 }
-                let target = self.ports[out_idx].audio().map(|a| (a.gain(), a.muted())).unwrap_or((1.0, false));
-                let fx_passthrough_muted = self.ports[fx_out_idx].audio().map(|a| a.passthrough_muted()).unwrap_or(false);
+                let target = self.ports[out_idx]
+                    .audio()
+                    .map(|a| (a.gain(), a.muted()))
+                    .unwrap_or((1.0, false));
+                let fx_passthrough_muted = self.ports[fx_out_idx]
+                    .audio()
+                    .map(|a| a.passthrough_muted())
+                    .unwrap_or(false);
                 let (gain, muted) = (target.0, target.1 || fx_passthrough_muted);
                 let output = self.ports[out_idx].buffer(n_frames);
                 for (o, s) in output.iter_mut().zip(&self.scratch[..n_frames]) {
@@ -897,8 +920,15 @@ impl Session {
                 }
             }
 
-            let rerecording = self.loops.iter().any(|l| l.mode() == LoopMode::RecordingDryIntoWet);
-            let mut events = if rerecording { self.recent_loop_midi_events(n_frames) } else { Vec::new() };
+            let rerecording = self
+                .loops
+                .iter()
+                .any(|l| l.mode() == LoopMode::RecordingDryIntoWet);
+            let mut events = if rerecording {
+                self.recent_loop_midi_events(n_frames)
+            } else {
+                Vec::new()
+            };
             if !rerecording {
                 let fx_midi_name = format!("{title}:midi_in_0");
                 if let Some(midi_idx) = self.ports.iter().position(|p| p.name() == fx_midi_name) {
@@ -912,16 +942,35 @@ impl Session {
                 for idx in 0..2usize {
                     let fx_out_name = format!("{title}:audio_out_{idx}");
                     let out_name = format!("{title}_audio_wet_out_{}", idx + 1);
-                    let Some(fx_out_idx) = self.ports.iter().position(|p| p.name() == fx_out_name) else { continue; };
-                    let Some(out_idx) = self.ports.iter().position(|p| p.name() == out_name) else { continue; };
-                    let target = self.ports[out_idx].audio().map(|a| (a.gain(), a.muted())).unwrap_or((1.0, false));
-                    let fx_passthrough_muted = self.ports[fx_out_idx].audio().map(|a| a.passthrough_muted()).unwrap_or(false);
+                    let Some(fx_out_idx) = self.ports.iter().position(|p| p.name() == fx_out_name)
+                    else {
+                        continue;
+                    };
+                    let Some(out_idx) = self.ports.iter().position(|p| p.name() == out_name) else {
+                        continue;
+                    };
+                    let target = self.ports[out_idx]
+                        .audio()
+                        .map(|a| (a.gain(), a.muted()))
+                        .unwrap_or((1.0, false));
+                    let fx_passthrough_muted = self.ports[fx_out_idx]
+                        .audio()
+                        .map(|a| a.passthrough_muted())
+                        .unwrap_or(false);
                     let (gain, muted) = (target.0, target.1 || fx_passthrough_muted);
                     let output = self.ports[out_idx].buffer(n_frames);
                     for e in events.iter() {
                         let t = e.time as usize;
-                        if t < output.len() && e.data().len() >= 3 && (e.data()[0] & 0xf0) == 0x90 && e.data()[2] > 0 {
-                            output[t] += if muted { 0.0 } else { (e.data()[2] as f32 / 255.0) * gain };
+                        if t < output.len()
+                            && e.data().len() >= 3
+                            && (e.data()[0] & 0xf0) == 0x90
+                            && e.data()[2] > 0
+                        {
+                            output[t] += if muted {
+                                0.0
+                            } else {
+                                (e.data()[2] as f32 / 255.0) * gain
+                            };
                         }
                     }
                 }
@@ -933,23 +982,40 @@ impl Session {
         let n = n_frames as i32;
         let mut to_write: Vec<(usize, crate::midi_storage::MidiStorageElem)> = Vec::new();
         for loop_idx in 0..self.loops.len() {
-            if !self.loop_group.contains(&loop_idx) { continue; }
+            if !self.loop_group.contains(&loop_idx) {
+                continue;
+            }
             let l = &self.loops[loop_idx];
-            if l.mode() != LoopMode::Playing && l.mode() != LoopMode::PlayingDryThroughWet && l.mode() != LoopMode::RecordingDryIntoWet { continue; }
+            if l.mode() != LoopMode::Playing
+                && l.mode() != LoopMode::PlayingDryThroughWet
+                && l.mode() != LoopMode::RecordingDryIntoWet
+            {
+                continue;
+            }
             let len = l.length() as i32;
-            if len <= 0 { continue; }
+            if len <= 0 {
+                continue;
+            }
             let end = l.position() as i32;
             let start = end - n;
             for &mapping_idx in self.midi_mappings_by_loop[loop_idx].iter() {
                 let m = &self.channels[mapping_idx];
-                let Some(out_port) = m.output_port else { continue; };
-                let Some(ch) = l.midi_channel(m.channel_idx) else { continue; };
-                let already_has_output = self.ports[out_port].as_external_midi().is_some_and(|p| p.outgoing().iter().any(|e| {
-                    let d = e.data();
-                    !(d.len() >= 3 && (d[0] & 0xf0) == 0xb0 && d[1] == 120 && d[2] == 0)
-                }));
+                let Some(out_port) = m.output_port else {
+                    continue;
+                };
+                let Some(ch) = l.midi_channel(m.channel_idx) else {
+                    continue;
+                };
+                let already_has_output = self.ports[out_port].as_external_midi().is_some_and(|p| {
+                    p.outgoing().iter().any(|e| {
+                        let d = e.data();
+                        !(d.len() >= 3 && (d[0] & 0xf0) == 0xb0 && d[1] == 120 && d[2] == 0)
+                    })
+                });
                 if already_has_output {
-                    let has_time_zero = self.ports[out_port].as_external_midi().is_some_and(|p| p.outgoing().iter().any(|e| e.time == 0));
+                    let has_time_zero = self.ports[out_port]
+                        .as_external_midi()
+                        .is_some_and(|p| p.outgoing().iter().any(|e| e.time == 0));
                     if !has_time_zero {
                         for e in ch.contents().into_iter().filter(|e| e.time == 0) {
                             to_write.push((out_port, e));
@@ -957,48 +1023,106 @@ impl Session {
                     }
                     continue;
                 }
-                if self.sync_sources.get(loop_idx).and_then(|s| *s).map(|src| self.loops[src].mode().is_playing_mode()).unwrap_or(false) == false { continue; }
+                if self
+                    .sync_sources
+                    .get(loop_idx)
+                    .and_then(|s| *s)
+                    .map(|src| self.loops[src].mode().is_playing_mode())
+                    .unwrap_or(false)
+                    == false
+                {
+                    continue;
+                }
                 let start_offset = ch.start_offset();
-                let has_restored_note_state = ch.recording_start_state_messages().iter().any(|d| d.len() >= 3 && (d[0] & 0xf0) == 0x90 && d[2] > 0);
-                let has_content_time_zero_note = ch.contents().iter().any(|e| e.time == 0 && e.data().len() >= 3 && (e.data()[0] & 0xf0) == 0x90 && e.data()[2] > 0);
-                if start_offset <= 0 || ch.length() <= l.length() || has_restored_note_state || has_content_time_zero_note { continue; }
-                for cycle_start in ((start.div_euclid(len) - 1)..=(end.div_euclid(len) + 1)).map(|k| k * len) {
+                let has_restored_note_state = ch
+                    .recording_start_state_messages()
+                    .iter()
+                    .any(|d| d.len() >= 3 && (d[0] & 0xf0) == 0x90 && d[2] > 0);
+                let has_content_time_zero_note = ch.contents().iter().any(|e| {
+                    e.time == 0
+                        && e.data().len() >= 3
+                        && (e.data()[0] & 0xf0) == 0x90
+                        && e.data()[2] > 0
+                });
+                if start_offset <= 0
+                    || ch.length() <= l.length()
+                    || has_restored_note_state
+                    || has_content_time_zero_note
+                {
+                    continue;
+                }
+                for cycle_start in
+                    ((start.div_euclid(len) - 1)..=(end.div_euclid(len) + 1)).map(|k| k * len)
+                {
                     if cycle_start >= start && cycle_start < end {
                         for e in ch.contents() {
                             let data = e.data();
-                            if (e.time as i32) < start_offset && data.len() >= 3 && (data[0] & 0xf0) == 0x90 && data[2] > 0 {
-                                if let Some(elem) = crate::midi_storage::MidiStorageElem::new((cycle_start - start) as u32, data) { to_write.push((out_port, elem)); }
+                            if (e.time as i32) < start_offset
+                                && data.len() >= 3
+                                && (data[0] & 0xf0) == 0x90
+                                && data[2] > 0
+                            {
+                                if let Some(elem) = crate::midi_storage::MidiStorageElem::new(
+                                    (cycle_start - start) as u32,
+                                    data,
+                                ) {
+                                    to_write.push((out_port, elem));
+                                }
                             }
                         }
                     }
                     for e in ch.contents() {
                         let play_pos = e.time as i32 - start_offset;
-                        if play_pos < 0 { continue; }
+                        if play_pos < 0 {
+                            continue;
+                        }
                         let abs = cycle_start + play_pos;
                         if abs >= start && abs < end {
-                            if let Some(elem) = crate::midi_storage::MidiStorageElem::new((abs - start) as u32, e.data()) { to_write.push((out_port, elem)); }
+                            if let Some(elem) = crate::midi_storage::MidiStorageElem::new(
+                                (abs - start) as u32,
+                                e.data(),
+                            ) {
+                                to_write.push((out_port, elem));
+                            }
                         }
                     }
                 }
             }
         }
-        for (port, e) in to_write { self.ports[port].write_midi(e); }
+        for (port, e) in to_write {
+            self.ports[port].write_midi(e);
+        }
     }
 
-    fn recent_loop_midi_events(&self, n_frames: usize) -> Vec<crate::midi_storage::MidiStorageElem> {
+    fn recent_loop_midi_events(
+        &self,
+        n_frames: usize,
+    ) -> Vec<crate::midi_storage::MidiStorageElem> {
         let mut out = Vec::new();
         for l in self.loops.iter() {
             let len = l.length();
-            if len == 0 { continue; }
+            if len == 0 {
+                continue;
+            }
             let end = l.position() % len;
             let start = (end + len - (n_frames as u32 % len)) % len;
             for ch_idx in 0..16usize {
-                let Some(ch) = l.midi_channel(ch_idx) else { break; };
+                let Some(ch) = l.midi_channel(ch_idx) else {
+                    break;
+                };
                 for mut e in ch.contents() {
                     let t = e.time % len;
-                    let in_block = if start <= end { t >= start && t < end } else { t >= start || t < end };
+                    let in_block = if start <= end {
+                        t >= start && t < end
+                    } else {
+                        t >= start || t < end
+                    };
                     if in_block {
-                        e.time = if t >= start { t - start } else { len - start + t };
+                        e.time = if t >= start {
+                            t - start
+                        } else {
+                            len - start + t
+                        };
                         out.push(e);
                     }
                 }
@@ -1009,19 +1133,39 @@ impl Session {
 
     fn fill_test2x2x1_fx_output(&mut self, port_idx: usize, n_frames: usize) {
         let name = self.ports[port_idx].name().to_string();
-        let Some((title, suffix)) = name.split_once(':') else { return; };
-        let Some(idx) = suffix.strip_prefix("audio_out_").and_then(|s| s.parse::<usize>().ok()) else { return; };
-        if !self.test_fx_active.get(title).copied().unwrap_or(true) { return; }
+        let Some((title, suffix)) = name.split_once(':') else {
+            return;
+        };
+        let Some(idx) = suffix
+            .strip_prefix("audio_out_")
+            .and_then(|s| s.parse::<usize>().ok())
+        else {
+            return;
+        };
+        if !self.test_fx_active.get(title).copied().unwrap_or(true) {
+            return;
+        }
 
-        if self.scratch.len() < n_frames { self.scratch.resize(n_frames, 0.0); }
+        if self.scratch.len() < n_frames {
+            self.scratch.resize(n_frames, 0.0);
+        }
         self.scratch[..n_frames].fill(0.0);
         let in_name = format!("{title}:audio_in_{idx}");
         if let Some(in_idx) = self.ports.iter().position(|p| p.name() == in_name) {
             let input = self.ports[in_idx].buffer(n_frames);
-            for i in 0..n_frames { self.scratch[i] += input.get(i).copied().unwrap_or(0.0) * 0.5; }
+            for i in 0..n_frames {
+                self.scratch[i] += input.get(i).copied().unwrap_or(0.0) * 0.5;
+            }
         }
-        let rerecording = self.loops.iter().any(|l| l.mode() == LoopMode::RecordingDryIntoWet);
-        let mut midi_events = if rerecording { self.recent_loop_midi_events(n_frames) } else { Vec::new() };
+        let rerecording = self
+            .loops
+            .iter()
+            .any(|l| l.mode() == LoopMode::RecordingDryIntoWet);
+        let mut midi_events = if rerecording {
+            self.recent_loop_midi_events(n_frames)
+        } else {
+            Vec::new()
+        };
         if !rerecording {
             let midi_name = format!("{title}:midi_in_0");
             if let Some(midi_idx) = self.ports.iter().position(|p| p.name() == midi_name) {
@@ -1030,17 +1174,27 @@ impl Session {
                     midi_events.extend_from_slice(p.outgoing());
                 }
             }
-            for p in self.ports.iter().filter(|p| p.name().contains("_dry_midi_in")) {
+            for p in self
+                .ports
+                .iter()
+                .filter(|p| p.name().contains("_dry_midi_in"))
+            {
                 midi_events.extend_from_slice(p.midi_events());
             }
         }
         for e in midi_events.iter() {
             let t = e.time as usize;
-            if t < n_frames && e.data().len() >= 3 && (e.data()[0] & 0xf0) == 0x90 && e.data()[2] > 0 {
+            if t < n_frames
+                && e.data().len() >= 3
+                && (e.data()[0] & 0xf0) == 0x90
+                && e.data()[2] > 0
+            {
                 self.scratch[t] += e.data()[2] as f32 / 255.0;
             }
         }
-        self.ports[port_idx].buffer(n_frames).copy_from_slice(&self.scratch[..n_frames]);
+        self.ports[port_idx]
+            .buffer(n_frames)
+            .copy_from_slice(&self.scratch[..n_frames]);
     }
 
     /// Implements the reference backend's lightweight `test2x2x1` FX chain used by
@@ -1051,29 +1205,55 @@ impl Session {
     /// when those synthetic port names are processed.
     fn process_test2x2x1_fx_port(&mut self, port_idx: usize, n_frames: usize) {
         let name = self.ports[port_idx].name().to_string();
-        let Some((title, suffix)) = name.split_once(':') else { return; };
+        let Some((title, suffix)) = name.split_once(':') else {
+            return;
+        };
 
-        if let Some(idx) = suffix.strip_prefix("audio_in_").and_then(|s| s.parse::<usize>().ok()) {
+        if let Some(idx) = suffix
+            .strip_prefix("audio_in_")
+            .and_then(|s| s.parse::<usize>().ok())
+        {
             let out_name = format!("{title}:audio_out_{idx}");
-            let Some(out_idx) = self.ports.iter().position(|p| p.name() == out_name) else { return; };
-            if self.scratch.len() < n_frames { self.scratch.resize(n_frames, 0.0); }
+            let Some(out_idx) = self.ports.iter().position(|p| p.name() == out_name) else {
+                return;
+            };
+            if self.scratch.len() < n_frames {
+                self.scratch.resize(n_frames, 0.0);
+            }
             {
                 let input = self.ports[port_idx].buffer(n_frames);
-                for i in 0..n_frames { self.scratch[i] = input.get(i).copied().unwrap_or(0.0) * 0.5; }
+                for i in 0..n_frames {
+                    self.scratch[i] = input.get(i).copied().unwrap_or(0.0) * 0.5;
+                }
             }
             let output = self.ports[out_idx].buffer(n_frames);
-            for (o, s) in output.iter_mut().zip(&self.scratch[..n_frames]) { *o += *s; }
+            for (o, s) in output.iter_mut().zip(&self.scratch[..n_frames]) {
+                *o += *s;
+            }
         } else if suffix.starts_with("midi_in_") {
             let events = self.ports[port_idx].midi_events().to_vec();
-            if events.is_empty() { return; }
-            let out_indices: Vec<_> = self.ports.iter().enumerate()
-                .filter_map(|(i, p)| p.name().starts_with(&format!("{title}:audio_out_")).then_some(i))
+            if events.is_empty() {
+                return;
+            }
+            let out_indices: Vec<_> = self
+                .ports
+                .iter()
+                .enumerate()
+                .filter_map(|(i, p)| {
+                    p.name()
+                        .starts_with(&format!("{title}:audio_out_"))
+                        .then_some(i)
+                })
                 .collect();
             for out_idx in out_indices {
                 let output = self.ports[out_idx].buffer(n_frames);
                 for e in events.iter() {
                     let t = e.time as usize;
-                    if t < output.len() && e.data().len() >= 3 && (e.data()[0] & 0xf0) == 0x90 && e.data()[2] > 0 {
+                    if t < output.len()
+                        && e.data().len() >= 3
+                        && (e.data()[0] & 0xf0) == 0x90
+                        && e.data()[2] > 0
+                    {
                         output[t] += e.data()[2] as f32 / 255.0;
                     }
                 }
@@ -1090,8 +1270,12 @@ impl Session {
     /// The map is taken and put back, as the schedule is, so the borrow checker allows reading one
     /// port while writing another without cloning the targets on the audio thread.
     fn propagate_port(&mut self, from: usize, n_frames: usize) {
-        if self.ports[from].audio().is_some_and(|a| a.passthrough_muted())
-            || self.ports[from].midi().is_some_and(|m| m.passthrough_muted())
+        if self.ports[from]
+            .audio()
+            .is_some_and(|a| a.passthrough_muted())
+            || self.ports[from]
+                .midi()
+                .is_some_and(|m| m.passthrough_muted())
         {
             return;
         }
@@ -1101,8 +1285,12 @@ impl Session {
                 if self.ports[from].midi().is_some() {
                     let events = self.ports[from].midi_events().to_vec();
                     for &to in targets {
-                        if to == from || to >= self.ports.len() { continue; }
-                        for msg in events.iter() { self.ports[to].write_midi(*msg); }
+                        if to == from || to >= self.ports.len() {
+                            continue;
+                        }
+                        for msg in events.iter() {
+                            self.ports[to].write_midi(*msg);
+                        }
                     }
                     self.port_connections = conns;
                     return;

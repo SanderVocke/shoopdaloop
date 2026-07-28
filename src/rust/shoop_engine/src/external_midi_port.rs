@@ -158,7 +158,9 @@ impl ExternalMidiPort {
         }
         let mut out = Vec::new();
         for e in self.outgoing_collected.iter().copied() {
-            if !out.iter().any(|existing: &MidiStorageElem| existing.time == e.time && existing.data() == e.data()) {
+            if !out.iter().any(|existing: &MidiStorageElem| {
+                existing.time == e.time && existing.data() == e.data()
+            }) {
                 out.push(e);
             }
         }
