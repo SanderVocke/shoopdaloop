@@ -4,11 +4,11 @@ This checklist tracks backend-related work that remains after replacing and remo
 
 ## Backend completeness
 
-- [ ] Implement LV2/Carla plugin hosting.
+- [x] Implement LV2/Carla plugin hosting.
   - [x] Add Lilv-based Carla plugin discovery and legacy URI/port metadata validation.
   - [x] Instantiate and run Carla LV2 plugins from Rust.
   - [x] Expose it through the existing `FxChain`/effect interface.
-  - [ ] Validate state serialization, UI handling, dry/wet, bypass and tails.
+  - [x] Validate state serialization, UI handling, dry/wet, bypass and tails.
     - [x] Implement state serialization/restore plumbing.
     - [x] Implement external-UI show/hide plumbing.
     - [x] Add state serialization and dry/wet audio/MIDI graph routing coverage.
@@ -35,7 +35,7 @@ This checklist tracks backend-related work that remains after replacing and remo
 - [x] Add missing JACK driver integration coverage.
   - [x] Do not count dummy ports or `MidiPort` core tests as full JACK coverage.
   - [x] Add tests that exercise actual JACK driver behaviour where practical.
-- [ ] Add tests for LV2/Carla once plugin hosting exists.
+- [x] Add tests for LV2/Carla once plugin hosting exists.
   - [x] Cover discovery, instantiate/run, app handle creation, and state save/restore when Carla is installed.
   - [x] Cover audio/MIDI graph routing when Carla is installed.
   - [x] Add opt-in real UI show/hide smoke coverage (`SHOOP_TEST_CARLA_UI=1`).
