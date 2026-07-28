@@ -93,9 +93,28 @@ impl Stats {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct LoopState {
+    pub mode: LoopMode,
+    pub length: u32,
+    pub position: u32,
+    pub maybe_next_mode: Option<LoopMode>,
+    pub maybe_next_mode_delay: Option<u32>,
+}
+
+impl Default for LoopState {
+    fn default() -> Self {
+        Self {
+            mode: LoopMode::Unknown,
+            length: 0,
+            position: 0,
+            maybe_next_mode: None,
+            maybe_next_mode_delay: None,
+        }
+    }
+}
+
 /// One loop's state, as the control side polls it.
-///
-/// Mirrors `backend_bindings::LoopState`, which is what the UI reads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoopSnapshot {
     pub mode: LoopMode,

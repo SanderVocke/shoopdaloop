@@ -1644,25 +1644,7 @@ pub struct Loop {
     shared: Arc<SharedSession>,
     idx: usize,
 }
-#[derive(Clone, Debug, PartialEq)]
-pub struct LoopState {
-    pub mode: LoopMode,
-    pub length: u32,
-    pub position: u32,
-    pub maybe_next_mode: Option<LoopMode>,
-    pub maybe_next_mode_delay: Option<u32>,
-}
-impl Default for LoopState {
-    fn default() -> Self {
-        Self {
-            mode: LoopMode::Unknown,
-            length: 0,
-            position: 0,
-            maybe_next_mode: None,
-            maybe_next_mode_delay: None,
-        }
-    }
-}
+pub type LoopState = engine::LoopState;
 impl Loop {
     pub fn add_audio_channel(&self, mode: ChannelMode) -> Result<AudioChannel> {
         let mut s = self.shared.lock();
