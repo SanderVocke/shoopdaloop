@@ -1325,7 +1325,7 @@ impl Session {
             .is_some_and(|a| a.passthrough_muted())
             || self.ports[from]
                 .midi()
-                .is_some_and(|m| m.passthrough_muted())
+                .is_some_and(|m| m.passthrough_muted() || m.muted())
         {
             return;
         }
@@ -1336,6 +1336,9 @@ impl Session {
                     let events = self.ports[from].midi_events().to_vec();
                     for &to in targets {
                         if to == from || to >= self.ports.len() {
+                            continue;
+                        }
+                        if self.ports[to].midi().is_some_and(|m| m.muted()) {
                             continue;
                         }
                         for msg in events.iter() {
