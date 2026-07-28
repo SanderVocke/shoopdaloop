@@ -1,7 +1,7 @@
 use anyhow::anyhow;
-use backend_bindings::MidiEvent;
 use common::logging::macros::*;
 use midly::num::u28;
+use shoop_engine::MidiEvent;
 use std::path::Path;
 shoop_log_unit!("Frontend.MidiIO");
 

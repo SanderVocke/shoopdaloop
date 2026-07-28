@@ -2,7 +2,9 @@
 
 use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-pub use engine::{ChannelMode, LoopMode, PortDataType, PortDirection};
+pub use engine::{
+    ChannelMode, LoopMode, MidiEvent, MultichannelAudio, PortDataType, PortDirection,
+};
 use enum_iterator::Sequence;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use shoop_engine as engine;
@@ -118,23 +120,6 @@ impl Logger {
         };
         use std::io::Write;
         let _ = writeln!(std::io::stdout(), "[{}] [{}] {}", self.name, level, msg);
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MidiEvent {
-    pub time: i32,
-    pub data: Vec<u8>,
-}
-impl MidiEvent {
-    pub fn new(time: i32, data: impl Into<Vec<u8>>) -> Self {
-        Self {
-            time,
-            data: data.into(),
-        }
-    }
-    pub fn size(&self) -> usize {
-        self.data.len()
     }
 }
 
@@ -2733,44 +2718,6 @@ impl FXChain {
             format!("{}:midi_out_{}", self.title, idx),
             PortDirection::Input,
         ))
-    }
-}
-
-pub struct MultichannelAudio {
-    n_channels: u32,
-    n_frames: u32,
-    data: Mutex<Vec<f32>>,
-}
-impl MultichannelAudio {
-    pub fn new(n_channels: u32, n_frames: u32) -> Result<Self> {
-        Ok(Self {
-            n_channels,
-            n_frames,
-            data: Mutex::new(vec![0.0; (n_channels * n_frames) as usize]),
-        })
-    }
-    pub fn resample(&self, new_n_frames: u32) -> Result<Self> {
-        let src = self.data.lock().unwrap();
-        let interleaved = src.clone();
-        let out = engine::resample::resample_interleaved(
-            &interleaved,
-            self.n_channels as usize,
-            new_n_frames as usize,
-        )
-        .map_err(|e| anyhow!(e))?;
-        let r = Self::new(self.n_channels, new_n_frames)?;
-        {
-            let mut dst = r.data.lock().unwrap();
-            *dst = out;
-        }
-        Ok(r)
-    }
-    pub fn at(&self, frame: u32, channel: u32) -> Result<f32> {
-        Ok(self.data.lock().unwrap()[(frame * self.n_channels + channel) as usize])
-    }
-    pub fn set(&self, frame: u32, channel: u32, value: f32) -> Result<()> {
-        self.data.lock().unwrap()[(frame * self.n_channels + channel) as usize] = value;
-        Ok(())
     }
 }
 

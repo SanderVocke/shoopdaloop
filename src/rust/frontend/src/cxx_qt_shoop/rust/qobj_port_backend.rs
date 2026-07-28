@@ -7,7 +7,7 @@ use crate::{
     midi_event_helpers::MidiEventToQVariant,
 };
 use anyhow::anyhow;
-use backend_bindings::{MidiEvent, PortConnectability};
+use backend_bindings::PortConnectability;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
@@ -22,7 +22,7 @@ use cxx_qt_lib_shoop::{
     qvariant_helpers::qvariant_to_qsharedpointer_qobject,
     qweakpointer_qobject::QWeakPointer_QObject,
 };
-use shoop_engine::{PortDataType, PortDirection};
+use shoop_engine::{MidiEvent, PortDataType, PortDirection};
 use std::{
     collections::{HashMap, HashSet},
     pin::Pin,

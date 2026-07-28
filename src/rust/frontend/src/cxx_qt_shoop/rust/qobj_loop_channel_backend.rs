@@ -6,7 +6,6 @@ use crate::{
     any_backend_channel::AnyBackendChannel, cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend,
 };
 use anyhow::anyhow;
-use backend_bindings::MidiEvent;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
@@ -22,6 +21,7 @@ use cxx_qt_lib_shoop::{
     qsharedpointer_qobject::QSharedPointer_QObject,
     qvariant_helpers::qvariant_to_qsharedpointer_qobject,
 };
+use shoop_engine::MidiEvent;
 use shoop_engine::{ChannelMode, PortDataType};
 use std::{collections::HashSet, pin::Pin};
 shoop_log_unit!("Frontend.LoopChannel");

@@ -1,12 +1,12 @@
 use anyhow::anyhow;
 use std::pin::Pin;
 
-use backend_bindings::MidiEvent as BackendMidiEvent;
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::QRectF;
 use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qsharedpointer_qvector_qvariant;
 use midi_processing::{msgs_to_notes, MidiEvent};
+use shoop_engine::MidiEvent as BackendMidiEvent;
 shoop_log_unit!("Frontend.RenderMidiSequence");
 
 use crate::{

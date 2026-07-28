@@ -1,12 +1,12 @@
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.MidiEventHelpers");
 use anyhow::anyhow;
-use backend_bindings::MidiEvent;
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 use cxx_qt_lib_shoop::qvariant_helpers::{
     qlist_i32_to_qvariant, qvariant_to_qvariantlist, qvariant_to_qvariantmap,
     qvariantmap_to_qvariant,
 };
+use shoop_engine::MidiEvent;
 
 pub trait MidiEventToQVariant {
     fn to_qvariantmap(&self) -> QMap<QMapPair_QString_QVariant>;
