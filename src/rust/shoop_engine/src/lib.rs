@@ -1,9 +1,9 @@
 //! Realtime looping engine: graph, loops, channels, ports.
 //!
-//! Pure logic, no FFI. Driver and plugin-host bindings live in separate crates
-//! so this one can forbid unsafe code.
-#![forbid(unsafe_code)]
+//! Pure logic plus the application-facing backend driver interface used by the frontend.
 
+#[cfg(feature = "app_backend")]
+pub mod app_backend;
 pub mod audio_channel;
 pub mod audio_midi_loop;
 pub mod basic_loop;

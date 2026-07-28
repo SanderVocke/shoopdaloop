@@ -6,6 +6,7 @@ edition = "2021"
 
 [dependencies]
 thiserror = { workspace = true }
+anyhow = { workspace = true }
 regex = { workspace = true }
 rtrb = { workspace = true }
 rubato = { workspace = true }
@@ -23,6 +24,7 @@ num_enum = { workspace = true }
 jack = ["dep:jack"]
 cpal = ["dep:cpal"]
 midir = ["dep:midir"]
+app_backend = ["jack", "cpal", "midir"]
 
 [dev-dependencies]
 assert2 = { workspace = true }

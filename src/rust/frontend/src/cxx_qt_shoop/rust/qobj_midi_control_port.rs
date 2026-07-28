@@ -146,12 +146,13 @@ impl MidiControlPort {
             let name_hint = self.name_hint.to_string();
             let direction = self.direction;
             let mut rust_mut = self.as_mut().rust_mut();
-            rust_mut.backend_port_wrapper =
-                Some(backend_bindings::DecoupledMidiPort::new_driver_port(
+            rust_mut.backend_port_wrapper = Some(
+                shoop_engine::app_backend::DecoupledMidiPort::new_driver_port(
                     backend.driver.as_ref().ok_or(anyhow!("No driver"))?,
                     &name_hint.to_string(),
                     &PortDirection::try_from(direction).unwrap_or(PortDirection::Input),
-                )?);
+                )?,
+            );
 
             let name = self
                 .backend_port_wrapper

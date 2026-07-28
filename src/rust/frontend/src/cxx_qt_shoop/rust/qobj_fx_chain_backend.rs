@@ -298,7 +298,7 @@ impl FXChainBackend {
     pub fn get_midi_input_port(
         self: Pin<&mut Self>,
         idx: u32,
-    ) -> Option<backend_bindings::MidiPort> {
+    ) -> Option<shoop_engine::app_backend::MidiPort> {
         if let Some(backend_chain) = self.backend_chain_wrapper.as_ref() {
             backend_chain.get_midi_input_port(idx)
         } else {
@@ -313,7 +313,7 @@ impl FXChainBackend {
     pub fn get_audio_input_port(
         self: Pin<&mut Self>,
         idx: u32,
-    ) -> Option<backend_bindings::AudioPort> {
+    ) -> Option<shoop_engine::app_backend::AudioPort> {
         if let Some(backend_chain) = self.backend_chain_wrapper.as_ref() {
             backend_chain.get_audio_input_port(idx)
         } else {
@@ -328,7 +328,7 @@ impl FXChainBackend {
     pub fn get_audio_output_port(
         self: Pin<&mut Self>,
         idx: u32,
-    ) -> Option<backend_bindings::AudioPort> {
+    ) -> Option<shoop_engine::app_backend::AudioPort> {
         if let Some(backend_chain) = self.backend_chain_wrapper.as_ref() {
             backend_chain.get_audio_output_port(idx)
         } else {

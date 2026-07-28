@@ -1,5 +1,5 @@
-use backend_bindings::{AudioChannel, AudioPort, MidiChannel, MidiPort};
 use common::logging::macros::*;
+use shoop_engine::app_backend::{AudioChannel, AudioPort, MidiChannel, MidiPort};
 use shoop_engine::{AudioChannelState, ChannelMode, MidiChannelState, MidiEvent};
 shoop_log_unit!("Frontend.AnyChannel");
 pub enum AnyBackendChannel {

@@ -1,5 +1,5 @@
-use backend_bindings::Loop as BackendLoop;
 use common::logging::macros::*;
+use shoop_engine::app_backend::Loop as BackendLoop;
 use shoop_engine::LoopState;
 
 shoop_log_unit!("Frontend.Loop");

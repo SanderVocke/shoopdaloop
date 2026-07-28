@@ -1,6 +1,6 @@
-use backend_bindings::AudioDriver;
-use backend_bindings::BackendSession;
 use common::logging::macros::*;
+use shoop_engine::app_backend::AudioDriver;
+use shoop_engine::app_backend::BackendSession;
 use std::time;
 shoop_log_unit!("Frontend.BackendWrapper");
 

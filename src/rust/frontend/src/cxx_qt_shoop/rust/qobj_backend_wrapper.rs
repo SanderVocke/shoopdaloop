@@ -1,12 +1,12 @@
 use crate::engine_update_thread;
 use crate::profiling_report::profiling_report_to_qvariantmap;
 use anyhow::anyhow;
-use backend_bindings::*;
 use cxx_qt_lib_shoop::qjsonobject::QJsonObject;
 use cxx_qt_lib_shoop::qobject::{qobject_thread, AsQObject};
 use cxx_qt_lib_shoop::qquickitem::{qquickitem_to_qobject_mut, AsQQuickItem};
 use cxx_qt_lib_shoop::qvariant_helpers::qvariantmap_to_qvariant;
 use cxx_qt_lib_shoop::{connect, connection_types};
+use shoop_engine::app_backend::*;
 use std::pin::Pin;
 use std::sync::OnceLock;
 use std::time;
@@ -568,7 +568,7 @@ impl BackendWrapper {
             ));
         }
 
-        let port = backend_bindings::AudioPort::new_driver_port(
+        let port = shoop_engine::app_backend::AudioPort::new_driver_port(
             mut_rust
                 .session
                 .as_ref()
@@ -606,7 +606,7 @@ impl BackendWrapper {
             ));
         }
 
-        let port = backend_bindings::MidiPort::new_driver_port(
+        let port = shoop_engine::app_backend::MidiPort::new_driver_port(
             mut_rust
                 .session
                 .as_ref()
@@ -643,7 +643,7 @@ impl BackendWrapper {
             ));
         }
 
-        let port = backend_bindings::DecoupledMidiPort::new_driver_port(
+        let port = shoop_engine::app_backend::DecoupledMidiPort::new_driver_port(
             mut_rust
                 .driver
                 .as_ref()

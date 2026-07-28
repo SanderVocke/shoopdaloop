@@ -1169,7 +1169,6 @@ name = "frontend"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "backend_bindings",
  "common",
  "config",
  "crashhandling",
@@ -2907,6 +2906,7 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 name = "shoop_engine"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "assert2",
  "assert_no_alloc",
  "cpal",

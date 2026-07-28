@@ -8,9 +8,8 @@ crate-type = ["lib"]
 
 [dependencies]
 macros = { path = "../macros" }
-backend_bindings = { path = "../backend_bindings" }
 common = { path = "../common" }
-shoop_engine = { path = "../shoop_engine" }
+shoop_engine = { path = "../shoop_engine", features = ["app_backend"] }
 crashhandling = { path = "../crashhandling" }
 config = { path = "../config" }
 cxx_qt_lib_shoop = { path = "../cxx_qt_lib_shoop" }
@@ -51,7 +50,6 @@ cxx-qt-build = { workspace = true }
 [features]
 # Dummy build to build dependencies only
 prebuild = ["macros/prebuild",
-            "backend_bindings/prebuild",
             "common/prebuild",
             "crashhandling/prebuild",
             "config/prebuild",

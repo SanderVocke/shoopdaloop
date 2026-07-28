@@ -1,5 +1,5 @@
-use backend_bindings::{AudioDriver, AudioPort, BackendSession, MidiPort};
 use common::logging::macros::*;
+use shoop_engine::app_backend::{AudioDriver, AudioPort, BackendSession, MidiPort};
 use shoop_engine::{
     AudioPortState, MidiEvent, MidiPortState, PortConnectability, PortDataType, PortDirection,
 };
