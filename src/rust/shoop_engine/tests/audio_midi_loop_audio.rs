@@ -1,4 +1,4 @@
-//! One-for-one translation of `src/backend/test/unit/test_AudioMidiLoop_audio.cpp`.
+//! One-for-one translation of `legacy C++ backend unit test test_AudioMidiLoop_audio.cpp`.
 //!
 //! The C++ cases use `AudioChannel<int>` so sample comparisons are exact. This
 //! engine is `f32`-only, which keeps them exact anyway: every value these cases use

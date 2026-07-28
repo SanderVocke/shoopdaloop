@@ -9,7 +9,6 @@ path = "src/main.rs"
 
 [dependencies]
 common = { path = "../common" }
-backend = { path = "../backend" }
 
 walkdir = { workspace = true }
 glob = { workspace = true }
@@ -24,4 +23,4 @@ clap = { workspace = true, features = ["derive"] }
 
 [features]
 # Dummy build to build dependencies only
-prebuild = ["common/prebuild", "backend/prebuild"]
+prebuild = ["common/prebuild"]

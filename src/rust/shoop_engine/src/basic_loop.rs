@@ -530,7 +530,7 @@ mod tests {
         Some(SyncSourceState::default())
     }
 
-    // Translated from src/backend/test/unit/test_BasicLoop.cpp.
+    // Translated from legacy C++ backend unit test test_BasicLoop.cpp.
     // Each test mirrors one Catch2 TEST_CASE, assertion for assertion.
 
     #[test]

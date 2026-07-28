@@ -86,10 +86,6 @@ pub fn populate_portable_folder(
     copy_dir_merge(qt_qml, &install_qml_dir)?;
 
     info!("Getting dependencies (this may take some time)...");
-    for path in backend::runtime_link_dirs() {
-        debug!("--> extra search path: {:?}", path);
-        common::env::add_lib_search_path(&path);
-    }
     // Also include search paths to all of Qt's plugin directories
     let plugin_subdirs = std::fs::read_dir(install_plugins_dir)?;
     for entry in plugin_subdirs {

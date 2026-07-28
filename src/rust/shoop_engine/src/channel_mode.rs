@@ -11,7 +11,7 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 /// Role of a channel within its track.
 ///
-/// Discriminants match `shoop_channel_mode_t` in `src/backend/types.h`.
+/// Discriminants match `shoop_channel_mode_t` in `legacy C++ backend types.h`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TryFromPrimitive, IntoPrimitive, Sequence)]
 #[repr(i32)]
 pub enum ChannelMode {

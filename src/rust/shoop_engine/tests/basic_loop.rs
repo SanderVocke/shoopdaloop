@@ -1,4 +1,4 @@
-//! One-for-one translation of `src/backend/test/unit/test_BasicLoop.cpp`.
+//! One-for-one translation of `legacy C++ backend unit test test_BasicLoop.cpp`.
 //!
 //! The C++ cases keep a real sync source loop alive only so the loop under test
 //! does not transition immediately; nothing is ever read from it. Here a default

@@ -1,4 +1,4 @@
-//! Translation of `src/backend/test/unit/test_BufferQueue.cpp`.
+//! Translation of `legacy C++ backend unit test test_BufferQueue.cpp`.
 //!
 //! `BufferQueue<int>(pool, n)` takes its buffer size from the pool's third
 //! constructor argument and `n` as the buffer limit. There is no pool here: every

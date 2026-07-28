@@ -1,4 +1,4 @@
-//! Translation of `src/backend/test/unit/test_MidiRingbuffer.cpp`.
+//! Translation of `legacy C++ backend unit test test_MidiRingbuffer.cpp`.
 //!
 //! `MidiRingbuffer(sizeof(Storage::Elem) * 3)` becomes a capacity of 3 elements, for
 //! the same reason as in `midi_storage.rs`: this storage counts fixed-size elements

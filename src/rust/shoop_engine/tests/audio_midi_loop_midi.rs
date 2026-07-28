@@ -1,4 +1,4 @@
-//! One-for-one translation of `src/backend/test/unit/test_AudioMidiLoop_midi.cpp`.
+//! One-for-one translation of `legacy C++ backend unit test test_AudioMidiLoop_midi.cpp`.
 //!
 //! The engine's other MIDI tests are behavioural, written from reading the C++
 //! implementation. These assert the C++ suite's own expected values instead, which

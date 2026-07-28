@@ -204,7 +204,7 @@ mod tests {
     }
 
     // The three topologies below reproduce the expected schedules asserted in
-    // src/backend/test/integration/test_graph_construction.cpp. The C++ test
+    // legacy C++ backend integration test test_graph_construction.cpp. The C++ test
     // builds them out of GraphAudioPort/GraphLoopChannel; here the edges are
     // stated directly, so the scheduler is checked against the same vectors
     // without needing those types ported yet.

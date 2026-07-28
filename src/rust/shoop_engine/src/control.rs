@@ -1,4 +1,4 @@
-//! Handle-per-object control API, the shape `backend_bindings` presents.
+//! Handle-per-object control API used by the application-facing backend interface.
 //!
 //! Keeps that shape rather than reshaping around snapshots: Python and QML consume
 //! those types, so `Loop`, `AudioChannel` and the rest stay handles. What changes is
@@ -313,7 +313,7 @@ impl Loop {
     }
 }
 
-/// `backend_bindings::AudioChannelState`, minus the fields this engine does not track.
+/// Audio-channel state exposed through the application-facing backend interface.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AudioChannelState {
     pub mode: ChannelMode,
@@ -458,7 +458,7 @@ impl AudioChannel {
     }
 }
 
-/// `backend_bindings::MidiChannelState`, minus the fields this engine does not track.
+/// MIDI-channel state exposed through the application-facing backend interface.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MidiChannelState {
     pub mode: ChannelMode,
@@ -551,7 +551,7 @@ impl MidiChannel {
     }
 }
 
-/// `backend_bindings::AudioPortState`.
+/// Audio-port state exposed through the application-facing backend interface.
 ///
 /// `muted` and `passthrough_muted` are booleans here, where the C struct used `u32`
 /// because it had to cross a C boundary.
@@ -569,7 +569,7 @@ pub struct AudioPortState {
     pub name: String,
 }
 
-/// `backend_bindings::MidiPortState`.
+/// MIDI-port state exposed through the application-facing backend interface.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MidiPortState {
     pub n_input_events: u32,

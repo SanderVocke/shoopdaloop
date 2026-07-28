@@ -1,4 +1,4 @@
-//! The MIDI half of `src/backend/test/unit/test_JackPorts.cpp`, re-pointed at the
+//! The MIDI half of `legacy C++ backend unit test test_JackPorts.cpp`, re-pointed at the
 //! shared port core.
 //!
 //! Those cases open a JACK port against a fake JACK API (`JackTestApi`) and inject

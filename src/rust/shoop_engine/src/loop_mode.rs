@@ -2,7 +2,7 @@ use enum_iterator::Sequence;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 /// Mode a loop is in. Discriminants match `shoop_loop_mode_t` in
-/// `src/backend/types.h` so the values survive the C API boundary unchanged.
+/// `legacy C++ backend types.h` so the values survive the C API boundary unchanged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TryFromPrimitive, IntoPrimitive, Sequence)]
 #[repr(i32)]
 pub enum LoopMode {

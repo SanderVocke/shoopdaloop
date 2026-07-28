@@ -172,7 +172,7 @@ mod tests {
     }
 
     // The three cases below are the expected schedules asserted in
-    // src/backend/test/integration/test_graph_construction.cpp, now reached by
+    // legacy C++ backend integration test test_graph_construction.cpp, now reached by
     // describing the same topology rather than hand-stating edges.
 
     #[test]

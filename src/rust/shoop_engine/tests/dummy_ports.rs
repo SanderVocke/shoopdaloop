@@ -1,4 +1,4 @@
-//! Translation of `src/backend/test/unit/test_DummyPorts.cpp`.
+//! Translation of `legacy C++ backend unit test test_DummyPorts.cpp`.
 //!
 //! `DummyAudioPort("dummy", dir, pool)` takes an id here as well, since ports are
 //! identified by index rather than by pointer, and the pool argument becomes the

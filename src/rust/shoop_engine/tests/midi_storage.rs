@@ -1,4 +1,4 @@
-//! One-for-one translation of `src/backend/test/unit/test_MidiStorage.cpp`.
+//! One-for-one translation of `legacy C++ backend unit test test_MidiStorage.cpp`.
 //!
 //! As with the loop tests, these assert the C++ suite's own expected values rather
 //! than behaviour derived from reading the implementation.

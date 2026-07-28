@@ -4,7 +4,7 @@
 //! and copies existing audio: growth appends a chunk. Chunk size is fixed at
 //! construction, which lets index maths be a divide and a modulo.
 //!
-//! Pool-backed chunk allocation (the `refilling_pool` crate) is not wired in
+//! Pool-backed chunk allocation (the former pool crate) is not wired in
 //! yet; chunks are owned `Vec`s. Recording growth therefore still allocates on
 //! the audio thread, which the pool exists to avoid.
 

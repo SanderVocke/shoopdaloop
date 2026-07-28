@@ -1,4 +1,4 @@
-//! Translation of `src/backend/test/unit/test_InternalAudioPort.cpp`.
+//! Translation of `legacy C++ backend unit test test_InternalAudioPort.cpp`.
 //!
 //! `InternalAudioPort<float>("dummy", 10, 0, 0, pool)` becomes a buffer of 10 frames
 //! with no connectability either way; the pool argument becomes the ringbuffer's

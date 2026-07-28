@@ -1,4 +1,4 @@
-//! Translation of `src/backend/test/unit/test_MidiStateDiffTracker.cpp`.
+//! Translation of `legacy C++ backend unit test test_MidiStateDiffTracker.cpp`.
 //!
 //! The C++ maintains the diff between two trackers incrementally: each tracker
 //! notifies a `MidiStateDiffTracker`, which keeps a set of `(status, data1)` keys

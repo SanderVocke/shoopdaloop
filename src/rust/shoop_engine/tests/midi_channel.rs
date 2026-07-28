@@ -1,4 +1,4 @@
-//! Translation of `src/backend/test/unit/test_MidiChannel.cpp`.
+//! Translation of `legacy C++ backend unit test test_MidiChannel.cpp`.
 
 use assert2::check;
 use shoop_engine::channel_mode::ChannelMode;

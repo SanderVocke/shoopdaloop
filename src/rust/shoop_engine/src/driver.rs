@@ -363,7 +363,7 @@ mod tests {
     }
 }
 
-/// `backend_bindings::AudioDriverState`, over whichever driver is running.
+/// State over whichever driver is running.
 ///
 /// `active` is a bool where the C struct used `u32` to cross a C boundary, and
 /// `last_processed` is the cycle count rather than a timestamp -- what a caller wants

@@ -1,6 +1,7 @@
 use crate::fs_helpers::recursive_dir_cpy;
 use anyhow::anyhow;
 use anyhow::Context;
+#[cfg(target_os = "macos")]
 use glob::glob;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -52,7 +53,7 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
         .with_context(|| format!("Cannot create dir: {:?}", runtime_dir))?;
     recursive_dir_cpy(&PathBuf::from(&runtime_dir), &runtime_dir)?;
 
-    let mut extra_assets: Vec<(String, String)> = vec![
+    let extra_assets: Vec<(String, String)> = vec![
         (
             "distribution/macos/Info.plist".to_string(),
             "Contents/Info.plist".to_string(),
@@ -70,30 +71,6 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
             "shoop-config.toml".to_string(),
         ),
     ];
-
-    // Explicitly bundle libraries not detected automatically
-    for base in &["libQt6*.*.*.*.dylib", "libmeshoptimizer.dylib"] {
-        for path in backend::runtime_link_dirs() {
-            let pattern = (&path).join(base);
-            println!("{pattern:?}");
-            let g = glob(&pattern.to_string_lossy())?.filter_map(Result::ok);
-            for extra_lib_path in g {
-                let extra_lib_srcpath: String = extra_lib_path.to_string_lossy().to_string();
-                if std::fs::symlink_metadata(&extra_lib_srcpath)
-                    .map(|m| m.file_type().is_symlink())?
-                {
-                    continue;
-                }
-                let extra_lib_filename = &extra_lib_path
-                    .file_name()
-                    .ok_or(anyhow!("Missing filename"))?
-                    .to_string_lossy()
-                    .to_string();
-                let extra_lib_dstpath: String = format!("lib/{}", extra_lib_filename);
-                extra_assets.push((extra_lib_srcpath, extra_lib_dstpath));
-            }
-        }
-    }
 
     info!("Bundling additional assets...");
     for (src, dst) in extra_assets {
