@@ -109,7 +109,34 @@ runs:
       echo "Uploading debug info..."
       curl -sL https://sentry.io/get-cli/ | SENTRY_CLI_VERSION="2.50.2" sh
       sentry-cli debug-files upload --include-sources -p shoopdaloop --auth-token ${{ inputs.sentry_auth_token }} debug_symbols
-    
+
+
+  # Rust test executables for downstream CI. The builder compiles and archives
+  # them; the separate test job executes them against the packaged libraries.
+  - name: Build Rust test binaries
+    if: always() && inputs.package_kind == 'test_binaries'
+    id: build_test_binaries
+    shell: wrap-shell {0}
+    run: |
+      set -x
+      . ${BUILD_ENV_FILE}
+      TEST_BINARIES_DIR=$(pwd)/shoopdaloop.${{ env.SHOOP_GIT_REV }}.${{ env.ARTIFACT_VARIANT }}.test_binaries
+      RELEASE_TEST_BINARIES_DIR=$(pwd)/shoopdaloop-${{ env.SHOOP_VERSION }}.${{ env.ARTIFACT_VARIANT }}.test_binaries
+      echo "TEST_BINARIES_DIR=$TEST_BINARIES_DIR" | tee -a $GITHUB_ENV
+      USE_PACKAGE_BINARY_PATH=$(${{ env.CONVERT_PATH_FN }} ${CARGO_ARTIFACTS_DIR}/package)
+      USE_OUT_DIRECTORY_PATH=$(${{ env.CONVERT_PATH_FN }} $TEST_BINARIES_DIR)
+      ${NATIVE_SHELL_CMD} "${USE_PACKAGE_BINARY_PATH} build-test-binaries -o ${USE_OUT_DIRECTORY_PATH} --cargo-profile=${CARGO_PROFILE}"
+      cp -r $TEST_BINARIES_DIR $RELEASE_TEST_BINARIES_DIR
+      COMPRESSED_TEST_BINARIES_DIR=$(${{ env.COMPRESS_FOLDER_FN }} ${TEST_BINARIES_DIR})
+      COMPRESSED_RELEASE_TEST_BINARIES_DIR=$(${{ env.COMPRESS_FOLDER_FN }} ${RELEASE_TEST_BINARIES_DIR})
+      echo "BUILT_PACKAGE=$(${{ env.CONVERT_PATH_FN }} $COMPRESSED_TEST_BINARIES_DIR)" | tee -a $GITHUB_ENV
+      echo "BUILT_PACKAGE_NAME=$(basename $COMPRESSED_TEST_BINARIES_DIR)" | tee -a $GITHUB_ENV
+      echo "BUILT_RELEASE_ARTIFACT=$(${{ env.CONVERT_PATH_FN }} $COMPRESSED_RELEASE_TEST_BINARIES_DIR)" | tee -a $GITHUB_ENV
+  - uses: actions/upload-artifact@v4
+    if: always() && inputs.package_kind == 'test_binaries'
+    with:
+      name: ${{ env.BUILT_PACKAGE_NAME }}
+      path: ${{ env.BUILT_PACKAGE }}
 
   # AppImage (Linux) (Requires AppDir to already be built)
   - name: Build AppImage

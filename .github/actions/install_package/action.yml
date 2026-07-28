@@ -25,6 +25,8 @@ runs:
            type="portable-macos"
        elif [[ $filename == *windows*.portable.tar.gz ]]; then
            type="portable-windows"
+       elif [[ $filename == *.test_binaries.tar.gz ]]; then
+           type="test-binaries"
        else
          type="${filename##*.}"
        fi
@@ -61,9 +63,11 @@ runs:
       tar --strip-components=1 -xzf ${{ inputs.package }}
       cd ..
       PORTABLE=$(pwd)/portable
+      TESTBINARIES=$(pwd)/test_binaries
       LLVM_COV=$(find $PORTABLE -name llvm-cov)
       LLVM_PROFDATA=$(find $PORTABLE -name llvm-profdata)
       echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
+      echo "TEST_BINARIES_INSTALL=$TESTBINARIES" | tee -a $GITHUB_ENV
       echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop" | tee -a $GITHUB_ENV
       echo "LLVM_COV=$LLVM_COV" | tee -a $GITHUB_ENV
       echo "LLVM_PROFDATA=$LLVM_PROFDATA" | tee -a $GITHUB_ENV
@@ -78,7 +82,9 @@ runs:
       tar --strip-components=1 -xzf ${{ inputs.package }}
       cd ..
       PORTABLE=$(pwd)/portable
+      TESTBINARIES=$(pwd)/test_binaries
       echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
+      echo "TEST_BINARIES_INSTALL=$TESTBINARIES" | tee -a $GITHUB_ENV
       echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop.bat" | tee -a $GITHUB_ENV
 
   # MacOS portable folder
@@ -91,7 +97,9 @@ runs:
       tar --strip-components=1 -xzf ${{ inputs.package }}
       cd ..
       PORTABLE=$(pwd)/portable
+      TESTBINARIES=$(pwd)/test_binaries
       echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
+      echo "TEST_BINARIES_INSTALL=$TESTBINARIES" | tee -a $GITHUB_ENV
       echo "COMMAND_SHOOPDALOOP=$PORTABLE/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
 
   # Linux AppImage
@@ -111,3 +119,25 @@ runs:
       hdiutil attach ${{ inputs.package }}
       echo "cmd=/Volumes/ShoopDaLoop/shoopdaloop.app/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/Volumes/ShoopDaLoop/shoopdaloop.app/Contents/MacOS" | tee -a $GITHUB_ENV
+
+  # Rust test binaries
+  - name: Install Rust test binaries
+    if: always() && steps.get_type.outputs.type == 'test-binaries'
+    shell: wrap-shell {0}
+    run: |
+      WORKSPACE=$(pwd)
+      mkdir -p "$TEST_BINARIES_INSTALL"
+      cd "$TEST_BINARIES_INSTALL"
+      tar --strip-components=1 -xzf ${{ inputs.package }}
+      if [[ "$RUNNER_OS" == "Windows" ]]; then
+        CARGO_NEXTEST_EXE="$TEST_BINARIES_INSTALL/cargo-nextest.exe"
+        echo "$PORTABLE_FOLDER_INSTALL/lib" | tee -a $GITHUB_PATH
+      elif [[ "$RUNNER_OS" == "macOS" ]]; then
+        CARGO_NEXTEST_EXE="$TEST_BINARIES_INSTALL/cargo-nextest"
+        echo "DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH:-}:$PORTABLE_FOLDER_INSTALL/lib" | tee -a $GITHUB_ENV
+      else
+        CARGO_NEXTEST_EXE="$TEST_BINARIES_INSTALL/cargo-nextest"
+        echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}:$PORTABLE_FOLDER_INSTALL/lib" | tee -a $GITHUB_ENV
+      fi
+      chmod +x "$CARGO_NEXTEST_EXE"
+      echo "COMMAND_TEST_RUST=$CARGO_NEXTEST_EXE nextest run --workspace-remap $WORKSPACE --archive-file $TEST_BINARIES_INSTALL/nextest-archive.tar.zst" | tee -a $GITHUB_ENV

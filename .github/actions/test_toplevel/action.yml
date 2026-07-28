@@ -161,6 +161,24 @@ runs:
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
+    if: always() && env.COMMAND_TEST_RUST != ''
+    env:
+       GHA_RUN_ALWAYS: 1
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "Rust test"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
+  - name: Test Rust
+    if: always() && env.COMMAND_TEST_RUST != ''
+    uses: ./.github/actions/test_rust
+    env:
+      LLVM_REPORTNAME: rust_lcov
+      GHA_RUN_ALWAYS: 1
+  - uses: ./.github/actions/checkpoint
+    if: always()
+  - shell: wrap-shell {0}
     if: always() && (inputs.do_qml_tests == 'true')
     env:
        GHA_RUN_ALWAYS: 1
@@ -277,6 +295,17 @@ runs:
       sentry_key: ${{ inputs.sentry_key }}
   - uses: ./.github/actions/checkpoint
     if: always()
+  - name: Upload Rust test coverage to CodeCov
+    if: always() && inputs.coverage && env.COMMAND_TEST_RUST != ''
+    uses: codecov/codecov-action@v3
+    env:
+       GHA_RUN_ALWAYS: 1
+    with:
+      token: ${{ inputs.codecov_token }}
+      flags: rust
+      files: coverage_reports/rust_lcov.info
+      verbose: true
+      fail_ci_if_error: true
   - name: Upload QML test coverage to CodeCov
     if: always() && inputs.coverage && (inputs.do_qml_tests == 'true')
     uses: codecov/codecov-action@v3
