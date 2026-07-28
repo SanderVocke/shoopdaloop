@@ -1173,6 +1173,24 @@ mod tests {
     }
 
     #[test]
+    fn shows_and_hides_carla_external_ui_when_opted_in() {
+        if std::env::var_os("SHOOP_TEST_CARLA_UI").is_none() {
+            eprintln!(
+                "skipping Carla UI smoke test; set SHOOP_TEST_CARLA_UI=1 to open the real UI"
+            );
+            return;
+        }
+        let Ok(mut host) = CarlaLv2Host::instantiate(FXChainType::CarlaRack, 48_000, 256) else {
+            eprintln!("skipping Carla UI smoke test; Carla Rack is not installed in LV2_PATH");
+            return;
+        };
+        host.set_visible(true).expect("show Carla UI");
+        assert!(host.is_visible());
+        host.set_visible(false).expect("hide Carla UI");
+        assert!(!host.is_visible());
+    }
+
+    #[test]
     fn instantiates_and_runs_installed_carla_rack_when_available() {
         let Ok(mut host) = CarlaLv2Host::instantiate(FXChainType::CarlaRack, 48_000, 256) else {
             eprintln!("skipping Carla LV2 run test; Carla Rack is not installed in LV2_PATH");
