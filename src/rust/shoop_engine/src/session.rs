@@ -1132,7 +1132,11 @@ impl Session {
     }
 
     fn fill_test2x2x1_fx_output(&mut self, port_idx: usize, n_frames: usize) {
-        let name = self.ports[port_idx].name().to_string();
+        let name = self.ports[port_idx].name();
+        if !name.contains(':') {
+            return;
+        }
+        let name = name.to_string();
         let Some((title, suffix)) = name.split_once(':') else {
             return;
         };
@@ -1204,7 +1208,11 @@ impl Session {
     /// FX-chain ports as ordinary internal ports, so this reproduces that behavior
     /// when those synthetic port names are processed.
     fn process_test2x2x1_fx_port(&mut self, port_idx: usize, n_frames: usize) {
-        let name = self.ports[port_idx].name().to_string();
+        let name = self.ports[port_idx].name();
+        if !name.contains(':') {
+            return;
+        }
+        let name = name.to_string();
         let Some((title, suffix)) = name.split_once(':') else {
             return;
         };
