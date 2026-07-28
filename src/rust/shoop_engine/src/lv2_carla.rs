@@ -34,6 +34,8 @@ pub struct CarlaPluginInfo {
     pub chain_type: FXChainType,
     pub plugin_uri: &'static str,
     pub ports: CarlaPortSet,
+    pub required_features: Vec<String>,
+    pub optional_features: Vec<String>,
     pub ui: Option<CarlaUiInfo>,
 }
 
@@ -90,6 +92,16 @@ pub fn discover_carla_plugin(chain_type: FXChainType) -> Result<CarlaPluginInfo>
         chain_type,
         plugin_uri,
         ports,
+        required_features: plugin
+            .required_features()
+            .iter()
+            .filter_map(|n| n.as_uri().map(ToString::to_string))
+            .collect(),
+        optional_features: plugin
+            .optional_features()
+            .iter()
+            .filter_map(|n| n.as_uri().map(ToString::to_string))
+            .collect(),
         ui: discover_ui(&world, &plugin)?,
     })
 }
@@ -178,6 +190,13 @@ mod tests {
         assert_eq!(info.ports.audio_outputs[1].symbol, "lv2_audio_out_2");
         assert_eq!(info.ports.midi_inputs[0].symbol, "lv2_events_in");
         assert_eq!(info.ports.midi_outputs[0].symbol, "lv2_events_out");
+        assert!(
+            info.required_features
+                .iter()
+                .any(|f| f == "http://lv2plug.in/ns/ext/urid#map"),
+            "Carla should declare the URID map feature as required: {:?}",
+            info.required_features
+        );
         assert!(info.ui.as_ref().is_none_or(|ui| ui.is_external_ui));
     }
 }
