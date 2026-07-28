@@ -277,9 +277,18 @@ impl CompositeLoopBackend {
 
     pub fn cancel_all(mut self: Pin<&mut Self>) {
         trace!(self, "cancel all");
-        // Avoid invoking QObject pointers cached in running_loops. With the temporary
-        // backend shim these can outlive their safe invocation window; clearing them
-        // makes affected tests fail via state checks instead of crashing the runner.
+        if let Err(e) = transition_backend_loops(
+            self.running_loops
+                .iter()
+                .map(|l| qvariant_to_qobject_ptr(l).unwrap_or(std::ptr::null_mut()))
+                .filter(|l| !l.is_null()),
+            LoopMode::Stopped,
+            Some(0),
+            None,
+        ) {
+            error!(self, "Failed to transition backend loops: {e}");
+        }
+
         let empty_running_loops = QList_QVariant::default();
         self.as_mut().rust_mut().running_loops = empty_running_loops.clone();
         unsafe {
