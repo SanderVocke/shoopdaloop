@@ -291,7 +291,15 @@ def add_vcpkg_env(args, env):
     new_env['VCPKG_OVERLAY_TRIPLETS'] = os.path.join(base_path, "vcpkg", "triplets")
     new_env['VCPKG_OVERLAY_PORTS'] = os.path.join(base_path, "vcpkg", "ports")
     new_env["VCPKG_INSTALLED_DIR"] = args.vcpkg_installed_dir
-    new_env["CMAKE_PREFIX_PATH"] = os.path.join(args.vcpkg_installed_dir, detect_vcpkg_triplet())
+    triplet_dir = os.path.join(args.vcpkg_installed_dir, detect_vcpkg_triplet())
+    new_env["CMAKE_PREFIX_PATH"] = triplet_dir
+    # Make vcpkg-installed pkg-config files (e.g. lilv-0.pc) discoverable so
+    # crates like `lilv` can resolve their system dependencies via pkg-config.
+    new_env["PKG_CONFIG_PATH"] = os.pathsep.join([
+        os.path.join(triplet_dir, "lib", "pkgconfig"),
+        os.path.join(triplet_dir, "share", "pkgconfig"),
+        os.path.join(triplet_dir, "debug", "lib", "pkgconfig"),
+    ])
     return new_env
 
 def build_vcpkg(args, build_env):
