@@ -33,7 +33,7 @@ This checklist tracks backend-related work that remains after replacing and remo
 - [ ] Extend `tests/no_alloc.rs` as more engine paths land.
   - [ ] Cover recording past chunk boundaries.
   - [ ] Cover any newly added process-thread/plugin/control handoff paths.
-- [ ] Run the existing QML `--self-test` as the final integration gate once the frontend is repointed.
+- [x] Run the existing QML `--self-test` as the final integration gate once the frontend is repointed.
 
 ## Current assessment
 
