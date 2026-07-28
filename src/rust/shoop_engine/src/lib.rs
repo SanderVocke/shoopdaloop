@@ -59,7 +59,7 @@ pub use driver::AudioDriverType;
 pub use dummy_driver::{DriverMode, DriverSettings, DummyDriver};
 pub use dummy_midi_port::DummyMidiPort;
 pub use dummy_port::{DummyAudioPort, DummyExternalConnections, DummyPortError, PortId};
-pub use fx_chain::FXChainType;
+pub use fx_chain::{FXChainState, FXChainType};
 pub use graph::{processing_order, GraphError, NodeIdx, NodeSpec};
 pub use graph_build::{ChannelDesc, GraphDesc, LoopDesc, PortDesc};
 pub use internal_audio_port::InternalAudioPort;

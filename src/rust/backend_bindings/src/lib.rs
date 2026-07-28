@@ -2447,12 +2447,7 @@ impl DecoupledMidiPort {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct FXChainState {
-    pub ready: u32,
-    pub active: u32,
-    pub visible: u32,
-}
+pub type FXChainState = engine::FXChainState;
 pub struct FXChain {
     shared: Arc<SharedSession>,
     title: String,

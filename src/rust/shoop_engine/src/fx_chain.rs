@@ -35,6 +35,13 @@ impl TryFrom<u32> for FXChainType {
     }
 }
 
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct FXChainState {
+    pub ready: u32,
+    pub active: u32,
+    pub visible: u32,
+}
+
 /// What an effect does to a signal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EffectKind {

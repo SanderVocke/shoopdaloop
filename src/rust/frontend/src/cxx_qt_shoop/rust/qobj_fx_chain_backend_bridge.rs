@@ -116,10 +116,10 @@ pub mod ffi {
     }
 }
 
-use backend_bindings::{FXChain as BackendFXChain, FXChainState};
+use backend_bindings::FXChain as BackendFXChain;
 pub use ffi::FXChainBackend;
 use ffi::*;
-use shoop_engine::FXChainType;
+use shoop_engine::{FXChainState, FXChainType};
 
 pub struct FXChainBackendRust {
     // Properties
