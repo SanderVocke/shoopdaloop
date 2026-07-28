@@ -11,7 +11,9 @@ This checklist tracks backend-related work that remains after replacing and remo
   - [ ] Validate state serialization, UI handling, dry/wet, bypass and tails.
     - [x] Implement state serialization/restore plumbing.
     - [x] Implement external-UI show/hide plumbing.
-    - [ ] Add end-to-end validation for state serialization, UI handling, dry/wet, bypass and tails.
+    - [x] Add state serialization and dry/wet audio/MIDI graph routing coverage.
+    - [x] Add inactive/bypass tail-cutoff coverage matching the old host.
+    - [ ] Run and record real UI behavior validation in an environment with Carla installed and a display.
 - [x] Repoint the existing frontend/application stack to `shoop_engine`.
 - [x] Delete the old C backend API and bindgen layer once no callers remain.
 - [x] Complete the current application control API surface over the Rust engine.
