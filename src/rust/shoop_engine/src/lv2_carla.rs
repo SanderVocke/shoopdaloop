@@ -14,8 +14,12 @@ use std::os::raw::{c_char, c_void};
 use std::ptr::NonNull;
 use std::sync::Mutex;
 
-use lv2_raw::atom::{LV2Atom, LV2AtomSequence, LV2AtomSequenceBody, LV2_ATOM__SEQUENCE};
+use lv2_raw::atom::{
+    LV2Atom, LV2AtomEvent, LV2AtomSequence, LV2AtomSequenceBody, LV2_ATOM__SEQUENCE,
+};
+use lv2_raw::atomutils::lv2_atom_pad_size;
 use lv2_raw::core::{LV2Feature, LV2Handle};
+use lv2_raw::midi::LV2_MIDI__MIDIEVENT;
 use lv2_raw::urid::{LV2Urid, LV2UridMap, LV2UridMapHandle, LV2_URID__MAP};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,6 +162,8 @@ impl CarlaLv2Host {
             .ok_or_else(|| anyhow!("Carla LV2 plugin {plugin_uri} not found in LV2_PATH"))?;
         let info = inspect_carla_plugin(&world, &plugin, chain_type, plugin_uri, n_audio)?;
         let mut urid_mapper = Box::new(UridMapper::new());
+        let sequence_type = urid_mapper.map_str(&cstr_bytes_to_string(LV2_ATOM__SEQUENCE));
+        let midi_event_type = urid_mapper.map_str(&cstr_bytes_to_string(LV2_MIDI__MIDIEVENT));
         let max_buffer_size = CARLA_MAX_BUFFER_SIZE as u32;
         let min_buffer_size = 1u32;
         let nominal_buffer_size = buffer_size.max(1);
@@ -226,8 +232,22 @@ impl CarlaLv2Host {
             state_interface,
             audio_inputs: vec![vec![0.0; CARLA_MAX_BUFFER_SIZE]; n_audio],
             audio_outputs: vec![vec![0.0; CARLA_MAX_BUFFER_SIZE]; n_audio],
-            midi_inputs: vec![AtomSequenceBuffer::new(CARLA_MIDI_BUFFER_CAPACITY); 1],
-            midi_outputs: vec![AtomSequenceBuffer::new(CARLA_MIDI_BUFFER_CAPACITY); 1],
+            midi_inputs: vec![
+                AtomSequenceBuffer::new(
+                    CARLA_MIDI_BUFFER_CAPACITY,
+                    sequence_type,
+                    midi_event_type,
+                );
+                1
+            ],
+            midi_outputs: vec![
+                AtomSequenceBuffer::new(
+                    CARLA_MIDI_BUFFER_CAPACITY,
+                    sequence_type,
+                    midi_event_type,
+                );
+                1
+            ],
             _urid_mapper: urid_mapper,
             _urid_map: urid_map,
             active: false,
@@ -254,9 +274,6 @@ impl CarlaLv2Host {
                 "Carla processing chain: requesting to process more than buffer size ({frames} vs. {CARLA_MAX_BUFFER_SIZE})"
             ));
         }
-        for midi in &mut self.midi_inputs {
-            midi.clear();
-        }
         for midi in &mut self.midi_outputs {
             midi.clear();
         }
@@ -280,6 +297,29 @@ impl CarlaLv2Host {
 
     pub fn audio_output(&self, idx: usize) -> Option<&[f32]> {
         self.audio_outputs.get(idx).map(Vec::as_slice)
+    }
+
+    pub fn set_midi_input_events<'a>(
+        &mut self,
+        idx: usize,
+        events: impl IntoIterator<Item = (u32, &'a [u8])>,
+    ) -> Result<()> {
+        let buffer = self
+            .midi_inputs
+            .get_mut(idx)
+            .ok_or_else(|| anyhow!("No Carla MIDI input port {idx}"))?;
+        buffer.clear();
+        for (time, data) in events {
+            buffer.append_midi_event(time, data)?;
+        }
+        Ok(())
+    }
+
+    pub fn midi_output_events(&mut self, idx: usize) -> Result<Vec<(u32, Vec<u8>)>> {
+        self.midi_outputs
+            .get_mut(idx)
+            .ok_or_else(|| anyhow!("No Carla MIDI output port {idx}"))?
+            .midi_events()
     }
 
     pub fn save_state_string(&mut self) -> Result<String> {
@@ -378,19 +418,21 @@ impl CarlaLv2Host {
 struct AtomSequenceBuffer {
     bytes: Vec<u8>,
     sequence_type: LV2Urid,
+    midi_event_type: LV2Urid,
 }
 
 impl Clone for AtomSequenceBuffer {
     fn clone(&self) -> Self {
-        Self::new(self.bytes.len())
+        Self::new(self.bytes.len(), self.sequence_type, self.midi_event_type)
     }
 }
 
 impl AtomSequenceBuffer {
-    fn new(capacity: usize) -> Self {
+    fn new(capacity: usize, sequence_type: LV2Urid, midi_event_type: LV2Urid) -> Self {
         let mut out = Self {
             bytes: vec![0; capacity.max(std::mem::size_of::<LV2AtomSequence>())],
-            sequence_type: 0,
+            sequence_type,
+            midi_event_type,
         };
         out.clear();
         out
@@ -407,6 +449,57 @@ impl AtomSequenceBuffer {
     fn as_mut_ptr(&mut self) -> *mut LV2AtomSequence {
         self.as_mut_sequence() as *mut LV2AtomSequence
     }
+    fn append_midi_event(&mut self, time: u32, data: &[u8]) -> Result<()> {
+        let event_header_size = std::mem::size_of::<LV2AtomEvent>();
+        let total_size = event_header_size + data.len();
+        let padded_size = lv2_atom_pad_size(total_size as u32) as usize;
+        let atom_header_size = std::mem::size_of::<LV2Atom>();
+        let write_at = atom_header_size + self.as_mut_sequence().atom.size as usize;
+        if write_at + padded_size > self.bytes.len() {
+            return Err(anyhow!("Carla MIDI atom sequence buffer overflow"));
+        }
+        unsafe {
+            let ptr = self.bytes.as_mut_ptr().add(write_at);
+            let event = &mut *(ptr.cast::<LV2AtomEvent>());
+            event.time_in_frames = time as i64;
+            event.body = LV2Atom {
+                size: data.len() as u32,
+                mytype: self.midi_event_type,
+            };
+            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr.add(event_header_size), data.len());
+            for b in &mut self.bytes[write_at + total_size..write_at + padded_size] {
+                *b = 0;
+            }
+        }
+        self.as_mut_sequence().atom.size += padded_size as u32;
+        Ok(())
+    }
+
+    fn midi_events(&mut self) -> Result<Vec<(u32, Vec<u8>)>> {
+        let mut out = Vec::new();
+        let seq = self.as_mut_sequence();
+        let atom_size = seq.atom.size as usize;
+        let mut offset = std::mem::size_of::<LV2AtomSequence>();
+        let end = std::mem::size_of::<LV2Atom>() + atom_size;
+        while offset + std::mem::size_of::<LV2AtomEvent>() <= end {
+            let event = unsafe { &*(self.bytes.as_ptr().add(offset).cast::<LV2AtomEvent>()) };
+            let data_len = event.body.size as usize;
+            let data_at = offset + std::mem::size_of::<LV2AtomEvent>();
+            if data_at + data_len > self.bytes.len() || data_at + data_len > end {
+                return Err(anyhow!("Invalid Carla MIDI atom sequence event"));
+            }
+            if event.body.mytype == self.midi_event_type {
+                out.push((
+                    event.time_in_frames.max(0) as u32,
+                    self.bytes[data_at..data_at + data_len].to_vec(),
+                ));
+            }
+            offset +=
+                lv2_atom_pad_size((std::mem::size_of::<LV2AtomEvent>() + data_len) as u32) as usize;
+        }
+        Ok(out)
+    }
+
     fn as_mut_sequence(&mut self) -> &mut LV2AtomSequence {
         unsafe { &mut *(self.bytes.as_mut_ptr().cast::<LV2AtomSequence>()) }
     }

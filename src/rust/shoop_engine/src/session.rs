@@ -1061,6 +1061,26 @@ impl Session {
                     }
                 }
             }
+            for midi_idx in 0..host.info.ports.midi_inputs.len() {
+                let fx_midi_name = format!("{title}:midi_in_{midi_idx}");
+                let events = if let Some(port_idx) =
+                    self.ports.iter().position(|p| p.name() == fx_midi_name)
+                {
+                    let mut events = self.ports[port_idx].midi_events().to_vec();
+                    if let Some(p) = self.ports[port_idx].as_external_midi() {
+                        events.extend_from_slice(p.outgoing());
+                    }
+                    events
+                } else {
+                    Vec::new()
+                };
+                let _ = host.set_midi_input_events(
+                    midi_idx,
+                    events
+                        .iter()
+                        .map(|e| (e.time.min(n_frames.saturating_sub(1) as u32), e.data())),
+                );
+            }
             let _ = host.process(n_frames);
             for idx in 0..n_audio {
                 let fx_out_name = format!("{title}:audio_out_{idx}");
