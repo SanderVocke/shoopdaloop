@@ -77,6 +77,7 @@
 */libpixman-*.so*
 */libpng16*.so*
 */libpq.so*
+*/libproxy.so*
 */libQt6*.so*
 */libreadline.so*
 */libresolv.so*

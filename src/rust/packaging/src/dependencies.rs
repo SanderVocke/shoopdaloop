@@ -411,6 +411,42 @@ fn parse_dependency_tree(
                 continue;
             }
         };
+
+        if let Some(pattern) = warning_patterns
+            .iter()
+            .find(|pattern| line.contains(pattern.as_str()))
+        {
+            warn!(
+                "{}: stdout line matched pattern {}",
+                path_str,
+                pattern.as_str()
+            );
+            continue;
+        }
+
+        let dylib_filename_pattern = dylib_filename_part.to_lowercase();
+        if !path_filename
+            .to_lowercase()
+            .contains(dylib_filename_pattern.as_str())
+        {
+            warn!(
+                "  Note: skipped dependency line (not a dynamic library): {}",
+                line
+            );
+            continue;
+        }
+        if !path.exists() {
+            if allow_nonexistent {
+                warn!("  Nonexistent file {}", &path_str);
+            } else {
+                error_msgs.push_str(format!("{}: doesn't exist\n", path_str).as_str());
+                continue;
+            }
+        }
+
+        // Validate the line before changing the tree. Tools such as lddtree can
+        // emit unresolved pseudo-paths like `None`; allowing one of those to
+        // participate in indentation handling can insert it as a real node.
         let indent = line.chars().take_while(|&c| c == ' ').count();
 
         if Rc::ptr_eq(&current_parent, &root) && root.borrow().deps.len() == 0 {
@@ -465,35 +501,6 @@ fn parse_dependency_tree(
                 // So, children_indent != indent should not happen here.
             }
         }
-        for pattern in warning_patterns {
-            if line.contains(pattern.as_str()) {
-                warn!(
-                    "{}: stdout line matched pattern {}",
-                    path_str,
-                    pattern.as_str()
-                );
-                continue;
-            }
-        }
-        let dylib_filename_pattern = dylib_filename_part.to_lowercase();
-        if !path_filename
-            .to_lowercase()
-            .contains(dylib_filename_pattern.as_str())
-        {
-            warn!(
-                "  Note: skipped dependency line (not a dynamic library): {}",
-                line
-            );
-            continue;
-        }
-        if !path.exists() {
-            if allow_nonexistent {
-                warn!("  Nonexistent file {}", &path_str);
-            } else {
-                error_msgs.push_str(format!("{}: doesn't exist\n", path_str).as_str());
-                continue;
-            }
-        }
         {
             let mut dep_mut = dep.borrow_mut();
             dep_mut.maybe_parent = Some(current_parent.clone());
@@ -517,6 +524,29 @@ fn parse_dependency_tree(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn skipped_non_library_lines_do_not_enter_the_tree() {
+        let input = r#"
+    /tmp/libroot.so
+        None
+        /tmp/libchild.so
+"#;
+
+        let mut error_msgs = String::new();
+        let root = parse_dependency_tree(input, &[], ".so", true, &mut error_msgs);
+
+        assert!(error_msgs.is_empty());
+        let root_borrow = root.borrow();
+        assert_eq!(root_borrow.deps.len(), 1);
+        assert!(!root_borrow.deps.contains_key(Path::new("None")));
+        let root_library = root_borrow.deps.values().next().unwrap().borrow();
+        assert_eq!(root_library.deps.len(), 1);
+        assert!(root_library
+            .deps
+            .contains_key(Path::new("/tmp/libchild.so")));
+        assert!(!root_library.deps.contains_key(Path::new("None")));
+    }
 
     #[test]
     fn test_crash_repro() {

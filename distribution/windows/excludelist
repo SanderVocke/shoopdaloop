@@ -8,6 +8,7 @@
 */kernelbase.dll
 */NETAPI32.dll
 */ntdll.dll
+*/SHELL32.dll
 */ucrtbase.dll
 */ucrtbased.dll
 */VERSION.dll
