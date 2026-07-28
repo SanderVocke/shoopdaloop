@@ -1,6 +1,6 @@
 # Remaining backend work
 
-This checklist tracks what is still needed for `src/rust/shoop_engine` to fully replace the existing C/C++ backend. GUI work is intentionally excluded.
+This checklist tracks backend-related work that remains after replacing and removing the old C/C++ backend. GUI work is intentionally excluded.
 
 ## Backend completeness
 
@@ -8,12 +8,8 @@ This checklist tracks what is still needed for `src/rust/shoop_engine` to fully 
   - [ ] Keep plugin hosting behind the planned C++/Rust boundary for now.
   - [ ] Expose it through the existing `FxChain`/effect interface.
   - [ ] Validate state serialization, UI handling, dry/wet, bypass and tails.
-- [ ] Finish repointing the existing frontend/application stack to `shoop_engine`.
-  - [ ] Remove remaining direct dependency on the old C API where possible.
-  - [ ] Finish replacing `backend_bindings` usage with engine-backed control handles.
-- [ ] Delete the old C backend API and bindgen layer once no callers remain.
-  - [ ] Remove `libshoopdaloop_backend.{h,cpp}` dependencies.
-  - [ ] Remove generated bindgen surface that only served the old backend.
+- [x] Repoint the existing frontend/application stack to `shoop_engine`.
+- [x] Delete the old C backend API and bindgen layer once no callers remain.
 - [ ] Complete the control API surface over the Rust engine.
   - [ ] Add/finish `FxChain` control handles once plugin hosting is settled.
   - [ ] Add/finish the `AudioDriver` handle/API.

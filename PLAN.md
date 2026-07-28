@@ -183,8 +183,8 @@ Prefer `all` for usability if opening MIDI ports has no disruptive side effects 
 1. Add `AudioDriverType::Cpal`.
 2. Add backend name mapping for `cpal`.
 3. Add CLI parsing for CPAL/midir options and device-listing commands.
-4. Add a CPAL/midir settings struct in `backend_bindings`.
-5. Add a virtual external-port registry/router in `backend_bindings`.
+4. Add a CPAL/midir settings struct in the Rust engine app-backend interface.
+5. Add a virtual external-port registry/router in the Rust engine app-backend interface.
 6. Make `find_external_ports()` return CPAL/midir virtual external ports for the CPAL backend.
 7. Make `connect_external_port()` and `disconnect_external_port()` update the router for CPAL backend ports.
 8. Implement CPAL callback integration against the existing `BackendSession`.
