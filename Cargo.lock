@@ -2897,6 +2897,7 @@ dependencies = [
  "cpal",
  "enum-iterator",
  "jack",
+ "libloading 0.8.8",
  "lilv",
  "lv2_raw",
  "midir",

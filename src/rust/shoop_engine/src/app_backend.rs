@@ -2403,7 +2403,16 @@ impl FXChain {
         !matches!(self.backend, FXChainBackendKind::Unavailable { .. })
     }
     pub fn set_visible(&self, visible: bool) {
-        self.state.lock().unwrap().visible = visible as u32
+        self.state.lock().unwrap().visible = visible as u32;
+        #[cfg(feature = "lv2")]
+        if let FXChainBackendKind::Carla(host) = &self.backend {
+            let ok = host
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .set_visible(visible)
+                .is_ok();
+            self.state.lock().unwrap().visible = (visible && ok) as u32;
+        }
     }
     pub fn set_active(&self, active: bool) {
         self.state.lock().unwrap().active = active as u32;

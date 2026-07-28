@@ -20,6 +20,7 @@ lilv = { workspace = true, optional = true }
 lv2_raw = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+libloading = { workspace = true, optional = true }
 assert_no_alloc = { workspace = true }
 enum-iterator = { workspace = true }
 num_enum = { workspace = true }
@@ -28,7 +29,7 @@ num_enum = { workspace = true }
 jack = ["dep:jack"]
 cpal = ["dep:cpal"]
 midir = ["dep:midir"]
-lv2 = ["dep:lilv", "dep:lv2_raw", "dep:base64", "dep:serde_json"]
+lv2 = ["dep:lilv", "dep:lv2_raw", "dep:base64", "dep:serde_json", "dep:libloading"]
 app_backend = ["jack", "cpal", "midir", "lv2"]
 
 [dev-dependencies]

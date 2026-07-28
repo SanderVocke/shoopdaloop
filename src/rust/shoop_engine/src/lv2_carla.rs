@@ -10,9 +10,12 @@ use anyhow::{anyhow, Result};
 use base64::Engine;
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
-use std::os::raw::{c_char, c_void};
+use std::os::raw::{c_char, c_uint, c_void};
 use std::ptr::NonNull;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use lv2_raw::atom::{
     LV2Atom, LV2AtomEvent, LV2AtomSequence, LV2AtomSequenceBody, LV2_ATOM__SEQUENCE,
@@ -20,6 +23,7 @@ use lv2_raw::atom::{
 use lv2_raw::atomutils::lv2_atom_pad_size;
 use lv2_raw::core::{LV2Feature, LV2Handle};
 use lv2_raw::midi::LV2_MIDI__MIDIEVENT;
+use lv2_raw::ui::{LV2UIDescriptorRaw, LV2UIExternalUIHost, LV2UIExternalUIWidget, LV2UIWidget};
 use lv2_raw::urid::{LV2Urid, LV2UridMap, LV2UridMapHandle, LV2_URID__MAP};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,6 +42,7 @@ pub struct CarlaPort {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CarlaUiInfo {
+    pub uri: String,
     pub binary_path: Option<String>,
     pub bundle_path: Option<String>,
     pub is_external_ui: bool,
@@ -59,6 +64,8 @@ pub const CARLA_PATCHBAY_16_URI: &str = "http://kxstudio.sf.net/carla/plugins/ca
 pub const CARLA_MAX_BUFFER_SIZE: usize = 8192;
 pub const CARLA_MIDI_BUFFER_CAPACITY: usize = 8192;
 const EXTERNAL_UI_URI: &str = "http://kxstudio.sf.net/ns/lv2ext/external-ui#Widget";
+const LV2_EXTERNAL_UI_HOST_URI: &str = "http://kxstudio.sf.net/ns/lv2ext/external-ui#Host";
+const LV2_INSTANCE_ACCESS_URI: &str = "http://lv2plug.in/ns/ext/instance-access";
 const LV2_OPTIONS_OPTIONS_URI: &str = "http://lv2plug.in/ns/ext/options#options";
 const LV2_BUF_SIZE_MAX_BLOCK_LENGTH_URI: &str = "http://lv2plug.in/ns/ext/buf-size#maxBlockLength";
 const LV2_BUF_SIZE_MIN_BLOCK_LENGTH_URI: &str = "http://lv2plug.in/ns/ext/buf-size#minBlockLength";
@@ -117,6 +124,41 @@ struct Lv2StateInterface {
     ) -> u32,
 }
 
+type Lv2UiDescriptorFn = unsafe extern "C" fn(index: u32) -> *const LV2UIDescriptorRaw;
+
+struct CarlaUiRuntime {
+    _library: libloading::Library,
+    descriptor: *const LV2UIDescriptorRaw,
+    handle: *mut c_void,
+    widget: *const LV2UIExternalUIWidget,
+    closed: Box<AtomicBool>,
+    _host: Box<LV2UIExternalUIHost>,
+    stop: Arc<AtomicBool>,
+    thread: Option<thread::JoinHandle<()>>,
+    _human_id: CString,
+}
+
+unsafe impl Send for CarlaUiRuntime {}
+
+impl Drop for CarlaUiRuntime {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+        unsafe {
+            if !self.widget.is_null() {
+                if let Some(hide) = (*self.widget).hide {
+                    hide(self.widget);
+                }
+            }
+            if !self.descriptor.is_null() && !self.handle.is_null() {
+                ((*self.descriptor).cleanup)(self.handle);
+            }
+        }
+    }
+}
+
 pub struct CarlaLv2Host {
     _world: lilv::World,
     pub info: CarlaPluginInfo,
@@ -128,7 +170,9 @@ pub struct CarlaLv2Host {
     midi_outputs: Vec<AtomSequenceBuffer>,
     _urid_mapper: Box<UridMapper>,
     _urid_map: Box<LV2UridMap>,
+    ui_runtime: Option<CarlaUiRuntime>,
     active: bool,
+    visible: bool,
 }
 
 // Carla's LV2 instance is owned by this host object and only accessed through
@@ -250,7 +294,9 @@ impl CarlaLv2Host {
             ],
             _urid_mapper: urid_mapper,
             _urid_map: urid_map,
+            ui_runtime: None,
             active: false,
+            visible: false,
         };
         host.connect_ports();
         let _ = buffer_size;
@@ -263,6 +309,155 @@ impl CarlaLv2Host {
 
     pub fn is_active(&self) -> bool {
         self.active
+    }
+
+    pub fn set_visible(&mut self, visible: bool) -> Result<()> {
+        if visible {
+            self.show_ui()
+        } else {
+            self.hide_ui();
+            Ok(())
+        }
+    }
+
+    pub fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    fn show_ui(&mut self) -> Result<()> {
+        if self.visible {
+            return Ok(());
+        }
+        if self.ui_runtime.is_none() {
+            self.ui_runtime = Some(self.instantiate_ui()?);
+        }
+        let runtime = self.ui_runtime.as_mut().expect("runtime just instantiated");
+        unsafe {
+            if !runtime.widget.is_null() {
+                if let Some(show) = (*runtime.widget).show {
+                    show(runtime.widget);
+                }
+                let widget = runtime.widget as usize;
+                let stop = runtime.stop.clone();
+                let closed = (&*runtime.closed as *const AtomicBool) as usize;
+                runtime.thread = Some(thread::spawn(move || {
+                    while !stop.load(Ordering::Relaxed) {
+                        let widget = widget as *const LV2UIExternalUIWidget;
+                        if widget.is_null() {
+                            break;
+                        }
+                        if (*(closed as *const AtomicBool)).load(Ordering::Relaxed) {
+                            break;
+                        }
+                        if let Some(run) = (*widget).run {
+                            run(widget);
+                        }
+                        let next = Instant::now() + Duration::from_millis(30);
+                        thread::sleep(next.saturating_duration_since(Instant::now()));
+                    }
+                }));
+            }
+        }
+        self.visible = true;
+        Ok(())
+    }
+
+    fn hide_ui(&mut self) {
+        self.visible = false;
+        self.ui_runtime.take();
+    }
+
+    fn instantiate_ui(&mut self) -> Result<CarlaUiRuntime> {
+        let ui = self
+            .info
+            .ui
+            .as_ref()
+            .ok_or_else(|| anyhow!("Carla plugin has no external UI metadata"))?;
+        let binary_path = ui
+            .binary_path
+            .as_ref()
+            .ok_or_else(|| anyhow!("Carla external UI has no binary path"))?;
+        let bundle_path = ui
+            .bundle_path
+            .as_ref()
+            .ok_or_else(|| anyhow!("Carla external UI has no bundle path"))?;
+        let instance = self
+            .instance
+            .as_ref()
+            .ok_or_else(|| anyhow!("internal error: Carla LV2 instance temporarily unavailable"))?;
+        let library = unsafe { libloading::Library::new(binary_path)? };
+        let descriptor_fn: libloading::Symbol<Lv2UiDescriptorFn> =
+            unsafe { library.get(b"lv2ui_descriptor\0")? };
+        let mut descriptor = std::ptr::null();
+        for idx in 0..1024u32 {
+            let d = unsafe { descriptor_fn(idx) };
+            if d.is_null() {
+                break;
+            }
+            let uri = unsafe { CStr::from_ptr((*d).uri) }.to_string_lossy();
+            if uri == ui.uri {
+                descriptor = d;
+                break;
+            }
+        }
+        if descriptor.is_null() {
+            return Err(anyhow!("Carla external UI descriptor {} not found", ui.uri));
+        }
+        let plugin_uri = CString::new(self.info.plugin_uri).expect("static URI contains no nul");
+        let bundle_path = CString::new(bundle_path.as_str())?;
+        let human_id = CString::new("shoopdaloop")?;
+        let closed = Box::new(AtomicBool::new(false));
+        let mut host = Box::new(LV2UIExternalUIHost {
+            ui_closed: unsafe {
+                std::mem::transmute::<_, extern "C" fn(_) -> c_void>(
+                    external_ui_closed as extern "C" fn(_),
+                )
+            },
+            plugin_human_id: human_id.as_ptr(),
+        });
+        let instance_uri =
+            CString::new(LV2_INSTANCE_ACCESS_URI).expect("static URI contains no nul");
+        let external_uri =
+            CString::new(LV2_EXTERNAL_UI_HOST_URI).expect("static URI contains no nul");
+        let instance_feature = LV2Feature {
+            uri: instance_uri.as_ptr(),
+            data: instance.handle(),
+        };
+        let external_feature = LV2Feature {
+            uri: external_uri.as_ptr(),
+            data: (&mut *host as *mut LV2UIExternalUIHost).cast::<c_void>(),
+        };
+        let features = [
+            &instance_feature as *const LV2Feature,
+            &external_feature as *const LV2Feature,
+            std::ptr::null(),
+        ];
+        let mut widget: LV2UIWidget = std::ptr::null_mut();
+        let handle = unsafe {
+            ((*descriptor).instantiate_raw)(
+                descriptor,
+                plugin_uri.as_ptr(),
+                bundle_path.as_ptr(),
+                Some(ui_write_ignored),
+                (&*closed as *const AtomicBool).cast::<c_void>(),
+                &mut widget,
+                features.as_ptr(),
+            )
+        };
+        if handle.is_null() || widget.is_null() {
+            return Err(anyhow!("Could not instantiate Carla external UI"));
+        }
+        Ok(CarlaUiRuntime {
+            _library: library,
+            descriptor,
+            handle,
+            widget: widget.cast::<LV2UIExternalUIWidget>(),
+            closed,
+            _host: host,
+            stop: Arc::new(AtomicBool::new(false)),
+            thread: None,
+            _human_id: human_id,
+        })
     }
 
     pub fn process(&mut self, frames: usize) -> Result<()> {
@@ -566,6 +761,22 @@ impl Lv2StateString {
     }
 }
 
+extern "C" fn ui_write_ignored(
+    _controller: lv2_raw::ui::LV2UIControllerRaw,
+    _port_index: c_uint,
+    _buffer_size: c_uint,
+    _port_protocol: c_uint,
+    _buffer: *const c_void,
+) {
+}
+
+extern "C" fn external_ui_closed(controller: lv2_raw::ui::LV2UIControllerRaw) {
+    if !controller.is_null() {
+        let closed = unsafe { &*(controller.cast::<AtomicBool>()) };
+        closed.store(true, Ordering::Relaxed);
+    }
+}
+
 unsafe extern "C" fn lv2_state_store(
     handle: *mut c_void,
     key: u32,
@@ -776,6 +987,11 @@ fn discover_ui(world: &lilv::World, plugin: &lilv::plugin::Plugin) -> Result<Opt
         ));
     }
     Ok(Some(CarlaUiInfo {
+        uri: ui
+            .uri()
+            .as_uri()
+            .ok_or_else(|| anyhow!("Carla LV2 UI has no URI"))?
+            .to_string(),
         binary_path: ui.binary_uri().and_then(|n| n.path().map(|(p, _)| p)),
         bundle_path: ui.bundle_uri().and_then(|n| n.path().map(|(p, _)| p)),
         is_external_ui: ui.is_a(&external_ui),
