@@ -21,6 +21,9 @@ log = { workspace = true }
 ctor = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 
+[lints]
+workspace = true
+
 [features]
 # Dummy build to build dependencies only
 prebuild = ["common/prebuild"]

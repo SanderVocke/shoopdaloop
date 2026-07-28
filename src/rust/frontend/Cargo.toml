@@ -42,6 +42,9 @@ num_enum = { workspace = true }
 jsonschema = { workspace = true }
 rodio = { workspace = true }
 
+[lints]
+workspace = true
+
 [build-dependencies]
 macros = { path = "../macros" }
 

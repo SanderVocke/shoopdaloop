@@ -25,6 +25,9 @@ assert_no_alloc = { workspace = true }
 enum-iterator = { workspace = true }
 num_enum = { workspace = true }
 
+[lints]
+workspace = true
+
 [features]
 jack = ["dep:jack"]
 cpal = ["dep:cpal"]

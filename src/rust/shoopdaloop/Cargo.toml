@@ -37,6 +37,9 @@ cxx-qt = { workspace = true }
 cxx-qt-lib = { workspace = true, features = ["full"] }
 assert_no_alloc = { workspace = true }
 
+[lints]
+workspace = true
+
 [build-dependencies]
 common = { path = "../common" }
 config = { path = "../config" }

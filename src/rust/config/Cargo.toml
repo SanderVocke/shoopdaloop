@@ -19,6 +19,9 @@ toml = { workspace = true }
 # derive is used directly here; do not rely on another crate's feature unifying in
 serde = { workspace = true, features = ["derive"] }
 
+[lints]
+workspace = true
+
 [build-dependencies]
 common = { path = "../common" }
 

@@ -8,6 +8,9 @@ edition = "2021"
 common = { path = "../common" }
 shoop_engine = { path = "../shoop_engine" }
 
+[lints]
+workspace = true
+
 [dev-dependencies]
 assert2 = { workspace = true }
 
