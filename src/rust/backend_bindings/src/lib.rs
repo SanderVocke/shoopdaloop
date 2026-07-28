@@ -5,8 +5,10 @@ use enum_iterator::Sequence;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use shoop_engine as engine;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::thread;
+use std::time::{Duration, Instant};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
 #[repr(i32)]
@@ -313,6 +315,7 @@ struct JackProcess {
     ports: Arc<Mutex<Vec<JackRegisteredPort>>>,
     last_processed: Arc<AtomicU32>,
     sample_rate: u32,
+    maybe_process_callback: Option<ProcessCallback>,
 }
 impl jack::ProcessHandler for JackProcess {
     fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
@@ -320,6 +323,11 @@ impl jack::ProcessHandler for JackProcess {
         let Some(shared) = self.shared.upgrade() else {
             return jack::Control::Continue;
         };
+        if let Some(callback) = self.maybe_process_callback {
+            unsafe {
+                callback();
+            }
+        }
         let mut session = shared.lock();
         session.set_sample_rate(self.sample_rate);
         session.set_buffer_size(n_frames as u32);
@@ -415,6 +423,7 @@ struct JackBackend {
     ports: Arc<Mutex<Vec<JackRegisteredPort>>>,
     last_processed: Arc<AtomicU32>,
     xruns: Arc<AtomicU32>,
+    maybe_process_callback: Option<ProcessCallback>,
 }
 impl JackBackend {
     fn client(&self) -> &jack::Client {
@@ -440,6 +449,7 @@ impl JackBackend {
             ports: self.ports.clone(),
             last_processed: self.last_processed.clone(),
             sample_rate: client.sample_rate(),
+            maybe_process_callback: self.maybe_process_callback,
         };
         self.active_client = Some(
             client
@@ -695,13 +705,77 @@ struct DriverInner {
     controlled: bool,
     requested: u32,
     last_processed: u32,
+    process_generation: u64,
+    finish: Arc<AtomicBool>,
+    dummy_thread: Option<thread::JoinHandle<()>>,
     session: Option<Weak<SharedSession>>,
     external: Arc<Mutex<engine::DummyExternalConnections>>,
     jack: Option<Arc<Mutex<JackBackend>>>,
+    maybe_process_callback: Option<ProcessCallback>,
 }
 pub struct AudioDriver {
-    inner: Mutex<DriverInner>,
+    inner: Arc<Mutex<DriverInner>>,
 }
+
+fn process_dummy_driver_iteration(inner: &Arc<Mutex<DriverInner>>) {
+    let (session, n, sample_rate, buffer_size, callback) = {
+        let mut i = inner.lock().unwrap_or_else(|e| e.into_inner());
+        if !i.active || !driver_uses_dummy_processing(i.driver_type) {
+            i.last_processed = 0;
+            i.process_generation = i.process_generation.wrapping_add(1);
+            return;
+        }
+        let n = if i.controlled {
+            i.requested.min(i.settings.buffer_size)
+        } else {
+            i.settings.buffer_size
+        };
+        if i.controlled {
+            i.requested -= n;
+        }
+        i.last_processed = n;
+        i.process_generation = i.process_generation.wrapping_add(1);
+        (
+            i.session.as_ref().and_then(|w| w.upgrade()),
+            n,
+            i.settings.sample_rate,
+            i.settings.buffer_size,
+            i.maybe_process_callback,
+        )
+    };
+
+    if let Some(callback) = callback {
+        unsafe {
+            callback();
+        }
+    }
+    if n == 0 {
+        return;
+    }
+    if let Some(shared) = session {
+        let mut s = shared.lock();
+        s.set_sample_rate(sample_rate);
+        s.set_buffer_size(buffer_size);
+        s.apply_graph_changes().ok();
+        let _ = s.process(n as usize);
+    }
+}
+
+fn wait_for_dummy_generation(inner: &Arc<Mutex<DriverInner>>, target: u64, timeout: Duration) {
+    let start = Instant::now();
+    while start.elapsed() < timeout {
+        if inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .process_generation
+            >= target
+        {
+            return;
+        }
+        thread::sleep(Duration::from_millis(1));
+    }
+}
+
 unsafe impl Send for AudioDriver {}
 unsafe impl Sync for AudioDriver {}
 impl AudioDriver {
@@ -710,17 +784,21 @@ impl AudioDriver {
         _maybe_callback: Option<ProcessCallback>,
     ) -> Result<Self> {
         Ok(Self {
-            inner: Mutex::new(DriverInner {
+            inner: Arc::new(Mutex::new(DriverInner {
                 driver_type,
                 settings: engine::DriverSettings::default(),
                 active: false,
                 controlled: false,
                 requested: 0,
                 last_processed: 0,
+                process_generation: 0,
+                finish: Arc::new(AtomicBool::new(false)),
+                dummy_thread: None,
                 session: None,
                 external: Arc::new(Mutex::new(engine::DummyExternalConnections::default())),
                 jack: None,
-            }),
+                maybe_process_callback: _maybe_callback,
+            })),
         })
     }
     fn external(&self) -> Arc<Mutex<engine::DummyExternalConnections>> {
@@ -767,6 +845,7 @@ impl AudioDriver {
                 ports: Arc::new(Mutex::new(Vec::new())),
                 last_processed: Arc::new(AtomicU32::new(0)),
                 xruns: Arc::new(AtomicU32::new(0)),
+                maybe_process_callback: i.maybe_process_callback,
             })));
         } else {
             i.jack = None;
@@ -802,6 +881,29 @@ impl AudioDriver {
             }
         }
         i.active = true;
+        if driver_uses_dummy_processing(i.driver_type) && i.dummy_thread.is_none() {
+            i.finish.store(false, Ordering::Relaxed);
+            let inner = self.inner.clone();
+            let finish = i.finish.clone();
+            i.dummy_thread = Some(thread::spawn(move || {
+                while !finish.load(Ordering::Relaxed) {
+                    let (sample_rate, buffer_size) = {
+                        let i = inner.lock().unwrap_or_else(|e| e.into_inner());
+                        (i.settings.sample_rate.max(1), i.settings.buffer_size.max(1))
+                    };
+                    let micros = ((buffer_size as f64 / sample_rate as f64) * 1_000_000.0)
+                        .ceil()
+                        .max(1.0) as u64;
+                    let started = Instant::now();
+                    process_dummy_driver_iteration(&inner);
+                    let elapsed = started.elapsed();
+                    let interval = Duration::from_micros(micros);
+                    if elapsed < interval {
+                        thread::sleep(interval - elapsed);
+                    }
+                }
+            }));
+        }
         Ok(())
     }
     fn register_audio_port(
@@ -920,17 +1022,19 @@ impl AudioDriver {
     pub fn active(&self) -> bool {
         self.inner.lock().unwrap().active
     }
-    pub fn wait_process(&self) {}
-    pub fn get_state(&self) -> AudioDriverState {
-        let should_run = {
-            let i = self.inner.lock().unwrap();
-            driver_uses_dummy_processing(i.driver_type)
-                && i.active
-                && ((!i.controlled) || i.requested > 0)
+    pub fn wait_process(&self) {
+        let (is_dummy, target) = {
+            let i = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            (
+                driver_uses_dummy_processing(i.driver_type),
+                i.process_generation.saturating_add(2),
+            )
         };
-        if should_run {
-            self.dummy_run_requested_frames();
+        if is_dummy {
+            wait_for_dummy_generation(&self.inner, target, Duration::from_millis(100));
         }
+    }
+    pub fn get_state(&self) -> AudioDriverState {
         let i = self.inner.lock().unwrap();
         let (last_processed, xruns_since_last) = if let Some(j) = i.jack.as_ref() {
             let j = j.lock().unwrap_or_else(|e| e.into_inner());
@@ -972,39 +1076,15 @@ impl AudioDriver {
         self.inner.lock().unwrap().requested
     }
     pub fn dummy_run_requested_frames(&self) {
-        loop {
-            let (session, n) = {
-                let mut i = self.inner.lock().unwrap();
-                if !i.active {
-                    i.last_processed = 0;
-                    return;
-                }
-                let n = if i.controlled {
-                    i.requested.min(i.settings.buffer_size)
-                } else {
-                    i.settings.buffer_size
-                };
-                if n == 0 {
-                    i.last_processed = 0;
-                    return;
-                }
-                if i.controlled {
-                    i.requested -= n;
-                }
-                i.last_processed = n;
-                (i.session.as_ref().and_then(|w| w.upgrade()), n)
-            };
-            if let Some(shared) = session {
-                let mut s = shared.lock();
-                s.set_sample_rate(self.get_sample_rate());
-                s.set_buffer_size(self.get_buffer_size());
-                s.apply_graph_changes().ok();
-                let _ = s.process(n as usize);
-            }
-            if !self.dummy_is_controlled() {
-                return;
-            }
+        self.wait_process();
+        let start = Instant::now();
+        while self.dummy_is_controlled()
+            && self.dummy_n_requested_frames() > 0
+            && start.elapsed() < Duration::from_millis(100)
+        {
+            thread::sleep(Duration::from_millis(1));
         }
+        self.wait_process();
     }
     pub fn dummy_add_external_mock_port(&self, name: &str, direction: u32, data_type: u32) {
         let ext = self.external();
@@ -1072,6 +1152,21 @@ impl AudioDriver {
             .collect()
     }
 }
+
+impl Drop for AudioDriver {
+    fn drop(&mut self) {
+        let thread = {
+            let mut i = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            i.finish.store(true, Ordering::Relaxed);
+            i.active = false;
+            i.dummy_thread.take()
+        };
+        if let Some(thread) = thread {
+            let _ = thread.join();
+        }
+    }
+}
+
 pub fn driver_type_supported(driver_type: AudioDriverType) -> bool {
     matches!(
         driver_type,
@@ -2096,5 +2191,36 @@ mod tests {
         assert!(!driver_uses_dummy_processing(AudioDriverType::Jack));
         assert!(driver_uses_dummy_processing(AudioDriverType::JackTest));
         assert!(driver_uses_dummy_processing(AudioDriverType::Dummy));
+    }
+
+    #[test]
+    fn get_state_does_not_advance_dummy_time() {
+        let driver = AudioDriver {
+            inner: Arc::new(Mutex::new(DriverInner {
+                driver_type: AudioDriverType::Dummy,
+                settings: engine::DriverSettings {
+                    sample_rate: 48_000,
+                    buffer_size: 256,
+                    client_name: "test".to_string(),
+                },
+                active: true,
+                controlled: false,
+                requested: 0,
+                last_processed: 0,
+                process_generation: 0,
+                finish: Arc::new(AtomicBool::new(false)),
+                dummy_thread: None,
+                session: None,
+                external: Arc::new(Mutex::new(engine::DummyExternalConnections::default())),
+                jack: None,
+                maybe_process_callback: None,
+            })),
+        };
+
+        let state = driver.get_state();
+        assert_eq!(state.last_processed, 0);
+        let inner = driver.inner.lock().unwrap_or_else(|e| e.into_inner());
+        assert_eq!(inner.last_processed, 0);
+        assert_eq!(inner.process_generation, 0);
     }
 }
