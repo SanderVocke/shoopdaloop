@@ -219,6 +219,10 @@ impl Engine {
     /// Commands run before processing so a mode change lands on the cycle boundary
     /// rather than part-way through a buffer.
     pub fn process(&mut self, n_frames: usize) {
+        crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| self.process_inner(n_frames));
+    }
+
+    fn process_inner(&mut self, n_frames: usize) {
         self.apply_commands();
 
         match self.session.process(n_frames) {

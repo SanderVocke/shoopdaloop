@@ -15,6 +15,7 @@ jack = { workspace = true, optional = true }
 cpal = { workspace = true, optional = true }
 # MIDI for hosts without JACK. Optional for the same reason.
 midir = { workspace = true, optional = true }
+assert_no_alloc = { workspace = true }
 
 [features]
 jack = ["dep:jack"]
@@ -24,4 +25,3 @@ midir = ["dep:midir"]
 [dev-dependencies]
 assert2 = { workspace = true }
 rtrb = { workspace = true }
-assert_no_alloc = { workspace = true }

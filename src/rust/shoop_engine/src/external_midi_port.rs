@@ -405,7 +405,12 @@ mod tests {
         let mut snap = crate::midi_storage::MidiStorage::with_capacity_elems(16);
         p.midi().snapshot_ringbuffer_into(&mut snap);
         let got: Vec<_> = snap.iter().map(|e| e.data().to_vec()).collect();
-        check!(got == in_events.iter().map(|e| e.data().to_vec()).collect::<Vec<_>>());
+        check!(
+            got == in_events
+                .iter()
+                .map(|e| e.data().to_vec())
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]

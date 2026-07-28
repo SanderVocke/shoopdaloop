@@ -366,7 +366,9 @@ impl jack::ProcessHandler for JackProcess {
             }
         }
 
-        let _ = session.process(n_frames);
+        let _ = shoop_engine::realtime_alloc_guard::forbid_alloc_if_enabled(|| {
+            session.process(n_frames)
+        });
 
         for p in ports.iter_mut() {
             match p {
@@ -925,7 +927,9 @@ impl CpalBackend {
                     }
                 }
 
-                let _ = session.process(n_frames);
+                let _ = shoop_engine::realtime_alloc_guard::forbid_alloc_if_enabled(|| {
+                    session.process(n_frames)
+                });
 
                 collect_virtual_audio_outputs(
                     &session,
@@ -1336,7 +1340,8 @@ fn process_dummy_driver_iteration(inner: &Arc<Mutex<DriverInner>>) {
         s.set_sample_rate(sample_rate);
         s.set_buffer_size(buffer_size);
         s.apply_graph_changes().ok();
-        let _ = s.process(n as usize);
+        let _ =
+            shoop_engine::realtime_alloc_guard::forbid_alloc_if_enabled(|| s.process(n as usize));
     }
 }
 

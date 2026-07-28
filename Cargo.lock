@@ -2922,6 +2922,7 @@ name = "shoopdaloop"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "assert_no_alloc",
  "backend_bindings",
  "clap",
  "common",
@@ -2940,6 +2941,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "shoop_engine",
  "toml",
 ]
 

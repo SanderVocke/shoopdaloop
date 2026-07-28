@@ -17,6 +17,7 @@ path = "src/bin/print_shoopdaloop_out_dir.rs"
 [dependencies]
 frontend = { path = "../frontend" }
 backend_bindings = { path = "../backend_bindings" }
+shoop_engine = { path = "../shoop_engine" }
 common = { path = "../common" }
 config = { path = "../config" }
 crashhandling = { path = "../crashhandling" }
@@ -35,6 +36,7 @@ serde_json = { workspace = true }
 once_cell = { workspace = true }
 cxx-qt = { workspace = true }
 cxx-qt-lib = { workspace = true, features = ["full"] }
+assert_no_alloc = { workspace = true }
 
 [build-dependencies]
 common = { path = "../common" }

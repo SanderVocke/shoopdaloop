@@ -16,11 +16,23 @@ use shoop_engine::internal_audio_port::InternalAudioPort;
 use shoop_engine::loop_mode::LoopMode;
 use shoop_engine::midi;
 use shoop_engine::port::{PortConnectability, PortDirection};
+use shoop_engine::realtime_alloc_guard;
 use shoop_engine::session::{Port, Session};
 
 #[cfg(debug_assertions)]
 #[global_allocator]
 static A: AllocDisabler = AllocDisabler;
+
+#[test]
+fn realtime_guard_reverse_guard_allows_exceptional_allocations() {
+    realtime_alloc_guard::set_enabled(true);
+    realtime_alloc_guard::forbid_alloc_if_enabled(|| {
+        realtime_alloc_guard::allow_alloc(|| {
+            let _v = vec![0_u8; 8];
+        });
+    });
+    realtime_alloc_guard::set_enabled(false);
+}
 
 fn audio_port(id: u64, name: &str, dir: PortDirection) -> Port {
     Port::Dummy(DummyAudioPort::new(PortId(id), name, dir, 4))

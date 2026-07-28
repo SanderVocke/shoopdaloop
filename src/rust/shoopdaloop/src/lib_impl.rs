@@ -359,6 +359,11 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
         }
     };
 
+    shoop_engine::realtime_alloc_guard::set_enabled(cli_args.developer_options.rt_alloc_guard);
+    if cli_args.developer_options.rt_alloc_guard {
+        info!("Realtime allocation guard enabled for top-level process calls");
+    }
+
     if cli_args.print_backends {
         println!("Available backends:\n");
         let all_audio_driver_types = crate::audio_driver_names::all_audio_driver_types();

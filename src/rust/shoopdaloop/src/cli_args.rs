@@ -168,6 +168,10 @@ pub struct DeveloperOptions {
     )]
     pub max_backend_refresh_interval_ms: u32,
 
+    /// Abort if realtime process callbacks allocate. Debug builds only.
+    #[clap(long = "rt-alloc-guard", help_heading = "Developer options")]
+    pub rt_alloc_guard: bool,
+
     // Disables the crash handler.
     #[clap(long = "no-crash-handling", help_heading = "Developer options")]
     pub no_crash_handling: bool,
