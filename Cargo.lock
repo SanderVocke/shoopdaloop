@@ -149,6 +149,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
+name = "asio-sys"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "826194e1612938c9be09b78b58323fbb2e326de3d491b4230186cf6e832d8ded"
+dependencies = [
+ "bindgen 0.72.1",
+ "cc",
+ "num-derive",
+ "num-traits",
+ "parse_cfg",
+ "walkdir",
+]
+
+[[package]]
 name = "assert2"
 version = "0.3.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -226,6 +240,26 @@ dependencies = [
  "quote",
  "regex",
  "rustc-hash 1.1.0",
+ "shlex",
+ "syn 2.0.104",
+]
+
+[[package]]
+name = "bindgen"
+version = "0.72.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895"
+dependencies = [
+ "bitflags 2.13.1",
+ "cexpr",
+ "clang-sys",
+ "itertools 0.13.0",
+ "log",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "rustc-hash 2.1.1",
  "shlex",
  "syn 2.0.104",
 ]
@@ -609,8 +643,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cbd307f43cc2a697e2d1f8bc7a1d824b5269e052209e28883e5bc04d095aaa3f"
 dependencies = [
  "alsa",
+ "asio-sys",
  "coreaudio-rs",
  "dasp_sample",
+ "jack",
  "jni",
  "js-sys",
  "libc",
@@ -2354,6 +2390,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "parse_cfg"
+version = "4.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "905787a434a2c721408e7c9a252e85f3d93ca0f118a5283022636c0e05a7ea49"
+dependencies = [
+ "nom",
+]
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2476,7 +2521,7 @@ name = "qt_header_bindings"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "bindgen",
+ "bindgen 0.70.1",
  "enum-iterator",
  "prettyplease",
  "syn 2.0.104",

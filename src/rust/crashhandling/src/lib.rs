@@ -25,7 +25,7 @@ pub fn init_crashhandling(
     start_server_arg: &str,
     on_crash_callback: Option<client::CrashCallback>,
 ) {
-    info!("init_crashhandling called: is_server={is_server}, start_server_arg={start_server_arg}, pid={}", std::process::id());
+    debug!("init_crashhandling called: is_server={is_server}, start_server_arg={start_server_arg}, pid={}", std::process::id());
 
     let maybe_dump_folder: Option<String> = std::env::var("SHOOP_CRASHDUMP_DIR").ok();
     if let Some(dump_folder) = maybe_dump_folder.as_ref() {
