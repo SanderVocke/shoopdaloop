@@ -1176,6 +1176,7 @@ fn process_dummy_driver_iteration(inner: &Arc<Mutex<DriverInner>>) {
         }
     }
     if n == 0 {
+        inner.lock().unwrap_or_else(|e| e.into_inner()).last_processed = 0;
         return;
     }
     if let Some(shared) = session {
@@ -1580,6 +1581,20 @@ impl AudioDriver {
     }
     pub fn dummy_is_controlled(&self) -> bool {
         self.inner.lock().unwrap().controlled
+    }
+    pub fn dummy_wait_controlled_mode(&self) {
+        // Synchronously drain all pending controlled frames.
+        // Unlike the QML wait_controlled_mode which relies on the async
+        // update pipeline (UpdatedOnGuiThread signal), this directly polls
+        // the driver state, which is reliable across test-file reloads.
+        self.wait_process();
+        while {
+            let i = self.inner.lock().unwrap();
+            i.last_processed != 0 || i.requested != 0
+        } {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        self.wait_process();
     }
     pub fn dummy_request_controlled_frames(&self, n: u32) {
         self.inner.lock().unwrap().requested += n;

@@ -85,6 +85,12 @@ pub mod ffi {
         pub fn dummy_is_controlled(self: Pin<&mut BackendWrapper>) -> bool;
 
         #[qinvokable]
+        pub fn dummy_wait_controlled_mode(self: Pin<&mut BackendWrapper>);
+
+        #[qinvokable]
+        pub fn sync_update(self: Pin<&mut BackendWrapper>);
+
+        #[qinvokable]
         pub fn dummy_request_controlled_frames(self: Pin<&mut BackendWrapper>, _n: i32);
 
         #[qinvokable]

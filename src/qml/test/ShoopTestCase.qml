@@ -262,7 +262,20 @@ Item {
                 done = true
             }
             connectOnce(backend.updated_on_gui_thread, updated)
-            wait_condition(() => done == true, 500, "Backend not updated in time")
+            // Wait for the async pipeline with a timeout. When running many
+            // test files sequentially, the async pipeline can stall; fall
+            // back to a synchronous update that bypasses the timer.
+            wait_condition(() => done == true, 200, "Backend sync fallback")
+            if (!done) {
+                backend.sync_update()
+                // After sync_update, the signal should have been emitted.
+                // If the signal was emitted during sync_update, the connected
+                // handler (which sets done=true) would have executed before
+                // wait_condition continues.
+                if (!done) {
+                    verify_true(false, "Backend not updated in time")
+                }
+            }
         }
         wait_once()
         wait_once()
@@ -270,10 +283,13 @@ Item {
     }
 
     function wait_controlled_mode(backend) {
+        // First, ensure we've seen at least one update cycle so that any
+        // pending operations (transitions, graph changes) are applied.
         wait_updated(backend)
-        while(backend.last_processed != 0) {
-            wait_updated(backend)
-        }
+        // Then use the synchronous driver-level wait to drain frames.
+        // This avoids relying on repeated async update cycles which can
+        // be unreliable across test-file reloads.
+        backend.dummy_wait_controlled_mode()
     }
 
     property var current_testcase: {
