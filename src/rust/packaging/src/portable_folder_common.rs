@@ -92,7 +92,12 @@ pub fn populate_portable_folder(
     // resolution on macOS.
     if let Some(prefixes) = std::env::var_os("CMAKE_PREFIX_PATH") {
         for prefix in std::env::split_paths(&prefixes) {
-            for relative in ["lib", "bin"] {
+            let runtime_paths = if cfg!(target_os = "windows") {
+                ["debug/bin", "bin", "debug/lib", "lib"]
+            } else {
+                ["lib", "bin", "debug/lib", "debug/bin"]
+            };
+            for relative in runtime_paths {
                 let path = prefix.join(relative);
                 if path.is_dir() {
                     debug!("--> extra vcpkg runtime search path: {:?}", path);

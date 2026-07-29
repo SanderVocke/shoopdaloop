@@ -148,8 +148,32 @@ runs:
       upload_release_assets: ${{ inputs.upload_release_assets }}
       release_upload_assets_url: ${{ env.release_upload_assets_url }}
       sentry_auth_token: ${{ inputs.sentry_auth_token }}
-  - uses: ./.github/actions/checkpoint
-    if: always()
+  - name: Verify portable folder executable
+    if: always() && inputs.package_kind == 'portable_folder'
+    shell: wrap-shell {0}
+    run: |
+      echo "Verifying portable-folder executable without build-environment dependencies..."
+      if [ "${{ runner.os }}" = "Windows" ]; then
+        portable_exe="$PORTABLE_DIR/shoopdaloop_exe.exe"
+      else
+        portable_exe="$PORTABLE_DIR/shoopdaloop_exe"
+      fi
+      if [ ! -f "$portable_exe" ]; then
+        echo "Portable-folder executable not found: $portable_exe" >&2
+        exit 1
+      fi
+      if [ "${{ runner.os }}" = "Windows" ]; then
+        # wrap-shell runs Bash (via gha_bash_with_custom_fail.sh), but Windows
+        # uses PATH to locate the executable and its DLLs. Keep system tools
+        # available while removing the build/vcpkg paths explicitly.
+        portable_path="$PORTABLE_DIR"
+        build_path="$(pwd)/build/vcpkg_installed/x64-windows/bin"
+        debug_build_path="$(pwd)/build/vcpkg_installed/x64-windows/debug/bin"
+        clean_path=$(printf '%s' "$PATH" | tr ';' '\n' | grep -Fiv "$build_path" | grep -Fiv "$debug_build_path" | paste -sd ';' -)
+        PATH="$portable_path;$clean_path" CMAKE_PREFIX_PATH= VCPKG_ROOT= "$portable_exe" --help >/dev/null
+      else
+        env -u LD_LIBRARY_PATH -u CMAKE_PREFIX_PATH -u VCPKG_ROOT "$portable_exe" --help >/dev/null
+      fi
   - shell: wrap-shell {0}
     if: always() && inputs.second_package_kind
     run: |
