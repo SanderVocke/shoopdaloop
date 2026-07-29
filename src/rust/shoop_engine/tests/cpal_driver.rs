@@ -9,7 +9,10 @@
 
 #![cfg(feature = "cpal")]
 
-mod mock_host;
+// Re-export the library's cpal_mock so call sites don't change.
+mod mock_host {
+    pub use shoop_engine::cpal_mock::*;
+}
 
 use mock_host::MockHost;
 use shoop_engine::cpal_driver::{start_duplex_on_host, start_output_on_host, CpalError};

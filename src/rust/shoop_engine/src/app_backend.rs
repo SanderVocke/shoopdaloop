@@ -205,7 +205,7 @@ struct CpalMidiOutputEndpoint {
 }
 
 struct CpalBackend {
-    _output: cpal::Stream,
+    _output: Option<cpal::Stream>,
     _input: Option<cpal::Stream>,
     sample_rate: u32,
     configured_buffer_size: u32,
@@ -746,7 +746,7 @@ impl CpalBackend {
         output_stream.play()?;
 
         Ok(Self {
-            _output: output_stream,
+            _output: Some(output_stream),
             _input: input_stream,
             sample_rate,
             configured_buffer_size: settings.buffer_size,
@@ -757,6 +757,60 @@ impl CpalBackend {
             capture_names,
             midi_inputs: midi_inputs_ret,
             midi_outputs: midi_outputs_ret,
+            decoupled_midi_ports,
+            last_processed,
+            xruns,
+        })
+    }
+
+    /// Start a CPAL backend against the software mock host rather than a real
+    /// OS audio device, so the CPAL virtual port routing can be exercised on
+    /// headless CI where ALSA / CoreAudio / WASAPI has no usable device.
+    fn start_with_mock(
+        shared: Weak<SharedSession>,
+        _settings: &CpalMidiAudioDriverSettings,
+        _external: Arc<Mutex<engine::DummyExternalConnections>>,
+        decoupled_midi_ports: Arc<Mutex<Vec<CpalDecoupledMidiPort>>>,
+        _maybe_process_callback: Option<ProcessCallback>,
+    ) -> Result<Self> {
+        use crate::cpal_mock::MockHost;
+        use cpal::traits::{DeviceTrait, HostTrait};
+
+        let host = MockHost::new();
+        let output_device = host.default_output_device().expect("mock output device");
+        let output_config = output_device.default_output_config()?;
+        let output_channels = output_config.channels() as usize;
+        let sample_rate = output_config.sample_rate().0;
+        let output_device_name =
+            output_device.name().unwrap_or_else(|_| "mock-output".to_string());
+        let playback_names: Vec<String> = (0..output_channels)
+            .map(|c| format!("cpal:{output_device_name}:playback_{}", c + 1))
+            .collect();
+
+        let input_device = host.default_input_device().expect("mock input device");
+        let input_config = input_device.default_input_config()?;
+        let input_channels = input_config.channels() as usize;
+        let input_device_name =
+            input_device.name().unwrap_or_else(|_| "mock-input".to_string());
+        let capture_names: Vec<String> = (0..input_channels)
+            .map(|c| format!("cpal:{input_device_name}:capture_{}", c + 1))
+            .collect();
+
+        let last_processed = Arc::new(AtomicU32::new(0));
+        let xruns = Arc::new(AtomicU32::new(0));
+
+        Ok(Self {
+            _output: None,
+            _input: None,
+            input_ring: None,
+            input_channels,
+            sample_rate,
+            configured_buffer_size: 0,
+            output_channels,
+            playback_names,
+            capture_names,
+            midi_inputs: Arc::new(Mutex::new(vec![])),
+            midi_outputs: Arc::new(Mutex::new(vec![])),
             decoupled_midi_ports,
             last_processed,
             xruns,
@@ -1063,7 +1117,7 @@ type ProcessCallback = unsafe extern "C" fn();
 fn driver_uses_dummy_processing(driver_type: AudioDriverType) -> bool {
     matches!(
         driver_type,
-        AudioDriverType::Dummy | AudioDriverType::JackTest
+        AudioDriverType::Dummy | AudioDriverType::JackTest | AudioDriverType::CpalTest
     )
 }
 struct DriverInner {
@@ -1211,20 +1265,30 @@ impl AudioDriver {
     }
     fn activate_cpal(&self, shared: &Arc<SharedSession>) -> Result<()> {
         let mut i = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        if i.driver_type != AudioDriverType::Cpal || i.cpal.is_some() {
+        if i.driver_type != AudioDriverType::Cpal && i.driver_type != AudioDriverType::CpalTest || i.cpal.is_some() {
             return Ok(());
         }
         let settings = i
             .cpal_settings
             .clone()
             .ok_or_else(|| anyhow!("CPAL settings missing"))?;
-        let backend = CpalBackend::start(
-            Arc::downgrade(shared),
-            &settings,
-            i.external.clone(),
-            i.cpal_decoupled_midi_ports.clone(),
-            i.maybe_process_callback,
-        )?;
+        let backend = if i.driver_type == AudioDriverType::CpalTest {
+            CpalBackend::start_with_mock(
+                Arc::downgrade(shared),
+                &settings,
+                i.external.clone(),
+                i.cpal_decoupled_midi_ports.clone(),
+                i.maybe_process_callback,
+            )?
+        } else {
+            CpalBackend::start(
+                Arc::downgrade(shared),
+                &settings,
+                i.external.clone(),
+                i.cpal_decoupled_midi_ports.clone(),
+                i.maybe_process_callback,
+            )?
+        };
         i.settings.sample_rate = backend.sample_rate;
         i.settings.buffer_size = backend.configured_buffer_size;
         i.cpal = Some(Arc::new(Mutex::new(backend)));

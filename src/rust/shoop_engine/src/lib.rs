@@ -15,6 +15,8 @@ pub mod chunked_samples;
 pub mod control;
 #[cfg(feature = "cpal")]
 pub mod cpal_driver;
+#[cfg(feature = "cpal")]
+pub mod cpal_mock;
 pub mod decoupled_midi_port;
 pub mod driver;
 pub mod dummy_driver;

@@ -27,6 +27,7 @@ pub enum AudioDriverType {
     JackTest = 1,
     Dummy = 2,
     Cpal = 3,
+    CpalTest = 4,
 }
 
 #[derive(Clone, Debug)]
@@ -54,6 +55,7 @@ pub fn driver_type_supported(driver_type: AudioDriverType) -> bool {
             | AudioDriverType::Jack
             | AudioDriverType::JackTest
             | AudioDriverType::Cpal
+            | AudioDriverType::CpalTest
     )
 }
 

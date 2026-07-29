@@ -134,11 +134,6 @@ runs:
     run: |
       mkdir -p crashdumps
       echo "SHOOP_CRASHDUMP_DIR=$(pwd)/crashdumps" | tee -a $GITHUB_ENV
-  - name: Install Python modules
-    if: always()
-    shell: wrap-shell {0}
-    run: |
-      PIP_BREAK_SYSTEM_PACKAGES=1 ${{ env.PIP }} install pipx
   - name: Install cargo-llvm-cov for coverage tooling
     if: always() && inputs.coverage == 'true'
     shell: bash

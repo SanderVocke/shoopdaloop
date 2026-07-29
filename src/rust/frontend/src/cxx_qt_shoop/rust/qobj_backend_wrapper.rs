@@ -80,7 +80,7 @@ fn audio_driver_settings_from_qvariantmap(
                 buffer_size,
             });
         }
-        AudioDriverType::Cpal => {
+        AudioDriverType::Cpal | AudioDriverType::CpalTest => {
             let client_name = map
                 .get(&QString::from("client_name_hint"))
                 .ok_or_else(|| anyhow!("No client name setting for driver"))?

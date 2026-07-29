@@ -7,6 +7,7 @@ pub fn get_audio_driver_name(driver_type: AudioDriverType) -> &'static str {
         AudioDriverType::Jack => "jack",
         AudioDriverType::JackTest => "jack_test",
         AudioDriverType::Cpal => "cpal",
+        AudioDriverType::CpalTest => "cpal_test",
     }
 }
 
@@ -16,6 +17,7 @@ pub fn get_audio_driver_from_name(driver_name: &str) -> AudioDriverType {
         "jack" => AudioDriverType::Jack,
         "jack_test" => AudioDriverType::JackTest,
         "cpal" => AudioDriverType::Cpal,
+        "cpal_test" => AudioDriverType::CpalTest,
         _ => panic!("Unknown audio driver name: {}", driver_name),
     }
 }
@@ -25,4 +27,5 @@ pub fn all_audio_driver_types() -> impl Iterator<Item = AudioDriverType> {
         .chain(once(AudioDriverType::Jack))
         .chain(once(AudioDriverType::JackTest))
         .chain(once(AudioDriverType::Cpal))
+        .chain(once(AudioDriverType::CpalTest))
 }

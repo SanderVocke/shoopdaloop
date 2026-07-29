@@ -8,7 +8,7 @@ ShoopTestFile {
         id: backend
         update_interval_ms: 10
         client_name_hint: 'shoop-cpal-qml-test'
-        backend_type: ShoopRustConstants.AudioDriverType.Cpal
+        backend_type: ShoopRustConstants.AudioDriverType.CpalTest
         driver_setting_overrides: ({
             cpal_output_device: 'default',
             cpal_input_device: 'none',
