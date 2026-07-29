@@ -109,7 +109,16 @@ pub fn start_output<F>(
 where
     F: FnOnce(&mut Session, &[usize]) -> Result<(), CpalError> + Send + 'static,
 {
-    start_output_on_host(cpal::default_host(), session, command_queue_capacity, setup)
+    let host = cpal::default_host();
+    let device = host.default_output_device().ok_or(CpalError::NoOutputDevice)?;
+    let config = device.default_output_config()?;
+    // No hook: the common case, where nothing feeds the engine from inside the callback.
+    let (driver, ()) =
+        build_output_driver(device, config, session, command_queue_capacity, |s, ports| {
+            setup(s, ports)?;
+            Ok(((), Box::new(|_: &mut Session, _: usize| {}) as CycleHook))
+        })?;
+    Ok(driver)
 }
 
 /// Starts an output stream on a caller-supplied host.
@@ -128,13 +137,11 @@ where
     <H::Device as DeviceTrait>::Stream: Send + 'static,
     F: FnOnce(&mut Session, &[usize]) -> Result<(), CpalError>,
 {
-    // No hook: the common case, where nothing feeds the engine from inside the callback.
-    let (driver, ()) =
-        start_output_with_hook_on_host(host, session, command_queue_capacity, |s, ports| {
-            setup(s, ports)?;
-            Ok(((), Box::new(|_: &mut Session, _: usize| {}) as CycleHook))
-        })?;
-    Ok(driver)
+    start_output_on_device(host, session, command_queue_capacity, None, |s, ports| {
+        setup(s, ports)?;
+        Ok(((), Box::new(|_: &mut Session, _: usize| {}) as CycleHook))
+    })
+    .map(|(driver, ())| driver)
 }
 
 /// As [`start_output`], but `setup` also builds something that runs each cycle before the
@@ -157,7 +164,10 @@ pub fn start_output_with_hook<F, T>(
 where
     F: FnOnce(&mut Session, &[usize]) -> Result<(T, CycleHook), CpalError> + Send + 'static,
 {
-    start_output_with_hook_on_host(cpal::default_host(), session, command_queue_capacity, setup)
+    let host = cpal::default_host();
+    let device = host.default_output_device().ok_or(CpalError::NoOutputDevice)?;
+    let config = device.default_output_config()?;
+    build_output_driver(device, config, session, command_queue_capacity, setup)
 }
 
 /// As [`start_output_with_hook`], but on a caller-supplied host.
@@ -205,6 +215,26 @@ where
     }
     .ok_or(CpalError::NoOutputDevice)?;
     let config = device.default_output_config()?;
+    build_output_driver(device, config, session, command_queue_capacity, setup)
+}
+
+/// Builds the engine and output stream from a device and its config.
+///
+/// The host has already been used to select the device; this function does not touch the
+/// host, so a non-`Send` host (cpal on macOS stores a `Box<dyn FnMut()>` for CoreAudio
+/// property listeners) can be dropped before the audio thread starts.
+fn build_output_driver<D, F, T>(
+    device: D,
+    config: cpal::SupportedStreamConfig,
+    session: Session,
+    command_queue_capacity: usize,
+    setup: F,
+) -> Result<(CpalDriver, T), CpalError>
+where
+    D: DeviceTrait + 'static,
+    D::Stream: Send + 'static,
+    F: FnOnce(&mut Session, &[usize]) -> Result<(T, CycleHook), CpalError>,
+{
     let sample_rate = config.sample_rate().0;
     let n_channels = config.channels();
 
@@ -359,8 +389,20 @@ pub fn start_duplex<F>(
 where
     F: FnOnce(&mut Session, &[usize], &[usize]) -> Result<(), CpalError> + Send + 'static,
 {
-    start_duplex_on_host(
-        cpal::default_host(),
+    let host = cpal::default_host();
+    let out_device = host
+        .default_output_device()
+        .ok_or(CpalError::NoOutputDevice)?;
+    let in_device = host
+        .default_input_device()
+        .ok_or(CpalError::NoInputDevice)?;
+    let out_config = out_device.default_output_config()?;
+    let in_config = in_device.default_input_config()?;
+    build_duplex_driver(
+        out_device,
+        out_config,
+        in_device,
+        in_config,
         session,
         command_queue_capacity,
         ring_frames,
@@ -388,9 +430,42 @@ where
     let in_device = host
         .default_input_device()
         .ok_or(CpalError::NoInputDevice)?;
-
     let out_config = out_device.default_output_config()?;
     let in_config = in_device.default_input_config()?;
+    build_duplex_driver(
+        out_device,
+        out_config,
+        in_device,
+        in_config,
+        session,
+        command_queue_capacity,
+        ring_frames,
+        setup,
+    )
+}
+
+/// Builds engine and duplex streams from already-resolved devices and configs.
+///
+/// The host has already been used to select the devices; this function does not touch
+/// the host, so a non-`Send` host (cpal on macOS stores a `Box<dyn FnMut()>` for
+/// CoreAudio property listeners) can be dropped before the audio threads start.
+fn build_duplex_driver<Dout, Din, F>(
+    out_device: Dout,
+    out_config: cpal::SupportedStreamConfig,
+    in_device: Din,
+    in_config: cpal::SupportedStreamConfig,
+    session: Session,
+    command_queue_capacity: usize,
+    ring_frames: usize,
+    setup: F,
+) -> Result<CpalDriver, CpalError>
+where
+    Dout: DeviceTrait + 'static,
+    Dout::Stream: Send + 'static,
+    Din: DeviceTrait + 'static,
+    Din::Stream: Send + 'static,
+    F: FnOnce(&mut Session, &[usize], &[usize]) -> Result<(), CpalError>,
+{
     let sample_rate = out_config.sample_rate().0;
     let n_out = out_config.channels();
     let n_in = in_config.channels();
