@@ -154,9 +154,9 @@ runs:
     run: |
       echo "Verifying portable-folder executable without build-environment dependencies..."
       if [ "${{ runner.os }}" = "Windows" ]; then
-        portable_exe="$PORTABLE_DIR/shoopdaloop_exe.exe"
+        portable_exe="$PORTABLE_DIR/shoopdaloop.bat"
       else
-        portable_exe="$PORTABLE_DIR/shoopdaloop_exe"
+        portable_exe="$PORTABLE_DIR/shoopdaloop"
       fi
       if [ ! -f "$portable_exe" ]; then
         echo "Portable-folder executable not found: $portable_exe" >&2
