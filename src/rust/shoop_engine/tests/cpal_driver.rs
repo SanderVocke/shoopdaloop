@@ -1,15 +1,20 @@
-//! Runs the cpal driver against a real audio device.
+//! Runs the cpal driver against a software host that fires its callbacks from a regular
+//! thread, so the audio path is exercised end-to-end without an ALSA / CoreAudio /
+//! WASAPI device. The mock lives in `tests/mock_host`; without it these tests would
+//! skip (or fail, when ALSA exposes a stub default that cannot be configured) on the
+//! fresh headless image CI uses.
 //!
-//! Only test in this suite that touches hardware, so it skips rather than fails when
-//! there is no output device -- headless CI has none, and a skipped test there is more
-//! useful than a red one.
-//!
-//! It plays silence on purpose: what is being checked is that the device's callback
-//! drives the engine, not what comes out of the speakers.
+//! What is being checked is that the device's callback drives the engine, not what
+//! comes out of the speakers, so the data the mock hands the callback is silence.
 
 #![cfg(feature = "cpal")]
 
-use shoop_engine::cpal_driver::{start_output, CpalError};
+mod mock_host;
+
+use mock_host::MockHost;
+use shoop_engine::cpal_driver::{
+    start_duplex_on_host, start_output_on_host, CpalError,
+};
 use shoop_engine::session::Session;
 use std::sync::atomic::Ordering;
 
@@ -18,17 +23,11 @@ fn the_device_callback_drives_the_engine() {
     let mut s = Session::default();
     s.apply_graph_changes().expect("schedule");
 
-    let driver = match start_output(s, 64, |_s, ports| {
+    let driver = start_output_on_host(MockHost::new(), s, 64, |_s, ports| {
         assert!(!ports.is_empty(), "a port per device channel");
         Ok(())
-    }) {
-        Ok(d) => d,
-        Err(CpalError::NoOutputDevice) => {
-            eprintln!("no output device; skipping");
-            return;
-        }
-        Err(e) => panic!("could not start the cpal driver: {e}"),
-    };
+    })
+    .expect("mock host should always start");
 
     assert!(driver.n_channels() > 0);
     // Through the trait, so the trait is exercised by a real driver rather than only by
@@ -41,7 +40,8 @@ fn the_device_callback_drives_the_engine() {
         eprintln!("driver: {} at {} Hz", d.client_name(), d.sample_rate());
     }
 
-    // Long enough for a device at any sane buffer size to have called back.
+    // Long enough for a device at any sane buffer size to have called back. The mock
+    // runs at the configured sample rate, so this is more than enough.
     let stats = {
         let mut d = driver;
         let stats = d.handle().stats().clone();
@@ -70,7 +70,7 @@ fn a_playing_loop_reaches_the_device_ports() {
     let mut s = Session::default();
     s.apply_graph_changes().expect("schedule");
 
-    let mut driver = match start_output(s, 64, |s, ports| {
+    let mut driver = start_output_on_host(MockHost::new(), s, 64, |s, ports| {
         let l = s.create_loop();
         let c = s
             .add_audio_channel(l, 1024, ChannelMode::Direct)
@@ -85,14 +85,8 @@ fn a_playing_loop_reaches_the_device_ports() {
         s.loop_mut(l).expect("loop").set_length(1024);
         s.set_loop_mode(l, LoopMode::Playing).expect("mode");
         Ok(())
-    }) {
-        Ok(d) => d,
-        Err(CpalError::NoOutputDevice) => {
-            eprintln!("no output device; skipping");
-            return;
-        }
-        Err(e) => panic!("could not start the cpal driver: {e}"),
-    };
+    })
+    .expect("mock host should always start");
 
     std::thread::sleep(std::time::Duration::from_millis(300));
 
@@ -108,35 +102,25 @@ fn a_playing_loop_reaches_the_device_ports() {
     );
 }
 
-/// Duplex against real devices: the input stream feeds a ring, the output stream drains
+/// Duplex against the mock: the input stream feeds a ring, the output stream drains
 /// it and drives the engine.
 ///
-/// Skips when either device is missing, and tolerates the input stream being refused --
-/// on macOS, microphone access is a permission the process may not have, and that is
-/// not a fault in this code.
+/// The production code's match arms (`CpalError::NoOutputDevice`,
+/// `CpalError::NoInputDevice`, `CpalError::Build`) were written for real hardware,
+/// where a missing input is a permission or a missing cable. The mock always has
+/// both, so this test exercises the happy path -- which is the path CI never
+/// reached before the mock existed.
 #[test]
 fn duplex_bridges_the_two_streams() {
-    use shoop_engine::cpal_driver::start_duplex;
-
     let mut s = Session::default();
     s.apply_graph_changes().expect("schedule");
 
-    let mut driver = match start_duplex(s, 64, 4096, |_s, out_ports, in_ports| {
+    let mut driver = start_duplex_on_host(MockHost::new(), s, 64, 4096, |_s, out_ports, in_ports| {
         assert!(!out_ports.is_empty());
         assert!(!in_ports.is_empty());
         Ok(())
-    }) {
-        Ok(d) => d,
-        Err(CpalError::NoOutputDevice) | Err(CpalError::NoInputDevice) => {
-            eprintln!("no duplex pair available; skipping");
-            return;
-        }
-        Err(CpalError::Build(e)) => {
-            eprintln!("input stream refused ({e}); skipping");
-            return;
-        }
-        Err(e) => panic!("could not start duplex: {e}"),
-    };
+    })
+    .expect("mock host should always start");
 
     assert!(driver.n_capture_channels() > 0);
 
@@ -159,4 +143,22 @@ fn duplex_bridges_the_two_streams() {
         underruns < cycles,
         "every cycle underran: the capture ring is never filling"
     );
+}
+
+/// Bonus test that was previously impossible: the production code's
+/// `CpalError::NoOutputDevice` path. Driving a host that has no default device through
+/// the same code path that previously made CI panic is the whole reason the mock
+/// interface exists.
+#[test]
+fn a_host_with_no_output_device_returns_no_output_device() {
+    let host = mock_host::MockHostNoOutput::with_default_input();
+    let mut s = Session::default();
+    s.apply_graph_changes().expect("schedule");
+
+    let result = start_output_on_host(host, s, 64, |_s, _ports| Ok(()));
+    match result {
+        Err(CpalError::NoOutputDevice) => {}
+        Err(other) => panic!("expected NoOutputDevice, got: {other}"),
+        Ok(_) => panic!("expected NoOutputDevice, got Ok"),
+    }
 }

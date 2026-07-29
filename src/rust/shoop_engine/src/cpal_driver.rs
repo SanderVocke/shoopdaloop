@@ -23,6 +23,11 @@
 //! Interleaving is the other difference from JACK. `cpal` hands over one interleaved
 //! buffer for all channels, where JACK gives a separate buffer per port, so this
 //! de-interleaves into the session's ports and interleaves the result back.
+//!
+//! The driver is generic over a [`HostTrait`] so the same code path drives a real OS
+//! audio backend in production and a software host in tests -- the latter lets the
+//! headless CI run the audio-thread tests without an ALSA device or a PulseAudio
+//! server, which on a fresh Debian image is exactly the case that fails today.
 
 use crate::driver::Driver;
 use crate::engine::{EngineHandle, Stats};
@@ -53,10 +58,13 @@ pub enum CpalError {
 }
 
 /// A running stream pair with the engine on the output callback's thread.
+///
+/// The streams are held as boxed trait objects so the same driver works for any
+/// [`HostTrait`] implementation: the platform streams on a real machine, a software
+/// host in tests. Dropping the boxes stops the audio threads.
 pub struct CpalDriver {
-    /// Dropping these stops the streams, so they are held even though nothing reads them.
-    _output: cpal::Stream,
-    _input: Option<cpal::Stream>,
+    _output: Box<dyn StreamTrait + Send>,
+    _input: Option<Box<dyn StreamTrait + Send>>,
     handle: EngineHandle,
     sample_rate: u32,
     /// Frames in the last cycle. `cpal` does not commit to a buffer size, so this is
@@ -88,7 +96,8 @@ impl Driver for CpalDriver {
     }
 }
 
-/// Starts an output stream, registering one session port per device channel.
+/// Starts an output stream on the OS default host, registering one session port per
+/// device channel.
 ///
 /// `setup` runs before the engine is handed over, with the port indices that were
 /// registered, so a caller can wire its graph to them.
@@ -100,11 +109,31 @@ pub fn start_output<F>(
 where
     F: FnOnce(&mut Session, &[usize]) -> Result<(), CpalError>,
 {
+    start_output_on_host(cpal::default_host(), session, command_queue_capacity, setup)
+}
+
+/// Starts an output stream on a caller-supplied host.
+///
+/// Tests use this with a software host that fires its callbacks from a regular thread,
+/// so the audio path is exercised without a real ALSA/CoreAudio/WASAPI device.
+pub fn start_output_on_host<H, F>(
+    host: H,
+    session: Session,
+    command_queue_capacity: usize,
+    setup: F,
+) -> Result<CpalDriver, CpalError>
+where
+    H: HostTrait,
+    H::Device: 'static,
+    <H::Device as DeviceTrait>::Stream: Send + 'static,
+    F: FnOnce(&mut Session, &[usize]) -> Result<(), CpalError>,
+{
     // No hook: the common case, where nothing feeds the engine from inside the callback.
-    let (driver, ()) = start_output_with_hook(session, command_queue_capacity, |s, ports| {
-        setup(s, ports)?;
-        Ok(((), Box::new(|_: &mut Session, _: usize| {}) as CycleHook))
-    })?;
+    let (driver, ()) =
+        start_output_with_hook_on_host(host, session, command_queue_capacity, |s, ports| {
+            setup(s, ports)?;
+            Ok(((), Box::new(|_: &mut Session, _: usize| {}) as CycleHook))
+        })?;
     Ok(driver)
 }
 
@@ -128,23 +157,42 @@ pub fn start_output_with_hook<F, T>(
 where
     F: FnOnce(&mut Session, &[usize]) -> Result<(T, CycleHook), CpalError>,
 {
-    start_output_on_device(session, command_queue_capacity, None, setup)
+    start_output_with_hook_on_host(cpal::default_host(), session, command_queue_capacity, setup)
 }
 
-/// As [`start_output_with_hook`], but on a named device.
+/// As [`start_output_with_hook`], but on a caller-supplied host.
+pub fn start_output_with_hook_on_host<H, F, T>(
+    host: H,
+    session: Session,
+    command_queue_capacity: usize,
+    setup: F,
+) -> Result<(CpalDriver, T), CpalError>
+where
+    H: HostTrait,
+    H::Device: 'static,
+    <H::Device as DeviceTrait>::Stream: Send + 'static,
+    F: FnOnce(&mut Session, &[usize]) -> Result<(T, CycleHook), CpalError>,
+{
+    start_output_on_device(host, session, command_queue_capacity, None, setup)
+}
+
+/// As [`start_output_with_hook_on_host`], but on a named device.
 ///
 /// An unknown name falls back to the default, so a stored choice for hardware that has been
 /// unplugged does not stop the application from starting.
-pub fn start_output_on_device<F, T>(
+pub fn start_output_on_device<H, F, T>(
+    host: H,
     session: Session,
     command_queue_capacity: usize,
     preferred_device: Option<String>,
     setup: F,
 ) -> Result<(CpalDriver, T), CpalError>
 where
+    H: HostTrait,
+    H::Device: 'static,
+    <H::Device as DeviceTrait>::Stream: Send + 'static,
     F: FnOnce(&mut Session, &[usize]) -> Result<(T, CycleHook), CpalError>,
 {
-    let host = cpal::default_host();
     let device = match preferred_device.as_deref() {
         // Chosen by name, falling back to the default rather than failing: a stored choice
         // for a device that has since been unplugged should not stop the application.
@@ -238,7 +286,7 @@ where
 
     Ok((
         CpalDriver {
-            _output: stream,
+            _output: Box::new(stream),
             _input: None,
             handle,
             sample_rate,
@@ -272,7 +320,7 @@ pub fn default_output_device_name() -> Option<String> {
 }
 
 /// A device's name, or a placeholder when the backend will not give one.
-fn device_label(device: &cpal::Device) -> String {
+fn device_label<D: DeviceTrait>(device: &D) -> String {
     device.name().unwrap_or_else(|_| "cpal".to_string())
 }
 
@@ -311,7 +359,29 @@ pub fn start_duplex<F>(
 where
     F: FnOnce(&mut Session, &[usize], &[usize]) -> Result<(), CpalError>,
 {
-    let host = cpal::default_host();
+    start_duplex_on_host(
+        cpal::default_host(),
+        session,
+        command_queue_capacity,
+        ring_frames,
+        setup,
+    )
+}
+
+/// As [`start_duplex`], but on a caller-supplied host.
+pub fn start_duplex_on_host<H, F>(
+    host: H,
+    session: Session,
+    command_queue_capacity: usize,
+    ring_frames: usize,
+    setup: F,
+) -> Result<CpalDriver, CpalError>
+where
+    H: HostTrait,
+    H::Device: 'static,
+    <H::Device as DeviceTrait>::Stream: Send + 'static,
+    F: FnOnce(&mut Session, &[usize], &[usize]) -> Result<(), CpalError>,
+{
     let out_device = host
         .default_output_device()
         .ok_or(CpalError::NoOutputDevice)?;
@@ -464,8 +534,8 @@ where
     output.play()?;
 
     Ok(CpalDriver {
-        _output: output,
-        _input: Some(input),
+        _output: Box::new(output),
+        _input: Some(Box::new(input)),
         handle,
         sample_rate,
         buffer_size,
