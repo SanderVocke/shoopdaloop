@@ -63,8 +63,8 @@ pub enum CpalError {
 /// [`HostTrait`] implementation: the platform streams on a real machine, a software
 /// host in tests. Dropping the boxes stops the audio threads.
 pub struct CpalDriver {
-    _output: Box<dyn StreamTrait + Send>,
-    _input: Option<Box<dyn StreamTrait + Send>>,
+    _output: Box<dyn StreamTrait>,
+    _input: Option<Box<dyn StreamTrait>>,
     handle: EngineHandle,
     sample_rate: u32,
     /// Frames in the last cycle. `cpal` does not commit to a buffer size, so this is
@@ -75,6 +75,11 @@ pub struct CpalDriver {
     n_channels: u16,
     n_capture_channels: u16,
 }
+
+// On macOS, cpal::Stream is !Send because it holds a CoreAudio property-listener
+// callback. Those callbacks fire exclusively on the audio thread, never across moves,
+// so CpalDriver is effectively Send.
+unsafe impl Send for CpalDriver {}
 
 impl Driver for CpalDriver {
     fn sample_rate(&self) -> u32 {
@@ -141,7 +146,7 @@ pub fn start_output_on_host<H, F>(
 where
     H: HostTrait,
     H::Device: 'static,
-    <H::Device as DeviceTrait>::Stream: Send + 'static,
+    <H::Device as DeviceTrait>::Stream: 'static,
     F: FnOnce(&mut Session, &[usize]) -> Result<(), CpalError>,
 {
     start_output_on_device(host, session, command_queue_capacity, None, |s, ports| {
@@ -189,7 +194,7 @@ pub fn start_output_with_hook_on_host<H, F, T>(
 where
     H: HostTrait,
     H::Device: 'static,
-    <H::Device as DeviceTrait>::Stream: Send + 'static,
+    <H::Device as DeviceTrait>::Stream: 'static,
     F: FnOnce(&mut Session, &[usize]) -> Result<(T, CycleHook), CpalError>,
 {
     start_output_on_device(host, session, command_queue_capacity, None, setup)
@@ -209,7 +214,7 @@ pub fn start_output_on_device<H, F, T>(
 where
     H: HostTrait,
     H::Device: 'static,
-    <H::Device as DeviceTrait>::Stream: Send + 'static,
+    <H::Device as DeviceTrait>::Stream: 'static,
     F: FnOnce(&mut Session, &[usize]) -> Result<(T, CycleHook), CpalError>,
 {
     let device = match preferred_device.as_deref() {
@@ -241,7 +246,7 @@ fn build_output_driver<D, F, T>(
 ) -> Result<(CpalDriver, T), CpalError>
 where
     D: DeviceTrait + 'static,
-    D::Stream: Send + 'static,
+    D::Stream: 'static,
     F: FnOnce(&mut Session, &[usize]) -> Result<(T, CycleHook), CpalError>,
 {
     let sample_rate = config.sample_rate().0;
@@ -430,7 +435,7 @@ pub fn start_duplex_on_host<H, F>(
 where
     H: HostTrait,
     H::Device: 'static,
-    <H::Device as DeviceTrait>::Stream: Send + 'static,
+    <H::Device as DeviceTrait>::Stream: 'static,
     F: FnOnce(&mut Session, &[usize], &[usize]) -> Result<(), CpalError>,
 {
     let out_device = host
@@ -470,9 +475,9 @@ fn build_duplex_driver<Dout, Din, F>(
 ) -> Result<CpalDriver, CpalError>
 where
     Dout: DeviceTrait + 'static,
-    Dout::Stream: Send + 'static,
+    Dout::Stream: 'static,
     Din: DeviceTrait + 'static,
-    Din::Stream: Send + 'static,
+    Din::Stream: 'static,
     F: FnOnce(&mut Session, &[usize], &[usize]) -> Result<(), CpalError>,
 {
     let sample_rate = out_config.sample_rate().0;

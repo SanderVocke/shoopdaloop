@@ -1176,7 +1176,10 @@ fn process_dummy_driver_iteration(inner: &Arc<Mutex<DriverInner>>) {
         }
     }
     if n == 0 {
-        inner.lock().unwrap_or_else(|e| e.into_inner()).last_processed = 0;
+        inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .last_processed = 0;
         return;
     }
     if let Some(shared) = session {
