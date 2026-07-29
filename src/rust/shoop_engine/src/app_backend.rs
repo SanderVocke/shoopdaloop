@@ -1104,7 +1104,6 @@ fn process_dummy_driver_iteration(inner: &Arc<Mutex<DriverInner>>) {
         if i.controlled {
             i.requested -= n;
         }
-        i.last_processed = n;
         i.process_generation = i.process_generation.wrapping_add(1);
         (
             i.session.as_ref().and_then(|w| w.upgrade()),
@@ -1127,7 +1126,19 @@ fn process_dummy_driver_iteration(inner: &Arc<Mutex<DriverInner>>) {
         let mut s = shared.lock();
         s.set_sample_rate(sample_rate);
         s.set_buffer_size(buffer_size);
-        let _ = crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| s.process(n as usize));
+        // Channel connections and other internal routing changes bump graph_request_id
+        // from the GUI thread, but the dummy iteration is the only path that calls
+        // session.process().  Unless we apply those pending changes here, process()
+        // returns Err(GraphOutOfDate) and the cycle is silently dropped.  The
+        // original C++ backend handled this by calling PROC_handle_command_queue()
+        // at the top of every iteration (and by running graph recalculation on a
+        // separate thread that the process loop merely notified).
+        s.apply_graph_changes().ok();
+        s.process(n as usize).ok();
+        {
+            let mut i = inner.lock().unwrap_or_else(|e| e.into_inner());
+            i.last_processed = n;
+        }
     }
 }
 

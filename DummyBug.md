@@ -262,3 +262,231 @@ backend.last_processed)` in the QML test helper and re-run on CI. If
 `last_processed` is non-zero, the dummy thread is running and the
 problem is in the update-publish path. If it is zero, the thread is
 either not running or being preempted.
+
+---
+
+## Follow-up investigation (vs. C++ baseline)
+
+### Old C++ `DummyAudioMidiDriver` (working) vs new Rust dummy driver
+
+Reviewed `../shoopdaloop/src/backend/internal/DummyAudioMidiDriver.cpp` (the
+previous fully working implementation).
+
+**Key behavioural differences:**
+
+1. **`controlled_mode_request_samples` queued onto the process thread.**
+   The C++ version did not directly increment the requested counter from
+   the caller's thread; it used `exec_process_thread_command([=]() {
+   m_controlled_mode_samples_to_process += samples; })`. This enqueues
+   the increment onto the *process thread's command queue*, which the
+   dummy process thread drained on every iteration via
+   `PROC_handle_command_queue()` immediately before reading
+   `m_controlled_mode_samples_to_process`. The end result: the next
+   iteration of the process loop always saw the increment.
+
+   The Rust `dummy_request_controlled_frames` directly does
+   `self.inner.lock().unwrap().requested += n;` from the *caller's
+   thread* (typically the GUI thread). This is still mutex-serialised
+   against the dummy thread's read/decrement, but the *ordering* with
+   respect to the dummy thread's iteration is not guaranteed by anything
+   other than the mutex. If the GUI thread is currently holding the
+   mutex when the dummy thread wakes up, the dummy thread will see the
+   previous value of `requested` (zero) and process nothing.
+
+2. **`PROC_process` ran the command queue at the top of every iteration.**
+   The C++ process loop called `PROC_handle_command_queue()` on every
+   tick before reading state and processing. This meant *every* command
+   that touched state (including ones queued by other places in the
+   driver) was guaranteed to be visible at the next process call.
+
+   The Rust `process_dummy_driver_iteration` does not have a command
+   queue step; it reads `requested` directly under the mutex. Commands
+   queued via other paths are processed by `send_and_wait` on the GUI
+   thread synchronously, not by the dummy thread.
+
+3. **No `apply_graph_changes` was needed in C++.** The old C++ backend
+   had a separate `m_recalculate_graph_thread` that was *notified*
+   from the process loop (`graph_id != graph_request_id` → notify recalc
+   thread) and the process loop *continued processing with the
+   previous schedule* while the recalc was happening. So a stale graph
+   did not block progress.
+
+   The Rust `session.process()` is a strict no-op when the graph is out
+   of date:
+
+   ```rust
+   pub fn process(&mut self, n_frames: usize) -> Result<(), SessionError> {
+       if !self.graph_up_to_date() {
+           return Err(SessionError::GraphOutOfDate);
+       }
+       ...
+   }
+   ```
+
+   The dummy driver iterates `s.process(n)` and *ignores the error*
+   (`let _ = s.process(n as usize)`), but the work is silently dropped.
+
+### The most damning single observation
+
+In `process_dummy_driver_iteration` (`app_backend.rs:1091-1132`), the
+dummy thread sets `i.last_processed = n` **before** calling
+`s.process(n)`:
+
+```rust
+let n = if i.controlled {
+    i.requested.min(i.settings.buffer_size)
+} else {
+    i.settings.buffer_size
+};
+if i.controlled {
+    i.requested -= n;
+}
+i.last_processed = n;          // <-- set unconditionally
+i.process_generation = i.process_generation.wrapping_add(1);
+...
+if n == 0 { return; }
+if let Some(shared) = session {
+    let mut s = shared.lock();
+    ...
+    let _ = s.process(n as usize);   // <-- may return Err and do nothing
+}
+```
+
+So `last_processed` reflects the **requested** amount, not the amount
+**actually processed**. `wait_updated` waits on the `updated_on_gui_thread`
+signal which fires after the update thread ticks with whatever
+`last_processed` was at snapshot time. The QML test sees
+`backend.last_processed == 25` and concludes "frames processed", but the
+session.process() call may have done no work — and the loop position
+stays at 0.
+
+This matches the CI failure exactly:
+- sync loop **mode** transitions to Playing (the transition command goes
+  through `send_and_wait` and lands in the session queue)
+- sync loop **position** stays at 0 (because the dummy thread's
+  `process(n)` is a no-op due to either `graph_up_to_date` returning
+  false, or some other early-exit path I have not yet pinned down)
+
+### Updated hypothesis ranking
+
+Hypothesis A (dummy thread starved) is still plausible on slow CI, but
+the new observation above opens a more likely root cause:
+
+**Hypothesis A' — `last_processed` is a lie.** The dummy thread bumps
+`last_processed` to the requested amount **before** invoking
+`session.process(n)`. If `process(n)` returns `Err(GraphOutOfDate)` or
+otherwise does no work, the GUI sees a non-zero `last_processed` and
+considers the cycle done. The QML tests read `s().position` /
+`l0().mode` etc. directly from loop state on the GUI thread, and those
+properties are only updated via the `LoopBackend.update()` →
+`get_state()` round-trip on the *update thread*. If the update thread
+takes its snapshot at a moment when `session.process()` did no work
+(say, before the graph was applied), the snapshot reflects the
+pre-process state and the GUI never sees the new mode/position.
+
+This is consistent with the failure on slow CI and with the same tests
+passing locally. Locally, the ordering of events between
+`dummy_request_controlled_frames`, `dummy_thread` iteration, and
+`update_thread` tick is such that the update thread's snapshot happens
+*after* the dummy thread's process call has landed. On slow CI, those
+events can race and the snapshot happens first.
+
+**Hypothesis D (clear/init ordering) becomes more plausible too.** If
+`clear()` and `testcase_init_fn` race such that `clear()` runs after
+`dummy_enter_controlled_mode`, then `clear()`'s loop mutations can
+leave the graph out of date *for longer* than expected, and the dummy
+thread will silently drop the first several iterations until something
+calls `apply_graph_changes()`. The QML tests do `testcase.wait_controlled_mode`
+which calls `wait_process` (waits for `process_generation += 2`),
+but `wait_process` returns success even when iterations are no-ops.
+
+### Concrete next steps to confirm/deny
+
+1. **Print `last_processed` *and* `session.process()` result from the
+   dummy thread.** Add a `if s.process(n as usize).is_err() { ... }`
+   branch and bump a counter when process returns Err. If the counter
+   is non-zero after a failing test, we know the dummy thread is
+   dropping cycles silently.
+
+2. **Move `apply_graph_changes()` into the dummy iteration, ahead of
+   `s.process(n)`.** If this fixes the failing tests, the root cause
+   is "graph out of date silently aborts processing". The old C++
+   backend's recalc thread handled this asynchronously; the new Rust
+   session does not.
+
+3. **Print `graph_up_to_date()` from the dummy thread.** Should be
+   one debug log line per iteration, sufficient to see whether the
+   graph is ever out of date during a failing test run.
+
+4. **Move `last_processed = n` to *after* `s.process(n)` returns Ok.**
+   This at least makes `last_processed` honest, so `wait_updated` will
+   keep waiting until real work has happened.
+
+---
+
+## Local reproduction (2026-07-29)
+
+Reproduced the failure deterministically on a fast NixOS workstation
+(16 cores, 61 GB RAM, no resource limits). This rules out the
+"CI-only race condition" angle.
+
+### How
+
+```
+QT_QPA_PLATFORM=offscreen \
+  target/debug/shoopdaloop_dev.sh \
+  --self-test \
+  --test-files-pattern "$(pwd)/src/qml/test/tst_TwoLoops.qml" \
+  --junit-xml /tmp/qml_test_results/r1.xml
+```
+
+(`shoopdaloop_dev.sh` is generated by `shoopdaloop/build.rs` and sets
+`SHOOP_CONFIG` so the dev config is loaded; without it the QML engine
+fails to load any test file and reports 0 testcases. The dev binary
+directly does not work because `SHOOP_CONFIG` env var is unset and the
+embedded QML paths collapse to empty.)
+
+### Result: 3/3 runs fail identically
+
+```
+Totals:
+- Testcases: 6
+- Passed: 5
+- Failed: 1
+- Skipped: 0
+
+Failed cases:
+- TwoLoops::test_two_loops_countdown
+```
+
+Same for `tst_CompositeLoop_running.qml`: all three known CI failures
+reproduce locally:
+
+```
+Totals:
+- Testcases: 24
+- Passed: 21
+- Failed: 3
+
+Failed cases:
+- CompositeLoop_running::test_script_triggers_composite
+- CompositeLoop_running::test_sequential
+- CompositeLoop_running::test_transition_with_instant_sync_middle_cycle
+```
+
+The failure mode is exactly what CI shows: loops never advance (positions
+stay at 0), modes never reach `Playing`. No variation between runs.
+
+### Implications
+
+- **Hypothesis A (CI-only race) is ruled out.** The bug is deterministic.
+- **Hypothesis A' (`last_processed` is a lie) is still the strongest
+  candidate**, but no longer because of timing — it's because
+  `process(n)` *consistently* does no work.
+- The bug must be in the code path that decides *whether* `process(n)`
+  should run, not in the timing of when it runs.
+
+The next step is to instrument `process_dummy_driver_iteration` to log
+whether `s.process(n)` returned Ok, Err, or was called at all, and to
+log `graph_up_to_date()` at the point of each call. Then the failure
+becomes a hard error to investigate rather than a timing race.
