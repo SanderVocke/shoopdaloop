@@ -767,7 +767,7 @@ impl CpalBackend {
     /// OS audio device, so the CPAL virtual port routing can be exercised on
     /// headless CI where ALSA / CoreAudio / WASAPI has no usable device.
     fn start_with_mock(
-        shared: Weak<SharedSession>,
+        _shared: Weak<SharedSession>,
         _settings: &CpalMidiAudioDriverSettings,
         _external: Arc<Mutex<engine::DummyExternalConnections>>,
         decoupled_midi_ports: Arc<Mutex<Vec<CpalDecoupledMidiPort>>>,
@@ -781,8 +781,9 @@ impl CpalBackend {
         let output_config = output_device.default_output_config()?;
         let output_channels = output_config.channels() as usize;
         let sample_rate = output_config.sample_rate().0;
-        let output_device_name =
-            output_device.name().unwrap_or_else(|_| "mock-output".to_string());
+        let output_device_name = output_device
+            .name()
+            .unwrap_or_else(|_| "mock-output".to_string());
         let playback_names: Vec<String> = (0..output_channels)
             .map(|c| format!("cpal:{output_device_name}:playback_{}", c + 1))
             .collect();
@@ -790,8 +791,9 @@ impl CpalBackend {
         let input_device = host.default_input_device().expect("mock input device");
         let input_config = input_device.default_input_config()?;
         let input_channels = input_config.channels() as usize;
-        let input_device_name =
-            input_device.name().unwrap_or_else(|_| "mock-input".to_string());
+        let input_device_name = input_device
+            .name()
+            .unwrap_or_else(|_| "mock-input".to_string());
         let capture_names: Vec<String> = (0..input_channels)
             .map(|c| format!("cpal:{input_device_name}:capture_{}", c + 1))
             .collect();
@@ -1265,7 +1267,9 @@ impl AudioDriver {
     }
     fn activate_cpal(&self, shared: &Arc<SharedSession>) -> Result<()> {
         let mut i = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        if i.driver_type != AudioDriverType::Cpal && i.driver_type != AudioDriverType::CpalTest || i.cpal.is_some() {
+        if i.driver_type != AudioDriverType::Cpal && i.driver_type != AudioDriverType::CpalTest
+            || i.cpal.is_some()
+        {
             return Ok(());
         }
         let settings = i

@@ -110,14 +110,21 @@ where
     F: FnOnce(&mut Session, &[usize]) -> Result<(), CpalError> + Send + 'static,
 {
     let host = cpal::default_host();
-    let device = host.default_output_device().ok_or(CpalError::NoOutputDevice)?;
+    let device = host
+        .default_output_device()
+        .ok_or(CpalError::NoOutputDevice)?;
     let config = device.default_output_config()?;
     // No hook: the common case, where nothing feeds the engine from inside the callback.
-    let (driver, ()) =
-        build_output_driver(device, config, session, command_queue_capacity, |s, ports| {
+    let (driver, ()) = build_output_driver(
+        device,
+        config,
+        session,
+        command_queue_capacity,
+        |s, ports| {
             setup(s, ports)?;
             Ok(((), Box::new(|_: &mut Session, _: usize| {}) as CycleHook))
-        })?;
+        },
+    )?;
     Ok(driver)
 }
 
@@ -165,7 +172,9 @@ where
     F: FnOnce(&mut Session, &[usize]) -> Result<(T, CycleHook), CpalError> + Send + 'static,
 {
     let host = cpal::default_host();
-    let device = host.default_output_device().ok_or(CpalError::NoOutputDevice)?;
+    let device = host
+        .default_output_device()
+        .ok_or(CpalError::NoOutputDevice)?;
     let config = device.default_output_config()?;
     build_output_driver(device, config, session, command_queue_capacity, setup)
 }
