@@ -107,7 +107,7 @@ pub fn start_output<F>(
     setup: F,
 ) -> Result<CpalDriver, CpalError>
 where
-    F: FnOnce(&mut Session, &[usize]) -> Result<(), CpalError>,
+    F: FnOnce(&mut Session, &[usize]) -> Result<(), CpalError> + Send + 'static,
 {
     start_output_on_host(cpal::default_host(), session, command_queue_capacity, setup)
 }
@@ -155,7 +155,7 @@ pub fn start_output_with_hook<F, T>(
     setup: F,
 ) -> Result<(CpalDriver, T), CpalError>
 where
-    F: FnOnce(&mut Session, &[usize]) -> Result<(T, CycleHook), CpalError>,
+    F: FnOnce(&mut Session, &[usize]) -> Result<(T, CycleHook), CpalError> + Send + 'static,
 {
     start_output_with_hook_on_host(cpal::default_host(), session, command_queue_capacity, setup)
 }
@@ -357,7 +357,7 @@ pub fn start_duplex<F>(
     setup: F,
 ) -> Result<CpalDriver, CpalError>
 where
-    F: FnOnce(&mut Session, &[usize], &[usize]) -> Result<(), CpalError>,
+    F: FnOnce(&mut Session, &[usize], &[usize]) -> Result<(), CpalError> + Send + 'static,
 {
     start_duplex_on_host(
         cpal::default_host(),
