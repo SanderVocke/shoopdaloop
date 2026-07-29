@@ -229,14 +229,6 @@ jobs:
             second_package_kind: test_binaries
             upload_release_assets: true
             platform: linux-x64
-          # - name: linux_asan
-          #   # Note: ASAN build does not have a test because it is not trivial to deploy
-          #   # an asan-built program on another system. The build is here to ensure the
-          #   # build process still works. To use ASAN, compile like this natively.
-          #   release_build: false
-          #   package_kind: appimage
-          #   cmake_opts: '"ENABLE_ASAN" = "On"'
-          #   platform: linux-x64
           - name: linux_coverage
             if: ${{ needs.setup.outputs.coverage == 'true' }}
             release_build: false
@@ -341,11 +333,7 @@ jobs:
             package: shoopdaloop.*.coverage-linux-x64.portable.tar.gz
             second_package: shoopdaloop.*.coverage-linux-x64.test_binaries.tar.gz
             run_cmd_prefix: >-
-              BASEDIR=$(pwd)
               REPORTDIR=coverage_reports
-              BUILDDIR=$(pwd)
-              ORI_BUILD_DIR=$(cat ori_build_dir.txt)
-              DO_GENHTML=0
               SHOOP_LOG=QoverageCollectorFactory=debug
               QML_IMPORT_PATH=$(~/.local/bin/qoverage --importpath)
               scripts/run_and_generate_coverage.sh
