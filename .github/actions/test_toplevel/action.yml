@@ -134,6 +134,14 @@ runs:
     run: |
       mkdir -p crashdumps
       echo "SHOOP_CRASHDUMP_DIR=$(pwd)/crashdumps" | tee -a $GITHUB_ENV
+  - name: Prepare Rust for coverage tooling
+    if: always() && inputs.coverage == 'true'
+    uses: actions-rust-lang/setup-rust-toolchain@v1
+    with:
+      toolchain: stable
+      components: llvm-tools-preview
+      cache: false
+      rustflags: ""
   - name: Install cargo-llvm-cov for coverage tooling
     if: always() && inputs.coverage == 'true'
     shell: bash
