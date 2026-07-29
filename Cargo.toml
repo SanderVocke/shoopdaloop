@@ -61,7 +61,9 @@ rtrb = "0.3"
 jack = "0.13"
 # Pinned to what rodio (used by the frontend) already brings in: cpal declares
 # links = "alsa", so two versions cannot coexist in one workspace.
-cpal = "0.16"
+# Enable all known cross-platform CPAL host features so that `--list-cpal-hosts`
+# surfaces every available backend (ALSA, JACK, WASAPI, ASIO, CoreAudio).
+cpal = { version = "0.16", features = ["jack", "asio"] }
 midir = "0.11"
 lilv = "0.2.4"
 lv2_raw = "0.2"
