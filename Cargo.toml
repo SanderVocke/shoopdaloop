@@ -4,11 +4,8 @@ resolver = "2"
 
 members = ["src/rust/*"]
 
-# Workspace-wide lints. The trailing-semicolon lint was newly turned on in
-# recent nightly toolchains and is fatal under `-D warnings`; every
-# `warn!(...);` / `info!(...);` / `debug!(...);` / `error!(...);` site in the
-# codebase trips it. Allow it here rather than churn every call site.
 [workspace.lints.rust]
+unknown_lints = "allow"
 semicolon_in_expressions_from_non_local_macros = "allow"
 
 [workspace.dependencies]
