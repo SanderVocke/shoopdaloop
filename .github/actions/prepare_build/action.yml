@@ -22,7 +22,7 @@ runs:
     if: always() && inputs.variant == 'windows'
     uses: actions-rust-lang/setup-rust-toolchain@v1
     with:
-      toolchain: nightly
+      toolchain: stable
       target: x86_64-pc-windows-msvc
       components: rustfmt
       cache: false
@@ -31,10 +31,18 @@ runs:
     if: always() && inputs.variant != 'windows'
     uses: actions-rust-lang/setup-rust-toolchain@v1
     with:
-      toolchain: nightly
-      components: rustfmt, llvm-tools-preview
+      toolchain: stable
+      components: rustfmt
       cache: false
       rustflags: ""
+  - name: Install cargo-llvm-cov for coverage tooling
+    if: always() && inputs.variant != 'windows'
+    shell: bash
+    run: |
+      cargo install cargo-llvm-cov
+      # cargo-llvm-cov bundles matching llvm-cov / llvm-profdata.
+      echo "LLVM_COV=$(find ~/.cargo -name llvm-cov -type f -executable 2>/dev/null | head -1)" | tee -a $GITHUB_ENV
+      echo "LLVM_PROFDATA=$(find ~/.cargo -name llvm-profdata -type f -executable 2>/dev/null | head -1)" | tee -a $GITHUB_ENV
   - name: Rust info
     shell: wrap-shell {0}
     run: |
@@ -46,9 +54,9 @@ runs:
       rustup toolchain list
       echo "==== Rust component list ===="
       rustup component list
-      echo "==== Rust LLVM tools (if installed) ===="
-      echo "LLVM_COV=$(find $(rustc --print sysroot) -name llvm-cov)" | tee -a $GITHUB_ENV
-      echo "LLVM_PROFDATA=$(find $(rustc --print sysroot) -name llvm-profdata)" | tee -a $GITHUB_ENV
+      echo "==== LLVM tools (via cargo-llvm-cov) ===="
+      echo "LLVM_COV=${LLVM_COV:-not-found}"
+      echo "LLVM_PROFDATA=${LLVM_PROFDATA:-not-found}"
 
   - name: Prepare linux
     if: always() && inputs.variant == 'linux'

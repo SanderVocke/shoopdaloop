@@ -139,20 +139,14 @@ runs:
     shell: wrap-shell {0}
     run: |
       PIP_BREAK_SYSTEM_PACKAGES=1 ${{ env.PIP }} install pipx
-  - name: Prepare Rust LLVM tools
+  - name: Install cargo-llvm-cov for coverage tooling
     if: always() && inputs.coverage == 'true'
-    uses: actions-rust-lang/setup-rust-toolchain@v1
-    with:
-      toolchain: nightly
-      components: llvm-tools-preview
-      cache: false
-      rustflags: ""
-  - name: find LLVM tools
-    if: always() && inputs.coverage == 'true'
-    shell: wrap-shell {0}
+    shell: bash
     run: |
-      echo "LLVM_COV=$(find $(rustc --print sysroot) -name llvm-cov)" | tee -a $GITHUB_ENV
-      echo "LLVM_PROFDATA=$(find $(rustc --print sysroot) -name llvm-profdata)" | tee -a $GITHUB_ENV
+      cargo install cargo-llvm-cov
+      # cargo-llvm-cov bundles matching llvm-cov / llvm-profdata.
+      echo "LLVM_COV=$(find ~/.cargo -name llvm-cov -type f -executable 2>/dev/null | head -1)" | tee -a $GITHUB_ENV
+      echo "LLVM_PROFDATA=$(find ~/.cargo -name llvm-profdata -type f -executable 2>/dev/null | head -1)" | tee -a $GITHUB_ENV
   - uses: ./.github/actions/checkpoint
     if: always()
   - name: Install Qoverage
