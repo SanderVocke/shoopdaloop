@@ -12,9 +12,7 @@
 mod mock_host;
 
 use mock_host::MockHost;
-use shoop_engine::cpal_driver::{
-    start_duplex_on_host, start_output_on_host, CpalError,
-};
+use shoop_engine::cpal_driver::{start_duplex_on_host, start_output_on_host, CpalError};
 use shoop_engine::session::Session;
 use std::sync::atomic::Ordering;
 
@@ -115,12 +113,13 @@ fn duplex_bridges_the_two_streams() {
     let mut s = Session::default();
     s.apply_graph_changes().expect("schedule");
 
-    let mut driver = start_duplex_on_host(MockHost::new(), s, 64, 4096, |_s, out_ports, in_ports| {
-        assert!(!out_ports.is_empty());
-        assert!(!in_ports.is_empty());
-        Ok(())
-    })
-    .expect("mock host should always start");
+    let mut driver =
+        start_duplex_on_host(MockHost::new(), s, 64, 4096, |_s, out_ports, in_ports| {
+            assert!(!out_ports.is_empty());
+            assert!(!in_ports.is_empty());
+            Ok(())
+        })
+        .expect("mock host should always start");
 
     assert!(driver.n_capture_channels() > 0);
 

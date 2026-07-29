@@ -26,7 +26,7 @@
 
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
-    BuildStreamError, BufferSize, Data, DefaultStreamConfigError, DeviceNameError, DevicesError,
+    BufferSize, BuildStreamError, Data, DefaultStreamConfigError, DeviceNameError, DevicesError,
     InputCallbackInfo, InputStreamTimestamp, OutputCallbackInfo, OutputStreamTimestamp,
     PauseStreamError, PlayStreamError, SampleFormat, SampleRate, StreamConfig, StreamError,
     StreamInstant, SupportedBufferSize, SupportedStreamConfig, SupportedStreamConfigRange,
@@ -192,10 +192,7 @@ impl MockDevice {
         SupportedStreamConfig::new(
             self.n_channels,
             SampleRate(self.sample_rate),
-            SupportedBufferSize::Range {
-                min: 64,
-                max: 8192,
-            },
+            SupportedBufferSize::Range { min: 64, max: 8192 },
             SampleFormat::F32,
         )
     }
@@ -224,10 +221,7 @@ impl Iterator for MockSupportedOutputConfigs {
                 2,
                 SampleRate(48_000),
                 SampleRate(48_000),
-                SupportedBufferSize::Range {
-                    min: 64,
-                    max: 8192,
-                },
+                SupportedBufferSize::Range { min: 64, max: 8192 },
                 SampleFormat::F32,
             ))
         }
@@ -250,10 +244,7 @@ impl Iterator for MockSupportedInputConfigs {
                 2,
                 SampleRate(48_000),
                 SampleRate(48_000),
-                SupportedBufferSize::Range {
-                    min: 64,
-                    max: 8192,
-                },
+                SupportedBufferSize::Range { min: 64, max: 8192 },
                 SampleFormat::F32,
             ))
         }
@@ -318,7 +309,8 @@ impl DeviceTrait for MockDevice {
         E: FnMut(StreamError) + Send + 'static,
     {
         assert_eq!(
-            sample_format, SampleFormat::F32,
+            sample_format,
+            SampleFormat::F32,
             "MockHost only drives the engine with f32 samples"
         );
 
@@ -330,8 +322,7 @@ impl DeviceTrait for MockDevice {
         let stop = Arc::new(AtomicBool::new(false));
         let stop_thread = Arc::clone(&stop);
 
-        let cycle_interval =
-            Duration::from_secs_f64(frames_per_cycle as f64 / sample_rate as f64);
+        let cycle_interval = Duration::from_secs_f64(frames_per_cycle as f64 / sample_rate as f64);
 
         let info = OutputCallbackInfo::new(OutputStreamTimestamp {
             callback: StreamInstant::new(0, 0),
@@ -374,7 +365,8 @@ impl DeviceTrait for MockDevice {
         E: FnMut(StreamError) + Send + 'static,
     {
         assert_eq!(
-            sample_format, SampleFormat::F32,
+            sample_format,
+            SampleFormat::F32,
             "MockHost only feeds the engine f32 samples"
         );
 
@@ -386,8 +378,7 @@ impl DeviceTrait for MockDevice {
         let stop = Arc::new(AtomicBool::new(false));
         let stop_thread = Arc::clone(&stop);
 
-        let cycle_interval =
-            Duration::from_secs_f64(frames_per_cycle as f64 / sample_rate as f64);
+        let cycle_interval = Duration::from_secs_f64(frames_per_cycle as f64 / sample_rate as f64);
 
         let info = InputCallbackInfo::new(InputStreamTimestamp {
             callback: StreamInstant::new(0, 0),
