@@ -8,11 +8,16 @@
 //! caller drives the loop and this type only decides chunk sizes, which is the
 //! part that carries behaviour. Threading belongs with a real driver.
 //!
-//! No `Driver` trait yet: JACK pushes from its own callback while this pulls, and
-//! inventing an abstraction that fits both before either exists would be a guess.
+//! The mock external connections are held behind an `Arc<Mutex<..>>` rather than
+//! inline, because the driver is not their only reader: the port handles report
+//! connection state from them and the CPAL backend routes through them, all from
+//! other threads. Sharing the one map is what keeps the driver's view and the
+//! session's view of "what is connected" from being two separate answers.
 
 use crate::dummy_port::{DummyExternalConnections, ExternalPortDescriptor, PortId};
 use crate::port::{PortDataType, PortDirection};
+
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DriverSettings {
@@ -48,7 +53,7 @@ pub struct DummyDriver {
     paused: bool,
     xruns: u32,
     dsp_load: f32,
-    external: DummyExternalConnections,
+    external: Arc<Mutex<DummyExternalConnections>>,
 }
 
 impl Default for DummyDriver {
@@ -61,7 +66,7 @@ impl Default for DummyDriver {
             paused: false,
             xruns: 0,
             dsp_load: 0.0,
-            external: DummyExternalConnections::default(),
+            external: Arc::new(Mutex::new(DummyExternalConnections::default())),
         }
     }
 }
@@ -89,6 +94,14 @@ impl DummyDriver {
     }
     pub fn client_name(&self) -> &str {
         &self.settings.client_name
+    }
+    /// Patches the settings of an already-started driver.
+    ///
+    /// For the backends that only learn their real rate and buffer size once they have
+    /// opened -- CPAL reports them from the device after the stream is built, JACK from
+    /// the server -- so the values [`Self::start`] was given are provisional.
+    pub fn settings_mut(&mut self) -> &mut DriverSettings {
+        &mut self.settings
     }
     pub fn xruns(&self) -> u32 {
         self.xruns
@@ -132,6 +145,14 @@ impl DummyDriver {
     pub fn request_samples(&mut self, samples: u32) {
         self.samples_to_process += samples;
     }
+    /// Drops any outstanding request without changing mode.
+    ///
+    /// Distinct from [`Self::enter_mode`], which only discards when the mode actually
+    /// changes: a caller re-asserting the mode it is already in wants to start clean,
+    /// but a caller that merely repeats itself must not lose a pending request.
+    pub fn clear_request(&mut self) {
+        self.samples_to_process = 0;
+    }
     pub fn samples_to_process(&self) -> u32 {
         self.samples_to_process
     }
@@ -173,11 +194,17 @@ impl DummyDriver {
 
     // --- mock external ports ---
 
-    pub fn external(&self) -> &DummyExternalConnections {
+    /// The shared connection map, for a reader on another thread.
+    ///
+    /// Handed out as the `Arc` rather than a borrow: the port handles and the CPAL
+    /// backend outlive any single borrow of the driver, and they must see the same map
+    /// the driver does.
+    pub fn external(&self) -> &Arc<Mutex<DummyExternalConnections>> {
         &self.external
     }
-    pub fn external_mut(&mut self) -> &mut DummyExternalConnections {
-        &mut self.external
+
+    fn with_external<T>(&self, f: impl FnOnce(&mut DummyExternalConnections) -> T) -> T {
+        f(&mut self.external.lock().unwrap_or_else(|e| e.into_inner()))
     }
 
     pub fn add_external_mock_port(
@@ -186,13 +213,13 @@ impl DummyDriver {
         direction: PortDirection,
         data_type: PortDataType,
     ) {
-        self.external.add_mock_port(name, direction, data_type);
+        self.with_external(|e| e.add_mock_port(name, direction, data_type));
     }
     pub fn remove_external_mock_port(&mut self, name: &str) {
-        self.external.remove_mock_port(name);
+        self.with_external(|e| e.remove_mock_port(name));
     }
     pub fn remove_all_external_mock_ports(&mut self) {
-        self.external.remove_all_mock_ports();
+        self.with_external(|e| e.remove_all_mock_ports());
     }
 
     pub fn find_external_ports(
@@ -201,16 +228,17 @@ impl DummyDriver {
         direction: PortDirection,
         data_type: PortDataType,
     ) -> Vec<ExternalPortDescriptor> {
-        self.external
-            .find_external_ports(name_pattern, direction, data_type)
-            .unwrap_or_default()
+        self.with_external(|e| {
+            e.find_external_ports(name_pattern, direction, data_type)
+                .unwrap_or_default()
+        })
     }
 
     pub fn connect_external(&mut self, port: PortId, external: &str) -> bool {
-        self.external.connect(port, external).is_ok()
+        self.with_external(|e| e.connect(port, external).is_ok())
     }
     pub fn disconnect_external(&mut self, port: PortId, external: &str) -> bool {
-        self.external.disconnect(port, external).is_ok()
+        self.with_external(|e| e.disconnect(port, external).is_ok())
     }
 }
 

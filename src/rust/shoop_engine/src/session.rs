@@ -303,6 +303,109 @@ pub struct Session {
     n_sub_blocks_last_cycle: u32,
 }
 
+/// A topology snapshot: everything [`build_schedule`] needs, borrowing nothing.
+///
+/// Produced by [`Session::describe_topology`] and consumed by [`build_schedule`], so the
+/// expensive part of a rebuild can run on a thread that does not hold the session.
+#[derive(Debug)]
+pub struct Topology {
+    graph: GraphDesc,
+    /// MIDI channel indices per loop, in channel order.
+    midi_by_loop: Vec<Vec<usize>>,
+    n_loops: usize,
+    /// `graph_request_id` when this was taken, so an install can say what it covers.
+    graph_id: u64,
+}
+
+/// A schedule built for one topology, ready to be installed.
+///
+/// Holds every allocation a rebuild needs, grown to size here so that
+/// [`Session::install_schedule`] is nothing but moves. Also what an install hands back, so
+/// the memory it displaced is freed by the installer's choice of thread rather than
+/// wherever the swap happened to occur.
+#[derive(Debug)]
+pub struct PreparedSchedule {
+    specs: Vec<NodeSpec>,
+    node_map: NodeMap,
+    schedule: Vec<Vec<NodeIdx>>,
+    node_actions: Vec<NodeAction>,
+    midi_mappings_by_loop: Vec<Vec<usize>>,
+    /// Per-MIDI-channel scratch, pre-reserved so no cycle grows one.
+    midi_in_scratch: Vec<Vec<MidiStorageElem>>,
+    midi_out_scratch: Vec<Vec<MidiStorageElem>>,
+    /// Loop-step scratch, likewise sized here rather than on first use.
+    loop_group: Vec<usize>,
+    /// Topology generation this covers.
+    for_graph_id: u64,
+}
+
+/// Builds a schedule from a topology. The expensive half of a rebuild, and pure.
+///
+/// Lowers the description to nodes, topologically sorts them, resolves what each node does,
+/// and grows every buffer a cycle will need. Nothing here touches a [`Session`], which is
+/// the point: it can run on any thread, at any time, while audio keeps flowing against the
+/// schedule already installed.
+pub fn build_schedule(topology: Topology) -> Result<PreparedSchedule, SessionError> {
+    let Topology {
+        graph,
+        midi_by_loop,
+        n_loops,
+        graph_id,
+    } = topology;
+
+    let (specs, node_map) = graph.build();
+    let schedule = processing_order(&specs)?;
+
+    let mut node_actions = vec![NodeAction::None; specs.len()];
+    for (i, &n) in node_map.port_prepare.iter().enumerate() {
+        node_actions[n.0] = NodeAction::PortPrepare(i);
+    }
+    for (i, &n) in node_map.port_process.iter().enumerate() {
+        node_actions[n.0] = NodeAction::PortProcess(i);
+    }
+    for (i, &n) in node_map.loop_process.iter().enumerate() {
+        node_actions[n.0] = NodeAction::LoopProcess(i);
+    }
+    for (i, &n) in node_map.channel_prepare.iter().enumerate() {
+        node_actions[n.0] = NodeAction::ChannelPrepare(i);
+    }
+    for (i, &n) in node_map.channel_process.iter().enumerate() {
+        node_actions[n.0] = NodeAction::ChannelProcess(i);
+    }
+
+    // Scratch sized for the widest loop, so a cycle neither searches nor grows a buffer.
+    // Room inside each buffer as well as for the buffers themselves: a cycle pushing its
+    // first message into a zero-capacity vector would allocate on the audio thread, and a
+    // loop wrap alone emits All Sound Off, so even an idle playing loop needs room.
+    let widest = midi_by_loop.iter().map(|v| v.len()).max().unwrap_or(0);
+    let mut midi_in_scratch: Vec<Vec<MidiStorageElem>> = Vec::with_capacity(widest);
+    let mut midi_out_scratch: Vec<Vec<MidiStorageElem>> = Vec::with_capacity(widest);
+    for _ in 0..widest {
+        midi_in_scratch.push(Vec::with_capacity(MIDI_SCRATCH_CAPACITY));
+        midi_out_scratch.push(Vec::with_capacity(MIDI_OUT_SCRATCH_CAPACITY));
+    }
+
+    Ok(PreparedSchedule {
+        specs,
+        node_map,
+        schedule,
+        node_actions,
+        midi_mappings_by_loop: midi_by_loop,
+        midi_in_scratch,
+        midi_out_scratch,
+        loop_group: Vec::with_capacity(n_loops),
+        for_graph_id: graph_id,
+    })
+}
+
+/// Both cross a thread boundary on the way to an install, so this has to hold. Checked here
+/// rather than discovered when the scheduler is wired up.
+const _: fn() = || {
+    fn assert_send<T: Send>() {}
+    assert_send::<Topology>();
+    assert_send::<PreparedSchedule>();
+};
+
 /// What a scheduled node does when its step runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NodeAction {
@@ -337,6 +440,15 @@ impl Session {
     }
     pub fn n_channels(&self) -> usize {
         self.channels.len()
+    }
+
+    /// Where a channel sits: which loop, which kind, and which index within that loop.
+    ///
+    /// The arena index is what a connection and a handle both hold, but the channel itself
+    /// lives inside its loop, so anything going from one to the other needs this. Published
+    /// state does exactly that, once per channel per cycle.
+    pub fn channel_mapping(&self, idx: usize) -> Option<&ChannelMapping> {
+        self.channels.get(idx)
     }
 
     pub fn port(&self, idx: usize) -> Option<&Port> {
@@ -783,61 +895,78 @@ impl Session {
         }
     }
 
-    /// Recomputes the schedule for the current topology.
-    pub fn apply_graph_changes(&mut self) -> Result<(), SessionError> {
-        let desc = self.describe();
-        let (specs, map) = desc.build();
-        let schedule = processing_order(&specs)?;
-
-        let mut actions = vec![NodeAction::None; specs.len()];
-        for (i, &n) in map.port_prepare.iter().enumerate() {
-            actions[n.0] = NodeAction::PortPrepare(i);
-        }
-        for (i, &n) in map.port_process.iter().enumerate() {
-            actions[n.0] = NodeAction::PortProcess(i);
-        }
-        for (i, &n) in map.loop_process.iter().enumerate() {
-            actions[n.0] = NodeAction::LoopProcess(i);
-        }
-        for (i, &n) in map.channel_prepare.iter().enumerate() {
-            actions[n.0] = NodeAction::ChannelPrepare(i);
-        }
-        for (i, &n) in map.channel_process.iter().enumerate() {
-            actions[n.0] = NodeAction::ChannelProcess(i);
-        }
-
-        // Per-loop MIDI channel order, and scratch sized for the widest loop, so
-        // a cycle neither searches nor grows a buffer.
-        let mut by_loop: Vec<Vec<usize>> = vec![Vec::new(); self.loops.len()];
+    /// Everything a schedule is built from, detached from the session.
+    ///
+    /// Taken under whatever lock guards the session, then handed to [`build_schedule`] with
+    /// no lock held: this half needs `&self` and is cheap, that half needs nothing and is
+    /// expensive. Splitting them is what keeps the topological sort out of the critical
+    /// section the audio thread contends for every cycle.
+    pub fn describe_topology(&self) -> Topology {
+        // Per-loop MIDI channel order, so a cycle never has to search for it.
+        let mut midi_by_loop: Vec<Vec<usize>> = vec![Vec::new(); self.loops.len()];
         for (i, m) in self.channels.iter().enumerate() {
             if m.kind == ChannelKind::Midi {
-                by_loop[m.loop_idx].push(i);
+                midi_by_loop[m.loop_idx].push(i);
             }
         }
-        for v in by_loop.iter_mut() {
+        for v in midi_by_loop.iter_mut() {
             v.sort_by_key(|&i| self.channels[i].channel_idx);
         }
-        self.loop_group.reserve(self.loops.len());
-        let widest = by_loop.iter().map(|v| v.len()).max().unwrap_or(0);
-        // Reserve room in each scratch buffer, not just the outer vectors: a cycle
-        // pushing its first message into a zero-capacity buffer would allocate on
-        // the audio thread. A loop wrap alone emits All Sound Off, so even an idle
-        // playing loop needs room.
-        self.midi_in_scratch.resize(widest, Vec::new());
-        self.midi_out_scratch.resize(widest, Vec::new());
-        for v in self.midi_in_scratch.iter_mut() {
-            v.reserve(MIDI_SCRATCH_CAPACITY);
-        }
-        for v in self.midi_out_scratch.iter_mut() {
-            v.reserve(MIDI_OUT_SCRATCH_CAPACITY);
-        }
-        self.midi_mappings_by_loop = by_loop;
 
-        self.specs = specs;
-        self.node_map = map;
-        self.schedule = schedule;
-        self.node_actions = actions;
-        self.graph_applied_id = self.graph_request_id;
+        Topology {
+            graph: self.describe(),
+            midi_by_loop,
+            n_loops: self.loops.len(),
+            graph_id: self.graph_request_id,
+        }
+    }
+
+    /// Installs a prebuilt schedule, handing back the one it displaced.
+    ///
+    /// Returned rather than dropped, because freeing is as forbidden on the audio thread as
+    /// allocating: whoever installs decides where the old schedule dies. Today that is the
+    /// scheduler thread, which drops it immediately.
+    ///
+    /// Safe to install a schedule built from an older topology, which is the whole reason the
+    /// build can happen without the lock. Nothing this schedule indexes can have gone away:
+    /// every removal in this module is a tombstone -- `remove_port`, `remove_loop` and
+    /// `remove_channel` disconnect and disable but never shrink an arena, precisely so live
+    /// indices keep pointing at the same object. A topology change made during the build is
+    /// therefore missing from the schedule but not misdescribed by it, and `graph_applied_id`
+    /// below records that so the next rebuild is armed.
+    pub fn install_schedule(&mut self, mut prepared: PreparedSchedule) -> PreparedSchedule {
+        // From what the build actually saw, never from the current request id: a change that
+        // landed while the schedule was being built cannot be in it, and claiming otherwise
+        // would leave the session stale while reporting itself current -- which presents as
+        // routing that silently never updates.
+        let covered = prepared.for_graph_id;
+        prepared.for_graph_id = self.graph_applied_id;
+
+        std::mem::swap(&mut self.specs, &mut prepared.specs);
+        std::mem::swap(&mut self.node_map, &mut prepared.node_map);
+        std::mem::swap(&mut self.schedule, &mut prepared.schedule);
+        std::mem::swap(&mut self.node_actions, &mut prepared.node_actions);
+        std::mem::swap(
+            &mut self.midi_mappings_by_loop,
+            &mut prepared.midi_mappings_by_loop,
+        );
+        std::mem::swap(&mut self.midi_in_scratch, &mut prepared.midi_in_scratch);
+        std::mem::swap(&mut self.midi_out_scratch, &mut prepared.midi_out_scratch);
+        std::mem::swap(&mut self.loop_group, &mut prepared.loop_group);
+
+        self.graph_applied_id = covered;
+        prepared
+    }
+
+    /// Recomputes the schedule for the current topology, in one step.
+    ///
+    /// The composition of [`Self::describe_topology`], [`build_schedule`] and
+    /// [`Self::install_schedule`], for a caller holding the session exclusively and with no
+    /// reason to let go of it: construction, tests, and anything not competing with an audio
+    /// thread. A caller that *is* competing should run the three separately.
+    pub fn apply_graph_changes(&mut self) -> Result<(), SessionError> {
+        let displaced = self.install_schedule(build_schedule(self.describe_topology())?);
+        drop(displaced);
         Ok(())
     }
 
@@ -1805,6 +1934,85 @@ mod tests {
         // session fell silent for good.
         check!(s.port_mut(output).unwrap().buffer(4).to_vec() == vec![1.0; 4]);
         check!(s.n_stale_cycles() == 1);
+    }
+
+    /// The reason the build can run without holding the session, in one assertion.
+    ///
+    /// `install_schedule` takes `graph_applied_id` from what the *build* saw, not from the
+    /// session's current request id. Take that from the session instead and this is what
+    /// breaks: the change made below is absent from the schedule, yet the session reports
+    /// itself current, so nothing ever arms another rebuild and the new port stays unrouted
+    /// forever -- silence with no stale-cycle count to point at it.
+    #[test]
+    fn a_change_arriving_during_a_build_leaves_the_graph_stale() {
+        let mut s = Session::default();
+        let_assert!(Ok(()) = s.apply_graph_changes());
+
+        let topology = s.describe_topology();
+        // After the description was taken, so no schedule built from it can contain it.
+        let _added = s.add_port(internal("added-mid-build", 4));
+
+        let_assert!(Ok(prepared) = build_schedule(topology));
+        let displaced = s.install_schedule(prepared);
+        drop(displaced);
+
+        check!(
+            !s.graph_up_to_date(),
+            "a schedule that predates the change must not mark the graph current"
+        );
+        // And the follow-up rebuild does bring it current.
+        let_assert!(Ok(()) = s.apply_graph_changes());
+        check!(s.graph_up_to_date());
+    }
+
+    #[test]
+    fn installing_a_schedule_built_from_the_current_topology_marks_it_current() {
+        let mut s = Session::default();
+        s.add_port(internal("p", 4));
+        check!(!s.graph_up_to_date());
+
+        let_assert!(Ok(prepared) = build_schedule(s.describe_topology()));
+        drop(s.install_schedule(prepared));
+
+        check!(s.graph_up_to_date());
+    }
+
+    /// A schedule built before a removal must still be safe to install and run.
+    ///
+    /// This is what the split rests on: between describing and installing, anything may have
+    /// happened to the session. It is safe only because removals are tombstones -- they
+    /// disconnect and disable but never shrink an arena -- so every index the older schedule
+    /// holds still names the same object. Were any removal to compact its arena, this would
+    /// index past the end or, worse, drive the wrong loop.
+    #[test]
+    fn a_schedule_built_before_a_removal_still_installs_and_runs() {
+        let mut s = Session::default();
+        let output = s.add_port(internal("out", 4));
+        let doomed = s.add_port(internal("doomed", 4));
+        let l = s.create_loop();
+        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        let_assert!(Ok(()) = s.connect_channel_output(c, output));
+        let_assert!(Ok(()) = s.apply_graph_changes());
+        s.loop_mut(l)
+            .unwrap()
+            .audio_channel_mut(0)
+            .unwrap()
+            .load_data(&[1.0, 1.0, 1.0, 1.0]);
+        s.loop_mut(l).unwrap().set_length(4);
+        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+
+        // Describe first, then tear things out behind the build's back.
+        let topology = s.describe_topology();
+        let_assert!(Ok(()) = s.remove_port(doomed));
+        let_assert!(Ok(()) = s.remove_loop(l));
+
+        let_assert!(Ok(prepared) = build_schedule(topology));
+        drop(s.install_schedule(prepared));
+
+        // Runs against a schedule describing entities that have since been disabled, and
+        // neither panics nor produces anything from the loop that was removed.
+        s.process(4);
+        check!(s.port_mut(output).unwrap().buffer(4).to_vec() == vec![0.0; 4]);
     }
 
     /// What a stale cycle does and does not pick up.

@@ -16,8 +16,10 @@
 //! Commands are `FnMut` rather than `FnOnce` because they are called through the box
 //! and the box then has to survive to be sent back. Each is called exactly once.
 
+use crate::channel_mode::ChannelMode;
 use crate::loop_mode::LoopMode;
-use crate::session::Session;
+use crate::session::{ChannelKind, Session};
+use crate::state::{AudioChannelState, AudioPortSnapshot, MidiChannelState, MidiPortSnapshot};
 
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -128,10 +130,22 @@ pub struct LoopSnapshot {
 /// A cycle's published state.
 ///
 /// Shipped between the threads as a box that is refilled and reused, so publishing
-/// never allocates. `loops` is only grown by the control thread: see `truncated`.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+/// never allocates. None of the vectors is grown by the audio thread: see `truncated`.
+///
+/// Covers everything a UI polls at frame rate -- loops, channels and ports -- because the
+/// alternative is a blocking round trip per object per frame, which at one audio cycle each
+/// costs more than the frame budget as soon as a session has a handful of tracks. What is
+/// *not* here is anything a poll does not need: audio data, MIDI event lists and FX-chain
+/// state are asked for individually, and FX-chain state does not live in the session at all.
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct StateSnapshot {
     pub loops: Vec<LoopSnapshot>,
+    pub audio_channels: Vec<AudioChannelState>,
+    pub midi_channels: Vec<MidiChannelState>,
+    /// Indexed by the session's port arena, so an entry may be either kind. A port of the
+    /// other kind leaves `None` here rather than shifting the indices.
+    pub audio_ports: Vec<Option<AudioPortSnapshot>>,
+    pub midi_ports: Vec<Option<MidiPortSnapshot>>,
     /// Cycle this was taken at, so a reader can tell fresh from stale.
     pub cycle: u32,
     /// Loops the session had, which may exceed `loops.len()`.
@@ -140,11 +154,57 @@ pub struct StateSnapshot {
     /// growing the vector there would allocate. A reader seeing this exceed
     /// `loops.len()` should hand back bigger boxes; [`EngineHandle::poll`] does.
     pub n_loops: usize,
+    /// Channels the session had, which may exceed the channel vectors' lengths.
+    ///
+    /// One count for both vectors: they are indexed by the session's single channel arena,
+    /// so an audio channel and a MIDI channel never share an index and both vectors are
+    /// sized to the arena. The slot of the other kind is left at its default.
+    pub n_channels: usize,
+    /// Ports the session had, which may exceed the port vectors' lengths.
+    pub n_ports: usize,
 }
 
 impl StateSnapshot {
+    /// Whether the audio thread ran out of room in any vector.
+    ///
+    /// One flag for all of them: a reader's only response is to hand back bigger boxes, and
+    /// [`EngineHandle::poll`] grows whichever vectors are actually short.
     pub fn truncated(&self) -> bool {
         self.n_loops > self.loops.len()
+            || self.n_channels > self.audio_channels.len()
+            || self.n_channels > self.midi_channels.len()
+            || self.n_ports > self.audio_ports.len()
+            || self.n_ports > self.midi_ports.len()
+    }
+}
+
+impl Default for AudioChannelState {
+    fn default() -> Self {
+        Self {
+            mode: ChannelMode::Disabled,
+            gain: 0.0,
+            output_peak: 0.0,
+            length: 0,
+            start_offset: 0,
+            played_back_sample: None,
+            n_preplay_samples: 0,
+            data_dirty: false,
+        }
+    }
+}
+
+impl Default for MidiChannelState {
+    fn default() -> Self {
+        Self {
+            mode: ChannelMode::Disabled,
+            n_events_triggered: 0,
+            n_notes_active: 0,
+            length: 0,
+            start_offset: 0,
+            played_back_sample: None,
+            n_preplay_samples: 0,
+            data_dirty: false,
+        }
     }
 }
 
@@ -184,10 +244,19 @@ pub fn split(session: Session, capacity: usize) -> (Engine, EngineHandle) {
     const N_SNAPSHOTS: usize = 3;
     let (filled_tx, filled_rx) = RingBuffer::new(N_SNAPSHOTS);
     let (mut empties_tx, empties_rx) = RingBuffer::new(N_SNAPSHOTS);
-    let room = session.n_loops().max(8);
+    // Sized for what the session already has, with a floor so a session built up after the
+    // split does not publish truncated for its first few cycles. Undersizing is not an error
+    // -- `poll` grows the boxes -- so the floor is a convenience, not a correctness matter.
+    let loop_room = session.n_loops().max(8);
+    let channel_room = session.n_channels().max(16);
+    let port_room = session.n_ports().max(16);
     for _ in 0..N_SNAPSHOTS {
         let _ = empties_tx.push(Box::new(StateSnapshot {
-            loops: Vec::with_capacity(room),
+            loops: Vec::with_capacity(loop_room),
+            audio_channels: Vec::with_capacity(channel_room),
+            midi_channels: Vec::with_capacity(channel_room),
+            audio_ports: Vec::with_capacity(port_room),
+            midi_ports: Vec::with_capacity(port_room),
             ..Default::default()
         }));
     }
@@ -273,11 +342,14 @@ impl Engine {
 
         snap.cycle = self.stats.cycles.load(Ordering::Relaxed);
         snap.n_loops = self.session.n_loops();
+        snap.n_channels = self.session.n_channels();
+        snap.n_ports = self.session.n_ports();
+
+        // Each vector is filled only as far as the box already has room for: pushing past
+        // capacity would allocate. The `n_*` counts above record any shortfall so the reader
+        // can hand back bigger boxes -- see `EngineHandle::poll`.
         snap.loops.clear();
-        // Only as far as the box already has room for: pushing past capacity would
-        // allocate. `n_loops` records the shortfall so the reader can fix it.
-        let room = snap.loops.capacity();
-        for i in 0..self.session.n_loops().min(room) {
+        for i in 0..snap.n_loops.min(snap.loops.capacity()) {
             let Some(l) = self.session.loop_(i) else {
                 break;
             };
@@ -291,7 +363,110 @@ impl Engine {
             });
         }
 
+        // Both channel vectors are indexed by the session's single channel arena, so each
+        // index is filled in exactly one of them and left at its default in the other. That
+        // costs a slot per channel and buys an index a handle can use without a second map.
+        snap.audio_channels.clear();
+        snap.midi_channels.clear();
+        let channel_room = snap
+            .audio_channels
+            .capacity()
+            .min(snap.midi_channels.capacity());
+        for i in 0..snap.n_channels.min(channel_room) {
+            let mut audio = AudioChannelState::default();
+            let mut midi = MidiChannelState::default();
+            if let Some(m) = self.session.channel_mapping(i) {
+                let (loop_idx, kind, channel_idx) = (m.loop_idx, m.kind, m.channel_idx);
+                if let Some(l) = self.session.loop_(loop_idx) {
+                    match kind {
+                        ChannelKind::Audio => {
+                            if let Some(c) = l.audio_channel(channel_idx) {
+                                audio = AudioChannelState {
+                                    mode: c.mode(),
+                                    gain: c.gain(),
+                                    output_peak: c.output_peak(),
+                                    length: c.length() as u32,
+                                    start_offset: c.start_offset(),
+                                    played_back_sample: c.played_back_sample(),
+                                    n_preplay_samples: c.pre_play_samples(),
+                                    data_dirty: c.data_seq_nr() != 0,
+                                };
+                            }
+                        }
+                        ChannelKind::Midi => {
+                            if let Some(c) = l.midi_channel(channel_idx) {
+                                midi = MidiChannelState {
+                                    mode: c.mode(),
+                                    n_events_triggered: c.n_events_triggered(),
+                                    n_notes_active: c.n_notes_active(),
+                                    length: c.length(),
+                                    start_offset: c.start_offset(),
+                                    played_back_sample: c.played_back_sample(),
+                                    n_preplay_samples: c.pre_play_samples(),
+                                    data_dirty: c.data_seq_nr() != 0,
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+            snap.audio_channels.push(audio);
+            snap.midi_channels.push(midi);
+        }
+
+        // Ports likewise: one arena, two vectors, `None` for the kind a port is not. No name
+        // is published -- it is a `String`, and this thread must not touch one. Whoever holds
+        // a port handle supplies the name; see `state::AudioPortSnapshot::named`.
+        snap.audio_ports.clear();
+        snap.midi_ports.clear();
+        let port_room = snap.audio_ports.capacity().min(snap.midi_ports.capacity());
+        for i in 0..snap.n_ports.min(port_room) {
+            let mut audio = None;
+            let mut midi = None;
+            if let Some(p) = self.session.port(i) {
+                if let Some(a) = p.audio() {
+                    audio = Some(AudioPortSnapshot {
+                        input_peak: a.input_peak(),
+                        output_peak: a.output_peak(),
+                        gain: a.gain(),
+                        muted: a.muted(),
+                        passthrough_muted: a.passthrough_muted(),
+                        ringbuffer_n_samples: a.ringbuffer_n_samples() as u32,
+                    });
+                } else if let Some(m) = p.midi() {
+                    midi = Some(MidiPortSnapshot {
+                        n_input_events: m.n_input_events(),
+                        n_input_notes_active: m.n_notes_active(),
+                        n_output_events: m.n_output_events(),
+                        n_output_notes_active: 0,
+                        muted: m.muted(),
+                        passthrough_muted: m.passthrough_muted(),
+                        ringbuffer_n_samples: m.ringbuffer_n_samples(),
+                    });
+                }
+            }
+            snap.audio_ports.push(audio);
+            snap.midi_ports.push(midi);
+        }
+
         let _ = self.filled.push(snap);
+    }
+
+    /// Applies queued control work without running a cycle.
+    ///
+    /// Two callers need this, and both are cases where cycles are not arriving:
+    ///
+    /// - A driver that is spinning but not processing. The dummy driver in controlled mode
+    ///   hands out no frames until a test asks for them, so a blocking control call made in
+    ///   the meantime would sit until it timed out rather than being answered.
+    /// - An engine no driver has taken yet. Between [`split`] and a driver activating there
+    ///   is no audio thread at all, and session construction still has to work.
+    ///
+    /// Commands still land at a cycle boundary: between cycles is exactly where this runs.
+    /// The allocation guard applies as it does to [`Self::process`], because in the first
+    /// case this *is* the audio thread.
+    pub fn pump(&mut self) {
+        crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| self.apply_commands());
     }
 
     fn apply_commands(&mut self) {
@@ -310,6 +485,16 @@ impl Engine {
                 .commands_applied
                 .fetch_add(applied, Ordering::Relaxed);
         }
+    }
+}
+
+/// Reserves room for `wanted` items, if the vector is short of it.
+///
+/// On the control thread only. Allocating is what the audio thread cannot do, which is why
+/// it publishes a short snapshot and reports the shortfall instead of growing anything.
+fn grow_to<T>(v: &mut Vec<T>, wanted: usize) {
+    if wanted > v.capacity() {
+        v.reserve(wanted - v.capacity());
     }
 }
 
@@ -390,16 +575,22 @@ impl EngineHandle {
         // a few polls after loops are added every box in circulation has room. The
         // audio thread never allocates; it just publishes a short snapshot until then.
         if let Some(c) = self.current.as_mut() {
-            if c.n_loops > c.loops.capacity() {
-                let extra = c.n_loops - c.loops.capacity();
-                c.loops.reserve(extra);
-            }
+            grow_to(&mut c.loops, c.n_loops);
+            grow_to(&mut c.audio_channels, c.n_channels);
+            grow_to(&mut c.midi_channels, c.n_channels);
+            grow_to(&mut c.audio_ports, c.n_ports);
+            grow_to(&mut c.midi_ports, c.n_ports);
         }
         self.current.as_deref()
     }
 
     fn recycle(&mut self, mut snap: Box<StateSnapshot>) {
+        // Cleared, not shrunk: the capacity is the whole point of handing the box back.
         snap.loops.clear();
+        snap.audio_channels.clear();
+        snap.midi_channels.clear();
+        snap.audio_ports.clear();
+        snap.midi_ports.clear();
         let _ = self.empties.push(snap);
     }
 
@@ -565,6 +756,184 @@ mod tests {
 
         s.set_dsp_load_percent(-5.0);
         check!(s.dsp_load_percent() == 0.0);
+    }
+
+    /// Everything the 40 Hz poll needs, from one cycle: loops, channels and ports together.
+    ///
+    /// The point of publishing these rather than asking for them one at a time -- a blocking
+    /// query per object per frame costs an audio cycle each, which a session with a handful
+    /// of tracks cannot afford.
+    #[test]
+    fn one_cycle_publishes_loops_channels_and_ports_together() {
+        use crate::external_audio_port::ExternalAudioPort;
+        use crate::external_midi_port::ExternalMidiPort;
+
+        let mut s = Session::default();
+        let aport = s.add_port(Port::External(ExternalAudioPort::new(
+            "aout",
+            PortDirection::Output,
+            4,
+        )));
+        let mport = s.add_port(Port::ExternalMidi(ExternalMidiPort::new(
+            "mout",
+            PortDirection::Output,
+        )));
+        let l = s.create_loop();
+        let ac = s
+            .add_audio_channel(l, 64, ChannelMode::Direct)
+            .expect("audio channel");
+        let mc = s
+            .add_midi_channel(l, 256, ChannelMode::Direct)
+            .expect("midi channel");
+        s.connect_channel_output(ac, aport).expect("connect audio");
+        s.connect_channel_output(mc, mport).expect("connect midi");
+        s.loop_mut(l).expect("loop").set_length(64);
+        s.apply_graph_changes().expect("schedule");
+
+        // Distinguishable values, so a snapshot that reported another object's numbers or a
+        // default would not pass.
+        s.loop_mut(l)
+            .expect("loop")
+            .audio_channel_mut(0)
+            .expect("channel")
+            .set_gain(0.25);
+        s.port_mut(aport)
+            .expect("port")
+            .audio_mut()
+            .expect("audio")
+            .set_gain(0.75);
+        s.port_mut(mport)
+            .expect("port")
+            .midi_mut()
+            .expect("midi")
+            .set_muted(true);
+        s.set_loop_mode(l, LoopMode::Playing).expect("mode");
+
+        let (mut e, mut h) = split(s, 16);
+        e.process(4);
+
+        let_assert!(Some(snap) = h.poll());
+        check!(!snap.truncated());
+
+        check!(snap.n_loops == 1);
+        check!(snap.loops[0].mode == LoopMode::Playing);
+        check!(snap.loops[0].position == 4);
+
+        // One arena, two vectors: each channel index is filled in exactly one of them.
+        check!(snap.n_channels == 2);
+        check!(snap.audio_channels[ac].gain == 0.25);
+        check!(snap.audio_channels[ac].mode == ChannelMode::Direct);
+        check!(snap.midi_channels[mc].mode == ChannelMode::Direct);
+
+        check!(snap.n_ports == 2);
+        let_assert!(Some(a) = snap.audio_ports[aport]);
+        check!(a.gain == 0.75);
+        check!(!a.muted);
+        // The audio port is not a MIDI port, and says so rather than shifting the indices.
+        check!(snap.midi_ports[aport].is_none());
+        let_assert!(Some(m) = snap.midi_ports[mport]);
+        check!(m.muted);
+        check!(snap.audio_ports[mport].is_none());
+    }
+
+    /// The published name problem, asserted from the other side.
+    ///
+    /// Port names are deliberately absent from a snapshot, because filling one would mean the
+    /// audio thread cloning a `String`. The name comes from whoever holds the handle.
+    #[test]
+    fn a_polled_port_becomes_a_full_state_once_named() {
+        use crate::external_audio_port::ExternalAudioPort;
+
+        let mut s = Session::default();
+        let p = s.add_port(Port::External(ExternalAudioPort::new(
+            "out-1",
+            PortDirection::Output,
+            4,
+        )));
+        s.port_mut(p)
+            .expect("port")
+            .audio_mut()
+            .expect("audio")
+            .set_gain(0.5);
+        s.apply_graph_changes().expect("schedule");
+
+        let (mut e, mut h) = split(s, 16);
+        e.process(4);
+
+        let_assert!(Some(snap) = h.poll());
+        let_assert!(Some(polled) = snap.audio_ports[p]);
+        let full = polled.named("out-1");
+        check!(full.name == "out-1");
+        check!(full.gain == 0.5);
+    }
+
+    /// Channels and ports added after the split get the same grow-on-poll treatment as loops.
+    #[test]
+    fn more_channels_than_fit_are_reported_then_accommodated() {
+        let mut s = Session::default();
+        let l = s.create_loop();
+        s.apply_graph_changes().expect("schedule");
+
+        // Split while the session is small, so the boxes are sized small, then add well past
+        // the floor `split` reserves.
+        let (mut e, mut h) = split(s, 16);
+        h.send(Box::new(move |s: &mut Session| {
+            for _ in 0..40 {
+                let _ = s.add_audio_channel(l, 8, ChannelMode::Direct);
+            }
+            let _ = s.apply_graph_changes();
+        }))
+        .expect("queue has room");
+        e.process(4);
+
+        let_assert!(Some(snap) = h.poll());
+        check!(snap.n_channels == 40);
+        check!(snap.truncated());
+        check!(snap.audio_channels.len() < 40);
+
+        // A few cycles later every box in circulation has been refitted.
+        for _ in 0..6 {
+            e.process(4);
+            h.poll();
+        }
+        let_assert!(Some(snap) = h.poll());
+        check!(!snap.truncated());
+        check!(snap.audio_channels.len() == 40);
+        check!(snap.midi_channels.len() == 40);
+    }
+
+    /// What `pump` is for: control work answered while no cycles are being run.
+    ///
+    /// A driver spinning in controlled mode processes nothing until frames are requested, and
+    /// an engine no driver has taken yet has no thread at all. Without this, a blocking call
+    /// in either state waits out its whole timeout.
+    #[test]
+    fn pump_applies_commands_without_advancing_anything() {
+        let (mut e, mut h) = engine();
+        let l = e.session_mut().create_loop();
+        e.session_mut().loop_mut(l).expect("loop").set_length(64);
+        e.session_mut()
+            .set_loop_mode(l, LoopMode::Playing)
+            .expect("mode");
+        e.session_mut().apply_graph_changes().expect("schedule");
+
+        let_assert!(
+            Ok(()) = h.send(Box::new(|s: &mut Session| {
+                let _ = s.set_loop_mode(0, LoopMode::Stopped);
+            }))
+        );
+
+        e.pump();
+
+        // The command landed...
+        check!(e.session().loop_(0).expect("loop").mode() == LoopMode::Stopped);
+        check!(e.stats().commands_applied.load(Ordering::Relaxed) == 1);
+        // ...without a cycle running, so nothing advanced and nothing was published.
+        check!(e.stats().cycles.load(Ordering::Relaxed) == 0);
+        check!(e.session().loop_(0).expect("loop").position() == 0);
+        check!(h.poll().is_none());
+        // And the box came back to be freed on this side, as after a cycle.
+        check!(h.reclaim() == 1);
     }
 
     #[test]

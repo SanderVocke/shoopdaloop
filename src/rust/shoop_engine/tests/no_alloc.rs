@@ -357,9 +357,18 @@ fn publishing_state_does_not_allocate() {
     use shoop_engine::engine::split;
 
     let mut s = Session::default();
+    // Every kind of thing a snapshot carries, so the guard covers the whole of
+    // `publish_state` rather than only its loop vector: loops, both channel kinds, and both
+    // port kinds. A port's name is deliberately not published -- cloning a `String` here is
+    // exactly what this test would catch.
+    let a_out = s.add_port(audio_port(1, "aout", PortDirection::Output));
+    let m_out = s.add_port(midi_port(2, "mout", PortDirection::Output));
     for _ in 0..4 {
         let l = s.create_loop();
-        s.add_audio_channel(l, 64, ChannelMode::Direct).unwrap();
+        let ac = s.add_audio_channel(l, 64, ChannelMode::Direct).unwrap();
+        let mc = s.add_midi_channel(l, 256, ChannelMode::Direct).unwrap();
+        s.connect_channel_output(ac, a_out).unwrap();
+        s.connect_channel_output(mc, m_out).unwrap();
         s.loop_mut(l).unwrap().set_length(16);
         s.set_loop_mode(l, LoopMode::Playing).unwrap();
     }
@@ -381,6 +390,11 @@ fn publishing_state_does_not_allocate() {
     // State really was published, so the guard above was not vacuous.
     let snap = handle.poll().expect("a published snapshot");
     assert_eq!(snap.loops.len(), 4);
+    assert_eq!(snap.n_channels, 8);
+    assert_eq!(snap.audio_channels.len(), 8);
+    assert_eq!(snap.midi_channels.len(), 8);
+    assert!(snap.audio_ports[a_out].is_some());
+    assert!(snap.midi_ports[m_out].is_some());
     assert!(!snap.truncated());
 }
 

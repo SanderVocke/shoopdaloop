@@ -48,6 +48,7 @@ pub mod profiling;
 pub mod realtime_alloc_guard;
 pub mod resample;
 pub mod session;
+pub mod state;
 pub mod wave_generator;
 
 pub use audio_channel::{AudioChannel, ChannelError};
@@ -56,7 +57,6 @@ pub use basic_loop::{BasicLoop, PoiFlags, PointOfInterest, SyncSourceState};
 pub use buffer_queue::{BufferQueue, Snapshot};
 pub use channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 pub use chunked_samples::ChunkedSamples;
-pub use control::{AudioChannelState, AudioPortState, MidiChannelState, MidiPortState};
 pub use decoupled_midi_port::DecoupledMidiPort;
 pub use driver::{
     cpal_host_names, cpal_input_device_names, cpal_input_device_names_for_host,
@@ -86,4 +86,8 @@ pub use port::{
     AudioPort, PortConnectability, PortConnectabilityKind, PortDataType, PortDirection,
 };
 pub use profiling::{ProfilingReport, ProfilingReportItem};
-pub use session::{Port, Session, SessionError};
+pub use session::{build_schedule, Port, PreparedSchedule, Session, SessionError, Topology};
+pub use state::{
+    AudioChannelState, AudioPortSnapshot, AudioPortState, MidiChannelState, MidiPortSnapshot,
+    MidiPortState,
+};

@@ -1044,12 +1044,24 @@ impl BackendSession {
         let scheduler = GraphScheduler::start(
             DEFAULT_WINDOW,
             Box::new(move || {
-                if let Some(shared) = weak.upgrade() {
-                    // `lock_rt` rather than `lock`: this *is* the reschedule, so arming
-                    // another one from its own drop would spin.
-                    let mut s = shared.lock_rt();
-                    let _ = s.apply_graph_changes();
-                }
+                let Some(shared) = weak.upgrade() else {
+                    return;
+                };
+                // Three phases, and only the outer two hold the lock. Building the schedule
+                // is the expensive part -- lowering the topology, sorting it, sizing every
+                // scratch buffer -- and it needs nothing but the description, so holding the
+                // session across it would block the audio thread for the whole rebuild.
+                //
+                // `lock_rt` rather than `lock` throughout: this *is* the reschedule, so
+                // arming another one from a control guard's drop would spin.
+                let topology = shared.lock_rt().describe_topology();
+                let Ok(prepared) = engine::build_schedule(topology) else {
+                    return;
+                };
+                let displaced = shared.lock_rt().install_schedule(prepared);
+                // Outside the lock and off the audio thread, which is the reason
+                // `install_schedule` hands it back rather than dropping it itself.
+                drop(displaced);
             }),
         );
         let _ = shared.scheduler.set(scheduler);
@@ -1221,16 +1233,19 @@ fn driver_uses_dummy_processing(driver_type: AudioDriverType) -> bool {
 }
 struct DriverInner {
     driver_type: AudioDriverType,
-    settings: engine::DriverSettings,
-    active: bool,
-    controlled: bool,
-    requested: u32,
+    /// Settings, lifecycle and cycle chunking, for every driver type.
+    ///
+    /// Named for the dummy driver because that is where its chunking matters, but it is
+    /// the one place the settings and the active flag live regardless of backend: JACK
+    /// and CPAL take their cycle sizes from their own callbacks and only read the
+    /// settings back out. Sharing the type is what stopped the chunk arithmetic from
+    /// existing twice, once here and once in `dummy_driver.rs` where the tests were.
+    dummy: engine::DummyDriver,
     last_processed: u32,
     process_generation: u64,
     finish: Arc<AtomicBool>,
     dummy_thread: Option<thread::JoinHandle<()>>,
     session: Option<Weak<SharedSession>>,
-    external: Arc<Mutex<engine::DummyExternalConnections>>,
     jack: Option<Arc<Mutex<JackBackend>>>,
     cpal: Option<Arc<Mutex<CpalBackend>>>,
     cpal_settings: Option<CpalMidiAudioDriverSettings>,
@@ -1244,25 +1259,21 @@ pub struct AudioDriver {
 fn process_dummy_driver_iteration(inner: &Arc<Mutex<DriverInner>>) {
     let (session, n, sample_rate, buffer_size, callback) = {
         let mut i = inner.lock().unwrap_or_else(|e| e.into_inner());
-        if !i.active || !driver_uses_dummy_processing(i.driver_type) {
+        if !i.dummy.active() || !driver_uses_dummy_processing(i.driver_type) {
             i.last_processed = 0;
             i.process_generation = i.process_generation.wrapping_add(1);
             return;
         }
-        let n = if i.controlled {
-            i.requested.min(i.settings.buffer_size)
-        } else {
-            i.settings.buffer_size
-        };
-        if i.controlled {
-            i.requested -= n;
-        }
+        // Chunking, including the controlled-mode bookkeeping, belongs to `DummyDriver`:
+        // automatic mode hands out a whole buffer, controlled mode only what was asked
+        // for and consumes it from the request.
+        let n = i.dummy.next_chunk();
         i.process_generation = i.process_generation.wrapping_add(1);
         (
             i.session.as_ref().and_then(|w| w.upgrade()),
             n,
-            i.settings.sample_rate,
-            i.settings.buffer_size,
+            i.dummy.sample_rate(),
+            i.dummy.buffer_size(),
             i.maybe_process_callback,
         )
     };
@@ -1320,16 +1331,12 @@ impl AudioDriver {
         Ok(Self {
             inner: Arc::new(Mutex::new(DriverInner {
                 driver_type,
-                settings: engine::DriverSettings::default(),
-                active: false,
-                controlled: false,
-                requested: 0,
+                dummy: engine::DummyDriver::default(),
                 last_processed: 0,
                 process_generation: 0,
                 finish: Arc::new(AtomicBool::new(false)),
                 dummy_thread: None,
                 session: None,
-                external: Arc::new(Mutex::new(engine::DummyExternalConnections::default())),
                 jack: None,
                 cpal: None,
                 cpal_settings: None,
@@ -1342,7 +1349,8 @@ impl AudioDriver {
         self.inner
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .external
+            .dummy
+            .external()
             .clone()
     }
     fn jack(&self) -> Option<Arc<Mutex<JackBackend>>> {
@@ -1373,11 +1381,12 @@ impl AudioDriver {
             .cpal_settings
             .clone()
             .ok_or_else(|| anyhow!("CPAL settings missing"))?;
+        let external = i.dummy.external().clone();
         let backend = if i.driver_type == AudioDriverType::CpalTest {
             CpalBackend::start_with_mock(
                 Arc::downgrade(shared),
                 &settings,
-                i.external.clone(),
+                external,
                 i.cpal_decoupled_midi_ports.clone(),
                 i.maybe_process_callback,
             )?
@@ -1385,38 +1394,44 @@ impl AudioDriver {
             CpalBackend::start(
                 Arc::downgrade(shared),
                 &settings,
-                i.external.clone(),
+                external,
                 i.cpal_decoupled_midi_ports.clone(),
                 i.maybe_process_callback,
             )?
         };
-        i.settings.sample_rate = backend.sample_rate;
-        i.settings.buffer_size = backend.configured_buffer_size;
+        // What the device actually opened at, which is only known now.
+        i.dummy.settings_mut().sample_rate = backend.sample_rate;
+        i.dummy.settings_mut().buffer_size = backend.configured_buffer_size;
         i.cpal = Some(Arc::new(Mutex::new(backend)));
         Ok(())
     }
     pub fn start(&self, settings: &AudioDriverSettings) -> Result<()> {
         let mut i = self.inner.lock().unwrap();
-        match settings {
-            AudioDriverSettings::Dummy(s) => {
-                i.settings = engine::DriverSettings {
-                    sample_rate: s.sample_rate,
-                    buffer_size: s.buffer_size,
-                    client_name: s.client_name.clone(),
-                }
-            }
-            AudioDriverSettings::Jack(s) => i.settings.client_name = s.client_name_hint.clone(),
-            AudioDriverSettings::Cpal(s) => i.settings.client_name = s.client_name.clone(),
+        // Settled here as a local and handed to the driver once at the end, rather than
+        // patched in place: the JACK branch has to open a client to learn the name and
+        // rate it actually got, so the values arriving here are provisional either way.
+        let mut resolved = match settings {
+            AudioDriverSettings::Dummy(s) => engine::DriverSettings {
+                sample_rate: s.sample_rate,
+                buffer_size: s.buffer_size,
+                client_name: s.client_name.clone(),
+            },
+            AudioDriverSettings::Jack(s) => engine::DriverSettings {
+                client_name: s.client_name_hint.clone(),
+                ..Default::default()
+            },
+            AudioDriverSettings::Cpal(s) => engine::DriverSettings {
+                client_name: s.client_name.clone(),
+                ..Default::default()
+            },
         };
         if i.driver_type == AudioDriverType::Jack {
-            let (client, _status) = jack::Client::new(
-                &i.settings.client_name,
-                jack::ClientOptions::NO_START_SERVER,
-            )
-            .map_err(|e| anyhow!("Failed to open JACK client: {e}"))?;
-            i.settings.client_name = client.name().to_string();
-            i.settings.sample_rate = client.sample_rate();
-            i.settings.buffer_size = client.buffer_size();
+            let (client, _status) =
+                jack::Client::new(&resolved.client_name, jack::ClientOptions::NO_START_SERVER)
+                    .map_err(|e| anyhow!("Failed to open JACK client: {e}"))?;
+            resolved.client_name = client.name().to_string();
+            resolved.sample_rate = client.sample_rate();
+            resolved.buffer_size = client.buffer_size();
             i.jack = Some(Arc::new(Mutex::new(JackBackend {
                 client: Some(client),
                 active_client: None,
@@ -1434,45 +1449,45 @@ impl AudioDriver {
                 AudioDriverSettings::Cpal(s) => s.clone(),
                 _ => return Err(anyhow!("CPAL driver requires CPAL settings")),
             };
-            i.settings.sample_rate = 0;
-            i.settings.buffer_size = 0;
-            i.settings.client_name = cpal_settings.client_name.clone();
+            // Unknown until the device opens; `activate_cpal` fills them in.
+            resolved.sample_rate = 0;
+            resolved.buffer_size = 0;
+            resolved.client_name = cpal_settings.client_name.clone();
             i.cpal_settings = Some(cpal_settings);
         } else {
             i.cpal = None;
             i.cpal_settings = None;
         }
         if i.driver_type == AudioDriverType::JackTest {
-            let mut ext = i.external.lock().unwrap_or_else(|e| e.into_inner());
-            ext.remove_all_mock_ports();
+            i.dummy.remove_all_external_mock_ports();
             for client in [
                 "test_client_1",
                 "test_client_2",
-                i.settings.client_name.as_str(),
+                resolved.client_name.as_str(),
             ] {
-                ext.add_mock_port(
+                i.dummy.add_external_mock_port(
                     format!("{client}:audio_in"),
                     engine::PortDirection::Input,
                     engine::PortDataType::Audio,
                 );
-                ext.add_mock_port(
+                i.dummy.add_external_mock_port(
                     format!("{client}:audio_out"),
                     engine::PortDirection::Output,
                     engine::PortDataType::Audio,
                 );
-                ext.add_mock_port(
+                i.dummy.add_external_mock_port(
                     format!("{client}:midi_in"),
                     engine::PortDirection::Input,
                     engine::PortDataType::Midi,
                 );
-                ext.add_mock_port(
+                i.dummy.add_external_mock_port(
                     format!("{client}:midi_out"),
                     engine::PortDirection::Output,
                     engine::PortDataType::Midi,
                 );
             }
         }
-        i.active = true;
+        i.dummy.start(resolved);
         if driver_uses_dummy_processing(i.driver_type) && i.dummy_thread.is_none() {
             i.finish.store(false, Ordering::Relaxed);
             let inner = self.inner.clone();
@@ -1481,7 +1496,7 @@ impl AudioDriver {
                 while !finish.load(Ordering::Relaxed) {
                     let (sample_rate, buffer_size) = {
                         let i = inner.lock().unwrap_or_else(|e| e.into_inner());
-                        (i.settings.sample_rate.max(1), i.settings.buffer_size.max(1))
+                        (i.dummy.sample_rate().max(1), i.dummy.buffer_size().max(1))
                     };
                     let micros = ((buffer_size as f64 / sample_rate as f64) * 1_000_000.0)
                         .ceil()
@@ -1618,13 +1633,13 @@ impl AudioDriver {
         Ok(())
     }
     pub fn get_sample_rate(&self) -> u32 {
-        self.inner.lock().unwrap().settings.sample_rate
+        self.inner.lock().unwrap().dummy.sample_rate()
     }
     pub fn get_buffer_size(&self) -> u32 {
-        self.inner.lock().unwrap().settings.buffer_size
+        self.inner.lock().unwrap().dummy.buffer_size()
     }
     pub fn active(&self) -> bool {
-        self.inner.lock().unwrap().active
+        self.inner.lock().unwrap().dummy.active()
     }
     /// Waits until the engine has caught up with everything asked of it.
     ///
@@ -1678,26 +1693,28 @@ impl AudioDriver {
             dsp_load_percent,
             xruns_since_last,
             stale_graph_cycles,
-            maybe_instance_name: i.settings.client_name.clone(),
-            sample_rate: i.settings.sample_rate,
-            buffer_size: i.settings.buffer_size,
-            active: i.active as u32,
+            maybe_instance_name: i.dummy.client_name().to_string(),
+            sample_rate: i.dummy.sample_rate(),
+            buffer_size: i.dummy.buffer_size(),
+            active: i.dummy.active() as u32,
             last_processed,
         }
     }
     pub fn dummy_enter_controlled_mode(&self) {
         let mut i = self.inner.lock().unwrap();
-        i.controlled = true;
-        i.requested = 0;
+        i.dummy.enter_mode(engine::DriverMode::Controlled);
+        // Explicit, because `enter_mode` keeps the request when the mode is unchanged: a
+        // caller entering controlled mode wants to start from nothing requested.
+        i.dummy.clear_request();
         i.last_processed = 0;
     }
     pub fn dummy_enter_automatic_mode(&self) {
         let mut i = self.inner.lock().unwrap();
-        i.controlled = false;
-        i.requested = 0;
+        i.dummy.enter_mode(engine::DriverMode::Automatic);
+        i.dummy.clear_request();
     }
     pub fn dummy_is_controlled(&self) -> bool {
-        self.inner.lock().unwrap().controlled
+        self.inner.lock().unwrap().dummy.mode() == engine::DriverMode::Controlled
     }
     pub fn dummy_wait_controlled_mode(&self) {
         // Synchronously drain all pending controlled frames.
@@ -1707,17 +1724,17 @@ impl AudioDriver {
         self.wait_process();
         while {
             let i = self.inner.lock().unwrap();
-            i.last_processed != 0 || i.requested != 0
+            i.last_processed != 0 || i.dummy.samples_to_process() != 0
         } {
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
         self.wait_process();
     }
     pub fn dummy_request_controlled_frames(&self, n: u32) {
-        self.inner.lock().unwrap().requested += n;
+        self.inner.lock().unwrap().dummy.request_samples(n);
     }
     pub fn dummy_n_requested_frames(&self) -> u32 {
-        self.inner.lock().unwrap().requested
+        self.inner.lock().unwrap().dummy.samples_to_process()
     }
     pub fn dummy_run_requested_frames(&self) {
         self.wait_process();
@@ -1802,7 +1819,7 @@ impl Drop for AudioDriver {
         let thread = {
             let mut i = self.inner.lock().unwrap_or_else(|e| e.into_inner());
             i.finish.store(true, Ordering::Relaxed);
-            i.active = false;
+            i.dummy.close();
             i.dummy_thread.take()
         };
         if let Some(thread) = thread {
@@ -3131,25 +3148,75 @@ mod tests {
         assert_eq!(state.maybe_instance_name, "api-test");
     }
 
+    /// Controlled mode advances the session by exactly what was asked for, in
+    /// buffer-sized cycles.
+    ///
+    /// This replaces `driver.rs`'s `a_request_is_split_into_buffer_sized_cycles` and
+    /// `control_work_and_cycles_meet`, which asserted the same chunking against
+    /// `DummyEngineDriver` -- a driver the application never ran. The request here is
+    /// deliberately not a multiple of the buffer, so the final short cycle is exercised:
+    /// 160 frames at a buffer of 64 is 64 + 64 + 32, and a driver that dropped the
+    /// remainder or rounded up to a whole buffer would land on a different position.
+    #[test]
+    fn a_controlled_request_advances_the_session_by_exactly_that_many_frames() {
+        const BUFFER: u32 = 64;
+        const REQUEST: u32 = 160;
+
+        let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
+        driver
+            .start(&AudioDriverSettings::Dummy(DummyAudioDriverSettings {
+                client_name: "chunking-test".to_string(),
+                sample_rate: 48_000,
+                buffer_size: BUFFER,
+            }))
+            .expect("start driver");
+        let sess = BackendSession::new().expect("session");
+        sess.set_audio_driver(&driver).expect("attach driver");
+
+        // Controlled before anything is requested, so no cycle can slip in ahead of the
+        // setup and the position below is attributable to the request alone.
+        driver.dummy_enter_controlled_mode();
+        assert!(driver.dummy_is_controlled());
+        assert_eq!(driver.dummy_n_requested_frames(), 0);
+
+        let loop_ = sess.create_loop().expect("loop");
+        loop_
+            .add_audio_channel(ChannelMode::Direct)
+            .expect("channel");
+        // Longer than the request, so the loop cannot wrap and hide a miscount.
+        loop_.set_length(REQUEST * 2).expect("length");
+        loop_
+            .transition(LoopMode::Playing, -1, -1)
+            .expect("playing");
+        driver.wait_process();
+        assert_eq!(loop_.get_state().expect("state").position, 0);
+
+        driver.dummy_request_controlled_frames(REQUEST);
+        assert_eq!(driver.dummy_n_requested_frames(), REQUEST);
+        driver.dummy_run_requested_frames();
+
+        assert_eq!(driver.dummy_n_requested_frames(), 0);
+        assert_eq!(loop_.get_state().expect("state").position, REQUEST);
+    }
+
     #[test]
     fn get_state_does_not_advance_dummy_time() {
+        // Built by hand, with no dummy thread, so nothing but `get_state` can advance it.
+        let mut dummy = engine::DummyDriver::default();
+        dummy.start(engine::DriverSettings {
+            sample_rate: 48_000,
+            buffer_size: 256,
+            client_name: "test".to_string(),
+        });
         let driver = AudioDriver {
             inner: Arc::new(Mutex::new(DriverInner {
                 driver_type: AudioDriverType::Dummy,
-                settings: engine::DriverSettings {
-                    sample_rate: 48_000,
-                    buffer_size: 256,
-                    client_name: "test".to_string(),
-                },
-                active: true,
-                controlled: false,
-                requested: 0,
+                dummy,
                 last_processed: 0,
                 process_generation: 0,
                 finish: Arc::new(AtomicBool::new(false)),
                 dummy_thread: None,
                 session: None,
-                external: Arc::new(Mutex::new(engine::DummyExternalConnections::default())),
                 jack: None,
                 cpal: None,
                 cpal_settings: None,
