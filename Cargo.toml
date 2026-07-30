@@ -46,7 +46,7 @@ sndfile = { version = "0.1" }
 json = "0.12"
 midly = "0.5"
 directories = "6.0"
-mlua = { version = "0.11", features = ["lua54"] }
+mlua = { version = "0.11", features = ["lua53"] }
 itertools = "0.14"
 num_enum = "0.7"
 enum-iterator = "2.1"
