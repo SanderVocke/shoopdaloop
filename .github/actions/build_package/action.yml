@@ -51,25 +51,11 @@ runs:
       echo "PORTABLE_DIR=$PORTABLE_DIR" | tee -a $GITHUB_ENV
       echo "RELEASE_PORTABLE_DIR=$RELEASE_PORTABLE_DIR" | tee -a $GITHUB_ENV
       ${CARGO_ARTIFACTS_DIR}/package build-portable-folder -o $PORTABLE_DIR
-  # - name: Make relocatable (MacOS)
-  #   if: always() && runner.os == 'macOS' && inputs.package_kind == 'portable_folder'
-  #   uses: ./.github/actions/macos_make_relocatable
-  #   with:
-  #     path: ${{ env.PORTABLE_DIR }}
-  #     find_cmd: "find ./lib -name \"*.dylib\";echo \"shoopdaloop\""
-  #     match: "libpython3"
-  # - name: Symlink Qt libs (MacOS)
-  #   if: always() && runner.os == 'macOS' && inputs.package_kind == 'portable_folder'
-  #   shell: wrap-shell {0}
-  #   run: |
-  #     cd ${{ env.PORTABLE_DIR }}/lib
-  #     lib_dir=$(find .. -wholename "*PySide6/Qt/lib" -type d)
-  #     for lib in $(ls "$lib_dir" | sed 's/.framework//'); do
-  #       from=$lib
-  #       to=$lib_dir/$lib.framework/Versions/A/$lib
-  #       echo "Symlink $from -> $to"
-  #       ln -s $to $from
-  #     done
+  - name: Verify bundle closure (macOS)
+    if: always() && runner.os == 'macOS' && inputs.package_kind == 'portable_folder'
+    shell: wrap-shell {0}
+    run: |
+      bash scripts/macos_verify_bundle_closure.sh "$PORTABLE_DIR"
   - name: Split debug information
     if: always() && inputs.package_kind == 'portable_folder' && runner.os == 'Linux'
     shell: wrap-shell {0}

@@ -40,6 +40,16 @@ quote = "1.0"
 syn = { version = "2.0", features = ["full"] }
 walkdir = "2.5"
 indexmap = "2.5"
+# Object-file parsing for the packaging dependency walker (PE imports on
+# Windows, Mach-O load commands on macOS). Already in Cargo.lock at 0.8.2 via
+# minidump-writer, so this adds no new dependency tree.
+goblin = { version = "0.8", default-features = false, features = [
+    "std",
+    "pe32",
+    "pe64",
+    "mach32",
+    "mach64",
+] }
 clap = { version = "4.5", features = ["derive"] }
 quick-xml = { version = "0.38", features = ["serialize"] }
 sndfile = { version = "0.1" }

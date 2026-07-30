@@ -12,6 +12,19 @@ shoop_log_unit!("packaging");
 
 const MAYBE_QMAKE: Option<&'static str> = option_env!("QMAKE");
 
+/// Qt plugins that get copied in with the rest of the plugin tree but that
+/// ShoopDaLoop does not ship.
+///
+/// Paths are `<plugin subdir>/<basename without prefix or extension>`, so the
+/// same entry matches `qsqlpsql.dll`, `libqsqlpsql.dylib` and `libqsqlpsql.so`,
+/// plus any accompanying debug-symbol file.
+///
+/// The dependency walker seeds from every binary in the package, so anything
+/// left here has to have its whole dependency closure bundled. The PostgreSQL
+/// driver would drag in libpq and, transitively, its own SSL, Kerberos and
+/// libintl stack -- for a database an audio looper has no use for.
+const UNWANTED_QT_PLUGINS: &[&str] = &["sqldrivers/qsqlpsql"];
+
 fn qmake_command(qmake_path: &str, argstring: &str) -> Command {
     let shell_command = format!("{} {}", qmake_path, argstring);
     return if cfg!(target_os = "windows") {
@@ -23,6 +36,34 @@ fn qmake_command(qmake_path: &str, argstring: &str) -> Command {
         cmd.args(["-c", format!("{shell_command}").as_str()]);
         cmd
     };
+}
+
+/// Remove the plugins listed in [`UNWANTED_QT_PLUGINS`] from a copied Qt plugin
+/// tree, along with any same-named debug-symbol files.
+fn prune_unwanted_qt_plugins(install_plugins_dir: &Path) -> Result<(), anyhow::Error> {
+    for relative in UNWANTED_QT_PLUGINS {
+        let (subdir, stem) = relative
+            .split_once('/')
+            .ok_or_else(|| anyhow!("Malformed unwanted-plugin entry: {relative}"))?;
+        let dir = install_plugins_dir.join(subdir);
+        if !dir.is_dir() {
+            debug!("--> no {subdir} plugin dir; nothing to prune");
+            continue;
+        }
+        let prefixed = format!("lib{stem}");
+        for entry in std::fs::read_dir(&dir).with_context(|| format!("Cannot read {dir:?}"))? {
+            let path = entry?.path();
+            let Some(file_stem) = path.file_stem().map(|s| s.to_string_lossy().into_owned()) else {
+                continue;
+            };
+            if file_stem == stem || file_stem == prefixed {
+                info!("--> Removing unwanted Qt plugin file: {:?}", path);
+                std::fs::remove_file(&path)
+                    .with_context(|| format!("Cannot remove {path:?}"))?;
+            }
+        }
+    }
+    Ok(())
 }
 
 pub fn populate_portable_folder(
@@ -74,6 +115,7 @@ pub fn populate_portable_folder(
     let install_plugins_dir = folder.join("Qt6/plugins");
     debug!("--> {:?} -> {:?}", qt_plugins, install_plugins_dir);
     copy_dir(qt_plugins, &install_plugins_dir)?;
+    prune_unwanted_qt_plugins(&install_plugins_dir)?;
 
     info!("Bundling Qt QML components...");
     let qt_qml = qmake_command(qmake, "-query QT_INSTALL_QML")
@@ -106,9 +148,14 @@ pub fn populate_portable_folder(
             }
         }
     }
-    // Also include search paths to all of Qt's plugin directories
-    let plugin_subdirs = std::fs::read_dir(install_plugins_dir)?;
-    for entry in plugin_subdirs {
+    // Qt's plugin directories, for the subprocess-based scanners that resolve
+    // through the loader's environment.
+    //
+    // Not needed on Windows: the in-process walker indexes the whole output
+    // folder, which already contains these directories, and resolves against an
+    // explicit search-directory list rather than PATH.
+    #[cfg(not(windows))]
+    for entry in std::fs::read_dir(&install_plugins_dir)? {
         let entry = entry?;
         let path = entry.path();
         debug!("--> extra search path: {:?}", path);

@@ -1,23 +1,31 @@
 use anyhow::anyhow;
 use anyhow::Context;
-use indexmap::IndexMap;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::rc::Rc;
+
+// Only the Linux scanner still shells out, and only it threads an environment
+// map through to the child process.
+#[cfg(target_os = "linux")]
+use std::collections::HashMap;
+
+use crate::deps_walker::InternalDependency;
+use crate::list_matcher::ListMatcher;
 
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
 
-#[derive(Default)]
-struct InternalDependency {
-    path: PathBuf,
-    deps: IndexMap<PathBuf, Rc<RefCell<InternalDependency>>>,
-    children_indent: usize,
-    maybe_parent: Option<Rc<RefCell<InternalDependency>>>,
-}
-
+/// Determine which libraries have to be bundled alongside `executable`.
+///
+/// `include_directory` is the output folder being populated; anything resolving
+/// inside it is traversed but not copied again.
+///
+/// Windows and macOS use an in-process import-table walker seeded with every
+/// binary already staged in the output folder. Linux keeps its `lddtree`-based
+/// scanner, which already seeds itself the same way via `patchelf --add-needed`.
+/// See [`crate::deps_walker`] for why seeding from the whole folder rather than
+/// from the executable alone is the entire point.
 pub fn get_dependency_libs(
     executable: &Path,
     include_directory: &Path,
@@ -26,74 +34,111 @@ pub fn get_dependency_libs(
     allow_nonexistent: bool,
 ) -> Result<HashSet<PathBuf>, anyhow::Error> {
     let mut error_msgs: String = String::from("");
-
-    let excludelist = std::fs::read_to_string(excludelist_path)
-        .with_context(|| format!("Cannot read {excludelist_path:?}"))?;
-    let includelist = std::fs::read_to_string(includelist_path)
-        .with_context(|| format!("Cannot read {excludelist_path:?}"))?;
-    let excludes: HashSet<&str> = excludelist.lines().collect();
-    let includes: HashSet<&str> = includelist.lines().collect();
+    let matcher = ListMatcher::from_files(includelist_path, excludelist_path)?;
     let mut used_includes: HashSet<String> = HashSet::new();
-    let ori_env_vars: Vec<(String, String)> = std::env::vars().collect();
-    let env_map: HashMap<String, String> = ori_env_vars.iter().cloned().collect();
-    let (command, args, warning_patterns, skip_n_levels, dylib_filename_part, new_env_map) =
-        get_os_specifics(executable, include_directory, &env_map)?;
-    let argstr = args.join(" ");
-    debug!("Running shell command for determining dependencies: {argstr}");
-    let mut list_deps: &mut Command = &mut Command::new(&command);
-    list_deps = list_deps
-        .args(&args)
-        .envs(new_env_map.iter())
-        .current_dir(std::env::current_dir().context("Failed to get current dir")?);
-    let list_deps_output = list_deps
-        .output()
-        .with_context(|| "Failed to run list_dependencies")?;
-    let command_output = std::str::from_utf8(&list_deps_output.stderr)?;
-    let deps_output = std::str::from_utf8(&list_deps_output.stdout)?;
-    debug!("Command stderr:\n{}", command_output);
-    debug!("Command stdout:\n{}", deps_output);
-    if !list_deps_output.status.success() {
-        error!("Command stderr:\n{}", command_output);
-        error!("Command stdout:\n{}", deps_output);
-        return Err(anyhow!("list_dependencies returned nonzero exit code"));
-    }
-    for line in command_output.lines() {
-        for pattern in &warning_patterns {
-            if line.contains(pattern.as_str()) {
-                warn!(
-                    "{}: stderr line matched warning pattern {}",
-                    line,
-                    pattern.as_str()
-                );
-            }
-        }
-    }
 
-    let root = parse_dependency_tree(
-        deps_output,
-        &warning_patterns,
-        dylib_filename_part,
+    #[cfg(windows)]
+    let (root, skip_n_levels) = {
+        let _ = allow_nonexistent;
+        let walk = crate::scan::prepare_windows_walk(
+            include_directory,
+            executable,
+            &[],
+            /* use_cmake_prefix_path */ true,
+            /* no_system_dirs */ false,
+            /* legacy_root_only */ false,
+        )?;
+        let staged_under_lib = walk
+            .folder_index
+            .paths()
+            .iter()
+            .filter(|p| p.starts_with(include_directory.join("lib")))
+            .count();
+        if staged_under_lib > 0 {
+            // Expected to be zero: `lib/` is created empty and filled only after
+            // this scan. A non-zero count means something pre-populated it,
+            // which silently reclassifies those libraries from "to copy" to
+            // "already in folder".
+            warn!(
+                "  {} binaries are already staged under lib/ before the scan; \
+                 they will be treated as already-bundled",
+                staged_under_lib
+            );
+        }
+        let request = crate::deps_walker::ScanRequest {
+            roots: walk.roots.clone(),
+            output_folder: include_directory.to_path_buf(),
+            report_only: false,
+            max_depth: None,
+        };
+        let (tree, report) = crate::deps_walker::build_dependency_tree(
+            &walk.scanner,
+            &request,
+            &walk.env,
+            &matcher,
+            &walk.folder_index,
+            &mut error_msgs,
+        )?;
+        crate::scan::log_report_summary(&report);
+        (tree, 0usize)
+    };
+
+    #[cfg(target_os = "macos")]
+    let (root, skip_n_levels) = {
+        let _ = allow_nonexistent;
+        // The system-library prefixes live next to the include/exclude lists, so
+        // no extra parameter has to be threaded through the OS modules.
+        let system_prefixes_path = includelist_path
+            .parent()
+            .map(|dir| dir.join("system_lib_prefixes"));
+        let walk = crate::scan::prepare_macos_walk(
+            include_directory,
+            executable,
+            system_prefixes_path.as_deref(),
+        )?;
+        let request = crate::deps_walker::ScanRequest {
+            roots: walk.roots.clone(),
+            output_folder: include_directory.to_path_buf(),
+            report_only: std::env::var_os("SHOOP_PACKAGING_DEPS_REPORT_ONLY").is_some(),
+            max_depth: None,
+        };
+        let (tree, report) = crate::deps_walker::build_dependency_tree(
+            &walk.scanner,
+            &request,
+            &walk.env,
+            &matcher,
+            &walk.folder_index,
+            &mut error_msgs,
+        )?;
+        crate::scan::log_report_summary(&report);
+        crate::scan::report_unlisted_candidates(&report);
+        (tree, 0usize)
+    };
+
+    #[cfg(target_os = "linux")]
+    let (root, skip_n_levels) = subprocess_dependency_tree(
+        executable,
+        include_directory,
         allow_nonexistent,
         &mut error_msgs,
-    );
+    )?;
 
     let mut paths: Vec<PathBuf> = Vec::new();
     let mut handled: HashSet<String> = HashSet::new();
     for dep in root.borrow().deps.values() {
         collect_deps(
             dep,
-            &includes,
-            &excludes,
+            &matcher,
             &mut handled,
             &mut error_msgs,
             &mut used_includes,
             &mut paths,
-            &include_directory,
+            include_directory,
             skip_n_levels,
         )?;
     }
-    for include in includes.iter() {
-        if !used_includes.contains(*include) {
+    for include in matcher.include_patterns() {
+        if !used_includes.contains(include) {
             info!(
                 "  Note: library {} from include list was not required",
                 include
@@ -105,30 +150,17 @@ pub fn get_dependency_libs(
     }
     let paths: HashSet<PathBuf> = HashSet::from_iter(paths.into_iter());
 
+    // A library inside a framework has to be bundled as the whole framework
+    // directory, so the layout the loader expects survives. Done here, after
+    // selection, rather than during traversal: the walk resolves and parses the
+    // inner binary, which is how it descends into frameworks in the first place,
+    // and the include/exclude patterns are written against library file names.
     #[cfg(target_os = "macos")]
-    let paths: HashSet<PathBuf> = paths
-        .into_iter()
-        .map(|lib| {
-            // Detect libraries in framework folders and reduce the entries to the frameworks themselves
-            // TODO: Avoid panic call
-            let re = regex::Regex::new(r"(.*/.*.framework)/.*").expect("Invalid regex");
-            if let Some(s) = lib.to_str() {
-                if let Some(cap) = re.captures(s) {
-                    // TODO: Avoid panic call
-                    PathBuf::from(cap.get(1).expect("Regex group 1 must exist").as_str())
-                } else {
-                    lib
-                }
-            } else {
-                lib
-            }
-        })
-        .collect();
+    let paths: HashSet<PathBuf> = crate::macho_resolve::reduce_framework_paths(paths);
 
     fn collect_deps(
         d: &Rc<RefCell<InternalDependency>>,
-        includes: &HashSet<&str>,
-        excludes: &HashSet<&str>,
+        matcher: &ListMatcher,
         handled: &mut HashSet<String>,
         error_msgs: &mut String,
         used_includes: &mut HashSet<String>,
@@ -143,29 +175,11 @@ pub fn get_dependency_libs(
             path = db.path.clone();
             path_str = db.path.to_string_lossy().into_owned();
         }
-        let pattern_match = |s: &str, p: &str| -> Result<bool, anyhow::Error> {
-            let path_str = &p.replace("\\", "/").to_lowercase();
-            let pattern_str = &s
-                .replace("\\", "\\\\")
-                .replace(".", "\\.")
-                .replace("*", ".*")
-                .replace("+", "\\+")
-                .to_lowercase();
-            Ok(regex::Regex::new(pattern_str)
-                .map_err(|e| anyhow!("Invalid regex pattern '{}': {}", pattern_str, e))?
-                .is_match(path_str))
-        };
-        let check_list = |list: &HashSet<&str>, p: &str| -> Result<bool, anyhow::Error> {
-            for item in list {
-                if pattern_match(item, p)? {
-                    return Ok(true);
-                }
-            }
-            Ok(false)
-        };
 
-        let in_excludes = check_list(excludes, &path_str)?;
-        let in_includes = check_list(includes, &path_str)?;
+        let matched_exclude = matcher.matched_exclude(&path_str);
+        let matched_include = matcher.matched_include(&path_str);
+        let in_excludes = matched_exclude.is_some();
+        let in_includes = matched_include.is_some();
         let already_in_folder = path.exists()
             && ignore_dir.exists()
             && path
@@ -205,12 +219,13 @@ pub fn get_dependency_libs(
                 } else {
                     info!("  Including dependency {}", &path_str);
                     paths.push(path.to_path_buf());
-                    let path_filename = path
-                        .file_name()
-                        .ok_or(anyhow!("Missing filename"))?
-                        .to_str()
-                        .ok_or(anyhow!("Invalid unicode"))?;
-                    used_includes.insert(path_filename.to_string());
+                    // Record the *pattern*, not the file name: the "was not
+                    // required" report below compares against patterns, so
+                    // inserting a file name here meant every include was always
+                    // reported as unused.
+                    if let Some(pattern) = matched_include {
+                        used_includes.insert(pattern.to_string());
+                    }
                 }
                 handled.insert(path_str.clone());
             }
@@ -220,8 +235,7 @@ pub fn get_dependency_libs(
         for sub in db.deps.values() {
             collect_deps(
                 &sub,
-                includes,
-                excludes,
+                matcher,
                 handled,
                 error_msgs,
                 used_includes,
@@ -236,78 +250,72 @@ pub fn get_dependency_libs(
     Ok(paths)
 }
 
-fn get_os_specifics<'a>(
-    executable: &'a Path,
-    include_directory: &'a Path,
-    env_map: &'a HashMap<String, String>,
-) -> Result<
-    (
-        String,
-        Vec<String>,
-        Vec<String>,
-        usize,
-        &'a str,
-        HashMap<String, String>,
-    ),
-    anyhow::Error,
-> {
-    #[cfg(target_os = "windows")]
-    {
-        let _dummy = &include_directory;
-        get_windows_specifics(executable, env_map)
-    }
-    #[cfg(target_os = "linux")]
-    {
-        get_linux_specifics(executable, include_directory, env_map)
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let _dummy = &include_directory;
-        get_macos_specifics(executable, env_map)
-    }
-}
+/// Determine dependencies by running a per-platform helper and parsing its
+/// indented output.
+///
+/// Used by Linux (`lddtree`) and macOS (`otool`). Windows has an in-process
+/// walker instead; see [`get_dependency_libs`].
+#[cfg(target_os = "linux")]
+fn subprocess_dependency_tree(
+    executable: &Path,
+    include_directory: &Path,
+    allow_nonexistent: bool,
+    error_msgs: &mut String,
+) -> Result<(Rc<RefCell<InternalDependency>>, usize), anyhow::Error> {
+    use std::process::Command;
 
-#[allow(dead_code)]
-fn get_windows_specifics<'a>(
-    executable: &'a Path,
-    env_map: &'a HashMap<String, String>,
-) -> Result<
-    (
-        String,
-        Vec<String>,
-        Vec<String>,
-        usize,
-        &'a str,
-        HashMap<String, String>,
-    ),
-    anyhow::Error,
-> {
-    let mut new_env_map: HashMap<String, String> = HashMap::new();
-    for (k, v) in env_map.iter() {
-        new_env_map.insert(k.to_uppercase(), v.clone());
+    let ori_env_vars: Vec<(String, String)> = std::env::vars().collect();
+    let env_map: HashMap<String, String> = ori_env_vars.iter().cloned().collect();
+    let (command, args, warning_patterns, skip_n_levels, dylib_filename_part, new_env_map) =
+        get_linux_specifics(executable, include_directory, &env_map)?;
+    let argstr = args.join(" ");
+    debug!("Running shell command for determining dependencies: {argstr}");
+    let mut list_deps: &mut Command = &mut Command::new(&command);
+    list_deps = list_deps
+        .args(&args)
+        .envs(new_env_map.iter())
+        .current_dir(std::env::current_dir().context("Failed to get current dir")?);
+    let list_deps_output = list_deps
+        .output()
+        .with_context(|| "Failed to run list_dependencies")?;
+    let command_output = std::str::from_utf8(&list_deps_output.stderr)?;
+    let deps_output = std::str::from_utf8(&list_deps_output.stdout)?;
+    debug!("Command stderr:\n{}", command_output);
+    debug!("Command stdout:\n{}", deps_output);
+    if !list_deps_output.status.success() {
+        error!("Command stderr:\n{}", command_output);
+        error!("Command stdout:\n{}", deps_output);
+        return Err(anyhow!("list_dependencies returned nonzero exit code"));
+    }
+    for line in command_output.lines() {
+        for pattern in &warning_patterns {
+            if line.contains(pattern.as_str()) {
+                warn!(
+                    "{}: stderr line matched warning pattern {}",
+                    line,
+                    pattern.as_str()
+                );
+            }
+        }
     }
 
-    let command = String::from("powershell.exe");
-    let commandstr = include_str!("scripts/windows_deps.ps1").replace(
-        "$args[0]",
-        executable.to_str().ok_or(anyhow!("Invalid unicode"))?,
-    );
-    let args = vec![String::from("-Command"), commandstr];
-    let warning_patterns = vec![];
-    let skip_n_levels = 0;
-    let dylib_filename_part = ".dll";
-
-    Ok((
-        command,
-        args,
-        warning_patterns,
-        skip_n_levels,
+    let root = parse_dependency_tree(
+        deps_output,
+        &warning_patterns,
         dylib_filename_part,
-        new_env_map,
-    ))
+        allow_nonexistent,
+        error_msgs,
+    );
+    Ok((root, skip_n_levels))
 }
 
-#[allow(dead_code)]
+/// How to invoke `lddtree`, and how to interpret its output.
+///
+/// The script prepends every `*.so*` in the output folder to the executable's
+/// needed list with `patchelf`, so the Linux scan is already seeded from the
+/// whole folder -- the property Windows and macOS previously lacked and now get
+/// from [`crate::deps_walker`].
+#[cfg(target_os = "linux")]
 fn get_linux_specifics<'a>(
     executable: &'a Path,
     include_directory: &'a Path,
@@ -350,43 +358,13 @@ fn get_linux_specifics<'a>(
     ))
 }
 
+
+/// Reconstruct a dependency tree from a helper's indented stdout.
+///
+/// Only the subprocess path uses this, but it stays compiled everywhere so its
+/// unit tests keep running on any host -- they are the evidence that changes to
+/// the Windows path left the Linux one alone.
 #[allow(dead_code)]
-fn get_macos_specifics<'a>(
-    executable: &Path,
-    env_map: &'a HashMap<String, String>,
-) -> Result<
-    (
-        String,
-        Vec<String>,
-        Vec<String>,
-        usize,
-        &'a str,
-        HashMap<String, String>,
-    ),
-    anyhow::Error,
-> {
-    let command = String::from("sh");
-    let commandstr = include_str!("scripts/macos_deps.sh");
-    let args = vec![
-        String::from("-c"),
-        String::from(commandstr),
-        String::from("dummy"),
-        String::from(executable.to_str().ok_or(anyhow!("Invalid unicode"))?),
-    ];
-    let warning_patterns = vec![];
-    let skip_n_levels = 0;
-    let dylib_filename_part = "";
-
-    Ok((
-        command,
-        args,
-        warning_patterns,
-        skip_n_levels,
-        dylib_filename_part,
-        env_map.clone(),
-    ))
-}
-
 fn parse_dependency_tree(
     deps_output: &str,
     warning_patterns: &[String],

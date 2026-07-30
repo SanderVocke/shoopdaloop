@@ -2334,6 +2334,7 @@ dependencies = [
  "copy_dir",
  "ctor",
  "glob",
+ "goblin",
  "indexmap",
  "log",
  "regex",
