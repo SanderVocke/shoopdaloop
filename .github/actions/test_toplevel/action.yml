@@ -142,14 +142,19 @@ runs:
       components: llvm-tools-preview
       cache: false
       rustflags: ""
-  - name: Install cargo-llvm-cov for coverage tooling
+  - name: Locate LLVM coverage tools
     if: always() && inputs.coverage == 'true'
     shell: bash
     run: |
-      cargo install cargo-llvm-cov
-      # cargo-llvm-cov bundles matching llvm-cov / llvm-profdata.
-      echo "LLVM_COV=$(find ~/.cargo -name llvm-cov -type f -executable 2>/dev/null | head -1)" | tee -a $GITHUB_ENV
-      echo "LLVM_PROFDATA=$(find ~/.cargo -name llvm-profdata -type f -executable 2>/dev/null | head -1)" | tee -a $GITHUB_ENV
+      llvm_tools_dir="$(dirname "$(rustc --print target-libdir)")/bin"
+      llvm_cov="$llvm_tools_dir/llvm-cov"
+      llvm_profdata="$llvm_tools_dir/llvm-profdata"
+      if [[ ! -x "$llvm_cov" || ! -x "$llvm_profdata" ]]; then
+        echo "LLVM coverage tools not found in $llvm_tools_dir" >&2
+        exit 1
+      fi
+      echo "LLVM_COV=$llvm_cov" | tee -a "$GITHUB_ENV"
+      echo "LLVM_PROFDATA=$llvm_profdata" | tee -a "$GITHUB_ENV"
   - uses: ./.github/actions/checkpoint
     if: always()
   - name: Install Qoverage
@@ -173,6 +178,14 @@ runs:
     env:
       LLVM_REPORTNAME: rust_lcov
       GHA_RUN_ALWAYS: 1
+  - uses: ./.github/actions/checkpoint
+    if: always()
+  - name: Cleanup Rust test binaries between coverage runs
+    if: always() && inputs.coverage == 'true' && env.NEXTEST_EXTRACT_DIR != ''
+    shell: bash
+    run: |
+      echo "Removing nextest extraction directory $NEXTEST_EXTRACT_DIR"
+      rm -rf "$NEXTEST_EXTRACT_DIR"
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}

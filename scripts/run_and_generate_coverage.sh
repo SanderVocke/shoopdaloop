@@ -1,60 +1,130 @@
-#!/bin/bash
-# Coverage script for Rust (via llvm-cov / profraw).
+#!/usr/bin/env bash
+# Coverage wrapper for Rust.
+#
+# Runs the supplied command under Rust source-based coverage, then merges
+# the raw profiles and emits an lcov report via llvm-cov. The wrapper is
+# invoked from the CI test job for both Rust and QML coverage reports.
 
-CMD="$@"
-_REPORTDIR=${REPORTDIR:-${PWD}/coverage_reports}
-_LLVM_REPORTNAME=${LLVM_REPORTNAME:-report_llvm}
-_WORKDIR=${WORKDIR:-${PWD}}
-_LLVM_COV=${LLVM_COV:-llvm-cov}
-_LLVM_PROFDATA=${LLVM_PROFDATA:-llvm-profdata}
+set -euo pipefail
 
-cd ${_WORKDIR}
+if (( $# == 0 )); then
+    echo "Usage: $0 <command> [args...]" >&2
+    exit 2
+fi
 
-echo "Using llvm-cov as: ${_LLVM_COV}"
-echo "Using llvm-profdata as: ${_LLVM_PROFDATA}"
+report_dir="${REPORTDIR:-${PWD}/coverage_reports}"
+report_name="${LLVM_REPORTNAME:-report_llvm}"
+work_dir="${WORKDIR:-${PWD}}"
+llvm_cov="${LLVM_COV:-llvm-cov}"
+llvm_profdata="${LLVM_PROFDATA:-llvm-profdata}"
+profile_dir="${LLVM_PROFILE_DIR:-${work_dir}/coverage_profiles}"
+
+cd "$work_dir"
+mkdir -p "$report_dir" "$profile_dir"
+
+# All four tools are required: llvm-cov and llvm-profdata are provided by the
+# llvm-tools-preview Rust component; file and readelf are part of the standard
+# build/container image.
+for tool in file readelf; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        echo "Required coverage tool not found: $tool" >&2
+        exit 1
+    fi
+done
+for tool in "$llvm_cov" "$llvm_profdata"; do
+    if [[ ! -x "$tool" ]]; then
+        echo "Coverage tool not found or not executable: $tool" >&2
+        exit 1
+    fi
+done
+
+# Reset previous state so each invocation produces a clean report.
+rm -rf "$profile_dir" coverage.profdata
+mkdir -p "$profile_dir"
+export LLVM_PROFILE_FILE="$profile_dir/default_%m_%p.profraw"
+
+echo "Using llvm-cov as: $llvm_cov"
+echo "Using llvm-profdata as: $llvm_profdata"
+echo "Report directory: $report_dir"
+echo "Profile directory: $profile_dir"
 echo "Running in: $(pwd)"
 
-mkdir -p ${_REPORTDIR}
+echo "---------------------------------------"
+echo "Running command:"
+echo "---------------------------------------"
+printf ' %q' "$@"
+printf '\n'
 
-# Clean old profraw
-c="find . -name '*.profraw' -delete; rm -f *.profdata"
-echo "---------------------------------------"
-echo "Cleaning: ${c}"
-echo "---------------------------------------"
-bash -c "${c}"
+status=0
+"$@" 2>&1 || status=$?
 
-# Run command
 echo "---------------------------------------"
-echo "Running command: ${CMD}"
+echo "Command exited with status: $status"
 echo "---------------------------------------"
-${CMD} 2>&1
-RESULT=$?
-if [ ! $RESULT -eq 0 ]; then
-    echo "ERROR: exited with code $RESULT" >&2
-    exit $RESULT
+
+if (( status != 0 )); then
+    echo "ERROR: test command exited with code $status" >&2
+    exit "$status"
 fi
 
-# Count profraw files
-profraw_count=`find . -name '*.profraw' | wc -l`
-echo "---------------------------------------"
+# Collect every .profraw file emitted during the run.
+declare -a profraw_files=()
+while IFS= read -r -d '' f; do
+    profraw_files+=("$f")
+done < <(find "$profile_dir" -type f -name '*.profraw' -print0)
+
+profraw_count="${#profraw_files[@]}"
 echo "Found ${profraw_count} .profraw files"
-echo "---------------------------------------"
-
-# Merge profraw files
-PROFRAW_FILES=$(find . -name '*.profraw')
-if [ -z "${PROFRAW_FILES}" ]; then
-    echo "WARNING: No .profraw files found - skipping LLVM coverage merge"
-else
-    c="${_LLVM_PROFDATA} merge -sparse ${PROFRAW_FILES} -o coverage.profdata"
-    echo "---------------------------------------"
-    echo "Merging LLVM profdata: ${c}"
-    echo "---------------------------------------"
-    ${c}
+if (( profraw_count == 0 )); then
+    echo "ERROR: no .profraw files were generated" >&2
+    exit 1
 fi
 
-# Generate lcov-format report from profdata
-c="find . -type f \( -name '*.so' -o -executable \) -print0 | xargs -0 file | grep 'ELF' | cut -d: -f1 | tr '\n' '\0' | xargs -0 ${_LLVM_COV} export -instr-profile=coverage.profdata -format=lcov > ${_REPORTDIR}/${_LLVM_REPORTNAME}.info"
 echo "---------------------------------------"
-echo "Generating LLVM lcov report: ${c}"
+echo "Merging LLVM profdata"
 echo "---------------------------------------"
-bash -c "${c}"
+"$llvm_profdata" merge \
+    -sparse \
+    "${profraw_files[@]}" \
+    -o coverage.profdata
+
+# Collect every ELF object that actually carries coverage instrumentation.
+# The portable folder and the archived nextest test binaries both qualify;
+# Qt shared libraries, the cargo-nextest binary, and any other uninstrumented
+# ELF are filtered out so llvm-cov does not reject them.
+declare -a objects=()
+while IFS= read -r -d '' candidate; do
+    if ! file -b "$candidate" | grep -q '^ELF '; then
+        continue
+    fi
+    if ! readelf -SW "$candidate" 2>/dev/null | grep -q '__llvm_covmap'; then
+        continue
+    fi
+    objects+=("$candidate")
+done < <(find "$work_dir" -type f \( -name '*.so' -o -executable \) -print0)
+
+object_count="${#objects[@]}"
+echo "Found ${object_count} instrumented ELF objects"
+if (( object_count == 0 )); then
+    echo "ERROR: no instrumented ELF objects containing __llvm_covmap were found under $work_dir" >&2
+    exit 1
+fi
+
+declare -a object_args=()
+for object in "${objects[@]}"; do
+    object_args+=("-object" "$object")
+done
+
+echo "---------------------------------------"
+echo "Generating LLVM lcov report"
+echo "---------------------------------------"
+"$llvm_cov" export \
+    -instr-profile=coverage.profdata \
+    -format=lcov \
+    "${object_args[@]}" \
+    > "$report_dir/$report_name.info"
+
+if [[ ! -s "$report_dir/$report_name.info" ]]; then
+    echo "ERROR: generated report $report_dir/$report_name.info is empty" >&2
+    exit 1
+fi

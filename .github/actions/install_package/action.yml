@@ -136,4 +136,7 @@ runs:
         echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}:$PORTABLE_FOLDER_INSTALL/lib" | tee -a $GITHUB_ENV
       fi
       chmod +x "$CARGO_NEXTEST_EXE"
-      echo "COMMAND_TEST_RUST=$CARGO_NEXTEST_EXE nextest run --workspace-remap $WORKSPACE --archive-file $TEST_BINARIES_INSTALL/nextest-archive.tar.zst" | tee -a $GITHUB_ENV
+      NEXTEST_EXTRACT_DIR="$TEST_BINARIES_INSTALL/nextest-extracted"
+      mkdir -p "$NEXTEST_EXTRACT_DIR"
+      echo "NEXTEST_EXTRACT_DIR=$NEXTEST_EXTRACT_DIR" | tee -a $GITHUB_ENV
+      echo "COMMAND_TEST_RUST=$CARGO_NEXTEST_EXE nextest run --workspace-remap $WORKSPACE --archive-file $TEST_BINARIES_INSTALL/nextest-archive.tar.zst --extract-to $NEXTEST_EXTRACT_DIR" | tee -a $GITHUB_ENV
