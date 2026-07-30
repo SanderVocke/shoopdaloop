@@ -155,6 +155,8 @@ runs:
       echo "Verifying portable-folder executable without build-environment dependencies..."
       if [ "${{ runner.os }}" = "Windows" ]; then
         portable_exe="$PORTABLE_DIR/shoopdaloop.bat"
+      elif [ "${{ runner.os }}" = "macOS" ]; then
+        portable_exe="$PORTABLE_DIR/Contents/MacOS/shoopdaloop"
       else
         portable_exe="$PORTABLE_DIR/shoopdaloop"
       fi
