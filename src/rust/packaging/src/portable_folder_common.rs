@@ -87,6 +87,31 @@ fn prune_unwanted_qt_plugins(install_plugins_dir: &Path) -> Result<(), anyhow::E
     Ok(())
 }
 
+/// The file name a library declares for itself, if it declares one.
+///
+/// On macOS this is the basename of `LC_ID_DYLIB` -- the name dyld treats as the
+/// library's identity, and therefore the name the file has to be reachable under.
+/// Two files that declare the same install name are two copies of one library
+/// however differently they are named on disk.
+///
+/// `None` for executables, loadable bundles, and platforms where this does not
+/// apply; the caller then falls back to the file's own resolved name.
+#[cfg(target_os = "macos")]
+fn declared_library_name(path: &Path) -> Option<std::ffi::OsString> {
+    let info = crate::macho::read_macho_file(path).ok().flatten()?;
+    let install_name = info.install_name?;
+    let base = install_name.rsplit('/').next()?;
+    if base.is_empty() {
+        return None;
+    }
+    Some(std::ffi::OsString::from(base))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn declared_library_name(_path: &Path) -> Option<std::ffi::OsString> {
+    None
+}
+
 pub fn populate_portable_folder(
     folder: &Path,
     exe_path: &Path,
@@ -192,20 +217,23 @@ pub fn populate_portable_folder(
 
     info!("Bundling {} dependencies...", dependency_libs.len());
 
-    // A versioned Unix library is normally the head of a symlink chain
-    // (libFoo.6.dylib -> libFoo.6.9.1.dylib), and different binaries reference
-    // different links in it: the executable might link `libQt6Core.6.dylib`
-    // while a QML plugin links `libQt6Core.6.9.1.dylib`.
-    //
-    // Copying each referenced name as its own regular file would put two
-    // byte-identical but *distinct* files in the bundle, and the loader treats
-    // those as two separate libraries. On macOS that shows up as
+    // A versioned library is referenced under more than one name: the executable
+    // might link `libQt6Core.6.dylib` while a QML plugin links
+    // `libQt6Core.6.9.1.dylib`. Copying each referenced name as its own regular
+    // file puts two *distinct* files in the bundle, and the loader treats those
+    // as two separate libraries. On macOS that surfaces as
     // "Class QMetalLayer is implemented in both ..." from the Objective-C
     // runtime, followed by the Qt platform plugin failing to initialise because
     // it linked against whichever copy the application did not get.
     //
-    // So copy each physical file once, under its own name, and reproduce every
-    // other referenced name as a symlink to it.
+    // So each library is bundled once under one canonical name, with the other
+    // referenced names reproduced as symlinks to it.
+    //
+    // The canonical name comes from the library's own `LC_ID_DYLIB` where it has
+    // one, not from resolving symlinks. Resolving symlinks is not enough: vcpkg's
+    // macOS Qt installs `libQt6Core.6.dylib` and `libQt6Core.6.9.1.dylib` as two
+    // separate regular files, so canonicalizing merges nothing -- while both
+    // declare the same install name, which is the identity dyld actually uses.
     let mut aliases: Vec<(PathBuf, std::ffi::OsString)> = Vec::new();
 
     for lib in dependency_libs {
@@ -231,19 +259,20 @@ pub fn populate_portable_folder(
         let real = src
             .canonicalize()
             .with_context(|| format!("Cannot canonicalize {src:?}"))?;
-        let real_name = real
-            .file_name()
-            .ok_or(anyhow!("Invalid library path (no filename): {:?}", real))?
-            .to_owned();
-        let real_dst = lib_dir.join(&real_name);
+        let canonical_name = declared_library_name(&real).unwrap_or(
+            real.file_name()
+                .ok_or(anyhow!("Invalid library path (no filename): {:?}", real))?
+                .to_owned(),
+        );
+        let canonical_dst = lib_dir.join(&canonical_name);
 
-        if !real_dst.exists() {
-            debug!("--> Bundling file: {:?} -> {:?}", &real, &real_dst);
-            std::fs::copy(&real, &real_dst)
-                .with_context(|| format!("Failed to copy {real:?} to {real_dst:?}"))?;
+        if !canonical_dst.exists() {
+            debug!("--> Bundling file: {:?} -> {:?}", &real, &canonical_dst);
+            std::fs::copy(&real, &canonical_dst)
+                .with_context(|| format!("Failed to copy {real:?} to {canonical_dst:?}"))?;
         }
-        if real_name != requested_name {
-            aliases.push((dst, real_name));
+        if canonical_name != requested_name {
+            aliases.push((dst, canonical_name));
         }
     }
 
