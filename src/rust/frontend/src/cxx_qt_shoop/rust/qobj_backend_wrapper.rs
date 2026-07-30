@@ -315,6 +315,8 @@ impl BackendWrapper {
 
         {
             self.as_mut().set_xruns(update_data.xruns);
+            self.as_mut()
+                .set_stale_graph_cycles(update_data.stale_graph_cycles);
             self.as_mut().set_dsp_load(update_data.dsp_load);
             self.as_mut().set_last_processed(update_data.last_processed);
             self.as_mut()
@@ -394,6 +396,9 @@ impl BackendWrapper {
 
         let update_data = BackendWrapperUpdateData {
             xruns: current_xruns + driver_state.xruns_since_last as i32,
+            // Cumulative from the engine, not a delta like xruns, so it is assigned
+            // rather than accumulated here.
+            stale_graph_cycles: driver_state.stale_graph_cycles as i32,
             dsp_load: driver_state.dsp_load_percent,
             last_processed: driver_state.last_processed as i32,
             n_audio_buffers_available: session_state.n_audio_buffers_available as i32,

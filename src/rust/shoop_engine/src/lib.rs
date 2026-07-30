@@ -14,8 +14,6 @@ pub mod channel_mode;
 pub mod chunked_samples;
 pub mod control;
 #[cfg(feature = "cpal")]
-pub mod cpal_driver;
-#[cfg(feature = "cpal")]
 pub mod cpal_mock;
 pub mod decoupled_midi_port;
 pub mod driver;
@@ -28,9 +26,8 @@ pub mod external_midi_port;
 pub mod fx_chain;
 pub mod graph;
 pub mod graph_build;
+pub mod graph_scheduler;
 pub mod internal_audio_port;
-#[cfg(feature = "jack")]
-pub mod jack_driver;
 pub mod loop_mode;
 #[cfg(feature = "lv2")]
 pub mod lv2_carla;

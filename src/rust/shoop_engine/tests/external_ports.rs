@@ -41,13 +41,13 @@ fn a_driver_can_record_and_play_audio_through_the_session() {
         .as_external_mut()
         .expect("external port")
         .stage_input(&incoming);
-    let_assert!(Ok(()) = s.process(4));
+    s.process(4);
 
     check!(s.loop_(l).expect("loop").length() == 4);
 
     // Play it back and read the output the way a driver would.
     let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
-    let_assert!(Ok(()) = s.process(4));
+    s.process(4);
 
     let out = s
         .port(output)
@@ -73,9 +73,9 @@ fn an_unfed_cycle_is_silent_rather_than_a_repeat() {
         .as_external_mut()
         .expect("external port")
         .stage_input(&[1.0, 1.0, 1.0, 1.0]);
-    let_assert!(Ok(()) = s.process(4));
+    s.process(4);
     // Nothing staged this time, so what gets recorded is silence.
-    let_assert!(Ok(()) = s.process(4));
+    s.process(4);
 
     let ch = s.loop_(l).expect("loop").audio_channel(0).expect("channel");
     check!(ch.data()[..4] == [1.0; 4]);
@@ -103,7 +103,7 @@ fn a_driver_can_record_and_play_midi_through_the_session() {
         check!(p.push_incoming(1, &midi::note_on(0, 60, 100)));
         check!(p.push_incoming(2, &midi::note_off(0, 60, 64)));
     }
-    let_assert!(Ok(()) = s.process(4));
+    s.process(4);
 
     check!(
         s.loop_(l)
@@ -117,7 +117,7 @@ fn a_driver_can_record_and_play_midi_through_the_session() {
     // Play it back; the driver reads what the output port is holding for it.
     s.loop_mut(l).expect("loop").set_length(4);
     let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
-    let_assert!(Ok(()) = s.process(4));
+    s.process(4);
 
     let out = s
         .port(output)

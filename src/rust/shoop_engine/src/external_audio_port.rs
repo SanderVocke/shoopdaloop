@@ -12,6 +12,15 @@
 
 use crate::port::{AudioPort, PortConnectability, PortDataType, PortDirection};
 
+/// Ceiling on retained output, in samples. Roughly a second at 48 kHz.
+///
+/// A backstop, not a policy: the only consumer of `outgoing` is the dummy-driver capture
+/// API, which dequeues within a few cycles. Anything beyond this is a consumer that
+/// stopped reading, and dropping the oldest samples is better than growing without bound
+/// on the audio thread -- which is what this used to do in every real driver, until the
+/// reallocation cost was enough for JACK's watchdog to kill the client.
+const MAX_CAPTURED_SAMPLES: usize = 48000;
+
 #[derive(Debug)]
 pub struct ExternalAudioPort {
     name: String,
@@ -22,6 +31,13 @@ pub struct ExternalAudioPort {
     staged_len: usize,
     buffer: Vec<f32>,
     outgoing: Vec<f32>,
+    /// Whether anyone is capturing this port's output.
+    ///
+    /// Off until something asks, because retaining output costs a copy per cycle on the
+    /// audio thread and nothing in a normal run ever reads it -- only the dummy-driver
+    /// test API does. Latched by both entry points to that API so a caller cannot miss
+    /// data by dequeuing before requesting.
+    capture_output: bool,
     processed_len: usize,
 }
 
@@ -39,6 +55,7 @@ impl ExternalAudioPort {
             staged_len: 0,
             buffer: Vec::new(),
             outgoing: Vec::new(),
+            capture_output: false,
             processed_len: 0,
         }
     }
@@ -132,6 +149,7 @@ impl ExternalAudioPort {
     }
 
     pub fn dequeue_output(&mut self, n_frames: usize) -> Vec<f32> {
+        self.capture_output = true;
         if self.direction == PortDirection::Output
             && self.outgoing.len() < n_frames
             && self.processed_len > 0
@@ -145,6 +163,7 @@ impl ExternalAudioPort {
     }
 
     pub fn clear_output_queue(&mut self) {
+        self.capture_output = true;
         self.outgoing.clear();
         self.processed_len = 0;
     }
@@ -164,11 +183,18 @@ impl ExternalAudioPort {
     /// Start of cycle: take whatever the driver staged, and silence the rest, so an
     /// unfed cycle is silent rather than a repeat of the last one.
     pub fn prepare(&mut self, n_frames: usize) {
-        if self.direction == PortDirection::Output && self.processed_len > 0 {
+        if self.capture_output && self.direction == PortDirection::Output && self.processed_len > 0
+        {
             let n = self.processed_len.min(self.buffer.len());
             crate::realtime_allow_alloc_once!("ExternalAudioPort::prepare outgoing extend", || {
                 self.outgoing.extend_from_slice(&self.buffer[..n])
             });
+            if self.outgoing.len() > MAX_CAPTURED_SAMPLES {
+                let excess = self.outgoing.len() - MAX_CAPTURED_SAMPLES;
+                self.outgoing.drain(..excess);
+            }
+        }
+        if self.direction == PortDirection::Output {
             self.processed_len = 0;
         }
         let staged = self.staged_len.min(n_frames);
@@ -343,6 +369,48 @@ mod tests {
         p.prepare(5);
         p.process(5);
         check!(p.output(5) == [0.0; 5]);
+    }
+
+    /// The regression that mattered in production: with no capture consumer, every real
+    /// driver grew this forever and reallocated on the audio thread each cycle.
+    #[test]
+    fn output_is_not_retained_when_nobody_is_capturing() {
+        let mut p = out_port();
+        for _ in 0..10_000 {
+            p.prepare(64);
+            p.buffer(64).fill(0.5);
+            p.process(64);
+        }
+        check!(p.outgoing.is_empty());
+        check!(p.outgoing.capacity() == 0);
+    }
+
+    #[test]
+    fn a_capturing_port_still_yields_what_it_produced() {
+        let mut p = out_port();
+        p.clear_output_queue();
+
+        p.prepare(4);
+        p.buffer(4).copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
+        p.process(4);
+        // The next `prepare` is what moves the finished cycle into the queue.
+        p.prepare(4);
+
+        check!(p.dequeue_output(4) == vec![1.0, 2.0, 3.0, 4.0]);
+    }
+
+    /// A consumer that stops reading must not grow the queue without bound.
+    #[test]
+    fn a_capturing_port_that_is_never_drained_stays_bounded() {
+        let mut p = out_port();
+        p.clear_output_queue();
+        for _ in 0..(MAX_CAPTURED_SAMPLES / 64 + 100) {
+            p.prepare(64);
+            p.buffer(64).fill(0.5);
+            p.process(64);
+        }
+        p.prepare(64);
+        check!(p.outgoing.len() <= MAX_CAPTURED_SAMPLES);
     }
 
     #[test]

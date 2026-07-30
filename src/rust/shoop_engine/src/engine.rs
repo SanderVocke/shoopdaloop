@@ -62,8 +62,11 @@ pub struct Stats {
     pub stuck_cycles: AtomicU32,
     /// Commands that arrived and were applied.
     pub commands_applied: AtomicU32,
-    /// Cycles the engine refused because its graph needed rebuilding.
-    pub refused_cycles: AtomicU32,
+    /// Cycles run against a schedule older than the session's topology.
+    ///
+    /// These are processed, not refused -- see [`Session::process`]. Mirrored from the
+    /// session, as `stuck_cycles` is.
+    pub stale_cycles: AtomicU32,
     /// Xruns the backend reported. Set by the driver, not by the engine.
     pub xruns: AtomicU32,
     /// Cycles where a duplex driver's capture ring had less than a full cycle in it.
@@ -242,22 +245,19 @@ impl Engine {
     fn process_inner(&mut self, n_frames: usize) {
         self.apply_commands();
 
-        match self.session.process(n_frames) {
-            Ok(()) => {
-                self.stats.cycles.fetch_add(1, Ordering::Relaxed);
-                self.stats
-                    .frames
-                    .fetch_add(n_frames as u32, Ordering::Relaxed);
-            }
-            Err(_) => {
-                // A stale graph is refused rather than run, and counted so it is
-                // visible instead of looking like silence.
-                self.stats.refused_cycles.fetch_add(1, Ordering::Relaxed);
-            }
-        }
+        self.session.process(n_frames);
+        self.stats.cycles.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .frames
+            .fetch_add(n_frames as u32, Ordering::Relaxed);
         self.stats
             .stuck_cycles
             .store(self.session.n_stuck_cycles(), Ordering::Relaxed);
+        // A stale graph no longer costs the cycle, but is still published so it is
+        // visible instead of looking like ordinary silence.
+        self.stats
+            .stale_cycles
+            .store(self.session.n_stale_cycles(), Ordering::Relaxed);
 
         self.publish_state();
     }
@@ -642,16 +642,17 @@ mod tests {
 
         check!(e.stats().cycles.load(Ordering::Relaxed) == 2);
         check!(e.stats().frames.load(Ordering::Relaxed) == 12);
-        check!(e.stats().refused_cycles.load(Ordering::Relaxed) == 0);
+        check!(e.stats().stale_cycles.load(Ordering::Relaxed) == 0);
     }
 
     #[test]
-    fn a_stale_graph_is_refused_and_counted() {
+    fn a_stale_graph_still_runs_and_is_counted() {
         let (mut e, mut h) = engine();
         e.session_mut().apply_graph_changes().expect("schedule");
 
-        // Adding a port leaves the schedule out of date, and the session refuses to
-        // run rather than processing a graph it no longer matches.
+        // Adding a port leaves the schedule out of date. The cycle runs anyway, against
+        // the last-applied schedule, so existing audio keeps flowing while the next
+        // schedule is built; the staleness is counted rather than costing the cycle.
         let_assert!(
             Ok(()) = h.send(Box::new(|s: &mut Session| {
                 s.add_port(Port::Dummy(DummyAudioPort::new(
@@ -665,8 +666,8 @@ mod tests {
         e.process(4);
 
         check!(!e.session().graph_up_to_date());
-        check!(e.stats().refused_cycles.load(Ordering::Relaxed) == 1);
-        check!(e.stats().cycles.load(Ordering::Relaxed) == 0);
+        check!(e.stats().stale_cycles.load(Ordering::Relaxed) == 1);
+        check!(e.stats().cycles.load(Ordering::Relaxed) == 1);
     }
 
     #[test]

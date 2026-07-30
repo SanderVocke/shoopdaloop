@@ -59,11 +59,11 @@ fn internal(name: &str, n: usize) -> Port {
 /// earlier. What must never allocate is the steady state.
 fn assert_steady_state_is_alloc_free(mut s: Session, n_frames: usize, cycles: usize) {
     s.apply_graph_changes().expect("graph should schedule");
-    s.process(n_frames).expect("warm-up cycle");
+    s.process(n_frames);
 
     assert_no_alloc(|| {
         for _ in 0..cycles {
-            s.process(n_frames).expect("steady-state cycle");
+            s.process(n_frames);
         }
     });
 }
@@ -179,11 +179,11 @@ fn feeding_queued_input_does_not_allocate_while_processing() {
             .unwrap()
             .queue_data(&[0.5, 0.5, 0.5, 0.5]);
     }
-    s.process(4).unwrap();
+    s.process(4);
 
     assert_no_alloc(|| {
         for _ in 0..8 {
-            s.process(4).unwrap();
+            s.process(4);
         }
     });
 }
@@ -197,7 +197,7 @@ fn queued_midi_is_consumed_without_allocating() {
     s.connect_channel_input(c, input).unwrap();
     s.set_loop_mode(l, LoopMode::Recording).unwrap();
     s.apply_graph_changes().unwrap();
-    s.process(4).unwrap();
+    s.process(4);
 
     // Queue ahead of time, then consume it under the guard.
     let d = s.port_mut(input).unwrap().as_dummy_midi_mut().unwrap();
@@ -207,7 +207,7 @@ fn queued_midi_is_consumed_without_allocating() {
 
     assert_no_alloc(|| {
         for _ in 0..8 {
-            s.process(4).unwrap();
+            s.process(4);
         }
     });
 }
@@ -224,11 +224,11 @@ fn recording_past_a_chunk_boundary_does_not_allocate() {
     s.connect_channel_input(c, input).unwrap();
     s.set_loop_mode(l, LoopMode::Recording).unwrap();
     s.apply_graph_changes().unwrap();
-    s.process(4).unwrap();
+    s.process(4);
 
     assert_no_alloc(|| {
         for _ in 0..8 {
-            s.process(4).unwrap();
+            s.process(4);
         }
     });
 
@@ -255,7 +255,7 @@ fn restoring_drifted_state_on_playback_does_not_allocate() {
     d.queue_msg(0, &midi::note_on(0, 60, 100));
     d.queue_msg(1, &midi::note_off(0, 60, 64));
     s.set_loop_mode(l, LoopMode::Recording).unwrap();
-    s.process(4).unwrap();
+    s.process(4);
 
     // Move a lot of controllers on the input while stopped, so the restore has
     // plenty to revert.
@@ -266,7 +266,7 @@ fn restoring_drifted_state_on_playback_does_not_allocate() {
             d.queue_msg(4, &midi::cc(ch, cc, 99));
         }
     }
-    s.process(4).unwrap();
+    s.process(4);
 
     s.loop_mut(l).unwrap().set_length(4);
     s.set_loop_mode(l, LoopMode::Playing).unwrap();
@@ -278,7 +278,7 @@ fn restoring_drifted_state_on_playback_does_not_allocate() {
         .unwrap();
 
     assert_no_alloc(|| {
-        s.process(4).unwrap();
+        s.process(4);
     });
 
     // The restore really did fire, so the guard above was not vacuous.

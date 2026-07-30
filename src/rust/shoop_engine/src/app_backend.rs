@@ -8,6 +8,7 @@
 #![allow(dead_code)]
 
 use crate as engine;
+use crate::graph_scheduler::{GraphScheduler, DEFAULT_WINDOW};
 use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 pub use engine::{
@@ -19,7 +20,7 @@ pub use engine::{
 };
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -75,6 +76,9 @@ struct JackProcess {
     shared: Weak<SharedSession>,
     ports: Arc<Mutex<Vec<JackRegisteredPort>>>,
     last_processed: Arc<AtomicU32>,
+    /// Published from the callback and read by `get_state`, because logging here would
+    /// allocate on the realtime thread.
+    stale_graph_cycles: Arc<AtomicU32>,
     sample_rate: u32,
     maybe_process_callback: Option<ProcessCallback>,
 }
@@ -89,7 +93,7 @@ impl jack::ProcessHandler for JackProcess {
                 callback();
             }
         }
-        let mut session = shared.lock();
+        let mut session = shared.lock_rt();
         session.set_sample_rate(self.sample_rate);
         session.set_buffer_size(n_frames as u32);
         let mut ports = self.ports.lock().unwrap_or_else(|e| e.into_inner());
@@ -124,7 +128,9 @@ impl jack::ProcessHandler for JackProcess {
             }
         }
 
-        let _ = crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| session.process(n_frames));
+        crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| session.process(n_frames));
+        self.stale_graph_cycles
+            .store(session.n_stale_cycles(), Ordering::Relaxed);
 
         for p in ports.iter_mut() {
             match p {
@@ -183,6 +189,7 @@ struct JackBackend {
     ports: Arc<Mutex<Vec<JackRegisteredPort>>>,
     last_processed: Arc<AtomicU32>,
     xruns: Arc<AtomicU32>,
+    stale_graph_cycles: Arc<AtomicU32>,
     maybe_process_callback: Option<ProcessCallback>,
 }
 
@@ -205,6 +212,7 @@ struct CpalMidiOutputEndpoint {
 }
 
 struct CpalBackend {
+    stale_graph_cycles: Arc<AtomicU32>,
     _output: Option<cpal::Stream>,
     _input: Option<cpal::Stream>,
     sample_rate: u32,
@@ -254,6 +262,7 @@ impl JackBackend {
             shared: Arc::downgrade(shared),
             ports: self.ports.clone(),
             last_processed: self.last_processed.clone(),
+            stale_graph_cycles: self.stale_graph_cycles.clone(),
             sample_rate: client.sample_rate(),
             maybe_process_callback: self.maybe_process_callback,
         };
@@ -627,6 +636,8 @@ impl CpalBackend {
         let last_processed = Arc::new(AtomicU32::new(0));
         let last_processed_cb = last_processed.clone();
         let xruns_cb = xruns.clone();
+        let stale_graph_cycles = Arc::new(AtomicU32::new(0));
+        let stale_cb = stale_graph_cycles.clone();
         let mut capture_scratch = Vec::<f32>::new();
 
         let output_stream = output_device.build_output_stream(
@@ -660,7 +671,7 @@ impl CpalBackend {
                     }
                 }
 
-                let mut session = shared.lock();
+                let mut session = shared.lock_rt();
                 session.set_sample_rate(sample_rate);
                 session.set_buffer_size(n_frames as u32);
 
@@ -692,9 +703,8 @@ impl CpalBackend {
                     }
                 }
 
-                let _ = crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| {
-                    session.process(n_frames)
-                });
+                crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| session.process(n_frames));
+                stale_cb.store(session.n_stale_cycles(), Ordering::Relaxed);
 
                 collect_virtual_audio_outputs(
                     &session,
@@ -746,6 +756,7 @@ impl CpalBackend {
         output_stream.play()?;
 
         Ok(Self {
+            stale_graph_cycles,
             _output: Some(output_stream),
             _input: input_stream,
             sample_rate,
@@ -802,6 +813,7 @@ impl CpalBackend {
         let xruns = Arc::new(AtomicU32::new(0));
 
         Ok(Self {
+            stale_graph_cycles: Arc::new(AtomicU32::new(0)),
             _output: None,
             _input: None,
             input_ring: None,
@@ -825,10 +837,76 @@ struct SharedSession {
     external: Mutex<Option<Arc<Mutex<engine::DummyExternalConnections>>>>,
     jack: Mutex<Option<Arc<Mutex<JackBackend>>>>,
     cpal: Mutex<Option<Arc<Mutex<CpalBackend>>>>,
+    /// Rebuilds the schedule after topology changes.
+    ///
+    /// A `OnceLock` rather than a `Mutex`: it is set once immediately after construction
+    /// -- it needs a `Weak` back to the `SharedSession` it applies to, so it cannot be
+    /// built in the initialiser -- and read on every control-path lock thereafter.
+    scheduler: OnceLock<GraphScheduler>,
 }
+
+/// A control-thread borrow of the session that cannot leave the graph stale.
+///
+/// The whole reason this type exists: `apply_graph_changes` used to be the caller's job at
+/// every mutation site, and three of them remembered while the rest did not -- so wiring up
+/// a track left a schedule that never got rebuilt. Rescheduling on drop makes that
+/// structural rather than conventional; a mutator cannot release the lock without the
+/// rebuild being at least scheduled.
+///
+/// Deliberately not used by the audio thread, which takes [`SharedSession::lock_rt`]: the
+/// reschedule allocates, and the audio thread must never trigger it.
+struct ControlGuard<'a> {
+    guard: MutexGuard<'a, engine::Session>,
+    scheduler: Option<&'a GraphScheduler>,
+}
+
+impl std::ops::Deref for ControlGuard<'_> {
+    type Target = engine::Session;
+    fn deref(&self) -> &engine::Session {
+        &self.guard
+    }
+}
+impl std::ops::DerefMut for ControlGuard<'_> {
+    fn deref_mut(&mut self) -> &mut engine::Session {
+        &mut self.guard
+    }
+}
+impl Drop for ControlGuard<'_> {
+    fn drop(&mut self) {
+        if self.guard.graph_up_to_date() {
+            return;
+        }
+        match self.scheduler {
+            Some(s) => s.arm(),
+            // Before the scheduler is attached there is no audio thread yet, so applying
+            // inline costs nothing and keeps construction deterministic.
+            None => {
+                let _ = self.guard.apply_graph_changes();
+            }
+        }
+    }
+}
+
 impl SharedSession {
-    fn lock(&self) -> MutexGuard<'_, engine::Session> {
+    /// Control-thread access. Reschedules on drop if the graph was left dirty.
+    fn lock(&self) -> ControlGuard<'_> {
+        ControlGuard {
+            guard: self.session.lock().unwrap_or_else(|e| e.into_inner()),
+            scheduler: self.scheduler.get(),
+        }
+    }
+
+    /// Audio-thread access. Never reschedules -- a stale schedule is run as-is and counted
+    /// by `Session::process`, which is what keeps audio flowing across a topology change.
+    fn lock_rt(&self) -> MutexGuard<'_, engine::Session> {
         self.session.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Applies any pending graph changes and returns once they have landed.
+    fn flush_graph_changes(&self) {
+        if let Some(s) = self.scheduler.get() {
+            s.flush_blocking();
+        }
     }
     fn external(&self) -> Option<Arc<Mutex<engine::DummyExternalConnections>>> {
         self.external
@@ -952,14 +1030,31 @@ impl BackendSession {
     pub fn create() -> Result<Self> {
         let mut s = engine::Session::default();
         s.apply_graph_changes().ok();
-        Ok(Self {
-            shared: Arc::new(SharedSession {
-                session: Mutex::new(s),
-                external: Mutex::new(None),
-                jack: Mutex::new(None),
-                cpal: Mutex::new(None),
+        let shared = Arc::new(SharedSession {
+            session: Mutex::new(s),
+            external: Mutex::new(None),
+            jack: Mutex::new(None),
+            cpal: Mutex::new(None),
+            scheduler: OnceLock::new(),
+        });
+
+        // Attached after construction because the apply closure needs a handle back to the
+        // session. `Weak`, so the scheduler thread cannot keep a closed session alive.
+        let weak = Arc::downgrade(&shared);
+        let scheduler = GraphScheduler::start(
+            DEFAULT_WINDOW,
+            Box::new(move || {
+                if let Some(shared) = weak.upgrade() {
+                    // `lock_rt` rather than `lock`: this *is* the reschedule, so arming
+                    // another one from its own drop would spin.
+                    let mut s = shared.lock_rt();
+                    let _ = s.apply_graph_changes();
+                }
             }),
-        })
+        );
+        let _ = shared.scheduler.set(scheduler);
+
+        Ok(Self { shared })
     }
     pub fn set_audio_driver(&self, driver: &AudioDriver) -> Result<()> {
         driver.attach_session(&self.shared);
@@ -969,6 +1064,9 @@ impl BackendSession {
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = Some(driver.external());
         *self.shared.jack.lock().unwrap_or_else(|e| e.into_inner()) = driver.jack();
+        // Settle the graph before any audio thread exists, so the first cycle a backend
+        // runs is already against a current schedule.
+        self.shared.flush_graph_changes();
         self.shared.activate_jack(&self.shared)?;
         driver.activate_cpal(&self.shared)?;
         *self.shared.cpal.lock().unwrap_or_else(|e| e.into_inner()) = driver.cpal();
@@ -984,7 +1082,6 @@ impl BackendSession {
     pub fn create_loop(&self) -> Result<Loop> {
         let mut s = self.shared.lock();
         let idx = s.create_loop();
-        s.apply_graph_changes().ok();
         Ok(Loop {
             shared: self.shared.clone(),
             idx,
@@ -1183,18 +1280,14 @@ fn process_dummy_driver_iteration(inner: &Arc<Mutex<DriverInner>>) {
         return;
     }
     if let Some(shared) = session {
-        let mut s = shared.lock();
+        // `lock_rt`, like the JACK and CPAL callbacks: this is a process path, not a
+        // control path, and it must not trigger a reschedule. Pending graph changes are
+        // applied by the scheduler thread within its window; a caller that needs them
+        // landed first calls `AudioDriver::wait_process`, which flushes.
+        let mut s = shared.lock_rt();
         s.set_sample_rate(sample_rate);
         s.set_buffer_size(buffer_size);
-        // Channel connections and other internal routing changes bump graph_request_id
-        // from the GUI thread, but the dummy iteration is the only path that calls
-        // session.process().  Unless we apply those pending changes here, process()
-        // returns Err(GraphOutOfDate) and the cycle is silently dropped.  The
-        // original C++ backend handled this by calling PROC_handle_command_queue()
-        // at the top of every iteration (and by running graph recalculation on a
-        // separate thread that the process loop merely notified).
-        s.apply_graph_changes().ok();
-        s.process(n as usize).ok();
+        s.process(n as usize);
         {
             let mut i = inner.lock().unwrap_or_else(|e| e.into_inner());
             i.last_processed = n;
@@ -1330,6 +1423,7 @@ impl AudioDriver {
                 ports: Arc::new(Mutex::new(Vec::new())),
                 last_processed: Arc::new(AtomicU32::new(0)),
                 xruns: Arc::new(AtomicU32::new(0)),
+                stale_graph_cycles: Arc::new(AtomicU32::new(0)),
                 maybe_process_callback: i.maybe_process_callback,
             })));
         } else {
@@ -1532,38 +1626,58 @@ impl AudioDriver {
     pub fn active(&self) -> bool {
         self.inner.lock().unwrap().active
     }
+    /// Waits until the engine has caught up with everything asked of it.
+    ///
+    /// Flushes pending graph changes first, for all driver types. Without that, a caller
+    /// that changes the topology and immediately advances the driver would run cycles
+    /// against the previous schedule until the coalescing window elapsed -- fine for
+    /// audio, wrong for a test asserting on the very next cycle. This is the suite's
+    /// "let everything settle" call, so settling the graph belongs here.
     pub fn wait_process(&self) {
-        let (is_dummy, target) = {
+        let (is_dummy, target, session) = {
             let i = self.inner.lock().unwrap_or_else(|e| e.into_inner());
             (
                 driver_uses_dummy_processing(i.driver_type),
                 i.process_generation.saturating_add(2),
+                i.session.as_ref().and_then(|w| w.upgrade()),
             )
         };
+        if let Some(shared) = session {
+            shared.flush_graph_changes();
+        }
         if is_dummy {
             wait_for_dummy_generation(&self.inner, target, Duration::from_millis(100));
         }
     }
     pub fn get_state(&self) -> AudioDriverState {
         let i = self.inner.lock().unwrap();
-        let (last_processed, xruns_since_last) = if let Some(j) = i.jack.as_ref() {
-            let j = j.lock().unwrap_or_else(|e| e.into_inner());
-            (
-                j.last_processed.load(Ordering::Relaxed),
-                j.xruns.swap(0, Ordering::Relaxed),
-            )
-        } else if let Some(c) = i.cpal.as_ref() {
-            let c = c.lock().unwrap_or_else(|e| e.into_inner());
-            (
-                c.last_processed.load(Ordering::Relaxed),
-                c.xruns.swap(0, Ordering::Relaxed),
-            )
-        } else {
-            (i.last_processed, 0)
-        };
+        let (last_processed, xruns_since_last, stale_graph_cycles, dsp_load_percent) =
+            if let Some(j) = i.jack.as_ref() {
+                let j = j.lock().unwrap_or_else(|e| e.into_inner());
+                (
+                    j.last_processed.load(Ordering::Relaxed),
+                    j.xruns.swap(0, Ordering::Relaxed),
+                    j.stale_graph_cycles.load(Ordering::Relaxed),
+                    // Pulled here rather than pushed from the callback: asking JACK costs
+                    // a call the audio thread has no reason to make.
+                    j.client().cpu_load(),
+                )
+            } else if let Some(c) = i.cpal.as_ref() {
+                let c = c.lock().unwrap_or_else(|e| e.into_inner());
+                (
+                    c.last_processed.load(Ordering::Relaxed),
+                    c.xruns.swap(0, Ordering::Relaxed),
+                    c.stale_graph_cycles.load(Ordering::Relaxed),
+                    // cpal exposes no equivalent; left unreported rather than invented.
+                    0.0,
+                )
+            } else {
+                (i.last_processed, 0, 0, 0.0)
+            };
         AudioDriverState {
-            dsp_load_percent: 0.0,
+            dsp_load_percent,
             xruns_since_last,
+            stale_graph_cycles,
             maybe_instance_name: i.settings.client_name.clone(),
             sample_rate: i.settings.sample_rate,
             buffer_size: i.settings.buffer_size,
@@ -1707,7 +1821,6 @@ impl Loop {
     pub fn add_audio_channel(&self, mode: ChannelMode) -> Result<AudioChannel> {
         let mut s = self.shared.lock();
         let session_idx = s.add_audio_channel(self.idx, 64, mode.into())?;
-        s.apply_graph_changes().ok();
         let chan_idx = s
             .loop_(self.idx)
             .map_or(0, |l| l.n_audio_channels().saturating_sub(1));
@@ -1721,7 +1834,6 @@ impl Loop {
     pub fn add_midi_channel(&self, mode: ChannelMode) -> Result<MidiChannel> {
         let mut s = self.shared.lock();
         let session_idx = s.add_midi_channel(self.idx, 1024, mode.into())?;
-        s.apply_graph_changes().ok();
         let chan_idx = s
             .loop_(self.idx)
             .map_or(0, |l| l.n_midi_channels().saturating_sub(1));
@@ -1784,7 +1896,6 @@ impl Loop {
             l.set_mode(engine::LoopMode::Stopped);
             l.set_position(0);
         }
-        s.apply_graph_changes().ok();
         Ok(())
     }
     pub fn set_sync_source(&self, src: Option<&Loop>) -> Result<()> {
@@ -1809,7 +1920,6 @@ impl Loop {
             go_to_cycle,
             go_to_mode.into(),
         )?;
-        s.apply_graph_changes().ok();
         Ok(())
     }
 }
@@ -2030,7 +2140,6 @@ impl AudioPort {
                 ring as usize,
             ),
         ));
-        s.apply_graph_changes().ok();
         drop(s);
         driver.register_audio_port(name, *direction, idx)?;
         Ok(Self {
@@ -2100,7 +2209,6 @@ impl AudioPort {
     pub fn connect_internal(&self, other: &AudioPort) {
         let mut s = self.shared.lock();
         let _ = s.connect_ports_internal(self.idx, other.idx);
-        s.apply_graph_changes().ok();
     }
     pub fn dummy_queue_data(&self, data: &[f32]) {
         if let Some(p) = self
@@ -2226,7 +2334,6 @@ impl MidiPort {
         let idx = s.add_port(engine::session::Port::ExternalMidi(
             engine::external_midi_port::ExternalMidiPort::new(name, (*direction).into()),
         ));
-        s.apply_graph_changes().ok();
         drop(s);
         driver.register_midi_port(name, *direction, idx)?;
         Ok(Self {
@@ -2287,7 +2394,6 @@ impl MidiPort {
     pub fn connect_internal(&self, other: &MidiPort) {
         let mut s = self.shared.lock();
         let _ = s.connect_ports_internal(self.idx, other.idx);
-        s.apply_graph_changes().ok();
     }
     pub fn dummy_clear_queues(&self) {
         if let Some(p) = self
@@ -2610,7 +2716,6 @@ impl FXChain {
                 0,
             ),
         ));
-        s.apply_graph_changes().ok();
         AudioPort {
             shared: self.shared.clone(),
             idx,
@@ -2622,7 +2727,6 @@ impl FXChain {
         let idx = s.add_port(engine::session::Port::ExternalMidi(
             engine::external_midi_port::ExternalMidiPort::new(name, direction.into()),
         ));
-        s.apply_graph_changes().ok();
         MidiPort {
             shared: self.shared.clone(),
             idx,
@@ -2662,6 +2766,75 @@ impl FXChain {
 mod tests {
     use super::*;
 
+    /// The invariant `ControlGuard` exists to enforce.
+    ///
+    /// Connecting a channel to a port used to leave the graph dirty with nothing scheduled
+    /// to rebuild it, because only three of the mutation sites remembered to call
+    /// `apply_graph_changes`. Now the guard cannot be dropped without at least arming the
+    /// rebuild, so no mutation site has to remember.
+    #[test]
+    fn a_connection_leaves_the_graph_scheduled_for_rebuild() {
+        let sess = BackendSession::new().expect("session");
+        let loop_ = sess.create_loop().expect("loop");
+        let channel = loop_
+            .add_audio_channel(ChannelMode::Direct)
+            .expect("channel");
+        let port = {
+            let mut s = sess.shared.lock();
+            let idx = s.add_port(engine::session::Port::External(
+                engine::external_audio_port::ExternalAudioPort::new(
+                    "out",
+                    engine::PortDirection::Output,
+                    0,
+                ),
+            ));
+            AudioPort {
+                shared: sess.shared.clone(),
+                idx,
+                direction: PortDirection::Output,
+            }
+        };
+        sess.shared.flush_graph_changes();
+        assert!(sess.shared.lock().graph_up_to_date());
+
+        // The call that used to leave the session permanently stale.
+        channel.connect_output(&port);
+        assert!(
+            !sess.shared.lock().graph_up_to_date(),
+            "the connection should have marked the graph dirty"
+        );
+
+        // Not applied inline -- that is the coalescing -- but guaranteed to land.
+        sess.shared.flush_graph_changes();
+        assert!(
+            sess.shared.lock().graph_up_to_date(),
+            "a pending rebuild must be applied without any explicit apply_graph_changes call"
+        );
+    }
+
+    /// Many mutations in a burst must not each pay for a rebuild.
+    #[test]
+    fn a_burst_of_changes_coalesces_into_one_rebuild() {
+        let sess = BackendSession::new().expect("session");
+        let before = sess.shared.scheduler.get().expect("scheduler").n_applies();
+
+        for _ in 0..25 {
+            let loop_ = sess.create_loop().expect("loop");
+            loop_
+                .add_audio_channel(ChannelMode::Direct)
+                .expect("channel");
+        }
+        sess.shared.flush_graph_changes();
+
+        let after = sess.shared.scheduler.get().expect("scheduler").n_applies();
+        assert!(
+            after - before < 25,
+            "50 mutations should coalesce, got {} rebuilds",
+            after - before
+        );
+        assert!(sess.shared.lock().graph_up_to_date());
+    }
+
     #[test]
     fn real_jack_is_not_advanced_by_state_polling() {
         assert!(!driver_uses_dummy_processing(AudioDriverType::Jack));
@@ -2696,7 +2869,7 @@ mod tests {
         let connections = vec![(compat_port_id(input), capture_names[1].clone())];
         let interleaved = [10.0, 20.0, 11.0, 21.0, 12.0, 22.0, 13.0, 23.0];
         stage_virtual_audio_inputs(&mut s, &connections, &capture_names, 2, &interleaved, 4);
-        s.process(4).expect("process");
+        s.process(4);
 
         let data = s
             .loop_(l)
@@ -2729,7 +2902,7 @@ mod tests {
         s.loop_mut(l).expect("loop").set_length(4);
         s.apply_graph_changes().expect("graph");
         s.set_loop_mode(l, engine::LoopMode::Playing).expect("mode");
-        s.process(4).expect("process");
+        s.process(4);
 
         let playback_names = vec![
             "cpal:test:playback_1".to_string(),
@@ -2822,7 +2995,15 @@ mod tests {
         driver.start(&settings).expect("settings accepted");
         let sess = BackendSession::new().expect("session");
         if let Err(e) = sess.set_audio_driver(&driver) {
-            eprintln!("no usable CPAL output device; skipping: {e}");
+            // Fails rather than passes when there is no audio device, unless skipping was
+            // opted into -- mirrors `tests/backend_availability`, which an inline test in
+            // the library crate cannot reach.
+            assert!(
+                std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some(),
+                "a CPAL output device is required by this test but unavailable: {e}.\n\
+                 Set SHOOP_ALLOW_MISSING_BACKENDS=1 to skip backend-dependent tests."
+            );
+            eprintln!("skipping: no usable CPAL output device ({e})");
             return;
         }
 
@@ -2893,6 +3074,9 @@ mod tests {
         assert_eq!(audio_in.direction(), PortDirection::Output);
         assert_eq!(audio_out.direction(), PortDirection::Input);
         assert_eq!(midi_in.direction(), PortDirection::Output);
+        // Creating the chain's ports leaves a reschedule pending rather than applying it
+        // inline, so settle it first -- as `wait_process` does for real callers.
+        sess.shared.flush_graph_changes();
         assert!(sess.shared.lock().graph_up_to_date());
     }
 

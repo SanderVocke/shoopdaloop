@@ -163,6 +163,23 @@ runs:
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
+    if: always()
+    env:
+       GHA_RUN_ALWAYS: 1
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "Start JACK server"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
+  - name: Start JACK
+    if: always()
+    uses: ./.github/actions/start_jack
+    env:
+       GHA_RUN_ALWAYS: 1
+  - uses: ./.github/actions/checkpoint
+    if: always()
+  - shell: wrap-shell {0}
     if: always() && env.COMMAND_TEST_RUST != ''
     env:
        GHA_RUN_ALWAYS: 1

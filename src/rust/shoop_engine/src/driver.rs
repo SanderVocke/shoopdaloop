@@ -34,6 +34,12 @@ pub enum AudioDriverType {
 pub struct AudioDriverState {
     pub dsp_load_percent: f32,
     pub xruns_since_last: u32,
+    /// Cycles run against a schedule older than the topology, cumulative.
+    ///
+    /// Expected to tick up briefly after a topology change and then stop. A count that
+    /// keeps climbing means graph changes are not being applied -- which presents as
+    /// silence, so it is reported rather than left to be inferred.
+    pub stale_graph_cycles: u32,
     pub maybe_instance_name: String,
     pub sample_rate: u32,
     pub buffer_size: u32,

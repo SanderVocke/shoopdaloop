@@ -52,8 +52,6 @@ const MAX_SUB_BLOCKS: u32 = 16;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SessionError {
-    #[error("graph is out of date; call apply_graph_changes first")]
-    GraphOutOfDate,
     #[error("graph could not be scheduled: {0}")]
     Graph(#[from] GraphError),
     #[error("no such port: {0}")]
@@ -291,6 +289,13 @@ pub struct Session {
     carla_fx_hosts: HashMap<String, Arc<Mutex<crate::lv2_carla::CarlaLv2Host>>>,
     /// Cycles that hit [`MAX_SUB_BLOCKS`] without finishing.
     n_stuck_cycles: u32,
+    /// Cycles run against a schedule older than the current topology.
+    ///
+    /// Not an error: a stale cycle runs the last-applied schedule rather than being
+    /// refused, so audio keeps flowing while the next schedule is built. The counter
+    /// exists because the alternative -- staying quiet about it -- is what made a
+    /// permanently stale graph look like ordinary silence.
+    n_stale_cycles: u32,
     /// Sub-blocks used by the most recent cycle, across all loop steps.
     ///
     /// A performance signal as much as a correctness one: every extra sub-block is
@@ -855,9 +860,26 @@ impl Session {
     ///
     /// Co-processed steps are processed loop-by-loop here. Genuine simultaneous
     /// `process_loops` did and is still owed.
-    pub fn process(&mut self, n_frames: usize) -> Result<(), SessionError> {
+    ///
+    /// Infallible on purpose. It used to return `Err(GraphOutOfDate)`, which every caller
+    /// discarded with `let _ =` -- so a permanently stale graph silenced the session with
+    /// nothing reported anywhere. There is now no error to drop: a stale cycle runs and is
+    /// counted in [`Self::n_stale_cycles`].
+    pub fn process(&mut self, n_frames: usize) {
+        // A stale graph runs the last-applied schedule rather than refusing the cycle.
+        //
+        // Refusing meant a single un-applied connection silenced the whole session until
+        // someone noticed, and it made deferring a reschedule impossible: any delay
+        // between a topology change and its apply was a gap of dropped cycles.
+        //
+        // Running the old schedule is sound because the arenas are append-only --
+        // `remove_port`, `remove_channel` and `remove_loop` clear a slot but never shrink
+        // `ports`/`channels`/`loops` -- so indices captured by an older schedule stay
+        // valid. Routing is read live from `port_connections` in `propagate_port`, so a
+        // disconnect still takes effect on the next cycle; only nodes added since the last
+        // apply are missing, and those are genuinely not wired up yet.
         if !self.graph_up_to_date() {
-            return Err(SessionError::GraphOutOfDate);
+            self.n_stale_cycles = self.n_stale_cycles.saturating_add(1);
         }
         self.n_sub_blocks_last_cycle = 0;
         let steps = std::mem::take(&mut self.schedule);
@@ -913,7 +935,6 @@ impl Session {
             self.process_carla_fx_chains(n_frames)
         });
         self.schedule = steps;
-        Ok(())
     }
 
     /// the synthetic FX outputs directly to the track's wet output ports. This is
@@ -1600,6 +1621,14 @@ impl Session {
         self.n_sub_blocks_last_cycle
     }
 
+    /// Cycles that ran against a schedule older than the current topology.
+    ///
+    /// A few of these after a topology change are expected -- that is the reschedule
+    /// window. A count that keeps climbing means nothing is applying the graph.
+    pub fn n_stale_cycles(&self) -> u32 {
+        self.n_stale_cycles
+    }
+
     /// Tells a channel how much room its ports offer this cycle.
     fn channel_prepare(&mut self, channel: usize, n_frames: usize) {
         let m = self.channels[channel].clone();
@@ -1728,7 +1757,7 @@ mod tests {
         let mut s = Session::default();
         check!(s.graph_up_to_date());
         check!(s.n_ports() == 0);
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
     }
 
     #[test]
@@ -1736,11 +1765,132 @@ mod tests {
         let mut s = Session::default();
         s.add_port(internal("p", 4));
         check!(!s.graph_up_to_date());
-        check!(s.process(4) == Err(SessionError::GraphOutOfDate));
+        // Stale is not fatal: the cycle runs the last-applied schedule and is counted.
+        s.process(4);
+        check!(s.n_stale_cycles() == 1);
 
         let_assert!(Ok(()) = s.apply_graph_changes());
         check!(s.graph_up_to_date());
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
+        check!(s.n_stale_cycles() == 1);
+    }
+
+    /// The property that lets a stale cycle run safely: existing work keeps happening.
+    #[test]
+    fn a_stale_graph_keeps_running_the_previous_schedule() {
+        let mut s = Session::default();
+        let output = s.add_port(internal("out", 4));
+        let l = s.create_loop();
+        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        let_assert!(Ok(()) = s.connect_channel_output(c, output));
+        let_assert!(Ok(()) = s.apply_graph_changes());
+        s.loop_mut(l)
+            .unwrap()
+            .audio_channel_mut(0)
+            .unwrap()
+            .load_data(&[1.0, 1.0, 1.0, 1.0]);
+        s.loop_mut(l).unwrap().set_length(4);
+        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+
+        s.process(4);
+        check!(s.port_mut(output).unwrap().buffer(4).to_vec() == vec![1.0; 4]);
+
+        // Dirty the graph without applying, as adding a track does.
+        let _later = s.add_port(internal("added-later", 4));
+        check!(!s.graph_up_to_date());
+
+        s.process(4);
+
+        // Still playing. Before this change the cycle was refused outright and the
+        // session fell silent for good.
+        check!(s.port_mut(output).unwrap().buffer(4).to_vec() == vec![1.0; 4]);
+        check!(s.n_stale_cycles() == 1);
+    }
+
+    /// What a stale cycle does and does not pick up.
+    ///
+    /// A channel already in the schedule reads its `output_port` live, so it starts feeding
+    /// a newly assigned port straight away. What waits for the reschedule is the *port's*
+    /// own node -- its `prepare` (which clears the buffer each cycle) and its `process`
+    /// (gain, muting, metering). So the routing lands early and the port-level processing
+    /// lands on apply; neither state is broken, which is what makes deferral safe.
+    #[test]
+    fn a_port_added_mid_stream_is_fed_but_not_yet_processed() {
+        let mut s = Session::default();
+        let l = s.create_loop();
+        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        let_assert!(Ok(()) = s.apply_graph_changes());
+        s.loop_mut(l)
+            .unwrap()
+            .audio_channel_mut(0)
+            .unwrap()
+            .load_data(&[2.0, 2.0, 2.0, 2.0]);
+        s.loop_mut(l).unwrap().set_length(4);
+        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+
+        let late = s.add_port(internal("late", 4));
+        let_assert!(Ok(()) = s.connect_channel_output(c, late));
+        s.port_mut(late).unwrap().audio_mut().unwrap().set_gain(0.5);
+
+        s.process(4);
+        // Fed immediately, but ungained: the port's own process node has not run.
+        check!(s.port_mut(late).unwrap().buffer(4).to_vec() == vec![2.0; 4]);
+        check!(s.n_stale_cycles() == 1);
+
+        let_assert!(Ok(()) = s.apply_graph_changes());
+        s.process(4);
+        // Now the port is scheduled: cleared at the top of the cycle, gained at the end.
+        check!(s.port_mut(late).unwrap().buffer(4).to_vec() == vec![1.0; 4]);
+        check!(s.n_stale_cycles() == 1);
+    }
+
+    /// Pass-through routing is read live, so a disconnect does not wait for a reschedule.
+    #[test]
+    fn a_disconnect_takes_effect_before_the_graph_is_reapplied() {
+        let mut s = Session::default();
+        let from = s.add_port(internal("from", 4));
+        let to = s.add_port(internal("to", 4));
+        let l = s.create_loop();
+        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        let_assert!(Ok(()) = s.connect_channel_output(c, from));
+        let_assert!(Ok(()) = s.connect_ports_internal(from, to));
+        let_assert!(Ok(()) = s.apply_graph_changes());
+        s.loop_mut(l)
+            .unwrap()
+            .audio_channel_mut(0)
+            .unwrap()
+            .load_data(&[1.0, 1.0, 1.0, 1.0]);
+        s.loop_mut(l).unwrap().set_length(4);
+        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
+
+        s.process(4);
+        check!(s.port_mut(to).unwrap().buffer(4).to_vec() == vec![1.0; 4]);
+
+        // Drop the pass-through wiring but do not reschedule.
+        s.port_connections.remove(&from);
+        s.note_graph_change();
+        check!(!s.graph_up_to_date());
+
+        s.process(4);
+        check!(s.port_mut(to).unwrap().buffer(4).to_vec() == vec![0.0; 4]);
+    }
+
+    /// Indices held by an older schedule must stay valid, which is why removal keeps slots.
+    #[test]
+    fn removal_never_shrinks_the_arenas() {
+        let mut s = Session::default();
+        let p = s.add_port(internal("p", 4));
+        let l = s.create_loop();
+        let_assert!(Ok(c) = s.add_audio_channel(l, 4, ChannelMode::Direct));
+        let (ports, loops, channels) = (s.n_ports(), s.n_loops(), s.n_channels());
+
+        let_assert!(Ok(()) = s.remove_channel(c, ChannelKind::Audio));
+        let_assert!(Ok(()) = s.remove_port(p));
+        let_assert!(Ok(()) = s.remove_loop(l));
+
+        check!(s.n_ports() == ports);
+        check!(s.n_loops() == loops);
+        check!(s.n_channels() == channels);
     }
 
     #[test]
@@ -1801,7 +1951,7 @@ mod tests {
             .unwrap()
             .queue_data(&[1.0, 2.0, 3.0, 4.0]);
         let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
 
         check!(s.loop_(l).unwrap().length() == 4);
         check!(s.loop_(l).unwrap().audio_channel(0).unwrap().data() == vec![1.0, 2.0, 3.0, 4.0]);
@@ -1813,7 +1963,7 @@ mod tests {
             .unwrap()
             .request_data(4);
         let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
 
         let got = s
             .port_mut(output)
@@ -1835,7 +1985,7 @@ mod tests {
         let_assert!(Ok(()) = s.apply_graph_changes());
 
         let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
         check!(s.loop_(l).unwrap().audio_channel(0).unwrap().data() == vec![0.0, 0.0, 0.0, 0.0]);
     }
 
@@ -1855,7 +2005,7 @@ mod tests {
             .load_data(&[1.0, 1.0, 1.0, 1.0]);
         s.loop_mut(l).unwrap().set_length(4);
         let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
 
         // The port started silent (prepare clears it), so playback is what is there.
         let buf = s.port_mut(output).unwrap().buffer(4).to_vec();
@@ -1885,7 +2035,7 @@ mod tests {
             .load_data(&[10.0, 10.0, 10.0, 10.0]);
         s.loop_mut(l).unwrap().set_length(4);
         let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
 
         // Both channels contribute: the second must add onto the first, not
         // replace it.
@@ -1917,7 +2067,7 @@ mod tests {
             .load_data(&[10.0, 10.0, 10.0, 10.0]);
         s.loop_mut(l).unwrap().set_length(4);
         let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
 
         // Each port gets only its own channel. Reusing routing scratch across
         // channels must not leak one port's signal into another's.
@@ -1941,7 +2091,7 @@ mod tests {
             .unwrap()
             .queue_data(&[5.0, 6.0, 7.0, 8.0]);
         let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
 
         check!(s.loop_(l).unwrap().audio_channel(0).unwrap().data() == vec![5.0, 6.0, 7.0, 8.0]);
         // The unconnected channel must record silence, not whatever the routing
@@ -1981,7 +2131,7 @@ mod tests {
         check!(ch.mode() == ChannelMode::Disabled);
         check!(ch.length() == 0);
         // Disabled, so it contributes no point of interest and the cycle is not bounded by it.
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
     }
 
     #[test]
@@ -2017,7 +2167,7 @@ mod tests {
         check!(s.loop_(l).expect("loop").mode() == LoopMode::Stopped);
         check!(s.loop_(l).expect("loop").length() == 0);
         // Still schedulable, because the slot is kept rather than removed from the arena.
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
     }
 
     #[test]
@@ -2038,7 +2188,7 @@ mod tests {
         let_assert!(Ok(()) = s.apply_graph_changes());
 
         // Neither what b fed nor what fed b remains, and the channel no longer reads it.
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
         check!(s.n_ports() == 3);
     }
 
@@ -2083,7 +2233,7 @@ mod tests {
             .unwrap()
             .queue_msg(2, &midi::note_off(0, 60, 64));
         let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
 
         check!(s.loop_(l).unwrap().midi_channel(0).unwrap().n_events() == 2);
 
@@ -2092,7 +2242,7 @@ mod tests {
         let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
         let d = s.port_mut(output).unwrap().as_dummy_midi_mut().unwrap();
         let_assert!(Ok(()) = d.request_data(4));
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
 
         let got = s
             .port_mut(output)
@@ -2112,7 +2262,7 @@ mod tests {
         let_assert!(Ok(_) = s.add_midi_channel(l, 64, ChannelMode::Direct));
         let_assert!(Ok(()) = s.apply_graph_changes());
         let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
         check!(s.loop_(l).unwrap().length() == 4);
     }
 
@@ -2141,7 +2291,7 @@ mod tests {
             .queue_msg(2, &midi::note_on(0, 64, 1));
 
         let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
 
         check!(s.loop_(l).unwrap().audio_channel(0).unwrap().data() == vec![1.0, 2.0, 3.0, 4.0]);
         check!(s.loop_(l).unwrap().midi_channel(0).unwrap().n_events() == 1);
@@ -2167,7 +2317,7 @@ mod tests {
             .unwrap()
             .queue_msg(1, &midi::note_on(0, 60, 1));
         let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
 
         check!(s.loop_(l).unwrap().midi_channel(0).unwrap().n_events() == 1);
         check!(s.loop_(l).unwrap().midi_channel(1).unwrap().n_events() == 0);
@@ -2192,7 +2342,7 @@ mod tests {
             .queue_msg(1, &midi::note_on(0, 60, 1));
         let_assert!(Ok(()) = s.set_loop_mode(l1, LoopMode::Recording));
         let_assert!(Ok(()) = s.set_loop_mode(l2, LoopMode::Recording));
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
 
         check!(s.loop_(l1).unwrap().midi_channel(0).unwrap().n_events() == 1);
         // The second loop's channel is wired to nothing and must stay empty.
@@ -2215,9 +2365,9 @@ mod tests {
             .unwrap()
             .queue_msg(1, &midi::note_on(0, 60, 1));
         let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
         // A second cycle with no new arrivals must not re-record the first one.
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
         check!(s.loop_(l).unwrap().midi_channel(0).unwrap().n_events() == 1);
     }
 
@@ -2244,15 +2394,15 @@ mod tests {
             .unwrap()
             .queue_msg(2, &midi::note_off(0, 60, 64));
         let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
 
         // Play twice over a length of 8, so the message sounds exactly once.
         s.loop_mut(l).unwrap().set_length(8);
         let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
         let d = s.port_mut(output).unwrap().as_dummy_midi_mut().unwrap();
         let_assert!(Ok(()) = d.request_data(8));
-        let_assert!(Ok(()) = s.process(4));
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
+        s.process(4);
 
         let got = s
             .port_mut(output)
@@ -2286,14 +2436,14 @@ mod tests {
         s.loop_mut(l).unwrap().set_length(6);
         let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
 
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
         check!(s.port_mut(output).unwrap().buffer(4).to_vec() == vec![1.0, 2.0, 3.0, 4.0]);
         check!(s.position_of(l) == Some(4));
         // Nothing to split: the wrap is beyond this buffer.
         check!(s.n_sub_blocks_last_cycle() == 1);
 
         // Frames 5 and 6 play, then the loop wraps and frames 1 and 2 play again.
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
         check!(s.port_mut(output).unwrap().buffer(4).to_vec() == vec![5.0, 6.0, 1.0, 2.0]);
         // Exactly two sub-blocks: 2 frames to the wrap, then 2 after it. A stale
         // point of interest would cost an extra, wasted pass.
@@ -2319,7 +2469,7 @@ mod tests {
         let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Playing));
 
         // Two-frame loop across a six-frame buffer: three passes in one cycle.
-        let_assert!(Ok(()) = s.process(6));
+        s.process(6);
         check!(
             s.port_mut(output).unwrap().buffer(6).to_vec() == vec![1.0, 2.0, 1.0, 2.0, 1.0, 2.0]
         );
@@ -2357,7 +2507,7 @@ mod tests {
         let_assert!(Ok(()) = s.set_loop_mode(l1, LoopMode::Playing));
         let_assert!(Ok(()) = s.set_loop_mode(l2, LoopMode::Playing));
 
-        let_assert!(Ok(()) = s.process(6));
+        s.process(6);
         // Each loop repeats on its own length, sample-aligned throughout.
         check!(s.port_mut(out_a).unwrap().buffer(6).to_vec() == vec![1.0, 2.0, 3.0, 1.0, 2.0, 3.0]);
         check!(
@@ -2427,7 +2577,7 @@ mod tests {
         check!(s.loop_(follower).unwrap().mode() == LoopMode::Stopped);
 
         // One cycle spans the sync loop's wrap, so the follower is triggered.
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
         check!(s.loop_(follower).unwrap().mode() == LoopMode::Playing);
     }
 
@@ -2448,8 +2598,8 @@ mod tests {
             .unwrap()
             .plan_transition(LoopMode::Playing, Some(0), None);
 
-        let_assert!(Ok(()) = s.process(4));
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
+        s.process(4);
         check!(s.loop_(follower).unwrap().mode() == LoopMode::Stopped);
     }
 
@@ -2489,7 +2639,7 @@ mod tests {
         s.loop_mut(b).unwrap().set_length(4);
         let_assert!(Ok(()) = s.set_loop_mode(a, LoopMode::Playing));
         let_assert!(Ok(()) = s.set_loop_mode(b, LoopMode::Playing));
-        let_assert!(Ok(()) = s.process(4));
+        s.process(4);
         check!(s.n_stuck_cycles() == 0);
     }
 
@@ -2611,8 +2761,8 @@ mod tests {
         d.queue_data(&[1.0, 2.0]);
         d.queue_data(&[3.0, 4.0]);
         let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Recording));
-        let_assert!(Ok(()) = s.process(2));
-        let_assert!(Ok(()) = s.process(2));
+        s.process(2);
+        s.process(2);
 
         check!(s.loop_(l).unwrap().length() == 4);
         check!(s.loop_(l).unwrap().audio_channel(0).unwrap().data() == vec![1.0, 2.0, 3.0, 4.0]);

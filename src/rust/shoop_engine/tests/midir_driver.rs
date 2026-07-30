@@ -1,8 +1,8 @@
 //! Real MIDI, end to end: sent over a virtual port, captured, recorded by a loop.
 //!
-//! Virtual ports are a Unix feature of `midir`, so this only runs there. It skips
-//! rather than fails where the platform will not provide one, since that is the
-//! environment's limitation and not a fault in the code.
+//! Virtual ports are a Unix feature of `midir`, so this only compiles there. Where the
+//! platform has the API but no usable port, the test fails rather than quietly passing --
+//! set `SHOOP_ALLOW_MISSING_BACKENDS=1` to downgrade that to a skip.
 
 #![cfg(all(feature = "midir", unix))]
 
@@ -15,6 +15,9 @@ use shoop_engine::midir_driver::{create_virtual_input, open_output};
 use shoop_engine::port::PortDirection;
 use shoop_engine::session::{Port, Session};
 
+mod backend_availability;
+use backend_availability::require_backend;
+
 /// A distinct virtual port name per test, so two running at once cannot capture each
 /// other's messages.
 fn virtual_name(suffix: &str) -> String {
@@ -25,12 +28,12 @@ fn virtual_name(suffix: &str) -> String {
 fn a_message_sent_over_a_virtual_port_is_captured() {
     let name = virtual_name("capture");
     let Ok((mut capture, _conn)) = create_virtual_input("shoop-test-in", &name) else {
-        eprintln!("no virtual MIDI port available; skipping");
+        require_backend("virtual MIDI", "no virtual MIDI port available");
         return;
     };
 
     let Ok(mut playback) = open_output("shoop-test-out", "to-virtual", &name) else {
-        eprintln!("virtual port not visible to a sender; skipping");
+        require_backend("virtual MIDI", "virtual port not visible to a sender");
         return;
     };
 
@@ -71,11 +74,11 @@ fn a_message_sent_over_a_virtual_port_is_captured() {
 fn captured_midi_is_recorded_by_a_loop() {
     let name = virtual_name("record");
     let Ok((mut capture, _conn)) = create_virtual_input("shoop-rec-in", &name) else {
-        eprintln!("no virtual MIDI port available; skipping");
+        require_backend("virtual MIDI", "no virtual MIDI port available");
         return;
     };
     let Ok(mut playback) = open_output("shoop-rec-out", "to-virtual", &name) else {
-        eprintln!("virtual port not visible to a sender; skipping");
+        require_backend("virtual MIDI", "virtual port not visible to a sender");
         return;
     };
 
@@ -105,7 +108,7 @@ fn captured_midi_is_recorded_by_a_loop() {
         if let Some(p) = s.port_mut(input).and_then(Port::as_external_midi_mut) {
             capture.drain_into(p);
         }
-        let_assert!(Ok(()) = s.process(64));
+        s.process(64);
         let n = s
             .loop_(l)
             .and_then(|l| l.midi_channel(0))
@@ -128,11 +131,11 @@ fn captured_midi_is_recorded_by_a_loop() {
 fn an_oversized_message_is_refused_rather_than_truncated() {
     let name = virtual_name("sysex");
     let Ok((mut capture, _conn)) = create_virtual_input("shoop-sx-in", &name) else {
-        eprintln!("no virtual MIDI port available; skipping");
+        require_backend("virtual MIDI", "no virtual MIDI port available");
         return;
     };
     let Ok(out) = midir::MidiOutput::new("shoop-sx-out") else {
-        eprintln!("no MIDI output; skipping");
+        require_backend("MIDI output", "no MIDI output available");
         return;
     };
     let Some(port) = out
@@ -140,11 +143,11 @@ fn an_oversized_message_is_refused_rather_than_truncated() {
         .into_iter()
         .find(|p| out.port_name(p).map(|n| n.contains(&name)).unwrap_or(false))
     else {
-        eprintln!("virtual port not visible; skipping");
+        require_backend("virtual MIDI", "virtual port not visible");
         return;
     };
     let Ok(mut conn) = out.connect(&port, "to-virtual") else {
-        eprintln!("could not connect; skipping");
+        require_backend("virtual MIDI", "could not connect to the virtual port");
         return;
     };
 
