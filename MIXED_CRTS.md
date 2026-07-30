@@ -114,14 +114,22 @@ package scan-dependencies --folder <dir> --use-cmake-prefix-path --report-only
 - **The crash was never proven to be the CRT mismatch.** The minidump was not
   examined. The mismatch is real and had to be fixed regardless, but if the debug
   package still crashes with a clean CRT log, look elsewhere.
-- **The CI check is still narrowed.** `.github/actions/build_toplevel/action.yml`
-  runs the full UI-loading verification (`--backend dummy --test-grab-screens`,
-  asserting screenshots exist and the log is free of loader errors) only for
-  **release** packages; debug and coverage fall back to `--help`. Restoring it for
-  debug is the acceptance criterion for closing this out. Coverage cannot be
-  restored the same way: Qoverage rewrites the QML to import `QoverageSingleton`,
-  which belongs to the coverage tooling and is not in the package, so no window is
-  ever created.
+- **`windows_debug` is the one job still on the reduced check.**
+  `.github/actions/build_toplevel/action.yml` runs the full UI-loading
+  verification (`--backend dummy --test-grab-screens`, asserting screenshots exist
+  and the log is free of loader errors) for every `portable_folder` job except
+  that one, which falls back to `--help`. Lifting that restriction is the
+  acceptance test for the two fixes above and should be the next thing tried.
+  If it still crashes while the mixed-runtime warning stays quiet, the CRT
+  diagnosis was wrong and the cause is elsewhere.
+
+- **`linux_coverage` runs the full check and may not pass it.** Qoverage rewrites
+  the QML to import `QoverageSingleton`, which belongs to the coverage tooling and
+  is not in the package, so no window is created and the run reaches the 300s
+  timeout. This was observed before the screenshot-path bug was fixed, so it is
+  not a side effect of that. It is enabled deliberately, to keep the result
+  visible rather than assumed; if it proves to be noise, exempt coverage in the
+  gate rather than reverting the whole thing.
 - **`VCPKG_BUILD_TYPE` is deliberately not set.** Making vcpkg release-only would
   prevent this by construction, but debug dependency trees are wanted for other
   work. Both trees are still built; the fixes ensure only the release one is

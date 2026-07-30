@@ -165,24 +165,25 @@ runs:
         exit 1
       fi
 
-      # Loading the real UI is only a meaningful expectation for a release
-      # package -- the artifact users actually get. The other two variants carry
-      # requirements that have nothing to do with whether packaging is correct:
+      # Loading the real UI is the check worth having, so it runs wherever it can.
       #
-      #   coverage: Qoverage rewrites the QML to import QoverageSingleton, which
-      #             is part of the coverage tooling and is not in the package, so
-      #             no window is ever created.
-      #   debug:    vcpkg's debug tree mixes binaries linked against the debug and
-      #             release CRTs, so the debug package pulls in both MSVCP140.dll
-      #             and MSVCP140D.dll and crashes on startup. Worth fixing, but it
-      #             is a property of the build inputs, not of this scan.
+      # Linux: always. Its debug package passes it, and the coverage package is
+      # included deliberately to keep the result visible rather than assumed.
       #
-      # For those, fall back to the weaker check: the executable starts and its
-      # statically linked libraries resolve.
-      if [ "${{ inputs.release_build }}" = "true" ] && [ "${{ inputs.coverage }}" != "true" ]; then
+      # Windows and macOS: release only, for now. The Windows debug package pulled
+      # in both the debug and release Visual C++ runtime and crashed on startup;
+      # that has since been fixed at the source (release qmake, and release-first
+      # dependency search order -- see MIXED_CRTS.md), so this restriction is
+      # probably stale. Lifting it is the acceptance test for those fixes and
+      # should be the next thing tried here. macOS builds no debug portable folder
+      # at all, so nothing is skipped there.
+      #
+      # Where it does not run, the weaker check applies: the executable starts and
+      # its statically linked libraries resolve.
+      if [ "${{ runner.os }}" = "Linux" ] || [ "${{ inputs.release_build }}" = "true" ]; then
         full_ui_check=1
       else
-        echo "Non-release package: checking only that the executable starts."
+        echo "Non-release package on ${{ runner.os }}: checking only that the executable starts."
         full_ui_check=
       fi
 
