@@ -46,6 +46,12 @@ fn main_impl() -> Result<(), anyhow::Error> {
         .clang_arg("-I")
         .clang_arg(qt_include_dir);
 
+    let builder = if cfg!(target_os = "windows") {
+        builder
+    } else {
+        builder.clang_arg("-fPIC")
+    };
+
     let bindings = builder
         .generate()
         .map_err(|e| anyhow!("Generation failed: {e}"))?;
