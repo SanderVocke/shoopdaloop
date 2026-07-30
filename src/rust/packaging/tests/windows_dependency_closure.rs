@@ -185,7 +185,9 @@ fn an_unresolvable_qt_dependency_fails_with_a_useful_message() {
         "the error must name the missing library: {message}"
     );
     assert!(
-        message.to_lowercase().contains("qtquickcontrols2plugin.dll"),
+        message
+            .to_lowercase()
+            .contains("qtquickcontrols2plugin.dll"),
         "the error must name what needs it: {message}"
     );
 

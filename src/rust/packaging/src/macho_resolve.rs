@@ -14,9 +14,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use crate::deps_walker::{
-    BinaryScanner, LibraryReference, Resolution, ResolveEnv, ScannedBinary,
-};
+use crate::deps_walker::{BinaryScanner, LibraryReference, Resolution, ResolveEnv, ScannedBinary};
 use crate::macho::{is_macho_file, read_macho_file};
 
 use common::logging::macros::*;
@@ -92,11 +90,7 @@ pub fn posix_join(dir: &str, rest: &str) -> String {
 /// Note `@executable_path` is handled here. The old shell script substituted
 /// only `@loader_path` in rpath entries, and did so using the *root
 /// executable's* directory rather than the declaring binary's.
-pub fn expand_rpath_entry(
-    entry: &str,
-    loader_dir: &str,
-    executable_dir: &str,
-) -> Option<String> {
+pub fn expand_rpath_entry(entry: &str, loader_dir: &str, executable_dir: &str) -> Option<String> {
     if let Some(rest) = entry.strip_prefix("@loader_path") {
         return Some(posix_join(loader_dir, rest));
     }
@@ -147,8 +141,7 @@ pub fn resolution_candidates(
         remainder = Some(rest);
         for context in chain {
             for entry in &context.rpaths {
-                if let Some(dir) = expand_rpath_entry(entry, &context.binary_dir, executable_dir)
-                {
+                if let Some(dir) = expand_rpath_entry(entry, &context.binary_dir, executable_dir) {
                     push(posix_join(&dir, rest));
                 } else {
                     debug!(
@@ -218,14 +211,19 @@ pub fn reduce_to_framework_root(path: &Path) -> PathBuf {
             outermost = Some(ancestor);
         }
     }
-    outermost.map(Path::to_path_buf).unwrap_or_else(|| path.to_path_buf())
+    outermost
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| path.to_path_buf())
 }
 
 /// Read the system-library prefixes from a data file, falling back to the
 /// built-in defaults.
 pub fn load_system_prefixes(path: Option<&Path>) -> Vec<String> {
     let Some(path) = path else {
-        return DEFAULT_SYSTEM_PREFIXES.iter().map(|s| s.to_string()).collect();
+        return DEFAULT_SYSTEM_PREFIXES
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
     };
     match std::fs::read_to_string(path) {
         Ok(body) => {
@@ -236,11 +234,11 @@ pub fn load_system_prefixes(path: Option<&Path>) -> Vec<String> {
                 .map(|line| line.to_string())
                 .collect();
             if prefixes.is_empty() {
-                warn!(
-                    "  {:?} contains no prefixes; using built-in defaults",
-                    path
-                );
-                return DEFAULT_SYSTEM_PREFIXES.iter().map(|s| s.to_string()).collect();
+                warn!("  {:?} contains no prefixes; using built-in defaults", path);
+                return DEFAULT_SYSTEM_PREFIXES
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect();
             }
             prefixes
         }
@@ -249,7 +247,10 @@ pub fn load_system_prefixes(path: Option<&Path>) -> Vec<String> {
                 "  Cannot read {:?} ({e}); using built-in system library prefixes",
                 path
             );
-            DEFAULT_SYSTEM_PREFIXES.iter().map(|s| s.to_string()).collect()
+            DEFAULT_SYSTEM_PREFIXES
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
         }
     }
 }
@@ -303,17 +304,11 @@ impl BinaryScanner for MachoScanner<'_> {
         is_macho_file(path)
     }
 
-    fn scan(
-        &self,
-        binary: &Path,
-    ) -> Result<Option<ScannedBinary<MachoContext>>, anyhow::Error> {
+    fn scan(&self, binary: &Path) -> Result<Option<ScannedBinary<MachoContext>>, anyhow::Error> {
         let Some(info) = read_macho_file(binary)? else {
             return Ok(None);
         };
-        let binary_dir = binary
-            .parent()
-            .map(to_posix)
-            .unwrap_or_default();
+        let binary_dir = binary.parent().map(to_posix).unwrap_or_default();
         Ok(Some(ScannedBinary {
             references: info.libs.iter().map(LibraryReference::new).collect(),
             context: MachoContext {
@@ -413,7 +408,10 @@ impl BinaryScanner for MachoScanner<'_> {
 /// frameworks correctly. Include/exclude matching also stays on the inner path,
 /// since the committed patterns are written against library file names.
 pub fn reduce_framework_paths(paths: HashSet<PathBuf>) -> HashSet<PathBuf> {
-    paths.into_iter().map(|p| reduce_to_framework_root(&p)).collect()
+    paths
+        .into_iter()
+        .map(|p| reduce_to_framework_root(&p))
+        .collect()
 }
 
 #[cfg(test)]
@@ -434,7 +432,10 @@ mod tests {
     fn scanner_with(existing: &[&str]) -> MachoScanner<'static> {
         let set: HashSet<String> = existing.iter().map(|s| s.to_string()).collect();
         MachoScanner::with_exists(
-            DEFAULT_SYSTEM_PREFIXES.iter().map(|s| s.to_string()).collect(),
+            DEFAULT_SYSTEM_PREFIXES
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
             Box::new(move |candidate| set.contains(candidate)),
         )
     }
@@ -582,9 +583,7 @@ mod tests {
     #[test]
     fn a_missing_system_library_is_provided_not_an_error() {
         let scanner = scanner_with(&[]);
-        let reason = scanner.provided_reason(&LibraryReference::new(
-            "/usr/lib/libSystem.B.dylib",
-        ));
+        let reason = scanner.provided_reason(&LibraryReference::new("/usr/lib/libSystem.B.dylib"));
         assert!(reason.is_some(), "must be classified as OS-provided");
     }
 
@@ -666,9 +665,7 @@ mod tests {
     #[test]
     fn framework_reduction_picks_the_outermost() {
         assert_eq!(
-            reduce_to_framework_root(Path::new(
-                "/opt/q/lib/QtCore.framework/Versions/A/QtCore"
-            )),
+            reduce_to_framework_root(Path::new("/opt/q/lib/QtCore.framework/Versions/A/QtCore")),
             PathBuf::from("/opt/q/lib/QtCore.framework")
         );
         // Nested: the inner framework is referenced relative to the outer one,

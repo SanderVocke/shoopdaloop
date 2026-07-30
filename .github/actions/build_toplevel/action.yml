@@ -179,6 +179,13 @@ runs:
       # so this cannot detect a missing qwindows/qcocoa plugin -- but the Qt Quick
       # Controls stack is loaded regardless of platform plugin, which is what this
       # is guarding.
+      #
+      # `--backend dummy` because constructing the UI also starts the audio
+      # backend, and the default JACK driver needs a running jackd that CI
+      # containers do not have. Provisioning one would add an external dependency
+      # to a check whose subject is whether the package's own libraries load; the
+      # dummy driver removes the question entirely and behaves the same on all
+      # three platforms.
       shots="${RUNNER_TEMP:-/tmp}/portable_verify_shots"
       rm -rf "$shots"
       log="${RUNNER_TEMP:-/tmp}/portable_verify.log"
@@ -194,7 +201,7 @@ runs:
         debug_build_path="$(pwd)/build/vcpkg_installed/x64-windows/debug/bin"
         clean_path=$(printf '%s' "$PATH" | tr ';' '\n' | grep -Fiv "$build_path" | grep -Fiv "$debug_build_path" | paste -sd ';' -)
         PATH="$portable_path;$clean_path" CMAKE_PREFIX_PATH= VCPKG_ROOT= \
-          $timeout_cmd "$portable_exe" --test-grab-screens "$shots" >"$log" 2>&1 \
+          $timeout_cmd "$portable_exe" --backend dummy --test-grab-screens "$shots" >"$log" 2>&1 \
           || verify_failed=1
       else
         # DYLD_* must be unset as well as LD_LIBRARY_PATH. The packaging step
@@ -203,7 +210,7 @@ runs:
         # missing from the bundle and mask the exact failure being tested for.
         env -u LD_LIBRARY_PATH -u DYLD_LIBRARY_PATH -u DYLD_FALLBACK_LIBRARY_PATH \
             -u DYLD_FRAMEWORK_PATH -u CMAKE_PREFIX_PATH -u VCPKG_ROOT \
-          $timeout_cmd "$portable_exe" --test-grab-screens "$shots" >"$log" 2>&1 \
+          $timeout_cmd "$portable_exe" --backend dummy --test-grab-screens "$shots" >"$log" 2>&1 \
           || verify_failed=1
       fi
       cat "$log"

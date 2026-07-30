@@ -10,9 +10,7 @@ use anyhow::Context;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::deps_walker::{
-    BinaryScanner, LibraryReference, Resolution, ResolveEnv, ScannedBinary,
-};
+use crate::deps_walker::{BinaryScanner, LibraryReference, Resolution, ResolveEnv, ScannedBinary};
 
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
@@ -109,8 +107,7 @@ pub fn has_pe_extension(path: &Path) -> bool {
 /// `Ok(None)` means the file is not a PE image at all -- a `.dll`-named data
 /// file, for instance. That is not an error; the caller skips it.
 pub fn read_pe_imports(path: &Path) -> Result<Option<PeImports>, anyhow::Error> {
-    let bytes =
-        std::fs::read(path).with_context(|| format!("Cannot read {}", path.display()))?;
+    let bytes = std::fs::read(path).with_context(|| format!("Cannot read {}", path.display()))?;
     Ok(parse_pe_imports(&bytes))
 }
 
@@ -441,7 +438,10 @@ mod tests {
             "Qt6Core.dll",
             "",
         ] {
-            assert!(!is_api_set(name), "{name} must NOT be treated as an API set");
+            assert!(
+                !is_api_set(name),
+                "{name} must NOT be treated as an API set"
+            );
         }
     }
 
@@ -554,7 +554,11 @@ mod tests {
     fn cstr_and_u32_reads_are_bounds_checked() {
         let bytes = b"abc\0\x01\x02\x03\x04";
         assert_eq!(read_cstr(bytes, 0).as_deref(), Some("abc"));
-        assert_eq!(read_cstr(bytes, 4), None, "no NUL terminator after offset 4");
+        assert_eq!(
+            read_cstr(bytes, 4),
+            None,
+            "no NUL terminator after offset 4"
+        );
         assert_eq!(read_cstr(bytes, 999), None);
         assert_eq!(read_u32(bytes, 4), Some(0x0403_0201));
         assert_eq!(read_u32(bytes, 6), None);

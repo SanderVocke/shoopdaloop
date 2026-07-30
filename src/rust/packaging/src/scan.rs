@@ -20,11 +20,11 @@ use std::path::Path;
 #[cfg(windows)]
 use crate::deps_walker::{build_dependency_tree, Missing, ScanRequest};
 #[cfg(windows)]
-use std::collections::BTreeMap;
-#[cfg(windows)]
 use crate::list_matcher::ListMatcher;
 #[cfg(windows)]
 use crate::pe::{machine_of, SearchDirKind, WindowsScanner};
+#[cfg(windows)]
+use std::collections::BTreeMap;
 
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
@@ -248,7 +248,9 @@ fn resolve_list_paths(options: &ScanOptions) -> Result<(PathBuf, PathBuf), anyho
     } else {
         "linux"
     };
-    let defaults = crate::fs_helpers::source_root()?.join("distribution").join(platform);
+    let defaults = crate::fs_helpers::source_root()?
+        .join("distribution")
+        .join(platform);
     Ok((
         options
             .includelist
@@ -283,8 +285,7 @@ pub fn prepare_windows_walk(
     legacy_root_only: bool,
 ) -> Result<WindowsWalk, anyhow::Error> {
     let expected_machine = machine_of(main_exe);
-    let search_dirs =
-        windows_search_dirs(extra_search_dirs, use_cmake_prefix_path, no_system_dirs);
+    let search_dirs = windows_search_dirs(extra_search_dirs, use_cmake_prefix_path, no_system_dirs);
     let scanner = WindowsScanner::new(&search_dirs, expected_machine);
     let folder_index = FolderIndex::build(folder, &scanner)?;
 
@@ -467,10 +468,22 @@ fn print_report(
     }
     println!("Edges walked: {}", report.edges_walked);
     println!();
-    println!("IN FOLDER (traverse, not copied) .... {:>5}", report.in_folder.len());
-    println!("TO COPY (matched includelist) ....... {:>5}", report.to_copy.len());
-    println!("EXCLUDED BY NAME .................... {:>5}", report.excluded.len());
-    println!("OS-PROVIDED (pruned) ................ {:>5}", report.provided.len());
+    println!(
+        "IN FOLDER (traverse, not copied) .... {:>5}",
+        report.in_folder.len()
+    );
+    println!(
+        "TO COPY (matched includelist) ....... {:>5}",
+        report.to_copy.len()
+    );
+    println!(
+        "EXCLUDED BY NAME .................... {:>5}",
+        report.excluded.len()
+    );
+    println!(
+        "OS-PROVIDED (pruned) ................ {:>5}",
+        report.provided.len()
+    );
     println!(
         "UNRESOLVED (includelisted, no file) . {:>5}   <-- ERRORS",
         report.unresolved.len()
@@ -568,9 +581,7 @@ fn print_list_candidates(report: &ScanReport, search_dirs: &[(PathBuf, SearchDir
     for line in &exclude_candidates {
         println!("{line}");
     }
-    println!(
-        "\n### includelist candidates (NOT from a system directory - REVIEW EACH) ###"
-    );
+    println!("\n### includelist candidates (NOT from a system directory - REVIEW EACH) ###");
     for line in &include_candidates {
         println!("{line}");
     }
@@ -602,8 +613,7 @@ mod real_package_tests {
     }
 
     fn source_list_paths() -> (PathBuf, PathBuf) {
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../distribution/windows");
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../distribution/windows");
         (dir.join("includelist"), dir.join("excludelist"))
     }
 

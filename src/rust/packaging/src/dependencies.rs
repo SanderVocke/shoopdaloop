@@ -358,7 +358,6 @@ fn get_linux_specifics<'a>(
     ))
 }
 
-
 /// Reconstruct a dependency tree from a helper's indented stdout.
 ///
 /// Only the subprocess path uses this, but it stays compiled everywhere so its

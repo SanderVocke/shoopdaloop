@@ -146,17 +146,18 @@ fn from_macho(macho: &goblin::mach::MachO) -> Option<MachoInfo> {
     // image's own identity, never a dependency, and must be dropped -- otherwise
     // every dylib would appear to depend on itself and every executable on a
     // library called "self".
-    let libs: Vec<String> = macho
-        .libs
-        .iter()
-        .skip(1)
-        .map(|s| s.to_string())
-        .fold(Vec::new(), |mut acc, lib| {
-            if !acc.contains(&lib) {
-                acc.push(lib);
-            }
-            acc
-        });
+    let libs: Vec<String> =
+        macho
+            .libs
+            .iter()
+            .skip(1)
+            .map(|s| s.to_string())
+            .fold(Vec::new(), |mut acc, lib| {
+                if !acc.contains(&lib) {
+                    acc.push(lib);
+                }
+                acc
+            });
 
     Some(MachoInfo {
         install_name: macho.name.map(str::to_string),
@@ -167,8 +168,7 @@ fn from_macho(macho: &goblin::mach::MachO) -> Option<MachoInfo> {
 }
 
 pub fn read_macho_file(path: &Path) -> Result<Option<MachoInfo>, anyhow::Error> {
-    let bytes =
-        std::fs::read(path).with_context(|| format!("Cannot read {}", path.display()))?;
+    let bytes = std::fs::read(path).with_context(|| format!("Cannot read {}", path.display()))?;
     read_macho(&bytes)
 }
 

@@ -111,9 +111,7 @@ impl ListMatcher {
             .with_context(|| format!("Cannot read {excludelist_path:?}"))?;
 
         let matcher = Self::from_lines(&parse_list(&includelist), &parse_list(&excludelist))
-            .with_context(|| {
-                format!("Compiling {includelist_path:?} and {excludelist_path:?}")
-            })?;
+            .with_context(|| format!("Compiling {includelist_path:?} and {excludelist_path:?}"))?;
         debug!(
             "Loaded {} include and {} exclude patterns",
             matcher.includes.len(),
@@ -286,10 +284,7 @@ mod tests {
         // matched_include must return the pattern.
         let m = matcher(&["*/Qt6*.dll"], &[]);
         assert_eq!(m.matched_include("/x/Qt6Core.dll"), Some("*/Qt6*.dll"));
-        assert_eq!(
-            m.include_patterns().collect::<Vec<_>>(),
-            vec!["*/Qt6*.dll"]
-        );
+        assert_eq!(m.include_patterns().collect::<Vec<_>>(), vec!["*/Qt6*.dll"]);
     }
 
     #[test]
@@ -311,6 +306,77 @@ mod tests {
         };
         let msg = format!("{err:#}");
         assert!(msg.contains("*/["), "error should name the pattern: {msg}");
+    }
+
+    /// Regression guard for the dependencies that broke real packaging runs.
+    ///
+    /// These file names are the ones CI reported as unlisted once the walker
+    /// started seeding from the whole package. Pinning them here means a typo in
+    /// a pattern -- `libjpeg*.dylib` without the trailing wildcard, say, against
+    /// the versioned `libjpeg.62.4.0.dylib` -- fails a test instead of a build.
+    #[test]
+    fn committed_lists_match_the_libraries_that_needed_them() {
+        const WINDOWS_CASES: &[&str] = &[
+            "C:/vcpkg/installed/x64-windows/debug/bin/meshoptimizer.dll",
+            "C:/vcpkg/installed/x64-windows/bin/libssl-3-x64.dll",
+            "C:/vcpkg/installed/x64-windows/bin/sqlite3.dll",
+            "C:/vcpkg/installed/x64-windows/bin/jpeg62.dll",
+        ];
+        let windows = ListMatcher::from_lines(
+            &parse_list(include_str!("../../../../distribution/windows/includelist")),
+            &[],
+        )
+        .unwrap();
+        for path in WINDOWS_CASES {
+            assert!(
+                windows.matched_include(path).is_some(),
+                "{path} must match the Windows includelist"
+            );
+        }
+
+        const MACOS_CASES: &[&str] = &[
+            "/build/vcpkg_installed/arm64-osx/lib/libjpeg.62.4.0.dylib",
+            "/build/vcpkg_installed/arm64-osx/lib/libmeshoptimizer.dylib",
+            "/build/vcpkg_installed/arm64-osx/lib/libsqlite3.dylib",
+        ];
+        let macos = ListMatcher::from_lines(
+            &parse_list(include_str!("../../../../distribution/macos/includelist")),
+            &[],
+        )
+        .unwrap();
+        for path in MACOS_CASES {
+            assert!(
+                macos.matched_include(path).is_some(),
+                "{path} must match the macOS includelist"
+            );
+        }
+
+        // The Windows system DLLs whose absence from both lists used to be hidden
+        // by the lossy traversal must now be excluded, not bundled.
+        let windows_excludes = ListMatcher::from_lines(
+            &[],
+            &parse_list(include_str!("../../../../distribution/windows/excludelist")),
+        )
+        .unwrap();
+        for name in [
+            "advapi32.dll",
+            "user32.dll",
+            "gdi32.dll",
+            "ole32.dll",
+            "d2d1.dll",
+            "uxtheme.dll",
+            "ws2_32.dll",
+            "rpcrt4.dll",
+            "bcryptPrimitives.dll",
+        ] {
+            let path = synthetic_unresolved_path(name);
+            assert!(
+                windows_excludes
+                    .matched_exclude(&path.to_string_lossy())
+                    .is_some(),
+                "{name} is provided by Windows and must be excluded"
+            );
+        }
     }
 
     /// Regression guard: every pattern actually committed to the repo must

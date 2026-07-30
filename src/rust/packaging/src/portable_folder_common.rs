@@ -58,8 +58,7 @@ fn prune_unwanted_qt_plugins(install_plugins_dir: &Path) -> Result<(), anyhow::E
             };
             if file_stem == stem || file_stem == prefixed {
                 info!("--> Removing unwanted Qt plugin file: {:?}", path);
-                std::fs::remove_file(&path)
-                    .with_context(|| format!("Cannot remove {path:?}"))?;
+                std::fs::remove_file(&path).with_context(|| format!("Cannot remove {path:?}"))?;
             }
         }
     }

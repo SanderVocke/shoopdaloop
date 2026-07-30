@@ -25,6 +25,9 @@
 # libcrypto without libssl is not a working TLS backend.
 */libssl-*.dll
 */lua.dll
+# Mesh optimisation, needed by Qt6Quick3DUtils. Was bundled unconditionally
+# before the dependency scan could reach the QML plugins that need it.
+*/meshoptimizer.dll
 */mpg123.dll
 */MSVCP*.dll
 */ogg.dll

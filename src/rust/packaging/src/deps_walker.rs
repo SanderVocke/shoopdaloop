@@ -209,7 +209,11 @@ impl ScanReport {
         };
         let shown: Vec<&str> = importers.iter().take(4).map(String::as_str).collect();
         if importers.len() > shown.len() {
-            format!("{} (+{} more)", shown.join(", "), importers.len() - shown.len())
+            format!(
+                "{} (+{} more)",
+                shown.join(", "),
+                importers.len() - shown.len()
+            )
         } else {
             shown.join(", ")
         }
@@ -839,7 +843,10 @@ mod tests {
         }
         let folder_index = FolderIndex { by_key };
         let request = ScanRequest {
-            roots: roots.iter().map(|r| PathBuf::from("/pkg").join(r)).collect(),
+            roots: roots
+                .iter()
+                .map(|r| PathBuf::from("/pkg").join(r))
+                .collect(),
             output_folder: PathBuf::from("/pkg"),
             report_only,
             max_depth: None,
@@ -892,7 +899,10 @@ mod tests {
 
         let exe_only = run(&scanner, &["app.exe"], &["*/Qt6*.dll"], &[], false);
         assert!(
-            !exe_only.report.to_copy.contains_key("qt6quickcontrols2.dll"),
+            !exe_only
+                .report
+                .to_copy
+                .contains_key("qt6quickcontrols2.dll"),
             "single-root walk must not find it -- that is the bug"
         );
     }
