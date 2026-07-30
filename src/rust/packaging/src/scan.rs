@@ -380,6 +380,26 @@ pub fn log_report_summary(report: &ScanReport) {
         report.unresolved.len(),
         report.unclassified.len(),
     );
+
+    // Name what pulled in each C/C++ runtime.
+    //
+    // A package that ends up with both the debug and release Visual C++ runtime
+    // crashes at startup, and the useful question is always "which dependency
+    // asked for the other flavour". These libraries also import each other
+    // (MSVCP140_2.dll imports MSVCP140.dll, VCRUNTIME140.dll and
+    // VCRUNTIME140_1.dll), so a single mismatched binary drags in a whole chain
+    // and only the first link identifies the culprit.
+    for (key, entry) in &report.to_copy {
+        let is_runtime = key.starts_with("msvcp") || key.starts_with("vcruntime");
+        if is_runtime {
+            info!(
+                "  Runtime {} <- {} (from {})",
+                key,
+                report.importers_summary(key),
+                entry.path.display()
+            );
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -419,6 +439,7 @@ pub fn run_scan(options: &ScanOptions) -> Result<ScanReport, anyhow::Error> {
         &mut error_msgs,
     )?;
 
+    log_report_summary(&report);
     print_report(
         &report,
         &walk.scanner.search_dir_summary(),
