@@ -192,6 +192,9 @@ runs:
       # Time-boxed and process-tree-killing: a package that hangs on startup must
       # fail the job rather than stall the runner.
       timeout_cmd="./scripts/run_with_timeout.sh 300"
+      # Matches .github/actions/test_screenshots: runners have no GPU, and Qt's
+      # GL probing is noisy without it. Ignored on Windows.
+      export LIBGL_ALWAYS_SOFTWARE=1
       if [ "${{ runner.os }}" = "Windows" ]; then
         # wrap-shell runs Bash (via gha_bash_with_custom_fail.sh), but Windows
         # uses PATH to locate the executable and its DLLs. Keep system tools

@@ -49,14 +49,34 @@ report() {
 # Skip symlinks (the versioned-dylib aliases in lib/) and dSYM payloads, which
 # are parseable Mach-O images but are not loaded.
 while IFS= read -r binary; do
-    case "$binary" in *.dSYM/*) continue ;; esac
+    case "$binary" in
+        *.dSYM/*) continue ;;
+        # Static archives and object files are not loadable images. `otool -L`
+        # succeeds on an archive and lists its *member object files*, which look
+        # exactly like unsatisfiable absolute-path dependencies.
+        *.a|*.o) continue ;;
+    esac
     # Identify Mach-O images by asking otool, rather than by sniffing magic bytes
     # in shell -- byte-literal matching across grep implementations is not worth
     # the risk of silently skipping every binary and reporting success.
     if ! otool -L "$binary" >/dev/null 2>&1; then
         continue
     fi
-    deps=$(otool -L "$binary" 2>/dev/null | tail -n +2 | awk '{print $1}')
+    # For a dylib, the first entry `otool -L` prints is the image's own
+    # LC_ID_DYLIB install name, not a dependency. It is routinely a versioned
+    # name (libFoo.6.9.1.dylib) that does not exist as a file when the library
+    # was bundled under its unversioned alias, so treating it as a dependency
+    # reports every single bundled dylib as missing. `otool -D` gives just that
+    # name, so it can be excluded by value.
+    install_name=$(otool -D "$binary" 2>/dev/null | grep -v ':$' | head -n 1 | tr -d '[:space:]')
+    # Only tab-indented lines are dependencies. Header lines are unindented, and
+    # on a fat binary otool emits one `path (architecture arm64):` header per
+    # slice -- taking field 1 of those would invent a dependency named after the
+    # file itself.
+    deps=$(otool -L "$binary" 2>/dev/null | grep -E '^[[:space:]]' | awk '{print $1}')
+    if [ -n "$install_name" ]; then
+        deps=$(printf '%s\n' "$deps" | grep -Fxv "$install_name" || true)
+    fi
     [ -z "$deps" ] && continue
     checked=$((checked + 1))
 
@@ -94,12 +114,15 @@ done <<< "$(find "$bundle" -type f)"
 # these, a regression that drops the QtQuick.Controls stack again would only show
 # up as a generic "MISSING" line among others.
 for required in \
-    libQt6QuickControls2.dylib \
-    libQt6QuickTemplates2.dylib \
-    libQt6QuickLayouts.dylib
+    libQt6QuickControls2 \
+    libQt6QuickTemplates2 \
+    libQt6QuickLayouts
 do
-    if [ -z "$(find "$bundle/lib" -name "$required*" -print -quit 2>/dev/null)" ]; then
-        echo "MISSING REQUIRED: $required is not in $bundle/lib" >&2
+    # The bundled name carries a version: libQt6QuickControls2.6.dylib. Requiring
+    # a digit after the dot matters -- a bare `${required}*` would also match
+    # libQt6QuickControls2Basic.6.dylib and pass on the wrong library.
+    if [ -z "$(find "$bundle/lib" -name "${required}.[0-9]*.dylib" -print -quit 2>/dev/null)" ]; then
+        echo "MISSING REQUIRED: no ${required}.<version>.dylib in $bundle/lib" >&2
         failures=$((failures + 1))
     fi
 done

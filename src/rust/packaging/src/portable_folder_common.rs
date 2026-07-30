@@ -50,16 +50,38 @@ fn prune_unwanted_qt_plugins(install_plugins_dir: &Path) -> Result<(), anyhow::E
             debug!("--> no {subdir} plugin dir; nothing to prune");
             continue;
         }
-        let prefixed = format!("lib{stem}");
+        // The platform naming variants of one logical plugin: a `lib` prefix on
+        // Unix, and the `d` suffix Qt appends to debug builds on Windows
+        // (qsqlpsql.dll in release, qsqlpsqld.dll in debug). Missing the debug
+        // variant meant release jobs pruned the plugin and debug jobs did not.
+        let variants = [
+            stem.to_string(),
+            format!("lib{stem}"),
+            format!("{stem}d"),
+            format!("lib{stem}d"),
+        ];
+        let mut removed = 0;
         for entry in std::fs::read_dir(&dir).with_context(|| format!("Cannot read {dir:?}"))? {
             let path = entry?.path();
             let Some(file_stem) = path.file_stem().map(|s| s.to_string_lossy().into_owned()) else {
                 continue;
             };
-            if file_stem == stem || file_stem == prefixed {
+            if variants.iter().any(|v| *v == file_stem) {
                 info!("--> Removing unwanted Qt plugin file: {:?}", path);
                 std::fs::remove_file(&path).with_context(|| format!("Cannot remove {path:?}"))?;
+                removed += 1;
             }
+        }
+        if removed == 0 {
+            // Not fatal: the plugin may not be built in this configuration. Worth
+            // seeing, though, because the other explanation is that the naming
+            // changed and the prune silently stopped working -- which surfaces
+            // later as an unexplained unresolved dependency.
+            warn!(
+                "--> Nothing to prune for {relative} in {:?}. If that plugin is \
+                 present under another name, its dependencies will be bundled.",
+                dir
+            );
         }
     }
     Ok(())
@@ -190,4 +212,63 @@ pub fn populate_portable_folder(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every platform's naming of one logical plugin has to be pruned.
+    ///
+    /// The debug variant is the reason this test exists: Qt appends `d` to plugin
+    /// names in Windows debug builds, so release packaging pruned the PostgreSQL
+    /// driver while debug packaging kept it and then failed on its dependency.
+    #[test]
+    fn prunes_every_platform_naming_variant() {
+        let root = std::env::temp_dir().join("shoop_prune_variants_test");
+        let _ = std::fs::remove_dir_all(&root);
+        let sqldrivers = root.join("sqldrivers");
+        std::fs::create_dir_all(&sqldrivers).unwrap();
+
+        let pruned = [
+            "qsqlpsql.dll",
+            "qsqlpsqld.dll",
+            "libqsqlpsql.dylib",
+            "libqsqlpsql.so",
+            // Debug symbols alongside the plugin go too.
+            "qsqlpsql.pdb",
+        ];
+        // Must survive: a different driver, and one whose name merely starts the
+        // same way.
+        let kept = ["qsqlite.dll", "qsqlpsqlx.dll"];
+
+        for name in pruned.iter().chain(kept.iter()) {
+            std::fs::write(sqldrivers.join(name), b"x").unwrap();
+        }
+
+        prune_unwanted_qt_plugins(&root).unwrap();
+
+        for name in pruned {
+            assert!(
+                !sqldrivers.join(name).exists(),
+                "{name} should have been pruned"
+            );
+        }
+        for name in kept {
+            assert!(sqldrivers.join(name).exists(), "{name} must be kept");
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A missing plugin directory is not an error: not every configuration builds
+    /// every plugin.
+    #[test]
+    fn pruning_an_absent_plugin_dir_is_not_an_error() {
+        let root = std::env::temp_dir().join("shoop_prune_absent_test");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        prune_unwanted_qt_plugins(&root).expect("an absent plugin dir must not fail");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

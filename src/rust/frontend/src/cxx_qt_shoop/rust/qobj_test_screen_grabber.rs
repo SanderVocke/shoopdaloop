@@ -33,8 +33,8 @@ impl TestScreenGrabber {
     pub fn grab_all(self: Pin<&mut TestScreenGrabber>, output_folder: QString) {
         let folder = PathBuf::from(output_folder.to_string());
         if !folder.exists() {
-            if let Err(e) = std::fs::create_dir_all(folder) {
-                error!("Could not grab screens: failed to create folder {output_folder:?}: {e}");
+            if let Err(e) = std::fs::create_dir_all(&folder) {
+                error!("Could not grab screens: failed to create folder {folder:?}: {e}");
                 return;
             }
         }
@@ -48,7 +48,12 @@ impl TestScreenGrabber {
                         title = "unnamed".to_string();
                     }
 
-                    let create_path = |t| PathBuf::from(format!("{output_folder:?}/{t}.png"));
+                    // Join onto the folder rather than interpolating it. Using
+                    // `{output_folder:?}` here embedded literal quote characters
+                    // in the path, so every save failed with "Cannot open device
+                    // for writing" while the surrounding log lines still claimed
+                    // success.
+                    let create_path = |t: String| folder.join(format!("{t}.png"));
 
                     if create_path(title.clone()).exists() {
                         let mut try_idx = 1;
@@ -58,7 +63,8 @@ impl TestScreenGrabber {
                         title = format!("{title}_{try_idx}");
                     }
 
-                    let path = QString::from(format!("{output_folder:?}/{title}.png"));
+                    let output_path = create_path(title.clone());
+                    let path = QString::from(output_path.to_string_lossy().as_ref());
 
                     qobject_as_qquickwindow_grab_and_save(*window, path.clone())?;
 
