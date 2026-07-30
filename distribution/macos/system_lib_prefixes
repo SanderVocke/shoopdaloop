@@ -1,0 +1,23 @@
+# Absolute path prefixes for libraries provided by macOS itself.
+#
+# On macOS 11 and later most of these exist only inside the dyld shared cache and
+# have no file on disk at all. References under these prefixes are pruned by the
+# dependency walker with the highest precedence -- ahead of both the includelist
+# and the excludelist.
+#
+# Why this is a separate file rather than excludelist entries: the includelist
+# takes precedence over the excludelist, and patterns there such as
+# `*/libz*.dylib` match `/usr/lib/libz.1.dylib`. An excludelist entry for
+# `/usr/lib/*` would therefore be silently overridden, and the walker would try
+# to bundle a file that does not exist. The same applies to `*/libintl*`,
+# `*/libcrypto*`, `*/libssl*` and `*/libpcre*`. Only a rule that outranks both
+# lists can distinguish the system copy of a library from vcpkg's.
+#
+# Matching is a plain prefix test, so each entry must be absolute and end in a
+# slash -- otherwise `/usr/libfoo` would count as being under `/usr/lib`.
+#
+# Note what is deliberately absent: /usr/local/ and /opt/homebrew/ are Homebrew,
+# not the operating system, and libraries found there have to be bundled.
+/usr/lib/
+/System/
+/Library/Apple/
