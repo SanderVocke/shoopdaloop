@@ -87,6 +87,48 @@ fn prune_unwanted_qt_plugins(install_plugins_dir: &Path) -> Result<(), anyhow::E
     Ok(())
 }
 
+/// Report Visual C++ runtimes bundled in both their debug and release form.
+///
+/// Two CRTs in one process share no heap, so passing an allocation or a `FILE*`
+/// across a module boundary between them corrupts state. It happens when a
+/// dependency tree mixes binaries linked against `/MD` and `/MDd` -- vcpkg's
+/// debug tree does, which is why the debug portable package crashes on startup
+/// once the Qt QML plugins are closed over.
+///
+/// This is a property of the build inputs rather than of the dependency scan, so
+/// it is reported rather than treated as an error -- but it is reported, because
+/// the alternative is an artifact that fails at runtime with no clue why.
+fn warn_on_mixed_vc_runtimes(names: &[String]) -> Vec<String> {
+    let lower: std::collections::HashSet<String> = names.iter().map(|n| n.to_lowercase()).collect();
+    let mut mixed: Vec<String> = Vec::new();
+    for name in &lower {
+        // `msvcp140d.dll` is the debug twin of `msvcp140.dll`; likewise
+        // `msvcp140_1d.dll` / `msvcp140_1.dll`.
+        let Some(stem) = name.strip_suffix(".dll") else {
+            continue;
+        };
+        if !(stem.starts_with("msvcp") || stem.starts_with("vcruntime")) {
+            continue;
+        }
+        let Some(release_stem) = stem.strip_suffix('d') else {
+            continue;
+        };
+        let release = format!("{release_stem}.dll");
+        if lower.contains(&release) {
+            mixed.push(format!("{release} + {name}"));
+        }
+    }
+    mixed.sort();
+    for pair in &mixed {
+        warn!(
+            "--> Bundling both debug and release Visual C++ runtimes ({pair}). \
+             Two CRTs in one process do not share a heap; this package may crash \
+             at startup. Some dependency is linked against the other CRT."
+        );
+    }
+    mixed
+}
+
 /// The file name a library declares for itself, if it declares one.
 ///
 /// On macOS this is the basename of `LC_ID_DYLIB` -- the name dyld treats as the
@@ -216,6 +258,14 @@ pub fn populate_portable_folder(
     )?;
 
     info!("Bundling {} dependencies...", dependency_libs.len());
+
+    warn_on_mixed_vc_runtimes(
+        &dependency_libs
+            .iter()
+            .filter_map(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .collect::<Vec<String>>(),
+    );
 
     // A versioned library is referenced under more than one name: the executable
     // might link `libQt6Core.6.dylib` while a QML plugin links
@@ -351,6 +401,49 @@ mod tests {
         }
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The mixed-CRT report is the debug Windows package's actual failure mode, so
+    /// it needs to fire on the real pairing and stay quiet otherwise.
+    #[test]
+    fn detects_mixed_visual_cpp_runtimes() {
+        let mixed = warn_on_mixed_vc_runtimes(&[
+            String::from("MSVCP140.dll"),
+            String::from("MSVCP140D.dll"),
+            String::from("VCRUNTIME140_1.dll"),
+            String::from("VCRUNTIME140_1D.dll"),
+            String::from("Qt6Core.dll"),
+        ]);
+        assert_eq!(
+            mixed,
+            vec![
+                "msvcp140.dll + msvcp140d.dll",
+                "vcruntime140_1.dll + vcruntime140_1d.dll"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_single_crt_flavour_is_not_reported() {
+        // Debug-only and release-only are both fine; only the mix is not.
+        assert!(warn_on_mixed_vc_runtimes(&[
+            String::from("MSVCP140D.dll"),
+            String::from("VCRUNTIME140D.dll"),
+        ])
+        .is_empty());
+        assert!(warn_on_mixed_vc_runtimes(&[
+            String::from("MSVCP140.dll"),
+            String::from("VCRUNTIME140.dll"),
+            String::from("MSVCP140_2.dll"),
+        ])
+        .is_empty());
+        // A library that merely ends in `d` must not be paired with itself.
+        assert!(warn_on_mixed_vc_runtimes(&[
+            String::from("zstd.dll"),
+            String::from("zst.dll"),
+            String::from("lilv-0.dll"),
+        ])
+        .is_empty());
     }
 
     /// A missing plugin directory is not an error: not every configuration builds
