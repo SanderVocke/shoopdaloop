@@ -191,23 +191,86 @@ pub fn populate_portable_folder(
     )?;
 
     info!("Bundling {} dependencies...", dependency_libs.len());
+
+    // A versioned Unix library is normally the head of a symlink chain
+    // (libFoo.6.dylib -> libFoo.6.9.1.dylib), and different binaries reference
+    // different links in it: the executable might link `libQt6Core.6.dylib`
+    // while a QML plugin links `libQt6Core.6.9.1.dylib`.
+    //
+    // Copying each referenced name as its own regular file would put two
+    // byte-identical but *distinct* files in the bundle, and the loader treats
+    // those as two separate libraries. On macOS that shows up as
+    // "Class QMetalLayer is implemented in both ..." from the Objective-C
+    // runtime, followed by the Qt platform plugin failing to initialise because
+    // it linked against whichever copy the application did not get.
+    //
+    // So copy each physical file once, under its own name, and reproduce every
+    // other referenced name as a symlink to it.
+    let mut aliases: Vec<(PathBuf, std::ffi::OsString)> = Vec::new();
+
     for lib in dependency_libs {
         let src = lib.clone();
-        let dst = lib_dir.clone().join(
-            lib.file_name()
-                .ok_or(anyhow!("Invalid library path (no filename): {:?}", lib))?,
-        );
+        let requested_name = lib
+            .file_name()
+            .ok_or(anyhow!("Invalid library path (no filename): {:?}", lib))?
+            .to_owned();
+        let dst = lib_dir.join(&requested_name);
 
         if !src.exists() {
             info!("--> Skipping nonexistent file/dir: {src:?}");
-        } else if std::fs::metadata(&src)?.is_dir() {
+            continue;
+        }
+        if std::fs::metadata(&src)?.is_dir() {
+            // Frameworks are directories and are copied whole.
             info!("--> Bundling directory: {:?} -> {:?}", &src, &dst);
             recursive_dir_cpy(&src, &dst)
                 .with_context(|| format!("Failed to copy dir {src:?} to {dst:?}"))?;
-        } else {
-            debug!("--> Bundling file: {:?} -> {:?}", &src, &dst);
-            std::fs::copy(&src, &dst)
-                .with_context(|| format!("Failed to copy {src:?} to {dst:?}"))?;
+            continue;
+        }
+
+        let real = src
+            .canonicalize()
+            .with_context(|| format!("Cannot canonicalize {src:?}"))?;
+        let real_name = real
+            .file_name()
+            .ok_or(anyhow!("Invalid library path (no filename): {:?}", real))?
+            .to_owned();
+        let real_dst = lib_dir.join(&real_name);
+
+        if !real_dst.exists() {
+            debug!("--> Bundling file: {:?} -> {:?}", &real, &real_dst);
+            std::fs::copy(&real, &real_dst)
+                .with_context(|| format!("Failed to copy {real:?} to {real_dst:?}"))?;
+        }
+        if real_name != requested_name {
+            aliases.push((dst, real_name));
+        }
+    }
+
+    for (link, target) in aliases {
+        // `symlink_metadata` rather than `exists`, so a dangling link created by
+        // an earlier step is still recognised as present.
+        if std::fs::symlink_metadata(&link).is_ok() {
+            continue;
+        }
+        #[cfg(unix)]
+        {
+            debug!("--> Symlinking {:?} -> {:?}", link, target);
+            std::os::unix::fs::symlink(&target, &link)
+                .with_context(|| format!("Failed to symlink {link:?} -> {target:?}"))?;
+        }
+        // Windows has no symlink chains in a vcpkg tree, so this should be
+        // unreachable there. Copying keeps it correct if it ever is not, since
+        // creating a symlink on Windows needs privileges CI may not have.
+        #[cfg(not(unix))]
+        {
+            let source = lib_dir.join(&target);
+            warn!(
+                "--> Duplicating {:?} as {:?} (no symlinks here)",
+                source, link
+            );
+            std::fs::copy(&source, &link)
+                .with_context(|| format!("Failed to copy {source:?} to {link:?}"))?;
         }
     }
 

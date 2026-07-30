@@ -127,6 +127,29 @@ do
     fi
 done
 
+# Two regular files declaring the same LC_ID_DYLIB are two copies of one library.
+# dyld loads both, so Objective-C classes and Qt symbols get registered twice and
+# the platform plugin ends up linked against the copy the application did not
+# get. The legitimate shape is one regular file plus symlinks for its aliases.
+#
+# This is the exact failure that motivated the check: bundling `libQt6Core.6.dylib`
+# and `libQt6Core.6.9.1.dylib` as two separate regular files produced
+# "Class QMetalLayer is implemented in both ..." and an unusable bundle.
+if [ -d "$bundle/lib" ]; then
+    dupes=$(
+        find "$bundle/lib" -maxdepth 1 -type f -name '*.dylib' 2>/dev/null | while IFS= read -r f; do
+            id=$(otool -D "$f" 2>/dev/null | grep -v ':$' | head -n 1 | tr -d '[:space:]')
+            [ -n "$id" ] && printf '%s\n' "$id"
+        done | sort | uniq -d
+    )
+    if [ -n "$dupes" ]; then
+        printf '%s\n' "$dupes" | while IFS= read -r id; do
+            echo "DUPLICATE LIBRARY: more than one regular file declares install name $id" >&2
+        done
+        failures=$((failures + 1))
+    fi
+fi
+
 echo "Checked $checked Mach-O images in $bundle"
 # A check that examined nothing is not a passing check.
 if [ "$checked" -eq 0 ]; then
