@@ -10,3 +10,7 @@
 # Before pushing
 
 - If changes were made which can affect program behavior: run the test suites.
+
+# When encountering a situation where the instructions given were plainly wrong w.r.t the codebase content
+
+- Stop and notify the user.

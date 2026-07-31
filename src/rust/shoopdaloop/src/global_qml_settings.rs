@@ -6,6 +6,7 @@ use std::path::PathBuf;
 #[derive(Debug)]
 pub struct GlobalQmlSettings {
     pub backend_type: AudioDriverType,
+    pub backend_type_explicit: bool,
     pub cpal_host: String,
     pub cpal_output_device: String,
     pub cpal_input_device: String,
@@ -51,6 +52,10 @@ impl GlobalQmlSettings {
             QString::from("backend_type"),
             QVariant::from(&(self.backend_type as i32)),
         ))
+        .chain(iter::once((
+            QString::from("backend_type_explicit"),
+            QVariant::from(&self.backend_type_explicit),
+        )))
         .chain(iter::once((
             QString::from("cpal_host"),
             QVariant::from(&QString::from(&self.cpal_host)),

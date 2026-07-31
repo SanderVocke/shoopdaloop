@@ -455,6 +455,7 @@ Item {
         update_interval_ms: root.backend_update_interval_ms
         client_name_hint: 'ShoopDaLoop'
         backend_type: root.backend_type
+        backend_type_explicit: global_args.backend_type_explicit
         id: session_backend
         driver_setting_overrides: ({
             cpal_host: global_args.cpal_host,
