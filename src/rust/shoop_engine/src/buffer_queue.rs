@@ -69,6 +69,9 @@ impl BufferQueue {
     pub fn max_buffers(&self) -> usize {
         self.max_buffers
     }
+    pub fn sample_capacity(&self) -> usize {
+        self.max_buffers.saturating_mul(self.chunk_size)
+    }
     pub fn n_buffers(&self) -> usize {
         self.n_live
     }

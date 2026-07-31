@@ -15,6 +15,7 @@ use std::collections::HashMap;
 #[cfg(feature = "lv2")]
 use std::sync::{Arc, Mutex};
 
+use crate::audio_channel::PreparedAudioChannelData;
 use crate::audio_midi_loop::AudioMidiLoop;
 use crate::basic_loop::SyncSourceState;
 use crate::channel_mode::ChannelMode;
@@ -56,6 +57,7 @@ const MIDI_OUT_SCRATCH_CAPACITY: usize = MIDI_SCRATCH_CAPACITY + MAX_DIFF_MESSAG
 /// ones, so it bounds total sub-blocks the same way.
 const MAX_SUB_BLOCKS: u32 = 16;
 pub const MAX_AUDIO_RINGBUFFER_ADOPTIONS: usize = 64;
+pub const MAX_AUDIO_RINGBUFFER_ADOPTION_CHANNELS: usize = 256;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AudioRingbufferAdoption {
@@ -64,6 +66,33 @@ pub struct AudioRingbufferAdoption {
     pub cycles_length: Option<i32>,
     pub go_to_cycle: Option<i32>,
     pub go_to_mode: LoopMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AudioRingbufferAdoptionChannelShape {
+    pub loop_idx: usize,
+    pub channel_idx: usize,
+    pub chunk_size: usize,
+    pub capacity: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct AudioRingbufferAdoptionShape {
+    channels: [Option<AudioRingbufferAdoptionChannelShape>; MAX_AUDIO_RINGBUFFER_ADOPTION_CHANNELS],
+    n_channels: usize,
+}
+
+impl AudioRingbufferAdoptionShape {
+    pub fn channels(&self) -> impl Iterator<Item = AudioRingbufferAdoptionChannelShape> + '_ {
+        self.channels[..self.n_channels].iter().flatten().copied()
+    }
+}
+
+#[derive(Debug)]
+pub struct PreparedAudioRingbufferAdoptionChannel {
+    pub loop_idx: usize,
+    pub channel_idx: usize,
+    pub data: PreparedAudioChannelData,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -1122,6 +1151,160 @@ impl Session {
         host: Arc<Mutex<crate::lv2_carla::CarlaLv2Host>>,
     ) {
         self.carla_fx_hosts.insert(title.into(), host);
+    }
+
+    pub fn describe_audio_ringbuffer_adoption(
+        &mut self,
+        requests: &[AudioRingbufferAdoption],
+    ) -> Result<AudioRingbufferAdoptionShape, SessionError> {
+        if requests.len() > MAX_AUDIO_RINGBUFFER_ADOPTIONS {
+            return Err(SessionError::AudioRingbufferAdoptionCapacity);
+        }
+        self.refresh_sync_snapshots();
+        let mut shape = AudioRingbufferAdoptionShape {
+            channels: [None; MAX_AUDIO_RINGBUFFER_ADOPTION_CHANNELS],
+            n_channels: 0,
+        };
+        for (index, request) in requests.iter().enumerate() {
+            if request.loop_idx >= self.loops.len() {
+                return Err(SessionError::NoSuchLoop(request.loop_idx));
+            }
+            if requests[..index]
+                .iter()
+                .any(|previous| previous.loop_idx == request.loop_idx)
+            {
+                return Err(SessionError::AudioRingbufferAdoptionCapacity);
+            }
+            let sync = self.loops[request.loop_idx].sync_source();
+            let cycle_len = sync.map(|state| state.length).unwrap_or(0);
+            let sync_pos = sync.map(|state| state.position).unwrap_or(0);
+            for mapping in self.channels.iter().filter(|mapping| {
+                mapping.loop_idx == request.loop_idx && mapping.kind == ChannelKind::Audio
+            }) {
+                if shape.n_channels >= MAX_AUDIO_RINGBUFFER_ADOPTION_CHANNELS {
+                    return Err(SessionError::AudioRingbufferAdoptionCapacity);
+                }
+                let ring_capacity = mapping
+                    .input_port
+                    .and_then(|port| self.ports.get(port))
+                    .and_then(Port::audio)
+                    .map(|port| port.ringbuffer_capacity())
+                    .unwrap_or(0);
+                let wanted = adoption_window(request, cycle_len, sync_pos, ring_capacity).0;
+                let channel = self.loops[request.loop_idx]
+                    .audio_channel(mapping.channel_idx)
+                    .ok_or(SessionError::NoSuchChannel(mapping.channel_idx))?;
+                shape.channels[shape.n_channels] = Some(AudioRingbufferAdoptionChannelShape {
+                    loop_idx: request.loop_idx,
+                    channel_idx: mapping.channel_idx,
+                    chunk_size: channel.chunk_size(),
+                    capacity: ring_capacity.max(wanted),
+                });
+                shape.n_channels += 1;
+            }
+        }
+        Ok(shape)
+    }
+
+    pub fn adopt_audio_ringbuffers_prepared(
+        &mut self,
+        requests: &[AudioRingbufferAdoption],
+        prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
+    ) -> Result<(), SessionError> {
+        let shape = self.describe_audio_ringbuffer_adoption(requests)?;
+        if prepared.len() != shape.n_channels {
+            return Err(SessionError::AudioRingbufferAdoptionCapacity);
+        }
+        for (slot, expected) in prepared.iter_mut().zip(shape.channels()) {
+            if slot.loop_idx != expected.loop_idx
+                || slot.channel_idx != expected.channel_idx
+                || slot.data.capacity() < expected.capacity
+            {
+                return Err(SessionError::AudioRingbufferAdoptionCapacity);
+            }
+            let request = requests
+                .iter()
+                .find(|request| request.loop_idx == slot.loop_idx)
+                .expect("prepared adoption target was described");
+            let sync = self.loops[request.loop_idx].sync_source();
+            let cycle_len = sync.map(|state| state.length).unwrap_or(0);
+            let sync_pos = sync.map(|state| state.position).unwrap_or(0);
+            let mapping = self
+                .channels
+                .iter()
+                .find(|mapping| {
+                    mapping.loop_idx == slot.loop_idx
+                        && mapping.kind == ChannelKind::Audio
+                        && mapping.channel_idx == slot.channel_idx
+                })
+                .expect("prepared adoption channel was described");
+            let source = mapping
+                .input_port
+                .and_then(|port| self.ports.get(port))
+                .and_then(Port::audio);
+            let data_len = source.map(|port| port.ringbuffer_n_samples()).unwrap_or(0);
+            let (wanted, start, end) = adoption_window(request, cycle_len, sync_pos, data_len);
+            slot.data.begin_load(wanted);
+            let mut offset = 0;
+            if let Some(source) = source {
+                source.visit_ringbuffer_range(start, end, |samples| {
+                    slot.data.write(offset, samples);
+                    offset += samples.len();
+                });
+            }
+        }
+
+        for slot in prepared {
+            self.loops[slot.loop_idx]
+                .audio_channel_mut(slot.channel_idx)
+                .expect("prepared adoption channel was validated")
+                .commit_prepared_data(&mut slot.data);
+        }
+        self.apply_audio_ringbuffer_adoption_states(requests);
+        Ok(())
+    }
+
+    fn apply_audio_ringbuffer_adoption_states(&mut self, requests: &[AudioRingbufferAdoption]) {
+        for request in requests {
+            let sync = self.loops[request.loop_idx].sync_source();
+            let cycle_len = sync.map(|state| state.length).unwrap_or(0);
+            let sync_pos = sync.map(|state| state.position).unwrap_or(0);
+            let data_len = self
+                .channels
+                .iter()
+                .filter(|mapping| {
+                    mapping.loop_idx == request.loop_idx && mapping.kind == ChannelKind::Audio
+                })
+                .filter_map(|mapping| {
+                    self.loops[request.loop_idx]
+                        .audio_channel(mapping.channel_idx)
+                        .map(|channel| channel.length())
+                })
+                .max()
+                .unwrap_or(0);
+            let adopted_len = data_len.min(u32::MAX as usize) as u32;
+            let go_cycle = request.go_to_cycle.unwrap_or(0).max(0) as u32;
+            let loop_ = &mut self.loops[request.loop_idx];
+            match request.go_to_mode {
+                LoopMode::Recording => {
+                    loop_.set_mode(LoopMode::Recording);
+                    loop_.set_length(adopted_len);
+                }
+                LoopMode::Unknown => {
+                    loop_.set_length(adopted_len);
+                    loop_.set_mode(LoopMode::Stopped);
+                }
+                mode => {
+                    loop_.set_length(adopted_len);
+                    loop_.set_mode(mode);
+                    if cycle_len > 0 {
+                        loop_.set_position(
+                            go_cycle.saturating_mul(cycle_len).saturating_add(sync_pos),
+                        );
+                    }
+                }
+            }
+        }
     }
 
     /// Retroactively fills loops' audio channels from their input ports' rolling

@@ -1539,8 +1539,24 @@ impl BackendSession {
         &self,
         requests: Vec<engine::AudioRingbufferAdoption>,
     ) -> Result<()> {
-        self.shared
-            .query(move |session| session.adopt_audio_ringbuffers(&requests))??;
+        let shape_requests = requests.clone();
+        let shape = self
+            .shared
+            .query(move |session| session.describe_audio_ringbuffer_adoption(&shape_requests))??;
+        let mut prepared: Vec<_> = shape
+            .channels()
+            .map(|channel| engine::PreparedAudioRingbufferAdoptionChannel {
+                loop_idx: channel.loop_idx,
+                channel_idx: channel.channel_idx,
+                data: engine::PreparedAudioChannelData::new(channel.chunk_size, channel.capacity),
+            })
+            .collect();
+        let (result, returned) = self.shared.query(move |session| {
+            let result = session.adopt_audio_ringbuffers_prepared(&requests, &mut prepared);
+            (result, prepared)
+        })?;
+        drop(returned);
+        result?;
         Ok(())
     }
 
@@ -2729,9 +2745,10 @@ impl Loop {
             go_to_cycle,
             go_to_mode: go_to_mode.into(),
         };
-        self.shared
-            .query(move |session| session.adopt_audio_ringbuffers(&[request]))??;
-        Ok(())
+        BackendSession {
+            shared: self.shared.clone(),
+        }
+        .adopt_audio_ringbuffers(vec![request])
     }
 }
 pub fn transition_multiple_loops(

@@ -54,7 +54,7 @@ pub mod session;
 pub mod state;
 pub mod wave_generator;
 
-pub use audio_channel::{AudioChannel, ChannelError};
+pub use audio_channel::{AudioChannel, ChannelError, PreparedAudioChannelData};
 pub use audio_midi_loop::{AudioMidiLoop, LoopError};
 pub use basic_loop::{BasicLoop, PoiFlags, PointOfInterest, SyncSourceState};
 pub use buffer_queue::{BufferQueue, Snapshot};
@@ -123,8 +123,10 @@ pub use port::{
 };
 pub use profiling::{ProfilingReport, ProfilingReportItem};
 pub use session::{
-    build_schedule, AudioRingbufferAdoption, Port, PreparedSchedule, ReclaimedCompositeTimeline,
-    RejectedCompositeTimeline, Session, SessionError, Topology, MAX_AUDIO_RINGBUFFER_ADOPTIONS,
+    build_schedule, AudioRingbufferAdoption, AudioRingbufferAdoptionChannelShape,
+    AudioRingbufferAdoptionShape, Port, PreparedAudioRingbufferAdoptionChannel, PreparedSchedule,
+    ReclaimedCompositeTimeline, RejectedCompositeTimeline, Session, SessionError, Topology,
+    MAX_AUDIO_RINGBUFFER_ADOPTIONS, MAX_AUDIO_RINGBUFFER_ADOPTION_CHANNELS,
 };
 pub use state::{
     AudioChannelState, AudioPortSnapshot, AudioPortState, MidiChannelState, MidiPortSnapshot,

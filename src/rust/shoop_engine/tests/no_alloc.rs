@@ -22,7 +22,8 @@ use shoop_engine::{
     compile_composite_plan, BoundaryTargetAction, CompositeBoundaryTimeline, CompositeEntry,
     CompositePlanDescriptor, CompositePlanLimits, CompositeRuntime, CompositeSection,
     CompositeTimeline, CompositeTimelineLimits, CompositeTimelineNode, LoopIdentity,
-    LoopTargetCatalog, LoopTargetKind, LoopTargetMetadata,
+    LoopTargetCatalog, LoopTargetKind, LoopTargetMetadata, PreparedAudioChannelData,
+    PreparedAudioRingbufferAdoptionChannel,
 };
 
 #[cfg(debug_assertions)]
@@ -516,6 +517,23 @@ fn transactional_audio_ringbuffer_adoption_does_not_allocate_or_partially_apply(
             vec![0.1, 0.2, 0.3, 0.4]
         );
     }
+
+    let shape = session
+        .describe_audio_ringbuffer_adoption(&requests)
+        .unwrap();
+    let mut prepared: Vec<_> = shape
+        .channels()
+        .map(|channel| PreparedAudioRingbufferAdoptionChannel {
+            loop_idx: channel.loop_idx,
+            channel_idx: channel.channel_idx,
+            data: PreparedAudioChannelData::new(channel.chunk_size, channel.capacity),
+        })
+        .collect();
+    assert_no_alloc(|| {
+        session
+            .adopt_audio_ringbuffers_prepared(&requests, &mut prepared)
+            .unwrap();
+    });
 
     let duplicate = [requests[0], requests[0]];
     let before = session

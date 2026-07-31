@@ -143,6 +143,9 @@ impl AudioPort {
     pub fn ringbuffer_n_samples(&self) -> usize {
         self.ringbuffer.n_samples()
     }
+    pub fn ringbuffer_capacity(&self) -> usize {
+        self.ringbuffer.sample_capacity()
+    }
     pub fn set_ringbuffer_n_samples(&mut self, n: usize) {
         self.ringbuffer.set_min_n_samples(n);
     }

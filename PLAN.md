@@ -344,7 +344,7 @@ The implementing agent's runtime test obligation may be limited to `shoop_engine
 
 ### Stage 6 exit gate
 
-- [ ] `TEST_RESULTS.md` shows that engine and QML automated gates pass, except for clearly recorded environment failures or pre-existing failures.
+- [x] `TEST_RESULTS.md` shows that engine and QML automated gates pass, except for clearly recorded environment failures or pre-existing failures.
 - [x] `RT_SAFETY.md` contains evidence that RT constraints are verified on all exercised composite-related callback paths, while unrelated legacy findings are clearly classified as out of scope.
 - [x] Remaining manual checks are listed in `MANUAL_VALIDATION.md` without being represented as completed.
 
@@ -374,10 +374,10 @@ User findings recorded in `MANUAL_VALIDATION.md` that reveal a violation of an i
 - [x] Remove dead update-thread composite scheduling code after parity and integration are established.
 - [x] Remove compatibility signals/slots that can no longer affect behavior.
 - [x] Ensure there is only one authoritative composite state machine.
-- [ ] Finalize RT command acceptance, plan activation, conflict handling, and observable state latency in `SEMANTICS.md`.
-- [ ] Finalize implemented processing, ownership, and frontend integration in `ARCHITECTURE.md`; finalize capacity limits and callback evidence in `RT_SAFETY.md`.
+- [x] Finalize RT command acceptance, plan activation, conflict handling, and observable state latency in `SEMANTICS.md`.
+- [x] Finalize implemented processing, ownership, and frontend integration in `ARCHITECTURE.md`; finalize capacity limits and callback evidence in `RT_SAFETY.md`.
 - [x] Update permanent developer architecture documentation and user documentation where behavior is newly defined, linking back to the canonical prototype artifacts where useful.
-- [ ] Record final automated results in `TEST_RESULTS.md` and pending/completed user manual results in `MANUAL_VALIDATION.md`.
+- [x] Record final automated results in `TEST_RESULTS.md` and pending/completed user manual results in `MANUAL_VALIDATION.md`.
 - [ ] Review the immutable requirement checklist and attach evidence for every item.
 
 ## Adaptive decision log

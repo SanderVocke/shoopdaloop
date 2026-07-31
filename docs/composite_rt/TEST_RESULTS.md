@@ -2,19 +2,19 @@
 
 ## Gate status
 
-This is a live Stage 6 record. It is intentionally **not** a final green gate: the complete RT callback audit, real-backend stability, and manual validation remain open. The existing composite QML matrix and focused nested save/load coverage are green; the only last full-suite failure is explicitly environment-qualified below.
+The Stage 6 automated gate is green within the documented environment exceptions. Composite RT audit/coverage is complete; real-backend live validation and all Stage 7 scenarios remain user-owned and pending. Engine and QML failures below are limited to unavailable/nonfunctional host JACK/CPAL services.
 
 | Gate | Current status |
 |---|---|
 | Targeted composite engine tests | Passing |
 | Allocator-enforced engine tests | 21 passing, including dense/failure, lifecycle, topology restart, and transactional grab paths |
 | Warning-denied core engine build | Passing without application/backend features |
-| Complete engine suite with `app_backend` | Project compiles; full run blocked/unreliable on unavailable JACK/ALSA services |
+| Complete engine suite with `app_backend` | All non-JACK binaries pass; JACK integration 1/4 due nonfunctional host audio flow |
 | Application composite adapter tests | 3 passing with dummy driver |
 | Frontend Rust build/unit tests | Warning-denied check passes; 32 library unit tests pass |
-| QML self-tests | Focused composite 26/26 and nested save/load 6/6; last full run 188/189 with sole CPAL device/port environment failure |
-| Full workspace suite | Core/no-default engine suite passes; application-feature workspace gate pending |
-| Callback benchmark/cost gate | Composite-only measurement recorded; whole callback gate pending |
+| QML self-tests | 191/192 passing; sole CPAL settings/device environment failure; composite 26/26 and save/load 6/6 green |
+| Full workspace suite | Attempted; reaches same 3 JACK integration environment failures |
+| Callback benchmark/cost gate | Ordinary and maximum composite schedules measured; live whole-callback margin remains manual |
 
 ## Environment
 
@@ -82,7 +82,7 @@ All repetitions passed: 10 timing + 12 timeline + 16 control tests per repetitio
 cargo test -p shoop_engine --test no_alloc -- --test-threads=1
 ```
 
-Latest result: 21 passed, 0 failed. The composite integration test queues plan installation, duplicate-version rejection, control acceptance, repeated processing, rolling trace, and state publication under `assert_no_alloc`. The grab test copies one rolling capture into two child loops and commits both modes in one transaction, then exercises duplicate-target rejection without allocation, deallocation, or partial mutation. Dense 64-target resolution and fail-closed primitive-event overflow are guarded separately, and a structural test rejects lock primitives in composite callback state sources.
+Latest result: 21 passed, 0 failed. The composite integration test queues plan installation, duplicate-version rejection, control acceptance, repeated processing, rolling trace, and state publication under `assert_no_alloc`. The grab test copies one rolling capture into two child loops and commits both modes in one transaction, exercises both reserve-reuse and off-thread-prepared storage swap, then tests duplicate-target rejection without allocation, deallocation, or partial mutation. Dense 64-target resolution and fail-closed primitive-event overflow are guarded separately, and a structural test rejects lock primitives in composite callback state sources.
 
 This does not prove unexercised driver/FX branches safe. Open callback mechanisms are listed in [RT_SAFETY.md](RT_SAFETY.md#active-callback-path-audit-open-findings).
 
@@ -154,13 +154,20 @@ QT_QPA_PLATFORM=offscreen target/debug/shoopdaloop_dev.sh --self-test \
 
 Latest results: composite behavior **26/26 passed** and session save/load **6/6 passed**. The composite run includes all synchronized/unsynchronized, fixed/default-length, stop/play grab outcomes plus nested-composite flattening into one bounded engine adoption transaction. The retained frontend schedule traversal is limited to off-RT grab preparation; no compatibility slot advances composite runtime state.
 
-The full `app_backend` suite was also attempted after dependency discovery. It is not recorded as green: tests requiring real JACK/ALSA services failed or teardown became unreliable on this host. That is a runtime-service/environment blocker, not evidence for completion.
-
-## Pending required commands
+Final engine gate attempt:
 
 ```sh
 cargo test -p shoop_engine --features app_backend
+```
+
+The library reported **558 passed**. Every non-JACK integration binary, including all 3 application adapter, 16 control, 25 state-machine, 12 timeline, 10 timing, and 21 allocator tests, passed. `jack_app_backend` reported 1 passed and 3 failed because this host carried no audio through JACK (`jack_audio_input_reaches_a_recording_channel`, `session_output_reaches_a_jack_consumer`, and `audio_keeps_flowing_across_a_mid_stream_topology_change`). The broader workspace command reached the identical three failures:
+
+```sh
 cargo test --workspace --features shoop_engine/app_backend
 ```
 
-Before final status, repeat timing-sensitive composite tests, run dense/max-capacity and all required allocation failure paths, execute callback benchmarks, and record exact final totals here.
+The final QML run reported **191 passed, 1 failed**. All 26 composite, 6 save/load, ordinary basic grab, Lua composition/control, and dry/wet suites passed. The sole failure, `CpalPorts::test_virtual_playback_ports_are_app_connectable`, reported missing CPAL settings/device/playback ports on this host.
+
+## Remaining validation
+
+No required automated composite command remains pending. Real JACK/CPAL live-audio, xrun, and whole-callback margin checks remain pending in `MANUAL_VALIDATION.md`; environment-qualified automated failures should be repeated by the user on those representative backends.
