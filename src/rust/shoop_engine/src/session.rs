@@ -18,6 +18,11 @@ use std::sync::{Arc, Mutex};
 use crate::audio_midi_loop::AudioMidiLoop;
 use crate::basic_loop::SyncSourceState;
 use crate::channel_mode::ChannelMode;
+use crate::composite_plan::{LoopIdentity, LoopTargetKind};
+use crate::composite_timeline::{
+    BoundaryIntent, BoundaryIntentOrigin, BoundaryTargetAction, CompositeBoundaryTimeline,
+    CompositeTimelineBuildError, CompositeTimelineFault,
+};
 use crate::dummy_midi_port::DummyMidiPort;
 use crate::dummy_port::DummyAudioPort;
 use crate::external_audio_port::ExternalAudioPort;
@@ -62,6 +67,10 @@ pub enum SessionError {
     SelfSync(usize),
     #[error("no channel at index {0}, or it is not of the expected kind")]
     NoSuchChannel(usize),
+    #[error("the composite timeline references stale or missing primitive slot {0}")]
+    StaleCompositeTarget(u32),
+    #[error("the composite/session propagation topology is invalid: {0}")]
+    CompositeTimeline(#[from] CompositeTimelineBuildError),
 }
 
 /// A port the session owns. Kinds differ in where their data comes from.
@@ -256,6 +265,10 @@ pub struct Session {
     sync_sources: Vec<Option<usize>>,
     /// Snapshots gathered before they are handed to the loops, reused each cycle.
     sync_snapshots: Vec<Option<SyncSourceState>>,
+    /// Tombstones keep stale stable identities from being redirected.
+    loop_live: Vec<bool>,
+    /// Composite scheduling and same-sample resolution on the loop-group timeline.
+    composite_timeline: CompositeBoundaryTimeline,
 
     specs: Vec<NodeSpec>,
     node_map: NodeMap,
@@ -282,6 +295,10 @@ pub struct Session {
     midi_mappings_by_loop: Vec<Vec<usize>>,
     /// Loop indices of the step being processed, reused each cycle.
     loop_group: Vec<usize>,
+    /// Primitive events and natural intents gathered at a settled boundary.
+    boundary_triggers: Vec<LoopIdentity>,
+    boundary_delivered_triggers: Vec<LoopIdentity>,
+    boundary_natural_intents: Vec<BoundaryIntent>,
     /// Active state for the temporary test2x2x1 FX-chain shim, keyed by chain title.
     test_fx_active: HashMap<String, bool>,
     /// Carla LV2 FX-chain processors, keyed by chain title.
@@ -333,8 +350,11 @@ pub struct PreparedSchedule {
     /// Per-MIDI-channel scratch, pre-reserved so no cycle grows one.
     midi_in_scratch: Vec<Vec<MidiStorageElem>>,
     midi_out_scratch: Vec<Vec<MidiStorageElem>>,
-    /// Loop-step scratch, likewise sized here rather than on first use.
+    /// Loop-step and boundary scratch, likewise sized here rather than on first use.
     loop_group: Vec<usize>,
+    boundary_triggers: Vec<LoopIdentity>,
+    boundary_delivered_triggers: Vec<LoopIdentity>,
+    boundary_natural_intents: Vec<BoundaryIntent>,
     /// Topology generation this covers.
     for_graph_id: u64,
 }
@@ -394,6 +414,9 @@ pub fn build_schedule(topology: Topology) -> Result<PreparedSchedule, SessionErr
         midi_in_scratch,
         midi_out_scratch,
         loop_group: Vec::with_capacity(n_loops),
+        boundary_triggers: Vec::with_capacity(n_loops),
+        boundary_delivered_triggers: Vec::with_capacity(n_loops),
+        boundary_natural_intents: Vec::with_capacity(n_loops),
         for_graph_id: graph_id,
     })
 }
@@ -464,6 +487,47 @@ impl Session {
         self.loops.get_mut(idx)
     }
 
+    pub fn loop_identity(&self, idx: usize) -> Option<LoopIdentity> {
+        self.loop_live
+            .get(idx)
+            .copied()
+            .unwrap_or(false)
+            .then_some(LoopIdentity {
+                slot: idx as u32,
+                generation: 1,
+                kind: LoopTargetKind::Basic,
+            })
+    }
+
+    pub fn composite_timeline(&self) -> &CompositeBoundaryTimeline {
+        &self.composite_timeline
+    }
+
+    pub fn composite_timeline_mut(&mut self) -> &mut CompositeBoundaryTimeline {
+        &mut self.composite_timeline
+    }
+
+    pub fn install_composite_timeline(
+        &mut self,
+        timeline: CompositeBoundaryTimeline,
+    ) -> Result<CompositeBoundaryTimeline, SessionError> {
+        if let Some(identity) = timeline.first_invalid_primitive(|identity| {
+            identity.kind == LoopTargetKind::Basic
+                && identity.generation == 1
+                && self
+                    .loop_live
+                    .get(identity.slot as usize)
+                    .copied()
+                    .unwrap_or(false)
+        }) {
+            return Err(SessionError::StaleCompositeTarget(identity.slot));
+        }
+        if !timeline.is_empty() {
+            timeline.validate_primitive_sync_sources(&self.sync_sources)?;
+        }
+        Ok(std::mem::replace(&mut self.composite_timeline, timeline))
+    }
+
     /// True when the schedule matches the current topology.
     pub fn graph_up_to_date(&self) -> bool {
         self.graph_request_id == self.graph_applied_id
@@ -485,6 +549,7 @@ impl Session {
         self.loops.push(AudioMidiLoop::default());
         self.sync_sources.push(None);
         self.sync_snapshots.push(None);
+        self.loop_live.push(true);
         self.note_graph_change();
         self.loops.len() - 1
     }
@@ -655,6 +720,7 @@ impl Session {
             l.clear(0);
         }
         self.sync_sources[loop_idx] = None;
+        self.loop_live[loop_idx] = false;
         for src in self.sync_sources.iter_mut() {
             if *src == Some(loop_idx) {
                 *src = None;
@@ -721,7 +787,17 @@ impl Session {
                 return Err(SessionError::SelfSync(loop_idx));
             }
         }
+        let previous = self.sync_sources[loop_idx];
         self.sync_sources[loop_idx] = source;
+        if !self.composite_timeline.is_empty() {
+            if let Err(error) = self
+                .composite_timeline
+                .validate_primitive_sync_sources(&self.sync_sources)
+            {
+                self.sync_sources[loop_idx] = previous;
+                return Err(error.into());
+            }
+        }
         // A loop with no sync source transitions immediately rather than waiting
         // for a trigger, so this changes behaviour and not just wiring.
         self.loops[loop_idx].set_sync_source(source.map(|_| SyncSourceState::default()));
@@ -953,6 +1029,15 @@ impl Session {
         std::mem::swap(&mut self.midi_in_scratch, &mut prepared.midi_in_scratch);
         std::mem::swap(&mut self.midi_out_scratch, &mut prepared.midi_out_scratch);
         std::mem::swap(&mut self.loop_group, &mut prepared.loop_group);
+        std::mem::swap(&mut self.boundary_triggers, &mut prepared.boundary_triggers);
+        std::mem::swap(
+            &mut self.boundary_delivered_triggers,
+            &mut prepared.boundary_delivered_triggers,
+        );
+        std::mem::swap(
+            &mut self.boundary_natural_intents,
+            &mut prepared.boundary_natural_intents,
+        );
 
         self.graph_applied_id = covered;
         prepared
@@ -1011,6 +1096,7 @@ impl Session {
             self.n_stale_cycles = self.n_stale_cycles.saturating_add(1);
         }
         self.n_sub_blocks_last_cycle = 0;
+        self.composite_timeline.begin_callback();
         let steps = std::mem::take(&mut self.schedule);
         for step in &steps {
             // Loops in one step are co-processed, so they are gathered and
@@ -1622,6 +1708,9 @@ impl Session {
     /// mid-buffer is advanced in pieces. Single loops go through the same path:
     /// loop still needs splitting when its end falls inside the buffer.
     fn process_loop_group(&mut self, n_frames: usize) {
+        if self.composite_timeline.fault().fault != CompositeTimelineFault::None {
+            return;
+        }
         let mut remaining = n_frames;
         let mut sub_blocks = 0u32;
 
@@ -1629,17 +1718,13 @@ impl Session {
             sub_blocks += 1;
             self.n_sub_blocks_last_cycle += 1;
             if sub_blocks > MAX_SUB_BLOCKS {
-                // A loop is reporting a point of interest it never clears. Give up
-                // on the rest of the cycle rather than spin on the audio thread.
-                self.n_stuck_cycles += 1;
+                self.n_stuck_cycles = self.n_stuck_cycles.saturating_add(1);
+                self.composite_timeline.latch_sub_block_overflow();
                 return;
             }
 
-            // Sync state is read while computing points of interest and trigger
-            // ETAs, so refresh it before measuring.
             self.refresh_sync_snapshots();
 
-            // Earliest point of interest across the group bounds this sub-block.
             let mut until = remaining;
             for gi in 0..self.loop_group.len() {
                 let li = self.loop_group[gi];
@@ -1648,22 +1733,159 @@ impl Session {
                     until = until.min(poi as usize);
                 }
             }
-
-            for gi in 0..self.loop_group.len() {
-                self.advance_loop(self.loop_group[gi], until);
+            if let Some(control_poi) = self.composite_timeline.next_control_poi(remaining) {
+                until = until.min(control_poi);
             }
-            // Points of interest and triggers resolve only once every loop has
-            // reached the same position, or a trigger could be seen a sub-block
-            // late by loops synced to it.
+
+            if until > 0 {
+                for gi in 0..self.loop_group.len() {
+                    self.advance_loop(self.loop_group[gi], until);
+                }
+                self.composite_timeline.advance_clock(until);
+            }
             for gi in 0..self.loop_group.len() {
                 self.loops[self.loop_group[gi]].handle_poi();
             }
-            // Triggers fired during this sub-block only become visible to
-            // dependents once every loop has advanced, so the snapshots are
-            // refreshed again between handling points of interest and sync.
-            self.refresh_sync_snapshots();
-            for gi in 0..self.loop_group.len() {
-                self.loops[self.loop_group[gi]].handle_sync();
+
+            self.boundary_delivered_triggers.clear();
+            let mut event_waves = 0usize;
+            let mut first_wave = true;
+            loop {
+                let mut sync_waves = 0usize;
+                loop {
+                    self.refresh_sync_snapshots();
+                    let mut changed = false;
+                    for gi in 0..self.loop_group.len() {
+                        let loop_idx = self.loop_group[gi];
+                        let was_triggering =
+                            self.loops[loop_idx].as_sync_source_state().triggering_now;
+                        self.loops[loop_idx].handle_sync();
+                        changed |= !was_triggering
+                            && self.loops[loop_idx].as_sync_source_state().triggering_now;
+                    }
+                    if !changed {
+                        break;
+                    }
+                    sync_waves += 1;
+                    if sync_waves >= self.composite_timeline.max_event_waves() {
+                        self.composite_timeline.latch_event_wave_overflow();
+                        return;
+                    }
+                }
+
+                self.boundary_triggers.clear();
+                self.boundary_natural_intents.clear();
+                for gi in 0..self.loop_group.len() {
+                    let loop_idx = self.loop_group[gi];
+                    let state = self.loops[loop_idx].as_sync_source_state();
+                    if !state.triggering_now || !self.loop_live[loop_idx] {
+                        continue;
+                    }
+                    let identity = LoopIdentity {
+                        slot: loop_idx as u32,
+                        generation: 1,
+                        kind: LoopTargetKind::Basic,
+                    };
+                    if self.boundary_delivered_triggers.contains(&identity) {
+                        continue;
+                    }
+                    self.boundary_triggers.push(identity);
+                    self.boundary_delivered_triggers.push(identity);
+                    self.boundary_natural_intents.push(BoundaryIntent {
+                        target: identity,
+                        action: BoundaryTargetAction::SetMode {
+                            mode: state.mode,
+                            offset_samples: u64::from(state.position),
+                            retrigger: false,
+                        },
+                        origin: BoundaryIntentOrigin::Natural { source: identity },
+                    });
+                }
+
+                if !first_wave && self.boundary_triggers.is_empty() {
+                    break;
+                }
+                first_wave = false;
+                event_waves += 1;
+                if event_waves > self.composite_timeline.max_event_waves() {
+                    self.composite_timeline.latch_event_wave_overflow();
+                    return;
+                }
+
+                {
+                    let Session {
+                        composite_timeline,
+                        loops,
+                        loop_live,
+                        boundary_triggers,
+                        boundary_delivered_triggers,
+                        boundary_natural_intents,
+                        ..
+                    } = self;
+                    composite_timeline.align_sync_positions(|identity| {
+                        if identity.kind != LoopTargetKind::Basic
+                            || identity.generation != 1
+                            || !loop_live
+                                .get(identity.slot as usize)
+                                .copied()
+                                .unwrap_or(false)
+                        {
+                            return None;
+                        }
+                        loops
+                            .get(identity.slot as usize)
+                            .map(|loop_| u64::from(loop_.position()))
+                    });
+                    let trace = match composite_timeline.resolve_boundary(
+                        boundary_triggers,
+                        boundary_natural_intents,
+                        |identity| {
+                            identity.kind == LoopTargetKind::Basic
+                                && identity.generation == 1
+                                && loop_live
+                                    .get(identity.slot as usize)
+                                    .copied()
+                                    .unwrap_or(false)
+                        },
+                    ) {
+                        Ok(trace) => trace,
+                        Err(_) => return,
+                    };
+                    for entry in trace {
+                        if entry.target.kind != LoopTargetKind::Basic
+                            || entry.target.generation != 1
+                            || !loop_live
+                                .get(entry.target.slot as usize)
+                                .copied()
+                                .unwrap_or(false)
+                        {
+                            continue;
+                        }
+                        let Some(loop_) = loops.get_mut(entry.target.slot as usize) else {
+                            continue;
+                        };
+                        match entry.action {
+                            BoundaryTargetAction::Stop => loop_.set_mode(LoopMode::Stopped),
+                            BoundaryTargetAction::SetMode {
+                                mode,
+                                offset_samples,
+                                retrigger,
+                            } => {
+                                let mode_changed = loop_.mode() != mode;
+                                loop_.set_mode(mode);
+                                if retrigger || mode_changed {
+                                    let offset = u32::try_from(offset_samples).unwrap_or(u32::MAX);
+                                    loop_.set_position(offset.min(loop_.length()));
+                                }
+                                if loop_.as_sync_source_state().triggering_now {
+                                    if !boundary_delivered_triggers.contains(&entry.target) {
+                                        boundary_delivered_triggers.push(entry.target);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             remaining -= until;

@@ -2,7 +2,7 @@
 
 ## Scope and status
 
-This is the Stage 0 inventory of user-visible and persistence behavior at commit `06266290769186be70d4bad9def74723ff9fd315`. The current implementation is a frontend `QObject` state machine on the engine update thread; `shoop_engine` has no composite-loop object. Therefore **Not migrated** below means the behavior exists today but still needs engine ownership in Stages 1–5. The semantic decisions already pinned in engine tests are marked **Contract only** and do not count as migration.
+This is the Stage 0 inventory of user-visible and persistence behavior at commit `06266290769186be70d4bad9def74723ff9fd315`. The application still uses a frontend `QObject` state machine on the engine update thread. Stages 1–2 have added a core-engine compiled plan, runtime, and authoritative `Session` timeline, but the frontend does not submit plans to it yet. Therefore the original **Not migrated** labels remain historical baseline status; the stage-specific tables below state precisely which engine portions now exist. Contract or engine-only evidence does not count as application migration.
 
 Evidence abbreviations:
 
@@ -86,14 +86,55 @@ The Stage 0 matrix above remains the baseline inventory. Stage 1 adds the immuta
 
 Every matrix row whose Stage 1 portion is independent of audio routing and frontend integration is covered above. Engine test names and requirement-level evidence are listed in [ARCHITECTURE.md](ARCHITECTURE.md#stage-1-verification-map).
 
+## Stage 2 engine coverage update
+
+Stage 2 makes compiled composites authoritative inside the core `Session` sample timeline and adds bounded same-sample resolution. “Engine timing implemented” still does not mean the frontend application submits plans or observes this state; that switch remains Stages 3–5.
+
+| ID | Stage 2 applicability and evidence | Stage 2 status |
+|---|---|---|
+| F01 | Session exposes stable basic identities and owns an installable composite timeline; application creation/conversion is later. | Engine timing partial |
+| F02 | Authoring remains QML; accepted compiled schedules execute on the sample timeline. | Deferred UI; engine execution available |
+| F03 | Editor remains QML; descriptor/plan behavior is unchanged. | Deferred UI |
+| F04 | Sequential boundaries now land on authoritative source POIs and exact output samples. | Engine timing implemented |
+| F05 | Parallel/coincident outputs are gathered before stable target commit. | Engine timing implemented |
+| F06 | Delays/repeats execute at source boundaries; continuation remains normalized by Stage 1. | Engine timing implemented |
+| F07 | Compiled durations drive sample-authoritative iteration timing. | Engine timing implemented |
+| F08 | Empty/missing semantics remain Stage 1; stale basic targets are not redirected by Session identities. | Engine timing implemented for accepted plans |
+| F09 | Regular inherited modes are committed before post-boundary samples. | Engine timing implemented |
+| F10 | Script explicit modes and one-pass completion execute through the resolver. | Engine timing implemented |
+| F11 | Multiple wraps in one callback advance every composite boundary and preserve partition-independent traces. | Engine timing implemented |
+| F12 | Direct source stop suppresses coincident due delivery; child cleanup is resolved with other intents. | Engine timing implemented |
+| F13 | First-occurrence recording remains enforced by the runtime at sample boundaries. | Engine timing implemented |
+| F14 | Runtime pass-end decisions now commit at authoritative boundaries; accepted toggle transport remains Stage 3. | Engine timing implemented; command transport deferred |
+| F15 | Countdown advances from source trigger events rather than frontend polling. | Engine timing implemented |
+| F16 | Immediate seek can enter through accepted direct boundary control; full application command API remains later. | Engine mechanism implemented |
+| F17 | Several composite levels propagate iteration-zero actions at one sample in stable DAG order. | Engine timing implemented |
+| F18 | Direct > script > regular > natural precedence and stable same-class tie-breaks execute in the resolver. | Engine timing implemented |
+| F19 | Runtime fields remain authoritative; snapshot transport is Stage 3. | State implemented; transport deferred |
+| F20 | Stable active-child identity remains available; visual integration is later. | Deferred UI |
+| F21 | Composite grab is outside Stage 2. | Deferred Stage 4 |
+| F22 | Synchronized grab is outside Stage 2. | Deferred Stage 4 |
+| F23 | Unsynchronized grab is outside Stage 2. | Deferred Stage 4 |
+| F24 | Prepared timelines validate topology/capacity; plan queue and replacement ownership remain Stage 3. | Timing implemented; lifecycle partial |
+| F25 | Installed target and sync-source edges are topologically sorted; cycles/depth are rejected before processing. | Engine timing implemented |
+| F26 | Persistence translation is outside Stage 2. | Deferred frontend |
+| F27 | Resolver accepts direct intents at exact samples, but unified application command batching is Stage 3/5. | Engine mechanism partial |
+| F28 | Session tombstones prevent stale basic identity redirection; non-RT reclamation remains Stage 3. | Engine timing partial |
+| F29 | Lua/QML routing remains later. | Deferred integration |
+| F30 | Configured engine composites continue solely from callback sample processing; frontend/update-stall end-to-end proof remains Stage 5/6. | Engine timing implemented; app proof deferred |
+| F31 | Prototype architecture, RT-safety, semantics, and parity documentation now include Stage 2. | Stage 2 documentation complete |
+
+Stage 2 timing evidence is mapped in [ARCHITECTURE.md](ARCHITECTURE.md#stage-2-verification-map) and [RT_SAFETY.md](RT_SAFETY.md#stage-2-verification-evidence). No row is labeled application-migrated merely because the engine path exists.
+
 ## Current implementation map
 
 1. `CompositeLoop.qml` owns the persisted playlists, resolves QML loop IDs, checks limited cycles, derives durations, and compiles a JS schedule.
 2. `composite_loop_schedule.rs` serializes that schedule through `QVariant`, storing boundary actions in a `BTreeMap` but targets in `HashMap`/`HashSet`.
 3. `qobj_composite_loop_gui.rs` replaces QML objects with weak backend-wrapper `QObject` pointers and sends the schedule by queued Qt connection.
 4. `qobj_composite_loop_backend.rs` is the mutable state machine on the engine update thread. It receives `cycled` signals, performs child `QObject` transitions, reconstructs seeks/grabs, and publishes queued GUI properties.
-5. Primitive loops alone live in `shoop_engine`; `qobj_loop_backend.rs:update` polls their snapshots and infers a wrap from `new_position < old_position`.
+5. The active application path still exposes only primitive engine loops; `qobj_loop_backend.rs:update` polls their snapshots and infers a wrap from `new_position < old_position`.
 6. `LoopWidget.qml`, the editor, state registries, Lua API, and session serializer provide the application surface.
+7. The Stage 2 prototype path in `shoop_engine` can install compiled composites into `Session`, split at authoritative POIs, propagate nested actions, resolve conflicts, and commit primitive modes at exact samples. No frontend adapter invokes this path yet.
 
 ## Accidental timing and ordering dependencies to remove
 

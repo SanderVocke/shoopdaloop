@@ -15,6 +15,7 @@ pub mod chunked_samples;
 pub mod composite_plan;
 pub mod composite_runtime;
 pub mod composite_semantics;
+pub mod composite_timeline;
 pub mod control;
 #[cfg(feature = "cpal")]
 pub mod cpal_mock;
@@ -82,6 +83,13 @@ pub use composite_semantics::{
     CompositeKind, DependencyError, DurationError, EmptyChildAction, IntentOrigin, IntentPriority,
     ModePlanError, OverflowDisposition, OverflowSite, PassEnd, PlanActivation, RuntimeStatus,
     TargetIdentity, TargetResolution, TimestampRelation, BOUNDARY_PHASE_ORDER,
+};
+pub use composite_timeline::{
+    AcceptedTimelineControl, BoundaryIntent, BoundaryIntentOrigin, BoundaryTargetAction,
+    BoundaryTraceEntry, CompositeBoundaryTimeline, CompositeTimelineBuildError,
+    CompositeTimelineControlError, CompositeTimelineCounters, CompositeTimelineFault,
+    CompositeTimelineFaultRecord, CompositeTimelineLimits, CompositeTimelineNode,
+    MAX_COMPOSITE_CONTROLS,
 };
 pub use decoupled_midi_port::DecoupledMidiPort;
 pub use driver::{

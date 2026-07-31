@@ -19,9 +19,10 @@ use shoop_engine::port::{PortConnectability, PortDirection};
 use shoop_engine::realtime_alloc_guard;
 use shoop_engine::session::{Port, Session};
 use shoop_engine::{
-    compile_composite_plan, CompositeEntry, CompositePlanDescriptor, CompositePlanLimits,
-    CompositeRuntime, CompositeSection, CompositeTimeline, LoopIdentity, LoopTargetCatalog,
-    LoopTargetKind, LoopTargetMetadata,
+    compile_composite_plan, AcceptedTimelineControl, BoundaryTargetAction,
+    CompositeBoundaryTimeline, CompositeEntry, CompositePlanDescriptor, CompositePlanLimits,
+    CompositeRuntime, CompositeSection, CompositeTimeline, CompositeTimelineLimits,
+    CompositeTimelineNode, LoopIdentity, LoopTargetCatalog, LoopTargetKind, LoopTargetMetadata,
 };
 
 #[cfg(debug_assertions)]
@@ -176,6 +177,86 @@ fn composite_state_machine_does_not_allocate_or_free() {
             .activate_deferred_at_iteration_zero(&plan, &replacement, |_| true)
             .unwrap();
     });
+}
+
+#[test]
+fn composite_timeline_processing_does_not_allocate_or_free() {
+    let mut session = Session::default();
+    let sync = session.create_loop();
+    let child = session.create_loop();
+    session.loop_mut(sync).unwrap().set_length(4);
+    session.loop_mut(child).unwrap().set_length(4);
+    session.set_loop_mode(sync, LoopMode::Playing).unwrap();
+
+    let source = LoopIdentity {
+        slot: 10,
+        generation: 1,
+        kind: LoopTargetKind::Composite,
+    };
+    let sync_identity = session.loop_identity(sync).unwrap();
+    let child_identity = session.loop_identity(child).unwrap();
+    let catalog = LoopTargetCatalog::new(vec![
+        LoopTargetMetadata {
+            identity: source,
+            length_samples: 4,
+        },
+        LoopTargetMetadata {
+            identity: sync_identity,
+            length_samples: 4,
+        },
+        LoopTargetMetadata {
+            identity: child_identity,
+            length_samples: 4,
+        },
+    ])
+    .unwrap();
+    let plan = compile_composite_plan(
+        &CompositePlanDescriptor {
+            source,
+            sync_length: 4,
+            timelines: vec![CompositeTimeline {
+                sections: vec![CompositeSection {
+                    entries: vec![CompositeEntry {
+                        target: child_identity,
+                        delay: 0,
+                        n_cycles: Some(1),
+                        mode: None,
+                    }],
+                }],
+            }],
+        },
+        &catalog,
+        &[],
+        CompositePlanLimits::default(),
+    )
+    .unwrap();
+    session
+        .install_composite_timeline(
+            CompositeBoundaryTimeline::new(
+                vec![CompositeTimelineNode {
+                    plan,
+                    sync_source: sync_identity,
+                }],
+                CompositeTimelineLimits::default(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    session
+        .composite_timeline_mut()
+        .queue_control(AcceptedTimelineControl {
+            at_sample: 0,
+            target: source,
+            action: BoundaryTargetAction::SetMode {
+                mode: LoopMode::Playing,
+                offset_samples: 0,
+                retrigger: true,
+            },
+            acceptance_sequence: 1,
+        })
+        .unwrap();
+
+    assert_steady_state_is_alloc_free(session, 4, 8);
 }
 
 #[test]

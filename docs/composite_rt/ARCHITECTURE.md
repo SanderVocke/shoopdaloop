@@ -2,14 +2,16 @@
 
 ## Status and scope
 
-This document describes the implemented Stage 1 engine data model and pure state machine, followed by the integration boundaries reserved for later stages. The implementation is in:
+This document describes the implemented Stage 1 compiled plan/state machine and Stage 2 engine sample-timeline integration, followed by ownership and application boundaries reserved for later stages. The implementation is in:
 
-- `shoop_engine::composite_plan` (`src/rust/shoop_engine/src/composite_plan.rs`): off-thread validation and compilation;
-- `shoop_engine::composite_runtime` (`src/rust/shoop_engine/src/composite_runtime.rs`): bounded, allocation-free state transitions;
-- `src/rust/shoop_engine/tests/composite_state_machine.rs`: engine-only behavior tests;
-- `src/rust/shoop_engine/tests/no_alloc.rs::composite_state_machine_does_not_allocate_or_free`: allocator-enforced RT-storage test.
+- `shoop_engine::composite_plan`: off-thread validation and compilation;
+- `shoop_engine::composite_runtime`: bounded, allocation-free state transitions;
+- `shoop_engine::composite_timeline`: timestamp staging, stable topology, conflict resolution, propagation, trace, and fault state;
+- `shoop_engine::session`: authoritative POI/sub-block advancement and basic-loop target commit;
+- `tests/composite_state_machine.rs`, `tests/composite_timeline.rs`, and `tests/composite_timing.rs`: pure and sample-timing behavior;
+- `tests/no_alloc.rs`: allocator-enforced runtime and integrated timeline tests.
 
-Stage 1 deliberately does not connect this state machine to `Session`, the callback POI timeline, frontend commands, or QML. Those are Stages 2–5. The existing frontend composite remains the application timing authority until that integration is complete.
+Stage 2 connects compiled composites to `Session::process`, but deliberately does not yet add Stage 3 command queues/plan reclamation, Stage 3 snapshots, or the Stage 5 frontend switch. The existing frontend composite therefore remains the application timing authority until those later integrations are complete; frontend success is not evidence that the Stage 2 engine path is active in the application.
 
 ## Stable identities
 
@@ -161,11 +163,17 @@ The defaults are policy inputs to off-thread compilation, not hidden growth poin
 | nesting depth | 32 | bounds later propagation depth |
 | boundary outputs | 128 hard maximum | fixed batch for up to 64 old stops plus 64 replacement starts |
 
-Stage 2's `RT_SAFETY.md` will add callback-wide event, wave, POI, and sub-block capacities. Stage 1's plan limits do not claim to bound those not-yet-implemented integration mechanisms.
+Stage 2's [RT_SAFETY.md](RT_SAFETY.md) adds the implemented event, intent, wave, accepted-control, trace, POI, and sub-block capacities. Stage 1's limits remain the per-plan portion of that combined budget.
 
-## Callback integration reserved for Stage 2
+## Engine sample timeline implemented in Stage 2
 
-The callback will use compiled action ranges as POI candidates and invoke `CompositeRuntime` only after every node reaches the same sample boundary. A bounded resolver will merge primitive events, nested composite outputs, and direct commands according to `SEMANTICS.md`. `CompositeRuntime` currently has no `Session`/audio-channel dependency, making it independently testable but not yet an audio-timeline authority.
+`Session::process_loop_group` co-advances every basic loop to the earliest basic/channel POI or accepted timestamped-control boundary. It settles primitive sync propagation before calling `CompositeBoundaryTimeline`, then applies the resolver's basic-loop winners before any non-empty post-boundary sub-block. Composite iteration events use their sync source trigger and add no separate POI. Only an accepted timestamp between existing POIs introduces a composite-related split.
+
+The timeline owns installed plans/runtimes in stable topological order. Its prepared graph includes parent-to-composite-target, composite-sync-source, primitive sync-source/follower, and producer-to-basic-sync-follower edges. It copies runtime state into preallocated working storage, seeds natural/direct intents, processes every composite once parent-before-child, resolves targets with the Stage 0 precedence, and swaps working runtimes into authority only after successful resolution. Composite target transitions execute inside that transaction, so nested iteration-zero actions reach primitive targets at the same sample through several levels.
+
+Natural primitive wraps are already reflected in basic-loop mechanics when resolution starts. A higher-priority winning intent supersedes that state before post-boundary audio. Direct source stops are resolved before source triggers are delivered, suppressing coincident due composite work. Basic sync followers settle in bounded repeated waves rather than the previous single snapshot pass.
+
+The resolver records a deterministic fixed-capacity transition trace and a latched fixed fault record. Event/intention failures abort before target commit; excess trace diagnostics are dropped and counted without affecting musical state. A sub-block overflow stops at the unserviceable boundary and prevents later processing. Exact capacities and allocator evidence are in [RT_SAFETY.md](RT_SAFETY.md).
 
 ## Command ownership and reclamation reserved for Stage 3
 
@@ -225,3 +233,35 @@ On 2026-07-31:
 - `cargo fmt --all --check` and `git diff --check`: **passed**.
 
 The missing-backend opt-out is the same documented host qualification as [BASELINE.md](BASELINE.md): JACK is unavailable on this Windows host. Stage 1 changes no frontend/QML behavior, so the Stage 0 QML baseline remains the applicable frontend evidence; it is not used as proof of the new engine state machine.
+
+## Stage 2 verification map
+
+The detailed capacity and overflow map is in [RT_SAFETY.md](RT_SAFETY.md#stage-2-verification-evidence). Stage 2 adds these engine-authoritative guarantees:
+
+| Requirement | Evidence |
+|---|---|
+| Session POI integration and pre-audio commit | `mid_callback_composite_transition_changes_the_exact_first_output_sample` |
+| Identical output/trace under callback partitioning | `callback_size_and_arbitrary_partitions_do_not_change_audio_or_transition_trace` |
+| Source POI reuse | `iteration_aligned_composite_events_reuse_the_source_poi` |
+| Primitive wrap seeding, including multiple wraps | `a_source_that_wraps_multiple_times_advances_every_composite_boundary` |
+| Timestamp POI and exact accepted boundary | `timestamped_controls_keep_their_boundary_and_late_controls_are_rejected`, `timestamped_script_modes_commit_before_post_boundary_samples` |
+| Deterministic direct/script/regular/natural conflict resolution | `script_regular_natural_and_direct_conflicts_use_total_precedence`, `same_class_conflicts_use_lower_source_identity_not_install_order` |
+| Multi-level same-sample propagation | `nested_iteration_zero_propagates_through_several_levels_at_one_sample`, `composite_sync_triggers_propagate_transitively_without_snapshot_order`, `a_composite_started_primitive_source_triggers_its_follower_in_the_same_boundary`, `composite_to_primitive_to_composite_propagation_settles_before_audio_advances` |
+| Source stop before due delivery | `direct_source_stop_suppresses_the_coincident_natural_trigger` |
+| Session installation generation/combined-topology recheck | `session_rechecks_primitive_generations_before_timeline_installation`, `session_rejects_cycles_spanning_composite_and_primitive_sync_edges` |
+| Queue, topology, event, and sub-block bounds | `control_queue_and_dependency_wave_capacities_are_enforced_before_processing`, `event_overflow_latches_before_runtime_or_target_commit`, `sub_block_overflow_latches_and_never_processes_the_remainder_late` |
+| Allocation-free integrated timeline | `composite_timeline_processing_does_not_allocate_or_free` |
+
+## Stage 2 completion verification
+
+On 2026-07-31:
+
+- `cargo test -p shoop_engine --test composite_timeline`: **12 passed, 0 failed**;
+- `cargo test -p shoop_engine --test composite_timing`: **10 passed, 0 failed**;
+- targeted integrated allocator test: **1 passed, 0 failed**;
+- `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend`: **859 passed, 0 failed** across the workspace, including **741 engine tests**;
+- `RUSTFLAGS="-D warnings" cargo build`: **passed**;
+- Windows launcher equivalent `target/debug/shoopdaloop_dev.bat --self-test`: **187 passed, 0 failed, 0 skipped**;
+- `cargo fmt --all --check`, `git diff --check`, and the Stage 2 artifact audit: **passed**.
+
+The JACK opt-out and Windows `.bat` launcher qualification remain as documented in [BASELINE.md](BASELINE.md). The QML run protects existing behavior from the shared `Session` changes; it is not represented as evidence that the frontend now uses engine composites.

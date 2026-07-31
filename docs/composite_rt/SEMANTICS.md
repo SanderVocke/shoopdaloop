@@ -2,11 +2,11 @@
 
 ## Status and terminology
 
-This is the normative contract for the engine-backed implementation. Stage 0 decisions are now implemented by the Stage 1 compiled-plan and pure-state-machine layer described in [ARCHITECTURE.md](ARCHITECTURE.md). The state machine is not yet connected to the callback, so this does not claim that the current Qt/update-thread application implementation satisfies the contract. Current behavior and known differences are inventoried in [FEATURE_PARITY.md](FEATURE_PARITY.md).
+This is the normative contract for the engine-backed implementation. Stage 0 decisions are implemented by the Stage 1 compiled plan/state machine and the Stage 2 `Session` sample timeline and boundary resolver described in [ARCHITECTURE.md](ARCHITECTURE.md). The application frontend is not yet switched to this engine path, so this does not claim that the current Qt/update-thread composite implementation satisfies the contract. Current behavior and known differences are inventoried in [FEATURE_PARITY.md](FEATURE_PARITY.md).
 
 A **sample boundary** `b` is the instant before sample `b` is processed. An **accepted command** is one the audio thread has removed from a bounded input queue during its defined acceptance phase, not merely one offered by the GUI. A **plan** is an immutable, validated composite schedule. A **target identity** is an engine slot plus generation. A **source ID** below means the stable engine identity ordered lexicographically by slot and generation.
 
-The executable parts of this contract are in `shoop_engine::composite_semantics`; its unit tests are listed under [Contract-test map](#contract-test-map).
+The decision helpers are in `shoop_engine::composite_semantics`; Stage 1 executes plan/runtime semantics and Stage 2 executes same-sample resolution in `shoop_engine::composite_timeline` and `Session::process_loop_group`. Their tests are mapped in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Timeline and sample intervals
 
@@ -159,4 +159,4 @@ All tests are unit tests under `src/rust/shoop_engine/src/composite_semantics.rs
 | Callback acceptance cutoff | `callback_cutoff_defers_commands_that_missed_the_drain` |
 | Timestamp retention and late rejection | `timestamped_commands_keep_exact_in_buffer_timing` |
 
-Stage 1 full-effect state-machine tests and their requirement mapping are recorded in [ARCHITECTURE.md](ARCHITECTURE.md#stage-1-verification-map). Callback timing and application integration still require later integration tests; the decision helpers alone are not sufficient evidence for those stages.
+Stage 1 state-machine tests and Stage 2 callback timing/resolver tests are mapped in [ARCHITECTURE.md](ARCHITECTURE.md#stage-1-verification-map) and [RT_SAFETY.md](RT_SAFETY.md#stage-2-verification-evidence). Stage 2 now covers engine-only exact-sample and buffer-partition behavior. Application command transport, snapshot publication, and frontend/QML integration still require later stages; decision helpers or engine tests alone are not evidence for those surfaces.

@@ -151,39 +151,39 @@ This is the initial design direction, not an immutable implementation prescripti
 
 ### Timeline integration
 
-- [ ] Create the initial [`docs/composite_rt/RT_SAFETY.md`](docs/composite_rt/RT_SAFETY.md) capacity budget for POIs, sub-blocks, actions, event waves, commands, plans, and snapshots.
-- [ ] Add composites to the engine's authoritative sample timeline.
-- [ ] Reuse a sync source's POI for iteration-aligned events where possible so composites do not introduce redundant sub-blocks.
-- [ ] Define a composite POI only where an event is not already guaranteed by a source POI.
-- [ ] Ensure every relevant node advances to the same sample before boundary events are resolved.
-- [ ] Ensure transitions are committed before processing any post-boundary audio sample.
+- [x] Create the initial [`docs/composite_rt/RT_SAFETY.md`](docs/composite_rt/RT_SAFETY.md) capacity budget for POIs, sub-blocks, actions, event waves, commands, plans, and snapshots.
+- [x] Add composites to the engine's authoritative sample timeline.
+- [x] Reuse a sync source's POI for iteration-aligned events where possible so composites do not introduce redundant sub-blocks.
+- [x] Define a composite POI only where an event is not already guaranteed by a source POI.
+- [x] Ensure every relevant node advances to the same sample before boundary events are resolved.
+- [x] Ensure transitions are committed before processing any post-boundary audio sample.
 
 ### Boundary-event resolver
 
-- [ ] Add a preallocated, bounded event/intention mechanism for same-sample propagation.
-- [ ] Seed it from primitive events such as basic-loop wraps and accepted timestamped controls.
-- [ ] Deliver sync triggers to composites in a deterministic order.
-- [ ] Gather and resolve composite transition intents using the Stage 0 conflict policy.
-- [ ] Apply actions to basic loops and composite loops at the same boundary.
-- [ ] Propagate newly caused triggers through nested composites until the boundary is settled.
-- [ ] Guarantee termination through DAG ordering, once-per-boundary delivery, bounded waves, or another proof documented in [`docs/composite_rt/ARCHITECTURE.md`](docs/composite_rt/ARCHITECTURE.md).
-- [ ] Remove dependence on the current one-pass snapshot behavior for transitive propagation.
-- [ ] Report queue/wave/sub-block overflow explicitly without processing the event late.
+- [x] Add a preallocated, bounded event/intention mechanism for same-sample propagation.
+- [x] Seed it from primitive events such as basic-loop wraps and accepted timestamped controls.
+- [x] Deliver sync triggers to composites in a deterministic order.
+- [x] Gather and resolve composite transition intents using the Stage 0 conflict policy.
+- [x] Apply actions to basic loops and composite loops at the same boundary.
+- [x] Propagate newly caused triggers through nested composites until the boundary is settled.
+- [x] Guarantee termination through DAG ordering, once-per-boundary delivery, bounded waves, or another proof documented in [`docs/composite_rt/ARCHITECTURE.md`](docs/composite_rt/ARCHITECTURE.md).
+- [x] Remove dependence on the current one-pass snapshot behavior for transitive propagation.
+- [x] Report queue/wave/sub-block overflow explicitly without processing the event late.
 
 ### Timing tests
 
-- [ ] Assert exact output samples when a composite event falls in the middle of an audio callback.
-- [ ] Run equivalent timelines with different callback sizes and arbitrary buffer partitions; compare transition traces and audio output.
-- [ ] Test several nested composite levels at one sample boundary.
-- [ ] Test parallel and coincident actions.
-- [ ] Test source loops that wrap multiple times in one callback.
-- [ ] Test stopped, recording, replacing, and playing child modes at boundaries.
-- [ ] Test that grid-aligned composite events do not add unnecessary sub-blocks.
+- [x] Assert exact output samples when a composite event falls in the middle of an audio callback.
+- [x] Run equivalent timelines with different callback sizes and arbitrary buffer partitions; compare transition traces and audio output.
+- [x] Test several nested composite levels at one sample boundary.
+- [x] Test parallel and coincident actions.
+- [x] Test source loops that wrap multiple times in one callback.
+- [x] Test stopped, recording, replacing, and playing child modes at boundaries.
+- [x] Test that grid-aligned composite events do not add unnecessary sub-blocks.
 
 ### Stage 2 exit gate
 
-- [ ] Engine-only composite processing is sample-correct and buffer-partition independent.
-- [ ] Nested propagation is deterministic and bounded.
+- [x] Engine-only composite processing is sample-correct and buffer-partition independent.
+- [x] Nested propagation is deterministic and bounded.
 
 ## Stage 3 — Non-blocking control boundary and RT ownership
 
@@ -387,6 +387,9 @@ The implementing agent should maintain this table as discoveries are made.
 | 2026-07-31 / Stage 1 | Compile descriptors off-thread into immutable stable-ID, iteration-major desired-state and sparse ordered-action tables; cap precomputed seek storage instead of replaying schedules in RT. | [`ARCHITECTURE.md`](docs/composite_rt/ARCHITECTURE.md), `composite_plan`, and compiler/state-machine tests. | 1–4 | No RT allocation, determinism, bounded RT work |
 | 2026-07-31 / Stage 1 | Keep `CompositeRuntime` allocation-free by borrowing plans and using fixed target/output arrays; defer plan ownership and non-RT reclamation to Stage 3. | Allocator-enforced `composite_state_machine_does_not_allocate_or_free`; source audit finds no locks, strings, or hash containers in runtime/plan storage. | 1, 3 | No RT allocation, no RT mutexes, bounded RT work |
 | 2026-07-31 / Stage 1 | Model running replacement as an externally owned deferred candidate and expose an atomic iteration-zero activation transaction; a completing script activates its candidate stopped. | Replacement tests and the plan-replacement sections of [`SEMANTICS.md`](docs/composite_rt/SEMANTICS.md) and [`ARCHITECTURE.md`](docs/composite_rt/ARCHITECTURE.md). | 1, 3 | Determinism, RT authority, feature parity |
+| 2026-07-31 / Stage 2 | Reuse primitive sync-source POIs for all iteration-aligned composite work; only accepted timestamps between existing POIs add a split. | Exact-output, arbitrary-partition, and source-POI sub-block tests in `composite_timing`. | 2, 3, 6 | Sample correctness, RT authority, bounded work |
+| 2026-07-31 / Stage 2 | Resolve a boundary transaction over preallocated working runtimes in a stable graph containing both composite-target and composite-sync edges. | `composite_timeline` conflict, deep-nesting, and transitive-sync tests; termination proof in [`ARCHITECTURE.md`](docs/composite_rt/ARCHITECTURE.md). | 2–4, 6 | Determinism, nested propagation, no RT allocation |
+| 2026-07-31 / Stage 2 | Use fixed accepted-control staging and preallocated event/intent/trace storage; reject producer/topology overflow and latch event/sub-block failures without late delivery. | [`RT_SAFETY.md`](docs/composite_rt/RT_SAFETY.md), overflow tests, and allocator-enforced integrated processing. | 2, 3, 6 | Bounded RT work, explicit overload, no RT allocation |
 
 ## Completion definition
 
