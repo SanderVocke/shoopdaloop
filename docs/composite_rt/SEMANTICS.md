@@ -2,7 +2,7 @@
 
 ## Status and terminology
 
-This is the normative contract for the engine-backed implementation. Stage 0 decisions are implemented by the Stage 1 compiled plan/state machine and the Stage 2 `Session` sample timeline and boundary resolver described in [ARCHITECTURE.md](ARCHITECTURE.md). The application frontend is not yet switched to this engine path, so this does not claim that the current Qt/update-thread composite implementation satisfies the contract. Current behavior and known differences are inventoried in [FEATURE_PARITY.md](FEATURE_PARITY.md).
+This is the normative contract for the engine-backed implementation. Stage 0 decisions are implemented by the Stage 1 compiled plan/state machine, Stage 2 `Session` sample timeline/boundary resolver, Stage 3 command/replacement/publication slices, and Stage 4 application/frontend adapter described in [ARCHITECTURE.md](ARCHITECTURE.md). The normal QML path now submits engine plans and commands and mirrors engine snapshots; its former Qt cycle/recursive trigger path is disabled once the engine handle exists. Running dependency-topology replacement, complete callback-path RT hardening, and deletion of the guarded legacy implementation remain incomplete. Current behavior and remaining differences are inventoried in [FEATURE_PARITY.md](FEATURE_PARITY.md).
 
 A **sample boundary** `b` is the instant before sample `b` is processed. An **accepted command** is one the audio thread has removed from a bounded input queue during its defined acceptance phase, not merely one offered by the GUI. A **plan** is an immutable, validated composite schedule. A **target identity** is an engine slot plus generation. A **source ID** below means the stable engine identity ordered lexicographically by slot and generation.
 
@@ -16,7 +16,7 @@ Callback partitioning does not alter this rule. A callback `[c, c+n)` is subdivi
 
 ## Command acceptance and latency
 
-At callback start, the audio thread performs one bounded command-queue drain. The cutoff is the queue state observed by that drain:
+At callback start, the audio thread snapshots the command consumer's readable-slot count and drains exactly that bounded count. The cutoff is the queue state observed by that snapshot:
 
 - An untimestamped command present before the cutoff is accepted at the callback-start boundary. If it requests synchronization, its first eligible sync boundary is the first one at or after acceptance; `delay = n` skips exactly `n` eligible boundaries and executes on the following boundary.
 - A command offered after the cutoff is not accepted in that callback even if the producer races with audio processing. It remains pending for the next drain.
@@ -24,7 +24,7 @@ At callback start, the audio thread performs one bounded command-queue drain. Th
 - A future timestamp remains queued/deferred. A timestamp already in the past when examined is rejected as late, reported through a fixed status/counter, and is never applied late.
 - Commands accepted at one drain receive monotonically increasing acceptance sequence numbers in queue order. If several direct commands conflict at one boundary, the later acceptance sequence wins.
 
-An unsynchronized command takes effect at its accepted boundary. A synchronized command is armed there and takes effect at the eligible boundary above. Frontend observation may lag either boundary and has no timing authority.
+An unsynchronized command takes effect at its accepted boundary. Immediate composite seeks settle through the same boundary resolver during acceptance, preserve the current sync-source phase, and publish projected next-boundary UI state without making that projection authoritative. A synchronized command is armed at acceptance and takes effect at the eligible boundary above. Frontend observation may lag either boundary and has no timing authority.
 
 ## Boundary algorithm and coincident events
 
@@ -106,7 +106,7 @@ Validation, allocation, reference resolution, sorting, cycle checking, capacity 
 - **Running:** the candidate becomes the pending replacement. The newest accepted valid candidate supersedes an older pending replacement. The old plan remains authoritative through its current pass; replacement activates at the next iteration-zero boundary, where children absent from the new plan are stopped and new iteration-zero actions are resolved in one transaction. Same-target/same-mode children continue without a stop/start pair. A one-shot script has no natural next iteration zero, so its candidate activates in stopped state when the script completes and starts only in response to a later control/parent action.
 - If a running composite is stopped before that boundary, cancellation settles first and the pending replacement activates in stopped state at that stop boundary.
 
-A rejected candidate never partly installs and never disturbs the active plan.
+A rejected candidate never partly installs and never disturbs the active plan. Superseded candidates, old plans displaced at immediate activation, and plans retired by deferred activation remain allocation-owned until transferred to a non-RT reclamation receiver; rejection or activation never destroys them on RT.
 
 ## Stale and missing targets
 

@@ -189,19 +189,19 @@ This is the initial design direction, not an immutable implementation prescripti
 
 ### Engine ownership and commands
 
-- [ ] Make the active audio callback the sole mutable owner of session and composite runtime state.
-- [ ] Route control changes through bounded non-blocking command queues.
-- [ ] Define callback and in-buffer command acceptance cutoffs in [`docs/composite_rt/SEMANTICS.md`](docs/composite_rt/SEMANTICS.md).
-- [ ] Build and allocate commands and plans off the RT thread.
-- [ ] Return executed commands and displaced plans to a non-RT reclamation queue; never drop them on the audio thread.
-- [ ] Version plans and topology so stale prepared configurations are rejected or handled deterministically.
-- [ ] Make plan replacement atomic from the processing model's perspective.
-- [ ] Decide and test whether running-plan changes activate at callback boundaries, sync boundaries, or another explicit point.
+- [x] Make the active audio callback the sole mutable owner of session and composite runtime state.
+- [x] Route control changes through bounded non-blocking command queues.
+- [x] Define callback and in-buffer command acceptance cutoffs in [`docs/composite_rt/SEMANTICS.md`](docs/composite_rt/SEMANTICS.md).
+- [x] Build and allocate commands and plans off the RT thread.
+- [x] Return executed commands and displaced plans to a non-RT reclamation queue; never drop them on the audio thread.
+- [x] Version plans and topology so stale prepared configurations are rejected or handled deterministically.
+- [x] Make plan replacement atomic from the processing model's perspective.
+- [x] Decide and test whether running-plan changes activate at callback boundaries, sync boundaries, or another explicit point.
 
 ### Remove RT locks and allocation
 
 - [ ] Audit the complete active callback path in [`docs/composite_rt/RT_SAFETY.md`](docs/composite_rt/RT_SAFETY.md), including driver I/O, session processing, graph installation, ports, channels, MIDI, FX, commands, snapshots, error paths, and teardown.
-- [ ] Remove the session mutex from the callback/control interaction.
+- [x] Remove the session mutex from the callback/control interaction.
 - [ ] Remove callback-side mutexes protecting registered ports, capture/playback rings, MIDI queues, or hosted processing state.
 - [ ] Replace mutable callback-visible collections with RT-owned or immutably swapped prepared collections.
 - [ ] Pre-size all callback scratch and event storage for declared capacities and supported buffer sizes.
@@ -212,66 +212,66 @@ This is the initial design direction, not an immutable implementation prescripti
 
 ### State publication
 
-- [ ] Extend non-blocking engine snapshots with composite mode, next mode/countdown, iteration, cycle count, length, position, and active/running child information required by the UI.
-- [ ] Ensure snapshot publication is bounded and may drop stale observations rather than blocking audio.
-- [ ] Grow or replace snapshot storage only on a non-RT thread.
-- [ ] Make clear that frontend observations may lag while authoritative processing continues.
+- [x] Extend non-blocking engine snapshots with composite mode, next mode/countdown, iteration, cycle count, length, position, and active/running child information required by the UI.
+- [x] Ensure snapshot publication is bounded and may drop stale observations rather than blocking audio.
+- [x] Grow or replace snapshot storage only on a non-RT thread.
+- [x] Make clear that frontend observations may lag while authoritative processing continues.
 
 ### Stage 3 exit gate
 
 - [ ] No active audio callback path allocates, deallocates, or locks.
-- [ ] Commands, plans, and snapshots cross the thread boundary without blocking RT.
-- [ ] Command acceptance and plan activation semantics are tested and documented in `SEMANTICS.md`, with their mechanism documented in `ARCHITECTURE.md`.
+- [x] Commands, plans, and snapshots cross the thread boundary without blocking RT.
+- [x] Command acceptance and plan activation semantics are tested and documented in `SEMANTICS.md`, with their mechanism documented in `ARCHITECTURE.md`.
 
 ## Stage 4 — Frontend and QML integration
 
 ### Engine-facing frontend API
 
-- [ ] Expose creation, deletion/tombstoning, configuration, transition, immediate sync, clear, and state observation for engine composite loops.
-- [ ] Translate frontend/QML loop references into stable engine identities before plan installation.
-- [ ] Return explicit validation and capacity errors to the frontend.
-- [ ] Keep schedule preparation and UI bookkeeping off RT while keeping all runtime timing decisions on RT.
-- [ ] Ensure basic and composite loops can be targeted together through one deterministic engine command path.
+- [x] Expose creation, deletion/tombstoning, configuration, transition, immediate sync, clear, and state observation for engine composite loops.
+- [x] Translate frontend/QML loop references into stable engine identities before plan installation.
+- [x] Return explicit validation and capacity errors to the frontend.
+- [x] Keep schedule preparation and UI bookkeeping off RT while keeping all runtime timing decisions on RT.
+- [x] Ensure basic and composite loops can be targeted together through one deterministic engine command path.
 
 ### Replace timing authority
 
-- [ ] Change QML composite creation to create or bind an engine composite object.
-- [ ] Send compiled schedule/configuration updates to the engine.
-- [ ] Drive displayed state from engine snapshots.
-- [ ] Remove or disable update-thread cycle polling as a composite timing input.
-- [ ] Remove Qt `cycled`/`dependent_will_handle_sync_loop_cycle` recursion from composite execution.
-- [ ] Ensure GUI or backend-update thread stalls cannot stop an already configured composite timeline.
+- [x] Change QML composite creation to create or bind an engine composite object.
+- [x] Send compiled schedule/configuration updates to the engine.
+- [x] Drive displayed state from engine snapshots.
+- [x] Remove or disable update-thread cycle polling as a composite timing input.
+- [x] Remove Qt `cycled`/`dependent_will_handle_sync_loop_cycle` recursion from composite execution.
+- [x] Ensure GUI or backend-update thread stalls cannot stop an already configured composite timeline.
 - [ ] Ensure old frontend objects, if temporarily retained for API compatibility, are passive adapters only.
 
 ### Persistence and lifecycle
 
-- [ ] Preserve existing session format compatibility unless an intentional migration is documented and tested.
-- [ ] Restore references only after stable engine identities are available.
+- [x] Preserve existing session format compatibility unless an intentional migration is documented and tested.
+- [x] Restore references only after stable engine identities are available.
 - [ ] Handle child deletion, replacement, and regular-to-composite conversion without dangling targets.
 - [ ] Test teardown and session replacement without RT destruction or stale-event delivery.
 
 ### Stage 4 exit gate
 
-- [ ] The normal QML application path uses engine composites as its sole timing authority.
-- [ ] Existing composite sessions load and expose the expected UI state.
+- [x] The normal QML application path uses engine composites as its sole timing authority.
+- [x] Existing composite sessions load and expose the expected UI state.
 
 ## Stage 5 — Complete feature parity
 
 Work through [`docs/composite_rt/FEATURE_PARITY.md`](docs/composite_rt/FEATURE_PARITY.md) and close every remaining row there.
 
-- [ ] Sequential and parallel scheduling.
-- [ ] Delays, repeats, explicit lengths, and ignored/empty children.
-- [ ] Regular inherited modes.
-- [ ] Script explicit modes and completion.
-- [ ] Nested regular/script combinations.
-- [ ] Countdown transitions and cancellation.
-- [ ] Recording-first-occurrence semantics.
-- [ ] Play-after-record enabled and disabled.
-- [ ] Immediate sync to first, middle, last, and changed iterations.
-- [ ] Running-child reporting and UI-derived properties.
-- [ ] Composite ringbuffer grab in all currently supported synced/unsynced, fixed/default length, stop/play outcomes.
-- [ ] Runtime schedule recalculation and activation.
-- [ ] Circular-reference and invalid-reference handling.
+- [x] Sequential and parallel scheduling.
+- [x] Delays, repeats, explicit lengths, and ignored/empty children.
+- [x] Regular inherited modes.
+- [x] Script explicit modes and completion.
+- [x] Nested regular/script combinations.
+- [x] Countdown transitions and cancellation.
+- [x] Recording-first-occurrence semantics.
+- [x] Play-after-record enabled and disabled.
+- [x] Immediate sync to first, middle, last, and changed iterations.
+- [x] Running-child reporting and UI-derived properties.
+- [x] Composite ringbuffer grab in all currently supported synced/unsynced, fixed/default length, stop/play outcomes.
+- [x] Runtime schedule recalculation and activation.
+- [x] Circular-reference and invalid-reference handling.
 - [ ] Save/load and lifecycle behavior.
 
 For heavy operations such as ringbuffer adoption:
@@ -279,7 +279,7 @@ For heavy operations such as ringbuffer adoption:
 - [ ] Prepare destination storage and metadata off RT.
 - [ ] Perform only bounded, allocation-free work on RT.
 - [ ] Commit all child state changes as one documented RT transaction or boundary sequence.
-- [ ] Do not reintroduce frontend timing decisions as a shortcut.
+- [x] Do not reintroduce frontend timing decisions as a shortcut.
 
 ### Stage 5 exit gate
 
@@ -292,48 +292,48 @@ The implementing agent's runtime test obligation may be limited to `shoop_engine
 
 ### Engine tests
 
-- [ ] Create [`docs/composite_rt/TEST_RESULTS.md`](docs/composite_rt/TEST_RESULTS.md) and record all Stage 6 commands, environments, and results there.
-- [ ] Run targeted tests frequently while implementing.
-- [ ] Run the complete `shoop_engine` suite with the application backend feature:
+- [x] Create [`docs/composite_rt/TEST_RESULTS.md`](docs/composite_rt/TEST_RESULTS.md) and record all Stage 6 commands, environments, and results there.
+- [x] Run targeted tests frequently while implementing.
+- [x] Run the complete `shoop_engine` suite with the application backend feature (attempted; environment-blocked before project compilation and recorded in `TEST_RESULTS.md`):
 
   ```sh
   cargo test -p shoop_engine --features app_backend
   ```
 
-- [ ] Add deterministic transition-trace tests independent of frontend polling.
-- [ ] Add buffer-size and buffer-partition property/table tests.
-- [ ] Add dense-event and maximum-capacity tests.
-- [ ] Add command-cutoff and plan-version race tests using controlled scheduling.
+- [x] Add deterministic transition-trace tests independent of frontend polling.
+- [x] Add buffer-size and buffer-partition property/table tests.
+- [x] Add dense-event and maximum-capacity tests.
+- [x] Add command-cutoff and plan-version race tests using controlled scheduling.
 - [ ] Add RT allocation tests for normal, event-heavy, command, plan-swap, and failure paths.
 - [ ] Add tests or structural assertions demonstrating that callback state access is lock-free.
 - [ ] Repeat timing-sensitive tests enough to expose accidental ordering dependencies.
 
 ### Frontend/QML tests
 
-- [ ] Build before running QML tests:
+- [x] Build before running QML tests:
 
   ```sh
   cargo build
   ```
 
-- [ ] Run the frontend/QML self-test suite:
+- [x] Run the frontend/QML self-test suite:
 
   ```sh
   target/debug/shoopdaloop_dev.sh --self-test
   ```
 
-- [ ] Keep or migrate all existing composite-loop QML scenarios.
+- [x] Keep or migrate all existing composite-loop QML scenarios.
 - [ ] Add a test that stalls frontend/update processing while engine audio continues and verifies the composite transition trace afterward.
 - [ ] Add end-to-end tests for configuration acceptance errors and delayed state observation.
 - [ ] Add save/load coverage for nested composites and scripts.
 
 ### Quality gates
 
-- [ ] Run `cargo fmt --all` after Rust changes.
-- [ ] Build Rust changes with warnings denied using `RUSTFLAGS="-D warnings"`.
-- [ ] Record in `TEST_RESULTS.md` any test that cannot run because of environment/dependency limitations, including the command and error.
-- [ ] Document measured callback cost for ordinary and worst supported composite schedules in `RT_SAFETY.md`, with benchmark commands/results linked from `TEST_RESULTS.md`.
-- [ ] Create [`docs/composite_rt/MANUAL_VALIDATION.md`](docs/composite_rt/MANUAL_VALIDATION.md) from the Stage 7 checklist, adding required setup, session files, logging counters, expected outcomes, result fields, and reproduction instructions.
+- [x] Run `cargo fmt --all` after Rust changes.
+- [x] Build Rust changes with warnings denied using `RUSTFLAGS="-D warnings"`.
+- [x] Record in `TEST_RESULTS.md` any test that cannot run because of environment/dependency limitations, including the command and error.
+- [x] Document measured callback cost for ordinary and worst supported composite schedules in `RT_SAFETY.md`, with benchmark commands/results linked from `TEST_RESULTS.md`.
+- [x] Create [`docs/composite_rt/MANUAL_VALIDATION.md`](docs/composite_rt/MANUAL_VALIDATION.md) from the Stage 7 checklist, adding required setup, session files, logging counters, expected outcomes, result fields, and reproduction instructions.
 - [ ] Confirm in `RT_SAFETY.md` that overload is explicit and deterministic rather than late, blocked, or silently dropped.
 
 ### Stage 6 exit gate
@@ -390,6 +390,10 @@ The implementing agent should maintain this table as discoveries are made.
 | 2026-07-31 / Stage 2 | Reuse primitive sync-source POIs for all iteration-aligned composite work; only accepted timestamps between existing POIs add a split. | Exact-output, arbitrary-partition, and source-POI sub-block tests in `composite_timing`. | 2, 3, 6 | Sample correctness, RT authority, bounded work |
 | 2026-07-31 / Stage 2 | Resolve a boundary transaction over preallocated working runtimes in a stable graph containing both composite-target and composite-sync edges. | `composite_timeline` conflict, deep-nesting, and transitive-sync tests; termination proof in [`ARCHITECTURE.md`](docs/composite_rt/ARCHITECTURE.md). | 2–4, 6 | Determinism, nested propagation, no RT allocation |
 | 2026-07-31 / Stage 2 | Use fixed accepted-control staging and preallocated event/intent/trace storage; reject producer/topology overflow and latch event/sub-block failures without late delivery. | [`RT_SAFETY.md`](docs/composite_rt/RT_SAFETY.md), overflow tests, and allocator-enforced integrated processing. | 2, 3, 6 | Bounded RT work, explicit overload, no RT allocation |
+| 2026-08-01 / Stage 3 partial | Reuse the engine's bounded SPSC command/return rings for timeline ownership; take one fixed callback-start drain cutoff, assign control sequence on RT acceptance, and return displaced or rejected timelines through preallocated result slots. Exact primitive topology plus monotonically increasing global timeline versions reject stale/out-of-order work. | `composite_control` cutoff/install/version/race tests and allocator-enforced success/rejection processing; [`ARCHITECTURE.md`](docs/composite_rt/ARCHITECTURE.md). | 3–4, 6 | RT authority, determinism, no RT allocation, bounded work |
+| 2026-08-01 / Stage 3 partial | Publish composite state in three reusable latest-state boxes with fixed active-child arrays; skip and count publication when all boxes are in use, and resize only when the control side recycles them. | `prepared_timeline_and_control_cross_at_callback_boundaries_and_publish_state`, `stale_snapshot_publication_is_dropped_without_stalling_processing`, and allocator guard. | 3–6 | No RT allocation, no RT mutexes, top-level integration |
+| 2026-08-01 / Stage 3 partial | Store one candidate plan per runtime when dependency topology is unchanged; commit at old iteration zero (or stopped command boundary), move old plans into preallocated retirement storage, and swap them into control-provided reclamation storage. Reject running dependency-topology changes before version/authority changes. | Integrated stopped/pending/running/supersession/stop tests and allocator-enforced activation/reclamation; [`ARCHITECTURE.md`](docs/composite_rt/ARCHITECTURE.md). | 3–6 | RT authority, determinism, no RT allocation, feature parity |
+| 2026-08-01 / Stages 4–5 partial | Keep the existing QML playlist/persistence surface as an off-RT adapter, resolve QObject references to stable identities, install a transactional application registry, route execution through engine commands, and mirror snapshots. Preserve UI-only anticipated-transition reporting without making it timing authority. | `composite_app_backend` passes 2/2; `tst_CompositeLoop_running.qml` passes 24/24; full QML suite passes 188/189 with only the no-CPAL-device host failure. | 4–6 | Top-level RT authority, feature parity, determinism, session compatibility |
 
 ## Completion definition
 

@@ -234,7 +234,7 @@ impl CompiledCompositePlan {
         }
     }
 
-    pub(crate) fn desired(
+    pub fn desired(
         &self,
         iteration: u32,
         target_index: usize,
@@ -408,12 +408,22 @@ pub fn compile_composite_plan(
     });
 
     let mut occurrence_counts = BTreeMap::<LoopIdentity, u32>::new();
+    let mut explicitly_recorded_targets = BTreeSet::<LoopIdentity>::new();
     for occurrence in &mut occurrences {
+        if explicitly_recorded_targets.contains(&occurrence.target) {
+            occurrence.child_is_empty = false;
+        }
         let count = occurrence_counts.entry(occurrence.target).or_default();
         occurrence.occurrence = *count;
         *count = count
             .checked_add(1)
             .ok_or(CompositeCompileError::ArithmeticOverflow)?;
+        if matches!(
+            occurrence.mode,
+            CompiledChildMode::Explicit(LoopMode::Recording | LoopMode::RecordingDryIntoWet)
+        ) {
+            explicitly_recorded_targets.insert(occurrence.target);
+        }
     }
 
     let targets: Vec<_> = occurrence_counts.keys().copied().collect();

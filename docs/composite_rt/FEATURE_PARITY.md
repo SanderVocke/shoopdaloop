@@ -2,7 +2,7 @@
 
 ## Scope and status
 
-This is the Stage 0 inventory of user-visible and persistence behavior at commit `06266290769186be70d4bad9def74723ff9fd315`. The application still uses a frontend `QObject` state machine on the engine update thread. Stages 1–2 have added a core-engine compiled plan, runtime, and authoritative `Session` timeline, but the frontend does not submit plans to it yet. Therefore the original **Not migrated** labels remain historical baseline status; the stage-specific tables below state precisely which engine portions now exist. Contract or engine-only evidence does not count as application migration.
+This is the Stage 0 inventory of user-visible and persistence behavior at commit `06266290769186be70d4bad9def74723ff9fd315`. The original **Not migrated** labels are retained as historical baseline status. Stages 1–3 added the core-engine compiled plan, authoritative sample timeline, command boundary, replacement, reclamation, and snapshots. Stage 4 now provides an application registry and a frontend QObject adapter that translates the established QML schedule to stable engine identities, submits it, routes controls, and mirrors snapshots. The stage-specific tables below distinguish that implemented path from parity that is still unverified; engine-only evidence still does not count as end-to-end application parity.
 
 Evidence abbreviations:
 
@@ -126,30 +126,56 @@ Stage 2 makes compiled composites authoritative inside the core `Session` sample
 
 Stage 2 timing evidence is mapped in [ARCHITECTURE.md](ARCHITECTURE.md#stage-2-verification-map) and [RT_SAFETY.md](RT_SAFETY.md#stage-2-verification-evidence). No row is labeled application-migrated merely because the engine path exists.
 
+## Stage 3 partial engine coverage update
+
+This table records the implemented control/publication slice; the Stage 4 update below records the application adapter separately.
+
+| ID | Stage 3 evidence | Status |
+|---|---|---|
+| F12 | Direct stop/start uses the same accepted target-action queue; stopping before deferred activation cleans children and activates the candidate stopped. | Engine control/replacement implemented |
+| F14 | Play-after-record is accepted in callback queue order and published from RT state. | Engine command/state implemented |
+| F15 | Dedicated synchronized transition commands arm the RT countdown; snapshots publish pending mode and remaining boundaries. | Engine command/state implemented |
+| F16 | Dedicated immediate transition validates exact iteration before acceptance and executes without replay. | Engine command/state implemented |
+| F19 | Reusable snapshots publish every required composite field, deterministic active children, counters/fault, version, and rolling trace. | Engine transport implemented; adapter mirrors primary state |
+| F24 | Exact primitive topology and monotonic versions reject stale/out-of-order preparation. Stopped/pending activation and same-dependency-topology running activation are atomic; running dependency-topology changes remain open. | Lifecycle mostly implemented in engine |
+| F27 | Basic and composite targets can share the direct boundary-control path and resolver. Application group batching is open. | Engine mechanism implemented; app batching open |
+| F28 | Executed commands and displaced/rejected timelines return for non-RT destruction; frontend clear removes the registry node after deterministic stop/cleanup. | Ownership/application API implemented |
+| F30 | Rolling traces remain observable after snapshot polling stalls while callback authority continues. | Engine proof implemented; QML stall proof open |
+
+Evidence is listed under the Stage 3 partial verification map in [ARCHITECTURE.md](ARCHITECTURE.md#stage-3-partial-verification-map).
+
+## Stage 4 application adapter update
+
+- `BackendSession` allocates stable, generation-bearing composite identities and exposes configuration, transition, immediate seek, record option, removal, and state APIs.
+- A transactional registry compiles every configured composite against one candidate catalog and dependency graph; installation succeeds before registry commit, and cycle rejection is covered by `application_composite_registry_rejects_a_cycle_transactionally`.
+- `CompositeLoopBackend` resolves QML backend wrappers to basic/composite `LoopIdentity` values, translates existing boundary schedules to descriptors, obtains the published primitive topology, and submits prepared timelines off RT.
+- Once engine initialized, transitions and play-after-record use engine commands, wrap/recursive QObject trigger handling is disabled, and `update` mirrors engine mode, pending state, iteration, cycle, position, length, active children, and record state.
+- QML playlist editing and `loop.1` persistence remain structurally unchanged. The existing 24-case composite suite passes in full, including nested regular/script execution, immediate seeks, GUI/file-I/O stalls, circular references, conversion, recording, play-after-record, and every current grab variant. The complete QML suite passes 188/189 with only the host's missing CPAL playback port. Dedicated nested save/load, deletion/session-replacement, acceptance-error, and manual gates remain open, and the guarded legacy scheduler is still present in source.
+
 ## Current implementation map
 
-1. `CompositeLoop.qml` owns the persisted playlists, resolves QML loop IDs, checks limited cycles, derives durations, and compiles a JS schedule.
-2. `composite_loop_schedule.rs` serializes that schedule through `QVariant`, storing boundary actions in a `BTreeMap` but targets in `HashMap`/`HashSet`.
-3. `qobj_composite_loop_gui.rs` replaces QML objects with weak backend-wrapper `QObject` pointers and sends the schedule by queued Qt connection.
-4. `qobj_composite_loop_backend.rs` is the mutable state machine on the engine update thread. It receives `cycled` signals, performs child `QObject` transitions, reconstructs seeks/grabs, and publishes queued GUI properties.
-5. The active application path still exposes only primitive engine loops; `qobj_loop_backend.rs:update` polls their snapshots and infers a wrap from `new_position < old_position`.
-6. `LoopWidget.qml`, the editor, state registries, Lua API, and session serializer provide the application surface.
-7. The Stage 2 prototype path in `shoop_engine` can install compiled composites into `Session`, split at authoritative POIs, propagate nested actions, resolve conflicts, and commit primitive modes at exact samples. No frontend adapter invokes this path yet.
+1. `CompositeLoop.qml` owns persisted playlists and still derives the established JS boundary schedule.
+2. `composite_loop_schedule.rs` serializes that schedule through `QVariant`; this is now configuration input, not callback timing authority.
+3. `qobj_composite_loop_gui.rs` replaces QML objects with weak backend-wrapper pointers and sends configuration by queued Qt connection.
+4. `qobj_composite_loop_backend.rs` resolves those pointers to stable engine identities, submits plans and commands, and mirrors snapshots. Its legacy scheduler is bypassed whenever an engine composite handle exists.
+5. `qobj_loop_backend.rs` continues to expose primitive snapshots and compatibility `cycled` signals, but those signals no longer advance engine-backed composites.
+6. `LoopWidget.qml`, the editor, state registries, Lua API, and session serializer retain the application surface.
+7. The engine path installs versioned compiled composites, splits at authoritative POIs, propagates nested actions, resolves conflicts, commits primitive modes at exact samples, and publishes rolling state/trace snapshots; the frontend adapter now invokes this path.
 
-## Accidental timing and ordering dependencies to remove
+## Accidental timing and ordering dependencies: migration status
 
-These are recorded explicitly because they are observable risks, not desired parity:
+These were observable baseline risks, not desired parity:
 
-- **Polling authority:** `qobj_loop_backend.rs:update` infers only one cycle when position decreases. It misses a wrap when polling lands at the same position and cannot count multiple wraps between polls. Composite advancement therefore depends on update-thread frequency and callback/poll partitioning.
-- **Qt delivery:** primitive `cycled` to composite `handle_sync_loop_trigger` is a direct Qt connection on wrapper objects; GUI-to-wrapper configuration/control and wrapper-to-GUI observation are queued connections. Acceptance depends on event-loop scheduling.
-- **Recursive QObject propagation:** nesting calls `dependent_will_handle_sync_loop_cycle` and transitions through direct reflective invocation. This is not an engine event resolver and has no declared propagation capacity.
-- **Hash traversal:** `loops_start`, `loops_end`, `loops_ignored`, `all_loops`, `running_loops`, immediate-seek last transitions, and grab maps use Rust `HashMap`/`HashSet`. Their iteration controls notification, transition, serialization, and displayed-child order.
+- **Polling authority (replaced for engine-backed composites):** `qobj_loop_backend.rs:update` still emits a compatibility wrap signal, but engine composite advancement comes from callback source events and does not consume it.
+- **Qt delivery (configuration/observation only):** GUI-to-wrapper configuration and wrapper-to-GUI observation remain queued. Accepted controls and all runtime boundaries are ordered by the engine command/sample timeline rather than Qt delivery during execution.
+- **Recursive QObject propagation (bypassed):** engine-backed `handle_sync_loop_trigger` returns immediately; nesting uses the bounded engine resolver.
+- **Hash traversal (not timing authority):** the compatibility schedule contains hash collections, but the off-thread engine compiler canonicalizes stable identities/actions before installation. Remaining displayed-list/editor order is a parity/UI concern.
 - **JS object/set traversal:** QML schedule assembly uses JS `Set`, object keys, and object-as-key mode lookup. This is not an engine-stable action order.
 - **Signal-derived schedule updates:** child `n_cycles`, sync length, registry contents, backend initialization, and conversion trigger QML recalculation. The instant a running schedule changes depends on GUI signal processing.
-- **Limited cycle validation:** QML validates self and direct two-object cycles from currently registered playlists; deeper transitive cycles and topology races are uncovered.
+- **Limited cycle validation (replaced at acceptance):** QML may still provide early feedback, while the transactional engine compiler rejects self/transitive cycles and topology races before registry commit.
 - **Split mixed transitions:** basic loops transition in one engine backend call while composites transition individually on the update thread. A selected mixed group has no single sample transaction.
 - **Queued control values:** play-after-record, sync mode, kind, schedule, and transitions are separate queued messages, so their relative arrival at a terminal boundary can vary.
-- **State as pointers:** object addresses/weak Qt pointers identify targets. Reuse/deletion has no engine generation check.
+- **State as pointers (adapter boundary only):** weak Qt pointers are resolved off RT to slot/generation/kind identities before compilation; callback state never uses object addresses.
 
 None of these accidental behaviors is a parity requirement. Their deterministic replacements are defined in [SEMANTICS.md](SEMANTICS.md).
 

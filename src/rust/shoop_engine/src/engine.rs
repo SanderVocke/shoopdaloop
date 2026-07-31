@@ -17,8 +17,18 @@
 //! and the box then has to survive to be sent back. Each is called exactly once.
 
 use crate::channel_mode::ChannelMode;
+use crate::composite_plan::{
+    CompiledCompositePlan, LoopIdentity, LoopTargetKind, MAX_COMPOSITE_TARGETS,
+};
+use crate::composite_runtime::{
+    ActiveCompositeChild, CompositeRuntimeCounters, CompositeRuntimeFault,
+};
+use crate::composite_timeline::{
+    BoundaryTargetAction, BoundaryTraceEntry, CompositeBoundaryTimeline,
+    CompositeTimelineControlError, CompositeTimelineCounters, CompositeTimelineFaultRecord,
+};
 use crate::loop_mode::LoopMode;
-use crate::session::{ChannelKind, Session};
+use crate::session::{ChannelKind, ReclaimedCompositeTimeline, RejectedCompositeTimeline, Session};
 use crate::state::{AudioChannelState, AudioPortSnapshot, MidiChannelState, MidiPortSnapshot};
 
 use rtrb::{Consumer, Producer, RingBuffer};
@@ -79,6 +89,8 @@ pub struct Stats {
     pub stuck_cycles: AtomicU32,
     /// Commands that arrived and were applied.
     pub commands_applied: AtomicU32,
+    /// State publications skipped because every preallocated snapshot was in use.
+    pub snapshots_dropped: AtomicU32,
     /// Cycles run against a schedule older than the session's topology.
     ///
     /// These are processed, not refused -- see [`Session::process`]. Mirrored from the
@@ -146,10 +158,41 @@ impl Default for LoopState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoopSnapshot {
     pub mode: LoopMode,
+    pub sync_source: Option<usize>,
     pub length: u32,
     pub position: u32,
     pub next_mode: Option<LoopMode>,
     pub next_mode_delay: Option<u32>,
+}
+
+/// One composite's authoritative runtime state, as the control side polls it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompositeSnapshot {
+    pub identity: LoopIdentity,
+    pub sync_source: LoopIdentity,
+    pub active_plan_version: u64,
+    pub pending_plan_version: Option<u64>,
+    pub mode: LoopMode,
+    pub next_mode: Option<LoopMode>,
+    pub next_mode_delay: Option<u32>,
+    pub iteration: u32,
+    pub cycle_count: u64,
+    pub length: u64,
+    pub position: u64,
+    pub play_after_record: bool,
+    pub runtime_counters: CompositeRuntimeCounters,
+    pub runtime_fault: CompositeRuntimeFault,
+    active_children: [Option<ActiveCompositeChild>; MAX_COMPOSITE_TARGETS],
+    n_active_children: usize,
+}
+
+impl CompositeSnapshot {
+    pub fn active_children(&self) -> impl Iterator<Item = ActiveCompositeChild> + '_ {
+        self.active_children[..self.n_active_children]
+            .iter()
+            .flatten()
+            .copied()
+    }
 }
 
 /// A cycle's published state.
@@ -165,6 +208,12 @@ pub struct LoopSnapshot {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct StateSnapshot {
     pub loops: Vec<LoopSnapshot>,
+    pub composites: Vec<CompositeSnapshot>,
+    pub composite_timeline_counters: CompositeTimelineCounters,
+    pub composite_timeline_fault: CompositeTimelineFaultRecord,
+    pub composite_timeline_version: u64,
+    pub n_retired_composite_plans: usize,
+    pub composite_trace: Vec<BoundaryTraceEntry>,
     pub audio_channels: Vec<AudioChannelState>,
     pub midi_channels: Vec<MidiChannelState>,
     /// Indexed by the session's port arena, so an entry may be either kind. A port of the
@@ -179,6 +228,10 @@ pub struct StateSnapshot {
     /// growing the vector there would allocate. A reader seeing this exceed
     /// `loops.len()` should hand back bigger boxes; [`EngineHandle::poll`] does.
     pub n_loops: usize,
+    /// Composites the session had, which may exceed `composites.len()`.
+    pub n_composites: usize,
+    /// Retained transition trace entries, which may exceed `composite_trace.len()`.
+    pub n_composite_trace_entries: usize,
     /// Channels the session had, which may exceed the channel vectors' lengths.
     ///
     /// One count for both vectors: they are indexed by the session's single channel arena,
@@ -196,6 +249,8 @@ impl StateSnapshot {
     /// [`EngineHandle::poll`] grows whichever vectors are actually short.
     pub fn truncated(&self) -> bool {
         self.n_loops > self.loops.len()
+            || self.n_composites > self.composites.len()
+            || self.n_composite_trace_entries > self.composite_trace.len()
             || self.n_channels > self.audio_channels.len()
             || self.n_channels > self.midi_channels.len()
             || self.n_ports > self.audio_ports.len()
@@ -273,11 +328,18 @@ pub fn split(session: Session, capacity: usize) -> (Engine, EngineHandle) {
     // split does not publish truncated for its first few cycles. Undersizing is not an error
     // -- `poll` grows the boxes -- so the floor is a convenience, not a correctness matter.
     let loop_room = session.n_loops().max(8);
+    let composite_room = session.composite_timeline().n_composites().max(8);
+    let composite_trace_room = session
+        .composite_timeline()
+        .n_history_trace_entries()
+        .max(64);
     let channel_room = session.n_channels().max(16);
     let port_room = session.n_ports().max(16);
     for _ in 0..N_SNAPSHOTS {
         let _ = empties_tx.push(Box::new(StateSnapshot {
             loops: Vec::with_capacity(loop_room),
+            composites: Vec::with_capacity(composite_room),
+            composite_trace: Vec::with_capacity(composite_trace_room),
             audio_channels: Vec::with_capacity(channel_room),
             midi_channels: Vec::with_capacity(channel_room),
             audio_ports: Vec::with_capacity(port_room),
@@ -389,11 +451,17 @@ impl Engine {
     /// so it wants the newest state, and dropping an intermediate costs nothing.
     fn publish_state(&mut self) {
         let Ok(mut snap) = self.empties.pop() else {
+            self.stats.snapshots_dropped.fetch_add(1, Ordering::Relaxed);
             return;
         };
 
         snap.cycle = self.stats.cycles.load(Ordering::Relaxed);
         snap.n_loops = self.session.n_loops();
+        snap.n_composites = self.session.composite_timeline().n_composites();
+        snap.composite_timeline_version = self.session.composite_timeline_version();
+        snap.n_retired_composite_plans = self.session.composite_timeline().n_retired_plans();
+        snap.n_composite_trace_entries =
+            self.session.composite_timeline().n_history_trace_entries();
         snap.n_channels = self.session.n_channels();
         snap.n_ports = self.session.n_ports();
 
@@ -408,10 +476,76 @@ impl Engine {
             let next = l.first_planned_transition();
             snap.loops.push(LoopSnapshot {
                 mode: l.mode(),
+                sync_source: self.session.sync_source_of(i),
                 length: l.length(),
                 position: l.position(),
                 next_mode: next.map(|(m, _)| m),
                 next_mode_delay: next.map(|(_, d)| d),
+            });
+        }
+
+        let timeline = self.session.composite_timeline();
+        for (index, loop_snapshot) in snap.loops.iter_mut().enumerate() {
+            if loop_snapshot.next_mode.is_some() {
+                continue;
+            }
+            let Some(identity) = self.session.loop_identity(index) else {
+                continue;
+            };
+            if let Some((mode, delay)) = timeline.anticipated_transition(identity) {
+                loop_snapshot.next_mode = Some(mode);
+                loop_snapshot.next_mode_delay = Some(delay);
+            }
+        }
+
+        snap.composites.clear();
+        snap.composite_timeline_counters = timeline.counters();
+        snap.composite_timeline_fault = timeline.fault();
+        snap.composite_trace.clear();
+        let trace_room = snap.composite_trace.capacity();
+        snap.composite_trace
+            .extend(timeline.history_trace().take(trace_room));
+        for i in 0..snap.n_composites.min(snap.composites.capacity()) {
+            let Some(node) = timeline.node_state(i) else {
+                break;
+            };
+            let pending = node.runtime.pending();
+            let anticipated = pending
+                .map(|pending| (pending.mode, pending.boundaries_to_skip))
+                .or_else(|| timeline.anticipated_transition(node.plan.source()));
+            let mut active_children = [None; MAX_COMPOSITE_TARGETS];
+            let mut n_active_children = 0;
+            for child in node
+                .runtime
+                .active_children()
+                .filter(|child| match child.identity.kind {
+                    LoopTargetKind::Basic => self
+                        .session
+                        .loop_identity(child.identity.slot as usize)
+                        .is_some_and(|identity| identity == child.identity),
+                    LoopTargetKind::Composite => timeline.is_current_composite(child.identity),
+                })
+            {
+                active_children[n_active_children] = Some(child);
+                n_active_children += 1;
+            }
+            snap.composites.push(CompositeSnapshot {
+                identity: node.plan.source(),
+                sync_source: node.sync_source,
+                active_plan_version: node.active_version,
+                pending_plan_version: node.pending_version,
+                mode: node.runtime.mode(),
+                next_mode: anticipated.map(|(mode, _)| mode),
+                next_mode_delay: anticipated.map(|(_, delay)| delay),
+                iteration: node.runtime.iteration(),
+                cycle_count: node.runtime.cycle_count(),
+                length: node.runtime.length_samples(node.plan).unwrap_or(0),
+                position: node.runtime.position_samples(node.plan).unwrap_or(0),
+                play_after_record: node.runtime.play_after_record(),
+                runtime_counters: node.runtime.counters(),
+                runtime_fault: node.runtime.fault(),
+                active_children,
+                n_active_children,
             });
         }
 
@@ -535,11 +669,13 @@ impl Engine {
     }
 
     fn apply_commands(&mut self) {
+        let accepted = self.commands.slots();
         let mut applied = 0u32;
-        while let Ok(mut cmd) = self.commands.pop() {
-            crate::realtime_allow_alloc_once!("Engine::apply_commands command execution", || {
-                cmd(&mut self.session)
-            });
+        for _ in 0..accepted {
+            let Ok(mut cmd) = self.commands.pop() else {
+                break;
+            };
+            cmd(&mut self.session);
             applied += 1;
             // Hand it back to be freed off this thread. Cannot fail: the return
             // queue is as large as the command queue.
@@ -657,6 +793,83 @@ impl EngineHandle {
         Ok(rx)
     }
 
+    /// Queues a validated timeline for callback-boundary installation.
+    ///
+    /// The displaced timeline is returned through the result queue so its plans are
+    /// destroyed by the control thread. The returned receiver also carries the
+    /// activation-time generation/topology recheck result.
+    pub fn send_composite_timeline(
+        &mut self,
+        timeline: CompositeBoundaryTimeline,
+    ) -> Result<Consumer<Result<ReclaimedCompositeTimeline, RejectedCompositeTimeline>>, SendError>
+    {
+        self.send_for_result(move |session| session.install_prepared_composite_timeline(timeline))
+    }
+
+    /// Arms a synchronized composite transition at callback-start acceptance.
+    pub fn send_composite_transition(
+        &mut self,
+        source: LoopIdentity,
+        mode: LoopMode,
+        delay: u32,
+    ) -> Result<Consumer<Result<u64, CompositeTimelineControlError>>, SendError> {
+        self.send_for_result(move |session| {
+            session.accept_composite_transition(source, mode, delay)
+        })
+    }
+
+    /// Queues an unsynchronized mode change and exact prevalidated iteration seek.
+    pub fn send_composite_immediate_transition(
+        &mut self,
+        source: LoopIdentity,
+        mode: LoopMode,
+        iteration: i64,
+    ) -> Result<Consumer<Result<u64, CompositeTimelineControlError>>, SendError> {
+        self.send_for_result(move |session| {
+            session.accept_composite_immediate_transition(source, mode, iteration)
+        })
+    }
+
+    /// Changes record-pass completion behavior at callback-start acceptance.
+    pub fn send_composite_play_after_record(
+        &mut self,
+        source: LoopIdentity,
+        enabled: bool,
+    ) -> Result<Consumer<Result<u64, CompositeTimelineControlError>>, SendError> {
+        self.send_for_result(move |session| {
+            session.accept_composite_play_after_record(source, enabled)
+        })
+    }
+
+    /// Returns plans displaced by deferred activation for control-thread destruction.
+    pub fn send_composite_plan_reclamation(
+        &mut self,
+        capacity: usize,
+    ) -> Result<Consumer<Vec<CompiledCompositePlan>>, SendError> {
+        let storage = Vec::with_capacity(capacity);
+        self.send_for_result(move |session| session.reclaim_composite_plans(storage))
+    }
+
+    /// Queues recovery from a latched composite timeline fault.
+    pub fn send_composite_fault_reset(&mut self) -> Result<Consumer<u64>, SendError> {
+        self.send_for_result(Session::accept_composite_fault_reset)
+    }
+
+    /// Queues a composite/basic target action for callback-start acceptance.
+    ///
+    /// `None` uses the callback-start sample. A timestamp retains its exact future
+    /// sample boundary; a past timestamp is reported by the result receiver.
+    pub fn send_composite_control(
+        &mut self,
+        target: LoopIdentity,
+        action: BoundaryTargetAction,
+        at_sample: Option<u64>,
+    ) -> Result<Consumer<Result<u64, CompositeTimelineControlError>>, SendError> {
+        self.send_for_result(move |session| {
+            session.accept_composite_control(target, action, at_sample)
+        })
+    }
+
     /// Frees commands the engine has finished with. Safe to call at any time.
     pub fn reclaim(&mut self) -> usize {
         let mut n = 0;
@@ -681,6 +894,8 @@ impl EngineHandle {
         // audio thread never allocates; it just publishes a short snapshot until then.
         if let Some(c) = self.current.as_mut() {
             grow_to(&mut c.loops, c.n_loops);
+            grow_to(&mut c.composites, c.n_composites);
+            grow_to(&mut c.composite_trace, c.n_composite_trace_entries);
             grow_to(&mut c.audio_channels, c.n_channels);
             grow_to(&mut c.midi_channels, c.n_channels);
             grow_to(&mut c.audio_ports, c.n_ports);
@@ -692,6 +907,8 @@ impl EngineHandle {
     fn recycle(&mut self, mut snap: Box<StateSnapshot>) {
         // Cleared, not shrunk: the capacity is the whole point of handing the box back.
         snap.loops.clear();
+        snap.composites.clear();
+        snap.composite_trace.clear();
         snap.audio_channels.clear();
         snap.midi_channels.clear();
         snap.audio_ports.clear();

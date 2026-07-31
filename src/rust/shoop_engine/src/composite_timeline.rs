@@ -1,7 +1,7 @@
 //! Bounded same-sample resolution for compiled composite-loop plans.
 
 use crate::composite_plan::{
-    CompiledCompositeKind, CompiledCompositePlan, LoopIdentity, LoopTargetKind,
+    CompiledChildMode, CompiledCompositeKind, CompiledCompositePlan, LoopIdentity, LoopTargetKind,
     MAX_COMPOSITE_BOUNDARY_OUTPUTS,
 };
 use crate::composite_runtime::{
@@ -9,7 +9,7 @@ use crate::composite_runtime::{
 };
 use crate::LoopMode;
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 pub const MAX_COMPOSITE_CONTROLS: usize = 128;
 
@@ -84,8 +84,9 @@ pub struct AcceptedTimelineControl {
     pub acceptance_sequence: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CompositeTimelineFault {
+    #[default]
     None,
     PrimitiveEventCapacity,
     IntentCapacity,
@@ -94,7 +95,7 @@ pub enum CompositeTimelineFault {
     SubBlockCapacity,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CompositeTimelineFaultRecord {
     pub fault: CompositeTimelineFault,
     pub at_sample: u64,
@@ -137,17 +138,43 @@ pub enum CompositeTimelineBuildError {
 pub enum CompositeTimelineControlError {
     #[error("the accepted-control storage is full")]
     QueueFull,
+    #[error("the composite source is not installed")]
+    NoSuchComposite,
     #[error("the control timestamp is already in the past")]
     Late,
     #[error("unknown is not a valid target mode")]
     UnknownMode,
+    #[error("the requested composite iteration is outside the installed plan")]
+    InvalidSeek,
+    #[error("the composite boundary resolver rejected the immediate control")]
+    BoundaryFault,
 }
 
 #[derive(Debug, Clone)]
 struct InstalledComposite {
-    plan: CompiledCompositePlan,
+    plan: Option<CompiledCompositePlan>,
+    pending_plan: Option<CompiledCompositePlan>,
+    active_version: u64,
+    pending_version: Option<u64>,
     sync_source: LoopIdentity,
     runtime: CompositeRuntime,
+}
+
+impl InstalledComposite {
+    fn plan(&self) -> &CompiledCompositePlan {
+        self.plan
+            .as_ref()
+            .expect("installed timelines always have an active plan")
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CompositeTimelineNodeState<'a> {
+    pub plan: &'a CompiledCompositePlan,
+    pub active_version: u64,
+    pub pending_version: Option<u64>,
+    pub sync_source: LoopIdentity,
+    pub runtime: &'a CompositeRuntime,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -156,19 +183,24 @@ struct IntentRecord {
     resolved: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CompositeBoundaryTimeline {
     nodes: Vec<InstalledComposite>,
     current_identities: Vec<LoopIdentity>,
     working_runtimes: Vec<CompositeRuntime>,
+    activated_replacements: Vec<bool>,
+    retired_plans: Vec<CompiledCompositePlan>,
     delivered_composites: Vec<bool>,
     delivered_sample: Option<u64>,
     triggered_sources: Vec<LoopIdentity>,
     intents: Vec<IntentRecord>,
     targets: Vec<LoopIdentity>,
     trace: Vec<BoundaryTraceEntry>,
+    history_trace: VecDeque<BoundaryTraceEntry>,
     boundary_trace: Vec<BoundaryTraceEntry>,
     controls: [Option<AcceptedTimelineControl>; MAX_COMPOSITE_CONTROLS],
+    prepared_primitive_sync_sources: Option<Box<[Option<usize>]>>,
+    prepared_version: Option<u64>,
     limits: CompositeTimelineLimits,
     sample_clock: u64,
     fault: CompositeTimelineFaultRecord,
@@ -203,7 +235,10 @@ impl CompositeBoundaryTimeline {
                 .insert(
                     source,
                     InstalledComposite {
-                        plan: node.plan,
+                        plan: Some(node.plan),
+                        pending_plan: None,
+                        active_version: 0,
+                        pending_version: None,
                         sync_source: node.sync_source,
                         runtime,
                     },
@@ -222,7 +257,7 @@ impl CompositeBoundaryTimeline {
                 return Err(CompositeTimelineBuildError::MissingCompositeTarget);
             }
             for target in node
-                .plan
+                .plan()
                 .targets()
                 .iter()
                 .filter(|target| target.kind == LoopTargetKind::Composite)
@@ -255,7 +290,8 @@ impl CompositeBoundaryTimeline {
                     .ok_or(CompositeTimelineBuildError::DependencyCycle)?,
             );
         }
-        let mut current_identities: Vec<_> = nodes.iter().map(|node| node.plan.source()).collect();
+        let mut current_identities: Vec<_> =
+            nodes.iter().map(|node| node.plan().source()).collect();
         current_identities.sort_unstable();
         let working_runtimes = nodes.iter().map(|node| node.runtime.clone()).collect();
         let n_nodes = nodes.len();
@@ -264,6 +300,8 @@ impl CompositeBoundaryTimeline {
             nodes,
             current_identities,
             working_runtimes,
+            activated_replacements: vec![false; n_nodes],
+            retired_plans: Vec::with_capacity(limits.max_composites),
             delivered_composites: vec![false; n_nodes],
             delivered_sample: None,
             triggered_sources: Vec::with_capacity(
@@ -272,8 +310,11 @@ impl CompositeBoundaryTimeline {
             intents: Vec::with_capacity(limits.max_intents),
             targets: Vec::with_capacity(limits.max_intents),
             trace: Vec::with_capacity(limits.max_trace_entries),
+            history_trace: VecDeque::with_capacity(limits.max_trace_entries),
             boundary_trace: Vec::with_capacity(limits.max_trace_entries),
             controls: [None; MAX_COMPOSITE_CONTROLS],
+            prepared_primitive_sync_sources: None,
+            prepared_version: None,
             limits,
             sample_clock: 0,
             fault: CompositeTimelineFaultRecord {
@@ -304,6 +345,14 @@ impl CompositeBoundaryTimeline {
         &self.trace
     }
 
+    pub fn history_trace(&self) -> impl Iterator<Item = BoundaryTraceEntry> + '_ {
+        self.history_trace.iter().copied()
+    }
+
+    pub fn n_history_trace_entries(&self) -> usize {
+        self.history_trace.len()
+    }
+
     pub fn begin_callback(&mut self) {
         self.trace.clear();
     }
@@ -315,8 +364,204 @@ impl CompositeBoundaryTimeline {
     pub fn runtime(&self, source: LoopIdentity) -> Option<&CompositeRuntime> {
         self.nodes
             .iter()
-            .find(|node| node.plan.source() == source)
+            .find(|node| node.plan().source() == source)
             .map(|node| &node.runtime)
+    }
+
+    pub fn n_composites(&self) -> usize {
+        self.nodes.len()
+    }
+
+    pub fn n_retired_plans(&self) -> usize {
+        self.retired_plans.len()
+    }
+
+    pub(crate) fn reclaim_retired_plans(
+        &mut self,
+        mut storage: Vec<CompiledCompositePlan>,
+    ) -> Vec<CompiledCompositePlan> {
+        if storage.is_empty() && storage.capacity() >= self.retired_plans.len() {
+            std::mem::swap(&mut storage, &mut self.retired_plans);
+        }
+        storage
+    }
+
+    pub fn replacement_requires_runtime_transfer(&self) -> bool {
+        self.nodes.iter().any(|node| {
+            node.runtime.mode() != LoopMode::Stopped || node.runtime.pending().is_some()
+        })
+    }
+
+    pub fn can_queue_runtime_preserving_replacement(&self, candidate: &Self) -> bool {
+        if self.nodes.len() != candidate.nodes.len() {
+            return false;
+        }
+        let additional_retirements = self
+            .nodes
+            .iter()
+            .zip(&candidate.nodes)
+            .filter(|(current, next)| {
+                current.plan() != next.plan()
+                    && current.runtime.mode() != LoopMode::Stopped
+                    && current.pending_plan.is_none()
+            })
+            .count();
+        if self.retired_plans.len() + additional_retirements > self.retired_plans.capacity() {
+            return false;
+        }
+        self.nodes
+            .iter()
+            .zip(&candidate.nodes)
+            .all(|(current, next)| {
+                current.plan().source() == next.plan().source()
+                    && current.sync_source == next.sync_source
+                    && composite_targets(current.plan()).eq(composite_targets(next.plan()))
+            })
+    }
+
+    pub fn queue_runtime_preserving_replacement(&mut self, mut candidate: Self) -> Self {
+        for (current, next) in self.nodes.iter_mut().zip(candidate.nodes.iter_mut()) {
+            if current.plan() == next.plan() {
+                current.active_version = next.active_version;
+                continue;
+            }
+            if current.runtime.mode() == LoopMode::Stopped {
+                let current_plan = current
+                    .plan
+                    .as_ref()
+                    .expect("installed timelines always have an active plan");
+                let next_plan = next
+                    .plan
+                    .as_ref()
+                    .expect("prepared replacement nodes have a plan");
+                let _ = current
+                    .runtime
+                    .activate_plan(current_plan, next_plan, |_| true);
+                std::mem::swap(&mut current.plan, &mut next.plan);
+                std::mem::swap(&mut current.active_version, &mut next.active_version);
+            } else {
+                let next_plan = next
+                    .plan
+                    .take()
+                    .expect("prepared replacement nodes have a plan");
+                next.plan = current.pending_plan.replace(next_plan);
+                let next_version = next.active_version;
+                next.active_version = current.pending_version.replace(next_version).unwrap_or(0);
+            }
+        }
+        std::mem::swap(
+            &mut self.prepared_primitive_sync_sources,
+            &mut candidate.prepared_primitive_sync_sources,
+        );
+        self.prepared_version = candidate.prepared_version;
+        candidate
+    }
+
+    pub fn node_state(&self, index: usize) -> Option<CompositeTimelineNodeState<'_>> {
+        self.nodes
+            .get(index)
+            .map(|node| CompositeTimelineNodeState {
+                plan: node.plan(),
+                active_version: node.active_version,
+                pending_version: node.pending_version,
+                sync_source: node.sync_source,
+                runtime: &node.runtime,
+            })
+    }
+
+    pub fn anticipated_transition(&self, target: LoopIdentity) -> Option<(LoopMode, u32)> {
+        let mut node_modes = [None; MAX_COMPOSITE_CONTROLS];
+        let mut anticipated = None;
+        for (node_index, node) in self.nodes.iter().enumerate() {
+            let inherited = node
+                .runtime
+                .pending()
+                .map(|pending| (pending.mode, pending.boundaries_to_skip));
+            let Some((composite_mode, delay)) =
+                inherited.or_else(|| node_modes.get(node_index).copied().flatten())
+            else {
+                continue;
+            };
+            let first_recording_only = node.plan().kind() == CompiledCompositeKind::Regular
+                && matches!(
+                    composite_mode,
+                    LoopMode::Recording | LoopMode::RecordingDryIntoWet
+                );
+            for (target_index, child) in node.plan().targets().iter().copied().enumerate() {
+                let Some(desired) = node.plan().desired(0, target_index, first_recording_only)
+                else {
+                    continue;
+                };
+                let mode = match desired.mode {
+                    CompiledChildMode::Inherit => composite_mode,
+                    CompiledChildMode::Explicit(mode) => mode,
+                };
+                if desired.child_is_empty
+                    && !matches!(mode, LoopMode::Recording | LoopMode::RecordingDryIntoWet)
+                {
+                    continue;
+                }
+                if child == target {
+                    anticipated = Some((mode, delay));
+                }
+                if child.kind == LoopTargetKind::Composite {
+                    if let Some(child_index) = self
+                        .nodes
+                        .iter()
+                        .position(|candidate| candidate.plan().source() == child)
+                    {
+                        if let Some(slot) = node_modes.get_mut(child_index) {
+                            *slot = Some((mode, delay));
+                        }
+                    }
+                }
+            }
+        }
+        if anticipated.is_none() {
+            for node in &self.nodes {
+                let mode = node.runtime.mode();
+                if mode == LoopMode::Stopped || node.plan().n_iterations() == 0 {
+                    continue;
+                }
+                let next_iteration = if node.runtime.iteration() + 1 < node.plan().n_iterations() {
+                    Some(node.runtime.iteration() + 1)
+                } else if node.plan().kind() == CompiledCompositeKind::Regular {
+                    Some(0)
+                } else {
+                    None
+                };
+                let current = node
+                    .runtime
+                    .active_children()
+                    .find(|child| child.identity == target);
+                let desired = node
+                    .plan()
+                    .targets()
+                    .binary_search(&target)
+                    .ok()
+                    .and_then(|target_index| {
+                        next_iteration.and_then(|iteration| {
+                            node.plan().desired(iteration, target_index, false)
+                        })
+                    })
+                    .and_then(|desired| {
+                        let mode = match desired.mode {
+                            CompiledChildMode::Inherit => mode,
+                            CompiledChildMode::Explicit(mode) => mode,
+                        };
+                        (!desired.child_is_empty
+                            || matches!(mode, LoopMode::Recording | LoopMode::RecordingDryIntoWet))
+                        .then_some(mode)
+                    });
+                anticipated = match (current, desired) {
+                    (Some(_), None) => Some((LoopMode::Stopped, 0)),
+                    (None, Some(mode)) => Some((mode, 0)),
+                    (Some(current), Some(mode)) if current.mode != mode => Some((mode, 0)),
+                    _ => anticipated,
+                };
+            }
+        }
+        anticipated
     }
 
     pub fn is_current_composite(&self, identity: LoopIdentity) -> bool {
@@ -331,12 +576,42 @@ impl CompositeBoundaryTimeline {
             if node.sync_source.kind == LoopTargetKind::Basic && !is_current(node.sync_source) {
                 return Some(node.sync_source);
             }
-            node.plan
+            node.plan()
                 .targets()
                 .iter()
                 .copied()
                 .find(|target| target.kind == LoopTargetKind::Basic && !is_current(*target))
         })
+    }
+
+    pub fn prepare_primitive_sync_sources(
+        &mut self,
+        sync_sources: &[Option<usize>],
+    ) -> Result<(), CompositeTimelineBuildError> {
+        self.validate_primitive_sync_sources(sync_sources)?;
+        self.prepared_primitive_sync_sources = Some(sync_sources.to_vec().into_boxed_slice());
+        Ok(())
+    }
+
+    pub fn prepare_install(
+        &mut self,
+        version: u64,
+        sync_sources: &[Option<usize>],
+    ) -> Result<(), CompositeTimelineBuildError> {
+        self.prepare_primitive_sync_sources(sync_sources)?;
+        self.prepared_version = Some(version);
+        for node in &mut self.nodes {
+            node.active_version = version;
+        }
+        Ok(())
+    }
+
+    pub fn prepared_version(&self) -> Option<u64> {
+        self.prepared_version
+    }
+
+    pub fn matches_prepared_primitive_sync_sources(&self, sync_sources: &[Option<usize>]) -> bool {
+        self.prepared_primitive_sync_sources.as_deref() == Some(sync_sources)
     }
 
     pub fn validate_primitive_sync_sources(
@@ -360,11 +635,11 @@ impl CompositeBoundaryTimeline {
             }
         }
         for node in &self.nodes {
-            let source = node.plan.source();
+            let source = node.plan().source();
             identities.insert(source);
             identities.insert(node.sync_source);
             edges.entry(node.sync_source).or_default().insert(source);
-            for &target in node.plan.targets() {
+            for &target in node.plan().targets() {
                 identities.insert(target);
                 edges.entry(source).or_default().insert(target);
             }
@@ -375,6 +650,75 @@ impl CompositeBoundaryTimeline {
         } else {
             Ok(())
         }
+    }
+
+    pub fn request_transition(
+        &mut self,
+        source: LoopIdentity,
+        mode: LoopMode,
+        delay: u32,
+    ) -> Result<(), CompositeTimelineControlError> {
+        let node = self
+            .nodes
+            .iter_mut()
+            .find(|node| node.plan().source() == source)
+            .ok_or(CompositeTimelineControlError::NoSuchComposite)?;
+        node.runtime
+            .request_transition(mode, delay)
+            .map_err(|_| CompositeTimelineControlError::UnknownMode)
+    }
+
+    pub fn queue_immediate_transition(
+        &mut self,
+        source: LoopIdentity,
+        mode: LoopMode,
+        iteration: i64,
+        acceptance_sequence: u64,
+    ) -> Result<(), CompositeTimelineControlError> {
+        let node = self
+            .nodes
+            .iter()
+            .find(|node| node.plan().source() == source)
+            .ok_or(CompositeTimelineControlError::NoSuchComposite)?;
+        if mode == LoopMode::Unknown {
+            return Err(CompositeTimelineControlError::UnknownMode);
+        }
+        if mode != LoopMode::Stopped
+            && (iteration < 0 || iteration >= i64::from(node.plan().n_iterations()))
+        {
+            return Err(CompositeTimelineControlError::InvalidSeek);
+        }
+        let offset_samples = if mode == LoopMode::Stopped {
+            0
+        } else {
+            (iteration as u64)
+                .checked_mul(node.plan().sync_length())
+                .ok_or(CompositeTimelineControlError::InvalidSeek)?
+        };
+        self.queue_control(AcceptedTimelineControl {
+            at_sample: self.sample_clock,
+            target: source,
+            action: BoundaryTargetAction::SetMode {
+                mode,
+                offset_samples,
+                retrigger: true,
+            },
+            acceptance_sequence,
+        })
+    }
+
+    pub fn set_play_after_record(
+        &mut self,
+        source: LoopIdentity,
+        enabled: bool,
+    ) -> Result<(), CompositeTimelineControlError> {
+        let node = self
+            .nodes
+            .iter_mut()
+            .find(|node| node.plan().source() == source)
+            .ok_or(CompositeTimelineControlError::NoSuchComposite)?;
+        node.runtime.set_play_after_record(enabled);
+        Ok(())
     }
 
     pub fn queue_control(
@@ -438,16 +782,18 @@ impl CompositeBoundaryTimeline {
             } else {
                 self.nodes
                     .iter()
-                    .find(|node| node.plan.source() == sync_source)
+                    .find(|node| node.plan().source() == sync_source)
                     .map(|node| node.runtime.sync_position())
             };
-            let sync_length = self.nodes[index].plan.sync_length();
+            let sync_length = self.nodes[index].plan().sync_length();
             if sync_length > 0 {
                 if let Some(position) = position {
                     let node = &mut self.nodes[index];
-                    let _ = node
-                        .runtime
-                        .set_sync_position(&node.plan, position % sync_length);
+                    let plan = node
+                        .plan
+                        .as_ref()
+                        .expect("installed timelines always have an active plan");
+                    let _ = node.runtime.set_sync_position(plan, position % sync_length);
                 }
             }
         }
@@ -471,6 +817,7 @@ impl CompositeBoundaryTimeline {
         }
         let trace_start = self.trace.len();
         self.boundary_trace.clear();
+        self.activated_replacements.fill(false);
         self.intents.clear();
         self.targets.clear();
         self.triggered_sources.clear();
@@ -539,7 +886,7 @@ impl CompositeBoundaryTimeline {
                 }
             }
 
-            let source = self.nodes[node_index].plan.source();
+            let source = self.nodes[node_index].plan().source();
             let incoming = self.resolve_target(source)?;
             let mut controlled = false;
             if let Some(intent) = incoming {
@@ -548,6 +895,20 @@ impl CompositeBoundaryTimeline {
                 let batch =
                     self.apply_to_composite(node_index, intent.action, &mut primitive_is_current)?;
                 self.append_batch(node_index, &batch)?;
+                if matches!(
+                    intent.action,
+                    BoundaryTargetAction::Stop
+                        | BoundaryTargetAction::SetMode {
+                            mode: LoopMode::Stopped,
+                            ..
+                        }
+                ) && self.nodes[node_index].pending_plan.is_some()
+                {
+                    let activation =
+                        self.activate_stopped_replacement(node_index, &mut primitive_is_current)?;
+                    self.activated_replacements[node_index] = true;
+                    self.append_batch(node_index, &activation)?;
+                }
                 if matches!(intent.action, BoundaryTargetAction::SetMode { .. })
                     && self.working_runtimes[node_index].mode() != LoopMode::Stopped
                 {
@@ -562,16 +923,30 @@ impl CompositeBoundaryTimeline {
                 self.delivered_composites[node_index] = true;
                 let was_eligible = self.working_runtimes[node_index].mode() != LoopMode::Stopped
                     || self.working_runtimes[node_index].pending().is_some();
-                let current_ids = &self.current_identities;
-                let batch = self.working_runtimes[node_index]
-                    .sync_boundary(&self.nodes[node_index].plan, |identity| {
-                        if identity.kind == LoopTargetKind::Composite {
-                            current_ids.binary_search(&identity).is_ok()
-                        } else {
-                            primitive_is_current(identity)
-                        }
-                    })
-                    .map_err(|_| self.runtime_fault())?;
+                let replacement_due = self.nodes[node_index].pending_plan.is_some()
+                    && self.working_runtimes[node_index].mode() != LoopMode::Stopped
+                    && self.working_runtimes[node_index]
+                        .iteration()
+                        .saturating_add(1)
+                        == self.nodes[node_index].plan().n_iterations();
+                let batch = if replacement_due {
+                    let batch =
+                        self.activate_running_replacement(node_index, &mut primitive_is_current)?;
+                    self.activated_replacements[node_index] = true;
+                    batch
+                } else {
+                    let current_ids = &self.current_identities;
+                    let plan = self.nodes[node_index].plan();
+                    self.working_runtimes[node_index]
+                        .sync_boundary(plan, |identity| {
+                            if identity.kind == LoopTargetKind::Composite {
+                                current_ids.binary_search(&identity).is_ok()
+                            } else {
+                                primitive_is_current(identity)
+                            }
+                        })
+                        .map_err(|_| self.runtime_fault())?
+                };
                 self.append_batch(node_index, &batch)?;
                 if was_eligible {
                     self.mark_triggered(source)?;
@@ -598,11 +973,30 @@ impl CompositeBoundaryTimeline {
         let retained = available.min(self.boundary_trace.len());
         self.trace
             .extend_from_slice(&self.boundary_trace[..retained]);
+        for entry in self.boundary_trace.iter().copied() {
+            if self.history_trace.len() == self.limits.max_trace_entries {
+                self.history_trace.pop_front();
+            }
+            self.history_trace.push_back(entry);
+        }
         self.counters.trace_overflows = self
             .counters
             .trace_overflows
             .saturating_add((self.boundary_trace.len() - retained) as u64);
         for index in 0..self.nodes.len() {
+            if self.activated_replacements[index] {
+                let node = &mut self.nodes[index];
+                std::mem::swap(&mut node.plan, &mut node.pending_plan);
+                let old_plan = node
+                    .pending_plan
+                    .take()
+                    .expect("an activated replacement retains its old plan");
+                node.active_version = node
+                    .pending_version
+                    .take()
+                    .expect("an activated replacement retains its candidate version");
+                self.retired_plans.push(old_plan);
+            }
             std::mem::swap(
                 &mut self.nodes[index].runtime,
                 &mut self.working_runtimes[index],
@@ -628,6 +1022,64 @@ impl CompositeBoundaryTimeline {
         };
     }
 
+    fn activate_running_replacement<F>(
+        &mut self,
+        node_index: usize,
+        primitive_is_current: &mut F,
+    ) -> Result<CompositeTransitionBatch, CompositeTimelineFaultRecord>
+    where
+        F: FnMut(LoopIdentity) -> bool,
+    {
+        let current_ids = &self.current_identities;
+        let node = &self.nodes[node_index];
+        let current_plan = node.plan();
+        let candidate = node
+            .pending_plan
+            .as_ref()
+            .expect("replacement activation requires a pending plan");
+        let result = self.working_runtimes[node_index].activate_deferred_at_iteration_zero(
+            current_plan,
+            candidate,
+            |identity| {
+                if identity.kind == LoopTargetKind::Composite {
+                    current_ids.binary_search(&identity).is_ok()
+                } else {
+                    primitive_is_current(identity)
+                }
+            },
+        );
+        result.map_err(|_| self.runtime_fault())
+    }
+
+    fn activate_stopped_replacement<F>(
+        &mut self,
+        node_index: usize,
+        primitive_is_current: &mut F,
+    ) -> Result<CompositeTransitionBatch, CompositeTimelineFaultRecord>
+    where
+        F: FnMut(LoopIdentity) -> bool,
+    {
+        let current_ids = &self.current_identities;
+        let node = &self.nodes[node_index];
+        let current_plan = node.plan();
+        let candidate = node
+            .pending_plan
+            .as_ref()
+            .expect("replacement activation requires a pending plan");
+        let result =
+            self.working_runtimes[node_index].activate_plan(current_plan, candidate, |identity| {
+                if identity.kind == LoopTargetKind::Composite {
+                    current_ids.binary_search(&identity).is_ok()
+                } else {
+                    primitive_is_current(identity)
+                }
+            });
+        match result {
+            Ok((_, batch)) => Ok(batch),
+            Err(_) => Err(self.runtime_fault()),
+        }
+    }
+
     fn apply_to_composite<F>(
         &mut self,
         node_index: usize,
@@ -645,28 +1097,23 @@ impl CompositeBoundaryTimeline {
                 primitive_is_current(identity)
             }
         };
+        let plan = self.nodes[node_index].plan();
         let result: Result<_, CompositeRuntimeError> = match action {
-            BoundaryTargetAction::Stop => {
-                self.working_runtimes[node_index].stop(&self.nodes[node_index].plan, is_current)
-            }
+            BoundaryTargetAction::Stop => self.working_runtimes[node_index].stop(plan, is_current),
             BoundaryTargetAction::SetMode {
                 mode,
                 offset_samples,
                 ..
             } => {
-                let sync_length = self.nodes[node_index].plan.sync_length();
-                let n_iterations = u64::from(self.nodes[node_index].plan.n_iterations());
+                let sync_length = plan.sync_length();
+                let n_iterations = u64::from(plan.n_iterations());
                 let iteration = if sync_length == 0 || n_iterations == 0 {
                     None
                 } else {
-                    Some(((offset_samples / sync_length) % n_iterations) as i64)
+                    Some((offset_samples / sync_length) as i64)
                 };
-                self.working_runtimes[node_index].transition_immediate(
-                    &self.nodes[node_index].plan,
-                    mode,
-                    iteration,
-                    is_current,
-                )
+                self.working_runtimes[node_index]
+                    .transition_immediate(plan, mode, iteration, is_current)
             }
         };
         result.map_err(|_| self.runtime_fault())
@@ -677,9 +1124,18 @@ impl CompositeBoundaryTimeline {
         node_index: usize,
         batch: &CompositeTransitionBatch,
     ) -> Result<(), CompositeTimelineFaultRecord> {
-        let source = self.nodes[node_index].plan.source();
-        let kind = self.nodes[node_index].plan.kind();
-        let sync_length = self.nodes[node_index].plan.sync_length();
+        let plan = if self.activated_replacements[node_index] {
+            self.nodes[node_index]
+                .pending_plan
+                .as_ref()
+                .expect("activated replacement has a candidate plan")
+        } else {
+            self.nodes[node_index].plan()
+        };
+        let source = plan.source();
+        let kind = plan.kind();
+        let sync_length = plan.sync_length();
+        let sync_position = self.working_runtimes[node_index].sync_position();
         for (ordinal, transition) in batch.as_slice().iter().enumerate() {
             let action = match transition.action {
                 CompositeTargetAction::Stop => BoundaryTargetAction::Stop,
@@ -689,7 +1145,9 @@ impl CompositeBoundaryTimeline {
                     retrigger,
                 } => BoundaryTargetAction::SetMode {
                     mode,
-                    offset_samples: u64::from(cycle_offset).saturating_mul(sync_length),
+                    offset_samples: u64::from(cycle_offset)
+                        .saturating_mul(sync_length)
+                        .saturating_add(sync_position),
                     retrigger,
                 },
             };
@@ -876,6 +1334,13 @@ fn stable_graph_depth(
     }
 }
 
+fn composite_targets(plan: &CompiledCompositePlan) -> impl Iterator<Item = LoopIdentity> + '_ {
+    plan.targets()
+        .iter()
+        .copied()
+        .filter(|target| target.kind == LoopTargetKind::Composite)
+}
+
 fn topology_order(
     nodes: &BTreeMap<LoopIdentity, InstalledComposite>,
 ) -> Result<(Vec<LoopIdentity>, usize), CompositeTimelineBuildError> {
@@ -894,7 +1359,7 @@ fn topology_order(
                 .ok_or(CompositeTimelineBuildError::MissingCompositeTarget)? += 1;
         }
         for &target in node
-            .plan
+            .plan()
             .targets()
             .iter()
             .filter(|target| target.kind == LoopTargetKind::Composite)
@@ -908,7 +1373,7 @@ fn topology_order(
     }
     for (&producer, node) in nodes {
         for &basic_target in node
-            .plan
+            .plan()
             .targets()
             .iter()
             .filter(|target| target.kind == LoopTargetKind::Basic)

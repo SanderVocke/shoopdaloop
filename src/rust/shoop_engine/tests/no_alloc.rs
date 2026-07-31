@@ -19,10 +19,10 @@ use shoop_engine::port::{PortConnectability, PortDirection};
 use shoop_engine::realtime_alloc_guard;
 use shoop_engine::session::{Port, Session};
 use shoop_engine::{
-    compile_composite_plan, AcceptedTimelineControl, BoundaryTargetAction,
-    CompositeBoundaryTimeline, CompositeEntry, CompositePlanDescriptor, CompositePlanLimits,
-    CompositeRuntime, CompositeSection, CompositeTimeline, CompositeTimelineLimits,
-    CompositeTimelineNode, LoopIdentity, LoopTargetCatalog, LoopTargetKind, LoopTargetMetadata,
+    compile_composite_plan, BoundaryTargetAction, CompositeBoundaryTimeline, CompositeEntry,
+    CompositePlanDescriptor, CompositePlanLimits, CompositeRuntime, CompositeSection,
+    CompositeTimeline, CompositeTimelineLimits, CompositeTimelineNode, LoopIdentity,
+    LoopTargetCatalog, LoopTargetKind, LoopTargetMetadata,
 };
 
 #[cfg(debug_assertions)]
@@ -210,53 +210,107 @@ fn composite_timeline_processing_does_not_allocate_or_free() {
         },
     ])
     .unwrap();
-    let plan = compile_composite_plan(
-        &CompositePlanDescriptor {
-            source,
-            sync_length: 4,
-            timelines: vec![CompositeTimeline {
-                sections: vec![CompositeSection {
-                    entries: vec![CompositeEntry {
-                        target: child_identity,
-                        delay: 0,
-                        n_cycles: Some(1),
-                        mode: None,
-                    }],
+    let descriptor = CompositePlanDescriptor {
+        source,
+        sync_length: 4,
+        timelines: vec![CompositeTimeline {
+            sections: vec![CompositeSection {
+                entries: vec![CompositeEntry {
+                    target: child_identity,
+                    delay: 0,
+                    n_cycles: Some(1),
+                    mode: None,
                 }],
             }],
-        },
+        }],
+    };
+    let plan =
+        compile_composite_plan(&descriptor, &catalog, &[], CompositePlanLimits::default()).unwrap();
+    let mut replacement_descriptor = descriptor.clone();
+    replacement_descriptor.timelines[0].sections[0].entries[0].n_cycles = Some(2);
+    let replacement_plan = compile_composite_plan(
+        &replacement_descriptor,
         &catalog,
         &[],
         CompositePlanLimits::default(),
     )
     .unwrap();
-    session
-        .install_composite_timeline(
-            CompositeBoundaryTimeline::new(
-                vec![CompositeTimelineNode {
-                    plan,
-                    sync_source: sync_identity,
-                }],
-                CompositeTimelineLimits::default(),
-            )
-            .unwrap(),
-        )
+    let mut timeline = CompositeBoundaryTimeline::new(
+        vec![CompositeTimelineNode {
+            plan,
+            sync_source: sync_identity,
+        }],
+        CompositeTimelineLimits::default(),
+    )
+    .unwrap();
+    timeline.prepare_install(1, &[None, None]).unwrap();
+    let mut replacement_timeline = CompositeBoundaryTimeline::new(
+        vec![CompositeTimelineNode {
+            plan: replacement_plan,
+            sync_source: sync_identity,
+        }],
+        CompositeTimelineLimits::default(),
+    )
+    .unwrap();
+    replacement_timeline
+        .prepare_install(2, &[None, None])
         .unwrap();
+
     session
-        .composite_timeline_mut()
-        .queue_control(AcceptedTimelineControl {
-            at_sample: 0,
-            target: source,
-            action: BoundaryTargetAction::SetMode {
+        .apply_graph_changes()
+        .expect("graph should schedule");
+    let (mut engine, mut handle) = shoop_engine::engine::split(session, 16);
+    for _ in 0..4 {
+        engine.process(4);
+        handle.poll();
+    }
+    let stale_timeline = timeline.clone();
+    let mut install = handle.send_composite_timeline(timeline).unwrap();
+    let mut stale_install = handle.send_composite_timeline(stale_timeline).unwrap();
+    let mut accepted = handle
+        .send_composite_control(
+            source,
+            BoundaryTargetAction::SetMode {
                 mode: LoopMode::Playing,
                 offset_samples: 0,
                 retrigger: true,
             },
-            acceptance_sequence: 1,
-        })
+            None,
+        )
         .unwrap();
 
-    assert_steady_state_is_alloc_free(session, 4, 8);
+    assert_no_alloc(|| {
+        engine.process(4);
+    });
+
+    assert_eq!(install.pop().unwrap().unwrap().n_composites(), 0);
+    let rejected = stale_install.pop().unwrap().unwrap_err();
+    assert_eq!(
+        rejected.error,
+        shoop_engine::SessionError::StaleCompositeVersion(1)
+    );
+    assert_eq!(accepted.pop(), Ok(Ok(0)));
+
+    let mut replacement = handle
+        .send_composite_timeline(replacement_timeline)
+        .unwrap();
+    assert_no_alloc(|| {
+        engine.process(4);
+    });
+    assert!(replacement.pop().unwrap().is_ok());
+    assert_eq!(engine.session().composite_timeline().n_retired_plans(), 1);
+
+    let mut reclaimed = handle.send_composite_plan_reclamation(64).unwrap();
+    assert_no_alloc(|| {
+        for _ in 0..8 {
+            engine.process(4);
+        }
+    });
+    assert_eq!(reclaimed.pop().unwrap().len(), 1);
+    let snapshot = handle.poll().expect("composite state was published");
+    assert_eq!(snapshot.composites.len(), 1);
+    assert_eq!(snapshot.composites[0].mode, LoopMode::Playing);
+    assert_eq!(snapshot.composites[0].active_children().count(), 1);
 }
 
 #[test]

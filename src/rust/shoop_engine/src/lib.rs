@@ -16,7 +16,6 @@ pub mod composite_plan;
 pub mod composite_runtime;
 pub mod composite_semantics;
 pub mod composite_timeline;
-pub mod control;
 #[cfg(feature = "cpal")]
 pub mod cpal_mock;
 pub mod decoupled_midi_port;
@@ -89,7 +88,7 @@ pub use composite_timeline::{
     BoundaryTraceEntry, CompositeBoundaryTimeline, CompositeTimelineBuildError,
     CompositeTimelineControlError, CompositeTimelineCounters, CompositeTimelineFault,
     CompositeTimelineFaultRecord, CompositeTimelineLimits, CompositeTimelineNode,
-    MAX_COMPOSITE_CONTROLS,
+    CompositeTimelineNodeState, MAX_COMPOSITE_CONTROLS,
 };
 pub use decoupled_midi_port::DecoupledMidiPort;
 pub use driver::{
@@ -102,8 +101,8 @@ pub use dummy_driver::{DriverMode, DriverSettings, DummyDriver};
 pub use dummy_midi_port::DummyMidiPort;
 pub use dummy_port::{DummyAudioPort, DummyExternalConnections, DummyPortError, PortId};
 pub use engine::{
-    split, wait_for_result, Command, Engine, EngineHandle, LoopSnapshot, LoopState, SendError,
-    StateSnapshot, Stats, WaitError, DEFAULT_WAIT_TIMEOUT,
+    split, wait_for_result, Command, CompositeSnapshot, Engine, EngineHandle, LoopSnapshot,
+    LoopState, SendError, StateSnapshot, Stats, WaitError, DEFAULT_WAIT_TIMEOUT,
 };
 pub use fx_chain::{FXChainState, FXChainType};
 pub use graph::{processing_order, GraphError, NodeIdx, NodeSpec};
@@ -123,7 +122,10 @@ pub use port::{
     AudioPort, PortConnectability, PortConnectabilityKind, PortDataType, PortDirection,
 };
 pub use profiling::{ProfilingReport, ProfilingReportItem};
-pub use session::{build_schedule, Port, PreparedSchedule, Session, SessionError, Topology};
+pub use session::{
+    build_schedule, Port, PreparedSchedule, ReclaimedCompositeTimeline, RejectedCompositeTimeline,
+    Session, SessionError, Topology,
+};
 pub use state::{
     AudioChannelState, AudioPortSnapshot, AudioPortState, MidiChannelState, MidiPortSnapshot,
     MidiPortState,

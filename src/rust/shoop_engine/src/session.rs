@@ -18,10 +18,11 @@ use std::sync::{Arc, Mutex};
 use crate::audio_midi_loop::AudioMidiLoop;
 use crate::basic_loop::SyncSourceState;
 use crate::channel_mode::ChannelMode;
-use crate::composite_plan::{LoopIdentity, LoopTargetKind};
+use crate::composite_plan::{CompiledCompositePlan, LoopIdentity, LoopTargetKind};
 use crate::composite_timeline::{
-    BoundaryIntent, BoundaryIntentOrigin, BoundaryTargetAction, CompositeBoundaryTimeline,
-    CompositeTimelineBuildError, CompositeTimelineFault,
+    AcceptedTimelineControl, BoundaryIntent, BoundaryIntentOrigin, BoundaryTargetAction,
+    CompositeBoundaryTimeline, CompositeTimelineBuildError, CompositeTimelineControlError,
+    CompositeTimelineFault,
 };
 use crate::dummy_midi_port::DummyMidiPort;
 use crate::dummy_port::DummyAudioPort;
@@ -71,6 +72,31 @@ pub enum SessionError {
     StaleCompositeTarget(u32),
     #[error("the composite/session propagation topology is invalid: {0}")]
     CompositeTimeline(#[from] CompositeTimelineBuildError),
+    #[error("the prepared composite timeline does not match the current primitive topology")]
+    StaleCompositeTopology,
+    #[error("the prepared composite timeline has no version or is not newer than version {0}")]
+    StaleCompositeVersion(u64),
+    #[error(
+        "running replacement changes composite dependency topology or exceeds retirement capacity"
+    )]
+    CompositeReplacementRequiresRuntimeTransfer,
+}
+
+#[derive(Debug)]
+pub struct RejectedCompositeTimeline {
+    pub error: SessionError,
+    pub timeline: CompositeBoundaryTimeline,
+}
+
+#[derive(Debug)]
+pub struct ReclaimedCompositeTimeline {
+    timeline: CompositeBoundaryTimeline,
+}
+
+impl ReclaimedCompositeTimeline {
+    pub fn n_composites(&self) -> usize {
+        self.timeline.n_composites()
+    }
 }
 
 /// A port the session owns. Kinds differ in where their data comes from.
@@ -269,6 +295,10 @@ pub struct Session {
     loop_live: Vec<bool>,
     /// Composite scheduling and same-sample resolution on the loop-group timeline.
     composite_timeline: CompositeBoundaryTimeline,
+    /// Stable queue-order tie-break assigned when callback-start commands are accepted.
+    composite_acceptance_sequence: u64,
+    /// Most recent globally prepared timeline revision accepted by the callback.
+    composite_timeline_version: u64,
 
     specs: Vec<NodeSpec>,
     node_map: NodeMap,
@@ -507,10 +537,215 @@ impl Session {
         &mut self.composite_timeline
     }
 
+    pub fn composite_timeline_version(&self) -> u64 {
+        self.composite_timeline_version
+    }
+
+    pub fn accept_composite_transition(
+        &mut self,
+        source: LoopIdentity,
+        mode: LoopMode,
+        delay: u32,
+    ) -> Result<u64, CompositeTimelineControlError> {
+        let acceptance_sequence = self.composite_acceptance_sequence;
+        self.composite_timeline
+            .request_transition(source, mode, delay)?;
+        self.composite_acceptance_sequence = self.composite_acceptance_sequence.saturating_add(1);
+        Ok(acceptance_sequence)
+    }
+
+    pub fn accept_composite_immediate_transition(
+        &mut self,
+        source: LoopIdentity,
+        mode: LoopMode,
+        iteration: i64,
+    ) -> Result<u64, CompositeTimelineControlError> {
+        let acceptance_sequence = self.composite_acceptance_sequence;
+        self.composite_timeline.queue_immediate_transition(
+            source,
+            mode,
+            iteration,
+            acceptance_sequence,
+        )?;
+        self.apply_composite_controls_now()?;
+        self.composite_acceptance_sequence = self.composite_acceptance_sequence.saturating_add(1);
+        Ok(acceptance_sequence)
+    }
+
+    fn apply_composite_controls_now(&mut self) -> Result<(), CompositeTimelineControlError> {
+        let Session {
+            composite_timeline,
+            loops,
+            loop_live,
+            ..
+        } = self;
+        composite_timeline.align_sync_positions(|identity| {
+            if identity.kind != LoopTargetKind::Basic
+                || identity.generation != 1
+                || !loop_live
+                    .get(identity.slot as usize)
+                    .copied()
+                    .unwrap_or(false)
+            {
+                return None;
+            }
+            loops
+                .get(identity.slot as usize)
+                .map(|loop_| u64::from(loop_.position()))
+        });
+        let trace = composite_timeline
+            .resolve_boundary(&[], &[], |identity| {
+                identity.kind == LoopTargetKind::Basic
+                    && identity.generation == 1
+                    && loop_live
+                        .get(identity.slot as usize)
+                        .copied()
+                        .unwrap_or(false)
+            })
+            .map_err(|_| CompositeTimelineControlError::BoundaryFault)?;
+        for entry in trace {
+            if entry.target.kind != LoopTargetKind::Basic
+                || entry.target.generation != 1
+                || !loop_live
+                    .get(entry.target.slot as usize)
+                    .copied()
+                    .unwrap_or(false)
+            {
+                continue;
+            }
+            let Some(loop_) = loops.get_mut(entry.target.slot as usize) else {
+                continue;
+            };
+            match entry.action {
+                BoundaryTargetAction::Stop => loop_.set_mode(LoopMode::Stopped),
+                BoundaryTargetAction::SetMode {
+                    mode,
+                    offset_samples,
+                    retrigger,
+                } => {
+                    let mode_changed = loop_.mode() != mode;
+                    loop_.set_mode(mode);
+                    if retrigger || mode_changed {
+                        let offset = u32::try_from(offset_samples).unwrap_or(u32::MAX);
+                        if matches!(mode, LoopMode::Recording | LoopMode::RecordingDryIntoWet) {
+                            loop_.set_length(offset);
+                            loop_.set_position(0);
+                        } else {
+                            loop_.set_position(offset.min(loop_.length()));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn accept_composite_play_after_record(
+        &mut self,
+        source: LoopIdentity,
+        enabled: bool,
+    ) -> Result<u64, CompositeTimelineControlError> {
+        let acceptance_sequence = self.composite_acceptance_sequence;
+        self.composite_timeline
+            .set_play_after_record(source, enabled)?;
+        self.composite_acceptance_sequence = self.composite_acceptance_sequence.saturating_add(1);
+        Ok(acceptance_sequence)
+    }
+
+    pub fn reclaim_composite_plans(
+        &mut self,
+        storage: Vec<CompiledCompositePlan>,
+    ) -> Vec<CompiledCompositePlan> {
+        self.composite_timeline.reclaim_retired_plans(storage)
+    }
+
+    pub fn accept_composite_fault_reset(&mut self) -> u64 {
+        let acceptance_sequence = self.composite_acceptance_sequence;
+        self.composite_timeline.reset_fault();
+        self.composite_acceptance_sequence = self.composite_acceptance_sequence.saturating_add(1);
+        acceptance_sequence
+    }
+
+    pub fn accept_composite_control(
+        &mut self,
+        target: LoopIdentity,
+        action: BoundaryTargetAction,
+        at_sample: Option<u64>,
+    ) -> Result<u64, CompositeTimelineControlError> {
+        let acceptance_sequence = self.composite_acceptance_sequence;
+        let control = AcceptedTimelineControl {
+            at_sample: at_sample.unwrap_or_else(|| self.composite_timeline.sample_clock()),
+            target,
+            action,
+            acceptance_sequence,
+        };
+        self.composite_timeline.queue_control(control)?;
+        self.composite_acceptance_sequence = self.composite_acceptance_sequence.saturating_add(1);
+        Ok(acceptance_sequence)
+    }
+
     pub fn install_composite_timeline(
         &mut self,
         timeline: CompositeBoundaryTimeline,
     ) -> Result<CompositeBoundaryTimeline, SessionError> {
+        self.validate_composite_targets(&timeline)?;
+        if !timeline.is_empty() {
+            timeline.validate_primitive_sync_sources(&self.sync_sources)?;
+        }
+        Ok(std::mem::replace(&mut self.composite_timeline, timeline))
+    }
+
+    pub fn install_prepared_composite_timeline(
+        &mut self,
+        timeline: CompositeBoundaryTimeline,
+    ) -> Result<ReclaimedCompositeTimeline, RejectedCompositeTimeline> {
+        let result = self.validate_composite_targets(&timeline).and_then(|_| {
+            if !timeline.matches_prepared_primitive_sync_sources(&self.sync_sources) {
+                return Err(SessionError::StaleCompositeTopology);
+            }
+            match timeline.prepared_version() {
+                Some(version) if version > self.composite_timeline_version => Ok(version),
+                _ => Err(SessionError::StaleCompositeVersion(
+                    self.composite_timeline_version,
+                )),
+            }
+        });
+        let version = match result {
+            Ok(version) => version,
+            Err(error) => return Err(RejectedCompositeTimeline { error, timeline }),
+        };
+        if self
+            .composite_timeline
+            .replacement_requires_runtime_transfer()
+        {
+            if !self
+                .composite_timeline
+                .can_queue_runtime_preserving_replacement(&timeline)
+            {
+                return Err(RejectedCompositeTimeline {
+                    error: SessionError::CompositeReplacementRequiresRuntimeTransfer,
+                    timeline,
+                });
+            }
+            let reclaimed = self
+                .composite_timeline
+                .queue_runtime_preserving_replacement(timeline);
+            self.composite_timeline_version = version;
+            Ok(ReclaimedCompositeTimeline {
+                timeline: reclaimed,
+            })
+        } else {
+            self.composite_timeline_version = version;
+            Ok(ReclaimedCompositeTimeline {
+                timeline: std::mem::replace(&mut self.composite_timeline, timeline),
+            })
+        }
+    }
+
+    fn validate_composite_targets(
+        &self,
+        timeline: &CompositeBoundaryTimeline,
+    ) -> Result<(), SessionError> {
         if let Some(identity) = timeline.first_invalid_primitive(|identity| {
             identity.kind == LoopTargetKind::Basic
                 && identity.generation == 1
@@ -520,12 +755,10 @@ impl Session {
                     .copied()
                     .unwrap_or(false)
         }) {
-            return Err(SessionError::StaleCompositeTarget(identity.slot));
+            Err(SessionError::StaleCompositeTarget(identity.slot))
+        } else {
+            Ok(())
         }
-        if !timeline.is_empty() {
-            timeline.validate_primitive_sync_sources(&self.sync_sources)?;
-        }
-        Ok(std::mem::replace(&mut self.composite_timeline, timeline))
     }
 
     /// True when the schedule matches the current topology.
@@ -1875,7 +2108,15 @@ impl Session {
                                 loop_.set_mode(mode);
                                 if retrigger || mode_changed {
                                     let offset = u32::try_from(offset_samples).unwrap_or(u32::MAX);
-                                    loop_.set_position(offset.min(loop_.length()));
+                                    if matches!(
+                                        mode,
+                                        LoopMode::Recording | LoopMode::RecordingDryIntoWet
+                                    ) {
+                                        loop_.set_length(offset);
+                                        loop_.set_position(0);
+                                    } else {
+                                        loop_.set_position(offset.min(loop_.length()));
+                                    }
                                 }
                                 if loop_.as_sync_source_state().triggering_now {
                                     if !boundary_delivered_triggers.contains(&entry.target) {

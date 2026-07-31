@@ -2,9 +2,9 @@
 
 ## Status and scope
 
-This is the initial Stage 2 budget for the engine-authoritative composite timeline. It covers the implemented `CompositeBoundaryTimeline`, its integration into `Session::process_loop_group`, and the already compiled Stage 1 plans. It is not the complete callback-path audit required in Stage 3 and Stage 6: command transport, plan ownership/reclamation, snapshots, driver I/O, FX, and every existing session allocation exception still require those later audits.
+This budget covers the engine-authoritative composite timeline, its integration into `Session::process_loop_group`, compiled plans, the Stage 3 command-install/snapshot slice, and the Stage 4 application adapter. It is not the complete callback-path audit required in Stage 3 and Stage 6: driver I/O, FX, every application command, and remaining session allocation exceptions still require audit and removal.
 
-The application frontend does not submit composite plans to this path yet. Stage 2 proves the engine timing and boundary mechanism; Stages 3–5 provide non-blocking ownership, publication, and frontend switching.
+The application frontend translates and submits composite plans off RT through `BackendSession`; engine timing, bounded ownership transfer, same-topology running-plan replacement, command controls, and observational publication are active once a composite QObject receives its engine handle. The adapter's registry mutex, topology mirror, descriptor compilation, QObject resolution, and grab bookkeeping remain strictly on the control/update thread. The focused composite QML suite passes 24/24, including frontend/file-I/O stalls. Running dependency-topology replacement, legacy adapter deletion, full callback-path proof, and live-backend/manual verification remain open.
 
 ## Implemented capacity table
 
@@ -21,23 +21,24 @@ The application frontend does not submit composite plans to this path yet. Stage
 | Composite/event propagation depth | 32 waves | Prepared topology validation and bounded primitive propagation | Reject prepared topology or latch `EventWaveCapacity` |
 | Accepted timestamped controls | 128 | Fixed `[Option<AcceptedTimelineControl>; 128]` | Producer receives `QueueFull`; command is not accepted |
 | Transition trace entries per callback | 16,384 | Preallocated trace storage | Drop excess diagnostics and increment `trace_overflows`; authoritative processing continues |
+| Rolling transition history | 16,384 newest entries | Preallocated `VecDeque`, overwrite oldest before push | Observation loses oldest diagnostics only; authoritative processing continues |
 | Runtime output per composite transition | 128 | Fixed `CompositeTransitionBatch` | Latch runtime fault; no target commit |
 | Session sub-blocks per callback | 16 | Existing `MAX_SUB_BLOCKS` | Latch `SubBlockCapacity`, stop at the unserviceable boundary, process no later samples |
 
 The intent-construction check reserves for every installed composite's maximum 128 outputs, all accepted controls, and all primitive natural intents. Construction fails if configured intent storage cannot hold that one-boundary maximum. Scratch vectors are allocated and reserved when the timeline or graph schedule is built; processing only clears, indexes, sorts within capacity, and swaps fixed runtime state.
 
-## Initial later-stage queue budgets
+## Implemented cross-thread queue budgets
 
-These are explicit design inputs, not claims of completed Stage 3 transport:
-
-| Resource | Initial target | Stage 2 status |
+| Resource | Bound | Storage and overflow behavior |
 |---|---:|---|
-| Callback command queue | 128 accepted commands per drain | Stage 2 has fixed accepted-control staging; the non-blocking producer/consumer queue is Stage 3 |
-| Prepared plan-install queue | 16 plans | Not implemented until Stage 3 ownership/reclamation |
-| Snapshot publication | 3 preallocated latest-state slots | Not implemented until Stage 3; a full publisher must overwrite/drop stale observation and count it |
-| Displaced-plan reclamation queue | 16 plans | Not implemented until Stage 3; callback-side destruction remains forbidden |
+| Application callback command queue | 4,096 commands | Bounded `rtrb`; producer receives `Full`. The callback snapshots readable slots and drains only that fixed cutoff. |
+| Executed-command reclamation | 4,096 commands | Equal-sized return ring; command boxes and captures are destroyed by `EngineHandle::reclaim`. |
+| Accepted timeline controls | 128 controls | Fixed timeline staging; the accepted command receives `QueueFull` if full. |
+| Composite timeline installation | Shares command queue; one result slot per request | Timeline and plan allocations are built before submission. Exact prepared primitive topology, generations, and monotonic version are rechecked at installation. Displaced, rejected, or superseded ownership returns through the result slot. |
+| Deferred plan retirement | One pending slot per node; retired vector sized to `max_composites` | Activation commits before the old plan moves to retired storage. Control-provided empty storage is swapped through a reclamation command for non-RT destruction; incompatible/full replacement rejects. |
+| Snapshot publication | 3 reusable boxes | Callback fills within existing vector/fixed-child/trace capacity. If all boxes are in use, it increments `snapshots_dropped` and skips publication. The control side grows short trace vectors. |
 
-A later stage may change these values only with updated memory/cost evidence and matching validation/tests. It may not replace a bounded rejection with allocation, blocking, or late delivery.
+The application command capacity is intentionally larger than the initial 128 estimate because one queue carries all backend mutations, not only composite inputs. Work per callback is still finite and queue-full rejection is explicit. Runtime-preserving replacement uses one pending plan per node and preallocated retired-plan storage; dependency-topology-changing running candidates reject before acceptance.
 
 ## Points of interest and sub-blocks
 
@@ -73,7 +74,47 @@ A primitive-event, intent, wave, or runtime failure leaves the active composite 
 
 The Stage 2 hot structures contain fixed arrays or vectors whose capacities are reserved before processing. The resolver uses stable identities, ordered prepared topology, linear/binary bounded lookup, and no hash traversal. It does not log, format strings, lock, allocate, deallocate, compile plans, or install/drop plans during boundary processing.
 
-`composite_timeline_processing_does_not_allocate_or_free` runs repeated source wraps and composite commits inside `assert_no_alloc`. This evidence is deliberately scoped to the new timeline path. Existing `Session` code still contains separately annotated allocation exceptions and lock-bearing application/driver paths; removing and auditing them is Stage 3 and Stage 6 work, not something this document masks.
+`composite_timeline_processing_does_not_allocate_or_free` now queues a prepared timeline and control outside `assert_no_alloc`, then runs callback installation, displaced ownership transfer, control acceptance, repeated source wraps, composite commits, and snapshot publication inside the guard. Command execution has no exceptional allocation allowance. Existing `Session` code still contains separately annotated allocation exceptions and lock-bearing application/driver paths; removing and auditing them is Stage 3 and Stage 6 work, not something this document masks.
+
+## Composite callback cost measurement
+
+Command:
+
+```sh
+cargo run --release -p shoop_engine --example composite_callback_bench
+```
+
+Measured on the Linux x86_64 PREEMPT_RT host recorded in [TEST_RESULTS.md](TEST_RESULTS.md), using 64-frame callback spans:
+
+| Case | Schedule exercised | Iterations | Mean callback cost |
+|---|---|---:|---:|
+| Ordinary | 1 script composite × 4 primitive targets | 20,000 | 1.516 µs |
+| Maximum configured timeline | 64 script composites × 64 primitive targets, direct starts and terminal cleanup each callback | 500 | 832.104 µs |
+
+At 48 kHz, a 64-frame callback budget is 1.333 ms, so this resolver-heavy maximum consumed about 62.4% of one callback period on this host before representative audio/MIDI/FX/driver work. It is a capacity stress measurement, not evidence that the complete application callback meets its deadline. The current 64×64 policy therefore needs whole-callback benchmark evidence before final support claims; reducing exposed capacities is preferable if the integrated callback cannot retain margin.
+
+The benchmark builds all plans/storage before timing and repeatedly exercises accepted direct starts, 4,096 scheduled target intents, conflict collapse, script terminal cleanup, trace/history, and session POI processing. Exact output is linked in [TEST_RESULTS.md](TEST_RESULTS.md#composite-callback-benchmark).
+
+## Active callback-path audit (open findings)
+
+The following source audit is deliberately a blocker list, not a safety claim. A green composite allocator test covers the new path but cannot hide callback branches it does not exercise.
+
+| Callback area | Current ownership/storage | Open RT violation or remaining proof |
+|---|---|---|
+| `Engine` command drain | Fixed-cutoff `rtrb`; equal return ring | Composite commands are guarded. Every generic application command still needs classification because topology description, object creation, and several mutations allocate when their closure executes. |
+| Schedule installation | Prepared schedule swaps vectors and returns displaced storage | The expensive build is off-thread, but `describe_topology` is currently a queued callback command and allocates its topology description on RT. |
+| Session graph dispatch | RT-owned schedule and scratch | High-level process phases remain wrapped in `realtime_allow_alloc_once!`; those allowances must be removed after the branches below are prepared. |
+| Internal/dummy/external audio ports | Mutable RT-owned vectors | Buffer/staging growth is still callback-reachable and explicitly permitted. Supported callback sizes must be pre-sized; size mismatch needs a fixed fault instead of resize. External output capture can extend/drain a `Vec` on RT. |
+| Session test FX routing | Mutable maps plus name-based discovery | Per-callback `String`, `Vec`, `format!`, and name searches allocate. Routes and scratch must be compiled into the prepared graph. |
+| Carla/LV2 processing | `Arc<Mutex<CarlaLv2Host>>` and dynamic MIDI/audio staging | Session processing locks the host and constructs vectors/strings. Host ownership and prepared port/event buffers must move into RT-owned state. |
+| JACK registered ports | `Arc<Mutex<Vec<JackRegisteredPort>>>` | Callback locks the registry. Decoupled MIDI endpoints lock queues and clone MIDI bytes into new vectors. A bounded ownership/registration command path is required. |
+| CPAL capture/playback bridge | Several `Arc<Mutex<...>>` rings and endpoint vectors | Input/output callbacks lock audio rings, external connection state, and MIDI endpoint collections. MIDI conversion allocates byte vectors. Bounded SPSC audio/MIDI transport is required. |
+| Dummy backend bridge | Engine is thread-owned | Mock external-connection and test capture structures still use mutexes outside or adjacent to processing; callback reachability and replacement with bounded queues remain to be proven. |
+| MIDI session routing | Pre-sized per-channel scratch on the normal path | FX and decoupled-driver branches still clone/allocate messages. Maximum event capacities and explicit overflow need one common policy. |
+| Snapshot publication | Three reusable boxes; fixed composite child arrays | Allocation-free in tests. Filled-ring push is capacity-invariant but should gain a structural assertion or non-destructive fallback rather than relying only on accounting. |
+| Error and teardown | Composite errors are fixed records/counters | Driver/FX poison recovery and teardown can format, lock, or destroy owned allocations on callback threads; return-to-owner teardown must be audited per backend. |
+
+The source search surface includes callback entry points in `app_backend`, all `Session::process` callees, port/channel/MIDI modules, hosted FX, command application, snapshot publication, and driver teardown. Closing this table requires removing each open mechanism and adding exercised allocation/lock evidence; merely deleting an allowance macro is insufficient.
 
 ## Stage 2 verification evidence
 
@@ -92,6 +133,11 @@ The Stage 2 hot structures contain fixed arrays or vectors whose capacities are 
 | Queue/topology/event capacities and bounded diagnostic trace | `control_queue_and_dependency_wave_capacities_are_enforced_before_processing`, `event_overflow_latches_before_runtime_or_target_commit`, `trace_overflow_drops_diagnostics_without_affecting_the_runtime_transaction` |
 | Sub-block fail-closed behavior | `sub_block_overflow_latches_and_never_processes_the_remainder_late` |
 | No timeline-path allocation/deallocation | `composite_timeline_processing_does_not_allocate_or_free` |
+| Fixed command acceptance cutoff | `callback_drain_has_a_fixed_cutoff` |
+| Prepared topology/version race rejection | `prepared_timeline_is_rejected_if_primitive_topology_changed_before_acceptance`, `older_prepared_version_is_rejected_even_if_compilers_finish_out_of_order` |
+| No rejected-candidate destruction on RT | `composite_timeline_processing_does_not_allocate_or_free` exercises duplicate-version rejection inside `assert_no_alloc` |
+| Bounded snapshot publication and explicit stale drop | `prepared_timeline_and_control_cross_at_callback_boundaries_and_publish_state`, `stale_snapshot_publication_is_dropped_without_stalling_processing` |
+| Rolling trace survives observation stalls | `transition_history_survives_frontend_polling_stall` |
 
 The targeted commands are:
 

@@ -1,6 +1,8 @@
 use crate::{
     composite_loop_schedule::CompositeLoopSchedule,
+    cxx_qt_shoop::qobj_backend_wrapper::BackendWrapper,
     cxx_qt_shoop::qobj_composite_loop_backend_bridge::ffi::*,
+    cxx_qt_shoop::qobj_loop_backend_bridge::ffi::qobject_to_loop_backend_ptr,
     loop_helpers::transition_backend_loops,
     loop_mode_helpers::{is_recording_mode, is_running_mode},
     references_qobject::ReferencesQObject,
@@ -14,13 +16,16 @@ use cxx_qt_lib_shoop::{
     connect::connect_or_report,
     connection_types,
     invokable::invoke,
-    qobject::{self, qobject_has_property, AsQObject},
+    qobject::{self, qobject_has_property, AsQObject, FromQObject},
     qvariant_helpers::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
 };
-use shoop_engine::LoopMode;
+use shoop_engine::{
+    CompositeEntry, CompositePlanDescriptor, CompositeSection,
+    CompositeTimeline as EngineCompositeTimeline, LoopIdentity, LoopMode, LoopTargetMetadata,
+};
 use std::{
     cmp::{max, min},
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     pin::Pin,
 };
 shoop_log_unit!("Frontend.CompositeLoop");
@@ -74,8 +79,157 @@ type Transition = (*mut QObject, LoopMode);
 type Transitions = Vec<Transition>;
 type TransitionsPerIteration = BTreeMap<i32, Transitions>;
 
+unsafe fn engine_identity(obj: *mut QObject) -> Option<LoopIdentity> {
+    if obj.is_null() {
+        return None;
+    }
+    let basic = qobject_to_loop_backend_ptr(obj);
+    if !basic.is_null() {
+        return (&*basic)
+            .rust()
+            .backend_loop
+            .as_ref()
+            .map(|backend| backend.identity());
+    }
+    let composite = qobject_to_composite_loop_backend_ptr(obj);
+    if !composite.is_null() {
+        return (&*composite)
+            .rust()
+            .engine_loop
+            .as_ref()
+            .map(|backend| backend.identity());
+    }
+    None
+}
+
+unsafe fn engine_target(obj: *mut QObject) -> Option<(LoopIdentity, u64)> {
+    if obj.is_null() {
+        return None;
+    }
+    let basic = qobject_to_loop_backend_ptr(obj);
+    if !basic.is_null() {
+        let backend = (&*basic).rust().backend_loop.as_ref()?;
+        let length = backend.get_state().ok()?.length as u64;
+        return Some((backend.identity(), length));
+    }
+    let composite = qobject_to_composite_loop_backend_ptr(obj);
+    if !composite.is_null() {
+        let backend = (&*composite).rust().engine_loop.as_ref()?;
+        let length = backend.get_state().ok()?.length;
+        return Some((backend.identity(), length));
+    }
+    None
+}
+
 impl CompositeLoopBackend {
     pub fn initialize_impl(self: Pin<&mut Self>) {}
+
+    fn install_engine_schedule(mut self: Pin<&mut Self>) -> Result<(), anyhow::Error> {
+        if !self.engine_schedule_dirty {
+            return Ok(());
+        }
+        if self.engine_schedule_installing {
+            return Err(anyhow::anyhow!("recursive composite schedule dependency"));
+        }
+        self.as_mut().rust_mut().engine_schedule_installing = true;
+        let result = self.as_mut().install_engine_schedule_impl();
+        self.as_mut().rust_mut().engine_schedule_installing = false;
+        result
+    }
+
+    fn install_engine_schedule_impl(mut self: Pin<&mut Self>) -> Result<(), anyhow::Error> {
+        let session = self
+            .backend_session
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("engine session is not initialized"))?
+            .clone();
+        let composite = self
+            .engine_loop
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("engine composite is not initialized"))?
+            .clone();
+        let (sync_source, sync_length) = unsafe {
+            engine_target(self.sync_source)
+                .ok_or_else(|| anyhow::anyhow!("composite sync source is not engine-backed"))?
+        };
+        let mut metadata = BTreeMap::new();
+        metadata.insert(
+            composite.identity(),
+            LoopTargetMetadata {
+                identity: composite.identity(),
+                length_samples: self.length.max(0) as u64,
+            },
+        );
+        metadata.insert(
+            sync_source,
+            LoopTargetMetadata {
+                identity: sync_source,
+                length_samples: sync_length,
+            },
+        );
+        let mut entries = Vec::new();
+        for (&start, events) in &self.schedule.data {
+            for (target, explicit_mode) in &events.loops_start {
+                let target_obj = target.obj.as_qobject_ref() as *mut QObject;
+                unsafe {
+                    let dependency = qobject_to_composite_loop_backend_ptr(target_obj);
+                    let this = self.as_ref().get_ref() as *const Self as *mut Self;
+                    if !dependency.is_null() && dependency != this {
+                        Pin::new_unchecked(&mut *dependency).install_engine_schedule()?;
+                    }
+                }
+                let Some((identity, length_samples)) = (unsafe { engine_target(target_obj) })
+                else {
+                    return Err(anyhow::anyhow!(
+                        "composite schedule target is not engine-backed"
+                    ));
+                };
+                metadata.insert(
+                    identity,
+                    LoopTargetMetadata {
+                        identity,
+                        length_samples,
+                    },
+                );
+                let end = self
+                    .schedule
+                    .data
+                    .range(start.saturating_add(1)..)
+                    .find_map(|(&iteration, events)| {
+                        events.loops_end.contains(target).then_some(iteration)
+                    })
+                    .unwrap_or(self.n_cycles.max(start.saturating_add(1)));
+                entries.push(CompositeEntry {
+                    target: identity,
+                    delay: i64::from(start.max(0)),
+                    n_cycles: Some(i64::from((end - start).max(1))),
+                    mode: *explicit_mode,
+                });
+            }
+        }
+        let descriptor = CompositePlanDescriptor {
+            source: composite.identity(),
+            sync_length,
+            timelines: vec![EngineCompositeTimeline {
+                sections: vec![CompositeSection { entries }],
+            }],
+        };
+        let primitive_sync_sources = session.primitive_sync_sources();
+        session.configure_composite_loop(
+            &composite,
+            descriptor,
+            sync_source,
+            metadata.into_values().collect(),
+            &primitive_sync_sources,
+        )?;
+        composite.set_play_after_record(self.play_after_record)?;
+        {
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.engine_schedule_dirty = false;
+            rust_mut.engine_schedule_installed = true;
+        }
+        Ok(())
+    }
 
     pub fn list_transitions(
         mut self: Pin<&mut Self>,
@@ -331,12 +485,36 @@ impl CompositeLoopBackend {
     }
 
     pub fn transition(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         to_mode: i32,
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32,
     ) {
         debug!(self, "transition -> {to_mode}: wait {maybe_cycles_delay:?}, align @ {maybe_to_sync_at_cycle:?}");
+        if self.engine_loop.is_some() {
+            if let Err(error) = self.as_mut().install_engine_schedule() {
+                error!(self, "engine composite configuration failed: {error}");
+                return;
+            }
+            let engine_loop = self.engine_loop.as_ref().expect("checked above").clone();
+            let result = LoopMode::try_from(to_mode)
+                .map_err(anyhow::Error::from)
+                .and_then(|mode| {
+                    if maybe_to_sync_at_cycle >= 0 {
+                        engine_loop
+                            .transition_immediate(mode, i64::from(maybe_to_sync_at_cycle))
+                            .map(|_| ())
+                    } else {
+                        engine_loop
+                            .transition(mode, maybe_cycles_delay.max(0) as u32)
+                            .map(|_| ())
+                    }
+                });
+            if let Err(error) = result {
+                error!(self, "engine composite transition failed: {error}");
+            }
+            return;
+        }
         let maybe_cycles_delay = match maybe_cycles_delay {
             v if v < 0 => None,
             other => Some(other),
@@ -470,6 +648,7 @@ impl CompositeLoopBackend {
                 }
             }
 
+            self.as_mut().rust_mut().engine_schedule_dirty = true;
             if go_to_mode != LoopMode::Unknown {
                 self.as_mut().transition(
                     go_to_mode as isize as i32,
@@ -518,6 +697,7 @@ impl CompositeLoopBackend {
             let mut rust_mut = self_mut.rust_mut();
 
             rust_mut.sync_source = sync_source;
+            rust_mut.engine_schedule_dirty = true;
 
             if !rust_mut.sync_source.is_null() {
                 connect_or_report(
@@ -612,6 +792,9 @@ impl CompositeLoopBackend {
     }
 
     pub fn handle_sync_loop_trigger(mut self: Pin<&mut CompositeLoopBackend>, cycle_nr: i32) {
+        if self.engine_loop.is_some() {
+            return;
+        }
         if let Err(e) = || -> Result<(), anyhow::Error> {
             trace!(self, "handle sync trigger");
 
@@ -705,10 +888,30 @@ impl CompositeLoopBackend {
 
     pub unsafe fn set_backend(mut self: Pin<&mut Self>, backend: *mut QObject) {
         debug!(self, "set backend -> {backend:?}");
-        if !backend.is_null() {
-            let mut rust_mut = self.as_mut().rust_mut();
-            rust_mut.initialized = true;
-            self.initialized_changed(true);
+        if backend.is_null() || self.engine_loop.is_some() {
+            return;
+        }
+        let result = || -> Result<(), anyhow::Error> {
+            let wrapper = BackendWrapper::from_qobject_mut_ptr(backend)?;
+            let session = wrapper
+                .session
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("Backend session is null"))?
+                .clone();
+            let engine_loop = session.create_composite_loop()?;
+            {
+                let mut rust_mut = self.as_mut().rust_mut();
+                rust_mut.backend = backend;
+                rust_mut.backend_session = Some(session);
+                rust_mut.engine_loop = Some(engine_loop);
+                rust_mut.initialized = true;
+            }
+            self.as_mut().initialized_changed(true);
+            self.as_mut().backend_changed(backend);
+            Ok(())
+        }();
+        if let Err(error) = result {
+            error!(self, "could not initialize engine composite: {error}");
         }
     }
 
@@ -730,6 +933,9 @@ impl CompositeLoopBackend {
     }
 
     pub fn update_position(mut self: Pin<&mut CompositeLoopBackend>) {
+        if self.engine_loop.is_some() {
+            return;
+        }
         trace!(self, "update position");
         let mut v = max(0, self.iteration) * self.sync_length;
         if is_running_mode(LoopMode::try_from(self.mode).unwrap_or(LoopMode::Unknown)) {
@@ -765,9 +971,19 @@ impl CompositeLoopBackend {
                 if converted_schedule != self.schedule {
                     debug!(self, "schedule updated");
                     trace!(self, "schedule: {converted_schedule:?}");
+                    if converted_schedule.data.is_empty() && self.engine_schedule_installed {
+                        if let Some(engine_loop) = self.engine_loop.as_ref().cloned() {
+                            if let Err(error) =
+                                engine_loop.transition_immediate(LoopMode::Stopped, 0)
+                            {
+                                error!(self, "engine composite clear failed: {error}");
+                            }
+                        }
+                    }
                     let self_mut = self.as_mut();
                     let mut rust_mut = self_mut.rust_mut();
                     rust_mut.schedule = converted_schedule;
+                    rust_mut.engine_schedule_dirty = true;
                     self.as_mut().schedule_changed(schedule);
                     self.as_mut().update_n_cycles();
                 }
@@ -780,6 +996,13 @@ impl CompositeLoopBackend {
 
     pub unsafe fn set_play_after_record(mut self: Pin<&mut Self>, play_after_record: bool) {
         debug!(self, "play after record -> {play_after_record}");
+        if !self.engine_schedule_dirty {
+            if let Some(engine_loop) = self.engine_loop.as_ref() {
+                if let Err(error) = engine_loop.set_play_after_record(play_after_record) {
+                    error!(self, "engine record option failed: {error}");
+                }
+            }
+        }
         if play_after_record != self.play_after_record {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.play_after_record = play_after_record;
@@ -802,6 +1025,7 @@ impl CompositeLoopBackend {
         if kind != self.kind {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.kind = kind.clone();
+            rust_mut.engine_schedule_dirty = true;
             self.kind_changed(kind);
         }
     }
@@ -819,13 +1043,91 @@ impl CompositeLoopBackend {
         }
     }
 
-    pub fn update(self: Pin<&mut Self>) {}
+    pub fn update(mut self: Pin<&mut Self>) {
+        if self.engine_loop.is_none() {
+            return;
+        }
+        if self.engine_schedule_dirty && self.as_mut().install_engine_schedule().is_err() {
+            return;
+        }
+        let Some(state) = self.engine_loop.as_ref().and_then(|engine_loop| {
+            engine_loop
+                .poll_state()
+                .or_else(|| engine_loop.get_state().ok())
+        }) else {
+            return;
+        };
+        self.as_mut().set_mode(state.mode as i32);
+        self.as_mut()
+            .set_next_mode(state.maybe_next_mode.map(|mode| mode as i32).unwrap_or(-1));
+        self.as_mut().set_next_transition_delay(
+            state
+                .maybe_next_mode_delay
+                .map(|delay| delay as i32)
+                .unwrap_or(-1),
+        );
+        self.as_mut().set_iteration(state.iteration as i32);
+        let previous_cycle = self.cycle_nr;
+        let cycle = state.cycle_count.min(i32::MAX as u64) as i32;
+        self.as_mut().set_cycle_nr(cycle);
+        if cycle > previous_cycle {
+            self.as_mut().cycled(cycle);
+        }
+        let length = state.length.min(i32::MAX as u64) as i32;
+        let position = state.position.min(i32::MAX as u64) as i32;
+        let play_after_record_changed = self.play_after_record != state.play_after_record;
+        {
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.length = length;
+            rust_mut.position = position;
+            rust_mut.play_after_record = state.play_after_record;
+        }
+        unsafe {
+            self.as_mut().length_changed(length);
+            self.as_mut().position_changed(position);
+            if play_after_record_changed {
+                self.as_mut()
+                    .play_after_record_changed(state.play_after_record);
+            }
+        }
+
+        let active: BTreeSet<_> = state
+            .active_children
+            .iter()
+            .map(|child| child.identity)
+            .collect();
+        let mut running = QList_QVariant::default();
+        for object in self.as_mut().all_loops() {
+            if object.is_null() {
+                continue;
+            }
+            let Some(identity) = (unsafe { engine_identity(object) }) else {
+                continue;
+            };
+            if active.contains(&identity) {
+                if let Ok(variant) = qobject_ptr_to_qvariant(&object) {
+                    running.append(variant);
+                }
+            }
+        }
+        self.as_mut().rust_mut().running_loops = running.clone();
+        unsafe {
+            self.as_mut().running_loops_changed(running);
+        }
+    }
 
     pub fn get_schedule(self: &CompositeLoopBackend) -> QMap_QString_QVariant {
         self.schedule.to_qvariantmap()
     }
 
     pub fn clear(mut self: Pin<&mut CompositeLoopBackend>) {
+        if self.engine_schedule_installed {
+            if let Some(engine_loop) = self.engine_loop.as_ref().cloned() {
+                if let Err(error) = engine_loop.transition_immediate(LoopMode::Stopped, 0) {
+                    error!(self, "engine composite clear failed: {error}");
+                }
+            }
+        }
         let empty_running_loops = QList_QVariant::default();
         let empty_schedule = CompositeLoopSchedule::default();
         {
@@ -843,6 +1145,7 @@ impl CompositeLoopBackend {
             rust_mut.sync_length = 0;
             rust_mut.position = 0;
             rust_mut.cycle_nr = 0;
+            rust_mut.engine_schedule_dirty = true;
         }
         unsafe {
             self.as_mut().running_loops_changed(empty_running_loops);

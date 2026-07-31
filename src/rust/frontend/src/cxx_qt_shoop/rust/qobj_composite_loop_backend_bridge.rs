@@ -237,6 +237,16 @@ pub mod ffi {
 
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qobject.h");
+        include!("cxx-qt-lib-shoop/cast_ptr.h");
+        #[rust_name = "qobject_to_composite_loop_backend_ptr"]
+        unsafe fn cast_qobject_ptr(obj: *mut QObject) -> *mut CompositeLoopBackend;
+
+        #[rust_name = "from_qobject_ref_composite_loop_backend"]
+        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const CompositeLoopBackend);
+
+        #[rust_name = "from_qobject_mut_composite_loop_backend"]
+        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut CompositeLoopBackend);
+
         include!("cxx-qt-lib-shoop/make_raw.h");
         #[rust_name = "make_raw_composite_loop_backend"]
         unsafe fn make_raw() -> *mut CompositeLoopBackend;
@@ -257,9 +267,24 @@ use cxx_qt_lib_shoop::qweakpointer_qobject::QWeakPointer_QObject;
 pub use ffi::make_raw_composite_loop_backend;
 pub use ffi::CompositeLoopBackend;
 use ffi::*;
+use shoop_engine::app_backend::{BackendSession, CompositeLoop};
 use shoop_engine::LoopMode;
 
 use crate::composite_loop_schedule::CompositeLoopSchedule;
+
+impl cxx_qt_lib_shoop::qobject::FromQObject for CompositeLoopBackend {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt::QObject) -> *const Self {
+        let mut output: *const Self = std::ptr::null();
+        from_qobject_ref_composite_loop_backend(obj, &mut output as *mut *const Self);
+        output
+    }
+
+    unsafe fn ptr_from_qobject_mut(obj: std::pin::Pin<&mut cxx_qt::QObject>) -> *mut Self {
+        let mut output: *mut Self = std::ptr::null_mut();
+        from_qobject_mut_composite_loop_backend(obj, &mut output as *mut *mut Self);
+        output
+    }
+}
 
 impl AsQObject for CompositeLoopBackend {
     unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
@@ -320,6 +345,11 @@ pub struct CompositeLoopBackendRust {
     // Others
     pub schedule: CompositeLoopSchedule<cxx::UniquePtr<QWeakPointer_QObject>>,
     pub last_handled_sync_cycle: Option<i32>,
+    pub backend_session: Option<BackendSession>,
+    pub engine_loop: Option<CompositeLoop>,
+    pub engine_schedule_dirty: bool,
+    pub engine_schedule_installed: bool,
+    pub engine_schedule_installing: bool,
 }
 
 impl Default for CompositeLoopBackendRust {
@@ -346,6 +376,11 @@ impl Default for CompositeLoopBackendRust {
             frontend_loop: std::ptr::null_mut(),
             schedule: CompositeLoopSchedule::default(),
             last_handled_sync_cycle: None,
+            backend_session: None,
+            engine_loop: None,
+            engine_schedule_dirty: true,
+            engine_schedule_installed: false,
+            engine_schedule_installing: false,
         }
     }
 }

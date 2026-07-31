@@ -18,7 +18,7 @@ pub use engine::{
     LoopMode, MidiEvent, MultichannelAudio, PortConnectabilityKind, PortDataType, PortDirection,
     ProfilingReport, ProfilingReportItem,
 };
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::thread;
@@ -872,6 +872,63 @@ impl CpalBackend {
     }
 }
 
+#[derive(Clone)]
+struct CompositeConfig {
+    descriptor: engine::CompositePlanDescriptor,
+    sync_source: engine::LoopIdentity,
+}
+
+#[derive(Clone, Default)]
+struct CompositeRegistry {
+    configs: BTreeMap<engine::LoopIdentity, CompositeConfig>,
+    metadata: BTreeMap<engine::LoopIdentity, engine::LoopTargetMetadata>,
+}
+
+fn compile_composite_registry(
+    registry: &CompositeRegistry,
+) -> Result<engine::CompositeBoundaryTimeline> {
+    let catalog = engine::LoopTargetCatalog::new(registry.metadata.values().copied().collect())
+        .map_err(|error| anyhow!("invalid composite target catalog: {error}"))?;
+    let dependencies: Vec<_> = registry
+        .configs
+        .values()
+        .map(|config| engine::CompositeDependency {
+            source: config.descriptor.source,
+            composite_children: config
+                .descriptor
+                .timelines
+                .iter()
+                .flat_map(|timeline| &timeline.sections)
+                .flat_map(|section| &section.entries)
+                .filter_map(|entry| {
+                    (entry.target.kind == engine::LoopTargetKind::Composite).then_some(entry.target)
+                })
+                .collect(),
+        })
+        .collect();
+    let mut nodes = Vec::with_capacity(registry.configs.len());
+    for config in registry.configs.values() {
+        let installed: Vec<_> = dependencies
+            .iter()
+            .filter(|dependency| dependency.source != config.descriptor.source)
+            .cloned()
+            .collect();
+        let plan = engine::compile_composite_plan(
+            &config.descriptor,
+            &catalog,
+            &installed,
+            engine::CompositePlanLimits::default(),
+        )
+        .map_err(|error| anyhow!("composite plan validation failed: {error}"))?;
+        nodes.push(engine::CompositeTimelineNode {
+            plan,
+            sync_source: config.sync_source,
+        });
+    }
+    engine::CompositeBoundaryTimeline::new(nodes, engine::CompositeTimelineLimits::default())
+        .map_err(|error| anyhow!("composite timeline validation failed: {error}"))
+}
+
 struct SharedSession {
     /// The control side of the engine. Only ever touched by non-audio threads.
     ///
@@ -896,6 +953,10 @@ struct SharedSession {
     /// from before the set. That is not a hypothetical: it made `verify_loop_cleared` in the
     /// QML suite see the loop it had just cleared still playing at its old length.
     queued_at_cycle: AtomicU32,
+    next_composite_slot: AtomicU32,
+    next_composite_version: AtomicU32,
+    composite_registry: Mutex<CompositeRegistry>,
+    primitive_sync_sources: Mutex<Vec<Option<usize>>>,
     external: Mutex<Option<Arc<Mutex<engine::DummyExternalConnections>>>>,
     jack: Mutex<Option<Arc<Mutex<JackBackend>>>>,
     cpal: Mutex<Option<Arc<Mutex<CpalBackend>>>>,
@@ -1219,6 +1280,7 @@ fn jack_disconnect_port(
     };
 }
 
+#[derive(Clone)]
 pub struct BackendSession {
     shared: Arc<SharedSession>,
 }
@@ -1239,6 +1301,10 @@ impl BackendSession {
             handle: Mutex::new(handle),
             parked: Mutex::new(Some(engine)),
             queued_at_cycle: AtomicU32::new(0),
+            next_composite_slot: AtomicU32::new(0x8000_0000),
+            next_composite_version: AtomicU32::new(1),
+            composite_registry: Mutex::new(CompositeRegistry::default()),
+            primitive_sync_sources: Mutex::new(Vec::new()),
             external: Mutex::new(None),
             jack: Mutex::new(None),
             cpal: Mutex::new(None),
@@ -1339,11 +1405,142 @@ impl BackendSession {
         let idx = self
             .shared
             .query(|s: &mut engine::Session| s.create_loop())?;
+        let mut sync_sources = self
+            .shared
+            .primitive_sync_sources
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if sync_sources.len() <= idx {
+            sync_sources.resize(idx + 1, None);
+        }
         Ok(Loop {
             shared: self.shared.clone(),
             idx,
         })
     }
+    pub fn create_composite_loop(&self) -> Result<CompositeLoop> {
+        let slot = self
+            .shared
+            .next_composite_slot
+            .fetch_add(1, Ordering::Relaxed);
+        if slot == u32::MAX {
+            return Err(anyhow!("composite identity capacity exhausted"));
+        }
+        Ok(CompositeLoop {
+            shared: self.shared.clone(),
+            identity: engine::LoopIdentity {
+                slot,
+                generation: 1,
+                kind: engine::LoopTargetKind::Composite,
+            },
+        })
+    }
+    pub fn primitive_sync_sources(&self) -> Vec<Option<usize>> {
+        self.shared
+            .primitive_sync_sources
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone()
+    }
+
+    pub fn install_composite_timeline(
+        &self,
+        mut timeline: engine::CompositeBoundaryTimeline,
+        primitive_sync_sources: &[Option<usize>],
+    ) -> Result<u64> {
+        let version = u64::from(
+            self.shared
+                .next_composite_version
+                .fetch_add(1, Ordering::Relaxed),
+        );
+        timeline
+            .prepare_install(version, primitive_sync_sources)
+            .map_err(|error| anyhow!("could not prepare composite timeline: {error}"))?;
+        match self
+            .shared
+            .query_inner(move |session| session.install_prepared_composite_timeline(timeline))?
+        {
+            Ok(reclaimed) => {
+                drop(reclaimed);
+                Ok(version)
+            }
+            Err(rejected) => Err(anyhow!(
+                "engine rejected composite timeline version {version}: {}",
+                rejected.error
+            )),
+        }
+    }
+    pub fn configure_composite_loop(
+        &self,
+        composite: &CompositeLoop,
+        descriptor: engine::CompositePlanDescriptor,
+        sync_source: engine::LoopIdentity,
+        metadata: Vec<engine::LoopTargetMetadata>,
+        primitive_sync_sources: &[Option<usize>],
+    ) -> Result<u64> {
+        if descriptor.source != composite.identity || !Arc::ptr_eq(&self.shared, &composite.shared)
+        {
+            return Err(anyhow!(
+                "composite configuration belongs to another session"
+            ));
+        }
+        let mut registry = self
+            .shared
+            .composite_registry
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let mut candidate = registry.clone();
+        candidate.configs.insert(
+            composite.identity,
+            CompositeConfig {
+                descriptor,
+                sync_source,
+            },
+        );
+        for item in metadata {
+            candidate.metadata.insert(item.identity, item);
+        }
+        let timeline = compile_composite_registry(&candidate)?;
+        let version = self.install_composite_timeline(timeline, primitive_sync_sources)?;
+        *registry = candidate;
+        Ok(version)
+    }
+
+    pub fn remove_composite_loop(
+        &self,
+        composite: &CompositeLoop,
+        primitive_sync_sources: &[Option<usize>],
+    ) -> Result<u64> {
+        if !Arc::ptr_eq(&self.shared, &composite.shared) {
+            return Err(anyhow!("composite loop belongs to another session"));
+        }
+        composite.transition_immediate(LoopMode::Stopped, 0)?;
+        let deadline = Instant::now() + engine::DEFAULT_WAIT_TIMEOUT;
+        loop {
+            match composite.get_state() {
+                Ok(state) if state.mode == LoopMode::Stopped => break,
+                Ok(_) if Instant::now() < deadline => thread::sleep(Duration::from_millis(1)),
+                Ok(_) => return Err(anyhow!("composite did not stop before removal")),
+                Err(error) => return Err(error),
+            }
+        }
+
+        let mut registry = self
+            .shared
+            .composite_registry
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let mut candidate = registry.clone();
+        if candidate.configs.remove(&composite.identity).is_none() {
+            return Err(anyhow!("composite loop is not configured"));
+        }
+        candidate.metadata.remove(&composite.identity);
+        let timeline = compile_composite_registry(&candidate)?;
+        let version = self.install_composite_timeline(timeline, primitive_sync_sources)?;
+        *registry = candidate;
+        Ok(version)
+    }
+
     pub fn create_fx_chain(&self, chain_type: FXChainType, title: &str) -> Result<FXChain> {
         let backend = match chain_type {
             FXChainType::Test2x2x1 => FXChainBackendKind::Test2x2x1,
@@ -2154,6 +2351,127 @@ impl Drop for AudioDriver {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CompositeLoopState {
+    pub identity: engine::LoopIdentity,
+    pub active_plan_version: u64,
+    pub pending_plan_version: Option<u64>,
+    pub mode: LoopMode,
+    pub maybe_next_mode: Option<LoopMode>,
+    pub maybe_next_mode_delay: Option<u32>,
+    pub iteration: u32,
+    pub cycle_count: u64,
+    pub length: u64,
+    pub position: u64,
+    pub play_after_record: bool,
+    pub active_children: Vec<engine::ActiveCompositeChild>,
+    pub runtime_counters: engine::CompositeRuntimeCounters,
+    pub runtime_fault: engine::CompositeRuntimeFault,
+}
+
+impl CompositeLoopState {
+    fn from_snapshot(snapshot: &engine::CompositeSnapshot) -> Self {
+        Self {
+            identity: snapshot.identity,
+            active_plan_version: snapshot.active_plan_version,
+            pending_plan_version: snapshot.pending_plan_version,
+            mode: snapshot.mode.into(),
+            maybe_next_mode: snapshot.next_mode.map(Into::into),
+            maybe_next_mode_delay: snapshot.next_mode_delay,
+            iteration: snapshot.iteration,
+            cycle_count: snapshot.cycle_count,
+            length: snapshot.length,
+            position: snapshot.position,
+            play_after_record: snapshot.play_after_record,
+            active_children: snapshot.active_children().collect(),
+            runtime_counters: snapshot.runtime_counters,
+            runtime_fault: snapshot.runtime_fault,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct CompositeLoop {
+    shared: Arc<SharedSession>,
+    identity: engine::LoopIdentity,
+}
+
+impl CompositeLoop {
+    pub fn identity(&self) -> engine::LoopIdentity {
+        self.identity
+    }
+
+    pub fn transition(&self, mode: LoopMode, delay: u32) -> Result<u64> {
+        let (source, mode) = (self.identity, mode.into());
+        self.shared
+            .query_inner(move |session| session.accept_composite_transition(source, mode, delay))?
+            .map_err(|error| anyhow!("composite transition rejected: {error}"))
+    }
+
+    pub fn transition_immediate(&self, mode: LoopMode, iteration: i64) -> Result<u64> {
+        let (source, mode) = (self.identity, mode.into());
+        self.shared
+            .query_inner(move |session| {
+                session.accept_composite_immediate_transition(source, mode, iteration)
+            })?
+            .map_err(|error| anyhow!("composite immediate transition rejected: {error}"))
+    }
+
+    pub fn set_play_after_record(&self, enabled: bool) -> Result<u64> {
+        let source = self.identity;
+        self.shared
+            .query_inner(move |session| {
+                session.accept_composite_play_after_record(source, enabled)
+            })?
+            .map_err(|error| anyhow!("composite record option rejected: {error}"))
+    }
+
+    pub fn poll_state(&self) -> Option<CompositeLoopState> {
+        let identity = self.identity;
+        self.shared.poll(|snapshot| {
+            snapshot
+                .composites
+                .iter()
+                .find(|composite| composite.identity == identity)
+                .map(CompositeLoopState::from_snapshot)
+        })?
+    }
+
+    pub fn get_state(&self) -> Result<CompositeLoopState> {
+        let identity = self.identity;
+        self.shared
+            .query_inner(move |session| {
+                let timeline = session.composite_timeline();
+                (0..timeline.n_composites()).find_map(|index| {
+                    let node = timeline.node_state(index)?;
+                    (node.plan.source() == identity).then(|| {
+                        let pending = node.runtime.pending();
+                        let anticipated = pending
+                            .map(|pending| (pending.mode, pending.boundaries_to_skip))
+                            .or_else(|| timeline.anticipated_transition(identity));
+                        CompositeLoopState {
+                            identity,
+                            active_plan_version: node.active_version,
+                            pending_plan_version: node.pending_version,
+                            mode: node.runtime.mode().into(),
+                            maybe_next_mode: anticipated.map(|(mode, _)| mode.into()),
+                            maybe_next_mode_delay: anticipated.map(|(_, delay)| delay),
+                            iteration: node.runtime.iteration(),
+                            cycle_count: node.runtime.cycle_count(),
+                            length: node.runtime.length_samples(node.plan).unwrap_or(0),
+                            position: node.runtime.position_samples(node.plan).unwrap_or(0),
+                            play_after_record: node.runtime.play_after_record(),
+                            active_children: node.runtime.active_children().collect(),
+                            runtime_counters: node.runtime.counters(),
+                            runtime_fault: node.runtime.fault(),
+                        }
+                    })
+                })
+            })?
+            .ok_or_else(|| anyhow!("composite loop is not installed"))
+    }
+}
+
 #[derive(Clone)]
 pub struct Loop {
     shared: Arc<SharedSession>,
@@ -2161,6 +2479,14 @@ pub struct Loop {
 }
 pub type LoopState = engine::LoopState;
 impl Loop {
+    pub fn identity(&self) -> engine::LoopIdentity {
+        engine::LoopIdentity {
+            slot: self.idx as u32,
+            generation: 1,
+            kind: engine::LoopTargetKind::Basic,
+        }
+    }
+
     pub fn add_audio_channel(&self, mode: ChannelMode) -> Result<AudioChannel> {
         let (idx, mode) = (self.idx, mode);
         let (session_idx, chan_idx) = self.shared.query(move |s: &mut engine::Session| {
@@ -2244,7 +2570,11 @@ impl Loop {
         self.shared
             .query(move |s: &mut engine::Session| {
                 s.loop_(idx).map(|l| {
-                    let next = l.first_planned_transition();
+                    let next = l.first_planned_transition().or_else(|| {
+                        s.loop_identity(idx).and_then(|identity| {
+                            s.composite_timeline().anticipated_transition(identity)
+                        })
+                    });
                     LoopState {
                         mode: l.mode().into(),
                         length: l.length(),
@@ -2291,6 +2621,15 @@ impl Loop {
         self.shared.send(move |s: &mut engine::Session| {
             let _ = s.set_loop_sync_source(idx, src);
         });
+        let mut sync_sources = self
+            .shared
+            .primitive_sync_sources
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if sync_sources.len() <= idx {
+            sync_sources.resize(idx + 1, None);
+        }
+        sync_sources[idx] = src;
         Ok(())
     }
     pub fn adopt_ringbuffer_contents(

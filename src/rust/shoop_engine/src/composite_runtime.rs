@@ -222,6 +222,9 @@ impl CompositeRuntime {
         plan: &CompiledCompositePlan,
     ) -> Result<u64, CompositeRuntimeError> {
         self.ensure_plan(plan)?;
+        if self.mode == LoopMode::Stopped {
+            return Ok(0);
+        }
         Ok(u64::from(self.iteration)
             .saturating_mul(plan.sync_length())
             .saturating_add(self.sync_position))
@@ -295,12 +298,12 @@ impl CompositeRuntime {
         self.mode = mode;
         self.pending = None;
         self.iteration = iteration as u32;
-        self.sync_position = 0;
         self.reconcile(
             plan,
             Some(self.iteration),
             mode,
             true,
+            false,
             &mut target_is_current,
         )
     }
@@ -323,12 +326,12 @@ impl CompositeRuntime {
             return Err(CompositeRuntimeError::InvalidSeek);
         }
         self.iteration = iteration as u32;
-        self.sync_position = 0;
         self.reconcile(
             plan,
             Some(self.iteration),
             self.mode,
             true,
+            false,
             &mut target_is_current,
         )
     }
@@ -398,6 +401,7 @@ impl CompositeRuntime {
             current_plan,
             None,
             LoopMode::Stopped,
+            false,
             false,
             &mut target_is_current,
         )?;
@@ -507,8 +511,17 @@ impl CompositeRuntime {
             }
         }
         if next_mode != LoopMode::Stopped {
-            let starts =
-                self.reconcile(candidate, Some(0), next_mode, false, &mut target_is_current)?;
+            let recorded_children = old_kind == CompiledCompositeKind::Regular
+                && is_recording_mode(old_mode)
+                && self.play_after_record;
+            let starts = self.reconcile(
+                candidate,
+                Some(0),
+                next_mode,
+                false,
+                recorded_children,
+                &mut target_is_current,
+            )?;
             if let Err(error) = output.append(&starts) {
                 self.counters.output_overflows = self.counters.output_overflows.saturating_add(1);
                 self.fault = CompositeRuntimeFault::OutputCapacity;
@@ -561,13 +574,19 @@ impl CompositeRuntime {
         let next = self.iteration + 1;
         if next < plan.n_iterations() {
             self.iteration = next;
-            return self.reconcile(plan, Some(next), self.mode, false, target_is_current);
+            return self.reconcile(plan, Some(next), self.mode, false, false, target_is_current);
         }
 
         match plan.kind() {
             CompiledCompositeKind::Script => {
-                let batch =
-                    self.reconcile(plan, None, LoopMode::Stopped, false, target_is_current)?;
+                let batch = self.reconcile(
+                    plan,
+                    None,
+                    LoopMode::Stopped,
+                    false,
+                    false,
+                    target_is_current,
+                )?;
                 self.mode = LoopMode::Stopped;
                 self.pending = None;
                 self.iteration = 0;
@@ -577,10 +596,16 @@ impl CompositeRuntime {
                 self.iteration = 0;
                 if self.play_after_record {
                     self.mode = playback_mode_after_record(self.mode);
-                    self.reconcile(plan, Some(0), self.mode, false, target_is_current)
+                    self.reconcile(plan, Some(0), self.mode, false, true, target_is_current)
                 } else {
-                    let batch =
-                        self.reconcile(plan, None, LoopMode::Stopped, false, target_is_current)?;
+                    let batch = self.reconcile(
+                        plan,
+                        None,
+                        LoopMode::Stopped,
+                        false,
+                        false,
+                        target_is_current,
+                    )?;
                     self.mode = LoopMode::Stopped;
                     Ok(batch)
                 }
@@ -592,7 +617,7 @@ impl CompositeRuntime {
                 } else {
                     self.cycle_count += 1;
                 }
-                self.reconcile(plan, Some(0), self.mode, false, target_is_current)
+                self.reconcile(plan, Some(0), self.mode, false, false, target_is_current)
             }
         }
     }
@@ -606,7 +631,14 @@ impl CompositeRuntime {
         F: FnMut(LoopIdentity) -> bool,
     {
         self.pending = None;
-        let batch = self.reconcile(plan, None, LoopMode::Stopped, false, target_is_current)?;
+        let batch = self.reconcile(
+            plan,
+            None,
+            LoopMode::Stopped,
+            false,
+            false,
+            target_is_current,
+        )?;
         self.mode = LoopMode::Stopped;
         self.iteration = 0;
         self.sync_position = 0;
@@ -619,6 +651,7 @@ impl CompositeRuntime {
         desired_iteration: Option<u32>,
         composite_mode: LoopMode,
         force_seek: bool,
+        assume_recorded_children_nonempty: bool,
         target_is_current: &mut F,
     ) -> Result<CompositeTransitionBatch, CompositeRuntimeError>
     where
@@ -630,6 +663,12 @@ impl CompositeRuntime {
         for index in 0..self.target_count {
             let desired = desired_iteration
                 .and_then(|iteration| plan.desired(iteration, index, first_recording_only))
+                .map(|mut state| {
+                    if assume_recorded_children_nonempty {
+                        state.child_is_empty = false;
+                    }
+                    state
+                })
                 .and_then(|state| effective_target(state, composite_mode, self.iteration));
             if self.active[index].active && desired.is_none() {
                 self.emit(
@@ -645,12 +684,24 @@ impl CompositeRuntime {
         for index in 0..self.target_count {
             let Some(desired) = desired_iteration
                 .and_then(|iteration| plan.desired(iteration, index, first_recording_only))
+                .map(|mut state| {
+                    if assume_recorded_children_nonempty {
+                        state.child_is_empty = false;
+                    }
+                    state
+                })
                 .and_then(|state| effective_target(state, composite_mode, self.iteration))
             else {
                 continue;
             };
             let current = self.active[index];
-            let must_emit = !current.active || current.mode != desired.mode || force_seek;
+            let retrigger_composite = current.active
+                && self.iteration == 0
+                && self.installed_targets[index].kind == LoopTargetKind::Composite;
+            let must_emit = !current.active
+                || current.mode != desired.mode
+                || force_seek
+                || retrigger_composite;
             let applied = if must_emit {
                 self.emit(
                     &mut batch,
@@ -658,7 +709,7 @@ impl CompositeRuntime {
                     CompositeTargetAction::SetMode {
                         mode: desired.mode,
                         cycle_offset: desired.cycle_offset,
-                        retrigger: force_seek || !current.active,
+                        retrigger: force_seek || !current.active || retrigger_composite,
                     },
                     target_is_current,
                 )?
