@@ -324,20 +324,24 @@ impl AudioChannel {
     pub fn get_state(&self) -> Result<AudioChannelState, ControlError> {
         let (li, ci) = (self.loop_idx, self.chan_idx);
         query(&self.shared, move |s: &mut Session| {
-            s.loop_(li).and_then(|l| l.audio_channel(ci)).map(|c| {
-                AudioChannelState {
-                    mode: c.mode(),
-                    gain: c.gain(),
-                    output_peak: c.output_peak(),
-                    length: c.length() as u32,
-                    start_offset: c.start_offset(),
-                    played_back_sample: c.played_back_sample(),
-                    n_preplay_samples: c.pre_play_samples(),
-                    // Sequence number rather than a flag: the C API had the caller clear
-                    // a dirty bit, which races anything else watching it.
-                    data_dirty: c.data_seq_nr() != 0,
-                }
-            })
+            s.loop_mut(li)
+                .and_then(|l| l.audio_channel_mut(ci))
+                .map(|c| {
+                    let output_peak = c.output_peak();
+                    c.reset_output_peak();
+                    AudioChannelState {
+                        mode: c.mode(),
+                        gain: c.gain(),
+                        output_peak,
+                        length: c.length() as u32,
+                        start_offset: c.start_offset(),
+                        played_back_sample: c.played_back_sample(),
+                        n_preplay_samples: c.pre_play_samples(),
+                        // Sequence number rather than a flag: the C API had the caller clear
+                        // a dirty bit, which races anything else watching it.
+                        data_dirty: c.data_seq_nr() != 0,
+                    }
+                })
         })?
         .ok_or(ControlError::NoSuchChannel(ci, li))
     }
@@ -552,16 +556,25 @@ impl Port {
     pub fn get_audio_state(&self) -> Result<AudioPortState, ControlError> {
         let idx = self.idx;
         query(&self.shared, move |s: &mut Session| {
-            let p = s.port(idx)?;
-            let audio = p.audio()?;
+            let p = s.port_mut(idx)?;
+            let name = p.name().to_string();
+            let audio = p.audio_mut()?;
+            let input_peak = audio.input_peak();
+            let output_peak = audio.output_peak();
+            let gain = audio.gain();
+            let muted = audio.muted();
+            let passthrough_muted = audio.passthrough_muted();
+            let ringbuffer_n_samples = audio.ringbuffer_n_samples() as u32;
+            audio.reset_input_peak();
+            audio.reset_output_peak();
             Some(AudioPortState {
-                input_peak: audio.input_peak(),
-                output_peak: audio.output_peak(),
-                gain: audio.gain(),
-                muted: audio.muted(),
-                passthrough_muted: audio.passthrough_muted(),
-                ringbuffer_n_samples: audio.ringbuffer_n_samples() as u32,
-                name: p.name().to_string(),
+                input_peak,
+                output_peak,
+                gain,
+                muted,
+                passthrough_muted,
+                ringbuffer_n_samples,
+                name,
             })
         })?
         .ok_or(ControlError::WrongPortKind(PortKindError::NotAudio(idx)))
