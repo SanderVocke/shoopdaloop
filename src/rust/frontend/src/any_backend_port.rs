@@ -59,6 +59,23 @@ impl AnyBackendPort {
         }
     }
 
+    /// State as of the last published cycle, for the frame-rate poll.
+    ///
+    /// The update thread fans one signal out to every port, channel and loop, so this has to
+    /// be cheap: `get_state` is a round trip to the audio thread, and one per object per frame
+    /// costs more than the frame is worth. Falls back to the blocking read until a cycle has
+    /// published anything, which is only the case before the driver has started.
+    pub fn poll_state(&self) -> Result<AnyBackendPortState, anyhow::Error> {
+        let polled = match self {
+            AnyBackendPort::Audio(port) => port.poll_state().map(AnyBackendPortState::from),
+            AnyBackendPort::Midi(port) => port.poll_state().map(AnyBackendPortState::from),
+        };
+        match polled {
+            Some(state) => Ok(state),
+            None => self.get_state(),
+        }
+    }
+
     pub fn push_state(&self, state: &AnyBackendPortState) -> Result<(), anyhow::Error> {
         match self {
             AnyBackendPort::Audio(port) => {

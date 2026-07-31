@@ -198,11 +198,19 @@ impl LoopBackend {
         let result = || -> Result<(), anyhow::Error> {
             self.as_mut().starting_update();
             let mut rust = self.as_mut().rust_mut();
-            let new_state = rust
+            let backend_loop = rust
                 .backend_loop
                 .as_mut()
-                .ok_or(anyhow!("backend loop object doesn't exist"))?
-                .get_state()?;
+                .ok_or(anyhow!("backend loop object doesn't exist"))?;
+            // Published state rather than a round trip to the audio thread. The update
+            // signal reaches every loop, port and channel on one tick, so a blocking read
+            // per object would cost an audio cycle each -- more than a frame is worth once a
+            // session has a few tracks. Falls back to the blocking read until a cycle has
+            // published, which is only before the driver has started.
+            let new_state = match backend_loop.poll_state() {
+                Some(state) => state,
+                None => backend_loop.get_state()?,
+            };
 
             let prev_state;
             let prev_cycle_nr: i32;

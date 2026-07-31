@@ -58,7 +58,7 @@ impl PortBackend {
                 .as_ref()
                 .ok_or(anyhow!("Backend port not initialized"))?;
             let prev_state = self.prev_state.clone();
-            let new_state = match port.get_state() {
+            let new_state = match port.poll_state() {
                 Ok(state) => state,
                 Err(e) => {
                     debug!(self, "Skipping update: {e}");

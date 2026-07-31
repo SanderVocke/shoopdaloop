@@ -1,137 +1,136 @@
-# Mixed Visual C++ runtimes on Windows
+# Open issue: the Windows debug portable package bundles two C++ runtimes
 
-Two causes, both now fixed. This records what went wrong, why, and how to tell if
-it comes back — the diagnostics for that are in the build log.
+## Symptom
 
-## Background: rustc forces the release CRT
+The **debug** Windows portable package crashes at startup once the UI is loaded.
+Packaging itself succeeds — the dependency scan reports 0 unresolved and 0
+unclassified — and the process gets far enough to install the crash handler and
+write a minidump, so it is not a missing-DLL loader failure. It then dies with
+exit code 139 before printing any of its own log output.
 
-`rustc` on MSVC links the **release** C runtime (`vcruntime140.dll`) and has no
-`/MDd` equivalent — the CRT flavour is not selectable per profile the way it is
-for MSVC C++. So in *any* build of this application, debug included, the Rust side
-is release-CRT.
+The **release** Windows package is unaffected and verified working end to end
+(loads the real UI from the package with the build environment stripped).
 
-Everything below follows from that: a debug-built C++ dependency can never match
-the Rust side, so C++ dependencies must be release-built even in a debug build.
+## What is in the package
+
+The debug package bundles both flavours of the Visual C++ runtime:
+
+| release | debug |
+|---|---|
+| `MSVCP140.dll` | `MSVCP140D.dll` |
+| `MSVCP140_2.dll` | `MSVCP140_1D.dll`, `MSVCP140_2D.dll` |
+| `VCRUNTIME140.dll` | `VCRUNTIME140D.dll` |
+| `VCRUNTIME140_1.dll` | `VCRUNTIME140_1D.dll` |
 
 Two CRTs in one process do not share a heap. An allocation or a `FILE*` crossing
-a module boundary between them corrupts state.
+a module boundary between them corrupts state, which is the most likely
+explanation for the crash — though note this has **not** been proven; the
+minidump was never examined.
 
-## Cause 1: cxx-qt was pointed at vcpkg's debug Qt
+## Where they come from
 
-`scripts/vcpkg_prebuild.py:find_qmake` used to compile a wrapper around
-`qmake.debug.bat` for Windows debug builds, so cxx-qt linked debug Qt and the
-packaging step copied the debug Qt plugin/QML tree. Debug Qt is `/MDd`; the Rust
-executable is `/MD`. The debug portable folder crashed at startup as a result —
-packaging reported 0 unresolved and 0 unclassified, and the process got far enough
-to write a minidump, so it was never a missing-DLL failure.
+Established by reading real import tables, not inferred:
 
-**Fixed** by always using the release `qmake`, which is what non-Windows platforms
-were already doing (the debug branch was guarded on `win32`). The wrapper
-machinery existed only to run that `.bat` and has been removed.
+1. **The CRT DLLs import each other.** `MSVCP140_2.dll` imports `MSVCP140.dll`,
+   `VCRUNTIME140.dll` and `VCRUNTIME140_1.dll`. `MSVCP140_1.dll` imports
+   `MSVCP140.dll`.
 
-Trade-off: no Qt asserts or debug symbols in Windows debug builds. Deliberate —
-they were never usable with a release-CRT Rust binary anyway.
+2. **`*/MSVCP*.dll` and `*/VCRUNTIME*.dll` are in
+   `distribution/windows/includelist`**, so once one is discovered it is bundled
+   *and walked* — its own imports come along.
 
-## Cause 2: the dependency search order was inverted
+3. **The release-flavour set observed in the debug package is exactly
+   `MSVCP140_2.dll` plus its own closure.** That is not a coincidence: a single
+   edge to the release `MSVCP140_2.dll` accounts for all four release DLLs.
 
-`common::env::add_lib_search_path` **prepends** to `PATH`. The old code iterated
-`["debug/bin", "bin", "debug/lib", "lib"]` and prepended each, so the effective
-search order came out reversed — `lib`, `debug/lib`, `bin`, `debug/bin`. Since
-vcpkg keeps DLLs in `bin`/`debug/bin` (the `lib` dirs hold import libraries),
-**release `bin` effectively won**.
+Two plausible culprits were ruled out:
 
-`windows_search_dirs` in `src/rust/packaging/src/scan.rs` reads its list as
-*priority* order, and was given that same array — silently inverting the
-behaviour. This mattered because **non-Qt vcpkg libraries have identical names in
-both trees** (`zlib1.dll`, `harfbuzz.dll`, `double-conversion.dll`, ...), so order
-alone decides which flavour is bundled. Qt is unaffected: its debug binaries are
-`d`-suffixed, so a reference to `Qt6Core.dll` cannot resolve to a debug build.
+- The debug CRT chain is self-consistent — `MSVCP140D.dll` imports only
+  `VCRUNTIME140D.dll` and `VCRUNTIME140_1D.dll`; nothing in it references a
+  release CRT.
+- `dbghelp.dll`, although bundled from `System32`, imports no Visual C++ runtime
+  at all.
 
-This hit the **release** package, not just debug: 28 of 100 bundled DLLs came from
-`debug/bin`, dragging in the debug CRT. Measured on a release build:
+So: **some binary in vcpkg's `debug/bin` is linked `/MD` (release) rather than
+`/MDd`, and imports the release `MSVCP140_2.dll`** — the auxiliary runtime
+holding the special-math functions. In the release tree that library is imported
+by `Qt6Gui.dll` and `Qt6Quick.dll`.
 
-```
-Runtime msvcp140d.dll       <- double-conversion.dll
-Runtime vcruntime140d.dll   <- FLAC.dll, brotlicommon.dll, brotlidec.dll, bz2d.dll
-Runtime vcruntime140_1d.dll <- double-conversion.dll, harfbuzz.dll, meshoptimizer.dll
-```
+**This is a property of the build inputs, not of the dependency scan.** Nothing
+about the build changed. Previously the scan started only at the executable and
+never reached the mismatched binary; now that it seeds from every binary in the
+package (which is the point — see `src/rust/packaging/src/deps_walker.rs`), that
+binary is reachable and its CRT comes with it.
 
-That is worse than the debug crash: `VCRUNTIME140D.dll` is **not
-redistributable**, and it only resolved at all because CI runners have Visual
-Studio installed.
+## What is still unknown
 
-**Fixed** by putting `bin` before `debug/bin`.
+**Which** binary in the debug tree carries the mismatched runtime flag. Finding
+that needs a vcpkg debug tree, which was not available while investigating.
 
-## Why fixing only one would not have been enough
+## Approach: read the warnings the build now emits
 
-| | fixes | why the other does not |
-|---|---|---|
-| release `qmake` | the debug package's **Qt** | search order cannot pick debug Qt — it is `d`-suffixed |
-| release-first search order | the release package's **non-Qt** libraries | `qmake` does not govern non-Qt libraries at all |
+Packaging emits the diagnostics needed to close this out. Both appear in the
+build log (CI sets `SHOOP_LOG=packaging=debug` in
+`.github/actions/build_package/action.yml`; set it locally too).
 
-Note also what does **not** work: excludelisting the debug CRT. That changes only
-which runtime *files* are bundled, not which binaries *import* them. A bundled DLL
-importing `MSVCP140D.dll` will either find it on the target machine (both CRTs
-load, same crash, now with an undeclared dependency on a non-redistributable DLL)
-or fail to load outright. An ABI mismatch cannot be fixed by relocating files —
-only by changing which binaries are in the package. Both fixes above do that;
-excludelisting would merely have silenced the warning.
-
-## How to tell if it comes back
-
-Two diagnostics, both in the build log (CI sets `SHOOP_LOG=packaging=debug` in
-`.github/actions/build_package/action.yml`).
-
-1. **Mixed-runtime warning** — `warn_on_mixed_vc_runtimes`,
-   `src/rust/packaging/src/portable_folder_common.rs`:
+1. **The mixed-runtime warning** — fires when both flavours end up bundled:
 
    ```
    --> Bundling both debug and release Visual C++ runtimes (msvcp140.dll + msvcp140d.dll).
+       Two CRTs in one process do not share a heap; this package may crash at
+       startup. Some dependency is linked against the other CRT.
    ```
 
-   A clean build log means one CRT. This is the acceptance signal for both fixes.
+   Implemented in `warn_on_mixed_vc_runtimes`,
+   `src/rust/packaging/src/portable_folder_common.rs`.
 
-2. **Per-runtime importer attribution** — `log_report_summary`,
-   `src/rust/packaging/src/scan.rs`:
+2. **Per-runtime importer attribution** — names what asked for each one:
 
    ```
    Runtime msvcp140_2.dll <- Qt6Gui.dll, Qt6Quick.dll (from .../bin/MSVCP140_2.dll)
+   Runtime msvcp140.dll   <- MSVCP140_1.dll, MSVCP140_2.dll, Qt6Core.dll (+9 more)
    ```
 
-   The CRTs import each other (`MSVCP140_2.dll` pulls in `MSVCP140.dll`,
-   `VCRUNTIME140.dll` and `VCRUNTIME140_1.dll`), so a single mismatched binary
-   drags in a whole chain. **Only the first link identifies the culprit**: look for
-   the runtime whose importers are not themselves CRT DLLs.
+   Implemented in `log_report_summary`, `src/rust/packaging/src/scan.rs`.
 
-Available without a full build, against any package folder:
+   Because the CRTs import each other, **only the first link identifies the
+   culprit.** Look for the runtime whose importers are *not* themselves CRT DLLs —
+   in the debug build, whatever imports the release `msvcp140_2.dll`.
+
+The same attribution is available without a full build, against any existing
+package folder:
 
 ```
 package scan-dependencies --folder <dir> --use-cmake-prefix-path --report-only
 ```
 
-## Still outstanding
+## Candidate fixes, once the binary is identified
 
-- **The crash was never proven to be the CRT mismatch.** The minidump was not
-  examined. The mismatch is real and had to be fixed regardless, but if the debug
-  package still crashes with a clean CRT log, look elsewhere.
-- **`windows_debug` is the one job still on the reduced check.**
-  `.github/actions/build_toplevel/action.yml` runs the full UI-loading
-  verification (`--backend dummy --test-grab-screens`, asserting screenshots exist
-  and the log is free of loader errors) for every `portable_folder` job except
-  that one, which falls back to `--help`. Lifting that restriction is the
-  acceptance test for the two fixes above and should be the next thing tried.
-  If it still crashes while the mixed-runtime warning stays quiet, the CRT
-  diagnosis was wrong and the cause is elsewhere.
+- **Rebuild that port with matching runtime flags** in vcpkg. Correct fix if it is
+  a project-controlled port or overlay.
+- **Exclude it from the debug package** if the component is not needed, the way
+  `UNWANTED_QT_PLUGINS` drops the PostgreSQL driver
+  (`src/rust/packaging/src/portable_folder_common.rs`).
+- **Accept it and stop shipping the debug CRT**, noting the debug CRT DLLs are not
+  redistributable in any case. This makes the debug portable folder a
+  build-tree-only artifact rather than a self-contained one.
 
-- **`linux_coverage` runs the full check**, with `QML_IMPORT_PATH` pointed at
-  Qoverage's module directory. The instrumented QML imports `QoverageSingleton`,
-  which belongs to the coverage tooling rather than the package; without that
-  path no window is created and the run reaches the 300s timeout. This mirrors
-  what the coverage *test* job already does via `run_cmd_prefix` in
-  `build_and_test.yml`, and reuses the Qoverage installed by the existing
-  `Install Qoverage` step. It adds only Qoverage's own module directory — no Qt,
-  no vcpkg — so the package still has to supply everything else.
-- **`VCPKG_BUILD_TYPE` is deliberately not set.** Making vcpkg release-only would
-  prevent this by construction, but debug dependency trees are wanted for other
-  work. Both trees are still built; the fixes ensure only the release one is
-  linked and bundled.
+Note that the debug CRT currently resolves from `System32` on the CI runner
+because Visual Studio is installed there; it would not resolve on a clean
+machine, which is worth keeping in mind when judging how self-contained this
+package really is.
+
+## Related: the CI check was narrowed to match
+
+`.github/actions/build_toplevel/action.yml` runs the full UI-loading verification
+(`--backend dummy --test-grab-screens`, asserting screenshots exist and the log is
+free of loader errors) only for **release** packages. Debug and coverage variants
+fall back to the weaker `--help` check:
+
+- **debug** — this issue.
+- **coverage** — Qoverage rewrites the QML to import `QoverageSingleton`, which
+  belongs to the coverage tooling and is not in the package, so no window is ever
+  created and the run hits the timeout.
+
+Restoring the full check for debug is the acceptance criterion for closing this
+issue.

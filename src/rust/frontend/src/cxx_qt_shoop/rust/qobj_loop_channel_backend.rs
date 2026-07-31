@@ -57,7 +57,7 @@ impl LoopChannelBackend {
                 .as_ref()
                 .ok_or(anyhow!("Backend channel is None in update"))?;
             let prev_state = self.prev_state.clone();
-            let new_state = match channel.get_state() {
+            let new_state = match channel.poll_state() {
                 Ok(state) => state,
                 Err(e) => {
                     debug!(self, "Skipping update: {e}");
