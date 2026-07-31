@@ -18,6 +18,11 @@ use shoop_engine::midi;
 use shoop_engine::port::{PortConnectability, PortDirection};
 use shoop_engine::realtime_alloc_guard;
 use shoop_engine::session::{Port, Session};
+use shoop_engine::{
+    compile_composite_plan, CompositeEntry, CompositePlanDescriptor, CompositePlanLimits,
+    CompositeRuntime, CompositeSection, CompositeTimeline, LoopIdentity, LoopTargetCatalog,
+    LoopTargetKind, LoopTargetMetadata,
+};
 
 #[cfg(debug_assertions)]
 #[global_allocator]
@@ -65,6 +70,111 @@ fn assert_steady_state_is_alloc_free(mut s: Session, n_frames: usize, cycles: us
         for _ in 0..cycles {
             s.process(n_frames);
         }
+    });
+}
+
+#[test]
+fn composite_state_machine_does_not_allocate_or_free() {
+    let source = LoopIdentity {
+        slot: 10,
+        generation: 1,
+        kind: LoopTargetKind::Composite,
+    };
+    let child = LoopIdentity {
+        slot: 20,
+        generation: 3,
+        kind: LoopTargetKind::Basic,
+    };
+    let replacement_child = LoopIdentity {
+        slot: 30,
+        generation: 2,
+        kind: LoopTargetKind::Basic,
+    };
+    let catalog = LoopTargetCatalog::new(vec![
+        LoopTargetMetadata {
+            identity: source,
+            length_samples: 0,
+        },
+        LoopTargetMetadata {
+            identity: child,
+            length_samples: 4,
+        },
+        LoopTargetMetadata {
+            identity: replacement_child,
+            length_samples: 4,
+        },
+    ])
+    .unwrap();
+    let descriptor = CompositePlanDescriptor {
+        source,
+        sync_length: 4,
+        timelines: vec![CompositeTimeline {
+            sections: vec![
+                CompositeSection {
+                    entries: vec![CompositeEntry {
+                        target: child,
+                        delay: 0,
+                        n_cycles: Some(2),
+                        mode: None,
+                    }],
+                },
+                CompositeSection {
+                    entries: vec![CompositeEntry {
+                        target: child,
+                        delay: 0,
+                        n_cycles: Some(1),
+                        mode: None,
+                    }],
+                },
+            ],
+        }],
+    };
+    let plan =
+        compile_composite_plan(&descriptor, &catalog, &[], CompositePlanLimits::default()).unwrap();
+    let replacement_descriptor = CompositePlanDescriptor {
+        source,
+        sync_length: 4,
+        timelines: vec![CompositeTimeline {
+            sections: vec![CompositeSection {
+                entries: vec![CompositeEntry {
+                    target: replacement_child,
+                    delay: 0,
+                    n_cycles: Some(1),
+                    mode: None,
+                }],
+            }],
+        }],
+    };
+    let replacement = compile_composite_plan(
+        &replacement_descriptor,
+        &catalog,
+        &[],
+        CompositePlanLimits::default(),
+    )
+    .unwrap();
+    let mut runtime = CompositeRuntime::new(&plan);
+    let mut replacement_runtime = CompositeRuntime::new(&plan);
+
+    assert_no_alloc(|| {
+        runtime
+            .transition_immediate(&plan, LoopMode::Playing, None, |_| true)
+            .unwrap();
+        runtime.sync_boundary(&plan, |_| true).unwrap();
+        runtime.seek(&plan, 2, |_| true).unwrap();
+        runtime.request_transition(LoopMode::Recording, 0).unwrap();
+        runtime.sync_boundary(&plan, |_| true).unwrap();
+        runtime.stop(&plan, |_| true).unwrap();
+        assert_eq!(runtime.active_children().count(), 0);
+
+        replacement_runtime
+            .transition_immediate(&plan, LoopMode::Playing, Some(2), |_| true)
+            .unwrap();
+        replacement_runtime
+            .activate_plan(&plan, &replacement, |_| true)
+            .unwrap();
+        replacement_runtime
+            .activate_deferred_at_iteration_zero(&plan, &replacement, |_| true)
+            .unwrap();
     });
 }
 

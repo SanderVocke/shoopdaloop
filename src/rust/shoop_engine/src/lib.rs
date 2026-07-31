@@ -12,6 +12,8 @@ pub mod basic_loop;
 pub mod buffer_queue;
 pub mod channel_mode;
 pub mod chunked_samples;
+pub mod composite_plan;
+pub mod composite_runtime;
 pub mod composite_semantics;
 pub mod control;
 #[cfg(feature = "cpal")]
@@ -58,6 +60,18 @@ pub use basic_loop::{BasicLoop, PoiFlags, PointOfInterest, SyncSourceState};
 pub use buffer_queue::{BufferQueue, Snapshot};
 pub use channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 pub use chunked_samples::ChunkedSamples;
+pub use composite_plan::{
+    compile_composite_plan, CompiledActionRange, CompiledChildMode, CompiledCompositeKind,
+    CompiledCompositePlan, CompiledDesiredState, CompiledPlanAction, CompiledPlanActionKind,
+    CompositeCompileError, CompositeDependency, CompositeEntry, CompositePlanDescriptor,
+    CompositePlanLimits, CompositeSection, CompositeTimeline, LoopIdentity, LoopTargetCatalog,
+    LoopTargetKind, LoopTargetMetadata, MAX_COMPOSITE_BOUNDARY_OUTPUTS, MAX_COMPOSITE_TARGETS,
+};
+pub use composite_runtime::{
+    ActiveCompositeChild, CompositePlanReplacement, CompositeRuntime, CompositeRuntimeCounters,
+    CompositeRuntimeError, CompositeRuntimeFault, CompositeTargetAction, CompositeTargetTransition,
+    CompositeTransitionBatch, PendingCompositeTransition,
+};
 pub use composite_semantics::{
     classify_plan_modes, command_disposition, countdown_execution_boundary, dependency_order,
     empty_child_action, entry_duration, half_open_interval_contains,

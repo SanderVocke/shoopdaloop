@@ -115,37 +115,37 @@ This is the initial design direction, not an immutable implementation prescripti
 
 ### RT-safe identity and compiled plan
 
-- [ ] Create [`docs/composite_rt/ARCHITECTURE.md`](docs/composite_rt/ARCHITECTURE.md) and keep its implemented design current throughout the prototype.
-- [ ] Introduce stable engine-side identities with generation checking for basic and composite loop targets.
-- [ ] Define an immutable compiled composite plan with sorted iteration/action storage.
-- [ ] Ensure the plan contains no `QObject`, `QVariant`, weak Qt pointer, runtime string lookup, or hash-order dependency.
-- [ ] Resolve playlist references and compute schedule metadata before RT installation.
-- [ ] Precompute or bound metadata needed for recording-first-occurrence, active-child tracking, immediate sync, and cancellation.
-- [ ] Validate all indices, modes, lengths, dependency edges, and capacities before installation.
-- [ ] Detect transitive composite cycles during compilation.
+- [x] Create [`docs/composite_rt/ARCHITECTURE.md`](docs/composite_rt/ARCHITECTURE.md) and keep its implemented design current throughout the prototype.
+- [x] Introduce stable engine-side identities with generation checking for basic and composite loop targets.
+- [x] Define an immutable compiled composite plan with sorted iteration/action storage.
+- [x] Ensure the plan contains no `QObject`, `QVariant`, weak Qt pointer, runtime string lookup, or hash-order dependency.
+- [x] Resolve playlist references and compute schedule metadata before RT installation.
+- [x] Precompute or bound metadata needed for recording-first-occurrence, active-child tracking, immediate sync, and cancellation.
+- [x] Validate all indices, modes, lengths, dependency edges, and capacities before installation.
+- [x] Detect transitive composite cycles during compilation.
 
 ### Pure state machine
 
-- [ ] Implement composite mode, pending transition/countdown, iteration, cycle count, position derivation, and active-child state.
-- [ ] Implement regular-loop mode inheritance.
-- [ ] Implement script explicit-mode behavior and completion.
-- [ ] Implement stop/cancel behavior and child cleanup.
-- [ ] Implement recording and play-after-record behavior.
-- [ ] Implement immediate-sync/seek state calculation without RT allocation or unbounded replay.
-- [ ] Make transition output deterministic and ordered.
-- [ ] Represent failures as explicit status/counters suitable for publication without RT logging or formatting.
+- [x] Implement composite mode, pending transition/countdown, iteration, cycle count, position derivation, and active-child state.
+- [x] Implement regular-loop mode inheritance.
+- [x] Implement script explicit-mode behavior and completion.
+- [x] Implement stop/cancel behavior and child cleanup.
+- [x] Implement recording and play-after-record behavior.
+- [x] Implement immediate-sync/seek state calculation without RT allocation or unbounded replay.
+- [x] Make transition output deterministic and ordered.
+- [x] Represent failures as explicit status/counters suitable for publication without RT logging or formatting.
 
 ### Tests
 
-- [ ] Unit-test the state machine independently of audio channels and Qt.
-- [ ] Cover every applicable row of [`docs/composite_rt/FEATURE_PARITY.md`](docs/composite_rt/FEATURE_PARITY.md) that does not require audio routing.
-- [ ] Test invalid plans, stale identities, cycles, capacity limits, and conflicting events.
-- [ ] Test long-running iteration/cycle behavior and integer-boundary cases.
+- [x] Unit-test the state machine independently of audio channels and Qt.
+- [x] Cover every applicable row of [`docs/composite_rt/FEATURE_PARITY.md`](docs/composite_rt/FEATURE_PARITY.md) that does not require audio routing.
+- [x] Test invalid plans, stale identities, cycles, capacity limits, and conflicting events.
+- [x] Test long-running iteration/cycle behavior and integer-boundary cases.
 
 ### Stage 1 exit gate
 
-- [ ] The pure engine state machine matches [`docs/composite_rt/SEMANTICS.md`](docs/composite_rt/SEMANTICS.md).
-- [ ] It can execute from fully prepared storage without allocating, locking, string lookup, or nondeterministic iteration.
+- [x] The pure engine state machine matches [`docs/composite_rt/SEMANTICS.md`](docs/composite_rt/SEMANTICS.md).
+- [x] It can execute from fully prepared storage without allocating, locking, string lookup, or nondeterministic iteration.
 
 ## Stage 2 — POI integration and deterministic boundary-event resolution
 
@@ -384,6 +384,9 @@ The implementing agent should maintain this table as discoveries are made.
 | 2026-07-31 / Stage 0 | Activate stopped/pending plan replacements at command acceptance; defer running replacements to the next iteration-zero boundary. | Avoids changing the meaning of the current pass or orphaning children; exact stop-before-activation behavior is specified in `SEMANTICS.md`. | 0, 1, 3, 5 | RT authority, determinism, feature parity |
 | 2026-07-31 / Stage 0 | Reject producer/plan capacity overflow before acceptance; event/wave/sub-block overflow enters a latched fail-closed RT fault rather than applying an event late. | [`SEMANTICS.md`](docs/composite_rt/SEMANTICS.md) capacity policy and `overflow_never_turns_into_a_late_event`. | 0, 2, 3, 6 | Bounded RT work, no RT allocation, determinism |
 | 2026-07-31 / Stage 0 | Preserve `loop.1` playlist persistence as the compatibility surface; compile missing IDs as errors and use generation-checked engine targets after acceptance. | Current schema/application inventory in [`FEATURE_PARITY.md`](docs/composite_rt/FEATURE_PARITY.md); stale-target contract tests. | 0, 1, 4, 5 | Feature parity, top-level integration, determinism |
+| 2026-07-31 / Stage 1 | Compile descriptors off-thread into immutable stable-ID, iteration-major desired-state and sparse ordered-action tables; cap precomputed seek storage instead of replaying schedules in RT. | [`ARCHITECTURE.md`](docs/composite_rt/ARCHITECTURE.md), `composite_plan`, and compiler/state-machine tests. | 1–4 | No RT allocation, determinism, bounded RT work |
+| 2026-07-31 / Stage 1 | Keep `CompositeRuntime` allocation-free by borrowing plans and using fixed target/output arrays; defer plan ownership and non-RT reclamation to Stage 3. | Allocator-enforced `composite_state_machine_does_not_allocate_or_free`; source audit finds no locks, strings, or hash containers in runtime/plan storage. | 1, 3 | No RT allocation, no RT mutexes, bounded RT work |
+| 2026-07-31 / Stage 1 | Model running replacement as an externally owned deferred candidate and expose an atomic iteration-zero activation transaction; a completing script activates its candidate stopped. | Replacement tests and the plan-replacement sections of [`SEMANTICS.md`](docs/composite_rt/SEMANTICS.md) and [`ARCHITECTURE.md`](docs/composite_rt/ARCHITECTURE.md). | 1, 3 | Determinism, RT authority, feature parity |
 
 ## Completion definition
 

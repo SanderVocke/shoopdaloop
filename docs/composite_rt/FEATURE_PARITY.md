@@ -46,6 +46,46 @@ Evidence abbreviations:
 | F30 | **GUI/update-thread stall tolerance.** Once configured, current composites continue while the QML GUI thread or blocking file I/O stalls because the adapter lives on the separate engine update thread. | GUI moves backend object in `qobj_composite_loop_gui.rs`; QML `test_ui_frozen`, `test_fileio_frozen`. | This is not RT authority: a stalled update thread, delayed polling, or missed wrap still changes timing. | Not migrated | Engine trace test that stalls both frontend and update processing while audio continues; retain QML stall tests with engine snapshots; Manual heavy GUI load. |
 | F31 | **Documentation and discoverability behavior.** User docs describe scenes/sequences/scripts, playback, recording-first-occurrence, and composite grab. Context menu creates a composite and the details pane loads an editor. | `docs/source/concept.rst`, `docs/source/usage.loopcontrols.rst`; `LoopWidget.qml` context menu; `DetailsPane.qml`; `EditCompositeLoop.qml`. | Docs incorrectly say advanced editing is unimplemented and contain minor contradictions with empty-child scheduling; permanent docs need reconciliation after migration. | Inventory complete; docs migration pending later stages | Documentation review; QML smoke tests for menu/editor; Manual workflow. |
 
+## Stage 1 engine coverage update
+
+The Stage 0 matrix above remains the baseline inventory. Stage 1 adds the immutable engine plan and pure state machine described in [ARCHITECTURE.md](ARCHITECTURE.md). “Implemented (pure)” means the non-audio, non-frontend semantics are executable in `shoop_engine`; it does **not** mean the application has migrated. “Deferred” identifies a row whose essential verification requires a later routing, command, frontend, or QML stage.
+
+| ID | Stage 1 applicability and evidence | Stage 1 status |
+|---|---|---|
+| F01 | Stable basic/composite identities, generation rejection, and pure clear are tested; `Session` creation/conversion remains later. | Partial |
+| F02 | Nested timeline/section/entry descriptors compile independent of authoring order; mouse authoring remains QML. | Implemented (pure compiler) |
+| F03 | The descriptor supports parallel/sequential, delay, duplicate, cycle override, and modes; editor gestures/layout remain QML. | Implemented compiler surface; UI deferred |
+| F04 | `compiler_flattens_sequential_parallel_delayed_and_repeated_entries` and runtime boundary tests. | Implemented (pure) |
+| F05 | Parallel sections/timelines, maximum lengths, canonical target/action ordering. | Implemented (pure) |
+| F06 | Delay/gap metadata, repeated occurrence numbers, same-mode continuation, and explicit mode changes. | Implemented (pure) |
+| F07 | Explicit/derived duration and ceil/overflow validation tests. | Implemented (pure) |
+| F08 | Missing/stale rejection plus mode-sensitive empty playback/recording tests. | Implemented (pure) |
+| F09 | Regular inheritance covers Playing, Recording, Replacing, and dry/wet modes. | Implemented (pure) |
+| F10 | Explicit modes, mixed-plan rejection, and one-pass script completion. | Implemented (pure) |
+| F11 | Regular wrap, cycle counter, contiguous no-retrigger, long-running and integer-edge tests. | Implemented (pure) |
+| F12 | Immediate/delayed stop, pending replacement, cancellation, and stable child cleanup. | Implemented (pure) |
+| F13 | Repeated-target recording stops after occurrence zero. | Implemented (pure) |
+| F14 | Both play-after-record outcomes are tested from accepted runtime state. | Implemented (pure) |
+| F15 | Countdown skips exactly `n` boundaries while the old pass advances; due transition replaces old delivery. | Implemented (pure) |
+| F16 | Bounded direct seek-table lookup covers changed iteration, offsets, stops, invalid bounds, and unchanged-on-error state. | Implemented (pure) |
+| F17 | All four parent/child regular/script plan-kind combinations compile to stable composite identities; recursive same-sample delivery is Stage 2. | Partial; propagation deferred |
+| F18 | Same-plan conflicts are insertion-order independent and outputs are stop-before-set; cross-source resolver remains Stage 2, with precedence already pinned by Stage 0 tests. | Partial |
+| F19 | Mode, pending/countdown, iteration, length, position, cycle count, counters, and stable active children are runtime getters; snapshot transport remains Stage 3. | Implemented state; transport deferred |
+| F20 | Deterministic active-child identity is available for highlighting; visual rendering is QML-only. | Engine portion implemented |
+| F21 | Grab-specific empty-sync transaction requires ringbuffer/audio routing. | Deferred to Stage 4 |
+| F22 | Synchronized grab requires prepared marker/ringbuffer integration. | Deferred to Stage 4 |
+| F23 | Unsynchronized grab requires prepared marker/ringbuffer integration. | Deferred to Stage 4 |
+| F24 | Compilation is atomic; stale targets and stopped/pending/running activation decisions are tested. Queue ownership and lifecycle-trigger submission remain Stages 3–5. | Partial |
+| F25 | Self and transitive candidate-topology cycles plus graph/depth capacities are tested. | Implemented (compiler) |
+| F26 | Numeric engine descriptor validation is implemented; `loop.1` translation and compatibility remain frontend/QML work. | Partial |
+| F27 | Unified mixed-target command batching is a callback/control-boundary concern. | Deferred to Stages 3/5 |
+| F28 | Pure stop/clear cleanup and generation-safe stale handling are tested; non-RT object/plan reclamation remains Stage 3. | Partial |
+| F29 | Engine compiler API exists; Lua/QML API routing to it remains Stage 5. | Deferred integration |
+| F30 | Pure runtime has no frontend/update dependency, but callback authority and stall tests require Stages 2–5. | Deferred integration |
+| F31 | Prototype architecture and semantics docs are current; permanent user-doc reconciliation remains Stage 5. | Stage 1 documentation complete |
+
+Every matrix row whose Stage 1 portion is independent of audio routing and frontend integration is covered above. Engine test names and requirement-level evidence are listed in [ARCHITECTURE.md](ARCHITECTURE.md#stage-1-verification-map).
+
 ## Current implementation map
 
 1. `CompositeLoop.qml` owns the persisted playlists, resolves QML loop IDs, checks limited cycles, derives durations, and compiles a JS schedule.

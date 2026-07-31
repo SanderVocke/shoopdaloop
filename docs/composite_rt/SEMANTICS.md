@@ -2,7 +2,7 @@
 
 ## Status and terminology
 
-This is the normative contract for the engine-backed implementation. It records Stage 0 decisions; it does not claim that the current Qt/update-thread implementation satisfies them. Current behavior and known differences are inventoried in [FEATURE_PARITY.md](FEATURE_PARITY.md).
+This is the normative contract for the engine-backed implementation. Stage 0 decisions are now implemented by the Stage 1 compiled-plan and pure-state-machine layer described in [ARCHITECTURE.md](ARCHITECTURE.md). The state machine is not yet connected to the callback, so this does not claim that the current Qt/update-thread application implementation satisfies the contract. Current behavior and known differences are inventoried in [FEATURE_PARITY.md](FEATURE_PARITY.md).
 
 A **sample boundary** `b` is the instant before sample `b` is processed. An **accepted command** is one the audio thread has removed from a bounded input queue during its defined acceptance phase, not merely one offered by the GUI. A **plan** is an immutable, validated composite schedule. A **target identity** is an engine slot plus generation. A **source ID** below means the stable engine identity ordered lexicographically by slot and generation.
 
@@ -50,6 +50,8 @@ For one target at one boundary in one compiled plan:
 - end and start with different effective modes become `SetMode(new)`.
 
 Thus contiguous repeated references do not glitch or restart, while an explicit script mode change is not accidentally erased. If non-normalized same-source actions remain, later compiled action ordinal wins.
+
+Parallel duplicate or overlapping entries for one target are canonicalized before ordinals are assigned: start iteration, stable target identity, end iteration, and mode discriminant are the sort keys. The later canonical occurrence supplies desired state in an overlap. Input container/hash order therefore cannot select the winner.
 
 ### Conflicting sources targeting one loop
 
@@ -101,7 +103,7 @@ Validation, allocation, reference resolution, sorting, cycle checking, capacity 
 
 - **Stopped:** a valid plan accepted at a command boundary activates there. Runtime remains stopped at iteration/position zero.
 - **Pending:** activation also occurs at the command boundary and preserves the pending mode/countdown. Any pending immediate-seek iteration must be valid for the candidate or the replacement is rejected.
-- **Running:** the candidate becomes the pending replacement. The newest accepted valid candidate supersedes an older pending replacement. The old plan remains authoritative through its current pass; replacement activates at the next iteration-zero boundary, where children absent from the new plan are stopped and new iteration-zero actions are resolved in one transaction.
+- **Running:** the candidate becomes the pending replacement. The newest accepted valid candidate supersedes an older pending replacement. The old plan remains authoritative through its current pass; replacement activates at the next iteration-zero boundary, where children absent from the new plan are stopped and new iteration-zero actions are resolved in one transaction. Same-target/same-mode children continue without a stop/start pair. A one-shot script has no natural next iteration zero, so its candidate activates in stopped state when the script completes and starts only in response to a later control/parent action.
 - If a running composite is stopped before that boundary, cancellation settles first and the pending replacement activates in stopped state at that stop boundary.
 
 A rejected candidate never partly installs and never disturbs the active plan.
@@ -157,4 +159,4 @@ All tests are unit tests under `src/rust/shoop_engine/src/composite_semantics.rs
 | Callback acceptance cutoff | `callback_cutoff_defers_commands_that_missed_the_drain` |
 | Timestamp retention and late rejection | `timestamped_commands_keep_exact_in_buffer_timing` |
 
-Later state-machine and integration tests must test the full observable effects, not merely these decision helpers.
+Stage 1 full-effect state-machine tests and their requirement mapping are recorded in [ARCHITECTURE.md](ARCHITECTURE.md#stage-1-verification-map). Callback timing and application integration still require later integration tests; the decision helpers alone are not sufficient evidence for those stages.
