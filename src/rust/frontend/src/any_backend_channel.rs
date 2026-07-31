@@ -153,6 +153,19 @@ impl AnyBackendChannel {
         }
     }
 
+    /// State as of the last published cycle, for the frame-rate poll. See
+    /// `AnyBackendPort::poll_state`.
+    pub fn poll_state(&self) -> Result<AnyBackendChannelState, anyhow::Error> {
+        let polled = match self {
+            AnyBackendChannel::Audio(c) => c.poll_state().map(AnyBackendChannelState::from),
+            AnyBackendChannel::Midi(c) => c.poll_state().map(AnyBackendChannelState::from),
+        };
+        match polled {
+            Some(state) => Ok(state),
+            None => self.get_state(),
+        }
+    }
+
     pub fn set_mode(&self, mode: ChannelMode) {
         match self {
             AnyBackendChannel::Audio(audio_channel) => {

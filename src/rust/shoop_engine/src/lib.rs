@@ -12,7 +12,6 @@ pub mod basic_loop;
 pub mod buffer_queue;
 pub mod channel_mode;
 pub mod chunked_samples;
-pub mod control;
 #[cfg(feature = "cpal")]
 pub mod cpal_mock;
 pub mod decoupled_midi_port;
@@ -67,7 +66,10 @@ pub use driver::{
 pub use dummy_driver::{DriverMode, DriverSettings, DummyDriver};
 pub use dummy_midi_port::DummyMidiPort;
 pub use dummy_port::{DummyAudioPort, DummyExternalConnections, DummyPortError, PortId};
-pub use engine::LoopState;
+pub use engine::{
+    split, wait_for_result, Command, Engine, EngineHandle, LoopSnapshot, LoopState, SendError,
+    StateSnapshot, Stats, WaitError, DEFAULT_WAIT_TIMEOUT,
+};
 pub use fx_chain::{FXChainState, FXChainType};
 pub use graph::{processing_order, GraphError, NodeIdx, NodeSpec};
 pub use graph_build::{ChannelDesc, GraphDesc, LoopDesc, PortDesc};
