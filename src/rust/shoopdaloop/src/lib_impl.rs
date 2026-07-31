@@ -88,6 +88,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
 
     let global_qml_settings = GlobalQmlSettings {
         backend_type: backend_type,
+        backend_type_explicit: cli_args.backend.is_some(),
         cpal_host: cli_args.cpal_midir_options.cpal_host.clone(),
         cpal_output_device: cli_args.cpal_midir_options.cpal_output_device.clone(),
         cpal_input_device: cli_args.cpal_midir_options.cpal_input_device.clone(),

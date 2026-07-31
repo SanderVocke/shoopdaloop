@@ -129,7 +129,7 @@ impl MidiControlPort {
                 // Connect for ready change
                 connect_or_report(
                     &mut *self.backend,
-                    "ready_changed()",
+                    "readyChanged()",
                     &mut *self_qobj,
                     "maybe_initialize()",
                     connection_types::QUEUED_CONNECTION,
