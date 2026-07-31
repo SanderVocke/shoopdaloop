@@ -991,7 +991,10 @@ impl SharedSession {
             .as_mut()
         {
             e.pump();
-            return Ok(f(e.session_mut()));
+            let result = f(e.session_mut());
+            // A direct query may mutate the topology, so publish its staleness before return.
+            e.publish_graph_staleness();
+            return Ok(result);
         }
         // A driver owns the engine; the queue is the only way in.
         //

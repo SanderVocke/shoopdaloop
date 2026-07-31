@@ -2,7 +2,9 @@ use std::collections::HashSet;
 
 use crate::any_backend_port::{AnyBackendPort, AnyBackendPortState};
 use common::logging::macros::*;
-use cxx_qt_lib_shoop::{qobject::AsQObject, qweakpointer_qobject::QWeakPointer_QObject};
+use cxx_qt_lib_shoop::{
+    qobject::AsQObject, qpointer::QPointerQObject, qweakpointer_qobject::QWeakPointer_QObject,
+};
 use shoop_engine::{PortConnectability, PortDataType};
 
 shoop_log_unit!("Frontend.Port");
@@ -346,6 +348,7 @@ pub struct PortBackendRust {
     // Properties
     pub initialized: bool,
     pub backend: *mut QObject,
+    pub backend_guard: cxx::UniquePtr<QPointerQObject>,
     pub internal_port_connections: QList_QVariant,
     pub frontend_object: *mut QObject,
 
@@ -368,6 +371,7 @@ impl Default for PortBackendRust {
         PortBackendRust {
             initialized: false,
             backend: std::ptr::null_mut(),
+            backend_guard: cxx::UniquePtr::null(),
             name_hint: None,
             input_connectability: None,
             output_connectability: None,

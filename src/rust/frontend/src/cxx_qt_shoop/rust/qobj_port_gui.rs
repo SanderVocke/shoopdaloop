@@ -149,7 +149,7 @@ impl PortGui {
                         "backend_set_backend(QObject*)",
                         backend_ref,
                         "set_backend(QObject*)",
-                        connection_types::QUEUED_CONNECTION,
+                        connection_types::BLOCKING_QUEUED_CONNECTION,
                     );
                     connect_or_report(
                         self_ref,

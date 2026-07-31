@@ -528,7 +528,7 @@ impl Engine {
     ///
     /// Written after commands are applied, because applying them is what makes it stale, and
     /// the control side's decision to rebuild is only as good as the moment this reflects.
-    fn publish_graph_staleness(&self) {
+    pub(crate) fn publish_graph_staleness(&self) {
         self.stats
             .graph_stale
             .store(!self.session.graph_up_to_date(), Ordering::Relaxed);
