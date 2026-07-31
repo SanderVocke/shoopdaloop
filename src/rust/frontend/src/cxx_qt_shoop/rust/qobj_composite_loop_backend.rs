@@ -20,8 +20,9 @@ use cxx_qt_lib_shoop::{
     qvariant_helpers::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
 };
 use shoop_engine::{
-    CompositeEntry, CompositePlanDescriptor, CompositeSection,
-    CompositeTimeline as EngineCompositeTimeline, LoopIdentity, LoopMode, LoopTargetMetadata,
+    AudioRingbufferAdoption, CompositeEntry, CompositePlanDescriptor, CompositeSection,
+    CompositeTimeline as EngineCompositeTimeline, LoopIdentity, LoopMode, LoopTargetKind,
+    LoopTargetMetadata,
 };
 use std::{
     cmp::{max, min},
@@ -483,13 +484,32 @@ impl CompositeLoopBackend {
                 to_grab.push(g);
             }
 
-            for g in to_grab.iter() {
-                if g.loop_obj.is_null() {
+            let mut adoptions = Vec::new();
+            let mut nested_adoptions = Vec::new();
+            for g in &to_grab {
+                let Some(identity) = (unsafe { engine_identity(g.loop_obj) }) else {
                     continue;
+                };
+                if identity.kind == LoopTargetKind::Basic {
+                    adoptions.push(AudioRingbufferAdoption {
+                        loop_idx: identity.slot as usize,
+                        reverse_start_cycle: Some(g.reverse_start),
+                        cycles_length: Some(g.n_cycles),
+                        go_to_cycle: Some(0),
+                        go_to_mode: LoopMode::Unknown,
+                    });
+                } else {
+                    nested_adoptions.push(g);
                 }
+            }
+            if !adoptions.is_empty() {
+                self.backend_session
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("engine session is not initialized"))?
+                    .adopt_audio_ringbuffers(adoptions)?;
+            }
+            for g in nested_adoptions {
                 unsafe {
-                    // Note we don't allow the loop to directly go to the go_to_mode.
-                    // We will instead do that transition after all grabs are done.
                     invoke(
                         &mut *g.loop_obj,
                         "adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)",

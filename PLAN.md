@@ -282,8 +282,8 @@ Work through [`docs/composite_rt/FEATURE_PARITY.md`](docs/composite_rt/FEATURE_P
 
 For heavy operations such as ringbuffer adoption:
 
-- [ ] Prepare destination storage and metadata off RT.
-- [ ] Perform only bounded, allocation-free work on RT.
+- [x] Prepare destination storage and metadata off RT.
+- [x] Perform only bounded, allocation-free work on RT.
 - [ ] Commit all child state changes as one documented RT transaction or boundary sequence.
 - [x] Do not reintroduce frontend timing decisions as a shortcut.
 
@@ -403,6 +403,7 @@ The implementing agent should maintain this table as discoveries are made.
 | 2026-08-01 / RT scope clarification | Require allocation-free, destruction-free, lock-free, bounded RT behavior for new/changed composite code and every callback facility directly needed by composite scenarios; classify but do not require cleanup of unrelated pre-existing engine violations. | User scope decision; prevents the composite prototype from becoming an unbounded whole-engine RT rewrite while preserving strict evidence on the path being delivered. | 3, 5, 6, 8 | No composite-related RT allocation or locks, bounded work, evidence scope |
 | 2026-08-01 / lifecycle milestone | Remove a composite and its transitive dependents transactionally, normalize primitive self-sync during reload, and synchronously unregister the engine adapter before QObject teardown. | Engine lifecycle/no-allocation tests and `tst_Session_save_load.qml` nested regular/script execution after session replacement. | 4–6 | Feature parity, no RT allocation/destruction, top-level integration |
 | 2026-08-01 / adapter cleanup | Delete the update-thread wrap handler, recursive dependency notification, fallback transition state machine, and primitive/composite compatibility slots; retain schedule traversal only for off-RT grab preparation. | Warning-denied application build plus focused composite 24/24 and save/load 6/6 QML runs. | 4, 5, 8 | RT authority, determinism, top-level integration |
+| 2026-08-01 / grab hardening | Copy directly from fixed rolling buffers into preallocated channel chunks, reject request/destination overflow before mutation, and batch primitive child adoptions in one callback command. | Allocator-enforced transactional adoption test and all five non-empty composite grab QML scenarios. Nested-composite adoption still requires one hierarchy-wide transaction. | 3, 5, 6 | No RT allocation/destruction, bounded work, sample-boundary transaction |
 
 ## Completion definition
 

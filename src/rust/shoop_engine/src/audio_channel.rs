@@ -160,6 +160,39 @@ impl AudioChannel {
         self.data_changed();
     }
 
+    pub(crate) fn can_load_without_allocation(&self, length: usize) -> bool {
+        let available_chunks = self.buffers.n_chunks() + self.buffers.n_spare();
+        length <= available_chunks.saturating_mul(self.buffers.chunk_size())
+    }
+
+    pub(crate) fn begin_bounded_load(&mut self, length: usize) {
+        debug_assert!(self.can_load_without_allocation(length));
+        self.buffers.reset();
+        if length > 0 {
+            self.buffers.ensure_available(length - 1);
+        }
+        self.data_length = length;
+        self.start_offset = 0;
+    }
+
+    pub(crate) fn write_bounded_load(&mut self, mut offset: usize, mut samples: &[f32]) {
+        debug_assert!(offset.saturating_add(samples.len()) <= self.data_length);
+        while !samples.is_empty() {
+            let available = self.buffers.space_for_sample(offset).min(samples.len());
+            let destination = self
+                .buffers
+                .chunk_slice_mut(offset)
+                .expect("bounded load storage was prepared");
+            destination[..available].copy_from_slice(&samples[..available]);
+            offset += available;
+            samples = &samples[available..];
+        }
+    }
+
+    pub(crate) fn finish_bounded_load(&mut self) {
+        self.data_changed();
+    }
+
     ///
     /// Does *not* zero the samples, which is only safe because the caller sets the length it means:
     /// `clear(0)` leaves the old audio unreachable. For a length that keeps them reachable, use

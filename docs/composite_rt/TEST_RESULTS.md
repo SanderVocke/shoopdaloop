@@ -7,7 +7,7 @@ This is a live Stage 6 record. It is intentionally **not** a final green gate: r
 | Gate | Current status |
 |---|---|
 | Targeted composite engine tests | Passing |
-| Allocator-enforced engine tests | Passing on exercised paths |
+| Allocator-enforced engine tests | 19 passing, including transactional composite grab |
 | Warning-denied core engine build | Passing without application/backend features |
 | Complete engine suite with `app_backend` | Project compiles; full run blocked/unreliable on unavailable JACK/ALSA services |
 | Application composite adapter tests | 3 passing with dummy driver |
@@ -70,7 +70,7 @@ Covered surfaces include pure semantics, exact samples, callback partition indep
 cargo test -p shoop_engine --test no_alloc -- --test-threads=1
 ```
 
-Result: 18 passed, 0 failed. The composite integration test queues plan installation, duplicate-version rejection, control acceptance, repeated processing, rolling trace, and state publication under `assert_no_alloc`.
+Latest result: 19 passed, 0 failed. The composite integration test queues plan installation, duplicate-version rejection, control acceptance, repeated processing, rolling trace, and state publication under `assert_no_alloc`. The added grab test copies one rolling capture into two child loops and commits both modes in one transaction, then exercises duplicate-target rejection without allocation, deallocation, or partial mutation.
 
 This does not prove unexercised driver/FX branches safe. Open callback mechanisms are listed in [RT_SAFETY.md](RT_SAFETY.md#active-callback-path-audit-open-findings).
 
@@ -140,7 +140,7 @@ QT_QPA_PLATFORM=offscreen target/debug/shoopdaloop_dev.sh --self-test \
   --test-files-pattern "$(pwd)/src/qml/test/tst_Session_save_load.qml"
 ```
 
-Results: composite behavior **24/24 passed** and session save/load **6/6 passed**. The retained frontend schedule traversal is limited to off-RT grab preparation; no compatibility slot advances composite runtime state.
+Results: composite behavior **24/24 passed** and session save/load **6/6 passed**. The composite run includes all synchronized/unsynchronized, fixed/default-length, stop/play grab outcomes after primitive children were moved to one bounded engine adoption transaction. The retained frontend schedule traversal is limited to off-RT grab preparation; no compatibility slot advances composite runtime state.
 
 The full `app_backend` suite was also attempted after dependency discovery. It is not recorded as green: tests requiring real JACK/ALSA services failed or teardown became unreliable on this host. That is a runtime-service/environment blocker, not evidence for completion.
 

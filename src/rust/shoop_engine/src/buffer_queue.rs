@@ -85,6 +85,24 @@ impl BufferQueue {
         (self.n_live - 1) * self.chunk_size + self.active_pos
     }
 
+    pub fn visit_range(&self, start: usize, end: usize, mut visit: impl FnMut(&[f32])) {
+        let end = end.min(self.n_samples());
+        let mut position = start.min(end);
+        while position < end {
+            let logical_chunk = position / self.chunk_size;
+            let offset = position % self.chunk_size;
+            let physical_chunk = (self.oldest() + logical_chunk) % self.capacity();
+            let chunk_end = if logical_chunk + 1 == self.n_live {
+                self.active_pos
+            } else {
+                self.chunk_size
+            };
+            let take = (chunk_end - offset).min(end - position);
+            visit(&self.chunks[physical_chunk][offset..offset + take]);
+            position += take;
+        }
+    }
+
     /// Index of the oldest live buffer.
     fn oldest(&self) -> usize {
         (self.head + self.capacity() - (self.n_live - 1)) % self.capacity()
@@ -250,6 +268,15 @@ mod tests {
         // The tail of the last buffer is vacant, so contiguous() trims it.
         check!(s.buffers[1].len() == 4);
         check!(s.contiguous().len() == 6);
+    }
+
+    #[test]
+    fn range_visitor_crosses_wrapped_chunks_without_copying() {
+        let mut q = BufferQueue::new(4, 2);
+        q.put(&ramp(0, 14));
+        let mut visited = Vec::new();
+        q.visit_range(1, 5, |samples| visited.extend_from_slice(samples));
+        check!(visited == ramp(9, 4));
     }
 
     #[test]

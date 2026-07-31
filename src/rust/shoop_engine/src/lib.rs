@@ -123,8 +123,8 @@ pub use port::{
 };
 pub use profiling::{ProfilingReport, ProfilingReportItem};
 pub use session::{
-    build_schedule, Port, PreparedSchedule, ReclaimedCompositeTimeline, RejectedCompositeTimeline,
-    Session, SessionError, Topology,
+    build_schedule, AudioRingbufferAdoption, Port, PreparedSchedule, ReclaimedCompositeTimeline,
+    RejectedCompositeTimeline, Session, SessionError, Topology, MAX_AUDIO_RINGBUFFER_ADOPTIONS,
 };
 pub use state::{
     AudioChannelState, AudioPortSnapshot, AudioPortState, MidiChannelState, MidiPortSnapshot,

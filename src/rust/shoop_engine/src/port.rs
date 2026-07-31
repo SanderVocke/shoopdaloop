@@ -149,6 +149,9 @@ impl AudioPort {
     pub fn ringbuffer_contents(&self) -> Snapshot {
         self.ringbuffer.snapshot()
     }
+    pub fn visit_ringbuffer_range(&self, start: usize, end: usize, visit: impl FnMut(&[f32])) {
+        self.ringbuffer.visit_range(start, end, visit);
+    }
 
     /// The effect inserted on this port, if any.
     pub fn fx(&self) -> Option<&crate::fx_chain::FxChain> {

@@ -55,6 +55,16 @@ const MIDI_OUT_SCRATCH_CAPACITY: usize = MIDI_SCRATCH_CAPACITY + MAX_DIFF_MESSAG
 /// `n_recursive_0_procs` but increments on every recursion, not only zero-length
 /// ones, so it bounds total sub-blocks the same way.
 const MAX_SUB_BLOCKS: u32 = 16;
+pub const MAX_AUDIO_RINGBUFFER_ADOPTIONS: usize = 64;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AudioRingbufferAdoption {
+    pub loop_idx: usize,
+    pub reverse_start_cycle: Option<i32>,
+    pub cycles_length: Option<i32>,
+    pub go_to_cycle: Option<i32>,
+    pub go_to_mode: LoopMode,
+}
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SessionError {
@@ -68,6 +78,8 @@ pub enum SessionError {
     SelfSync(usize),
     #[error("no channel at index {0}, or it is not of the expected kind")]
     NoSuchChannel(usize),
+    #[error("audio ringbuffer adoption exceeds its bounded request or destination capacity")]
+    AudioRingbufferAdoptionCapacity,
     #[error("the composite timeline references stale or missing primitive slot {0}")]
     StaleCompositeTarget(u32),
     #[error("the composite/session propagation topology is invalid: {0}")]
@@ -469,6 +481,48 @@ enum NodeAction {
     ChannelProcess(usize),
     /// A node with no work, only ordering.
     None,
+}
+
+fn adoption_window(
+    request: &AudioRingbufferAdoption,
+    cycle_len: u32,
+    sync_pos: u32,
+    data_len: usize,
+) -> (usize, usize, usize) {
+    let cycles = request.cycles_length.unwrap_or(1).max(1) as u32;
+    let go_cycle = request.go_to_cycle.unwrap_or(0).max(0) as u32;
+    let wanted_len = if cycle_len > 0 {
+        if request.reverse_start_cycle == Some(0) {
+            sync_pos
+        } else if request.go_to_mode == LoopMode::Recording {
+            go_cycle.saturating_mul(cycle_len).saturating_add(sync_pos)
+        } else {
+            cycles.saturating_mul(cycle_len)
+        }
+    } else {
+        data_len.min(u32::MAX as usize) as u32
+    } as usize;
+    let end = if cycle_len > 0 {
+        if let Some(reverse_start_cycle) = request.reverse_start_cycle {
+            if reverse_start_cycle == 0 {
+                data_len
+            } else {
+                let cycles_before_current =
+                    (reverse_start_cycle.max(0) as u32).saturating_sub(cycles);
+                let offset =
+                    sync_pos.saturating_add(cycles_before_current.saturating_mul(cycle_len));
+                data_len.saturating_sub(offset as usize)
+            }
+        } else if request.go_to_mode == LoopMode::Recording {
+            data_len
+        } else {
+            let offset = sync_pos.saturating_add(go_cycle.saturating_mul(cycle_len));
+            data_len.saturating_sub(offset as usize)
+        }
+    } else {
+        data_len
+    };
+    (wanted_len, end.saturating_sub(wanted_len), end)
 }
 
 impl Session {
@@ -1054,9 +1108,111 @@ impl Session {
         self.carla_fx_hosts.insert(title.into(), host);
     }
 
-    /// Retroactively fills a loop's audio channels from their input ports' rolling
-    /// layer: the selected window is copied into each channel, the loop length is
-    /// updated, and the requested post-grab mode/position is applied.
+    /// Retroactively fills loops' audio channels from their input ports' rolling
+    /// layers and commits all requested post-grab states in one bounded transaction.
+    pub fn adopt_audio_ringbuffers(
+        &mut self,
+        requests: &[AudioRingbufferAdoption],
+    ) -> Result<(), SessionError> {
+        if requests.len() > MAX_AUDIO_RINGBUFFER_ADOPTIONS {
+            return Err(SessionError::AudioRingbufferAdoptionCapacity);
+        }
+        for (index, request) in requests.iter().enumerate() {
+            if request.loop_idx >= self.loops.len() {
+                return Err(SessionError::NoSuchLoop(request.loop_idx));
+            }
+            if requests[..index]
+                .iter()
+                .any(|previous| previous.loop_idx == request.loop_idx)
+            {
+                return Err(SessionError::AudioRingbufferAdoptionCapacity);
+            }
+        }
+
+        self.refresh_sync_snapshots();
+        for request in requests {
+            let sync = self.loops[request.loop_idx].sync_source();
+            let cycle_len = sync.map(|state| state.length).unwrap_or(0);
+            let sync_pos = sync.map(|state| state.position).unwrap_or(0);
+            for mapping in self.channels.iter().filter(|mapping| {
+                mapping.loop_idx == request.loop_idx && mapping.kind == ChannelKind::Audio
+            }) {
+                let data_len = mapping
+                    .input_port
+                    .and_then(|port| self.ports.get(port))
+                    .and_then(Port::audio)
+                    .map(|port| port.ringbuffer_n_samples())
+                    .unwrap_or(0);
+                let wanted_len = adoption_window(request, cycle_len, sync_pos, data_len).0;
+                let channel = self.loops[request.loop_idx]
+                    .audio_channel(mapping.channel_idx)
+                    .ok_or(SessionError::NoSuchChannel(mapping.channel_idx))?;
+                if !channel.can_load_without_allocation(wanted_len) {
+                    return Err(SessionError::AudioRingbufferAdoptionCapacity);
+                }
+            }
+        }
+
+        let channels = &self.channels;
+        let ports = &self.ports;
+        let loops = &mut self.loops;
+        for request in requests {
+            let sync = loops[request.loop_idx].sync_source();
+            let cycle_len = sync.map(|state| state.length).unwrap_or(0);
+            let sync_pos = sync.map(|state| state.position).unwrap_or(0);
+            let go_cycle = request.go_to_cycle.unwrap_or(0).max(0) as u32;
+            let mut adopted_len = 0usize;
+
+            for mapping in channels.iter().filter(|mapping| {
+                mapping.loop_idx == request.loop_idx && mapping.kind == ChannelKind::Audio
+            }) {
+                let source = mapping
+                    .input_port
+                    .and_then(|port| ports.get(port))
+                    .and_then(Port::audio);
+                let data_len = source.map(|port| port.ringbuffer_n_samples()).unwrap_or(0);
+                let (wanted_len, start, end) =
+                    adoption_window(request, cycle_len, sync_pos, data_len);
+                adopted_len = adopted_len.max(wanted_len);
+                let channel = loops[request.loop_idx]
+                    .audio_channel_mut(mapping.channel_idx)
+                    .expect("adoption mappings were validated");
+                channel.begin_bounded_load(wanted_len);
+                let mut destination_offset = 0;
+                if let Some(source) = source {
+                    source.visit_ringbuffer_range(start, end, |samples| {
+                        channel.write_bounded_load(destination_offset, samples);
+                        destination_offset += samples.len();
+                    });
+                }
+                channel.finish_bounded_load();
+            }
+
+            let loop_ = &mut loops[request.loop_idx];
+            let adopted_len = adopted_len.min(u32::MAX as usize) as u32;
+            match request.go_to_mode {
+                LoopMode::Recording => {
+                    loop_.set_mode(LoopMode::Recording);
+                    loop_.set_length(adopted_len);
+                }
+                LoopMode::Unknown => {
+                    loop_.set_length(adopted_len);
+                    loop_.set_mode(LoopMode::Stopped);
+                }
+                mode => {
+                    loop_.set_length(adopted_len);
+                    loop_.set_mode(mode);
+                    if cycle_len > 0 {
+                        loop_.set_position(
+                            go_cycle.saturating_mul(cycle_len).saturating_add(sync_pos),
+                        );
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn adopt_audio_ringbuffers_for_loop(
         &mut self,
         loop_idx: usize,
@@ -1065,105 +1221,13 @@ impl Session {
         go_to_cycle: Option<i32>,
         go_to_mode: LoopMode,
     ) -> Result<(), SessionError> {
-        if loop_idx >= self.loops.len() {
-            return Err(SessionError::NoSuchLoop(loop_idx));
-        }
-
-        self.refresh_sync_snapshots();
-        let sync = self.loops[loop_idx].sync_source();
-        let cycle_len = sync.map(|s| s.length).unwrap_or(0);
-        let sync_pos = sync.map(|s| s.position).unwrap_or(0);
-        let cycles = cycles_length.unwrap_or(1).max(1) as u32;
-        let go_cycle = go_to_cycle.unwrap_or(0).max(0) as u32;
-
-        let mappings: Vec<_> = self
-            .channels
-            .iter()
-            .filter(|m| m.loop_idx == loop_idx && m.kind == ChannelKind::Audio)
-            .cloned()
-            .collect();
-
-        let mut segments: Vec<(usize, Vec<f32>)> = Vec::new();
-        let mut adopted_len: u32 = 0;
-        for m in mappings.iter() {
-            let data = m
-                .input_port
-                .and_then(|p| self.ports.get(p))
-                .and_then(|p| p.audio())
-                .map(|a| a.ringbuffer_contents().contiguous())
-                .unwrap_or_default();
-
-            let wanted_len = if cycle_len > 0 {
-                if reverse_start_cycle == Some(0) {
-                    sync_pos
-                } else {
-                    match go_to_mode {
-                        LoopMode::Recording => go_cycle * cycle_len + sync_pos,
-                        _ => cycles * cycle_len,
-                    }
-                }
-            } else {
-                data.len() as u32
-            };
-            let wanted_len_usize = wanted_len as usize;
-            let data_len = data.len();
-            let end = if cycle_len > 0 {
-                if let Some(reverse_start_cycle) = reverse_start_cycle {
-                    if reverse_start_cycle == 0 {
-                        data_len
-                    } else {
-                        let cycles_before_current =
-                            (reverse_start_cycle.max(0) as u32).saturating_sub(cycles);
-                        data_len
-                            .saturating_sub((sync_pos + cycles_before_current * cycle_len) as usize)
-                    }
-                } else if go_to_mode == LoopMode::Recording {
-                    data_len
-                } else {
-                    data_len.saturating_sub((sync_pos + go_cycle * cycle_len) as usize)
-                }
-            } else {
-                data_len
-            };
-            let start = end.saturating_sub(wanted_len_usize);
-            let segment = if start <= end && end <= data_len {
-                data[start..end].to_vec()
-            } else {
-                Vec::new()
-            };
-            adopted_len = adopted_len.max(wanted_len.max(segment.len() as u32));
-            segments.push((m.channel_idx, segment));
-        }
-
-        if let Some(l) = self.loops.get_mut(loop_idx) {
-            for (channel_idx, segment) in segments {
-                if let Some(c) = l.audio_channel_mut(channel_idx) {
-                    c.load_data(&segment);
-                    if adopted_len as usize > segment.len() {
-                        c.set_length(adopted_len as usize);
-                    }
-                    c.set_start_offset(0);
-                }
-            }
-            match go_to_mode {
-                LoopMode::Recording => {
-                    l.set_mode(LoopMode::Recording);
-                    l.set_length(adopted_len);
-                }
-                LoopMode::Unknown => {
-                    l.set_length(adopted_len);
-                    l.set_mode(LoopMode::Stopped);
-                }
-                mode => {
-                    l.set_length(adopted_len);
-                    l.set_mode(mode);
-                    if cycle_len > 0 {
-                        l.set_position(go_cycle * cycle_len + sync_pos);
-                    }
-                }
-            }
-        }
-        Ok(())
+        self.adopt_audio_ringbuffers(&[AudioRingbufferAdoption {
+            loop_idx,
+            reverse_start_cycle,
+            cycles_length,
+            go_to_cycle,
+            go_to_mode,
+        }])
     }
 
     // --- schedule ---

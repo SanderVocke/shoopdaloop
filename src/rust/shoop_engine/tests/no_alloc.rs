@@ -17,7 +17,7 @@ use shoop_engine::loop_mode::LoopMode;
 use shoop_engine::midi;
 use shoop_engine::port::{PortConnectability, PortDirection};
 use shoop_engine::realtime_alloc_guard;
-use shoop_engine::session::{Port, Session};
+use shoop_engine::session::{AudioRingbufferAdoption, Port, Session};
 use shoop_engine::{
     compile_composite_plan, BoundaryTargetAction, CompositeBoundaryTimeline, CompositeEntry,
     CompositePlanDescriptor, CompositePlanLimits, CompositeRuntime, CompositeSection,
@@ -342,6 +342,71 @@ fn composite_timeline_processing_does_not_allocate_or_free() {
     let displaced = removed.pop().unwrap().unwrap();
     assert_eq!(displaced.n_composites(), 1);
     assert_eq!(engine.session().composite_timeline().n_composites(), 0);
+}
+
+#[test]
+fn transactional_audio_ringbuffer_adoption_does_not_allocate_or_partially_apply() {
+    let mut session = Session::default();
+    let input = session.add_port(audio_port(1, "in", PortDirection::Input));
+    let first = session.create_loop();
+    let second = session.create_loop();
+    for loop_idx in [first, second] {
+        let channel = session
+            .add_audio_channel(loop_idx, 4, ChannelMode::Direct)
+            .unwrap();
+        session.connect_channel_input(channel, input).unwrap();
+    }
+    session.apply_graph_changes().unwrap();
+    session
+        .port_mut(input)
+        .unwrap()
+        .as_dummy_mut()
+        .unwrap()
+        .queue_data(&[0.1, 0.2, 0.3, 0.4]);
+    session.process(4);
+
+    let requests = [first, second].map(|loop_idx| AudioRingbufferAdoption {
+        loop_idx,
+        reverse_start_cycle: None,
+        cycles_length: None,
+        go_to_cycle: None,
+        go_to_mode: LoopMode::Playing,
+    });
+    assert_no_alloc(|| {
+        session.adopt_audio_ringbuffers(&requests).unwrap();
+    });
+    for loop_idx in [first, second] {
+        let loop_ = session.loop_(loop_idx).unwrap();
+        assert_eq!(loop_.mode(), LoopMode::Playing);
+        assert_eq!(loop_.length(), 4);
+        assert_eq!(
+            loop_.audio_channel(0).unwrap().data(),
+            vec![0.1, 0.2, 0.3, 0.4]
+        );
+    }
+
+    let duplicate = [requests[0], requests[0]];
+    let before = session
+        .loop_(first)
+        .unwrap()
+        .audio_channel(0)
+        .unwrap()
+        .data();
+    assert_no_alloc(|| {
+        assert_eq!(
+            session.adopt_audio_ringbuffers(&duplicate),
+            Err(shoop_engine::SessionError::AudioRingbufferAdoptionCapacity)
+        );
+    });
+    assert_eq!(
+        session
+            .loop_(first)
+            .unwrap()
+            .audio_channel(0)
+            .unwrap()
+            .data(),
+        before
+    );
 }
 
 #[test]

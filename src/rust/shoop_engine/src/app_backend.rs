@@ -1530,6 +1530,15 @@ impl BackendSession {
         Ok(version)
     }
 
+    pub fn adopt_audio_ringbuffers(
+        &self,
+        requests: Vec<engine::AudioRingbufferAdoption>,
+    ) -> Result<()> {
+        self.shared
+            .query(move |session| session.adopt_audio_ringbuffers(&requests))??;
+        Ok(())
+    }
+
     pub fn remove_composite_loop(
         &self,
         composite: &CompositeLoop,
@@ -2708,18 +2717,15 @@ impl Loop {
         go_to_cycle: Option<i32>,
         go_to_mode: LoopMode,
     ) -> Result<()> {
-        let idx = self.idx;
-        // Blocking, because the caller is told whether the adoption succeeded and a
-        // fire-and-forget would have to swallow the error.
-        self.shared.query(move |s: &mut engine::Session| {
-            s.adopt_audio_ringbuffers_for_loop(
-                idx,
-                reverse_start_cycle,
-                cycles_length,
-                go_to_cycle,
-                go_to_mode.into(),
-            )
-        })??;
+        let request = engine::AudioRingbufferAdoption {
+            loop_idx: self.idx,
+            reverse_start_cycle,
+            cycles_length,
+            go_to_cycle,
+            go_to_mode: go_to_mode.into(),
+        };
+        self.shared
+            .query(move |session| session.adopt_audio_ringbuffers(&[request]))??;
         Ok(())
     }
 }
