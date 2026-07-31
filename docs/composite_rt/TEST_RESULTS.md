@@ -130,6 +130,18 @@ QT_QPA_PLATFORM=offscreen target/debug/shoopdaloop_dev.sh \
 
 Result: **6 passed, 0 failed**, including saving, loading, reference restoration, engine reconfiguration, nested script execution, and teardown. The lifecycle extension to `composite_timeline_processing_does_not_allocate_or_free` also passed independently, covering stop cleanup, empty-timeline installation, and displaced plan ownership return without RT allocation or deallocation.
 
+After deleting the fallback frontend state machine and dependency-cycle slots, both focused files were repeated against a warning-denied application build:
+
+```sh
+RUSTFLAGS="-D warnings" cargo build
+QT_QPA_PLATFORM=offscreen target/debug/shoopdaloop_dev.sh --self-test \
+  --test-files-pattern "$(pwd)/src/qml/test/tst_CompositeLoop_running.qml"
+QT_QPA_PLATFORM=offscreen target/debug/shoopdaloop_dev.sh --self-test \
+  --test-files-pattern "$(pwd)/src/qml/test/tst_Session_save_load.qml"
+```
+
+Results: composite behavior **24/24 passed** and session save/load **6/6 passed**. The retained frontend schedule traversal is limited to off-RT grab preparation; no compatibility slot advances composite runtime state.
+
 The full `app_backend` suite was also attempted after dependency discovery. It is not recorded as green: tests requiring real JACK/ALSA services failed or teardown became unreliable on this host. That is a runtime-service/environment blocker, not evidence for completion.
 
 ## Pending required commands

@@ -150,8 +150,8 @@ Evidence is listed under the Stage 3 partial verification map in [ARCHITECTURE.m
 - A transactional registry compiles every configured composite against one candidate catalog and dependency graph; installation succeeds before registry commit, and cycle rejection is covered by `application_composite_registry_rejects_a_cycle_transactionally`.
 - Composite removal stops and removes the requested node plus transitive dependents before installing the reduced timeline; removal is idempotent and ownership returns to the control side for destruction.
 - `CompositeLoopBackend` resolves QML backend wrappers to basic/composite `LoopIdentity` values, translates existing boundary schedules to descriptors, obtains the published primitive topology, and submits prepared timelines off RT.
-- Once engine initialized, transitions and play-after-record use engine commands, wrap/recursive QObject trigger handling is disabled, and `update` mirrors engine mode, pending state, iteration, cycle, position, length, active children, and record state.
-- QML playlist editing and `loop.1` persistence remain structurally unchanged. The existing 24-case composite suite passes in full, including nested regular/script execution, immediate seeks, GUI/file-I/O stalls, circular references, conversion, recording, play-after-record, and every current grab variant. A focused 6-case save/load run executes a nested regular/script composition after session replacement. The last complete QML suite passed 188/189 with only the host's missing CPAL playback port before that case was added. Acceptance-error, broader lifecycle, and manual gates remain open, and the guarded legacy scheduler is still present in source.
+- Once engine initialized, transitions and play-after-record use engine commands, and `update` mirrors engine mode, pending state, iteration, cycle, position, length, active children, and record state. The old wrap handler, recursive dependency notification, and fallback frontend state machine have been deleted.
+- QML playlist editing and `loop.1` persistence remain structurally unchanged. The existing 24-case composite suite passes in full, including nested regular/script execution, immediate seeks, GUI/file-I/O stalls, circular references, conversion, recording, play-after-record, and every current grab variant. A focused 6-case save/load run executes a nested regular/script composition after session replacement. The last complete QML suite passed 188/189 with only the host's missing CPAL playback port before that case was added. Acceptance-error, broader lifecycle, and manual gates remain open.
 
 ## Current implementation map
 
@@ -159,7 +159,7 @@ Evidence is listed under the Stage 3 partial verification map in [ARCHITECTURE.m
 2. `composite_loop_schedule.rs` serializes that schedule through `QVariant`; this is now configuration input, not callback timing authority.
 3. `qobj_composite_loop_gui.rs` replaces QML objects with weak backend-wrapper pointers and sends configuration by queued Qt connection.
 4. `qobj_composite_loop_backend.rs` resolves those pointers to stable engine identities, submits plans and commands, and mirrors snapshots. Its legacy scheduler is bypassed whenever an engine composite handle exists.
-5. `qobj_loop_backend.rs` continues to expose primitive snapshots and compatibility `cycled` signals, but those signals no longer advance engine-backed composites.
+5. `qobj_loop_backend.rs` continues to expose primitive snapshots and observational `cycled` signals; composite backends no longer connect those signals to execution slots.
 6. `LoopWidget.qml`, the editor, state registries, Lua API, and session serializer retain the application surface.
 7. The engine path installs versioned compiled composites, splits at authoritative POIs, propagates nested actions, resolves conflicts, commits primitive modes at exact samples, and publishes rolling state/trace snapshots; the frontend adapter now invokes this path.
 
@@ -169,7 +169,7 @@ These were observable baseline risks, not desired parity:
 
 - **Polling authority (replaced for engine-backed composites):** `qobj_loop_backend.rs:update` still emits a compatibility wrap signal, but engine composite advancement comes from callback source events and does not consume it.
 - **Qt delivery (configuration/observation only):** GUI-to-wrapper configuration and wrapper-to-GUI observation remain queued. Accepted controls and all runtime boundaries are ordered by the engine command/sample timeline rather than Qt delivery during execution.
-- **Recursive QObject propagation (bypassed):** engine-backed `handle_sync_loop_trigger` returns immediately; nesting uses the bounded engine resolver.
+- **Recursive QObject propagation (removed):** the old dependency-notification slots and composite wrap handler have been deleted; nesting uses the bounded engine resolver.
 - **Hash traversal (not timing authority):** the compatibility schedule contains hash collections, but the off-thread engine compiler canonicalizes stable identities/actions before installation. Remaining displayed-list/editor order is a parity/UI concern.
 - **JS object/set traversal:** QML schedule assembly uses JS `Set`, object keys, and object-as-key mode lookup. This is not an engine-stable action order.
 - **Signal-derived schedule updates:** child `n_cycles`, sync length, registry contents, backend initialization, and conversion trigger QML recalculation. The instant a running schedule changes depends on GUI signal processing.

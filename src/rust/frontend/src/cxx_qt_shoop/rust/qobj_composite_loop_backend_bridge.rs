@@ -114,9 +114,6 @@ pub mod ffi {
         pub fn update_sync_length(self: Pin<&mut CompositeLoopBackend>);
 
         #[qinvokable]
-        pub fn handle_sync_loop_trigger(self: Pin<&mut CompositeLoopBackend>, cycle_nr: i32);
-
-        #[qinvokable]
         pub fn update_position(self: Pin<&mut CompositeLoopBackend>);
 
         #[qinvokable]
@@ -126,12 +123,6 @@ pub mod ffi {
             to_mode: i32,
             maybe_cycles_delay: i32,
             maybe_to_sync_at_cycle: i32,
-        );
-
-        #[qinvokable]
-        pub fn dependent_will_handle_sync_loop_cycle(
-            self: Pin<&mut CompositeLoopBackend>,
-            cycle_nr: i32,
         );
 
         #[qsignal]
@@ -347,7 +338,6 @@ pub struct CompositeLoopBackendRust {
 
     // Others
     pub schedule: CompositeLoopSchedule<cxx::UniquePtr<QWeakPointer_QObject>>,
-    pub last_handled_sync_cycle: Option<i32>,
     pub backend_session: Option<BackendSession>,
     pub engine_loop: Option<CompositeLoop>,
     pub engine_schedule_dirty: bool,
@@ -378,7 +368,6 @@ impl Default for CompositeLoopBackendRust {
             cycle_nr: 0,
             frontend_loop: std::ptr::null_mut(),
             schedule: CompositeLoopSchedule::default(),
-            last_handled_sync_cycle: None,
             backend_session: None,
             engine_loop: None,
             engine_schedule_dirty: true,

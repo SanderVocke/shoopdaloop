@@ -125,9 +125,6 @@ pub mod ffi {
         #[qinvokable]
         pub fn maybe_initialize_backend(self: Pin<&mut LoopBackend>) -> bool;
 
-        #[qinvokable]
-        pub fn dependent_will_handle_sync_loop_cycle(self: Pin<&mut LoopBackend>, cycle_nr: i32);
-
         #[qsignal]
         fn cycled(self: Pin<&mut LoopBackend>, cycle_nr: i32);
 

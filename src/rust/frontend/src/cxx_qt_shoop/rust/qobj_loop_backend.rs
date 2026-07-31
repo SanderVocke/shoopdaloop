@@ -613,6 +613,4 @@ impl LoopBackend {
                 .unwrap_or_else(|_| "Unknown".to_string())
         }
     }
-
-    pub fn dependent_will_handle_sync_loop_cycle(self: Pin<&mut LoopBackend>, _cycle_nr: i32) {}
 }

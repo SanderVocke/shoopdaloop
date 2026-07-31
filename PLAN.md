@@ -247,7 +247,7 @@ This is the initial design direction, not an immutable implementation prescripti
 - [x] Remove or disable update-thread cycle polling as a composite timing input.
 - [x] Remove Qt `cycled`/`dependent_will_handle_sync_loop_cycle` recursion from composite execution.
 - [x] Ensure GUI or backend-update thread stalls cannot stop an already configured composite timeline.
-- [ ] Ensure old frontend objects, if temporarily retained for API compatibility, are passive adapters only.
+- [x] Ensure old frontend objects, if temporarily retained for API compatibility, are passive adapters only.
 
 ### Persistence and lifecycle
 
@@ -371,9 +371,9 @@ User findings recorded in `MANUAL_VALIDATION.md` that reveal a violation of an i
 
 ## Stage 8 — Remove obsolete execution paths and finish documentation
 
-- [ ] Remove dead update-thread composite scheduling code after parity and integration are established.
-- [ ] Remove compatibility signals/slots that can no longer affect behavior.
-- [ ] Ensure there is only one authoritative composite state machine.
+- [x] Remove dead update-thread composite scheduling code after parity and integration are established.
+- [x] Remove compatibility signals/slots that can no longer affect behavior.
+- [x] Ensure there is only one authoritative composite state machine.
 - [ ] Finalize RT command acceptance, plan activation, conflict handling, and observable state latency in `SEMANTICS.md`.
 - [ ] Finalize implemented processing, ownership, and frontend integration in `ARCHITECTURE.md`; finalize capacity limits and callback evidence in `RT_SAFETY.md`.
 - [ ] Update permanent developer architecture documentation and user documentation where behavior is newly defined, linking back to the canonical prototype artifacts where useful.
@@ -402,6 +402,7 @@ The implementing agent should maintain this table as discoveries are made.
 | 2026-08-01 / Stages 4–5 partial | Keep the existing QML playlist/persistence surface as an off-RT adapter, resolve QObject references to stable identities, install a transactional application registry, route execution through engine commands, and mirror snapshots. Preserve UI-only anticipated-transition reporting without making it timing authority. | `composite_app_backend` passes 2/2; `tst_CompositeLoop_running.qml` passes 24/24; full QML suite passes 188/189 with only the no-CPAL-device host failure. | 4–6 | Top-level RT authority, feature parity, determinism, session compatibility |
 | 2026-08-01 / RT scope clarification | Require allocation-free, destruction-free, lock-free, bounded RT behavior for new/changed composite code and every callback facility directly needed by composite scenarios; classify but do not require cleanup of unrelated pre-existing engine violations. | User scope decision; prevents the composite prototype from becoming an unbounded whole-engine RT rewrite while preserving strict evidence on the path being delivered. | 3, 5, 6, 8 | No composite-related RT allocation or locks, bounded work, evidence scope |
 | 2026-08-01 / lifecycle milestone | Remove a composite and its transitive dependents transactionally, normalize primitive self-sync during reload, and synchronously unregister the engine adapter before QObject teardown. | Engine lifecycle/no-allocation tests and `tst_Session_save_load.qml` nested regular/script execution after session replacement. | 4–6 | Feature parity, no RT allocation/destruction, top-level integration |
+| 2026-08-01 / adapter cleanup | Delete the update-thread wrap handler, recursive dependency notification, fallback transition state machine, and primitive/composite compatibility slots; retain schedule traversal only for off-RT grab preparation. | Warning-denied application build plus focused composite 24/24 and save/load 6/6 QML runs. | 4, 5, 8 | RT authority, determinism, top-level integration |
 
 ## Completion definition
 
