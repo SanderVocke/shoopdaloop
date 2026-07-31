@@ -1998,15 +1998,17 @@ impl AudioChannel {
             .unwrap_or_default()
     }
     pub fn get_state(&self) -> Result<AudioChannelState> {
-        let s = self.shared.lock();
+        let mut s = self.shared.lock();
         let c = s
-            .loop_(self.loop_idx)
-            .and_then(|l| l.audio_channel(self.chan_idx))
+            .loop_mut(self.loop_idx)
+            .and_then(|l| l.audio_channel_mut(self.chan_idx))
             .ok_or_else(|| anyhow!("no channel"))?;
+        let output_peak = c.output_peak();
+        c.reset_output_peak();
         Ok(AudioChannelState {
             mode: c.mode().into(),
             gain: c.gain(),
-            output_peak: c.output_peak(),
+            output_peak,
             length: c.length() as u32,
             start_offset: c.start_offset(),
             played_back_sample: c.played_back_sample(),
@@ -2180,17 +2182,26 @@ impl AudioPort {
         }
     }
     pub fn get_state(&self) -> Result<AudioPortState> {
-        let s = self.shared.lock();
-        let p = s.port(self.idx).ok_or_else(|| anyhow!("no port"))?;
-        let a = p.audio().ok_or_else(|| anyhow!("not audio"))?;
+        let mut s = self.shared.lock();
+        let p = s.port_mut(self.idx).ok_or_else(|| anyhow!("no port"))?;
+        let name = p.name().to_string();
+        let a = p.audio_mut().ok_or_else(|| anyhow!("not audio"))?;
+        let input_peak = a.input_peak();
+        let output_peak = a.output_peak();
+        let gain = a.gain();
+        let muted = a.muted();
+        let passthrough_muted = a.passthrough_muted();
+        let ringbuffer_n_samples = a.ringbuffer_n_samples() as u32;
+        a.reset_input_peak();
+        a.reset_output_peak();
         Ok(AudioPortState {
-            input_peak: a.input_peak(),
-            output_peak: a.output_peak(),
-            gain: a.gain(),
-            muted: a.muted(),
-            passthrough_muted: a.passthrough_muted(),
-            ringbuffer_n_samples: a.ringbuffer_n_samples() as u32,
-            name: p.name().to_string(),
+            input_peak,
+            output_peak,
+            gain,
+            muted,
+            passthrough_muted,
+            ringbuffer_n_samples,
+            name,
         })
     }
     pub fn set_gain(&self, gain: f32) {
@@ -3127,6 +3138,41 @@ mod tests {
             "Carla state should be JSON: {state}"
         );
         chain.restore_state(&state);
+    }
+
+    #[test]
+    fn audio_port_peak_state_is_per_poll_cycle() {
+        const BUFFER: u32 = 4;
+
+        let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
+        driver
+            .start(&AudioDriverSettings::Dummy(DummyAudioDriverSettings {
+                client_name: "peak-poll-test".to_string(),
+                sample_rate: 48_000,
+                buffer_size: BUFFER,
+            }))
+            .expect("start driver");
+        let sess = BackendSession::new().expect("session");
+        sess.set_audio_driver(&driver).expect("attach driver");
+        driver.dummy_enter_controlled_mode();
+
+        let port = AudioPort::new_driver_port(&sess, &driver, "input", &PortDirection::Input, 0)
+            .expect("port");
+        driver.wait_process();
+
+        port.dummy_queue_data(&[0.0, -0.8, 0.2, 0.1]);
+        driver.dummy_request_controlled_frames(BUFFER);
+        driver.dummy_run_requested_frames();
+        let first = port.get_state().expect("first state");
+        assert_eq!(first.input_peak, 0.8);
+        assert_eq!(first.output_peak, 0.8);
+
+        port.dummy_queue_data(&[0.0, -0.3, 0.1, 0.2]);
+        driver.dummy_request_controlled_frames(BUFFER);
+        driver.dummy_run_requested_frames();
+        let second = port.get_state().expect("second state");
+        assert_eq!(second.input_peak, 0.3);
+        assert_eq!(second.output_peak, 0.3);
     }
 
     #[test]
