@@ -142,12 +142,12 @@ This document tracks work intentionally deferred from the per-object state mirro
 - **Impact:** These APIs intentionally block and must not enter periodic frontend paths.
 - **Future direction:** Keep explicit; add asynchronous completion variants only where application workflows need them.
 
-### Plugin configuration query during creation
+### Plugin configuration publication
 
-- **Status:** To audit in FX phase.
-- **Current behavior:** Carla chain creation queries session sample rate and buffer size, with fallback defaults.
-- **Impact:** Creation can wait for an audio cycle and the fallback can instantiate with configuration different from the live session.
-- **Future direction:** Publish session configuration atomically/driver-owned or establish it before activation.
+- **Status:** Immediate publication implemented; late driver reconfiguration remains deferred.
+- **Current behavior:** `SharedSession` publishes driver sample rate and buffer size atomically when a driver is attached; Carla creation reads those values without an engine query. Defaults are 48 kHz/256 before attachment.
+- **Impact:** Attaching a not-yet-started driver and configuring it later does not currently republish its eventual values, so chains created in that ordering use defaults.
+- **Future direction:** Have every driver configuration/start event update a driver-owned immutable configuration generation and make plugin reconfiguration explicit.
 
 ## External connection management
 
@@ -208,14 +208,6 @@ This document tracks work intentionally deferred from the per-object state mirro
 - **Impact:** Diagnostic/testing behavior promised by the API is absent.
 - **Future direction:** Explicit diagnostic commands guarded for test/development builds.
 
-
-### FX chain output capabilities
-
-- **Status:** Open correctness/capability gap.
-- **API:** `FXChain::get_midi_output_port` and port count assumptions.
-- **Current behavior:** MIDI output always returns `None`; input/output audio counts share one count helper.
-- **Impact:** Some plugin port layouts may be represented incorrectly.
-- **Future direction:** Model each plugin port direction/type explicitly and create stable handles once.
 
 ### Ignored operation errors
 

@@ -212,13 +212,13 @@
 
 ### Phase 6 — FX chains and remaining creation sites
 
-- [ ] Inventory every FX-chain engine object and internal port created from getters or setup code.
-- [ ] Create each FX-chain port once, retain its pending stable handle as chain-owned state, and return clones of that handle from getters.
-- [ ] Ensure repeated getters do not mutate session topology or create duplicate ports.
-- [ ] Use pending controls for FX ports and queue their insertion/topology changes without waiting for an arena index.
-- [ ] Keep suitable FX scalar state immediate (atomic or existing non-audio ownership); retain/document mutex use for Carla/plugin state and serialization.
-- [ ] Audit any remaining blocking construction query, including driver/plugin sample-rate and buffer-size lookups. Replace ordinary creation waits or document why a truly exact response remains necessary.
-- [ ] Test stable port identity, no duplicate topology, pending configuration, unavailable FX behavior, and existing FX integration behavior.
+- [x] Inventory every FX-chain engine object and internal port created from getters or setup code.
+- [x] Create each FX-chain port once, retain its pending stable handle as chain-owned state, and return clones of that handle from getters.
+- [x] Ensure repeated getters do not mutate session topology or create duplicate ports.
+- [x] Use pending controls for FX ports and queue their insertion/topology changes without waiting for an arena index.
+- [x] Keep suitable FX scalar state immediate (atomic or existing non-audio ownership); retain/document mutex use for Carla/plugin state and serialization.
+- [x] Audit any remaining blocking construction query, including driver/plugin sample-rate and buffer-size lookups. Replace ordinary creation waits or document why a truly exact response remains necessary.
+- [x] Test stable port identity, no duplicate topology, pending configuration, unavailable FX behavior, and existing FX integration behavior.
 
 ### Phase 7 — Remove obsolete snapshot/query polling infrastructure
 

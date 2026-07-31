@@ -1105,6 +1105,8 @@ struct SharedSession {
     jack: Mutex<Option<Arc<Mutex<JackBackend>>>>,
     cpal: Mutex<Option<Arc<Mutex<CpalBackend>>>>,
     connection_cache: Arc<Mutex<ConnectionCache>>,
+    sample_rate: AtomicU32,
+    buffer_size: AtomicU32,
     /// Rebuilds the schedule after topology changes.
     ///
     /// A `OnceLock` rather than a `Mutex`: it is set once immediately after construction
@@ -1617,6 +1619,8 @@ impl BackendSession {
             jack: Mutex::new(None),
             cpal: Mutex::new(None),
             connection_cache: Arc::new(Mutex::new(ConnectionCache::default())),
+            sample_rate: AtomicU32::new(48_000),
+            buffer_size: AtomicU32::new(256),
             scheduler: OnceLock::new(),
         });
 
@@ -1684,6 +1688,17 @@ impl BackendSession {
         Ok(Self { shared })
     }
     pub fn set_audio_driver(&self, driver: &AudioDriver) -> Result<()> {
+        let state = driver.get_state();
+        if state.sample_rate > 0 {
+            self.shared
+                .sample_rate
+                .store(state.sample_rate, Ordering::Relaxed);
+        }
+        if state.buffer_size > 0 {
+            self.shared
+                .buffer_size
+                .store(state.buffer_size, Ordering::Relaxed);
+        }
         driver.attach_session(&self.shared);
         *self
             .shared
@@ -1734,12 +1749,8 @@ impl BackendSession {
             FXChainType::CarlaRack | FXChainType::CarlaPatchbay | FXChainType::CarlaPatchbay16x => {
                 #[cfg(feature = "lv2")]
                 {
-                    let (sample_rate, buffer_size) = self
-                        .shared
-                        .query_control(|s: &mut engine::Session| {
-                            (s.sample_rate().max(1), s.buffer_size().max(1))
-                        })
-                        .unwrap_or((48_000, 256));
+                    let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed).max(1);
+                    let buffer_size = self.shared.buffer_size.load(Ordering::Relaxed).max(1);
                     match engine::lv2_carla::CarlaLv2Host::instantiate(
                         chain_type,
                         sample_rate,
@@ -1771,13 +1782,19 @@ impl BackendSession {
                 log::error!("could not queue Carla host insertion: {error}");
             }
         }
-        Ok(FXChain {
+        let mut chain = FXChain {
             shared: self.shared.clone(),
             title: title.to_string(),
             chain_type,
             backend,
             state: Arc::new(Mutex::new(FXChainState::default())),
-        })
+            audio_inputs: Vec::new(),
+            audio_outputs: Vec::new(),
+            midi_inputs: Vec::new(),
+            midi_outputs: Vec::new(),
+        };
+        chain.create_ports_once();
+        Ok(chain)
     }
     pub fn get_profiling_report(&self) -> ProfilingReport {
         ProfilingReport::default()
@@ -3724,6 +3741,10 @@ pub struct FXChain {
     chain_type: FXChainType,
     backend: FXChainBackendKind,
     state: Arc<Mutex<FXChainState>>,
+    audio_inputs: Vec<AudioPort>,
+    audio_outputs: Vec<AudioPort>,
+    midi_inputs: Vec<MidiPort>,
+    midi_outputs: Vec<MidiPort>,
 }
 impl FXChain {
     pub fn available(&self) -> bool {
@@ -3796,7 +3817,7 @@ impl FXChain {
                 .restore_state_string(state);
         }
     }
-    fn n_audio_ports(&self) -> usize {
+    fn n_audio_input_ports(&self) -> usize {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 2,
             #[cfg(feature = "lv2")]
@@ -3806,6 +3827,21 @@ impl FXChain {
                 .info
                 .ports
                 .audio_inputs
+                .len(),
+            FXChainBackendKind::Unavailable { .. } => 0,
+        }
+    }
+
+    fn n_audio_output_ports(&self) -> usize {
+        match &self.backend {
+            FXChainBackendKind::Test2x2x1 => 2,
+            #[cfg(feature = "lv2")]
+            FXChainBackendKind::Carla(host) => host
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .info
+                .ports
+                .audio_outputs
                 .len(),
             FXChainBackendKind::Unavailable { .. } => 0,
         }
@@ -3820,6 +3856,21 @@ impl FXChain {
                 .info
                 .ports
                 .midi_inputs
+                .len(),
+            FXChainBackendKind::Unavailable { .. } => 0,
+        }
+    }
+
+    fn n_midi_output_ports(&self) -> usize {
+        match &self.backend {
+            FXChainBackendKind::Test2x2x1 => 0,
+            #[cfg(feature = "lv2")]
+            FXChainBackendKind::Carla(host) => host
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .info
+                .ports
+                .midi_outputs
                 .len(),
             FXChainBackendKind::Unavailable { .. } => 0,
         }
@@ -3897,38 +3948,52 @@ impl FXChain {
             name,
         })
     }
+    fn create_ports_once(&mut self) {
+        for idx in 0..self.n_audio_input_ports() {
+            if let Some(port) = self.make_audio_port(
+                format!("{}:audio_in_{}", self.title, idx),
+                PortDirection::Output,
+            ) {
+                self.audio_inputs.push(port);
+            }
+        }
+        for idx in 0..self.n_audio_output_ports() {
+            if let Some(port) = self.make_audio_port(
+                format!("{}:audio_out_{}", self.title, idx),
+                PortDirection::Input,
+            ) {
+                self.audio_outputs.push(port);
+            }
+        }
+        for idx in 0..self.n_midi_input_ports() {
+            if let Some(port) = self.make_midi_port(
+                format!("{}:midi_in_{}", self.title, idx),
+                PortDirection::Output,
+            ) {
+                self.midi_inputs.push(port);
+            }
+        }
+        for idx in 0..self.n_midi_output_ports() {
+            if let Some(port) = self.make_midi_port(
+                format!("{}:midi_out_{}", self.title, idx),
+                PortDirection::Input,
+            ) {
+                self.midi_outputs.push(port);
+            }
+        }
+    }
+
     pub fn get_audio_input_port(&self, idx: u32) -> Option<AudioPort> {
-        ((idx as usize) < self.n_audio_ports())
-            .then(|| {
-                self.make_audio_port(
-                    format!("{}:audio_in_{}", self.title, idx),
-                    PortDirection::Output,
-                )
-            })
-            .flatten()
+        self.audio_inputs.get(idx as usize).cloned()
     }
     pub fn get_audio_output_port(&self, idx: u32) -> Option<AudioPort> {
-        ((idx as usize) < self.n_audio_ports())
-            .then(|| {
-                self.make_audio_port(
-                    format!("{}:audio_out_{}", self.title, idx),
-                    PortDirection::Input,
-                )
-            })
-            .flatten()
+        self.audio_outputs.get(idx as usize).cloned()
     }
     pub fn get_midi_input_port(&self, idx: u32) -> Option<MidiPort> {
-        ((idx as usize) < self.n_midi_input_ports())
-            .then(|| {
-                self.make_midi_port(
-                    format!("{}:midi_in_{}", self.title, idx),
-                    PortDirection::Output,
-                )
-            })
-            .flatten()
+        self.midi_inputs.get(idx as usize).cloned()
     }
-    pub fn get_midi_output_port(&self, _idx: u32) -> Option<MidiPort> {
-        None
+    pub fn get_midi_output_port(&self, idx: u32) -> Option<MidiPort> {
+        self.midi_outputs.get(idx as usize).cloned()
     }
 }
 
@@ -4643,6 +4708,36 @@ mod tests {
         let state = driver.get_state();
         assert_eq!(state.active, 1);
         assert!(state.sample_rate > 0);
+    }
+
+    #[test]
+    fn fx_port_getters_return_stable_pending_handles_without_duplicate_topology() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let chain = sess
+            .create_fx_chain(FXChainType::Test2x2x1, "stable-fx")
+            .expect("chain");
+        let first = chain.get_audio_input_port(0).expect("first handle");
+        let again = chain.get_audio_input_port(0).expect("same handle");
+        assert!(Arc::ptr_eq(&first.control, &again.control));
+        assert_eq!(first.lifecycle(), ObjectLifecycle::Pending);
+        first.set_gain(0.5).expect("pending gain");
+
+        engine.pump();
+        assert_eq!(first.lifecycle(), ObjectLifecycle::Ready);
+        assert_eq!(first.get_state().expect("state").gain, 0.5);
+        assert_eq!(engine.session().n_ports(), 5);
+        let commands = engine.stats().commands_applied.load(Ordering::Relaxed);
+        for _ in 0..100 {
+            let handle = chain.get_audio_input_port(0).expect("stable getter");
+            assert!(Arc::ptr_eq(&first.control, &handle.control));
+        }
+        assert_eq!(engine.session().n_ports(), 5);
+        assert_eq!(
+            engine.stats().commands_applied.load(Ordering::Relaxed),
+            commands
+        );
+        sess.shared.return_engine(engine);
     }
 
     #[test]
