@@ -123,13 +123,14 @@ package scan-dependencies --folder <dir> --use-cmake-prefix-path --report-only
   If it still crashes while the mixed-runtime warning stays quiet, the CRT
   diagnosis was wrong and the cause is elsewhere.
 
-- **`linux_coverage` runs the full check and may not pass it.** Qoverage rewrites
-  the QML to import `QoverageSingleton`, which belongs to the coverage tooling and
-  is not in the package, so no window is created and the run reaches the 300s
-  timeout. This was observed before the screenshot-path bug was fixed, so it is
-  not a side effect of that. It is enabled deliberately, to keep the result
-  visible rather than assumed; if it proves to be noise, exempt coverage in the
-  gate rather than reverting the whole thing.
+- **`linux_coverage` runs the full check**, with `QML_IMPORT_PATH` pointed at
+  Qoverage's module directory. The instrumented QML imports `QoverageSingleton`,
+  which belongs to the coverage tooling rather than the package; without that
+  path no window is created and the run reaches the 300s timeout. This mirrors
+  what the coverage *test* job already does via `run_cmd_prefix` in
+  `build_and_test.yml`, and reuses the Qoverage installed by the existing
+  `Install Qoverage` step. It adds only Qoverage's own module directory — no Qt,
+  no vcpkg — so the package still has to supply everything else.
 - **`VCPKG_BUILD_TYPE` is deliberately not set.** Making vcpkg release-only would
   prevent this by construction, but debug dependency trees are wanted for other
   work. Both trees are still built; the fixes ensure only the release one is

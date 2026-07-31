@@ -223,6 +223,26 @@ runs:
       else
         app_args="--help"
       fi
+
+      # A coverage build's QML has been rewritten by Qoverage to import
+      # QoverageSingleton, which belongs to the coverage tooling and is
+      # deliberately not in the package. Point QML_IMPORT_PATH at it, exactly as
+      # the coverage test job does (see run_cmd_prefix in build_and_test.yml).
+      # Qoverage is already installed in this job by the Install Qoverage step.
+      #
+      # This does not weaken the check. It adds only Qoverage's own module
+      # directory -- no Qt, no vcpkg -- so the package still has to supply
+      # everything else itself.
+      if [ "${{ inputs.coverage }}" = "true" ] && [ -n "$full_ui_check" ]; then
+        qoverage_importpath=$(~/.local/bin/qoverage --importpath) || qoverage_importpath=
+        if [ -z "$qoverage_importpath" ]; then
+          echo "Could not determine the Qoverage QML import path; the instrumented" >&2
+          echo "QML will not load without it." >&2
+          exit 1
+        fi
+        export QML_IMPORT_PATH="$qoverage_importpath"
+        echo "Coverage build: QML_IMPORT_PATH=$QML_IMPORT_PATH"
+      fi
       if [ "${{ runner.os }}" = "Windows" ]; then
         # wrap-shell runs Bash (via gha_bash_with_custom_fail.sh), but Windows
         # uses PATH to locate the executable and its DLLs. Keep system tools
