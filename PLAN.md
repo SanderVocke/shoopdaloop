@@ -178,26 +178,26 @@
 
 ### Phase 4 — Audio/MIDI ports, driver registration, and JACK pending controls
 
-- [ ] Add audio-port and MIDI-port controls/mirrors with atomic gain/mute/passthrough/ring-size, peak, event/note, and lifecycle/index state as applicable.
-- [ ] Convert driver-port/session-port creation to pending handles and queue engine insertion without waiting for an arena index.
-- [ ] Change all channel/port and port/port connection commands to resolve controls at execution time.
-- [ ] Replace index-derived compatibility assumptions where pending creation makes them invalid; use stable control/port identity without aliasing.
-- [ ] Change JACK registered-port records to hold the same object control rather than a copied session index.
-- [ ] Register JACK resources without waiting for engine insertion; make callbacks acquire the resolved index only when ready and safely ignore pending/failed/closed entries.
-- [ ] Define cleanup for JACK registration failure, engine creation failure, and either side becoming ready before the other.
-- [ ] Apply the pending-control design consistently to audio and MIDI JACK ports.
-- [ ] Convert port `get_state`/`poll_state` to mirror-only reads and eliminate reset commands.
-- [ ] Implement audio input/output peak consumption and MIDI event-count consumption with atomics.
-- [ ] Move dummy output/dequeue data to the temporary mutex-backed shared queues and document their RT/copying costs.
-- [ ] Keep decoupled ports that do not belong to the session on an appropriate stable-ID path; do not force them into an arena-index lifecycle if they do not need it.
-- [ ] Test:
-  - [ ] pending ports can be connected/configured before readiness;
-  - [ ] JACK callbacks never use an unresolved/wrong index;
-  - [ ] failure and close races are safe;
-  - [ ] peaks/event counts consume correctly;
-  - [ ] dummy queue/dequeue behavior remains correct;
-  - [ ] state polling and port construction do not wait for an audio cycle;
-  - [ ] real-JACK integration tests pass when the environment provides JACK.
+- [x] Add audio-port and MIDI-port controls/mirrors with atomic gain/mute/passthrough/ring-size, peak, event/note, and lifecycle/index state as applicable.
+- [x] Convert driver-port/session-port creation to pending handles and queue engine insertion without waiting for an arena index.
+- [x] Change all channel/port and port/port connection commands to resolve controls at execution time.
+- [x] Replace index-derived compatibility assumptions where pending creation makes them invalid; use stable control/port identity without aliasing.
+- [x] Change JACK registered-port records to hold the same object control rather than a copied session index.
+- [x] Register JACK resources without waiting for engine insertion; make callbacks acquire the resolved index only when ready and safely ignore pending/failed/closed entries.
+- [x] Define cleanup for JACK registration failure, engine creation failure, and either side becoming ready before the other.
+- [x] Apply the pending-control design consistently to audio and MIDI JACK ports.
+- [x] Convert port `get_state`/`poll_state` to mirror-only reads and eliminate reset commands.
+- [x] Implement audio input/output peak consumption and MIDI event-count consumption with atomics.
+- [x] Move dummy output/dequeue data to the temporary mutex-backed shared queues and document their RT/copying costs.
+- [x] Keep decoupled ports that do not belong to the session on an appropriate stable-ID path; do not force them into an arena-index lifecycle if they do not need it.
+- [x] Test:
+  - [x] pending ports can be connected/configured before readiness;
+  - [x] JACK callbacks never use an unresolved/wrong index;
+  - [x] failure and close races are safe;
+  - [x] peaks/event counts consume correctly;
+  - [x] dummy queue/dequeue behavior remains correct;
+  - [x] state polling and port construction do not wait for an audio cycle;
+  - [x] real-JACK integration tests pass when the environment provides JACK.
 
 ### Phase 5 — External connection publication and frontend polling
 

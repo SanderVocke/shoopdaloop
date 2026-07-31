@@ -31,20 +31,18 @@ This document tracks work intentionally deferred from the per-object state mirro
 
 ### Dummy audio dequeue
 
-- **Status:** Temporary implementation planned.
+- **Status:** Temporary implementation.
 - **API:** `AudioPort::dummy_dequeue_data`.
-- **Current behavior:** A blocking engine query drains retained output into a newly returned vector.
-- **Migration behavior:** Use a shared mutex-backed dequeue/capture store accessible without an engine query.
-- **Impact:** The dummy process path and test/control thread may contend; dequeue still copies and may allocate.
+- **Current behavior:** Application driver ports share an `Arc<Mutex<Vec<f32>>>` capture store with `ExternalAudioPort`; dequeue drains it immediately without an engine query.
+- **Impact:** The process path locks the store and may grow/drain its vector under the explicit realtime allocation exception. The test/control thread can block processing while dequeuing.
 - **Future direction:** Use a bounded SPSC capture ring with ownership transfer or preallocated output buffers.
 
 ### Dummy MIDI dequeue
 
-- **Status:** Temporary implementation planned.
+- **Status:** Temporary implementation.
 - **API:** `MidiPort::dummy_dequeue_data`.
-- **Current behavior:** A blocking engine query drains output, allocates a vector, and clones each MIDI payload.
-- **Migration behavior:** Use a shared mutex-backed event queue.
-- **Impact:** Locking and per-event allocation/copying remain.
+- **Current behavior:** Application driver ports share an `Arc<Mutex<Vec<MidiEvent>>>`; process-side capture clones each payload into it and dequeue drains it immediately.
+- **Impact:** Process-side locking, per-event allocation/copying, and frontend/process contention remain. This path is intentionally exceptional and not used by normal JACK output delivery.
 - **Future direction:** Use a bounded SPSC event ring with fixed-size payload storage and worker-side conversion.
 
 ## Process callback mutexes and allocations
@@ -52,8 +50,8 @@ This document tracks work intentionally deferred from the per-object state mirro
 ### JACK registered-port registry
 
 - **Status:** Deferred except for pending-control identity changes required by the migration.
-- **Current behavior:** JACK callback processing locks `Arc<Mutex<Vec<JackRegisteredPort>>>` and walks registrations. Registration records contain copied session indices.
-- **Migration behavior:** Records will resolve pending `ObjectControl` identities, but the registry mutex itself may remain.
+- **Current behavior:** JACK callback processing locks `Arc<Mutex<Vec<JackRegisteredPort>>>` and walks registrations. Session-backed registration records now retain the shared audio/MIDI `ObjectControl` and resolve its index only when `Ready`; pending/failed/closed controls are safely ignored.
+- **Migration behavior:** Pending-control identity is implemented, but the registry mutex itself remains.
 - **Impact:** Registration/control activity can block the JACK callback; poisoned-lock recovery also occurs on the RT path.
 - **Future direction:** Publish immutable/RCU registration arrays or use lock-free registration handoff outside the callback.
 
@@ -181,8 +179,8 @@ This document tracks work intentionally deferred from the per-object state mirro
 ### Ready handle drop does not remove engine objects
 
 - **Status:** Deferred ownership/lifecycle design.
-- **Current behavior:** Dropping a pending loop with no queued dependent command cancels creation. Once ready, dropping the final frontend handle does not remove the session loop; queued dependent commands intentionally keep pending controls alive until FIFO work drains.
-- **Impact:** Dynamic object removal can leave unreachable session objects if future frontend flows drop ready handles without an explicit removal operation.
+- **Current behavior:** Dropping an unreferenced pending loop/channel/port cancels creation through the command's weak control reference. JACK registrations intentionally retain their port control, so a registered pending port remains alive until driver teardown. Once ready, dropping the final ordinary frontend handle does not remove its session object; queued dependent commands intentionally keep controls alive until FIFO work drains.
+- **Impact:** Dynamic object removal can leave unreachable session objects, and a JACK registration whose engine insertion never runs remains pending (but callback-safe) until the driver registry is destroyed.
 - **Future direction:** Add explicit close/remove commands, publish `Closed`, detach topology safely, and define whether final-handle drop requests removal or ownership remains session-level.
 
 ## Diagnostics and incomplete API behavior

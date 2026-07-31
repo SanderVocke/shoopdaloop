@@ -1,7 +1,7 @@
 use crate::channel_mode::ChannelMode;
 use crate::loop_mode::LoopMode;
 use crate::midi_event::MidiEvent;
-use crate::state::{AudioChannelState, LoopState, MidiChannelState};
+use crate::state::{AudioChannelState, AudioPortState, LoopState, MidiChannelState, MidiPortState};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
 use std::sync::Mutex;
 
@@ -272,6 +272,106 @@ impl MidiChannelStateMirror {
     }
 }
 
+#[derive(Debug)]
+pub struct AudioPortStateMirror {
+    gain: AtomicU32,
+    muted: AtomicBool,
+    passthrough_muted: AtomicBool,
+    input_peak: AtomicU32,
+    output_peak: AtomicU32,
+    ringbuffer_n_samples: AtomicU32,
+}
+
+impl Default for AudioPortStateMirror {
+    fn default() -> Self {
+        Self {
+            gain: AtomicU32::new(1.0f32.to_bits()),
+            muted: AtomicBool::new(false),
+            passthrough_muted: AtomicBool::new(false),
+            input_peak: AtomicU32::new(0.0f32.to_bits()),
+            output_peak: AtomicU32::new(0.0f32.to_bits()),
+            ringbuffer_n_samples: AtomicU32::new(0),
+        }
+    }
+}
+
+impl AudioPortStateMirror {
+    pub fn publish_scalars(&self, gain: f32, muted: bool, passthrough_muted: bool, ring: usize) {
+        self.gain.store(gain.to_bits(), Ordering::Relaxed);
+        self.muted.store(muted, Ordering::Relaxed);
+        self.passthrough_muted
+            .store(passthrough_muted, Ordering::Relaxed);
+        self.ringbuffer_n_samples
+            .store(ring as u32, Ordering::Relaxed);
+    }
+
+    pub fn publish_peaks(&self, input: f32, output: f32) {
+        atomic_max_f32(&self.input_peak, input);
+        atomic_max_f32(&self.output_peak, output);
+    }
+
+    pub fn read(&self, name: String) -> AudioPortState {
+        AudioPortState {
+            input_peak: f32::from_bits(self.input_peak.swap(0, Ordering::Relaxed)),
+            output_peak: f32::from_bits(self.output_peak.swap(0, Ordering::Relaxed)),
+            gain: f32::from_bits(self.gain.load(Ordering::Relaxed)),
+            muted: self.muted.load(Ordering::Relaxed),
+            passthrough_muted: self.passthrough_muted.load(Ordering::Relaxed),
+            ringbuffer_n_samples: self.ringbuffer_n_samples.load(Ordering::Relaxed),
+            name,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct MidiPortStateMirror {
+    n_input_events: AtomicU32,
+    n_input_notes_active: AtomicU32,
+    n_output_events: AtomicU32,
+    n_output_notes_active: AtomicU32,
+    muted: AtomicBool,
+    passthrough_muted: AtomicBool,
+    ringbuffer_n_samples: AtomicU32,
+}
+
+impl MidiPortStateMirror {
+    pub fn publish_scalars(
+        &self,
+        input_notes: u32,
+        output_notes: u32,
+        muted: bool,
+        passthrough_muted: bool,
+        ring: u32,
+    ) {
+        self.n_input_notes_active
+            .store(input_notes, Ordering::Relaxed);
+        self.n_output_notes_active
+            .store(output_notes, Ordering::Relaxed);
+        self.muted.store(muted, Ordering::Relaxed);
+        self.passthrough_muted
+            .store(passthrough_muted, Ordering::Relaxed);
+        self.ringbuffer_n_samples.store(ring, Ordering::Relaxed);
+    }
+
+    pub fn record_events(&self, input: u32, output: u32) {
+        self.n_input_events.fetch_add(input, Ordering::Relaxed);
+        self.n_output_events.fetch_add(output, Ordering::Relaxed);
+    }
+
+    pub fn read(&self, name: String) -> MidiPortState {
+        MidiPortState {
+            n_input_events: self.n_input_events.swap(0, Ordering::Relaxed),
+            n_input_notes_active: self.n_input_notes_active.load(Ordering::Relaxed),
+            n_output_events: self.n_output_events.swap(0, Ordering::Relaxed),
+            n_output_notes_active: self.n_output_notes_active.load(Ordering::Relaxed),
+            muted: self.muted.load(Ordering::Relaxed),
+            passthrough_muted: self.passthrough_muted.load(Ordering::Relaxed),
+            ringbuffer_n_samples: self.ringbuffer_n_samples.load(Ordering::Relaxed),
+            name,
+        }
+    }
+}
+
 fn atomic_max_f32(target: &AtomicU32, value: f32) {
     if !value.is_finite() || value <= 0.0 {
         return;
@@ -321,6 +421,25 @@ mod tests {
         midi.publish(ChannelMode::Direct, 0, 4, 0, None, 0, 7);
         check!(midi.read(0).data_dirty);
         check!(!midi.read(7).data_dirty);
+    }
+
+    #[test]
+    fn port_accumulators_are_consumed_without_reset_commands() {
+        let audio = AudioPortStateMirror::default();
+        audio.publish_peaks(0.25, 0.5);
+        audio.publish_peaks(0.75, 0.4);
+        let first = audio.read("audio".to_string());
+        check!(first.input_peak == 0.75);
+        check!(first.output_peak == 0.5);
+        check!(audio.read("audio".to_string()).input_peak == 0.0);
+
+        let midi = MidiPortStateMirror::default();
+        midi.record_events(2, 1);
+        midi.record_events(3, 4);
+        let first = midi.read("midi".to_string());
+        check!(first.n_input_events == 5);
+        check!(first.n_output_events == 5);
+        check!(midi.read("midi".to_string()).n_input_events == 0);
     }
 
     #[test]

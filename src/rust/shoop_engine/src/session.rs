@@ -29,7 +29,10 @@ use crate::internal_audio_port::InternalAudioPort;
 use crate::loop_mode::LoopMode;
 use crate::midi_state::MAX_DIFF_MESSAGES;
 use crate::midi_storage::MidiStorageElem;
-use crate::state_mirror::{AudioChannelStateMirror, LoopStateMirror, MidiChannelStateMirror};
+use crate::state_mirror::{
+    AudioChannelStateMirror, AudioPortStateMirror, LoopStateMirror, MidiChannelStateMirror,
+    MidiPortStateMirror,
+};
 
 use thiserror::Error;
 
@@ -525,6 +528,28 @@ impl Session {
         self.ports.push(port);
         self.note_graph_change();
         self.ports.len() - 1
+    }
+
+    pub fn add_audio_port_with_state(
+        &mut self,
+        mut port: Port,
+        state: Arc<AudioPortStateMirror>,
+    ) -> Result<usize, SessionError> {
+        port.audio_mut()
+            .ok_or(SessionError::NoSuchPort(self.ports.len()))?
+            .set_state_mirror(state);
+        Ok(self.add_port(port))
+    }
+
+    pub fn add_midi_port_with_state(
+        &mut self,
+        mut port: Port,
+        state: Arc<MidiPortStateMirror>,
+    ) -> Result<usize, SessionError> {
+        port.midi_mut()
+            .ok_or(SessionError::NoSuchPort(self.ports.len()))?
+            .set_state_mirror(state);
+        Ok(self.add_port(port))
     }
 
     pub fn create_loop(&mut self) -> usize {

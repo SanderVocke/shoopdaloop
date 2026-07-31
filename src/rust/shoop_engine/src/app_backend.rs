@@ -103,6 +103,32 @@ impl ObjectIdentity for MidiChannelId {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AudioPortId(usize);
+
+impl ObjectIdentity for AudioPortId {
+    fn from_index(index: usize) -> Self {
+        Self(index)
+    }
+
+    fn index(self) -> usize {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct MidiPortId(usize);
+
+impl ObjectIdentity for MidiPortId {
+    fn from_index(index: usize) -> Self {
+        Self(index)
+    }
+
+    fn index(self) -> usize {
+        self.0
+    }
+}
+
 struct ObjectControl<I, M> {
     session_id: u64,
     lifecycle: std::sync::atomic::AtomicU8,
@@ -190,19 +216,19 @@ pub type BackendSessionState = engine::BackendSessionState;
 
 enum JackRegisteredPort {
     AudioIn {
-        session_idx: usize,
+        control: Arc<ObjectControl<AudioPortId, engine::AudioPortStateMirror>>,
         jack: jack::Port<jack::AudioIn>,
     },
     AudioOut {
-        session_idx: usize,
+        control: Arc<ObjectControl<AudioPortId, engine::AudioPortStateMirror>>,
         jack: jack::Port<jack::AudioOut>,
     },
     MidiIn {
-        session_idx: usize,
+        control: Arc<ObjectControl<MidiPortId, engine::MidiPortStateMirror>>,
         jack: jack::Port<jack::MidiIn>,
     },
     MidiOut {
-        session_idx: usize,
+        control: Arc<ObjectControl<MidiPortId, engine::MidiPortStateMirror>>,
         jack: jack::Port<jack::MidiOut>,
     },
     DecoupledMidiIn {
@@ -273,17 +299,19 @@ impl jack::ProcessHandler for JackProcess {
 
         for p in ports.iter() {
             match p {
-                JackRegisteredPort::AudioIn { session_idx, jack } => {
-                    if let Some(port) = session
-                        .port_mut(*session_idx)
+                JackRegisteredPort::AudioIn { control, jack } => {
+                    if let Some(port) = control
+                        .ready_id()
+                        .and_then(|id| session.port_mut(id.index()))
                         .and_then(|p| p.as_external_mut())
                     {
                         port.stage_input(jack.as_slice(ps));
                     }
                 }
-                JackRegisteredPort::MidiIn { session_idx, jack } => {
-                    if let Some(port) = session
-                        .port_mut(*session_idx)
+                JackRegisteredPort::MidiIn { control, jack } => {
+                    if let Some(port) = control
+                        .ready_id()
+                        .and_then(|id| session.port_mut(id.index()))
                         .and_then(|p| p.as_external_midi_mut())
                     {
                         for e in jack.iter(ps) {
@@ -309,9 +337,13 @@ impl jack::ProcessHandler for JackProcess {
 
         for p in ports.iter_mut() {
             match p {
-                JackRegisteredPort::AudioOut { session_idx, jack } => {
+                JackRegisteredPort::AudioOut { control, jack } => {
                     let out = jack.as_mut_slice(ps);
-                    if let Some(port) = session.port(*session_idx).and_then(|p| p.as_external()) {
+                    if let Some(port) = control
+                        .ready_id()
+                        .and_then(|id| session.port(id.index()))
+                        .and_then(|p| p.as_external())
+                    {
                         let produced = port.output(n_frames);
                         let n = produced.len().min(out.len());
                         out[..n].copy_from_slice(&produced[..n]);
@@ -324,10 +356,11 @@ impl jack::ProcessHandler for JackProcess {
                         }
                     }
                 }
-                JackRegisteredPort::MidiOut { session_idx, jack } => {
+                JackRegisteredPort::MidiOut { control, jack } => {
                     let mut writer = jack.writer(ps);
-                    if let Some(port) = session
-                        .port(*session_idx)
+                    if let Some(port) = control
+                        .ready_id()
+                        .and_then(|id| session.port(id.index()))
                         .and_then(|p| p.as_external_midi())
                     {
                         for e in port.outgoing() {
@@ -2063,7 +2096,7 @@ impl AudioDriver {
         &self,
         name: &str,
         direction: PortDirection,
-        session_idx: usize,
+        control: Arc<ObjectControl<AudioPortId, engine::AudioPortStateMirror>>,
     ) -> Result<()> {
         if let Some(jack) = self.jack() {
             let j = jack.lock().unwrap_or_else(|e| e.into_inner());
@@ -2075,7 +2108,7 @@ impl AudioDriver {
                         .map_err(|e| anyhow!("Failed to register JACK audio input {name}: {e}"))?;
                     j.ports.lock().unwrap_or_else(|e| e.into_inner()).push(
                         JackRegisteredPort::AudioIn {
-                            session_idx,
+                            control: Arc::clone(&control),
                             jack: p,
                         },
                     );
@@ -2087,7 +2120,7 @@ impl AudioDriver {
                         .map_err(|e| anyhow!("Failed to register JACK audio output {name}: {e}"))?;
                     j.ports.lock().unwrap_or_else(|e| e.into_inner()).push(
                         JackRegisteredPort::AudioOut {
-                            session_idx,
+                            control: Arc::clone(&control),
                             jack: p,
                         },
                     );
@@ -2100,7 +2133,7 @@ impl AudioDriver {
         &self,
         name: &str,
         direction: PortDirection,
-        session_idx: usize,
+        control: Arc<ObjectControl<MidiPortId, engine::MidiPortStateMirror>>,
     ) -> Result<()> {
         if let Some(jack) = self.jack() {
             let j = jack.lock().unwrap_or_else(|e| e.into_inner());
@@ -2112,7 +2145,7 @@ impl AudioDriver {
                         .map_err(|e| anyhow!("Failed to register JACK MIDI input {name}: {e}"))?;
                     j.ports.lock().unwrap_or_else(|e| e.into_inner()).push(
                         JackRegisteredPort::MidiIn {
-                            session_idx,
+                            control: Arc::clone(&control),
                             jack: p,
                         },
                     );
@@ -2124,7 +2157,7 @@ impl AudioDriver {
                         .map_err(|e| anyhow!("Failed to register JACK MIDI output {name}: {e}"))?;
                     j.ports.lock().unwrap_or_else(|e| e.into_inner()).push(
                         JackRegisteredPort::MidiOut {
-                            session_idx,
+                            control: Arc::clone(&control),
                             jack: p,
                         },
                     );
@@ -2642,11 +2675,13 @@ impl AudioChannel {
         &self,
         port: &AudioPort,
     ) -> std::result::Result<CommandSequence, SendError> {
-        let control = Arc::clone(&self.control);
-        let port_idx = port.idx;
+        if self.control.session_id != port.control.session_id {
+            return Err(SendError::Disconnected);
+        }
+        let (control, port) = (Arc::clone(&self.control), Arc::clone(&port.control));
         self.shared.send_topology(move |s: &mut engine::Session| {
-            if let Some(channel_idx) = control.ready_id().map(ObjectIdentity::index) {
-                let _ = s.connect_channel_input(channel_idx, port_idx);
+            if let (Some(channel), Some(port)) = (control.ready_id(), port.ready_id()) {
+                let _ = s.connect_channel_input(channel.index(), port.index());
             }
         })
     }
@@ -2655,21 +2690,25 @@ impl AudioChannel {
         &self,
         port: &AudioPort,
     ) -> std::result::Result<CommandSequence, SendError> {
-        let control = Arc::clone(&self.control);
-        let port_idx = port.idx;
+        if self.control.session_id != port.control.session_id {
+            return Err(SendError::Disconnected);
+        }
+        let (control, port) = (Arc::clone(&self.control), Arc::clone(&port.control));
         self.shared.send_topology(move |s: &mut engine::Session| {
-            if let Some(channel_idx) = control.ready_id().map(ObjectIdentity::index) {
-                let _ = s.connect_channel_output(channel_idx, port_idx);
+            if let (Some(channel), Some(port)) = (control.ready_id(), port.ready_id()) {
+                let _ = s.connect_channel_output(channel.index(), port.index());
             }
         })
     }
 
     pub fn disconnect(&self, port: &AudioPort) -> std::result::Result<CommandSequence, SendError> {
-        let control = Arc::clone(&self.control);
-        let port_idx = port.idx;
+        if self.control.session_id != port.control.session_id {
+            return Err(SendError::Disconnected);
+        }
+        let (control, port) = (Arc::clone(&self.control), Arc::clone(&port.control));
         self.shared.send_topology(move |s: &mut engine::Session| {
-            if let Some(channel_idx) = control.ready_id().map(ObjectIdentity::index) {
-                let _ = s.disconnect_channel_port(channel_idx, port_idx);
+            if let (Some(channel), Some(port)) = (control.ready_id(), port.ready_id()) {
+                let _ = s.disconnect_channel_port(channel.index(), port.index());
             }
         })
     }
@@ -2802,11 +2841,13 @@ impl MidiChannel {
         &self,
         port: &MidiPort,
     ) -> std::result::Result<CommandSequence, SendError> {
-        let control = Arc::clone(&self.control);
-        let port_idx = port.idx;
+        if self.control.session_id != port.control.session_id {
+            return Err(SendError::Disconnected);
+        }
+        let (control, port) = (Arc::clone(&self.control), Arc::clone(&port.control));
         self.shared.send_topology(move |s: &mut engine::Session| {
-            if let Some(channel_idx) = control.ready_id().map(ObjectIdentity::index) {
-                let _ = s.connect_channel_input(channel_idx, port_idx);
+            if let (Some(channel), Some(port)) = (control.ready_id(), port.ready_id()) {
+                let _ = s.connect_channel_input(channel.index(), port.index());
             }
         })
     }
@@ -2815,21 +2856,25 @@ impl MidiChannel {
         &self,
         port: &MidiPort,
     ) -> std::result::Result<CommandSequence, SendError> {
-        let control = Arc::clone(&self.control);
-        let port_idx = port.idx;
+        if self.control.session_id != port.control.session_id {
+            return Err(SendError::Disconnected);
+        }
+        let (control, port) = (Arc::clone(&self.control), Arc::clone(&port.control));
         self.shared.send_topology(move |s: &mut engine::Session| {
-            if let Some(channel_idx) = control.ready_id().map(ObjectIdentity::index) {
-                let _ = s.connect_channel_output(channel_idx, port_idx);
+            if let (Some(channel), Some(port)) = (control.ready_id(), port.ready_id()) {
+                let _ = s.connect_channel_output(channel.index(), port.index());
             }
         })
     }
 
     pub fn disconnect(&self, port: &MidiPort) -> std::result::Result<CommandSequence, SendError> {
-        let control = Arc::clone(&self.control);
-        let port_idx = port.idx;
+        if self.control.session_id != port.control.session_id {
+            return Err(SendError::Disconnected);
+        }
+        let (control, port) = (Arc::clone(&self.control), Arc::clone(&port.control));
         self.shared.send_topology(move |s: &mut engine::Session| {
-            if let Some(channel_idx) = control.ready_id().map(ObjectIdentity::index) {
-                let _ = s.disconnect_channel_port(channel_idx, port_idx);
+            if let (Some(channel), Some(port)) = (control.ready_id(), port.ready_id()) {
+                let _ = s.disconnect_channel_port(channel.index(), port.index());
             }
         })
     }
@@ -2888,7 +2933,8 @@ impl MidiChannel {
 #[derive(Clone)]
 pub struct AudioPort {
     shared: Arc<SharedSession>,
-    idx: usize,
+    control: Arc<ObjectControl<AudioPortId, engine::AudioPortStateMirror>>,
+    dummy_output: Arc<Mutex<Vec<f32>>>,
     direction: PortDirection,
     /// Kept here because the audio thread cannot publish it: a name is a `String`, so the
     /// snapshot carries only numbers and this side supplies the name it created the port with.
@@ -2903,24 +2949,62 @@ impl AudioPort {
         direction: &PortDirection,
         ring: u32,
     ) -> Result<Self> {
+        let control = Arc::new(
+            ObjectControl::<AudioPortId, engine::AudioPortStateMirror>::pending(
+                sess.shared.session_id,
+            ),
+        );
+        let control_for_command = Arc::downgrade(&control);
+        let dummy_output = Arc::new(Mutex::new(Vec::new()));
+        let output_for_command = Arc::clone(&dummy_output);
         let (owned, dir) = (name.to_string(), *direction);
-        let idx = sess.shared.query_topology(move |s: &mut engine::Session| {
-            s.add_port(engine::session::Port::External(
-                engine::external_audio_port::ExternalAudioPort::new(
-                    owned,
-                    dir.into(),
-                    ring as usize,
-                ),
-            ))
+        let mut owned = Some(owned);
+        let sequence = sess.shared.send_topology(move |s: &mut engine::Session| {
+            let Some(control) = control_for_command.upgrade() else {
+                return;
+            };
+            let Some(owned) = owned.take() else { return };
+            if control.lifecycle() != ObjectLifecycle::Pending {
+                return;
+            }
+            let mut external = engine::external_audio_port::ExternalAudioPort::new(
+                owned,
+                dir.into(),
+                ring as usize,
+            );
+            external.set_output_capture(Arc::clone(&output_for_command));
+            let port = engine::session::Port::External(external);
+            match s.add_audio_port_with_state(port, Arc::clone(&control.mirror)) {
+                Ok(idx) => control.mark_ready(AudioPortId(idx)),
+                Err(error) => control.mark_failed(error.to_string()),
+            }
         })?;
-        driver.register_audio_port(name, *direction, idx)?;
+        control.set_creation_sequence(sequence);
+        if let Err(error) = driver.register_audio_port(name, *direction, Arc::clone(&control)) {
+            control.mark_failed(error.to_string());
+            return Err(error);
+        }
         Ok(Self {
             shared: sess.shared.clone(),
-            idx,
+            control,
+            dummy_output,
             direction: *direction,
             name: name.to_string(),
         })
     }
+
+    pub fn lifecycle(&self) -> ObjectLifecycle {
+        self.control.lifecycle()
+    }
+
+    pub fn creation_sequence(&self) -> CommandSequence {
+        self.control.creation_sequence()
+    }
+
+    pub fn creation_error(&self) -> Option<String> {
+        self.control.error()
+    }
+
     pub fn input_connectability(&self) -> PortConnectability {
         match self.direction {
             PortDirection::Input => PortConnectability::EXTERNAL,
@@ -2940,54 +3024,37 @@ impl AudioPort {
         &self,
         mut f: impl FnMut(&mut engine::AudioPort) + Send + 'static,
     ) -> std::result::Result<CommandSequence, SendError> {
-        let idx = self.idx;
+        let control = Arc::clone(&self.control);
         self.shared.send_control(move |s: &mut engine::Session| {
-            if let Some(a) = s.port_mut(idx).and_then(|p| p.audio_mut()) {
+            if let Some(a) = control
+                .ready_id()
+                .and_then(|id| s.port_mut(id.index()))
+                .and_then(|p| p.audio_mut())
+            {
                 f(a)
             }
         })
     }
 
-    /// This port's state as of the last published cycle, without blocking.
+    /// This port's state as of the independently published mirrors, without blocking.
     pub fn poll_state(&self) -> Option<AudioPortState> {
-        let idx = self.idx;
-        let polled = self
-            .shared
-            .poll(|snap| snap.audio_ports.get(idx).copied())??;
-        let state = polled.map(|p| p.named(self.name.clone()));
-        if state.is_some() {
-            if let Err(error) = self.shared.send_control(move |s: &mut engine::Session| {
-                if let Some(a) = s.port_mut(idx).and_then(|p| p.audio_mut()) {
-                    a.reset_input_peak();
-                    a.reset_output_peak();
-                }
-            }) {
-                log::error!("could not queue audio port peak reset: {error}");
-            }
-        }
-        state
+        (self.control.lifecycle() == ObjectLifecycle::Ready)
+            .then(|| self.control.mirror.read(self.name.clone()))
     }
 
     pub fn get_state(&self) -> Result<AudioPortState> {
-        let idx = self.idx;
-        let name = self.name.clone();
-        self.shared
-            .query_control(move |s: &mut engine::Session| {
-                let a = s.port_mut(idx)?.audio_mut()?;
-                let snapshot = engine::AudioPortSnapshot {
-                    input_peak: a.input_peak(),
-                    output_peak: a.output_peak(),
-                    gain: a.gain(),
-                    muted: a.muted(),
-                    passthrough_muted: a.passthrough_muted(),
-                    ringbuffer_n_samples: a.ringbuffer_n_samples() as u32,
-                };
-                a.reset_input_peak();
-                a.reset_output_peak();
-                Some(snapshot)
-            })?
-            .map(|p| p.named(name))
-            .ok_or_else(|| anyhow!("no audio port"))
+        match self.control.lifecycle() {
+            ObjectLifecycle::Pending | ObjectLifecycle::Ready => {
+                Ok(self.control.mirror.read(self.name.clone()))
+            }
+            ObjectLifecycle::Failed => Err(anyhow!(
+                "audio port creation failed: {}",
+                self.control
+                    .error()
+                    .unwrap_or_else(|| "unknown error".to_string())
+            )),
+            ObjectLifecycle::Closed => Err(anyhow!("audio port is closed")),
+        }
     }
     pub fn set_gain(&self, gain: f32) -> std::result::Result<CommandSequence, SendError> {
         self.with_audio_mut(move |a| a.set_gain(gain))
@@ -3005,38 +3072,47 @@ impl AudioPort {
         &self,
         other: &AudioPort,
     ) -> std::result::Result<CommandSequence, SendError> {
-        let (from, to) = (self.idx, other.idx);
+        if self.control.session_id != other.control.session_id {
+            return Err(SendError::Disconnected);
+        }
+        let (from, to) = (Arc::clone(&self.control), Arc::clone(&other.control));
         self.shared.send_topology(move |s: &mut engine::Session| {
-            let _ = s.connect_ports_internal(from, to);
+            if let (Some(from), Some(to)) = (from.ready_id(), to.ready_id()) {
+                let _ = s.connect_ports_internal(from.index(), to.index());
+            }
         })
     }
     pub fn dummy_queue_data(
         &self,
         data: &[f32],
     ) -> std::result::Result<CommandSequence, SendError> {
-        let (idx, owned) = (self.idx, data.to_vec());
+        let (control, owned) = (Arc::clone(&self.control), data.to_vec());
         self.shared.send_control(move |s: &mut engine::Session| {
-            if let Some(p) = s.port_mut(idx).and_then(|p| p.as_external_mut()) {
+            if let Some(p) = control
+                .ready_id()
+                .and_then(|id| s.port_mut(id.index()))
+                .and_then(|p| p.as_external_mut())
+            {
                 p.stage_input(&owned)
             }
         })
     }
     pub fn dummy_dequeue_data(&self, n: u32) -> Vec<f32> {
-        let idx = self.idx;
-        self.shared
-            .query_control(move |s: &mut engine::Session| {
-                s.port_mut(idx)
-                    .and_then(|p| p.as_external_mut())
-                    .map(|p| p.dequeue_output(n as usize))
-            })
-            .ok()
-            .flatten()
-            .unwrap_or_default()
+        let mut output = self
+            .dummy_output
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let n = (n as usize).min(output.len());
+        output.drain(..n).collect()
     }
     pub fn dummy_request_data(&self, _n: u32) -> std::result::Result<CommandSequence, SendError> {
-        let idx = self.idx;
+        let control = Arc::clone(&self.control);
         self.shared.send_control(move |s: &mut engine::Session| {
-            if let Some(p) = s.port_mut(idx).and_then(|p| p.as_external_mut()) {
+            if let Some(p) = control
+                .ready_id()
+                .and_then(|id| s.port_mut(id.index()))
+                .and_then(|p| p.as_external_mut())
+            {
                 p.clear_output_queue();
             }
         })
@@ -3048,7 +3124,11 @@ impl AudioPort {
         let mut out = HashMap::new();
         if let Some(ext) = self.shared.external() {
             let ext = ext.lock().unwrap_or_else(|e| e.into_inner());
-            let connected = ext.connection_status_of(compat_port_id(self.idx));
+            let connected = self
+                .control
+                .ready_id()
+                .map(|id| ext.connection_status_of(compat_port_id(id.index())))
+                .unwrap_or_default();
             if let Ok(ports) = ext.find_external_ports(
                 None,
                 opposite_direction(self.direction).into(),
@@ -3067,10 +3147,24 @@ impl AudioPort {
             return;
         }
         if let Some(ext) = self.shared.external() {
-            let _ = ext
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .connect(compat_port_id(self.idx), name);
+            if let Some(id) = self.control.ready_id() {
+                let _ = ext
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .connect(compat_port_id(id.index()), name);
+                return;
+            }
+            let (control, name) = (Arc::clone(&self.control), name.to_string());
+            if let Err(error) = self.shared.send_control(move |_: &mut engine::Session| {
+                if let Some(id) = control.ready_id() {
+                    let _ = ext
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .connect(compat_port_id(id.index()), &name);
+                }
+            }) {
+                log::error!("could not queue external audio connection: {error}");
+            }
         }
     }
     pub fn disconnect_external_port(&self, name: &str) {
@@ -3079,10 +3173,24 @@ impl AudioPort {
             return;
         }
         if let Some(ext) = self.shared.external() {
-            let _ = ext
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .disconnect(compat_port_id(self.idx), name);
+            if let Some(id) = self.control.ready_id() {
+                let _ = ext
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .disconnect(compat_port_id(id.index()), name);
+                return;
+            }
+            let (control, name) = (Arc::clone(&self.control), name.to_string());
+            if let Err(error) = self.shared.send_control(move |_: &mut engine::Session| {
+                if let Some(id) = control.ready_id() {
+                    let _ = ext
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .disconnect(compat_port_id(id.index()), &name);
+                }
+            }) {
+                log::error!("could not queue external audio disconnection: {error}");
+            }
         }
     }
     pub fn set_ringbuffer_n_samples(
@@ -3099,13 +3207,26 @@ impl AudioPort {
 #[derive(Clone)]
 pub struct MidiPort {
     shared: Arc<SharedSession>,
-    idx: usize,
+    control: Arc<ObjectControl<MidiPortId, engine::MidiPortStateMirror>>,
+    dummy_output: Arc<Mutex<Vec<MidiEvent>>>,
     direction: PortDirection,
     /// As on `AudioPort`: the audio thread cannot publish a `String`, so this side keeps it.
     name: String,
 }
 pub type MidiPortState = engine::MidiPortState;
 impl MidiPort {
+    pub fn lifecycle(&self) -> ObjectLifecycle {
+        self.control.lifecycle()
+    }
+
+    pub fn creation_sequence(&self) -> CommandSequence {
+        self.control.creation_sequence()
+    }
+
+    pub fn creation_error(&self) -> Option<String> {
+        self.control.error()
+    }
+
     pub fn new_driver_port(
         sess: &BackendSession,
         driver: &AudioDriver,
@@ -3113,16 +3234,41 @@ impl MidiPort {
         direction: &PortDirection,
         _ring: u32,
     ) -> Result<Self> {
+        let control = Arc::new(
+            ObjectControl::<MidiPortId, engine::MidiPortStateMirror>::pending(
+                sess.shared.session_id,
+            ),
+        );
+        let control_for_command = Arc::downgrade(&control);
+        let dummy_output = Arc::new(Mutex::new(Vec::new()));
+        let output_for_command = Arc::clone(&dummy_output);
         let (owned, dir) = (name.to_string(), *direction);
-        let idx = sess.shared.query_topology(move |s: &mut engine::Session| {
-            s.add_port(engine::session::Port::ExternalMidi(
-                engine::external_midi_port::ExternalMidiPort::new(owned, dir.into()),
-            ))
+        let mut owned = Some(owned);
+        let sequence = sess.shared.send_topology(move |s: &mut engine::Session| {
+            let Some(control) = control_for_command.upgrade() else {
+                return;
+            };
+            let Some(owned) = owned.take() else { return };
+            if control.lifecycle() != ObjectLifecycle::Pending {
+                return;
+            }
+            let mut external = engine::external_midi_port::ExternalMidiPort::new(owned, dir.into());
+            external.set_output_capture(Arc::clone(&output_for_command));
+            let port = engine::session::Port::ExternalMidi(external);
+            match s.add_midi_port_with_state(port, Arc::clone(&control.mirror)) {
+                Ok(idx) => control.mark_ready(MidiPortId(idx)),
+                Err(error) => control.mark_failed(error.to_string()),
+            }
         })?;
-        driver.register_midi_port(name, *direction, idx)?;
+        control.set_creation_sequence(sequence);
+        if let Err(error) = driver.register_midi_port(name, *direction, Arc::clone(&control)) {
+            control.mark_failed(error.to_string());
+            return Err(error);
+        }
         Ok(Self {
             shared: sess.shared.clone(),
-            idx,
+            control,
+            dummy_output,
             direction: *direction,
             name: name.to_string(),
         })
@@ -3146,42 +3292,37 @@ impl MidiPort {
         &self,
         mut f: impl FnMut(&mut engine::MidiPort) + Send + 'static,
     ) -> std::result::Result<CommandSequence, SendError> {
-        let idx = self.idx;
+        let control = Arc::clone(&self.control);
         self.shared.send_control(move |s: &mut engine::Session| {
-            if let Some(m) = s.port_mut(idx).and_then(|p| p.midi_mut()) {
+            if let Some(m) = control
+                .ready_id()
+                .and_then(|id| s.port_mut(id.index()))
+                .and_then(|p| p.midi_mut())
+            {
                 f(m)
             }
         })
     }
 
-    /// This port's state as of the last published cycle, without blocking.
+    /// This port's state as of the independently published mirrors, without blocking.
     pub fn poll_state(&self) -> Option<MidiPortState> {
-        let idx = self.idx;
-        let polled = self
-            .shared
-            .poll(|snap| snap.midi_ports.get(idx).copied())??;
-        polled.map(|p| p.named(self.name.clone()))
+        (self.control.lifecycle() == ObjectLifecycle::Ready)
+            .then(|| self.control.mirror.read(self.name.clone()))
     }
 
     pub fn get_state(&self) -> Result<MidiPortState> {
-        let idx = self.idx;
-        let name = self.name.clone();
-        self.shared
-            .query_control(move |s: &mut engine::Session| {
-                let p = s.port(idx)?;
-                let m = p.midi()?;
-                Some(engine::MidiPortSnapshot {
-                    n_input_events: m.n_input_events(),
-                    n_input_notes_active: m.n_notes_active(),
-                    n_output_events: m.n_output_events(),
-                    n_output_notes_active: 0,
-                    muted: m.muted(),
-                    passthrough_muted: m.passthrough_muted(),
-                    ringbuffer_n_samples: m.ringbuffer_n_samples(),
-                })
-            })?
-            .map(|p| p.named(name))
-            .ok_or_else(|| anyhow!("no midi port"))
+        match self.control.lifecycle() {
+            ObjectLifecycle::Pending | ObjectLifecycle::Ready => {
+                Ok(self.control.mirror.read(self.name.clone()))
+            }
+            ObjectLifecycle::Failed => Err(anyhow!(
+                "MIDI port creation failed: {}",
+                self.control
+                    .error()
+                    .unwrap_or_else(|| "unknown error".to_string())
+            )),
+            ObjectLifecycle::Closed => Err(anyhow!("MIDI port is closed")),
+        }
     }
     pub fn set_muted(&self, muted: bool) -> std::result::Result<CommandSequence, SendError> {
         self.with_midi_mut(move |m| m.set_muted(muted))
@@ -3196,15 +3337,24 @@ impl MidiPort {
         &self,
         other: &MidiPort,
     ) -> std::result::Result<CommandSequence, SendError> {
-        let (from, to) = (self.idx, other.idx);
+        if self.control.session_id != other.control.session_id {
+            return Err(SendError::Disconnected);
+        }
+        let (from, to) = (Arc::clone(&self.control), Arc::clone(&other.control));
         self.shared.send_topology(move |s: &mut engine::Session| {
-            let _ = s.connect_ports_internal(from, to);
+            if let (Some(from), Some(to)) = (from.ready_id(), to.ready_id()) {
+                let _ = s.connect_ports_internal(from.index(), to.index());
+            }
         })
     }
     pub fn dummy_clear_queues(&self) -> std::result::Result<CommandSequence, SendError> {
-        let idx = self.idx;
+        let control = Arc::clone(&self.control);
         self.shared.send_control(move |s: &mut engine::Session| {
-            if let Some(p) = s.port_mut(idx).and_then(|p| p.as_external_midi_mut()) {
+            if let Some(p) = control
+                .ready_id()
+                .and_then(|id| s.port_mut(id.index()))
+                .and_then(|p| p.as_external_midi_mut())
+            {
                 p.clear_queues();
             }
         })
@@ -3219,13 +3369,17 @@ impl MidiPort {
         &self,
         msgs: Vec<MidiEvent>,
     ) -> std::result::Result<CommandSequence, SendError> {
-        let idx = self.idx;
+        let control = Arc::clone(&self.control);
         let mut pending = Some(msgs);
         self.shared.send_control(move |s: &mut engine::Session| {
             let Some(msgs) = pending.take() else {
                 return;
             };
-            if let Some(p) = s.port_mut(idx).and_then(|p| p.as_external_midi_mut()) {
+            if let Some(p) = control
+                .ready_id()
+                .and_then(|id| s.port_mut(id.index()))
+                .and_then(|p| p.as_external_midi_mut())
+            {
                 for m in msgs {
                     let _ = p.push_incoming(m.time.max(0) as u32, &m.data);
                 }
@@ -3233,29 +3387,20 @@ impl MidiPort {
         })
     }
     pub fn dummy_dequeue_data(&self) -> Vec<MidiEvent> {
-        let idx = self.idx;
-        self.shared
-            .query_control(move |s: &mut engine::Session| {
-                s.port_mut(idx)
-                    .and_then(|p| p.as_external_midi_mut())
-                    .map(|p| {
-                        p.dequeue_output()
-                            .iter()
-                            .map(|e| MidiEvent {
-                                time: e.time as i32,
-                                data: e.data().to_vec(),
-                            })
-                            .collect::<Vec<_>>()
-                    })
-            })
-            .ok()
-            .flatten()
-            .unwrap_or_default()
+        let mut output = self
+            .dummy_output
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        output.drain(..).collect()
     }
     pub fn dummy_request_data(&self, _n: u32) -> std::result::Result<CommandSequence, SendError> {
-        let idx = self.idx;
+        let control = Arc::clone(&self.control);
         self.shared.send_control(move |s: &mut engine::Session| {
-            if let Some(p) = s.port_mut(idx).and_then(|p| p.as_external_midi_mut()) {
+            if let Some(p) = control
+                .ready_id()
+                .and_then(|id| s.port_mut(id.index()))
+                .and_then(|p| p.as_external_midi_mut())
+            {
                 p.request_output();
             }
         })
@@ -3267,7 +3412,11 @@ impl MidiPort {
         let mut out = HashMap::new();
         if let Some(ext) = self.shared.external() {
             let ext = ext.lock().unwrap_or_else(|e| e.into_inner());
-            let connected = ext.connection_status_of(compat_port_id(self.idx));
+            let connected = self
+                .control
+                .ready_id()
+                .map(|id| ext.connection_status_of(compat_port_id(id.index())))
+                .unwrap_or_default();
             if let Ok(ports) = ext.find_external_ports(
                 None,
                 opposite_direction(self.direction).into(),
@@ -3286,10 +3435,24 @@ impl MidiPort {
             return;
         }
         if let Some(ext) = self.shared.external() {
-            let _ = ext
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .connect(compat_port_id(self.idx), name);
+            if let Some(id) = self.control.ready_id() {
+                let _ = ext
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .connect(compat_port_id(id.index()), name);
+                return;
+            }
+            let (control, name) = (Arc::clone(&self.control), name.to_string());
+            if let Err(error) = self.shared.send_control(move |_: &mut engine::Session| {
+                if let Some(id) = control.ready_id() {
+                    let _ = ext
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .connect(compat_port_id(id.index()), &name);
+                }
+            }) {
+                log::error!("could not queue external MIDI connection: {error}");
+            }
         }
     }
     pub fn disconnect_external_port(&self, name: &str) {
@@ -3298,10 +3461,24 @@ impl MidiPort {
             return;
         }
         if let Some(ext) = self.shared.external() {
-            let _ = ext
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .disconnect(compat_port_id(self.idx), name);
+            if let Some(id) = self.control.ready_id() {
+                let _ = ext
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .disconnect(compat_port_id(id.index()), name);
+                return;
+            }
+            let (control, name) = (Arc::clone(&self.control), name.to_string());
+            if let Err(error) = self.shared.send_control(move |_: &mut engine::Session| {
+                if let Some(id) = control.ready_id() {
+                    let _ = ext
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .disconnect(compat_port_id(id.index()), &name);
+                }
+            }) {
+                log::error!("could not queue external MIDI disconnection: {error}");
+            }
         }
     }
     pub fn set_ringbuffer_n_samples(
@@ -3506,49 +3683,75 @@ impl FXChain {
             FXChainBackendKind::Unavailable { .. } => 0,
         }
     }
-    /// Adds an internal port for this chain, or `None` if the engine could not answer.
-    ///
-    /// `None` rather than a fallback index: defaulting to 0 would hand back a handle
-    /// pointing at whichever port happens to be first, and every subsequent call on it would
-    /// quietly act on that one instead. A missing port is visible; a wrong one is not.
+    /// Queues an internal chain port and immediately returns its pending handle.
     fn make_audio_port(&self, name: String, direction: PortDirection) -> Option<AudioPort> {
-        let owned = name.clone();
-        let idx = self
+        let control = Arc::new(
+            ObjectControl::<AudioPortId, engine::AudioPortStateMirror>::pending(
+                self.shared.session_id,
+            ),
+        );
+        let weak = Arc::downgrade(&control);
+        let mut owned = Some(name.clone());
+        let sequence = self
             .shared
-            .query_topology(move |s: &mut engine::Session| {
+            .send_topology(move |s: &mut engine::Session| {
+                let Some(control) = weak.upgrade() else {
+                    return;
+                };
+                let Some(owned) = owned.take() else { return };
                 let n_frames = s.buffer_size().max(1) as usize;
-                s.add_port(engine::session::Port::Internal(
-                    engine::InternalAudioPort::new(
-                        owned,
-                        n_frames,
-                        engine::PortConnectability::INTERNAL,
-                        engine::PortConnectability::INTERNAL,
-                        0,
-                    ),
-                ))
+                let port = engine::session::Port::Internal(engine::InternalAudioPort::new(
+                    owned,
+                    n_frames,
+                    engine::PortConnectability::INTERNAL,
+                    engine::PortConnectability::INTERNAL,
+                    0,
+                ));
+                match s.add_audio_port_with_state(port, Arc::clone(&control.mirror)) {
+                    Ok(idx) => control.mark_ready(AudioPortId(idx)),
+                    Err(error) => control.mark_failed(error.to_string()),
+                }
             })
             .ok()?;
+        control.set_creation_sequence(sequence);
         Some(AudioPort {
             shared: self.shared.clone(),
-            idx,
+            control,
+            dummy_output: Arc::new(Mutex::new(Vec::new())),
             direction,
             name,
         })
     }
-    /// As [`Self::make_audio_port`], including why this is an `Option`.
+
     fn make_midi_port(&self, name: String, direction: PortDirection) -> Option<MidiPort> {
-        let owned = name.clone();
-        let idx = self
+        let control = Arc::new(
+            ObjectControl::<MidiPortId, engine::MidiPortStateMirror>::pending(
+                self.shared.session_id,
+            ),
+        );
+        let weak = Arc::downgrade(&control);
+        let mut owned = Some(name.clone());
+        let sequence = self
             .shared
-            .query_topology(move |s: &mut engine::Session| {
-                s.add_port(engine::session::Port::ExternalMidi(
+            .send_topology(move |s: &mut engine::Session| {
+                let Some(control) = weak.upgrade() else {
+                    return;
+                };
+                let Some(owned) = owned.take() else { return };
+                let port = engine::session::Port::ExternalMidi(
                     engine::external_midi_port::ExternalMidiPort::new(owned, direction.into()),
-                ))
+                );
+                match s.add_midi_port_with_state(port, Arc::clone(&control.mirror)) {
+                    Ok(idx) => control.mark_ready(MidiPortId(idx)),
+                    Err(error) => control.mark_failed(error.to_string()),
+                }
             })
             .ok()?;
+        control.set_creation_sequence(sequence);
         Some(MidiPort {
             shared: self.shared.clone(),
-            idx,
+            control,
+            dummy_output: Arc::new(Mutex::new(Vec::new())),
             direction,
             name,
         })
@@ -3629,9 +3832,16 @@ mod tests {
                     ))
                 })
                 .expect("add port");
+            let control = Arc::new(
+                ObjectControl::<AudioPortId, engine::AudioPortStateMirror>::pending(
+                    sess.shared.session_id,
+                ),
+            );
+            control.mark_ready(AudioPortId(idx));
             AudioPort {
                 shared: sess.shared.clone(),
-                idx,
+                control,
+                dummy_output: Arc::new(Mutex::new(Vec::new())),
                 direction: PortDirection::Output,
                 name: "out".to_string(),
             }
@@ -3830,6 +4040,55 @@ mod tests {
 
         assert_eq!(channel.lifecycle(), ObjectLifecycle::Ready);
         assert_eq!(channel.get_state().expect("channel state").gain, 0.5);
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
+    fn pending_ports_accept_configuration_and_connections_before_readiness() {
+        let sess = BackendSession::new().expect("session");
+        let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let input =
+            AudioPort::new_driver_port(&sess, &driver, "pending-in", &PortDirection::Input, 0)
+                .expect("input");
+        let output =
+            AudioPort::new_driver_port(&sess, &driver, "pending-out", &PortDirection::Output, 0)
+                .expect("output");
+        assert_eq!(input.lifecycle(), ObjectLifecycle::Pending);
+        assert_eq!(output.lifecycle(), ObjectLifecycle::Pending);
+        input.set_gain(0.25).expect("gain");
+        input.connect_internal(&output).expect("connection");
+
+        engine.pump();
+        assert_eq!(input.lifecycle(), ObjectLifecycle::Ready);
+        assert_eq!(output.lifecycle(), ObjectLifecycle::Ready);
+        assert_eq!(input.get_state().expect("state").gain, 0.25);
+        assert_eq!(engine.session().n_ports(), 2);
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
+    fn port_state_reads_and_dummy_dequeues_do_not_queue_queries() {
+        let sess = BackendSession::new().expect("session");
+        let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
+        let audio = AudioPort::new_driver_port(&sess, &driver, "audio", &PortDirection::Output, 0)
+            .expect("audio");
+        let midi = MidiPort::new_driver_port(&sess, &driver, "midi", &PortDirection::Output, 0)
+            .expect("MIDI");
+        let engine = sess.shared.take_engine().expect("parked engine");
+        let commands_before = engine.stats().commands_applied.load(Ordering::Relaxed);
+        for _ in 0..100 {
+            let _ = audio.get_state();
+            let _ = audio.poll_state();
+            let _ = audio.dummy_dequeue_data(4);
+            let _ = midi.get_state();
+            let _ = midi.poll_state();
+            let _ = midi.dummy_dequeue_data();
+        }
+        assert_eq!(
+            engine.stats().commands_applied.load(Ordering::Relaxed),
+            commands_before
+        );
         sess.shared.return_engine(engine);
     }
 
@@ -4191,6 +4450,8 @@ mod tests {
         let app_port =
             AudioPort::new_driver_port(&sess, &driver, "app_audio_out", &PortDirection::Output, 0)
                 .expect("app port");
+        sess.wait_for_command(app_port.creation_sequence(), engine::DEFAULT_WAIT_TIMEOUT)
+            .expect("app port creation");
         let target = playback_ports[0].name.clone();
         let before = app_port.get_connections_state();
         assert_eq!(before.get(&target), Some(&false));
@@ -4307,24 +4568,33 @@ mod tests {
         assert_eq!(initial.input_peak, 0.0);
         assert_eq!(initial.output_peak, 0.0);
 
-        port.dummy_queue_data(&[0.0, -0.8, 0.2, 0.1])
+        let sequence = port
+            .dummy_queue_data(&[0.0, -0.8, 0.2, 0.1])
             .expect("queue first input");
+        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .expect("first input command");
         driver.dummy_request_controlled_frames(BUFFER);
         driver.dummy_run_requested_frames();
         let first = port.get_state().expect("first state");
         assert_eq!(first.input_peak, 0.8);
         assert_eq!(first.output_peak, 0.8);
 
-        port.dummy_queue_data(&[0.0, -0.3, 0.1, 0.2])
+        let sequence = port
+            .dummy_queue_data(&[0.0, -0.3, 0.1, 0.2])
             .expect("queue second input");
+        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .expect("second input command");
         driver.dummy_request_controlled_frames(BUFFER);
         driver.dummy_run_requested_frames();
         let second = port.poll_state().expect("second state");
         assert_eq!(second.input_peak, 0.3);
         assert_eq!(second.output_peak, 0.3);
 
-        port.dummy_queue_data(&[0.0, -0.1, 0.05, 0.0])
+        let sequence = port
+            .dummy_queue_data(&[0.0, -0.1, 0.05, 0.0])
             .expect("queue third input");
+        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .expect("third input command");
         driver.dummy_request_controlled_frames(BUFFER);
         driver.dummy_run_requested_frames();
         let third = port.poll_state().expect("third state");
