@@ -254,6 +254,34 @@ ShoopTestFile {
                     verify_eq_lua('shoop_control.loop_get_by_track(1)', '{{1,0}, {1,1}}')
                 },
 
+                'test_track_reorder_updates_loop_coords': () => {
+                    check_backend()
+                    clear()
+
+                    session.main_tracks = [session.main_tracks[1], session.main_tracks[0]]
+                    testcase.wait(100)
+                    loop_at(0,0).select()
+
+                    verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,0}}')
+                    do_execute('shoop_helpers.move_selection(shoop_control.constants.Key_Right)')
+                    testcase.wait(100)
+                    verify_eq_lua('shoop_control.loop_get_which_selected()', '{{1,0}}')
+                },
+
+                'test_loop_reorder_updates_loop_coords': () => {
+                    check_backend()
+                    clear()
+
+                    session.main_tracks[0].move_loop(loop_at(0,1), 0)
+                    testcase.wait(100)
+                    loop_at(0,0).select()
+
+                    verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,0}}')
+                    do_execute('shoop_helpers.move_selection(shoop_control.constants.Key_Down)')
+                    testcase.wait(100)
+                    verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,1}}')
+                },
+
                 'test_loop_get_all': () => {
                     check_backend()
                     clear()

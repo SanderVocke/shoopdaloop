@@ -1,0 +1,7 @@
+- don't reformat code or apply unnecessary whitespace changes
+- comments:
+  - use sparingly. in most cases the code should explain itself.
+  - don't refer to code in other files or even to other filenames that use code. this leads to synchronization issues later. when referring to usage patterns, speak in generic terms as opposed to specific callsites in the codebase.
+  - be concise.
+  - don't refer to how the code was before your changes
+  - don't refer to the instructions you were given to write the code

@@ -2387,26 +2387,43 @@ impl AudioChannel {
 
     /// This channel's state as of the last published cycle, without blocking.
     pub fn poll_state(&self) -> Option<AudioChannelState> {
-        let ci = self.session_idx;
-        self.shared
-            .poll(|snap| snap.audio_channels.get(ci).copied())?
+        let session_idx = self.session_idx;
+        let state = self
+            .shared
+            .poll(|snap| snap.audio_channels.get(session_idx).copied())?;
+        if state.is_some() {
+            let (loop_idx, chan_idx) = (self.loop_idx, self.chan_idx);
+            self.shared.send_inner(move |s: &mut engine::Session| {
+                if let Some(c) = s
+                    .loop_mut(loop_idx)
+                    .and_then(|l| l.audio_channel_mut(chan_idx))
+                {
+                    c.reset_output_peak();
+                }
+            });
+        }
+        state
     }
 
     pub fn get_state(&self) -> Result<AudioChannelState> {
         let (li, ci) = (self.loop_idx, self.chan_idx);
         self.shared
             .query(move |s: &mut engine::Session| {
-                s.loop_(li)
-                    .and_then(|l| l.audio_channel(ci))
-                    .map(|c| AudioChannelState {
-                        mode: c.mode(),
-                        gain: c.gain(),
-                        output_peak: c.output_peak(),
-                        length: c.length() as u32,
-                        start_offset: c.start_offset(),
-                        played_back_sample: c.played_back_sample(),
-                        n_preplay_samples: c.pre_play_samples(),
-                        data_dirty: c.data_seq_nr() != 0,
+                s.loop_mut(li)
+                    .and_then(|l| l.audio_channel_mut(ci))
+                    .map(|c| {
+                        let output_peak = c.output_peak();
+                        c.reset_output_peak();
+                        AudioChannelState {
+                            mode: c.mode(),
+                            gain: c.gain(),
+                            output_peak,
+                            length: c.length() as u32,
+                            start_offset: c.start_offset(),
+                            played_back_sample: c.played_back_sample(),
+                            n_preplay_samples: c.pre_play_samples(),
+                            data_dirty: c.data_seq_nr() != 0,
+                        }
                     })
             })?
             .ok_or_else(|| anyhow!("no channel"))
@@ -2608,7 +2625,16 @@ impl AudioPort {
         let polled = self
             .shared
             .poll(|snap| snap.audio_ports.get(idx).copied())??;
-        polled.map(|p| p.named(self.name.clone()))
+        let state = polled.map(|p| p.named(self.name.clone()));
+        if state.is_some() {
+            self.shared.send_inner(move |s: &mut engine::Session| {
+                if let Some(a) = s.port_mut(idx).and_then(|p| p.audio_mut()) {
+                    a.reset_input_peak();
+                    a.reset_output_peak();
+                }
+            });
+        }
+        state
     }
 
     pub fn get_state(&self) -> Result<AudioPortState> {
@@ -2616,16 +2642,18 @@ impl AudioPort {
         let name = self.name.clone();
         self.shared
             .query(move |s: &mut engine::Session| {
-                let p = s.port(idx)?;
-                let a = p.audio()?;
-                Some(engine::AudioPortSnapshot {
+                let a = s.port_mut(idx)?.audio_mut()?;
+                let snapshot = engine::AudioPortSnapshot {
                     input_peak: a.input_peak(),
                     output_peak: a.output_peak(),
                     gain: a.gain(),
                     muted: a.muted(),
                     passthrough_muted: a.passthrough_muted(),
                     ringbuffer_n_samples: a.ringbuffer_n_samples() as u32,
-                })
+                };
+                a.reset_input_peak();
+                a.reset_output_peak();
+                Some(snapshot)
             })?
             .map(|p| p.named(name))
             .ok_or_else(|| anyhow!("no audio port"))
@@ -3561,6 +3589,54 @@ mod tests {
             "Carla state should be JSON: {state}"
         );
         chain.restore_state(&state);
+    }
+
+    #[test]
+    fn audio_port_peak_state_is_per_poll_cycle() {
+        const BUFFER: u32 = 4;
+
+        let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
+        driver
+            .start(&AudioDriverSettings::Dummy(DummyAudioDriverSettings {
+                client_name: "peak-poll-test".to_string(),
+                sample_rate: 48_000,
+                buffer_size: BUFFER,
+            }))
+            .expect("start driver");
+        let sess = BackendSession::new().expect("session");
+        sess.set_audio_driver(&driver).expect("attach driver");
+        driver.dummy_enter_controlled_mode();
+
+        let port = AudioPort::new_driver_port(&sess, &driver, "input", &PortDirection::Input, 0)
+            .expect("port");
+        driver.wait_process();
+        let initial = match port.poll_state() {
+            Some(state) => state,
+            None => port.get_state().expect("initial state"),
+        };
+        assert_eq!(initial.input_peak, 0.0);
+        assert_eq!(initial.output_peak, 0.0);
+
+        port.dummy_queue_data(&[0.0, -0.8, 0.2, 0.1]);
+        driver.dummy_request_controlled_frames(BUFFER);
+        driver.dummy_run_requested_frames();
+        let first = port.get_state().expect("first state");
+        assert_eq!(first.input_peak, 0.8);
+        assert_eq!(first.output_peak, 0.8);
+
+        port.dummy_queue_data(&[0.0, -0.3, 0.1, 0.2]);
+        driver.dummy_request_controlled_frames(BUFFER);
+        driver.dummy_run_requested_frames();
+        let second = port.poll_state().expect("second state");
+        assert_eq!(second.input_peak, 0.3);
+        assert_eq!(second.output_peak, 0.3);
+
+        port.dummy_queue_data(&[0.0, -0.1, 0.05, 0.0]);
+        driver.dummy_request_controlled_frames(BUFFER);
+        driver.dummy_run_requested_frames();
+        let third = port.poll_state().expect("third state");
+        assert_eq!(third.input_peak, 0.1);
+        assert_eq!(third.output_peak, 0.1);
     }
 
     #[test]

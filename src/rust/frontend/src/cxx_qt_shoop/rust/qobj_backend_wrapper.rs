@@ -130,14 +130,17 @@ impl BackendWrapper {
     pub fn init(mut self: Pin<&mut BackendWrapper>) -> Result<(), anyhow::Error> {
         let driver_type: AudioDriverType;
         let settings: AudioDriverSettings;
+        let mut settings_map: QMap_QString_QVariant;
         let ready: bool;
+        let backend_type_explicit: bool;
+        let selected_driver_type: AudioDriverType;
 
         {
             let ref_self = self.as_ref();
             driver_type = AudioDriverType::try_from(*ref_self.backend_type())
                 .map_err(|e| anyhow!("Invalid driver type: {}", e))?;
             let client_name_hint = ref_self.client_name_hint();
-            let mut settings_map = ref_self.driver_setting_overrides().clone();
+            settings_map = ref_self.driver_setting_overrides().clone();
             if !settings_map.contains(&QString::from("client_name_hint")) {
                 settings_map.insert(
                     QString::from("client_name_hint"),
@@ -152,11 +155,14 @@ impl BackendWrapper {
             }
             settings = audio_driver_settings_from_qvariantmap(&settings_map, &driver_type)?;
             ready = *ref_self.ready();
+            backend_type_explicit = *ref_self.backend_type_explicit();
         }
 
         if ready {
             return Err(anyhow!("Already initialized"));
         }
+
+        self.as_mut().set_init_error(QString::default());
 
         debug!(
             "Initializing with type {:?}, settings {:?}",
@@ -172,15 +178,54 @@ impl BackendWrapper {
         unsafe {
             let mut rust = self.as_mut().rust_mut();
 
-            let local_driver = AudioDriver::new(driver_type, Some(register_process_thread))
-                .map_err(|e| anyhow!("Failed to create driver: {}", e))?;
-            local_driver
-                .start(&settings)
-                .map_err(|e| anyhow!("Failed to start driver: {}", e))?;
+            let mut attempts = vec![driver_type];
+            if !backend_type_explicit {
+                for fallback in [
+                    AudioDriverType::Jack,
+                    AudioDriverType::Cpal,
+                    AudioDriverType::Dummy,
+                ] {
+                    if !attempts.contains(&fallback) {
+                        attempts.push(fallback);
+                    }
+                }
+            }
 
-            let local_session =
-                BackendSession::new().map_err(|e| anyhow!("Failed to create session: {}", e))?;
-            local_session.set_audio_driver(&local_driver)?;
+            let mut last_error = None;
+            let mut selected = None;
+            for candidate in attempts {
+                let candidate_settings =
+                    audio_driver_settings_from_qvariantmap(&settings_map, &candidate)?;
+                let local_driver = AudioDriver::new(candidate, Some(register_process_thread))
+                    .map_err(|e| anyhow!("Failed to create driver: {}", e))?;
+                let local_session = BackendSession::new()
+                    .map_err(|e| anyhow!("Failed to create session: {}", e))?;
+
+                match local_driver
+                    .start(&candidate_settings)
+                    .and_then(|_| local_session.set_audio_driver(&local_driver))
+                {
+                    Ok(()) => {
+                        selected = Some((candidate, local_driver, local_session));
+                        break;
+                    }
+                    Err(e) => {
+                        info!("Backend {:?} is not available: {}", candidate, e);
+                        last_error = Some(e);
+                    }
+                }
+            }
+
+            let (chosen_driver_type, local_driver, local_session) = selected.ok_or_else(|| {
+                anyhow!(
+                    "Failed to initialize requested audio backend: {}",
+                    last_error
+                        .map(|e| e.to_string())
+                        .unwrap_or_else(|| "no backends attempted".to_string())
+                )
+            })?;
+            info!("Selected audio backend: {:?}", chosen_driver_type);
+            selected_driver_type = chosen_driver_type;
 
             rust.driver = Some(local_driver);
             rust.session = Some(local_session);
@@ -208,7 +253,8 @@ impl BackendWrapper {
         }
 
         {
-            self.as_mut().set_actual_backend_type(driver_type as i32);
+            self.as_mut()
+                .set_actual_backend_type(selected_driver_type as i32);
             self.as_mut()
                 .connect_updated_on_backend_thread(
                     |this: Pin<&mut BackendWrapper>| {
@@ -224,7 +270,7 @@ impl BackendWrapper {
         Ok(())
     }
 
-    pub fn maybe_init(self: Pin<&mut BackendWrapper>) {
+    pub fn maybe_init(mut self: Pin<&mut BackendWrapper>) {
         let do_init: bool;
         let closed: bool;
         let ready: bool;
@@ -241,12 +287,13 @@ impl BackendWrapper {
 
         if do_init {
             debug!("Initializing");
-            match self.init() {
+            match self.as_mut().init() {
                 Ok(_) => {
                     trace!("Initialized");
                 }
                 Err(e) => {
                     error!("Failed to initialize: {:?}", e);
+                    self.as_mut().set_init_error(QString::from(&e.to_string()));
                 }
             }
         } else if closed {
@@ -259,6 +306,10 @@ impl BackendWrapper {
                 closed, ready, client_name_hint, backend_type
             );
         }
+    }
+
+    pub fn allow_missing_backends(self: Pin<&mut BackendWrapper>) -> bool {
+        std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some()
     }
 
     pub fn close(mut self: Pin<&mut BackendWrapper>) {
