@@ -42,16 +42,16 @@ The RT allocation, destruction, locking, and bounded-work requirements apply to 
 
 Eliminating every unrelated pre-existing RT violation in the engine, drivers, ports, MIDI, FX, or teardown code is not part of this plan. Such violations may be recorded as background findings, but they only become implementation blockers when they are exercised by the composite-loop path, prevent its required tests/evidence, or must be changed to satisfy another requirement in this plan.
 
-- [ ] **Feature parity:** Engine-backed composite loops provide at least the complete user-visible feature set of the current composite-loop implementation.
-- [ ] **RT authority:** Once a composite configuration has been accepted by the engine, every timing decision that processes that configuration—including iteration advancement, starts, stops, mode changes, recording behavior, cycling, and nested-composite propagation—is made on the real-time audio thread.
-- [ ] **Determinism:** Given the same accepted configuration, initial engine state, timestamped/accepted control inputs, and audio timeline, composite processing produces the same transitions at the same sample positions regardless of GUI load, update-thread timing, hash iteration order, or audio-buffer partitioning.
-- [ ] **Sample-correct interaction:** Composite-to-basic-loop and composite-to-composite actions take effect at their defined sample boundary before post-boundary audio is processed.
-- [ ] **No RT allocation:** Composite-loop processing and the callback paths it introduces, changes, or directly invokes perform no allocation, reallocation, or deallocation. This includes composite-related exceptional, topology-change, command, publication, and lifecycle paths reached from the callback.
-- [ ] **No RT mutexes:** Composite-loop processing and the callback paths it introduces, changes, or directly invokes do not acquire a mutex or any other potentially blocking lock. RT-owned state, bounded lock-free queues, immutable prepared data, or equivalent non-blocking mechanisms must be used instead.
-- [ ] **Bounded RT work:** Composite-related same-sample event propagation, nesting, command application, and POI subdivision have explicit capacities or otherwise defensible finite worst-case bounds. Capacity failure is reported and never silently converted into a late musical event.
-- [ ] **Good automated coverage:** Engine tests cover state-machine semantics, exact timing, nesting, conflicting/coincident events, buffer-partition independence, configuration changes, and RT constraints. QML tests cover end-to-end application integration and current composite-loop behavior.
-- [ ] **Top-level integration:** The QML application creates, configures, controls, observes, saves, and loads engine-backed composite loops without using the old Qt/update-thread implementation as the timing authority.
-- [ ] **Manual-validation handoff:** Manual live-performance scenarios are documented for the user. The implementing agent may report them as pending user validation but may not claim they were manually verified.
+- [x] **Feature parity:** Engine-backed composite loops provide at least the complete user-visible feature set of the current composite-loop implementation.
+- [x] **RT authority:** Once a composite configuration has been accepted by the engine, every timing decision that processes that configuration—including iteration advancement, starts, stops, mode changes, recording behavior, cycling, and nested-composite propagation—is made on the real-time audio thread.
+- [x] **Determinism:** Given the same accepted configuration, initial engine state, timestamped/accepted control inputs, and audio timeline, composite processing produces the same transitions at the same sample positions regardless of GUI load, update-thread timing, hash iteration order, or audio-buffer partitioning.
+- [x] **Sample-correct interaction:** Composite-to-basic-loop and composite-to-composite actions take effect at their defined sample boundary before post-boundary audio is processed.
+- [x] **No RT allocation:** Composite-loop processing and the callback paths it introduces, changes, or directly invokes perform no allocation, reallocation, or deallocation. This includes composite-related exceptional, topology-change, command, publication, and lifecycle paths reached from the callback.
+- [x] **No RT mutexes:** Composite-loop processing and the callback paths it introduces, changes, or directly invokes do not acquire a mutex or any other potentially blocking lock. RT-owned state, bounded lock-free queues, immutable prepared data, or equivalent non-blocking mechanisms must be used instead.
+- [x] **Bounded RT work:** Composite-related same-sample event propagation, nesting, command application, and POI subdivision have explicit capacities or otherwise defensible finite worst-case bounds. Capacity failure is reported and never silently converted into a late musical event.
+- [x] **Good automated coverage:** Engine tests cover state-machine semantics, exact timing, nesting, conflicting/coincident events, buffer-partition independence, configuration changes, and RT constraints. QML tests cover end-to-end application integration and current composite-loop behavior.
+- [x] **Top-level integration:** The QML application creates, configures, controls, observes, saves, and loads engine-backed composite loops without using the old Qt/update-thread implementation as the timing authority.
+- [x] **Manual-validation handoff:** Manual live-performance scenarios are documented for the user. The implementing agent may report them as pending user validation but may not claim they were manually verified.
 
 ### Control-input latency boundary
 
@@ -378,7 +378,7 @@ User findings recorded in `MANUAL_VALIDATION.md` that reveal a violation of an i
 - [x] Finalize implemented processing, ownership, and frontend integration in `ARCHITECTURE.md`; finalize capacity limits and callback evidence in `RT_SAFETY.md`.
 - [x] Update permanent developer architecture documentation and user documentation where behavior is newly defined, linking back to the canonical prototype artifacts where useful.
 - [x] Record final automated results in `TEST_RESULTS.md` and pending/completed user manual results in `MANUAL_VALIDATION.md`.
-- [ ] Review the immutable requirement checklist and attach evidence for every item.
+- [x] Review the immutable requirement checklist and attach evidence for every item.
 
 ## Adaptive decision log
 
@@ -405,6 +405,23 @@ The implementing agent should maintain this table as discoveries are made.
 | 2026-08-01 / adapter cleanup | Delete the update-thread wrap handler, recursive dependency notification, fallback transition state machine, and primitive/composite compatibility slots; retain schedule traversal only for off-RT grab preparation. | Warning-denied application build plus focused composite 24/24 and save/load 6/6 QML runs. | 4, 5, 8 | RT authority, determinism, top-level integration |
 | 2026-08-01 / grab hardening | Copy directly from fixed rolling buffers into preallocated channel chunks, reject request/destination overflow before mutation, recursively flatten nested composites, and batch all primitive child adoptions in one callback command. | Allocator-enforced transactional adoption test and six non-empty composite grab QML scenarios, including a nested composite. | 3, 5, 6 | No RT allocation/destruction, bounded work, sample-boundary transaction |
 | 2026-08-01 / topology replacement | Supersede the earlier rejection policy for changed running dependency topology: at command acceptance, stop old primitive children, atomically install the complete candidate, restart retained running sources at iteration zero, propagate in the new DAG, and cancel topology-context-dependent countdowns. | Removal/addition/restart tests, fixed-control-capacity precheck, sample-clock/control/history transfer, and allocator-enforced running removal. | 3–6 | RT authority, determinism, sample correctness, bounded work, feature parity |
+
+## Immutable-requirement evidence audit
+
+| Requirement | Concrete evidence |
+|---|---|
+| Feature parity | Final F01–F31 closure in `FEATURE_PARITY.md`; composite QML 26/26, save/load 6/6, full QML 191/192 with only host CPAL failure. |
+| RT authority | `CompositeBoundaryTimeline` is Session-owned; frontend wrap/recursive/fallback scheduler and dependency slots were deleted; QML GUI/file-I/O stalls and application polling-stall trace pass. |
+| Determinism | Canonical stable identities/actions, specified precedence/DAG order, arbitrary partition test, shuffled/same-class conflict tests, and 10 repeated timing/timeline/control runs. |
+| Sample correctness | Mid-callback exact-output, timestamped control, nested same-sample propagation, source-POI reuse, multi-wrap, and post-boundary mode tests in `composite_timing`/`composite_timeline`. |
+| No RT allocation/destruction | 21 allocator tests cover normal/dense/overflow, commands, install/same- and changed-topology replacement, snapshots, grab reserve/prepared swap, lifecycle/removal, rejection, and ownership return. |
+| No RT mutexes | RT-owned composite state and bounded `rtrb` crossings; structural lock assertion over plan/runtime/timeline sources; scoped callback audit in `RT_SAFETY.md`. |
+| Bounded RT work | Capacity table and termination argument in `RT_SAFETY.md`; compile/control/event/wave/intent/trace/sub-block/grab overflow tests, with fail-closed faults or pre-acceptance rejection. |
+| Automated coverage | Final commands/results and environment-qualified JACK/CPAL failures in `TEST_RESULTS.md`; 63 focused semantic/timing/control tests, 21 allocator tests, 3 app adapter tests, QML integration/full suite. |
+| Top-level integration | QML adapter compiles playlists to stable engine identities, mirrors snapshots, synchronously unregisters lifecycle, persists unchanged `loop.1`, and has no execution scheduler; nested reload and running topology edit pass. |
+| Manual handoff | `MANUAL_VALIDATION.md` contains setup, required sessions, diagnostics, M01–M13 expected outcomes/result fields, and explicitly records every scenario as pending user execution. |
+
+Stage 7 checkboxes remain unchecked by design: final live-performance acceptance belongs to the user and is not claimed by this implementation audit.
 
 ## Completion definition
 

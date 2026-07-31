@@ -154,6 +154,30 @@ Evidence is listed under the Stage 3 partial verification map in [ARCHITECTURE.m
 - Once engine initialized, transitions and play-after-record use engine commands, and `update` mirrors engine mode, pending state, iteration, cycle, position, length, active children, and record state. The old wrap handler, recursive dependency notification, and fallback frontend state machine have been deleted.
 - QML playlist editing and `loop.1` persistence remain structurally unchanged. The existing 26-case composite suite passes in full, including nested regular/script execution, immediate seeks, GUI/file-I/O stalls, circular references, conversion, recording, play-after-record, and every current grab variant. A focused 6-case save/load run executes a nested regular/script composition after session replacement. The last complete QML suite passed 188/189 with only the host's missing CPAL playback port before that case was added. Acceptance-error, broader lifecycle, and manual gates remain open.
 
+## Final Stage 5 verification closure
+
+The baseline labels above remain historical. The delivered implementation and assigned final evidence are:
+
+| IDs | Delivered evidence | Residual user validation |
+|---|---|---|
+| F01–F03 | Stable engine lifecycle plus unchanged QML creation, Alt/Ctrl authoring, and advanced editor surfaces; `composite_app_backend`, `tst_TwoLoops.qml`, Lua composition test, and 26-case composite suite pass. | Context-menu, modifiers, and editor drag/layout in M01/M08. |
+| F04–F08 | Compiler/state/timing tests cover sequential/parallel, delays/repeats, duration derivation, empty playback/recording, and exact boundaries; QML sequential/parallel scenarios pass. | Representative audible sequence in M01. |
+| F09–F10 | State-machine mode tables and QML regular/script scenarios cover inherited dry/wet/record modes, explicit scripts, and one-shot completion. | Live dry/wet/script workflow in M04/M05. |
+| F11–F15 | Timeline/control tests cover cycling, stop/cancel/retrigger precedence, first-recording occurrence, both play-after-record outcomes, and countdowns; corresponding QML scenarios pass. | Near-boundary controls and live recording in M03/M04. |
+| F16 | Bounded seek-table tests and all immediate-sync QML variants cover first/middle/last/change/record and invalid rejection. | Live seek feel in M06. |
+| F17–F18 | Multi-level nested propagation/all four kind combinations and conflict-order tests pass; QML regular↔script nesting passes. | Three-level scene workflow in M05. |
+| F19–F20 | Fixed snapshots publish displayed mode/countdown/length/position/cycle/running children in stable order; QML property assertions pass and existing visual adapter remains unchanged. | Visual identity/highlighting in M01/M05. |
+| F21–F23 | Empty-sync rejection plus synchronized/unsynchronized, fixed/default, stop/play, and nested transactional grab scenarios pass; allocator guard covers prepared multi-child commit/rejection. | Representative live input in M07. |
+| F24–F25 | Version/stale/topology tests cover stopped/pending/same-topology and running changed-topology activation, deletion/conversion, and transitive cycle rejection; QML running edit/conversion/cycle tests pass. | Interactive edits in M08. |
+| F26 | `loop.1` schema is unchanged; focused save/load passes 6/6 including nested regular/script execution after replacement. | Existing-session round trip in M11. |
+| F27 | Existing selected/solo/targeted `LoopWidget` API is retained; basic and composite actions enter the same accepted engine command/boundary resolver, with direct precedence tests. | Keyboard/MIDI and mixed selection controls in M03/M10. |
+| F28 | Idempotent transitive removal, synchronous adapter deinit, no-RT lifecycle guard, and nested session replacement tests pass. | Covered automatically; M11 supplies live confirmation. |
+| F29 | Existing Lua composition/control API is retained; full QML run passes `test_loop_compose_add_to_end` and `test_loop_trigger_grab`. | Optional controller-script check in M10. |
+| F30 | QML GUI/file-I/O stalls pass, and application delayed polling recovers retained transition trace while audio advances. | Heavy GUI/update load in M09. |
+| F31 | User and developer documentation now describe the editor, engine timing authority, empty-child behavior, transactional nested grab, and running-edit activation. | Documentation usability review alongside M01/M08. |
+
+No row depends on the removed Qt/update-thread scheduler. Items in the final column are intentionally pending user validation, not missing implementation.
+
 ## Current implementation map
 
 1. `CompositeLoop.qml` owns persisted playlists and still derives the established JS boundary schedule.
