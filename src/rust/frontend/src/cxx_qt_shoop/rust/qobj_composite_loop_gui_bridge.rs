@@ -213,6 +213,8 @@ pub mod ffi {
         #[qsignal]
         fn backend_clear(self: Pin<&mut CompositeLoopGui>);
         #[qsignal]
+        fn backend_deinit(self: Pin<&mut CompositeLoopGui>);
+        #[qsignal]
         fn backend_set_kind(self: Pin<&mut CompositeLoopGui>, kind: QString);
         #[qsignal]
         fn backend_set_schedule(self: Pin<&mut CompositeLoopGui>, schedule: QMap_QString_QVariant);

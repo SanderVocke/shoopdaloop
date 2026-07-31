@@ -142,6 +142,10 @@ use crate::cxx_qt_shoop::qobj_composite_loop_backend_bridge::ffi::composite_loop
 
 impl CompositeLoopGui {
     pub fn deinit(mut self: Pin<&mut CompositeLoopGui>) {
+        if !self.initialized {
+            return;
+        }
+        self.as_mut().backend_deinit();
         self.as_mut().rust_mut().initialized = false;
         unsafe {
             self.as_mut().initialized_changed(false);
@@ -279,6 +283,13 @@ impl CompositeLoopGui {
                         backend_ref,
                         "clear()",
                         connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_deinit()",
+                        backend_ref,
+                        "deinit()",
+                        connection_types::BLOCKING_QUEUED_CONNECTION,
                     );
                     connect_or_report(
                         self_ref,

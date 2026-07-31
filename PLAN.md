@@ -36,13 +36,19 @@ When an artifact does not yet exist, the first checklist item that produces it m
 
 ## Immutable end requirements
 
+### RT-safety scope boundary
+
+The RT allocation, destruction, locking, and bounded-work requirements apply to new composite-loop code, code changed for this integration, and pre-existing callback facilities that the composite path directly relies on. The prototype must not introduce a new RT violation or depend on an existing violation to achieve composite-loop timing, control, publication, lifecycle, or verification requirements.
+
+Eliminating every unrelated pre-existing RT violation in the engine, drivers, ports, MIDI, FX, or teardown code is not part of this plan. Such violations may be recorded as background findings, but they only become implementation blockers when they are exercised by the composite-loop path, prevent its required tests/evidence, or must be changed to satisfy another requirement in this plan.
+
 - [ ] **Feature parity:** Engine-backed composite loops provide at least the complete user-visible feature set of the current composite-loop implementation.
 - [ ] **RT authority:** Once a composite configuration has been accepted by the engine, every timing decision that processes that configuration—including iteration advancement, starts, stops, mode changes, recording behavior, cycling, and nested-composite propagation—is made on the real-time audio thread.
 - [ ] **Determinism:** Given the same accepted configuration, initial engine state, timestamped/accepted control inputs, and audio timeline, composite processing produces the same transitions at the same sample positions regardless of GUI load, update-thread timing, hash iteration order, or audio-buffer partitioning.
 - [ ] **Sample-correct interaction:** Composite-to-basic-loop and composite-to-composite actions take effect at their defined sample boundary before post-boundary audio is processed.
-- [ ] **No RT allocation:** The audio thread performs no allocation, reallocation, or deallocation. This includes exceptional, topology-change, command, publication, and teardown paths reached from the callback.
-- [ ] **No RT mutexes:** The audio thread does not acquire a mutex or any other potentially blocking lock. RT-owned state, bounded lock-free queues, immutable prepared data, or equivalent non-blocking mechanisms must be used instead.
-- [ ] **Bounded RT work:** Same-sample event propagation, nesting, command application, and POI subdivision have explicit capacities or otherwise defensible finite worst-case bounds. Capacity failure is reported and never silently converted into a late musical event.
+- [ ] **No RT allocation:** Composite-loop processing and the callback paths it introduces, changes, or directly invokes perform no allocation, reallocation, or deallocation. This includes composite-related exceptional, topology-change, command, publication, and lifecycle paths reached from the callback.
+- [ ] **No RT mutexes:** Composite-loop processing and the callback paths it introduces, changes, or directly invokes do not acquire a mutex or any other potentially blocking lock. RT-owned state, bounded lock-free queues, immutable prepared data, or equivalent non-blocking mechanisms must be used instead.
+- [ ] **Bounded RT work:** Composite-related same-sample event propagation, nesting, command application, and POI subdivision have explicit capacities or otherwise defensible finite worst-case bounds. Capacity failure is reported and never silently converted into a late musical event.
 - [ ] **Good automated coverage:** Engine tests cover state-machine semantics, exact timing, nesting, conflicting/coincident events, buffer-partition independence, configuration changes, and RT constraints. QML tests cover end-to-end application integration and current composite-loop behavior.
 - [ ] **Top-level integration:** The QML application creates, configures, controls, observes, saves, and loads engine-backed composite loops without using the old Qt/update-thread implementation as the timing authority.
 - [ ] **Manual-validation handoff:** Manual live-performance scenarios are documented for the user. The implementing agent may report them as pending user validation but may not claim they were manually verified.
@@ -198,17 +204,17 @@ This is the initial design direction, not an immutable implementation prescripti
 - [x] Make plan replacement atomic from the processing model's perspective.
 - [x] Decide and test whether running-plan changes activate at callback boundaries, sync boundaries, or another explicit point.
 
-### Remove RT locks and allocation
+### Remove composite-related RT locks and allocation
 
-- [ ] Audit the complete active callback path in [`docs/composite_rt/RT_SAFETY.md`](docs/composite_rt/RT_SAFETY.md), including driver I/O, session processing, graph installation, ports, channels, MIDI, FX, commands, snapshots, error paths, and teardown.
+- [ ] Audit the active callback surface used or changed by composite loops in [`docs/composite_rt/RT_SAFETY.md`](docs/composite_rt/RT_SAFETY.md), including relevant session processing, graph installation, commands, snapshots, error paths, lifecycle work, and any driver/port/channel/MIDI/FX facilities directly exercised by required composite scenarios. Classify unrelated legacy violations without making their removal a prototype gate.
 - [x] Remove the session mutex from the callback/control interaction.
-- [ ] Remove callback-side mutexes protecting registered ports, capture/playback rings, MIDI queues, or hosted processing state.
-- [ ] Replace mutable callback-visible collections with RT-owned or immutably swapped prepared collections.
-- [ ] Pre-size all callback scratch and event storage for declared capacities and supported buffer sizes.
-- [ ] Remove callback-reachable exceptional allocation allowances rather than treating them as successful RT behavior.
-- [ ] Ensure topology or capacity changes are prepared off-thread and installed without allocation or destruction on RT.
-- [ ] Ensure error reporting uses atomics, fixed records, or snapshots rather than RT formatting/logging.
-- [ ] Exercise allocation guards over command application, composite events, graph changes, and normal processing.
+- [ ] Remove callback-side mutexes from composite-loop code and from pre-existing facilities where composite processing directly depends on those locks.
+- [ ] Replace composite-related mutable callback-visible collections with RT-owned or immutably swapped prepared collections.
+- [ ] Pre-size composite-related callback scratch and event storage for declared capacities and supported buffer sizes.
+- [ ] Remove exceptional allocation allowances reachable from composite processing or its required command, publication, lifecycle, and failure paths rather than treating them as successful RT behavior.
+- [ ] Ensure composite topology or capacity changes are prepared off-thread and installed without allocation or destruction on RT.
+- [ ] Ensure composite-related error reporting uses atomics, fixed records, or snapshots rather than RT formatting/logging.
+- [ ] Exercise allocation guards over composite command application, events, graph changes, publication, lifecycle/failure paths, and representative integrated processing.
 
 ### State publication
 
@@ -219,7 +225,7 @@ This is the initial design direction, not an immutable implementation prescripti
 
 ### Stage 3 exit gate
 
-- [ ] No active audio callback path allocates, deallocates, or locks.
+- [ ] No composite-loop code, or callback path directly used/changed by composite loops, allocates, deallocates, or locks on RT.
 - [x] Commands, plans, and snapshots cross the thread boundary without blocking RT.
 - [x] Command acceptance and plan activation semantics are tested and documented in `SEMANTICS.md`, with their mechanism documented in `ARCHITECTURE.md`.
 
@@ -247,8 +253,8 @@ This is the initial design direction, not an immutable implementation prescripti
 
 - [x] Preserve existing session format compatibility unless an intentional migration is documented and tested.
 - [x] Restore references only after stable engine identities are available.
-- [ ] Handle child deletion, replacement, and regular-to-composite conversion without dangling targets.
-- [ ] Test teardown and session replacement without RT destruction or stale-event delivery.
+- [x] Handle child deletion, replacement, and regular-to-composite conversion without dangling targets.
+- [x] Test teardown and session replacement without RT destruction or stale-event delivery.
 
 ### Stage 4 exit gate
 
@@ -272,7 +278,7 @@ Work through [`docs/composite_rt/FEATURE_PARITY.md`](docs/composite_rt/FEATURE_P
 - [x] Composite ringbuffer grab in all currently supported synced/unsynced, fixed/default length, stop/play outcomes.
 - [x] Runtime schedule recalculation and activation.
 - [x] Circular-reference and invalid-reference handling.
-- [ ] Save/load and lifecycle behavior.
+- [x] Save/load and lifecycle behavior.
 
 For heavy operations such as ringbuffer adoption:
 
@@ -304,8 +310,8 @@ The implementing agent's runtime test obligation may be limited to `shoop_engine
 - [x] Add buffer-size and buffer-partition property/table tests.
 - [x] Add dense-event and maximum-capacity tests.
 - [x] Add command-cutoff and plan-version race tests using controlled scheduling.
-- [ ] Add RT allocation tests for normal, event-heavy, command, plan-swap, and failure paths.
-- [ ] Add tests or structural assertions demonstrating that callback state access is lock-free.
+- [ ] Add RT allocation tests for normal, event-heavy, command, plan-swap, lifecycle, and failure paths exercised by composite loops.
+- [ ] Add tests or structural assertions demonstrating that composite callback state access is lock-free.
 - [ ] Repeat timing-sensitive tests enough to expose accidental ordering dependencies.
 
 ### Frontend/QML tests
@@ -325,7 +331,7 @@ The implementing agent's runtime test obligation may be limited to `shoop_engine
 - [x] Keep or migrate all existing composite-loop QML scenarios.
 - [ ] Add a test that stalls frontend/update processing while engine audio continues and verifies the composite transition trace afterward.
 - [ ] Add end-to-end tests for configuration acceptance errors and delayed state observation.
-- [ ] Add save/load coverage for nested composites and scripts.
+- [x] Add save/load coverage for nested composites and scripts.
 
 ### Quality gates
 
@@ -339,7 +345,7 @@ The implementing agent's runtime test obligation may be limited to `shoop_engine
 ### Stage 6 exit gate
 
 - [ ] `TEST_RESULTS.md` shows that engine and QML automated gates pass, except for clearly recorded environment failures or pre-existing failures.
-- [ ] `RT_SAFETY.md` contains evidence that RT constraints are verified on all exercised callback paths.
+- [ ] `RT_SAFETY.md` contains evidence that RT constraints are verified on all exercised composite-related callback paths, while unrelated legacy findings are clearly classified as out of scope.
 - [ ] Remaining manual checks are listed in `MANUAL_VALIDATION.md` without being represented as completed.
 
 ## Stage 7 — User-owned manual validation
@@ -394,6 +400,8 @@ The implementing agent should maintain this table as discoveries are made.
 | 2026-08-01 / Stage 3 partial | Publish composite state in three reusable latest-state boxes with fixed active-child arrays; skip and count publication when all boxes are in use, and resize only when the control side recycles them. | `prepared_timeline_and_control_cross_at_callback_boundaries_and_publish_state`, `stale_snapshot_publication_is_dropped_without_stalling_processing`, and allocator guard. | 3–6 | No RT allocation, no RT mutexes, top-level integration |
 | 2026-08-01 / Stage 3 partial | Store one candidate plan per runtime when dependency topology is unchanged; commit at old iteration zero (or stopped command boundary), move old plans into preallocated retirement storage, and swap them into control-provided reclamation storage. Reject running dependency-topology changes before version/authority changes. | Integrated stopped/pending/running/supersession/stop tests and allocator-enforced activation/reclamation; [`ARCHITECTURE.md`](docs/composite_rt/ARCHITECTURE.md). | 3–6 | RT authority, determinism, no RT allocation, feature parity |
 | 2026-08-01 / Stages 4–5 partial | Keep the existing QML playlist/persistence surface as an off-RT adapter, resolve QObject references to stable identities, install a transactional application registry, route execution through engine commands, and mirror snapshots. Preserve UI-only anticipated-transition reporting without making it timing authority. | `composite_app_backend` passes 2/2; `tst_CompositeLoop_running.qml` passes 24/24; full QML suite passes 188/189 with only the no-CPAL-device host failure. | 4–6 | Top-level RT authority, feature parity, determinism, session compatibility |
+| 2026-08-01 / RT scope clarification | Require allocation-free, destruction-free, lock-free, bounded RT behavior for new/changed composite code and every callback facility directly needed by composite scenarios; classify but do not require cleanup of unrelated pre-existing engine violations. | User scope decision; prevents the composite prototype from becoming an unbounded whole-engine RT rewrite while preserving strict evidence on the path being delivered. | 3, 5, 6, 8 | No composite-related RT allocation or locks, bounded work, evidence scope |
+| 2026-08-01 / lifecycle milestone | Remove a composite and its transitive dependents transactionally, normalize primitive self-sync during reload, and synchronously unregister the engine adapter before QObject teardown. | Engine lifecycle/no-allocation tests and `tst_Session_save_load.qml` nested regular/script execution after session replacement. | 4–6 | Feature parity, no RT allocation/destruction, top-level integration |
 
 ## Completion definition
 

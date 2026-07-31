@@ -311,6 +311,37 @@ fn composite_timeline_processing_does_not_allocate_or_free() {
     assert_eq!(snapshot.composites.len(), 1);
     assert_eq!(snapshot.composites[0].mode, LoopMode::Playing);
     assert_eq!(snapshot.composites[0].active_children().count(), 1);
+
+    let mut stopped = handle
+        .send_composite_control(
+            source,
+            BoundaryTargetAction::SetMode {
+                mode: LoopMode::Stopped,
+                offset_samples: 0,
+                retrigger: true,
+            },
+            None,
+        )
+        .unwrap();
+    assert_no_alloc(|| {
+        engine.process(4);
+    });
+    assert!(stopped.pop().unwrap().is_ok());
+    assert_eq!(
+        engine.session().loop_(child).unwrap().mode(),
+        LoopMode::Stopped
+    );
+
+    let mut empty_timeline =
+        CompositeBoundaryTimeline::new(Vec::new(), CompositeTimelineLimits::default()).unwrap();
+    empty_timeline.prepare_install(3, &[None, None]).unwrap();
+    let mut removed = handle.send_composite_timeline(empty_timeline).unwrap();
+    assert_no_alloc(|| {
+        engine.process(4);
+    });
+    let displaced = removed.pop().unwrap().unwrap();
+    assert_eq!(displaced.n_composites(), 1);
+    assert_eq!(engine.session().composite_timeline().n_composites(), 0);
 }
 
 #[test]

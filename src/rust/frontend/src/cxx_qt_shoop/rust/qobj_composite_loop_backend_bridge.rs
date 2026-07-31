@@ -81,6 +81,9 @@ pub mod ffi {
         pub fn clear(self: Pin<&mut CompositeLoopBackend>);
 
         #[qinvokable]
+        pub fn deinit(self: Pin<&mut CompositeLoopBackend>);
+
+        #[qinvokable]
         pub unsafe fn set_play_after_record(
             self: Pin<&mut CompositeLoopBackend>,
             play_after_record: bool,

@@ -2,7 +2,7 @@
 
 ## Gate status
 
-This is a live Stage 6 record. It is intentionally **not** a final green gate: running dependency-topology replacement, the complete RT callback audit, lifecycle/nested-save coverage, real-backend stability, and manual validation remain open. The existing composite QML matrix is green; the only full-suite failure is explicitly environment-qualified below.
+This is a live Stage 6 record. It is intentionally **not** a final green gate: running dependency-topology replacement, the complete RT callback audit, real-backend stability, and manual validation remain open. The existing composite QML matrix and focused nested save/load coverage are green; the only last full-suite failure is explicitly environment-qualified below.
 
 | Gate | Current status |
 |---|---|
@@ -10,9 +10,9 @@ This is a live Stage 6 record. It is intentionally **not** a final green gate: r
 | Allocator-enforced engine tests | Passing on exercised paths |
 | Warning-denied core engine build | Passing without application/backend features |
 | Complete engine suite with `app_backend` | Project compiles; full run blocked/unreliable on unavailable JACK/ALSA services |
-| Application composite adapter tests | 2 passing with dummy driver |
+| Application composite adapter tests | 3 passing with dummy driver |
 | Frontend Rust build/unit tests | Warning-denied check passes; 32 library unit tests pass |
-| QML self-tests | 188/189 passing; sole CPAL device/port environment failure |
+| QML self-tests | Focused nested save/load 6/6; last full run 188/189 with sole CPAL device/port environment failure |
 | Full workspace suite | Core/no-default engine suite passes; application-feature workspace gate pending |
 | Callback benchmark/cost gate | Composite-only measurement recorded; whole callback gate pending |
 
@@ -109,7 +109,7 @@ RUSTFLAGS="-D warnings" cargo check -p frontend
 cargo test -p frontend --lib
 ```
 
-Results: 2 application composite tests passed, including creation/configuration/control/state/removal and transactional transitive-cycle rejection; warning-denied frontend compilation passed; 32 frontend Rust unit tests passed. The frontend test link required explicit Nix `LIBRARY_PATH` entries for OpenGL and libsndfile.
+Latest focused application run: 3 tests passed, covering creation/configuration/control/state/removal, transactional transitive-cycle rejection, transitive dependent removal, idempotent removal, and primitive self-sync normalization. Warning-denied frontend compilation passed; 32 frontend Rust unit tests passed. The frontend test link required explicit Nix `LIBRARY_PATH` entries for OpenGL and libsndfile.
 
 The application and complete QML suite were then built and run offscreen:
 
@@ -119,6 +119,16 @@ target/debug/shoopdaloop_dev.sh --self-test
 ```
 
 Result: **188 passed, 1 failed, 0 skipped** across 189 test cases. All 24 `CompositeLoop_running` cases passed, covering sequential/parallel/script/nested execution, countdowns, GUI/file-I/O stalls, immediate seeks, recording/play-after-record, circular references, conversion, and all current grab variants. The sole failure was `CpalPorts::test_virtual_playback_ports_are_app_connectable`: this host exposes no CPAL playback ports. The focused command for `tst_CompositeLoop_running.qml` independently passed 24/24.
+
+After adding nested regular/script session-replacement coverage, the focused persistence file passed:
+
+```sh
+QT_QPA_PLATFORM=offscreen target/debug/shoopdaloop_dev.sh \
+  --self-test \
+  --test-files-pattern "$(pwd)/src/qml/test/tst_Session_save_load.qml"
+```
+
+Result: **6 passed, 0 failed**, including saving, loading, reference restoration, engine reconfiguration, nested script execution, and teardown. The lifecycle extension to `composite_timeline_processing_does_not_allocate_or_free` also passed independently, covering stop cleanup, empty-timeline installation, and displaced plan ownership return without RT allocation or deallocation.
 
 The full `app_backend` suite was also attempted after dependency discovery. It is not recorded as green: tests requiring real JACK/ALSA services failed or teardown became unreliable on this host. That is a runtime-service/environment blocker, not evidence for completion.
 

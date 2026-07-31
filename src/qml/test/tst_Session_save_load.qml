@@ -91,6 +91,15 @@ ShoopTestFile {
             function dt_loop_2(s=session) { return dt(s) ? dt(s).loops[1] : null }
             function dwt_loop_2(s=session) { return dwt(s) ? dwt(s).loops[1] : null }
             function mt_loop_2(s=session) { return mt(s) ? mt(s).loops[1] : null }
+            function sync_loop() { return AppRegistries.state_registry.sync_loop }
+
+            function process(amount, s=session, steps=2) {
+                for (var i = 0; i < steps; ++i) {
+                    s.backend.dummy_request_controlled_frames(Math.round(amount / steps))
+                    s.backend.dummy_run_requested_frames()
+                    testcase.wait_updated(s.backend)
+                }
+            }
 
             function dt_loop_channels(s=session) {
                 if (!dt_loop(s)) return []
@@ -187,6 +196,89 @@ ShoopTestFile {
             }
 
             test_fns: ({
+
+                "test_save_load_nested_composite_script": () => {
+                    clear_all()
+                    check_backend()
+
+                    let nested_script = [{
+                        "loop_id": dt_loop().obj_id,
+                        "delay": 0,
+                        "n_cycles": 1,
+                        "mode": ShoopRustConstants.LoopMode.Playing
+                    }]
+                    let parent_entry = [{
+                        "loop_id": dwt_loop_2().obj_id,
+                        "delay": 0,
+                        "n_cycles": 2
+                    }]
+                    dwt_loop_2().maybe_composite_loop.playlists_in = [[nested_script]]
+                    dt_loop_2().maybe_composite_loop.playlists_in = [[parent_entry]]
+                    sync_loop().create_backend_loop()
+                    sync_loop().queue_set_length(100)
+                    dt_loop().queue_set_length(200)
+                    testcase.wait_updated(session.backend)
+
+                    var filename = ShoopRustFileIO.generate_temporary_filename() + '.shl'
+                    session.save_session(filename)
+                    testcase.wait_session_io_done()
+                    session.load_session(filename)
+                    testcase.wait_session_loaded(session)
+                    testcase.wait_session_io_done()
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(dt_loop_2().maybe_composite_loop.playlists,
+                              [[parent_entry]])
+                    verify_eq(dwt_loop_2().maybe_composite_loop.playlists,
+                              [[nested_script]])
+                    verify_eq(dt_loop_2().maybe_composite_loop.all_loops,
+                              new Set([dwt_loop_2()]))
+                    verify_eq(dwt_loop_2().maybe_composite_loop.all_loops,
+                              new Set([dt_loop()]))
+                    sync_loop().create_backend_loop()
+                    testcase.wait_condition(
+                        () => sync_loop().maybe_backend_loop &&
+                              sync_loop().maybe_backend_loop.initialized &&
+                              dt_loop().maybe_backend_loop &&
+                              dt_loop().maybe_backend_loop.initialized,
+                        5000,
+                        "loaded primitive backends did not initialize")
+
+                    sync_loop().queue_set_length(100)
+                    dt_loop().queue_set_length(200)
+                    process(2)
+                    testcase.wait_condition(
+                        () => dwt_loop_2().length === 100 && dt_loop_2().length === 200,
+                        5000,
+                        "nested composite lengths did not settle after loading")
+                    sync_loop().transition(
+                        ShoopRustConstants.LoopMode.Playing,
+                        ShoopRustConstants.DontWaitForSync,
+                        ShoopRustConstants.DontAlignToSyncImmediately)
+                    process(50)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_true(sync_loop().position > 0 && sync_loop().position < 100)
+                    dt_loop_2().transition(
+                        ShoopRustConstants.LoopMode.Playing,
+                        ShoopRustConstants.DontWaitForSync,
+                        0)
+                    testcase.wait_updated(session.backend)
+                    process(50)
+
+                    verify_eq(dt_loop_2().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(dwt_loop_2().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(dt_loop().mode, ShoopRustConstants.LoopMode.Playing)
+
+                    dt_loop_2().maybe_composite_loop.playlists_in = [[
+                        [{"delay": 0, "loop_id": "dt_loop_0"}],
+                        [{"delay": 1, "loop_id": "dwt_loop_0"}]
+                    ], [
+                        [{"delay": 3, "loop_id": "dwt_loop_1"}]
+                    ]]
+                    dwt_loop_2().maybe_composite_loop.playlists_in = []
+                    sync_loop().clear()
+                    testcase.wait_updated(session.backend)
+                },
 
                 "test_save_load_non_sample_accurate_midi": () => {
                     clear_all()

@@ -4,7 +4,7 @@
 
 This budget covers the engine-authoritative composite timeline, its integration into `Session::process_loop_group`, compiled plans, the Stage 3 command-install/snapshot slice, and the Stage 4 application adapter. It is not the complete callback-path audit required in Stage 3 and Stage 6: driver I/O, FX, every application command, and remaining session allocation exceptions still require audit and removal.
 
-The application frontend translates and submits composite plans off RT through `BackendSession`; engine timing, bounded ownership transfer, same-topology running-plan replacement, command controls, and observational publication are active once a composite QObject receives its engine handle. The adapter's registry mutex, topology mirror, descriptor compilation, QObject resolution, and grab bookkeeping remain strictly on the control/update thread. The focused composite QML suite passes 24/24, including frontend/file-I/O stalls. Running dependency-topology replacement, legacy adapter deletion, full callback-path proof, and live-backend/manual verification remain open.
+The application frontend translates and submits composite plans off RT through `BackendSession`; engine timing, bounded ownership transfer, same-topology running-plan replacement, command controls, and observational publication are active once a composite QObject receives its engine handle. The adapter's registry mutex, topology mirror, descriptor compilation, QObject resolution, lifecycle dependency scan, and grab bookkeeping remain strictly on the control/update thread. The focused composite QML suite passes 24/24, including frontend/file-I/O stalls, and nested save/load/session replacement passes separately. Running dependency-topology replacement, legacy adapter deletion, full callback-path proof, and live-backend/manual verification remain open.
 
 ## Implemented capacity table
 
@@ -74,7 +74,7 @@ A primitive-event, intent, wave, or runtime failure leaves the active composite 
 
 The Stage 2 hot structures contain fixed arrays or vectors whose capacities are reserved before processing. The resolver uses stable identities, ordered prepared topology, linear/binary bounded lookup, and no hash traversal. It does not log, format strings, lock, allocate, deallocate, compile plans, or install/drop plans during boundary processing.
 
-`composite_timeline_processing_does_not_allocate_or_free` now queues a prepared timeline and control outside `assert_no_alloc`, then runs callback installation, displaced ownership transfer, control acceptance, repeated source wraps, composite commits, and snapshot publication inside the guard. Command execution has no exceptional allocation allowance. Existing `Session` code still contains separately annotated allocation exceptions and lock-bearing application/driver paths; removing and auditing them is Stage 3 and Stage 6 work, not something this document masks.
+`composite_timeline_processing_does_not_allocate_or_free` queues prepared timelines and controls outside `assert_no_alloc`, then runs callback installation, displaced ownership transfer, control acceptance, repeated source wraps, composite commits, snapshot publication, deterministic stop cleanup, and final empty-timeline lifecycle removal inside the guard. Displaced lifecycle ownership is inspected and destroyed only after leaving the guard. Command execution has no exceptional allocation allowance. Existing `Session` code still contains separately annotated allocation exceptions and lock-bearing application/driver paths; removing and auditing them is Stage 3 and Stage 6 work, not something this document masks.
 
 ## Composite callback cost measurement
 
@@ -132,7 +132,7 @@ The source search surface includes callback entry points in `app_backend`, all `
 | Activation-time generation and combined topology recheck | `session_rechecks_primitive_generations_before_timeline_installation`, `session_rejects_cycles_spanning_composite_and_primitive_sync_edges` |
 | Queue/topology/event capacities and bounded diagnostic trace | `control_queue_and_dependency_wave_capacities_are_enforced_before_processing`, `event_overflow_latches_before_runtime_or_target_commit`, `trace_overflow_drops_diagnostics_without_affecting_the_runtime_transaction` |
 | Sub-block fail-closed behavior | `sub_block_overflow_latches_and_never_processes_the_remainder_late` |
-| No timeline-path allocation/deallocation | `composite_timeline_processing_does_not_allocate_or_free` |
+| No timeline/lifecycle-path allocation or deallocation | `composite_timeline_processing_does_not_allocate_or_free` covers installation, replacement, stop cleanup, empty-timeline removal, and displaced ownership return |
 | Fixed command acceptance cutoff | `callback_drain_has_a_fixed_cutoff` |
 | Prepared topology/version race rejection | `prepared_timeline_is_rejected_if_primitive_topology_changed_before_acceptance`, `older_prepared_version_is_rejected_even_if_compilers_finish_out_of_order` |
 | No rejected-candidate destruction on RT | `composite_timeline_processing_does_not_allocate_or_free` exercises duplicate-version rejection inside `assert_no_alloc` |

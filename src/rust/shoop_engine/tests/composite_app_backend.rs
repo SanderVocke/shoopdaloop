@@ -22,6 +22,16 @@ fn backend() -> (AudioDriver, BackendSession) {
     (driver, session)
 }
 
+#[test]
+fn application_backend_rejects_a_primitive_self_sync_edge() {
+    let (_driver, session) = backend();
+    let loop_ = session.create_loop().unwrap();
+
+    loop_.set_sync_source(Some(&loop_)).unwrap();
+
+    assert_eq!(session.primitive_sync_sources(), vec![None]);
+}
+
 fn descriptor(
     source: shoop_engine::LoopIdentity,
     target: shoop_engine::LoopIdentity,
@@ -194,4 +204,20 @@ fn application_composite_registry_rejects_a_cycle_transactionally() {
     assert!(error.to_string().contains("cycle"), "{error:#}");
     assert_eq!(first.get_state().unwrap().active_plan_version, 2);
     assert_eq!(second.get_state().unwrap().active_plan_version, 2);
+
+    first.transition_immediate(LoopMode::Playing, 0).unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        let first_state = first.get_state().unwrap();
+        if first_state.mode == LoopMode::Playing || std::time::Instant::now() >= deadline {
+            assert_eq!(first_state.mode, LoopMode::Playing);
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+
+    assert_eq!(session.remove_composite_loop(&second, &[None]).unwrap(), 3);
+    assert!(first.get_state().is_err());
+    assert!(second.get_state().is_err());
+    assert_eq!(session.remove_composite_loop(&first, &[None]).unwrap(), 0);
 }

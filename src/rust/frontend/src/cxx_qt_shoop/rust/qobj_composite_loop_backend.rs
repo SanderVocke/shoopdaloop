@@ -685,13 +685,6 @@ impl CompositeLoopBackend {
     pub unsafe fn set_sync_source(mut self: Pin<&mut Self>, sync_source: *mut QObject) {
         debug!(self, "set sync source -> {sync_source:?}");
         if sync_source != self.sync_source {
-            if !self.sync_source.is_null() && !sync_source.is_null() {
-                let from_iid = get_loop_iid(&self.sync_source);
-                let to_iid = get_loop_iid(&sync_source);
-                error!(self, "cannot change sync source ({from_iid} -> {to_iid})");
-                return;
-            }
-
             let self_qobj = self.as_mut().pin_mut_qobject_ptr();
             let self_mut = self.as_mut();
             let mut rust_mut = self_mut.rust_mut();
@@ -1161,6 +1154,32 @@ impl CompositeLoopBackend {
             self.as_mut().position_changed(0);
             self.as_mut().cycle_nr_changed(0);
         }
+    }
+
+    pub fn deinit(mut self: Pin<&mut CompositeLoopBackend>) {
+        if self.engine_schedule_installed {
+            let removal = self
+                .backend_session
+                .as_ref()
+                .zip(self.engine_loop.as_ref())
+                .map(|(session, engine_loop)| {
+                    let primitive_sync_sources = session.primitive_sync_sources();
+                    session.remove_composite_loop(engine_loop, &primitive_sync_sources)
+                });
+            if let Some(Err(error)) = removal {
+                error!(self, "engine composite removal failed: {error}");
+                return;
+            }
+        }
+        let mut rust_mut = self.as_mut().rust_mut();
+        rust_mut.engine_loop = None;
+        rust_mut.backend_session = None;
+        rust_mut.engine_schedule_installed = false;
+        rust_mut.engine_schedule_installing = false;
+        rust_mut.engine_schedule_dirty = true;
+        rust_mut.sync_source = std::ptr::null_mut();
+        rust_mut.backend = std::ptr::null_mut();
+        rust_mut.initialized = false;
     }
 
     pub fn do_trigger<AlternativeTriggerCallback>(

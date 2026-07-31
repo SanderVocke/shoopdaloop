@@ -387,7 +387,9 @@ Item {
         }
     }
 
-    function unload() {}
+    function unload() {
+        rust_loop.deinit()
+    }
 
     function clear() {
         playlists_in = []

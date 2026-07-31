@@ -18,7 +18,7 @@ pub use engine::{
     LoopMode, MidiEvent, MultichannelAudio, PortConnectabilityKind, PortDataType, PortDirection,
     ProfilingReport, ProfilingReportItem,
 };
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::thread;
@@ -1455,7 +1455,11 @@ impl BackendSession {
         );
         timeline
             .prepare_install(version, primitive_sync_sources)
-            .map_err(|error| anyhow!("could not prepare composite timeline: {error}"))?;
+            .map_err(|error| {
+                anyhow!(
+                    "could not prepare composite timeline: {error}; primitive sync sources: {primitive_sync_sources:?}"
+                )
+            })?;
         match self
             .shared
             .query_inner(move |session| session.install_prepared_composite_timeline(timeline))?
@@ -1500,8 +1504,28 @@ impl BackendSession {
         for item in metadata {
             candidate.metadata.insert(item.identity, item);
         }
+        let topology: Vec<_> = candidate
+            .configs
+            .values()
+            .map(|config| {
+                (
+                    config.descriptor.source,
+                    config.sync_source,
+                    config
+                        .descriptor
+                        .timelines
+                        .iter()
+                        .flat_map(|timeline| &timeline.sections)
+                        .flat_map(|section| &section.entries)
+                        .map(|entry| entry.target)
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect();
         let timeline = compile_composite_registry(&candidate)?;
-        let version = self.install_composite_timeline(timeline, primitive_sync_sources)?;
+        let version = self
+            .install_composite_timeline(timeline, primitive_sync_sources)
+            .map_err(|error| anyhow!("{error}; composite topology: {topology:?}"))?;
         *registry = candidate;
         Ok(version)
     }
@@ -1514,27 +1538,71 @@ impl BackendSession {
         if !Arc::ptr_eq(&self.shared, &composite.shared) {
             return Err(anyhow!("composite loop belongs to another session"));
         }
-        composite.transition_immediate(LoopMode::Stopped, 0)?;
-        let deadline = Instant::now() + engine::DEFAULT_WAIT_TIMEOUT;
-        loop {
-            match composite.get_state() {
-                Ok(state) if state.mode == LoopMode::Stopped => break,
-                Ok(_) if Instant::now() < deadline => thread::sleep(Duration::from_millis(1)),
-                Ok(_) => return Err(anyhow!("composite did not stop before removal")),
-                Err(error) => return Err(error),
-            }
-        }
 
         let mut registry = self
             .shared
             .composite_registry
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let mut candidate = registry.clone();
-        if candidate.configs.remove(&composite.identity).is_none() {
-            return Err(anyhow!("composite loop is not configured"));
+        if !registry.configs.contains_key(&composite.identity) {
+            return Ok(0);
         }
-        candidate.metadata.remove(&composite.identity);
+
+        let mut removed = BTreeSet::from([composite.identity]);
+        loop {
+            let dependents: Vec<_> = registry
+                .configs
+                .values()
+                .filter(|config| {
+                    !removed.contains(&config.descriptor.source)
+                        && config
+                            .descriptor
+                            .timelines
+                            .iter()
+                            .flat_map(|timeline| &timeline.sections)
+                            .flat_map(|section| &section.entries)
+                            .any(|entry| removed.contains(&entry.target))
+                })
+                .map(|config| config.descriptor.source)
+                .collect();
+            if dependents.is_empty() {
+                break;
+            }
+            removed.extend(dependents);
+        }
+
+        for &identity in &removed {
+            let handle = CompositeLoop {
+                shared: self.shared.clone(),
+                identity,
+            };
+            if handle.get_state()?.mode != LoopMode::Stopped {
+                handle.transition_immediate(LoopMode::Stopped, 0)?;
+            }
+        }
+        let deadline = Instant::now() + engine::DEFAULT_WAIT_TIMEOUT;
+        for &identity in &removed {
+            let handle = CompositeLoop {
+                shared: self.shared.clone(),
+                identity,
+            };
+            loop {
+                match handle.get_state() {
+                    Ok(state) if state.mode == LoopMode::Stopped => break,
+                    Ok(_) if Instant::now() < deadline => thread::sleep(Duration::from_millis(1)),
+                    Ok(_) => return Err(anyhow!("composite did not stop before removal")),
+                    Err(error) => return Err(error),
+                }
+            }
+        }
+
+        let mut candidate = registry.clone();
+        candidate
+            .configs
+            .retain(|identity, _| !removed.contains(identity));
+        candidate
+            .metadata
+            .retain(|identity, _| !removed.contains(identity));
         let timeline = compile_composite_registry(&candidate)?;
         let version = self.install_composite_timeline(timeline, primitive_sync_sources)?;
         *registry = candidate;
@@ -2617,7 +2685,8 @@ impl Loop {
         Ok(())
     }
     pub fn set_sync_source(&self, src: Option<&Loop>) -> Result<()> {
-        let (idx, src) = (self.idx, src.map(|l| l.idx));
+        let idx = self.idx;
+        let src = src.map(|loop_| loop_.idx).filter(|source| *source != idx);
         self.shared.send(move |s: &mut engine::Session| {
             let _ = s.set_loop_sync_source(idx, src);
         });
