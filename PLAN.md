@@ -1,0 +1,399 @@
+# Composite Loops in the Real-Time Engine: Prototype Plan
+
+## Purpose
+
+Integrate composite loops into the engine's real-time processing domain and connect that implementation through the frontend to the QML application. Composite-loop timing and interactions must no longer depend on Qt signal delivery, frontend polling, or update-thread scheduling.
+
+This is a staged prototype plan. Each stage should leave the relevant code buildable and testable, and should establish an explicit verification surface before the next stage begins.
+
+## Plan maintenance
+
+The implementing agent is allowed and expected to update this plan as implementation knowledge improves. It may:
+
+- Add, remove, split, merge, or reorder adaptive tasks and stages.
+- Record newly discovered constraints, risks, and decisions.
+- Replace a proposed mechanism with a better one.
+- Check off completed work and add links or notes about verification.
+- Revise test commands to match the test harness available at that point.
+
+The implementing agent must not weaken, remove, reinterpret, or mark an immutable requirement as optional. If an immutable requirement proves incompatible with the codebase or another immutable requirement, stop and present the evidence and required decision instead of silently narrowing scope.
+
+## Canonical investigation and handoff artifacts
+
+Store prototype working documents under `docs/composite_rt/`. These filenames are canonical: later stages should update and link to these files rather than creating unnamed notes or duplicating their content elsewhere.
+
+| Artifact | Canonical filename | Produced initially | Required contents |
+|---|---|---|---|
+| Current behavior and feature-parity matrix | [`docs/composite_rt/FEATURE_PARITY.md`](docs/composite_rt/FEATURE_PARITY.md) | Stage 0 | Current behaviors, code/test evidence, migration status, and the engine/QML/manual verification assigned to every feature. |
+| Deterministic semantic contract | [`docs/composite_rt/SEMANTICS.md`](docs/composite_rt/SEMANTICS.md) | Stage 0 | Sample-boundary semantics, event ordering, conflicts, nesting, cycles, command acceptance, plan activation, stale targets, and overflow behavior. |
+| Pre-change automated baseline | [`docs/composite_rt/BASELINE.md`](docs/composite_rt/BASELINE.md) | Stage 0 | Exact commands, environment, passing/failing tests, known pre-existing failures, and relevant timing observations. |
+| Implemented processing architecture | [`docs/composite_rt/ARCHITECTURE.md`](docs/composite_rt/ARCHITECTURE.md) | Stage 1 | Prepared-plan format, identities, POI/event processing, termination argument, command/plan ownership, snapshots, frontend integration, and reclamation. |
+| RT-safety audit and capacity budget | [`docs/composite_rt/RT_SAFETY.md`](docs/composite_rt/RT_SAFETY.md) | Stage 2, completed in Stage 6 | Callback-path audit, allocation/lock evidence, capacities, overflow responses, event/sub-block bounds, and callback cost measurements. |
+| Automated verification record | [`docs/composite_rt/TEST_RESULTS.md`](docs/composite_rt/TEST_RESULTS.md) | Stage 6 | Commands and results for engine/QML tests, environment blockers, repeated timing tests, and final automated gate status. |
+| User manual-validation package | [`docs/composite_rt/MANUAL_VALIDATION.md`](docs/composite_rt/MANUAL_VALIDATION.md) | Stage 6, executed in Stage 7 | Setup, scenarios, expected outcomes, diagnostics to capture, and fields for user results. |
+
+When an artifact does not yet exist, the first checklist item that produces it must create it. The adaptive decision log remains in this `PLAN.md`; decisions that define runtime behavior or architecture must also be reflected in `SEMANTICS.md` or `ARCHITECTURE.md` respectively.
+
+## Immutable end requirements
+
+- [ ] **Feature parity:** Engine-backed composite loops provide at least the complete user-visible feature set of the current composite-loop implementation.
+- [ ] **RT authority:** Once a composite configuration has been accepted by the engine, every timing decision that processes that configuration—including iteration advancement, starts, stops, mode changes, recording behavior, cycling, and nested-composite propagation—is made on the real-time audio thread.
+- [ ] **Determinism:** Given the same accepted configuration, initial engine state, timestamped/accepted control inputs, and audio timeline, composite processing produces the same transitions at the same sample positions regardless of GUI load, update-thread timing, hash iteration order, or audio-buffer partitioning.
+- [ ] **Sample-correct interaction:** Composite-to-basic-loop and composite-to-composite actions take effect at their defined sample boundary before post-boundary audio is processed.
+- [ ] **No RT allocation:** The audio thread performs no allocation, reallocation, or deallocation. This includes exceptional, topology-change, command, publication, and teardown paths reached from the callback.
+- [ ] **No RT mutexes:** The audio thread does not acquire a mutex or any other potentially blocking lock. RT-owned state, bounded lock-free queues, immutable prepared data, or equivalent non-blocking mechanisms must be used instead.
+- [ ] **Bounded RT work:** Same-sample event propagation, nesting, command application, and POI subdivision have explicit capacities or otherwise defensible finite worst-case bounds. Capacity failure is reported and never silently converted into a late musical event.
+- [ ] **Good automated coverage:** Engine tests cover state-machine semantics, exact timing, nesting, conflicting/coincident events, buffer-partition independence, configuration changes, and RT constraints. QML tests cover end-to-end application integration and current composite-loop behavior.
+- [ ] **Top-level integration:** The QML application creates, configures, controls, observes, saves, and loads engine-backed composite loops without using the old Qt/update-thread implementation as the timing authority.
+- [ ] **Manual-validation handoff:** Manual live-performance scenarios are documented for the user. The implementing agent may report them as pending user validation but may not claim they were manually verified.
+
+### Control-input latency boundary
+
+The determinism requirement begins when a command or prepared configuration is accepted into the RT domain. GUI scheduling can delay when that acceptance happens and can therefore change which future quantization boundary is eligible. That unavoidable UI-to-engine latency is not permission for configured composite processing itself to occur outside the audio thread or to become timing-dependent.
+
+The implementation must document a precise acceptance rule in [`docs/composite_rt/SEMANTICS.md`](docs/composite_rt/SEMANTICS.md), such as "the first eligible sync boundary after the audio thread accepts the command at a callback boundary." Latency-critical inputs with audio-clock timestamps or in-buffer sample offsets should retain that timing information rather than being reduced to Qt delivery time.
+
+## Target processing model
+
+This is the initial design direction, not an immutable implementation prescription:
+
+- A composite loop is an RT-owned temporal state machine and does not produce audio channels itself.
+- Frontend playlist data is validated and compiled off the audio thread into an immutable, allocation-complete RT plan using stable engine IDs.
+- A prepared plan crosses into the RT domain through a bounded non-blocking command mechanism and is activated at a documented boundary.
+- Basic loops and composite loops share one sample timeline. The earliest POI bounds a sub-block.
+- At a boundary, a bounded deterministic event resolver processes primitive loop triggers, composite state changes, transition intents, nested composites, and resulting trigger propagation before post-boundary samples are processed.
+- State is published to the frontend through non-blocking snapshots. Published state is observational and is never the source of composite timing decisions.
+- Replaced plans, commands, snapshots, and other owned allocations are returned to a non-RT thread for destruction.
+
+## Stage 0 — Baseline, behavior inventory, and semantic contract
+
+### Current behavior inventory
+
+- [x] Create [`docs/composite_rt/FEATURE_PARITY.md`](docs/composite_rt/FEATURE_PARITY.md) and enumerate all composite-loop behavior represented by QML, frontend Rust, session persistence, documentation, and tests.
+- [x] Build the parity matrix in `FEATURE_PARITY.md`, covering at least:
+  - [x] Sequential playlist elements.
+  - [x] Parallel playlist timelines.
+  - [x] Delays and repeated references to the same child.
+  - [x] Explicit `n_cycles` overrides and length-derived durations.
+  - [x] Empty or ignored children.
+  - [x] Regular composites with inherited modes.
+  - [x] Script composites with explicit modes and one-shot completion.
+  - [x] Composite playback, stop, cancellation, and cycling.
+  - [x] Composite recording, record-only-first-occurrence behavior, and play-after-record on/off.
+  - [x] Delayed transitions/countdowns.
+  - [x] Immediate synchronization/seeking to an arbitrary composite iteration.
+  - [x] Composite-to-composite nesting in both regular and script combinations.
+  - [x] Running-child reporting and displayed mode, length, iteration, position, and cycle count.
+  - [x] Composite ringbuffer grab behavior, including synced/unsynced and fixed-length cases.
+  - [x] Schedule changes caused by child creation, deletion, conversion, or length changes.
+  - [x] Circular-reference rejection.
+  - [x] Session save/load compatibility.
+- [x] Create [`docs/composite_rt/BASELINE.md`](docs/composite_rt/BASELINE.md), then run and record the existing relevant engine and QML test baseline before replacing behavior.
+- [x] Record in `FEATURE_PARITY.md` behavior that currently depends on accidental Qt, signal-connection, or hash traversal order.
+
+### Define deterministic semantics
+
+- [x] Create [`docs/composite_rt/SEMANTICS.md`](docs/composite_rt/SEMANTICS.md) as the semantic contract.
+- [x] Specify there the exact half-open sample interval semantics around a transition boundary.
+- [x] Specify the order or conflict policy for natural wraps, stops, starts, and mode changes at the same sample.
+- [x] Specify what happens when multiple active composites target the same loop with incompatible modes at the same sample.
+- [x] Specify whether a composite stopped at a boundary executes an event that would otherwise occur at that boundary.
+- [x] Specify nested start behavior, including whether iteration-zero child actions happen at the parent's start sample.
+- [x] Specify cycle handling. At minimum, composite dependency cycles must be detected transitively and rejected before RT activation.
+- [x] Specify plan activation while stopped, pending, and running.
+- [x] Specify behavior when a referenced target no longer exists or its generation no longer matches.
+- [x] Specify bounded-overflow behavior for commands, plans, event queues, and sub-block limits.
+- [x] Add engine-level tests that pin each decision in `SEMANTICS.md` before relying on it in integration code.
+
+### Stage 0 exit gate
+
+- [x] Every current feature has an entry in `FEATURE_PARITY.md`.
+- [x] Every coincident-event case needed by the prototype has deterministic semantics in `SEMANTICS.md`.
+- [x] Existing test status and known pre-existing failures are recorded in `BASELINE.md`.
+
+## Stage 1 — Engine composite data model and pure state machine
+
+### RT-safe identity and compiled plan
+
+- [ ] Create [`docs/composite_rt/ARCHITECTURE.md`](docs/composite_rt/ARCHITECTURE.md) and keep its implemented design current throughout the prototype.
+- [ ] Introduce stable engine-side identities with generation checking for basic and composite loop targets.
+- [ ] Define an immutable compiled composite plan with sorted iteration/action storage.
+- [ ] Ensure the plan contains no `QObject`, `QVariant`, weak Qt pointer, runtime string lookup, or hash-order dependency.
+- [ ] Resolve playlist references and compute schedule metadata before RT installation.
+- [ ] Precompute or bound metadata needed for recording-first-occurrence, active-child tracking, immediate sync, and cancellation.
+- [ ] Validate all indices, modes, lengths, dependency edges, and capacities before installation.
+- [ ] Detect transitive composite cycles during compilation.
+
+### Pure state machine
+
+- [ ] Implement composite mode, pending transition/countdown, iteration, cycle count, position derivation, and active-child state.
+- [ ] Implement regular-loop mode inheritance.
+- [ ] Implement script explicit-mode behavior and completion.
+- [ ] Implement stop/cancel behavior and child cleanup.
+- [ ] Implement recording and play-after-record behavior.
+- [ ] Implement immediate-sync/seek state calculation without RT allocation or unbounded replay.
+- [ ] Make transition output deterministic and ordered.
+- [ ] Represent failures as explicit status/counters suitable for publication without RT logging or formatting.
+
+### Tests
+
+- [ ] Unit-test the state machine independently of audio channels and Qt.
+- [ ] Cover every applicable row of [`docs/composite_rt/FEATURE_PARITY.md`](docs/composite_rt/FEATURE_PARITY.md) that does not require audio routing.
+- [ ] Test invalid plans, stale identities, cycles, capacity limits, and conflicting events.
+- [ ] Test long-running iteration/cycle behavior and integer-boundary cases.
+
+### Stage 1 exit gate
+
+- [ ] The pure engine state machine matches [`docs/composite_rt/SEMANTICS.md`](docs/composite_rt/SEMANTICS.md).
+- [ ] It can execute from fully prepared storage without allocating, locking, string lookup, or nondeterministic iteration.
+
+## Stage 2 — POI integration and deterministic boundary-event resolution
+
+### Timeline integration
+
+- [ ] Create the initial [`docs/composite_rt/RT_SAFETY.md`](docs/composite_rt/RT_SAFETY.md) capacity budget for POIs, sub-blocks, actions, event waves, commands, plans, and snapshots.
+- [ ] Add composites to the engine's authoritative sample timeline.
+- [ ] Reuse a sync source's POI for iteration-aligned events where possible so composites do not introduce redundant sub-blocks.
+- [ ] Define a composite POI only where an event is not already guaranteed by a source POI.
+- [ ] Ensure every relevant node advances to the same sample before boundary events are resolved.
+- [ ] Ensure transitions are committed before processing any post-boundary audio sample.
+
+### Boundary-event resolver
+
+- [ ] Add a preallocated, bounded event/intention mechanism for same-sample propagation.
+- [ ] Seed it from primitive events such as basic-loop wraps and accepted timestamped controls.
+- [ ] Deliver sync triggers to composites in a deterministic order.
+- [ ] Gather and resolve composite transition intents using the Stage 0 conflict policy.
+- [ ] Apply actions to basic loops and composite loops at the same boundary.
+- [ ] Propagate newly caused triggers through nested composites until the boundary is settled.
+- [ ] Guarantee termination through DAG ordering, once-per-boundary delivery, bounded waves, or another proof documented in [`docs/composite_rt/ARCHITECTURE.md`](docs/composite_rt/ARCHITECTURE.md).
+- [ ] Remove dependence on the current one-pass snapshot behavior for transitive propagation.
+- [ ] Report queue/wave/sub-block overflow explicitly without processing the event late.
+
+### Timing tests
+
+- [ ] Assert exact output samples when a composite event falls in the middle of an audio callback.
+- [ ] Run equivalent timelines with different callback sizes and arbitrary buffer partitions; compare transition traces and audio output.
+- [ ] Test several nested composite levels at one sample boundary.
+- [ ] Test parallel and coincident actions.
+- [ ] Test source loops that wrap multiple times in one callback.
+- [ ] Test stopped, recording, replacing, and playing child modes at boundaries.
+- [ ] Test that grid-aligned composite events do not add unnecessary sub-blocks.
+
+### Stage 2 exit gate
+
+- [ ] Engine-only composite processing is sample-correct and buffer-partition independent.
+- [ ] Nested propagation is deterministic and bounded.
+
+## Stage 3 — Non-blocking control boundary and RT ownership
+
+### Engine ownership and commands
+
+- [ ] Make the active audio callback the sole mutable owner of session and composite runtime state.
+- [ ] Route control changes through bounded non-blocking command queues.
+- [ ] Define callback and in-buffer command acceptance cutoffs in [`docs/composite_rt/SEMANTICS.md`](docs/composite_rt/SEMANTICS.md).
+- [ ] Build and allocate commands and plans off the RT thread.
+- [ ] Return executed commands and displaced plans to a non-RT reclamation queue; never drop them on the audio thread.
+- [ ] Version plans and topology so stale prepared configurations are rejected or handled deterministically.
+- [ ] Make plan replacement atomic from the processing model's perspective.
+- [ ] Decide and test whether running-plan changes activate at callback boundaries, sync boundaries, or another explicit point.
+
+### Remove RT locks and allocation
+
+- [ ] Audit the complete active callback path in [`docs/composite_rt/RT_SAFETY.md`](docs/composite_rt/RT_SAFETY.md), including driver I/O, session processing, graph installation, ports, channels, MIDI, FX, commands, snapshots, error paths, and teardown.
+- [ ] Remove the session mutex from the callback/control interaction.
+- [ ] Remove callback-side mutexes protecting registered ports, capture/playback rings, MIDI queues, or hosted processing state.
+- [ ] Replace mutable callback-visible collections with RT-owned or immutably swapped prepared collections.
+- [ ] Pre-size all callback scratch and event storage for declared capacities and supported buffer sizes.
+- [ ] Remove callback-reachable exceptional allocation allowances rather than treating them as successful RT behavior.
+- [ ] Ensure topology or capacity changes are prepared off-thread and installed without allocation or destruction on RT.
+- [ ] Ensure error reporting uses atomics, fixed records, or snapshots rather than RT formatting/logging.
+- [ ] Exercise allocation guards over command application, composite events, graph changes, and normal processing.
+
+### State publication
+
+- [ ] Extend non-blocking engine snapshots with composite mode, next mode/countdown, iteration, cycle count, length, position, and active/running child information required by the UI.
+- [ ] Ensure snapshot publication is bounded and may drop stale observations rather than blocking audio.
+- [ ] Grow or replace snapshot storage only on a non-RT thread.
+- [ ] Make clear that frontend observations may lag while authoritative processing continues.
+
+### Stage 3 exit gate
+
+- [ ] No active audio callback path allocates, deallocates, or locks.
+- [ ] Commands, plans, and snapshots cross the thread boundary without blocking RT.
+- [ ] Command acceptance and plan activation semantics are tested and documented in `SEMANTICS.md`, with their mechanism documented in `ARCHITECTURE.md`.
+
+## Stage 4 — Frontend and QML integration
+
+### Engine-facing frontend API
+
+- [ ] Expose creation, deletion/tombstoning, configuration, transition, immediate sync, clear, and state observation for engine composite loops.
+- [ ] Translate frontend/QML loop references into stable engine identities before plan installation.
+- [ ] Return explicit validation and capacity errors to the frontend.
+- [ ] Keep schedule preparation and UI bookkeeping off RT while keeping all runtime timing decisions on RT.
+- [ ] Ensure basic and composite loops can be targeted together through one deterministic engine command path.
+
+### Replace timing authority
+
+- [ ] Change QML composite creation to create or bind an engine composite object.
+- [ ] Send compiled schedule/configuration updates to the engine.
+- [ ] Drive displayed state from engine snapshots.
+- [ ] Remove or disable update-thread cycle polling as a composite timing input.
+- [ ] Remove Qt `cycled`/`dependent_will_handle_sync_loop_cycle` recursion from composite execution.
+- [ ] Ensure GUI or backend-update thread stalls cannot stop an already configured composite timeline.
+- [ ] Ensure old frontend objects, if temporarily retained for API compatibility, are passive adapters only.
+
+### Persistence and lifecycle
+
+- [ ] Preserve existing session format compatibility unless an intentional migration is documented and tested.
+- [ ] Restore references only after stable engine identities are available.
+- [ ] Handle child deletion, replacement, and regular-to-composite conversion without dangling targets.
+- [ ] Test teardown and session replacement without RT destruction or stale-event delivery.
+
+### Stage 4 exit gate
+
+- [ ] The normal QML application path uses engine composites as its sole timing authority.
+- [ ] Existing composite sessions load and expose the expected UI state.
+
+## Stage 5 — Complete feature parity
+
+Work through [`docs/composite_rt/FEATURE_PARITY.md`](docs/composite_rt/FEATURE_PARITY.md) and close every remaining row there.
+
+- [ ] Sequential and parallel scheduling.
+- [ ] Delays, repeats, explicit lengths, and ignored/empty children.
+- [ ] Regular inherited modes.
+- [ ] Script explicit modes and completion.
+- [ ] Nested regular/script combinations.
+- [ ] Countdown transitions and cancellation.
+- [ ] Recording-first-occurrence semantics.
+- [ ] Play-after-record enabled and disabled.
+- [ ] Immediate sync to first, middle, last, and changed iterations.
+- [ ] Running-child reporting and UI-derived properties.
+- [ ] Composite ringbuffer grab in all currently supported synced/unsynced, fixed/default length, stop/play outcomes.
+- [ ] Runtime schedule recalculation and activation.
+- [ ] Circular-reference and invalid-reference handling.
+- [ ] Save/load and lifecycle behavior.
+
+For heavy operations such as ringbuffer adoption:
+
+- [ ] Prepare destination storage and metadata off RT.
+- [ ] Perform only bounded, allocation-free work on RT.
+- [ ] Commit all child state changes as one documented RT transaction or boundary sequence.
+- [ ] Do not reintroduce frontend timing decisions as a shortcut.
+
+### Stage 5 exit gate
+
+- [ ] Every row in `FEATURE_PARITY.md` identifies an engine test, QML test, justified manual-only item, or a documented combination of those.
+- [ ] No current user-visible composite feature is knowingly missing.
+
+## Stage 6 — Automated verification and RT hardening
+
+The implementing agent's runtime test obligation may be limited to `shoop_engine` tests and QML tests. Broader platform and manual live-audio validation is assigned to the user, but this does not reduce the required automated coverage within those suites.
+
+### Engine tests
+
+- [ ] Create [`docs/composite_rt/TEST_RESULTS.md`](docs/composite_rt/TEST_RESULTS.md) and record all Stage 6 commands, environments, and results there.
+- [ ] Run targeted tests frequently while implementing.
+- [ ] Run the complete `shoop_engine` suite with the application backend feature:
+
+  ```sh
+  cargo test -p shoop_engine --features app_backend
+  ```
+
+- [ ] Add deterministic transition-trace tests independent of frontend polling.
+- [ ] Add buffer-size and buffer-partition property/table tests.
+- [ ] Add dense-event and maximum-capacity tests.
+- [ ] Add command-cutoff and plan-version race tests using controlled scheduling.
+- [ ] Add RT allocation tests for normal, event-heavy, command, plan-swap, and failure paths.
+- [ ] Add tests or structural assertions demonstrating that callback state access is lock-free.
+- [ ] Repeat timing-sensitive tests enough to expose accidental ordering dependencies.
+
+### Frontend/QML tests
+
+- [ ] Build before running QML tests:
+
+  ```sh
+  cargo build
+  ```
+
+- [ ] Run the frontend/QML self-test suite:
+
+  ```sh
+  target/debug/shoopdaloop_dev.sh --self-test
+  ```
+
+- [ ] Keep or migrate all existing composite-loop QML scenarios.
+- [ ] Add a test that stalls frontend/update processing while engine audio continues and verifies the composite transition trace afterward.
+- [ ] Add end-to-end tests for configuration acceptance errors and delayed state observation.
+- [ ] Add save/load coverage for nested composites and scripts.
+
+### Quality gates
+
+- [ ] Run `cargo fmt --all` after Rust changes.
+- [ ] Build Rust changes with warnings denied using `RUSTFLAGS="-D warnings"`.
+- [ ] Record in `TEST_RESULTS.md` any test that cannot run because of environment/dependency limitations, including the command and error.
+- [ ] Document measured callback cost for ordinary and worst supported composite schedules in `RT_SAFETY.md`, with benchmark commands/results linked from `TEST_RESULTS.md`.
+- [ ] Create [`docs/composite_rt/MANUAL_VALIDATION.md`](docs/composite_rt/MANUAL_VALIDATION.md) from the Stage 7 checklist, adding required setup, session files, logging counters, expected outcomes, result fields, and reproduction instructions.
+- [ ] Confirm in `RT_SAFETY.md` that overload is explicit and deterministic rather than late, blocked, or silently dropped.
+
+### Stage 6 exit gate
+
+- [ ] `TEST_RESULTS.md` shows that engine and QML automated gates pass, except for clearly recorded environment failures or pre-existing failures.
+- [ ] `RT_SAFETY.md` contains evidence that RT constraints are verified on all exercised callback paths.
+- [ ] Remaining manual checks are listed in `MANUAL_VALIDATION.md` without being represented as completed.
+
+## Stage 7 — User-owned manual validation
+
+The user follows [`docs/composite_rt/MANUAL_VALIDATION.md`](docs/composite_rt/MANUAL_VALIDATION.md), executes its scenarios in representative live setups, and records results there. If this checklist changes, the implementing agent first updates that canonical package to match.
+
+- [ ] Low-buffer JACK live session with sequential and parallel composites.
+- [ ] Representative CPAL live session where supported.
+- [ ] Start, stop, cancel, and retrigger composites close to sync boundaries.
+- [ ] Record a regular composite with play-after-record both enabled and disabled.
+- [ ] Use a repeated child and confirm it is recorded only on its first scheduled occurrence.
+- [ ] Run nested regular and script composites as scenes/song sections.
+- [ ] Exercise immediate sync/seek to several positions while audio is running.
+- [ ] Exercise all composite grab variants with real or representative input.
+- [ ] Edit a composite configuration while stopped, pending, and running; confirm documented activation behavior.
+- [ ] Freeze or heavily load the GUI and frontend update thread while a configured composite continues.
+- [ ] Use keyboard/MIDI controls and evaluate perceived command latency around quantization boundaries.
+- [ ] Load existing sessions containing composites, save them again, and reload.
+- [ ] Stress a large but supported schedule and inspect xruns, overload counters, and transition diagnostics.
+- [ ] Confirm no unexplained extra sync-cycle delays or audible boundary glitches.
+
+User findings recorded in `MANUAL_VALIDATION.md` that reveal a violation of an immutable requirement reopen the relevant implementation stage. Usability adjustments that do not violate immutable requirements may update this plan and `SEMANTICS.md`.
+
+## Stage 8 — Remove obsolete execution paths and finish documentation
+
+- [ ] Remove dead update-thread composite scheduling code after parity and integration are established.
+- [ ] Remove compatibility signals/slots that can no longer affect behavior.
+- [ ] Ensure there is only one authoritative composite state machine.
+- [ ] Finalize RT command acceptance, plan activation, conflict handling, and observable state latency in `SEMANTICS.md`.
+- [ ] Finalize implemented processing, ownership, and frontend integration in `ARCHITECTURE.md`; finalize capacity limits and callback evidence in `RT_SAFETY.md`.
+- [ ] Update permanent developer architecture documentation and user documentation where behavior is newly defined, linking back to the canonical prototype artifacts where useful.
+- [ ] Record final automated results in `TEST_RESULTS.md` and pending/completed user manual results in `MANUAL_VALIDATION.md`.
+- [ ] Review the immutable requirement checklist and attach evidence for every item.
+
+## Adaptive decision log
+
+The implementing agent should maintain this table as discoveries are made.
+
+| Date/commit | Decision or discovery | Reason/evidence | Plan stages affected | Immutable requirements checked |
+|---|---|---|---|---|
+| 2026-07-31 / Stage 0 | Use half-open sample intervals and a transactional boundary resolver with direct control > explicit script > inherited regular > natural-event precedence; stable identity breaks same-class ties. | [`SEMANTICS.md`](docs/composite_rt/SEMANTICS.md) and executable `composite_semantics` contract tests. | 0–6 | Determinism, sample-correct interaction, bounded RT work |
+| 2026-07-31 / Stage 0 | Activate stopped/pending plan replacements at command acceptance; defer running replacements to the next iteration-zero boundary. | Avoids changing the meaning of the current pass or orphaning children; exact stop-before-activation behavior is specified in `SEMANTICS.md`. | 0, 1, 3, 5 | RT authority, determinism, feature parity |
+| 2026-07-31 / Stage 0 | Reject producer/plan capacity overflow before acceptance; event/wave/sub-block overflow enters a latched fail-closed RT fault rather than applying an event late. | [`SEMANTICS.md`](docs/composite_rt/SEMANTICS.md) capacity policy and `overflow_never_turns_into_a_late_event`. | 0, 2, 3, 6 | Bounded RT work, no RT allocation, determinism |
+| 2026-07-31 / Stage 0 | Preserve `loop.1` playlist persistence as the compatibility surface; compile missing IDs as errors and use generation-checked engine targets after acceptance. | Current schema/application inventory in [`FEATURE_PARITY.md`](docs/composite_rt/FEATURE_PARITY.md); stale-target contract tests. | 0, 1, 4, 5 | Feature parity, top-level integration, determinism |
+
+## Completion definition
+
+The prototype is implementation-complete when:
+
+- Every immutable requirement has evidence.
+- Engine composites are the timing authority used by the top-level application.
+- `FEATURE_PARITY.md` is complete.
+- `SEMANTICS.md`, `ARCHITECTURE.md`, and `RT_SAFETY.md` describe and support the implemented result.
+- `TEST_RESULTS.md` shows that the engine and QML automated gates meet Stage 6.
+- `MANUAL_VALIDATION.md` has been handed to the user.
+
+Final live-performance acceptance remains pending until the user completes the Stage 7 scenarios and reports the results.

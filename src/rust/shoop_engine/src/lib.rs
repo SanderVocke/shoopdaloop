@@ -12,6 +12,7 @@ pub mod basic_loop;
 pub mod buffer_queue;
 pub mod channel_mode;
 pub mod chunked_samples;
+pub mod composite_semantics;
 pub mod control;
 #[cfg(feature = "cpal")]
 pub mod cpal_mock;
@@ -57,6 +58,17 @@ pub use basic_loop::{BasicLoop, PoiFlags, PointOfInterest, SyncSourceState};
 pub use buffer_queue::{BufferQueue, Snapshot};
 pub use channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 pub use chunked_samples::ChunkedSamples;
+pub use composite_semantics::{
+    classify_plan_modes, command_disposition, countdown_execution_boundary, dependency_order,
+    empty_child_action, entry_duration, half_open_interval_contains,
+    nested_iteration_zero_is_same_sample, normalize_coincident_schedule_actions,
+    overflow_disposition, pass_end, plan_activation, plan_can_enter_running,
+    records_this_occurrence, resolve_target, seek_cycle_offset, source_emits_due_action,
+    valid_seek_iteration, BoundaryPhase, CommandDisposition, CommandTiming, CompiledBoundaryAction,
+    CompositeKind, DependencyError, DurationError, EmptyChildAction, IntentOrigin, IntentPriority,
+    ModePlanError, OverflowDisposition, OverflowSite, PassEnd, PlanActivation, RuntimeStatus,
+    TargetIdentity, TargetResolution, TimestampRelation, BOUNDARY_PHASE_ORDER,
+};
 pub use decoupled_midi_port::DecoupledMidiPort;
 pub use driver::{
     cpal_host_names, cpal_input_device_names, cpal_input_device_names_for_host,
