@@ -151,13 +151,12 @@ This document tracks work intentionally deferred from the per-object state mirro
 
 ## External connection management
 
-### Per-port synchronous JACK enumeration
+### Cached external/JACK enumeration
 
-- **Status:** In scope to replace for periodic polling.
-- **Current behavior:** Each port's `get_connections_state` locks the JACK backend, enumerates external ports, looks up its JACK port, and gets connections synchronously. Frontend GUI paths also use blocking queued Qt calls.
-- **Impact:** Periodic cost multiplies by port count and blocks GUI/backend threads.
-- **Migration behavior:** One asynchronous bulk enumeration per backend at a controlled cadence, cached and published for immediate reads.
-- **Future direction:** Event-driven graph callbacks could replace polling entirely.
+- **Status:** Temporary polling implementation.
+- **Current behavior:** Session-backed ports register cache requests and return the latest connection map immediately. At most once per 100 ms, a worker takes one backend lock and bulk-enumerates every registered request, then replaces the cache. The engine-update thread forwards cached maps to `PortGui`; GUI getters no longer make blocking queued calls. Decoupled MIDI ports use the same immediate-cache policy but currently refresh per decoupled port rather than joining the session bulk.
+- **Impact:** Enumeration no longer blocks frame polling, but worker threads still synchronously lock JACK/CPAL dummy connection managers. Decoupled ports can cause more than one enumeration per cadence, and cached values may lag mutations by roughly one refresh interval.
+- **Future direction:** Use JACK graph callbacks/backend events to publish one driver-owned immutable connection graph shared by session and decoupled ports.
 
 ### User-triggered external connect/disconnect
 

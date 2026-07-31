@@ -1050,6 +1050,32 @@ impl CpalBackend {
     }
 }
 
+#[derive(Clone)]
+struct ConnectionCacheRequest {
+    name: String,
+    direction: PortDirection,
+    data_type: PortDataType,
+    session_index: Option<usize>,
+}
+
+struct ConnectionCache {
+    requests: HashMap<(String, u32, u32), ConnectionCacheRequest>,
+    states: HashMap<(String, u32, u32), HashMap<String, bool>>,
+    last_refresh: Instant,
+    refresh_in_flight: bool,
+}
+
+impl Default for ConnectionCache {
+    fn default() -> Self {
+        Self {
+            requests: HashMap::new(),
+            states: HashMap::new(),
+            last_refresh: Instant::now() - Duration::from_secs(1),
+            refresh_in_flight: false,
+        }
+    }
+}
+
 struct SharedSession {
     session_id: u64,
     /// The control side of the engine. Only ever touched by non-audio threads.
@@ -1078,6 +1104,7 @@ struct SharedSession {
     external: Mutex<Option<Arc<Mutex<engine::DummyExternalConnections>>>>,
     jack: Mutex<Option<Arc<Mutex<JackBackend>>>>,
     cpal: Mutex<Option<Arc<Mutex<CpalBackend>>>>,
+    connection_cache: Arc<Mutex<ConnectionCache>>,
     /// Rebuilds the schedule after topology changes.
     ///
     /// A `OnceLock` rather than a `Mutex`: it is set once immediately after construction
@@ -1361,6 +1388,56 @@ impl SharedSession {
     fn cpal(&self) -> Option<Arc<Mutex<CpalBackend>>> {
         self.cpal.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
+
+    fn connections_state(
+        &self,
+        name: &str,
+        direction: PortDirection,
+        data_type: PortDataType,
+        session_index: Option<usize>,
+    ) -> HashMap<String, bool> {
+        let key = (name.to_string(), direction as u32, data_type as u32);
+        let (cached, refresh) = {
+            let mut cache = self
+                .connection_cache
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            cache.requests.insert(
+                key.clone(),
+                ConnectionCacheRequest {
+                    name: name.to_string(),
+                    direction,
+                    data_type,
+                    session_index,
+                },
+            );
+            let cached = cache.states.get(&key).cloned().unwrap_or_default();
+            let refresh = !cache.refresh_in_flight
+                && cache.last_refresh.elapsed() >= Duration::from_millis(100);
+            if refresh {
+                cache.refresh_in_flight = true;
+                cache.last_refresh = Instant::now();
+            }
+            (cached, refresh)
+        };
+
+        if refresh {
+            let cache = Arc::clone(&self.connection_cache);
+            let jack = self.jack();
+            let external = self.external();
+            thread::spawn(move || refresh_connection_cache(cache, jack, external));
+        }
+        cached
+    }
+
+    fn invalidate_connection_cache(&self) {
+        let mut cache = self
+            .connection_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        cache.last_refresh = Instant::now() - Duration::from_secs(1);
+    }
+
     fn activate_jack(&self, shared: &Arc<SharedSession>) -> Result<()> {
         if let Some(j) = self.jack() {
             j.lock()
@@ -1407,20 +1484,19 @@ fn jack_external_ports(
     let (ty, flags) = jack_flags(direction, data_type);
     j.client().ports(None, ty, flags)
 }
-fn jack_connections_state(
-    jack: &Arc<Mutex<JackBackend>>,
+fn jack_connections_state_locked(
+    j: &JackBackend,
     own_short: &str,
     direction: PortDirection,
     data_type: PortDataType,
 ) -> HashMap<String, bool> {
-    let j = jack.lock().unwrap_or_else(|e| e.into_inner());
     let client = j.client();
     let own = jack_full_name(client, own_short);
     let connected = client
         .port_by_name(&own)
         .map(|p| p.get_connections())
         .unwrap_or_default();
-    jack_external_ports(&j, opposite_direction(direction), data_type)
+    jack_external_ports(j, opposite_direction(direction), data_type)
         .into_iter()
         .map(|name| {
             let c = connected.iter().any(|n| n == &name);
@@ -1428,6 +1504,59 @@ fn jack_connections_state(
         })
         .collect()
 }
+
+fn refresh_connection_cache(
+    cache: Arc<Mutex<ConnectionCache>>,
+    jack: Option<Arc<Mutex<JackBackend>>>,
+    external: Option<Arc<Mutex<engine::DummyExternalConnections>>>,
+) {
+    let requests = cache
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .requests
+        .clone();
+    let mut states = HashMap::new();
+    if let Some(jack) = jack {
+        let jack = jack.lock().unwrap_or_else(|e| e.into_inner());
+        for (key, request) in &requests {
+            states.insert(
+                key.clone(),
+                jack_connections_state_locked(
+                    &jack,
+                    &request.name,
+                    request.direction,
+                    request.data_type,
+                ),
+            );
+        }
+    } else if let Some(external) = external {
+        let external = external.lock().unwrap_or_else(|e| e.into_inner());
+        for (key, request) in &requests {
+            let connected = request
+                .session_index
+                .map(|idx| external.connection_status_of(compat_port_id(idx)))
+                .unwrap_or_default();
+            let mut state = HashMap::new();
+            if let Ok(ports) = external.find_external_ports(
+                None,
+                opposite_direction(request.direction).into(),
+                request.data_type.into(),
+            ) {
+                for port in ports {
+                    state.insert(
+                        port.name.clone(),
+                        *connected.get(&port.name).unwrap_or(&false),
+                    );
+                }
+            }
+            states.insert(key.clone(), state);
+        }
+    }
+    let mut cache = cache.lock().unwrap_or_else(|e| e.into_inner());
+    cache.states = states;
+    cache.refresh_in_flight = false;
+}
+
 fn jack_connect_port(
     jack: &Arc<Mutex<JackBackend>>,
     own_short: &str,
@@ -1487,6 +1616,7 @@ impl BackendSession {
             external: Mutex::new(None),
             jack: Mutex::new(None),
             cpal: Mutex::new(None),
+            connection_cache: Arc::new(Mutex::new(ConnectionCache::default())),
             scheduler: OnceLock::new(),
         });
 
@@ -3118,30 +3248,15 @@ impl AudioPort {
         })
     }
     pub fn get_connections_state(&self) -> HashMap<String, bool> {
-        if let Some(j) = self.shared.jack() {
-            return jack_connections_state(&j, &self.name, self.direction, PortDataType::Audio);
-        }
-        let mut out = HashMap::new();
-        if let Some(ext) = self.shared.external() {
-            let ext = ext.lock().unwrap_or_else(|e| e.into_inner());
-            let connected = self
-                .control
-                .ready_id()
-                .map(|id| ext.connection_status_of(compat_port_id(id.index())))
-                .unwrap_or_default();
-            if let Ok(ports) = ext.find_external_ports(
-                None,
-                opposite_direction(self.direction).into(),
-                engine::PortDataType::Audio,
-            ) {
-                for p in ports {
-                    out.insert(p.name.clone(), *connected.get(&p.name).unwrap_or(&false));
-                }
-            }
-        }
-        out
+        self.shared.connections_state(
+            &self.name,
+            self.direction,
+            PortDataType::Audio,
+            self.control.ready_id().map(ObjectIdentity::index),
+        )
     }
     pub fn connect_external_port(&self, name: &str) {
+        self.shared.invalidate_connection_cache();
         if let Some(j) = self.shared.jack() {
             jack_connect_port(&j, &self.name, self.direction, name);
             return;
@@ -3168,6 +3283,7 @@ impl AudioPort {
         }
     }
     pub fn disconnect_external_port(&self, name: &str) {
+        self.shared.invalidate_connection_cache();
         if let Some(j) = self.shared.jack() {
             jack_disconnect_port(&j, &self.name, self.direction, name);
             return;
@@ -3406,30 +3522,15 @@ impl MidiPort {
         })
     }
     pub fn get_connections_state(&self) -> HashMap<String, bool> {
-        if let Some(j) = self.shared.jack() {
-            return jack_connections_state(&j, &self.name, self.direction, PortDataType::Midi);
-        }
-        let mut out = HashMap::new();
-        if let Some(ext) = self.shared.external() {
-            let ext = ext.lock().unwrap_or_else(|e| e.into_inner());
-            let connected = self
-                .control
-                .ready_id()
-                .map(|id| ext.connection_status_of(compat_port_id(id.index())))
-                .unwrap_or_default();
-            if let Ok(ports) = ext.find_external_ports(
-                None,
-                opposite_direction(self.direction).into(),
-                engine::PortDataType::Midi,
-            ) {
-                for p in ports {
-                    out.insert(p.name.clone(), *connected.get(&p.name).unwrap_or(&false));
-                }
-            }
-        }
-        out
+        self.shared.connections_state(
+            &self.name,
+            self.direction,
+            PortDataType::Midi,
+            self.control.ready_id().map(ObjectIdentity::index),
+        )
     }
     pub fn connect_external_port(&self, name: &str) {
+        self.shared.invalidate_connection_cache();
         if let Some(j) = self.shared.jack() {
             jack_connect_port(&j, &self.name, self.direction, name);
             return;
@@ -3456,6 +3557,7 @@ impl MidiPort {
         }
     }
     pub fn disconnect_external_port(&self, name: &str) {
+        self.shared.invalidate_connection_cache();
         if let Some(j) = self.shared.jack() {
             jack_disconnect_port(&j, &self.name, self.direction, name);
             return;
@@ -3500,6 +3602,8 @@ pub struct DecoupledMidiPort {
     queue: Arc<Mutex<Vec<MidiEvent>>>,
     external: Arc<Mutex<engine::DummyExternalConnections>>,
     jack: Option<Arc<Mutex<JackBackend>>>,
+    connections_cache: Arc<Mutex<HashMap<String, bool>>>,
+    connections_last_refresh: Mutex<Instant>,
 }
 impl DecoupledMidiPort {
     pub fn new_driver_port(
@@ -3517,6 +3621,8 @@ impl DecoupledMidiPort {
             queue,
             external: driver.external(),
             jack: driver.jack(),
+            connections_cache: Arc::new(Mutex::new(HashMap::new())),
+            connections_last_refresh: Mutex::new(Instant::now() - Duration::from_secs(1)),
         })
     }
     pub fn maybe_next_message(&self) -> Option<MidiEvent> {
@@ -3532,17 +3638,48 @@ impl DecoupledMidiPort {
             .push(MidiEvent::new(0, msg.to_vec()))
     }
     pub fn get_connections_state(&self) -> HashMap<String, bool> {
-        if let Some(j) = self.jack.as_ref() {
-            return jack_connections_state(j, &self.name, self.direction, PortDataType::Midi);
-        }
-        self.external
+        let cached = self
+            .connections_cache
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .connection_status_of(self.port_id)
-            .into_iter()
-            .collect()
+            .clone();
+        let mut last = self
+            .connections_last_refresh
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if last.elapsed() < Duration::from_millis(100) {
+            return cached;
+        }
+        *last = Instant::now();
+        let (cache, jack, external, name, direction, port_id) = (
+            Arc::clone(&self.connections_cache),
+            self.jack.clone(),
+            Arc::clone(&self.external),
+            self.name.clone(),
+            self.direction,
+            self.port_id,
+        );
+        thread::spawn(move || {
+            let state = if let Some(jack) = jack {
+                let jack = jack.lock().unwrap_or_else(|e| e.into_inner());
+                jack_connections_state_locked(&jack, &name, direction, PortDataType::Midi)
+            } else {
+                external
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .connection_status_of(port_id)
+                    .into_iter()
+                    .collect()
+            };
+            *cache.lock().unwrap_or_else(|e| e.into_inner()) = state;
+        });
+        cached
     }
     pub fn connect_external_port(&self, name: &str) {
+        *self
+            .connections_last_refresh
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Instant::now() - Duration::from_secs(1);
         if let Some(j) = self.jack.as_ref() {
             jack_connect_port(j, &self.name, self.direction, name);
             return;
@@ -3554,6 +3691,10 @@ impl DecoupledMidiPort {
             .connect(self.port_id, name);
     }
     pub fn disconnect_external_port(&self, name: &str) {
+        *self
+            .connections_last_refresh
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Instant::now() - Duration::from_secs(1);
         if let Some(j) = self.jack.as_ref() {
             jack_disconnect_port(j, &self.name, self.direction, name);
             return;
@@ -4093,6 +4234,32 @@ mod tests {
     }
 
     #[test]
+    fn connection_polling_uses_the_cache_without_engine_commands() {
+        let sess = BackendSession::new().expect("session");
+        let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
+        let audio = AudioPort::new_driver_port(
+            &sess,
+            &driver,
+            "cached-connections",
+            &PortDirection::Output,
+            0,
+        )
+        .expect("port");
+        let engine = sess.shared.take_engine().expect("parked engine");
+        let commands_before = engine.stats().commands_applied.load(Ordering::Relaxed);
+        let started = Instant::now();
+        for _ in 0..1_000 {
+            let _ = audio.get_connections_state();
+        }
+        assert!(started.elapsed() < Duration::from_millis(100));
+        assert_eq!(
+            engine.stats().commands_applied.load(Ordering::Relaxed),
+            commands_before
+        );
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
     fn channel_data_dirty_is_acknowledged_on_the_frontend() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -4453,14 +4620,25 @@ mod tests {
         sess.wait_for_command(app_port.creation_sequence(), engine::DEFAULT_WAIT_TIMEOUT)
             .expect("app port creation");
         let target = playback_ports[0].name.clone();
-        let before = app_port.get_connections_state();
-        assert_eq!(before.get(&target), Some(&false));
+        let wait_for_connection = |expected: bool| {
+            let deadline = Instant::now() + Duration::from_secs(1);
+            loop {
+                let state = app_port.get_connections_state();
+                if state.get(&target) == Some(&expected) {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "connection cache did not refresh"
+                );
+                thread::sleep(Duration::from_millis(10));
+            }
+        };
+        wait_for_connection(false);
         app_port.connect_external_port(&target);
-        let connected = app_port.get_connections_state();
-        assert_eq!(connected.get(&target), Some(&true));
+        wait_for_connection(true);
         app_port.disconnect_external_port(&target);
-        let after = app_port.get_connections_state();
-        assert_eq!(after.get(&target), Some(&false));
+        wait_for_connection(false);
 
         let state = driver.get_state();
         assert_eq!(state.active, 1);

@@ -201,14 +201,14 @@
 
 ### Phase 5 — External connection publication and frontend polling
 
-- [ ] Trace the complete frontend polling fan-out for loops, channels, ports, driver state, and external connections.
-- [ ] Remove `None => get_state()` and equivalent blocking fallback behavior from all periodic update paths.
-- [ ] Define a nonblocking pending-state policy for GUI objects before the first mirrored state is available (retain defaults/last value, expose readiness, or skip the update without querying).
-- [ ] Replace per-port blocking Qt/backend connection polling with one asynchronous bulk enumeration per backend/driver at a controlled cadence.
-- [ ] Cache connection enumeration on the owning backend thread and publish immutable/cached results for immediate frontend reads.
-- [ ] Ensure periodic frontend reads never synchronously enter JACK, the audio thread, or a backend thread through `BLOCKING_QUEUED_CONNECTION`.
-- [ ] Keep user-triggered connect/disconnect behavior separate from periodic polling and refresh the cache after mutations.
-- [ ] Add query counters/timing assertions and integration tests showing polling cost does not grow by one audio cycle per object or with configured buffer size.
+- [x] Trace the complete frontend polling fan-out for loops, channels, ports, driver state, and external connections.
+- [x] Remove `None => get_state()` and equivalent blocking fallback behavior from all periodic update paths.
+- [x] Define a nonblocking pending-state policy for GUI objects before the first mirrored state is available (retain defaults/last value, expose readiness, or skip the update without querying).
+- [x] Replace per-port blocking Qt/backend connection polling with one asynchronous bulk enumeration per backend/driver at a controlled cadence.
+- [x] Cache connection enumeration on the owning backend thread and publish immutable/cached results for immediate frontend reads.
+- [x] Ensure periodic frontend reads never synchronously enter JACK, the audio thread, or a backend thread through `BLOCKING_QUEUED_CONNECTION`.
+- [x] Keep user-triggered connect/disconnect behavior separate from periodic polling and refresh the cache after mutations.
+- [x] Add query counters/timing assertions and integration tests showing polling cost does not grow by one audio cycle per object or with configured buffer size.
 
 ### Phase 6 — FX chains and remaining creation sites
 

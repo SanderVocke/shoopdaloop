@@ -155,6 +155,12 @@ pub mod ffi {
             n_ringbuffer_samples: i32,
         );
 
+        #[qinvokable]
+        pub fn backend_connections_state_changed(
+            self: Pin<&mut PortGui>,
+            state: QMap_QString_QVariant,
+        );
+
         #[qsignal]
         pub unsafe fn backend_changed(self: Pin<&mut PortGui>, backend: *mut QObject);
 
@@ -391,6 +397,7 @@ pub struct PortGuiRust {
     pub is_midi: bool,
     pub maybe_fx_chain: *mut QObject,
     pub fx_chain_port_idx: i32,
+    pub connections_state: QMap_QString_QVariant,
 
     // Other
     pub backend_port_wrapper: cxx::UniquePtr<QSharedPointer_QObject>,
@@ -422,6 +429,7 @@ impl Default for PortGuiRust {
             is_midi: false,
             maybe_fx_chain: std::ptr::null_mut(),
             fx_chain_port_idx: 0,
+            connections_state: QMap_QString_QVariant::default(),
         }
     }
 }

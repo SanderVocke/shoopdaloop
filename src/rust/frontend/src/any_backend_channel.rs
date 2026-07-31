@@ -168,10 +168,7 @@ impl AnyBackendChannel {
             AnyBackendChannel::Audio(c) => c.poll_state().map(AnyBackendChannelState::from),
             AnyBackendChannel::Midi(c) => c.poll_state().map(AnyBackendChannelState::from),
         };
-        match polled {
-            Some(state) => Ok(state),
-            None => self.get_state(),
-        }
+        polled.ok_or_else(|| anyhow::anyhow!("channel state is pending"))
     }
 
     pub fn set_mode(&self, mode: ChannelMode) {

@@ -99,6 +99,13 @@ impl PortBackend {
                 );
             }
 
+            // Connection enumeration is refreshed asynchronously in the backend cache;
+            // this only forwards the latest immutable result to the GUI thread.
+            let connections = self.as_mut().get_connections_state();
+            unsafe {
+                self.as_mut().connections_state_changed(connections);
+            }
+
             // Update individual field signals
             unsafe {
                 if new_state.name != prev_state.name {

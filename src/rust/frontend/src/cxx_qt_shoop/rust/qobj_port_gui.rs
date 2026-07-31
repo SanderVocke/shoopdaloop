@@ -1,3 +1,4 @@
+use crate::cxx_qt_shoop::fn_qvariantmap_helpers;
 use crate::cxx_qt_shoop::rust::qobj_port_backend_bridge::ffi::{
     make_raw_port_backend, port_backend_qobject_from_ptr,
 };
@@ -9,7 +10,7 @@ use common::logging::macros::{
 };
 use cxx_qt::CxxQtType;
 use cxx_qt::QObject;
-use cxx_qt_lib::{QList, QMap};
+use cxx_qt_lib::QList;
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::invokable::invoke;
@@ -245,6 +246,13 @@ impl PortGui {
                         "backend_state_changed(bool,QString,bool,bool,float,float,float,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)",
                         connection_types::QUEUED_CONNECTION
                     );
+                    connect_or_report(
+                        backend_ref,
+                        "connections_state_changed(QMap<QString,QVariant>)",
+                        self_ref,
+                        "backend_connections_state_changed(QMap<QString,QVariant>)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
                 }
 
                 let wrapper = QSharedPointer_QObject::from_ptr_delete_later(backend_port_qobj)
@@ -391,48 +399,28 @@ impl PortGui {
         }
     }
 
+    pub fn backend_connections_state_changed(
+        mut self: Pin<&mut PortGui>,
+        state: QMap_QString_QVariant,
+    ) {
+        self.as_mut().rust_mut().connections_state = state;
+    }
+
     pub fn get_connections_state(self: Pin<&mut PortGui>) -> QMap_QString_QVariant {
-        match || -> Result<QMap_QString_QVariant, anyhow::Error> {
-            let backend_wrapper = if self.backend_port_wrapper.is_null() {
-                return Ok(QMap::default());
-            } else {
-                self.backend_port_wrapper.data()?
-            };
-            unsafe {
-                Ok(invokable::invoke(
-                    &mut *backend_wrapper,
-                    "get_connections_state()",
-                    invokable::BLOCKING_QUEUED_CONNECTION,
-                    &(),
-                )?)
-            }
-        }() {
-            Ok(data) => data,
-            Err(e) => {
-                debug!(self, "Could not get connections state: {e}");
-                QMap::default()
-            }
-        }
+        self.connections_state.clone()
     }
 
     pub fn get_connected_external_ports(self: Pin<&mut PortGui>) -> QList_QString {
-        match || -> Result<QList_QString, anyhow::Error> {
-            let backend_wrapper = self.backend_port_wrapper.data()?;
-            unsafe {
-                Ok(invokable::invoke(
-                    &mut *backend_wrapper,
-                    "get_connected_external_ports()",
-                    invokable::BLOCKING_QUEUED_CONNECTION,
-                    &(),
-                )?)
-            }
-        }() {
-            Ok(data) => data,
-            Err(e) => {
-                error!(self, "Could not query connected ports: {e}");
-                QList::default()
+        let mut result = QList::default();
+        for (name, connected) in
+            fn_qvariantmap_helpers::try_as_hashmap_convertto::<bool>(&self.connections_state)
+                .unwrap_or_default()
+        {
+            if connected {
+                result.append(QString::from(&name));
             }
         }
+        result
     }
 
     pub fn try_make_connections(self: Pin<&mut PortGui>, connections: QList_QString) {
