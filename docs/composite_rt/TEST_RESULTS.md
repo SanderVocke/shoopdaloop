@@ -12,7 +12,7 @@ This is a live Stage 6 record. It is intentionally **not** a final green gate: r
 | Complete engine suite with `app_backend` | Project compiles; full run blocked/unreliable on unavailable JACK/ALSA services |
 | Application composite adapter tests | 3 passing with dummy driver |
 | Frontend Rust build/unit tests | Warning-denied check passes; 32 library unit tests pass |
-| QML self-tests | Focused nested save/load 6/6; last full run 188/189 with sole CPAL device/port environment failure |
+| QML self-tests | Focused composite 25/25 and nested save/load 6/6; last full run 188/189 with sole CPAL device/port environment failure |
 | Full workspace suite | Core/no-default engine suite passes; application-feature workspace gate pending |
 | Callback benchmark/cost gate | Composite-only measurement recorded; whole callback gate pending |
 
@@ -140,7 +140,7 @@ QT_QPA_PLATFORM=offscreen target/debug/shoopdaloop_dev.sh --self-test \
   --test-files-pattern "$(pwd)/src/qml/test/tst_Session_save_load.qml"
 ```
 
-Results: composite behavior **24/24 passed** and session save/load **6/6 passed**. The composite run includes all synchronized/unsynchronized, fixed/default-length, stop/play grab outcomes after primitive children were moved to one bounded engine adoption transaction. The retained frontend schedule traversal is limited to off-RT grab preparation; no compatibility slot advances composite runtime state.
+Latest results: composite behavior **25/25 passed** and session save/load **6/6 passed**. The composite run includes all synchronized/unsynchronized, fixed/default-length, stop/play grab outcomes plus nested-composite flattening into one bounded engine adoption transaction. The retained frontend schedule traversal is limited to off-RT grab preparation; no compatibility slot advances composite runtime state.
 
 The full `app_backend` suite was also attempted after dependency discovery. It is not recorded as green: tests requiring real JACK/ALSA services failed or teardown became unreliable on this host. That is a runtime-service/environment blocker, not evidence for completion.
 

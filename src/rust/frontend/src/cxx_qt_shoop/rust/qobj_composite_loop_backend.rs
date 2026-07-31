@@ -15,7 +15,6 @@ use cxx_qt::QObject;
 use cxx_qt_lib_shoop::{
     connect::connect_or_report,
     connection_types,
-    invokable::invoke,
     qobject::{self, AsQObject, FromQObject},
     qvariant_helpers::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
 };
@@ -59,26 +58,10 @@ macro_rules! error {
     };
 }
 
-fn get_loop_iid(l: &*mut QObject) -> String {
-    if l.is_null() {
-        return "null".to_string();
-    }
-    unsafe {
-        match qobject::qobject_property_string(&**l, "instance_identifier") {
-            Ok(iid) => {
-                return iid.to_string();
-            }
-            Err(e) => {
-                raw_error!("Could not get instance identifier: {e}");
-                return "error-unknown".to_string();
-            }
-        }
-    }
-}
-
 type Transition = (*mut QObject, LoopMode);
 type Transitions = Vec<Transition>;
 type TransitionsPerIteration = BTreeMap<i32, Transitions>;
+type PreparedAdoptions = BTreeMap<LoopIdentity, (LoopIdentity, AudioRingbufferAdoption)>;
 
 unsafe fn engine_identity(obj: *mut QObject) -> Option<LoopIdentity> {
     if obj.is_null() {
@@ -387,6 +370,86 @@ impl CompositeLoopBackend {
         }
     }
 
+    fn collect_ringbuffer_adoptions(
+        mut self: Pin<&mut Self>,
+        adoptions: &mut PreparedAdoptions,
+        visited: &mut BTreeSet<LoopIdentity>,
+    ) -> Result<(), anyhow::Error> {
+        let source = self
+            .engine_loop
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("engine composite is not initialized"))?
+            .identity();
+        if !visited.insert(source) || self.sync_source.is_null() || self.sync_length <= 0 {
+            return Ok(());
+        }
+
+        let n_cycles = self.n_cycles;
+        let transitions = self
+            .as_mut()
+            .list_transitions(LoopMode::Recording, 0, n_cycles);
+        let mut starts = HashMap::<*mut QObject, i32>::new();
+        let mut ends = HashMap::<*mut QObject, i32>::new();
+        for (&iteration, transitions) in &transitions {
+            for &(object, mode) in transitions {
+                if mode == LoopMode::Recording {
+                    starts
+                        .entry(object)
+                        .and_modify(|start| *start = min(*start, iteration))
+                        .or_insert(iteration);
+                } else if starts.get(&object).is_some_and(|start| iteration > *start) {
+                    ends.entry(object)
+                        .and_modify(|end| *end = min(*end, iteration))
+                        .or_insert(iteration);
+                }
+            }
+        }
+
+        let mut nested = Vec::new();
+        for (object, start) in starts {
+            let Some(identity) = (unsafe { engine_identity(object) }) else {
+                continue;
+            };
+            let end = ends.get(&object).copied().unwrap_or(self.n_cycles);
+            let mut reverse_start = self.n_cycles - start;
+            if !self.sync_mode_active {
+                reverse_start = max(reverse_start - 1, 0);
+            }
+            if identity.kind == LoopTargetKind::Basic {
+                let request = AudioRingbufferAdoption {
+                    loop_idx: identity.slot as usize,
+                    reverse_start_cycle: Some(reverse_start),
+                    cycles_length: Some(max(end - start, 1)),
+                    go_to_cycle: Some(0),
+                    go_to_mode: LoopMode::Unknown,
+                };
+                adoptions
+                    .entry(identity)
+                    .and_modify(|existing| {
+                        if source < existing.0 {
+                            *existing = (source, request);
+                        }
+                    })
+                    .or_insert((source, request));
+            } else {
+                nested.push((identity, object));
+            }
+        }
+        nested.sort_unstable_by_key(|(identity, _)| *identity);
+        for (_, object) in nested {
+            let dependency = unsafe { qobject_to_composite_loop_backend_ptr(object) };
+            if dependency.is_null() {
+                return Err(anyhow::anyhow!("nested composite target is unavailable"));
+            }
+            unsafe {
+                Pin::new_unchecked(&mut *dependency)
+                    .collect_ringbuffer_adoptions(adoptions, visited)?;
+            }
+        }
+        self.as_mut().rust_mut().engine_schedule_dirty = true;
+        Ok(())
+    }
+
     pub fn adopt_ringbuffers(
         mut self: Pin<&mut Self>,
         _maybe_reverse_start_cycle: QVariant,
@@ -399,140 +462,25 @@ impl CompositeLoopBackend {
                 warn!(self, "ignoring grab - undefined / empty sync loop");
                 return Ok(());
             }
-            let maybe_go_to_cycle_opt: Option<i32> = maybe_go_to_cycle.value::<i32>();
+            let maybe_go_to_cycle: Option<i32> = maybe_go_to_cycle.value::<i32>();
             let go_to_mode = LoopMode::try_from(go_to_mode)?;
-
-            trace!(self, "adopt ringbuffers and go to cycle {maybe_go_to_cycle_opt:?}, go to mode {go_to_mode:?}");
-
-            // Proceed through the schedule up to the point we want to go by
-            // calling our trigger function with a callback to just register
-            // the made transitions.
-            let n_cycles = self.n_cycles;
-            let transitions = self
-                .as_mut()
-                .list_transitions(LoopMode::Recording, 0, n_cycles);
-
-            trace!(self, "virtual transition list: {transitions:?}");
-
-            // Find the first recording range for each loop.
-            type IterationPerLoop = HashMap<*mut QObject, i32>;
-            let mut loop_recording_starts = IterationPerLoop::default();
-            let mut loop_recording_ends = IterationPerLoop::default();
-            for (iteration, transitions) in transitions.iter() {
-                for (loop_obj, mode) in transitions.iter() {
-                    if *mode == LoopMode::Recording {
-                        // Store only the first recording bounds.
-                        if !loop_recording_starts.contains_key(loop_obj) {
-                            loop_recording_starts.insert(*loop_obj, *iteration);
-                        } else {
-                            // TODO: Avoid panic call
-                            let v = loop_recording_starts
-                                .get_mut(loop_obj)
-                                .expect("Guarded by contains_key");
-                            *v = min(*v, *iteration);
-                        }
-                    }
-                }
-            }
-            for (iteration, transitions) in transitions.iter() {
-                for (loop_obj, mode) in transitions.iter() {
-                    if *mode != LoopMode::Recording && loop_recording_starts.contains_key(loop_obj)
-                    {
-                        if let Some(start) = loop_recording_starts.get(loop_obj) {
-                            if iteration > start {
-                                if !loop_recording_ends.contains_key(loop_obj) {
-                                    loop_recording_ends.insert(*loop_obj, *iteration);
-                                } else {
-                                    // TODO: Avoid panic call
-                                    let v = loop_recording_ends
-                                        .get_mut(loop_obj)
-                                        .expect("Guarded by contains_key");
-                                    *v = min(*v, *iteration);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Determine the grabs to make on our sub-loops.
-            #[derive(Debug)]
-            struct ToGrab {
-                loop_obj: *mut QObject,
-                reverse_start: i32,
-                n_cycles: i32,
-            }
-            let mut to_grab: Vec<ToGrab> = Vec::new();
-            for (loop_obj, start_it) in loop_recording_starts.iter() {
-                let end_it = *loop_recording_ends
-                    .get(loop_obj)
-                    .unwrap_or(&self.n_cycles.clone());
-                let n_cycles = max(end_it - start_it, 1);
-                let mut reverse_start = self.n_cycles - start_it;
-                if !self.sync_mode_active {
-                    // With sync mode inactive, we want to end up inside the
-                    // last cycle with our grab.
-                    reverse_start = max(reverse_start - 1, 0);
-                }
-                let g = ToGrab {
-                    loop_obj: *loop_obj,
-                    reverse_start,
-                    n_cycles,
-                };
-                let iid = get_loop_iid(loop_obj);
-                trace!(self, "will grab {iid}: {g:?}");
-                to_grab.push(g);
-            }
-
-            let mut adoptions = Vec::new();
-            let mut nested_adoptions = Vec::new();
-            for g in &to_grab {
-                let Some(identity) = (unsafe { engine_identity(g.loop_obj) }) else {
-                    continue;
-                };
-                if identity.kind == LoopTargetKind::Basic {
-                    adoptions.push(AudioRingbufferAdoption {
-                        loop_idx: identity.slot as usize,
-                        reverse_start_cycle: Some(g.reverse_start),
-                        cycles_length: Some(g.n_cycles),
-                        go_to_cycle: Some(0),
-                        go_to_mode: LoopMode::Unknown,
-                    });
-                } else {
-                    nested_adoptions.push(g);
-                }
-            }
-            if !adoptions.is_empty() {
+            let mut prepared = PreparedAdoptions::new();
+            self.as_mut()
+                .collect_ringbuffer_adoptions(&mut prepared, &mut BTreeSet::new())?;
+            if !prepared.is_empty() {
+                let requests = prepared.into_values().map(|(_, request)| request).collect();
                 self.backend_session
                     .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("engine session is not initialized"))?
-                    .adopt_audio_ringbuffers(adoptions)?;
+                    .adopt_audio_ringbuffers(requests)?;
             }
-            for g in nested_adoptions {
-                unsafe {
-                    invoke(
-                        &mut *g.loop_obj,
-                        "adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)",
-                        connection_types::DIRECT_CONNECTION,
-                        &(
-                            QVariant::from(&g.reverse_start),
-                            QVariant::from(&g.n_cycles),
-                            QVariant::from(&0),
-                            LoopMode::Unknown as isize as i32,
-                        ),
-                    )?;
-                }
-            }
-
-            self.as_mut().rust_mut().engine_schedule_dirty = true;
             if go_to_mode != LoopMode::Unknown {
                 self.as_mut().transition(
                     go_to_mode as isize as i32,
                     -1,
-                    maybe_go_to_cycle_opt.unwrap_or(-1),
+                    maybe_go_to_cycle.unwrap_or(-1),
                 );
             }
-
             Ok(())
         }() {
             error!(self, "Could not adopt ringbuffers: {e}");
@@ -751,10 +699,15 @@ impl CompositeLoopBackend {
                     trace!(self, "schedule: {converted_schedule:?}");
                     if converted_schedule.data.is_empty() && self.engine_schedule_installed {
                         if let Some(engine_loop) = self.engine_loop.as_ref().cloned() {
-                            if let Err(error) =
-                                engine_loop.transition_immediate(LoopMode::Stopped, 0)
+                            if engine_loop
+                                .get_state()
+                                .is_ok_and(|state| state.mode != LoopMode::Stopped)
                             {
-                                error!(self, "engine composite clear failed: {error}");
+                                if let Err(error) =
+                                    engine_loop.transition_immediate(LoopMode::Stopped, 0)
+                                {
+                                    error!(self, "engine composite clear failed: {error}");
+                                }
                             }
                         }
                     }
@@ -901,8 +854,13 @@ impl CompositeLoopBackend {
     pub fn clear(mut self: Pin<&mut CompositeLoopBackend>) {
         if self.engine_schedule_installed {
             if let Some(engine_loop) = self.engine_loop.as_ref().cloned() {
-                if let Err(error) = engine_loop.transition_immediate(LoopMode::Stopped, 0) {
-                    error!(self, "engine composite clear failed: {error}");
+                if engine_loop
+                    .get_state()
+                    .is_ok_and(|state| state.mode != LoopMode::Stopped)
+                {
+                    if let Err(error) = engine_loop.transition_immediate(LoopMode::Stopped, 0) {
+                        error!(self, "engine composite clear failed: {error}");
+                    }
                 }
             }
         }
