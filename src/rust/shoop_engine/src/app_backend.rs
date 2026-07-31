@@ -77,11 +77,38 @@ impl ObjectIdentity for LoopId {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AudioChannelId(usize);
+
+impl ObjectIdentity for AudioChannelId {
+    fn from_index(index: usize) -> Self {
+        Self(index)
+    }
+
+    fn index(self) -> usize {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct MidiChannelId(usize);
+
+impl ObjectIdentity for MidiChannelId {
+    fn from_index(index: usize) -> Self {
+        Self(index)
+    }
+
+    fn index(self) -> usize {
+        self.0
+    }
+}
+
 struct ObjectControl<I, M> {
     session_id: u64,
     lifecycle: std::sync::atomic::AtomicU8,
     engine_index: std::sync::atomic::AtomicUsize,
     creation_sequence: AtomicU64,
+    acknowledged_data_sequence: AtomicU64,
     error: Mutex<Option<String>>,
     mirror: Arc<M>,
     identity: PhantomData<I>,
@@ -94,6 +121,7 @@ impl<I: ObjectIdentity, M: Default> ObjectControl<I, M> {
             lifecycle: std::sync::atomic::AtomicU8::new(ObjectLifecycle::Pending as u8),
             engine_index: std::sync::atomic::AtomicUsize::new(INVALID_OBJECT_INDEX),
             creation_sequence: AtomicU64::new(CommandSequence::NONE.get()),
+            acknowledged_data_sequence: AtomicU64::new(0),
             error: Mutex::new(None),
             mirror: Arc::new(M::default()),
             identity: PhantomData,
@@ -135,6 +163,15 @@ impl<I: ObjectIdentity, M> ObjectControl<I, M> {
 
     fn creation_sequence(&self) -> CommandSequence {
         CommandSequence::from_raw(self.creation_sequence.load(Ordering::Acquire))
+    }
+
+    fn acknowledged_data_sequence(&self) -> u64 {
+        self.acknowledged_data_sequence.load(Ordering::Relaxed)
+    }
+
+    fn acknowledge_data_sequence(&self, sequence: u64) {
+        self.acknowledged_data_sequence
+            .store(sequence, Ordering::Relaxed);
     }
 
     fn error(&self) -> Option<String> {
@@ -2360,48 +2397,71 @@ impl Loop {
     }
 
     pub fn add_audio_channel(&self, mode: ChannelMode) -> Result<AudioChannel> {
-        let control = Arc::clone(&self.control);
-        let (session_idx, chan_idx, loop_idx) =
-            self.shared
-                .query_topology(move |s: &mut engine::Session| -> Result<_> {
-                    let loop_idx = control
-                        .ready_id()
-                        .ok_or_else(|| anyhow!("loop is not ready"))?
-                        .index();
-                    let session_idx = s.add_audio_channel(loop_idx, 64, mode.into())?;
-                    let chan_idx = s
-                        .loop_(loop_idx)
-                        .map_or(0, |l| l.n_audio_channels().saturating_sub(1));
-                    Ok((session_idx, chan_idx, loop_idx))
-                })??;
+        let control = Arc::new(ObjectControl::<
+            AudioChannelId,
+            engine::AudioChannelStateMirror,
+        >::pending(self.shared.session_id));
+        control.mirror.enable_complex_data();
+        let control_for_command = Arc::downgrade(&control);
+        let parent = Arc::clone(&self.control);
+        let sequence = self.shared.send_topology(move |s: &mut engine::Session| {
+            let Some(control) = control_for_command.upgrade() else {
+                return;
+            };
+            let Some(loop_idx) = parent.ready_id().map(ObjectIdentity::index) else {
+                control.mark_failed("parent loop was not created");
+                return;
+            };
+            match s.add_audio_channel_with_state(
+                loop_idx,
+                64,
+                mode.into(),
+                Arc::clone(&control.mirror),
+            ) {
+                Ok(idx) => control.mark_ready(AudioChannelId(idx)),
+                Err(error) => control.mark_failed(error.to_string()),
+            }
+        })?;
+        control.set_creation_sequence(sequence);
         Ok(AudioChannel {
             shared: self.shared.clone(),
-            loop_idx,
-            chan_idx,
-            session_idx,
+            parent: Arc::clone(&self.control),
+            control,
         })
     }
 
     pub fn add_midi_channel(&self, mode: ChannelMode) -> Result<MidiChannel> {
-        let control = Arc::clone(&self.control);
-        let (session_idx, chan_idx, loop_idx) =
-            self.shared
-                .query_topology(move |s: &mut engine::Session| -> Result<_> {
-                    let loop_idx = control
-                        .ready_id()
-                        .ok_or_else(|| anyhow!("loop is not ready"))?
-                        .index();
-                    let session_idx = s.add_midi_channel(loop_idx, 1024, mode.into())?;
-                    let chan_idx = s
-                        .loop_(loop_idx)
-                        .map_or(0, |l| l.n_midi_channels().saturating_sub(1));
-                    Ok((session_idx, chan_idx, loop_idx))
-                })??;
+        let control = Arc::new(
+            ObjectControl::<MidiChannelId, engine::MidiChannelStateMirror>::pending(
+                self.shared.session_id,
+            ),
+        );
+        control.mirror.enable_complex_data();
+        let control_for_command = Arc::downgrade(&control);
+        let parent = Arc::clone(&self.control);
+        let sequence = self.shared.send_topology(move |s: &mut engine::Session| {
+            let Some(control) = control_for_command.upgrade() else {
+                return;
+            };
+            let Some(loop_idx) = parent.ready_id().map(ObjectIdentity::index) else {
+                control.mark_failed("parent loop was not created");
+                return;
+            };
+            match s.add_midi_channel_with_state(
+                loop_idx,
+                1024,
+                mode.into(),
+                Arc::clone(&control.mirror),
+            ) {
+                Ok(idx) => control.mark_ready(MidiChannelId(idx)),
+                Err(error) => control.mark_failed(error.to_string()),
+            }
+        })?;
+        control.set_creation_sequence(sequence);
         Ok(MidiChannel {
             shared: self.shared.clone(),
-            loop_idx,
-            chan_idx,
-            session_idx,
+            parent: Arc::clone(&self.control),
+            control,
         })
     }
 
@@ -2551,256 +2611,278 @@ pub fn transition_multiple_loops(
 #[derive(Clone)]
 pub struct AudioChannel {
     shared: Arc<SharedSession>,
-    loop_idx: usize,
-    chan_idx: usize,
-    session_idx: usize,
+    parent: Arc<ObjectControl<LoopId, engine::LoopStateMirror>>,
+    control: Arc<ObjectControl<AudioChannelId, engine::AudioChannelStateMirror>>,
 }
 pub type AudioChannelState = engine::AudioChannelState;
 impl AudioChannel {
-    /// Queues a mutation of this channel.
-    ///
-    /// One helper for every setter, as before -- what changed is that the closure now runs on
-    /// the audio thread at a cycle boundary instead of under a lock. `FnMut` rather than
-    /// `FnOnce` because the command is called through its box and the box has to survive to be
-    /// sent back for freeing; it is still called exactly once.
+    pub fn lifecycle(&self) -> ObjectLifecycle {
+        self.control.lifecycle()
+    }
+
+    pub fn creation_sequence(&self) -> CommandSequence {
+        self.control.creation_sequence()
+    }
+
     fn with_mut(
         &self,
         mut f: impl FnMut(&mut engine::AudioChannel) + Send + 'static,
     ) -> std::result::Result<CommandSequence, SendError> {
-        let (li, ci) = (self.loop_idx, self.chan_idx);
+        let control = Arc::clone(&self.control);
         self.shared.send_control(move |s: &mut engine::Session| {
-            if let Some(c) = s.loop_mut(li).and_then(|l| l.audio_channel_mut(ci)) {
-                f(c)
+            if let Some(idx) = control.ready_id().map(ObjectIdentity::index) {
+                if let Some(channel) = s.audio_channel_mut(idx) {
+                    f(channel);
+                }
             }
         })
     }
+
     pub fn connect_input(
         &self,
         port: &AudioPort,
     ) -> std::result::Result<CommandSequence, SendError> {
-        let (ci, pi) = (self.session_idx, port.idx);
+        let control = Arc::clone(&self.control);
+        let port_idx = port.idx;
         self.shared.send_topology(move |s: &mut engine::Session| {
-            let _ = s.connect_channel_input(ci, pi);
+            if let Some(channel_idx) = control.ready_id().map(ObjectIdentity::index) {
+                let _ = s.connect_channel_input(channel_idx, port_idx);
+            }
         })
     }
+
     pub fn connect_output(
         &self,
         port: &AudioPort,
     ) -> std::result::Result<CommandSequence, SendError> {
-        let (ci, pi) = (self.session_idx, port.idx);
+        let control = Arc::clone(&self.control);
+        let port_idx = port.idx;
         self.shared.send_topology(move |s: &mut engine::Session| {
-            let _ = s.connect_channel_output(ci, pi);
+            if let Some(channel_idx) = control.ready_id().map(ObjectIdentity::index) {
+                let _ = s.connect_channel_output(channel_idx, port_idx);
+            }
         })
     }
-    pub fn disconnect(&self, _port: &AudioPort) {
-        let _ = self.session_idx;
-    }
-    pub fn load_data(&self, data: &[f32]) -> std::result::Result<CommandSequence, SendError> {
-        // Copied here, on this thread, and moved into the command: the audio thread copies
-        // out of the vector but never allocates one.
-        let owned = data.to_vec();
-        self.with_mut(move |c| c.load_data(&owned))
-    }
-    /// Reads the channel's samples back. Blocking; not for a frame-rate poll.
-    pub fn get_data(&self) -> Vec<f32> {
-        let (li, ci) = (self.loop_idx, self.chan_idx);
-        self.shared
-            .query_control(move |s: &mut engine::Session| {
-                s.loop_(li)
-                    .and_then(|l| l.audio_channel(ci))
-                    .map(|c| c.data())
-            })
-            .ok()
-            .flatten()
-            .unwrap_or_default()
+
+    pub fn disconnect(&self, port: &AudioPort) -> std::result::Result<CommandSequence, SendError> {
+        let control = Arc::clone(&self.control);
+        let port_idx = port.idx;
+        self.shared.send_topology(move |s: &mut engine::Session| {
+            if let Some(channel_idx) = control.ready_id().map(ObjectIdentity::index) {
+                let _ = s.disconnect_channel_port(channel_idx, port_idx);
+            }
+        })
     }
 
-    /// This channel's state as of the last published cycle, without blocking.
+    pub fn load_data(&self, data: &[f32]) -> std::result::Result<CommandSequence, SendError> {
+        let owned = data.to_vec();
+        self.with_mut(move |channel| channel.load_data(&owned))
+    }
+
+    pub fn get_data(&self) -> Vec<f32> {
+        self.control.mirror.data()
+    }
+
     pub fn poll_state(&self) -> Option<AudioChannelState> {
-        let session_idx = self.session_idx;
-        let state = self
-            .shared
-            .poll(|snap| snap.audio_channels.get(session_idx).copied())?;
-        if state.is_some() {
-            let (loop_idx, chan_idx) = (self.loop_idx, self.chan_idx);
-            if let Err(error) = self.shared.send_control(move |s: &mut engine::Session| {
-                if let Some(c) = s
-                    .loop_mut(loop_idx)
-                    .and_then(|l| l.audio_channel_mut(chan_idx))
-                {
-                    c.reset_output_peak();
-                }
-            }) {
-                log::error!("could not queue audio channel peak reset: {error}");
-            }
-        }
-        state
+        (self.lifecycle() == ObjectLifecycle::Ready).then(|| {
+            self.control
+                .mirror
+                .read(self.control.acknowledged_data_sequence())
+        })
     }
 
     pub fn get_state(&self) -> Result<AudioChannelState> {
-        let (li, ci) = (self.loop_idx, self.chan_idx);
-        self.shared
-            .query_control(move |s: &mut engine::Session| {
-                s.loop_mut(li)
-                    .and_then(|l| l.audio_channel_mut(ci))
-                    .map(|c| {
-                        let output_peak = c.output_peak();
-                        c.reset_output_peak();
-                        AudioChannelState {
-                            mode: c.mode(),
-                            gain: c.gain(),
-                            output_peak,
-                            length: c.length() as u32,
-                            start_offset: c.start_offset(),
-                            played_back_sample: c.played_back_sample(),
-                            n_preplay_samples: c.pre_play_samples(),
-                            data_dirty: c.data_seq_nr() != 0,
-                        }
-                    })
-            })?
-            .ok_or_else(|| anyhow!("no channel"))
+        match self.lifecycle() {
+            ObjectLifecycle::Ready => Ok(self
+                .control
+                .mirror
+                .read(self.control.acknowledged_data_sequence())),
+            ObjectLifecycle::Pending => Err(anyhow!("audio channel is pending creation")),
+            ObjectLifecycle::Failed => Err(anyhow!(
+                "audio channel creation failed: {}",
+                self.control
+                    .error()
+                    .unwrap_or_else(|| "unknown error".to_string())
+            )),
+            ObjectLifecycle::Closed => Err(anyhow!("audio channel is closed")),
+        }
     }
+
     pub fn set_gain(&self, gain: f32) -> std::result::Result<CommandSequence, SendError> {
-        self.with_mut(move |c| c.set_gain(gain))
+        self.with_mut(move |channel| channel.set_gain(gain))
     }
+
     pub fn set_mode(&self, mode: ChannelMode) -> std::result::Result<CommandSequence, SendError> {
-        self.with_mut(move |c| c.set_mode(mode.into()))
+        self.with_mut(move |channel| channel.set_mode(mode.into()))
     }
+
     pub fn set_start_offset(&self, offset: i32) -> std::result::Result<CommandSequence, SendError> {
-        self.with_mut(move |c| c.set_start_offset(offset))
+        self.with_mut(move |channel| channel.set_start_offset(offset))
     }
+
     pub fn set_n_preplay_samples(&self, n: u32) -> std::result::Result<CommandSequence, SendError> {
-        self.with_mut(move |c| c.set_pre_play_samples(n))
+        self.with_mut(move |channel| channel.set_pre_play_samples(n))
     }
-    pub fn clear_data_dirty(&self) {}
+
+    pub fn clear_data_dirty(&self) {
+        self.control
+            .acknowledge_data_sequence(self.control.mirror.data_sequence());
+    }
+
     pub fn clear(&self, length: u32) -> std::result::Result<CommandSequence, SendError> {
-        self.with_mut(move |c| c.clear(length as usize))
+        self.with_mut(move |channel| channel.clear(length as usize))
     }
 }
 
 #[derive(Clone)]
 pub struct MidiChannel {
     shared: Arc<SharedSession>,
-    loop_idx: usize,
-    chan_idx: usize,
-    session_idx: usize,
+    parent: Arc<ObjectControl<LoopId, engine::LoopStateMirror>>,
+    control: Arc<ObjectControl<MidiChannelId, engine::MidiChannelStateMirror>>,
 }
 pub type MidiChannelState = engine::MidiChannelState;
 impl MidiChannel {
+    pub fn lifecycle(&self) -> ObjectLifecycle {
+        self.control.lifecycle()
+    }
+
+    pub fn creation_sequence(&self) -> CommandSequence {
+        self.control.creation_sequence()
+    }
+
     fn with_mut(
         &self,
         mut f: impl FnMut(&mut engine::MidiChannel) + Send + 'static,
     ) -> std::result::Result<CommandSequence, SendError> {
-        let (li, ci) = (self.loop_idx, self.chan_idx);
+        let control = Arc::clone(&self.control);
         self.shared.send_control(move |s: &mut engine::Session| {
-            if let Some(c) = s.loop_mut(li).and_then(|l| l.midi_channel_mut(ci)) {
-                f(c)
+            if let Some(idx) = control.ready_id().map(ObjectIdentity::index) {
+                if let Some(channel) = s.midi_channel_mut(idx) {
+                    f(channel);
+                }
             }
         })
     }
-    /// Reads the channel's events back. Blocking; not for a frame-rate poll.
+
     pub fn get_all_midi_data(&self) -> Vec<MidiEvent> {
-        let (li, ci) = (self.loop_idx, self.chan_idx);
-        self.shared
-            .query_control(move |s: &mut engine::Session| {
-                s.loop_(li).and_then(|l| l.midi_channel(ci)).map(|c| {
-                    let mut out: Vec<MidiEvent> = c
-                        .recording_start_state_messages()
-                        .into_iter()
-                        .map(|data| MidiEvent { time: -1, data })
-                        .collect();
-                    out.extend(c.contents().iter().map(|e| MidiEvent {
-                        time: e.time as i32,
-                        data: e.data().to_vec(),
-                    }));
-                    out
-                })
-            })
-            .ok()
-            .flatten()
-            .unwrap_or_default()
+        self.control.mirror.data()
     }
+
     pub fn load_all_midi_data(
         &self,
         msgs: &[MidiEvent],
     ) -> std::result::Result<CommandSequence, SendError> {
         let state: Vec<Vec<u8>> = msgs
             .iter()
-            .filter(|m| m.time < 0)
-            .map(|m| m.data.clone())
+            .filter(|message| message.time < 0)
+            .map(|message| message.data.clone())
             .collect();
-        let elems: Vec<_> = msgs
+        let elements: Vec<_> = msgs
             .iter()
-            .filter(|m| m.time >= 0)
-            .filter_map(|m| engine::midi_storage::MidiStorageElem::new(m.time as u32, &m.data))
+            .filter(|message| message.time >= 0)
+            .filter_map(|message| {
+                engine::midi_storage::MidiStorageElem::new(message.time as u32, &message.data)
+            })
             .collect();
-        let len = elems.iter().map(|e| e.time).max().unwrap_or(0);
-        self.with_mut(move |c| {
-            c.set_contents(&elems, len, (!state.is_empty()).then_some(state.as_slice()))
+        let length = elements
+            .iter()
+            .map(|element| element.time)
+            .max()
+            .unwrap_or(0);
+        self.with_mut(move |channel| {
+            channel.set_contents(
+                &elements,
+                length,
+                (!state.is_empty()).then_some(state.as_slice()),
+            )
         })
     }
+
     pub fn connect_input(
         &self,
         port: &MidiPort,
     ) -> std::result::Result<CommandSequence, SendError> {
-        let (ci, pi) = (self.session_idx, port.idx);
+        let control = Arc::clone(&self.control);
+        let port_idx = port.idx;
         self.shared.send_topology(move |s: &mut engine::Session| {
-            let _ = s.connect_channel_input(ci, pi);
+            if let Some(channel_idx) = control.ready_id().map(ObjectIdentity::index) {
+                let _ = s.connect_channel_input(channel_idx, port_idx);
+            }
         })
     }
+
     pub fn connect_output(
         &self,
         port: &MidiPort,
     ) -> std::result::Result<CommandSequence, SendError> {
-        let (ci, pi) = (self.session_idx, port.idx);
+        let control = Arc::clone(&self.control);
+        let port_idx = port.idx;
         self.shared.send_topology(move |s: &mut engine::Session| {
-            let _ = s.connect_channel_output(ci, pi);
+            if let Some(channel_idx) = control.ready_id().map(ObjectIdentity::index) {
+                let _ = s.connect_channel_output(channel_idx, port_idx);
+            }
         })
     }
-    pub fn disconnect(&self, _port: &MidiPort) {
-        let _ = self.session_idx;
+
+    pub fn disconnect(&self, port: &MidiPort) -> std::result::Result<CommandSequence, SendError> {
+        let control = Arc::clone(&self.control);
+        let port_idx = port.idx;
+        self.shared.send_topology(move |s: &mut engine::Session| {
+            if let Some(channel_idx) = control.ready_id().map(ObjectIdentity::index) {
+                let _ = s.disconnect_channel_port(channel_idx, port_idx);
+            }
+        })
     }
 
-    /// This channel's state as of the last published cycle, without blocking.
     pub fn poll_state(&self) -> Option<MidiChannelState> {
-        let ci = self.session_idx;
-        self.shared
-            .poll(|snap| snap.midi_channels.get(ci).copied())?
+        (self.lifecycle() == ObjectLifecycle::Ready).then(|| {
+            self.control
+                .mirror
+                .read(self.control.acknowledged_data_sequence())
+        })
     }
 
     pub fn get_state(&self) -> Result<MidiChannelState> {
-        let (li, ci) = (self.loop_idx, self.chan_idx);
-        self.shared
-            .query_control(move |s: &mut engine::Session| {
-                s.loop_(li)
-                    .and_then(|l| l.midi_channel(ci))
-                    .map(|c| MidiChannelState {
-                        mode: c.mode(),
-                        n_events_triggered: c.n_events_triggered(),
-                        n_notes_active: c.n_notes_active(),
-                        length: c.length(),
-                        start_offset: c.start_offset(),
-                        played_back_sample: c.played_back_sample(),
-                        n_preplay_samples: c.pre_play_samples(),
-                        data_dirty: c.data_seq_nr() != 0,
-                    })
-            })?
-            .ok_or_else(|| anyhow!("no channel"))
+        match self.lifecycle() {
+            ObjectLifecycle::Ready => Ok(self
+                .control
+                .mirror
+                .read(self.control.acknowledged_data_sequence())),
+            ObjectLifecycle::Pending => Err(anyhow!("MIDI channel is pending creation")),
+            ObjectLifecycle::Failed => Err(anyhow!(
+                "MIDI channel creation failed: {}",
+                self.control
+                    .error()
+                    .unwrap_or_else(|| "unknown error".to_string())
+            )),
+            ObjectLifecycle::Closed => Err(anyhow!("MIDI channel is closed")),
+        }
     }
+
     pub fn set_mode(&self, mode: ChannelMode) -> std::result::Result<CommandSequence, SendError> {
-        self.with_mut(move |c| c.set_mode(mode.into()))
+        self.with_mut(move |channel| channel.set_mode(mode.into()))
     }
+
     pub fn set_start_offset(&self, offset: i32) -> std::result::Result<CommandSequence, SendError> {
-        self.with_mut(move |c| c.set_start_offset(offset))
+        self.with_mut(move |channel| channel.set_start_offset(offset))
     }
+
     pub fn set_n_preplay_samples(&self, n: u32) -> std::result::Result<CommandSequence, SendError> {
-        self.with_mut(move |c| c.set_pre_play_samples(n))
+        self.with_mut(move |channel| channel.set_pre_play_samples(n))
     }
-    pub fn clear_data_dirty(&self) {}
+
+    pub fn clear_data_dirty(&self) {
+        self.control
+            .acknowledge_data_sequence(self.control.mirror.data_sequence());
+    }
+
     pub fn clear(&self) -> std::result::Result<CommandSequence, SendError> {
-        self.with_mut(move |c| c.clear())
+        self.with_mut(move |channel| channel.clear())
     }
-    pub fn reset_state_tracking(&self) {}
+
+    pub fn reset_state_tracking(&self) -> std::result::Result<CommandSequence, SendError> {
+        self.with_mut(move |channel| channel.reset_state_tracking())
+    }
 }
 
 #[derive(Clone)]
@@ -3672,6 +3754,123 @@ mod tests {
         assert_eq!(loop_.lifecycle(), ObjectLifecycle::Ready);
         assert_eq!(loop_.get_state().expect("mirrored state").length, 64);
         assert_eq!(engine.session().n_loops(), 1);
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
+    fn pending_channels_resolve_after_their_parent_and_apply_followups() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let loop_ = sess.create_loop().expect("loop");
+        let audio = loop_
+            .add_audio_channel(ChannelMode::Direct)
+            .expect("audio channel");
+        let midi = loop_
+            .add_midi_channel(ChannelMode::Direct)
+            .expect("MIDI channel");
+        assert_eq!(audio.lifecycle(), ObjectLifecycle::Pending);
+        assert_eq!(midi.lifecycle(), ObjectLifecycle::Pending);
+        audio.set_gain(0.25).expect("queue gain");
+        audio.load_data(&[1.0, 2.0]).expect("queue audio data");
+        midi.load_all_midi_data(&[MidiEvent {
+            time: 3,
+            data: vec![0x90, 60, 100],
+        }])
+        .expect("queue MIDI data");
+
+        engine.pump();
+        assert_eq!(audio.lifecycle(), ObjectLifecycle::Ready);
+        assert_eq!(midi.lifecycle(), ObjectLifecycle::Ready);
+        assert_eq!(audio.get_state().expect("audio state").gain, 0.25);
+        assert_eq!(audio.get_data(), vec![1.0, 2.0]);
+        assert_eq!(midi.get_all_midi_data().len(), 1);
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
+    fn channel_creation_cancels_on_drop_and_fails_with_its_parent() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let loop_ = sess.create_loop().expect("loop");
+        let dropped = loop_
+            .add_audio_channel(ChannelMode::Direct)
+            .expect("dropped channel");
+        drop(dropped);
+
+        let failed_parent_control = Arc::new(
+            ObjectControl::<LoopId, engine::LoopStateMirror>::pending(sess.shared.session_id),
+        );
+        failed_parent_control.mark_failed("parent failed");
+        let failed_parent = Loop {
+            shared: Arc::clone(&sess.shared),
+            control: failed_parent_control,
+        };
+        let failed_channel = failed_parent
+            .add_midi_channel(ChannelMode::Direct)
+            .expect("pending failed channel");
+
+        engine.pump();
+        assert_eq!(engine.session().n_loops(), 1);
+        assert_eq!(engine.session().n_channels(), 0);
+        assert_eq!(failed_channel.lifecycle(), ObjectLifecycle::Failed);
+        assert!(failed_channel.get_state().is_err());
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
+    fn pending_channel_commands_survive_a_saturated_queue() {
+        let sess = BackendSession::create_with_capacity(1).expect("session");
+        let loop_ = sess.create_loop().expect("loop");
+        let channel = loop_
+            .add_audio_channel(ChannelMode::Direct)
+            .expect("channel after retry");
+        channel.set_gain(0.5).expect("gain after retry");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        engine.pump();
+
+        assert_eq!(channel.lifecycle(), ObjectLifecycle::Ready);
+        assert_eq!(channel.get_state().expect("channel state").gain, 0.5);
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
+    fn channel_data_dirty_is_acknowledged_on_the_frontend() {
+        let sess = BackendSession::new().expect("session");
+        let loop_ = sess.create_loop().expect("loop");
+        let audio = loop_
+            .add_audio_channel(ChannelMode::Direct)
+            .expect("audio channel");
+        let sequence = audio.load_data(&[1.0, 2.0]).expect("queue data");
+        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .expect("data command");
+
+        assert!(audio.get_state().expect("dirty state").data_dirty);
+        audio.clear_data_dirty();
+        assert!(!audio.get_state().expect("acknowledged state").data_dirty);
+        let sequence = audio.clear(0).expect("queue clear");
+        sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .expect("clear command");
+        assert!(audio.get_state().expect("dirty again").data_dirty);
+    }
+
+    #[test]
+    fn channel_state_reads_do_not_queue_engine_queries() {
+        let sess = BackendSession::new().expect("session");
+        let loop_ = sess.create_loop().expect("loop");
+        let channel = loop_
+            .add_audio_channel(ChannelMode::Direct)
+            .expect("channel");
+        let engine = sess.shared.take_engine().expect("parked engine");
+        let commands_before = engine.stats().commands_applied.load(Ordering::Relaxed);
+        for _ in 0..100 {
+            assert!(channel.get_state().is_ok());
+            assert!(channel.poll_state().is_some());
+            let _ = channel.get_data();
+        }
+        assert_eq!(
+            engine.stats().commands_applied.load(Ordering::Relaxed),
+            commands_before
+        );
         sess.shared.return_engine(engine);
     }
 

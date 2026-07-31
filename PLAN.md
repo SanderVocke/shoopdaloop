@@ -161,20 +161,20 @@
 
 ### Phase 3 — Audio and MIDI channel migration
 
-- [ ] Add audio-channel and MIDI-channel control blocks and mirrors, including parent loop control plus resolved session/local identities needed by engine operations.
-- [ ] Convert `Loop::add_audio_channel` and `Loop::add_midi_channel` to return pending stable handles without waiting for indices.
-- [ ] Make channel creation commands resolve a pending parent loop in FIFO order and publish `Failed` if parent/channel creation fails.
-- [ ] Publish all ordinary audio-channel state atomically: mode, gain, output peak, length, start offset, played-back sample, preplay count, and data sequence.
-- [ ] Publish all ordinary MIDI-channel state atomically: mode, triggered-event count, active-note count, length, start offset, played-back sample, preplay count, and data sequence.
-- [ ] Implement float atomics through bit representation or another justified lock-free representation.
-- [ ] Implement output peak as process-side atomic max plus frontend `swap(0)` consumption; remove peak-reset commands.
-- [ ] Implement event-count consumption with atomic accumulation plus frontend `swap(0)` where the API represents events since the previous poll. Keep gauges such as active notes as ordinary loads.
-- [ ] Implement data-dirty using a process-published monotonically changing sequence and frontend-side acknowledgement; make clear/reset tracking methods functional without an engine query.
-- [ ] Convert channel connect/disconnect, settings, clear, and data-load operations to queued commands that resolve pending channel/port controls.
-- [ ] Implement existing disconnect methods if needed for the command API migration; otherwise document their no-op correctness gap in `REMAINING_ISSUES.md` with exact status.
-- [ ] Introduce the temporary mutex-backed audio and MIDI content stores needed by `get_data` and `get_all_midi_data`; keep copying behavior simple and document all process-thread locking/allocation consequences.
-- [ ] Remove snapshot reads and periodic query fallback for channels.
-- [ ] Test pending-parent creation, immediate post-creation configuration, mirror state, peak/event consumption, data-dirty acknowledgement, mutex-backed data round trips, queue saturation, and no-query polling.
+- [x] Add audio-channel and MIDI-channel control blocks and mirrors, including parent loop control plus resolved session/local identities needed by engine operations.
+- [x] Convert `Loop::add_audio_channel` and `Loop::add_midi_channel` to return pending stable handles without waiting for indices.
+- [x] Make channel creation commands resolve a pending parent loop in FIFO order and publish `Failed` if parent/channel creation fails.
+- [x] Publish all ordinary audio-channel state atomically: mode, gain, output peak, length, start offset, played-back sample, preplay count, and data sequence.
+- [x] Publish all ordinary MIDI-channel state atomically: mode, triggered-event count, active-note count, length, start offset, played-back sample, preplay count, and data sequence.
+- [x] Implement float atomics through bit representation or another justified lock-free representation.
+- [x] Implement output peak as process-side atomic max plus frontend `swap(0)` consumption; remove peak-reset commands.
+- [x] Implement event-count consumption with atomic accumulation plus frontend `swap(0)` where the API represents events since the previous poll. Keep gauges such as active notes as ordinary loads.
+- [x] Implement data-dirty using a process-published monotonically changing sequence and frontend-side acknowledgement; make clear/reset tracking methods functional without an engine query.
+- [x] Convert channel connect/disconnect, settings, clear, and data-load operations to queued commands that resolve pending channel controls (and current resolved port identities; pending port controls follow in Phase 4).
+- [x] Implement existing disconnect methods if needed for the command API migration; otherwise document their no-op correctness gap in `REMAINING_ISSUES.md` with exact status.
+- [x] Introduce the temporary mutex-backed audio and MIDI content stores needed by `get_data` and `get_all_midi_data`; keep copying behavior simple and document all process-thread locking/allocation consequences.
+- [x] Remove snapshot reads and periodic query fallback for channels.
+- [x] Test pending-parent creation, immediate post-creation configuration, mirror state, peak/event consumption, data-dirty acknowledgement, mutex-backed data round trips, queue saturation, and no-query polling.
 
 ### Phase 4 — Audio/MIDI ports, driver registration, and JACK pending controls
 

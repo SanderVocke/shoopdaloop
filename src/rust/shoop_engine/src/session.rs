@@ -29,7 +29,7 @@ use crate::internal_audio_port::InternalAudioPort;
 use crate::loop_mode::LoopMode;
 use crate::midi_state::MAX_DIFF_MESSAGES;
 use crate::midi_storage::MidiStorageElem;
-use crate::state_mirror::LoopStateMirror;
+use crate::state_mirror::{AudioChannelStateMirror, LoopStateMirror, MidiChannelStateMirror};
 
 use thiserror::Error;
 
@@ -453,6 +453,50 @@ impl Session {
         self.channels.get(idx)
     }
 
+    pub fn audio_channel(&self, idx: usize) -> Option<&crate::audio_channel::AudioChannel> {
+        let mapping = self.channels.get(idx)?;
+        (mapping.kind == ChannelKind::Audio)
+            .then(|| {
+                self.loops
+                    .get(mapping.loop_idx)?
+                    .audio_channel(mapping.channel_idx)
+            })
+            .flatten()
+    }
+
+    pub fn audio_channel_mut(
+        &mut self,
+        idx: usize,
+    ) -> Option<&mut crate::audio_channel::AudioChannel> {
+        let mapping = self.channels.get(idx)?;
+        let (loop_idx, channel_idx) = (mapping.loop_idx, mapping.channel_idx);
+        (mapping.kind == ChannelKind::Audio)
+            .then(|| self.loops.get_mut(loop_idx)?.audio_channel_mut(channel_idx))
+            .flatten()
+    }
+
+    pub fn midi_channel(&self, idx: usize) -> Option<&crate::midi_channel::MidiChannel> {
+        let mapping = self.channels.get(idx)?;
+        (mapping.kind == ChannelKind::Midi)
+            .then(|| {
+                self.loops
+                    .get(mapping.loop_idx)?
+                    .midi_channel(mapping.channel_idx)
+            })
+            .flatten()
+    }
+
+    pub fn midi_channel_mut(
+        &mut self,
+        idx: usize,
+    ) -> Option<&mut crate::midi_channel::MidiChannel> {
+        let mapping = self.channels.get(idx)?;
+        let (loop_idx, channel_idx) = (mapping.loop_idx, mapping.channel_idx);
+        (mapping.kind == ChannelKind::Midi)
+            .then(|| self.loops.get_mut(loop_idx)?.midi_channel_mut(channel_idx))
+            .flatten()
+    }
+
     pub fn port(&self, idx: usize) -> Option<&Port> {
         self.ports.get(idx)
     }
@@ -502,11 +546,26 @@ impl Session {
         chunk_size: usize,
         mode: ChannelMode,
     ) -> Result<usize, SessionError> {
+        self.add_audio_channel_with_state(
+            loop_idx,
+            chunk_size,
+            mode,
+            Arc::new(AudioChannelStateMirror::default()),
+        )
+    }
+
+    pub fn add_audio_channel_with_state(
+        &mut self,
+        loop_idx: usize,
+        chunk_size: usize,
+        mode: ChannelMode,
+        state: Arc<AudioChannelStateMirror>,
+    ) -> Result<usize, SessionError> {
         let l = self
             .loops
             .get_mut(loop_idx)
             .ok_or(SessionError::NoSuchLoop(loop_idx))?;
-        let channel_idx = l.add_audio_channel(chunk_size, mode);
+        let channel_idx = l.add_audio_channel_with_state(chunk_size, mode, state);
         self.channels.push(ChannelMapping {
             loop_idx,
             kind: ChannelKind::Audio,
@@ -525,11 +584,26 @@ impl Session {
         capacity_elems: usize,
         mode: ChannelMode,
     ) -> Result<usize, SessionError> {
+        self.add_midi_channel_with_state(
+            loop_idx,
+            capacity_elems,
+            mode,
+            Arc::new(MidiChannelStateMirror::default()),
+        )
+    }
+
+    pub fn add_midi_channel_with_state(
+        &mut self,
+        loop_idx: usize,
+        capacity_elems: usize,
+        mode: ChannelMode,
+        state: Arc<MidiChannelStateMirror>,
+    ) -> Result<usize, SessionError> {
         let l = self
             .loops
             .get_mut(loop_idx)
             .ok_or(SessionError::NoSuchLoop(loop_idx))?;
-        let channel_idx = l.add_midi_channel(capacity_elems, mode);
+        let channel_idx = l.add_midi_channel_with_state(capacity_elems, mode, state);
         self.channels.push(ChannelMapping {
             loop_idx,
             kind: ChannelKind::Midi,
@@ -564,6 +638,30 @@ impl Session {
         }
         self.channels[channel].output_port = Some(port);
         self.note_graph_change();
+        Ok(())
+    }
+
+    pub fn disconnect_channel_port(
+        &mut self,
+        channel: usize,
+        port: usize,
+    ) -> Result<(), SessionError> {
+        let mapping = self
+            .channels
+            .get_mut(channel)
+            .ok_or(SessionError::NoSuchChannel(channel))?;
+        let mut changed = false;
+        if mapping.input_port == Some(port) {
+            mapping.input_port = None;
+            changed = true;
+        }
+        if mapping.output_port == Some(port) {
+            mapping.output_port = None;
+            changed = true;
+        }
+        if changed {
+            self.note_graph_change();
+        }
         Ok(())
     }
 
@@ -1835,7 +1933,10 @@ impl Session {
             let out = &mut self.out_scratch[..n_frames];
             if let Some(l) = self.loops.get_mut(m.loop_idx) {
                 if let Some(ch) = l.audio_channel_mut(m.channel_idx) {
-                    ch.finalize_process(&self.scratch[..n_frames], out);
+                    crate::realtime_allow_alloc_once!(
+                        "AudioChannel temporary mirrored data publication",
+                        || ch.finalize_process(&self.scratch[..n_frames], out)
+                    );
                 }
             }
         }

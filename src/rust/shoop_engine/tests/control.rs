@@ -106,7 +106,9 @@ fn an_audio_channel_round_trips_its_data() {
     let_assert!(Ok(c) = l.add_audio_channel(ChannelMode::Direct));
 
     let data: Vec<f32> = (0..32).map(|i| i as f32 / 32.0).collect();
-    c.load_data(&data).expect("queue data");
+    let sequence = c.load_data(&data).expect("queue data");
+    b.wait_for_command(sequence, std::time::Duration::from_secs(1))
+        .expect("data command");
 
     check!(c.get_data() == data);
 
@@ -124,7 +126,9 @@ fn audio_channel_settings_take_effect() {
     c.set_gain(0.25).expect("queue gain");
     c.set_mode(ChannelMode::Wet).expect("queue mode");
     c.set_start_offset(7).expect("queue offset");
-    c.set_n_preplay_samples(9).expect("queue preplay");
+    let sequence = c.set_n_preplay_samples(9).expect("queue preplay");
+    b.wait_for_command(sequence, std::time::Duration::from_secs(1))
+        .expect("settings commands");
 
     let_assert!(Ok(state) = c.get_state());
     check!(state.gain == 0.25);
@@ -140,7 +144,9 @@ fn a_midi_channel_reports_its_state() {
     let_assert!(Ok(c) = l.add_midi_channel(ChannelMode::Direct));
 
     c.set_start_offset(3).expect("queue offset");
-    c.set_n_preplay_samples(5).expect("queue preplay");
+    let sequence = c.set_n_preplay_samples(5).expect("queue preplay");
+    b.wait_for_command(sequence, std::time::Duration::from_secs(1))
+        .expect("settings commands");
 
     let_assert!(Ok(state) = c.get_state());
     check!(state.mode == ChannelMode::Direct);

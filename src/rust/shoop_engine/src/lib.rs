@@ -94,4 +94,4 @@ pub use state::{
     AudioChannelState, AudioPortSnapshot, AudioPortState, LoopState, MidiChannelState,
     MidiPortSnapshot, MidiPortState,
 };
-pub use state_mirror::LoopStateMirror;
+pub use state_mirror::{AudioChannelStateMirror, LoopStateMirror, MidiChannelStateMirror};

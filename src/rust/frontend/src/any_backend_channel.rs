@@ -41,7 +41,7 @@ impl AnyBackendChannel {
     pub fn audio_disconnect(&self, port: &AudioPort) {
         match self {
             AnyBackendChannel::Audio(audio_channel) => {
-                audio_channel.disconnect(port);
+                report_queue_result(audio_channel.disconnect(port));
             }
             AnyBackendChannel::Midi(_) => {
                 error!("Attempted to disconnect MIDI channel from audio port, ignored.");
@@ -131,7 +131,7 @@ impl AnyBackendChannel {
     pub fn midi_disconnect(&self, port: &MidiPort) {
         match self {
             AnyBackendChannel::Midi(midi_channel) => {
-                midi_channel.disconnect(port);
+                report_queue_result(midi_channel.disconnect(port));
             }
             AnyBackendChannel::Audio(_) => {
                 error!("Attempted to disconnect audio channel from MIDI port, ignored.");
@@ -142,7 +142,7 @@ impl AnyBackendChannel {
     pub fn midi_reset_state_tracking(&self) {
         match self {
             AnyBackendChannel::Midi(midi_channel) => {
-                midi_channel.reset_state_tracking();
+                report_queue_result(midi_channel.reset_state_tracking());
             }
             AnyBackendChannel::Audio(_) => {
                 error!("Attempted to reset MIDI state tracking on audio channel, ignored.");

@@ -13,21 +13,19 @@ This document tracks work intentionally deferred from the per-object state mirro
 
 ### Audio channel full-data retrieval
 
-- **Status:** Temporary implementation planned.
+- **Status:** Temporary implementation.
 - **API:** `AudioChannel::get_data` and save/display-data callers.
-- **Current behavior:** A blocking engine query calls `AudioChannel::data` and constructs/copies the complete contiguous sample vector while executing the process-thread command.
-- **Migration behavior:** Replace the audio-cycle rendezvous with shared mutex-protected channel content and copy while holding/using that temporary store.
-- **Impact:** The mutex can contend with real-time processing, and full recordings are copied in one operation. Latency and memory bandwidth scale with recording length.
+- **Current behavior:** Application-backed channels opt into a shared `Mutex<Vec<f32>>` mirror. Recording writes into it from `AudioChannel::finalize_process`, and mutations replace it. `get_data` clones it immediately without an engine command or cycle wait.
+- **Impact:** The process thread can contend on the mutex. Mirror growth may allocate in `Session::channel_finalize` (explicitly covered by `realtime_allow_alloc_once!`), and every getter copies the full recording while holding the lock. The ordinary non-application core path leaves complex mirroring disabled so established allocation-free processing remains intact.
 - **Why deferred:** Efficient immutable chunk snapshots, ownership swaps, or RCU storage require a separate storage redesign.
 - **Future direction:** Publish an `Arc` snapshot of immutable/chunked sample storage and perform contiguous copying/serialization on a worker thread.
 
 ### MIDI channel full-data retrieval
 
-- **Status:** Temporary implementation planned.
+- **Status:** Temporary implementation.
 - **API:** `MidiChannel::get_all_midi_data` and MIDI file save/display callers.
-- **Current behavior:** A blocking engine query allocates the result vector, clones start-state messages, and allocates/clones each event payload on the process thread.
-- **Migration behavior:** Use shared mutex-protected MIDI content so the getter no longer waits for a cycle.
-- **Impact:** Process-side locking remains possible and every read still allocates/copies all events and byte payloads.
+- **Current behavior:** Application-backed channels opt into a shared `Mutex<Vec<MidiEvent>>` mirror. Content changes rebuild a complete vector, clone each payload on the process thread, and replace the mirrored value. The getter immediately clones the mirrored vector without an engine command.
+- **Impact:** Process-side locking and allocation remain possible, and every publication/read copies all events and byte payloads. Application processing relies on the existing exceptional command/process allocation permission; ordinary core channels leave complex mirroring disabled.
 - **Why deferred:** A zero/low-copy immutable MIDI snapshot format is outside the current task.
 - **Future direction:** Publish immutable storage generations and materialize API/file formats on a worker.
 
@@ -213,28 +211,6 @@ This document tracks work intentionally deferred from the per-object state mirro
 - **Impact:** Diagnostic/testing behavior promised by the API is absent.
 - **Future direction:** Explicit diagnostic commands guarded for test/development builds.
 
-### Audio and MIDI channel disconnect
-
-- **Status:** Open correctness gap; may be implemented as part of topology command migration.
-- **Current behavior:** Both methods are no-ops.
-- **Impact:** Frontend disconnection requests leave routing intact.
-- **Future direction:** Add session routing removal commands resolving channel and port controls.
-
-### Data-dirty acknowledgement
-
-- **Status:** Open correctness gap; required by this migration.
-- **API:** audio/MIDI `clear_data_dirty`.
-- **Current behavior:** No-op.
-- **Impact:** Once dirty, current state cannot express frontend acknowledgement correctly.
-- **Migration direction:** Process-published data sequence plus frontend-side acknowledged sequence.
-
-### MIDI state-tracking reset
-
-- **Status:** Open correctness gap.
-- **API:** `MidiChannel::reset_state_tracking`.
-- **Current behavior:** No-op despite frontend call sites.
-- **Impact:** State reconstruction after load/reset may retain unintended MIDI state.
-- **Future direction:** Queue a real channel reset command, or clarify whether only frontend acknowledgement is intended.
 
 ### FX chain output capabilities
 
@@ -256,9 +232,9 @@ This document tracks work intentionally deferred from the per-object state mirro
 
 ### `StateSnapshot` and `queued_at_cycle`
 
-- **Status:** Loop polling migrated; channel and port migration plus final removal remain.
-- **Current behavior:** Engine still publishes reusable bulk vectors each cycle for channels/ports and now-redundant loop entries. `SharedSession::poll` rejects snapshots not newer than the globally most recently queued mutation, forcing channel/port query fallbacks.
-- **Impact:** One object's mutation/reset invalidates polling for every object; snapshot maintenance duplicates eventual per-object mirrors.
+- **Status:** Loop and channel polling migrated; port migration plus final removal remain.
+- **Current behavior:** Engine still publishes reusable bulk vectors each cycle for ports and now-redundant loop/channel entries. `SharedSession::poll` can still reject snapshots not newer than the globally most recently queued mutation for remaining port consumers.
+- **Impact:** One object's mutation/reset can still invalidate polling for remaining snapshot consumers; snapshot maintenance duplicates the loop/channel mirrors.
 - **Future direction:** Remove object snapshot publication and global trust tracking. Keep only unrelated engine stats atomics and any independently justified immutable publication.
 
 ## Test/runtime stability
