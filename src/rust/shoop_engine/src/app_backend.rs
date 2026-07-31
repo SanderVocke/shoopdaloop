@@ -1390,6 +1390,11 @@ impl BackendSession {
         *self.shared.cpal.lock().unwrap_or_else(|e| e.into_inner()) = driver.cpal();
         Ok(())
     }
+    pub fn poll_composite_trace(&self) -> Option<Vec<engine::BoundaryTraceEntry>> {
+        self.shared
+            .poll(|snapshot| snapshot.composite_trace.clone())
+    }
+
     pub fn get_state(&self) -> BackendSessionState {
         BackendSessionState {
             audio_driver: std::ptr::null_mut(),

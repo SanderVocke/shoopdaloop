@@ -51,6 +51,8 @@ Any loop slot in **ShoopDaLoop** can be used as a **composite loop**. This is **
 * **sequences** and **songs**;
 * **pre-scripted** recording and looping.
 
+Composite timelines share the engine's audio sample clock with their child loops. This keeps nested and coincident actions independent of GUI load and frontend refresh timing after configuration acceptance.
+
 For more information, see :ref:`Composite Loops <composite_loops>`.
 
 Effects / Synthesis

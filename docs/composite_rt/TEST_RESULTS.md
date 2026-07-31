@@ -64,6 +64,18 @@ Latest equivalent targeted run after the control/timeline changes:
 
 Covered surfaces include pure semantics, exact samples, callback partition independence, nested propagation, fixed callback command cutoff, timestamp rejection, monotonic plan versions, stale topology, stopped/pending/running activation, same-topology candidate supersession, changed-topology callback-boundary restart, non-RT rejected/displaced/retired ownership, immediate seek validation, countdown transitions, play-after-record acceptance, fault reset, bounded snapshots, and trace observation after polling stalls.
 
+The timing/timeline/control binaries were also run **10 consecutive times** with four test threads:
+
+```sh
+for i in $(seq 1 10); do
+  cargo test -q -p shoop_engine --features app_backend \
+    --test composite_timing --test composite_timeline --test composite_control \
+    -- --test-threads=4
+done
+```
+
+All repetitions passed: 10 timing + 12 timeline + 16 control tests per repetition, with no ordering-dependent failure.
+
 ### Allocation guard
 
 ```sh
@@ -109,7 +121,7 @@ RUSTFLAGS="-D warnings" cargo check -p frontend
 cargo test -p frontend --lib
 ```
 
-Latest focused application run: 3 tests passed, covering creation/configuration/control/state/removal, transactional transitive-cycle rejection, transitive dependent removal, idempotent removal, and primitive self-sync normalization. Warning-denied frontend compilation passed; 32 frontend Rust unit tests passed. The frontend test link required explicit Nix `LIBRARY_PATH` entries for OpenGL and libsndfile.
+Latest focused application run: 3 tests passed, covering creation/configuration/control/state/removal, transactional transitive-cycle and entry-capacity rejection, transitive dependent removal, idempotent removal, primitive self-sync normalization, and delayed observation. The delayed-observation case leaves the application control side unpolled while dummy audio advances, then confirms both accumulated cycle state and the retained engine transition trace. Warning-denied frontend compilation passed; 32 frontend Rust unit tests passed. The frontend test link required explicit Nix `LIBRARY_PATH` entries for OpenGL and libsndfile.
 
 The application and complete QML suite were then built and run offscreen:
 

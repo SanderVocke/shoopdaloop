@@ -290,7 +290,7 @@ For heavy operations such as ringbuffer adoption:
 ### Stage 5 exit gate
 
 - [x] Every row in `FEATURE_PARITY.md` identifies an engine test, QML test, justified manual-only item, or a documented combination of those.
-- [ ] No current user-visible composite feature is knowingly missing.
+- [x] No current user-visible composite feature is knowingly missing.
 
 ## Stage 6 — Automated verification and RT hardening
 
@@ -312,7 +312,7 @@ The implementing agent's runtime test obligation may be limited to `shoop_engine
 - [x] Add command-cutoff and plan-version race tests using controlled scheduling.
 - [x] Add RT allocation tests for normal, event-heavy, command, plan-swap, lifecycle, and failure paths exercised by composite loops.
 - [x] Add tests or structural assertions demonstrating that composite callback state access is lock-free.
-- [ ] Repeat timing-sensitive tests enough to expose accidental ordering dependencies.
+- [x] Repeat timing-sensitive tests enough to expose accidental ordering dependencies.
 
 ### Frontend/QML tests
 
@@ -329,8 +329,8 @@ The implementing agent's runtime test obligation may be limited to `shoop_engine
   ```
 
 - [x] Keep or migrate all existing composite-loop QML scenarios.
-- [ ] Add a test that stalls frontend/update processing while engine audio continues and verifies the composite transition trace afterward.
-- [ ] Add end-to-end tests for configuration acceptance errors and delayed state observation.
+- [x] Add a test that stalls frontend/update processing while engine audio continues and verifies the composite transition trace afterward.
+- [x] Add end-to-end tests for configuration acceptance errors and delayed state observation.
 - [x] Add save/load coverage for nested composites and scripts.
 
 ### Quality gates
@@ -376,7 +376,7 @@ User findings recorded in `MANUAL_VALIDATION.md` that reveal a violation of an i
 - [x] Ensure there is only one authoritative composite state machine.
 - [ ] Finalize RT command acceptance, plan activation, conflict handling, and observable state latency in `SEMANTICS.md`.
 - [ ] Finalize implemented processing, ownership, and frontend integration in `ARCHITECTURE.md`; finalize capacity limits and callback evidence in `RT_SAFETY.md`.
-- [ ] Update permanent developer architecture documentation and user documentation where behavior is newly defined, linking back to the canonical prototype artifacts where useful.
+- [x] Update permanent developer architecture documentation and user documentation where behavior is newly defined, linking back to the canonical prototype artifacts where useful.
 - [ ] Record final automated results in `TEST_RESULTS.md` and pending/completed user manual results in `MANUAL_VALIDATION.md`.
 - [ ] Review the immutable requirement checklist and attach evidence for every item.
 

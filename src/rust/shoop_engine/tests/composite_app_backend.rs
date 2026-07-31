@@ -115,6 +115,23 @@ fn application_backend_creates_configures_controls_and_observes_engine_composite
     );
     assert_eq!(composite.set_play_after_record(true).unwrap(), 1);
 
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let trace_deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    let trace = loop {
+        if let Some(trace) = session
+            .poll_composite_trace()
+            .filter(|trace| !trace.is_empty())
+        {
+            break trace;
+        }
+        assert!(
+            std::time::Instant::now() < trace_deadline,
+            "transition trace was not observable after polling stall"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    };
+    assert!(trace.iter().any(|entry| entry.target == child_identity));
+
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
     let state = loop {
         let state = composite.get_state().unwrap();
@@ -126,6 +143,7 @@ fn application_backend_creates_configures_controls_and_observes_engine_composite
     assert_eq!(state.identity, source);
     assert_eq!(state.active_plan_version, 1);
     assert_eq!(state.mode, LoopMode::Playing);
+    assert!(state.cycle_count > 0);
     assert_eq!(state.length, 4);
     assert!(state.play_after_record);
     assert_eq!(state.active_children.len(), 1);
@@ -204,6 +222,38 @@ fn application_composite_registry_rejects_a_cycle_transactionally() {
     assert!(error.to_string().contains("cycle"), "{error:#}");
     assert_eq!(first.get_state().unwrap().active_plan_version, 2);
     assert_eq!(second.get_state().unwrap().active_plan_version, 2);
+
+    let oversized = CompositePlanDescriptor {
+        source: first.identity(),
+        sync_length: 8,
+        timelines: vec![CompositeTimeline {
+            sections: vec![CompositeSection {
+                entries: (0..513)
+                    .map(|_| CompositeEntry {
+                        target: second.identity(),
+                        delay: 0,
+                        n_cycles: Some(1),
+                        mode: None,
+                    })
+                    .collect(),
+            }],
+        }],
+    };
+    let error = session
+        .configure_composite_loop(
+            &first,
+            oversized,
+            sync_identity,
+            vec![
+                metadata(first.identity(), 8),
+                metadata(second.identity(), 8),
+                metadata(sync_identity, 8),
+            ],
+            &[None],
+        )
+        .unwrap_err();
+    assert!(error.to_string().contains("too many entries"), "{error:#}");
+    assert_eq!(first.get_state().unwrap().active_plan_version, 2);
 
     first.transition_immediate(LoopMode::Playing, 0).unwrap();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
