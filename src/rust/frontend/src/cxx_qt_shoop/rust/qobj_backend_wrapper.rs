@@ -243,12 +243,14 @@ impl BackendWrapper {
             let engine_update_thread = crate::engine_update_thread::get_engine_update_thread();
             let engine_update_thread_obj = engine_update_thread.ref_qobject_ptr();
 
+            // BackendWrapper is a QQuickItem and must only be touched on the GUI thread.
+            // A direct connection races update delivery with QML object destruction.
             connect::connect_or_report(
                 &*engine_update_thread_obj,
                 "update()",
                 &*obj_qobject,
                 "update_on_other_thread()",
-                connection_types::DIRECT_CONNECTION,
+                connection_types::QUEUED_CONNECTION,
             );
         }
 

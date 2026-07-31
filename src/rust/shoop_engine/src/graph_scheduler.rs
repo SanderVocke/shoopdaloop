@@ -241,22 +241,32 @@ mod tests {
     }
 
     /// The property that makes this starvation-free: continued churn must not push the
-    /// deadline out. An idle-debounce would apply zero times here.
+    /// deadline out. An idle-debounce would replace the first deadline on every arm.
     #[test]
     fn continuous_churn_does_not_postpone_the_deadline() {
         let (n, apply) = counter();
-        let window = Duration::from_millis(10);
-        let s = GraphScheduler::start(window, apply);
+        let s = GraphScheduler::start(Duration::from_secs(30), apply);
 
-        let start = Instant::now();
-        while start.elapsed() < Duration::from_millis(120) {
+        s.arm();
+        let first_deadline = s
+            .shared
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .deadline;
+        for _ in 0..100 {
             s.arm();
-            thread::sleep(Duration::from_millis(1));
         }
-        thread::sleep(Duration::from_millis(40));
+        let deadline_after_churn = s
+            .shared
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .deadline;
 
-        // Bounded below: staleness never exceeded one window despite unbroken churn.
-        check!(n.load(Ordering::Relaxed) >= 2);
+        check!(deadline_after_churn == first_deadline);
+        s.flush_blocking();
+        check!(n.load(Ordering::Relaxed) == 1);
         drop(s);
     }
 

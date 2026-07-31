@@ -17,6 +17,7 @@ use cxx_qt_lib_shoop::{
     connect::connect_or_report,
     connection_types,
     qobject::{qobject_property_bool, qobject_property_string, AsQObject, FromQObject},
+    qpointer::{qpointer_from_qobject, qpointer_to_qobject},
     qsharedpointer_qobject::QSharedPointer_QObject,
     qvariant_helpers::qvariant_to_qsharedpointer_qobject,
     qweakpointer_qobject::QWeakPointer_QObject,
@@ -47,6 +48,14 @@ macro_rules! error {
 }
 
 impl PortBackend {
+    fn live_backend(&self) -> *mut QObject {
+        if self.backend_guard.is_null() {
+            std::ptr::null_mut()
+        } else {
+            unsafe { qpointer_to_qobject(&self.backend_guard) }
+        }
+    }
+
     pub fn update(mut self: Pin<&mut PortBackend>) {
         if self.maybe_backend_port.is_none() {
             return;
@@ -286,7 +295,8 @@ impl PortBackend {
                 let min_n_ringbuffer_samples: i32 = self
                     .min_n_ringbuffer_samples
                     .ok_or(anyhow!("min_n_ringbuffer_samples not set"))?;
-                let backend = BackendWrapper::from_qobject_ref_ptr(self.backend as *const QObject)?;
+                let backend =
+                    BackendWrapper::from_qobject_ref_ptr(self.live_backend() as *const QObject)?;
 
                 debug!(self, "Opening driver port for: {name_hint}");
 
@@ -337,11 +347,11 @@ impl PortBackend {
 
         let mut non_ready_vars: HashSet<String> = HashSet::new();
         unsafe {
-            if self.backend.is_null() {
+            let backend = self.live_backend();
+            if backend.is_null() {
                 non_ready_vars.insert("backend".to_string());
-            }
-            if !self.backend.is_null() {
-                let ready = if let Some(backend_ref) = self.backend.as_ref() {
+            } else {
+                let ready = if let Some(backend_ref) = backend.as_ref() {
                     qobject_property_bool(backend_ref, "ready").unwrap_or(false)
                 } else {
                     false
@@ -600,8 +610,14 @@ impl PortBackend {
             return;
         }
         if self.backend != backend {
+            let backend_guard = if backend.is_null() {
+                cxx::UniquePtr::null()
+            } else {
+                unsafe { qpointer_from_qobject(backend) }
+            };
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.backend = backend;
+            rust_mut.backend_guard = backend_guard;
             unsafe {
                 if !backend.is_null() {
                     let self_qobject = port_backend_qobject_from_ptr(
