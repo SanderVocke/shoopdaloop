@@ -310,4 +310,4 @@ cargo test -p shoop_engine --test composite_control
 cargo test -p shoop_engine --test no_alloc composite_timeline_processing_does_not_allocate_or_free
 ```
 
-This is not the Stage 3 exit gate: complete callback-path lock/allocation proof remains open. The application/frontend adapter is implemented and covered separately by the Stage 4/QML evidence above.
+The Stage 3 exit gate is met within the explicit composite RT-safety scope: callback state is RT-owned and structurally lock-free, all composite ownership crossings are bounded/non-blocking, and allocator guards cover normal, dense, overflow, replacement, publication, grab, lifecycle, and failure paths. Unrelated legacy facilities remain classified in `RT_SAFETY.md`. The application/frontend adapter is implemented and covered separately by the Stage 4/QML evidence above.

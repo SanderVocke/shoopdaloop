@@ -361,6 +361,122 @@ fn composite_timeline_processing_does_not_allocate_or_free() {
 }
 
 #[test]
+fn dense_composite_events_and_fail_closed_overflow_do_not_allocate() {
+    let source = LoopIdentity {
+        slot: 100,
+        generation: 1,
+        kind: LoopTargetKind::Composite,
+    };
+    let sync = LoopIdentity {
+        slot: 0,
+        generation: 1,
+        kind: LoopTargetKind::Basic,
+    };
+    let children: Vec<_> = (1..=64)
+        .map(|slot| LoopIdentity {
+            slot,
+            generation: 1,
+            kind: LoopTargetKind::Basic,
+        })
+        .collect();
+    let mut metadata = vec![LoopTargetMetadata {
+        identity: source,
+        length_samples: 4,
+    }];
+    metadata.push(LoopTargetMetadata {
+        identity: sync,
+        length_samples: 4,
+    });
+    metadata.extend(children.iter().copied().map(|identity| LoopTargetMetadata {
+        identity,
+        length_samples: 4,
+    }));
+    let catalog = LoopTargetCatalog::new(metadata).unwrap();
+    let descriptor = CompositePlanDescriptor {
+        source,
+        sync_length: 4,
+        timelines: vec![CompositeTimeline {
+            sections: vec![CompositeSection {
+                entries: children
+                    .iter()
+                    .copied()
+                    .map(|target| CompositeEntry {
+                        target,
+                        delay: 0,
+                        n_cycles: Some(1),
+                        mode: Some(LoopMode::Playing),
+                    })
+                    .collect(),
+            }],
+        }],
+    };
+    let plan =
+        compile_composite_plan(&descriptor, &catalog, &[], CompositePlanLimits::default()).unwrap();
+    let mut dense = CompositeBoundaryTimeline::new(
+        vec![CompositeTimelineNode {
+            plan: plan.clone(),
+            sync_source: sync,
+        }],
+        CompositeTimelineLimits::default(),
+    )
+    .unwrap();
+    dense
+        .queue_control(shoop_engine::AcceptedTimelineControl {
+            at_sample: 0,
+            target: source,
+            action: BoundaryTargetAction::SetMode {
+                mode: LoopMode::Playing,
+                offset_samples: 0,
+                retrigger: true,
+            },
+            acceptance_sequence: 0,
+        })
+        .unwrap();
+    assert_no_alloc(|| {
+        dense.resolve_boundary(&[], &[], |_| true).unwrap();
+    });
+    assert_eq!(dense.runtime(source).unwrap().active_children().count(), 64);
+
+    let mut overflow = CompositeBoundaryTimeline::new(
+        vec![CompositeTimelineNode {
+            plan,
+            sync_source: sync,
+        }],
+        CompositeTimelineLimits {
+            max_primitive_events: 1,
+            ..CompositeTimelineLimits::default()
+        },
+    )
+    .unwrap();
+    assert_no_alloc(|| {
+        let error = overflow
+            .resolve_boundary(&[sync, children[0]], &[], |_| true)
+            .unwrap_err();
+        assert_eq!(
+            error.fault,
+            shoop_engine::CompositeTimelineFault::PrimitiveEventCapacity
+        );
+    });
+    assert_eq!(overflow.runtime(source).unwrap().mode(), LoopMode::Stopped);
+}
+
+#[test]
+fn composite_callback_state_sources_are_structurally_lock_free() {
+    for source in [
+        include_str!("../src/composite_plan.rs"),
+        include_str!("../src/composite_runtime.rs"),
+        include_str!("../src/composite_timeline.rs"),
+    ] {
+        for forbidden in ["Mutex", "RwLock", ".lock("] {
+            assert!(
+                !source.contains(forbidden),
+                "composite callback source contains lock primitive {forbidden}"
+            );
+        }
+    }
+}
+
+#[test]
 fn transactional_audio_ringbuffer_adoption_does_not_allocate_or_partially_apply() {
     let mut session = Session::default();
     let input = session.add_port(audio_port(1, "in", PortDirection::Input));

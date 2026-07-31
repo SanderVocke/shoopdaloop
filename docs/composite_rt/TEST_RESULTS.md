@@ -7,7 +7,7 @@ This is a live Stage 6 record. It is intentionally **not** a final green gate: t
 | Gate | Current status |
 |---|---|
 | Targeted composite engine tests | Passing |
-| Allocator-enforced engine tests | 19 passing, including transactional composite grab |
+| Allocator-enforced engine tests | 21 passing, including dense/failure, lifecycle, topology restart, and transactional grab paths |
 | Warning-denied core engine build | Passing without application/backend features |
 | Complete engine suite with `app_backend` | Project compiles; full run blocked/unreliable on unavailable JACK/ALSA services |
 | Application composite adapter tests | 3 passing with dummy driver |
@@ -35,7 +35,7 @@ Recorded 2026-07-31T17:20:52+02:00:
 cargo test -p shoop_engine --no-default-features
 ```
 
-Result: all unit, integration, allocator, and doc-test binaries passed. The last complete run before the deferred-replacement additions reported 535 library-unit passes and zero failures across all integration binaries. A repeat complete core run is required before final status; current targeted coverage contains 62 composite-focused tests and 18 allocator tests.
+Result: all unit, integration, allocator, and doc-test binaries passed. The last complete run before the deferred-replacement additions reported 535 library-unit passes and zero failures across all integration binaries. A repeat complete core run is required before final status; current targeted coverage contains 63 composite-focused tests and 21 allocator tests.
 
 ```sh
 RUSTFLAGS="-D warnings" cargo check -p shoop_engine --no-default-features --all-targets
@@ -70,7 +70,7 @@ Covered surfaces include pure semantics, exact samples, callback partition indep
 cargo test -p shoop_engine --test no_alloc -- --test-threads=1
 ```
 
-Latest result: 19 passed, 0 failed. The composite integration test queues plan installation, duplicate-version rejection, control acceptance, repeated processing, rolling trace, and state publication under `assert_no_alloc`. The added grab test copies one rolling capture into two child loops and commits both modes in one transaction, then exercises duplicate-target rejection without allocation, deallocation, or partial mutation.
+Latest result: 21 passed, 0 failed. The composite integration test queues plan installation, duplicate-version rejection, control acceptance, repeated processing, rolling trace, and state publication under `assert_no_alloc`. The grab test copies one rolling capture into two child loops and commits both modes in one transaction, then exercises duplicate-target rejection without allocation, deallocation, or partial mutation. Dense 64-target resolution and fail-closed primitive-event overflow are guarded separately, and a structural test rejects lock primitives in composite callback state sources.
 
 This does not prove unexercised driver/FX branches safe. Open callback mechanisms are listed in [RT_SAFETY.md](RT_SAFETY.md#active-callback-path-audit-open-findings).
 

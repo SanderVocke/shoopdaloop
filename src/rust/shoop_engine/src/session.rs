@@ -1417,51 +1417,26 @@ impl Session {
             self.loop_group.clear();
             for node in step {
                 match self.node_actions[node.0] {
-                    NodeAction::PortPrepare(i) => {
-                        crate::realtime_allow_alloc_once!("Session::PortPrepare", || {
-                            self.ports[i].prepare(n_frames)
-                        });
-                    }
+                    NodeAction::PortPrepare(i) => self.ports[i].prepare(n_frames),
                     NodeAction::PortProcess(i) => {
-                        crate::realtime_allow_alloc_once!("Session::PortProcess", || {
-                            self.ports[i].process(n_frames)
-                        });
-                        crate::realtime_allow_alloc_once!("Session::propagate_port", || {
-                            self.propagate_port(i, n_frames)
-                        });
+                        self.ports[i].process(n_frames);
+                        self.propagate_port(i, n_frames);
                         self.process_test2x2x1_fx_port(i, n_frames);
                     }
                     NodeAction::LoopProcess(i) => self.loop_group.push(i),
-                    NodeAction::ChannelPrepare(i) => {
-                        crate::realtime_allow_alloc_once!("Session::ChannelPrepare", || {
-                            self.channel_prepare(i, n_frames)
-                        });
-                    }
-                    NodeAction::ChannelProcess(i) => {
-                        crate::realtime_allow_alloc_once!("Session::ChannelProcess", || {
-                            self.channel_finalize(i, n_frames)
-                        });
-                    }
+                    NodeAction::ChannelPrepare(i) => self.channel_prepare(i, n_frames),
+                    NodeAction::ChannelProcess(i) => self.channel_finalize(i, n_frames),
                     NodeAction::None => {}
                 }
             }
             if !self.loop_group.is_empty() {
-                crate::realtime_allow_alloc_once!("Session::process_loop_group", || {
-                    self.process_loop_group(n_frames)
-                });
-                crate::realtime_allow_alloc_once!(
-                    "Session::synth_prerecorded_midi_playback",
-                    || { self.synth_prerecorded_midi_playback(n_frames) }
-                );
+                self.process_loop_group(n_frames);
+                self.synth_prerecorded_midi_playback(n_frames);
             }
         }
-        crate::realtime_allow_alloc_once!("Session::apply_test2x2x1_fx_outputs", || {
-            self.apply_test2x2x1_fx_outputs(n_frames)
-        });
+        self.apply_test2x2x1_fx_outputs(n_frames);
         #[cfg(feature = "lv2")]
-        crate::realtime_allow_alloc_once!("Session::process_carla_fx_chains", || {
-            self.process_carla_fx_chains(n_frames)
-        });
+        self.process_carla_fx_chains(n_frames);
         self.schedule = steps;
     }
 

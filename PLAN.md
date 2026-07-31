@@ -206,15 +206,15 @@ This is the initial design direction, not an immutable implementation prescripti
 
 ### Remove composite-related RT locks and allocation
 
-- [ ] Audit the active callback surface used or changed by composite loops in [`docs/composite_rt/RT_SAFETY.md`](docs/composite_rt/RT_SAFETY.md), including relevant session processing, graph installation, commands, snapshots, error paths, lifecycle work, and any driver/port/channel/MIDI/FX facilities directly exercised by required composite scenarios. Classify unrelated legacy violations without making their removal a prototype gate.
+- [x] Audit the active callback surface used or changed by composite loops in [`docs/composite_rt/RT_SAFETY.md`](docs/composite_rt/RT_SAFETY.md), including relevant session processing, graph installation, commands, snapshots, error paths, lifecycle work, and any driver/port/channel/MIDI/FX facilities directly exercised by required composite scenarios. Classify unrelated legacy violations without making their removal a prototype gate.
 - [x] Remove the session mutex from the callback/control interaction.
-- [ ] Remove callback-side mutexes from composite-loop code and from pre-existing facilities where composite processing directly depends on those locks.
-- [ ] Replace composite-related mutable callback-visible collections with RT-owned or immutably swapped prepared collections.
-- [ ] Pre-size composite-related callback scratch and event storage for declared capacities and supported buffer sizes.
-- [ ] Remove exceptional allocation allowances reachable from composite processing or its required command, publication, lifecycle, and failure paths rather than treating them as successful RT behavior.
-- [ ] Ensure composite topology or capacity changes are prepared off-thread and installed without allocation or destruction on RT.
-- [ ] Ensure composite-related error reporting uses atomics, fixed records, or snapshots rather than RT formatting/logging.
-- [ ] Exercise allocation guards over composite command application, events, graph changes, publication, lifecycle/failure paths, and representative integrated processing.
+- [x] Remove callback-side mutexes from composite-loop code and from pre-existing facilities where composite processing directly depends on those locks.
+- [x] Replace composite-related mutable callback-visible collections with RT-owned or immutably swapped prepared collections.
+- [x] Pre-size composite-related callback scratch and event storage for declared capacities and supported buffer sizes.
+- [x] Remove exceptional allocation allowances reachable from composite processing or its required command, publication, lifecycle, and failure paths rather than treating them as successful RT behavior.
+- [x] Ensure composite topology or capacity changes are prepared off-thread and installed without allocation or destruction on RT.
+- [x] Ensure composite-related error reporting uses atomics, fixed records, or snapshots rather than RT formatting/logging.
+- [x] Exercise allocation guards over composite command application, events, graph changes, publication, lifecycle/failure paths, and representative integrated processing.
 
 ### State publication
 
@@ -225,7 +225,7 @@ This is the initial design direction, not an immutable implementation prescripti
 
 ### Stage 3 exit gate
 
-- [ ] No composite-loop code, or callback path directly used/changed by composite loops, allocates, deallocates, or locks on RT.
+- [x] No composite-loop code, or callback path directly used/changed by composite loops, allocates, deallocates, or locks on RT.
 - [x] Commands, plans, and snapshots cross the thread boundary without blocking RT.
 - [x] Command acceptance and plan activation semantics are tested and documented in `SEMANTICS.md`, with their mechanism documented in `ARCHITECTURE.md`.
 
@@ -289,7 +289,7 @@ For heavy operations such as ringbuffer adoption:
 
 ### Stage 5 exit gate
 
-- [ ] Every row in `FEATURE_PARITY.md` identifies an engine test, QML test, justified manual-only item, or a documented combination of those.
+- [x] Every row in `FEATURE_PARITY.md` identifies an engine test, QML test, justified manual-only item, or a documented combination of those.
 - [ ] No current user-visible composite feature is knowingly missing.
 
 ## Stage 6 — Automated verification and RT hardening
@@ -310,8 +310,8 @@ The implementing agent's runtime test obligation may be limited to `shoop_engine
 - [x] Add buffer-size and buffer-partition property/table tests.
 - [x] Add dense-event and maximum-capacity tests.
 - [x] Add command-cutoff and plan-version race tests using controlled scheduling.
-- [ ] Add RT allocation tests for normal, event-heavy, command, plan-swap, lifecycle, and failure paths exercised by composite loops.
-- [ ] Add tests or structural assertions demonstrating that composite callback state access is lock-free.
+- [x] Add RT allocation tests for normal, event-heavy, command, plan-swap, lifecycle, and failure paths exercised by composite loops.
+- [x] Add tests or structural assertions demonstrating that composite callback state access is lock-free.
 - [ ] Repeat timing-sensitive tests enough to expose accidental ordering dependencies.
 
 ### Frontend/QML tests
@@ -340,13 +340,13 @@ The implementing agent's runtime test obligation may be limited to `shoop_engine
 - [x] Record in `TEST_RESULTS.md` any test that cannot run because of environment/dependency limitations, including the command and error.
 - [x] Document measured callback cost for ordinary and worst supported composite schedules in `RT_SAFETY.md`, with benchmark commands/results linked from `TEST_RESULTS.md`.
 - [x] Create [`docs/composite_rt/MANUAL_VALIDATION.md`](docs/composite_rt/MANUAL_VALIDATION.md) from the Stage 7 checklist, adding required setup, session files, logging counters, expected outcomes, result fields, and reproduction instructions.
-- [ ] Confirm in `RT_SAFETY.md` that overload is explicit and deterministic rather than late, blocked, or silently dropped.
+- [x] Confirm in `RT_SAFETY.md` that overload is explicit and deterministic rather than late, blocked, or silently dropped.
 
 ### Stage 6 exit gate
 
 - [ ] `TEST_RESULTS.md` shows that engine and QML automated gates pass, except for clearly recorded environment failures or pre-existing failures.
-- [ ] `RT_SAFETY.md` contains evidence that RT constraints are verified on all exercised composite-related callback paths, while unrelated legacy findings are clearly classified as out of scope.
-- [ ] Remaining manual checks are listed in `MANUAL_VALIDATION.md` without being represented as completed.
+- [x] `RT_SAFETY.md` contains evidence that RT constraints are verified on all exercised composite-related callback paths, while unrelated legacy findings are clearly classified as out of scope.
+- [x] Remaining manual checks are listed in `MANUAL_VALIDATION.md` without being represented as completed.
 
 ## Stage 7 — User-owned manual validation
 
