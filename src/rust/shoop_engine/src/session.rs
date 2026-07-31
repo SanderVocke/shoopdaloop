@@ -88,9 +88,7 @@ pub enum SessionError {
     StaleCompositeTopology,
     #[error("the prepared composite timeline has no version or is not newer than version {0}")]
     StaleCompositeVersion(u64),
-    #[error(
-        "running replacement changes composite dependency topology or exceeds retirement capacity"
-    )]
+    #[error("running replacement exceeds bounded restart or retirement capacity")]
     CompositeReplacementRequiresRuntimeTransfer,
 }
 
@@ -772,27 +770,45 @@ impl Session {
             .composite_timeline
             .replacement_requires_runtime_transfer()
         {
-            if !self
+            if self
                 .composite_timeline
                 .can_queue_runtime_preserving_replacement(&timeline)
+            {
+                let reclaimed = self
+                    .composite_timeline
+                    .queue_runtime_preserving_replacement(timeline);
+                self.composite_timeline_version = version;
+                return Ok(ReclaimedCompositeTimeline {
+                    timeline: reclaimed,
+                });
+            }
+            if !self
+                .composite_timeline
+                .can_restart_with_changed_topology(&timeline)
             {
                 return Err(RejectedCompositeTimeline {
                     error: SessionError::CompositeReplacementRequiresRuntimeTransfer,
                     timeline,
                 });
             }
-            let reclaimed = self
-                .composite_timeline
-                .queue_runtime_preserving_replacement(timeline);
+            for identity in self.composite_timeline.active_primitive_children() {
+                if let Some(loop_) = self.loops.get_mut(identity.slot as usize) {
+                    loop_.set_mode(LoopMode::Stopped);
+                }
+            }
+            let mut previous = std::mem::replace(&mut self.composite_timeline, timeline);
+            self.composite_timeline.prepare_changed_topology_restart(
+                &mut previous,
+                &mut self.composite_acceptance_sequence,
+            );
             self.composite_timeline_version = version;
-            Ok(ReclaimedCompositeTimeline {
-                timeline: reclaimed,
-            })
+            Ok(ReclaimedCompositeTimeline { timeline: previous })
         } else {
+            let mut previous = std::mem::replace(&mut self.composite_timeline, timeline);
+            self.composite_timeline
+                .prepare_stopped_replacement(&mut previous);
             self.composite_timeline_version = version;
-            Ok(ReclaimedCompositeTimeline {
-                timeline: std::mem::replace(&mut self.composite_timeline, timeline),
-            })
+            Ok(ReclaimedCompositeTimeline { timeline: previous })
         }
     }
 

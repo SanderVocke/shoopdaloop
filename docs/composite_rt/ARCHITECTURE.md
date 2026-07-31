@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-This document describes the implemented Stage 1 compiled plan/state machine, Stage 2 engine sample-timeline integration, Stage 3 command/replacement/reclamation/snapshot slices, and the Stage 4 application/frontend adapter. The existing 25-case composite QML suite passes on the engine-backed path, and nested regular/script execution after session replacement is covered separately. Remaining callback-path lock/allocation work and running dependency-topology replacement are called out explicitly rather than treated as complete. The implementation is in:
+This document describes the implemented Stage 1 compiled plan/state machine, Stage 2 engine sample-timeline integration, Stage 3 command/replacement/reclamation/snapshot slices, and the Stage 4 application/frontend adapter. The existing 26-case composite QML suite passes on the engine-backed path, and nested regular/script execution after session replacement is covered separately. Remaining callback-path lock/allocation proof is called out explicitly rather than treated as complete. The implementation is in:
 
 - `shoop_engine::composite_plan`: off-thread validation and compilation;
 - `shoop_engine::composite_runtime`: bounded, allocation-free state transitions;
@@ -14,7 +14,7 @@ This document describes the implemented Stage 1 compiled plan/state machine, Sta
 - `tests/composite_state_machine.rs`, `tests/composite_timeline.rs`, and `tests/composite_timing.rs`: pure and sample-timing behavior;
 - `tests/no_alloc.rs`: allocator-enforced runtime and integrated timeline tests.
 
-Composite timelines and controls cross the existing engine command boundary, and composite runtime state is published with the ordinary engine snapshot. Runtime-preserving plan replacement is implemented for unchanged composite dependency topology. `BackendSession` owns a transactional composite registry, and `CompositeLoopBackend` translates the existing QML boundary schedule into stable engine identities and descriptors, submits it off RT, sends controls to the engine, and mirrors engine snapshots. The adapter contains no Qt wrap handler, recursive dependency notification, or fallback composite transition state machine. The focused composite QML suite passes 25/25, the nested save/load file passes 6/6, and the last full suite passes 188/189, with only a host CPAL-port availability failure before the new save/load case was added. Running dependency-topology changes remain open.
+Composite timelines and controls cross the existing engine command boundary, and composite runtime state is published with the ordinary engine snapshot. Runtime-preserving plan replacement is implemented for unchanged composite dependency topology; changed topology performs a bounded callback-boundary cleanup and iteration-zero restart. `BackendSession` owns a transactional composite registry, and `CompositeLoopBackend` translates the existing QML boundary schedule into stable engine identities and descriptors, submits it off RT, sends controls to the engine, and mirrors engine snapshots. The adapter contains no Qt wrap handler, recursive dependency notification, or fallback composite transition state machine. The focused composite QML suite passes 26/26, the nested save/load file passes 6/6, and the last full suite passes 188/189, with only a host CPAL-port availability failure before the new save/load case was added. Running dependency-topology changes are covered by deterministic callback-boundary restart.
 
 ## Stable identities
 
@@ -190,7 +190,7 @@ Command closure execution no longer has an exceptional allocation allowance. All
 
 Stopped timeline installation is atomic at the callback command boundary. A stopped runtime with a pending countdown activates its changed plan there while preserving that countdown. For running runtimes whose source/sync and composite dependency edges are unchanged, changed plans move into fixed pending slots without changing current authority; the newest accepted version supersedes an older candidate. At the old plan's terminal source boundary, `activate_deferred_at_iteration_zero` resolves old cleanup and candidate iteration-zero state in the same boundary transaction. A stop before that boundary activates the candidate stopped after cleanup.
 
-The old active plan moves into preallocated retired storage only after successful transaction commit. `send_composite_plan_reclamation` swaps it into control-provided storage and returns it for non-RT destruction. Candidate timeline shells returned by the install result similarly own stopped-plan displacement and superseded pending candidates. Running changes that alter composite dependency topology, node/source set, or sync source fail explicitly without changing version or authority; mixed old/new topology activation remains open.
+The old active plan moves into preallocated retired storage only after successful transaction commit. `send_composite_plan_reclamation` swaps it into control-provided storage and returns it for non-RT destruction. Candidate timeline shells returned by the install result similarly own stopped-plan displacement and superseded pending candidates. A running change that alters composite dependency topology, node/source set, or sync source avoids mixed old/new authority by replacing the complete timeline at the command boundary. The old topology's active primitive children stop first; retained running sources are staged as fixed direct controls at candidate iteration zero, new nested propagation settles in the candidate DAG, and pending countdowns are canceled. The accepted-control array, sample clock, counters/fault, and rolling history transfer into the preallocated candidate storage. If existing accepted controls plus retained restarts exceed fixed capacity, the candidate rejects before cleanup.
 
 ## Implemented snapshots and application adapter
 
@@ -293,7 +293,7 @@ The JACK opt-out and Windows `.bat` launcher qualification remain as documented 
 | Pending countdown survives callback-boundary activation | `pending_replacement_activates_immediately_and_preserves_countdown` |
 | Newest running candidate supersedes older candidate | `newest_running_replacement_supersedes_older_candidate` |
 | Stop before zero activates candidate stopped | `stop_before_iteration_zero_activates_pending_plan_stopped` |
-| Running dependency-topology change rejects without partial install | `running_dependency_topology_change_is_rejected_without_partial_install` |
+| Running dependency-topology removal/addition and callback-boundary restart | `running_dependency_topology_change_restarts_at_the_install_boundary`, `running_dependency_addition_restarts_retained_sources_and_nested_children` |
 | Late timestamp rejection at actual callback acceptance | `a_timestamp_that_is_past_at_callback_acceptance_is_rejected_not_applied_late` |
 | Engine-owned countdown and record-pass option | `synchronized_transition_countdown_and_record_option_are_engine_owned` |
 | Immediate seek validation before musical acceptance | `immediate_transition_validates_seek_before_acceptance` |
@@ -310,4 +310,4 @@ cargo test -p shoop_engine --test composite_control
 cargo test -p shoop_engine --test no_alloc composite_timeline_processing_does_not_allocate_or_free
 ```
 
-This is not the Stage 3 exit gate: running dependency-topology replacement and complete callback-path lock/allocation removal remain open. The application/frontend adapter is implemented and covered separately by the Stage 4/QML evidence above.
+This is not the Stage 3 exit gate: complete callback-path lock/allocation proof remains open. The application/frontend adapter is implemented and covered separately by the Stage 4/QML evidence above.

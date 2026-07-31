@@ -940,6 +940,54 @@ ShoopTestFile {
                     verify_true(l0().maybe_composite_loop)
                 },
 
+                'test_running_dependency_topology_edit_restarts_in_engine': () => {
+                    check_backend()
+                    clear()
+
+                    s().queue_set_length(100)
+                    s().create_backend_loop()
+                    l0().create_backend_loop()
+                    l1().create_backend_loop()
+                    l0().queue_set_length(100)
+                    l1().queue_set_length(100)
+                    l2().create_composite_loop({
+                        'playlists': [[
+                            [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                        ]]
+                    })
+                    c().create_composite_loop({
+                        'playlists': [[
+                            [{ 'loop_id': l0().obj_id, 'delay': 0 }],
+                        ]]
+                    })
+                    testcase.wait_condition(
+                        () => l0().length === 100 && l1().length === 100 &&
+                              l2().length === 100 && c().length === 100,
+                        5000,
+                        "composite topology did not settle")
+
+                    s().transition(ShoopRustConstants.LoopMode.Playing,
+                                   ShoopRustConstants.DontWaitForSync,
+                                   ShoopRustConstants.DontAlignToSyncImmediately)
+                    process(50)
+                    c().on_play_clicked()
+                    process(100)
+                    verify_eq(c().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(l0().mode, ShoopRustConstants.LoopMode.Playing)
+
+                    c().maybe_composite_loop.playlists_in = [[
+                        [{ 'loop_id': l2().obj_id, 'delay': 0 }],
+                    ]]
+                    testcase.wait_updated(session.backend)
+                    process(1, 1)
+
+                    verify_eq(c().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(c().maybe_loop.iteration, 0)
+                    verify_eq(l0().mode, ShoopRustConstants.LoopMode.Stopped)
+                    verify_eq(l2().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(l1().mode, ShoopRustConstants.LoopMode.Playing)
+                },
+
                 'test_circular_composite_self': () => {
                     check_backend()
                     clear()

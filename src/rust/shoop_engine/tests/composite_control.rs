@@ -1,8 +1,8 @@
 use shoop_engine::{
-    compile_composite_plan, split, BoundaryTargetAction, CompositeBoundaryTimeline, CompositeEntry,
-    CompositePlanDescriptor, CompositePlanLimits, CompositeSection, CompositeTimeline,
-    CompositeTimelineLimits, CompositeTimelineNode, LoopIdentity, LoopMode, LoopTargetCatalog,
-    LoopTargetKind, LoopTargetMetadata, Session,
+    compile_composite_plan, split, BoundaryTargetAction, CompositeBoundaryTimeline,
+    CompositeDependency, CompositeEntry, CompositePlanDescriptor, CompositePlanLimits,
+    CompositeSection, CompositeTimeline, CompositeTimelineLimits, CompositeTimelineNode,
+    LoopIdentity, LoopMode, LoopTargetCatalog, LoopTargetKind, LoopTargetMetadata, Session,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -472,12 +472,12 @@ fn newest_running_replacement_supersedes_older_candidate() {
 }
 
 #[test]
-fn running_dependency_topology_change_is_rejected_without_partial_install() {
+fn running_dependency_topology_change_restarts_at_the_install_boundary() {
     let Fixture {
         session,
         timeline,
         source,
-        ..
+        child,
     } = fixture();
     let mut incompatible =
         CompositeBoundaryTimeline::new(Vec::new(), CompositeTimelineLimits::default()).unwrap();
@@ -495,19 +495,139 @@ fn running_dependency_topology_change_is_rejected_without_partial_install() {
     let mut replace = handle.send_composite_timeline(incompatible).unwrap();
     engine.process(1);
 
-    let rejected = replace.pop().unwrap().unwrap_err();
+    assert!(replace.pop().unwrap().is_ok());
+    assert_eq!(engine.session().composite_timeline_version(), 2);
+    assert_eq!(engine.session().composite_timeline().n_composites(), 0);
     assert_eq!(
-        rejected.error,
-        shoop_engine::SessionError::CompositeReplacementRequiresRuntimeTransfer
+        engine.session().loop_(child.slot as usize).unwrap().mode(),
+        LoopMode::Stopped
     );
-    assert_eq!(engine.session().composite_timeline_version(), 1);
+}
+
+#[test]
+fn running_dependency_addition_restarts_retained_sources_and_nested_children() {
+    let Fixture {
+        session,
+        timeline,
+        source,
+        child,
+    } = fixture();
+    let nested = LoopIdentity {
+        slot: source.slot + 1,
+        generation: 1,
+        kind: LoopTargetKind::Composite,
+    };
+    let sync = session.loop_identity(0).unwrap();
+    let catalog = LoopTargetCatalog::new(vec![
+        LoopTargetMetadata {
+            identity: source,
+            length_samples: 4,
+        },
+        LoopTargetMetadata {
+            identity: nested,
+            length_samples: 4,
+        },
+        LoopTargetMetadata {
+            identity: sync,
+            length_samples: 4,
+        },
+        LoopTargetMetadata {
+            identity: child,
+            length_samples: 4,
+        },
+    ])
+    .unwrap();
+    let dependencies = vec![
+        CompositeDependency {
+            source,
+            composite_children: vec![nested],
+        },
+        CompositeDependency {
+            source: nested,
+            composite_children: Vec::new(),
+        },
+    ];
+    let descriptor = |plan_source, target| CompositePlanDescriptor {
+        source: plan_source,
+        sync_length: 4,
+        timelines: vec![CompositeTimeline {
+            sections: vec![CompositeSection {
+                entries: vec![CompositeEntry {
+                    target,
+                    delay: 0,
+                    n_cycles: Some(1),
+                    mode: None,
+                }],
+            }],
+        }],
+    };
+    let parent = compile_composite_plan(
+        &descriptor(source, nested),
+        &catalog,
+        &dependencies,
+        CompositePlanLimits::default(),
+    )
+    .unwrap();
+    let nested_plan = compile_composite_plan(
+        &descriptor(nested, child),
+        &catalog,
+        &dependencies,
+        CompositePlanLimits::default(),
+    )
+    .unwrap();
+    let mut replacement = CompositeBoundaryTimeline::new(
+        vec![
+            CompositeTimelineNode {
+                plan: parent,
+                sync_source: sync,
+            },
+            CompositeTimelineNode {
+                plan: nested_plan,
+                sync_source: sync,
+            },
+        ],
+        CompositeTimelineLimits::default(),
+    )
+    .unwrap();
+    replacement.prepare_install(2, &[None, None]).unwrap();
+
+    let (mut engine, mut handle) = split(session, 8);
+    let mut install = handle.send_composite_timeline(timeline).unwrap();
+    engine.process(1);
+    assert!(install.pop().unwrap().is_ok());
+    let mut start = handle
+        .send_composite_immediate_transition(source, LoopMode::Playing, 0)
+        .unwrap();
+    engine.process(1);
+    assert!(start.pop().unwrap().is_ok());
+    let mut pending = handle
+        .send_composite_transition(source, LoopMode::Recording, 2)
+        .unwrap();
+    engine.pump();
+    assert!(pending.pop().unwrap().is_ok());
+
+    let mut replace = handle.send_composite_timeline(replacement).unwrap();
+    engine.process(1);
+
+    assert!(replace.pop().unwrap().is_ok());
+    let parent_runtime = engine
+        .session()
+        .composite_timeline()
+        .runtime(source)
+        .unwrap();
+    assert_eq!(parent_runtime.mode(), LoopMode::Playing);
+    assert_eq!(parent_runtime.pending(), None);
     assert_eq!(
         engine
             .session()
             .composite_timeline()
-            .runtime(source)
+            .runtime(nested)
             .unwrap()
             .mode(),
+        LoopMode::Playing
+    );
+    assert_eq!(
+        engine.session().loop_(child.slot as usize).unwrap().mode(),
         LoopMode::Playing
     );
 }

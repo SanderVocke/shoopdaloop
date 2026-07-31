@@ -392,6 +392,90 @@ impl CompositeBoundaryTimeline {
         })
     }
 
+    pub fn active_primitive_children(&self) -> impl Iterator<Item = LoopIdentity> + '_ {
+        self.nodes.iter().flat_map(|node| {
+            node.runtime
+                .active_children()
+                .map(|child| child.identity)
+                .filter(|identity| identity.kind == LoopTargetKind::Basic)
+        })
+    }
+
+    fn n_controls(&self) -> usize {
+        self.controls
+            .iter()
+            .filter(|control| control.is_some())
+            .count()
+    }
+
+    pub fn can_restart_with_changed_topology(&self, candidate: &Self) -> bool {
+        let retained_running = self
+            .nodes
+            .iter()
+            .filter(|current| {
+                current.runtime.mode() != LoopMode::Stopped
+                    && candidate.nodes.iter().any(|next| {
+                        next.plan().source() == current.plan().source()
+                            && next.plan().n_iterations() > 0
+                    })
+            })
+            .count();
+        self.n_controls().saturating_add(retained_running) <= candidate.limits.max_controls
+    }
+
+    fn inherit_timeline_state(&mut self, previous: &mut Self) {
+        self.sample_clock = previous.sample_clock;
+        self.fault = previous.fault;
+        self.counters = previous.counters;
+        self.controls = previous.controls;
+        previous.controls = [None; MAX_COMPOSITE_CONTROLS];
+        std::mem::swap(&mut self.history_trace, &mut previous.history_trace);
+    }
+
+    pub fn prepare_changed_topology_restart(
+        &mut self,
+        previous: &mut Self,
+        acceptance_sequence: &mut u64,
+    ) {
+        debug_assert!(previous.can_restart_with_changed_topology(self));
+        self.inherit_timeline_state(previous);
+        for current in &previous.nodes {
+            let source = current.plan().source();
+            let mode = current.runtime.mode();
+            let should_restart = {
+                let Some(next) = self
+                    .nodes
+                    .iter_mut()
+                    .find(|candidate| candidate.plan().source() == source)
+                else {
+                    continue;
+                };
+                next.runtime
+                    .set_play_after_record(current.runtime.play_after_record());
+                mode != LoopMode::Stopped && next.plan().n_iterations() > 0
+            };
+            if should_restart {
+                self.queue_control(AcceptedTimelineControl {
+                    at_sample: self.sample_clock,
+                    target: source,
+                    action: BoundaryTargetAction::SetMode {
+                        mode,
+                        offset_samples: 0,
+                        retrigger: true,
+                    },
+                    acceptance_sequence: *acceptance_sequence,
+                })
+                .expect("changed-topology restart capacity was checked");
+                *acceptance_sequence = acceptance_sequence.saturating_add(1);
+            }
+        }
+    }
+
+    pub fn prepare_stopped_replacement(&mut self, previous: &mut Self) {
+        debug_assert!(!previous.replacement_requires_runtime_transfer());
+        self.inherit_timeline_state(previous);
+    }
+
     pub fn can_queue_runtime_preserving_replacement(&self, candidate: &Self) -> bool {
         if self.nodes.len() != candidate.nodes.len() {
             return false;

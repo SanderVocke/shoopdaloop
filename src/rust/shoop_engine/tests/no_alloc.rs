@@ -332,6 +332,22 @@ fn composite_timeline_processing_does_not_allocate_or_free() {
         LoopMode::Stopped
     );
 
+    let mut restarted = handle
+        .send_composite_control(
+            source,
+            BoundaryTargetAction::SetMode {
+                mode: LoopMode::Playing,
+                offset_samples: 0,
+                retrigger: true,
+            },
+            None,
+        )
+        .unwrap();
+    assert_no_alloc(|| {
+        engine.process(4);
+    });
+    assert!(restarted.pop().unwrap().is_ok());
+
     let mut empty_timeline =
         CompositeBoundaryTimeline::new(Vec::new(), CompositeTimelineLimits::default()).unwrap();
     empty_timeline.prepare_install(3, &[None, None]).unwrap();

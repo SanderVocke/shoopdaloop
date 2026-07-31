@@ -2,7 +2,7 @@
 
 ## Gate status
 
-This is a live Stage 6 record. It is intentionally **not** a final green gate: running dependency-topology replacement, the complete RT callback audit, real-backend stability, and manual validation remain open. The existing composite QML matrix and focused nested save/load coverage are green; the only last full-suite failure is explicitly environment-qualified below.
+This is a live Stage 6 record. It is intentionally **not** a final green gate: the complete RT callback audit, real-backend stability, and manual validation remain open. The existing composite QML matrix and focused nested save/load coverage are green; the only last full-suite failure is explicitly environment-qualified below.
 
 | Gate | Current status |
 |---|---|
@@ -12,7 +12,7 @@ This is a live Stage 6 record. It is intentionally **not** a final green gate: r
 | Complete engine suite with `app_backend` | Project compiles; full run blocked/unreliable on unavailable JACK/ALSA services |
 | Application composite adapter tests | 3 passing with dummy driver |
 | Frontend Rust build/unit tests | Warning-denied check passes; 32 library unit tests pass |
-| QML self-tests | Focused composite 25/25 and nested save/load 6/6; last full run 188/189 with sole CPAL device/port environment failure |
+| QML self-tests | Focused composite 26/26 and nested save/load 6/6; last full run 188/189 with sole CPAL device/port environment failure |
 | Full workspace suite | Core/no-default engine suite passes; application-feature workspace gate pending |
 | Callback benchmark/cost gate | Composite-only measurement recorded; whole callback gate pending |
 
@@ -60,9 +60,9 @@ Latest equivalent targeted run after the control/timeline changes:
 - `composite_state_machine`: 25 passed, 0 failed.
 - `composite_timeline`: 12 passed, 0 failed.
 - `composite_timing`: 10 passed, 0 failed.
-- `composite_control`: 15 passed, 0 failed.
+- `composite_control`: 16 passed, 0 failed.
 
-Covered surfaces include pure semantics, exact samples, callback partition independence, nested propagation, fixed callback command cutoff, timestamp rejection, monotonic plan versions, stale topology, stopped/pending/running activation, candidate supersession, non-RT rejected/displaced/retired ownership, immediate seek validation, countdown transitions, play-after-record acceptance, fault reset, bounded snapshots, and trace observation after polling stalls.
+Covered surfaces include pure semantics, exact samples, callback partition independence, nested propagation, fixed callback command cutoff, timestamp rejection, monotonic plan versions, stale topology, stopped/pending/running activation, same-topology candidate supersession, changed-topology callback-boundary restart, non-RT rejected/displaced/retired ownership, immediate seek validation, countdown transitions, play-after-record acceptance, fault reset, bounded snapshots, and trace observation after polling stalls.
 
 ### Allocation guard
 
@@ -140,7 +140,7 @@ QT_QPA_PLATFORM=offscreen target/debug/shoopdaloop_dev.sh --self-test \
   --test-files-pattern "$(pwd)/src/qml/test/tst_Session_save_load.qml"
 ```
 
-Latest results: composite behavior **25/25 passed** and session save/load **6/6 passed**. The composite run includes all synchronized/unsynchronized, fixed/default-length, stop/play grab outcomes plus nested-composite flattening into one bounded engine adoption transaction. The retained frontend schedule traversal is limited to off-RT grab preparation; no compatibility slot advances composite runtime state.
+Latest results: composite behavior **26/26 passed** and session save/load **6/6 passed**. The composite run includes all synchronized/unsynchronized, fixed/default-length, stop/play grab outcomes plus nested-composite flattening into one bounded engine adoption transaction. The retained frontend schedule traversal is limited to off-RT grab preparation; no compatibility slot advances composite runtime state.
 
 The full `app_backend` suite was also attempted after dependency discovery. It is not recorded as green: tests requiring real JACK/ALSA services failed or teardown became unreliable on this host. That is a runtime-service/environment blocker, not evidence for completion.
 
