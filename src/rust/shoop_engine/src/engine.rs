@@ -22,7 +22,7 @@ use crate::session::{ChannelKind, Session};
 use crate::state::{AudioChannelState, AudioPortSnapshot, MidiChannelState, MidiPortSnapshot};
 
 use rtrb::{Consumer, Producer, RingBuffer};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -50,7 +50,22 @@ pub enum WaitError {
 /// condition variable so that the audio thread only ever has to store a result, never
 /// signal anything.
 pub const DEFAULT_WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1000);
-const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_micros(1000);
+
+/// How long to spin, yielding, before falling back to sleeping.
+///
+/// The answer normally arrives within one cycle -- tens of microseconds to a few
+/// milliseconds -- and a waiter that sleeps immediately pays a full sleep quantum for it. That
+/// did not matter while nothing outside the tests used this, and mattered a great deal as soon
+/// as every control read became a round trip: a 1 ms floor per read turns a few thousand reads
+/// into seconds, which presents as an application that has stopped rather than one that is
+/// slow.
+///
+/// Yielding rather than busy-spinning, so a waiter never keeps the audio thread off a core.
+const SPIN_BUDGET: std::time::Duration = std::time::Duration::from_micros(2000);
+
+/// Sleep between checks once the spin budget is spent, for a waiter that is going to be a
+/// while -- an engine that is not being driven at all, most likely.
+const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_micros(500);
 
 /// Counters the audio thread publishes for the control thread to read.
 ///
@@ -78,6 +93,16 @@ pub struct Stats {
     pub capture_underruns: AtomicU32,
     /// Samples a duplex driver's capture ring had to drop because it was full.
     pub capture_overruns: AtomicU32,
+    /// Whether the session's topology has outrun its schedule, as of the last cycle.
+    ///
+    /// Published so the control side can tell whether a rebuild is needed without asking --
+    /// asking costs a full round trip to the audio thread, and the scheduler would otherwise
+    /// pay for one on every window whether or not anything had changed.
+    ///
+    /// A `true` reading can be trusted at once. A `false` reading only means the graph was
+    /// current when this was last written, so a caller must also satisfy itself that nothing
+    /// is still queued that could dirty it -- see [`EngineHandle::n_pending`].
+    pub graph_stale: AtomicBool,
     /// Backend DSP load, as a percentage scaled by 100 so it fits an integer.
     ///
     /// Scaled rather than a float because there is no portable atomic `f32`, and a
@@ -287,6 +312,15 @@ impl Engine {
         &self.stats
     }
 
+    /// Whether any control work is waiting, without applying it.
+    ///
+    /// For a driver deciding whether it is worth pumping between cycles. Cheap enough to check
+    /// in a wait loop, which is the point: the alternative is pumping unconditionally at some
+    /// fixed rate and burning a core to do nothing.
+    pub fn has_pending_commands(&self) -> bool {
+        !self.commands.is_empty()
+    }
+
     /// Escape hatch for a session not yet being driven by a callback.
     ///
     /// Tests and the dummy driver own the engine outright, so there is no other
@@ -311,9 +345,27 @@ impl Engine {
         crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| self.process_inner(n_frames));
     }
 
+    /// Runs one cycle and publishes, without applying control work first.
+    ///
+    /// For a driver that has to stage its input buffers between the two: control work has to
+    /// land before the cycle runs, but the buffers can only be staged once it has, so a driver
+    /// pumps, stages through [`Self::session_mut`], then calls this.
+    ///
+    /// Reaching for `session_mut().process(..)` instead is the mistake this exists to prevent.
+    /// It looks equivalent and silently is not: it skips the counters and the state snapshot,
+    /// so every `poll` returns nothing, every reader falls back to a blocking round trip, and
+    /// the only symptom is that the application is inexplicably slow.
+    pub fn run_cycle(&mut self, n_frames: usize) {
+        crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| self.cycle_inner(n_frames));
+    }
+
     fn process_inner(&mut self, n_frames: usize) {
         self.apply_commands();
+        self.publish_graph_staleness();
+        self.cycle_inner(n_frames);
+    }
 
+    fn cycle_inner(&mut self, n_frames: usize) {
         self.session.process(n_frames);
         self.stats.cycles.fetch_add(1, Ordering::Relaxed);
         self.stats
@@ -466,7 +518,20 @@ impl Engine {
     /// The allocation guard applies as it does to [`Self::process`], because in the first
     /// case this *is* the audio thread.
     pub fn pump(&mut self) {
-        crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| self.apply_commands());
+        crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| {
+            self.apply_commands();
+            self.publish_graph_staleness();
+        });
+    }
+
+    /// Publishes whether the schedule has fallen behind the topology.
+    ///
+    /// Written after commands are applied, because applying them is what makes it stale, and
+    /// the control side's decision to rebuild is only as good as the moment this reflects.
+    fn publish_graph_staleness(&self) {
+        self.stats
+            .graph_stale
+            .store(!self.session.graph_up_to_date(), Ordering::Relaxed);
     }
 
     fn apply_commands(&mut self) {
@@ -484,6 +549,36 @@ impl Engine {
             self.stats
                 .commands_applied
                 .fetch_add(applied, Ordering::Relaxed);
+        }
+    }
+}
+
+/// Waits for a result queued by [`EngineHandle::send_for_result`].
+///
+/// A free function rather than a method, so it is impossible to call while holding the
+/// handle: it does not have one. Polls rather than blocking on a condition variable, so the
+/// audio thread only ever has to store a result and never has to signal anything.
+pub fn wait_for_result<T>(
+    mut rx: Consumer<T>,
+    timeout: std::time::Duration,
+) -> Result<T, WaitError> {
+    let started = std::time::Instant::now();
+    let deadline = started + timeout;
+    let spin_until = started + SPIN_BUDGET;
+    loop {
+        if let Ok(v) = rx.pop() {
+            return Ok(v);
+        }
+        let now = std::time::Instant::now();
+        if now >= deadline {
+            return Err(WaitError::Timeout(timeout));
+        }
+        // Yield while the answer is plausibly imminent, sleep once it clearly is not. The
+        // audio thread is never signalled either way: it stores the result and moves on.
+        if now < spin_until {
+            std::thread::yield_now();
+        } else {
+            std::thread::sleep(POLL_INTERVAL);
         }
     }
 }
@@ -532,24 +627,34 @@ impl EngineHandle {
         T: Send + 'static,
         F: FnOnce(&mut Session) -> T + Send + 'static,
     {
-        let (mut tx, mut rx) = RingBuffer::<T>::new(1);
+        let rx = self.send_for_result(f)?;
+        wait_for_result(rx, timeout)
+    }
+
+    /// Queues work and hands back the slot its result will arrive in.
+    ///
+    /// The half of [`Self::send_and_wait`] that needs this handle, split out from the half
+    /// that waits. A caller reaching this handle through a mutex -- which anything shared
+    /// between GUI threads must -- has to be able to release that mutex *before* waiting.
+    ///
+    /// Holding it across the wait is a mistake worth spelling out, because it does not look
+    /// like one and it does not fail: every control operation then queues behind a full
+    /// round trip to the audio thread, and a caller doing this in a loop starves every other
+    /// thread. What that looks like from outside is not a deadlock but a GUI that has stopped
+    /// responding, which is a good deal harder to diagnose.
+    pub fn send_for_result<T, F>(&mut self, f: F) -> Result<Consumer<T>, SendError>
+    where
+        T: Send + 'static,
+        F: FnOnce(&mut Session) -> T + Send + 'static,
+    {
+        let (mut tx, rx) = RingBuffer::<T>::new(1);
         let mut f = Some(f);
         self.send(Box::new(move |s: &mut Session| {
             if let Some(f) = f.take() {
                 let _ = tx.push(f(s));
             }
         }))?;
-
-        let deadline = std::time::Instant::now() + timeout;
-        loop {
-            if let Ok(v) = rx.pop() {
-                return Ok(v);
-            }
-            if std::time::Instant::now() >= deadline {
-                return Err(WaitError::Timeout(timeout));
-            }
-            std::thread::sleep(POLL_INTERVAL);
-        }
+        Ok(rx)
     }
 
     /// Frees commands the engine has finished with. Safe to call at any time.

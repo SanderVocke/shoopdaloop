@@ -3,6 +3,7 @@ import ShoopDaLoop.Rust
 
 ShoopRustBackendWrapper {
     objectName: "shoop_backend_wrapper"
+    backend_type_explicit: true
     Component.onCompleted: {
         maybe_init()
     }

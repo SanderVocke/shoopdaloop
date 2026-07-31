@@ -162,6 +162,8 @@ impl BackendWrapper {
             return Err(anyhow!("Already initialized"));
         }
 
+        self.as_mut().set_init_error(QString::default());
+
         debug!(
             "Initializing with type {:?}, settings {:?}",
             driver_type, settings
@@ -268,7 +270,7 @@ impl BackendWrapper {
         Ok(())
     }
 
-    pub fn maybe_init(self: Pin<&mut BackendWrapper>) {
+    pub fn maybe_init(mut self: Pin<&mut BackendWrapper>) {
         let do_init: bool;
         let closed: bool;
         let ready: bool;
@@ -285,12 +287,13 @@ impl BackendWrapper {
 
         if do_init {
             debug!("Initializing");
-            match self.init() {
+            match self.as_mut().init() {
                 Ok(_) => {
                     trace!("Initialized");
                 }
                 Err(e) => {
                     error!("Failed to initialize: {:?}", e);
+                    self.as_mut().set_init_error(QString::from(&e.to_string()));
                 }
             }
         } else if closed {
@@ -303,6 +306,10 @@ impl BackendWrapper {
                 closed, ready, client_name_hint, backend_type
             );
         }
+    }
+
+    pub fn allow_missing_backends(self: Pin<&mut BackendWrapper>) -> bool {
+        std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some()
     }
 
     pub fn close(mut self: Pin<&mut BackendWrapper>) {

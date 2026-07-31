@@ -52,8 +52,11 @@ ShoopTestFile {
             'test_virtual_playback_ports_are_app_connectable': () => {
                 wait(500)
                 if(!backend.ready) {
-                    skip('No usable CPAL output backend available')
-                    return
+                    if(backend.allow_missing_backends()) {
+                        skip(`No usable CPAL output backend available: ${backend.init_error}`)
+                        return
+                    }
+                    verify(backend.ready, `No usable CPAL output backend available: ${backend.init_error}`)
                 }
                 wait_condition(() => audio_out.initialized, 2000, 'audio_out did not initialize')
 
