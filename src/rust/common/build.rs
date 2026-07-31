@@ -4,6 +4,10 @@ use toml;
 const SRC_DIR: &str = env!("CARGO_MANIFEST_DIR");
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if cfg!(feature = "prebuild") {
+        return Ok(());
+    }
+
     let src = PathBuf::from(SRC_DIR);
     let root = src
         .ancestors()

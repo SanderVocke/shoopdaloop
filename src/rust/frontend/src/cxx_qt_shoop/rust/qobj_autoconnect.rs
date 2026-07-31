@@ -14,10 +14,10 @@ use crate::cxx_qt_shoop::fn_qlist_helpers;
 use crate::cxx_qt_shoop::fn_qvariantmap_helpers;
 use crate::cxx_qt_shoop::type_external_port_descriptor::ExternalPortDescriptor;
 use anyhow::{anyhow, Context};
-use backend_bindings::{PortDataType, PortDirection};
 use cxx_qt_lib_shoop::qquickitem::{qquickitem_to_qobject_mut, AsQQuickItem};
 use cxx_qt_lib_shoop::{qobject, qtimer};
 use regex::Regex;
+use shoop_engine::{PortDataType, PortDirection};
 use std::pin::Pin;
 
 use std::slice;
@@ -278,8 +278,8 @@ mod tests {
                 .expect("Failed to get backend mut")
                 .set_ready(true);
             {
-                let mut backend_rust = backend.pin_mut().rust_mut();
-                backend_rust
+                let mut backend_wrapper_rust = backend.pin_mut().rust_mut();
+                backend_wrapper_rust
                     .mock_external_ports
                     .push(ExternalPortDescriptor {
                         name: String::from("port_1"),
@@ -372,8 +372,8 @@ mod tests {
                 .expect("Failed to get backend mut")
                 .set_ready(true);
             {
-                let mut backend_rust = backend.pin_mut().rust_mut();
-                backend_rust
+                let mut backend_wrapper_rust = backend.pin_mut().rust_mut();
+                backend_wrapper_rust
                     .mock_external_ports
                     .push(ExternalPortDescriptor {
                         name: String::from("not_port_1"),
@@ -466,8 +466,8 @@ mod tests {
                 .expect("Failed to get backend mut")
                 .set_ready(true);
             {
-                let mut backend_rust = backend.pin_mut().rust_mut();
-                backend_rust
+                let mut backend_wrapper_rust = backend.pin_mut().rust_mut();
+                backend_wrapper_rust
                     .mock_external_ports
                     .push(ExternalPortDescriptor {
                         name: String::from("port_1"),
@@ -560,8 +560,8 @@ mod tests {
                 .expect("Failed to get backend mut")
                 .set_ready(true);
             {
-                let mut backend_rust = backend.pin_mut().rust_mut();
-                backend_rust
+                let mut backend_wrapper_rust = backend.pin_mut().rust_mut();
+                backend_wrapper_rust
                     .mock_external_ports
                     .push(ExternalPortDescriptor {
                         name: String::from("port_1"),
@@ -704,8 +704,8 @@ mod tests {
                 0
             );
             {
-                let mut backend_rust = backend.pin_mut().rust_mut();
-                backend_rust
+                let mut backend_wrapper_rust = backend.pin_mut().rust_mut();
+                backend_wrapper_rust
                     .mock_external_ports
                     .push(ExternalPortDescriptor {
                         name: String::from("port_1"),

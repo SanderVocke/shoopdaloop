@@ -1,16 +1,59 @@
+# Libraries provided by Windows itself. These must never be bundled: shipping a
+# copy of a system DLL either does nothing or actively breaks on a Windows
+# version whose other components expect the matching original.
+#
+# Entries are path patterns matched case-insensitively against the resolved
+# path, or against "<unresolved>/<name>" when a dependency could not be
+# resolved. Blank lines and `#` comments are ignored.
+#
+# The dependency walker prunes at these without resolving them, which also keeps
+# the traversal out of the operating system: unpruned, it reaches several hundred
+# system DLLs and surfaces unresolvable references from deep inside them that
+# could never be satisfied.
+#
+# NOTE: the includelist takes precedence over this file. A handful of
+# redistributables that live in System32 (the MSVC runtime, dbghelp) are
+# deliberately bundled and are listed there.
+*/advapi32.dll
 */AUTHZ.dll
+*/bcrypt.dll
+*/bcryptPrimitives.dll
+*/combase.dll
+*/comdlg32.dll
+*/crypt32.dll
+# d2d1 is Direct2D and is NOT covered by the d3d* pattern below.
+*/d2d1.dll
 */d3d*.dll
+*/dnsapi.dll
 */dwmapi.dll
 */DWrite.dll
 */dxgi.dll
+*/gdi32.dll
+*/imm32.dll
 */IPHLPAPI.DLL
 */kernel32.dll
 */kernelbase.dll
+*/mpr.dll
+*/ncrypt.dll
 */NETAPI32.dll
 */ntdll.dll
+*/ole32.dll
+*/oleaut32.dll
+# Reached only through the delay-load import table of dbghelp.dll.
+*/rpcrt4.dll
+*/secur32.dll
+*/setupapi.dll
+*/SHELL32.dll
+*/shlwapi.dll
 */ucrtbase.dll
 */ucrtbased.dll
+*/uiautomationcore.dll
+*/user32.dll
+*/userenv.dll
+*/uxtheme.dll
 */VERSION.dll
 */WindowsCodecs.dll
 */WINHTTP.dll
 */WINMM.dll
+*/ws2_32.dll
+*/wtsapi32.dll

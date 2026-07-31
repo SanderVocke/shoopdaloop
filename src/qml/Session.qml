@@ -455,8 +455,20 @@ Item {
         update_interval_ms: root.backend_update_interval_ms
         client_name_hint: 'ShoopDaLoop'
         backend_type: root.backend_type
+        backend_type_explicit: global_args.backend_type_explicit
         id: session_backend
-        driver_setting_overrides: ({})
+        driver_setting_overrides: ({
+            cpal_host: global_args.cpal_host,
+            cpal_output_device: global_args.cpal_output_device,
+            cpal_input_device: global_args.cpal_input_device,
+            cpal_sample_rate: global_args.cpal_sample_rate,
+            cpal_buffer_size: global_args.cpal_buffer_size,
+            cpal_input_channels: global_args.cpal_input_channels,
+            cpal_output_channels: global_args.cpal_output_channels,
+            cpal_capture_ring_frames: global_args.cpal_capture_ring_frames,
+            midir_input: global_args.midir_input,
+            midir_output: global_args.midir_output
+        })
 
         onUpdated_on_gui_thread: {
             app_controls.add_dsp_load_point(dsp_load)

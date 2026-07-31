@@ -1,6 +1,6 @@
-use backend_bindings::PortDataType;
 use common::logging::macros::*;
 use cxx_qt_lib_shoop::{qobject::AsQObject, qweakpointer_qobject::QWeakPointer_QObject};
+use shoop_engine::PortDataType;
 
 shoop_log_unit!("Frontend.LoopChannel");
 

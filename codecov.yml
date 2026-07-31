@@ -4,7 +4,6 @@ ignore:
   - "dist"
   - "distribution"
   - "scripts"
-  - "src/backend/third_party"
   - "build"
   - "src/qml/third_party"
   - "portable"
@@ -17,13 +16,6 @@ comment:
 
 component_management:
   individual_components:
-    - component_id: cpp
-      name: C(++)
-      paths:
-        - "**/*.cpp"
-        - "**/*.h"
-        - "**/*.hpp"
-        - "**/*.c"
     - component_id: rust
       name: Rust
       paths:

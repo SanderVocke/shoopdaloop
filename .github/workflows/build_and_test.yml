@@ -229,14 +229,6 @@ jobs:
             second_package_kind: test_binaries
             upload_release_assets: true
             platform: linux-x64
-          # - name: linux_asan
-          #   # Note: ASAN build does not have a test because it is not trivial to deploy
-          #   # an asan-built program on another system. The build is here to ensure the
-          #   # build process still works. To use ASAN, compile like this natively.
-          #   release_build: false
-          #   package_kind: appimage
-          #   cmake_opts: '"ENABLE_ASAN" = "On"'
-          #   platform: linux-x64
           - name: linux_coverage
             if: ${{ needs.setup.outputs.coverage == 'true' }}
             release_build: false
@@ -341,11 +333,7 @@ jobs:
             package: shoopdaloop.*.coverage-linux-x64.portable.tar.gz
             second_package: shoopdaloop.*.coverage-linux-x64.test_binaries.tar.gz
             run_cmd_prefix: >-
-              BASEDIR=$(pwd)
               REPORTDIR=coverage_reports
-              BUILDDIR=$(pwd)
-              ORI_BUILD_DIR=$(cat ori_build_dir.txt)
-              DO_GENHTML=0
               SHOOP_LOG=QoverageCollectorFactory=debug
               QML_IMPORT_PATH=$(~/.local/bin/qoverage --importpath)
               scripts/run_and_generate_coverage.sh
@@ -424,7 +412,6 @@ jobs:
           # - name: macos_debug
           #   release_build: false
           #   package_kind: portable_folder
-          #   second_package_kind: test_binaries
           #   # third_package_kind: dmg
           #   os: macos-15-intel
           #   upload_release_assets: true
@@ -441,7 +428,6 @@ jobs:
           # - name: macos_debug_arm
           #   release_build: false
           #   package_kind: portable_folder
-          #   second_package_kind: test_binaries
           #   os: macos-15
           #   upload_release_assets: true
           #   platform: macos-arm
@@ -512,7 +498,6 @@ jobs:
           #   container: null
           #   os: macos-15
           #   package: shoopdaloop.*.debug-macos-arm.portable.tar.gz
-          #   second_package: shoopdaloop.*.debug-macos-arm.test_binaries.tar.gz
           - name: release_macos
             if: ${{ needs.setup.outputs.release == 'true' }}
             python: python3
@@ -526,7 +511,6 @@ jobs:
           #   container: null
           #   os: macos-15-intel
           #   package: shoopdaloop.*.debug-macos-x64.portable.tar.gz
-          #   second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
         exclude:
           - kind:
               if: false
@@ -614,7 +598,6 @@ jobs:
             prepare: 'windows'
             release_build: false
             package_kind: portable_folder
-            second_package_kind: test_binaries
             platform: windows-msvc-x64
           # - name: windows_arm_debug
           #   os: windows-11-arm
@@ -624,7 +607,6 @@ jobs:
           #   prepare: 'windows'
           #   release_build: false
           #   package_kind: portable_folder
-          #   second_package_kind: test_binaries
           #   platform: windows-msvc-arm
         exclude:
           - kind:
@@ -700,15 +682,14 @@ jobs:
             package: ShoopDaLoop-Installer-*.exe
             pathconvert: "| cygpath -u -f -"
             sentry_build_type: release
-          - name: debug_windows
-            if: ${{ needs.setup.outputs.debug == 'true' }}
-            python: python.exe
-            container: null
-            os: windows-2022
-            package: shoopdaloop.*.debug-windows-msvc-x64.portable.tar.gz
-            second_package: shoopdaloop.*.debug-windows-msvc-x64.test_binaries.tar.gz
-            pathconvert: "| cygpath -u -f -"
-            sentry_build_type: debug
+          # - name: debug_windows
+          #   if: ${{ needs.setup.outputs.debug == 'true' }}
+          #   python: python.exe
+          #   container: null
+          #   os: windows-2022
+          #   package: shoopdaloop.*.debug-windows-msvc-x64.portable.tar.gz
+          #   pathconvert: "| cygpath -u -f -"
+          #   sentry_build_type: debug
         exclude:
           - kind:
               if: false

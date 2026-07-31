@@ -1,3 +1,5 @@
+#![cfg(not(feature = "prebuild"))]
+
 #[cfg(test)]
 mod test_init {
     use ctor::ctor;

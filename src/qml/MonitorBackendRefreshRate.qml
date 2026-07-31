@@ -1,7 +1,11 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-import QtGraphs
+// Pinned: the 2D GraphsView API used below (axisX/axisY on the view,
+// invokable append()/clear() on the series) only exists from Qt 6.8 on.
+// Pinning the version turns an older Qt into a hard import error instead
+// of a confusing "cannot assign to non-existent property" at runtime.
+import QtGraphs 6.8
 
 Item {
     id: root

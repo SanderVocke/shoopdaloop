@@ -40,6 +40,7 @@ FocusReleasingScrollView {
     onTracksChanged: {
         // Keep indexes up to date
         tracks.forEach((c, idx) => { c.track_idx = idx } )
+        tracks.forEach((c) => { c.update_loop_coords() } )
     }
 
     RegisterInRegistry {

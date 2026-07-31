@@ -27,6 +27,7 @@ Item {
     readonly property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.TrackWidget" }
 
     property int track_idx: -1
+    onTrack_idxChanged: update_loop_coords()
 
     readonly property string obj_id : initial_descriptor.id
 
@@ -137,6 +138,12 @@ Item {
 
     property bool fx_ready : false // Will be re-bound when FX instantiated
     property bool fx_active : false // Will be re-bound when FX instantiated
+
+    function update_loop_coords() {
+        if (loops_column) {
+            loops_column.update_coords()
+        }
+    }
 
     function add_loop(properties) {
         if (loop_factory.status == Component.Error) {

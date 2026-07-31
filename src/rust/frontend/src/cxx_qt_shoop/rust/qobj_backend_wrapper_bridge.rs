@@ -1,6 +1,6 @@
-use backend_bindings::AudioDriver;
-use backend_bindings::BackendSession;
 use common::logging::macros::*;
+use shoop_engine::app_backend::AudioDriver;
+use shoop_engine::app_backend::BackendSession;
 use std::time;
 shoop_log_unit!("Frontend.BackendWrapper");
 
@@ -43,7 +43,10 @@ pub mod ffi {
         #[qproperty(i32, actual_backend_type)]
         #[qproperty(QString, client_name_hint)]
         #[qproperty(i32, backend_type)]
+        #[qproperty(bool, backend_type_explicit)]
+        #[qproperty(QString, init_error)]
         #[qproperty(i32, xruns)]
+        #[qproperty(i32, stale_graph_cycles)]
         #[qproperty(i32, last_processed)]
         #[qproperty(f32, dsp_load)]
         #[qproperty(i32, n_audio_buffers_created)]
@@ -85,6 +88,9 @@ pub mod ffi {
         pub fn dummy_is_controlled(self: Pin<&mut BackendWrapper>) -> bool;
 
         #[qinvokable]
+        pub fn dummy_wait_controlled_mode(self: Pin<&mut BackendWrapper>);
+
+        #[qinvokable]
         pub fn dummy_request_controlled_frames(self: Pin<&mut BackendWrapper>, _n: i32);
 
         #[qinvokable]
@@ -118,6 +124,9 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn backend_type_is_supported(self: Pin<&mut BackendWrapper>, _type: i32) -> bool;
+
+        #[qinvokable]
+        pub fn allow_missing_backends(self: Pin<&mut BackendWrapper>) -> bool;
 
         #[qinvokable]
         pub fn segfault_on_process_thread(self: Pin<&mut BackendWrapper>);
@@ -179,6 +188,7 @@ use ffi::*;
 #[derive(Copy, Clone)]
 pub struct BackendWrapperUpdateData {
     pub xruns: i32,
+    pub stale_graph_cycles: i32,
     pub dsp_load: f32,
     pub last_processed: i32,
     pub n_audio_buffers_created: i32,
@@ -193,7 +203,10 @@ pub struct BackendWrapperRust {
     actual_backend_type: i32,
     client_name_hint: QString,
     backend_type: i32,
+    backend_type_explicit: bool,
+    init_error: QString,
     xruns: i32,
+    stale_graph_cycles: i32,
     last_processed: i32,
     dsp_load: f32,
     driver_setting_overrides: QMap_QString_QVariant,
@@ -220,7 +233,10 @@ impl Default for BackendWrapperRust {
             actual_backend_type: 0,
             client_name_hint: QString::default(),
             backend_type: -1,
+            backend_type_explicit: false,
+            init_error: QString::default(),
             xruns: 0,
+            stale_graph_cycles: 0,
             last_processed: 0,
             dsp_load: 0.0,
             driver_setting_overrides: QMap_QString_QVariant::default(),

@@ -1,6 +1,5 @@
 use crate::cli_args::CliArgs;
 use anyhow::anyhow;
-use backend_bindings::AudioDriverType;
 use common::logging::macros::*;
 use config::config::ShoopConfig;
 use cxx_qt_lib::QString;
@@ -15,6 +14,7 @@ use frontend::cxx_qt_shoop::qobj_qmlengine::{
 use frontend::cxx_qt_shoop::test::qobj_test_file_runner::TestFileRunner;
 use glob::glob;
 use once_cell::sync::OnceCell;
+use shoop_engine::AudioDriverType;
 use std::env;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -88,6 +88,25 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
 
     let global_qml_settings = GlobalQmlSettings {
         backend_type: backend_type,
+        backend_type_explicit: cli_args.backend.is_some(),
+        cpal_host: cli_args.cpal_midir_options.cpal_host.clone(),
+        cpal_output_device: cli_args.cpal_midir_options.cpal_output_device.clone(),
+        cpal_input_device: cli_args.cpal_midir_options.cpal_input_device.clone(),
+        cpal_sample_rate: cli_args.cpal_midir_options.cpal_sample_rate,
+        cpal_buffer_size: cli_args.cpal_midir_options.cpal_buffer_size,
+        cpal_input_channels: cli_args.cpal_midir_options.cpal_input_channels.clone(),
+        cpal_output_channels: cli_args.cpal_midir_options.cpal_output_channels.clone(),
+        cpal_capture_ring_frames: cli_args.cpal_midir_options.cpal_capture_ring_frames,
+        midir_input: if cli_args.cpal_midir_options.midir_input.is_empty() {
+            "all".to_string()
+        } else {
+            cli_args.cpal_midir_options.midir_input.join(",")
+        },
+        midir_output: if cli_args.cpal_midir_options.midir_output.is_empty() {
+            "all".to_string()
+        } else {
+            cli_args.cpal_midir_options.midir_output.join(",")
+        },
         load_session_on_startup: cli_args.session_filename.as_ref().map(|s| PathBuf::from(s)),
         test_grab_screens_dir: cli_args
             .developer_options
@@ -341,6 +360,11 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
         }
     };
 
+    shoop_engine::realtime_alloc_guard::set_enabled(cli_args.developer_options.rt_alloc_guard);
+    if cli_args.developer_options.rt_alloc_guard {
+        info!("Realtime allocation guard enabled for top-level process calls");
+    }
+
     if cli_args.print_backends {
         println!("Available backends:\n");
         let all_audio_driver_types = crate::audio_driver_names::all_audio_driver_types();
@@ -349,6 +373,46 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
                 "{}",
                 crate::audio_driver_names::get_audio_driver_name(driver_type)
             );
+        }
+        return Ok(0);
+    }
+
+    if cli_args.list_cpal_hosts {
+        println!("CPAL hosts:");
+        for name in shoop_engine::cpal_host_names() {
+            println!("- {name}");
+        }
+        return Ok(0);
+    }
+
+    if cli_args.list_audio_devices {
+        println!("Audio output devices:");
+        for (idx, name) in
+            shoop_engine::cpal_output_device_names_for_host(&cli_args.cpal_midir_options.cpal_host)
+                .iter()
+                .enumerate()
+        {
+            println!("[{idx}] {name}");
+        }
+        println!("\nAudio input devices:");
+        for (idx, name) in
+            shoop_engine::cpal_input_device_names_for_host(&cli_args.cpal_midir_options.cpal_host)
+                .iter()
+                .enumerate()
+        {
+            println!("[{idx}] {name}");
+        }
+        return Ok(0);
+    }
+
+    if cli_args.list_midi_devices {
+        println!("MIDI input ports:");
+        for (idx, name) in shoop_engine::midir_input_port_names().iter().enumerate() {
+            println!("[{idx}] {name}");
+        }
+        println!("\nMIDI output ports:");
+        for (idx, name) in shoop_engine::midir_output_port_names().iter().enumerate() {
+            println!("[{idx}] {name}");
         }
         return Ok(0);
     }

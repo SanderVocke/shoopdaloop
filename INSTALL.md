@@ -34,18 +34,18 @@ Make sure all the subrepositories are checked out (`git submodule init; git subm
 
 ShoopDaLoop's build is governed by Cargo. In principle, the build command is `cargo build [--release]`.
 
-However, managing dependencies can get complicated:
+However, managing native dependencies can get complicated:
 
 * Rust dependencies are pulled in and built on-the-fly by Cargo.
-* C++ dependencies are not pulled in but searched on your system by CMake.
+* Native libraries such as Qt, JACK, libsndfile, Lua and LV2/Lilv are searched on your system by the relevant build scripts/crates.
 
-For reproducible builds, a script is included which pulls C++ dependencies from `vcpkg` and builds them from source (including Qt). To run this script:
+For reproducible builds, a script is included which pulls the vcpkg-managed native dependencies from `vcpkg` and builds them from source (including Qt). To run this script:
 
 `python scripts/vcpkg_prebuild.py`
 
 This will obviously take a long time, but when done, the folder `build/vcpkg_installed` will contain the required dependencies. There will also be a set of `build/build-env-[debug|release].[sh|ps1|elv]` scripts created, which you can source to set the environment to start the cargo build.
 
-Alternatively, you can set up the C++ dependencies however you wish (e.g. distro packages). If things are not auto-detected you can manually set `QMAKE`.
+Alternatively, you can set up the native dependencies however you wish (e.g. distro packages). If Qt is not auto-detected you can manually set `QMAKE`.
 
 After the Cargo build, executables can be found in `target/[debug|release]`.
 

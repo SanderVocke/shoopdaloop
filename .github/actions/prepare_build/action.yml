@@ -22,7 +22,7 @@ runs:
     if: always() && inputs.variant == 'windows'
     uses: actions-rust-lang/setup-rust-toolchain@v1
     with:
-      toolchain: nightly
+      toolchain: stable
       target: x86_64-pc-windows-msvc
       components: rustfmt
       cache: false
@@ -31,8 +31,8 @@ runs:
     if: always() && inputs.variant != 'windows'
     uses: actions-rust-lang/setup-rust-toolchain@v1
     with:
-      toolchain: nightly
-      components: rustfmt, llvm-tools-preview
+      toolchain: stable
+      components: rustfmt
       cache: false
       rustflags: ""
   - name: Rust info
@@ -46,9 +46,6 @@ runs:
       rustup toolchain list
       echo "==== Rust component list ===="
       rustup component list
-      echo "==== Rust LLVM tools (if installed) ===="
-      echo "LLVM_COV=$(find $(rustc --print sysroot) -name llvm-cov)" | tee -a $GITHUB_ENV
-      echo "LLVM_PROFDATA=$(find $(rustc --print sysroot) -name llvm-profdata)" | tee -a $GITHUB_ENV
 
   - name: Prepare linux
     if: always() && inputs.variant == 'linux'

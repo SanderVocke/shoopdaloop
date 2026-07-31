@@ -1,153 +1,100 @@
-use crate::dependencies::get_dependency_libs;
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, ExitStatus};
 
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
 
+fn check_status(status: ExitStatus, operation: &str) -> Result<(), anyhow::Error> {
+    if status.success() {
+        Ok(())
+    } else {
+        Err(anyhow!("{operation} failed with status {status}"))
+    }
+}
+
 fn populate_folder(folder: &Path, cargo_profile: &str) -> Result<(), anyhow::Error> {
-    // For normalizing Windows paths
-    let normalize_path = |path: PathBuf| -> Result<PathBuf, anyhow::Error> {
-        Ok(PathBuf::from(
-            std::fs::canonicalize(path)?
-                .to_str()
-                .ok_or(anyhow!("Invalid unicode in path"))?
-                .trim_start_matches(r"\\?\"),
-        ))
-    };
-
-    let file_path = PathBuf::from(file!());
-    let src_path = normalize_path(file_path)?;
-    let src_path = src_path
+    let source_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
-        .nth(5)
-        .ok_or(anyhow!("cannot find src dir"))?;
-    info!("Using source path {src_path:?}");
+        .nth(3)
+        .ok_or_else(|| anyhow!("cannot find workspace root"))?
+        .to_path_buf();
+    info!("Using source path {source_root:?}");
 
-    let testrunner_filename = if cfg![target_os = "windows"] {
-        "test_runner.exe"
-    } else {
-        "test_runner"
-    };
-    let installed_testrunner = folder.join(testrunner_filename);
-    for f in glob::glob(
-        format!(
-            "{}/**/test_runner*",
-            backend::backend_build_dir().to_string_lossy().to_string()
-        )
-        .as_str(),
-    )? {
-        let f = f?.clone();
-        info!("Bundling {f:?}...");
-        std::fs::copy(&f, &installed_testrunner)?;
-    }
-
-    info!("Getting dependencies (this may take some time)...");
-    let excludelist_path = if cfg!(target_os = "linux") {
-        src_path.join("distribution/linux/testrunner_excludelist")
-    } else if cfg!(target_os = "windows") {
-        src_path.join("distribution/windows/testrunner_excludelist")
-    } else if cfg!(target_os = "macos") {
-        src_path.join("distribution/macos/testrunner_excludelist")
-    } else {
-        panic!()
-    };
-    let includelist_path = if cfg!(target_os = "linux") {
-        src_path.join("distribution/linux/testrunner_includelist")
-    } else if cfg!(target_os = "windows") {
-        src_path.join("distribution/windows/testrunner_includelist")
-    } else if cfg!(target_os = "macos") {
-        src_path.join("distribution/macos/testrunner_includelist")
-    } else {
-        panic!()
-    };
-
-    for path in backend::runtime_link_dirs() {
-        debug!("--> extra search path: {:?}", path);
-        common::env::add_lib_search_path(&path);
-    }
-    let dependency_libs = get_dependency_libs(
-        &installed_testrunner,
-        folder,
-        &excludelist_path,
-        &includelist_path,
-        false,
-    )?;
-
-    info!("Bundling {} dependencies...", dependency_libs.len());
-    for lib in dependency_libs {
-        let src = lib.clone();
-        let dst = folder.join(lib.file_name().ok_or(anyhow!("Missing filename"))?);
-        debug!("--> {:?} -> {:?}", &src, &dst);
-        std::fs::copy(&src, &dst)?;
-    }
-
-    info!("Downloading prebuilt cargo-nextest into folder...");
-
+    info!("Downloading cargo-nextest into test artifact...");
     let nextest_path: PathBuf;
-    let nextest_dir = folder.to_str().ok_or(anyhow!("Invalid unicode"))?;
+    let destination = folder
+        .to_str()
+        .ok_or_else(|| anyhow!("Invalid unicode in test artifact path"))?;
+
     #[cfg(target_os = "windows")]
     {
         nextest_path = folder.join("cargo-nextest.exe");
-        Command::new("powershell")
-                .current_dir(&src_path)
-                .args(&["-Command",
-                        &format!("Invoke-WebRequest -Uri \"https://get.nexte.st/latest/windows\" -OutFile \"$env:TEMP\\nextest.zip\"; Expand-Archive -Path \"$env:TEMP\\nextest.zip\" -DestinationPath \"{}\" -Force; Remove-Item \"$env:TEMP\\nextest.zip\"",
-                         nextest_dir)
-                        ])
-                .status()?;
+        let status = Command::new("powershell")
+            .current_dir(&source_root)
+            .args([
+                "-Command",
+                &format!(
+                    "Invoke-WebRequest -Uri \"https://get.nexte.st/latest/windows\" -OutFile \"$env:TEMP\\nextest.zip\"; Expand-Archive -Path \"$env:TEMP\\nextest.zip\" -DestinationPath \"{destination}\" -Force; Remove-Item \"$env:TEMP\\nextest.zip\""
+                ),
+            ])
+            .status()
+            .context("failed to launch cargo-nextest download")?;
+        check_status(status, "cargo-nextest download")?;
     }
     #[cfg(target_os = "macos")]
     {
         nextest_path = folder.join("cargo-nextest");
-        Command::new("sh")
-            .current_dir(&src_path)
-            .args(&[
+        let status = Command::new("sh")
+            .current_dir(&source_root)
+            .args([
                 "-c",
                 &format!(
-                    "curl -LsSf https://get.nexte.st/latest/mac | tar zxf - -C \"{}\"",
-                    nextest_dir
+                    "curl -LsSf https://get.nexte.st/latest/mac | tar zxf - -C \"{destination}\""
                 ),
             ])
-            .status()?;
+            .status()
+            .context("failed to launch cargo-nextest download")?;
+        check_status(status, "cargo-nextest download")?;
     }
     #[cfg(target_os = "linux")]
     {
         nextest_path = folder.join("cargo-nextest");
-        Command::new("sh")
-            .current_dir(&src_path)
-            .args(&[
+        let status = Command::new("sh")
+            .current_dir(&source_root)
+            .args([
                 "-c",
                 &format!(
-                    "curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C \"{}\"",
-                    nextest_dir
+                    "curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C \"{destination}\""
                 ),
             ])
-            .status()?;
+            .status()
+            .context("failed to launch cargo-nextest download")?;
+        check_status(status, "cargo-nextest download")?;
     }
 
-    info!("Creating nextest archive...");
+    info!("Creating nextest archive for all workspace tests...");
     let archive = folder.join("nextest-archive.tar.zst");
-    let args = vec![
-        "nextest",
-        "archive",
-        "--archive-file",
-        archive.to_str().ok_or(anyhow!("Invalid unicode"))?,
-        "--cargo-profile",
-        cargo_profile,
-    ];
+    let status = Command::new(&nextest_path)
+        .current_dir(&source_root)
+        .args([
+            "nextest",
+            "archive",
+            "--workspace",
+            "--features",
+            "shoop_engine/app_backend",
+            "--archive-file",
+            archive
+                .to_str()
+                .ok_or_else(|| anyhow!("Invalid unicode in nextest archive path"))?,
+            "--cargo-profile",
+            cargo_profile,
+        ])
+        .status()
+        .context("failed to launch cargo-nextest archive")?;
+    check_status(status, "cargo-nextest archive")?;
 
-    Command::new(&nextest_path)
-        .current_dir(&src_path)
-        .args(&args[..])
-        .status()?;
-
-    info!(
-        "Test binaries folder produced in {}",
-        folder.to_str().ok_or(anyhow!("Invalid unicode"))?
-    );
-
+    info!("Test artifact produced in {}", folder.display());
     Ok(())
 }
 
@@ -156,23 +103,18 @@ pub fn build_test_binaries_folder(
     cargo_profile: &str,
 ) -> Result<(), anyhow::Error> {
     if output_dir.exists() {
-        return Err(anyhow!("Output directory {:?} already exists", output_dir));
+        return Err(anyhow!("Output directory {output_dir:?} already exists"));
     }
-    if !output_dir
+    let parent = output_dir
         .parent()
-        .ok_or(anyhow!("Cannot find parent of {output_dir:?}"))?
-        .exists()
-    {
+        .ok_or_else(|| anyhow!("Cannot find parent of {output_dir:?}"))?;
+    if !parent.exists() {
         return Err(anyhow!(
-            "Output directory {:?}: parent doesn't exist",
-            output_dir
+            "Output directory {output_dir:?}: parent does not exist"
         ));
     }
-    info!("Creating test binaries directory...");
+
+    info!("Creating Rust test artifact directory...");
     std::fs::create_dir(output_dir)?;
-
-    populate_folder(output_dir, cargo_profile)?;
-
-    info!("Test binaries folder created @ {output_dir:?}");
-    Ok(())
+    populate_folder(output_dir, cargo_profile)
 }

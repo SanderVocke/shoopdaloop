@@ -16,19 +16,22 @@ copy_dir = { workspace = true }
 log = { workspace = true }
 ctor = { workspace = true }
 toml = { workspace = true }
-serde = { workspace = true }
+# derive is used directly here; do not rely on another crate's feature unifying in
+serde = { workspace = true, features = ["derive"] }
+
+[lints]
+workspace = true
 
 [build-dependencies]
-backend = { path = "../backend" }
 common = { path = "../common" }
 
 anyhow = { workspace = true }
 toml = { workspace = true }
-serde = { workspace = true }
+# build.rs pulls in src/config.rs, which derives Serialize/Deserialize
+serde = { workspace = true, features = ["derive"] }
 log = { workspace = true }
 ctor = { workspace = true }
 
 [features]
 # Dummy build to build dependencies only
-prebuild = ["backend/prebuild",
-            "common/prebuild"]
+prebuild = ["common/prebuild"]

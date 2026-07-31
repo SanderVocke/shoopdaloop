@@ -7,8 +7,8 @@ use crate::{
     cxx_qt_shoop::qobj_click_track_generator_bridge::ffi::*,
     midi_event_helpers::MidiEventToQVariant,
 };
-use backend_bindings::{MidiEvent, MultichannelAudio};
 use cxx_qt_lib::{QList, QVariant, QVector};
+use shoop_engine::{MidiEvent, MultichannelAudio};
 
 use common::logging::macros::*;
 use cxx_qt_lib_shoop::{

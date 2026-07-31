@@ -1,6 +1,4 @@
 use anyhow::anyhow;
-use backend;
-use common;
 use std::path::PathBuf;
 
 fn generate_dev_launcher_script() -> Result<PathBuf, anyhow::Error> {
@@ -89,33 +87,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
         return Err(anyhow!("Unknown build profile: {}", &profile));
     }
 
-    #[cfg(target_os = "linux")]
-    {
-        println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--no-as-needed");
-    }
-    println!("cargo:rustc-link-arg-bin=shoopdaloop=-lshoopdaloop_backend");
-    #[cfg(target_os = "windows")]
-    {
-        // force linkage by manually importing an arbitrary symbol
-        println!("cargo:rustc-link-arg-bin=shoopdaloop=/INCLUDE:create_audio_driver");
-        println!("cargo:rustc-link-lib=shoopdaloop_backend");
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        // Link to portable lib folder
-        println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/../lib");
-    }
-
-    for path in backend::build_time_link_dirs() {
-        println!("cargo:rustc-link-search=native={}", path.display());
-    }
-
-    let backend_runtime_link_paths_str = backend::runtime_link_dirs()
-        .iter()
-        .map(|p| p.to_string_lossy().to_string())
-        .collect::<Vec<String>>()
-        .join(common::util::PATH_LIST_SEPARATOR);
+    let backend_runtime_link_paths_str = String::new();
     println!(
         "cargo:rustc-env=SHOOP_RUNTIME_LINK_PATHS={}",
         backend_runtime_link_paths_str

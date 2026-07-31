@@ -1,16 +1,20 @@
 */libb*.dylib*
-*/libb64*.dylib
 */libbrotlidec*.dylib
 */libcrypto*.dylib
 */libdouble-conversion*.dylib
 */libFLAC*.dylib
-*/libfmt*.dylib
 */libfreetype*.dylib
 */libharfbuzz*.dylib
 */libicu*.dylib*
 */libintl*.dylib
+*/libjack*.dylib
+# JPEG decoding, needed by Qt6/plugins/imageformats/libqjpeg.dylib. The file is
+# versioned as libjpeg.62.4.0.dylib, hence the wildcard before .dylib.
+*/libjpeg*.dylib*
 */liblilv-*.dylib*
 */liblua*.dylib
+# Mesh optimisation, needed by libQt6Quick3DUtils.
+*/libmeshoptimizer*.dylib*
 */libmp3lame*.dylib
 */libmpg123*.dylib
 */libogg*.dylib
@@ -19,14 +23,16 @@
 */libpng*.dylib
 */libQt6*.dylib*
 */libserd-*.dylib*
-*/libshoopdaloop_backend*.dylib
 */libsndfile*.dylib
 */libsord-*.dylib*
 */libsratom-*.dylib*
+# Needed by Qt6/plugins/sqldrivers/libqsqlite.dylib, which QtQuick.LocalStorage
+# uses. Note this is vcpkg's SQLite, not the system one: /usr/lib is classified
+# as OS-provided by system_lib_prefixes before any list is consulted.
+*/libsqlite3*.dylib*
 */libssl*.dylib
 */libvorbis*.dylib
 */libvorbisenc*.dylib
 */libz*.dylib
-*/libzita-resampler.dylib*
 */libzix-*.dylib*
 */libzstd*.dylib

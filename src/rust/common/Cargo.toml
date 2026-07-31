@@ -14,6 +14,9 @@ anyhow = { workspace = true }
 ctor = { workspace = true }
 walkdir = { workspace = true }
 
+[lints]
+workspace = true
+
 [build-dependencies]
 toml = { workspace = true }
 

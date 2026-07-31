@@ -60,14 +60,12 @@ pub mod ffi {
     impl cxx_qt::Constructor<(*mut QObject,), NewArguments = (*mut QObject,)> for Logger {}
     impl cxx_qt::Constructor<(), NewArguments = ()> for Logger {}
 }
-use backend_bindings::Logger as BackendLogger;
 use ffi::*;
 
 #[derive(Default)]
 pub struct LoggerRust {
     pub name: QString,
     pub instance_identifier: QString,
-    pub backend: Option<BackendLogger>,
 }
 
 impl cxx_qt::Constructor<(*mut QObject,)> for Logger {

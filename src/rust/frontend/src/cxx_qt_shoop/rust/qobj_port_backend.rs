@@ -7,7 +7,6 @@ use crate::{
     midi_event_helpers::MidiEventToQVariant,
 };
 use anyhow::anyhow;
-use backend_bindings::{MidiEvent, PortConnectability, PortDataType, PortDirection};
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
@@ -22,6 +21,7 @@ use cxx_qt_lib_shoop::{
     qvariant_helpers::qvariant_to_qsharedpointer_qobject,
     qweakpointer_qobject::QWeakPointer_QObject,
 };
+use shoop_engine::{MidiEvent, PortConnectability, PortDataType, PortDirection};
 use std::{
     collections::{HashMap, HashSet},
     pin::Pin,
@@ -179,6 +179,9 @@ impl PortBackend {
             let idx = self
                 .fx_chain_port_idx
                 .ok_or(anyhow!("no fx chain port index set"))?;
+            let min_n_ringbuffer_samples = self
+                .min_n_ringbuffer_samples
+                .ok_or(anyhow!("min_n_ringbuffer_samples not set"))?;
             let output_connectability = self
                 .output_connectability
                 .as_ref()
@@ -194,7 +197,7 @@ impl PortBackend {
                         .data()?,
                 )?
             };
-            let is_input = !output_connectability.internal;
+            let is_input = !output_connectability.contains(PortConnectability::INTERNAL);
             let is_midi = self
                 .port_type
                 .ok_or(anyhow!("port data type (is_midi) not set"))?
@@ -235,6 +238,9 @@ impl PortBackend {
                 }
             };
 
+            // Apply the descriptor's requested ringbuffer size to internal FX ports.
+            port.set_ringbuffer_n_samples(min_n_ringbuffer_samples as u32);
+
             // To push any state that was already set on us before initializing
             let state = &self.prev_state;
             debug!(self, "Push deferred state: {state:?}");
@@ -263,7 +269,7 @@ impl PortBackend {
                 .input_connectability
                 .as_ref()
                 .ok_or(anyhow!("input_connectability not set"))?;
-            let direction = if !input_connectability.internal {
+            let direction = if !input_connectability.contains(PortConnectability::INTERNAL) {
                 PortDirection::Input
             } else {
                 PortDirection::Output

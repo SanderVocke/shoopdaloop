@@ -6,8 +6,6 @@ use crate::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;
 use crate::engine_update_thread;
 use crate::loop_helpers::get_backend_loop_handles_variant_list;
 use anyhow::anyhow;
-use backend_bindings::AudioChannel;
-use backend_bindings::MidiChannel;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
@@ -23,6 +21,8 @@ use cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::qsharedpointer_qobject_to_qvariant;
 use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
+use shoop_engine::app_backend::AudioChannel;
+use shoop_engine::app_backend::MidiChannel;
 use std::pin::Pin;
 shoop_log_unit!("Frontend.Loop");
 

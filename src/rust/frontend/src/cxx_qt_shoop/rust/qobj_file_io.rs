@@ -1,4 +1,3 @@
-use backend_bindings::{MidiEvent, MultichannelAudio};
 use common::logging::macros::*;
 use cxx_qt::QObject;
 use cxx_qt_lib::{QList, QMap, QVector};
@@ -12,6 +11,7 @@ use cxx_qt_lib_shoop::qvariant_helpers::{
     qlist_f32_to_qvariant, qvariant_to_qobject_ptr, qvariant_to_qvariantlist,
     qvariant_to_qvector_f32, qvariant_type_name, qvariantlist_to_qvariant,
 };
+use shoop_engine::{MidiEvent, MultichannelAudio};
 use sndfile::{default_subtype, get_supported_major_format_dict, SndFileIO};
 shoop_log_unit!("Frontend.FileIO");
 

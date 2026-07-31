@@ -10,7 +10,6 @@ use crate::cxx_qt_shoop::{
 use crate::lua_callback::LuaCallback;
 use crate::lua_conversions::IntoLuaExtended;
 use anyhow::anyhow;
-use backend_bindings::{LoopMode, PortDirection};
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
 use cxx_qt::QObject;
@@ -29,6 +28,7 @@ use cxx_qt_lib_shoop::qvariant_helpers::{
 use cxx_qt_lib_shoop::{qobject::FromQObject, qpointer::qpointer_to_qobject};
 use itertools::Either;
 use mlua::{FromLua, IntoLua};
+use shoop_engine::{LoopMode, PortDirection};
 use std::boxed::Box;
 use std::cell::RefCell;
 use std::collections::BTreeMap;

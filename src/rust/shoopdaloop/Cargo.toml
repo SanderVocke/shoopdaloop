@@ -16,7 +16,7 @@ path = "src/bin/print_shoopdaloop_out_dir.rs"
 
 [dependencies]
 frontend = { path = "../frontend" }
-backend_bindings = { path = "../backend_bindings" }
+shoop_engine = { path = "../shoop_engine", features = ["cpal", "midir"] }
 common = { path = "../common" }
 config = { path = "../config" }
 crashhandling = { path = "../crashhandling" }
@@ -35,9 +35,12 @@ serde_json = { workspace = true }
 once_cell = { workspace = true }
 cxx-qt = { workspace = true }
 cxx-qt-lib = { workspace = true, features = ["full"] }
+assert_no_alloc = { workspace = true }
+
+[lints]
+workspace = true
 
 [build-dependencies]
-backend = { path = "../backend" }
 common = { path = "../common" }
 config = { path = "../config" }
 cxx-qt-build = { workspace = true }
@@ -54,7 +57,8 @@ ctor = { workspace = true }
 [features]
 # Dummy build to build dependencies only
 prebuild = ["frontend/prebuild",
-            "backend_bindings/prebuild",
-            "backend/prebuild",
+            "shoop_engine/prebuild",
             "common/prebuild",
-            "crashhandling/prebuild"]
+            "config/prebuild",
+            "crashhandling/prebuild",
+            "cxx_qt_lib_shoop/prebuild"]

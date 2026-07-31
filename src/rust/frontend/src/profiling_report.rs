@@ -1,5 +1,5 @@
-use backend_bindings::{ProfilingReport, ProfilingReportItem};
 use common::logging::macros::*;
+use shoop_engine::{ProfilingReport, ProfilingReportItem};
 shoop_log_unit!("Frontend.ProfilingReport");
 use cxx_qt_lib::{QMap, QMapPair_QString_QVariant, QString, QVariant};
 use cxx_qt_lib_shoop::qvariant_helpers::qvariantmap_to_qvariant;

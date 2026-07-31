@@ -6,8 +6,14 @@ edition = "2021"
 
 [dependencies]
 common = { path = "../common" }
-backend_bindings = { path = "../backend_bindings" }
+shoop_engine = { path = "../shoop_engine" }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+assert2 = { workspace = true }
 
 [features]
 # Dummy build to build dependencies only
-prebuild = ["common/prebuild", "backend_bindings/prebuild"]
+prebuild = ["common/prebuild", "shoop_engine/prebuild"]

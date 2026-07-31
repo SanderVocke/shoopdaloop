@@ -347,11 +347,11 @@ pub mod ffi {
     impl cxx_qt::Constructor<()> for CompositeLoopGui {}
 }
 
-use backend_bindings::LoopMode;
 use cxx;
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 pub use ffi::CompositeLoopGui;
 use ffi::*;
+use shoop_engine::LoopMode;
 
 impl cxx_qt_lib_shoop::qquickitem::AsQQuickItem for CompositeLoopGui {
     unsafe fn mut_qquickitem_ptr(&mut self) -> *mut QQuickItem {

@@ -3,13 +3,11 @@
 */libavahi-client.so*
 */libavahi-common.so*
 */libb2.so*
-*/libb64*.so*
 */libblkid.so*
 */libbrotli*.so*
 */libbz2*
 */libcairo-gobject.so*
 */libcairo.so*
-*/libCatch2*.so*
 */libcom_err.so*
 */libcrypt*
 */libcrypto.so*
@@ -21,7 +19,6 @@
 */libexpat.so*
 */libffi*
 */libFLAC.so*
-*/libfmt*.so*
 */libfontconfig.so*
 */libfreetype*.so*
 */libfribidi.so*
@@ -80,6 +77,7 @@
 */libpixman-*.so*
 */libpng16*.so*
 */libpq.so*
+*/libproxy.so*
 */libQt6*.so*
 */libreadline.so*
 */libresolv.so*
@@ -87,7 +85,6 @@
 */libselinux.so*
 */libserd*.so*
 */libshiboken6*.so*
-*/libshoopdaloop_backend.so*
 */libSM*.so*
 */libsndfile*.so*
 */libsord*.so*
@@ -119,6 +116,5 @@
 */libxkbcommon.so*
 */libXrandr.so*
 */libz.so*
-*/libzita-resampler.so*
 */libzix*.so*
 */libzstd.so*

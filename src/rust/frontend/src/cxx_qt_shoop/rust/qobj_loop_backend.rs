@@ -4,7 +4,6 @@ use crate::cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend;
 use crate::loop_helpers::transition_backend_loops;
 use crate::loop_mode_helpers::*;
 use anyhow::anyhow;
-use backend_bindings::LoopMode;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
@@ -16,6 +15,7 @@ use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::qobject;
 use cxx_qt_lib_shoop::qobject::FromQObject;
 use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
+use shoop_engine::LoopMode;
 use std::pin::Pin;
 shoop_log_unit!("Frontend.Loop");
 
@@ -37,10 +37,10 @@ macro_rules! error {
     };
 }
 
-fn convert_maybe_mode_i32(value: Option<backend_bindings::LoopMode>) -> i32 {
+fn convert_maybe_mode_i32(value: Option<LoopMode>) -> i32 {
     match value {
         Some(v) => v as i32,
-        None => backend_bindings::LoopMode::Unknown as i32,
+        None => LoopMode::Unknown as i32,
     }
 }
 
@@ -370,7 +370,7 @@ impl LoopBackend {
             maybe_to_sync_at_cycle
         );
         let result: Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
-            let mut backend_loop_refs: Vec<&backend_bindings::Loop> = Vec::new();
+            let mut backend_loop_refs: Vec<&shoop_engine::app_backend::Loop> = Vec::new();
             backend_loop_refs.reserve(loops.len() as usize);
 
             // Increment the reference count for all loops involved
@@ -384,7 +384,7 @@ impl LoopBackend {
                             let loop_pin = std::pin::Pin::new_unchecked(&mut *loop_ptr);
                             loop_pin.maybe_initialize_backend();
                         }
-                        let backend_loop_ref: &backend_bindings::Loop = loop_ptr
+                        let backend_loop_ref: &shoop_engine::app_backend::Loop = loop_ptr
                             .as_ref()
                             .ok_or_else(|| anyhow!("Loop pointer is null"))?
                             .backend_loop
@@ -401,7 +401,7 @@ impl LoopBackend {
                     }
                 });
 
-            backend_bindings::transition_multiple_loops(
+            shoop_engine::app_backend::transition_multiple_loops(
                 &backend_loop_refs,
                 to_mode.try_into()?,
                 maybe_cycles_delay,
