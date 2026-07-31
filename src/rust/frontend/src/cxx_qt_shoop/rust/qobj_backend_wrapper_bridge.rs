@@ -44,6 +44,7 @@ pub mod ffi {
         #[qproperty(QString, client_name_hint)]
         #[qproperty(i32, backend_type)]
         #[qproperty(bool, backend_type_explicit)]
+        #[qproperty(QString, init_error)]
         #[qproperty(i32, xruns)]
         #[qproperty(i32, stale_graph_cycles)]
         #[qproperty(i32, last_processed)]
@@ -125,6 +126,9 @@ pub mod ffi {
         pub fn backend_type_is_supported(self: Pin<&mut BackendWrapper>, _type: i32) -> bool;
 
         #[qinvokable]
+        pub fn allow_missing_backends(self: Pin<&mut BackendWrapper>) -> bool;
+
+        #[qinvokable]
         pub fn segfault_on_process_thread(self: Pin<&mut BackendWrapper>);
 
         #[qinvokable]
@@ -200,6 +204,7 @@ pub struct BackendWrapperRust {
     client_name_hint: QString,
     backend_type: i32,
     backend_type_explicit: bool,
+    init_error: QString,
     xruns: i32,
     stale_graph_cycles: i32,
     last_processed: i32,
@@ -229,6 +234,7 @@ impl Default for BackendWrapperRust {
             client_name_hint: QString::default(),
             backend_type: -1,
             backend_type_explicit: false,
+            init_error: QString::default(),
             xruns: 0,
             stale_graph_cycles: 0,
             last_processed: 0,

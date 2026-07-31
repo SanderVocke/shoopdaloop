@@ -96,12 +96,16 @@ ShoopTestFile {
             filename : TestFilename.test_filename()
 
             property bool skip_no_jack : !backend.backend_type_is_supported(ShoopRustConstants.AudioDriverType.JackTest)
-            when: skip_no_jack || (audio_in.initialized && audio_out.initialized && midi_in.initialized && midi_out.initialized)
+            when: skip_no_jack || backend.init_error != '' || (audio_in.initialized && audio_out.initialized && midi_in.initialized && midi_out.initialized)
 
             test_fns: ({
                 'test_available_ports': () => {
                     if(skip_no_jack) {
                         skip("Backend was built without Jack support")
+                        return
+                    }
+                    if(!backend.ready && backend.allow_missing_backends()) {
+                        skip(`Jack backend unavailable: ${backend.init_error}`)
                         return
                     }
                     verify(backend.ready)

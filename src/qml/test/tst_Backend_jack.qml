@@ -16,14 +16,18 @@ ShoopTestFile {
             name: 'JackBackend'
             filename : TestFilename.test_filename()
             when: {
-                let ready = backend.ready || backend.backend_type == null
-                return ready
+                return backend.ready || backend.backend_type == null || backend.init_error != ''
             }
 
             test_fns: ({
                 'test_backend_jack': () => {
                     if(!backend.backend_type_is_supported(ShoopRustConstants.AudioDriverType.JackTest)) {
                         skip("Backend was built without Jack support")
+                        backend.close()
+                        return
+                    }
+                    if(!backend.ready && backend.allow_missing_backends()) {
+                        skip(`Jack backend unavailable: ${backend.init_error}`)
                         backend.close()
                         return
                     }
