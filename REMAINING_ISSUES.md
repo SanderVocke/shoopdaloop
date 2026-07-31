@@ -122,10 +122,9 @@ This document tracks work intentionally deferred from the per-object state mirro
 
 ### Ringbuffer adoption failure reporting
 
-- **Status:** Deferred efficiency; migration changes semantics.
+- **Status:** Fire-and-forget migration implemented; structured completion deferred.
 - **API:** `Loop::adopt_ringbuffer_contents`.
-- **Current behavior:** Blocks on a query only to propagate `Result<()>`; the frontend only logs failure.
-- **Migration behavior:** Fire-and-forget, with process-side failure logged or published asynchronously.
+- **Current behavior:** Queues the operation and returns its command sequence; process-side execution failure is logged.
 - **Impact:** Callers no longer receive synchronous success. There is no structured completion object yet.
 - **Future direction:** Optional asynchronous operation status/receiver if UI workflows need completion feedback.
 
@@ -178,6 +177,15 @@ This document tracks work intentionally deferred from the per-object state mirro
 - **Current behavior:** Some bounded queue push results are ignored; other decoupled paths count drops.
 - **Impact:** MIDI messages can be silently lost under saturation.
 - **Future direction:** Align with typed queue errors/drop counters and define whether UI MIDI control retries or reports loss.
+
+## Object ownership and removal
+
+### Ready handle drop does not remove engine objects
+
+- **Status:** Deferred ownership/lifecycle design.
+- **Current behavior:** Dropping a pending loop with no queued dependent command cancels creation. Once ready, dropping the final frontend handle does not remove the session loop; queued dependent commands intentionally keep pending controls alive until FIFO work drains.
+- **Impact:** Dynamic object removal can leave unreachable session objects if future frontend flows drop ready handles without an explicit removal operation.
+- **Future direction:** Add explicit close/remove commands, publish `Closed`, detach topology safely, and define whether final-handle drop requests removal or ownership remains session-level.
 
 ## Diagnostics and incomplete API behavior
 
@@ -248,8 +256,8 @@ This document tracks work intentionally deferred from the per-object state mirro
 
 ### `StateSnapshot` and `queued_at_cycle`
 
-- **Status:** Planned removal after all object families migrate.
-- **Current behavior:** Engine publishes reusable bulk vectors each cycle. `SharedSession::poll` rejects snapshots not newer than the globally most recently queued mutation, forcing query fallbacks.
+- **Status:** Loop polling migrated; channel and port migration plus final removal remain.
+- **Current behavior:** Engine still publishes reusable bulk vectors each cycle for channels/ports and now-redundant loop entries. `SharedSession::poll` rejects snapshots not newer than the globally most recently queued mutation, forcing channel/port query fallbacks.
 - **Impact:** One object's mutation/reset invalidates polling for every object; snapshot maintenance duplicates eventual per-object mirrors.
 - **Future direction:** Remove object snapshot publication and global trust tracking. Keep only unrelated engine stats atomics and any independently justified immutable publication.
 

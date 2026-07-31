@@ -38,6 +38,10 @@ impl CommandSequence {
     pub fn get(self) -> u64 {
         self.0
     }
+
+    pub fn from_raw(value: u64) -> Self {
+        Self(value)
+    }
 }
 
 struct SequencedCommand {
@@ -140,27 +144,6 @@ impl Stats {
         let scaled = (percent.max(0.0) * 100.0).round();
         self.dsp_load_centi_percent
             .store(scaled as u32, Ordering::Relaxed);
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct LoopState {
-    pub mode: LoopMode,
-    pub length: u32,
-    pub position: u32,
-    pub maybe_next_mode: Option<LoopMode>,
-    pub maybe_next_mode_delay: Option<u32>,
-}
-
-impl Default for LoopState {
-    fn default() -> Self {
-        Self {
-            mode: LoopMode::Unknown,
-            length: 0,
-            position: 0,
-            maybe_next_mode: None,
-            maybe_next_mode_delay: None,
-        }
     }
 }
 

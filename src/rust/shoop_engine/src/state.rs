@@ -18,6 +18,28 @@
 //! thread can fill them directly and the polled and public shapes are the same type.
 
 use crate::channel_mode::ChannelMode;
+use crate::loop_mode::LoopMode;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LoopState {
+    pub mode: LoopMode,
+    pub length: u32,
+    pub position: u32,
+    pub maybe_next_mode: Option<LoopMode>,
+    pub maybe_next_mode_delay: Option<u32>,
+}
+
+impl Default for LoopState {
+    fn default() -> Self {
+        Self {
+            mode: LoopMode::Unknown,
+            length: 0,
+            position: 0,
+            maybe_next_mode: None,
+            maybe_next_mode_delay: None,
+        }
+    }
+}
 
 /// Audio-channel state exposed through the application-facing backend interface.
 ///

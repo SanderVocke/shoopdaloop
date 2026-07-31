@@ -142,22 +142,22 @@
 
 ### Phase 2 — Shared lifecycle/control blocks and loop migration
 
-- [ ] Introduce reusable lifecycle and identity primitives for pending handles, with typed identities where practical to prevent loop/channel/port mix-ups.
-- [ ] Define lifecycle transition rules and error storage, including memory-ordering rationale and behavior of dependent commands.
-- [ ] Introduce `LoopStateMirror` with atomic fields for mode, length, position, planned mode, and planned delay.
-- [ ] Attach the loop mirror/control to the engine loop so the process owner publishes current values at appropriate mutation/cycle points without allocation.
-- [ ] Convert `BackendSession::create_loop` to allocate a control block, queue creation, and return a pending `Loop` immediately after successful enqueue.
-- [ ] Convert all loop commands to resolve the loop identity from the control block when executed.
-- [ ] Convert loop `get_state`/`poll_state` to mirror reads only. Define pending/failed behavior without a blocking fallback.
-- [ ] Convert loop setters, transition, clear, sync-source changes, and multi-loop transition to return/propagate queue results and avoid response waits.
-- [ ] Convert `adopt_ringbuffer_contents` to enqueue-only and log/publish process-side failure asynchronously.
-- [ ] Test:
-  - [ ] creation returns while the engine is active with a deliberately long audio period;
-  - [ ] a setter queued immediately after creation applies in order;
-  - [ ] pending, ready, failed, and closed states are observable and never alias another loop;
-  - [ ] sync/multi-loop commands work with pending controls and reject cross-session handles;
-  - [ ] repeated state polling performs no query and remains bounded independently of buffer size;
-  - [ ] accepted stale read-after-write behavior is explicit in tests.
+- [x] Introduce reusable lifecycle and identity primitives for pending handles, with typed identities where practical to prevent loop/channel/port mix-ups.
+- [x] Define lifecycle transition rules and error storage, including memory-ordering rationale and behavior of dependent commands.
+- [x] Introduce `LoopStateMirror` with atomic fields for mode, length, position, planned mode, and planned delay.
+- [x] Attach the loop mirror/control to the engine loop so the process owner publishes current values at appropriate mutation/cycle points without allocation.
+- [x] Convert `BackendSession::create_loop` to allocate a control block, queue creation, and return a pending `Loop` immediately after successful enqueue.
+- [x] Convert all loop commands to resolve the loop identity from the control block when executed.
+- [x] Convert loop `get_state`/`poll_state` to mirror reads only. Define pending/failed behavior without a blocking fallback.
+- [x] Convert loop setters, transition, clear, sync-source changes, and multi-loop transition to return/propagate queue results and avoid response waits.
+- [x] Convert `adopt_ringbuffer_contents` to enqueue-only and log/publish process-side failure asynchronously.
+- [x] Test:
+  - [x] creation returns while the engine is active with a deliberately long audio period;
+  - [x] a setter queued immediately after creation applies in order;
+  - [x] pending, ready, failed, and closed states are observable and never alias another loop;
+  - [x] sync/multi-loop commands work with pending controls and reject cross-session handles;
+  - [x] repeated state polling performs no query and remains bounded independently of buffer size;
+  - [x] accepted stale read-after-write behavior is explicit in tests.
 
 ### Phase 3 — Audio and MIDI channel migration
 

@@ -27,6 +27,16 @@ The target suite's only failures are environmental and match the known sandbox l
 - An explicit command fence is available for tests and exact workflows.
 - Verification: `SHOOP_ALLOW_MISSING_BACKENDS=1 RUSTFLAGS='-D warnings' cargo test -p shoop_engine --features app_backend` passed, including 542 library tests, 4 live-JACK tests, command saturation/sequence tests, and all integration/no-allocation tests. One earlier parallel library run hit the separately documented intermittent Carla/JUCE teardown crash; its immediate rerun and the final phase gate passed.
 
+### Phase 2
+
+- `ObjectControl<I, M>` provides typed identity, backend-session identity, lifecycle, creation sequence, failure text, and an `Arc` state mirror.
+- Lifecycle starts `Pending` with an invalid index. Creation stores the typed index, then publishes `Ready` with release ordering; readers acquire lifecycle before loading identity. `Failed` publishes error text before the release store. `Closed` makes identity unavailable. Dependent commands only resolve `Ready` identities, so pending/failed/closed targets cannot alias index zero.
+- A pending handle dropped before any dependent command exists cancels creation through a weak command reference. A dependent queued command intentionally keeps the control alive until FIFO work drains. Dropping a ready handle does not yet remove the engine object because the application API has no loop-removal lifecycle; that remains a separate ownership/removal design concern.
+- `LoopStateMirror` publishes mode, length, position, next mode, and next delay through independent relaxed atomics. `Loop::get_state` and `poll_state` read only this mirror; `Pending` polls return `None` and direct reads return an immediate error.
+- Loop creation returns after queue admission and all loop commands resolve the pending control in FIFO order. Loop relationships reject backend-session mismatches.
+- Ringbuffer adoption is now enqueue-only and reports execution failure from the process side.
+- Verification: the serialized warning-clean engine gate passes 550 library tests plus all engine integration, live-JACK, and no-allocation tests. Parallel Carla/JUCE teardown remains intermittently unsafe as documented.
+
 ## Boundary primitives
 
 | Primitive | Current role | Target category |

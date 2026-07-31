@@ -48,6 +48,7 @@ pub mod realtime_alloc_guard;
 pub mod resample;
 pub mod session;
 pub mod state;
+pub mod state_mirror;
 pub mod wave_generator;
 
 pub use audio_channel::{AudioChannel, ChannelError};
@@ -68,8 +69,7 @@ pub use dummy_midi_port::DummyMidiPort;
 pub use dummy_port::{DummyAudioPort, DummyExternalConnections, DummyPortError, PortId};
 pub use engine::{
     split, wait_for_command, wait_for_result, Command, CommandReservation, CommandSequence, Engine,
-    EngineHandle, LoopSnapshot, LoopState, SendError, StateSnapshot, Stats, WaitError,
-    DEFAULT_WAIT_TIMEOUT,
+    EngineHandle, LoopSnapshot, SendError, StateSnapshot, Stats, WaitError, DEFAULT_WAIT_TIMEOUT,
 };
 pub use fx_chain::{FXChainState, FXChainType};
 pub use graph::{processing_order, GraphError, NodeIdx, NodeSpec};
@@ -91,6 +91,7 @@ pub use port::{
 pub use profiling::{ProfilingReport, ProfilingReportItem};
 pub use session::{build_schedule, Port, PreparedSchedule, Session, SessionError, Topology};
 pub use state::{
-    AudioChannelState, AudioPortSnapshot, AudioPortState, MidiChannelState, MidiPortSnapshot,
-    MidiPortState,
+    AudioChannelState, AudioPortSnapshot, AudioPortState, LoopState, MidiChannelState,
+    MidiPortSnapshot, MidiPortState,
 };
+pub use state_mirror::LoopStateMirror;

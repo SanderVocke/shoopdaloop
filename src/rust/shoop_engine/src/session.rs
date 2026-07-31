@@ -12,8 +12,9 @@
 //! Audio only for now: MIDI channels are not yet routed through the session.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 #[cfg(feature = "lv2")]
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use crate::audio_midi_loop::AudioMidiLoop;
 use crate::basic_loop::SyncSourceState;
@@ -28,6 +29,7 @@ use crate::internal_audio_port::InternalAudioPort;
 use crate::loop_mode::LoopMode;
 use crate::midi_state::MAX_DIFF_MESSAGES;
 use crate::midi_storage::MidiStorageElem;
+use crate::state_mirror::LoopStateMirror;
 
 use thiserror::Error;
 
@@ -482,7 +484,11 @@ impl Session {
     }
 
     pub fn create_loop(&mut self) -> usize {
-        self.loops.push(AudioMidiLoop::default());
+        self.create_loop_with_state(Arc::new(LoopStateMirror::default()))
+    }
+
+    pub fn create_loop_with_state(&mut self, state: Arc<LoopStateMirror>) -> usize {
+        self.loops.push(AudioMidiLoop::with_state_mirror(state));
         self.sync_sources.push(None);
         self.sync_snapshots.push(None);
         self.note_graph_change();

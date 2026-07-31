@@ -19,6 +19,7 @@ pub use engine::{
     ProfilingReport, ProfilingReportItem,
 };
 use std::collections::{HashMap, VecDeque};
+use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::thread;
@@ -34,6 +35,112 @@ pub use engine::{CommandSequence, SendError};
 /// growing when it is full. A parked engine drains after every send, so this bound only
 /// really applies once a driver is running.
 const COMMAND_QUEUE_CAPACITY: usize = 4096;
+const INVALID_OBJECT_INDEX: usize = usize::MAX;
+static NEXT_BACKEND_SESSION_ID: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ObjectLifecycle {
+    Pending = 0,
+    Ready = 1,
+    Failed = 2,
+    Closed = 3,
+}
+
+impl ObjectLifecycle {
+    fn from_u8(value: u8) -> Self {
+        match value {
+            0 => Self::Pending,
+            1 => Self::Ready,
+            2 => Self::Failed,
+            3 => Self::Closed,
+            _ => Self::Failed,
+        }
+    }
+}
+
+trait ObjectIdentity: Copy {
+    fn from_index(index: usize) -> Self;
+    fn index(self) -> usize;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct LoopId(usize);
+
+impl ObjectIdentity for LoopId {
+    fn from_index(index: usize) -> Self {
+        Self(index)
+    }
+
+    fn index(self) -> usize {
+        self.0
+    }
+}
+
+struct ObjectControl<I, M> {
+    session_id: u64,
+    lifecycle: std::sync::atomic::AtomicU8,
+    engine_index: std::sync::atomic::AtomicUsize,
+    creation_sequence: AtomicU64,
+    error: Mutex<Option<String>>,
+    mirror: Arc<M>,
+    identity: PhantomData<I>,
+}
+
+impl<I: ObjectIdentity, M: Default> ObjectControl<I, M> {
+    fn pending(session_id: u64) -> Self {
+        Self {
+            session_id,
+            lifecycle: std::sync::atomic::AtomicU8::new(ObjectLifecycle::Pending as u8),
+            engine_index: std::sync::atomic::AtomicUsize::new(INVALID_OBJECT_INDEX),
+            creation_sequence: AtomicU64::new(CommandSequence::NONE.get()),
+            error: Mutex::new(None),
+            mirror: Arc::new(M::default()),
+            identity: PhantomData,
+        }
+    }
+}
+
+impl<I: ObjectIdentity, M> ObjectControl<I, M> {
+    fn lifecycle(&self) -> ObjectLifecycle {
+        ObjectLifecycle::from_u8(self.lifecycle.load(Ordering::Acquire))
+    }
+
+    fn ready_id(&self) -> Option<I> {
+        (self.lifecycle() == ObjectLifecycle::Ready)
+            .then(|| I::from_index(self.engine_index.load(Ordering::Relaxed)))
+    }
+
+    fn mark_ready(&self, id: I) {
+        self.engine_index.store(id.index(), Ordering::Relaxed);
+        self.lifecycle
+            .store(ObjectLifecycle::Ready as u8, Ordering::Release);
+    }
+
+    fn mark_failed(&self, error: impl Into<String>) {
+        *self.error.lock().unwrap_or_else(|e| e.into_inner()) = Some(error.into());
+        self.lifecycle
+            .store(ObjectLifecycle::Failed as u8, Ordering::Release);
+    }
+
+    fn mark_closed(&self) {
+        self.lifecycle
+            .store(ObjectLifecycle::Closed as u8, Ordering::Release);
+    }
+
+    fn set_creation_sequence(&self, sequence: CommandSequence) {
+        self.creation_sequence
+            .store(sequence.get(), Ordering::Release);
+    }
+
+    fn creation_sequence(&self) -> CommandSequence {
+        CommandSequence::from_raw(self.creation_sequence.load(Ordering::Acquire))
+    }
+
+    fn error(&self) -> Option<String> {
+        self.error.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ExternalPortDescriptor {
@@ -874,6 +981,7 @@ impl CpalBackend {
 }
 
 struct SharedSession {
+    session_id: u64,
     /// The control side of the engine. Only ever touched by non-audio threads.
     ///
     /// The mutex here guards the *handle*, not the session: several GUI threads may queue
@@ -1302,6 +1410,7 @@ impl BackendSession {
         // the steady state.
         let (engine, handle) = engine::split(s, command_queue_capacity);
         let shared = Arc::new(SharedSession {
+            session_id: NEXT_BACKEND_SESSION_ID.fetch_add(1, Ordering::Relaxed),
             handle: Mutex::new(handle),
             parked: Mutex::new(Some(engine)),
             queued_at_cycle: AtomicU32::new(0),
@@ -1390,6 +1499,10 @@ impl BackendSession {
         *self.shared.cpal.lock().unwrap_or_else(|e| e.into_inner()) = driver.cpal();
         Ok(())
     }
+    pub fn wait_for_command(&self, sequence: CommandSequence, timeout: Duration) -> Result<()> {
+        self.shared.wait_for_command(sequence, timeout)
+    }
+
     pub fn get_state(&self) -> BackendSessionState {
         BackendSessionState {
             audio_driver: std::ptr::null_mut(),
@@ -1397,17 +1510,22 @@ impl BackendSession {
             n_audio_buffers_available: 0,
         }
     }
-    /// Adds a loop and returns a handle to it.
-    ///
-    /// Blocking, unlike the setters: the caller needs the index before it can do anything
-    /// with the loop, and guessing it would race any other creator.
+    /// Adds a loop and returns its stable handle as soon as creation is queued.
     pub fn create_loop(&self) -> Result<Loop> {
-        let idx = self
-            .shared
-            .query_topology(|s: &mut engine::Session| s.create_loop())?;
+        let control = Arc::new(ObjectControl::<LoopId, engine::LoopStateMirror>::pending(
+            self.shared.session_id,
+        ));
+        let control_for_command = Arc::downgrade(&control);
+        let sequence = self.shared.send_topology(move |s: &mut engine::Session| {
+            if let Some(control) = control_for_command.upgrade() {
+                let idx = s.create_loop_with_state(Arc::clone(&control.mirror));
+                control.mark_ready(LoopId(idx));
+            }
+        })?;
+        control.set_creation_sequence(sequence);
         Ok(Loop {
             shared: self.shared.clone(),
-            idx,
+            control,
         })
     }
     pub fn create_fx_chain(&self, chain_type: FXChainType, title: &str) -> Result<FXChain> {
@@ -2225,54 +2343,79 @@ impl Drop for AudioDriver {
 #[derive(Clone)]
 pub struct Loop {
     shared: Arc<SharedSession>,
-    idx: usize,
+    control: Arc<ObjectControl<LoopId, engine::LoopStateMirror>>,
 }
 pub type LoopState = engine::LoopState;
 impl Loop {
+    pub fn lifecycle(&self) -> ObjectLifecycle {
+        self.control.lifecycle()
+    }
+
+    pub fn creation_sequence(&self) -> CommandSequence {
+        self.control.creation_sequence()
+    }
+
+    pub fn creation_error(&self) -> Option<String> {
+        self.control.error()
+    }
+
     pub fn add_audio_channel(&self, mode: ChannelMode) -> Result<AudioChannel> {
-        let (idx, mode) = (self.idx, mode);
-        let (session_idx, chan_idx) =
+        let control = Arc::clone(&self.control);
+        let (session_idx, chan_idx, loop_idx) =
             self.shared
-                .query_topology(move |s: &mut engine::Session| {
-                    let session_idx = s.add_audio_channel(idx, 64, mode.into())?;
+                .query_topology(move |s: &mut engine::Session| -> Result<_> {
+                    let loop_idx = control
+                        .ready_id()
+                        .ok_or_else(|| anyhow!("loop is not ready"))?
+                        .index();
+                    let session_idx = s.add_audio_channel(loop_idx, 64, mode.into())?;
                     let chan_idx = s
-                        .loop_(idx)
+                        .loop_(loop_idx)
                         .map_or(0, |l| l.n_audio_channels().saturating_sub(1));
-                    Ok::<_, engine::SessionError>((session_idx, chan_idx))
+                    Ok((session_idx, chan_idx, loop_idx))
                 })??;
         Ok(AudioChannel {
             shared: self.shared.clone(),
-            loop_idx: self.idx,
+            loop_idx,
             chan_idx,
             session_idx,
         })
     }
+
     pub fn add_midi_channel(&self, mode: ChannelMode) -> Result<MidiChannel> {
-        let (idx, mode) = (self.idx, mode);
-        let (session_idx, chan_idx) =
+        let control = Arc::clone(&self.control);
+        let (session_idx, chan_idx, loop_idx) =
             self.shared
-                .query_topology(move |s: &mut engine::Session| {
-                    let session_idx = s.add_midi_channel(idx, 1024, mode.into())?;
+                .query_topology(move |s: &mut engine::Session| -> Result<_> {
+                    let loop_idx = control
+                        .ready_id()
+                        .ok_or_else(|| anyhow!("loop is not ready"))?
+                        .index();
+                    let session_idx = s.add_midi_channel(loop_idx, 1024, mode.into())?;
                     let chan_idx = s
-                        .loop_(idx)
+                        .loop_(loop_idx)
                         .map_or(0, |l| l.n_midi_channels().saturating_sub(1));
-                    Ok::<_, engine::SessionError>((session_idx, chan_idx))
+                    Ok((session_idx, chan_idx, loop_idx))
                 })??;
         Ok(MidiChannel {
             shared: self.shared.clone(),
-            loop_idx: self.idx,
+            loop_idx,
             chan_idx,
             session_idx,
         })
     }
+
     pub fn transition(
         &self,
         to_mode: LoopMode,
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32,
     ) -> Result<CommandSequence> {
-        let idx = self.idx;
+        let control = Arc::clone(&self.control);
         Ok(self.shared.send_control(move |s: &mut engine::Session| {
+            let Some(idx) = control.ready_id().map(ObjectIdentity::index) else {
+                return;
+            };
             if maybe_cycles_delay >= 0 || maybe_to_sync_at_cycle >= 0 {
                 if let Some(l) = s.loop_mut(idx) {
                     l.plan_transition(
@@ -2287,109 +2430,120 @@ impl Loop {
         })?)
     }
 
-    /// This loop's state as of the last published cycle, without blocking.
-    ///
-    /// The call a UI polling at frame rate wants. `get_state` would be correct too but costs
-    /// a round trip per object per frame, which is more than a frame is worth once a session
-    /// has a few tracks. Returns `None` until a cycle has published, and may be one cycle
-    /// behind a setter that has only just been queued -- use `get_state` where that matters.
     pub fn poll_state(&self) -> Option<LoopState> {
-        let idx = self.idx;
-        self.shared.poll(|snap| {
-            snap.loops.get(idx).map(|l| LoopState {
-                mode: l.mode.into(),
-                length: l.length,
-                position: l.position,
-                maybe_next_mode: l.next_mode.map(|m| m.into()),
-                maybe_next_mode_delay: l.next_mode_delay,
-            })
-        })?
+        (self.lifecycle() == ObjectLifecycle::Ready).then(|| self.control.mirror.read())
     }
 
-    /// This loop's state, asked for directly.
-    ///
-    /// Ordered behind anything already queued, so a setter followed by this reads back what
-    /// was set. That is what makes it the right call outside a frame-rate poll.
     pub fn get_state(&self) -> Result<LoopState> {
-        let idx = self.idx;
-        self.shared
-            .query_control(move |s: &mut engine::Session| {
-                s.loop_(idx).map(|l| {
-                    let next = l.first_planned_transition();
-                    LoopState {
-                        mode: l.mode().into(),
-                        length: l.length(),
-                        position: l.position(),
-                        maybe_next_mode: next.map(|(m, _)| m.into()),
-                        maybe_next_mode_delay: next.map(|(_, d)| d),
-                    }
-                })
-            })?
-            .ok_or_else(|| anyhow!("no loop"))
+        match self.lifecycle() {
+            ObjectLifecycle::Ready => Ok(self.control.mirror.read()),
+            ObjectLifecycle::Pending => Err(anyhow!("loop is pending creation")),
+            ObjectLifecycle::Failed => Err(anyhow!(
+                "loop creation failed: {}",
+                self.creation_error()
+                    .unwrap_or_else(|| "unknown error".to_string())
+            )),
+            ObjectLifecycle::Closed => Err(anyhow!("loop is closed")),
+        }
     }
+
     pub fn set_length(&self, length: u32) -> Result<CommandSequence> {
-        let idx = self.idx;
+        let control = Arc::clone(&self.control);
         Ok(self.shared.send_control(move |s: &mut engine::Session| {
-            if let Some(l) = s.loop_mut(idx) {
-                l.set_length(length);
+            if let Some(idx) = control.ready_id().map(ObjectIdentity::index) {
+                if let Some(l) = s.loop_mut(idx) {
+                    l.set_length(length);
+                }
             }
         })?)
     }
+
     pub fn set_position(&self, position: u32) -> Result<CommandSequence> {
-        let idx = self.idx;
+        let control = Arc::clone(&self.control);
         Ok(self.shared.send_control(move |s: &mut engine::Session| {
-            if let Some(l) = s.loop_mut(idx) {
-                l.set_position(position);
+            if let Some(idx) = control.ready_id().map(ObjectIdentity::index) {
+                if let Some(l) = s.loop_mut(idx) {
+                    l.set_position(position);
+                }
             }
         })?)
     }
+
     pub fn clear(&self, length: u32) -> Result<CommandSequence> {
-        let idx = self.idx;
+        let control = Arc::clone(&self.control);
         Ok(self.shared.send_control(move |s: &mut engine::Session| {
-            if let Some(l) = s.loop_mut(idx) {
-                l.clear(length);
-                l.clear_planned_transitions();
-                l.set_mode(engine::LoopMode::Stopped);
-                l.set_position(0);
+            if let Some(idx) = control.ready_id().map(ObjectIdentity::index) {
+                if let Some(l) = s.loop_mut(idx) {
+                    l.clear(length);
+                    l.clear_planned_transitions();
+                    l.set_mode(engine::LoopMode::Stopped);
+                    l.set_position(0);
+                }
             }
         })?)
     }
+
     pub fn set_sync_source(&self, src: Option<&Loop>) -> Result<CommandSequence> {
-        let (idx, src) = (self.idx, src.map(|l| l.idx));
+        if src.is_some_and(|source| source.control.session_id != self.control.session_id) {
+            return Err(anyhow!("cannot sync loops from different backend sessions"));
+        }
+        let control = Arc::clone(&self.control);
+        let source = src.map(|loop_| Arc::clone(&loop_.control));
         Ok(self.shared.send_topology(move |s: &mut engine::Session| {
-            let _ = s.set_loop_sync_source(idx, src);
+            let Some(idx) = control.ready_id().map(ObjectIdentity::index) else {
+                return;
+            };
+            let source_idx = source
+                .as_ref()
+                .and_then(|source| source.ready_id())
+                .map(ObjectIdentity::index);
+            let _ = s.set_loop_sync_source(idx, source_idx);
         })?)
     }
+
     pub fn adopt_ringbuffer_contents(
         &self,
         reverse_start_cycle: Option<i32>,
         cycles_length: Option<i32>,
         go_to_cycle: Option<i32>,
         go_to_mode: LoopMode,
-    ) -> Result<()> {
-        let idx = self.idx;
-        // Blocking, because the caller is told whether the adoption succeeded and a
-        // fire-and-forget would have to swallow the error.
-        self.shared.query_control(move |s: &mut engine::Session| {
-            s.adopt_audio_ringbuffers_for_loop(
+    ) -> Result<CommandSequence> {
+        let control = Arc::clone(&self.control);
+        Ok(self.shared.send_control(move |s: &mut engine::Session| {
+            let Some(idx) = control.ready_id().map(ObjectIdentity::index) else {
+                return;
+            };
+            if let Err(error) = s.adopt_audio_ringbuffers_for_loop(
                 idx,
                 reverse_start_cycle,
                 cycles_length,
                 go_to_cycle,
                 go_to_mode.into(),
-            )
-        })??;
-        Ok(())
+            ) {
+                log::error!("could not adopt loop ringbuffers: {error}");
+            }
+        })?)
     }
 }
+
 pub fn transition_multiple_loops(
     loops: &[&Loop],
     to_state: LoopMode,
     maybe_cycles_delay: i32,
     maybe_to_sync_at_cycle: i32,
 ) -> Result<()> {
-    for l in loops {
-        l.transition(to_state, maybe_cycles_delay, maybe_to_sync_at_cycle)?;
+    if let Some(first) = loops.first() {
+        if loops
+            .iter()
+            .any(|loop_| loop_.control.session_id != first.control.session_id)
+        {
+            return Err(anyhow!(
+                "cannot transition loops from different backend sessions"
+            ));
+        }
+    }
+    for loop_ in loops {
+        loop_.transition(to_state, maybe_cycles_delay, maybe_to_sync_at_cycle)?;
     }
     Ok(())
 }
@@ -3494,6 +3648,161 @@ mod tests {
                 .load(Ordering::Relaxed),
             2
         );
+    }
+
+    #[test]
+    fn loop_creation_and_followup_commands_do_not_wait_for_a_cycle() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        engine.session_mut().set_sample_rate(48_000);
+        engine.session_mut().set_buffer_size(48_000);
+
+        let loop_ = sess.create_loop().expect("pending loop");
+        assert_eq!(loop_.lifecycle(), ObjectLifecycle::Pending);
+        assert_eq!(loop_.creation_sequence().get(), 1);
+        assert!(loop_.poll_state().is_none());
+        assert!(loop_.get_state().is_err());
+        assert_eq!(engine.session().n_loops(), 0);
+
+        let setter = loop_.set_length(64).expect("queue length");
+        assert_eq!(setter.get(), 2);
+        assert_eq!(loop_.lifecycle(), ObjectLifecycle::Pending);
+
+        engine.pump();
+        assert_eq!(loop_.lifecycle(), ObjectLifecycle::Ready);
+        assert_eq!(loop_.get_state().expect("mirrored state").length, 64);
+        assert_eq!(engine.session().n_loops(), 1);
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
+    fn loop_reads_accept_stale_state_and_never_queue_a_query() {
+        let sess = BackendSession::new().expect("session");
+        let loop_ = sess.create_loop().expect("loop");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let commands_before = engine.stats().commands_applied.load(Ordering::Relaxed);
+
+        loop_.set_length(32).expect("queue length");
+        assert_eq!(loop_.get_state().expect("stale state").length, 0);
+        for _ in 0..100 {
+            assert_eq!(loop_.poll_state().expect("poll").length, 0);
+            assert_eq!(loop_.get_state().expect("state").length, 0);
+        }
+        assert_eq!(
+            engine.stats().commands_applied.load(Ordering::Relaxed),
+            commands_before
+        );
+
+        engine.pump();
+        assert_eq!(loop_.get_state().expect("updated state").length, 32);
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
+    fn pending_loop_relationships_resolve_in_fifo_order() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let source = sess.create_loop().expect("source");
+        let follower = sess.create_loop().expect("follower");
+        source.set_length(64).expect("queue source length");
+        follower
+            .set_sync_source(Some(&source))
+            .expect("queue sync source");
+        transition_multiple_loops(&[&source, &follower], LoopMode::Playing, -1, -1)
+            .expect("queue transitions");
+
+        engine.pump();
+        assert_eq!(source.lifecycle(), ObjectLifecycle::Ready);
+        assert_eq!(follower.lifecycle(), ObjectLifecycle::Ready);
+        assert_eq!(source.get_state().expect("source state").length, 64);
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
+    fn loop_relationships_reject_cross_session_handles() {
+        let first = BackendSession::new().expect("first session");
+        let second = BackendSession::new().expect("second session");
+        let first_loop = first.create_loop().expect("first loop");
+        let second_loop = second.create_loop().expect("second loop");
+
+        assert!(first_loop.set_sync_source(Some(&second_loop)).is_err());
+        assert!(
+            transition_multiple_loops(&[&first_loop, &second_loop], LoopMode::Playing, -1, -1,)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn dropping_a_pending_loop_cancels_creation() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let loop_ = sess.create_loop().expect("pending loop");
+        assert_eq!(loop_.lifecycle(), ObjectLifecycle::Pending);
+        drop(loop_);
+
+        engine.pump();
+        assert_eq!(engine.session().n_loops(), 0);
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
+    fn failed_and_closed_loop_controls_ignore_commands() {
+        let sess = BackendSession::new().expect("session");
+        let failed_control = Arc::new(ObjectControl::<LoopId, engine::LoopStateMirror>::pending(
+            sess.shared.session_id,
+        ));
+        failed_control.mark_failed("creation failed");
+        let failed = Loop {
+            shared: Arc::clone(&sess.shared),
+            control: failed_control,
+        };
+        let closed_control = Arc::new(ObjectControl::<LoopId, engine::LoopStateMirror>::pending(
+            sess.shared.session_id,
+        ));
+        closed_control.mark_ready(LoopId(0));
+        closed_control.mark_closed();
+        let closed = Loop {
+            shared: Arc::clone(&sess.shared),
+            control: closed_control,
+        };
+
+        assert_eq!(failed.lifecycle(), ObjectLifecycle::Failed);
+        assert!(failed
+            .get_state()
+            .expect_err("failed state")
+            .to_string()
+            .contains("creation failed"));
+        assert_eq!(closed.lifecycle(), ObjectLifecycle::Closed);
+        assert!(closed.get_state().is_err());
+        failed.set_length(1).expect("queue failed-handle command");
+        closed.set_length(2).expect("queue closed-handle command");
+        assert_eq!(
+            sess.shared
+                .parked
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .as_ref()
+                .expect("parked engine")
+                .session()
+                .n_loops(),
+            0
+        );
+    }
+
+    #[test]
+    fn object_controls_publish_failed_and_closed_without_aliasing_an_index() {
+        let failed = ObjectControl::<LoopId, engine::LoopStateMirror>::pending(1);
+        failed.mark_failed("creation failed");
+        assert_eq!(failed.lifecycle(), ObjectLifecycle::Failed);
+        assert!(failed.ready_id().is_none());
+        assert_eq!(failed.error().as_deref(), Some("creation failed"));
+
+        let ready = ObjectControl::<LoopId, engine::LoopStateMirror>::pending(1);
+        ready.mark_ready(LoopId(0));
+        assert_eq!(ready.ready_id(), Some(LoopId(0)));
+        ready.mark_closed();
+        assert_eq!(ready.lifecycle(), ObjectLifecycle::Closed);
+        assert!(ready.ready_id().is_none());
     }
 
     #[test]

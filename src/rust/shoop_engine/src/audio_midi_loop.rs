@@ -12,7 +12,9 @@ use crate::channel_mode::ChannelMode;
 use crate::loop_mode::LoopMode;
 use crate::midi_channel::{MidiChannel, MidiChannelError};
 use crate::midi_storage::MidiStorageElem;
+use crate::state_mirror::LoopStateMirror;
 
+use std::sync::Arc;
 use thiserror::Error;
 
 /// A channel failed while the loop itself advanced.
@@ -32,6 +34,13 @@ pub struct AudioMidiLoop {
 }
 
 impl AudioMidiLoop {
+    pub fn with_state_mirror(state: Arc<LoopStateMirror>) -> Self {
+        Self {
+            loop_: BasicLoop::with_state_mirror(state),
+            ..Default::default()
+        }
+    }
+
     // --- channels ---
 
     /// Adds an audio channel and returns its index.

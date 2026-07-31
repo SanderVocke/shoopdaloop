@@ -68,17 +68,15 @@ fn a_loop_can_be_created_and_read_back() {
     check!(state.position == 0);
 }
 
-/// A queued setter followed by a blocking read must see what was set.
-///
-/// The property that makes `get_state` distinct from `poll_state`: both go to the engine, but
-/// this one is ordered behind the mutation in the same queue, so it cannot answer from before
-/// it landed.
+/// Exact read-after-write is available through an explicit command fence.
 #[test]
-fn a_mutation_lands_and_is_visible_afterwards() {
+fn an_explicit_fence_makes_a_mutation_visible() {
     let (_driver, b) = backend();
     let_assert!(Ok(l) = b.create_loop());
 
-    let_assert!(Ok(_) = l.set_length(128));
+    let_assert!(Ok(sequence) = l.set_length(128));
+    b.wait_for_command(sequence, std::time::Duration::from_secs(1))
+        .expect("length command");
     let_assert!(Ok(state) = l.get_state());
     check!(state.length == 128);
 }
@@ -159,11 +157,15 @@ fn clearing_a_loop_empties_its_channels_and_stops_it() {
 
     c.load_data(&vec![1.0f32; 64]).expect("queue data");
     let_assert!(Ok(_) = l.set_length(64));
-    let_assert!(Ok(_) = l.transition(LoopMode::Playing, -1, -1));
+    let_assert!(Ok(sequence) = l.transition(LoopMode::Playing, -1, -1));
+    b.wait_for_command(sequence, std::time::Duration::from_secs(1))
+        .expect("playing command");
     let_assert!(Ok(state) = l.get_state());
     check!(state.mode == LoopMode::Playing);
 
-    let_assert!(Ok(_) = l.clear(0));
+    let_assert!(Ok(sequence) = l.clear(0));
+    b.wait_for_command(sequence, std::time::Duration::from_secs(1))
+        .expect("clear command");
 
     let_assert!(Ok(state) = l.get_state());
     check!(state.length == 0);
@@ -181,7 +183,9 @@ fn a_loop_can_follow_another() {
     let_assert!(Ok(_) = follower.set_sync_source(Some(&source)));
 
     // Planned rather than immediate, because the follower now waits for its source.
-    let_assert!(Ok(_) = follower.transition(LoopMode::Playing, 0, -1));
+    let_assert!(Ok(sequence) = follower.transition(LoopMode::Playing, 0, -1));
+    b.wait_for_command(sequence, std::time::Duration::from_secs(1))
+        .expect("transition command");
     let_assert!(Ok(state) = follower.get_state());
     check!(state.maybe_next_mode == Some(LoopMode::Playing));
     check!(state.mode == LoopMode::Stopped);
@@ -203,9 +207,14 @@ fn handles_can_be_shared_across_threads() {
             std::thread::spawn(move || l.set_length(100 + i))
         })
         .collect();
+    let mut sequences = Vec::new();
     for t in threads {
-        let_assert!(Ok(Ok(_)) = t.join());
+        let_assert!(Ok(Ok(sequence)) = t.join());
+        sequences.push(sequence);
     }
+    let sequence = sequences.into_iter().max().expect("commands");
+    b.wait_for_command(sequence, std::time::Duration::from_secs(1))
+        .expect("all length commands");
 
     let_assert!(Ok(state) = l.get_state());
     // Whichever landed last wins; what matters is that all four were accepted and the loop
