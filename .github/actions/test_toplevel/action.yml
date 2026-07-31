@@ -41,6 +41,7 @@ runs:
       echo "ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0" | tee -a $GITHUB_ENV
       echo 'SHOOP_CRASH_METADATA_BASE_JSON={"environment": "ci", "tags": {"ci_build_type": "${{ inputs.sentry_build_type }}", "ci_run": "${{ github.run_id }}", "vc_ref": "${{ github.ref }}"}}' | tee -a $GITHUB_ENV
       echo 'RUN_CMD_PREFIX=${{ inputs.run_cmd_prefix }} ${{ env.RUN_CMD_PREFIX }}' | tee -a $GITHUB_ENV
+      echo 'SHOOP_ALLOW_MISSING_BACKENDS=1' | tee -a $GITHUB_ENV
 
   - name: Setup dependencies checker (Windows)
     if: always() && runner.os == 'Windows'
@@ -126,11 +127,6 @@ runs:
       echo "Preparing environment"
       echo "=========================================="
       printf "\n\n\n\n\n\n"
-  - name: Retrieve info context for coverage analysis
-    if: always() && inputs.coverage
-    uses: actions/download-artifact@v4
-    with:
-      name: coverage_context
   - uses: ./.github/actions/checkpoint
     if: always()
   - name: Create crashdumps folder
@@ -139,25 +135,27 @@ runs:
     run: |
       mkdir -p crashdumps
       echo "SHOOP_CRASHDUMP_DIR=$(pwd)/crashdumps" | tee -a $GITHUB_ENV
-  - name: Install Python modules
-    if: always()
-    shell: wrap-shell {0}
-    run: |
-      PIP_BREAK_SYSTEM_PACKAGES=1 ${{ env.PIP }} install pipx
-  - name: Prepare Rust LLVM tools
+  - name: Prepare Rust for coverage tooling
     if: always() && inputs.coverage == 'true'
     uses: actions-rust-lang/setup-rust-toolchain@v1
     with:
-      toolchain: nightly
+      toolchain: stable
       components: llvm-tools-preview
       cache: false
       rustflags: ""
-  - name: find LLVM tools
+  - name: Locate LLVM coverage tools
     if: always() && inputs.coverage == 'true'
-    shell: wrap-shell {0}
+    shell: bash
     run: |
-      echo "LLVM_COV=$(find $(rustc --print sysroot) -name llvm-cov)" | tee -a $GITHUB_ENV
-      echo "LLVM_PROFDATA=$(find $(rustc --print sysroot) -name llvm-profdata)" | tee -a $GITHUB_ENV
+      llvm_tools_dir="$(dirname "$(rustc --print target-libdir)")/bin"
+      llvm_cov="$llvm_tools_dir/llvm-cov"
+      llvm_profdata="$llvm_tools_dir/llvm-profdata"
+      if [[ ! -x "$llvm_cov" || ! -x "$llvm_profdata" ]]; then
+        echo "LLVM coverage tools not found in $llvm_tools_dir" >&2
+        exit 1
+      fi
+      echo "LLVM_COV=$llvm_cov" | tee -a "$GITHUB_ENV"
+      echo "LLVM_PROFDATA=$llvm_profdata" | tee -a "$GITHUB_ENV"
   - uses: ./.github/actions/checkpoint
     if: always()
   - name: Install Qoverage
@@ -172,20 +170,18 @@ runs:
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
-      echo "Back-end test"
+      echo "Start JACK server"
       echo "=========================================="
       printf "\n\n\n\n\n\n"
-  - name: Test back-end
-    if: always() && env.COMMAND_TEST_BACKEND != ''
-    uses: ./.github/actions/test_backend
-    env:
-      LCOV_REPORTNAME: backend_cpp_lcov
-      LLVM_REPORTNAME: backend_rust_lcov
-      GHA_RUN_ALWAYS: 1
+  # - name: Start JACK
+  #   if: always()
+  #   uses: ./.github/actions/start_jack
+  #   env:
+  #      GHA_RUN_ALWAYS: 1
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
-    if: always()
+    if: always() && env.COMMAND_TEST_RUST != ''
     env:
        GHA_RUN_ALWAYS: 1
     run: |
@@ -194,12 +190,20 @@ runs:
       echo "Rust test"
       echo "=========================================="
       printf "\n\n\n\n\n\n"
-  - name: Test rust
+  - name: Test Rust
     if: always() && env.COMMAND_TEST_RUST != ''
     uses: ./.github/actions/test_rust
     env:
       LLVM_REPORTNAME: rust_lcov
       GHA_RUN_ALWAYS: 1
+  - uses: ./.github/actions/checkpoint
+    if: always()
+  - name: Cleanup Rust test binaries between coverage runs
+    if: always() && inputs.coverage == 'true' && env.NEXTEST_EXTRACT_DIR != ''
+    shell: bash
+    run: |
+      echo "Removing nextest extraction directory $NEXTEST_EXTRACT_DIR"
+      rm -rf "$NEXTEST_EXTRACT_DIR"
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
@@ -216,7 +220,6 @@ runs:
     if: always() && (inputs.do_qml_tests == 'true')
     uses: ./.github/actions/test_qml
     env:
-      LCOV_REPORTNAME: qml_cpp_lcov
       LLVM_REPORTNAME: qml_rust_lcov
       GHA_RUN_ALWAYS: 1
     with:
@@ -320,19 +323,8 @@ runs:
       sentry_key: ${{ inputs.sentry_key }}
   - uses: ./.github/actions/checkpoint
     if: always()
-  - name: Upload back-end coverage to CodeCov
-    if: always() && inputs.coverage
-    uses: codecov/codecov-action@v3
-    env:
-       GHA_RUN_ALWAYS: 1
-    with:
-      token: ${{ inputs.codecov_token }}
-      flags: back-end
-      files: coverage_reports/backend_cpp_lcov.info,coverage_reports/backend_rust_lcov.info
-      verbose: true
-      fail_ci_if_error: true
   - name: Upload Rust test coverage to CodeCov
-    if: always() && inputs.coverage
+    if: always() && inputs.coverage && env.COMMAND_TEST_RUST != ''
     uses: codecov/codecov-action@v3
     env:
        GHA_RUN_ALWAYS: 1
@@ -350,7 +342,7 @@ runs:
     with:
       token: ${{ inputs.codecov_token }}
       flags: qml
-      files: coverage_reports/qml_cpp_lcov.info,coverage_reports/qml_rust_lcov.info,coverage_reports/qml_qoverage.xml
+      files: coverage_reports/qml_rust_lcov.info,coverage_reports/qml_qoverage.xml
       verbose: true
       fail_ci_if_error: true
   - name: Upload raw coverage reports

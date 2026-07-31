@@ -104,8 +104,8 @@ impl UpdateThread {
         // Queue the actual update via the event loop instead of calling
         // self.update() directly. This guarantees that any pending queued
         // commands from the GUI thread (e.g. set_length, transition) are
-        // delivered to backend objects before we pull state from the C++
-        // backend, avoiding race conditions where state is sampled before
+        // delivered to backend objects before we pull state from the engine,
+        // avoiding race conditions where state is sampled before
         // all pending commands have been applied.
         unsafe {
             let self_qobject = self.as_mut().pin_mut_qobject_ptr();

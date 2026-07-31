@@ -61,12 +61,12 @@ pub mod ffi {
     impl cxx_qt::Constructor<(), NewArguments = ()> for TestPort {}
 }
 
-use backend_bindings::PortDataType;
-use backend_bindings::PortDirection;
 use cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, IsQQuickItem};
 pub use ffi::make_unique_test_port as make_unique;
 pub use ffi::TestPort;
 use ffi::*;
+use shoop_engine::PortDataType;
+use shoop_engine::PortDirection;
 
 pub struct TestPortRust {
     pub connections_state: QMap_QString_QVariant,

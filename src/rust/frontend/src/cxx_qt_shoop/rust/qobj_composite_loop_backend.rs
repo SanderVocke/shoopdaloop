@@ -5,7 +5,6 @@ use crate::{
     loop_mode_helpers::{is_recording_mode, is_running_mode},
     references_qobject::ReferencesQObject,
 };
-use backend_bindings::LoopMode;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace, warn as raw_warn,
 };
@@ -18,6 +17,7 @@ use cxx_qt_lib_shoop::{
     qobject::{self, qobject_has_property, AsQObject},
     qvariant_helpers::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
 };
+use shoop_engine::LoopMode;
 use std::{
     cmp::{max, min},
     collections::{BTreeMap, HashMap, HashSet},
@@ -54,6 +54,9 @@ macro_rules! error {
 }
 
 fn get_loop_iid(l: &*mut QObject) -> String {
+    if l.is_null() {
+        return "null".to_string();
+    }
     unsafe {
         match qobject::qobject_property_string(&**l, "instance_identifier") {
             Ok(iid) => {
@@ -91,7 +94,9 @@ impl CompositeLoopBackend {
                     i,
                     mode,
                     |obj: *mut QObject, obj_mode: LoopMode| {
-                        iteration_transitions.push((obj, obj_mode));
+                        if !obj.is_null() {
+                            iteration_transitions.push((obj, obj_mode));
+                        }
                     },
                 );
                 transitions.insert(i, iteration_transitions);
@@ -181,6 +186,9 @@ impl CompositeLoopBackend {
 
             // Get all currently active loops into their correct mode and cycle
             for (loop_obj, (mode, iteration)) in last_transition_per_loop.iter() {
+                if loop_obj.is_null() {
+                    continue;
+                }
                 let n_cycles_ago = sync_at_cycle - iteration;
                 let mut n_cycles = 1;
 
@@ -267,17 +275,24 @@ impl CompositeLoopBackend {
         }
     }
 
-    pub fn cancel_all(self: Pin<&mut Self>) {
+    pub fn cancel_all(mut self: Pin<&mut Self>) {
         trace!(self, "cancel all");
         if let Err(e) = transition_backend_loops(
             self.running_loops
                 .iter()
-                .map(|l| qvariant_to_qobject_ptr(l).unwrap_or(std::ptr::null_mut())),
+                .map(|l| qvariant_to_qobject_ptr(l).unwrap_or(std::ptr::null_mut()))
+                .filter(|l| !l.is_null()),
             LoopMode::Stopped,
             Some(0),
             None,
         ) {
             error!(self, "Failed to transition backend loops: {e}");
+        }
+
+        let empty_running_loops = QList_QVariant::default();
+        self.as_mut().rust_mut().running_loops = empty_running_loops.clone();
+        unsafe {
+            self.as_mut().running_loops_changed(empty_running_loops);
         }
     }
 
@@ -435,6 +450,9 @@ impl CompositeLoopBackend {
             }
 
             for g in to_grab.iter() {
+                if g.loop_obj.is_null() {
+                    continue;
+                }
                 unsafe {
                     // Note we don't allow the loop to directly go to the go_to_mode.
                     // We will instead do that transition after all grabs are done.
@@ -807,7 +825,40 @@ impl CompositeLoopBackend {
         self.schedule.to_qvariantmap()
     }
 
-    pub fn clear(self: Pin<&mut CompositeLoopBackend>) {}
+    pub fn clear(mut self: Pin<&mut CompositeLoopBackend>) {
+        let empty_running_loops = QList_QVariant::default();
+        let empty_schedule = CompositeLoopSchedule::default();
+        {
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.running_loops = empty_running_loops.clone();
+            rust_mut.schedule = empty_schedule;
+            rust_mut.last_handled_sync_cycle = None;
+            rust_mut.iteration = -1;
+            rust_mut.mode = LoopMode::Stopped as isize as i32;
+            rust_mut.next_mode = -1;
+            rust_mut.next_transition_delay = -1;
+            rust_mut.n_cycles = 0;
+            rust_mut.length = 0;
+            rust_mut.sync_position = 0;
+            rust_mut.sync_length = 0;
+            rust_mut.position = 0;
+            rust_mut.cycle_nr = 0;
+        }
+        unsafe {
+            self.as_mut().running_loops_changed(empty_running_loops);
+            self.as_mut().iteration_changed(-1);
+            self.as_mut()
+                .mode_changed(LoopMode::Stopped as isize as i32);
+            self.as_mut().next_mode_changed(-1);
+            self.as_mut().next_transition_delay_changed(-1);
+            self.as_mut().n_cycles_changed(0);
+            self.as_mut().length_changed(0);
+            self.as_mut().sync_position_changed(0);
+            self.as_mut().sync_length_changed(0);
+            self.as_mut().position_changed(0);
+            self.as_mut().cycle_nr_changed(0);
+        }
+    }
 
     pub fn do_trigger<AlternativeTriggerCallback>(
         mut self: Pin<&mut CompositeLoopBackend>,
@@ -823,25 +874,15 @@ impl CompositeLoopBackend {
             } else {
                 let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
                 let loop_iid = get_loop_iid(&loop_obj);
-                if loop_obj == self_qobj {
+                if loop_obj.is_null() {
+                    warn!(self, "ignoring trigger of null loop to {mode:?}");
+                } else if loop_obj == self_qobj {
                     // Instead of queueing, apply the transition immediately
                     trace!(self, "Transition self to {mode:?}");
                     self.as_mut().transition(mode as i32, -1, -1);
                 } else {
-                    // When triggering another loop, delay it by one event loop cycle.
-                    // this ensures that with nested composites, the composites always
-                    // trigger themselves first, then get triggered by others.
-                    // That is good because them being controlled by other loops should
-                    // take precedence.
-                    unsafe {
-                        trace!(self, "Queue transition {loop_iid} to {mode:?}");
-                        invoke(
-                            &mut *loop_obj,
-                            "transition(::std::int32_t,::std::int32_t,::std::int32_t)",
-                            connection_types::QUEUED_CONNECTION,
-                            &(mode as isize as i32, 0, -1),
-                        )?;
-                    }
+                    trace!(self, "Transition referenced loop {loop_iid} to {mode:?}");
+                    transition_backend_loops(std::iter::once(loop_obj), mode, Some(0), None)?;
                 }
             }
 
@@ -909,7 +950,9 @@ impl CompositeLoopBackend {
                         LoopMode::Stopped,
                         trigger_callback.as_mut(),
                     );
-                    running_loops_changed = running_loops.remove(&loop_end);
+                    if !loop_end.is_null() {
+                        running_loops_changed = running_loops.remove(&loop_end);
+                    }
                 }
 
                 if is_running_mode(mode) {
@@ -929,7 +972,9 @@ impl CompositeLoopBackend {
                                 *explicit_mode,
                                 trigger_callback.as_mut(),
                             );
-                            running_loops_changed = running_loops.insert(loop_start_qobj);
+                            if !loop_start_qobj.is_null() {
+                                running_loops_changed = running_loops.insert(loop_start_qobj);
+                            }
                         } else {
                             // Implicit mode, set it based on our own
                             let implicit_mode = mode;
@@ -967,7 +1012,9 @@ impl CompositeLoopBackend {
                                     LoopMode::Stopped,
                                     trigger_callback.as_mut(),
                                 );
-                                running_loops_changed = running_loops.remove(&loop_start_qobj);
+                                if !loop_start_qobj.is_null() {
+                                    running_loops_changed = running_loops.remove(&loop_start_qobj);
+                                }
                             } else {
                                 // Implicit mode, apply it
                                 let loop_iid = get_loop_iid(&loop_start_qobj);
@@ -977,7 +1024,9 @@ impl CompositeLoopBackend {
                                     implicit_mode,
                                     trigger_callback.as_mut(),
                                 );
-                                running_loops_changed = running_loops.insert(loop_start_qobj);
+                                if !loop_start_qobj.is_null() {
+                                    running_loops_changed = running_loops.insert(loop_start_qobj);
+                                }
                             }
                         }
                     }
@@ -986,6 +1035,9 @@ impl CompositeLoopBackend {
                 if running_loops_changed {
                     let mut new_running_loops: QList_QVariant = QList_QVariant::default();
                     for l in running_loops.iter() {
+                        if l.is_null() {
+                            continue;
+                        }
                         let loop_variant = qobject_ptr_to_qvariant(l)?;
                         new_running_loops.append(loop_variant);
                     }

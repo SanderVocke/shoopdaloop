@@ -1,4 +1,4 @@
-use backend_bindings::AudioDriverType;
+use shoop_engine::AudioDriverType;
 use std::iter::*;
 
 pub fn get_audio_driver_name(driver_type: AudioDriverType) -> &'static str {
@@ -6,6 +6,8 @@ pub fn get_audio_driver_name(driver_type: AudioDriverType) -> &'static str {
         AudioDriverType::Dummy => "dummy",
         AudioDriverType::Jack => "jack",
         AudioDriverType::JackTest => "jack_test",
+        AudioDriverType::Cpal => "cpal",
+        AudioDriverType::CpalTest => "cpal_test",
     }
 }
 
@@ -14,6 +16,8 @@ pub fn get_audio_driver_from_name(driver_name: &str) -> AudioDriverType {
         "dummy" => AudioDriverType::Dummy,
         "jack" => AudioDriverType::Jack,
         "jack_test" => AudioDriverType::JackTest,
+        "cpal" => AudioDriverType::Cpal,
+        "cpal_test" => AudioDriverType::CpalTest,
         _ => panic!("Unknown audio driver name: {}", driver_name),
     }
 }
@@ -22,4 +26,6 @@ pub fn all_audio_driver_types() -> impl Iterator<Item = AudioDriverType> {
     once(AudioDriverType::Dummy)
         .chain(once(AudioDriverType::Jack))
         .chain(once(AudioDriverType::JackTest))
+        .chain(once(AudioDriverType::Cpal))
+        .chain(once(AudioDriverType::CpalTest))
 }

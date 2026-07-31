@@ -7,6 +7,9 @@ edition = "2021"
 [dependencies]
 enum-iterator = { workspace = true }
 
+[lints]
+workspace = true
+
 [build-dependencies]
 bindgen = { workspace = true }
 anyhow = { workspace = true }

@@ -15,8 +15,6 @@ fn qmake_command(qmake_path: &str, argstring: &str) -> Command {
     };
 }
 
-// For now, Rust "back-end" is just a set of C bindings to the
-// C++ back-end.
 fn main_impl() -> Result<(), anyhow::Error> {
     // If we're pre-building, don't do anything
     if cfg!(feature = "prebuild") {
@@ -47,6 +45,12 @@ fn main_impl() -> Result<(), anyhow::Error> {
         .clang_arg("-std=c++17")
         .clang_arg("-I")
         .clang_arg(qt_include_dir);
+
+    let builder = if cfg!(target_os = "windows") {
+        builder
+    } else {
+        builder.clang_arg("-fPIC")
+    };
 
     let bindings = builder
         .generate()

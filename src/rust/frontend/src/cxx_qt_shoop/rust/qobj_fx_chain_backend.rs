@@ -1,4 +1,3 @@
-use backend_bindings::FXChainType;
 use cxx_qt::CxxQtType;
 use cxx_qt::QObject;
 use cxx_qt_lib_shoop::{
@@ -6,6 +5,7 @@ use cxx_qt_lib_shoop::{
     connection_types,
     qobject::{qobject_property_bool, FromQObject},
 };
+use shoop_engine::FXChainType;
 
 pub use crate::cxx_qt_shoop::qobj_fx_chain_backend_bridge::ffi::FXChainBackend;
 use crate::cxx_qt_shoop::{
@@ -146,7 +146,7 @@ impl FXChainBackend {
                         .session
                         .as_ref()
                         .ok_or(anyhow!("No session in backend"))?
-                        .create_fx_chain(chain_type.to_ffi(), title.as_str())?;
+                        .create_fx_chain(chain_type, title.as_str())?;
 
                     // To push any state that was already set on us before initializing
                     let state = &self.prev_state;
@@ -298,7 +298,7 @@ impl FXChainBackend {
     pub fn get_midi_input_port(
         self: Pin<&mut Self>,
         idx: u32,
-    ) -> Option<backend_bindings::MidiPort> {
+    ) -> Option<shoop_engine::app_backend::MidiPort> {
         if let Some(backend_chain) = self.backend_chain_wrapper.as_ref() {
             backend_chain.get_midi_input_port(idx)
         } else {
@@ -313,7 +313,7 @@ impl FXChainBackend {
     pub fn get_audio_input_port(
         self: Pin<&mut Self>,
         idx: u32,
-    ) -> Option<backend_bindings::AudioPort> {
+    ) -> Option<shoop_engine::app_backend::AudioPort> {
         if let Some(backend_chain) = self.backend_chain_wrapper.as_ref() {
             backend_chain.get_audio_input_port(idx)
         } else {
@@ -328,7 +328,7 @@ impl FXChainBackend {
     pub fn get_audio_output_port(
         self: Pin<&mut Self>,
         idx: u32,
-    ) -> Option<backend_bindings::AudioPort> {
+    ) -> Option<shoop_engine::app_backend::AudioPort> {
         if let Some(backend_chain) = self.backend_chain_wrapper.as_ref() {
             backend_chain.get_audio_output_port(idx)
         } else {

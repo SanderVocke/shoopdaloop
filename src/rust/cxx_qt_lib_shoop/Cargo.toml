@@ -23,6 +23,9 @@ regex = { workspace = true }
 log = { workspace = true }
 once_cell = { workspace = true }
 
+[lints]
+workspace = true
+
 [build-dependencies]
 macros = { path = "../macros" }
 

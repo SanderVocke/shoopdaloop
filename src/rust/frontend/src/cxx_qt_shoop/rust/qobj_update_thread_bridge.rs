@@ -39,7 +39,7 @@ pub mod ffi {
 
         /// Performs the actual update work. Invoked via a queued connection
         /// from trigger_update() to ensure all pending commands in the event
-        /// queue are processed before state is pulled from the C++ backend.
+        /// queue are processed before state is pulled from the engine.
         #[qinvokable]
         pub fn do_queued_update(self: Pin<&mut UpdateThread>);
     }

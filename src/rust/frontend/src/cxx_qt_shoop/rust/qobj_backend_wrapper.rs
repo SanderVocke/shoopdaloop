@@ -1,12 +1,12 @@
 use crate::engine_update_thread;
 use crate::profiling_report::profiling_report_to_qvariantmap;
 use anyhow::anyhow;
-use backend_bindings::*;
 use cxx_qt_lib_shoop::qjsonobject::QJsonObject;
 use cxx_qt_lib_shoop::qobject::{qobject_thread, AsQObject};
 use cxx_qt_lib_shoop::qquickitem::{qquickitem_to_qobject_mut, AsQQuickItem};
 use cxx_qt_lib_shoop::qvariant_helpers::qvariantmap_to_qvariant;
 use cxx_qt_lib_shoop::{connect, connection_types};
+use shoop_engine::app_backend::*;
 use std::pin::Pin;
 use std::sync::OnceLock;
 use std::time;
@@ -78,6 +78,47 @@ fn audio_driver_settings_from_qvariantmap(
                 client_name,
                 sample_rate,
                 buffer_size,
+            });
+        }
+        AudioDriverType::Cpal | AudioDriverType::CpalTest => {
+            let client_name = map
+                .get(&QString::from("client_name_hint"))
+                .ok_or_else(|| anyhow!("No client name setting for driver"))?
+                .value::<QString>()
+                .ok_or_else(|| anyhow!("Wrong type for client name of driver"))?
+                .to_string();
+            let get_string = |key: &str, default: &str| -> Result<String, anyhow::Error> {
+                Ok(map
+                    .get(&QString::from(key))
+                    .and_then(|v| v.value::<QString>())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| default.to_string()))
+            };
+            let get_i32 = |key: &str, default: i32| -> Result<i32, anyhow::Error> {
+                Ok(map
+                    .get(&QString::from(key))
+                    .and_then(|v| v.value::<i32>())
+                    .unwrap_or(default))
+            };
+            let split_selectors = |s: String| -> Vec<String> {
+                s.split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(ToString::to_string)
+                    .collect()
+            };
+            settings = AudioDriverSettings::Cpal(CpalMidiAudioDriverSettings {
+                client_name,
+                host: get_string("cpal_host", "default")?,
+                output_device: get_string("cpal_output_device", "default")?,
+                input_device: get_string("cpal_input_device", "default")?,
+                sample_rate: get_i32("cpal_sample_rate", 0)?.max(0) as u32,
+                buffer_size: get_i32("cpal_buffer_size", 0)?.max(0) as u32,
+                input_channels: get_string("cpal_input_channels", "all")?,
+                output_channels: get_string("cpal_output_channels", "all")?,
+                capture_ring_frames: get_i32("cpal_capture_ring_frames", 4096)?.max(1) as u32,
+                midi_inputs: split_selectors(get_string("midir_input", "all")?),
+                midi_outputs: split_selectors(get_string("midir_output", "all")?),
             });
         }
     }
@@ -274,6 +315,8 @@ impl BackendWrapper {
 
         {
             self.as_mut().set_xruns(update_data.xruns);
+            self.as_mut()
+                .set_stale_graph_cycles(update_data.stale_graph_cycles);
             self.as_mut().set_dsp_load(update_data.dsp_load);
             self.as_mut().set_last_processed(update_data.last_processed);
             self.as_mut()
@@ -353,6 +396,9 @@ impl BackendWrapper {
 
         let update_data = BackendWrapperUpdateData {
             xruns: current_xruns + driver_state.xruns_since_last as i32,
+            // Cumulative from the engine, not a delta like xruns, so it is assigned
+            // rather than accumulated here.
+            stale_graph_cycles: driver_state.stale_graph_cycles as i32,
             dsp_load: driver_state.dsp_load_percent,
             last_processed: driver_state.last_processed as i32,
             n_audio_buffers_available: session_state.n_audio_buffers_available as i32,
@@ -411,6 +457,16 @@ impl BackendWrapper {
         } else {
             warn!("dummy_is_controlled called on a BackendWrapper with no driver");
             false
+        }
+    }
+
+    pub fn dummy_wait_controlled_mode(mut self: Pin<&mut BackendWrapper>) {
+        let mut mut_rust = self.as_mut().rust_mut();
+
+        if let Some(driver) = mut_rust.driver.as_mut() {
+            driver.dummy_wait_controlled_mode();
+        } else {
+            warn!("dummy_wait_controlled_mode called on a BackendWrapper with no driver");
         }
     }
 
@@ -527,7 +583,7 @@ impl BackendWrapper {
             ));
         }
 
-        let port = backend_bindings::AudioPort::new_driver_port(
+        let port = shoop_engine::app_backend::AudioPort::new_driver_port(
             mut_rust
                 .session
                 .as_ref()
@@ -565,7 +621,7 @@ impl BackendWrapper {
             ));
         }
 
-        let port = backend_bindings::MidiPort::new_driver_port(
+        let port = shoop_engine::app_backend::MidiPort::new_driver_port(
             mut_rust
                 .session
                 .as_ref()
@@ -602,7 +658,7 @@ impl BackendWrapper {
             ));
         }
 
-        let port = backend_bindings::DecoupledMidiPort::new_driver_port(
+        let port = shoop_engine::app_backend::DecoupledMidiPort::new_driver_port(
             mut_rust
                 .driver
                 .as_ref()

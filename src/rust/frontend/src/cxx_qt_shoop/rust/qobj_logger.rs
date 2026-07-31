@@ -1,8 +1,6 @@
 use std::pin::Pin;
 
 use crate::cxx_qt_shoop::qobj_logger_bridge::ffi::{register_qml_type_logger, Logger};
-use backend_bindings::{LogLevel, Logger as BackendLogger};
-use cxx_qt::CxxQtType;
 use cxx_qt_lib::QString;
 
 pub fn register_qml_type(module_name: &str, type_name: &str) {
@@ -11,6 +9,37 @@ pub fn register_qml_type(module_name: &str, type_name: &str) {
     unsafe {
         register_qml_type_logger(std::ptr::null_mut(), &mut mdl, 1, 0, &mut tp);
     }
+}
+
+#[derive(Clone, Copy)]
+enum FrontendLogLevel {
+    AlwaysTrace,
+    Debug,
+    Info,
+    Warn,
+    Err,
+}
+
+fn should_log(level: FrontendLogLevel) -> bool {
+    matches!(
+        level,
+        FrontendLogLevel::Info | FrontendLogLevel::Warn | FrontendLogLevel::Err
+    )
+}
+
+fn log(name: &str, level: FrontendLogLevel, msg: &str) {
+    if !should_log(level) {
+        return;
+    }
+    let level = match level {
+        FrontendLogLevel::AlwaysTrace => "trace",
+        FrontendLogLevel::Debug => "debug",
+        FrontendLogLevel::Info => "info",
+        FrontendLogLevel::Warn => "warning",
+        FrontendLogLevel::Err => "error",
+    };
+    use std::io::Write;
+    let _ = writeln!(std::io::stdout(), "[{name}] [{level}] {msg}");
 }
 
 impl Logger {
@@ -23,58 +52,53 @@ impl Logger {
             .release();
     }
 
-    pub fn create_logger(self: Pin<&mut Logger>, _name: QString) {
-        if let Ok(b) = BackendLogger::new(self.name.to_string().as_str()) {
-            self.rust_mut().backend.replace(b);
-        };
-    }
+    pub fn create_logger(self: Pin<&mut Logger>, _name: QString) {}
 
     pub fn trace(self: &Logger, msg: QString) {
-        let _ = self
-            .backend
-            .as_ref()
-            .map(|logger| logger.log(LogLevel::AlwaysTrace, &msg.to_string()));
+        log(
+            &self.name.to_string(),
+            FrontendLogLevel::AlwaysTrace,
+            &msg.to_string(),
+        );
     }
 
     pub fn debug(self: &Logger, msg: QString) {
-        let _ = self
-            .backend
-            .as_ref()
-            .map(|logger| logger.log(LogLevel::Debug, &msg.to_string()));
+        log(
+            &self.name.to_string(),
+            FrontendLogLevel::Debug,
+            &msg.to_string(),
+        );
     }
 
     pub fn info(self: &Logger, msg: QString) {
-        let _ = self
-            .backend
-            .as_ref()
-            .map(|logger| logger.log(LogLevel::Info, &msg.to_string()));
+        log(
+            &self.name.to_string(),
+            FrontendLogLevel::Info,
+            &msg.to_string(),
+        );
     }
 
     pub fn warning(self: &Logger, msg: QString) {
-        let _ = self
-            .backend
-            .as_ref()
-            .map(|logger| logger.log(LogLevel::Warn, &msg.to_string()));
+        log(
+            &self.name.to_string(),
+            FrontendLogLevel::Warn,
+            &msg.to_string(),
+        );
     }
 
     pub fn error(self: &Logger, msg: QString) {
-        let _ = self
-            .backend
-            .as_ref()
-            .map(|logger| logger.log(LogLevel::Err, &msg.to_string()));
+        log(
+            &self.name.to_string(),
+            FrontendLogLevel::Err,
+            &msg.to_string(),
+        );
     }
 
     pub fn should_trace(self: &Logger) -> bool {
-        self.backend
-            .as_ref()
-            .map(|logger| logger.should_log(LogLevel::AlwaysTrace))
-            .unwrap_or(false)
+        should_log(FrontendLogLevel::AlwaysTrace)
     }
 
     pub fn should_debug(self: &Logger) -> bool {
-        self.backend
-            .as_ref()
-            .map(|logger| logger.should_log(LogLevel::Debug))
-            .unwrap_or(false)
+        should_log(FrontendLogLevel::Debug)
     }
 }

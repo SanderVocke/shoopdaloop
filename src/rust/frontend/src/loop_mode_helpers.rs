@@ -1,4 +1,4 @@
-use backend_bindings::LoopMode;
+use shoop_engine::LoopMode;
 
 pub fn is_playing_mode(mode: LoopMode) -> bool {
     matches!(mode, LoopMode::Playing | LoopMode::PlayingDryThroughWet)

@@ -4,13 +4,13 @@ Software Design
 Architecture
 ^^^^^^^^^^^^^
 
-**ShoopDaLoop** is built up as a back-end and a front-end, which are connected through a C API interface.
+**ShoopDaLoop** is built from a Rust engine, Rust/cxx-qt frontend glue, QML UI, and Lua scripting.
 
 .. uml::
     :caption: Overall software stack
 
-    component backend [
-        libshoopdaloop_backend (C++ back-end)
+    component engine [
+        shoop_engine (Rust engine)
     ]
     component frontend [
         shoopdaloop (QML front-end)
@@ -18,25 +18,21 @@ Architecture
     collections extensions [
         Front-end Extensions (Rust + cxx-qt)
     ]
-    interface interface [
-        libshoopdaloop_backend C API
-    ]
     component scripting [
         LUA scripts
     ]
 
-    backend - interface
-    extensions ..> interface : uses
+    extensions ..> engine : uses
     frontend - extensions
     frontend ..> scripting : embeds
 
-The split between front-end and back-end is not entirely pure, as different parts of the functionality are implemented in the layer where it is most convenient.
+The split between front-end and engine is not entirely pure, as different parts of the functionality are implemented in the layer where it is most convenient.
 
-The **libshoopdaloop_backend backend** handles:
+The **shoop_engine** crate handles:
 
 * All real-time audio + MIDI processing
 * Interconnections of ports, loop channels and FX
-* Nearly all calls to the JACK API (exceptions below)
+* JACK, CPAL and MIDI driver integration
 * Logging and profiling
 * Basic loop synchronization (loop transitions)
 
@@ -46,7 +42,7 @@ The **front-end + extensions** handle:
 * Session saving/loading
 * Advanced loop synchronization (scheduling loop transitions over multiple sync loop cycles)
 * Composite loops
-* Thread-decoupled forwarding of UI events to/from the back-end
+* Thread-decoupled forwarding of UI events to/from the engine
 
 The **LUA scripts** are meant for parts that may need to be added/modified by individual users, such as:
 
@@ -56,16 +52,9 @@ The **LUA scripts** are meant for parts that may need to be added/modified by in
 Build And Packaging
 ^^^^^^^^^^^^^^^^^^^^
 
-The combination of different languages, OSes and the dual dependency on Qt and PySide has resulted in a complex build approach.
-As the project is packaged as a Python package, an approach based on **pyproject.toml** has been taken.
-For the C++ parts, **CMake** is used.
-For combining the two, a tool called **py-build-cmake** is used.
-The **CMake** part cannot be run trivially without the **py-build-cmake** integration because there is also some code generation taking place which requires both sides of the equation.
-A source package cannot be built - only a wheel directly. Please refer to the build instructions for details.
+The combination of different languages, OSes and the dual dependency on Qt and PySide has resulted in a complex build approach. Cargo drives the Rust build and package helper binaries, while build scripts integrate Qt/cxx-qt and other native libraries.
 
-For a build on the same system where ShoopDaLoop is to be used, the building is pretty much a "straightforward" py-build-cmake build.
-
-For the official release wheels though, the setup is more complicated because we need to be binary-compatible with the Qt libraries that ship with PySide. Documentation for this will be added in the future, when the still pending improvements to this build flow are finished.
+For the official release artifacts, the setup is more complicated because we need to be binary-compatible with the Qt libraries that ship with PySide. Documentation for this will be added in the future, when the still pending improvements to this build flow are finished.
 
 
 Debugging
@@ -73,9 +62,9 @@ Debugging
 
 There are several tools at your disposal for debugging:
 
-* The **logging framework** is available at all levels in the software stack. It allows for logging at different levels, and filtering on levels or components where the message originated from. Note that in a release build, the **debug** and **trace** levels are removed from C++ during compilation, so less logging is available.
+* The **logging framework** is available at all levels in the software stack. It allows for logging at different levels, and filtering on levels or components where the message originated from.
 * The built-in **profiler** allows checking which parts take up the most time in the audio process loop. It can be accessed from the user interface.
-* The built-in **debug inspector** can inspect back-end objects' states from the user interface.
+* The built-in **debug inspector** can inspect engine objects' states from the user interface.
 * ShoopDaLoop can be run with the `-d PORT` flag to connect a QML debug client or profiler (such as those offered from QtCreator).
 
 
@@ -84,13 +73,12 @@ Testing
 
 The test suites for **ShoopDaLoop** are by no means complete, but do test essential functions at several levels. The following testing tools exist:
 
-* C++ unit and integration tests powered by **boost_ext::ut**.
-* Rust unit and integration tests powered by **cargo**, testing individual front-end extensions.
+* Rust unit and integration tests powered by **cargo**.
 * QML unit and integration tests powered by **Qt Quick Test**.
 
 The QML integration tests come closest to "system-level". For example, there are tests there which can check cycle-accurately that the correct audio samples are produced based on what the user clicked in the user interface.
 
-Coverage is generated at each of the aforementioned test levels. QML coverage generation is powered by `qoverage <https://github.com/SanderVocke/qoverage>`_.
+Coverage is generated for Rust and QML where enabled. QML coverage generation is powered by `qoverage <https://github.com/SanderVocke/qoverage>`_.
 
 
 

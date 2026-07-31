@@ -1,6 +1,6 @@
 use anyhow::anyhow;
-use backend_bindings::MidiEvent;
 use json;
+use shoop_engine::MidiEvent;
 
 // TODO: very confusing name. This was meant as "simple MIDI format", a MIDI
 // file format that just uses JSON to save timestamped midi messages for

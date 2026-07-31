@@ -9,7 +9,6 @@ path = "src/main.rs"
 
 [dependencies]
 common = { path = "../common" }
-backend = { path = "../backend" }
 
 walkdir = { workspace = true }
 glob = { workspace = true }
@@ -22,6 +21,15 @@ log = { workspace = true }
 ctor = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 
+# Only the in-process dependency walkers need this, and only Windows and macOS
+# use them -- Linux keeps its lddtree-based scanner. Target-gating keeps the
+# Linux build unchanged.
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+goblin = { workspace = true }
+
+[lints]
+workspace = true
+
 [features]
 # Dummy build to build dependencies only
-prebuild = ["common/prebuild", "backend/prebuild"]
+prebuild = ["common/prebuild"]

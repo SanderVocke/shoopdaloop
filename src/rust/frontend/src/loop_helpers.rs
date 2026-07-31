@@ -1,5 +1,4 @@
 use anyhow::anyhow;
-use backend_bindings::LoopMode;
 use cxx_qt_lib::{QList, QVariant};
 use cxx_qt_lib_shoop::{
     connection_types,
@@ -8,6 +7,7 @@ use cxx_qt_lib_shoop::{
     qvariant_helpers::QList_QVariant,
     qvariant_helpers::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
 };
+use shoop_engine::LoopMode;
 
 use common::logging::macros::*;
 

@@ -1,3 +1,5 @@
+#![cfg(not(feature = "prebuild"))]
+
 #[cfg(not(feature = "prebuild"))]
 pub mod config;
 use std::path::PathBuf;

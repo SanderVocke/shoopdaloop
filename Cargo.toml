@@ -4,12 +4,14 @@ resolver = "2"
 
 members = ["src/rust/*"]
 
+[workspace.lints.rust]
+unknown_lints = "allow"
+semicolon_in_expressions_from_non_local_macros = "allow"
+
 [workspace.dependencies]
-cmake = "0.1"
 anyhow = "1.0"
 glob = "0.3"
 bindgen = "0.70"
-static_assertions = "1.1"
 log = "0.4"
 colored = "2.1"
 humantime = "2.1"
@@ -25,9 +27,10 @@ crash-handler = "0.6"
 uuid = { version = "1.17", features = ["v4"] }
 tempfile = "3.20"
 serde_json = "1.0"
+base64 = "0.22"
+libloading = "0.8"
 once_cell = "1.21"
 cxx = "1.0"
-cxx-build = "1.0"
 tar = "0.4"
 dunce = "1.0"
 cxx-qt = "0.8.1"
@@ -37,6 +40,16 @@ quote = "1.0"
 syn = { version = "2.0", features = ["full"] }
 walkdir = "2.5"
 indexmap = "2.5"
+# Object-file parsing for the packaging dependency walker (PE imports on
+# Windows, Mach-O load commands on macOS). Already in Cargo.lock at 0.8.2 via
+# minidump-writer, so this adds no new dependency tree.
+goblin = { version = "0.8", default-features = false, features = [
+    "std",
+    "pe32",
+    "pe64",
+    "mach32",
+    "mach64",
+] }
 clap = { version = "4.5", features = ["derive"] }
 quick-xml = { version = "0.38", features = ["serialize"] }
 sndfile = { version = "0.1" }
@@ -52,7 +65,22 @@ jsonschema = "0.33"
 rodio = "0.21"
 libc = "0.2"
 winapi = "0.3"
-crossbeam-queue = "0.3"
+assert2 = "0.3"
+assert_no_alloc = "1.1"
+rtrb = "0.3"
+jack = "0.13"
+# Pinned to what rodio (used by the frontend) already brings in: cpal declares
+# links = "alsa", so two versions cannot coexist in one workspace.
+# Enable all known cross-platform CPAL host features so that `--list-cpal-hosts`
+# surfaces every available backend (ALSA, JACK, WASAPI, ASIO, CoreAudio).
+cpal = { version = "0.16", features = ["jack", "asio"] }
+midir = "0.11"
+lilv = "0.2.4"
+lv2_raw = "0.2"
+# 0.16 rather than 4.0: the 4.x API works through audioadapter traits instead of
+# plain sample planes, which buys nothing here.
+rubato = "0.16"
+thiserror = "2.0"
 
 [patch.crates-io]
 # Patched qt-build-utils to handle Windows debug Qt library "d" suffix

@@ -1,11 +1,16 @@
-use backend;
+#[cfg(not(feature = "prebuild"))]
 use std::env;
+#[cfg(not(feature = "prebuild"))]
 use std::path::PathBuf;
+#[cfg(not(feature = "prebuild"))]
 use std::process::Command;
 
+#[cfg(not(feature = "prebuild"))]
 const SRC_DIR: &str = env!("CARGO_MANIFEST_DIR");
+#[cfg(not(feature = "prebuild"))]
 const MAYBE_QMAKE: Option<&'static str> = option_env!("QMAKE");
 
+#[cfg(not(feature = "prebuild"))]
 fn qmake_command(qmake_path: &str, argstring: &str) -> Command {
     let shell_command = format!("{} {}", qmake_path, argstring);
     return if cfg!(target_os = "windows") {
@@ -19,13 +24,16 @@ fn qmake_command(qmake_path: &str, argstring: &str) -> Command {
     };
 }
 
+#[cfg(not(feature = "prebuild"))]
 #[path = "src/config.rs"]
 mod config;
 
+#[cfg(not(feature = "prebuild"))]
 fn dev_config_path() -> PathBuf {
     PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("shoop-dev-config.toml")
 }
 
+#[cfg(not(feature = "prebuild"))]
 fn generate_dev_config() -> Result<config::ShoopConfig, anyhow::Error> {
     let shoop_src_root_dir = PathBuf::from(SRC_DIR).join("../../..");
     let qmake = if MAYBE_QMAKE.is_some() {
@@ -42,10 +50,7 @@ fn generate_dev_config() -> Result<config::ShoopConfig, anyhow::Error> {
         .output()?;
     let qt_qml = String::from_utf8(qt_qml.stdout)?.trim().to_string();
 
-    let dynlib_paths: Vec<String> = backend::runtime_link_dirs()
-        .iter()
-        .map(|p| p.to_string_lossy().to_string())
-        .collect();
+    let dynlib_paths: Vec<String> = Vec::new();
 
     let mut config = config::ShoopConfig::default();
     config.qml_dir = shoop_src_root_dir
@@ -75,6 +80,7 @@ fn generate_dev_config() -> Result<config::ShoopConfig, anyhow::Error> {
     Ok(config)
 }
 
+#[cfg(not(feature = "prebuild"))]
 fn main_impl() -> Result<(), anyhow::Error> {
     // If we're pre-building, don't do anything
     if cfg!(feature = "prebuild") {
@@ -102,6 +108,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+#[cfg(not(feature = "prebuild"))]
 fn main() {
     match main_impl() {
         Ok(_) => {}
@@ -111,3 +118,6 @@ fn main() {
         }
     }
 }
+
+#[cfg(feature = "prebuild")]
+fn main() {}

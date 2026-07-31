@@ -155,7 +155,7 @@ pub fn crashhandling_client(
                     }
                 }
                 Err(e) => {
-                    warn!("client: client::with_name failed: {:?}", e);
+                    debug!("client: client::with_name failed: {:?}", e);
                 }
             }
 

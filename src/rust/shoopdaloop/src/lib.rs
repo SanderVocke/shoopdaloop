@@ -1,3 +1,5 @@
+#![cfg(not(feature = "prebuild"))]
+
 #[cfg(not(feature = "prebuild"))]
 mod lib_impl;
 

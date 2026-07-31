@@ -24,11 +24,71 @@ pub struct CliArgs {
     #[clap(short = 'p', long = "print-backends")]
     pub print_backends: bool,
 
+    /// List CPAL hosts and exit.
+    #[clap(long = "list-cpal-hosts")]
+    pub list_cpal_hosts: bool,
+
+    /// List CPAL audio devices and exit.
+    #[clap(long = "list-audio-devices")]
+    pub list_audio_devices: bool,
+
+    /// List midir MIDI ports and exit.
+    #[clap(long = "list-midi-devices")]
+    pub list_midi_devices: bool,
+
+    #[clap(flatten)]
+    pub cpal_midir_options: CpalMidirOptions,
+
     #[clap(flatten)]
     pub developer_options: DeveloperOptions,
 
     #[clap(flatten)]
     pub self_test_options: SelfTestOptions,
+}
+
+/// CPAL/midir backend options.
+#[derive(Args, Debug)]
+#[group()]
+pub struct CpalMidirOptions {
+    /// CPAL host/API name, or `default`.
+    #[clap(long = "cpal-host", default_value = "default")]
+    pub cpal_host: String,
+
+    /// CPAL output device name, index, `default`, or `none`.
+    #[clap(long = "cpal-output-device", default_value = "default")]
+    pub cpal_output_device: String,
+
+    /// CPAL input device name, index, `default`, or `none`.
+    #[clap(long = "cpal-input-device", default_value = "default")]
+    pub cpal_input_device: String,
+
+    /// CPAL sample rate in Hz, or 0 for device default.
+    #[clap(long = "cpal-sample-rate", default_value = "0")]
+    pub cpal_sample_rate: u32,
+
+    /// CPAL buffer size in frames, or 0 for device default.
+    #[clap(long = "cpal-buffer-size", default_value = "0")]
+    pub cpal_buffer_size: u32,
+
+    /// Number of CPAL input channels to use, or `all`.
+    #[clap(long = "cpal-input-channels", default_value = "all")]
+    pub cpal_input_channels: String,
+
+    /// Number of CPAL output channels to use, or `all`.
+    #[clap(long = "cpal-output-channels", default_value = "all")]
+    pub cpal_output_channels: String,
+
+    /// CPAL capture ring size in frames.
+    #[clap(long = "cpal-capture-ring-frames", default_value = "4096")]
+    pub cpal_capture_ring_frames: i32,
+
+    /// midir input selector: repeatable name/index/all/none.
+    #[clap(long = "midir-input")]
+    pub midir_input: Vec<String>,
+
+    /// midir output selector: repeatable name/index/all/none.
+    #[clap(long = "midir-output")]
+    pub midir_output: Vec<String>,
 }
 
 /// Developer options group.
@@ -107,6 +167,10 @@ pub struct DeveloperOptions {
         help_heading = "Developer options"
     )]
     pub max_backend_refresh_interval_ms: u32,
+
+    /// Abort if realtime process callbacks allocate. Debug builds only.
+    #[clap(long = "rt-alloc-guard", help_heading = "Developer options")]
+    pub rt_alloc_guard: bool,
 
     // Disables the crash handler.
     #[clap(long = "no-crash-handling", help_heading = "Developer options")]
