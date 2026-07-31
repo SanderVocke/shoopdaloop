@@ -165,7 +165,9 @@ fn jack_audio_input_reaches_a_recording_channel() {
     let channel = loop_
         .add_audio_channel(ChannelMode::Direct)
         .expect("channel");
-    channel.connect_input(&input);
+    channel
+        .connect_input(&input)
+        .expect("queue input connection");
     loop_
         .transition(LoopMode::Recording, -1, -1)
         .expect("recording");
@@ -213,10 +215,12 @@ fn session_output_reaches_a_jack_consumer() {
     let channel = loop_
         .add_audio_channel(ChannelMode::Direct)
         .expect("channel");
-    channel.connect_output(&output);
+    channel
+        .connect_output(&output)
+        .expect("queue output connection");
 
     let n = buffer_size * 8;
-    channel.load_data(&vec![0.5; n]);
+    channel.load_data(&vec![0.5; n]).expect("queue data");
     loop_.set_length(n as u32).expect("length");
     loop_
         .transition(LoopMode::Playing, -1, -1)
@@ -268,9 +272,11 @@ fn audio_keeps_flowing_across_a_mid_stream_topology_change() {
     let channel = loop_
         .add_audio_channel(ChannelMode::Direct)
         .expect("channel");
-    channel.connect_output(&output);
+    channel
+        .connect_output(&output)
+        .expect("queue output connection");
     let n = buffer_size * 8;
-    channel.load_data(&vec![0.5; n]);
+    channel.load_data(&vec![0.5; n]).expect("queue data");
     loop_.set_length(n as u32).expect("length");
     loop_
         .transition(LoopMode::Playing, -1, -1)
@@ -289,7 +295,9 @@ fn audio_keeps_flowing_across_a_mid_stream_topology_change() {
     let channel2 = loop2
         .add_audio_channel(ChannelMode::Direct)
         .expect("second channel");
-    channel2.connect_output(&output);
+    channel2
+        .connect_output(&output)
+        .expect("queue second output connection");
 
     captured.lock().unwrap().clear();
     assert!(

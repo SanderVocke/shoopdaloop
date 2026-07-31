@@ -25,6 +25,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 pub type PortConnectability = engine::PortConnectability;
+pub use engine::{CommandSequence, SendError};
 
 /// How many control operations may be outstanding between cycles.
 ///
@@ -908,82 +909,116 @@ struct SharedSession {
 }
 
 impl SharedSession {
-    /// Queues a mutation, and notes that the graph may need rebuilding.
-    ///
-    /// Arms the scheduler unconditionally rather than asking whether this particular change
-    /// was structural. That is what `ControlGuard` used to buy by rescheduling on drop: no
-    /// mutation site has to remember, which is the property that was missing when wiring up
-    /// a track left a schedule that never got rebuilt. An armed-but-clean window is cheap --
-    /// the scheduler asks the engine whether the graph is actually stale and does nothing if
-    /// it is not.
-    fn send(&self, f: impl FnMut(&mut engine::Session) + Send + 'static) {
-        self.send_inner(f);
-        if let Some(s) = self.scheduler.get() {
-            s.arm();
+    fn send_control(
+        &self,
+        f: impl FnMut(&mut engine::Session) + Send + 'static,
+    ) -> std::result::Result<CommandSequence, SendError> {
+        self.send_with_graph_effect(f, false)
+    }
+
+    fn send_topology(
+        &self,
+        f: impl FnMut(&mut engine::Session) + Send + 'static,
+    ) -> std::result::Result<CommandSequence, SendError> {
+        self.send_with_graph_effect(f, true)
+    }
+
+    fn send_with_graph_effect(
+        &self,
+        f: impl FnMut(&mut engine::Session) + Send + 'static,
+        changes_topology: bool,
+    ) -> std::result::Result<CommandSequence, SendError> {
+        let mut f = Some(f);
+        let mut warned = false;
+        let sequence = loop {
+            let attempt = {
+                let mut handle = self.handle.lock().unwrap_or_else(|e| e.into_inner());
+                match handle.try_reserve() {
+                    Ok(reservation) => {
+                        self.queued_at_cycle.store(
+                            handle.stats().cycles.load(Ordering::Relaxed),
+                            Ordering::Relaxed,
+                        );
+                        let command = Box::new(f.take().expect("command queued once"));
+                        Ok(handle.send_reserved(reservation, command))
+                    }
+                    Err(error) => Err(error),
+                }
+            };
+            match attempt {
+                Ok(sequence) => break sequence,
+                Err(SendError::Full) => {
+                    if !warned {
+                        log::warn!("engine command queue is full; waiting for capacity");
+                        warned = true;
+                    }
+                    self.pump_or_wait_for_capacity();
+                }
+                Err(error) => return Err(error),
+            }
+        };
+
+        if changes_topology {
+            if let Some(scheduler) = self.scheduler.get() {
+                scheduler.arm();
+            }
+        }
+        self.pump_parked();
+        Ok(sequence)
+    }
+
+    fn pump_or_wait_for_capacity(&self) {
+        if !self.pump_parked() {
+            std::thread::sleep(Duration::from_micros(200));
         }
     }
 
-    /// Queues work without arming the scheduler.
-    ///
-    /// For the scheduler's own install: arming from it would make every rebuild schedule
-    /// another window, which then finds the graph current and does nothing. Safe because a
-    /// change landing between the describe and the install armed the scheduler itself when it
-    /// was queued, so nothing is lost by this path staying quiet.
-    fn send_inner(&self, f: impl FnMut(&mut engine::Session) + Send + 'static) {
-        {
-            let mut handle = self.handle.lock().unwrap_or_else(|e| e.into_inner());
-            // Noted before queueing, so the recorded cycle can only be too early -- which
-            // costs a reader one extra blocking read, where too late would hand it a stale
-            // answer it had no way to detect.
-            self.queued_at_cycle.store(
-                handle.stats().cycles.load(Ordering::Relaxed),
-                Ordering::Relaxed,
-            );
-            let _ = handle.send(Box::new(f));
-        }
-        // Nothing is cycling a parked engine, so this thread runs what it just queued.
-        if let Some(e) = self
+    fn pump_parked(&self) -> bool {
+        if let Some(engine) = self
             .parked
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .as_mut()
         {
-            e.pump();
+            engine.pump();
+            true
+        } else {
+            false
         }
     }
 
-    /// Asks the engine something and waits for the answer.
-    ///
-    /// Ordered behind everything already queued, whichever path it takes, so a read always
-    /// sees the writes that preceded it.
-    ///
-    /// Arms the scheduler like [`Self::send`] does, and for the same reason: this is not only
-    /// used for reads. `create_loop`, `add_port` and `add_audio_channel` all go through here
-    /// because the caller needs the index back, and every one of them changes the topology.
-    /// Arming only on `send` is precisely the "some mutation sites remember and some do not"
-    /// bug that `ControlGuard` was introduced to make impossible.
-    fn query<T: Send + 'static>(
+    fn query_control<T: Send + 'static>(
         &self,
         f: impl FnOnce(&mut engine::Session) -> T + Send + 'static,
     ) -> Result<T> {
+        self.query_with_graph_effect(f, false)
+    }
+
+    fn query_topology<T: Send + 'static>(
+        &self,
+        f: impl FnOnce(&mut engine::Session) -> T + Send + 'static,
+    ) -> Result<T> {
+        self.query_with_graph_effect(f, true)
+    }
+
+    fn query_with_graph_effect<T: Send + 'static>(
+        &self,
+        f: impl FnOnce(&mut engine::Session) -> T + Send + 'static,
+        changes_topology: bool,
+    ) -> Result<T> {
         let answer = self.query_inner(f);
-        if let Some(s) = self.scheduler.get() {
-            s.arm();
+        if changes_topology {
+            if let Some(scheduler) = self.scheduler.get() {
+                scheduler.arm();
+            }
         }
         answer
     }
 
-    /// Asks the engine something without arming the scheduler.
-    ///
-    /// For the scheduler's own describe: arming from it would schedule another window after
-    /// every rebuild, which would then find the graph current and do nothing.
     fn query_inner<T: Send + 'static>(
         &self,
         f: impl FnOnce(&mut engine::Session) -> T + Send + 'static,
     ) -> Result<T> {
-        // Parked: no driver, so no other thread can be in the session. Apply anything queued
-        // first to keep the ordering, then answer directly rather than waiting for a cycle
-        // that nobody is going to run.
         if let Some(e) = self
             .parked
             .lock()
@@ -992,25 +1027,49 @@ impl SharedSession {
         {
             e.pump();
             let result = f(e.session_mut());
-            // A direct query may mutate the topology, so publish its staleness before return.
             e.publish_graph_staleness();
             return Ok(result);
         }
-        // A driver owns the engine; the queue is the only way in.
-        //
-        // Queued under the lock, waited for *without* it. Holding the handle across the wait
-        // is what makes every other control operation queue behind a full round trip to the
-        // audio thread: with the scheduler describing the topology on its own thread, that
-        // starved the GUI thread continuously and presented as the application hanging. It
-        // is not a deadlock and nothing times out, which is what makes it hard to find.
-        let rx = {
-            let mut handle = self.handle.lock().unwrap_or_else(|e| e.into_inner());
-            handle
-                .send_for_result(f)
-                .map_err(|e| anyhow!("could not queue the request: {e}"))?
+
+        let mut f = Some(f);
+        let mut warned = false;
+        let rx = loop {
+            let attempt = {
+                let mut handle = self.handle.lock().unwrap_or_else(|e| e.into_inner());
+                match handle.try_reserve() {
+                    Ok(reservation) => {
+                        let (_, rx) = handle.send_for_result_reserved(
+                            reservation,
+                            f.take().expect("request queued once"),
+                        );
+                        Ok(rx)
+                    }
+                    Err(error) => Err(error),
+                }
+            };
+            match attempt {
+                Ok(rx) => break rx,
+                Err(SendError::Full) => {
+                    if !warned {
+                        log::warn!("engine command queue is full; waiting to queue request");
+                        warned = true;
+                    }
+                    self.pump_or_wait_for_capacity();
+                }
+                Err(error) => return Err(anyhow!("could not queue the request: {error}")),
+            }
         };
         engine::wait_for_result(rx, engine::DEFAULT_WAIT_TIMEOUT)
             .map_err(|e| anyhow!("engine did not answer: {e}"))
+    }
+
+    fn wait_for_command(&self, sequence: CommandSequence, timeout: Duration) -> Result<()> {
+        let stats = {
+            let handle = self.handle.lock().unwrap_or_else(|e| e.into_inner());
+            Arc::clone(handle.stats())
+        };
+        engine::wait_for_command(&stats, sequence, timeout)
+            .map_err(|e| anyhow!("engine did not reach command {}: {e}", sequence.get()))
     }
 
     /// Reads the newest published state, if a cycle has published one.
@@ -1232,12 +1291,16 @@ impl BackendSession {
         Self::create()
     }
     pub fn create() -> Result<Self> {
+        Self::create_with_capacity(COMMAND_QUEUE_CAPACITY)
+    }
+
+    fn create_with_capacity(command_queue_capacity: usize) -> Result<Self> {
         let mut s = engine::Session::default();
         s.apply_graph_changes().ok();
         // Capacity bounds how many control operations may be outstanding between cycles. A
         // session load issues them in bursts, so this is sized for a burst rather than for
         // the steady state.
-        let (engine, handle) = engine::split(s, COMMAND_QUEUE_CAPACITY);
+        let (engine, handle) = engine::split(s, command_queue_capacity);
         let shared = Arc::new(SharedSession {
             handle: Mutex::new(handle),
             parked: Mutex::new(Some(engine)),
@@ -1341,7 +1404,7 @@ impl BackendSession {
     pub fn create_loop(&self) -> Result<Loop> {
         let idx = self
             .shared
-            .query(|s: &mut engine::Session| s.create_loop())?;
+            .query_topology(|s: &mut engine::Session| s.create_loop())?;
         Ok(Loop {
             shared: self.shared.clone(),
             idx,
@@ -1355,7 +1418,7 @@ impl BackendSession {
                 {
                     let (sample_rate, buffer_size) = self
                         .shared
-                        .query(|s: &mut engine::Session| {
+                        .query_control(|s: &mut engine::Session| {
                             (s.sample_rate().max(1), s.buffer_size().max(1))
                         })
                         .unwrap_or((48_000, 256));
@@ -1382,11 +1445,13 @@ impl BackendSession {
         if let FXChainBackendKind::Carla(host) = &backend {
             let (title, host) = (title.to_string(), host.clone());
             let mut pending = Some((title, host));
-            self.shared.send(move |s: &mut engine::Session| {
+            if let Err(error) = self.shared.send_topology(move |s: &mut engine::Session| {
                 if let Some((title, host)) = pending.take() {
                     s.set_carla_fx_host(title, host);
                 }
-            });
+            }) {
+                log::error!("could not queue Carla host insertion: {error}");
+            }
         }
         Ok(FXChain {
             shared: self.shared.clone(),
@@ -2166,13 +2231,15 @@ pub type LoopState = engine::LoopState;
 impl Loop {
     pub fn add_audio_channel(&self, mode: ChannelMode) -> Result<AudioChannel> {
         let (idx, mode) = (self.idx, mode);
-        let (session_idx, chan_idx) = self.shared.query(move |s: &mut engine::Session| {
-            let session_idx = s.add_audio_channel(idx, 64, mode.into())?;
-            let chan_idx = s
-                .loop_(idx)
-                .map_or(0, |l| l.n_audio_channels().saturating_sub(1));
-            Ok::<_, engine::SessionError>((session_idx, chan_idx))
-        })??;
+        let (session_idx, chan_idx) =
+            self.shared
+                .query_topology(move |s: &mut engine::Session| {
+                    let session_idx = s.add_audio_channel(idx, 64, mode.into())?;
+                    let chan_idx = s
+                        .loop_(idx)
+                        .map_or(0, |l| l.n_audio_channels().saturating_sub(1));
+                    Ok::<_, engine::SessionError>((session_idx, chan_idx))
+                })??;
         Ok(AudioChannel {
             shared: self.shared.clone(),
             loop_idx: self.idx,
@@ -2182,13 +2249,15 @@ impl Loop {
     }
     pub fn add_midi_channel(&self, mode: ChannelMode) -> Result<MidiChannel> {
         let (idx, mode) = (self.idx, mode);
-        let (session_idx, chan_idx) = self.shared.query(move |s: &mut engine::Session| {
-            let session_idx = s.add_midi_channel(idx, 1024, mode.into())?;
-            let chan_idx = s
-                .loop_(idx)
-                .map_or(0, |l| l.n_midi_channels().saturating_sub(1));
-            Ok::<_, engine::SessionError>((session_idx, chan_idx))
-        })??;
+        let (session_idx, chan_idx) =
+            self.shared
+                .query_topology(move |s: &mut engine::Session| {
+                    let session_idx = s.add_midi_channel(idx, 1024, mode.into())?;
+                    let chan_idx = s
+                        .loop_(idx)
+                        .map_or(0, |l| l.n_midi_channels().saturating_sub(1));
+                    Ok::<_, engine::SessionError>((session_idx, chan_idx))
+                })??;
         Ok(MidiChannel {
             shared: self.shared.clone(),
             loop_idx: self.idx,
@@ -2201,9 +2270,9 @@ impl Loop {
         to_mode: LoopMode,
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32,
-    ) -> Result<()> {
+    ) -> Result<CommandSequence> {
         let idx = self.idx;
-        self.shared.send(move |s: &mut engine::Session| {
+        Ok(self.shared.send_control(move |s: &mut engine::Session| {
             if maybe_cycles_delay >= 0 || maybe_to_sync_at_cycle >= 0 {
                 if let Some(l) = s.loop_mut(idx) {
                     l.plan_transition(
@@ -2215,8 +2284,7 @@ impl Loop {
             } else {
                 let _ = s.set_loop_mode(idx, to_mode.into());
             }
-        });
-        Ok(())
+        })?)
     }
 
     /// This loop's state as of the last published cycle, without blocking.
@@ -2245,7 +2313,7 @@ impl Loop {
     pub fn get_state(&self) -> Result<LoopState> {
         let idx = self.idx;
         self.shared
-            .query(move |s: &mut engine::Session| {
+            .query_control(move |s: &mut engine::Session| {
                 s.loop_(idx).map(|l| {
                     let next = l.first_planned_transition();
                     LoopState {
@@ -2259,42 +2327,38 @@ impl Loop {
             })?
             .ok_or_else(|| anyhow!("no loop"))
     }
-    pub fn set_length(&self, length: u32) -> Result<()> {
+    pub fn set_length(&self, length: u32) -> Result<CommandSequence> {
         let idx = self.idx;
-        self.shared.send(move |s: &mut engine::Session| {
+        Ok(self.shared.send_control(move |s: &mut engine::Session| {
             if let Some(l) = s.loop_mut(idx) {
                 l.set_length(length);
             }
-        });
-        Ok(())
+        })?)
     }
-    pub fn set_position(&self, position: u32) -> Result<()> {
+    pub fn set_position(&self, position: u32) -> Result<CommandSequence> {
         let idx = self.idx;
-        self.shared.send(move |s: &mut engine::Session| {
+        Ok(self.shared.send_control(move |s: &mut engine::Session| {
             if let Some(l) = s.loop_mut(idx) {
                 l.set_position(position);
             }
-        });
-        Ok(())
+        })?)
     }
-    pub fn clear(&self, length: u32) -> Result<()> {
+    pub fn clear(&self, length: u32) -> Result<CommandSequence> {
         let idx = self.idx;
-        self.shared.send(move |s: &mut engine::Session| {
+        Ok(self.shared.send_control(move |s: &mut engine::Session| {
             if let Some(l) = s.loop_mut(idx) {
                 l.clear(length);
                 l.clear_planned_transitions();
                 l.set_mode(engine::LoopMode::Stopped);
                 l.set_position(0);
             }
-        });
-        Ok(())
+        })?)
     }
-    pub fn set_sync_source(&self, src: Option<&Loop>) -> Result<()> {
+    pub fn set_sync_source(&self, src: Option<&Loop>) -> Result<CommandSequence> {
         let (idx, src) = (self.idx, src.map(|l| l.idx));
-        self.shared.send(move |s: &mut engine::Session| {
+        Ok(self.shared.send_topology(move |s: &mut engine::Session| {
             let _ = s.set_loop_sync_source(idx, src);
-        });
-        Ok(())
+        })?)
     }
     pub fn adopt_ringbuffer_contents(
         &self,
@@ -2306,7 +2370,7 @@ impl Loop {
         let idx = self.idx;
         // Blocking, because the caller is told whether the adoption succeeded and a
         // fire-and-forget would have to swallow the error.
-        self.shared.query(move |s: &mut engine::Session| {
+        self.shared.query_control(move |s: &mut engine::Session| {
             s.adopt_audio_ringbuffers_for_loop(
                 idx,
                 reverse_start_cycle,
@@ -2345,40 +2409,49 @@ impl AudioChannel {
     /// the audio thread at a cycle boundary instead of under a lock. `FnMut` rather than
     /// `FnOnce` because the command is called through its box and the box has to survive to be
     /// sent back for freeing; it is still called exactly once.
-    fn with_mut(&self, mut f: impl FnMut(&mut engine::AudioChannel) + Send + 'static) {
+    fn with_mut(
+        &self,
+        mut f: impl FnMut(&mut engine::AudioChannel) + Send + 'static,
+    ) -> std::result::Result<CommandSequence, SendError> {
         let (li, ci) = (self.loop_idx, self.chan_idx);
-        self.shared.send(move |s: &mut engine::Session| {
+        self.shared.send_control(move |s: &mut engine::Session| {
             if let Some(c) = s.loop_mut(li).and_then(|l| l.audio_channel_mut(ci)) {
                 f(c)
             }
-        });
+        })
     }
-    pub fn connect_input(&self, port: &AudioPort) {
+    pub fn connect_input(
+        &self,
+        port: &AudioPort,
+    ) -> std::result::Result<CommandSequence, SendError> {
         let (ci, pi) = (self.session_idx, port.idx);
-        self.shared.send(move |s: &mut engine::Session| {
+        self.shared.send_topology(move |s: &mut engine::Session| {
             let _ = s.connect_channel_input(ci, pi);
-        });
+        })
     }
-    pub fn connect_output(&self, port: &AudioPort) {
+    pub fn connect_output(
+        &self,
+        port: &AudioPort,
+    ) -> std::result::Result<CommandSequence, SendError> {
         let (ci, pi) = (self.session_idx, port.idx);
-        self.shared.send(move |s: &mut engine::Session| {
+        self.shared.send_topology(move |s: &mut engine::Session| {
             let _ = s.connect_channel_output(ci, pi);
-        });
+        })
     }
     pub fn disconnect(&self, _port: &AudioPort) {
         let _ = self.session_idx;
     }
-    pub fn load_data(&self, data: &[f32]) {
+    pub fn load_data(&self, data: &[f32]) -> std::result::Result<CommandSequence, SendError> {
         // Copied here, on this thread, and moved into the command: the audio thread copies
         // out of the vector but never allocates one.
         let owned = data.to_vec();
-        self.with_mut(move |c| c.load_data(&owned));
+        self.with_mut(move |c| c.load_data(&owned))
     }
     /// Reads the channel's samples back. Blocking; not for a frame-rate poll.
     pub fn get_data(&self) -> Vec<f32> {
         let (li, ci) = (self.loop_idx, self.chan_idx);
         self.shared
-            .query(move |s: &mut engine::Session| {
+            .query_control(move |s: &mut engine::Session| {
                 s.loop_(li)
                     .and_then(|l| l.audio_channel(ci))
                     .map(|c| c.data())
@@ -2396,14 +2469,16 @@ impl AudioChannel {
             .poll(|snap| snap.audio_channels.get(session_idx).copied())?;
         if state.is_some() {
             let (loop_idx, chan_idx) = (self.loop_idx, self.chan_idx);
-            self.shared.send_inner(move |s: &mut engine::Session| {
+            if let Err(error) = self.shared.send_control(move |s: &mut engine::Session| {
                 if let Some(c) = s
                     .loop_mut(loop_idx)
                     .and_then(|l| l.audio_channel_mut(chan_idx))
                 {
                     c.reset_output_peak();
                 }
-            });
+            }) {
+                log::error!("could not queue audio channel peak reset: {error}");
+            }
         }
         state
     }
@@ -2411,7 +2486,7 @@ impl AudioChannel {
     pub fn get_state(&self) -> Result<AudioChannelState> {
         let (li, ci) = (self.loop_idx, self.chan_idx);
         self.shared
-            .query(move |s: &mut engine::Session| {
+            .query_control(move |s: &mut engine::Session| {
                 s.loop_mut(li)
                     .and_then(|l| l.audio_channel_mut(ci))
                     .map(|c| {
@@ -2431,21 +2506,21 @@ impl AudioChannel {
             })?
             .ok_or_else(|| anyhow!("no channel"))
     }
-    pub fn set_gain(&self, gain: f32) {
-        self.with_mut(move |c| c.set_gain(gain));
+    pub fn set_gain(&self, gain: f32) -> std::result::Result<CommandSequence, SendError> {
+        self.with_mut(move |c| c.set_gain(gain))
     }
-    pub fn set_mode(&self, mode: ChannelMode) {
-        self.with_mut(move |c| c.set_mode(mode.into()));
+    pub fn set_mode(&self, mode: ChannelMode) -> std::result::Result<CommandSequence, SendError> {
+        self.with_mut(move |c| c.set_mode(mode.into()))
     }
-    pub fn set_start_offset(&self, offset: i32) {
-        self.with_mut(move |c| c.set_start_offset(offset));
+    pub fn set_start_offset(&self, offset: i32) -> std::result::Result<CommandSequence, SendError> {
+        self.with_mut(move |c| c.set_start_offset(offset))
     }
-    pub fn set_n_preplay_samples(&self, n: u32) {
-        self.with_mut(move |c| c.set_pre_play_samples(n));
+    pub fn set_n_preplay_samples(&self, n: u32) -> std::result::Result<CommandSequence, SendError> {
+        self.with_mut(move |c| c.set_pre_play_samples(n))
     }
     pub fn clear_data_dirty(&self) {}
-    pub fn clear(&self, length: u32) {
-        self.with_mut(move |c| c.clear(length as usize));
+    pub fn clear(&self, length: u32) -> std::result::Result<CommandSequence, SendError> {
+        self.with_mut(move |c| c.clear(length as usize))
     }
 }
 
@@ -2458,19 +2533,22 @@ pub struct MidiChannel {
 }
 pub type MidiChannelState = engine::MidiChannelState;
 impl MidiChannel {
-    fn with_mut(&self, mut f: impl FnMut(&mut engine::MidiChannel) + Send + 'static) {
+    fn with_mut(
+        &self,
+        mut f: impl FnMut(&mut engine::MidiChannel) + Send + 'static,
+    ) -> std::result::Result<CommandSequence, SendError> {
         let (li, ci) = (self.loop_idx, self.chan_idx);
-        self.shared.send(move |s: &mut engine::Session| {
+        self.shared.send_control(move |s: &mut engine::Session| {
             if let Some(c) = s.loop_mut(li).and_then(|l| l.midi_channel_mut(ci)) {
                 f(c)
             }
-        });
+        })
     }
     /// Reads the channel's events back. Blocking; not for a frame-rate poll.
     pub fn get_all_midi_data(&self) -> Vec<MidiEvent> {
         let (li, ci) = (self.loop_idx, self.chan_idx);
         self.shared
-            .query(move |s: &mut engine::Session| {
+            .query_control(move |s: &mut engine::Session| {
                 s.loop_(li).and_then(|l| l.midi_channel(ci)).map(|c| {
                     let mut out: Vec<MidiEvent> = c
                         .recording_start_state_messages()
@@ -2488,7 +2566,10 @@ impl MidiChannel {
             .flatten()
             .unwrap_or_default()
     }
-    pub fn load_all_midi_data(&self, msgs: &[MidiEvent]) {
+    pub fn load_all_midi_data(
+        &self,
+        msgs: &[MidiEvent],
+    ) -> std::result::Result<CommandSequence, SendError> {
         let state: Vec<Vec<u8>> = msgs
             .iter()
             .filter(|m| m.time < 0)
@@ -2502,19 +2583,25 @@ impl MidiChannel {
         let len = elems.iter().map(|e| e.time).max().unwrap_or(0);
         self.with_mut(move |c| {
             c.set_contents(&elems, len, (!state.is_empty()).then_some(state.as_slice()))
-        });
+        })
     }
-    pub fn connect_input(&self, port: &MidiPort) {
+    pub fn connect_input(
+        &self,
+        port: &MidiPort,
+    ) -> std::result::Result<CommandSequence, SendError> {
         let (ci, pi) = (self.session_idx, port.idx);
-        self.shared.send(move |s: &mut engine::Session| {
+        self.shared.send_topology(move |s: &mut engine::Session| {
             let _ = s.connect_channel_input(ci, pi);
-        });
+        })
     }
-    pub fn connect_output(&self, port: &MidiPort) {
+    pub fn connect_output(
+        &self,
+        port: &MidiPort,
+    ) -> std::result::Result<CommandSequence, SendError> {
         let (ci, pi) = (self.session_idx, port.idx);
-        self.shared.send(move |s: &mut engine::Session| {
+        self.shared.send_topology(move |s: &mut engine::Session| {
             let _ = s.connect_channel_output(ci, pi);
-        });
+        })
     }
     pub fn disconnect(&self, _port: &MidiPort) {
         let _ = self.session_idx;
@@ -2530,7 +2617,7 @@ impl MidiChannel {
     pub fn get_state(&self) -> Result<MidiChannelState> {
         let (li, ci) = (self.loop_idx, self.chan_idx);
         self.shared
-            .query(move |s: &mut engine::Session| {
+            .query_control(move |s: &mut engine::Session| {
                 s.loop_(li)
                     .and_then(|l| l.midi_channel(ci))
                     .map(|c| MidiChannelState {
@@ -2546,18 +2633,18 @@ impl MidiChannel {
             })?
             .ok_or_else(|| anyhow!("no channel"))
     }
-    pub fn set_mode(&self, mode: ChannelMode) {
-        self.with_mut(move |c| c.set_mode(mode.into()));
+    pub fn set_mode(&self, mode: ChannelMode) -> std::result::Result<CommandSequence, SendError> {
+        self.with_mut(move |c| c.set_mode(mode.into()))
     }
-    pub fn set_start_offset(&self, offset: i32) {
-        self.with_mut(move |c| c.set_start_offset(offset));
+    pub fn set_start_offset(&self, offset: i32) -> std::result::Result<CommandSequence, SendError> {
+        self.with_mut(move |c| c.set_start_offset(offset))
     }
-    pub fn set_n_preplay_samples(&self, n: u32) {
-        self.with_mut(move |c| c.set_pre_play_samples(n));
+    pub fn set_n_preplay_samples(&self, n: u32) -> std::result::Result<CommandSequence, SendError> {
+        self.with_mut(move |c| c.set_pre_play_samples(n))
     }
     pub fn clear_data_dirty(&self) {}
-    pub fn clear(&self) {
-        self.with_mut(move |c| c.clear());
+    pub fn clear(&self) -> std::result::Result<CommandSequence, SendError> {
+        self.with_mut(move |c| c.clear())
     }
     pub fn reset_state_tracking(&self) {}
 }
@@ -2581,7 +2668,7 @@ impl AudioPort {
         ring: u32,
     ) -> Result<Self> {
         let (owned, dir) = (name.to_string(), *direction);
-        let idx = sess.shared.query(move |s: &mut engine::Session| {
+        let idx = sess.shared.query_topology(move |s: &mut engine::Session| {
             s.add_port(engine::session::Port::External(
                 engine::external_audio_port::ExternalAudioPort::new(
                     owned,
@@ -2613,13 +2700,16 @@ impl AudioPort {
         }
     }
     /// Queues a mutation of this port's audio side.
-    fn with_audio_mut(&self, mut f: impl FnMut(&mut engine::AudioPort) + Send + 'static) {
+    fn with_audio_mut(
+        &self,
+        mut f: impl FnMut(&mut engine::AudioPort) + Send + 'static,
+    ) -> std::result::Result<CommandSequence, SendError> {
         let idx = self.idx;
-        self.shared.send(move |s: &mut engine::Session| {
+        self.shared.send_control(move |s: &mut engine::Session| {
             if let Some(a) = s.port_mut(idx).and_then(|p| p.audio_mut()) {
                 f(a)
             }
-        });
+        })
     }
 
     /// This port's state as of the last published cycle, without blocking.
@@ -2630,12 +2720,14 @@ impl AudioPort {
             .poll(|snap| snap.audio_ports.get(idx).copied())??;
         let state = polled.map(|p| p.named(self.name.clone()));
         if state.is_some() {
-            self.shared.send_inner(move |s: &mut engine::Session| {
+            if let Err(error) = self.shared.send_control(move |s: &mut engine::Session| {
                 if let Some(a) = s.port_mut(idx).and_then(|p| p.audio_mut()) {
                     a.reset_input_peak();
                     a.reset_output_peak();
                 }
-            });
+            }) {
+                log::error!("could not queue audio port peak reset: {error}");
+            }
         }
         state
     }
@@ -2644,7 +2736,7 @@ impl AudioPort {
         let idx = self.idx;
         let name = self.name.clone();
         self.shared
-            .query(move |s: &mut engine::Session| {
+            .query_control(move |s: &mut engine::Session| {
                 let a = s.port_mut(idx)?.audio_mut()?;
                 let snapshot = engine::AudioPortSnapshot {
                     input_peak: a.input_peak(),
@@ -2661,33 +2753,42 @@ impl AudioPort {
             .map(|p| p.named(name))
             .ok_or_else(|| anyhow!("no audio port"))
     }
-    pub fn set_gain(&self, gain: f32) {
-        self.with_audio_mut(move |a| a.set_gain(gain));
+    pub fn set_gain(&self, gain: f32) -> std::result::Result<CommandSequence, SendError> {
+        self.with_audio_mut(move |a| a.set_gain(gain))
     }
-    pub fn set_muted(&self, muted: bool) {
-        self.with_audio_mut(move |a| a.set_muted(muted));
+    pub fn set_muted(&self, muted: bool) -> std::result::Result<CommandSequence, SendError> {
+        self.with_audio_mut(move |a| a.set_muted(muted))
     }
-    pub fn set_passthrough_muted(&self, muted: bool) {
-        self.with_audio_mut(move |a| a.set_passthrough_muted(muted));
+    pub fn set_passthrough_muted(
+        &self,
+        muted: bool,
+    ) -> std::result::Result<CommandSequence, SendError> {
+        self.with_audio_mut(move |a| a.set_passthrough_muted(muted))
     }
-    pub fn connect_internal(&self, other: &AudioPort) {
+    pub fn connect_internal(
+        &self,
+        other: &AudioPort,
+    ) -> std::result::Result<CommandSequence, SendError> {
         let (from, to) = (self.idx, other.idx);
-        self.shared.send(move |s: &mut engine::Session| {
+        self.shared.send_topology(move |s: &mut engine::Session| {
             let _ = s.connect_ports_internal(from, to);
-        });
+        })
     }
-    pub fn dummy_queue_data(&self, data: &[f32]) {
+    pub fn dummy_queue_data(
+        &self,
+        data: &[f32],
+    ) -> std::result::Result<CommandSequence, SendError> {
         let (idx, owned) = (self.idx, data.to_vec());
-        self.shared.send(move |s: &mut engine::Session| {
+        self.shared.send_control(move |s: &mut engine::Session| {
             if let Some(p) = s.port_mut(idx).and_then(|p| p.as_external_mut()) {
                 p.stage_input(&owned)
             }
-        });
+        })
     }
     pub fn dummy_dequeue_data(&self, n: u32) -> Vec<f32> {
         let idx = self.idx;
         self.shared
-            .query(move |s: &mut engine::Session| {
+            .query_control(move |s: &mut engine::Session| {
                 s.port_mut(idx)
                     .and_then(|p| p.as_external_mut())
                     .map(|p| p.dequeue_output(n as usize))
@@ -2696,13 +2797,13 @@ impl AudioPort {
             .flatten()
             .unwrap_or_default()
     }
-    pub fn dummy_request_data(&self, _n: u32) {
+    pub fn dummy_request_data(&self, _n: u32) -> std::result::Result<CommandSequence, SendError> {
         let idx = self.idx;
-        self.shared.send(move |s: &mut engine::Session| {
+        self.shared.send_control(move |s: &mut engine::Session| {
             if let Some(p) = s.port_mut(idx).and_then(|p| p.as_external_mut()) {
                 p.clear_output_queue();
             }
-        });
+        })
     }
     pub fn get_connections_state(&self) -> HashMap<String, bool> {
         if let Some(j) = self.shared.jack() {
@@ -2748,8 +2849,11 @@ impl AudioPort {
                 .disconnect(compat_port_id(self.idx), name);
         }
     }
-    pub fn set_ringbuffer_n_samples(&self, n: u32) {
-        self.with_audio_mut(move |a| a.set_ringbuffer_n_samples(n as usize));
+    pub fn set_ringbuffer_n_samples(
+        &self,
+        n: u32,
+    ) -> std::result::Result<CommandSequence, SendError> {
+        self.with_audio_mut(move |a| a.set_ringbuffer_n_samples(n as usize))
     }
     pub fn direction(&self) -> PortDirection {
         self.direction
@@ -2774,7 +2878,7 @@ impl MidiPort {
         _ring: u32,
     ) -> Result<Self> {
         let (owned, dir) = (name.to_string(), *direction);
-        let idx = sess.shared.query(move |s: &mut engine::Session| {
+        let idx = sess.shared.query_topology(move |s: &mut engine::Session| {
             s.add_port(engine::session::Port::ExternalMidi(
                 engine::external_midi_port::ExternalMidiPort::new(owned, dir.into()),
             ))
@@ -2802,13 +2906,16 @@ impl MidiPort {
         }
     }
     /// Queues a mutation of this port's MIDI side.
-    fn with_midi_mut(&self, mut f: impl FnMut(&mut engine::MidiPort) + Send + 'static) {
+    fn with_midi_mut(
+        &self,
+        mut f: impl FnMut(&mut engine::MidiPort) + Send + 'static,
+    ) -> std::result::Result<CommandSequence, SendError> {
         let idx = self.idx;
-        self.shared.send(move |s: &mut engine::Session| {
+        self.shared.send_control(move |s: &mut engine::Session| {
             if let Some(m) = s.port_mut(idx).and_then(|p| p.midi_mut()) {
                 f(m)
             }
-        });
+        })
     }
 
     /// This port's state as of the last published cycle, without blocking.
@@ -2824,7 +2931,7 @@ impl MidiPort {
         let idx = self.idx;
         let name = self.name.clone();
         self.shared
-            .query(move |s: &mut engine::Session| {
+            .query_control(move |s: &mut engine::Session| {
                 let p = s.port(idx)?;
                 let m = p.midi()?;
                 Some(engine::MidiPortSnapshot {
@@ -2840,33 +2947,45 @@ impl MidiPort {
             .map(|p| p.named(name))
             .ok_or_else(|| anyhow!("no midi port"))
     }
-    pub fn set_muted(&self, muted: bool) {
-        self.with_midi_mut(move |m| m.set_muted(muted));
+    pub fn set_muted(&self, muted: bool) -> std::result::Result<CommandSequence, SendError> {
+        self.with_midi_mut(move |m| m.set_muted(muted))
     }
-    pub fn set_passthrough_muted(&self, muted: bool) {
-        self.with_midi_mut(move |m| m.set_passthrough_muted(muted));
+    pub fn set_passthrough_muted(
+        &self,
+        muted: bool,
+    ) -> std::result::Result<CommandSequence, SendError> {
+        self.with_midi_mut(move |m| m.set_passthrough_muted(muted))
     }
-    pub fn connect_internal(&self, other: &MidiPort) {
+    pub fn connect_internal(
+        &self,
+        other: &MidiPort,
+    ) -> std::result::Result<CommandSequence, SendError> {
         let (from, to) = (self.idx, other.idx);
-        self.shared.send(move |s: &mut engine::Session| {
+        self.shared.send_topology(move |s: &mut engine::Session| {
             let _ = s.connect_ports_internal(from, to);
-        });
+        })
     }
-    pub fn dummy_clear_queues(&self) {
+    pub fn dummy_clear_queues(&self) -> std::result::Result<CommandSequence, SendError> {
         let idx = self.idx;
-        self.shared.send(move |s: &mut engine::Session| {
+        self.shared.send_control(move |s: &mut engine::Session| {
             if let Some(p) = s.port_mut(idx).and_then(|p| p.as_external_midi_mut()) {
                 p.clear_queues();
             }
-        });
+        })
     }
-    pub fn dummy_queue_msg(&self, msg: &MidiEvent) {
+    pub fn dummy_queue_msg(
+        &self,
+        msg: &MidiEvent,
+    ) -> std::result::Result<CommandSequence, SendError> {
         self.dummy_queue_msgs(vec![msg.clone()])
     }
-    pub fn dummy_queue_msgs(&self, msgs: Vec<MidiEvent>) {
+    pub fn dummy_queue_msgs(
+        &self,
+        msgs: Vec<MidiEvent>,
+    ) -> std::result::Result<CommandSequence, SendError> {
         let idx = self.idx;
         let mut pending = Some(msgs);
-        self.shared.send(move |s: &mut engine::Session| {
+        self.shared.send_control(move |s: &mut engine::Session| {
             let Some(msgs) = pending.take() else {
                 return;
             };
@@ -2875,12 +2994,12 @@ impl MidiPort {
                     let _ = p.push_incoming(m.time.max(0) as u32, &m.data);
                 }
             }
-        });
+        })
     }
     pub fn dummy_dequeue_data(&self) -> Vec<MidiEvent> {
         let idx = self.idx;
         self.shared
-            .query(move |s: &mut engine::Session| {
+            .query_control(move |s: &mut engine::Session| {
                 s.port_mut(idx)
                     .and_then(|p| p.as_external_midi_mut())
                     .map(|p| {
@@ -2897,13 +3016,13 @@ impl MidiPort {
             .flatten()
             .unwrap_or_default()
     }
-    pub fn dummy_request_data(&self, _n: u32) {
+    pub fn dummy_request_data(&self, _n: u32) -> std::result::Result<CommandSequence, SendError> {
         let idx = self.idx;
-        self.shared.send(move |s: &mut engine::Session| {
+        self.shared.send_control(move |s: &mut engine::Session| {
             if let Some(p) = s.port_mut(idx).and_then(|p| p.as_external_midi_mut()) {
                 p.request_output();
             }
-        });
+        })
     }
     pub fn get_connections_state(&self) -> HashMap<String, bool> {
         if let Some(j) = self.shared.jack() {
@@ -2949,8 +3068,11 @@ impl MidiPort {
                 .disconnect(compat_port_id(self.idx), name);
         }
     }
-    pub fn set_ringbuffer_n_samples(&self, n: u32) {
-        self.with_midi_mut(move |m| m.set_ringbuffer_n_samples(n));
+    pub fn set_ringbuffer_n_samples(
+        &self,
+        n: u32,
+    ) -> std::result::Result<CommandSequence, SendError> {
+        self.with_midi_mut(move |m| m.set_ringbuffer_n_samples(n))
     }
     pub fn direction(&self) -> PortDirection {
         self.direction
@@ -3070,11 +3192,13 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => {
                 let mut pending = Some(self.title.clone());
-                self.shared.send(move |s: &mut engine::Session| {
+                if let Err(error) = self.shared.send_control(move |s: &mut engine::Session| {
                     if let Some(title) = pending.take() {
                         s.set_test_fx_active(title, active);
                     }
-                });
+                }) {
+                    log::error!("could not queue FX active state: {error}");
+                }
             }
             #[cfg(feature = "lv2")]
             FXChainBackendKind::Carla(host) => host
@@ -3155,7 +3279,7 @@ impl FXChain {
         let owned = name.clone();
         let idx = self
             .shared
-            .query(move |s: &mut engine::Session| {
+            .query_topology(move |s: &mut engine::Session| {
                 let n_frames = s.buffer_size().max(1) as usize;
                 s.add_port(engine::session::Port::Internal(
                     engine::InternalAudioPort::new(
@@ -3180,7 +3304,7 @@ impl FXChain {
         let owned = name.clone();
         let idx = self
             .shared
-            .query(move |s: &mut engine::Session| {
+            .query_topology(move |s: &mut engine::Session| {
                 s.add_port(engine::session::Port::ExternalMidi(
                     engine::external_midi_port::ExternalMidiPort::new(owned, direction.into()),
                 ))
@@ -3239,7 +3363,7 @@ mod tests {
     /// test just issued -- which is exactly what these assertions are about.
     fn graph_up_to_date(sess: &BackendSession) -> bool {
         sess.shared
-            .query(|s: &mut engine::Session| s.graph_up_to_date())
+            .query_control(|s: &mut engine::Session| s.graph_up_to_date())
             .expect("engine answered")
     }
 
@@ -3259,7 +3383,7 @@ mod tests {
         let port = {
             let idx = sess
                 .shared
-                .query(|s: &mut engine::Session| {
+                .query_topology(|s: &mut engine::Session| {
                     s.add_port(engine::session::Port::External(
                         engine::external_audio_port::ExternalAudioPort::new(
                             "out",
@@ -3280,7 +3404,9 @@ mod tests {
         assert!(graph_up_to_date(&sess));
 
         // The call that used to leave the session permanently stale.
-        channel.connect_output(&port);
+        channel
+            .connect_output(&port)
+            .expect("queue output connection");
         assert!(
             !graph_up_to_date(&sess),
             "the connection should have marked the graph dirty"
@@ -3315,6 +3441,59 @@ mod tests {
             after - before
         );
         assert!(graph_up_to_date(&sess));
+    }
+
+    #[test]
+    fn scalar_control_commands_do_not_arm_graph_rebuilds() {
+        let sess = BackendSession::new().expect("session");
+        let loop_ = sess.create_loop().expect("loop");
+        sess.shared.flush_graph_changes();
+        let scheduler = sess.shared.scheduler.get().expect("scheduler");
+        let before = scheduler.n_arms();
+
+        let sequence = loop_.set_length(64).expect("queue length");
+        sess.shared
+            .wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+            .expect("command fence");
+
+        assert_eq!(scheduler.n_arms(), before);
+    }
+
+    #[test]
+    fn a_full_parked_queue_is_drained_and_retried_without_loss() {
+        let sess = BackendSession::create_with_capacity(1).expect("session");
+        {
+            let mut handle = sess
+                .shared
+                .handle
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            handle
+                .send(Box::new(|_: &mut engine::Session| {}))
+                .expect("fill queue");
+        }
+        let applied = Arc::new(AtomicU32::new(0));
+        let applied_by_command = Arc::clone(&applied);
+
+        let sequence = sess
+            .shared
+            .send_control(move |_: &mut engine::Session| {
+                applied_by_command.fetch_add(1, Ordering::Relaxed);
+            })
+            .expect("retry after capacity becomes available");
+
+        assert_eq!(sequence.get(), 2);
+        assert_eq!(applied.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            sess.shared
+                .handle
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .stats()
+                .commands_applied
+                .load(Ordering::Relaxed),
+            2
+        );
     }
 
     #[test]
@@ -3620,21 +3799,24 @@ mod tests {
         assert_eq!(initial.input_peak, 0.0);
         assert_eq!(initial.output_peak, 0.0);
 
-        port.dummy_queue_data(&[0.0, -0.8, 0.2, 0.1]);
+        port.dummy_queue_data(&[0.0, -0.8, 0.2, 0.1])
+            .expect("queue first input");
         driver.dummy_request_controlled_frames(BUFFER);
         driver.dummy_run_requested_frames();
         let first = port.get_state().expect("first state");
         assert_eq!(first.input_peak, 0.8);
         assert_eq!(first.output_peak, 0.8);
 
-        port.dummy_queue_data(&[0.0, -0.3, 0.1, 0.2]);
+        port.dummy_queue_data(&[0.0, -0.3, 0.1, 0.2])
+            .expect("queue second input");
         driver.dummy_request_controlled_frames(BUFFER);
         driver.dummy_run_requested_frames();
         let second = port.poll_state().expect("second state");
         assert_eq!(second.input_peak, 0.3);
         assert_eq!(second.output_peak, 0.3);
 
-        port.dummy_queue_data(&[0.0, -0.1, 0.05, 0.0]);
+        port.dummy_queue_data(&[0.0, -0.1, 0.05, 0.0])
+            .expect("queue third input");
         driver.dummy_request_controlled_frames(BUFFER);
         driver.dummy_run_requested_frames();
         let third = port.poll_state().expect("third state");

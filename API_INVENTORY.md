@@ -15,6 +15,18 @@ Captured on branch `per-object-state-mirrors` at `c9f0c0d6`.
 
 The target suite's only failures are environmental and match the known sandbox limitation. The full suite with the explicit missing-backend override establishes the behavioral baseline for this branch.
 
+## Migration status
+
+### Phase 1
+
+- Engine commands carry monotonic `CommandSequence` values and publish the newest applied sequence through `Stats`.
+- The low-level enqueue API returns `Result<CommandSequence, SendError>` and reports `Disconnected` after engine destruction.
+- Application enqueueing reserves capacity before moving payloads. A full queue is warned about, waited on without holding the shared handle mutex, and retried; parked engines are pumped to make progress.
+- Application mutations are classified through `send_control`/`send_topology` and `query_control`/`query_topology`.
+- Backend methods return queue results where practical; compatibility adapters explicitly report failures.
+- An explicit command fence is available for tests and exact workflows.
+- Verification: `SHOOP_ALLOW_MISSING_BACKENDS=1 RUSTFLAGS='-D warnings' cargo test -p shoop_engine --features app_backend` passed, including 542 library tests, 4 live-JACK tests, command saturation/sequence tests, and all integration/no-allocation tests. One earlier parallel library run hit the separately documented intermittent Carla/JUCE teardown crash; its immediate rerun and the final phase gate passed.
+
 ## Boundary primitives
 
 | Primitive | Current role | Target category |

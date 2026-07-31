@@ -253,6 +253,16 @@ This document tracks work intentionally deferred from the per-object state mirro
 - **Impact:** One object's mutation/reset invalidates polling for every object; snapshot maintenance duplicates eventual per-object mirrors.
 - **Future direction:** Remove object snapshot publication and global trust tracking. Keep only unrelated engine stats atomics and any independently justified immutable publication.
 
+## Test/runtime stability
+
+### Carla/JUCE parallel teardown assertion and crash
+
+- **Status:** Intermittent test-runtime issue; not attributed to the command protocol change.
+- **Evidence:** One Phase 1 targeted run reached the known Carla/JUCE `numScopedInitInstances`/message-manager teardown assertions and exited with `SIGSEGV`; an immediate identical `--lib` rerun passed all 542 tests. The baseline also printed the assertions without crashing.
+- **Impact:** A single parallel test run is not reliable evidence of a regression or a clean gate around Carla host teardown.
+- **Verification policy:** Rerun the same gate, preserve the output, and use a serialized Carla-focused run if the crash repeats. Do not hide deterministic failures under this entry.
+- **Future direction:** Serialize global Carla/JUCE initialization tests or provide one process-wide test host lifecycle.
+
 ## Baseline environmental limitations
 
 ### ALSA sequencer unavailable

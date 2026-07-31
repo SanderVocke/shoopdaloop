@@ -1,17 +1,25 @@
 use common::logging::macros::*;
 use shoop_engine::app_backend::{AudioChannel, AudioPort, MidiChannel, MidiPort};
-use shoop_engine::{AudioChannelState, ChannelMode, MidiChannelState, MidiEvent};
+use shoop_engine::{
+    AudioChannelState, ChannelMode, CommandSequence, MidiChannelState, MidiEvent, SendError,
+};
 shoop_log_unit!("Frontend.AnyChannel");
 pub enum AnyBackendChannel {
     Audio(AudioChannel),
     Midi(MidiChannel),
 }
 
+fn report_queue_result(result: Result<CommandSequence, SendError>) {
+    if let Err(error) = result {
+        error!("Could not queue engine command: {error}");
+    }
+}
+
 impl AnyBackendChannel {
     pub fn audio_connect_input(&self, port: &AudioPort) {
         match self {
             AnyBackendChannel::Audio(audio_channel) => {
-                audio_channel.connect_input(port);
+                report_queue_result(audio_channel.connect_input(port));
             }
             AnyBackendChannel::Midi(_) => {
                 error!("Attempted to connect MIDI channel to audio port, ignored.");
@@ -22,7 +30,7 @@ impl AnyBackendChannel {
     pub fn audio_connect_output(&self, port: &AudioPort) {
         match self {
             AnyBackendChannel::Audio(audio_channel) => {
-                audio_channel.connect_output(port);
+                report_queue_result(audio_channel.connect_output(port));
             }
             AnyBackendChannel::Midi(_) => {
                 error!("Attempted to connect MIDI channel to audio port, ignored.");
@@ -44,7 +52,7 @@ impl AnyBackendChannel {
     pub fn audio_load_data(&self, data: &[f32]) {
         match self {
             AnyBackendChannel::Audio(audio_channel) => {
-                audio_channel.load_data(data);
+                report_queue_result(audio_channel.load_data(data));
             }
             AnyBackendChannel::Midi(_) => {
                 error!("Attempted to load audio data to MIDI channel, ignored.");
@@ -67,7 +75,7 @@ impl AnyBackendChannel {
     pub fn audio_set_gain(&self, gain: f32) {
         match self {
             AnyBackendChannel::Audio(audio_channel) => {
-                audio_channel.set_gain(gain);
+                report_queue_result(audio_channel.set_gain(gain));
             }
             AnyBackendChannel::Midi(_) => {
                 error!("Attempted to set gain on MIDI channel, ignored.");
@@ -93,7 +101,7 @@ impl AnyBackendChannel {
                 error!("Attempted to load MIDI data to audio channel, ignored.");
             }
             AnyBackendChannel::Midi(midi_channel) => {
-                midi_channel.load_all_midi_data(msgs);
+                report_queue_result(midi_channel.load_all_midi_data(msgs));
             }
         }
     }
@@ -101,7 +109,7 @@ impl AnyBackendChannel {
     pub fn midi_connect_input(&self, port: &MidiPort) {
         match self {
             AnyBackendChannel::Midi(midi_channel) => {
-                midi_channel.connect_input(port);
+                report_queue_result(midi_channel.connect_input(port));
             }
             AnyBackendChannel::Audio(_) => {
                 error!("Attempted to connect audio channel to MIDI port, ignored.");
@@ -112,7 +120,7 @@ impl AnyBackendChannel {
     pub fn midi_connect_output(&self, port: &MidiPort) {
         match self {
             AnyBackendChannel::Midi(midi_channel) => {
-                midi_channel.connect_output(port);
+                report_queue_result(midi_channel.connect_output(port));
             }
             AnyBackendChannel::Audio(_) => {
                 error!("Attempted to connect audio channel to MIDI port, ignored.");
@@ -167,36 +175,31 @@ impl AnyBackendChannel {
     }
 
     pub fn set_mode(&self, mode: ChannelMode) {
-        match self {
-            AnyBackendChannel::Audio(audio_channel) => {
-                audio_channel.set_mode(mode);
-            }
-            AnyBackendChannel::Midi(midi_channel) => {
-                midi_channel.set_mode(mode);
-            }
-        }
+        let result = match self {
+            AnyBackendChannel::Audio(audio_channel) => audio_channel.set_mode(mode),
+            AnyBackendChannel::Midi(midi_channel) => midi_channel.set_mode(mode),
+        };
+        report_queue_result(result);
     }
 
     pub fn set_start_offset(&self, start_offset: i32) {
-        match self {
-            AnyBackendChannel::Audio(audio_channel) => {
-                audio_channel.set_start_offset(start_offset);
-            }
-            AnyBackendChannel::Midi(midi_channel) => {
-                midi_channel.set_start_offset(start_offset);
-            }
-        }
+        let result = match self {
+            AnyBackendChannel::Audio(audio_channel) => audio_channel.set_start_offset(start_offset),
+            AnyBackendChannel::Midi(midi_channel) => midi_channel.set_start_offset(start_offset),
+        };
+        report_queue_result(result);
     }
 
     pub fn set_n_preplay_samples(&self, n_preplay_samples: u32) {
-        match self {
+        let result = match self {
             AnyBackendChannel::Audio(audio_channel) => {
-                audio_channel.set_n_preplay_samples(n_preplay_samples);
+                audio_channel.set_n_preplay_samples(n_preplay_samples)
             }
             AnyBackendChannel::Midi(midi_channel) => {
-                midi_channel.set_n_preplay_samples(n_preplay_samples);
+                midi_channel.set_n_preplay_samples(n_preplay_samples)
             }
-        }
+        };
+        report_queue_result(result);
     }
 
     pub fn clear_data_dirty(&self) {
@@ -211,28 +214,25 @@ impl AnyBackendChannel {
     }
 
     pub fn clear(&self, length: u32) {
-        match self {
-            AnyBackendChannel::Audio(audio_channel) => {
-                audio_channel.clear(length);
-            }
-            AnyBackendChannel::Midi(midi_channel) => {
-                midi_channel.clear();
-            }
-        }
+        let result = match self {
+            AnyBackendChannel::Audio(audio_channel) => audio_channel.clear(length),
+            AnyBackendChannel::Midi(midi_channel) => midi_channel.clear(),
+        };
+        report_queue_result(result);
     }
 
     pub fn push_state(&self, state: &AnyBackendChannelState) -> Result<(), anyhow::Error> {
         match self {
             AnyBackendChannel::Audio(chan) => {
-                chan.set_gain(state.audio_gain);
-                chan.set_mode(state.mode);
-                chan.set_start_offset(state.start_offset);
-                chan.set_n_preplay_samples(state.n_preplay_samples);
+                chan.set_gain(state.audio_gain)?;
+                chan.set_mode(state.mode)?;
+                chan.set_start_offset(state.start_offset)?;
+                chan.set_n_preplay_samples(state.n_preplay_samples)?;
             }
             AnyBackendChannel::Midi(chan) => {
-                chan.set_mode(state.mode);
-                chan.set_start_offset(state.start_offset);
-                chan.set_n_preplay_samples(state.n_preplay_samples);
+                chan.set_mode(state.mode)?;
+                chan.set_start_offset(state.start_offset)?;
+                chan.set_n_preplay_samples(state.n_preplay_samples)?;
             }
         }
         Ok(())

@@ -116,29 +116,29 @@
 
 ### Phase 1 — Reliable command protocol and typed graph effects
 
-- [ ] Introduce `CommandSequence` and assign it exactly once for each successfully accepted command.
-- [ ] Change the low-level enqueue path to return `Result<CommandSequence, SendError>` and remove every ignored queue result.
-- [ ] Ensure failed enqueue preserves enough ownership to retry payload-bearing commands safely.
-- [ ] Publish the latest applied command sequence from the process side without locks.
-- [ ] Add an explicit wait-for-capacity/retry facility that:
-  - [ ] warns when the queue is full;
-  - [ ] releases the shared handle mutex while waiting;
-  - [ ] reclaims completed commands;
-  - [ ] pumps a parked engine;
-  - [ ] exits on disconnect/closure;
-  - [ ] does not wait for the retried command to execute.
-- [ ] Keep the first attempt nonblocking and place the warning/block/retry policy at application/frontend callers or a clearly named compatibility helper used by those callers.
-- [ ] Propagate send results through backend handle methods and frontend adapters instead of preserving misleading `Ok(())`/`void` behavior where signatures can be corrected.
-- [ ] Introduce typed control-vs-topology enqueue paths (or typed commands carrying this property), and audit every mutation's classification.
-- [ ] Retain an explicit sequence fence/wait primitive for tests and truly exact workflows; do not call it from ordinary state getters or frame-rate updates.
-- [ ] Test with a deliberately tiny queue:
-  - [ ] `Full` is returned and logged;
-  - [ ] retry eventually queues the same logical command once;
-  - [ ] move-owned payloads survive retry;
-  - [ ] FIFO order and sequence progression are correct;
-  - [ ] disconnected behavior terminates cleanly;
-  - [ ] parked-engine saturation makes progress;
-  - [ ] ordinary control commands do not arm graph rebuilds.
+- [x] Introduce `CommandSequence` and assign it exactly once for each successfully accepted command.
+- [x] Change the low-level enqueue path to return `Result<CommandSequence, SendError>` and remove every ignored queue result.
+- [x] Ensure failed enqueue preserves enough ownership to retry payload-bearing commands safely.
+- [x] Publish the latest applied command sequence from the process side without locks.
+- [x] Add an explicit wait-for-capacity/retry facility that:
+  - [x] warns when the queue is full;
+  - [x] releases the shared handle mutex while waiting;
+  - [x] reclaims completed commands;
+  - [x] pumps a parked engine;
+  - [x] exits on disconnect/closure;
+  - [x] does not wait for the retried command to execute.
+- [x] Keep the first attempt nonblocking and place the warning/block/retry policy at application/frontend callers or a clearly named compatibility helper used by those callers.
+- [x] Propagate send results through backend handle methods and frontend adapters instead of preserving misleading `Ok(())`/`void` behavior where signatures can be corrected.
+- [x] Introduce typed control-vs-topology enqueue paths (or typed commands carrying this property), and audit every mutation's classification.
+- [x] Retain an explicit sequence fence/wait primitive for tests and truly exact workflows; do not call it from ordinary state getters or frame-rate updates.
+- [x] Test with a deliberately tiny queue:
+  - [x] `Full` is returned and logged;
+  - [x] retry eventually queues the same logical command once;
+  - [x] move-owned payloads survive retry;
+  - [x] FIFO order and sequence progression are correct;
+  - [x] disconnected behavior terminates cleanly;
+  - [x] parked-engine saturation makes progress;
+  - [x] ordinary control commands do not arm graph rebuilds.
 
 ### Phase 2 — Shared lifecycle/control blocks and loop migration
 

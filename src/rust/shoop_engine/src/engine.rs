@@ -22,12 +22,32 @@ use crate::session::{ChannelKind, Session};
 use crate::state::{AudioChannelState, AudioPortSnapshot, MidiChannelState, MidiPortSnapshot};
 
 use rtrb::{Consumer, Producer, RingBuffer};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use thiserror::Error;
 
 /// A unit of control work, run on the audio thread between cycles.
 pub type Command = Box<dyn FnMut(&mut Session) + Send>;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct CommandSequence(u64);
+
+impl CommandSequence {
+    pub const NONE: Self = Self(0);
+
+    pub fn get(self) -> u64 {
+        self.0
+    }
+}
+
+struct SequencedCommand {
+    sequence: CommandSequence,
+    command: Command,
+}
+
+pub struct CommandReservation {
+    sequence: CommandSequence,
+}
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SendError {
@@ -79,6 +99,8 @@ pub struct Stats {
     pub stuck_cycles: AtomicU32,
     /// Commands that arrived and were applied.
     pub commands_applied: AtomicU32,
+    /// The newest command sequence that finished executing.
+    pub last_applied_command: AtomicU64,
     /// Cycles run against a schedule older than the session's topology.
     ///
     /// These are processed, not refused -- see [`Session::process`]. Mirrored from the
@@ -236,24 +258,27 @@ impl Default for MidiChannelState {
 /// Owns the session on the audio thread.
 pub struct Engine {
     session: Session,
-    commands: Consumer<Command>,
-    returns: Producer<Command>,
+    commands: Consumer<SequencedCommand>,
+    returns: Producer<SequencedCommand>,
     /// Snapshots filled and published for the control side.
     filled: Producer<Box<StateSnapshot>>,
     /// Boxes to refill, handed back by the control side.
     empties: Consumer<Box<StateSnapshot>>,
     stats: Arc<Stats>,
+    alive: Arc<AtomicBool>,
 }
 
 /// The control-thread side. Queues commands and reclaims them once run.
 pub struct EngineHandle {
-    commands: Producer<Command>,
-    returns: Consumer<Command>,
+    commands: Producer<SequencedCommand>,
+    returns: Consumer<SequencedCommand>,
     filled: Consumer<Box<StateSnapshot>>,
     empties: Producer<Box<StateSnapshot>>,
     /// Most recent snapshot taken, held so callers can borrow it.
     current: Option<Box<StateSnapshot>>,
     stats: Arc<Stats>,
+    alive: Arc<AtomicBool>,
+    next_sequence: u64,
 }
 
 /// Builds a paired engine and handle around `session`.
@@ -287,6 +312,7 @@ pub fn split(session: Session, capacity: usize) -> (Engine, EngineHandle) {
     }
 
     let stats = Arc::new(Stats::default());
+    let alive = Arc::new(AtomicBool::new(true));
     (
         Engine {
             session,
@@ -295,6 +321,7 @@ pub fn split(session: Session, capacity: usize) -> (Engine, EngineHandle) {
             filled: filled_tx,
             empties: empties_rx,
             stats: Arc::clone(&stats),
+            alive: Arc::clone(&alive),
         },
         EngineHandle {
             commands: cmd_tx,
@@ -303,8 +330,16 @@ pub fn split(session: Session, capacity: usize) -> (Engine, EngineHandle) {
             empties: empties_tx,
             current: None,
             stats,
+            alive,
+            next_sequence: 1,
         },
     )
+}
+
+impl Drop for Engine {
+    fn drop(&mut self) {
+        self.alive.store(false, Ordering::Release);
+    }
 }
 
 impl Engine {
@@ -330,11 +365,6 @@ impl Engine {
     }
     pub fn session(&self) -> &Session {
         &self.session
-    }
-
-    /// Gives the session back when the engine is torn down.
-    pub fn into_session(self) -> Session {
-        self.session
     }
 
     /// Runs one cycle: applies whatever control work is waiting, then processes.
@@ -536,14 +566,17 @@ impl Engine {
 
     fn apply_commands(&mut self) {
         let mut applied = 0u32;
-        while let Ok(mut cmd) = self.commands.pop() {
+        while let Ok(mut queued) = self.commands.pop() {
             crate::realtime_allow_alloc_once!("Engine::apply_commands command execution", || {
-                cmd(&mut self.session)
+                (queued.command)(&mut self.session)
             });
+            self.stats
+                .last_applied_command
+                .store(queued.sequence.get(), Ordering::Release);
             applied += 1;
             // Hand it back to be freed off this thread. Cannot fail: the return
             // queue is as large as the command queue.
-            let _ = self.returns.push(cmd);
+            let _ = self.returns.push(queued);
         }
         if applied > 0 {
             self.stats
@@ -562,12 +595,29 @@ pub fn wait_for_result<T>(
     mut rx: Consumer<T>,
     timeout: std::time::Duration,
 ) -> Result<T, WaitError> {
+    wait_until(timeout, || rx.pop().ok())
+}
+
+pub fn wait_for_command(
+    stats: &Stats,
+    sequence: CommandSequence,
+    timeout: std::time::Duration,
+) -> Result<(), WaitError> {
+    wait_until(timeout, || {
+        (stats.last_applied_command.load(Ordering::Acquire) >= sequence.get()).then_some(())
+    })
+}
+
+fn wait_until<T>(
+    timeout: std::time::Duration,
+    mut poll: impl FnMut() -> Option<T>,
+) -> Result<T, WaitError> {
     let started = std::time::Instant::now();
     let deadline = started + timeout;
     let spin_until = started + SPIN_BUDGET;
     loop {
-        if let Ok(v) = rx.pop() {
-            return Ok(v);
+        if let Some(value) = poll() {
+            return Ok(value);
         }
         let now = std::time::Instant::now();
         if now >= deadline {
@@ -602,11 +652,35 @@ impl EngineHandle {
     ///
     /// Reclaiming here rather than in a separate step keeps the queue from silently
     /// filling up in a caller that only ever sends.
-    pub fn send(&mut self, command: Command) -> Result<(), SendError> {
+    pub fn send(&mut self, command: Command) -> Result<CommandSequence, SendError> {
+        let reservation = self.try_reserve()?;
+        Ok(self.send_reserved(reservation, command))
+    }
+
+    pub fn try_reserve(&mut self) -> Result<CommandReservation, SendError> {
         self.reclaim();
-        self.commands.push(command).map_err(|e| match e {
-            rtrb::PushError::Full(_) => SendError::Full,
+        if !self.alive.load(Ordering::Acquire) {
+            return Err(SendError::Disconnected);
+        }
+        if self.commands.slots() == 0 {
+            return Err(SendError::Full);
+        }
+        Ok(CommandReservation {
+            sequence: CommandSequence(self.next_sequence),
         })
+    }
+
+    pub fn send_reserved(
+        &mut self,
+        reservation: CommandReservation,
+        command: Command,
+    ) -> CommandSequence {
+        let sequence = reservation.sequence;
+        self.commands
+            .push(SequencedCommand { sequence, command })
+            .unwrap_or_else(|_| unreachable!("a reserved command slot must remain available"));
+        self.next_sequence = self.next_sequence.wrapping_add(1).max(1);
+        sequence
     }
 
     /// Queues control work and waits for its result.
@@ -627,7 +701,7 @@ impl EngineHandle {
         T: Send + 'static,
         F: FnOnce(&mut Session) -> T + Send + 'static,
     {
-        let rx = self.send_for_result(f)?;
+        let (_, rx) = self.send_for_result(f)?;
         wait_for_result(rx, timeout)
     }
 
@@ -642,19 +716,38 @@ impl EngineHandle {
     /// round trip to the audio thread, and a caller doing this in a loop starves every other
     /// thread. What that looks like from outside is not a deadlock but a GUI that has stopped
     /// responding, which is a good deal harder to diagnose.
-    pub fn send_for_result<T, F>(&mut self, f: F) -> Result<Consumer<T>, SendError>
+    pub fn send_for_result<T, F>(
+        &mut self,
+        f: F,
+    ) -> Result<(CommandSequence, Consumer<T>), SendError>
+    where
+        T: Send + 'static,
+        F: FnOnce(&mut Session) -> T + Send + 'static,
+    {
+        let reservation = self.try_reserve()?;
+        Ok(self.send_for_result_reserved(reservation, f))
+    }
+
+    pub fn send_for_result_reserved<T, F>(
+        &mut self,
+        reservation: CommandReservation,
+        f: F,
+    ) -> (CommandSequence, Consumer<T>)
     where
         T: Send + 'static,
         F: FnOnce(&mut Session) -> T + Send + 'static,
     {
         let (mut tx, rx) = RingBuffer::<T>::new(1);
         let mut f = Some(f);
-        self.send(Box::new(move |s: &mut Session| {
-            if let Some(f) = f.take() {
-                let _ = tx.push(f(s));
-            }
-        }))?;
-        Ok(rx)
+        let sequence = self.send_reserved(
+            reservation,
+            Box::new(move |s: &mut Session| {
+                if let Some(f) = f.take() {
+                    let _ = tx.push(f(s));
+                }
+            }),
+        );
+        (sequence, rx)
     }
 
     /// Frees commands the engine has finished with. Safe to call at any time.
@@ -1023,7 +1116,7 @@ mod tests {
         e.session_mut().apply_graph_changes().expect("schedule");
 
         let_assert!(
-            Ok(()) = h.send(Box::new(|s: &mut Session| {
+            Ok(_) = h.send(Box::new(|s: &mut Session| {
                 let _ = s.set_loop_mode(0, LoopMode::Stopped);
             }))
         );
@@ -1047,7 +1140,7 @@ mod tests {
         e.session_mut().apply_graph_changes().expect("schedule");
 
         let_assert!(
-            Ok(()) = h.send(Box::new(|s: &mut Session| {
+            Ok(_) = h.send(Box::new(|s: &mut Session| {
                 s.create_loop();
             }))
         );
@@ -1068,7 +1161,7 @@ mod tests {
 
         for _ in 0..3 {
             let_assert!(
-                Ok(()) = h.send(Box::new(|s: &mut Session| {
+                Ok(_) = h.send(Box::new(|s: &mut Session| {
                     s.create_loop();
                 }))
             );
@@ -1082,13 +1175,64 @@ mod tests {
         let (mut e, mut h) = split(Session::default(), 2);
         e.session_mut().apply_graph_changes().expect("schedule");
 
-        let_assert!(Ok(()) = h.send(Box::new(|_: &mut Session| {})));
-        let_assert!(Ok(()) = h.send(Box::new(|_: &mut Session| {})));
+        let first = h.send(Box::new(|_: &mut Session| {})).expect("first");
+        let second = h.send(Box::new(|_: &mut Session| {})).expect("second");
+        check!(first.get() == 1);
+        check!(second.get() == 2);
         check!(h.send(Box::new(|_: &mut Session| {})) == Err(SendError::Full));
 
-        // Draining makes room again.
+        // Draining makes room again without consuming a sequence for the refusal.
         e.process(4);
-        let_assert!(Ok(()) = h.send(Box::new(|_: &mut Session| {})));
+        let third = h.send(Box::new(|_: &mut Session| {})).expect("third");
+        check!(third.get() == 3);
+        check!(e.stats().last_applied_command.load(Ordering::Acquire) == second.get());
+    }
+
+    #[test]
+    fn a_payload_can_be_retained_until_queue_capacity_is_reserved() {
+        let (mut e, mut h) = split(Session::default(), 1);
+        h.send(Box::new(|_: &mut Session| {})).expect("fill queue");
+
+        let payload = vec![1u8, 2, 3, 4];
+        check!(matches!(h.try_reserve(), Err(SendError::Full)));
+        check!(payload.len() == 4);
+
+        e.pump();
+        let reservation = h.try_reserve().expect("room after pump");
+        let sequence = h.send_reserved(
+            reservation,
+            Box::new(move |s: &mut Session| {
+                let loop_idx = s.create_loop();
+                s.loop_mut(loop_idx)
+                    .expect("created loop")
+                    .set_length(payload.len() as u32);
+            }),
+        );
+        e.pump();
+
+        check!(sequence.get() == 2);
+        check!(e.session().loop_(0).expect("loop").length() == 4);
+    }
+
+    #[test]
+    fn command_fences_observe_applied_sequence() {
+        let (mut e, mut h) = engine();
+        let sequence = h.send(Box::new(|_: &mut Session| {})).expect("queue");
+        let stats = Arc::clone(h.stats());
+        let driver = std::thread::spawn(move || {
+            e.pump();
+            e
+        });
+
+        wait_for_command(&stats, sequence, DEFAULT_WAIT_TIMEOUT).expect("fence");
+        let _ = driver.join().expect("engine");
+    }
+
+    #[test]
+    fn sending_after_engine_drop_reports_disconnected() {
+        let (e, mut h) = engine();
+        drop(e);
+        check!(h.send(Box::new(|_: &mut Session| {})) == Err(SendError::Disconnected));
     }
 
     #[test]
@@ -1097,7 +1241,7 @@ mod tests {
         e.session_mut().apply_graph_changes().expect("schedule");
 
         for _ in 0..3 {
-            let_assert!(Ok(()) = h.send(Box::new(|_: &mut Session| {})));
+            let_assert!(Ok(_) = h.send(Box::new(|_: &mut Session| {})));
         }
         e.process(4);
 
@@ -1128,7 +1272,7 @@ mod tests {
         // the last-applied schedule, so existing audio keeps flowing while the next
         // schedule is built; the staleness is counted rather than costing the cycle.
         let_assert!(
-            Ok(()) = h.send(Box::new(|s: &mut Session| {
+            Ok(_) = h.send(Box::new(|s: &mut Session| {
                 s.add_port(Port::Dummy(DummyAudioPort::new(
                     PortId(1),
                     "in",
@@ -1151,7 +1295,7 @@ mod tests {
         // Structural work and the reschedule it needs go in one command, so the
         // graph is never left stale at a cycle boundary.
         let_assert!(
-            Ok(()) = h.send(Box::new(|s: &mut Session| {
+            Ok(_) = h.send(Box::new(|s: &mut Session| {
                 let p = s.add_port(Port::Dummy(DummyAudioPort::new(
                     PortId(1),
                     "in",

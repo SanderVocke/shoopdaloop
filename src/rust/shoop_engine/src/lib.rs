@@ -67,8 +67,9 @@ pub use dummy_driver::{DriverMode, DriverSettings, DummyDriver};
 pub use dummy_midi_port::DummyMidiPort;
 pub use dummy_port::{DummyAudioPort, DummyExternalConnections, DummyPortError, PortId};
 pub use engine::{
-    split, wait_for_result, Command, Engine, EngineHandle, LoopSnapshot, LoopState, SendError,
-    StateSnapshot, Stats, WaitError, DEFAULT_WAIT_TIMEOUT,
+    split, wait_for_command, wait_for_result, Command, CommandReservation, CommandSequence, Engine,
+    EngineHandle, LoopSnapshot, LoopState, SendError, StateSnapshot, Stats, WaitError,
+    DEFAULT_WAIT_TIMEOUT,
 };
 pub use fx_chain::{FXChainState, FXChainType};
 pub use graph::{processing_order, GraphError, NodeIdx, NodeSpec};

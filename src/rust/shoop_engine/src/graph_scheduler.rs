@@ -168,6 +168,15 @@ impl GraphScheduler {
         }
     }
 
+    /// Notifications received since start. Diagnostics and tests.
+    pub fn n_arms(&self) -> u64 {
+        self.shared
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .dirty_gen
+    }
+
     /// Applies performed since start. Diagnostics and tests.
     pub fn n_applies(&self) -> u64 {
         self.shared

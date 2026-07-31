@@ -148,7 +148,7 @@ fn the_engine_drives_driver_shaped_ports() {
     let (mut engine, mut handle) = split(s, 16);
 
     let_assert!(
-        Ok(()) = handle.send(Box::new(move |s: &mut Session| {
+        Ok(_) = handle.send(Box::new(move |s: &mut Session| {
             let _ = s.set_loop_mode(0, LoopMode::Recording);
         }))
     );
