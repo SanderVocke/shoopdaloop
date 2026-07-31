@@ -87,32 +87,32 @@
 
 ### Phase 0 — Baseline, complete API inventory, and deferred-issue register
 
-- [ ] Re-read the project instructions and relevant build/test documents before changing code.
-- [ ] Capture the current branch, build state, targeted Rust test state, workspace test state, and frontend/QML self-test state; record known pre-existing failures so they are not confused with regressions.
-- [ ] Inventory the full application-facing `shoop_engine` API and every frontend call site, classifying each operation as:
-  - [ ] immediate mirrored scalar/state read;
-  - [ ] fire-and-forget control command;
-  - [ ] topology-changing command;
-  - [ ] asynchronous creation returning a pending handle;
-  - [ ] complex mutex-backed data read/write;
-  - [ ] explicit exceptional response/fence;
-  - [ ] driver/external-manager operation;
-  - [ ] stub, no-op, or unrelated correctness issue.
-- [ ] Search for all `query`, `send`, `send_inner`, `poll`, blocking Qt connection, session index, snapshot, peak reset, event reset, and data-dirty call sites; add every result to the inventory.
-- [ ] Create `REMAINING_ISSUES.md` with one entry per deferred item, including current behavior, why it is deferred, user-visible/RT impact, temporary implementation, affected API/object family, and a concrete future direction.
-- [ ] Seed `REMAINING_ISSUES.md` with at least:
-  - [ ] full audio-data copying in `AudioChannel::get_data`;
-  - [ ] MIDI event/vector allocation and copying in `MidiChannel::get_all_midi_data`;
-  - [ ] audio and MIDI dummy dequeue storage/copying;
-  - [ ] JACK callback registered-port mutex, MIDI mutexes, and callback allocations;
-  - [ ] CPAL callback mutexes, ring/deque locks, temporary vectors, and scratch resizing;
-  - [ ] arbitrary boxed command allocation/deallocation and allowed command-time RT allocation;
-  - [ ] graph describe/install response round trips and graph-build allocation status;
-  - [ ] large data loading/copying on or near the process path;
-  - [ ] FX/Carla mutex and state serialization behavior;
-  - [ ] diagnostics/profiling and explicit barriers still requiring responses;
-  - [ ] known stubs/no-ops such as disconnect, profiling/crash hooks, and state-tracking methods, except where this plan directly implements their required semantics.
-- [ ] Add or identify test hooks/counters that can detect a blocking query from a periodic GUI path.
+- [x] Re-read the project instructions and relevant build/test documents before changing code.
+- [x] Capture the current branch, build state, targeted Rust test state, workspace test state, and frontend/QML self-test state; record known pre-existing failures so they are not confused with regressions.
+- [x] Inventory the full application-facing `shoop_engine` API and every frontend call site, classifying each operation as:
+  - [x] immediate mirrored scalar/state read;
+  - [x] fire-and-forget control command;
+  - [x] topology-changing command;
+  - [x] asynchronous creation returning a pending handle;
+  - [x] complex mutex-backed data read/write;
+  - [x] explicit exceptional response/fence;
+  - [x] driver/external-manager operation;
+  - [x] stub, no-op, or unrelated correctness issue.
+- [x] Search for all `query`, `send`, `send_inner`, `poll`, blocking Qt connection, session index, snapshot, peak reset, event reset, and data-dirty call sites; add every result to the inventory.
+- [x] Create `REMAINING_ISSUES.md` with one entry per deferred item, including current behavior, why it is deferred, user-visible/RT impact, temporary implementation, affected API/object family, and a concrete future direction.
+- [x] Seed `REMAINING_ISSUES.md` with at least:
+  - [x] full audio-data copying in `AudioChannel::get_data`;
+  - [x] MIDI event/vector allocation and copying in `MidiChannel::get_all_midi_data`;
+  - [x] audio and MIDI dummy dequeue storage/copying;
+  - [x] JACK callback registered-port mutex, MIDI mutexes, and callback allocations;
+  - [x] CPAL callback mutexes, ring/deque locks, temporary vectors, and scratch resizing;
+  - [x] arbitrary boxed command allocation/deallocation and allowed command-time RT allocation;
+  - [x] graph describe/install response round trips and graph-build allocation status;
+  - [x] large data loading/copying on or near the process path;
+  - [x] FX/Carla mutex and state serialization behavior;
+  - [x] diagnostics/profiling and explicit barriers still requiring responses;
+  - [x] known stubs/no-ops such as disconnect, profiling/crash hooks, and state-tracking methods, except where this plan directly implements their required semantics.
+- [x] Add or identify test hooks/counters that can detect a blocking query from a periodic GUI path.
 
 ### Phase 1 — Reliable command protocol and typed graph effects
 

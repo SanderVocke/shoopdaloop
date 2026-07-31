@@ -1,0 +1,268 @@
+# Remaining engine/control issues
+
+This document tracks work intentionally deferred from the per-object state mirror and asynchronous control migration. Every entry records the current status, temporary behavior, impact, and a future direction. Update entries when implementation changes their status, and add newly discovered mutexes, allocations, copying, exceptional waits, or correctness gaps.
+
+## Status vocabulary
+
+- **Deferred**: explicitly outside the current migration's efficiency/RT scope.
+- **Temporary implementation**: required for behavior in the current migration, but deliberately not the final efficient design.
+- **Open correctness gap**: behavior is stubbed, incomplete, or silently ignores failure and needs separate work unless the migration directly depends on it.
+- **Exceptional response**: a blocking/response path remains intentionally; it must not be used by periodic UI polling.
+
+## Complex data getters and copying
+
+### Audio channel full-data retrieval
+
+- **Status:** Temporary implementation planned.
+- **API:** `AudioChannel::get_data` and save/display-data callers.
+- **Current behavior:** A blocking engine query calls `AudioChannel::data` and constructs/copies the complete contiguous sample vector while executing the process-thread command.
+- **Migration behavior:** Replace the audio-cycle rendezvous with shared mutex-protected channel content and copy while holding/using that temporary store.
+- **Impact:** The mutex can contend with real-time processing, and full recordings are copied in one operation. Latency and memory bandwidth scale with recording length.
+- **Why deferred:** Efficient immutable chunk snapshots, ownership swaps, or RCU storage require a separate storage redesign.
+- **Future direction:** Publish an `Arc` snapshot of immutable/chunked sample storage and perform contiguous copying/serialization on a worker thread.
+
+### MIDI channel full-data retrieval
+
+- **Status:** Temporary implementation planned.
+- **API:** `MidiChannel::get_all_midi_data` and MIDI file save/display callers.
+- **Current behavior:** A blocking engine query allocates the result vector, clones start-state messages, and allocates/clones each event payload on the process thread.
+- **Migration behavior:** Use shared mutex-protected MIDI content so the getter no longer waits for a cycle.
+- **Impact:** Process-side locking remains possible and every read still allocates/copies all events and byte payloads.
+- **Why deferred:** A zero/low-copy immutable MIDI snapshot format is outside the current task.
+- **Future direction:** Publish immutable storage generations and materialize API/file formats on a worker.
+
+### Dummy audio dequeue
+
+- **Status:** Temporary implementation planned.
+- **API:** `AudioPort::dummy_dequeue_data`.
+- **Current behavior:** A blocking engine query drains retained output into a newly returned vector.
+- **Migration behavior:** Use a shared mutex-backed dequeue/capture store accessible without an engine query.
+- **Impact:** The dummy process path and test/control thread may contend; dequeue still copies and may allocate.
+- **Future direction:** Use a bounded SPSC capture ring with ownership transfer or preallocated output buffers.
+
+### Dummy MIDI dequeue
+
+- **Status:** Temporary implementation planned.
+- **API:** `MidiPort::dummy_dequeue_data`.
+- **Current behavior:** A blocking engine query drains output, allocates a vector, and clones each MIDI payload.
+- **Migration behavior:** Use a shared mutex-backed event queue.
+- **Impact:** Locking and per-event allocation/copying remain.
+- **Future direction:** Use a bounded SPSC event ring with fixed-size payload storage and worker-side conversion.
+
+## Process callback mutexes and allocations
+
+### JACK registered-port registry
+
+- **Status:** Deferred except for pending-control identity changes required by the migration.
+- **Current behavior:** JACK callback processing locks `Arc<Mutex<Vec<JackRegisteredPort>>>` and walks registrations. Registration records contain copied session indices.
+- **Migration behavior:** Records will resolve pending `ObjectControl` identities, but the registry mutex itself may remain.
+- **Impact:** Registration/control activity can block the JACK callback; poisoned-lock recovery also occurs on the RT path.
+- **Future direction:** Publish immutable/RCU registration arrays or use lock-free registration handoff outside the callback.
+
+### JACK MIDI buffers and decoupled queues
+
+- **Status:** Deferred.
+- **Current behavior:** Decoupled MIDI paths use mutex-protected `Vec<MidiEvent>` and callback paths construct/clone MIDI vectors and byte data.
+- **Impact:** Callback mutex contention and allocation can cause xruns under load.
+- **Future direction:** Preallocated bounded SPSC MIDI rings with fixed payload limits and callback-local scratch.
+
+### CPAL capture and connection state
+
+- **Status:** Deferred except that periodic frontend connection reads must become cached/nonblocking.
+- **Current behavior:** CPAL callbacks lock a `VecDeque` capture ring, external connection state, MIDI input/output collections, and decoupled-port vectors.
+- **Impact:** Any holder can delay audio callbacks; connection management and callback processing share locks.
+- **Future direction:** Split control-owned configuration from immutable callback snapshots and replace capture with lock-free SPSC rings.
+
+### CPAL scratch and temporary allocations
+
+- **Status:** Deferred.
+- **Current behavior:** Callback paths resize scratch vectors and construct temporary audio/MIDI vectors.
+- **Impact:** Allocation or resizing can introduce unbounded callback latency.
+- **Future direction:** Size all scratch at stream activation and reject/reconfigure outside the callback when device shape changes.
+
+### Plugin/Carla locks
+
+- **Status:** Deferred.
+- **API:** FX visibility, activity, state polling, state serialization/restoration, and processing host ownership.
+- **Current behavior:** Carla host operations are protected by mutexes; some GUI operations synchronously enter the plugin host.
+- **Impact:** Plugin/UI calls can block one another and plugin behavior determines latency.
+- **Future direction:** Dedicated plugin-control thread with asynchronous commands and immutable state publication, while keeping process data RT-owned.
+
+## Command execution and payload preparation
+
+### Boxed closure lifecycle
+
+- **Status:** Deferred.
+- **Current behavior:** Every engine command is a boxed dynamic `FnMut`. Allocation occurs on the producer; executed boxes return through a second queue so deallocation occurs off the process thread.
+- **Impact:** Producer allocation remains, command variants are not statically classifiable, and exceptional execution is wrapped by an allocation permission.
+- **Future direction:** A typed, preallocated command enum/pool whose graph effect and payload ownership are intrinsic.
+
+### Exceptional command-time allocations
+
+- **Status:** Deferred.
+- **Current behavior:** `Engine::apply_commands` permits exceptional allocation around arbitrary command execution. Creation, topology description, loading, and response getters may allocate.
+- **Impact:** Topology/data operations can allocate on the process thread and cause xruns even though steady-state tests are allocation-free.
+- **Future direction:** Prepare all structures off-thread, reserve stable IDs/capacity, and queue ownership swaps or fixed-size operations only.
+
+### Audio load copying
+
+- **Status:** Deferred.
+- **API:** `AudioChannel::load_data`.
+- **Current behavior:** Input is copied to an owned vector on the caller, then channel storage copies it again during command execution.
+- **Impact:** Large loads perform process-thread memory work and may need storage growth.
+- **Future direction:** Build immutable/chunked storage off-thread and atomically install ownership.
+
+### MIDI load preparation and installation
+
+- **Status:** Deferred.
+- **API:** `MidiChannel::load_all_midi_data`.
+- **Current behavior:** Much of the event conversion is prepared on the caller, but storage replacement and possible internal work occur in the command.
+- **Impact:** Large sessions can spend significant process time installing MIDI contents.
+- **Future direction:** Prepare a complete storage object off-thread and queue a cheap swap.
+
+### Ringbuffer adoption failure reporting
+
+- **Status:** Deferred efficiency; migration changes semantics.
+- **API:** `Loop::adopt_ringbuffer_contents`.
+- **Current behavior:** Blocks on a query only to propagate `Result<()>`; the frontend only logs failure.
+- **Migration behavior:** Fire-and-forget, with process-side failure logged or published asynchronously.
+- **Impact:** Callers no longer receive synchronous success. There is no structured completion object yet.
+- **Future direction:** Optional asynchronous operation status/receiver if UI workflows need completion feedback.
+
+## Graph scheduling and exact responses
+
+### Topology description and schedule installation round trips
+
+- **Status:** Exceptional response retained for now.
+- **Current behavior:** The graph scheduler worker queues a topology description response, builds off-thread, then queues schedule installation and waits for the displaced schedule so it is freed off the process thread.
+- **Impact:** Two process-thread rendezvous occur per graph rebuild. They are off the GUI thread but still consume command capacity and can delay topology convergence.
+- **Why retained:** Correct ownership, coalescing, and off-RT destruction are already encoded in this path; replacing it is not required for nonblocking GUI state/creation.
+- **Future direction:** Versioned topology publication plus asynchronous prepared-schedule install/acknowledgement.
+
+### Explicit fences and driver settling
+
+- **Status:** Exceptional response/barrier retained.
+- **API:** command-sequence fence, `AudioDriver::wait_process`, queue drain, and graph flush.
+- **Current behavior:** Tests and exact dummy-driver workflows wait until queued control and graph work settle.
+- **Impact:** These APIs intentionally block and must not enter periodic frontend paths.
+- **Future direction:** Keep explicit; add asynchronous completion variants only where application workflows need them.
+
+### Plugin configuration query during creation
+
+- **Status:** To audit in FX phase.
+- **Current behavior:** Carla chain creation queries session sample rate and buffer size, with fallback defaults.
+- **Impact:** Creation can wait for an audio cycle and the fallback can instantiate with configuration different from the live session.
+- **Future direction:** Publish session configuration atomically/driver-owned or establish it before activation.
+
+## External connection management
+
+### Per-port synchronous JACK enumeration
+
+- **Status:** In scope to replace for periodic polling.
+- **Current behavior:** Each port's `get_connections_state` locks the JACK backend, enumerates external ports, looks up its JACK port, and gets connections synchronously. Frontend GUI paths also use blocking queued Qt calls.
+- **Impact:** Periodic cost multiplies by port count and blocks GUI/backend threads.
+- **Migration behavior:** One asynchronous bulk enumeration per backend at a controlled cadence, cached and published for immediate reads.
+- **Future direction:** Event-driven graph callbacks could replace polling entirely.
+
+### User-triggered external connect/disconnect
+
+- **Status:** Allowed exceptional synchronous operation.
+- **Current behavior:** Calls JACK/external manager synchronously and mostly ignores backend errors.
+- **Impact:** A user action can hitch; failures may be underreported.
+- **Future direction:** Asynchronous driver command with explicit completion/error and cache refresh.
+
+### Decoupled MIDI send saturation
+
+- **Status:** Open error-visibility issue.
+- **API:** `DecoupledMidiPort::send_midi` and some callback-side queue pushes.
+- **Current behavior:** Some bounded queue push results are ignored; other decoupled paths count drops.
+- **Impact:** MIDI messages can be silently lost under saturation.
+- **Future direction:** Align with typed queue errors/drop counters and define whether UI MIDI control retries or reports loss.
+
+## Diagnostics and incomplete API behavior
+
+### Backend session state
+
+- **Status:** Open correctness gap.
+- **API:** `BackendSession::get_state`.
+- **Current behavior:** Returns a null driver pointer and zero buffer counts regardless of live state.
+- **Impact:** Callers cannot rely on most reported fields.
+- **Future direction:** Publish meaningful driver/buffer counters from existing driver and engine atomics.
+
+### Profiling report
+
+- **Status:** Open correctness gap.
+- **API:** `BackendSession::get_profiling_report`.
+- **Current behavior:** Always returns `ProfilingReport::default()`.
+- **Impact:** Frontend profiling UI can appear functional while reporting no backend data.
+- **Future direction:** Publish immutable latest/worst profiling snapshots outside the process thread.
+
+### Crash hooks
+
+- **Status:** Open correctness gap.
+- **API:** `segfault_on_process_thread`, `abort_on_process_thread`.
+- **Current behavior:** No-op.
+- **Impact:** Diagnostic/testing behavior promised by the API is absent.
+- **Future direction:** Explicit diagnostic commands guarded for test/development builds.
+
+### Audio and MIDI channel disconnect
+
+- **Status:** Open correctness gap; may be implemented as part of topology command migration.
+- **Current behavior:** Both methods are no-ops.
+- **Impact:** Frontend disconnection requests leave routing intact.
+- **Future direction:** Add session routing removal commands resolving channel and port controls.
+
+### Data-dirty acknowledgement
+
+- **Status:** Open correctness gap; required by this migration.
+- **API:** audio/MIDI `clear_data_dirty`.
+- **Current behavior:** No-op.
+- **Impact:** Once dirty, current state cannot express frontend acknowledgement correctly.
+- **Migration direction:** Process-published data sequence plus frontend-side acknowledged sequence.
+
+### MIDI state-tracking reset
+
+- **Status:** Open correctness gap.
+- **API:** `MidiChannel::reset_state_tracking`.
+- **Current behavior:** No-op despite frontend call sites.
+- **Impact:** State reconstruction after load/reset may retain unintended MIDI state.
+- **Future direction:** Queue a real channel reset command, or clarify whether only frontend acknowledgement is intended.
+
+### FX chain output capabilities
+
+- **Status:** Open correctness/capability gap.
+- **API:** `FXChain::get_midi_output_port` and port count assumptions.
+- **Current behavior:** MIDI output always returns `None`; input/output audio counts share one count helper.
+- **Impact:** Some plugin port layouts may be represented incorrectly.
+- **Future direction:** Model each plugin port direction/type explicitly and create stable handles once.
+
+### Ignored operation errors
+
+- **Status:** Open audit item.
+- **Current behavior:** Many process-side session calls use `let _ = ...`, while fire-and-forget methods return success or nothing.
+- **Impact:** Invalid references or backend failures can become silent no-ops.
+- **Migration direction:** Queue admission is always reported synchronously; creation failure enters lifecycle `Failed`; other execution failures are logged/published asynchronously.
+- **Future direction:** Per-object operation error sequence/status or optional completion receivers for user-visible operations.
+
+## Bulk snapshots after mirror migration
+
+### `StateSnapshot` and `queued_at_cycle`
+
+- **Status:** Planned removal after all object families migrate.
+- **Current behavior:** Engine publishes reusable bulk vectors each cycle. `SharedSession::poll` rejects snapshots not newer than the globally most recently queued mutation, forcing query fallbacks.
+- **Impact:** One object's mutation/reset invalidates polling for every object; snapshot maintenance duplicates eventual per-object mirrors.
+- **Future direction:** Remove object snapshot publication and global trust tracking. Keep only unrelated engine stats atomics and any independently justified immutable publication.
+
+## Baseline environmental limitations
+
+### ALSA sequencer unavailable
+
+- **Status:** Environment limitation, not a product failure.
+- **Evidence:** `/dev/snd/seq` is unavailable; the three `midir_driver` tests fail without the explicit missing-backend override and pass/skip policy with `SHOOP_ALLOW_MISSING_BACKENDS=1`.
+- **Verification policy:** Run the workspace suite with the override in this sandbox, and run without it in an environment with virtual MIDI/JACK before final release where possible.
+
+### CPAL device unavailable
+
+- **Status:** Environment limitation.
+- **Evidence:** QML baseline passes 188 tests and skips `CpalPorts::test_virtual_playback_ports_are_app_connectable` because CPAL settings/device are unavailable.
+- **Verification policy:** Keep mock CPAL Rust coverage and report the QML skip explicitly; run device integration when available.
