@@ -372,9 +372,11 @@ pub struct LoopChannelGuiRust {
     // Other
     pub backend_channel_wrapper: cxx::UniquePtr<QSharedPointer_QObject>,
     pub instance_identifier: QString,
+    pub desired_mode: Option<i32>,
     pub desired_data_length: Option<i32>,
     pub desired_start_offset: Option<i32>,
     pub desired_n_preplay_samples: Option<i32>,
+    pub desired_audio_gain: Option<f32>,
 }
 
 impl Default for LoopChannelGuiRust {
@@ -399,9 +401,11 @@ impl Default for LoopChannelGuiRust {
             backend_channel_wrapper: cxx::UniquePtr::null(),
             channel_loop: std::ptr::null_mut(),
             instance_identifier: QString::from("unknown"),
+            desired_mode: None,
             desired_data_length: None,
             desired_start_offset: None,
             desired_n_preplay_samples: None,
+            desired_audio_gain: None,
         }
     }
 }

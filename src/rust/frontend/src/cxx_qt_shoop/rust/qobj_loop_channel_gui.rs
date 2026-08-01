@@ -283,9 +283,18 @@ impl LoopChannelGui {
         }
     }
 
-    pub fn push_mode(self: Pin<&mut LoopChannelGui>, mode: i32) {
+    pub fn push_mode(mut self: Pin<&mut LoopChannelGui>, mode: i32) {
+        let changed = self.mode != mode;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.mode = mode;
+            rust.desired_mode = Some(mode);
+        }
         unsafe {
-            self.backend_push_mode(mode);
+            if changed {
+                self.as_mut().mode_changed(mode);
+            }
+            self.as_mut().backend_push_mode(mode);
         }
     }
 
@@ -322,10 +331,19 @@ impl LoopChannelGui {
         }
     }
 
-    pub fn push_audio_gain(self: Pin<&mut LoopChannelGui>, audio_gain: f32) {
+    pub fn push_audio_gain(mut self: Pin<&mut LoopChannelGui>, audio_gain: f32) {
+        trace!(self, "push audio gain: {audio_gain}");
+        let changed = self.audio_gain != audio_gain;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.audio_gain = audio_gain;
+            rust.desired_audio_gain = Some(audio_gain);
+        }
         unsafe {
-            trace!(self, "push audio gain: {audio_gain}");
-            self.backend_push_audio_gain(audio_gain);
+            if changed {
+                self.as_mut().audio_gain_changed(audio_gain);
+            }
+            self.as_mut().backend_push_audio_gain(audio_gain);
         }
     }
 
@@ -343,6 +361,13 @@ impl LoopChannelGui {
         n_events_triggered: i32,
         n_notes_active: i32,
     ) {
+        let (mode, audio_gain) = {
+            let rust = self.as_mut().rust_mut();
+            (
+                rust.desired_mode.unwrap_or(mode),
+                rust.desired_audio_gain.unwrap_or(audio_gain),
+            )
+        };
         let (length, start_offset, n_preplay_samples) = {
             let mut rust = self.as_mut().rust_mut();
             let length = match rust.desired_data_length {
