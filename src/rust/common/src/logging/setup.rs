@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 use tracing::{Event, Subscriber};
 use tracing_log::NormalizeEvent;
+use tracing_subscriber::filter::filter_fn;
 use tracing_subscriber::fmt::format::Writer;
 use tracing_subscriber::fmt::{FmtContext, FormatEvent, FormatFields};
 use tracing_subscriber::layer::SubscriberExt;
@@ -107,9 +108,11 @@ pub fn init_logging() -> Result<(), anyhow::Error> {
 
     let registry = tracing_subscriber::registry().with(fmt_layer);
     let registry = if crate::tracing_helpers::is_tracing_enabled() {
-        registry.with(Some(tracing_tracy::TracyLayer::default()))
+        let tracy_layer = tracing_tracy::TracyLayer::default()
+            .with_filter(filter_fn(|_| crate::tracing_helpers::is_tracing_enabled()));
+        registry.with(Some(tracy_layer))
     } else {
-        registry.with(None::<tracing_tracy::TracyLayer>)
+        registry.with(None)
     };
 
     registry.init();

@@ -103,32 +103,55 @@ Totals:
         success
     }
 
+    fn finish(mut self: Pin<&mut Self>) {
+        let tests_succeeded = self.as_mut().report_results();
+        let capture_error = self.as_ref().capture_error.clone();
+        if let Some(capture_error) = &capture_error {
+            error!("QML trace capture failed: {capture_error}");
+            println!("QML trace capture failed: {capture_error}");
+        }
+        unsafe {
+            self.done(if tests_succeeded && capture_error.is_none() {
+                0
+            } else {
+                1
+            });
+        }
+    }
+
     fn maybe_run_next_test_file(mut self: Pin<&mut Self>) {
-        {
-            let test_files = self.as_ref().test_files_to_run.clone();
-            if test_files.len() == 0 {
-                // No files left to test.
-                let success = self.as_mut().report_results();
-                unsafe {
-                    self.done(if success { 0 } else { 1 });
-                }
+        if self.as_ref().capture_error.is_some() {
+            self.as_mut().finish();
+            return;
+        }
+
+        if self.as_ref().test_files_to_run.is_empty() {
+            self.as_mut().finish();
+            return;
+        }
+
+        let test_file = self.as_mut().rust_mut().test_files_to_run.remove(0);
+        let filename = test_file
+            .file_name()
+            .ok_or(anyhow!("Invalid file name"))
+            .map(|s| s.to_string_lossy())
+            .unwrap_or_else(|_| "unknown".into());
+
+        println!();
+        info!("===== Test file: {filename} =====");
+
+        if common::tracing_capture::is_configured() {
+            if let Err(error) =
+                common::tracing_capture::start_named_capture(&test_file.to_string_lossy())
+            {
+                self.as_mut().rust_mut().capture_error = Some(error.to_string());
+                self.as_mut().finish();
                 return;
             }
         }
 
         unsafe {
-            let mut rust_mut = self.as_mut().rust_mut();
-            let test_file = rust_mut.test_files_to_run.remove(0);
-
-            let filename = test_file
-                .file_name()
-                .ok_or(anyhow!("Invalid file name"))
-                .map(|s| s.to_string_lossy())
-                .unwrap_or_else(|_| "unknown".into());
-
-            println!();
-            info!("===== Test file: {filename} =====");
-
+            self.as_mut().rust_mut().current_test_file = Some(test_file.clone());
             self.as_mut()
                 .reload_qml(QString::from(test_file.to_string_lossy().to_string()));
         }
@@ -235,10 +258,32 @@ Totals:
         }
     }
 
-    pub unsafe fn on_qml_engine_destroyed(self: Pin<&mut TestFileRunner>) {
-        // When the QML engine gets destroyed, we either load the next file or
-        // exit when done.
+    pub unsafe fn on_qml_engine_destroyed(mut self: Pin<&mut TestFileRunner>) {
+        // Finalize this file's capture before loading the next QML engine.
         debug!("QML engine destroyed");
+        let current_test_file = self.as_mut().rust_mut().current_test_file.take();
+        if let Some(current_test_file) = current_test_file {
+            self.as_mut()
+                .rust_mut()
+                .test_files_ran
+                .push(current_test_file);
+            if common::tracing_capture::is_configured() {
+                match common::tracing_capture::stop_capture() {
+                    Ok(Some(trace)) => info!(
+                        "Finalized trace for {:?}: {}",
+                        trace.source_label,
+                        trace.path.display()
+                    ),
+                    Ok(None) => {
+                        self.as_mut().rust_mut().capture_error =
+                            Some("No active Tracy capture existed for the completed test".into());
+                    }
+                    Err(error) => {
+                        self.as_mut().rust_mut().capture_error = Some(error.to_string());
+                    }
+                }
+            }
+        }
         self.maybe_run_next_test_file();
     }
 }

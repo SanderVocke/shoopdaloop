@@ -17,9 +17,14 @@ tracing-log = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-tracy = { workspace = true }
 tracy-client = { workspace = true }
+thiserror = { workspace = true }
+libc = { workspace = true }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tempfile = { workspace = true }
 
 [build-dependencies]
 toml = { workspace = true }

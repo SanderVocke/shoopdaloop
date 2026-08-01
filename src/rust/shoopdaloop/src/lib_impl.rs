@@ -360,7 +360,7 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
         }
     };
 
-    if cli_args.developer_options.tracing {
+    if cli_args.developer_options.tracing || cli_args.developer_options.tracing_capture {
         common::tracing_helpers::set_tracing_enabled(true);
     }
 
@@ -452,11 +452,39 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
         return Ok(0);
     }
 
+    if cli_args.developer_options.tracing_capture {
+        let tool = common::tracing_capture::resolve_capture_tool(
+            cli_args.developer_options.tracing_capture_tool.as_deref(),
+        )?;
+        let output_dir = cli_args
+            .developer_options
+            .tracing_capture_output_dir
+            .clone()
+            .unwrap_or_else(|| PathBuf::from("traces"));
+        common::tracing_capture::configure(common::tracing_capture::CaptureConfig::new(
+            tool, output_dir,
+        ))?;
+        if !cli_args.self_test_options.self_test {
+            common::tracing_capture::start_default_capture()?;
+        }
+    }
+
     app_main(&cli_args, config)
+}
+
+struct TracingCaptureCleanupGuard;
+
+impl Drop for TracingCaptureCleanupGuard {
+    fn drop(&mut self) {
+        if let Err(error) = common::tracing_capture::shutdown() {
+            error!("Failed to shut down Tracy capture: {error}");
+        }
+    }
 }
 
 #[cfg(not(feature = "prebuild"))]
 pub fn shoopdaloop_main(config: ShoopConfig) -> i32 {
+    let _tracing_capture_cleanup = TracingCaptureCleanupGuard;
     match entry_point(config) {
         Ok(r) => {
             return r;

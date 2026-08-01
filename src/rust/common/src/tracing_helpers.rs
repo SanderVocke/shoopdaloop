@@ -1,13 +1,18 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static TRACING_ENABLED: AtomicBool = AtomicBool::new(false);
+static TRACING_OUTPUT_ENABLED: AtomicBool = AtomicBool::new(true);
 
 pub fn set_tracing_enabled(enabled: bool) {
     TRACING_ENABLED.store(enabled, Ordering::Relaxed);
 }
 
+pub fn set_tracing_output_enabled(enabled: bool) {
+    TRACING_OUTPUT_ENABLED.store(enabled, Ordering::Release);
+}
+
 pub fn is_tracing_enabled() -> bool {
-    TRACING_ENABLED.load(Ordering::Relaxed)
+    TRACING_ENABLED.load(Ordering::Relaxed) && TRACING_OUTPUT_ENABLED.load(Ordering::Acquire)
 }
 
 pub struct TracyPlotter {
