@@ -5,12 +5,12 @@ ShoopRustPortGui {
     id: root
     property var descriptor : null
     property bool descriptor_applied: false
-    property bool loaded : initialized && descriptor_applied
+    property bool loaded : root.initialized && descriptor_applied
     onInitializedChanged: {
-        if (initialized && !descriptor_applied) {
+        if (root.initialized && !descriptor_applied) {
             Qt.callLater(() => {
-                push_all()
-                descriptor_applied = true
+                root.push_all()
+                root.descriptor_applied = true
                 // Track controls react to loaded ports on the same turn. Reassert the
                 // persisted port state on the following turn so session restoration wins.
                 Qt.callLater(root.push_all)

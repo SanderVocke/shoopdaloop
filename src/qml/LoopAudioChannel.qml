@@ -101,9 +101,9 @@ ShoopRustLoopChannelGui {
     onInitial_modeChanged: push_mode(initial_mode)
     onInitial_gainChanged: push_gain(initial_gain)
     onInitializedChanged: {
-        if (initialized) {
-            push_mode(initial_mode)
-            Qt.callLater(() => push_mode(initial_mode))
+        if (root.initialized) {
+            root.push_mode(initial_mode)
+            Qt.callLater(() => root.push_mode(initial_mode))
         }
     }
     ports_to_connect: lookup_connected_ports.objects

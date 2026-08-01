@@ -250,7 +250,9 @@ mod tests {
         for _ in 0..100 {
             s.arm();
         }
-        thread::sleep(Duration::from_millis(150));
+        // Force the pending batch and wait for completion instead of relying on the worker
+        // receiving CPU within a fixed wall-clock interval on loaded CI hosts.
+        s.flush_blocking();
         check!(n.load(Ordering::Relaxed) == 1);
         drop(s);
     }
