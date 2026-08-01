@@ -255,6 +255,7 @@ pub struct LoopBackendRust {
 
     // Rust members
     pub backend_loop: Option<BackendLoop>,
+    pub sync_source_applied_session_id: Option<u64>,
     pub prev_state: LoopState,
     pub prev_cycle_nr: i32,
 }
@@ -266,6 +267,7 @@ impl Default for LoopBackendRust {
             frontend_loop: std::ptr::null_mut(),
             instance_identifier: QString::from("unknown"),
             backend_loop: None,
+            sync_source_applied_session_id: None,
             prev_state: LoopState::default(),
             prev_cycle_nr: 0,
             sync_source: std::ptr::null_mut(),

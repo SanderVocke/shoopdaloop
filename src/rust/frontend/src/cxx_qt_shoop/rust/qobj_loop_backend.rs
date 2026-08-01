@@ -99,6 +99,7 @@ impl LoopBackend {
             let mut rust_mut = self.as_mut().rust_mut();
             if backend_changed {
                 rust_mut.backend_loop = None;
+                rust_mut.sync_source_applied_session_id = None;
             }
             rust_mut.backend = backend;
         }
@@ -151,7 +152,11 @@ impl LoopBackend {
                 if current_session_id == loop_session_id {
                     return Ok(true);
                 }
-                self.as_mut().rust_mut().backend_loop = None;
+                {
+                    let mut rust_mut = self.as_mut().rust_mut();
+                    rust_mut.backend_loop = None;
+                    rust_mut.sync_source_applied_session_id = None;
+                }
                 self.as_mut().initialized_changed(false);
             }
 
@@ -187,7 +192,15 @@ impl LoopBackend {
                         let sync_source = *self.sync_source();
                         let length = self.as_ref().prev_state.length;
                         let position = self.as_ref().prev_state.position;
-                        self.as_mut().set_backend_sync_source(sync_source);
+                        let session_id = self
+                            .as_ref()
+                            .backend_loop
+                            .as_ref()
+                            .map(|loop_| loop_.session_id())
+                            .unwrap_or_default();
+                        if self.as_ref().sync_source_is_ready_for_session(session_id) {
+                            self.as_mut().set_backend_sync_source(sync_source);
+                        }
                         self.as_mut().set_length(length as i32);
                         self.as_mut().set_position(position as i32);
                     }
@@ -215,8 +228,22 @@ impl LoopBackend {
     }
 
     pub fn update(mut self: Pin<&mut LoopBackend>) {
-        if self.rust().backend_loop.is_none() {
+        if !self.as_mut().maybe_initialize_backend() {
             return;
+        }
+        let session_id = self
+            .as_ref()
+            .backend_loop
+            .as_ref()
+            .map(|loop_| loop_.session_id())
+            .unwrap_or_default();
+        if self.sync_source_applied_session_id != Some(session_id)
+            && self.as_ref().sync_source_is_ready_for_session(session_id)
+        {
+            let sync_source = self.sync_source;
+            unsafe {
+                self.as_mut().set_backend_sync_source(sync_source);
+            }
         }
 
         let result = || -> Result<(), anyhow::Error> {
@@ -536,8 +563,28 @@ impl LoopBackend {
         }
     }
 
-    unsafe fn set_backend_sync_source(self: Pin<&mut LoopBackend>, sync_source: *mut QObject) {
+    fn sync_source_is_ready_for_session(&self, session_id: u64) -> bool {
+        if self.sync_source.is_null() {
+            return true;
+        }
+        unsafe {
+            let loop_ptr = qobject_to_loop_backend_ptr(self.sync_source);
+            !loop_ptr.is_null()
+                && (&*loop_ptr)
+                    .rust()
+                    .backend_loop
+                    .as_ref()
+                    .is_some_and(|loop_| loop_.session_id() == session_id)
+        }
+    }
+
+    unsafe fn set_backend_sync_source(mut self: Pin<&mut LoopBackend>, sync_source: *mut QObject) {
         debug!(self, "set sync source -> {:?}", sync_source);
+        let session_id = self
+            .as_ref()
+            .backend_loop
+            .as_ref()
+            .map(|loop_| loop_.session_id());
         let result: Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
             if !sync_source.is_null() {
                 let loop_ptr = qobject_to_loop_backend_ptr(sync_source);
@@ -566,7 +613,9 @@ impl LoopBackend {
             Ok(())
         })();
         match result {
-            Ok(_) => (),
+            Ok(_) => {
+                self.as_mut().rust_mut().sync_source_applied_session_id = session_id;
+            }
             Err(err) => {
                 error!(self, "Failed to update backend sync source: {:?}", err);
             }
@@ -581,15 +630,27 @@ impl LoopBackend {
             std::ptr::null_mut()
         };
 
+        let old_source = self.sync_source;
+        let changed = old_source != sync_source_ptr;
+        if changed {
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.sync_source = sync_source_ptr;
+            rust_mut.sync_source_applied_session_id = None;
+        }
+
         if !self.as_mut().maybe_initialize_backend() {
             debug!(self, "set_sync_source -> {:?} (deferred)", sync_source_ptr);
         } else {
-            self.as_mut().set_backend_sync_source(sync_source_ptr);
+            let session_id = self
+                .as_ref()
+                .backend_loop
+                .as_ref()
+                .map(|loop_| loop_.session_id())
+                .unwrap_or_default();
+            if self.as_ref().sync_source_is_ready_for_session(session_id) {
+                self.as_mut().set_backend_sync_source(sync_source_ptr);
+            }
         }
-
-        let old_source = self.as_mut().rust_mut().sync_source;
-        let changed = old_source != sync_source_ptr;
-        self.as_mut().rust_mut().sync_source = sync_source_ptr;
 
         if changed {
             self.as_mut().sync_source_changed(sync_source_ptr);

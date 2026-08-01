@@ -2166,7 +2166,11 @@ impl BackendSession {
         let outcome = Arc::new(Mutex::new(None));
         let worker_outcome = Arc::clone(&outcome);
         thread::spawn(move || {
-            let result = match engine::wait_for_result(receiver, engine::DEFAULT_WAIT_TIMEOUT) {
+            // This wait runs on a reclamation worker, never on the GUI or realtime thread.
+            // Instrumented and packaged CI builds can take longer than the ordinary command
+            // fence while the frontend settles topology, so retain a bounded but generous
+            // transaction timeout here.
+            let result = match engine::wait_for_result(receiver, Duration::from_secs(5)) {
                 Ok(Ok(reclaimed)) => {
                     drop(reclaimed);
                     Ok(version)
@@ -3232,6 +3236,10 @@ pub struct CompositeLoop {
 }
 
 impl CompositeLoop {
+    pub fn identity_if_ready(&self) -> Option<engine::LoopIdentity> {
+        (self.lifecycle() == ObjectLifecycle::Ready).then(|| self.control.mirror.identity())
+    }
+
     pub fn identity(&self) -> engine::LoopIdentity {
         if self.lifecycle() == ObjectLifecycle::Pending {
             let _ = self
@@ -3356,6 +3364,15 @@ pub type LoopState = engine::LoopState;
 impl Loop {
     pub fn session_id(&self) -> u64 {
         self.control.session_id
+    }
+
+    pub fn identity_if_ready(&self) -> Option<engine::LoopIdentity> {
+        let index = self.control.ready_id().map(ObjectIdentity::index)?;
+        Some(engine::LoopIdentity {
+            slot: index as u32,
+            generation: 1,
+            kind: engine::LoopTargetKind::Basic,
+        })
     }
 
     pub fn identity(&self) -> engine::LoopIdentity {
@@ -3805,6 +3822,10 @@ pub struct MidiChannel {
 }
 pub type MidiChannelState = engine::MidiChannelState;
 impl MidiChannel {
+    pub fn session_id(&self) -> u64 {
+        self.control.session_id
+    }
+
     pub fn lifecycle(&self) -> ObjectLifecycle {
         observed_lifecycle(&self.shared, &self.control)
     }

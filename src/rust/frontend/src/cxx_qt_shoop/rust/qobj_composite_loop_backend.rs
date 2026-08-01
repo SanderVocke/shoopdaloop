@@ -73,7 +73,7 @@ unsafe fn engine_identity(obj: *mut QObject) -> Option<LoopIdentity> {
             .rust()
             .backend_loop
             .as_ref()
-            .map(|backend| backend.identity());
+            .and_then(|backend| backend.identity_if_ready());
     }
     let composite = qobject_to_composite_loop_backend_ptr(obj);
     if !composite.is_null() {
@@ -81,7 +81,7 @@ unsafe fn engine_identity(obj: *mut QObject) -> Option<LoopIdentity> {
             .rust()
             .engine_loop
             .as_ref()
-            .map(|backend| backend.identity());
+            .and_then(|backend| backend.identity_if_ready());
     }
     None
 }
@@ -93,14 +93,16 @@ unsafe fn engine_target(obj: *mut QObject) -> Option<(LoopIdentity, u64)> {
     let basic = qobject_to_loop_backend_ptr(obj);
     if !basic.is_null() {
         let backend = (&*basic).rust().backend_loop.as_ref()?;
+        let identity = backend.identity_if_ready()?;
         let length = backend.get_state().ok()?.length as u64;
-        return Some((backend.identity(), length));
+        return Some((identity, length));
     }
     let composite = qobject_to_composite_loop_backend_ptr(obj);
     if !composite.is_null() {
         let backend = (&*composite).rust().engine_loop.as_ref()?;
+        let identity = backend.identity_if_ready()?;
         let length = backend.get_state().ok()?.length;
-        return Some((backend.identity(), length));
+        return Some((identity, length));
     }
     None
 }
@@ -132,15 +134,18 @@ impl CompositeLoopBackend {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("engine composite is not initialized"))?
             .clone();
+        let composite_identity = composite
+            .identity_if_ready()
+            .ok_or_else(|| anyhow::anyhow!("engine composite creation is still pending"))?;
         let (sync_source, sync_length) = unsafe {
             engine_target(self.sync_source)
                 .ok_or_else(|| anyhow::anyhow!("composite sync source is not engine-backed"))?
         };
         let mut metadata = BTreeMap::new();
         metadata.insert(
-            composite.identity(),
+            composite_identity,
             LoopTargetMetadata {
-                identity: composite.identity(),
+                identity: composite_identity,
                 length_samples: self.length.max(0) as u64,
             },
         );
@@ -192,7 +197,7 @@ impl CompositeLoopBackend {
             }
         }
         let descriptor = CompositePlanDescriptor {
-            source: composite.identity(),
+            source: composite_identity,
             sync_length,
             timelines: vec![EngineCompositeTimeline {
                 sections: vec![CompositeSection { entries }],
@@ -381,7 +386,8 @@ impl CompositeLoopBackend {
             .engine_loop
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("engine composite is not initialized"))?
-            .identity();
+            .identity_if_ready()
+            .ok_or_else(|| anyhow::anyhow!("engine composite creation is still pending"))?;
         if !visited.insert(source) || self.sync_source.is_null() || self.sync_length <= 0 {
             return Ok(());
         }
@@ -617,7 +623,22 @@ impl CompositeLoopBackend {
 
     pub unsafe fn set_backend(mut self: Pin<&mut Self>, backend: *mut QObject) {
         debug!(self, "set backend -> {backend:?}");
-        if self.backend != backend {
+        let backend_changed = self.backend != backend;
+        let current_session = if backend.is_null() {
+            None
+        } else {
+            BackendWrapper::from_qobject_mut_ptr(backend)
+                .ok()
+                .and_then(|wrapper| wrapper.session.clone())
+        };
+        let current_session_id = current_session.as_ref().map(|session| session.session_id());
+        let installed_session_id = self
+            .backend_session
+            .as_ref()
+            .map(|session| session.session_id());
+        let session_changed = current_session_id != installed_session_id;
+
+        if backend_changed || session_changed {
             let was_initialized = self.initialized;
             {
                 let mut rust_mut = self.as_mut().rust_mut();
@@ -632,18 +653,16 @@ impl CompositeLoopBackend {
             if was_initialized {
                 self.as_mut().initialized_changed(false);
             }
-            self.as_mut().backend_changed(backend);
+            if backend_changed {
+                self.as_mut().backend_changed(backend);
+            }
         }
         if backend.is_null() || self.engine_loop.is_some() {
             return;
         }
         let result = || -> Result<(), anyhow::Error> {
-            let wrapper = BackendWrapper::from_qobject_mut_ptr(backend)?;
-            let session = wrapper
-                .session
-                .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("Backend session is null"))?
-                .clone();
+            let session =
+                current_session.ok_or_else(|| anyhow::anyhow!("Backend session is null"))?;
             let engine_loop = session.create_composite_loop()?;
             {
                 let mut rust_mut = self.as_mut().rust_mut();
@@ -793,6 +812,10 @@ impl CompositeLoopBackend {
     }
 
     pub fn update(mut self: Pin<&mut Self>) {
+        unsafe {
+            let backend = self.backend;
+            self.as_mut().set_backend(backend);
+        }
         if self.engine_loop.is_none() {
             return;
         }
