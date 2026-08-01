@@ -177,6 +177,7 @@ pub mod ffi {
     impl cxx_qt::Constructor<(), NewArguments = ()> for BackendWrapper {}
 }
 
+use common::tracing_helpers::TracyPlotter;
 pub use ffi::BackendWrapper;
 use ffi::*;
 
@@ -206,6 +207,9 @@ pub struct BackendWrapperRust {
     pub session: Option<BackendSession>,
     pub closed: bool,
     pub last_updated: Option<time::Instant>,
+    pub plotter_mode: TracyPlotter,
+    pub plotter_samples_requested: TracyPlotter,
+    pub plotter_samples_pending: TracyPlotter,
 }
 
 impl Default for BackendWrapperRust {
@@ -236,6 +240,9 @@ impl Default for BackendWrapperRust {
             session: None,
             closed: false,
             last_updated: None,
+            plotter_mode: TracyPlotter::new("mode"),
+            plotter_samples_requested: TracyPlotter::new("samples_requested"),
+            plotter_samples_pending: TracyPlotter::new("samples_pending"),
         }
     }
 }

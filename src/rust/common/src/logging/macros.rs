@@ -33,7 +33,7 @@ macro_rules! shoop_log_unit {
         pub(crate) const SHOOP_LOG_UNIT: &str = $name;
         #[ctor]
         fn init_logging() {
-            common::logging::register_log_module(SHOOP_LOG_UNIT);
+            $crate::logging::register_log_module(SHOOP_LOG_UNIT);
         }
     };
 }

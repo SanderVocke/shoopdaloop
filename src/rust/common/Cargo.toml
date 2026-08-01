@@ -8,11 +8,15 @@ edition = "2021"
 log = { workspace = true }
 colored = { workspace = true }
 humantime = { workspace = true }
-fern = { workspace = true, features = ["colored"] }
 lazy_static = { workspace = true }
 anyhow = { workspace = true }
 ctor = { workspace = true }
 walkdir = { workspace = true }
+tracing = { workspace = true }
+tracing-log = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-tracy = { workspace = true }
+tracy-client = { workspace = true }
 
 [lints]
 workspace = true

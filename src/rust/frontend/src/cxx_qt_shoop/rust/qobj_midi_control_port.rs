@@ -185,7 +185,13 @@ impl MidiControlPort {
 
             self.as_mut().opened();
             self.as_mut().autoconnect_update();
-            self.set_initialized(true);
+            self.as_mut().set_initialized(true);
+
+            if common::tracing_helpers::is_tracing_enabled() {
+                let mut rust_mut = self.as_mut().rust_mut();
+                let identifier = rust_mut.name.to_string();
+                rust_mut.plotter_initialized.plot(1.0, &identifier);
+            }
 
             Ok(())
         }() {
@@ -255,11 +261,21 @@ impl MidiControlPort {
         let mut rust_mut = self.as_mut().rust_mut();
 
         if rust_mut.send_rate_limit_hz == 0 {
-            while rust_mut.send_queue.len() > 0 {
+            while !rust_mut.send_queue.is_empty() {
                 do_send(&rust_mut.send_queue.remove(0), &mut rust_mut);
             }
-        } else if rust_mut.send_queue.len() > 0 {
+            if common::tracing_helpers::is_tracing_enabled() {
+                let identifier = rust_mut.name.to_string();
+                let len = rust_mut.send_queue.len() as f64;
+                rust_mut.plotter_send_queue_len.plot(len, &identifier);
+            }
+        } else if !rust_mut.send_queue.is_empty() {
             do_send(&rust_mut.send_queue.remove(0), &mut rust_mut);
+            if common::tracing_helpers::is_tracing_enabled() {
+                let identifier = rust_mut.name.to_string();
+                let len = rust_mut.send_queue.len() as f64;
+                rust_mut.plotter_send_queue_len.plot(len, &identifier);
+            }
             unsafe {
                 if let Err(e) = invoke::<_, (), _>(
                     &mut *self.send_timer,
@@ -276,6 +292,11 @@ impl MidiControlPort {
     pub fn queue_send_msg_impl(mut self: Pin<&mut MidiControlPort>, msg: Vec<u8>) {
         let mut rust_mut = self.as_mut().rust_mut();
         rust_mut.send_queue.push(msg);
+        if common::tracing_helpers::is_tracing_enabled() {
+            let identifier = rust_mut.name.to_string();
+            let len = rust_mut.send_queue.len() as f64;
+            rust_mut.plotter_send_queue_len.plot(len, &identifier);
+        }
         if rust_mut.send_rate_limit_hz > 0 {
             unsafe {
                 if let Err(e) = invoke::<_, (), _>(
@@ -359,6 +380,11 @@ impl MidiControlPort {
             rust_mut.active_notes.remove(&(channel(msg), note(msg)));
         } else if is_cc(msg) {
             rust_mut.cc_states[channel(msg) as usize][note(msg) as usize] = Some(msg[2]);
+        }
+        if common::tracing_helpers::is_tracing_enabled() {
+            let identifier = rust_mut.name.to_string();
+            let len = rust_mut.active_notes.len() as f64;
+            rust_mut.plotter_n_active_notes.plot(len, &identifier);
         }
         let mut list: QList<u8> = QList::default();
         for byte in msg {

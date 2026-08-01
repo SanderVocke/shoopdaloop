@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use common::logging::macros::*;
+use common::tracing_helpers::TracyPlotter;
 use shoop_engine::app_backend::DecoupledMidiPort;
 use shoop_engine::PortDataType;
 shoop_log_unit!("Frontend.MidiControlPort");
@@ -186,6 +187,9 @@ pub struct MidiControlPortRust {
     pub active_notes: HashSet<(u8, u8)>,
     pub cc_states: Vec<Vec<Option<u8>>>,
     pub autoconnecters: Vec<cxx::UniquePtr<AutoConnect>>,
+    pub plotter_initialized: TracyPlotter,
+    pub plotter_n_active_notes: TracyPlotter,
+    pub plotter_send_queue_len: TracyPlotter,
 }
 
 impl Default for MidiControlPortRust {
@@ -209,6 +213,9 @@ impl Default for MidiControlPortRust {
             )),
             autoconnecters: Vec::new(),
             data_type: PortDataType::Midi as i32,
+            plotter_initialized: TracyPlotter::new("initialized"),
+            plotter_n_active_notes: TracyPlotter::new("n_active_notes"),
+            plotter_send_queue_len: TracyPlotter::new("send_queue_len"),
         }
     }
 }

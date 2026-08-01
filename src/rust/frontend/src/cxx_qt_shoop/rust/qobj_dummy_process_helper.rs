@@ -4,6 +4,7 @@ use std::thread;
 use std::time::Duration;
 
 use common::logging::macros::*;
+use cxx_qt::CxxQtType;
 shoop_log_unit!("Frontend.DummyProcessHelper");
 
 use crate::cxx_qt_shoop::qobj_dummy_process_helper_bridge::ffi::*;
@@ -24,6 +25,15 @@ impl DummyProcessHelper {
         let wait_interval = self.wait_interval().clone();
         let n_iters = self.n_iters().clone();
         let samples_per_iter = self.samples_per_iter().clone();
+
+        if common::tracing_helpers::is_tracing_enabled() {
+            let mut rust = self.as_mut().rust_mut();
+            rust.plotter_active.plot(1.0, "DummyProcessHelper");
+            rust.plotter_n_iters
+                .plot(n_iters as f64, "DummyProcessHelper");
+            rust.plotter_samples_per_iter
+                .plot(samples_per_iter as f64, "DummyProcessHelper");
+        }
 
         debug!("Starting dummy process helper with {} iterations, {} samples per iteration, wait start {}s, wait interval {}s", n_iters, samples_per_iter, wait_start, wait_interval);
 
@@ -61,8 +71,17 @@ impl DummyProcessHelper {
             }
 
             thread::sleep(Duration::from_secs_f32(wait_start));
-            for _ in 0..n_iters {
+            for iteration in 0..n_iters {
                 unsafe {
+                    if common::tracing_helpers::is_tracing_enabled() {
+                        let helper_ptr: *mut DummyProcessHelper = self_thread_ptr.cast();
+                        if let Some(helper) = helper_ptr.as_mut() {
+                            Pin::new_unchecked(helper)
+                                .rust_mut()
+                                .plotter_iteration
+                                .plot(iteration as f64, "DummyProcessHelper");
+                        }
+                    }
                     debug!("requesting {} frames", samples_per_iter);
                     if let Some(backend) = backend_thread_ptr.as_mut() {
                         if let Err(e) = invokable::invoke::<_, (), _>(
@@ -116,8 +135,14 @@ impl DummyProcessHelper {
         });
     }
 
-    pub fn finish(self: Pin<&mut Self>) {
+    pub fn finish(mut self: Pin<&mut Self>) {
         debug!("Finished processing");
+        if common::tracing_helpers::is_tracing_enabled() {
+            self.as_mut()
+                .rust_mut()
+                .plotter_active
+                .plot(0.0, "DummyProcessHelper");
+        }
         self.set_active(false);
     }
 }

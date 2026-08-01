@@ -2,6 +2,7 @@
 
 pub mod env;
 pub mod logging;
+pub mod tracing_helpers;
 pub mod util;
 use anyhow::Context;
 

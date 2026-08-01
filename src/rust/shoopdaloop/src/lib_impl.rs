@@ -360,6 +360,10 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
         }
     };
 
+    if cli_args.developer_options.tracing {
+        common::tracing_helpers::set_tracing_enabled(true);
+    }
+
     shoop_engine::realtime_alloc_guard::set_enabled(cli_args.developer_options.rt_alloc_guard);
     if cli_args.developer_options.rt_alloc_guard {
         info!("Realtime allocation guard enabled for top-level process calls");
