@@ -1,155 +1,69 @@
-# Engine rework: status
+# Engine control boundary
 
-Converging `shoop_engine`'s two control/audio-thread boundaries onto one. Background, the
-original plan and the reasoning behind it are in `DEAD_STACK_B.md`; this file records where
-the work stands.
+Last updated 2026-08-01.
 
-Last updated 2026-07-31.
+## Current contract
 
-## Where things are
+The application-facing engine boundary uses three separate mechanisms with intentionally different semantics:
 
-| Step | State |
-|---|---|
-| 1 — fold `DummyDriver` into the live dummy driver | ✅ pushed |
-| 2 — delete `driver.rs`'s dead trait layer | ✅ pushed |
-| 3 — move the graph rebuild off both threads | ✅ pushed |
-| 4 — grow the published snapshot, add `Engine::pump` | ✅ pushed |
-| 5 — swap the boundary | ⚠️ working, 6 test failures left, **not pushed** |
+1. **Per-object state mirrors** for ordinary reads.
+2. **Sequenced fire-and-forget commands** for mutations.
+3. **Pending stable controls** for asynchronously created objects.
 
-Steps 1–4 are on `rust_backend_nick` as commit `d14d699`, merged and pushed (`bbcc066`).
+Ordinary polling does not wait for an audio cycle, query the process thread, or require a globally consistent graph snapshot. A read may observe independently updated fields from nearby process points. Code that requires exact read-after-write ordering must use an explicit `CommandSequence` fence.
 
-Step 5 is on branch **`rust_backend_nick_stack_b_swap`**, three commits on top of `bbcc066`:
+## State mirrors
 
-- `baaa252` — the swap itself, committed as a debugging baseline while it still segfaulted.
-- `650f6d2` — four defects (lock convoy, scheduler spin, wait latency, unpublished snapshots).
-- `b14dcc1` — the segfault, read-after-write staleness, and `wait_process` not draining.
+Loops, audio/MIDI channels, and audio/MIDI ports each own an `Arc` mirror shared with their application handle.
 
-## Verification
+- Scalar fields use atomics.
+- Floating-point fields use their `f32` bit representation in `AtomicU32`.
+- Peaks use process-side atomic max and frontend-side `swap(0)` consumption.
+- Event counters use atomic accumulation and frontend-side `swap(0)` consumption.
+- Gauges such as active notes use ordinary atomic loads.
+- Channel data-dirty state compares a process-published content sequence with a frontend-owned acknowledgement sequence.
+- User-facing scalar setters write the accepted desired value into the same atomic mirror after queue admission. This prevents asynchronous initialization/save flows from reverting to an older published value; the process side republishes the authoritative value when the command executes.
 
-| Gate | Before step 5 | Now |
-|---|---|---|
-| `cargo test -p shoop_engine --features app_backend` | 675 / 0 | **674 / 0** |
-| real-JACK tests, `jackd` running, no skip flag | 4 / 4 | **4 / 4** |
-| QML `--self-test` | 186 pass / 1 skip | **180 pass / 6 fail / 1 skip** |
-| QML wall time | ~13 min | **~3.5 min** |
+The former bulk object snapshot queues and global queued-cycle trust mechanism have been removed. Engine-wide counters and graph-staleness atomics remain because they are independently useful and are not object-state snapshots.
 
-The one skip is `CpalPorts` — no audio device in this sandbox. Three `midir_driver` tests
-fail locally without `SHOOP_ALLOW_MISSING_BACKENDS=1` because there is no ALSA sequencer;
-pre-existing and unrelated.
+## Commands and barriers
 
-The test count drops by one because `tests/control.rs` went from 15 tests to 14 when it was
-re-pointed at `app_backend`: `asking_for_a_loop_that_is_not_there_fails` tested `control.rs`'s
-`loop_at`, which has no counterpart in the live API. The behaviour underneath it is covered by
-`session.rs`'s own tests.
+Application mutations enqueue a boxed command and return `Result<CommandSequence, SendError>`.
 
-## What step 5 actually changed
+- Queue admission failure is never silently discarded.
+- A full queue logs a warning and retries after space becomes available; parked engines are pumped so retry does not deadlock before driver activation.
+- Payload ownership is preserved across retries.
+- Commands execute FIFO.
+- Scalar commands do not arm graph rebuilding; topology commands do.
+- Process-side operation errors are logged or published asynchronously where no operation-status object exists yet.
 
-`SharedSession` no longer holds a `Mutex<Session>`. It holds an `EngineHandle` behind a mutex
-that no audio thread ever waits on, plus the `Engine` itself while no driver has claimed it.
-There are **zero** session-lock sites left in `app_backend.rs`; the JACK callback, the CPAL
-output callback and the dummy driver thread each own the engine outright while running.
+`wait_for_command` is an explicit barrier for tests and workflows that truly require exact ordering. The graph scheduler also retains named response waits for topology description and prepared-schedule ownership transfer. These exceptional paths must not be used by periodic polling.
 
-The 26 former lock sites became three primitives on `SharedSession`:
+## Pending object controls
 
-- `send` — queue a mutation, arm the scheduler.
-- `query` — queue and wait; ordered behind everything already queued, so a read always sees
-  the writes before it.
-- `poll` — read the newest published snapshot, for the 40 Hz update path.
+Loop, channel, and session-port handles contain a typed `Arc<ObjectControl<Id, Mirror>>` with:
 
-`control.rs` is deleted. Its method bodies were moved into `app_backend`'s handles, which is
-why the plan kept it until last: it was the conversion template, not dead weight to clear
-first. `tests/control.rs` now drives `app_backend::BackendSession` through a dummy
-`AudioDriver`, so its 14 assertions hold on the path the application takes.
+- session identity;
+- lifecycle (`Pending`, `Ready`, `Failed`, or `Closed`);
+- atomically published engine identity;
+- creation command sequence;
+- asynchronous error text;
+- the per-object mirror.
 
-## Seven defects found while getting it working
+Creation returns after successful enqueue, before an arena index exists. Follow-up commands capture controls and resolve identities only when they execute, so configuration and connections can be queued immediately in FIFO order. Cross-session relationships are rejected. Dropping an otherwise unreferenced pending handle cancels creation through the command's weak reference.
 
-None of these presented as a failure at the point of the mistake, which is the theme.
+JACK registration records retain the same audio/MIDI port control. Callbacks resolve the index only when the control is `Ready`; unresolved, failed, and closed registrations are ignored safely. Decoupled MIDI ports remain on their own stable `PortId` path because they do not belong to the session arena.
 
-1. **Lock convoy.** `send_and_wait` was called while holding the mutex guarding the handle, so
-   every control operation queued behind a full round trip to the audio thread. With the
-   scheduler describing the topology on its own thread this starved the GUI thread
-   continuously. Split into `EngineHandle::send_for_result` (needs the handle) and the free
-   function `wait_for_result` (cannot take it), so the mutex is released before waiting.
-   `control.rs` had the identical flaw, never exercised under contention.
+## Complex data and external connections
 
-2. **Scheduler round-trip spin.** Every armed window asked the audio thread whether the graph
-   was stale — ~90 blocking round trips a second, almost always answered "nothing to do",
-   keeping the command queue permanently busy. The engine now publishes `Stats::graph_stale`.
-   A `true` reading is trusted at once; a `false` only when the command queue is also empty,
-   which closes the race where a queued-but-unapplied mutation would be missed with nothing
-   left to arm another window.
+Audio/MIDI channel content and dummy output capture currently use temporary mutex-backed shared stores. This removes cycle rendezvous from getters but is not the final realtime design: process-side locking, allocation, and full-content copying remain. Detailed risks and future directions are tracked in `REMAINING_ISSUES.md`.
 
-3. **A 1 ms sleep in the result wait.** Harmless while nothing outside the tests used
-   `send_and_wait`; a 1 ms floor per read once every control read became a round trip. Now
-   yields for a short budget before falling back to sleeping.
+External connection state is cached. Session-backed ports register requests in one cache; at a controlled cadence a worker takes one backend lock, bulk-enumerates the requested ports, and publishes replacement maps. Cache generations prevent stale workers from overwriting explicit mutations. The engine-update thread forwards cached maps to GUI objects asynchronously. GUI connection getters read local cached state rather than entering the backend thread through a blocking Qt call. User-triggered connect/disconnect remains a separate synchronous operation and optimistically updates local cache state.
 
-4. **Snapshots were never published.** All three drivers called `session_mut().process(n)`
-   rather than `Engine::run_cycle(n)`, so the counters were never updated and no state snapshot
-   was ever published. Every `poll_state` therefore returned `None` and every reader silently
-   fell back to a blocking round trip — step 4's snapshot work was dead on arrival, with no
-   symptom other than the application being inexplicably slow. `Engine::run_cycle` now exists
-   so a driver can stage buffers between applying control work and running the cycle without
-   reaching past the engine, and its doc comment names the trap.
+## FX chains
 
-5. **The segfault.** With a driver owning the engine, the engine owns the session — so when the
-   dummy driver's thread ended it destroyed the session *on that thread*. A session holding
-   Carla LV2 hosts does not survive its plugin instances being torn down off the thread that
-   created them, which is why this surfaced as a crash at a test-file boundary rather than
-   anywhere near the cause. Ownership was transferable but not returnable; the thread now hands
-   the engine back through `SharedSession::return_engine` before exiting. That also stops the
-   session becoming unreachable to anything outliving the driver.
+FX chain ports are created once when the chain is created, retained as pending handles, and cloned by getters. Repeated getters do not mutate topology. Audio input/output and MIDI input/output capabilities are counted separately. Driver sample rate and buffer size are atomically published for plugin creation rather than queried from the process thread.
 
-6. **Read-after-write against a snapshot.** A queued setter followed by a snapshot read returned
-   the value from before the set. `SharedSession` now records the cycle at which the most recent
-   mutation was queued, and `poll` only trusts a snapshot whose `cycle` is past it — otherwise
-   it reports nothing and the caller asks the engine directly. This one accounted for 84 QML
-   failures, including `verify_loop_cleared` seeing a loop it had just cleared still playing at
-   its old length.
+## Verification and deferred work
 
-7. **"Settled" did not include control work.** `AudioDriver::wait_process` flushed the graph but
-   not the command queue, so a caller that configured something and then advanced the driver by
-   an exact number of frames ran those frames against the old configuration. It now drains the
-   queue first.
-
-Also fixed along the way: `FXChain::make_audio_port` / `make_midi_port` used `.unwrap_or(0)` as
-the failure fallback for a port index, silently aliasing port 0 and handing back a handle to
-someone else's port. They return `Option` now — a missing port is visible, a wrong one is not.
-
-## What is left
-
-Six failures, all in one group: `test_grab_ringbuffer_*` (two in `CompositeLoop_running`, four
-in `ThreeLoops`).
-
-These are wrong values, not crashes or hangs. The adoption runs but computes the wrong window:
-length 1000 where 200 is expected, position 0 where 50 is expected.
-
-Ruled out: write-visibility on `set_ringbuffer_n_samples` and `dummy_queue_data` — making both
-blocking changed nothing.
-
-Current read of it: the fault is in the grab's *inputs* rather than its writes. `on_grab_clicked`
-derives its cycle count from the GUI-side sync-loop length and position, and a wrong cycle count
-would produce exactly this shape. That is the same read-after-write family as defect 6 but on
-the QML side, so tracing it means going into the grab logic in `qobj_loop_gui` and the QML rather
-than the engine boundary.
-
-Two caveats worth carrying forward:
-
-- `test_grab_ringbuffer_no_play` passed when run in isolation but failed in the full suite, so
-  there is residual order sensitivity in this group beyond the wrong-window problem.
-- The real-JACK gate has not been re-run since `650f6d2` and `b14dcc1`. The full Rust suite has,
-  and it includes those four tests and passed — but they have not been run on their own against
-  a live `jackd` since those commits.
-
-## Notes for picking this up
-
-Local test setup for this sandbox — writable `CARGO_HOME`, the in-repo Qt, and `jackd` — is
-recorded in the project memory under "Running tests in the bwrap sandbox". Two things learned
-while debugging step 5 that are not there:
-
-- `ptrace` is blocked, so `gdb` cannot attach. Thread states are still readable from
-  `/proc/<pid>/task/*/{comm,wchan,stat}`, and the wrapper `shoopdaloop_dev.sh` is a shell script
-  — find the real process with `pgrep -x shoopdaloop`, not by matching the script name.
-- A single QML test file is selected with `--self-test -f "$PWD/src/qml/test/tst_Foo.qml"`. The
-  argument is a full glob path, not a bare filename; a bare name silently matches nothing and
-  reports a pass over zero testcases. `--filter` narrows by testcase name and is what makes the
-  feedback loop seconds instead of minutes.
+`PLAN.md` records the staged implementation and verification gates. `API_INVENTORY.md` records the audited API surface. `REMAINING_ISSUES.md` is the authoritative list of temporary mutexes, process-thread allocations/copies, exceptional waits, lifecycle/removal gaps, and environment-limited tests.

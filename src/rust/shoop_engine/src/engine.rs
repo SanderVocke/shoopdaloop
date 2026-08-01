@@ -363,6 +363,14 @@ fn wait_until<T>(
 }
 
 impl EngineHandle {
+    pub fn is_connected(&self) -> bool {
+        self.alive.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn connected_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.alive)
+    }
+
     pub fn stats(&self) -> &Arc<Stats> {
         &self.stats
     }

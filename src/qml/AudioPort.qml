@@ -4,7 +4,19 @@ import QtQuick 6.6
 ShoopRustPortGui {
     id: root
     property var descriptor : null
-    property bool loaded : initialized
+    property bool descriptor_applied: false
+    property bool loaded : initialized && descriptor_applied
+    onInitializedChanged: {
+        if (initialized && !descriptor_applied) {
+            Qt.callLater(() => {
+                push_all()
+                descriptor_applied = true
+                // Track controls react to loaded ports on the same turn. Reassert the
+                // persisted port state on the following turn so session restoration wins.
+                Qt.callLater(root.push_all)
+            })
+        }
+    }
     onLoadedChanged: root.logger.debug(`${obj_id}: loaded -> ${loaded}`)
     property var logger : ShoopRustLogger {
         name: "Frontend.Qml.AudioPort"

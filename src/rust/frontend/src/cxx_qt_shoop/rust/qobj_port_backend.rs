@@ -74,6 +74,7 @@ impl PortBackend {
                     prev_state.clone()
                 }
             };
+            let connections_raw = port.get_connections_state();
 
             {
                 let mut rust_mut = self.as_mut().rust_mut();
@@ -101,7 +102,10 @@ impl PortBackend {
 
             // Connection enumeration is refreshed asynchronously in the backend cache;
             // this only forwards the latest immutable result to the GUI thread.
-            let connections = self.as_mut().get_connections_state();
+            let mut connections = QMap_QString_QVariant::default();
+            for (name, connected) in connections_raw {
+                connections.insert(QString::from(&name), QVariant::from(&connected));
+            }
             unsafe {
                 self.as_mut().connections_state_changed(connections);
             }

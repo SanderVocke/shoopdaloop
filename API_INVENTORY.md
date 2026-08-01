@@ -32,22 +32,30 @@ The target suite's only failures are environmental and match the known sandbox l
 - `ObjectControl<I, M>` provides typed identity, backend-session identity, lifecycle, creation sequence, failure text, and an `Arc` state mirror.
 - Lifecycle starts `Pending` with an invalid index. Creation stores the typed index, then publishes `Ready` with release ordering; readers acquire lifecycle before loading identity. `Failed` publishes error text before the release store. `Closed` makes identity unavailable. Dependent commands only resolve `Ready` identities, so pending/failed/closed targets cannot alias index zero.
 - A pending handle dropped before any dependent command exists cancels creation through a weak command reference. A dependent queued command intentionally keeps the control alive until FIFO work drains. Dropping a ready handle does not yet remove the engine object because the application API has no loop-removal lifecycle; that remains a separate ownership/removal design concern.
-- `LoopStateMirror` publishes mode, length, position, next mode, and next delay through independent relaxed atomics. `Loop::get_state` and `poll_state` read only this mirror; `Pending` polls return `None` and direct reads return an immediate error.
+- `LoopStateMirror` publishes mode, length, position, next mode, and next delay through independent relaxed atomics. `Loop::get_state` and `poll_state` read only this mirror; `Pending` polls return `None` and direct reads return the immediate mirror.
 - Loop creation returns after queue admission and all loop commands resolve the pending control in FIFO order. Loop relationships reject backend-session mismatches.
 - Ringbuffer adoption is now enqueue-only and reports execution failure from the process side.
 - Verification: the serialized warning-clean engine gate passes 550 library tests plus all engine integration, live-JACK, and no-allocation tests. Parallel Carla/JUCE teardown remains intermittently unsafe as documented.
+
+### Final verification
+
+- `SHOOP_ALLOW_MISSING_BACKENDS=1 RUSTFLAGS='-D warnings' cargo test --workspace --features shoop_engine/app_backend -- --test-threads=1` passes, including 557 `shoop_engine` library tests, all integration/no-allocation tests, and 4 live-JACK tests.
+- The warning-clean workspace build passes.
+- `SHOOP_ALLOW_MISSING_BACKENDS=1 target/debug/shoopdaloop_dev.sh --self-test` passes with 188 passed, 0 failed, and the expected CPAL environment skip.
+- Explicit user connection mutations update their local published cache immediately; periodic connection polling remains asynchronous and generation-guards stale workers.
 
 ## Boundary primitives
 
 | Primitive | Current role | Target category |
 |---|---|---|
-| `SharedSession::send` | Queues any mutation, silently ignores queue failure, arms graph scheduler unconditionally | Nonblocking typed enqueue returning `Result<CommandSequence, SendError>`; topology effect explicit |
-| `SharedSession::send_inner` | Queues without graph scheduling, silently ignores queue failure | Internal non-topology enqueue with the same lossless result contract |
-| `SharedSession::query` | Queues and waits; also used for creation and mutations needing an error | Exceptional explicit response only |
-| `SharedSession::query_inner` | Scheduler responses and parked-engine direct access | Exceptional scheduler/diagnostic response only |
+| `SharedSession::send_control` | Sequenced control mutation; retries explicit full-queue pressure without losing payloads | Normal fire-and-forget command |
+| `SharedSession::send_topology` | Sequenced topology mutation plus graph-scheduler arm | Topology-changing fire-and-forget command |
+| `wait_for_command` / driver `wait_process` | Explicit exact-order fence used by tests and exact workflows | Exceptional visible barrier only |
+| `query_graph_scheduler_response` | Graph describe/install response path | Named scheduler exception |
+| `query_for_test` / `query_topology_for_test` | Test-only exact inspection | Test-only exception |
 | Former bulk polling helper | Removed in Phase 7 after all object mirrors were live | Per-object immediate mirror reads |
 | `SharedSession::drain_queue` | Blocking control barrier used by driver tests/control | Keep as an explicit barrier, not an ordinary API read |
-| `EngineHandle::send` | Bounded nonblocking queue; returns `Result<(), SendError>` but loses rejected command ownership through mapping | Sequenced, lossless nonblocking enqueue |
+| `EngineHandle::send` | Bounded sequenced enqueue returning `Result<CommandSequence, SendError>`; reservation/retry preserves rejected payload ownership | Sequenced, lossless nonblocking enqueue (complete) |
 | `EngineHandle::send_for_result` / `wait_for_result` | Exceptional command-response path | Retain narrowly and inventory every caller |
 | Former bulk object publication | Removed in Phase 7 | Per-object mirrors plus engine stats atomics |
 
@@ -173,14 +181,13 @@ The target suite's only failures are environmental and match the known sandbox l
 - Graph-current assertions and exact ordering checks in tests.
 - Driver `wait_process` queue drain and graph flush.
 - Plugin configuration/state serialization where the plugin host owns the data.
-- Any complex getter not yet converted to the temporary mutex-backed design.
 
-Each remaining caller must be re-audited in Phase 7. Ordinary state and object construction are not valid reasons to remain on this list.
+Each remaining caller was re-audited in Phase 7. Ordinary state and object construction are not valid reasons for a response wait.
 
 ## Verification hooks
 
 - An active engine that is deliberately not cycled makes any accidental `query` take the response timeout; mirror and pending-handle tests can prove they return promptly without relying only on wall-clock behavior in normal cycles.
 - `EngineHandle::stats().commands_applied` and the command queue's pending count expose command progress for ordering tests.
-- `CommandSequence` and the applied-sequence atomic added in Phase 1 will provide exact FIFO/fence evidence.
+- `CommandSequence` and the applied-sequence atomic provide exact FIFO/fence evidence.
 - Repository-wide searches for `query`, snapshot fields, `None => get_state`, and blocking Qt connection types are required gates in Phase 7.
 - Buffer-size integration tests provide end-to-end evidence that API latency no longer tracks cycle duration.

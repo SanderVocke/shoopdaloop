@@ -1244,9 +1244,16 @@ impl Session {
                     .map(|a| a.passthrough_muted())
                     .unwrap_or(false);
                 let (gain, muted) = (target.0, target.1 || fx_passthrough_muted);
-                let output = self.ports[out_idx].buffer(n_frames);
-                for (o, s) in output.iter_mut().zip(&self.scratch[..n_frames]) {
-                    *o += if muted { 0.0 } else { *s * gain };
+                for sample in &mut self.scratch[..n_frames] {
+                    *sample = if muted { 0.0 } else { *sample * gain };
+                }
+                if let Some(output) = self.ports[out_idx].as_external_mut() {
+                    output.add_late_output(&self.scratch[..n_frames]);
+                } else {
+                    let output = self.ports[out_idx].buffer(n_frames);
+                    for (output, sample) in output.iter_mut().zip(&self.scratch[..n_frames]) {
+                        *output += *sample;
+                    }
                 }
             }
 
@@ -1288,19 +1295,30 @@ impl Session {
                         .map(|a| a.passthrough_muted())
                         .unwrap_or(false);
                     let (gain, muted) = (target.0, target.1 || fx_passthrough_muted);
-                    let output = self.ports[out_idx].buffer(n_frames);
+                    if self.scratch.len() < n_frames {
+                        self.scratch.resize(n_frames, 0.0);
+                    }
+                    self.scratch[..n_frames].fill(0.0);
                     for e in events.iter() {
                         let t = e.time as usize;
-                        if t < output.len()
+                        if t < n_frames
                             && e.data().len() >= 3
                             && (e.data()[0] & 0xf0) == 0x90
                             && e.data()[2] > 0
                         {
-                            output[t] += if muted {
+                            self.scratch[t] += if muted {
                                 0.0
                             } else {
                                 (e.data()[2] as f32 / 255.0) * gain
                             };
+                        }
+                    }
+                    if let Some(output) = self.ports[out_idx].as_external_mut() {
+                        output.add_late_output(&self.scratch[..n_frames]);
+                    } else {
+                        let output = self.ports[out_idx].buffer(n_frames);
+                        for (output, sample) in output.iter_mut().zip(&self.scratch[..n_frames]) {
+                            *output += *sample;
                         }
                     }
                 }
@@ -1382,9 +1400,21 @@ impl Session {
                 let Some(src) = host.audio_output(idx) else {
                     continue;
                 };
-                let output = self.ports[out_idx].buffer(n_frames);
-                for (o, s) in output.iter_mut().zip(src.iter().copied()) {
-                    *o += if muted { 0.0 } else { s * gain };
+                if self.scratch.len() < n_frames {
+                    self.scratch.resize(n_frames, 0.0);
+                }
+                self.scratch[..n_frames].fill(0.0);
+                for (output, sample) in self.scratch[..n_frames].iter_mut().zip(src.iter().copied())
+                {
+                    *output = if muted { 0.0 } else { sample * gain };
+                }
+                if let Some(output) = self.ports[out_idx].as_external_mut() {
+                    output.add_late_output(&self.scratch[..n_frames]);
+                } else {
+                    let output = self.ports[out_idx].buffer(n_frames);
+                    for (output, sample) in output.iter_mut().zip(&self.scratch[..n_frames]) {
+                        *output += *sample;
+                    }
                 }
             }
         }
@@ -1418,6 +1448,9 @@ impl Session {
                 let Some(ch) = l.midi_channel(m.channel_idx) else {
                     continue;
                 };
+                if ch.contents_were_loaded() {
+                    continue;
+                }
                 let already_has_output = self.ports[out_port].as_external_midi().is_some_and(|p| {
                     p.outgoing().iter().any(|e| {
                         let d = e.data();
@@ -1571,6 +1604,17 @@ impl Session {
                 let input = self.ports[in_idx].buffer(n_frames);
                 for i in 0..n_frames {
                     self.scratch[i] += input.get(i).copied().unwrap_or(0.0) * 0.5;
+                }
+            }
+            // Recording dry into a wet channel must still feed the test FX when
+            // monitoring has muted the ordinary dry-to-FX passthrough route.
+            if self.scratch[..n_frames].iter().all(|sample| *sample == 0.0) {
+                let dry_name = format!("{title}_audio_dry_in_{}", idx + 1);
+                if let Some(dry_idx) = self.ports.iter().position(|p| p.name() == dry_name) {
+                    let input = self.ports[dry_idx].buffer(n_frames);
+                    for i in 0..n_frames {
+                        self.scratch[i] += input.get(i).copied().unwrap_or(0.0) * 0.5;
+                    }
                 }
             }
             let rerecording = self

@@ -51,6 +51,20 @@ impl LoopStateMirror {
         );
     }
 
+    pub fn set_mode(&self, mode: LoopMode) {
+        self.mode.store(mode as i32, Ordering::Relaxed);
+        self.next_mode.store(NO_MODE, Ordering::Relaxed);
+        self.next_delay.store(NO_DELAY, Ordering::Relaxed);
+    }
+
+    pub fn set_length(&self, length: u32) {
+        self.length.store(length, Ordering::Relaxed);
+    }
+
+    pub fn set_position(&self, position: u32) {
+        self.position.store(position, Ordering::Relaxed);
+    }
+
     pub fn read(&self) -> LoopState {
         let next_mode = self.next_mode.load(Ordering::Relaxed);
         let next_delay = self.next_delay.load(Ordering::Relaxed);
@@ -125,6 +139,22 @@ impl AudioChannelStateMirror {
         self.n_preplay_samples
             .store(n_preplay_samples, Ordering::Relaxed);
         self.data_sequence.store(data_sequence, Ordering::Relaxed);
+    }
+
+    pub fn set_gain(&self, gain: f32) {
+        self.gain.store(gain.to_bits(), Ordering::Relaxed);
+    }
+
+    pub fn set_mode(&self, mode: ChannelMode) {
+        self.mode.store(mode as i32, Ordering::Relaxed);
+    }
+
+    pub fn set_start_offset(&self, offset: i32) {
+        self.start_offset.store(offset, Ordering::Relaxed);
+    }
+
+    pub fn set_n_preplay_samples(&self, samples: u32) {
+        self.n_preplay_samples.store(samples, Ordering::Relaxed);
     }
 
     pub fn publish_output_peak(&self, peak: f32) {
@@ -238,6 +268,18 @@ impl MidiChannelStateMirror {
         self.data_sequence.store(data_sequence, Ordering::Relaxed);
     }
 
+    pub fn set_mode(&self, mode: ChannelMode) {
+        self.mode.store(mode as i32, Ordering::Relaxed);
+    }
+
+    pub fn set_start_offset(&self, offset: i32) {
+        self.start_offset.store(offset, Ordering::Relaxed);
+    }
+
+    pub fn set_n_preplay_samples(&self, samples: u32) {
+        self.n_preplay_samples.store(samples, Ordering::Relaxed);
+    }
+
     pub fn record_triggered_event(&self) {
         self.n_events_triggered.fetch_add(1, Ordering::Relaxed);
     }
@@ -305,6 +347,22 @@ impl AudioPortStateMirror {
             .store(ring as u32, Ordering::Relaxed);
     }
 
+    pub fn set_gain(&self, gain: f32) {
+        self.gain.store(gain.to_bits(), Ordering::Relaxed);
+    }
+
+    pub fn set_muted(&self, muted: bool) {
+        self.muted.store(muted, Ordering::Relaxed);
+    }
+
+    pub fn set_passthrough_muted(&self, muted: bool) {
+        self.passthrough_muted.store(muted, Ordering::Relaxed);
+    }
+
+    pub fn set_ringbuffer_n_samples(&self, samples: u32) {
+        self.ringbuffer_n_samples.store(samples, Ordering::Relaxed);
+    }
+
     pub fn publish_peaks(&self, input: f32, output: f32) {
         atomic_max_f32(&self.input_peak, input);
         atomic_max_f32(&self.output_peak, output);
@@ -351,6 +409,18 @@ impl MidiPortStateMirror {
         self.passthrough_muted
             .store(passthrough_muted, Ordering::Relaxed);
         self.ringbuffer_n_samples.store(ring, Ordering::Relaxed);
+    }
+
+    pub fn set_muted(&self, muted: bool) {
+        self.muted.store(muted, Ordering::Relaxed);
+    }
+
+    pub fn set_passthrough_muted(&self, muted: bool) {
+        self.passthrough_muted.store(muted, Ordering::Relaxed);
+    }
+
+    pub fn set_ringbuffer_n_samples(&self, samples: u32) {
+        self.ringbuffer_n_samples.store(samples, Ordering::Relaxed);
     }
 
     pub fn record_events(&self, input: u32, output: u32) {

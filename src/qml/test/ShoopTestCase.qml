@@ -239,6 +239,13 @@ Item {
 
     function wait_session_loaded(session) {
         wait_condition(() => session.loaded, 10000, `session not loaded in time`)
+        // Session construction is intentionally asynchronous. Tests that inspect an
+        // exact restored descriptor need an explicit command/graph fence and one GUI
+        // update rather than relying on ordinary stale mirror polling.
+        if (session.backend) {
+            session.backend.wait_process()
+            wait_updated(session.backend)
+        }
     }
 
     function wait_session_io_done() {

@@ -196,10 +196,13 @@ Item {
             throw new Error("Failed to create temporary folder")
         }
         var session_filename = tempdir + '/session.json'
+        // Capture scalar/UI state at the call site. Deferring this until the I/O task is
+        // activated lets queued backend notifications change the descriptor between the
+        // user's save action and serialization.
+        var observer = create_task_observer()
+        var descriptor = actual_session_descriptor(true, tempdir, observer)
         AppRegistries.state_registry.set_active_io_task_fn(() => {
             AppRegistries.state_registry.set_force_io_active(true)
-
-            var observer = create_task_observer()
 
             observer.finished.connect((success) => {
                 if (success) {
@@ -219,7 +222,6 @@ Item {
             })
 
             // TODO make this step asynchronous
-            var descriptor = actual_session_descriptor(true, tempdir, observer)
             if(!ShoopRustFileIO.write_file(session_filename, JSON.stringify(descriptor, null, 2))) {
                 throw new Error(`Failed to write session file ${session_filename}`)
             }

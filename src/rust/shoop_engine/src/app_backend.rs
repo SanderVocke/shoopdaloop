@@ -205,6 +205,19 @@ impl<I: ObjectIdentity, M> ObjectControl<I, M> {
     }
 }
 
+fn observed_lifecycle<I: ObjectIdentity, M>(
+    shared: &SharedSession,
+    control: &ObjectControl<I, M>,
+) -> ObjectLifecycle {
+    let lifecycle = control.lifecycle();
+    if lifecycle == ObjectLifecycle::Pending && !shared.engine_connected() {
+        control.mark_failed("engine disconnected while object creation was pending");
+        ObjectLifecycle::Failed
+    } else {
+        lifecycle
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ExternalPortDescriptor {
     pub name: String,
@@ -1063,6 +1076,7 @@ struct ConnectionCache {
     states: HashMap<(String, u32, u32), HashMap<String, bool>>,
     last_refresh: Instant,
     refresh_in_flight: bool,
+    generation: u64,
 }
 
 impl Default for ConnectionCache {
@@ -1072,6 +1086,7 @@ impl Default for ConnectionCache {
             states: HashMap::new(),
             last_refresh: Instant::now() - Duration::from_secs(1),
             refresh_in_flight: false,
+            generation: 0,
         }
     }
 }
@@ -1084,6 +1099,8 @@ struct SharedSession {
     /// work, but the session itself is reached solely through the queues inside, so no
     /// audio thread ever waits on this.
     handle: Mutex<engine::EngineHandle>,
+    /// Lock-free lifecycle observation for pending object handles.
+    engine_connected: Arc<AtomicBool>,
     /// The engine, for as long as no driver has taken it.
     ///
     /// Between construction and a driver activating there is no audio thread at all, and
@@ -1105,6 +1122,11 @@ struct SharedSession {
 }
 
 impl SharedSession {
+    fn engine_connected(&self) -> bool {
+        self.engine_connected.load(Ordering::Acquire)
+    }
+
+    #[track_caller]
     fn send_control(
         &self,
         f: impl FnMut(&mut engine::Session) + Send + 'static,
@@ -1112,6 +1134,7 @@ impl SharedSession {
         self.send_with_graph_effect(f, false)
     }
 
+    #[track_caller]
     fn send_topology(
         &self,
         f: impl FnMut(&mut engine::Session) + Send + 'static,
@@ -1119,6 +1142,7 @@ impl SharedSession {
         self.send_with_graph_effect(f, true)
     }
 
+    #[track_caller]
     fn send_with_graph_effect(
         &self,
         f: impl FnMut(&mut engine::Session) + Send + 'static,
@@ -1141,7 +1165,12 @@ impl SharedSession {
                 Ok(sequence) => break sequence,
                 Err(SendError::Full) => {
                     if !warned {
-                        log::warn!("engine command queue is full; waiting for capacity");
+                        let caller = std::panic::Location::caller();
+                        log::warn!(
+                            "engine command queue is full; waiting for capacity ({}:{})",
+                            caller.file(),
+                            caller.line()
+                        );
                         warned = true;
                     }
                     self.pump_or_wait_for_capacity();
@@ -1369,7 +1398,7 @@ impl SharedSession {
         session_index: Option<usize>,
     ) -> HashMap<String, bool> {
         let key = (name.to_string(), direction as u32, data_type as u32);
-        let (cached, refresh) = {
+        let (cached, refresh, generation) = {
             let mut cache = self
                 .connection_cache
                 .lock()
@@ -1390,14 +1419,14 @@ impl SharedSession {
                 cache.refresh_in_flight = true;
                 cache.last_refresh = Instant::now();
             }
-            (cached, refresh)
+            (cached, refresh, cache.generation)
         };
 
         if refresh {
             let cache = Arc::clone(&self.connection_cache);
             let jack = self.jack();
             let external = self.external();
-            thread::spawn(move || refresh_connection_cache(cache, jack, external));
+            thread::spawn(move || refresh_connection_cache(cache, jack, external, generation));
         }
         cached
     }
@@ -1408,6 +1437,26 @@ impl SharedSession {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         cache.last_refresh = Instant::now() - Duration::from_secs(1);
+        cache.refresh_in_flight = false;
+        cache.generation = cache.generation.wrapping_add(1);
+    }
+
+    fn set_cached_connection(
+        &self,
+        name: &str,
+        direction: PortDirection,
+        data_type: PortDataType,
+        external_name: &str,
+        connected: bool,
+    ) {
+        let key = (name.to_string(), direction as u32, data_type as u32);
+        self.connection_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .states
+            .entry(key)
+            .or_default()
+            .insert(external_name.to_string(), connected);
     }
 
     fn activate_jack(&self, shared: &Arc<SharedSession>) -> Result<()> {
@@ -1481,6 +1530,7 @@ fn refresh_connection_cache(
     cache: Arc<Mutex<ConnectionCache>>,
     jack: Option<Arc<Mutex<JackBackend>>>,
     external: Option<Arc<Mutex<engine::DummyExternalConnections>>>,
+    generation: u64,
 ) {
     let requests = cache
         .lock()
@@ -1525,8 +1575,10 @@ fn refresh_connection_cache(
         }
     }
     let mut cache = cache.lock().unwrap_or_else(|e| e.into_inner());
-    cache.states = states;
-    cache.refresh_in_flight = false;
+    if cache.generation == generation {
+        cache.states = states;
+        cache.refresh_in_flight = false;
+    }
 }
 
 fn jack_connect_port(
@@ -1580,9 +1632,11 @@ impl BackendSession {
         // session load issues them in bursts, so this is sized for a burst rather than for
         // the steady state.
         let (engine, handle) = engine::split(s, command_queue_capacity);
+        let engine_connected = handle.connected_flag();
         let shared = Arc::new(SharedSession {
             session_id: NEXT_BACKEND_SESSION_ID.fetch_add(1, Ordering::Relaxed),
             handle: Mutex::new(handle),
+            engine_connected,
             parked: Mutex::new(Some(engine)),
             external: Mutex::new(None),
             jack: Mutex::new(None),
@@ -2536,7 +2590,7 @@ pub struct Loop {
 pub type LoopState = engine::LoopState;
 impl Loop {
     pub fn lifecycle(&self) -> ObjectLifecycle {
-        self.control.lifecycle()
+        observed_lifecycle(&self.shared, &self.control)
     }
 
     pub fn creation_sequence(&self) -> CommandSequence {
@@ -2623,11 +2677,12 @@ impl Loop {
         maybe_to_sync_at_cycle: i32,
     ) -> Result<CommandSequence> {
         let control = Arc::clone(&self.control);
-        Ok(self.shared.send_control(move |s: &mut engine::Session| {
+        let immediate = maybe_cycles_delay < 0 && maybe_to_sync_at_cycle < 0;
+        let sequence = self.shared.send_control(move |s: &mut engine::Session| {
             let Some(idx) = control.ready_id().map(ObjectIdentity::index) else {
                 return;
             };
-            if maybe_cycles_delay >= 0 || maybe_to_sync_at_cycle >= 0 {
+            if !immediate {
                 if let Some(l) = s.loop_mut(idx) {
                     l.plan_transition(
                         to_mode.into(),
@@ -2638,7 +2693,11 @@ impl Loop {
             } else {
                 let _ = s.set_loop_mode(idx, to_mode.into());
             }
-        })?)
+        })?;
+        if immediate {
+            self.control.mirror.set_mode(to_mode);
+        }
+        Ok(sequence)
     }
 
     pub fn poll_state(&self) -> Option<LoopState> {
@@ -2660,24 +2719,28 @@ impl Loop {
 
     pub fn set_length(&self, length: u32) -> Result<CommandSequence> {
         let control = Arc::clone(&self.control);
-        Ok(self.shared.send_control(move |s: &mut engine::Session| {
+        let sequence = self.shared.send_control(move |s: &mut engine::Session| {
             if let Some(idx) = control.ready_id().map(ObjectIdentity::index) {
                 if let Some(l) = s.loop_mut(idx) {
                     l.set_length(length);
                 }
             }
-        })?)
+        })?;
+        self.control.mirror.set_length(length);
+        Ok(sequence)
     }
 
     pub fn set_position(&self, position: u32) -> Result<CommandSequence> {
         let control = Arc::clone(&self.control);
-        Ok(self.shared.send_control(move |s: &mut engine::Session| {
+        let sequence = self.shared.send_control(move |s: &mut engine::Session| {
             if let Some(idx) = control.ready_id().map(ObjectIdentity::index) {
                 if let Some(l) = s.loop_mut(idx) {
                     l.set_position(position);
                 }
             }
-        })?)
+        })?;
+        self.control.mirror.set_position(position);
+        Ok(sequence)
     }
 
     pub fn clear(&self, length: u32) -> Result<CommandSequence> {
@@ -2768,7 +2831,7 @@ pub struct AudioChannel {
 pub type AudioChannelState = engine::AudioChannelState;
 impl AudioChannel {
     pub fn lifecycle(&self) -> ObjectLifecycle {
-        self.control.lifecycle()
+        observed_lifecycle(&self.shared, &self.control)
     }
 
     pub fn creation_sequence(&self) -> CommandSequence {
@@ -2833,7 +2896,14 @@ impl AudioChannel {
 
     pub fn load_data(&self, data: &[f32]) -> std::result::Result<CommandSequence, SendError> {
         let owned = data.to_vec();
-        self.with_mut(move |channel| channel.load_data(&owned))
+        let result = self.with_mut({
+            let owned = owned.clone();
+            move |channel| channel.load_data(&owned)
+        });
+        if result.is_ok() {
+            self.control.mirror.replace_data(owned);
+        }
+        result
     }
 
     pub fn get_data(&self) -> Vec<f32> {
@@ -2866,19 +2936,35 @@ impl AudioChannel {
     }
 
     pub fn set_gain(&self, gain: f32) -> std::result::Result<CommandSequence, SendError> {
-        self.with_mut(move |channel| channel.set_gain(gain))
+        let result = self.with_mut(move |channel| channel.set_gain(gain));
+        if result.is_ok() {
+            self.control.mirror.set_gain(gain);
+        }
+        result
     }
 
     pub fn set_mode(&self, mode: ChannelMode) -> std::result::Result<CommandSequence, SendError> {
-        self.with_mut(move |channel| channel.set_mode(mode.into()))
+        let result = self.with_mut(move |channel| channel.set_mode(mode.into()));
+        if result.is_ok() {
+            self.control.mirror.set_mode(mode);
+        }
+        result
     }
 
     pub fn set_start_offset(&self, offset: i32) -> std::result::Result<CommandSequence, SendError> {
-        self.with_mut(move |channel| channel.set_start_offset(offset))
+        let result = self.with_mut(move |channel| channel.set_start_offset(offset));
+        if result.is_ok() {
+            self.control.mirror.set_start_offset(offset);
+        }
+        result
     }
 
     pub fn set_n_preplay_samples(&self, n: u32) -> std::result::Result<CommandSequence, SendError> {
-        self.with_mut(move |channel| channel.set_pre_play_samples(n))
+        let result = self.with_mut(move |channel| channel.set_pre_play_samples(n));
+        if result.is_ok() {
+            self.control.mirror.set_n_preplay_samples(n);
+        }
+        result
     }
 
     pub fn clear_data_dirty(&self) {
@@ -2900,7 +2986,7 @@ pub struct MidiChannel {
 pub type MidiChannelState = engine::MidiChannelState;
 impl MidiChannel {
     pub fn lifecycle(&self) -> ObjectLifecycle {
-        self.control.lifecycle()
+        observed_lifecycle(&self.shared, &self.control)
     }
 
     pub fn creation_sequence(&self) -> CommandSequence {
@@ -2946,13 +3032,17 @@ impl MidiChannel {
             .map(|element| element.time)
             .max()
             .unwrap_or(0);
-        self.with_mut(move |channel| {
+        let result = self.with_mut(move |channel| {
             channel.set_contents(
                 &elements,
                 length,
                 (!state.is_empty()).then_some(state.as_slice()),
             )
-        })
+        });
+        if result.is_ok() {
+            self.control.mirror.replace_data(msgs.to_vec());
+        }
+        result
     }
 
     pub fn connect_input(
@@ -3023,15 +3113,27 @@ impl MidiChannel {
     }
 
     pub fn set_mode(&self, mode: ChannelMode) -> std::result::Result<CommandSequence, SendError> {
-        self.with_mut(move |channel| channel.set_mode(mode.into()))
+        let result = self.with_mut(move |channel| channel.set_mode(mode.into()));
+        if result.is_ok() {
+            self.control.mirror.set_mode(mode);
+        }
+        result
     }
 
     pub fn set_start_offset(&self, offset: i32) -> std::result::Result<CommandSequence, SendError> {
-        self.with_mut(move |channel| channel.set_start_offset(offset))
+        let result = self.with_mut(move |channel| channel.set_start_offset(offset));
+        if result.is_ok() {
+            self.control.mirror.set_start_offset(offset);
+        }
+        result
     }
 
     pub fn set_n_preplay_samples(&self, n: u32) -> std::result::Result<CommandSequence, SendError> {
-        self.with_mut(move |channel| channel.set_pre_play_samples(n))
+        let result = self.with_mut(move |channel| channel.set_pre_play_samples(n));
+        if result.is_ok() {
+            self.control.mirror.set_n_preplay_samples(n);
+        }
+        result
     }
 
     pub fn clear_data_dirty(&self) {
@@ -3112,7 +3214,7 @@ impl AudioPort {
     }
 
     pub fn lifecycle(&self) -> ObjectLifecycle {
-        self.control.lifecycle()
+        observed_lifecycle(&self.shared, &self.control)
     }
 
     pub fn creation_sequence(&self) -> CommandSequence {
@@ -3156,12 +3258,12 @@ impl AudioPort {
 
     /// This port's state as of the independently published mirrors, without blocking.
     pub fn poll_state(&self) -> Option<AudioPortState> {
-        (self.control.lifecycle() == ObjectLifecycle::Ready)
+        (self.lifecycle() == ObjectLifecycle::Ready)
             .then(|| self.control.mirror.read(self.name.clone()))
     }
 
     pub fn get_state(&self) -> Result<AudioPortState> {
-        match self.control.lifecycle() {
+        match self.lifecycle() {
             ObjectLifecycle::Pending | ObjectLifecycle::Ready => {
                 Ok(self.control.mirror.read(self.name.clone()))
             }
@@ -3175,16 +3277,28 @@ impl AudioPort {
         }
     }
     pub fn set_gain(&self, gain: f32) -> std::result::Result<CommandSequence, SendError> {
-        self.with_audio_mut(move |a| a.set_gain(gain))
+        let result = self.with_audio_mut(move |a| a.set_gain(gain));
+        if result.is_ok() {
+            self.control.mirror.set_gain(gain);
+        }
+        result
     }
     pub fn set_muted(&self, muted: bool) -> std::result::Result<CommandSequence, SendError> {
-        self.with_audio_mut(move |a| a.set_muted(muted))
+        let result = self.with_audio_mut(move |a| a.set_muted(muted));
+        if result.is_ok() {
+            self.control.mirror.set_muted(muted);
+        }
+        result
     }
     pub fn set_passthrough_muted(
         &self,
         muted: bool,
     ) -> std::result::Result<CommandSequence, SendError> {
-        self.with_audio_mut(move |a| a.set_passthrough_muted(muted))
+        let result = self.with_audio_mut(move |a| a.set_passthrough_muted(muted));
+        if result.is_ok() {
+            self.control.mirror.set_passthrough_muted(muted);
+        }
+        result
     }
     pub fn connect_internal(
         &self,
@@ -3247,6 +3361,13 @@ impl AudioPort {
         self.shared.invalidate_connection_cache();
         if let Some(j) = self.shared.jack() {
             jack_connect_port(&j, &self.name, self.direction, name);
+            self.shared.set_cached_connection(
+                &self.name,
+                self.direction,
+                PortDataType::Audio,
+                name,
+                true,
+            );
             return;
         }
         if let Some(ext) = self.shared.external() {
@@ -3255,6 +3376,13 @@ impl AudioPort {
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .connect(compat_port_id(id.index()), name);
+                self.shared.set_cached_connection(
+                    &self.name,
+                    self.direction,
+                    PortDataType::Audio,
+                    name,
+                    true,
+                );
                 return;
             }
             let (control, name) = (Arc::clone(&self.control), name.to_string());
@@ -3274,6 +3402,13 @@ impl AudioPort {
         self.shared.invalidate_connection_cache();
         if let Some(j) = self.shared.jack() {
             jack_disconnect_port(&j, &self.name, self.direction, name);
+            self.shared.set_cached_connection(
+                &self.name,
+                self.direction,
+                PortDataType::Audio,
+                name,
+                false,
+            );
             return;
         }
         if let Some(ext) = self.shared.external() {
@@ -3282,6 +3417,13 @@ impl AudioPort {
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .disconnect(compat_port_id(id.index()), name);
+                self.shared.set_cached_connection(
+                    &self.name,
+                    self.direction,
+                    PortDataType::Audio,
+                    name,
+                    false,
+                );
                 return;
             }
             let (control, name) = (Arc::clone(&self.control), name.to_string());
@@ -3301,7 +3443,11 @@ impl AudioPort {
         &self,
         n: u32,
     ) -> std::result::Result<CommandSequence, SendError> {
-        self.with_audio_mut(move |a| a.set_ringbuffer_n_samples(n as usize))
+        let result = self.with_audio_mut(move |a| a.set_ringbuffer_n_samples(n as usize));
+        if result.is_ok() {
+            self.control.mirror.set_ringbuffer_n_samples(n);
+        }
+        result
     }
     pub fn direction(&self) -> PortDirection {
         self.direction
@@ -3320,7 +3466,7 @@ pub struct MidiPort {
 pub type MidiPortState = engine::MidiPortState;
 impl MidiPort {
     pub fn lifecycle(&self) -> ObjectLifecycle {
-        self.control.lifecycle()
+        observed_lifecycle(&self.shared, &self.control)
     }
 
     pub fn creation_sequence(&self) -> CommandSequence {
@@ -3410,12 +3556,12 @@ impl MidiPort {
 
     /// This port's state as of the independently published mirrors, without blocking.
     pub fn poll_state(&self) -> Option<MidiPortState> {
-        (self.control.lifecycle() == ObjectLifecycle::Ready)
+        (self.lifecycle() == ObjectLifecycle::Ready)
             .then(|| self.control.mirror.read(self.name.clone()))
     }
 
     pub fn get_state(&self) -> Result<MidiPortState> {
-        match self.control.lifecycle() {
+        match self.lifecycle() {
             ObjectLifecycle::Pending | ObjectLifecycle::Ready => {
                 Ok(self.control.mirror.read(self.name.clone()))
             }
@@ -3429,13 +3575,21 @@ impl MidiPort {
         }
     }
     pub fn set_muted(&self, muted: bool) -> std::result::Result<CommandSequence, SendError> {
-        self.with_midi_mut(move |m| m.set_muted(muted))
+        let result = self.with_midi_mut(move |m| m.set_muted(muted));
+        if result.is_ok() {
+            self.control.mirror.set_muted(muted);
+        }
+        result
     }
     pub fn set_passthrough_muted(
         &self,
         muted: bool,
     ) -> std::result::Result<CommandSequence, SendError> {
-        self.with_midi_mut(move |m| m.set_passthrough_muted(muted))
+        let result = self.with_midi_mut(move |m| m.set_passthrough_muted(muted));
+        if result.is_ok() {
+            self.control.mirror.set_passthrough_muted(muted);
+        }
+        result
     }
     pub fn connect_internal(
         &self,
@@ -3521,6 +3675,13 @@ impl MidiPort {
         self.shared.invalidate_connection_cache();
         if let Some(j) = self.shared.jack() {
             jack_connect_port(&j, &self.name, self.direction, name);
+            self.shared.set_cached_connection(
+                &self.name,
+                self.direction,
+                PortDataType::Midi,
+                name,
+                true,
+            );
             return;
         }
         if let Some(ext) = self.shared.external() {
@@ -3529,6 +3690,13 @@ impl MidiPort {
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .connect(compat_port_id(id.index()), name);
+                self.shared.set_cached_connection(
+                    &self.name,
+                    self.direction,
+                    PortDataType::Midi,
+                    name,
+                    true,
+                );
                 return;
             }
             let (control, name) = (Arc::clone(&self.control), name.to_string());
@@ -3548,6 +3716,13 @@ impl MidiPort {
         self.shared.invalidate_connection_cache();
         if let Some(j) = self.shared.jack() {
             jack_disconnect_port(&j, &self.name, self.direction, name);
+            self.shared.set_cached_connection(
+                &self.name,
+                self.direction,
+                PortDataType::Midi,
+                name,
+                false,
+            );
             return;
         }
         if let Some(ext) = self.shared.external() {
@@ -3556,6 +3731,13 @@ impl MidiPort {
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .disconnect(compat_port_id(id.index()), name);
+                self.shared.set_cached_connection(
+                    &self.name,
+                    self.direction,
+                    PortDataType::Midi,
+                    name,
+                    false,
+                );
                 return;
             }
             let (control, name) = (Arc::clone(&self.control), name.to_string());
@@ -3575,7 +3757,11 @@ impl MidiPort {
         &self,
         n: u32,
     ) -> std::result::Result<CommandSequence, SendError> {
-        self.with_midi_mut(move |m| m.set_ringbuffer_n_samples(n))
+        let result = self.with_midi_mut(move |m| m.set_ringbuffer_n_samples(n));
+        if result.is_ok() {
+            self.control.mirror.set_ringbuffer_n_samples(n);
+        }
+        result
     }
     pub fn direction(&self) -> PortDirection {
         self.direction
@@ -3663,35 +3849,53 @@ impl DecoupledMidiPort {
         });
         cached
     }
-    pub fn connect_external_port(&self, name: &str) {
+    /// Synchronously refreshes after an explicit user-triggered reconciliation.
+    /// Periodic getters remain cache-only and use the asynchronous path above.
+    pub fn refresh_connections_now(&self) {
+        let state = if let Some(jack) = self.jack.as_ref() {
+            let jack = jack.lock().unwrap_or_else(|e| e.into_inner());
+            jack_connections_state_locked(&jack, &self.name, self.direction, PortDataType::Midi)
+        } else {
+            self.external
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .connection_status_of(self.port_id)
+                .into_iter()
+                .collect()
+        };
+        *self
+            .connections_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = state;
         *self
             .connections_last_refresh
             .lock()
-            .unwrap_or_else(|e| e.into_inner()) = Instant::now() - Duration::from_secs(1);
+            .unwrap_or_else(|e| e.into_inner()) = Instant::now();
+    }
+
+    pub fn connect_external_port(&self, name: &str) {
         if let Some(j) = self.jack.as_ref() {
             jack_connect_port(j, &self.name, self.direction, name);
-            return;
+        } else {
+            let _ = self
+                .external
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .connect(self.port_id, name);
         }
-        let _ = self
-            .external
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .connect(self.port_id, name);
+        self.refresh_connections_now();
     }
     pub fn disconnect_external_port(&self, name: &str) {
-        *self
-            .connections_last_refresh
-            .lock()
-            .unwrap_or_else(|e| e.into_inner()) = Instant::now() - Duration::from_secs(1);
         if let Some(j) = self.jack.as_ref() {
             jack_disconnect_port(j, &self.name, self.direction, name);
-            return;
+        } else {
+            let _ = self
+                .external
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .disconnect(self.port_id, name);
         }
-        let _ = self
-            .external
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .disconnect(self.port_id, name);
+        self.refresh_connections_now();
     }
 }
 
@@ -4296,6 +4500,96 @@ mod tests {
     }
 
     #[test]
+    fn many_pending_objects_and_repeated_handle_clones_resolve_without_aliasing() {
+        let sess = BackendSession::new().expect("session");
+        let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("driver");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let mut loops = Vec::new();
+        let mut channels = Vec::new();
+        let mut ports = Vec::new();
+        for index in 0..32u32 {
+            let loop_ = sess.create_loop().expect("loop");
+            let channel = loop_
+                .add_audio_channel(ChannelMode::Direct)
+                .expect("channel");
+            let port = AudioPort::new_driver_port(
+                &sess,
+                &driver,
+                &format!("stress-{index}"),
+                &PortDirection::Output,
+                0,
+            )
+            .expect("port");
+            channel.connect_output(&port).expect("connection");
+            for _ in 0..16 {
+                drop(loop_.clone());
+                drop(channel.clone());
+                drop(port.clone());
+            }
+            loops.push(loop_);
+            channels.push(channel);
+            ports.push(port);
+        }
+        engine.pump();
+        assert_eq!(engine.session().n_loops(), 32);
+        assert_eq!(engine.session().n_channels(), 32);
+        assert_eq!(engine.session().n_ports(), 32);
+        assert!(loops
+            .iter()
+            .all(|object| object.lifecycle() == ObjectLifecycle::Ready));
+        assert!(channels
+            .iter()
+            .all(|object| object.lifecycle() == ObjectLifecycle::Ready));
+        assert!(ports
+            .iter()
+            .all(|object| object.lifecycle() == ObjectLifecycle::Ready));
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
+    fn concurrent_producers_and_shutdown_with_pending_work_are_safe() {
+        let sess = BackendSession::create_with_capacity(8).expect("session");
+        let loop_ = sess.create_loop().expect("loop");
+        sess.wait_for_command(loop_.creation_sequence(), engine::DEFAULT_WAIT_TIMEOUT)
+            .expect("loop creation");
+
+        let mut workers = Vec::new();
+        for producer in 0..8u32 {
+            let loop_ = loop_.clone();
+            workers.push(thread::spawn(move || {
+                let mut last = CommandSequence::NONE;
+                for value in 0..100u32 {
+                    last = loop_
+                        .set_length(producer * 100 + value)
+                        .expect("concurrent command");
+                }
+                last
+            }));
+        }
+        let last: Vec<_> = workers
+            .into_iter()
+            .map(|worker| worker.join().expect("producer"))
+            .collect();
+        for sequence in last {
+            sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
+                .expect("concurrent command fence");
+        }
+
+        let doomed = BackendSession::new().expect("doomed session");
+        let engine = doomed.shared.take_engine().expect("parked engine");
+        let pending = doomed.create_loop().expect("pending loop");
+        assert_eq!(pending.lifecycle(), ObjectLifecycle::Pending);
+        drop(engine);
+        assert_eq!(pending.lifecycle(), ObjectLifecycle::Failed);
+        assert!(pending.creation_error().is_some());
+        assert!(pending
+            .set_length(1)
+            .expect_err("disconnected command")
+            .to_string()
+            .contains("engine is gone"));
+    }
+
+    #[test]
     fn channel_data_dirty_is_acknowledged_on_the_frontend() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -4337,17 +4631,17 @@ mod tests {
     }
 
     #[test]
-    fn loop_reads_accept_stale_state_and_never_queue_a_query() {
+    fn loop_reads_return_the_immediate_desired_mirror_without_queueing_a_query() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
         let mut engine = sess.shared.take_engine().expect("parked engine");
         let commands_before = engine.stats().commands_applied.load(Ordering::Relaxed);
 
         loop_.set_length(32).expect("queue length");
-        assert_eq!(loop_.get_state().expect("stale state").length, 0);
+        assert_eq!(loop_.get_state().expect("desired state").length, 32);
         for _ in 0..100 {
-            assert_eq!(loop_.poll_state().expect("poll").length, 0);
-            assert_eq!(loop_.get_state().expect("state").length, 0);
+            assert_eq!(loop_.poll_state().expect("poll").length, 32);
+            assert_eq!(loop_.get_state().expect("state").length, 32);
         }
         assert_eq!(
             engine.stats().commands_applied.load(Ordering::Relaxed),

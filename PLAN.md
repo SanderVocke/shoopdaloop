@@ -2,86 +2,86 @@
 
 ## How to use this plan
 
-- [ ] Before each implementation session, read `AGENTS.md`, `.agents/index.md`, and every instruction or information document they identify as relevant to the work being done.
-- [ ] Treat **Requirements** and **Design principles** below as the agreed contract. The executor may change implementation details and phase boundaries as the code reveals better approaches, but must check with the user before changing a requirement or design principle.
-- [ ] Keep this plan and `REMAINING_ISSUES.md` current as implementation discovers additional API cases, risks, or deferred work.
-- [ ] Make each phase independently reviewable and leave the tree buildable and tested at its stated verification gate.
-- [ ] After completing and verifying each phase, commit that phase and push the branch before beginning the next phase. Do not combine multiple completed phases into one commit or defer their push until the end.
-- [ ] Do not add an interim bulk-snapshot polling fix. Move directly toward per-object mirrors and asynchronous handles, even if the migration itself spans several phases.
+- [x] Before each implementation session, read `AGENTS.md`, `.agents/index.md`, and every instruction or information document they identify as relevant to the work being done.
+- [x] Treat **Requirements** and **Design principles** below as the agreed contract. The executor may change implementation details and phase boundaries as the code reveals better approaches, but must check with the user before changing a requirement or design principle.
+- [x] Keep this plan and `REMAINING_ISSUES.md` current as implementation discovers additional API cases, risks, or deferred work.
+- [x] Make each phase independently reviewable and leave the tree buildable and tested at its stated verification gate.
+- [x] After completing and verifying each phase, commit that phase and push the branch before beginning the next phase. Do not combine multiple completed phases into one commit or defer their push until the end.
+- [x] Do not add an interim bulk-snapshot polling fix. Move directly toward per-object mirrors and asynchronous handles, even if the migration itself spans several phases.
 
 ## Requirements
 
 ### State reads
 
-- [ ] Restore per-object state publication for loops, audio channels, MIDI channels, audio ports, MIDI ports, and any other application-facing object whose ordinary state is polled.
-- [ ] Make ordinary `get_state()`/polling reads immediate and nonblocking; they must read the latest per-object mirror and may return state that is slightly stale or whose fields came from different processing iterations.
-- [ ] Do not provide implicit global read-after-write consistency for ordinary state reads.
-- [ ] Do not fall back from a periodic frontend poll to a blocking engine query.
-- [ ] Preserve names and other immutable/non-RT-owned metadata in the frontend handle rather than forcing them through atomic state.
-- [ ] Implement consumer-resettable peak and event-count semantics without queueing reset commands to the audio thread.
-- [ ] Implement data-dirty tracking with a published sequence and frontend-side acknowledgement rather than audio-thread query/reset commands.
+- [x] Restore per-object state publication for loops, audio channels, MIDI channels, audio ports, MIDI ports, and any other application-facing object whose ordinary state is polled.
+- [x] Make ordinary `get_state()`/polling reads immediate and nonblocking; they must read the latest per-object mirror and may return state that is slightly stale or whose fields came from different processing iterations.
+- [x] Do not provide implicit global read-after-write consistency for ordinary state reads.
+- [x] Do not fall back from a periodic frontend poll to a blocking engine query.
+- [x] Preserve names and other immutable/non-RT-owned metadata in the frontend handle rather than forcing them through atomic state.
+- [x] Implement consumer-resettable peak and event-count semantics without queueing reset commands to the audio thread.
+- [x] Implement data-dirty tracking with a published sequence and frontend-side acknowledgement rather than audio-thread query/reset commands.
 
 ### Commands and queue saturation
 
-- [ ] Make normal state-changing operations fire-and-forget: enqueue the command and return without waiting for an audio cycle.
-- [ ] Make the low-level nonblocking enqueue API return `Result<CommandSequence, SendError>`; never discard a queue error or silently lose a command.
-- [ ] Define `CommandSequence` so successful enqueueing has a stable, testable ordering token and the process side can publish progress where an explicit fence is needed.
-- [ ] On `SendError::Full`, make the caller emit a warning and use an explicit blocking-until-space retry path. Blocking for queue capacity must not also wait for command execution.
-- [ ] Propagate `SendError::Disconnected` as a real failure rather than retrying forever.
-- [ ] Preserve ownership of a rejected command, or structure the API so retry reconstructs it safely; full-queue handling must not drop move-only payloads.
-- [ ] Ensure a parked engine can be pumped while a caller waits for queue capacity, so the blocking retry cannot deadlock before a driver starts.
-- [ ] Distinguish topology-changing commands from ordinary control commands so gain, mute, position, mode, data reads, and similar operations do not unnecessarily arm graph rebuilding.
+- [x] Make normal state-changing operations fire-and-forget: enqueue the command and return without waiting for an audio cycle.
+- [x] Make the low-level nonblocking enqueue API return `Result<CommandSequence, SendError>`; never discard a queue error or silently lose a command.
+- [x] Define `CommandSequence` so successful enqueueing has a stable, testable ordering token and the process side can publish progress where an explicit fence is needed.
+- [x] On `SendError::Full`, make the caller emit a warning and use an explicit blocking-until-space retry path. Blocking for queue capacity must not also wait for command execution.
+- [x] Propagate `SendError::Disconnected` as a real failure rather than retrying forever.
+- [x] Preserve ownership of a rejected command, or structure the API so retry reconstructs it safely; full-queue handling must not drop move-only payloads.
+- [x] Ensure a parked engine can be pumped while a caller waits for queue capacity, so the blocking retry cannot deadlock before a driver starts.
+- [x] Distinguish topology-changing commands from ordinary control commands so gain, mute, position, mode, data reads, and similar operations do not unnecessarily arm graph rebuilding.
 
 ### Asynchronous object creation and lifecycle
 
-- [ ] Make loop, channel, session-port, JACK-port association, and FX-chain internal-port creation return stable handles without waiting for the next audio cycle.
-- [ ] Back each asynchronous handle with a shared `Arc<ObjectControl>`-style control block containing at least lifecycle (`Pending`, `Ready`, `Failed`, `Closed` or equivalent), resolved engine identity/index, creation command sequence, failure information, and the object's state mirror.
-- [ ] Publish successful creation and its engine identity with release/acquire ordering; ordinary independent state fields may use relaxed ordering.
-- [ ] Allow commands queued immediately after creation to reference the pending control block. Queue ordering must ensure they resolve the created identity after the creation command runs.
-- [ ] Define and test behavior when creation fails, a dependent object fails, a pending handle is dropped, or a command targets a `Failed`/`Closed` object. Do not alias index `0` or another valid object as an error fallback.
-- [ ] Use the same pending `Arc<ObjectControl>` approach for asynchronous JACK registration. JACK callback-side registrations must resolve the session index from the control block and safely skip/not expose a port while it is pending or failed.
-- [ ] Reject or safely handle references between objects from different backend sessions.
+- [x] Make loop, channel, session-port, JACK-port association, and FX-chain internal-port creation return stable handles without waiting for the next audio cycle.
+- [x] Back each asynchronous handle with a shared `Arc<ObjectControl>`-style control block containing at least lifecycle (`Pending`, `Ready`, `Failed`, `Closed` or equivalent), resolved engine identity/index, creation command sequence, failure information, and the object's state mirror.
+- [x] Publish successful creation and its engine identity with release/acquire ordering; ordinary independent state fields may use relaxed ordering.
+- [x] Allow commands queued immediately after creation to reference the pending control block. Queue ordering must ensure they resolve the created identity after the creation command runs.
+- [x] Define and test behavior when creation fails, a dependent object fails, a pending handle is dropped, or a command targets a `Failed`/`Closed` object. Do not alias index `0` or another valid object as an error fallback.
+- [x] Use the same pending `Arc<ObjectControl>` approach for asynchronous JACK registration. JACK callback-side registrations must resolve the session index from the control block and safely skip/not expose a port while it is pending or failed.
+- [x] Reject or safely handle references between objects from different backend sessions.
 
 ### Complex getters and explicitly deferred efficiency work
 
-- [ ] Keep complex data-returning getters functional without requiring an audio-cycle rendezvous. For now, use shared mutex-protected state/queues where atomics are not suitable.
-- [ ] Include at least audio channel `get_data`, MIDI channel `get_all_midi_data`, dummy dequeue operations, and any similar getter found by the API audit.
-- [ ] Do not optimize the full-buffer/event copying strategy in this task.
-- [ ] Do not attempt a complete RT-safety cleanup of mutexes, allocations, boxed commands, or data preparation unless a minimal change is required to implement this plan.
-- [ ] Record every deferred mutex, allocation, copying problem, remaining exceptional blocking query, and newly discovered related issue in `REMAINING_ISSUES.md` with detailed status.
+- [x] Keep complex data-returning getters functional without requiring an audio-cycle rendezvous. For now, use shared mutex-protected state/queues where atomics are not suitable.
+- [x] Include at least audio channel `get_data`, MIDI channel `get_all_midi_data`, dummy dequeue operations, and any similar getter found by the API audit.
+- [x] Do not optimize the full-buffer/event copying strategy in this task.
+- [x] Do not attempt a complete RT-safety cleanup of mutexes, allocations, boxed commands, or data preparation unless a minimal change is required to implement this plan.
+- [x] Record every deferred mutex, allocation, copying problem, remaining exceptional blocking query, and newly discovered related issue in `REMAINING_ISSUES.md` with detailed status.
 
 ### Frontend, drivers, and correctness boundaries
 
-- [ ] Remove all periodic frontend fallbacks from nonblocking polling to engine queries, including loop, channel, and port update paths.
-- [ ] Keep driver/session scalar state that is already safely atomic on an immediate read path.
-- [ ] Ensure periodic external connection-state polling does not use one blocking Qt/backend invocation per port. Enumerate/cache asynchronously in bulk and publish cached state to frontend objects.
-- [ ] User-triggered external connect/disconnect may remain synchronous if it is outside periodic polling and remains acceptably rare.
-- [ ] Make FX-chain port getters return stable owned ports rather than creating another session port on every getter call.
-- [ ] Convert `adopt_ringbuffer_contents` to fire-and-forget. Report execution failure asynchronously through logging/status rather than blocking only to return `Result<()>`.
-- [ ] Preserve explicit blocking/response behavior only for exceptional operations that genuinely require an exact response and cannot use the temporary mutex-backed design; inventory and document every such exception.
+- [x] Remove all periodic frontend fallbacks from nonblocking polling to engine queries, including loop, channel, and port update paths.
+- [x] Keep driver/session scalar state that is already safely atomic on an immediate read path.
+- [x] Ensure periodic external connection-state polling does not use one blocking Qt/backend invocation per port. Enumerate/cache asynchronously in bulk and publish cached state to frontend objects.
+- [x] User-triggered external connect/disconnect may remain synchronous if it is outside periodic polling and remains acceptably rare.
+- [x] Make FX-chain port getters return stable owned ports rather than creating another session port on every getter call.
+- [x] Convert `adopt_ringbuffer_contents` to fire-and-forget. Report execution failure asynchronously through logging/status rather than blocking only to return `Result<()>`.
+- [x] Preserve explicit blocking/response behavior only for exceptional operations that genuinely require an exact response and cannot use the temporary mutex-backed design; inventory and document every such exception.
 
 ### Documentation and verification
 
-- [ ] Create `REMAINING_ISSUES.md` early and update it during every phase rather than reconstructing deferred issues at the end.
-- [ ] Add tests proving polling latency and track/object creation latency do not scale with audio buffer duration.
-- [ ] Add tests proving commands are not silently lost under queue saturation and retain FIFO ordering through pending-object creation.
-- [ ] Preserve existing behavior unless this contract intentionally changes it; investigate baseline failures separately from regressions introduced by this work.
+- [x] Create `REMAINING_ISSUES.md` early and update it during every phase rather than reconstructing deferred issues at the end.
+- [x] Add tests proving polling latency and track/object creation latency do not scale with audio buffer duration.
+- [x] Add tests proving commands are not silently lost under queue saturation and retain FIFO ordering through pending-object creation.
+- [x] Preserve existing behavior unless this contract intentionally changes it; investigate baseline failures separately from regressions introduced by this work.
 
 ## Design principles
 
-- [ ] **Poll:** return the latest per-object mirror immediately; stale and cross-field/cross-object skew are acceptable for GUI state.
-- [ ] **Command:** enqueue and return a sequence; do not wait for an audio cycle in normal control flow.
-- [ ] **Creation:** return a stable pending handle; resolve it on the process side in queue order.
-- [ ] **Complex shared data:** use a mutex-backed temporary implementation and document its RT/copying cost.
-- [ ] **Exact response/barrier:** make it explicit, rare, and visibly blocking or asynchronous; never hide it in an ordinary getter.
-- [ ] **Queue pressure:** return a typed error first; warning and blocking retry are an explicit caller policy, not silent behavior in the nonblocking primitive.
-- [ ] **Error visibility:** failed creation, disconnected engines, and execution failures must be observable. Never substitute a plausible index or silently no-op without status/logging.
-- [ ] **Ordering:** use the single FIFO command stream and shared control blocks to order creation and dependent commands; do not reintroduce a mutex around the RT-owned `Session`.
-- [ ] **Atomic ordering:** use relaxed operations for independent GUI metrics and acquire/release only for lifecycle/identity or another documented synchronization invariant.
-- [ ] **RT ownership:** only the engine/process side mutates engine objects. Frontend access is through atomics, pending controls, or the explicitly accepted temporary mutex-backed stores.
-- [ ] **Topology:** graph scheduling is armed only by commands whose type can affect topology.
-- [ ] **Migration:** do not spend work on a phase-1 snapshot workaround that will be deleted; migrate object families to their final mirrors and controls.
-- [ ] **Adaptability:** concrete type layouts, module boundaries, atomics wrappers, retry mechanics, and exact phase splits may change when tests or code structure justify it, while the requirements above remain fixed unless the user approves a change.
+- [x] **Poll:** return the latest per-object mirror immediately; stale and cross-field/cross-object skew are acceptable for GUI state.
+- [x] **Command:** enqueue and return a sequence; do not wait for an audio cycle in normal control flow.
+- [x] **Creation:** return a stable pending handle; resolve it on the process side in queue order.
+- [x] **Complex shared data:** use a mutex-backed temporary implementation and document its RT/copying cost.
+- [x] **Exact response/barrier:** make it explicit, rare, and visibly blocking or asynchronous; never hide it in an ordinary getter.
+- [x] **Queue pressure:** return a typed error first; warning and blocking retry are an explicit caller policy, not silent behavior in the nonblocking primitive.
+- [x] **Error visibility:** failed creation, disconnected engines, and execution failures must be observable. Never substitute a plausible index or silently no-op without status/logging.
+- [x] **Ordering:** use the single FIFO command stream and shared control blocks to order creation and dependent commands; do not reintroduce a mutex around the RT-owned `Session`.
+- [x] **Atomic ordering:** use relaxed operations for independent GUI metrics and acquire/release only for lifecycle/identity or another documented synchronization invariant.
+- [x] **RT ownership:** only the engine/process side mutates engine objects. Frontend access is through atomics, pending controls, or the explicitly accepted temporary mutex-backed stores.
+- [x] **Topology:** graph scheduling is armed only by commands whose type can affect topology.
+- [x] **Migration:** do not spend work on a phase-1 snapshot workaround that will be deleted; migrate object families to their final mirrors and controls.
+- [x] **Adaptability:** concrete type layouts, module boundaries, atomics wrappers, retry mechanics, and exact phase splits may change when tests or code structure justify it, while the requirements above remain fixed unless the user approves a change.
 
 ## Phased implementation
 
@@ -233,31 +233,31 @@
 
 ### Phase 8 — Final verification and documentation
 
-- [ ] Run formatting and warning-clean build steps required by the current project instructions.
-- [ ] Run targeted `shoop_engine` tests while iterating, then the documented full Rust workspace test command.
-- [ ] Build the application and run the documented frontend/QML self-test suite, comparing with the captured baseline.
-- [ ] Run real-JACK tests when JACK is available; clearly report an environmental skip rather than treating it as a pass.
-- [ ] Exercise several buffer sizes, including deliberately large periods, and verify:
-  - [ ] frame-rate state polling remains responsive;
-  - [ ] creating loops/tracks/channels/ports returns promptly with pending handles;
-  - [ ] immediate follow-up commands eventually apply in FIFO order;
-  - [ ] no periodic path performs an audio-cycle query;
-  - [ ] queue-full warning/retry behavior is visible and lossless.
-- [ ] Add stress tests for many objects, rapid command bursts, concurrent frontend producers, creation failure, shutdown with pending work, and repeated handle cloning/dropping.
-- [ ] Review `REMAINING_ISSUES.md` against the final repository-wide audit and ensure each deferred item states what remains, current risk, temporary workaround, and suggested future solution.
-- [ ] Update architecture documentation to describe the final contract: mirrored stale reads, sequenced fire-and-forget commands, pending stable handles, temporary mutex-backed complex data, and explicit exceptional barriers.
-- [ ] Report any behavior changes, remaining known failures, environment-limited tests, and deferred RT/copying work to the user.
+- [x] Run formatting and warning-clean build steps required by the current project instructions.
+- [x] Run targeted `shoop_engine` tests while iterating, then the documented full Rust workspace test command.
+- [x] Build the application and run the documented frontend/QML self-test suite, comparing with the captured baseline.
+- [x] Run real-JACK tests when JACK is available; clearly report an environmental skip rather than treating it as a pass.
+- [x] Exercise several buffer sizes, including deliberately large periods, and verify:
+  - [x] frame-rate state polling remains responsive;
+  - [x] creating loops/tracks/channels/ports returns promptly with pending handles;
+  - [x] immediate follow-up commands eventually apply in FIFO order;
+  - [x] no periodic path performs an audio-cycle query;
+  - [x] queue-full warning/retry behavior is visible and lossless.
+- [x] Add stress tests for many objects, rapid command bursts, concurrent frontend producers, creation failure, shutdown with pending work, and repeated handle cloning/dropping.
+- [x] Review `REMAINING_ISSUES.md` against the final repository-wide audit and ensure each deferred item states what remains, current risk, temporary workaround, and suggested future solution.
+- [x] Update architecture documentation to describe the final contract: mirrored stale reads, sequenced fire-and-forget commands, pending stable handles, temporary mutex-backed complex data, and explicit exceptional barriers.
+- [x] Report any behavior changes, remaining known failures, environment-limited tests, and deferred RT/copying work to the user.
 
 ## Completion criteria
 
-- [ ] Ordinary loop/channel/port state reads are per-object mirror reads and cannot wait for an audio cycle.
-- [ ] Periodic GUI polling contains no fallback to a blocking engine/backend/Qt round trip.
-- [ ] Normal state-changing methods queue work, return/propagate a command sequence or typed enqueue failure, and never silently drop commands.
-- [ ] Queue saturation is covered by warning plus explicit blocking-for-space retry and lossless tests.
-- [ ] Loops, channels, ports, JACK associations, and FX internal ports use pending stable controls and do not block creation on engine indices.
-- [ ] Complex data getters use the agreed temporary mutex-backed implementation and their efficiency/RT limitations are documented.
-- [ ] Peaks, event counts, and data-dirty state use lock-free consume/acknowledgement semantics without reset commands.
-- [ ] Graph rebuilding is armed only for topology-affecting commands.
-- [ ] FX port getters are stable and idempotent.
-- [ ] `REMAINING_ISSUES.md` is complete for known mutexes, allocations, copying, exceptional waits, stubs, and discovered deferred work.
-- [ ] Automated tests and buffer-size exercises demonstrate that UI polling and object creation latency no longer scale with audio-cycle duration.
+- [x] Ordinary loop/channel/port state reads are per-object mirror reads and cannot wait for an audio cycle.
+- [x] Periodic GUI polling contains no fallback to a blocking engine/backend/Qt round trip.
+- [x] Normal state-changing methods queue work, return/propagate a command sequence or typed enqueue failure, and never silently drop commands.
+- [x] Queue saturation is covered by warning plus explicit blocking-for-space retry and lossless tests.
+- [x] Loops, channels, ports, JACK associations, and FX internal ports use pending stable controls and do not block creation on engine indices.
+- [x] Complex data getters use the agreed temporary mutex-backed implementation and their efficiency/RT limitations are documented.
+- [x] Peaks, event counts, and data-dirty state use lock-free consume/acknowledgement semantics without reset commands.
+- [x] Graph rebuilding is armed only for topology-affecting commands.
+- [x] FX port getters are stable and idempotent.
+- [x] `REMAINING_ISSUES.md` is complete for known mutexes, allocations, copying, exceptional waits, stubs, and discovered deferred work.
+- [x] Automated tests and buffer-size exercises demonstrate that UI polling and object creation latency no longer scale with audio-cycle duration.

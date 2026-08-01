@@ -33,7 +33,7 @@ This document tracks work intentionally deferred from the per-object state mirro
 
 - **Status:** Temporary implementation.
 - **API:** `AudioPort::dummy_dequeue_data`.
-- **Current behavior:** Application driver ports share an `Arc<Mutex<Vec<f32>>>` capture store with `ExternalAudioPort`; dequeue drains it immediately without an engine query.
+- **Current behavior:** Application driver ports share an `Arc<Mutex<Vec<f32>>>` capture store with `ExternalAudioPort`; dequeue drains it immediately without an engine query. Synthetic FX output generated after the scheduled port step also locks and updates the current capture through this store.
 - **Impact:** The process path locks the store and may grow/drain its vector under the explicit realtime allocation exception. The test/control thread can block processing while dequeuing.
 - **Future direction:** Use a bounded SPSC capture ring with ownership transfer or preallocated output buffers.
 
@@ -154,15 +154,15 @@ This document tracks work intentionally deferred from the per-object state mirro
 ### Cached external/JACK enumeration
 
 - **Status:** Temporary polling implementation.
-- **Current behavior:** Session-backed ports register cache requests and return the latest connection map immediately. At most once per 100 ms, a worker takes one backend lock and bulk-enumerates every registered request, then replaces the cache. The engine-update thread forwards cached maps to `PortGui`; GUI getters no longer make blocking queued calls. Decoupled MIDI ports use the same immediate-cache policy but currently refresh per decoupled port rather than joining the session bulk.
-- **Impact:** Enumeration no longer blocks frame polling, but worker threads still synchronously lock JACK/CPAL dummy connection managers. Decoupled ports can cause more than one enumeration per cadence, and cached values may lag mutations by roughly one refresh interval.
+- **Current behavior:** Session-backed ports register cache requests and return the latest connection map immediately. At most once per 100 ms, a worker takes one backend lock and bulk-enumerates every registered request, then replaces the cache. Cache generations prevent an older worker from overwriting a newer explicit mutation. The engine-update thread forwards cached maps to `PortGui`; GUI getters no longer make blocking queued calls. Decoupled MIDI ports use the same immediate-cache policy but currently refresh per decoupled port rather than joining the session bulk.
+- **Impact:** Enumeration no longer blocks frame polling, but worker threads still synchronously lock JACK/CPAL dummy connection managers. Decoupled ports can cause more than one enumeration per cadence, and externally initiated mutations may lag by roughly one refresh interval.
 - **Future direction:** Use JACK graph callbacks/backend events to publish one driver-owned immutable connection graph shared by session and decoupled ports.
 
 ### User-triggered external connect/disconnect
 
 - **Status:** Allowed exceptional synchronous operation.
-- **Current behavior:** Calls JACK/external manager synchronously and mostly ignores backend errors.
-- **Impact:** A user action can hitch; failures may be underreported.
+- **Current behavior:** Calls JACK/external manager synchronously, optimistically updates the frontend/cache state for the requested edge, and mostly ignores backend errors. Explicit decoupled-port autoconnect reconciliation performs a synchronous refresh; periodic polling remains cache-only.
+- **Impact:** A user action can hitch; failures may be underreported and optimistic state may briefly disagree with a rejected backend operation.
 - **Future direction:** Asynchronous driver command with explicit completion/error and cache refresh.
 
 ### Decoupled MIDI send saturation
@@ -218,6 +218,13 @@ This document tracks work intentionally deferred from the per-object state mirro
 - **Future direction:** Per-object operation error sequence/status or optional completion receivers for user-visible operations.
 
 ## Test/runtime stability
+
+### Benign disconnected-command logs during QML session replacement
+
+- **Status:** Expected teardown noise; command admission remains correctly reported.
+- **Current behavior:** Old QML objects can emit their final property updates after the replaced backend's engine has disconnected. Compatibility adapters log `Could not queue engine command: the engine is gone`, and stale loop relationships can log a cross-session rejection.
+- **Impact:** The messages are noisy during save/load tests but do not indicate dropped commands on a live backend; the old object graph is being destroyed and the full QML suite passes.
+- **Future direction:** Gate final QML property pushes once unload begins, or downgrade expected teardown rejections while retaining errors for live objects.
 
 ### Carla/JUCE parallel teardown assertion and crash
 

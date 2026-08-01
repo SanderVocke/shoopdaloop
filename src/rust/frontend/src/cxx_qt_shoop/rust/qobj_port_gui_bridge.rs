@@ -401,6 +401,9 @@ pub struct PortGuiRust {
 
     // Other
     pub backend_port_wrapper: cxx::UniquePtr<QSharedPointer_QObject>,
+    pub deferred_audio_gain: Option<f32>,
+    pub deferred_muted: Option<bool>,
+    pub deferred_passthrough_muted: Option<bool>,
 }
 
 impl Default for PortGuiRust {
@@ -425,6 +428,9 @@ impl Default for PortGuiRust {
             n_ringbuffer_samples: 0,
             audio_gain: 1.0,
             backend_port_wrapper: cxx::UniquePtr::null(),
+            deferred_audio_gain: None,
+            deferred_muted: None,
+            deferred_passthrough_muted: None,
             min_n_ringbuffer_samples: 0,
             is_midi: false,
             maybe_fx_chain: std::ptr::null_mut(),

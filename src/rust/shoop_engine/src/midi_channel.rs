@@ -87,6 +87,9 @@ pub struct MidiChannel {
     /// Target state to restore before the first audible playback message.
     pending_playback_state: MidiStateTracker,
     pending_playback_valid: bool,
+    /// Loaded contents use the regular playback path and do not need the session's
+    /// legacy pre-record fallback.
+    loaded_contents: bool,
 
     mode: ChannelMode,
     start_offset: i32,
@@ -135,6 +138,7 @@ impl MidiChannel {
             temp_prerecording_valid: false,
             pending_playback_state: MidiStateTracker::new(TrackWhat::ALL),
             pending_playback_valid: false,
+            loaded_contents: false,
             mode,
             start_offset: 0,
             pre_play_samples: 0,
@@ -231,6 +235,10 @@ impl MidiChannel {
     pub fn input_state(&self) -> &MidiStateTracker {
         &self.input_state
     }
+    pub fn contents_were_loaded(&self) -> bool {
+        self.loaded_contents
+    }
+
     /// Messages that reproduce the state captured when recording began.
     pub fn recording_start_state_messages(&self) -> Vec<Vec<u8>> {
         if self.recording_start_valid {
@@ -254,6 +262,7 @@ impl MidiChannel {
         self.recording_start_valid = false;
         self.temp_prerecording_valid = false;
         self.pending_playback_valid = false;
+        self.loaded_contents = false;
         self.start_offset = 0;
         self.publish_data();
         self.data_changed();
@@ -287,6 +296,7 @@ impl MidiChannel {
         self.playback_cursor = self.storage.create_cursor();
         self.recording_start_state.clear();
         self.recording_start_valid = start_state.is_some();
+        self.loaded_contents = true;
         for m in start_state.unwrap_or(&[]) {
             self.recording_start_state.process(m);
         }
@@ -482,10 +492,12 @@ impl MidiChannel {
         }
 
         if flags.contains(ProcessFlags::RECORD) {
+            self.loaded_contents = false;
             let from = (length_before as i64 + self.start_offset as i64).max(0) as u32;
             self.process_record(false, from, n_samples, input)?;
             processed_input = true;
         } else if flags.contains(ProcessFlags::PRE_RECORD) {
+            self.loaded_contents = false;
             let from = self.prerecord_data_length;
             self.process_record(true, from, n_samples, input)?;
             processed_input = true;

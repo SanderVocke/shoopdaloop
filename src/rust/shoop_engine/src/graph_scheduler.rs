@@ -195,7 +195,13 @@ impl Drop for GraphScheduler {
             self.shared.cv.notify_all();
         }
         if let Some(worker) = self.worker.take() {
-            let _ = worker.join();
+            // The apply closure upgrades the session's last weak reference. If that is
+            // released on this worker, scheduler destruction also runs here; joining the
+            // current thread would panic with EDEADLK. Dropping its handle safely detaches
+            // the already-stopping worker instead.
+            if worker.thread().id() != thread::current().id() {
+                let _ = worker.join();
+            }
         }
     }
 }
