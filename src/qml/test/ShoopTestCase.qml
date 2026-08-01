@@ -240,10 +240,9 @@ Item {
     function wait_session_loaded(session) {
         wait_condition(() => session.loaded, 10000, `session not loaded in time`)
         // Session construction is intentionally asynchronous. Tests that inspect an
-        // exact restored descriptor need an explicit command/graph fence and one GUI
-        // update rather than relying on ordinary stale mirror polling.
+        // exact restored descriptor use wait_updated's explicit command/graph fence rather
+        // than relying on ordinary stale mirror polling.
         if (session.backend) {
-            session.backend.wait_process()
             wait_updated(session.backend)
         }
     }
@@ -271,7 +270,10 @@ Item {
             connectOnce(backend.updated_on_gui_thread, updated)
             wait_condition(() => done == true, 500, "Backend not updated in time")
         }
+        // First let queued Qt calls reach the backend, then explicitly settle engine
+        // commands/graph work. The final updates publish the resulting mirrors to QML.
         wait_once()
+        backend.wait_process()
         wait_once()
         wait_once()
     }
