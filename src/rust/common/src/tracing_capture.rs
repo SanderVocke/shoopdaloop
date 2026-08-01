@@ -250,22 +250,24 @@ pub fn shutdown() -> Result<(), CaptureError> {
 }
 
 impl CaptureController {
+    fn next_capture_path(&mut self, output_dir: &Path, label: &str) -> PathBuf {
+        let sanitized = sanitize_label(label);
+        loop {
+            self.sequence += 1;
+            let path = output_dir.join(format!("{:04}-{sanitized}.tracy", self.sequence));
+            if !path.exists() {
+                return path;
+            }
+        }
+    }
+
     fn start(&mut self, label: &str) -> Result<PathBuf, CaptureError> {
         self.stop_active()?;
         let config = self.config.clone().ok_or(CaptureError::NotConfigured)?;
         crate::tracing_helpers::set_tracing_output_enabled(false);
         wait_for_connection_state(false, config.connect_timeout)?;
 
-        let sanitized = sanitize_label(label);
-        let path = loop {
-            self.sequence += 1;
-            let path = config
-                .output_dir
-                .join(format!("{:04}-{sanitized}.tracy", self.sequence));
-            if !path.exists() {
-                break path;
-            }
-        };
+        let path = self.next_capture_path(&config.output_dir, label);
 
         let log_path = config.output_dir.join("tracy-capture.log");
         let stdout = open_capture_log(&log_path)?;
@@ -565,6 +567,27 @@ mod tests {
     fn missing_tool_is_rejected() {
         let result = resolve_capture_tool(Some(Path::new("/definitely/not/a/real/tracy-capture")));
         assert!(matches!(result, Err(CaptureError::ToolNotExecutable(_))));
+    }
+
+    #[test]
+    fn starting_without_configuration_is_rejected() {
+        let mut controller = CaptureController::default();
+        assert!(matches!(
+            controller.start("test.qml"),
+            Err(CaptureError::NotConfigured)
+        ));
+    }
+
+    #[test]
+    fn capture_paths_are_unique_and_confined_to_output_directory() {
+        let temporary_dir = tempfile::tempdir().expect("create temporary directory");
+        let mut controller = CaptureController::default();
+        let first = controller.next_capture_path(temporary_dir.path(), "../../unsafe name.qml");
+        assert_eq!(first, temporary_dir.path().join("0001-unsafe_name.tracy"));
+        std::fs::write(&first, b"existing trace").expect("reserve first trace name");
+        let second = controller.next_capture_path(temporary_dir.path(), "../../unsafe name.qml");
+        assert_eq!(second, temporary_dir.path().join("0002-unsafe_name.tracy"));
+        assert_eq!(second.parent(), Some(temporary_dir.path()));
     }
 
     #[cfg(unix)]
