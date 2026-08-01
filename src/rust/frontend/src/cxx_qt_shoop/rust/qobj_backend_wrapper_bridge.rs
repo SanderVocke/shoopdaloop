@@ -210,6 +210,17 @@ pub struct BackendWrapperRust {
     pub plotter_mode: TracyPlotter,
     pub plotter_samples_requested: TracyPlotter,
     pub plotter_samples_pending: TracyPlotter,
+    pub plotter_ready: TracyPlotter,
+    pub plotter_backend_type: TracyPlotter,
+    pub plotter_xruns: TracyPlotter,
+    pub plotter_stale_graph_cycles: TracyPlotter,
+    pub plotter_dsp_load: TracyPlotter,
+    pub plotter_last_processed: TracyPlotter,
+    pub plotter_audio_buffers_created: TracyPlotter,
+    pub plotter_audio_buffers_available: TracyPlotter,
+    pub plotter_sample_rate: TracyPlotter,
+    pub plotter_buffer_size: TracyPlotter,
+    pub plotter_update_interval: TracyPlotter,
 }
 
 impl Default for BackendWrapperRust {
@@ -243,6 +254,17 @@ impl Default for BackendWrapperRust {
             plotter_mode: TracyPlotter::new("mode"),
             plotter_samples_requested: TracyPlotter::new("samples_requested"),
             plotter_samples_pending: TracyPlotter::new("samples_pending"),
+            plotter_ready: TracyPlotter::new("ready"),
+            plotter_backend_type: TracyPlotter::new("backend_type"),
+            plotter_xruns: TracyPlotter::new("xruns"),
+            plotter_stale_graph_cycles: TracyPlotter::new("stale_graph_cycles"),
+            plotter_dsp_load: TracyPlotter::new("dsp_load_percent"),
+            plotter_last_processed: TracyPlotter::new("last_processed"),
+            plotter_audio_buffers_created: TracyPlotter::new("audio_buffers_created"),
+            plotter_audio_buffers_available: TracyPlotter::new("audio_buffers_available"),
+            plotter_sample_rate: TracyPlotter::new("sample_rate"),
+            plotter_buffer_size: TracyPlotter::new("buffer_size"),
+            plotter_update_interval: TracyPlotter::new("update_interval_ms"),
         }
     }
 }
