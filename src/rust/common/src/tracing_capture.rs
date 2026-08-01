@@ -202,7 +202,7 @@ pub fn configure(mut config: CaptureConfig) -> Result<(), CaptureError> {
     let mut controller = CAPTURE_CONTROLLER
         .lock()
         .map_err(|_| CaptureError::LockPoisoned)?;
-    controller.stop_active()?;
+    controller.stop_active(None)?;
     controller.config = Some(config.clone());
     controller.sequence = 0;
     initialize_output_files(&config.output_dir)?;
@@ -233,17 +233,23 @@ pub fn start_default_capture() -> Result<PathBuf, CaptureError> {
 }
 
 pub fn stop_capture() -> Result<Option<CapturedTrace>, CaptureError> {
+    stop_capture_with_outcome(None)
+}
+
+pub fn stop_capture_with_outcome(
+    test_outcome: Option<&str>,
+) -> Result<Option<CapturedTrace>, CaptureError> {
     CAPTURE_CONTROLLER
         .lock()
         .map_err(|_| CaptureError::LockPoisoned)?
-        .stop_active()
+        .stop_active(test_outcome)
 }
 
 pub fn shutdown() -> Result<(), CaptureError> {
     let mut controller = CAPTURE_CONTROLLER
         .lock()
         .map_err(|_| CaptureError::LockPoisoned)?;
-    let result = controller.stop_active().map(|_| ());
+    let result = controller.stop_active(None).map(|_| ());
     controller.config = None;
     crate::tracing_helpers::set_tracing_output_enabled(true);
     result
@@ -262,7 +268,7 @@ impl CaptureController {
     }
 
     fn start(&mut self, label: &str) -> Result<PathBuf, CaptureError> {
-        self.stop_active()?;
+        self.stop_active(None)?;
         let config = self.config.clone().ok_or(CaptureError::NotConfigured)?;
         crate::tracing_helpers::set_tracing_output_enabled(false);
         wait_for_connection_state(false, config.connect_timeout)?;
@@ -327,14 +333,17 @@ impl CaptureController {
             }
 
             if start.elapsed() >= config.connect_timeout {
-                let _ = self.stop_active();
+                let _ = self.stop_active(None);
                 return Err(CaptureError::ConnectTimeout(config.connect_timeout));
             }
             thread::sleep(POLL_INTERVAL);
         }
     }
 
-    fn stop_active(&mut self) -> Result<Option<CapturedTrace>, CaptureError> {
+    fn stop_active(
+        &mut self,
+        test_outcome: Option<&str>,
+    ) -> Result<Option<CapturedTrace>, CaptureError> {
         let Some(mut active) = self.active.take() else {
             return Ok(None);
         };
@@ -405,6 +414,7 @@ impl CaptureController {
             active.started_at,
             SystemTime::now(),
             status,
+            test_outcome,
         )?;
         info!("Finalized Tracy capture {}", active.path.display());
         Ok(Some(CapturedTrace {
@@ -421,7 +431,7 @@ fn initialize_output_files(output_dir: &Path) -> Result<(), CaptureError> {
             .map_err(|error| io_error("create capture manifest", &manifest_path, error))?;
         writeln!(
             manifest,
-            "sequence\tsource_qml\tcapture_file\tstarted_unix_ms\tended_unix_ms\tstatus"
+            "sequence\tsource_qml\tcapture_file\tstarted_unix_ms\tended_unix_ms\tstatus\ttest_outcome"
         )
         .map_err(|error| io_error("write capture manifest", &manifest_path, error))?;
     }
@@ -445,6 +455,7 @@ fn append_manifest(
     started_at: SystemTime,
     ended_at: SystemTime,
     status: ExitStatus,
+    test_outcome: Option<&str>,
 ) -> Result<(), CaptureError> {
     let manifest_path = output_dir.join("manifest.tsv");
     let mut manifest = OpenOptions::new()
@@ -457,13 +468,14 @@ fn append_manifest(
         .to_string_lossy();
     writeln!(
         manifest,
-        "{}\t{}\t{}\t{}\t{}\t{}",
+        "{}\t{}\t{}\t{}\t{}\t{}\t{}",
         sequence,
         escape_tsv(source_label),
         escape_tsv(&capture_file),
         unix_millis(started_at),
         unix_millis(ended_at),
-        escape_tsv(&status.to_string())
+        escape_tsv(&status.to_string()),
+        escape_tsv(test_outcome.unwrap_or("not_applicable"))
     )
     .map_err(|error| io_error("append capture manifest", &manifest_path, error))
 }

@@ -152,6 +152,7 @@ Totals:
 
         unsafe {
             self.as_mut().rust_mut().current_test_file = Some(test_file.clone());
+            self.as_mut().rust_mut().current_test_outcome = None;
             self.as_mut()
                 .reload_qml(QString::from(test_file.to_string_lossy().to_string()));
         }
@@ -230,6 +231,7 @@ Totals:
             {
                 let mut rust_mut = self.as_mut().rust_mut();
                 let our_results = &mut rust_mut.test_results;
+                let first_current_result = our_results.test_case_results.len();
                 results.iter().try_for_each(|(testcase_name, testcase_content) : (&QString, &cxx_qt_lib::QVariant)| -> Result<(), anyhow::Error> {
                     let fn_results  = qvariant_to_qvariantmap(testcase_content).unwrap_or_default();
                     let mut testcase_results : TestCaseResults = TestCaseResults::default();
@@ -249,6 +251,30 @@ Totals:
                     our_results.test_case_results.push(testcase_results);
                     Ok(())
                 }).unwrap_or_else(|e| error!("{e}"));
+
+                let current_results = &our_results.test_case_results[first_current_result..];
+                let any_failed = current_results.iter().any(|testcase| {
+                    testcase
+                        .test_fn_results
+                        .iter()
+                        .any(|result| matches!(&result.status, ResultStatus::Failed))
+                });
+                let any_skipped = current_results.iter().any(|testcase| {
+                    testcase
+                        .test_fn_results
+                        .iter()
+                        .any(|result| matches!(&result.status, ResultStatus::Skipped))
+                });
+                rust_mut.current_test_outcome = Some(
+                    if any_failed {
+                        "failed"
+                    } else if any_skipped {
+                        "passed_with_skips"
+                    } else {
+                        "passed"
+                    }
+                    .to_string(),
+                );
             }
         }
 
@@ -262,13 +288,16 @@ Totals:
         // Finalize this file's capture before loading the next QML engine.
         debug!("QML engine destroyed");
         let current_test_file = self.as_mut().rust_mut().current_test_file.take();
+        let current_test_outcome = self.as_mut().rust_mut().current_test_outcome.take();
         if let Some(current_test_file) = current_test_file {
             self.as_mut()
                 .rust_mut()
                 .test_files_ran
                 .push(current_test_file);
             if common::tracing_capture::is_configured() {
-                match common::tracing_capture::stop_capture() {
+                match common::tracing_capture::stop_capture_with_outcome(
+                    current_test_outcome.as_deref(),
+                ) {
                     Ok(Some(trace)) => info!(
                         "Finalized trace for {:?}: {}",
                         trace.source_label,
