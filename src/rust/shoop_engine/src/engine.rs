@@ -16,12 +16,7 @@
 //! Commands are `FnMut` rather than `FnOnce` because they are called through the box
 //! and the box then has to survive to be sent back. Each is called exactly once.
 
-use crate::composite_plan::{
-    CompiledCompositePlan, LoopIdentity, LoopTargetKind, MAX_COMPOSITE_TARGETS,
-};
-use crate::composite_runtime::{
-    ActiveCompositeChild, CompositeRuntimeCounters, CompositeRuntimeFault,
-};
+use crate::composite_plan::{CompiledCompositePlan, LoopIdentity};
 use crate::composite_timeline::{
     BoundaryTargetAction, BoundaryTraceEntry, CompositeBoundaryTimeline,
     CompositeTimelineControlError, CompositeTimelineCounters, CompositeTimelineFaultRecord,
@@ -111,8 +106,8 @@ pub struct Stats {
     pub stuck_cycles: AtomicU32,
     /// Commands that arrived and were applied.
     pub commands_applied: AtomicU32,
-    /// State publications skipped because every preallocated snapshot was in use.
-    pub snapshots_dropped: AtomicU32,
+    /// Diagnostic trace publications skipped because every preallocated box was in use.
+    pub trace_snapshots_dropped: AtomicU32,
     /// The newest command sequence that finished executing.
     pub last_applied_command: AtomicU64,
     /// Cycles run against a schedule older than the session's topology.
@@ -157,54 +152,24 @@ impl Stats {
     }
 }
 
-/// One composite's authoritative runtime state, as the control side polls it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CompositeSnapshot {
-    pub identity: LoopIdentity,
-    pub sync_source: LoopIdentity,
-    pub active_plan_version: u64,
-    pub pending_plan_version: Option<u64>,
-    pub mode: LoopMode,
-    pub next_mode: Option<LoopMode>,
-    pub next_mode_delay: Option<u32>,
-    pub iteration: u32,
-    pub cycle_count: u64,
-    pub length: u64,
-    pub position: u64,
-    pub play_after_record: bool,
-    pub runtime_counters: CompositeRuntimeCounters,
-    pub runtime_fault: CompositeRuntimeFault,
-    active_children: [Option<ActiveCompositeChild>; MAX_COMPOSITE_TARGETS],
-    n_active_children: usize,
-}
-
-impl CompositeSnapshot {
-    pub fn active_children(&self) -> impl Iterator<Item = ActiveCompositeChild> + '_ {
-        self.active_children[..self.n_active_children]
-            .iter()
-            .flatten()
-            .copied()
-    }
-}
-
-/// Composite runtime state published without allocating on the process thread.
+/// Bounded session-level composite diagnostics.
+///
+/// Ordinary composite state uses `CompositeStateMirror`; this queue exists only for trace and
+/// timeline diagnostics whose history does not belong to any one object.
 #[derive(Debug, Default, Clone, PartialEq)]
-pub struct StateSnapshot {
-    pub composites: Vec<CompositeSnapshot>,
+pub struct CompositeTraceSnapshot {
     pub composite_timeline_counters: CompositeTimelineCounters,
     pub composite_timeline_fault: CompositeTimelineFaultRecord,
     pub composite_timeline_version: u64,
     pub n_retired_composite_plans: usize,
     pub composite_trace: Vec<BoundaryTraceEntry>,
     pub cycle: u32,
-    pub n_composites: usize,
     pub n_composite_trace_entries: usize,
 }
 
-impl StateSnapshot {
+impl CompositeTraceSnapshot {
     pub fn truncated(&self) -> bool {
-        self.n_composites > self.composites.len()
-            || self.n_composite_trace_entries > self.composite_trace.len()
+        self.n_composite_trace_entries > self.composite_trace.len()
     }
 }
 /// Owns the session on the audio thread.
@@ -212,8 +177,8 @@ pub struct Engine {
     session: Session,
     commands: Consumer<SequencedCommand>,
     returns: Producer<SequencedCommand>,
-    filled: Producer<Box<StateSnapshot>>,
-    empties: Consumer<Box<StateSnapshot>>,
+    filled: Producer<Box<CompositeTraceSnapshot>>,
+    empties: Consumer<Box<CompositeTraceSnapshot>>,
     stats: Arc<Stats>,
     alive: Arc<AtomicBool>,
 }
@@ -222,9 +187,9 @@ pub struct Engine {
 pub struct EngineHandle {
     commands: Producer<SequencedCommand>,
     returns: Consumer<SequencedCommand>,
-    filled: Consumer<Box<StateSnapshot>>,
-    empties: Producer<Box<StateSnapshot>>,
-    current: Option<Box<StateSnapshot>>,
+    filled: Consumer<Box<CompositeTraceSnapshot>>,
+    empties: Producer<Box<CompositeTraceSnapshot>>,
+    current: Option<Box<CompositeTraceSnapshot>>,
     stats: Arc<Stats>,
     alive: Arc<AtomicBool>,
     next_sequence: u64,
@@ -242,14 +207,12 @@ pub fn split(session: Session, capacity: usize) -> (Engine, EngineHandle) {
     const N_SNAPSHOTS: usize = 3;
     let (filled_tx, filled_rx) = RingBuffer::new(N_SNAPSHOTS);
     let (mut empties_tx, empties_rx) = RingBuffer::new(N_SNAPSHOTS);
-    let composite_room = session.composite_timeline().n_composites().max(8);
     let composite_trace_room = session
         .composite_timeline()
         .n_history_trace_entries()
         .max(64);
     for _ in 0..N_SNAPSHOTS {
-        let _ = empties_tx.push(Box::new(StateSnapshot {
-            composites: Vec::with_capacity(composite_room),
+        let _ = empties_tx.push(Box::new(CompositeTraceSnapshot {
             composite_trace: Vec::with_capacity(composite_trace_room),
             ..Default::default()
         }));
@@ -351,77 +314,31 @@ impl Engine {
         self.stats
             .stale_cycles
             .store(self.session.n_stale_cycles(), Ordering::Relaxed);
-        self.publish_state();
+        self.publish_trace();
     }
 
-    /// Fills and publishes a snapshot, if there is a box free to fill.
-    ///
-    /// Skipped rather than queued when the control side has not returned one: it polls,
-    /// so it wants the newest state, and dropping an intermediate costs nothing.
-    fn publish_state(&mut self) {
+    /// Fills and publishes a diagnostic trace snapshot, if a box is free.
+    fn publish_trace(&mut self) {
         let Ok(mut snap) = self.empties.pop() else {
-            self.stats.snapshots_dropped.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .trace_snapshots_dropped
+                .fetch_add(1, Ordering::Relaxed);
             return;
         };
 
         snap.cycle = self.stats.cycles.load(Ordering::Relaxed);
-        snap.n_composites = self.session.composite_timeline().n_composites();
         snap.composite_timeline_version = self.session.composite_timeline_version();
         snap.n_retired_composite_plans = self.session.composite_timeline().n_retired_plans();
         snap.n_composite_trace_entries =
             self.session.composite_timeline().n_history_trace_entries();
 
         let timeline = self.session.composite_timeline();
-        snap.composites.clear();
         snap.composite_timeline_counters = timeline.counters();
         snap.composite_timeline_fault = timeline.fault();
         snap.composite_trace.clear();
         let trace_room = snap.composite_trace.capacity();
         snap.composite_trace
             .extend(timeline.history_trace().take(trace_room));
-        for i in 0..snap.n_composites.min(snap.composites.capacity()) {
-            let Some(node) = timeline.node_state(i) else {
-                break;
-            };
-            let pending = node.runtime.pending();
-            let anticipated = pending
-                .map(|pending| (pending.mode, pending.boundaries_to_skip))
-                .or_else(|| timeline.anticipated_transition(node.plan.source()));
-            let mut active_children = [None; MAX_COMPOSITE_TARGETS];
-            let mut n_active_children = 0;
-            for child in node
-                .runtime
-                .active_children()
-                .filter(|child| match child.identity.kind {
-                    LoopTargetKind::Basic => self
-                        .session
-                        .loop_identity(child.identity.slot as usize)
-                        .is_some_and(|identity| identity == child.identity),
-                    LoopTargetKind::Composite => timeline.is_current_composite(child.identity),
-                })
-            {
-                active_children[n_active_children] = Some(child);
-                n_active_children += 1;
-            }
-            snap.composites.push(CompositeSnapshot {
-                identity: node.plan.source(),
-                sync_source: node.sync_source,
-                active_plan_version: node.active_version,
-                pending_plan_version: node.pending_version,
-                mode: node.runtime.mode(),
-                next_mode: anticipated.map(|(mode, _)| mode),
-                next_mode_delay: anticipated.map(|(_, delay)| delay),
-                iteration: node.runtime.iteration(),
-                cycle_count: node.runtime.cycle_count(),
-                length: node.runtime.length_samples(node.plan).unwrap_or(0),
-                position: node.runtime.position_samples(node.plan).unwrap_or(0),
-                play_after_record: node.runtime.play_after_record(),
-                runtime_counters: node.runtime.counters(),
-                runtime_fault: node.runtime.fault(),
-                active_children,
-                n_active_children,
-            });
-        }
 
         let _ = self.filled.push(snap);
     }
@@ -743,15 +660,14 @@ impl EngineHandle {
         n
     }
 
-    /// Takes the newest published composite state, returning older boxes to be refilled.
-    pub fn poll(&mut self) -> Option<&StateSnapshot> {
+    /// Takes the newest session-level composite diagnostics.
+    pub fn poll_trace(&mut self) -> Option<&CompositeTraceSnapshot> {
         while let Ok(snap) = self.filled.pop() {
             if let Some(old) = self.current.replace(snap) {
                 self.recycle(old);
             }
         }
         if let Some(current) = self.current.as_mut() {
-            grow_to(&mut current.composites, current.n_composites);
             grow_to(
                 &mut current.composite_trace,
                 current.n_composite_trace_entries,
@@ -760,8 +676,7 @@ impl EngineHandle {
         self.current.as_deref()
     }
 
-    fn recycle(&mut self, mut snap: Box<StateSnapshot>) {
-        snap.composites.clear();
+    fn recycle(&mut self, mut snap: Box<CompositeTraceSnapshot>) {
         snap.composite_trace.clear();
         let _ = self.empties.push(snap);
     }

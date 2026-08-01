@@ -109,7 +109,7 @@ impl CompositeLoopBackend {
     pub fn initialize_impl(self: Pin<&mut Self>) {}
 
     fn install_engine_schedule(mut self: Pin<&mut Self>) -> Result<(), anyhow::Error> {
-        if !self.engine_schedule_dirty {
+        if !self.engine_schedule_dirty || self.engine_schedule_install.is_some() {
             return Ok(());
         }
         if self.engine_schedule_installing {
@@ -198,19 +198,21 @@ impl CompositeLoopBackend {
                 sections: vec![CompositeSection { entries }],
             }],
         };
-        let primitive_sync_sources = session.primitive_sync_sources();
-        session.configure_composite_loop(
+        let primitive_sync_sources = session
+            .primitive_sync_sources_if_ready()
+            .ok_or_else(|| anyhow::anyhow!("primitive loop topology is still pending"))?;
+        let install = session.configure_composite_loop_queued(
             &composite,
             descriptor,
             sync_source,
             metadata.into_values().collect(),
             &primitive_sync_sources,
+            self.play_after_record,
         )?;
-        composite.set_play_after_record(self.play_after_record)?;
         {
             let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.engine_schedule_install = Some(install);
             rust_mut.engine_schedule_dirty = false;
-            rust_mut.engine_schedule_installed = true;
         }
         Ok(())
     }
@@ -473,6 +475,7 @@ impl CompositeLoopBackend {
                     .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("engine session is not initialized"))?
                     .adopt_audio_ringbuffers(requests)?;
+                self.as_mut().install_engine_schedule()?;
             }
             if go_to_mode != LoopMode::Unknown {
                 self.as_mut().transition(
@@ -614,6 +617,23 @@ impl CompositeLoopBackend {
 
     pub unsafe fn set_backend(mut self: Pin<&mut Self>, backend: *mut QObject) {
         debug!(self, "set backend -> {backend:?}");
+        if self.backend != backend {
+            let was_initialized = self.initialized;
+            {
+                let mut rust_mut = self.as_mut().rust_mut();
+                rust_mut.backend = backend;
+                rust_mut.backend_session = None;
+                rust_mut.engine_loop = None;
+                rust_mut.engine_schedule_install = None;
+                rust_mut.engine_schedule_dirty = true;
+                rust_mut.engine_schedule_installed = false;
+                rust_mut.initialized = false;
+            }
+            if was_initialized {
+                self.as_mut().initialized_changed(false);
+            }
+            self.as_mut().backend_changed(backend);
+        }
         if backend.is_null() || self.engine_loop.is_some() {
             return;
         }
@@ -627,13 +647,11 @@ impl CompositeLoopBackend {
             let engine_loop = session.create_composite_loop()?;
             {
                 let mut rust_mut = self.as_mut().rust_mut();
-                rust_mut.backend = backend;
                 rust_mut.backend_session = Some(session);
                 rust_mut.engine_loop = Some(engine_loop);
                 rust_mut.initialized = true;
             }
             self.as_mut().initialized_changed(true);
-            self.as_mut().backend_changed(backend);
             Ok(())
         }();
         if let Err(error) = result {
@@ -777,6 +795,29 @@ impl CompositeLoopBackend {
     pub fn update(mut self: Pin<&mut Self>) {
         if self.engine_loop.is_none() {
             return;
+        }
+        let install_result = self
+            .engine_schedule_install
+            .as_ref()
+            .and_then(|install| install.take_result());
+        if let Some(result) = install_result {
+            self.as_mut().rust_mut().engine_schedule_install = None;
+            match result {
+                Ok(_) => {
+                    self.as_mut().rust_mut().engine_schedule_installed = true;
+                    if let Some(engine_loop) = self.engine_loop.as_ref() {
+                        if let Err(error) =
+                            engine_loop.set_play_after_record(self.play_after_record)
+                        {
+                            error!(self, "could not queue composite record option: {error}");
+                        }
+                    }
+                }
+                Err(error) => {
+                    error!(self, "engine composite configuration failed: {error}");
+                    self.as_mut().rust_mut().engine_schedule_dirty = true;
+                }
+            }
         }
         if self.engine_schedule_dirty && self.as_mut().install_engine_schedule().is_err() {
             return;

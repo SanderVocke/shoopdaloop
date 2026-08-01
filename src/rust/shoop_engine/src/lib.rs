@@ -103,7 +103,7 @@ pub use dummy_midi_port::DummyMidiPort;
 pub use dummy_port::{DummyAudioPort, DummyExternalConnections, DummyPortError, PortId};
 pub use engine::{
     split, wait_for_command, wait_for_result, Command, CommandReservation, CommandSequence,
-    CompositeSnapshot, Engine, EngineHandle, SendError, StateSnapshot, Stats, WaitError,
+    CompositeTraceSnapshot, Engine, EngineHandle, SendError, Stats, WaitError,
     DEFAULT_WAIT_TIMEOUT,
 };
 pub use fx_chain::{FXChainState, FXChainType};
@@ -132,6 +132,6 @@ pub use session::{
 };
 pub use state::{AudioChannelState, AudioPortState, LoopState, MidiChannelState, MidiPortState};
 pub use state_mirror::{
-    AudioChannelStateMirror, AudioPortStateMirror, LoopStateMirror, MidiChannelStateMirror,
-    MidiPortStateMirror,
+    AudioChannelStateMirror, AudioPortStateMirror, CompositeStateMirror,
+    CompositeStateMirrorSnapshot, LoopStateMirror, MidiChannelStateMirror, MidiPortStateMirror,
 };

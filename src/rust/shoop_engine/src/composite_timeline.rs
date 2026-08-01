@@ -7,9 +7,11 @@ use crate::composite_plan::{
 use crate::composite_runtime::{
     CompositeRuntime, CompositeRuntimeError, CompositeTargetAction, CompositeTransitionBatch,
 };
+use crate::state_mirror::CompositeStateMirror;
 use crate::LoopMode;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::sync::Arc;
 
 pub const MAX_COMPOSITE_CONTROLS: usize = 128;
 
@@ -158,6 +160,7 @@ struct InstalledComposite {
     pending_version: Option<u64>,
     sync_source: LoopIdentity,
     runtime: CompositeRuntime,
+    state: Arc<CompositeStateMirror>,
 }
 
 impl InstalledComposite {
@@ -241,6 +244,7 @@ impl CompositeBoundaryTimeline {
                         pending_version: None,
                         sync_source: node.sync_source,
                         runtime,
+                        state: Arc::new(CompositeStateMirror::new(source)),
                     },
                 )
                 .is_some()
@@ -370,6 +374,67 @@ impl CompositeBoundaryTimeline {
 
     pub fn n_composites(&self) -> usize {
         self.nodes.len()
+    }
+
+    /// Replaces the default mirror while the timeline is still prepared off-thread.
+    pub fn set_state_mirror(
+        &mut self,
+        source: LoopIdentity,
+        state: Arc<CompositeStateMirror>,
+    ) -> bool {
+        let Some(node) = self
+            .nodes
+            .iter_mut()
+            .find(|node| node.plan().source() == source)
+        else {
+            return false;
+        };
+        node.state = state;
+        true
+    }
+
+    pub fn state_mirror(&self, source: LoopIdentity) -> Option<&Arc<CompositeStateMirror>> {
+        self.nodes
+            .iter()
+            .find(|node| node.plan().source() == source)
+            .map(|node| &node.state)
+    }
+
+    /// Marks mirrors whose identities disappeared from a replacement as uninstalled.
+    pub fn mark_mirrors_removed_by(&self, replacement: &Self) {
+        for node in &self.nodes {
+            if !replacement.is_current_composite(node.plan().source()) {
+                node.state.mark_uninstalled();
+            }
+        }
+    }
+
+    /// Publishes all frontend-visible composite runtime state without locking or allocating.
+    pub fn publish_state_mirrors(&self, mut is_current_target: impl FnMut(LoopIdentity) -> bool) {
+        for node in &self.nodes {
+            let source = node.plan().source();
+            let pending = node.runtime.pending();
+            let anticipated = pending
+                .map(|pending| (pending.mode, pending.boundaries_to_skip))
+                .or_else(|| self.anticipated_transition(source));
+            node.state.publish(
+                node.sync_source,
+                node.active_version,
+                node.pending_version,
+                node.runtime.mode(),
+                anticipated,
+                node.runtime.iteration(),
+                node.runtime.cycle_count(),
+                node.runtime.length_samples(node.plan()).unwrap_or(0),
+                node.runtime.position_samples(node.plan()).unwrap_or(0),
+                node.runtime.play_after_record(),
+                node.runtime.counters(),
+                node.runtime.fault(),
+                node.runtime
+                    .active_children()
+                    .filter(|child| is_current_target(child.identity)),
+            );
+        }
     }
 
     pub fn n_retired_plans(&self) -> usize {

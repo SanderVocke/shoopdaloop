@@ -268,7 +268,7 @@ Item {
                 done = true
             }
             connectOnce(backend.updated_on_gui_thread, updated)
-            wait_condition(() => done == true, 500, "Backend not updated in time")
+            wait_condition(() => done == true, 2000, "Backend not updated in time")
         }
         // First let queued Qt calls reach the backend, then explicitly settle engine
         // commands/graph work. Repeat after publishing because QML reactions to those

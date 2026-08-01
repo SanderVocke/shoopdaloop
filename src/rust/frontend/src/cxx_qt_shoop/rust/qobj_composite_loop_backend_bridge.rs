@@ -261,7 +261,7 @@ use cxx_qt_lib_shoop::qweakpointer_qobject::QWeakPointer_QObject;
 pub use ffi::make_raw_composite_loop_backend;
 pub use ffi::CompositeLoopBackend;
 use ffi::*;
-use shoop_engine::app_backend::{BackendSession, CompositeLoop};
+use shoop_engine::app_backend::{BackendSession, CompositeInstallAck, CompositeLoop};
 use shoop_engine::LoopMode;
 
 use crate::composite_loop_schedule::CompositeLoopSchedule;
@@ -340,6 +340,7 @@ pub struct CompositeLoopBackendRust {
     pub schedule: CompositeLoopSchedule<cxx::UniquePtr<QWeakPointer_QObject>>,
     pub backend_session: Option<BackendSession>,
     pub engine_loop: Option<CompositeLoop>,
+    pub engine_schedule_install: Option<CompositeInstallAck>,
     pub engine_schedule_dirty: bool,
     pub engine_schedule_installed: bool,
     pub engine_schedule_installing: bool,
@@ -370,6 +371,7 @@ impl Default for CompositeLoopBackendRust {
             schedule: CompositeLoopSchedule::default(),
             backend_session: None,
             engine_loop: None,
+            engine_schedule_install: None,
             engine_schedule_dirty: true,
             engine_schedule_installed: false,
             engine_schedule_installing: false,

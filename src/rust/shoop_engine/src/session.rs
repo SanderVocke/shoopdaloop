@@ -680,6 +680,7 @@ impl Session {
         let acceptance_sequence = self.composite_acceptance_sequence;
         self.composite_timeline
             .request_transition(source, mode, delay)?;
+        self.publish_composite_anticipated_transitions();
         self.composite_acceptance_sequence = self.composite_acceptance_sequence.saturating_add(1);
         Ok(acceptance_sequence)
     }
@@ -698,6 +699,7 @@ impl Session {
             acceptance_sequence,
         )?;
         self.apply_composite_controls_now()?;
+        self.publish_composite_anticipated_transitions();
         self.composite_acceptance_sequence = self.composite_acceptance_sequence.saturating_add(1);
         Ok(acceptance_sequence)
     }
@@ -778,6 +780,7 @@ impl Session {
         let acceptance_sequence = self.composite_acceptance_sequence;
         self.composite_timeline
             .set_play_after_record(source, enabled)?;
+        self.publish_composite_states();
         self.composite_acceptance_sequence = self.composite_acceptance_sequence.saturating_add(1);
         Ok(acceptance_sequence)
     }
@@ -810,8 +813,35 @@ impl Session {
             acceptance_sequence,
         };
         self.composite_timeline.queue_control(control)?;
+        self.publish_composite_anticipated_transitions();
         self.composite_acceptance_sequence = self.composite_acceptance_sequence.saturating_add(1);
         Ok(acceptance_sequence)
+    }
+
+    fn publish_composite_anticipated_transitions(&self) {
+        for (index, loop_) in self.loops.iter().enumerate() {
+            let transition = loop_.first_planned_transition().or_else(|| {
+                self.loop_identity(index)
+                    .and_then(|identity| self.composite_timeline.anticipated_transition(identity))
+            });
+            loop_.publish_state_with_transition(transition);
+        }
+        self.publish_composite_states();
+    }
+
+    fn publish_composite_states(&self) {
+        let timeline = &self.composite_timeline;
+        let loop_live = &self.loop_live;
+        timeline.publish_state_mirrors(|identity| match identity.kind {
+            LoopTargetKind::Basic => {
+                identity.generation == 1
+                    && loop_live
+                        .get(identity.slot as usize)
+                        .copied()
+                        .unwrap_or(false)
+            }
+            LoopTargetKind::Composite => timeline.is_current_composite(identity),
+        });
     }
 
     pub fn install_composite_timeline(
@@ -822,7 +852,10 @@ impl Session {
         if !timeline.is_empty() {
             timeline.validate_primitive_sync_sources(&self.sync_sources)?;
         }
-        Ok(std::mem::replace(&mut self.composite_timeline, timeline))
+        self.composite_timeline.mark_mirrors_removed_by(&timeline);
+        let previous = std::mem::replace(&mut self.composite_timeline, timeline);
+        self.publish_composite_states();
+        Ok(previous)
     }
 
     pub fn install_prepared_composite_timeline(
@@ -856,6 +889,7 @@ impl Session {
                     .composite_timeline
                     .queue_runtime_preserving_replacement(timeline);
                 self.composite_timeline_version = version;
+                self.publish_composite_states();
                 return Ok(ReclaimedCompositeTimeline {
                     timeline: reclaimed,
                 });
@@ -875,17 +909,21 @@ impl Session {
                 }
             }
             let mut previous = std::mem::replace(&mut self.composite_timeline, timeline);
+            previous.mark_mirrors_removed_by(&self.composite_timeline);
             self.composite_timeline.prepare_changed_topology_restart(
                 &mut previous,
                 &mut self.composite_acceptance_sequence,
             );
             self.composite_timeline_version = version;
+            self.publish_composite_states();
             Ok(ReclaimedCompositeTimeline { timeline: previous })
         } else {
             let mut previous = std::mem::replace(&mut self.composite_timeline, timeline);
+            previous.mark_mirrors_removed_by(&self.composite_timeline);
             self.composite_timeline
                 .prepare_stopped_replacement(&mut previous);
             self.composite_timeline_version = version;
+            self.publish_composite_states();
             Ok(ReclaimedCompositeTimeline { timeline: previous })
         }
     }
@@ -1340,14 +1378,41 @@ impl Session {
         requests: &[AudioRingbufferAdoption],
         prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
     ) -> Result<(), SessionError> {
+        self.adopt_audio_ringbuffers_prepared_inner(requests, prepared, None)
+    }
+
+    /// The application backend variant also returns preallocated copies for control-thread
+    /// state-mirror publication. Filling the copies is bounded and allocation-free.
+    pub fn adopt_audio_ringbuffers_prepared_with_copies(
+        &mut self,
+        requests: &[AudioRingbufferAdoption],
+        prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
+        copies: &mut [Vec<f32>],
+    ) -> Result<(), SessionError> {
+        self.adopt_audio_ringbuffers_prepared_inner(requests, prepared, Some(copies))
+    }
+
+    fn adopt_audio_ringbuffers_prepared_inner(
+        &mut self,
+        requests: &[AudioRingbufferAdoption],
+        prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
+        mut copies: Option<&mut [Vec<f32>]>,
+    ) -> Result<(), SessionError> {
         let shape = self.describe_audio_ringbuffer_adoption(requests)?;
-        if prepared.len() != shape.n_channels {
+        if prepared.len() != shape.n_channels
+            || copies
+                .as_ref()
+                .is_some_and(|copies| copies.len() != shape.n_channels)
+        {
             return Err(SessionError::AudioRingbufferAdoptionCapacity);
         }
-        for (slot, expected) in prepared.iter_mut().zip(shape.channels()) {
+        for (index, (slot, expected)) in prepared.iter_mut().zip(shape.channels()).enumerate() {
             if slot.loop_idx != expected.loop_idx
                 || slot.channel_idx != expected.channel_idx
                 || slot.data.capacity() < expected.capacity
+                || copies
+                    .as_ref()
+                    .is_some_and(|copies| copies[index].capacity() < expected.capacity)
             {
                 return Err(SessionError::AudioRingbufferAdoptionCapacity);
             }
@@ -1380,6 +1445,9 @@ impl Session {
                     slot.data.write(offset, samples);
                     offset += samples.len();
                 });
+            }
+            if let Some(copies) = copies.as_deref_mut() {
+                slot.data.copy_to_preallocated(&mut copies[index]);
             }
         }
 
@@ -1749,6 +1817,7 @@ impl Session {
         self.apply_test2x2x1_fx_outputs(n_frames);
         #[cfg(feature = "lv2")]
         self.process_carla_fx_chains(n_frames);
+        self.publish_composite_anticipated_transitions();
         self.schedule = steps;
     }
 

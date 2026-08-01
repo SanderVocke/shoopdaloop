@@ -152,8 +152,14 @@ impl AudioMidiLoop {
     pub fn as_sync_source_state(&self) -> SyncSourceState {
         self.loop_.as_sync_source_state()
     }
+    pub fn state_mirror(&self) -> &Arc<LoopStateMirror> {
+        self.loop_.state_mirror()
+    }
     pub fn first_planned_transition(&self) -> Option<(LoopMode, u32)> {
         self.loop_.first_planned_transition()
+    }
+    pub(crate) fn publish_state_with_transition(&self, transition: Option<(LoopMode, u32)>) {
+        self.loop_.publish_state_with_transition(transition);
     }
     pub fn n_planned_transitions(&self) -> usize {
         self.loop_.n_planned_transitions()

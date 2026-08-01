@@ -93,8 +93,18 @@ impl LoopBackend {
 
     pub fn set_backend(mut self: Pin<&mut LoopBackend>, backend: *mut QObject) {
         debug!(self, "set backend -> {:?}", backend);
-        let mut rust_mut = self.as_mut().rust_mut();
-        rust_mut.backend = backend;
+        let backend_changed = self.backend != backend;
+        let was_initialized = self.get_initialized();
+        {
+            let mut rust_mut = self.as_mut().rust_mut();
+            if backend_changed {
+                rust_mut.backend_loop = None;
+            }
+            rust_mut.backend = backend;
+        }
+        if backend_changed && was_initialized {
+            self.as_mut().initialized_changed(false);
+        }
 
         self.as_mut().maybe_initialize_backend();
         if !self.get_initialized() && !backend.is_null() {
@@ -128,7 +138,21 @@ impl LoopBackend {
             let initialize_condition: bool;
 
             if self.as_ref().get_initialized() {
-                return Ok(true);
+                let current_session_id = unsafe {
+                    let backend = BackendWrapper::from_qobject_mut_ptr(self.as_ref().backend)?;
+                    backend.session.as_ref().map(|session| session.session_id())
+                };
+                let loop_session_id = self
+                    .as_ref()
+                    .rust()
+                    .backend_loop
+                    .as_ref()
+                    .map(|loop_| loop_.session_id());
+                if current_session_id == loop_session_id {
+                    return Ok(true);
+                }
+                self.as_mut().rust_mut().backend_loop = None;
+                self.as_mut().initialized_changed(false);
             }
 
             unsafe {

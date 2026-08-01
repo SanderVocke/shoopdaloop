@@ -94,6 +94,21 @@ impl PreparedAudioChannelData {
             samples = &samples[available..];
         }
     }
+
+    pub(crate) fn copy_to_preallocated(&self, destination: &mut Vec<f32>) {
+        debug_assert!(destination.capacity() >= self.length);
+        destination.resize(self.length, 0.0);
+        let mut offset = 0;
+        while offset < self.length {
+            let source = self
+                .buffers
+                .chunk_slice(offset)
+                .expect("prepared adoption data is initialized");
+            let count = source.len().min(self.length - offset);
+            destination[offset..offset + count].copy_from_slice(&source[..count]);
+            offset += count;
+        }
+    }
 }
 
 #[derive(Debug)]

@@ -245,6 +245,7 @@ fn composite_timeline_processing_does_not_allocate_or_free() {
     )
     .unwrap();
     timeline.prepare_install(1, &[None, None]).unwrap();
+    let composite_state = std::sync::Arc::clone(timeline.state_mirror(source).unwrap());
     let mut replacement_timeline = CompositeBoundaryTimeline::new(
         vec![CompositeTimelineNode {
             plan: replacement_plan,
@@ -263,7 +264,7 @@ fn composite_timeline_processing_does_not_allocate_or_free() {
     let (mut engine, mut handle) = shoop_engine::engine::split(session, 16);
     for _ in 0..4 {
         engine.process(4);
-        handle.poll();
+        handle.poll_trace();
     }
     let stale_timeline = timeline.clone();
     let mut install = handle.send_composite_timeline(timeline).unwrap();
@@ -308,10 +309,10 @@ fn composite_timeline_processing_does_not_allocate_or_free() {
         }
     });
     assert_eq!(reclaimed.pop().unwrap().len(), 1);
-    let snapshot = handle.poll().expect("composite state was published");
-    assert_eq!(snapshot.composites.len(), 1);
-    assert_eq!(snapshot.composites[0].mode, LoopMode::Playing);
-    assert_eq!(snapshot.composites[0].active_children().count(), 1);
+    let snapshot = composite_state.read();
+    assert!(snapshot.installed);
+    assert_eq!(snapshot.mode, LoopMode::Playing);
+    assert_eq!(snapshot.active_children().count(), 1);
 
     let mut stopped = handle
         .send_composite_control(
@@ -521,19 +522,25 @@ fn transactional_audio_ringbuffer_adoption_does_not_allocate_or_partially_apply(
     let shape = session
         .describe_audio_ringbuffer_adoption(&requests)
         .unwrap();
-    let mut prepared: Vec<_> = shape
-        .channels()
+    let shapes: Vec<_> = shape.channels().collect();
+    let mut prepared: Vec<_> = shapes
+        .iter()
         .map(|channel| PreparedAudioRingbufferAdoptionChannel {
             loop_idx: channel.loop_idx,
             channel_idx: channel.channel_idx,
             data: PreparedAudioChannelData::new(channel.chunk_size, channel.capacity),
         })
         .collect();
+    let mut copies: Vec<_> = shapes
+        .iter()
+        .map(|channel| Vec::with_capacity(channel.capacity))
+        .collect();
     assert_no_alloc(|| {
         session
-            .adopt_audio_ringbuffers_prepared(&requests, &mut prepared)
+            .adopt_audio_ringbuffers_prepared_with_copies(&requests, &mut prepared, &mut copies)
             .unwrap();
     });
+    assert_eq!(copies, vec![vec![0.1, 0.2, 0.3, 0.4]; 2]);
 
     let duplicate = [requests[0], requests[0]];
     let before = session

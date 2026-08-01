@@ -95,6 +95,7 @@ fn prepared_timeline_and_control_cross_at_callback_boundaries_and_publish_state(
         source,
         child,
     } = fixture();
+    let state = Arc::clone(timeline.state_mirror(source).unwrap());
     let (mut engine, mut handle) = split(session, 16);
 
     let mut install = handle.send_composite_timeline(timeline).unwrap();
@@ -118,10 +119,8 @@ fn prepared_timeline_and_control_cross_at_callback_boundaries_and_publish_state(
     assert_eq!(accepted.pop(), Ok(Ok(0)));
     assert_eq!(handle.reclaim(), 1);
 
-    let snapshot = handle.poll().expect("state published after the callback");
-    assert_eq!(snapshot.n_composites, 1);
-    assert!(!snapshot.truncated());
-    let composite = &snapshot.composites[0];
+    let composite = state.read();
+    assert!(composite.installed);
     assert_eq!(composite.identity, source);
     assert_eq!(composite.active_plan_version, 1);
     assert_eq!(composite.pending_plan_version, None);
@@ -229,6 +228,13 @@ fn synchronized_transition_countdown_and_record_option_are_engine_owned() {
     engine.process(1);
     assert!(install.pop().unwrap().is_ok());
 
+    let state = Arc::clone(
+        engine
+            .session()
+            .composite_timeline()
+            .state_mirror(source)
+            .unwrap(),
+    );
     let mut transition = handle
         .send_composite_transition(source, LoopMode::Recording, 1)
         .unwrap();
@@ -238,17 +244,46 @@ fn synchronized_transition_countdown_and_record_option_are_engine_owned() {
     engine.process(3);
     assert_eq!(transition.pop(), Ok(Ok(0)));
     assert_eq!(record_option.pop(), Ok(Ok(1)));
-    let first = handle.poll().unwrap();
-    assert_eq!(first.composites[0].mode, LoopMode::Stopped);
-    assert_eq!(first.composites[0].next_mode, Some(LoopMode::Recording));
-    assert_eq!(first.composites[0].next_mode_delay, Some(0));
-    assert!(first.composites[0].play_after_record);
+    let first = state.read();
+    assert_eq!(first.mode, LoopMode::Stopped);
+    assert_eq!(first.next_mode, Some(LoopMode::Recording));
+    assert_eq!(first.next_mode_delay, Some(0));
+    assert!(first.play_after_record);
 
     engine.process(4);
-    let second = handle.poll().unwrap();
-    assert_eq!(second.composites[0].mode, LoopMode::Recording);
-    assert_eq!(second.composites[0].next_mode, None);
-    assert_eq!(second.composites[0].iteration, 0);
+    let second = state.read();
+    assert_eq!(second.mode, LoopMode::Recording);
+    assert_eq!(second.next_mode, None);
+    assert_eq!(second.iteration, 0);
+}
+
+#[test]
+fn primitive_loop_mirror_publishes_composite_anticipated_transitions() {
+    let Fixture {
+        mut session,
+        timeline,
+        source,
+        child,
+    } = fixture();
+    session.install_composite_timeline(timeline).unwrap();
+    let child_state = Arc::clone(session.loop_(child.slot as usize).unwrap().state_mirror());
+
+    session
+        .accept_composite_transition(source, LoopMode::Playing, 2)
+        .unwrap();
+    let state = child_state.read();
+    assert_eq!(state.maybe_next_mode, Some(LoopMode::Playing));
+    assert_eq!(state.maybe_next_mode_delay, Some(2));
+
+    session.process(4);
+    let state = child_state.read();
+    assert_eq!(state.maybe_next_mode, Some(LoopMode::Playing));
+    assert!(state.maybe_next_mode_delay.unwrap() < 2);
+
+    session
+        .accept_composite_immediate_transition(source, LoopMode::Stopped, 0)
+        .unwrap();
+    assert_eq!(child_state.read().maybe_next_mode, None);
 }
 
 #[test]
@@ -344,7 +379,12 @@ fn running_timeline_replacement_activates_at_iteration_zero_and_reclaims_off_rt(
     );
     assert_eq!(before_boundary.active_version, 1);
     assert_eq!(before_boundary.pending_version, Some(2));
-    let observed_pending = &handle.poll().unwrap().composites[0];
+    let observed_pending = engine
+        .session()
+        .composite_timeline()
+        .state_mirror(source)
+        .unwrap()
+        .read();
     assert_eq!(observed_pending.active_plan_version, 1);
     assert_eq!(observed_pending.pending_plan_version, Some(2));
 
@@ -359,7 +399,12 @@ fn running_timeline_replacement_activates_at_iteration_zero_and_reclaims_off_rt(
     assert_eq!(after_boundary.runtime.mode(), LoopMode::Playing);
     assert_eq!(after_boundary.runtime.iteration(), 0);
     assert_eq!(engine.session().composite_timeline().n_retired_plans(), 1);
-    let observed_active = &handle.poll().unwrap().composites[0];
+    let observed_active = engine
+        .session()
+        .composite_timeline()
+        .state_mirror(source)
+        .unwrap()
+        .read();
     assert_eq!(observed_active.active_plan_version, 2);
     assert_eq!(observed_active.pending_plan_version, None);
     assert_eq!(observed_active.active_children().count(), 1);
@@ -654,7 +699,7 @@ fn older_prepared_version_is_rejected_even_if_compilers_finish_out_of_order() {
         shoop_engine::SessionError::StaleCompositeVersion(2)
     );
     assert_eq!(engine.session().composite_timeline_version(), 2);
-    assert_eq!(handle.poll().unwrap().composite_timeline_version, 2);
+    assert_eq!(handle.poll_trace().unwrap().composite_timeline_version, 2);
 }
 
 #[test]
@@ -678,9 +723,9 @@ fn transition_history_survives_frontend_polling_stall() {
     for _ in 0..8 {
         engine.process(4);
     }
-    handle.poll();
+    handle.poll_trace();
     engine.process(1);
-    let snapshot = handle.poll().unwrap();
+    let snapshot = handle.poll_trace().unwrap();
 
     assert!(!snapshot.composite_trace.is_empty());
     assert_eq!(
@@ -694,7 +739,7 @@ fn transition_history_survives_frontend_polling_stall() {
 }
 
 #[test]
-fn stale_snapshot_publication_is_dropped_without_stalling_processing() {
+fn stale_trace_publication_is_dropped_without_stalling_processing() {
     let (mut engine, _handle) = split(Session::default(), 8);
 
     for _ in 0..5 {
@@ -702,7 +747,13 @@ fn stale_snapshot_publication_is_dropped_without_stalling_processing() {
     }
 
     assert_eq!(engine.stats().cycles.load(Ordering::Relaxed), 5);
-    assert_eq!(engine.stats().snapshots_dropped.load(Ordering::Relaxed), 2);
+    assert_eq!(
+        engine
+            .stats()
+            .trace_snapshots_dropped
+            .load(Ordering::Relaxed),
+        2
+    );
 }
 
 #[test]

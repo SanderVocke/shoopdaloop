@@ -23,6 +23,28 @@ fn backend() -> (AudioDriver, BackendSession) {
 }
 
 #[test]
+fn composite_configuration_rejects_cross_session_handles() {
+    let (_first_driver, first) = backend();
+    let (_second_driver, second) = backend();
+    let composite = first.create_composite_loop().unwrap();
+    let descriptor = CompositePlanDescriptor {
+        source: composite.identity(),
+        sync_length: 1,
+        timelines: Vec::new(),
+    };
+    let error = second
+        .configure_composite_loop(
+            &composite,
+            descriptor,
+            composite.identity(),
+            Vec::new(),
+            &[],
+        )
+        .unwrap_err();
+    assert!(error.to_string().contains("another session"), "{error:#}");
+}
+
+#[test]
 fn application_backend_rejects_a_primitive_self_sync_edge() {
     let (_driver, session) = backend();
     let loop_ = session.create_loop().unwrap();
@@ -94,26 +116,40 @@ fn application_backend_creates_configures_controls_and_observes_engine_composite
         }],
     };
 
-    assert_eq!(
-        session
-            .configure_composite_loop(
-                &composite,
-                descriptor,
-                sync_identity,
-                metadata,
-                &[None, None],
-            )
-            .unwrap(),
-        1
-    );
+    let install = session
+        .configure_composite_loop_queued(
+            &composite,
+            descriptor,
+            sync_identity,
+            metadata,
+            &[None, None],
+            false,
+        )
+        .unwrap();
+    session
+        .wait_for_command(install.sequence(), shoop_engine::DEFAULT_WAIT_TIMEOUT)
+        .unwrap();
+    let install_deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    let version = loop {
+        if let Some(result) = install.take_result() {
+            break result.unwrap();
+        }
+        assert!(
+            std::time::Instant::now() < install_deadline,
+            "queued composite installation was not acknowledged"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    };
+    assert_eq!(version, 1);
     sync.transition(LoopMode::Playing, -1, -1).unwrap();
-    assert_eq!(
-        composite
-            .transition_immediate(LoopMode::Playing, 0)
-            .unwrap(),
-        0
-    );
-    assert_eq!(composite.set_play_after_record(true).unwrap(), 1);
+    let transition_sequence = composite
+        .transition_immediate(LoopMode::Playing, 0)
+        .unwrap();
+    let option_sequence = composite.set_play_after_record(true).unwrap();
+    assert!(option_sequence > transition_sequence);
+    session
+        .wait_for_command(option_sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)
+        .unwrap();
 
     std::thread::sleep(std::time::Duration::from_millis(20));
     let trace_deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
