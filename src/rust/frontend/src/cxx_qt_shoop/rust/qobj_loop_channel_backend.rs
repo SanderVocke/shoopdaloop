@@ -1,5 +1,4 @@
 use crate::any_backend_port::AnyBackendPort;
-use crate::cxx_qt_shoop::qobj_backend_wrapper::BackendWrapper;
 use crate::cxx_qt_shoop::qobj_loop_channel_backend_bridge::ffi::*;
 use crate::cxx_qt_shoop::qobj_port_backend_bridge::PortBackend;
 use crate::midi_event_helpers::MidiEventToQVariant;
@@ -164,18 +163,8 @@ impl LoopChannelBackend {
                     .maybe_backend_channel
                     .as_ref()
                     .map(AnyBackendChannel::session_id);
-                let (loop_session_id, backend_session_id) = unsafe {
-                    let loop_session_id = self.channel_loop_session_id();
-                    let backend_session_id = (!self.backend.is_null())
-                        .then(|| BackendWrapper::from_qobject_mut_ptr(self.backend).ok())
-                        .flatten()
-                        .and_then(|wrapper| wrapper.session.as_ref().map(|s| s.session_id()));
-                    (loop_session_id, backend_session_id)
-                };
-                if channel_session_id.is_some()
-                    && channel_session_id == loop_session_id
-                    && channel_session_id == backend_session_id
-                {
+                let loop_session_id = unsafe { self.channel_loop_session_id() };
+                if channel_session_id.is_some() && channel_session_id == loop_session_id {
                     return Ok(true);
                 }
                 {
@@ -186,6 +175,8 @@ impl LoopChannelBackend {
                 unsafe {
                     self.as_mut().initialized_changed(false);
                 }
+                // QML may synchronously rebuild the channel backend in response.
+                return Ok(false);
             }
 
             let mut non_ready_vars: HashSet<String> = HashSet::new();
@@ -236,14 +227,6 @@ impl LoopChannelBackend {
                 }
                 if self.data_type.is_none() {
                     non_ready_vars.insert("data_type".to_string());
-                }
-                let loop_session_id = self.channel_loop_session_id();
-                let backend_session_id = (!self.backend.is_null())
-                    .then(|| BackendWrapper::from_qobject_mut_ptr(self.backend).ok())
-                    .flatten()
-                    .and_then(|wrapper| wrapper.session.as_ref().map(|s| s.session_id()));
-                if loop_session_id.is_none() || loop_session_id != backend_session_id {
-                    non_ready_vars.insert("channel_loop backend session".to_string());
                 }
             }
             let initialize_condition: bool = !self.initialized && non_ready_vars.is_empty();

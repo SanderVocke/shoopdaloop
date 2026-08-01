@@ -158,6 +158,9 @@ impl LoopBackend {
                     rust_mut.sync_source_applied_session_id = None;
                 }
                 self.as_mut().initialized_changed(false);
+                // Signal handlers may rebuild dependent QML objects synchronously. Retry
+                // initialization on the next frontend tick rather than continuing with self.
+                return Ok(false);
             }
 
             unsafe {

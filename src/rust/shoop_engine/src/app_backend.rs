@@ -3236,16 +3236,18 @@ pub struct CompositeLoop {
 }
 
 impl CompositeLoop {
+    /// Composite identities are reserved before their creation command is queued, so callers
+    /// can safely use them without waiting. Command sequencing guarantees that any later
+    /// configuration still executes after creation.
     pub fn identity_if_ready(&self) -> Option<engine::LoopIdentity> {
-        (self.lifecycle() == ObjectLifecycle::Ready).then(|| self.control.mirror.identity())
+        matches!(
+            self.lifecycle(),
+            ObjectLifecycle::Pending | ObjectLifecycle::Ready
+        )
+        .then(|| self.control.mirror.identity())
     }
 
     pub fn identity(&self) -> engine::LoopIdentity {
-        if self.lifecycle() == ObjectLifecycle::Pending {
-            let _ = self
-                .shared
-                .wait_for_command(self.creation_sequence(), engine::DEFAULT_WAIT_TIMEOUT);
-        }
         self.control.mirror.identity()
     }
 

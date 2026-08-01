@@ -638,6 +638,7 @@ impl CompositeLoopBackend {
             .map(|session| session.session_id());
         let session_changed = current_session_id != installed_session_id;
 
+        let mut defer_reinitialize = false;
         if backend_changed || session_changed {
             let was_initialized = self.initialized;
             {
@@ -652,12 +653,15 @@ impl CompositeLoopBackend {
             }
             if was_initialized {
                 self.as_mut().initialized_changed(false);
+                defer_reinitialize = true;
             }
             if backend_changed {
                 self.as_mut().backend_changed(backend);
             }
         }
-        if backend.is_null() || self.engine_loop.is_some() {
+        // Signal handlers may synchronously rebuild dependent QML objects. Continue on the
+        // next frontend tick instead of accessing this object after invalidation.
+        if defer_reinitialize || backend.is_null() || self.engine_loop.is_some() {
             return;
         }
         let result = || -> Result<(), anyhow::Error> {
