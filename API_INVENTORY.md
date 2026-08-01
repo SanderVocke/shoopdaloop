@@ -45,11 +45,11 @@ The target suite's only failures are environmental and match the known sandbox l
 | `SharedSession::send_inner` | Queues without graph scheduling, silently ignores queue failure | Internal non-topology enqueue with the same lossless result contract |
 | `SharedSession::query` | Queues and waits; also used for creation and mutations needing an error | Exceptional explicit response only |
 | `SharedSession::query_inner` | Scheduler responses and parked-engine direct access | Exceptional scheduler/diagnostic response only |
-| `SharedSession::poll` | Reads bulk snapshots subject to global `queued_at_cycle` trust | Remove after per-object mirror migration |
+| Former bulk polling helper | Removed in Phase 7 after all object mirrors were live | Per-object immediate mirror reads |
 | `SharedSession::drain_queue` | Blocking control barrier used by driver tests/control | Keep as an explicit barrier, not an ordinary API read |
 | `EngineHandle::send` | Bounded nonblocking queue; returns `Result<(), SendError>` but loses rejected command ownership through mapping | Sequenced, lossless nonblocking enqueue |
 | `EngineHandle::send_for_result` / `wait_for_result` | Exceptional command-response path | Retain narrowly and inventory every caller |
-| `StateSnapshot` publication | Bulk loop/channel/port GUI state | Remove after all object mirrors are live |
+| Former bulk object publication | Removed in Phase 7 | Per-object mirrors plus engine stats atomics |
 
 ## Backend session and driver
 

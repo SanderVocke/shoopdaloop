@@ -222,14 +222,14 @@
 
 ### Phase 7 — Remove obsolete snapshot/query polling infrastructure
 
-- [ ] Confirm through repository-wide search that no ordinary object state getter or periodic frontend path uses `SharedSession::query` or `StateSnapshot`.
-- [ ] Remove `queued_at_cycle` and the global snapshot trust/read-after-write mechanism.
-- [ ] Remove per-object state fields and snapshot publication plumbing that are no longer used; retain only unrelated mechanisms with demonstrated consumers.
-- [ ] Remove peak-reset commands and stale snapshot fallback comments/tests.
-- [ ] Narrow `query`/response APIs to named exceptional uses so adding a new blocking call requires an intentional choice.
-- [ ] Audit every remaining `query`, wait, mutex, allocation permission, and blocking Qt connection; either justify it as in-scope exceptional behavior or add/update its detailed `REMAINING_ISSUES.md` entry.
-- [ ] Audit every application-facing command to confirm its enqueue error is handled and every topology classification is correct.
-- [ ] Audit all lifecycle controls for leaked pending objects, stale registrations, invalid indices, and cross-session references.
+- [x] Confirm through repository-wide search that no ordinary object state getter or periodic frontend path uses a shared query or bulk object snapshot.
+- [x] Remove the global snapshot trust/read-after-write mechanism.
+- [x] Remove per-object bulk state publication plumbing that is no longer used; retain only unrelated mechanisms with demonstrated consumers.
+- [x] Remove peak-reset commands and stale snapshot fallback comments/tests.
+- [x] Narrow query/response APIs to named graph-scheduler exceptional uses and test-only helpers so adding a new blocking call requires an intentional choice.
+- [x] Audit every remaining query, wait, mutex, allocation permission, and blocking Qt connection; either justify it as in-scope exceptional behavior or add/update its detailed `REMAINING_ISSUES.md` entry.
+- [x] Audit every application-facing command to confirm its enqueue error is handled and every topology classification is correct.
+- [x] Audit all lifecycle controls for leaked pending objects, stale registrations, invalid indices, and cross-session references.
 
 ### Phase 8 — Final verification and documentation
 

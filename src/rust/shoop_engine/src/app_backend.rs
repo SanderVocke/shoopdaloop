@@ -1090,17 +1090,6 @@ struct SharedSession {
     /// session building still has to work. While the engine sits here the control thread
     /// drives it directly, which is sound precisely because nothing else can reach it.
     parked: Mutex<Option<engine::Engine>>,
-    /// The cycle count when the most recent mutation was queued.
-    ///
-    /// What makes a published snapshot safe to read after writing. A command queued during
-    /// cycle C is applied at the start of C+1 and published by that same cycle, so a snapshot
-    /// is known to contain every queued write once its `cycle` is past this -- and until then
-    /// a reader must ask the engine directly instead.
-    ///
-    /// Without this, a caller that sets something and immediately reads it back gets the value
-    /// from before the set. That is not a hypothetical: it made `verify_loop_cleared` in the
-    /// QML suite see the loop it had just cleared still playing at its old length.
-    queued_at_cycle: AtomicU32,
     external: Mutex<Option<Arc<Mutex<engine::DummyExternalConnections>>>>,
     jack: Mutex<Option<Arc<Mutex<JackBackend>>>>,
     cpal: Mutex<Option<Arc<Mutex<CpalBackend>>>>,
@@ -1142,10 +1131,6 @@ impl SharedSession {
                 let mut handle = self.handle.lock().unwrap_or_else(|e| e.into_inner());
                 match handle.try_reserve() {
                     Ok(reservation) => {
-                        self.queued_at_cycle.store(
-                            handle.stats().cycles.load(Ordering::Relaxed),
-                            Ordering::Relaxed,
-                        );
                         let command = Box::new(f.take().expect("command queued once"));
                         Ok(handle.send_reserved(reservation, command))
                     }
@@ -1194,26 +1179,29 @@ impl SharedSession {
         }
     }
 
-    fn query_control<T: Send + 'static>(
+    #[cfg(test)]
+    fn query_for_test<T: Send + 'static>(
         &self,
         f: impl FnOnce(&mut engine::Session) -> T + Send + 'static,
     ) -> Result<T> {
         self.query_with_graph_effect(f, false)
     }
 
-    fn query_topology<T: Send + 'static>(
+    #[cfg(test)]
+    fn query_topology_for_test<T: Send + 'static>(
         &self,
         f: impl FnOnce(&mut engine::Session) -> T + Send + 'static,
     ) -> Result<T> {
         self.query_with_graph_effect(f, true)
     }
 
+    #[cfg(test)]
     fn query_with_graph_effect<T: Send + 'static>(
         &self,
         f: impl FnOnce(&mut engine::Session) -> T + Send + 'static,
         changes_topology: bool,
     ) -> Result<T> {
-        let answer = self.query_inner(f);
+        let answer = self.query_graph_scheduler_response(f);
         if changes_topology {
             if let Some(scheduler) = self.scheduler.get() {
                 scheduler.arm();
@@ -1222,7 +1210,7 @@ impl SharedSession {
         answer
     }
 
-    fn query_inner<T: Send + 'static>(
+    fn query_graph_scheduler_response<T: Send + 'static>(
         &self,
         f: impl FnOnce(&mut engine::Session) -> T + Send + 'static,
     ) -> Result<T> {
@@ -1277,24 +1265,6 @@ impl SharedSession {
         };
         engine::wait_for_command(&stats, sequence, timeout)
             .map_err(|e| anyhow!("engine did not reach command {}: {e}", sequence.get()))
-    }
-
-    /// Reads the newest published state, if a cycle has published one.
-    ///
-    /// The call every 40 Hz poll goes through. No lock the audio thread wants, no round
-    /// trip: a `get_state` per object per frame as a blocking query would cost an audio
-    /// cycle each, which is more than the frame budget as soon as a session has a few
-    /// tracks.
-    fn poll<T>(&self, f: impl FnOnce(&engine::StateSnapshot) -> T) -> Option<T> {
-        let trustworthy_after = self.queued_at_cycle.load(Ordering::Relaxed);
-        let mut handle = self.handle.lock().unwrap_or_else(|e| e.into_inner());
-        match handle.poll() {
-            // Past every queued write, so it reflects them all.
-            Some(snap) if snap.cycle > trustworthy_after => Some(f(snap)),
-            // Either nothing has been published yet, or what has predates a write this caller
-            // may be about to read back. Callers treat `None` as "ask the engine instead".
-            _ => None,
-        }
     }
 
     /// Whether a schedule rebuild might be needed, without asking the audio thread.
@@ -1614,7 +1584,6 @@ impl BackendSession {
             session_id: NEXT_BACKEND_SESSION_ID.fetch_add(1, Ordering::Relaxed),
             handle: Mutex::new(handle),
             parked: Mutex::new(Some(engine)),
-            queued_at_cycle: AtomicU32::new(0),
             external: Mutex::new(None),
             jack: Mutex::new(None),
             cpal: Mutex::new(None),
@@ -1654,9 +1623,11 @@ impl BackendSession {
                 if !shared.graph_may_need_rebuild() {
                     return;
                 }
-                let Ok(Some(topology)) = shared.query_inner(|s: &mut engine::Session| {
-                    (!s.graph_up_to_date()).then(|| s.describe_topology())
-                }) else {
+                let Ok(Some(topology)) =
+                    shared.query_graph_scheduler_response(|s: &mut engine::Session| {
+                        (!s.graph_up_to_date()).then(|| s.describe_topology())
+                    })
+                else {
                     return;
                 };
 
@@ -1675,9 +1646,9 @@ impl BackendSession {
                 // The schedule it displaces comes back as the return value and is dropped
                 // here, on this thread -- never on the audio thread, where freeing is as
                 // forbidden as allocating. That is why `install_schedule` hands it back.
-                match shared
-                    .query_inner(move |s: &mut engine::Session| s.install_schedule(prepared))
-                {
+                match shared.query_graph_scheduler_response(move |s: &mut engine::Session| {
+                    s.install_schedule(prepared)
+                }) {
                     Ok(displaced) => drop(displaced),
                     Err(_) => return,
                 }
@@ -4008,7 +3979,7 @@ mod tests {
     /// test just issued -- which is exactly what these assertions are about.
     fn graph_up_to_date(sess: &BackendSession) -> bool {
         sess.shared
-            .query_control(|s: &mut engine::Session| s.graph_up_to_date())
+            .query_for_test(|s: &mut engine::Session| s.graph_up_to_date())
             .expect("engine answered")
     }
 
@@ -4028,7 +3999,7 @@ mod tests {
         let port = {
             let idx = sess
                 .shared
-                .query_topology(|s: &mut engine::Session| {
+                .query_topology_for_test(|s: &mut engine::Session| {
                     s.add_port(engine::session::Port::External(
                         engine::external_audio_port::ExternalAudioPort::new(
                             "out",

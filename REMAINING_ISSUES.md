@@ -217,15 +217,6 @@ This document tracks work intentionally deferred from the per-object state mirro
 - **Migration direction:** Queue admission is always reported synchronously; creation failure enters lifecycle `Failed`; other execution failures are logged/published asynchronously.
 - **Future direction:** Per-object operation error sequence/status or optional completion receivers for user-visible operations.
 
-## Bulk snapshots after mirror migration
-
-### `StateSnapshot` and `queued_at_cycle`
-
-- **Status:** Loop and channel polling migrated; port migration plus final removal remain.
-- **Current behavior:** Engine still publishes reusable bulk vectors each cycle for ports and now-redundant loop/channel entries. `SharedSession::poll` can still reject snapshots not newer than the globally most recently queued mutation for remaining port consumers.
-- **Impact:** One object's mutation/reset can still invalidate polling for remaining snapshot consumers; snapshot maintenance duplicates the loop/channel mirrors.
-- **Future direction:** Remove object snapshot publication and global trust tracking. Keep only unrelated engine stats atomics and any independently justified immutable publication.
-
 ## Test/runtime stability
 
 ### Carla/JUCE parallel teardown assertion and crash
