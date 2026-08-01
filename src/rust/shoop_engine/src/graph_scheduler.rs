@@ -168,6 +168,15 @@ impl GraphScheduler {
         }
     }
 
+    /// Notifications received since start. Diagnostics and tests.
+    pub fn n_arms(&self) -> u64 {
+        self.shared
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .dirty_gen
+    }
+
     /// Applies performed since start. Diagnostics and tests.
     pub fn n_applies(&self) -> u64 {
         self.shared
@@ -186,7 +195,13 @@ impl Drop for GraphScheduler {
             self.shared.cv.notify_all();
         }
         if let Some(worker) = self.worker.take() {
-            let _ = worker.join();
+            // The apply closure upgrades the session's last weak reference. If that is
+            // released on this worker, scheduler destruction also runs here; joining the
+            // current thread would panic with EDEADLK. Dropping its handle safely detaches
+            // the already-stopping worker instead.
+            if worker.thread().id() != thread::current().id() {
+                let _ = worker.join();
+            }
         }
     }
 }
@@ -235,7 +250,9 @@ mod tests {
         for _ in 0..100 {
             s.arm();
         }
-        thread::sleep(Duration::from_millis(150));
+        // Force the pending batch and wait for completion instead of relying on the worker
+        // receiving CPU within a fixed wall-clock interval on loaded CI hosts.
+        s.flush_blocking();
         check!(n.load(Ordering::Relaxed) == 1);
         drop(s);
     }

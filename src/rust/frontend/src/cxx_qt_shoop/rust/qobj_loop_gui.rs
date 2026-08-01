@@ -246,9 +246,16 @@ impl LoopGui {
         self.rust_mut().backend_loop_wrapper = cxx::UniquePtr::null();
     }
 
-    pub fn queue_set_length(self: Pin<&mut LoopGui>, length: i32) {
+    pub fn queue_set_length(mut self: Pin<&mut LoopGui>, length: i32) {
         debug!(self, "queue set length -> {}", length);
-        self.backend_set_length(length);
+        let changed = self.length != length;
+        self.as_mut().rust_mut().length = length;
+        unsafe {
+            if changed {
+                self.as_mut().length_changed();
+            }
+            self.as_mut().backend_set_length(length);
+        }
     }
 
     pub fn queue_set_position(self: Pin<&mut LoopGui>, position: i32) {
@@ -390,9 +397,16 @@ impl LoopGui {
         }
     }
 
-    pub fn clear(self: Pin<&mut LoopGui>, length: i32) {
+    pub fn clear(mut self: Pin<&mut LoopGui>, length: i32) {
         debug!(self, "Clearing to length {length}");
-        self.backend_clear(length);
+        let changed = self.length != length;
+        self.as_mut().rust_mut().length = length;
+        unsafe {
+            if changed {
+                self.as_mut().length_changed();
+            }
+        }
+        self.as_mut().backend_clear(length);
     }
 
     pub fn adopt_ringbuffers(

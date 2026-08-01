@@ -12,7 +12,9 @@ use crate::channel_mode::ChannelMode;
 use crate::loop_mode::LoopMode;
 use crate::midi_channel::{MidiChannel, MidiChannelError};
 use crate::midi_storage::MidiStorageElem;
+use crate::state_mirror::{AudioChannelStateMirror, LoopStateMirror, MidiChannelStateMirror};
 
+use std::sync::Arc;
 use thiserror::Error;
 
 /// A channel failed while the loop itself advanced.
@@ -32,12 +34,34 @@ pub struct AudioMidiLoop {
 }
 
 impl AudioMidiLoop {
+    pub fn with_state_mirror(state: Arc<LoopStateMirror>) -> Self {
+        Self {
+            loop_: BasicLoop::with_state_mirror(state),
+            ..Default::default()
+        }
+    }
+
     // --- channels ---
 
     /// Adds an audio channel and returns its index.
     pub fn add_audio_channel(&mut self, chunk_size: usize, mode: ChannelMode) -> usize {
+        self.add_audio_channel_with_state(
+            chunk_size,
+            mode,
+            Arc::new(AudioChannelStateMirror::default()),
+        )
+    }
+
+    pub fn add_audio_channel_with_state(
+        &mut self,
+        chunk_size: usize,
+        mode: ChannelMode,
+        state: Arc<AudioChannelStateMirror>,
+    ) -> usize {
         self.audio_channels
-            .push(AudioChannel::with_chunk_size(chunk_size, mode));
+            .push(AudioChannel::with_chunk_size_and_state(
+                chunk_size, mode, state,
+            ));
         self.resync_poi();
         self.audio_channels.len() - 1
     }
@@ -63,8 +87,25 @@ impl AudioMidiLoop {
 
     /// Adds a MIDI channel and returns its index.
     pub fn add_midi_channel(&mut self, capacity_elems: usize, mode: ChannelMode) -> usize {
+        self.add_midi_channel_with_state(
+            capacity_elems,
+            mode,
+            Arc::new(MidiChannelStateMirror::default()),
+        )
+    }
+
+    pub fn add_midi_channel_with_state(
+        &mut self,
+        capacity_elems: usize,
+        mode: ChannelMode,
+        state: Arc<MidiChannelStateMirror>,
+    ) -> usize {
         self.midi_channels
-            .push(MidiChannel::with_capacity_elems(capacity_elems, mode));
+            .push(MidiChannel::with_capacity_elems_and_state(
+                capacity_elems,
+                mode,
+                state,
+            ));
         self.resync_poi();
         self.midi_channels.len() - 1
     }

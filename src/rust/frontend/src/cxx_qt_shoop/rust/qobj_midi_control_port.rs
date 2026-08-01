@@ -303,6 +303,9 @@ impl MidiControlPort {
         }
 
         debug!("Autoconnect update");
+        if let Some(port) = self.backend_port_wrapper.as_ref() {
+            port.refresh_connections_now();
+        }
 
         let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
         let mut rust_mut = self.as_mut().rust_mut();

@@ -202,14 +202,10 @@ impl LoopBackend {
                 .backend_loop
                 .as_mut()
                 .ok_or(anyhow!("backend loop object doesn't exist"))?;
-            // Published state rather than a round trip to the audio thread. The update
-            // signal reaches every loop, port and channel on one tick, so a blocking read
-            // per object would cost an audio cycle each -- more than a frame is worth once a
-            // session has a few tracks. Falls back to the blocking read until a cycle has
-            // published, which is only before the driver has started.
-            let new_state = match backend_loop.poll_state() {
-                Some(state) => state,
-                None => backend_loop.get_state()?,
+            // Published state rather than a round trip to the audio thread. Pending loops
+            // keep their previous/default frontend state until the first mirror is ready.
+            let Some(new_state) = backend_loop.poll_state() else {
+                return Ok(());
             };
 
             let prev_state;

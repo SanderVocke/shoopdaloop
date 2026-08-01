@@ -11,7 +11,9 @@
 use crate::channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 use crate::chunked_samples::ChunkedSamples;
 use crate::loop_mode::LoopMode;
+use crate::state_mirror::AudioChannelStateMirror;
 
+use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -71,11 +73,24 @@ pub struct AudioChannel {
     playback: Option<CycleBuf>,
     recording: Option<CycleBuf>,
     queue: Vec<CopyCmd>,
+    state: Arc<AudioChannelStateMirror>,
 }
 
 impl AudioChannel {
     pub fn with_chunk_size(chunk_size: usize, mode: ChannelMode) -> Self {
-        Self {
+        Self::with_chunk_size_and_state(
+            chunk_size,
+            mode,
+            Arc::new(AudioChannelStateMirror::default()),
+        )
+    }
+
+    pub fn with_chunk_size_and_state(
+        chunk_size: usize,
+        mode: ChannelMode,
+        state: Arc<AudioChannelStateMirror>,
+    ) -> Self {
+        let channel = Self {
             buffers: ChunkedSamples::with_chunk_size(chunk_size),
             data_length: 0,
             prerecord_buffers: ChunkedSamples::with_chunk_size(chunk_size),
@@ -91,6 +106,28 @@ impl AudioChannel {
             playback: None,
             recording: None,
             queue: Vec::new(),
+            state,
+        };
+        channel.publish_state();
+        channel
+    }
+
+    fn publish_state(&self) {
+        self.state.publish(
+            self.mode,
+            self.gain,
+            self.data_length,
+            self.start_offset,
+            self.last_played_back_sample,
+            self.pre_play_samples,
+            self.data_seq_nr as u64,
+        );
+    }
+
+    fn publish_all_data(&self) {
+        if self.state.complex_data_enabled() {
+            self.state
+                .replace_data(self.buffers.contiguous_copy(self.data_length));
         }
     }
 
@@ -101,6 +138,7 @@ impl AudioChannel {
     }
     pub fn set_length(&mut self, length: usize) {
         self.data_length = length;
+        self.publish_all_data();
         self.data_changed();
     }
     pub fn mode(&self) -> ChannelMode {
@@ -108,24 +146,28 @@ impl AudioChannel {
     }
     pub fn set_mode(&mut self, mode: ChannelMode) {
         self.mode = mode;
+        self.publish_state();
     }
     pub fn gain(&self) -> f32 {
         self.gain
     }
     pub fn set_gain(&mut self, gain: f32) {
         self.gain = gain;
+        self.publish_state();
     }
     pub fn start_offset(&self) -> i32 {
         self.start_offset
     }
     pub fn set_start_offset(&mut self, offset: i32) {
         self.start_offset = offset;
+        self.publish_state();
     }
     pub fn pre_play_samples(&self) -> u32 {
         self.pre_play_samples
     }
     pub fn set_pre_play_samples(&mut self, samples: u32) {
         self.pre_play_samples = samples;
+        self.publish_state();
     }
     pub fn output_peak(&self) -> f32 {
         self.output_peak
@@ -146,6 +188,7 @@ impl AudioChannel {
 
     fn data_changed(&mut self) {
         self.data_seq_nr = self.data_seq_nr.wrapping_add(1);
+        self.publish_state();
     }
 
     /// Recorded content, up to the recorded length.
@@ -157,6 +200,9 @@ impl AudioChannel {
         self.buffers.set_contents(samples);
         self.data_length = samples.len();
         self.start_offset = 0;
+        if self.state.complex_data_enabled() {
+            self.state.replace_data(samples.to_vec());
+        }
         self.data_changed();
     }
 
@@ -168,6 +214,7 @@ impl AudioChannel {
         self.buffers.ensure_available(length);
         self.data_length = length;
         self.start_offset = 0;
+        self.publish_all_data();
         self.data_changed();
     }
 
@@ -179,6 +226,9 @@ impl AudioChannel {
         self.buffers.fill(length, 0.0);
         self.data_length = length;
         self.start_offset = 0;
+        if self.state.complex_data_enabled() {
+            self.state.replace_data(vec![0.0; length]);
+        }
         self.data_changed();
     }
 
@@ -293,6 +343,7 @@ impl AudioChannel {
                 self.buffers = self.prerecord_buffers.clone();
                 self.data_length = self.prerecord_data_length;
                 self.start_offset = self.prerecord_data_length as i32;
+                self.publish_all_data();
             }
             self.prerecord_buffers.reset();
             self.prerecord_data_length = 0;
@@ -326,6 +377,7 @@ impl AudioChannel {
             b.cursor += n_samples;
             b.remaining = b.remaining.saturating_sub(n_samples);
         }
+        self.publish_state();
         Ok(())
     }
 
@@ -497,10 +549,13 @@ impl AudioChannel {
     /// handed to `set_*_buffer_size`; queued offsets index into them.
     pub fn finalize_process(&mut self, record_src: &[f32], playback_dst: &mut [f32]) {
         let mut peak = self.output_peak;
+        let mut published_peak = 0.0f32;
         for cmd in self.queue.drain(..) {
             match cmd {
                 CopyCmd::IntoMain { dst, src, len } => {
-                    copy_in(&mut self.buffers, dst, &record_src[src..src + len]);
+                    let source = &record_src[src..src + len];
+                    copy_in(&mut self.buffers, dst, source);
+                    self.state.write_data(dst, source, self.data_length);
                 }
                 CopyCmd::IntoPreRecord { dst, src, len } => {
                     copy_in(
@@ -520,12 +575,15 @@ impl AudioChannel {
                             let sample = playback_dst[dst + i] + from[i] * gain;
                             playback_dst[dst + i] = sample;
                             peak = peak.max(sample.abs());
+                            published_peak = published_peak.max(sample.abs());
                         }
                     }
                 }
             }
         }
         self.output_peak = peak;
+        self.state.publish_output_peak(published_peak);
+        self.publish_state();
     }
 }
 

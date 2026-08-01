@@ -110,7 +110,13 @@ ShoopTestFile {
                     }
                     verify(backend.ready)
 
-                    wait(100)
+                    wait_condition(() =>
+                        Object.keys(audio_in.get_connections_state()).length === 3 &&
+                        Object.keys(audio_out.get_connections_state()).length === 3 &&
+                        Object.keys(midi_in.get_connections_state()).length === 3 &&
+                        Object.keys(midi_out.get_connections_state()).length === 3,
+                        5000,
+                        "asynchronous JACK connection cache not populated")
 
                     verify_eq(audio_in.get_connections_state(), {
                         'test_client_1:audio_out': false,

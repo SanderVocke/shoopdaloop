@@ -276,14 +276,14 @@ fn load_midi_to_channels_impl<'a>(
             invoke::<_, (), _>(
                 &mut *channel,
                 "load_midi_data(QVector_QVariant)",
-                connection_types::QUEUED_CONNECTION,
+                connection_types::BLOCKING_QUEUED_CONNECTION,
                 &messages_qlist,
             )?;
             if let Some(start_offset) = maybe_set_start_offset {
                 invoke::<_, (), _>(
                     &mut *channel,
                     "push_start_offset(::std::int32_t)",
-                    connection_types::QUEUED_CONNECTION,
+                    connection_types::BLOCKING_QUEUED_CONNECTION,
                     &(start_offset as i32),
                 )?;
             }
@@ -291,7 +291,7 @@ fn load_midi_to_channels_impl<'a>(
                 invoke::<_, (), _>(
                     &mut *channel,
                     "push_n_preplay_samples(::std::int32_t)",
-                    connection_types::QUEUED_CONNECTION,
+                    connection_types::BLOCKING_QUEUED_CONNECTION,
                     &(n_preplay as i32),
                 )?;
             }
@@ -308,7 +308,7 @@ fn load_midi_to_channels_impl<'a>(
             invoke::<_, (), _>(
                 &mut *loop_qobj,
                 "set_length(::std::int32_t)",
-                connection_types::QUEUED_CONNECTION,
+                connection_types::BLOCKING_QUEUED_CONNECTION,
                 &(total_n_frames as i32),
             )?;
         }
@@ -420,14 +420,14 @@ fn load_soundfile_to_channels_impl(
                         invoke::<_, (), _>(
                             &mut *target_channel_ptr,
                             "load_audio_data(QList<float>)",
-                            connection_types::QUEUED_CONNECTION,
+                            connection_types::BLOCKING_QUEUED_CONNECTION,
                             &(*qlist),
                         )?;
                         if let Some(start_offset) = maybe_set_start_offset {
                             invoke::<_, (), _>(
                                 &mut *target_channel_ptr,
                                 "push_start_offset(::std::int32_t)",
-                                connection_types::QUEUED_CONNECTION,
+                                connection_types::BLOCKING_QUEUED_CONNECTION,
                                 &(start_offset as i32),
                             )?;
                         }
@@ -435,7 +435,7 @@ fn load_soundfile_to_channels_impl(
                             invoke::<_, (), _>(
                                 &mut *target_channel_ptr,
                                 "push_n_preplay_samples(::std::int32_t)",
-                                connection_types::QUEUED_CONNECTION,
+                                connection_types::BLOCKING_QUEUED_CONNECTION,
                                 &(n_preplay as i32),
                             )?;
                         }
@@ -456,7 +456,7 @@ fn load_soundfile_to_channels_impl(
             invoke::<_, (), _>(
                 &mut *loop_obj_ptr,
                 "set_length(::std::int32_t)",
-                connection_types::QUEUED_CONNECTION,
+                connection_types::BLOCKING_QUEUED_CONNECTION,
                 &(target_frames as i32),
             )?;
         }

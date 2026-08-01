@@ -13,6 +13,8 @@ use crate::midi_sorting_buffer::MidiSortingBuffer;
 use crate::midi_state::{MidiStateTracker, TrackWhat};
 use crate::midi_storage::{MidiStorage, MidiStorageElem};
 use crate::port::PortDataType;
+use crate::state_mirror::MidiPortStateMirror;
+use std::sync::Arc;
 
 /// Capacity of a port's capture storage, in messages.
 ///
@@ -32,6 +34,7 @@ pub struct MidiPort {
     ringbuffer_capacity: usize,
     n_input_events: u32,
     n_output_events: u32,
+    state: Arc<MidiPortStateMirror>,
 }
 
 impl MidiPort {
@@ -45,6 +48,7 @@ impl MidiPort {
             ringbuffer_capacity: DEFAULT_RINGBUFFER_CAPACITY_ELEMS,
             n_input_events: 0,
             n_output_events: 0,
+            state: Arc::new(MidiPortStateMirror::default()),
         }
     }
 
@@ -53,6 +57,21 @@ impl MidiPort {
         let mut p = Self::new(track);
         p.ringbuffer_capacity = capacity_elems;
         p
+    }
+
+    pub fn set_state_mirror(&mut self, state: Arc<MidiPortStateMirror>) {
+        self.state = state;
+        self.publish_state();
+    }
+
+    fn publish_state(&self) {
+        self.state.publish_scalars(
+            self.n_notes_active(),
+            0,
+            self.muted,
+            self.passthrough_muted,
+            self.ringbuffer_n_samples(),
+        );
     }
 
     pub fn data_type(&self) -> PortDataType {
@@ -64,12 +83,14 @@ impl MidiPort {
     }
     pub fn set_muted(&mut self, muted: bool) {
         self.muted = muted;
+        self.publish_state();
     }
     pub fn passthrough_muted(&self) -> bool {
         self.passthrough_muted
     }
     pub fn set_passthrough_muted(&mut self, muted: bool) {
         self.passthrough_muted = muted;
+        self.publish_state();
     }
 
     pub fn n_input_events(&self) -> u32 {
@@ -109,6 +130,7 @@ impl MidiPort {
         if let Some(r) = self.ringbuffer.as_mut() {
             r.set_n_samples(n);
         }
+        self.publish_state();
     }
 
     /// Copies the capture window into `target`, rebased to start at zero.
@@ -139,8 +161,12 @@ impl MidiPort {
             r.next_buffer(n_frames, Some(&mut cb));
         }
 
-        let Some(events) = input else { return };
+        let Some(events) = input else {
+            self.publish_state();
+            return;
+        };
         self.n_input_events += events.len() as u32;
+        let input_count = events.len() as u32;
 
         for e in events {
             if let Some(s) = self.midi_state.as_mut() {
@@ -154,14 +180,20 @@ impl MidiPort {
         }
 
         if self.muted {
+            self.state.record_events(input_count, 0);
+            self.publish_state();
             return;
         }
+        let mut output_count = 0;
         if let Some(out) = output {
             self.n_output_events += events.len() as u32;
+            output_count = events.len() as u32;
             for e in events {
                 out.write_elem(*e);
             }
         }
+        self.state.record_events(input_count, output_count);
+        self.publish_state();
     }
 }
 

@@ -218,6 +218,12 @@ pub mod ffi {
         );
 
         #[qsignal]
+        pub unsafe fn connections_state_changed(
+            self: Pin<&mut PortBackend>,
+            state: QMap_QString_QVariant,
+        );
+
+        #[qsignal]
         pub unsafe fn backend_changed(self: Pin<&mut PortBackend>, backend: *mut QObject);
 
         #[qsignal]

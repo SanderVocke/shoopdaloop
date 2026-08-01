@@ -7,6 +7,7 @@ edition = "2021"
 [dependencies]
 thiserror = { workspace = true }
 anyhow = { workspace = true }
+log = { workspace = true }
 regex = { workspace = true }
 rtrb = { workspace = true }
 rubato = { workspace = true }
