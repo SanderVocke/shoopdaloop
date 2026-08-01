@@ -126,10 +126,12 @@ ShoopTestFile {
                     first_loop().create_backend_loop()
                     first_loop().queue_set_length(48000)
                     AppRegistries.state_registry.set_sync_active(false)
+                    session.backend.wait_process()
                     testcase.wait_updated(session.backend)
                     verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
 
                     first_loop().on_play_clicked()
+                    session.backend.wait_process()
                     testcase.wait_updated(session.backend)
                     verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned

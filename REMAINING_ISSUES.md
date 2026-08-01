@@ -116,6 +116,14 @@ This document tracks work intentionally deferred from the per-object state mirro
 - **Impact:** Large sessions can spend significant process time installing MIDI contents.
 - **Future direction:** Prepare a complete storage object off-thread and queue a cheap swap.
 
+### File-load delivery completion
+
+- **Status:** Exceptional frontend-thread handoff retained.
+- **API:** Synchronous and asynchronous audio/MIDI file loading in `qobj_file_io`.
+- **Current behavior:** File parsing/resampling runs on the caller or task worker, then uses a blocking queued Qt invocation to deliver prepared data and scalar settings to each backend-channel QObject. This guarantees that a synchronous return or asynchronous task completion includes the channel's immediate mirror update; it does not wait for an audio cycle.
+- **Impact:** The synchronous file API can block on the backend QObject thread, and asynchronous file workers remain occupied until delivery completes.
+- **Future direction:** Give file tasks direct typed channel controls or an explicit asynchronous delivery acknowledgement, avoiding a blocking Qt invocation while preserving completion semantics.
+
 ### Ringbuffer adoption failure reporting
 
 - **Status:** Fire-and-forget migration implemented; structured completion deferred.

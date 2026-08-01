@@ -321,7 +321,6 @@ Item {
             }
 
             root.initial_descriptor = descriptor
-            root.load_current_session()
 
             let finish_fn = () => {
                 AppRegistries.state_registry.set_active_io_task_fn(() => {
@@ -359,10 +358,16 @@ Item {
             }
 
             AppRegistries.state_registry.set_force_io_active(true)
-            if(root.loaded) { finish_fn() }
-            else {
-                connectOnce(root.loadedChanged, finish_fn)
-            }
+            // Let bindings derived from initial_descriptor update before constructing the
+            // replacement object tree. Otherwise a slower platform can rebuild from the old
+            // descriptors and report that stale tree as loaded.
+            Qt.callLater(() => {
+                root.load_current_session()
+                if(root.loaded) { finish_fn() }
+                else {
+                    connectOnce(root.loadedChanged, finish_fn)
+                }
+            })
         } catch(e) {
             ShoopRustFileIO.delete_recursive(tempdir)
             throw e;
