@@ -18,9 +18,12 @@
 use crate::channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 use crate::loop_mode::LoopMode;
 use crate::midi;
+use crate::midi_event::MidiEvent;
 use crate::midi_state::{MidiStateTracker, TrackWhat, MAX_DIFF_MESSAGES};
 use crate::midi_storage::{Cursor, MidiStorage, MidiStorageElem, TruncateSide};
+use crate::state_mirror::MidiChannelStateMirror;
 
+use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -84,6 +87,9 @@ pub struct MidiChannel {
     /// Target state to restore before the first audible playback message.
     pending_playback_state: MidiStateTracker,
     pending_playback_valid: bool,
+    /// Loaded contents use the regular playback path and do not need the session's
+    /// legacy pre-record fallback.
+    loaded_contents: bool,
 
     mode: ChannelMode,
     start_offset: i32,
@@ -99,13 +105,26 @@ pub struct MidiChannel {
     /// Reused for state-restoration messages, sized to the worst case so playback
     /// never grows it.
     restore_scratch: Vec<MidiStorageElem>,
+    state: Arc<MidiChannelStateMirror>,
 }
 
 impl MidiChannel {
     pub fn with_capacity_elems(capacity: usize, mode: ChannelMode) -> Self {
+        Self::with_capacity_elems_and_state(
+            capacity,
+            mode,
+            Arc::new(MidiChannelStateMirror::default()),
+        )
+    }
+
+    pub fn with_capacity_elems_and_state(
+        capacity: usize,
+        mode: ChannelMode,
+        state: Arc<MidiChannelStateMirror>,
+    ) -> Self {
         let storage = MidiStorage::with_capacity_elems(capacity);
         let playback_cursor = storage.create_cursor();
-        Self {
+        let channel = Self {
             storage,
             data_length: 0,
             prerecord_storage: MidiStorage::with_capacity_elems(capacity),
@@ -119,6 +138,7 @@ impl MidiChannel {
             temp_prerecording_valid: false,
             pending_playback_state: MidiStateTracker::new(TrackWhat::ALL),
             pending_playback_valid: false,
+            loaded_contents: false,
             mode,
             start_offset: 0,
             pre_play_samples: 0,
@@ -130,7 +150,38 @@ impl MidiChannel {
             rec: None,
             play: None,
             restore_scratch: Vec::with_capacity(MAX_DIFF_MESSAGES),
+            state,
+        };
+        channel.publish_state();
+        channel
+    }
+
+    fn publish_state(&self) {
+        self.state.publish(
+            self.mode,
+            self.output_state.n_notes_active(),
+            self.data_length,
+            self.start_offset,
+            self.last_played_back_sample,
+            self.pre_play_samples,
+            self.data_seq_nr as u64,
+        );
+    }
+
+    fn publish_data(&self) {
+        if !self.state.complex_data_enabled() {
+            return;
         }
+        let mut data: Vec<MidiEvent> = self
+            .recording_start_state_messages()
+            .into_iter()
+            .map(|data| MidiEvent { time: -1, data })
+            .collect();
+        data.extend(self.storage.iter().map(|event| MidiEvent {
+            time: event.time as i32,
+            data: event.data().to_vec(),
+        }));
+        self.state.replace_data(data);
     }
 
     // --- accessors ---
@@ -140,6 +191,7 @@ impl MidiChannel {
     }
     pub fn set_mode(&mut self, mode: ChannelMode) {
         self.mode = mode;
+        self.publish_state();
     }
     pub fn length(&self) -> u32 {
         self.data_length
@@ -149,12 +201,14 @@ impl MidiChannel {
     }
     pub fn set_start_offset(&mut self, offset: i32) {
         self.start_offset = offset;
+        self.publish_state();
     }
     pub fn pre_play_samples(&self) -> u32 {
         self.pre_play_samples
     }
     pub fn set_pre_play_samples(&mut self, n: u32) {
         self.pre_play_samples = n;
+        self.publish_state();
     }
     pub fn data_seq_nr(&self) -> u32 {
         self.data_seq_nr
@@ -181,6 +235,10 @@ impl MidiChannel {
     pub fn input_state(&self) -> &MidiStateTracker {
         &self.input_state
     }
+    pub fn contents_were_loaded(&self) -> bool {
+        self.loaded_contents
+    }
+
     /// Messages that reproduce the state captured when recording began.
     pub fn recording_start_state_messages(&self) -> Vec<Vec<u8>> {
         if self.recording_start_valid {
@@ -192,6 +250,7 @@ impl MidiChannel {
 
     fn data_changed(&mut self) {
         self.data_seq_nr = self.data_seq_nr.wrapping_add(1);
+        self.publish_state();
     }
 
     pub fn clear(&mut self) {
@@ -203,7 +262,9 @@ impl MidiChannel {
         self.recording_start_valid = false;
         self.temp_prerecording_valid = false;
         self.pending_playback_valid = false;
+        self.loaded_contents = false;
         self.start_offset = 0;
+        self.publish_data();
         self.data_changed();
     }
 
@@ -235,9 +296,11 @@ impl MidiChannel {
         self.playback_cursor = self.storage.create_cursor();
         self.recording_start_state.clear();
         self.recording_start_valid = start_state.is_some();
+        self.loaded_contents = true;
         for m in start_state.unwrap_or(&[]) {
             self.recording_start_state.process(m);
         }
+        self.publish_data();
         self.data_changed();
     }
 
@@ -247,6 +310,7 @@ impl MidiChannel {
         let changed = len != self.data_length;
         self.data_length = len;
         if changed {
+            self.publish_data();
             self.data_changed();
         }
     }
@@ -263,6 +327,7 @@ impl MidiChannel {
         self.input_state.clear();
         self.output_state.clear();
         self.pending_playback_valid = false;
+        self.publish_state();
     }
 
     // --- per-cycle buffers ---
@@ -372,6 +437,7 @@ impl MidiChannel {
             self.send_all_sound_off(out, time);
         }
 
+        let mut adopted_prerecording = false;
         if !flags.contains(ProcessFlags::PRE_RECORD)
             && self.prev_process_flags.contains(ProcessFlags::PRE_RECORD)
         {
@@ -396,6 +462,7 @@ impl MidiChannel {
                 } = self;
                 recording_start_state.copy_relevant_state(temp_prerecording_start_state);
                 self.recording_start_valid = self.temp_prerecording_valid;
+                adopted_prerecording = true;
             }
             self.prerecord_storage.clear();
             self.prerecord_data_length = 0;
@@ -425,10 +492,12 @@ impl MidiChannel {
         }
 
         if flags.contains(ProcessFlags::RECORD) {
+            self.loaded_contents = false;
             let from = (length_before as i64 + self.start_offset as i64).max(0) as u32;
             self.process_record(false, from, n_samples, input)?;
             processed_input = true;
         } else if flags.contains(ProcessFlags::PRE_RECORD) {
+            self.loaded_contents = false;
             let from = self.prerecord_data_length;
             self.process_record(true, from, n_samples, input)?;
             processed_input = true;
@@ -437,6 +506,10 @@ impl MidiChannel {
         self.prev_pos_after = pos_after;
         self.prev_process_flags = flags;
 
+        if adopted_prerecording {
+            self.publish_data();
+            self.data_changed();
+        }
         if !processed_input {
             self.process_input_messages(n_samples, input);
         }
@@ -447,6 +520,7 @@ impl MidiChannel {
         if let Some(p) = self.play.as_mut() {
             p.n_frames_processed += n_samples;
         }
+        self.publish_state();
         Ok(())
     }
 
@@ -560,6 +634,7 @@ impl MidiChannel {
             Self::set_length_impl(storage, len, target);
         }
         if changed {
+            self.publish_data();
             self.data_changed();
         }
         Ok(())
@@ -649,6 +724,7 @@ impl MidiChannel {
                 self.send(out, buffer_time.max(0) as u32, event.data());
                 self.last_played_back_sample = Some(t);
                 self.n_events_triggered += 1;
+                self.state.record_triggered_event();
             }
             if self.pending_playback_valid {
                 self.pending_playback_state.process(event.data());

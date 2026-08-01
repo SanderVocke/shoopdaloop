@@ -2945,6 +2945,7 @@ dependencies = [
  "jack",
  "libloading 0.8.8",
  "lilv",
+ "log",
  "lv2_raw",
  "midir",
  "num_enum",

@@ -13,11 +13,13 @@
 //! through the schedule -- ordered against the channels that read the port -- and
 //! clears whatever was there, so that a cycle nobody fed reads as silence.
 
+use crate::midi_event::MidiEvent;
 use crate::midi_port::MidiPort;
 use crate::midi_sorting_buffer::MidiSortingBuffer;
 use crate::midi_state::TrackWhat;
 use crate::midi_storage::MidiStorageElem;
 use crate::port::{PortConnectability, PortDataType, PortDirection};
+use std::sync::{Arc, Mutex};
 
 /// Events reserved per cycle, so a normal cycle never grows either buffer.
 const RESERVE: usize = 256;
@@ -39,6 +41,7 @@ pub struct ExternalMidiPort {
     collect_pos: u32,
     last_collect_start: u32,
     outgoing_current_collected: bool,
+    output_capture: Option<Arc<Mutex<Vec<MidiEvent>>>>,
 }
 
 impl ExternalMidiPort {
@@ -54,7 +57,12 @@ impl ExternalMidiPort {
             collect_pos: 0,
             last_collect_start: 0,
             outgoing_current_collected: false,
+            output_capture: None,
         }
+    }
+
+    pub fn set_output_capture(&mut self, output: Arc<Mutex<Vec<MidiEvent>>>) {
+        self.output_capture = Some(output);
     }
 
     pub fn name(&self) -> &str {
@@ -131,6 +139,9 @@ impl ExternalMidiPort {
         self.incoming.clear();
         self.outgoing.prepare();
         self.outgoing_collected.clear();
+        if let Some(output) = &self.output_capture {
+            output.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        }
         self.collect_pos = 0;
         self.last_collect_start = 0;
         self.outgoing_current_collected = false;
@@ -138,6 +149,9 @@ impl ExternalMidiPort {
 
     pub fn request_output(&mut self) {
         self.outgoing_collected.clear();
+        if let Some(output) = &self.output_capture {
+            output.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        }
         self.collect_pos = 0;
         self.last_collect_start = 0;
         self.outgoing_current_collected = false;
@@ -248,6 +262,12 @@ impl ExternalMidiPort {
                     && data[2] == 0;
                 if !is_initial_all_sound_off {
                     self.outgoing_collected.push(e);
+                    if let Some(output) = &self.output_capture {
+                        output
+                            .lock()
+                            .unwrap_or_else(|error| error.into_inner())
+                            .push(MidiEvent::new(e.time as i32, data.to_vec()));
+                    }
                 }
             }
             self.collect_pos = self.collect_pos.saturating_add(n_frames);

@@ -12,8 +12,9 @@
 //! Audio only for now: MIDI channels are not yet routed through the session.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 #[cfg(feature = "lv2")]
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use crate::audio_channel::PreparedAudioChannelData;
 use crate::audio_midi_loop::AudioMidiLoop;
@@ -35,6 +36,10 @@ use crate::internal_audio_port::InternalAudioPort;
 use crate::loop_mode::LoopMode;
 use crate::midi_state::MAX_DIFF_MESSAGES;
 use crate::midi_storage::MidiStorageElem;
+use crate::state_mirror::{
+    AudioChannelStateMirror, AudioPortStateMirror, LoopStateMirror, MidiChannelStateMirror,
+    MidiPortStateMirror,
+};
 
 use thiserror::Error;
 
@@ -585,6 +590,50 @@ impl Session {
         self.channels.get(idx)
     }
 
+    pub fn audio_channel(&self, idx: usize) -> Option<&crate::audio_channel::AudioChannel> {
+        let mapping = self.channels.get(idx)?;
+        (mapping.kind == ChannelKind::Audio)
+            .then(|| {
+                self.loops
+                    .get(mapping.loop_idx)?
+                    .audio_channel(mapping.channel_idx)
+            })
+            .flatten()
+    }
+
+    pub fn audio_channel_mut(
+        &mut self,
+        idx: usize,
+    ) -> Option<&mut crate::audio_channel::AudioChannel> {
+        let mapping = self.channels.get(idx)?;
+        let (loop_idx, channel_idx) = (mapping.loop_idx, mapping.channel_idx);
+        (mapping.kind == ChannelKind::Audio)
+            .then(|| self.loops.get_mut(loop_idx)?.audio_channel_mut(channel_idx))
+            .flatten()
+    }
+
+    pub fn midi_channel(&self, idx: usize) -> Option<&crate::midi_channel::MidiChannel> {
+        let mapping = self.channels.get(idx)?;
+        (mapping.kind == ChannelKind::Midi)
+            .then(|| {
+                self.loops
+                    .get(mapping.loop_idx)?
+                    .midi_channel(mapping.channel_idx)
+            })
+            .flatten()
+    }
+
+    pub fn midi_channel_mut(
+        &mut self,
+        idx: usize,
+    ) -> Option<&mut crate::midi_channel::MidiChannel> {
+        let mapping = self.channels.get(idx)?;
+        let (loop_idx, channel_idx) = (mapping.loop_idx, mapping.channel_idx);
+        (mapping.kind == ChannelKind::Midi)
+            .then(|| self.loops.get_mut(loop_idx)?.midi_channel_mut(channel_idx))
+            .flatten()
+    }
+
     pub fn port(&self, idx: usize) -> Option<&Port> {
         self.ports.get(idx)
     }
@@ -877,8 +926,34 @@ impl Session {
         self.ports.len() - 1
     }
 
+    pub fn add_audio_port_with_state(
+        &mut self,
+        mut port: Port,
+        state: Arc<AudioPortStateMirror>,
+    ) -> Result<usize, SessionError> {
+        port.audio_mut()
+            .ok_or(SessionError::NoSuchPort(self.ports.len()))?
+            .set_state_mirror(state);
+        Ok(self.add_port(port))
+    }
+
+    pub fn add_midi_port_with_state(
+        &mut self,
+        mut port: Port,
+        state: Arc<MidiPortStateMirror>,
+    ) -> Result<usize, SessionError> {
+        port.midi_mut()
+            .ok_or(SessionError::NoSuchPort(self.ports.len()))?
+            .set_state_mirror(state);
+        Ok(self.add_port(port))
+    }
+
     pub fn create_loop(&mut self) -> usize {
-        self.loops.push(AudioMidiLoop::default());
+        self.create_loop_with_state(Arc::new(LoopStateMirror::default()))
+    }
+
+    pub fn create_loop_with_state(&mut self, state: Arc<LoopStateMirror>) -> usize {
+        self.loops.push(AudioMidiLoop::with_state_mirror(state));
         self.sync_sources.push(None);
         self.sync_snapshots.push(None);
         self.loop_live.push(true);
@@ -893,11 +968,26 @@ impl Session {
         chunk_size: usize,
         mode: ChannelMode,
     ) -> Result<usize, SessionError> {
+        self.add_audio_channel_with_state(
+            loop_idx,
+            chunk_size,
+            mode,
+            Arc::new(AudioChannelStateMirror::default()),
+        )
+    }
+
+    pub fn add_audio_channel_with_state(
+        &mut self,
+        loop_idx: usize,
+        chunk_size: usize,
+        mode: ChannelMode,
+        state: Arc<AudioChannelStateMirror>,
+    ) -> Result<usize, SessionError> {
         let l = self
             .loops
             .get_mut(loop_idx)
             .ok_or(SessionError::NoSuchLoop(loop_idx))?;
-        let channel_idx = l.add_audio_channel(chunk_size, mode);
+        let channel_idx = l.add_audio_channel_with_state(chunk_size, mode, state);
         self.channels.push(ChannelMapping {
             loop_idx,
             kind: ChannelKind::Audio,
@@ -916,11 +1006,26 @@ impl Session {
         capacity_elems: usize,
         mode: ChannelMode,
     ) -> Result<usize, SessionError> {
+        self.add_midi_channel_with_state(
+            loop_idx,
+            capacity_elems,
+            mode,
+            Arc::new(MidiChannelStateMirror::default()),
+        )
+    }
+
+    pub fn add_midi_channel_with_state(
+        &mut self,
+        loop_idx: usize,
+        capacity_elems: usize,
+        mode: ChannelMode,
+        state: Arc<MidiChannelStateMirror>,
+    ) -> Result<usize, SessionError> {
         let l = self
             .loops
             .get_mut(loop_idx)
             .ok_or(SessionError::NoSuchLoop(loop_idx))?;
-        let channel_idx = l.add_midi_channel(capacity_elems, mode);
+        let channel_idx = l.add_midi_channel_with_state(capacity_elems, mode, state);
         self.channels.push(ChannelMapping {
             loop_idx,
             kind: ChannelKind::Midi,
@@ -955,6 +1060,30 @@ impl Session {
         }
         self.channels[channel].output_port = Some(port);
         self.note_graph_change();
+        Ok(())
+    }
+
+    pub fn disconnect_channel_port(
+        &mut self,
+        channel: usize,
+        port: usize,
+    ) -> Result<(), SessionError> {
+        let mapping = self
+            .channels
+            .get_mut(channel)
+            .ok_or(SessionError::NoSuchChannel(channel))?;
+        let mut changed = false;
+        if mapping.input_port == Some(port) {
+            mapping.input_port = None;
+            changed = true;
+        }
+        if mapping.output_port == Some(port) {
+            mapping.output_port = None;
+            changed = true;
+        }
+        if changed {
+            self.note_graph_change();
+        }
         Ok(())
     }
 
@@ -1672,9 +1801,16 @@ impl Session {
                     .map(|a| a.passthrough_muted())
                     .unwrap_or(false);
                 let (gain, muted) = (target.0, target.1 || fx_passthrough_muted);
-                let output = self.ports[out_idx].buffer(n_frames);
-                for (o, s) in output.iter_mut().zip(&self.scratch[..n_frames]) {
-                    *o += if muted { 0.0 } else { *s * gain };
+                for sample in &mut self.scratch[..n_frames] {
+                    *sample = if muted { 0.0 } else { *sample * gain };
+                }
+                if let Some(output) = self.ports[out_idx].as_external_mut() {
+                    output.add_late_output(&self.scratch[..n_frames]);
+                } else {
+                    let output = self.ports[out_idx].buffer(n_frames);
+                    for (output, sample) in output.iter_mut().zip(&self.scratch[..n_frames]) {
+                        *output += *sample;
+                    }
                 }
             }
 
@@ -1716,19 +1852,30 @@ impl Session {
                         .map(|a| a.passthrough_muted())
                         .unwrap_or(false);
                     let (gain, muted) = (target.0, target.1 || fx_passthrough_muted);
-                    let output = self.ports[out_idx].buffer(n_frames);
+                    if self.scratch.len() < n_frames {
+                        self.scratch.resize(n_frames, 0.0);
+                    }
+                    self.scratch[..n_frames].fill(0.0);
                     for e in events.iter() {
                         let t = e.time as usize;
-                        if t < output.len()
+                        if t < n_frames
                             && e.data().len() >= 3
                             && (e.data()[0] & 0xf0) == 0x90
                             && e.data()[2] > 0
                         {
-                            output[t] += if muted {
+                            self.scratch[t] += if muted {
                                 0.0
                             } else {
                                 (e.data()[2] as f32 / 255.0) * gain
                             };
+                        }
+                    }
+                    if let Some(output) = self.ports[out_idx].as_external_mut() {
+                        output.add_late_output(&self.scratch[..n_frames]);
+                    } else {
+                        let output = self.ports[out_idx].buffer(n_frames);
+                        for (output, sample) in output.iter_mut().zip(&self.scratch[..n_frames]) {
+                            *output += *sample;
                         }
                     }
                 }
@@ -1810,9 +1957,21 @@ impl Session {
                 let Some(src) = host.audio_output(idx) else {
                     continue;
                 };
-                let output = self.ports[out_idx].buffer(n_frames);
-                for (o, s) in output.iter_mut().zip(src.iter().copied()) {
-                    *o += if muted { 0.0 } else { s * gain };
+                if self.scratch.len() < n_frames {
+                    self.scratch.resize(n_frames, 0.0);
+                }
+                self.scratch[..n_frames].fill(0.0);
+                for (output, sample) in self.scratch[..n_frames].iter_mut().zip(src.iter().copied())
+                {
+                    *output = if muted { 0.0 } else { sample * gain };
+                }
+                if let Some(output) = self.ports[out_idx].as_external_mut() {
+                    output.add_late_output(&self.scratch[..n_frames]);
+                } else {
+                    let output = self.ports[out_idx].buffer(n_frames);
+                    for (output, sample) in output.iter_mut().zip(&self.scratch[..n_frames]) {
+                        *output += *sample;
+                    }
                 }
             }
         }
@@ -1846,6 +2005,9 @@ impl Session {
                 let Some(ch) = l.midi_channel(m.channel_idx) else {
                     continue;
                 };
+                if ch.contents_were_loaded() {
+                    continue;
+                }
                 let already_has_output = self.ports[out_port].as_external_midi().is_some_and(|p| {
                     p.outgoing().iter().any(|e| {
                         let d = e.data();
@@ -1999,6 +2161,17 @@ impl Session {
                 let input = self.ports[in_idx].buffer(n_frames);
                 for i in 0..n_frames {
                     self.scratch[i] += input.get(i).copied().unwrap_or(0.0) * 0.5;
+                }
+            }
+            // Recording dry into a wet channel must still feed the test FX when
+            // monitoring has muted the ordinary dry-to-FX passthrough route.
+            if self.scratch[..n_frames].iter().all(|sample| *sample == 0.0) {
+                let dry_name = format!("{title}_audio_dry_in_{}", idx + 1);
+                if let Some(dry_idx) = self.ports.iter().position(|p| p.name() == dry_name) {
+                    let input = self.ports[dry_idx].buffer(n_frames);
+                    for i in 0..n_frames {
+                        self.scratch[i] += input.get(i).copied().unwrap_or(0.0) * 0.5;
+                    }
                 }
             }
             let rerecording = self
@@ -2530,7 +2703,10 @@ impl Session {
             let out = &mut self.out_scratch[..n_frames];
             if let Some(l) = self.loops.get_mut(m.loop_idx) {
                 if let Some(ch) = l.audio_channel_mut(m.channel_idx) {
-                    ch.finalize_process(&self.scratch[..n_frames], out);
+                    crate::realtime_allow_alloc_once!(
+                        "AudioChannel temporary mirrored data publication",
+                        || ch.finalize_process(&self.scratch[..n_frames], out)
+                    );
                 }
             }
         }

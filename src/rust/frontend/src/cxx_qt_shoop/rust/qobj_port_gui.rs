@@ -1,3 +1,4 @@
+use crate::cxx_qt_shoop::fn_qvariantmap_helpers;
 use crate::cxx_qt_shoop::rust::qobj_port_backend_bridge::ffi::{
     make_raw_port_backend, port_backend_qobject_from_ptr,
 };
@@ -9,7 +10,7 @@ use common::logging::macros::{
 };
 use cxx_qt::CxxQtType;
 use cxx_qt::QObject;
-use cxx_qt_lib::{QList, QMap};
+use cxx_qt_lib::QList;
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::invokable::invoke;
@@ -149,7 +150,7 @@ impl PortGui {
                         "backend_set_backend(QObject*)",
                         backend_ref,
                         "set_backend(QObject*)",
-                        connection_types::QUEUED_CONNECTION,
+                        connection_types::BLOCKING_QUEUED_CONNECTION,
                     );
                     connect_or_report(
                         self_ref,
@@ -245,7 +246,31 @@ impl PortGui {
                         "backend_state_changed(bool,QString,bool,bool,float,float,float,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)",
                         connection_types::QUEUED_CONNECTION
                     );
+                    connect_or_report(
+                        backend_ref,
+                        "connections_state_changed(QMap<QString,QVariant>)",
+                        self_ref,
+                        "backend_connections_state_changed(QMap<QString,QVariant>)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
                 }
+
+                // Property pushes may happen before the backend object exists during a
+                // session reload. Replay the locally retained controls after wiring the
+                // queued signals so initialization cannot silently fall back to defaults.
+                let (audio_gain, muted, passthrough_muted) = {
+                    let current = (self.audio_gain, self.muted, self.passthrough_muted);
+                    let rust = self.as_mut().rust_mut();
+                    (
+                        rust.deferred_audio_gain.unwrap_or(current.0),
+                        rust.deferred_muted.unwrap_or(current.1),
+                        rust.deferred_passthrough_muted.unwrap_or(current.2),
+                    )
+                };
+                self.as_mut().backend_set_audio_gain(audio_gain);
+                self.as_mut().backend_set_muted(muted);
+                self.as_mut()
+                    .backend_set_passthrough_muted(passthrough_muted);
 
                 let wrapper = QSharedPointer_QObject::from_ptr_delete_later(backend_port_qobj)
                     .unwrap_or_else(|e| {
@@ -276,6 +301,17 @@ impl PortGui {
         midi_n_output_notes_active: i32,
         n_ringbuffer_samples: i32,
     ) {
+        // Locally accepted scalar controls remain authoritative. This prevents an older
+        // queued publication from undoing desired state during asynchronous initialization.
+        let (muted, passthrough_muted, audio_gain) = {
+            let rust = self.as_mut().rust_mut();
+            (
+                rust.deferred_muted.unwrap_or(muted),
+                rust.deferred_passthrough_muted.unwrap_or(passthrough_muted),
+                rust.deferred_audio_gain.unwrap_or(audio_gain),
+            )
+        };
+
         if initialized != self.initialized {
             debug!(self, "initialized -> {initialized}");
             self.as_mut().rust_mut().initialized = initialized;
@@ -379,60 +415,48 @@ impl PortGui {
             "unknown".to_string()
         }
     }
-    pub fn connect_external_port(self: Pin<&mut PortGui>, name: QString) {
+    pub fn connect_external_port(mut self: Pin<&mut PortGui>, name: QString) {
         unsafe {
-            self.backend_connect_external_port(name);
+            self.as_mut().backend_connect_external_port(name.clone());
         }
+        self.as_mut()
+            .rust_mut()
+            .connections_state
+            .insert(name, QVariant::from(&true));
     }
 
-    pub fn disconnect_external_port(self: Pin<&mut PortGui>, name: QString) {
+    pub fn disconnect_external_port(mut self: Pin<&mut PortGui>, name: QString) {
         unsafe {
-            self.backend_disconnect_external_port(name);
+            self.as_mut().backend_disconnect_external_port(name.clone());
         }
+        self.as_mut()
+            .rust_mut()
+            .connections_state
+            .insert(name, QVariant::from(&false));
+    }
+
+    pub fn backend_connections_state_changed(
+        mut self: Pin<&mut PortGui>,
+        state: QMap_QString_QVariant,
+    ) {
+        self.as_mut().rust_mut().connections_state = state;
     }
 
     pub fn get_connections_state(self: Pin<&mut PortGui>) -> QMap_QString_QVariant {
-        match || -> Result<QMap_QString_QVariant, anyhow::Error> {
-            let backend_wrapper = if self.backend_port_wrapper.is_null() {
-                return Ok(QMap::default());
-            } else {
-                self.backend_port_wrapper.data()?
-            };
-            unsafe {
-                Ok(invokable::invoke(
-                    &mut *backend_wrapper,
-                    "get_connections_state()",
-                    invokable::BLOCKING_QUEUED_CONNECTION,
-                    &(),
-                )?)
-            }
-        }() {
-            Ok(data) => data,
-            Err(e) => {
-                debug!(self, "Could not get connections state: {e}");
-                QMap::default()
-            }
-        }
+        self.connections_state.clone()
     }
 
     pub fn get_connected_external_ports(self: Pin<&mut PortGui>) -> QList_QString {
-        match || -> Result<QList_QString, anyhow::Error> {
-            let backend_wrapper = self.backend_port_wrapper.data()?;
-            unsafe {
-                Ok(invokable::invoke(
-                    &mut *backend_wrapper,
-                    "get_connected_external_ports()",
-                    invokable::BLOCKING_QUEUED_CONNECTION,
-                    &(),
-                )?)
-            }
-        }() {
-            Ok(data) => data,
-            Err(e) => {
-                error!(self, "Could not query connected ports: {e}");
-                QList::default()
+        let mut result = QList::default();
+        for (name, connected) in
+            fn_qvariantmap_helpers::try_as_hashmap_convertto::<bool>(&self.connections_state)
+                .unwrap_or_default()
+        {
+            if connected {
+                result.append(QString::from(&name));
             }
         }
+        result
     }
 
     pub fn try_make_connections(self: Pin<&mut PortGui>, connections: QList_QString) {
@@ -607,24 +631,39 @@ impl PortGui {
         }
     }
 
-    pub fn push_audio_gain(self: Pin<&mut PortGui>, audio_gain: f32) {
+    pub fn push_audio_gain(mut self: Pin<&mut PortGui>, audio_gain: f32) {
         unsafe {
             trace!(self, "push gain -> {audio_gain}");
-            self.backend_set_audio_gain(audio_gain as f32);
+            self.as_mut().rust_mut().deferred_audio_gain = Some(audio_gain);
+            if self.audio_gain != audio_gain {
+                self.as_mut().rust_mut().audio_gain = audio_gain;
+                self.as_mut().audio_gain_changed(audio_gain);
+            }
+            self.as_mut().backend_set_audio_gain(audio_gain);
         }
     }
 
-    pub fn push_muted(self: Pin<&mut PortGui>, muted: bool) {
+    pub fn push_muted(mut self: Pin<&mut PortGui>, muted: bool) {
         unsafe {
             trace!(self, "push muted -> {muted}");
-            self.backend_set_muted(muted);
+            self.as_mut().rust_mut().deferred_muted = Some(muted);
+            if self.muted != muted {
+                self.as_mut().rust_mut().muted = muted;
+                self.as_mut().muted_changed(muted);
+            }
+            self.as_mut().backend_set_muted(muted);
         }
     }
 
-    pub fn push_passthrough_muted(self: Pin<&mut PortGui>, muted: bool) {
+    pub fn push_passthrough_muted(mut self: Pin<&mut PortGui>, muted: bool) {
         unsafe {
             trace!(self, "push passthrough muted -> {muted}");
-            self.backend_set_passthrough_muted(muted);
+            self.as_mut().rust_mut().deferred_passthrough_muted = Some(muted);
+            if self.passthrough_muted != muted {
+                self.as_mut().rust_mut().passthrough_muted = muted;
+                self.as_mut().passthrough_muted_changed(muted);
+            }
+            self.as_mut().backend_set_passthrough_muted(muted);
         }
     }
 

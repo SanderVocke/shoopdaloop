@@ -68,17 +68,15 @@ fn a_loop_can_be_created_and_read_back() {
     check!(state.position == 0);
 }
 
-/// A queued setter followed by a blocking read must see what was set.
-///
-/// The property that makes `get_state` distinct from `poll_state`: both go to the engine, but
-/// this one is ordered behind the mutation in the same queue, so it cannot answer from before
-/// it landed.
+/// Exact read-after-write is available through an explicit command fence.
 #[test]
-fn a_mutation_lands_and_is_visible_afterwards() {
+fn an_explicit_fence_makes_a_mutation_visible() {
     let (_driver, b) = backend();
     let_assert!(Ok(l) = b.create_loop());
 
-    let_assert!(Ok(()) = l.set_length(128));
+    let_assert!(Ok(sequence) = l.set_length(128));
+    b.wait_for_command(sequence, std::time::Duration::from_secs(1))
+        .expect("length command");
     let_assert!(Ok(state) = l.get_state());
     check!(state.length == 128);
 }
@@ -88,8 +86,8 @@ fn a_mutation_lands_and_is_visible_afterwards() {
 fn polled_state_catches_up_with_the_engine() {
     let (_driver, b) = backend();
     let_assert!(Ok(l) = b.create_loop());
-    let_assert!(Ok(()) = l.set_length(4096));
-    let_assert!(Ok(()) = l.transition(LoopMode::Playing, -1, -1));
+    let_assert!(Ok(_) = l.set_length(4096));
+    let_assert!(Ok(_) = l.transition(LoopMode::Playing, -1, -1));
 
     let_assert!(
         Some(s) = eventually(|| {
@@ -108,7 +106,9 @@ fn an_audio_channel_round_trips_its_data() {
     let_assert!(Ok(c) = l.add_audio_channel(ChannelMode::Direct));
 
     let data: Vec<f32> = (0..32).map(|i| i as f32 / 32.0).collect();
-    c.load_data(&data);
+    let sequence = c.load_data(&data).expect("queue data");
+    b.wait_for_command(sequence, std::time::Duration::from_secs(1))
+        .expect("data command");
 
     check!(c.get_data() == data);
 
@@ -123,10 +123,12 @@ fn audio_channel_settings_take_effect() {
     let_assert!(Ok(l) = b.create_loop());
     let_assert!(Ok(c) = l.add_audio_channel(ChannelMode::Direct));
 
-    c.set_gain(0.25);
-    c.set_mode(ChannelMode::Wet);
-    c.set_start_offset(7);
-    c.set_n_preplay_samples(9);
+    c.set_gain(0.25).expect("queue gain");
+    c.set_mode(ChannelMode::Wet).expect("queue mode");
+    c.set_start_offset(7).expect("queue offset");
+    let sequence = c.set_n_preplay_samples(9).expect("queue preplay");
+    b.wait_for_command(sequence, std::time::Duration::from_secs(1))
+        .expect("settings commands");
 
     let_assert!(Ok(state) = c.get_state());
     check!(state.gain == 0.25);
@@ -141,8 +143,10 @@ fn a_midi_channel_reports_its_state() {
     let_assert!(Ok(l) = b.create_loop());
     let_assert!(Ok(c) = l.add_midi_channel(ChannelMode::Direct));
 
-    c.set_start_offset(3);
-    c.set_n_preplay_samples(5);
+    c.set_start_offset(3).expect("queue offset");
+    let sequence = c.set_n_preplay_samples(5).expect("queue preplay");
+    b.wait_for_command(sequence, std::time::Duration::from_secs(1))
+        .expect("settings commands");
 
     let_assert!(Ok(state) = c.get_state());
     check!(state.mode == ChannelMode::Direct);
@@ -157,13 +161,17 @@ fn clearing_a_loop_empties_its_channels_and_stops_it() {
     let_assert!(Ok(l) = b.create_loop());
     let_assert!(Ok(c) = l.add_audio_channel(ChannelMode::Direct));
 
-    c.load_data(&vec![1.0f32; 64]);
-    let_assert!(Ok(()) = l.set_length(64));
-    let_assert!(Ok(()) = l.transition(LoopMode::Playing, -1, -1));
+    c.load_data(&vec![1.0f32; 64]).expect("queue data");
+    let_assert!(Ok(_) = l.set_length(64));
+    let_assert!(Ok(sequence) = l.transition(LoopMode::Playing, -1, -1));
+    b.wait_for_command(sequence, std::time::Duration::from_secs(1))
+        .expect("playing command");
     let_assert!(Ok(state) = l.get_state());
     check!(state.mode == LoopMode::Playing);
 
-    let_assert!(Ok(()) = l.clear(0));
+    let_assert!(Ok(sequence) = l.clear(0));
+    b.wait_for_command(sequence, std::time::Duration::from_secs(1))
+        .expect("clear command");
 
     let_assert!(Ok(state) = l.get_state());
     check!(state.length == 0);
@@ -177,11 +185,13 @@ fn a_loop_can_follow_another() {
     let_assert!(Ok(source) = b.create_loop());
     let_assert!(Ok(follower) = b.create_loop());
 
-    let_assert!(Ok(()) = source.set_length(64));
-    let_assert!(Ok(()) = follower.set_sync_source(Some(&source)));
+    let_assert!(Ok(_) = source.set_length(64));
+    let_assert!(Ok(_) = follower.set_sync_source(Some(&source)));
 
     // Planned rather than immediate, because the follower now waits for its source.
-    let_assert!(Ok(()) = follower.transition(LoopMode::Playing, 0, -1));
+    let_assert!(Ok(sequence) = follower.transition(LoopMode::Playing, 0, -1));
+    b.wait_for_command(sequence, std::time::Duration::from_secs(1))
+        .expect("transition command");
     let_assert!(Ok(state) = follower.get_state());
     check!(state.maybe_next_mode == Some(LoopMode::Playing));
     check!(state.mode == LoopMode::Stopped);
@@ -203,9 +213,14 @@ fn handles_can_be_shared_across_threads() {
             std::thread::spawn(move || l.set_length(100 + i))
         })
         .collect();
+    let mut sequences = Vec::new();
     for t in threads {
-        let_assert!(Ok(Ok(())) = t.join());
+        let_assert!(Ok(Ok(sequence)) = t.join());
+        sequences.push(sequence);
     }
+    let sequence = sequences.into_iter().max().expect("commands");
+    b.wait_for_command(sequence, std::time::Duration::from_secs(1))
+        .expect("all length commands");
 
     let_assert!(Ok(state) = l.get_state());
     // Whichever landed last wins; what matters is that all four were accepted and the loop
@@ -219,16 +234,16 @@ fn a_port_reports_its_state() {
 
     let_assert!(Ok(p) = AudioPort::new_driver_port(&b, &driver, "in", &PortDirection::Input, 4));
 
-    p.set_gain(0.5);
-    p.set_ringbuffer_n_samples(128);
+    p.set_gain(0.5).expect("queue gain");
+    p.set_ringbuffer_n_samples(128).expect("queue ring size");
     let_assert!(Ok(state) = p.get_state());
     check!(state.gain == 0.5);
     check!(!state.muted);
     // The name comes from this side, not from the audio thread, which cannot publish a
     // `String` -- so it is worth asserting it survives the round trip.
     check!(state.name == "in");
-    // `ringbuffer_n_samples` reports what is currently retained, not the window requested.
-    check!(state.ringbuffer_n_samples == 0);
+    // Accepted scalar intent is visible immediately, without waiting for the audio thread.
+    check!(state.ringbuffer_n_samples == 128);
 }
 
 #[test]
@@ -236,7 +251,7 @@ fn a_midi_port_reports_its_state() {
     let (driver, b) = backend();
 
     let_assert!(Ok(p) = MidiPort::new_driver_port(&b, &driver, "min", &PortDirection::Input, 0));
-    p.set_muted(true);
+    p.set_muted(true).expect("queue mute");
 
     let_assert!(Ok(state) = p.get_state());
     check!(state.muted);
@@ -253,8 +268,8 @@ fn muting_applies_to_whichever_kind_the_port_is() {
     );
     let_assert!(Ok(midi) = MidiPort::new_driver_port(&b, &driver, "m", &PortDirection::Output, 0));
 
-    audio.set_muted(true);
-    midi.set_muted(true);
+    audio.set_muted(true).expect("queue audio mute");
+    midi.set_muted(true).expect("queue MIDI mute");
 
     let_assert!(Ok(a) = audio.get_state());
     let_assert!(Ok(m) = midi.get_state());
@@ -276,15 +291,15 @@ fn a_graph_built_through_the_api_records_and_plays() {
     );
     let_assert!(Ok(l) = b.create_loop());
     let_assert!(Ok(c) = l.add_audio_channel(ChannelMode::Direct));
-    c.connect_input(&input);
-    c.connect_output(&output);
+    c.connect_input(&input).expect("queue input connection");
+    c.connect_output(&output).expect("queue output connection");
 
     // Load the channel rather than feeding the input port: staging a buffer is the driver's
     // job, and the dummy driver stages nothing.
     let data: Vec<f32> = (0..16).map(|i| i as f32).collect();
-    c.load_data(&data);
-    let_assert!(Ok(()) = l.set_length(16));
-    let_assert!(Ok(()) = l.transition(LoopMode::Playing, -1, -1));
+    c.load_data(&data).expect("queue data");
+    let_assert!(Ok(_) = l.set_length(16));
+    let_assert!(Ok(_) = l.transition(LoopMode::Playing, -1, -1));
 
     // Playing means the output port sees signal, so its peak rises above silence. This is the
     // assertion that fails if the graph is left stale and never rebuilt.
@@ -308,7 +323,8 @@ fn ports_can_be_routed_to_each_other() {
         Ok(from) = AudioPort::new_driver_port(&b, &driver, "from", &PortDirection::Input, 4)
     );
     let_assert!(Ok(to) = AudioPort::new_driver_port(&b, &driver, "to", &PortDirection::Output, 4));
-    from.connect_internal(&to);
+    from.connect_internal(&to)
+        .expect("queue internal connection");
 
     // Both still report, which they would not if the connection had left the graph in a state
     // that refused to schedule.

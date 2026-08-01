@@ -1,13 +1,20 @@
 use common::logging::macros::*;
 use shoop_engine::app_backend::{AudioDriver, AudioPort, BackendSession, MidiPort};
 use shoop_engine::{
-    AudioPortState, MidiEvent, MidiPortState, PortConnectability, PortDataType, PortDirection,
+    AudioPortState, CommandSequence, MidiEvent, MidiPortState, PortConnectability, PortDataType,
+    PortDirection, SendError,
 };
 use std::collections::HashMap;
 shoop_log_unit!("Frontend.AnyPort");
 pub enum AnyBackendPort {
     Audio(AudioPort),
     Midi(MidiPort),
+}
+
+fn report_queue_result(result: Result<CommandSequence, SendError>) {
+    if let Err(error) = result {
+        error!("Could not queue engine command: {error}");
+    }
 }
 
 impl AnyBackendPort {
@@ -61,69 +68,68 @@ impl AnyBackendPort {
 
     /// State as of the last published cycle, for the frame-rate poll.
     ///
-    /// The update thread fans one signal out to every port, channel and loop, so this has to
-    /// be cheap: `get_state` is a round trip to the audio thread, and one per object per frame
-    /// costs more than the frame is worth. Falls back to the blocking read until a cycle has
-    /// published anything, which is only the case before the driver has started.
+    /// The update thread fans one signal out to every port, channel and loop, so this is
+    /// mirror-only. Pending ports report that no state is available and retain their frontend
+    /// defaults; they never fall back to a synchronous engine read.
     pub fn poll_state(&self) -> Result<AnyBackendPortState, anyhow::Error> {
         let polled = match self {
             AnyBackendPort::Audio(port) => port.poll_state().map(AnyBackendPortState::from),
             AnyBackendPort::Midi(port) => port.poll_state().map(AnyBackendPortState::from),
         };
-        match polled {
-            Some(state) => Ok(state),
-            None => self.get_state(),
-        }
+        polled.ok_or_else(|| anyhow::anyhow!("port state is pending"))
     }
 
     pub fn push_state(&self, state: &AnyBackendPortState) -> Result<(), anyhow::Error> {
         match self {
             AnyBackendPort::Audio(port) => {
-                port.set_gain(state.gain);
-                port.set_muted(state.muted != 0);
-                port.set_passthrough_muted(state.passthrough_muted != 0);
+                port.set_gain(state.gain)?;
+                port.set_muted(state.muted != 0)?;
+                port.set_passthrough_muted(state.passthrough_muted != 0)?;
             }
             AnyBackendPort::Midi(port) => {
-                port.set_muted(state.muted != 0);
-                port.set_passthrough_muted(state.passthrough_muted != 0);
+                port.set_muted(state.muted != 0)?;
+                port.set_passthrough_muted(state.passthrough_muted != 0)?;
             }
         }
         Ok(())
     }
 
     pub fn set_gain(&self, gain: f32) {
-        match self {
-            AnyBackendPort::Audio(port) => port.set_gain(gain),
-            AnyBackendPort::Midi(_) => error!("Attempted to set gain on a Midi port, ignored."),
+        if let AnyBackendPort::Audio(port) = self {
+            report_queue_result(port.set_gain(gain));
+        } else {
+            error!("Attempted to set gain on a Midi port, ignored.");
         }
     }
 
     pub fn set_muted(&self, muted: bool) {
-        match self {
+        let result = match self {
             AnyBackendPort::Audio(port) => port.set_muted(muted),
             AnyBackendPort::Midi(port) => port.set_muted(muted),
-        }
+        };
+        report_queue_result(result);
     }
 
     pub fn set_passthrough_muted(&self, passthrough_muted: bool) {
-        match self {
+        let result = match self {
             AnyBackendPort::Audio(port) => port.set_passthrough_muted(passthrough_muted),
             AnyBackendPort::Midi(port) => port.set_passthrough_muted(passthrough_muted),
-        }
+        };
+        report_queue_result(result);
     }
 
     pub fn connect_internal(&self, other: &AnyBackendPort) {
         match self {
             AnyBackendPort::Audio(port) => {
                 if let AnyBackendPort::Audio(other_audio) = other {
-                    port.connect_internal(other_audio);
+                    report_queue_result(port.connect_internal(other_audio));
                 } else {
                     error!("Attempted to internally connect audio port to a midi port");
                 }
             }
             AnyBackendPort::Midi(port) => {
                 if let AnyBackendPort::Midi(other_midi) = other {
-                    port.connect_internal(other_midi);
+                    report_queue_result(port.connect_internal(other_midi));
                 } else {
                     error!("Attempted to internally connect midi port to an audio port");
                 }
@@ -132,11 +138,10 @@ impl AnyBackendPort {
     }
 
     pub fn dummy_queue_audio_data(&self, data: &[f32]) {
-        match self {
-            AnyBackendPort::Audio(port) => port.dummy_queue_data(data),
-            AnyBackendPort::Midi(_) => {
-                error!("Attempted to queue audio data on a midi port");
-            }
+        if let AnyBackendPort::Audio(port) = self {
+            report_queue_result(port.dummy_queue_data(data));
+        } else {
+            error!("Attempted to queue audio data on a midi port");
         }
     }
 
@@ -151,36 +156,34 @@ impl AnyBackendPort {
     }
 
     pub fn dummy_request_data(&self, n_frames: u32) {
-        match self {
+        let result = match self {
             AnyBackendPort::Audio(port) => port.dummy_request_data(n_frames),
             AnyBackendPort::Midi(port) => port.dummy_request_data(n_frames),
-        }
+        };
+        report_queue_result(result);
     }
 
     pub fn dummy_clear_queues(&self) {
-        match self {
-            AnyBackendPort::Midi(port) => port.dummy_clear_queues(),
-            AnyBackendPort::Audio(_) => {
-                error!("Attempted to clear queues on a audio port");
-            }
+        if let AnyBackendPort::Midi(port) = self {
+            report_queue_result(port.dummy_clear_queues());
+        } else {
+            error!("Attempted to clear queues on a audio port");
         }
     }
 
     pub fn dummy_queue_midi_msg(&self, msg: &MidiEvent) {
-        match self {
-            AnyBackendPort::Midi(port) => port.dummy_queue_msg(msg),
-            AnyBackendPort::Audio(_) => {
-                error!("Attempted to queue midi message on a audio port");
-            }
+        if let AnyBackendPort::Midi(port) = self {
+            report_queue_result(port.dummy_queue_msg(msg));
+        } else {
+            error!("Attempted to queue midi message on a audio port");
         }
     }
 
     pub fn dummy_queue_midi_msgs(&self, msgs: &[MidiEvent]) {
-        match self {
-            AnyBackendPort::Midi(port) => port.dummy_queue_msgs(msgs.to_vec()),
-            AnyBackendPort::Audio(_) => {
-                error!("Attempted to queue midi messages on a audio port");
-            }
+        if let AnyBackendPort::Midi(port) = self {
+            report_queue_result(port.dummy_queue_msgs(msgs.to_vec()));
+        } else {
+            error!("Attempted to queue midi messages on a audio port");
         }
     }
 
@@ -216,10 +219,11 @@ impl AnyBackendPort {
     }
 
     pub fn set_ringbuffer_n_samples(&self, n_samples: u32) {
-        match self {
+        let result = match self {
             AnyBackendPort::Midi(port) => port.set_ringbuffer_n_samples(n_samples),
             AnyBackendPort::Audio(port) => port.set_ringbuffer_n_samples(n_samples),
-        }
+        };
+        report_queue_result(result);
     }
 
     pub fn direction(&self) -> PortDirection {

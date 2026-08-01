@@ -9,8 +9,10 @@
 //! with the driver implementations.
 
 use crate::buffer_queue::{BufferQueue, Snapshot};
+use crate::state_mirror::AudioPortStateMirror;
 use enum_iterator::Sequence;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+use std::sync::Arc;
 
 /// Kind of data a port carries. Discriminants match `shoop_port_data_type_t`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive, IntoPrimitive, Sequence)]
@@ -79,6 +81,7 @@ pub struct AudioPort {
     fx: Option<Box<crate::fx_chain::FxChain>>,
     /// Reused so an insert does not allocate per cycle.
     fx_scratch: Vec<f32>,
+    state: Arc<AudioPortStateMirror>,
 }
 
 impl AudioPort {
@@ -93,6 +96,7 @@ impl AudioPort {
             fx: None,
             fx_scratch: Vec::new(),
             ringbuffer: BufferQueue::new(ringbuffer_buffer_size.max(1), 32),
+            state: Arc::new(AudioPortStateMirror::default()),
         }
     }
 
@@ -101,6 +105,20 @@ impl AudioPort {
         let mut p = Self::new(1);
         p.ringbuffer.set_max_buffers(0);
         p
+    }
+
+    pub fn set_state_mirror(&mut self, state: Arc<AudioPortStateMirror>) {
+        self.state = state;
+        self.publish_state();
+    }
+
+    fn publish_state(&self) {
+        self.state.publish_scalars(
+            self.gain,
+            self.muted,
+            self.passthrough_muted,
+            self.ringbuffer.n_samples(),
+        );
     }
 
     pub fn data_type(&self) -> PortDataType {
@@ -112,18 +130,21 @@ impl AudioPort {
     }
     pub fn set_gain(&mut self, gain: f32) {
         self.gain = gain;
+        self.publish_state();
     }
     pub fn muted(&self) -> bool {
         self.muted
     }
     pub fn set_muted(&mut self, muted: bool) {
         self.muted = muted;
+        self.publish_state();
     }
     pub fn passthrough_muted(&self) -> bool {
         self.passthrough_muted
     }
     pub fn set_passthrough_muted(&mut self, muted: bool) {
         self.passthrough_muted = muted;
+        self.publish_state();
     }
 
     pub fn input_peak(&self) -> f32 {
@@ -148,6 +169,7 @@ impl AudioPort {
     }
     pub fn set_ringbuffer_n_samples(&mut self, n: usize) {
         self.ringbuffer.set_min_n_samples(n);
+        self.publish_state();
     }
     pub fn ringbuffer_contents(&self) -> Snapshot {
         self.ringbuffer.snapshot()
@@ -189,8 +211,10 @@ impl AudioPort {
         }
 
         let mut input_peak = self.input_peak;
+        let mut cycle_input_peak = 0.0f32;
         for s in buf.iter_mut() {
             input_peak = input_peak.max(s.abs());
+            cycle_input_peak = cycle_input_peak.max(s.abs());
             if self.muted {
                 *s = 0.0;
             } else {
@@ -204,12 +228,20 @@ impl AudioPort {
             input_peak * self.gain
         };
         self.output_peak = self.output_peak.max(candidate);
+        let cycle_output_peak = if self.muted {
+            0.0
+        } else {
+            cycle_input_peak * self.gain
+        };
+        self.state
+            .publish_peaks(cycle_input_peak, cycle_output_peak);
 
         // Capture happens after gain and muting, so what was heard is what is
         // available for retroactive recording.
         if self.ringbuffer.max_buffers() > 0 {
             self.ringbuffer.put(buf);
         }
+        self.publish_state();
     }
 }
 

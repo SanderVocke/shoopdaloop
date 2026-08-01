@@ -452,6 +452,19 @@ ShoopTestFile {
                     testcase.wait_session_io_done()
                     testcase.wait_updated(session.backend)
                     testcase.wait_updated(other_session.backend)
+                    testcase.wait_condition(() => {
+                        let dt_channels = dt_loop_channels(other_session)
+                        let dry_channels = dwt_dry_loop_channels(other_session)
+                        let wet_channels = dwt_wet_loop_channels(other_session)
+                        return dt_channels.length === 2 &&
+                            dry_channels.length === 2 &&
+                            wet_channels.length === 2 &&
+                            dt_channels.every(channel => channel.data_length === 8) &&
+                            dry_channels.every(channel => channel.data_length === 8) &&
+                            wet_channels.every(channel => channel.data_length === 8) &&
+                            dt_loop(other_session).length === 4 &&
+                            dwt_loop(other_session).length === 8
+                    }, 10000, "resampled channel mirrors did not settle in time")
 
                     verify_true(dt_loop_2(other_session).maybe_composite_loop)
                     verify_true(dwt_loop_2(other_session).maybe_composite_loop)

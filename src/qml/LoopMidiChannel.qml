@@ -89,6 +89,12 @@ ShoopRustLoopChannelGui {
 
     property int initial_mode : Conversions.parse_channel_mode(descriptor.mode)
     onInitial_modeChanged: push_mode(initial_mode)
+    onInitializedChanged: {
+        if (root.initialized) {
+            root.push_mode(initial_mode)
+            Qt.callLater(() => root.push_mode(initial_mode))
+        }
+    }
     ports_to_connect: lookup_connected_ports.objects
     property var recording_fx_chain_state_id: ('recording_fx_chain_state_id' in descriptor) ? descriptor.recording_fx_chain_state_id : null
     recording_started_at: 'recording_started_at' in descriptor ? descriptor.recording_started_at : null

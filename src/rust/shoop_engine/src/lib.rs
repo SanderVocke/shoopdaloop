@@ -52,6 +52,7 @@ pub mod realtime_alloc_guard;
 pub mod resample;
 pub mod session;
 pub mod state;
+pub mod state_mirror;
 pub mod wave_generator;
 
 pub use audio_channel::{AudioChannel, ChannelError, PreparedAudioChannelData};
@@ -101,8 +102,9 @@ pub use dummy_driver::{DriverMode, DriverSettings, DummyDriver};
 pub use dummy_midi_port::DummyMidiPort;
 pub use dummy_port::{DummyAudioPort, DummyExternalConnections, DummyPortError, PortId};
 pub use engine::{
-    split, wait_for_result, Command, CompositeSnapshot, Engine, EngineHandle, LoopSnapshot,
-    LoopState, SendError, StateSnapshot, Stats, WaitError, DEFAULT_WAIT_TIMEOUT,
+    split, wait_for_command, wait_for_result, Command, CommandReservation, CommandSequence,
+    CompositeSnapshot, Engine, EngineHandle, SendError, StateSnapshot, Stats, WaitError,
+    DEFAULT_WAIT_TIMEOUT,
 };
 pub use fx_chain::{FXChainState, FXChainType};
 pub use graph::{processing_order, GraphError, NodeIdx, NodeSpec};
@@ -128,7 +130,8 @@ pub use session::{
     ReclaimedCompositeTimeline, RejectedCompositeTimeline, Session, SessionError, Topology,
     MAX_AUDIO_RINGBUFFER_ADOPTIONS, MAX_AUDIO_RINGBUFFER_ADOPTION_CHANNELS,
 };
-pub use state::{
-    AudioChannelState, AudioPortSnapshot, AudioPortState, MidiChannelState, MidiPortSnapshot,
-    MidiPortState,
+pub use state::{AudioChannelState, AudioPortState, LoopState, MidiChannelState, MidiPortState};
+pub use state_mirror::{
+    AudioChannelStateMirror, AudioPortStateMirror, LoopStateMirror, MidiChannelStateMirror,
+    MidiPortStateMirror,
 };

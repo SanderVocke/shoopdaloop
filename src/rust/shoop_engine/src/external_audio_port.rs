@@ -11,6 +11,7 @@
 //! cycles so a test can set up a whole sequence up front.
 
 use crate::port::{AudioPort, PortConnectability, PortDataType, PortDirection};
+use std::sync::{Arc, Mutex};
 
 /// Ceiling on retained output, in samples. Roughly a second at 48 kHz.
 ///
@@ -30,7 +31,7 @@ pub struct ExternalAudioPort {
     staged: Vec<f32>,
     staged_len: usize,
     buffer: Vec<f32>,
-    outgoing: Vec<f32>,
+    outgoing: Arc<Mutex<Vec<f32>>>,
     /// Whether anyone is capturing this port's output.
     ///
     /// Off until something asks, because retaining output costs a copy per cycle on the
@@ -54,10 +55,14 @@ impl ExternalAudioPort {
             staged: Vec::new(),
             staged_len: 0,
             buffer: Vec::new(),
-            outgoing: Vec::new(),
+            outgoing: Arc::new(Mutex::new(Vec::new())),
             capture_output: false,
             processed_len: 0,
         }
+    }
+
+    pub fn set_output_capture(&mut self, output: Arc<Mutex<Vec<f32>>>) {
+        self.outgoing = output;
     }
 
     pub fn name(&self) -> &str {
@@ -150,22 +155,51 @@ impl ExternalAudioPort {
 
     pub fn dequeue_output(&mut self, n_frames: usize) -> Vec<f32> {
         self.capture_output = true;
+        let mut outgoing = self.outgoing.lock().unwrap_or_else(|e| e.into_inner());
         if self.direction == PortDirection::Output
-            && self.outgoing.len() < n_frames
+            && outgoing.len() < n_frames
             && self.processed_len > 0
         {
             let n = self.processed_len.min(self.buffer.len());
-            self.outgoing.extend_from_slice(&self.buffer[..n]);
+            outgoing.extend_from_slice(&self.buffer[..n]);
             self.processed_len = 0;
         }
-        let n = n_frames.min(self.outgoing.len());
-        self.outgoing.drain(..n).collect()
+        let n = n_frames.min(outgoing.len());
+        outgoing.drain(..n).collect()
     }
 
     pub fn clear_output_queue(&mut self) {
         self.capture_output = true;
-        self.outgoing.clear();
+        self.outgoing
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
         self.processed_len = 0;
+    }
+
+    /// Adds output generated after this port's scheduled process step.
+    ///
+    /// The synthetic test FX shim runs after graph processing so its input ports already
+    /// contain routed data. Keep the current-cycle dummy capture coherent by adding the
+    /// same contribution to the samples that `process` captured earlier in the cycle.
+    pub fn add_late_output(&mut self, samples: &[f32]) {
+        if self.buffer.len() < samples.len() {
+            crate::realtime_allow_alloc_once!("ExternalAudioPort::add_late_output resize", || {
+                self.buffer.resize(samples.len(), 0.0)
+            });
+        }
+        for (output, sample) in self.buffer.iter_mut().zip(samples) {
+            *output += *sample;
+        }
+        if self.capture_output && self.direction == PortDirection::Output {
+            let mut outgoing = self.outgoing.lock().unwrap_or_else(|e| e.into_inner());
+            if outgoing.len() >= samples.len() {
+                let start = outgoing.len() - samples.len();
+                for (output, sample) in outgoing[start..].iter_mut().zip(samples) {
+                    *output += *sample;
+                }
+            }
+        }
     }
 
     // --- port interface ---
@@ -186,12 +220,13 @@ impl ExternalAudioPort {
         if self.capture_output && self.direction == PortDirection::Output && self.processed_len > 0
         {
             let n = self.processed_len.min(self.buffer.len());
+            let mut outgoing = self.outgoing.lock().unwrap_or_else(|e| e.into_inner());
             crate::realtime_allow_alloc_once!("ExternalAudioPort::prepare outgoing extend", || {
-                self.outgoing.extend_from_slice(&self.buffer[..n])
+                outgoing.extend_from_slice(&self.buffer[..n])
             });
-            if self.outgoing.len() > MAX_CAPTURED_SAMPLES {
-                let excess = self.outgoing.len() - MAX_CAPTURED_SAMPLES;
-                self.outgoing.drain(..excess);
+            if outgoing.len() > MAX_CAPTURED_SAMPLES {
+                let excess = outgoing.len() - MAX_CAPTURED_SAMPLES;
+                outgoing.drain(..excess);
             }
         }
         if self.direction == PortDirection::Output {
@@ -221,6 +256,18 @@ impl ExternalAudioPort {
         audio.process(buf);
         if self.direction == PortDirection::Output {
             self.processed_len = n_frames;
+            if self.capture_output {
+                let mut outgoing = self.outgoing.lock().unwrap_or_else(|e| e.into_inner());
+                crate::realtime_allow_alloc_once!(
+                    "ExternalAudioPort::process shared output capture",
+                    || outgoing.extend_from_slice(&self.buffer[..n_frames])
+                );
+                if outgoing.len() > MAX_CAPTURED_SAMPLES {
+                    let excess = outgoing.len() - MAX_CAPTURED_SAMPLES;
+                    outgoing.drain(..excess);
+                }
+                self.processed_len = 0;
+            }
         }
     }
 
@@ -316,6 +363,19 @@ mod tests {
     }
 
     #[test]
+    fn late_output_updates_the_current_dummy_capture() {
+        let mut p = out_port();
+        p.clear_output_queue();
+        p.prepare(3);
+        p.process(3);
+
+        p.add_late_output(&[0.25, 0.5, 0.75]);
+
+        check!(p.output(3) == [0.25, 0.5, 0.75]);
+        check!(p.dequeue_output(3) == [0.25, 0.5, 0.75]);
+    }
+
+    #[test]
     fn what_arrived_is_metered_even_when_muted() {
         let mut p = in_port();
         p.audio_mut().set_muted(true);
@@ -381,8 +441,9 @@ mod tests {
             p.buffer(64).fill(0.5);
             p.process(64);
         }
-        check!(p.outgoing.is_empty());
-        check!(p.outgoing.capacity() == 0);
+        let outgoing = p.outgoing.lock().unwrap();
+        check!(outgoing.is_empty());
+        check!(outgoing.capacity() == 0);
     }
 
     #[test]
@@ -410,7 +471,7 @@ mod tests {
             p.process(64);
         }
         p.prepare(64);
-        check!(p.outgoing.len() <= MAX_CAPTURED_SAMPLES);
+        check!(p.outgoing.lock().unwrap().len() <= MAX_CAPTURED_SAMPLES);
     }
 
     #[test]

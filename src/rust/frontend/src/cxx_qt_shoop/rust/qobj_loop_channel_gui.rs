@@ -283,30 +283,67 @@ impl LoopChannelGui {
         }
     }
 
-    pub fn push_mode(self: Pin<&mut LoopChannelGui>, mode: i32) {
+    pub fn push_mode(mut self: Pin<&mut LoopChannelGui>, mode: i32) {
+        let changed = self.mode != mode;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.mode = mode;
+            rust.desired_mode = Some(mode);
+        }
         unsafe {
-            self.backend_push_mode(mode);
+            if changed {
+                self.as_mut().mode_changed(mode);
+            }
+            self.as_mut().backend_push_mode(mode);
         }
     }
 
-    pub fn push_start_offset(self: Pin<&mut LoopChannelGui>, start_offset: i32) {
+    pub fn push_start_offset(mut self: Pin<&mut LoopChannelGui>, start_offset: i32) {
+        trace!(self, "push start offset: {start_offset}");
+        let changed = self.start_offset != start_offset;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.start_offset = start_offset;
+            rust.desired_start_offset = Some(start_offset);
+        }
         unsafe {
-            trace!(self, "push start offset: {start_offset}");
-            self.backend_push_start_offset(start_offset);
+            if changed {
+                self.as_mut().start_offset_changed(start_offset);
+            }
+            self.as_mut().backend_push_start_offset(start_offset);
         }
     }
 
-    pub fn push_n_preplay_samples(self: Pin<&mut LoopChannelGui>, n_preplay_samples: i32) {
+    pub fn push_n_preplay_samples(mut self: Pin<&mut LoopChannelGui>, n_preplay_samples: i32) {
+        trace!(self, "push n preplay samples: {n_preplay_samples}");
+        let changed = self.n_preplay_samples != n_preplay_samples;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.n_preplay_samples = n_preplay_samples;
+            rust.desired_n_preplay_samples = Some(n_preplay_samples);
+        }
         unsafe {
-            trace!(self, "push n preplay samples: {n_preplay_samples}");
-            self.backend_push_n_preplay_samples(n_preplay_samples);
+            if changed {
+                self.as_mut().n_preplay_samples_changed(n_preplay_samples);
+            }
+            self.as_mut()
+                .backend_push_n_preplay_samples(n_preplay_samples);
         }
     }
 
-    pub fn push_audio_gain(self: Pin<&mut LoopChannelGui>, audio_gain: f32) {
+    pub fn push_audio_gain(mut self: Pin<&mut LoopChannelGui>, audio_gain: f32) {
+        trace!(self, "push audio gain: {audio_gain}");
+        let changed = self.audio_gain != audio_gain;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.audio_gain = audio_gain;
+            rust.desired_audio_gain = Some(audio_gain);
+        }
         unsafe {
-            trace!(self, "push audio gain: {audio_gain}");
-            self.backend_push_audio_gain(audio_gain);
+            if changed {
+                self.as_mut().audio_gain_changed(audio_gain);
+            }
+            self.as_mut().backend_push_audio_gain(audio_gain);
         }
     }
 
@@ -324,6 +361,42 @@ impl LoopChannelGui {
         n_events_triggered: i32,
         n_notes_active: i32,
     ) {
+        let (mode, audio_gain) = {
+            let rust = self.as_mut().rust_mut();
+            (
+                rust.desired_mode.unwrap_or(mode),
+                rust.desired_audio_gain.unwrap_or(audio_gain),
+            )
+        };
+        let (length, start_offset, n_preplay_samples) = {
+            let mut rust = self.as_mut().rust_mut();
+            let length = match rust.desired_data_length {
+                Some(desired) if desired == length => {
+                    rust.desired_data_length = None;
+                    length
+                }
+                Some(desired) => desired,
+                None => length,
+            };
+            let start_offset = match rust.desired_start_offset {
+                Some(desired) if desired == start_offset => {
+                    rust.desired_start_offset = None;
+                    start_offset
+                }
+                Some(desired) => desired,
+                None => start_offset,
+            };
+            let n_preplay_samples = match rust.desired_n_preplay_samples {
+                Some(desired) if desired == n_preplay_samples => {
+                    rust.desired_n_preplay_samples = None;
+                    n_preplay_samples
+                }
+                Some(desired) => desired,
+                None => n_preplay_samples,
+            };
+            (length, start_offset, n_preplay_samples)
+        };
+
         if initialized != self.initialized {
             debug!(self, "initialized -> {initialized}");
             self.as_mut().rust_mut().initialized = initialized;
@@ -429,9 +502,19 @@ impl LoopChannelGui {
         }
     }
 
-    pub fn load_audio_data(self: Pin<&mut LoopChannelGui>, data: QVector_f32) {
+    pub fn load_audio_data(mut self: Pin<&mut LoopChannelGui>, data: QVector_f32) {
+        let length = data.len() as i32;
+        let changed = self.data_length != length;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.data_length = length;
+            rust.desired_data_length = Some(length);
+        }
         unsafe {
-            self.backend_load_audio_data(data);
+            if changed {
+                self.as_mut().data_length_changed(length);
+            }
+            self.as_mut().backend_load_audio_data(data);
         }
     }
 
@@ -661,8 +744,19 @@ impl LoopChannelGui {
         }
     }
 
-    pub fn clear(self: Pin<&mut LoopChannelGui>, length: i32) {
-        self.backend_clear(length);
+    pub fn clear(mut self: Pin<&mut LoopChannelGui>, length: i32) {
+        let changed = self.data_length != length;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.data_length = length;
+            rust.desired_data_length = Some(length);
+        }
+        unsafe {
+            if changed {
+                self.as_mut().data_length_changed(length);
+            }
+        }
+        self.as_mut().backend_clear(length);
     }
 }
 
