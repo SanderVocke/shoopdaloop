@@ -260,11 +260,11 @@ impl PortGui {
                 // queued signals so initialization cannot silently fall back to defaults.
                 let (audio_gain, muted, passthrough_muted) = {
                     let current = (self.audio_gain, self.muted, self.passthrough_muted);
-                    let mut rust = self.as_mut().rust_mut();
+                    let rust = self.as_mut().rust_mut();
                     (
-                        rust.deferred_audio_gain.take().unwrap_or(current.0),
-                        rust.deferred_muted.take().unwrap_or(current.1),
-                        rust.deferred_passthrough_muted.take().unwrap_or(current.2),
+                        rust.deferred_audio_gain.unwrap_or(current.0),
+                        rust.deferred_muted.unwrap_or(current.1),
+                        rust.deferred_passthrough_muted.unwrap_or(current.2),
                     )
                 };
                 self.as_mut().backend_set_audio_gain(audio_gain);
@@ -301,6 +301,17 @@ impl PortGui {
         midi_n_output_notes_active: i32,
         n_ringbuffer_samples: i32,
     ) {
+        // Locally accepted scalar controls remain authoritative. This prevents an older
+        // queued publication from undoing desired state during asynchronous initialization.
+        let (muted, passthrough_muted, audio_gain) = {
+            let rust = self.as_mut().rust_mut();
+            (
+                rust.deferred_muted.unwrap_or(muted),
+                rust.deferred_passthrough_muted.unwrap_or(passthrough_muted),
+                rust.deferred_audio_gain.unwrap_or(audio_gain),
+            )
+        };
+
         if initialized != self.initialized {
             debug!(self, "initialized -> {initialized}");
             self.as_mut().rust_mut().initialized = initialized;
@@ -623,9 +634,7 @@ impl PortGui {
     pub fn push_audio_gain(mut self: Pin<&mut PortGui>, audio_gain: f32) {
         unsafe {
             trace!(self, "push gain -> {audio_gain}");
-            if self.backend_port_wrapper.is_null() {
-                self.as_mut().rust_mut().deferred_audio_gain = Some(audio_gain);
-            }
+            self.as_mut().rust_mut().deferred_audio_gain = Some(audio_gain);
             if self.audio_gain != audio_gain {
                 self.as_mut().rust_mut().audio_gain = audio_gain;
                 self.as_mut().audio_gain_changed(audio_gain);
@@ -637,9 +646,7 @@ impl PortGui {
     pub fn push_muted(mut self: Pin<&mut PortGui>, muted: bool) {
         unsafe {
             trace!(self, "push muted -> {muted}");
-            if self.backend_port_wrapper.is_null() {
-                self.as_mut().rust_mut().deferred_muted = Some(muted);
-            }
+            self.as_mut().rust_mut().deferred_muted = Some(muted);
             if self.muted != muted {
                 self.as_mut().rust_mut().muted = muted;
                 self.as_mut().muted_changed(muted);
@@ -651,9 +658,7 @@ impl PortGui {
     pub fn push_passthrough_muted(mut self: Pin<&mut PortGui>, muted: bool) {
         unsafe {
             trace!(self, "push passthrough muted -> {muted}");
-            if self.backend_port_wrapper.is_null() {
-                self.as_mut().rust_mut().deferred_passthrough_muted = Some(muted);
-            }
+            self.as_mut().rust_mut().deferred_passthrough_muted = Some(muted);
             if self.passthrough_muted != muted {
                 self.as_mut().rust_mut().passthrough_muted = muted;
                 self.as_mut().passthrough_muted_changed(muted);
