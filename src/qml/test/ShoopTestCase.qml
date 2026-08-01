@@ -271,10 +271,16 @@ Item {
             wait_condition(() => done == true, 500, "Backend not updated in time")
         }
         // First let queued Qt calls reach the backend, then explicitly settle engine
-        // commands/graph work. The final updates publish the resulting mirrors to QML.
+        // commands/graph work. Repeat after publishing because QML reactions to those
+        // mirrors may enqueue follow-up controls of their own.
+        wait_once()
+        wait_once()
         wait_once()
         backend.wait_process()
         wait_once()
+        wait_once()
+        wait_once()
+        backend.wait_process()
         wait_once()
     }
 
