@@ -2179,7 +2179,7 @@ impl BackendSession {
             // Instrumented and packaged CI builds can take longer than the ordinary command
             // fence while the frontend settles topology, so retain a bounded but generous
             // transaction timeout here.
-            let result = match engine::wait_for_result(receiver, Duration::from_secs(5)) {
+            let result = match engine::wait_for_result(receiver, Duration::from_secs(30)) {
                 Ok(Ok(reclaimed)) => {
                     drop(reclaimed);
                     Ok(version)
