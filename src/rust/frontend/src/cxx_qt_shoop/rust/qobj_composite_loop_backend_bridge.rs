@@ -1,4 +1,4 @@
-use cxx_qt_lib_shoop::qobject::AsQObject;
+use cxx_qt_lib_shoop::{qobject::AsQObject, qpointer::QPointerQObject};
 
 #[cxx_qt::bridge]
 pub mod ffi {
@@ -329,6 +329,7 @@ pub struct CompositeLoopBackendRust {
     pub position: i32,
     pub backend: *mut QObject,
     pub sync_source: *mut QObject,
+    pub sync_source_guard: cxx::UniquePtr<QPointerQObject>,
     pub play_after_record: bool,
     pub sync_mode_active: bool,
     pub kind: QString,
@@ -362,6 +363,7 @@ impl Default for CompositeLoopBackendRust {
             position: 0,
             backend: std::ptr::null_mut(),
             sync_source: std::ptr::null_mut(),
+            sync_source_guard: cxx::UniquePtr::null(),
             play_after_record: false,
             sync_mode_active: false,
             kind: QString::default(),
