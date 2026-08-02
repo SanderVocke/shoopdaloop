@@ -2,7 +2,6 @@ use crate::cxx_qt_shoop::qobj_backend_wrapper::BackendWrapper;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::*;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend;
 use crate::loop_helpers::transition_backend_loops;
-use crate::loop_mode_helpers::*;
 use anyhow::anyhow;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
@@ -277,23 +276,7 @@ impl LoopBackend {
                 prev_state = rust.prev_state.clone();
                 prev_cycle_nr = rust.prev_cycle_nr;
 
-                new_cycle_nr = if new_state.position < prev_state.position
-                    && is_playing_mode(
-                        prev_state
-                            .mode
-                            .try_into()
-                            .map_err(|e| anyhow!("Invalid loop mode: {}", e))?,
-                    )
-                    && is_playing_mode(
-                        new_state
-                            .mode
-                            .try_into()
-                            .map_err(|e| anyhow!("Invalid loop mode: {}", e))?,
-                    ) {
-                    rust.prev_cycle_nr + 1
-                } else {
-                    rust.prev_cycle_nr
-                };
+                new_cycle_nr = new_state.cycle_count.min(i32::MAX as u64) as i32;
 
                 rust.prev_state = new_state.clone();
                 rust.prev_cycle_nr = new_cycle_nr;

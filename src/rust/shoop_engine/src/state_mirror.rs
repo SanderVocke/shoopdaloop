@@ -19,6 +19,7 @@ pub struct LoopStateMirror {
     mode: AtomicI32,
     length: AtomicU32,
     position: AtomicU32,
+    cycle_count: AtomicU64,
     next_mode: AtomicI32,
     next_delay: AtomicU64,
 }
@@ -29,6 +30,7 @@ impl Default for LoopStateMirror {
             mode: AtomicI32::new(LoopMode::Stopped as i32),
             length: AtomicU32::new(0),
             position: AtomicU32::new(0),
+            cycle_count: AtomicU64::new(0),
             next_mode: AtomicI32::new(NO_MODE),
             next_delay: AtomicU64::new(NO_DELAY),
         }
@@ -41,11 +43,13 @@ impl LoopStateMirror {
         mode: LoopMode,
         length: u32,
         position: u32,
+        cycle_count: u64,
         next: Option<(LoopMode, u32)>,
     ) {
         self.mode.store(mode as i32, Ordering::Relaxed);
         self.length.store(length, Ordering::Relaxed);
         self.position.store(position, Ordering::Relaxed);
+        self.cycle_count.store(cycle_count, Ordering::Relaxed);
         self.next_mode.store(
             next.map(|(mode, _)| mode as i32).unwrap_or(NO_MODE),
             Ordering::Relaxed,
@@ -78,6 +82,7 @@ impl LoopStateMirror {
                 .unwrap_or(LoopMode::Unknown),
             length: self.length.load(Ordering::Relaxed),
             position: self.position.load(Ordering::Relaxed),
+            cycle_count: self.cycle_count.load(Ordering::Relaxed),
             maybe_next_mode: (next_mode != NO_MODE)
                 .then(|| LoopMode::try_from(next_mode).unwrap_or(LoopMode::Unknown)),
             maybe_next_mode_delay: (next_delay != NO_DELAY).then_some(next_delay as u32),
@@ -916,15 +921,22 @@ mod tests {
         let mirror = LoopStateMirror::default();
         check!(mirror.read().mode == LoopMode::Stopped);
 
-        mirror.publish(LoopMode::Playing, 128, 17, Some((LoopMode::Recording, 2)));
+        mirror.publish(
+            LoopMode::Playing,
+            128,
+            17,
+            3,
+            Some((LoopMode::Recording, 2)),
+        );
         let state = mirror.read();
         check!(state.mode == LoopMode::Playing);
         check!(state.length == 128);
         check!(state.position == 17);
+        check!(state.cycle_count == 3);
         check!(state.maybe_next_mode == Some(LoopMode::Recording));
         check!(state.maybe_next_mode_delay == Some(2));
 
-        mirror.publish(LoopMode::Stopped, 0, 0, None);
+        mirror.publish(LoopMode::Stopped, 0, 0, 4, None);
         let state = mirror.read();
         check!(state.maybe_next_mode.is_none());
         check!(state.maybe_next_mode_delay.is_none());

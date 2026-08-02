@@ -11,6 +11,7 @@ pub struct LoopState {
     pub mode: LoopMode,
     pub length: u32,
     pub position: u32,
+    pub cycle_count: u64,
     pub maybe_next_mode: Option<LoopMode>,
     pub maybe_next_mode_delay: Option<u32>,
 }
@@ -21,6 +22,7 @@ impl Default for LoopState {
             mode: LoopMode::Unknown,
             length: 0,
             position: 0,
+            cycle_count: 0,
             maybe_next_mode: None,
             maybe_next_mode_delay: None,
         }

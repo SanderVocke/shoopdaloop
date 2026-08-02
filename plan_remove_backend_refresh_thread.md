@@ -1,6 +1,6 @@
 # Remove the frontend backend-refresh thread
 
-Status: planned
+Status: in progress
 
 Branch: `remove_backend_update_thread`
 
@@ -46,11 +46,11 @@ This includes the refresh coordinator, backend wrapper publication, loop, compos
 
 ### Stage 1 — Lock down behavior and engine prerequisites
 
-- [ ] Add focused coverage for a control queued immediately before a GUI stall, continued primitive/composite execution during the stall, and convergence after one resumed refresh.
-- [ ] Add an authoritative primitive-loop cycle/generation counter to the engine mirror so cycle signals do not depend on observing position wraparound at 40 Hz.
-- [ ] Add mirror tests and realtime no-allocation coverage for the new publication field.
-- [ ] Inventory periodic refresh methods and move any wait, bulk copy, or blocking query behind an explicit command or asynchronous task before migrating its object.
-- [ ] Verify targeted engine and frontend tests, then commit the stage.
+- [x] Add focused coverage for a control queued immediately before a GUI stall, continued primitive/composite execution during the stall, and convergence after one resumed refresh.
+- [x] Add an authoritative primitive-loop cycle/generation counter to the engine mirror so cycle signals do not depend on observing position wraparound at 40 Hz.
+- [x] Add mirror tests and realtime no-allocation coverage for the new publication field.
+- [x] Inventory periodic refresh methods and move any wait, bulk copy, or blocking query behind an explicit command or asynchronous task before migrating its object.
+- [x] Verify targeted engine and frontend tests, then commit the stage.
 
 ### Stage 2 — Introduce GUI-affine refresh publication
 
