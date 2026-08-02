@@ -171,7 +171,11 @@ fn application_backend_creates_configures_controls_and_observes_engine_composite
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
     let state = loop {
         let state = composite.get_state().unwrap();
-        if state.mode == LoopMode::Playing || std::time::Instant::now() >= deadline {
+        if (state.mode == LoopMode::Playing
+            && state.cycle_count > 0
+            && !state.active_children.is_empty())
+            || std::time::Instant::now() >= deadline
+        {
             break state;
         }
         std::thread::sleep(std::time::Duration::from_millis(1));

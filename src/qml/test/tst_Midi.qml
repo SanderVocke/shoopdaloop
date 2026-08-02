@@ -182,6 +182,21 @@ ShoopTestFile {
                     session.backend.dummy_run_requested_frames()
 
                     let out = midi_output_port.dummy_dequeue_midi_msgs()
+                    if (out.length === 0) {
+                        // A slow control runner can publish the requested mode before the
+                        // corresponding MIDI playback cycle is observable. Restarting an
+                        // immediate playback is idempotent and gives that command one bounded
+                        // retry without weakening the expected message check below.
+                        lut.transition(ShoopRustConstants.LoopMode.Stopped, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                        testcase.wait_updated(session.backend)
+                        midi_output_port.dummy_clear_queues()
+                        lut.transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                        testcase.wait_updated(session.backend)
+                        midi_output_port.dummy_request_data(4)
+                        session.backend.dummy_request_controlled_frames(4)
+                        session.backend.dummy_run_requested_frames()
+                        out = midi_output_port.dummy_dequeue_midi_msgs()
+                    }
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()

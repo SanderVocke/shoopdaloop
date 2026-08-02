@@ -5,7 +5,6 @@ use crate::{
     cxx_qt_shoop::qobj_loop_backend_bridge::ffi::qobject_to_loop_backend_ptr,
     loop_helpers::transition_backend_loops,
     loop_mode_helpers::{is_recording_mode, is_running_mode},
-    references_qobject::ReferencesQObject,
 };
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace, warn as raw_warn,
@@ -16,7 +15,10 @@ use cxx_qt_lib_shoop::{
     connect::connect_or_report,
     connection_types,
     qobject::{self, AsQObject, FromQObject},
+    qpointer::{qpointer_from_qobject, qpointer_to_qobject},
+    qsharedpointer_qobject::QSharedPointer_QObject,
     qvariant_helpers::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
+    qweakpointer_qobject::QWeakPointer_QObject,
 };
 use shoop_engine::{
     AudioRingbufferAdoption, CompositeEntry, CompositePlanDescriptor, CompositeSection,
@@ -58,10 +60,19 @@ macro_rules! error {
     };
 }
 
-type Transition = (*mut QObject, LoopMode);
+type StrongQObject = cxx::UniquePtr<QSharedPointer_QObject>;
+type Transition = (StrongQObject, LoopMode);
 type Transitions = Vec<Transition>;
 type TransitionsPerIteration = BTreeMap<i32, Transitions>;
 type PreparedAdoptions = BTreeMap<LoopIdentity, (LoopIdentity, AudioRingbufferAdoption)>;
+
+fn upgrade_qobject(reference: &cxx::UniquePtr<QWeakPointer_QObject>) -> Option<StrongQObject> {
+    reference.as_ref()?.to_strong().ok().flatten()
+}
+
+fn strong_qobject_ptr(reference: &StrongQObject) -> *mut QObject {
+    reference.data().unwrap_or(std::ptr::null_mut())
+}
 
 unsafe fn engine_identity(obj: *mut QObject) -> Option<LoopIdentity> {
     if obj.is_null() {
@@ -141,8 +152,9 @@ impl CompositeLoopBackend {
         let composite_identity = composite
             .identity_if_ready()
             .ok_or_else(|| anyhow::anyhow!("engine composite creation is still pending"))?;
+        let sync_source_obj = self.as_ref().guarded_sync_source();
         let (sync_source, sync_length) = unsafe {
-            engine_target(self.sync_source)
+            engine_target(sync_source_obj)
                 .ok_or_else(|| anyhow::anyhow!("composite sync source is not engine-backed"))?
         };
         let mut metadata = BTreeMap::new();
@@ -163,7 +175,13 @@ impl CompositeLoopBackend {
         let mut entries = Vec::new();
         for (&start, events) in &self.schedule.data {
             for (target, explicit_mode) in &events.loops_start {
-                let target_obj = target.obj.as_qobject_ref() as *mut QObject;
+                // Keep the upgraded schedule reference alive for every QObject cast below.
+                // Returning a raw pointer from a temporary QWeakPointer upgrade allowed the
+                // referenced backend to be destroyed between upgrade and QMetaObject::cast.
+                let target_strong = upgrade_qobject(&target.obj).ok_or_else(|| {
+                    anyhow::anyhow!("composite schedule target is no longer available")
+                })?;
+                let target_obj = strong_qobject_ptr(&target_strong);
                 unsafe {
                     let dependency = qobject_to_composite_loop_backend_ptr(target_obj);
                     let this = self.as_ref().get_ref() as *const Self as *mut Self;
@@ -238,23 +256,20 @@ impl CompositeLoopBackend {
         for (&iteration, events) in self.schedule.data.range(start_cycle..=end_cycle) {
             let mut iteration_transitions = Transitions::new();
             iteration_transitions.extend(events.loops_end.iter().filter_map(|target| {
-                let object = target.obj.as_qobject_ref() as *mut QObject;
-                (!object.is_null()).then_some((object, LoopMode::Stopped))
+                upgrade_qobject(&target.obj).map(|object| (object, LoopMode::Stopped))
             }));
             iteration_transitions.extend(events.loops_start.iter().filter_map(
                 |(target, explicit_mode)| {
-                    let object = target.obj.as_qobject_ref() as *mut QObject;
-                    if object.is_null() {
-                        return None;
-                    }
+                    let object = upgrade_qobject(&target.obj)?;
+                    let object_ptr = strong_qobject_ptr(&object);
                     let target_mode = explicit_mode.unwrap_or_else(|| {
-                        if is_recording_mode(mode) && previously_started.contains(&object) {
+                        if is_recording_mode(mode) && previously_started.contains(&object_ptr) {
                             LoopMode::Stopped
                         } else {
                             mode
                         }
                     });
-                    previously_started.insert(object);
+                    previously_started.insert(object_ptr);
                     Some((object, target_mode))
                 },
             ));
@@ -392,7 +407,10 @@ impl CompositeLoopBackend {
             .ok_or_else(|| anyhow::anyhow!("engine composite is not initialized"))?
             .identity_if_ready()
             .ok_or_else(|| anyhow::anyhow!("engine composite creation is still pending"))?;
-        if !visited.insert(source) || self.sync_source.is_null() || self.sync_length <= 0 {
+        if !visited.insert(source)
+            || self.as_ref().guarded_sync_source().is_null()
+            || self.sync_length <= 0
+        {
             return Ok(());
         }
 
@@ -403,8 +421,9 @@ impl CompositeLoopBackend {
         let mut starts = HashMap::<*mut QObject, i32>::new();
         let mut ends = HashMap::<*mut QObject, i32>::new();
         for (&iteration, transitions) in &transitions {
-            for &(object, mode) in transitions {
-                if mode == LoopMode::Recording {
+            for (object, mode) in transitions {
+                let object = strong_qobject_ptr(object);
+                if *mode == LoopMode::Recording {
                     starts
                         .entry(object)
                         .and_modify(|start| *start = min(*start, iteration))
@@ -470,7 +489,7 @@ impl CompositeLoopBackend {
         go_to_mode: i32,
     ) {
         if let Err(e) = || -> Result<(), anyhow::Error> {
-            if self.sync_source.is_null() || self.sync_length <= 0 {
+            if self.as_ref().guarded_sync_source().is_null() || self.sync_length <= 0 {
                 warn!(self, "ignoring grab - undefined / empty sync loop");
                 return Ok(());
             }
@@ -500,36 +519,52 @@ impl CompositeLoopBackend {
         }
     }
 
-    fn all_loops(self: &Self) -> HashSet<*mut QObject> {
-        let mut result: HashSet<*mut QObject> = HashSet::new();
+    fn all_loops(self: &Self) -> Vec<StrongQObject> {
+        let mut result = Vec::new();
+        let mut seen = HashSet::new();
         for (_, events) in self.schedule.data.iter() {
-            for (l, _mode) in events.loops_start.iter() {
-                let l = l.obj.as_qobject_ref() as *mut QObject;
-                if !l.is_null() {
-                    result.insert(l);
-                }
-            }
-            for l in events.loops_end.iter().chain(events.loops_ignored.iter()) {
-                let l = l.obj.as_qobject_ref() as *mut QObject;
-                if !l.is_null() {
-                    result.insert(l);
+            for l in events
+                .loops_start
+                .keys()
+                .chain(events.loops_end.iter())
+                .chain(events.loops_ignored.iter())
+            {
+                if let Some(strong) = upgrade_qobject(&l.obj) {
+                    let ptr = strong_qobject_ptr(&strong);
+                    if seen.insert(ptr) {
+                        result.push(strong);
+                    }
                 }
             }
         }
         result
     }
 
+    fn guarded_sync_source(&self) -> *mut QObject {
+        if self.sync_source_guard.is_null() {
+            std::ptr::null_mut()
+        } else {
+            unsafe { qpointer_to_qobject(&self.sync_source_guard) }
+        }
+    }
+
     pub unsafe fn set_sync_source(mut self: Pin<&mut Self>, sync_source: *mut QObject) {
         debug!(self, "set sync source -> {sync_source:?}");
-        if sync_source != self.sync_source {
+        if sync_source != self.as_ref().guarded_sync_source() {
             let self_qobj = self.as_mut().pin_mut_qobject_ptr();
+            let sync_source_guard = if sync_source.is_null() {
+                cxx::UniquePtr::null()
+            } else {
+                qpointer_from_qobject(sync_source)
+            };
             let self_mut = self.as_mut();
             let mut rust_mut = self_mut.rust_mut();
 
             rust_mut.sync_source = sync_source;
+            rust_mut.sync_source_guard = sync_source_guard;
             rust_mut.engine_schedule_dirty = true;
 
-            if !rust_mut.sync_source.is_null() {
+            if !sync_source.is_null() {
                 connect_or_report(
                     &*sync_source,
                     "positionChanged(::std::int32_t,::std::int32_t)",
@@ -555,8 +590,9 @@ impl CompositeLoopBackend {
         trace!(self, "update sync position");
         let mut v = 0;
         unsafe {
-            if !self.sync_source.is_null() {
-                match qobject::qobject_property_int(&*self.sync_source, "position") {
+            let sync_source = self.as_ref().guarded_sync_source();
+            if !sync_source.is_null() {
+                match qobject::qobject_property_int(&*sync_source, "position") {
                     Ok(pos) => {
                         v = pos;
                     }
@@ -581,8 +617,9 @@ impl CompositeLoopBackend {
         trace!(self, "update sync length");
         let mut v = 0;
         unsafe {
-            if !self.sync_source.is_null() {
-                match qobject::qobject_property_int(&*self.sync_source, "length") {
+            let sync_source = self.as_ref().guarded_sync_source();
+            if !sync_source.is_null() {
+                match qobject::qobject_property_int(&*sync_source, "length") {
                     Ok(l) => {
                         v = l;
                     }
@@ -882,20 +919,14 @@ impl CompositeLoopBackend {
         }
         let length = state.length.min(i32::MAX as u64) as i32;
         let position = state.position.min(i32::MAX as u64) as i32;
-        let play_after_record_changed = self.play_after_record != state.play_after_record;
         {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.length = length;
             rust_mut.position = position;
-            rust_mut.play_after_record = state.play_after_record;
         }
         unsafe {
             self.as_mut().length_changed(length);
             self.as_mut().position_changed(position);
-            if play_after_record_changed {
-                self.as_mut()
-                    .play_after_record_changed(state.play_after_record);
-            }
         }
 
         let active: BTreeSet<_> = state
@@ -905,9 +936,7 @@ impl CompositeLoopBackend {
             .collect();
         let mut running = QList_QVariant::default();
         for object in self.as_mut().all_loops() {
-            if object.is_null() {
-                continue;
-            }
+            let object = strong_qobject_ptr(&object);
             let Some(identity) = (unsafe { engine_identity(object) }) else {
                 continue;
             };
@@ -996,6 +1025,7 @@ impl CompositeLoopBackend {
         rust_mut.engine_schedule_installing = false;
         rust_mut.engine_schedule_dirty = true;
         rust_mut.sync_source = std::ptr::null_mut();
+        rust_mut.sync_source_guard = cxx::UniquePtr::null();
         rust_mut.backend = std::ptr::null_mut();
         rust_mut.initialized = false;
     }

@@ -520,19 +520,36 @@ impl CompositeLoopGui {
         }
     }
 
-    pub unsafe fn set_play_after_record(self: Pin<&mut Self>, play_after_record: bool) {
+    pub unsafe fn set_play_after_record(mut self: Pin<&mut Self>, play_after_record: bool) {
         debug!(self, "queue set play after record -> {play_after_record}");
+        let changed = self.play_after_record != play_after_record;
+        self.as_mut().rust_mut().play_after_record = play_after_record;
+        if changed {
+            self.as_mut().play_after_record_changed();
+        }
+        // Always forward an equal value as well: a replacement backend object may have been
+        // connected since the previous QML property assignment.
         self.backend_set_play_after_record(play_after_record);
     }
 
-    pub unsafe fn set_sync_mode_active(self: Pin<&mut Self>, sync_mode_active: bool) {
+    pub unsafe fn set_sync_mode_active(mut self: Pin<&mut Self>, sync_mode_active: bool) {
         debug!(self, "queue set sync mode active -> {sync_mode_active}");
+        let changed = self.sync_mode_active != sync_mode_active;
+        self.as_mut().rust_mut().sync_mode_active = sync_mode_active;
+        if changed {
+            self.as_mut().sync_mode_active_changed();
+        }
         self.backend_set_sync_mode_active(sync_mode_active);
     }
 
-    pub unsafe fn set_kind(self: Pin<&mut Self>, kind: QString) {
+    pub unsafe fn set_kind(mut self: Pin<&mut Self>, kind: QString) {
         let dbg = kind.to_string();
         debug!(self, "queue set kind -> {dbg}");
+        let changed = self.kind != kind;
+        self.as_mut().rust_mut().kind = kind.clone();
+        if changed {
+            self.as_mut().kind_changed();
+        }
         self.backend_set_kind(kind);
     }
 
