@@ -41,6 +41,7 @@ enum-iterator = { workspace = true }
 num_enum = { workspace = true }
 jsonschema = { workspace = true }
 rodio = { workspace = true }
+egui-cxx-qt = { path = "../../../third_party/egui-cxx-qt" }
 
 [lints]
 workspace = true

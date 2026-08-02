@@ -255,6 +255,8 @@ pub mod ffi {
         #[rust_name = "composite_loop_backend_metatype_name"]
         unsafe fn meta_type_name(obj: *mut CompositeLoopBackend) -> Result<String>;
     }
+
+    impl cxx_qt::Constructor<()> for CompositeLoopBackend {}
 }
 
 use cxx_qt_lib_shoop::qweakpointer_qobject::QWeakPointer_QObject;

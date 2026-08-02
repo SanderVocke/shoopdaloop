@@ -193,6 +193,20 @@ Item {
 
     property var additional_context_menu_options : null // dict of option name -> functor
 
+    readonly property var egui_window_factory: Qt.createComponent("EguiLoopWidgetWindow.qml")
+    function spawn_egui_window() {
+        if (egui_window_factory.status == Component.Error) {
+            throw new Error("LoopWidget: Failed to load egui window factory: " + egui_window_factory.errorString())
+        } else if (egui_window_factory.status != Component.Ready) {
+            throw new Error("LoopWidget: Egui window factory not ready")
+        } else {
+            egui_window_factory.createObject(root, {
+                loopName: root.name,
+                visible: true
+            })
+        }
+    }
+
     onIs_loadedChanged: if(is_loaded) { root.logger.debug("Loaded back-end loop.") }
     onIs_syncChanged: if(is_sync) { create_backend_loop() }
 
@@ -1766,6 +1780,10 @@ Item {
                   if(root.main_details_pane) { root.main_details_pane.add_user_item(root.name, root) }
                   AppRegistries.state_registry.set_details_open(true)
                }
+            }
+            ShoopMenuItem {
+                text: "Open egui prototype..."
+                onClicked: root.spawn_egui_window()
             }
             ShoopMenuItem {
                text: "Click loop..."
