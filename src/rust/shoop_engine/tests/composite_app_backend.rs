@@ -48,6 +48,12 @@ fn composite_configuration_rejects_cross_session_handles() {
 fn application_backend_rejects_a_primitive_self_sync_edge() {
     let (_driver, session) = backend();
     let loop_ = session.create_loop().unwrap();
+    session
+        .wait_for_command(
+            loop_.creation_sequence(),
+            shoop_engine::DEFAULT_WAIT_TIMEOUT,
+        )
+        .unwrap();
 
     loop_.set_sync_source(Some(&loop_)).unwrap();
 
@@ -72,6 +78,77 @@ fn descriptor(
                 }],
             }],
         }],
+    }
+}
+
+#[test]
+fn pending_composite_accepts_controls_queued_after_installation() {
+    let session = BackendSession::new().unwrap();
+    let sync = session.create_loop().unwrap();
+    let child = session.create_loop().unwrap();
+    let sync_identity = sync.identity();
+    let child_identity = child.identity();
+    let composite = session.create_composite_loop().unwrap();
+    let source = composite.identity();
+    let install = session
+        .configure_composite_loop_queued(
+            &composite,
+            CompositePlanDescriptor {
+                source,
+                sync_length: 1,
+                timelines: vec![CompositeTimeline {
+                    sections: vec![CompositeSection {
+                        entries: vec![CompositeEntry {
+                            target: child_identity,
+                            delay: 0,
+                            n_cycles: Some(1),
+                            mode: None,
+                        }],
+                    }],
+                }],
+            },
+            sync_identity,
+            vec![
+                LoopTargetMetadata {
+                    identity: source,
+                    length_samples: 0,
+                },
+                LoopTargetMetadata {
+                    identity: sync_identity,
+                    length_samples: 1,
+                },
+                LoopTargetMetadata {
+                    identity: child_identity,
+                    length_samples: 1,
+                },
+            ],
+            &[None, None],
+            false,
+        )
+        .unwrap();
+
+    // No command fence has run yet: creation and installation are still ahead of this control
+    // in the same engine queue.
+    let transition = composite
+        .transition_immediate(LoopMode::Playing, 0)
+        .unwrap();
+    assert!(transition > install.sequence());
+    session
+        .wait_for_command(transition, shoop_engine::DEFAULT_WAIT_TIMEOUT)
+        .unwrap();
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        if let Ok(state) = composite.get_state() {
+            if state.mode == LoopMode::Playing {
+                break;
+            }
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "pending composite control was not applied after installation"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
     }
 }
 

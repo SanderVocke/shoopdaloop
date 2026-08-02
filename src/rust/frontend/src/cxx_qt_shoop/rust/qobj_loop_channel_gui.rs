@@ -72,6 +72,10 @@ impl LoopChannelGui {
         if !self.as_mut().maybe_initialize_backend() {
             return;
         }
+        // Parent loops and ports are created independently. Retry relationship resolution on
+        // refresh so a port that became ready before its queued Qt notification was handled is
+        // still connected deterministically.
+        self.as_mut().update_port_connections_impl();
 
         if let Err(e) = || -> Result<(), anyhow::Error> {
             let channel = self

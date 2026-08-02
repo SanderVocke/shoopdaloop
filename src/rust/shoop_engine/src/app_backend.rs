@@ -3273,12 +3273,12 @@ impl CompositeLoop {
         self.control.error()
     }
 
-    fn ensure_ready(&self) -> Result<()> {
+    fn ensure_usable(&self) -> Result<()> {
         match self.lifecycle() {
-            // Configuration and controls share the sequenced engine queue. A control queued
-            // while installation is pending is valid and executes after that install.
-            ObjectLifecycle::Ready => Ok(()),
-            ObjectLifecycle::Pending => Err(anyhow!("composite loop is pending creation")),
+            // Creation, prepared timeline installation, and controls share the sequenced engine
+            // queue. Frontends may therefore configure and control a newly reserved composite
+            // without first fencing its lightweight creation command.
+            ObjectLifecycle::Pending | ObjectLifecycle::Ready => Ok(()),
             ObjectLifecycle::Failed => Err(anyhow!(
                 "composite loop creation failed: {}",
                 self.creation_error()
@@ -3289,7 +3289,7 @@ impl CompositeLoop {
     }
 
     pub fn transition(&self, mode: LoopMode, delay: u32) -> Result<CommandSequence> {
-        self.ensure_ready()?;
+        self.ensure_usable()?;
         if mode == LoopMode::Unknown {
             return Err(anyhow!("unknown is not a valid composite mode"));
         }
@@ -3305,7 +3305,7 @@ impl CompositeLoop {
     }
 
     pub fn transition_immediate(&self, mode: LoopMode, iteration: i64) -> Result<CommandSequence> {
-        self.ensure_ready()?;
+        self.ensure_usable()?;
         if mode == LoopMode::Unknown {
             return Err(anyhow!("unknown is not a valid composite mode"));
         }
@@ -3328,9 +3328,7 @@ impl CompositeLoop {
         // The frontend can publish this option while creation or timeline installation is still
         // pending. Keep the desired value in the mirror so a later installation command observes
         // it even when the earlier engine-side setter has no timeline to update yet.
-        if self.lifecycle() != ObjectLifecycle::Pending {
-            self.ensure_ready()?;
-        }
+        self.ensure_usable()?;
         self.desired_play_after_record
             .store(enabled, Ordering::Release);
         self.control.mirror.set_play_after_record(enabled);

@@ -112,6 +112,8 @@ This includes the refresh coordinator, backend wrapper publication, loop, compos
 - Warning-free builds pass. The 192-case QML suite passes with 191 passed and the expected unsupported CPAL case skipped; focused backend refresh, Lua controls, composite, and dry/wet tests also pass.
 - Stress evidence: 10 complete composite-running runs, 5 session save/load runs, 10 MIDI runs, and 5 port/channel dry/wet runs passed.
 - Final local gates: formatting and diff checks pass; warning-free build passes; the serialized workspace suite passes with missing hardware backends explicitly allowed (including all 19 no-allocation tests); final QML suite passes 193/194 with the one supported CPAL skip. The ordinary parallel workspace run exposed a pre-existing Carla/JUCE test-process teardown SIGSEGV, while its 582-test engine library body passed and the serialized required suite completed cleanly.
+- Instrumented CI exposed a port/channel initialization-order race hidden by ordinary timing. Channel refresh now retries stable-handle port relationship resolution, while setter and queued initialization notifications remain the primary triggers.
+- macOS ARM exposed controls issued after composite installation was queued but before its lightweight creation command was acknowledged. Pending composite handles now accept such controls in the shared sequenced engine queue, with a deterministic app-backend regression test; the complete composite QML suite, including countdown and GUI-stall cases, passes locally.
 
 ### Acceptance audit evidence
 
