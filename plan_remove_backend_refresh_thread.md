@@ -54,53 +54,62 @@ This includes the refresh coordinator, backend wrapper publication, loop, compos
 
 ### Stage 2 — Introduce GUI-affine refresh publication
 
-- [ ] Replace the worker-oriented update source with a GUI-affine refresh coordinator driven by `frameSwapped` plus a coalesced fallback `QTimer`.
-- [ ] Provide an explicit refresh epoch/fence for deterministic tests instead of relying on repeated asynchronous update cycles.
-- [ ] Collapse `BackendWrapper`'s split update methods and temporary update-data handoff into one GUI-thread refresh that publishes driver/session telemetry and a refresh-complete signal.
-- [ ] Keep a temporary adapter for unmigrated backend QObjects so the tree remains functional during later stages.
-- [ ] Test frame-driven, timer-driven, explicit, and coalesced refresh behavior; commit the stage.
+- [x] Replace the worker-oriented update source with a GUI-affine refresh coordinator driven by `frameSwapped` plus a coalesced fallback `QTimer`.
+- [x] Provide an explicit refresh epoch/fence for deterministic tests instead of relying on repeated asynchronous update cycles.
+- [x] Collapse `BackendWrapper`'s split update methods and temporary update-data handoff into one GUI-thread refresh that publishes driver/session telemetry and a refresh-complete signal.
+- [x] No temporary adapter was needed: all paired objects were migrated in the same buildable milestone.
+- [x] Test frame-driven, timer-driven, explicit, and coalesced refresh behavior; commit the stage.
 
 ### Stage 3 — Merge FX-chain and port object pairs
 
-- [ ] Move FX-chain engine handles, deferred configuration, state sampling, and commands into the GUI object; remove its backend QObject and proxy signals.
-- [ ] Move port engine handles, connection state, deferred configuration, telemetry, and commands into the GUI object.
-- [ ] Replace FX-chain/port QObject dependency casts with GUI-thread handle extraction and stable engine references.
-- [ ] Keep bulk data and connection work outside periodic refresh, and publish only changed properties.
-- [ ] Remove the migrated backend bridges from module/build registration.
-- [ ] Run FX-chain, port, autoconnect, MIDI-port, dry/wet, and lifecycle tests; commit each meaningful migration and the completed stage.
+- [x] Move FX-chain engine handles, deferred configuration, state sampling, and commands into the GUI object; remove its backend QObject and proxy signals.
+- [x] Move port engine handles, connection state, deferred configuration, telemetry, and commands into the GUI object.
+- [x] Replace FX-chain/port QObject dependency casts with GUI-thread handle extraction and stable engine references.
+- [x] Keep bulk data and connection work outside periodic refresh, and publish only changed properties.
+- [x] Remove the migrated backend bridges from module/build registration.
+- [x] Run FX-chain, port, autoconnect, MIDI-port, dry/wet, and lifecycle tests; commit each meaningful migration and the completed stage.
 
 ### Stage 4 — Merge primitive loop objects
 
-- [ ] Move primitive loop creation, control methods, state cache, sync-source handling, and transition helpers into the GUI object.
-- [ ] Replace backend-loop wrapper variants and multi-loop QObject casts with stable engine loop handles/identities.
-- [ ] Publish `cycle_nr` from the authoritative engine counter and emit at most one current-cycle notification per refresh.
-- [ ] Preserve immediate, delayed, aligned, grouped, clear, and ringbuffer-adoption behavior without refresh-order dependencies.
-- [ ] Remove the primitive loop backend bridge and run loop, transition, sync, reorder, restoration, and stall tests; commit the stage.
+- [x] Move primitive loop creation, control methods, state cache, sync-source handling, and transition helpers into the GUI object.
+- [x] Replace backend-loop wrapper variants and multi-loop QObject casts with stable engine loop handles/identities.
+- [x] Publish `cycle_nr` from the authoritative engine counter and emit at most one current-cycle notification per refresh.
+- [x] Preserve immediate, delayed, aligned, grouped, clear, and ringbuffer-adoption behavior without refresh-order dependencies.
+- [x] Remove the primitive loop backend bridge and run loop, transition, sync, reorder, restoration, and stall tests; commit the stage.
 
 ### Stage 5 — Merge loop-channel objects
 
-- [ ] Move audio/MIDI channel handles, state sampling, controls, and connection management into the GUI object.
-- [ ] Resolve parent-loop and connected-port relationships through stable handles rather than backend QObject wrappers.
-- [ ] Preserve asynchronous audio/MIDI data fetch and ensure load, clear, and ringbuffer operations do not become periodic-refresh work.
-- [ ] Remove blocking queued invocations and the loop-channel backend bridge.
-- [ ] Run channel, audio, MIDI, resampling, save/load, and data-fetch tests; commit the stage.
+- [x] Move audio/MIDI channel handles, state sampling, controls, and connection management into the GUI object.
+- [x] Resolve parent-loop and connected-port relationships through stable handles rather than backend QObject wrappers.
+- [x] Preserve asynchronous audio/MIDI data fetch and ensure load, clear, and ringbuffer operations do not become periodic-refresh work.
+- [x] Remove blocking queued invocations and the loop-channel backend bridge.
+- [x] Run channel, audio, MIDI, resampling, save/load, and data-fetch tests; commit the stage.
 
 ### Stage 6 — Merge composite-loop objects
 
-- [ ] Move composite engine handles, schedule state, installation acknowledgements, controls, and mirror publication into the GUI object.
-- [ ] Compile schedules from stable loop identities/handles; retain QObject references only to map active identities back to live GUI objects.
-- [ ] Preserve nested schedule installation, pending options, schedule replacement, transition anticipation, and transactional ringbuffer adoption without polling-thread correctness dependencies.
-- [ ] Ensure schedule preparation and result reclamation remain outside realtime processing and do not block periodic GUI refresh.
+- [x] Move composite engine handles, schedule state, installation acknowledgements, controls, and mirror publication into the GUI object.
+- [x] Compile schedules from stable loop identities/handles; retain QObject references only to map active identities back to live GUI objects.
+- [x] Preserve nested schedule installation, pending options, schedule replacement, transition anticipation, and transactional ringbuffer adoption without polling-thread correctness dependencies.
+- [x] Ensure schedule preparation and result reclamation remain outside realtime processing and do not block periodic GUI refresh.
 - [ ] Remove the composite backend bridge and run the complete composite, nested, restoration, ringbuffer, and GUI/file-I/O stall tests repeatedly; commit the stage.
 
 ### Stage 7 — Retire compatibility infrastructure
 
-- [ ] Remove the update-thread QObject, `engine_update_thread` singleton, worker `QThread`, temporary adapters, crash-thread registration, and obsolete build/module entries.
-- [ ] Remove remaining paired-object wrappers, backend proxy signals, cross-thread casts, and backend-only helper APIs.
-- [ ] Connect QML-engine frame publication and the compatible refresh-interval setting directly to the GUI coordinator.
-- [ ] Update test fences to request and observe one explicit GUI refresh epoch after engine commands settle.
-- [ ] Add structural tests or checks proving migrated QObjects have GUI affinity and no removed backend/update types remain.
+- [x] Remove the update-thread QObject, `engine_update_thread` singleton, worker `QThread`, temporary adapters, crash-thread registration, and obsolete build/module entries.
+- [x] Remove remaining paired-object wrappers, backend proxy signals, cross-thread casts, and backend-only helper APIs.
+- [x] Connect QML-engine frame publication and the compatible refresh-interval setting directly to the GUI coordinator.
+- [x] Update test fences to request and observe explicit GUI refresh epochs after engine commands settle.
+- [x] Add structural tests or checks proving migrated QObjects have GUI affinity and no removed backend/update types remain.
 - [ ] Stress object creation/destruction and repeated session rebuilds, then commit the stage.
+
+### Implementation evidence through Stages 2–7
+
+- `FrontendRefresh` is a GUI-thread-owned singleton with a parented `QTimer`; `frameSwapped()` and timer requests coalesce through one queued refresh.
+- `BackendWrapper::refresh()` samples driver/session telemetry synchronously on the GUI thread, increments `refresh_epoch`, and emits the compatibility completion signal. `update_interval_ms` now configures the GUI fallback timer.
+- The five promoted GUI types directly own cloneable `app_backend` handles. QObject dependencies are inspected only from direct GUI-thread calls and guarded with `QPointer` where their lifetime is not structural.
+- Audio/MIDI file jobs extract cloneable engine channel handles before spawning; periodic updates only poll mirrors and never wait or transfer bulk data.
+- Static checks find no removed backend/update modules or types, no blocking queued connections/waits in promoted periodic updates, and no thread creation in the refresh coordinator.
+- Warning-free builds pass. The 192-case QML suite passes with 191 passed and the expected unsupported CPAL case skipped; focused backend refresh, Lua controls, composite, and dry/wet tests also pass.
 
 ### Stage 8 — End-to-end validation
 

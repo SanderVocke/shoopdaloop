@@ -1,11 +1,10 @@
-use crate::engine_update_thread;
+use crate::frontend_refresh;
 use crate::profiling_report::profiling_report_to_qvariantmap;
 use anyhow::anyhow;
 use cxx_qt_lib_shoop::qjsonobject::QJsonObject;
-use cxx_qt_lib_shoop::qobject::{qobject_thread, AsQObject};
 use cxx_qt_lib_shoop::qquickitem::{qquickitem_to_qobject_mut, AsQQuickItem};
 use cxx_qt_lib_shoop::qvariant_helpers::qvariantmap_to_qvariant;
-use cxx_qt_lib_shoop::{connect, connection_types};
+use cxx_qt_lib_shoop::{connect, connection_types, qobject};
 use shoop_engine::app_backend::*;
 use std::pin::Pin;
 use std::sync::OnceLock;
@@ -17,7 +16,7 @@ shoop_log_unit!("Frontend.BackendWrapper");
 pub use crate::cxx_qt_shoop::qobj_backend_wrapper_bridge::ffi::*;
 pub use crate::cxx_qt_shoop::qobj_backend_wrapper_bridge::*;
 
-use cxx_qt::{ConnectionType, CxxQtType};
+use cxx_qt::CxxQtType;
 
 unsafe extern "C" fn register_process_thread() {
     static ONCE_LOCK: OnceLock<()> = OnceLock::new();
@@ -240,31 +239,19 @@ impl BackendWrapper {
                 .ok_or_else(|| anyhow!("Driver is null"))?
                 .get_state(); // Has implicit side-effect necessary for initialization
 
-            let engine_update_thread = crate::engine_update_thread::get_engine_update_thread();
-            let engine_update_thread_obj = engine_update_thread.ref_qobject_ptr();
-
-            // BackendWrapper is a QQuickItem and must only be touched on the GUI thread.
-            // A direct connection races update delivery with QML object destruction.
+            let refresh = frontend_refresh::qobject_ptr();
             connect::connect_or_report(
-                &*engine_update_thread_obj,
-                "update()",
+                &*refresh,
+                "refresh()",
                 &*obj_qobject,
-                "update_on_other_thread()",
-                connection_types::QUEUED_CONNECTION,
+                "refresh()",
+                connection_types::DIRECT_CONNECTION,
             );
         }
 
         {
             self.as_mut()
                 .set_actual_backend_type(selected_driver_type as i32);
-            self.as_mut()
-                .connect_updated_on_backend_thread(
-                    |this: Pin<&mut BackendWrapper>| {
-                        this.update_on_gui_thread();
-                    },
-                    ConnectionType::QueuedConnection,
-                )
-                .release();
             self.as_mut().set_ready(true);
             debug!("ready");
         }
@@ -333,153 +320,72 @@ impl BackendWrapper {
         }
     }
 
-    pub fn update_on_gui_thread(mut self: Pin<&mut BackendWrapper>) {
-        trace!("Start update on GUI thread");
-
-        {
-            let ref_self = self.as_ref();
-            if !ref_self.ready() {
-                trace!("update_on_gui_thread called on a BackendWrapper that is not ready");
-                return;
-            }
-        }
-
-        let update_data: BackendWrapperUpdateData;
-        {
-            let mut rust = self.as_mut().rust_mut();
-            let maybe_update_data = rust.update_data.as_ref();
-            if maybe_update_data.is_none() {
-                return;
-            }
-            if rust.session.is_none() {
-                trace!("update_on_gui_thread called on a BackendWrapper with no session");
-                return;
-            }
-            // Safe to unwrap because we checked is_none above, but match is cleaner or just expect
-            update_data = match maybe_update_data {
-                Some(d) => *d,
-                None => {
-                    error!("update_on_gui_thread called on a BackendWrapper with no update data");
-                    return;
-                }
-            };
-            rust.update_data = None;
-        }
-
-        {
-            self.as_mut().set_xruns(update_data.xruns);
-            self.as_mut()
-                .set_stale_graph_cycles(update_data.stale_graph_cycles);
-            self.as_mut().set_dsp_load(update_data.dsp_load);
-            self.as_mut().set_last_processed(update_data.last_processed);
-            self.as_mut()
-                .set_n_audio_buffers_available(update_data.n_audio_buffers_available);
-            self.as_mut()
-                .set_n_audio_buffers_created(update_data.n_audio_buffers_created);
-            self.as_mut().set_buffer_size(update_data.buffer_size);
-            self.as_mut().set_sample_rate(update_data.sample_rate);
-        }
-
-        // Triggers other back-end objects to update as well
-        self.as_mut().updated_on_gui_thread();
-
-        trace!("End update on GUI thread");
+    pub fn get_update_interval_ms(&self) -> i32 {
+        self.update_interval_ms
     }
 
-    pub fn update_on_other_thread(mut self: Pin<&mut BackendWrapper>) {
-        trace!("Begin update on back-end thread");
-
-        {
-            let maybe_new_interval: Option<time::Duration>;
-            {
-                let mut rust_mut = self.as_mut().rust_mut();
-                let now = time::Instant::now();
-                if let Some(last_updated_time) = rust_mut.last_updated.as_ref() {
-                    maybe_new_interval = Some(now.duration_since(*last_updated_time));
-                } else {
-                    maybe_new_interval = None;
-                }
-                rust_mut.last_updated = Some(now);
-            }
-            if maybe_new_interval.is_some() {
-                if let Some(interval) = maybe_new_interval {
-                    self.as_mut()
-                        .set_last_update_interval(interval.as_secs_f32());
-                }
+    pub fn set_update_interval_ms(mut self: Pin<&mut Self>, update_interval_ms: i32) {
+        let update_interval_ms = update_interval_ms.max(1);
+        if self.update_interval_ms == update_interval_ms {
+            return;
+        }
+        self.as_mut().rust_mut().update_interval_ms = update_interval_ms;
+        unsafe {
+            self.as_mut().update_interval_ms_changed(update_interval_ms);
+            if let Err(error) = qobject::qobject_set_property_int(
+                frontend_refresh::qobject_ptr(),
+                "fallback_interval_ms",
+                &update_interval_ms,
+            ) {
+                error!("Could not update frontend refresh interval: {error}");
             }
         }
+    }
 
-        let current_xruns;
-        {
-            let ref_self = self.as_ref();
-            if !ref_self.ready() {
-                trace!("update_on_other_thread called on a BackendWrapper that is not ready");
-                return;
-            }
-            current_xruns = *self.xruns();
+    pub fn refresh(mut self: Pin<&mut BackendWrapper>) {
+        trace!("Begin frontend refresh");
+        if !self.ready() {
+            return;
         }
 
-        let driver_state;
-        let session_state;
-        {
-            let rust = self.as_mut().rust_mut();
-            if rust.driver.is_none() {
-                trace!("update_on_other_thread called on a BackendWrapper with no driver");
+        let now = time::Instant::now();
+        if let Some(previous) = self.last_updated {
+            self.as_mut()
+                .set_last_update_interval(now.duration_since(previous).as_secs_f32());
+        }
+        self.as_mut().rust_mut().last_updated = Some(now);
+
+        let (driver_state, session_state) = {
+            let this = self.as_ref();
+            let rust = this.rust();
+            let Some(driver) = rust.driver.as_ref() else {
                 return;
-            }
-            driver_state = match rust.driver.as_ref() {
-                Some(d) => d.get_state(),
-                None => {
-                    error!("Driver is null in update_on_other_thread");
-                    return;
-                }
             };
-            if rust.session.is_none() {
-                trace!("update_on_other_thread called on a BackendWrapper with no session");
+            let Some(session) = rust.session.as_ref() else {
                 return;
-            }
-            session_state = match rust.session.as_ref() {
-                Some(s) => s.get_state(),
-                None => {
-                    error!("Session is null in update_on_other_thread");
-                    return;
-                }
             };
-        }
-
-        let update_data = BackendWrapperUpdateData {
-            xruns: current_xruns + driver_state.xruns_since_last as i32,
-            // Cumulative from the engine, not a delta like xruns, so it is assigned
-            // rather than accumulated here.
-            stale_graph_cycles: driver_state.stale_graph_cycles as i32,
-            dsp_load: driver_state.dsp_load_percent,
-            last_processed: driver_state.last_processed as i32,
-            n_audio_buffers_available: session_state.n_audio_buffers_available as i32,
-            n_audio_buffers_created: session_state.n_audio_buffers_created as i32,
-            sample_rate: driver_state.sample_rate as i32,
-            buffer_size: driver_state.buffer_size as i32,
+            (driver.get_state(), session.get_state())
         };
 
-        {
-            let mut rust = self.as_mut().rust_mut();
-            rust.update_data = Some(update_data);
-        }
-
-        // Triggers other back-end objects to update as well
-        self.as_mut().updated_on_backend_thread();
-
-        trace!("End update on back-end thread");
-    }
-
-    pub unsafe fn get_gui_thread(self: &BackendWrapper) -> *mut QThread {
-        qobject_thread(self.qobject_ref()).unwrap_or_else(|e| {
-            error!("Could not get GUI thread: {}", e);
-            std::ptr::null_mut()
-        })
-    }
-
-    pub fn get_backend_thread(self: &BackendWrapper) -> *mut QThread {
-        engine_update_thread::get_engine_update_thread().thread
+        let xruns = *self.xruns() + driver_state.xruns_since_last as i32;
+        let refresh_epoch = self.refresh_epoch().wrapping_add(1);
+        self.as_mut().set_xruns(xruns);
+        self.as_mut()
+            .set_stale_graph_cycles(driver_state.stale_graph_cycles as i32);
+        self.as_mut().set_dsp_load(driver_state.dsp_load_percent);
+        self.as_mut()
+            .set_last_processed(driver_state.last_processed as i32);
+        self.as_mut()
+            .set_n_audio_buffers_available(session_state.n_audio_buffers_available as i32);
+        self.as_mut()
+            .set_n_audio_buffers_created(session_state.n_audio_buffers_created as i32);
+        self.as_mut()
+            .set_buffer_size(driver_state.buffer_size as i32);
+        self.as_mut()
+            .set_sample_rate(driver_state.sample_rate as i32);
+        self.as_mut().set_refresh_epoch(refresh_epoch);
+        self.as_mut().updated_on_gui_thread();
+        trace!("End frontend refresh");
     }
 
     pub fn dummy_enter_controlled_mode(mut self: Pin<&mut BackendWrapper>) {

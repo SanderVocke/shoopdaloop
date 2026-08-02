@@ -4,7 +4,7 @@ pub use crate::cxx_qt_shoop::qobj_application_bridge::Application;
 use crate::cxx_qt_shoop::qobj_application_bridge::ApplicationStartupSettings;
 use crate::cxx_qt_shoop::qobj_qmlengine::register_qml_engine;
 use crate::cxx_qt_shoop::qobj_qmlengine_bridge::QmlEngine;
-use crate::engine_update_thread;
+use crate::frontend_refresh;
 use anyhow::anyhow;
 use crashhandling::set_crash_json_tag;
 use cxx::UniquePtr;
@@ -178,18 +178,16 @@ impl Application {
         // Initialize metatypes, oncecells, etc.
         crate::init::init(&config);
 
-        // Initialize shoop engine update thread
+        // Keep the existing setting compatible while applying it to GUI refresh fallback.
         unsafe {
             let self_ref = self.as_ref();
             let rust = self_ref.rust();
-            let update_thread = engine_update_thread::get_engine_update_thread();
-            let update_thread = update_thread.mut_qobject_ptr();
             qobject::qobject_set_property_int(
-                update_thread,
-                "backup_timer_interval_ms",
+                frontend_refresh::qobject_ptr(),
+                "fallback_interval_ms",
                 &(rust.settings.backend_backup_refresh_interval_ms as i32),
             )
-            .map_err(|e| anyhow!("Unable to set timer interval property: {e}"))?;
+            .map_err(|e| anyhow!("Unable to set frontend refresh interval: {e}"))?;
         }
 
         if main_qml.is_some() {
