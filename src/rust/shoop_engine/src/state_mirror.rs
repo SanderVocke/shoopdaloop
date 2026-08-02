@@ -1,8 +1,13 @@
 use crate::channel_mode::ChannelMode;
+use crate::composite_plan::{LoopIdentity, LoopTargetKind, MAX_COMPOSITE_TARGETS};
+use crate::composite_runtime::{
+    ActiveCompositeChild, CompositeRuntimeCounters, CompositeRuntimeFault,
+};
 use crate::loop_mode::LoopMode;
 use crate::midi_event::MidiEvent;
 use crate::state::{AudioChannelState, AudioPortState, LoopState, MidiChannelState, MidiPortState};
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
+use std::array;
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 const NO_MODE: i32 = -1;
@@ -77,6 +82,333 @@ impl LoopStateMirror {
                 .then(|| LoopMode::try_from(next_mode).unwrap_or(LoopMode::Unknown)),
             maybe_next_mode_delay: (next_delay != NO_DELAY).then_some(next_delay as u32),
         }
+    }
+}
+
+const EMPTY_IDENTITY: LoopIdentity = LoopIdentity {
+    slot: 0,
+    generation: 0,
+    kind: LoopTargetKind::Basic,
+};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompositeStateMirrorSnapshot {
+    pub identity: LoopIdentity,
+    pub sync_source: LoopIdentity,
+    pub installed: bool,
+    pub active_plan_version: u64,
+    pub pending_plan_version: Option<u64>,
+    pub mode: LoopMode,
+    pub next_mode: Option<LoopMode>,
+    pub next_mode_delay: Option<u32>,
+    pub iteration: u32,
+    pub cycle_count: u64,
+    pub length: u64,
+    pub position: u64,
+    pub play_after_record: bool,
+    pub runtime_counters: CompositeRuntimeCounters,
+    pub runtime_fault: CompositeRuntimeFault,
+    active_children: [Option<ActiveCompositeChild>; MAX_COMPOSITE_TARGETS],
+    n_active_children: usize,
+}
+
+impl CompositeStateMirrorSnapshot {
+    pub fn active_children(&self) -> impl Iterator<Item = ActiveCompositeChild> + '_ {
+        self.active_children[..self.n_active_children]
+            .iter()
+            .flatten()
+            .copied()
+    }
+}
+
+#[derive(Debug)]
+struct ActiveChildMirror {
+    slot: AtomicU32,
+    generation: AtomicU32,
+    kind: AtomicU32,
+    mode: AtomicI32,
+    cycle_offset: AtomicU32,
+}
+
+impl Default for ActiveChildMirror {
+    fn default() -> Self {
+        Self {
+            slot: AtomicU32::new(0),
+            generation: AtomicU32::new(0),
+            kind: AtomicU32::new(0),
+            mode: AtomicI32::new(LoopMode::Stopped as i32),
+            cycle_offset: AtomicU32::new(0),
+        }
+    }
+}
+
+impl ActiveChildMirror {
+    fn publish(&self, child: ActiveCompositeChild) {
+        self.slot.store(child.identity.slot, Ordering::Relaxed);
+        self.generation
+            .store(child.identity.generation, Ordering::Relaxed);
+        self.kind.store(
+            match child.identity.kind {
+                LoopTargetKind::Basic => 0,
+                LoopTargetKind::Composite => 1,
+            },
+            Ordering::Relaxed,
+        );
+        self.mode.store(child.mode as i32, Ordering::Relaxed);
+        self.cycle_offset
+            .store(child.cycle_offset, Ordering::Relaxed);
+    }
+
+    fn read(&self) -> ActiveCompositeChild {
+        ActiveCompositeChild {
+            identity: LoopIdentity {
+                slot: self.slot.load(Ordering::Relaxed),
+                generation: self.generation.load(Ordering::Relaxed),
+                kind: if self.kind.load(Ordering::Relaxed) == 0 {
+                    LoopTargetKind::Basic
+                } else {
+                    LoopTargetKind::Composite
+                },
+            },
+            mode: LoopMode::try_from(self.mode.load(Ordering::Relaxed))
+                .unwrap_or(LoopMode::Unknown),
+            cycle_offset: self.cycle_offset.load(Ordering::Relaxed),
+        }
+    }
+}
+
+/// Lock-free per-composite publication shared by the engine and its control handle.
+///
+/// The generation is a seqlock: the single engine writer makes it odd while updating and
+/// even once the complete state is visible. Readers retry rather than taking a lock that
+/// could ever block the realtime callback.
+#[derive(Debug)]
+pub struct CompositeStateMirror {
+    identity: LoopIdentity,
+    generation: AtomicU64,
+    installed: AtomicBool,
+    sync_slot: AtomicU32,
+    sync_generation: AtomicU32,
+    sync_kind: AtomicU32,
+    active_plan_version: AtomicU64,
+    pending_plan_version: AtomicU64,
+    mode: AtomicI32,
+    next_mode: AtomicI32,
+    next_delay: AtomicU64,
+    iteration: AtomicU32,
+    cycle_count: AtomicU64,
+    length: AtomicU64,
+    position: AtomicU64,
+    play_after_record: AtomicBool,
+    stale_targets: AtomicU64,
+    invalid_seeks: AtomicU64,
+    rejected_modes: AtomicU64,
+    plan_mismatches: AtomicU64,
+    output_overflows: AtomicU64,
+    arithmetic_overflows: AtomicU64,
+    runtime_fault: AtomicU32,
+    active_children: [ActiveChildMirror; MAX_COMPOSITE_TARGETS],
+    n_active_children: AtomicUsize,
+}
+
+impl CompositeStateMirror {
+    pub fn new(identity: LoopIdentity) -> Self {
+        Self {
+            identity,
+            generation: AtomicU64::new(0),
+            installed: AtomicBool::new(false),
+            sync_slot: AtomicU32::new(0),
+            sync_generation: AtomicU32::new(0),
+            sync_kind: AtomicU32::new(0),
+            active_plan_version: AtomicU64::new(0),
+            pending_plan_version: AtomicU64::new(0),
+            mode: AtomicI32::new(LoopMode::Stopped as i32),
+            next_mode: AtomicI32::new(NO_MODE),
+            next_delay: AtomicU64::new(NO_DELAY),
+            iteration: AtomicU32::new(0),
+            cycle_count: AtomicU64::new(0),
+            length: AtomicU64::new(0),
+            position: AtomicU64::new(0),
+            play_after_record: AtomicBool::new(false),
+            stale_targets: AtomicU64::new(0),
+            invalid_seeks: AtomicU64::new(0),
+            rejected_modes: AtomicU64::new(0),
+            plan_mismatches: AtomicU64::new(0),
+            output_overflows: AtomicU64::new(0),
+            arithmetic_overflows: AtomicU64::new(0),
+            runtime_fault: AtomicU32::new(0),
+            active_children: array::from_fn(|_| ActiveChildMirror::default()),
+            n_active_children: AtomicUsize::new(0),
+        }
+    }
+
+    pub fn identity(&self) -> LoopIdentity {
+        self.identity
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn publish(
+        &self,
+        sync_source: LoopIdentity,
+        active_plan_version: u64,
+        pending_plan_version: Option<u64>,
+        mode: LoopMode,
+        next: Option<(LoopMode, u32)>,
+        iteration: u32,
+        cycle_count: u64,
+        length: u64,
+        position: u64,
+        play_after_record: bool,
+        runtime_counters: CompositeRuntimeCounters,
+        runtime_fault: CompositeRuntimeFault,
+        active_children: impl Iterator<Item = ActiveCompositeChild>,
+    ) {
+        self.generation.fetch_add(1, Ordering::Release);
+        self.sync_slot.store(sync_source.slot, Ordering::Relaxed);
+        self.sync_generation
+            .store(sync_source.generation, Ordering::Relaxed);
+        self.sync_kind.store(
+            match sync_source.kind {
+                LoopTargetKind::Basic => 0,
+                LoopTargetKind::Composite => 1,
+            },
+            Ordering::Relaxed,
+        );
+        self.active_plan_version
+            .store(active_plan_version, Ordering::Relaxed);
+        self.pending_plan_version
+            .store(pending_plan_version.unwrap_or(0), Ordering::Relaxed);
+        self.mode.store(mode as i32, Ordering::Relaxed);
+        self.next_mode.store(
+            next.map(|(next_mode, _)| next_mode as i32)
+                .unwrap_or(NO_MODE),
+            Ordering::Relaxed,
+        );
+        self.next_delay.store(
+            next.map(|(_, delay)| u64::from(delay)).unwrap_or(NO_DELAY),
+            Ordering::Relaxed,
+        );
+        self.iteration.store(iteration, Ordering::Relaxed);
+        self.cycle_count.store(cycle_count, Ordering::Relaxed);
+        self.length.store(length, Ordering::Relaxed);
+        self.position.store(position, Ordering::Relaxed);
+        self.play_after_record
+            .store(play_after_record, Ordering::Relaxed);
+        self.stale_targets
+            .store(runtime_counters.stale_targets, Ordering::Relaxed);
+        self.invalid_seeks
+            .store(runtime_counters.invalid_seeks, Ordering::Relaxed);
+        self.rejected_modes
+            .store(runtime_counters.rejected_modes, Ordering::Relaxed);
+        self.plan_mismatches
+            .store(runtime_counters.plan_mismatches, Ordering::Relaxed);
+        self.output_overflows
+            .store(runtime_counters.output_overflows, Ordering::Relaxed);
+        self.arithmetic_overflows
+            .store(runtime_counters.arithmetic_overflows, Ordering::Relaxed);
+        self.runtime_fault.store(
+            match runtime_fault {
+                CompositeRuntimeFault::None => 0,
+                CompositeRuntimeFault::OutputCapacity => 1,
+            },
+            Ordering::Relaxed,
+        );
+        let mut count = 0;
+        for child in active_children.take(MAX_COMPOSITE_TARGETS) {
+            self.active_children[count].publish(child);
+            count += 1;
+        }
+        self.n_active_children.store(count, Ordering::Relaxed);
+        self.installed.store(true, Ordering::Relaxed);
+        self.generation.fetch_add(1, Ordering::Release);
+    }
+
+    pub fn mark_uninstalled(&self) {
+        self.generation.fetch_add(1, Ordering::Release);
+        self.installed.store(false, Ordering::Relaxed);
+        self.mode.store(LoopMode::Stopped as i32, Ordering::Relaxed);
+        self.next_mode.store(NO_MODE, Ordering::Relaxed);
+        self.next_delay.store(NO_DELAY, Ordering::Relaxed);
+        self.n_active_children.store(0, Ordering::Relaxed);
+        self.generation.fetch_add(1, Ordering::Release);
+    }
+
+    pub fn set_play_after_record(&self, enabled: bool) {
+        self.play_after_record.store(enabled, Ordering::Relaxed);
+    }
+
+    pub fn read(&self) -> CompositeStateMirrorSnapshot {
+        loop {
+            let before = self.generation.load(Ordering::Acquire);
+            if before & 1 != 0 {
+                std::hint::spin_loop();
+                continue;
+            }
+            let count = self
+                .n_active_children
+                .load(Ordering::Relaxed)
+                .min(MAX_COMPOSITE_TARGETS);
+            let mut active_children = [None; MAX_COMPOSITE_TARGETS];
+            for (destination, source) in active_children[..count]
+                .iter_mut()
+                .zip(&self.active_children[..count])
+            {
+                *destination = Some(source.read());
+            }
+            let next_mode = self.next_mode.load(Ordering::Relaxed);
+            let next_delay = self.next_delay.load(Ordering::Relaxed);
+            let pending_version = self.pending_plan_version.load(Ordering::Relaxed);
+            let snapshot = CompositeStateMirrorSnapshot {
+                identity: self.identity,
+                sync_source: LoopIdentity {
+                    slot: self.sync_slot.load(Ordering::Relaxed),
+                    generation: self.sync_generation.load(Ordering::Relaxed),
+                    kind: if self.sync_kind.load(Ordering::Relaxed) == 0 {
+                        LoopTargetKind::Basic
+                    } else {
+                        LoopTargetKind::Composite
+                    },
+                },
+                installed: self.installed.load(Ordering::Relaxed),
+                active_plan_version: self.active_plan_version.load(Ordering::Relaxed),
+                pending_plan_version: (pending_version != 0).then_some(pending_version),
+                mode: LoopMode::try_from(self.mode.load(Ordering::Relaxed))
+                    .unwrap_or(LoopMode::Unknown),
+                next_mode: (next_mode != NO_MODE)
+                    .then(|| LoopMode::try_from(next_mode).unwrap_or(LoopMode::Unknown)),
+                next_mode_delay: (next_delay != NO_DELAY).then_some(next_delay as u32),
+                iteration: self.iteration.load(Ordering::Relaxed),
+                cycle_count: self.cycle_count.load(Ordering::Relaxed),
+                length: self.length.load(Ordering::Relaxed),
+                position: self.position.load(Ordering::Relaxed),
+                play_after_record: self.play_after_record.load(Ordering::Relaxed),
+                runtime_counters: CompositeRuntimeCounters {
+                    stale_targets: self.stale_targets.load(Ordering::Relaxed),
+                    invalid_seeks: self.invalid_seeks.load(Ordering::Relaxed),
+                    rejected_modes: self.rejected_modes.load(Ordering::Relaxed),
+                    plan_mismatches: self.plan_mismatches.load(Ordering::Relaxed),
+                    output_overflows: self.output_overflows.load(Ordering::Relaxed),
+                    arithmetic_overflows: self.arithmetic_overflows.load(Ordering::Relaxed),
+                },
+                runtime_fault: if self.runtime_fault.load(Ordering::Relaxed) == 0 {
+                    CompositeRuntimeFault::None
+                } else {
+                    CompositeRuntimeFault::OutputCapacity
+                },
+                active_children,
+                n_active_children: count,
+            };
+            let after = self.generation.load(Ordering::Acquire);
+            if before == after {
+                return snapshot;
+            }
+        }
+    }
+}
+
+impl Default for CompositeStateMirror {
+    fn default() -> Self {
+        Self::new(EMPTY_IDENTITY)
     }
 }
 
@@ -464,6 +796,73 @@ fn atomic_max_f32(target: &AtomicU32, value: f32) {
 mod tests {
     use super::*;
     use assert2::check;
+
+    #[test]
+    fn composite_state_is_coherently_published_and_uninstalled() {
+        let identity = LoopIdentity {
+            slot: 12,
+            generation: 3,
+            kind: LoopTargetKind::Composite,
+        };
+        let sync = LoopIdentity {
+            slot: 1,
+            generation: 1,
+            kind: LoopTargetKind::Basic,
+        };
+        let child = ActiveCompositeChild {
+            identity: LoopIdentity {
+                slot: 2,
+                generation: 1,
+                kind: LoopTargetKind::Basic,
+            },
+            mode: LoopMode::Playing,
+            cycle_offset: 4,
+        };
+        let mirror = CompositeStateMirror::new(identity);
+        check!(!mirror.read().installed);
+
+        mirror.publish(
+            sync,
+            7,
+            Some(8),
+            LoopMode::Recording,
+            Some((LoopMode::Playing, 2)),
+            3,
+            9,
+            128,
+            47,
+            true,
+            CompositeRuntimeCounters {
+                stale_targets: 1,
+                ..CompositeRuntimeCounters::default()
+            },
+            CompositeRuntimeFault::OutputCapacity,
+            [child].into_iter(),
+        );
+        let state = mirror.read();
+        check!(state.installed);
+        check!(state.identity == identity);
+        check!(state.sync_source == sync);
+        check!(state.active_plan_version == 7);
+        check!(state.pending_plan_version == Some(8));
+        check!(state.mode == LoopMode::Recording);
+        check!(state.next_mode == Some(LoopMode::Playing));
+        check!(state.next_mode_delay == Some(2));
+        check!(state.iteration == 3);
+        check!(state.cycle_count == 9);
+        check!(state.length == 128);
+        check!(state.position == 47);
+        check!(state.play_after_record);
+        check!(state.runtime_counters.stale_targets == 1);
+        check!(state.runtime_fault == CompositeRuntimeFault::OutputCapacity);
+        check!(state.active_children().collect::<Vec<_>>() == vec![child]);
+
+        mirror.mark_uninstalled();
+        let state = mirror.read();
+        check!(!state.installed);
+        check!(state.mode == LoopMode::Stopped);
+        check!(state.active_children().next().is_none());
+    }
 
     #[test]
     fn channel_accumulators_are_consumed_without_commands() {

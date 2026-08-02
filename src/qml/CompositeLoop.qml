@@ -24,9 +24,8 @@ Item {
     // set internally
     property alias kind : rust_loop.kind
 
-    // The extension object manages triggering other loops based on the
-    // schedule. This needs to keep running even if the QML/GUI thread hangs.
-    // In the QML side, we manage updating/calculating the schedule.
+    // QML prepares the schedule while the engine executes it independently
+    // of GUI and frontend update timing.
     property var schedule: ({})
     property alias iteration: rust_loop.iteration
     property alias running_loops: rust_loop.running_loops
@@ -387,7 +386,9 @@ Item {
         }
     }
 
-    function unload() {}
+    function unload() {
+        rust_loop.deinit()
+    }
 
     function clear() {
         playlists_in = []

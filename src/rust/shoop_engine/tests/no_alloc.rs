@@ -17,7 +17,14 @@ use shoop_engine::loop_mode::LoopMode;
 use shoop_engine::midi;
 use shoop_engine::port::{PortConnectability, PortDirection};
 use shoop_engine::realtime_alloc_guard;
-use shoop_engine::session::{Port, Session};
+use shoop_engine::session::{AudioRingbufferAdoption, Port, Session};
+use shoop_engine::{
+    compile_composite_plan, BoundaryTargetAction, CompositeBoundaryTimeline, CompositeEntry,
+    CompositePlanDescriptor, CompositePlanLimits, CompositeRuntime, CompositeSection,
+    CompositeTimeline, CompositeTimelineLimits, CompositeTimelineNode, LoopIdentity,
+    LoopTargetCatalog, LoopTargetKind, LoopTargetMetadata, PreparedAudioChannelData,
+    PreparedAudioRingbufferAdoptionChannel,
+};
 
 #[cfg(debug_assertions)]
 #[global_allocator]
@@ -66,6 +73,497 @@ fn assert_steady_state_is_alloc_free(mut s: Session, n_frames: usize, cycles: us
             s.process(n_frames);
         }
     });
+}
+
+#[test]
+fn composite_state_machine_does_not_allocate_or_free() {
+    let source = LoopIdentity {
+        slot: 10,
+        generation: 1,
+        kind: LoopTargetKind::Composite,
+    };
+    let child = LoopIdentity {
+        slot: 20,
+        generation: 3,
+        kind: LoopTargetKind::Basic,
+    };
+    let replacement_child = LoopIdentity {
+        slot: 30,
+        generation: 2,
+        kind: LoopTargetKind::Basic,
+    };
+    let catalog = LoopTargetCatalog::new(vec![
+        LoopTargetMetadata {
+            identity: source,
+            length_samples: 0,
+        },
+        LoopTargetMetadata {
+            identity: child,
+            length_samples: 4,
+        },
+        LoopTargetMetadata {
+            identity: replacement_child,
+            length_samples: 4,
+        },
+    ])
+    .unwrap();
+    let descriptor = CompositePlanDescriptor {
+        source,
+        sync_length: 4,
+        timelines: vec![CompositeTimeline {
+            sections: vec![
+                CompositeSection {
+                    entries: vec![CompositeEntry {
+                        target: child,
+                        delay: 0,
+                        n_cycles: Some(2),
+                        mode: None,
+                    }],
+                },
+                CompositeSection {
+                    entries: vec![CompositeEntry {
+                        target: child,
+                        delay: 0,
+                        n_cycles: Some(1),
+                        mode: None,
+                    }],
+                },
+            ],
+        }],
+    };
+    let plan =
+        compile_composite_plan(&descriptor, &catalog, &[], CompositePlanLimits::default()).unwrap();
+    let replacement_descriptor = CompositePlanDescriptor {
+        source,
+        sync_length: 4,
+        timelines: vec![CompositeTimeline {
+            sections: vec![CompositeSection {
+                entries: vec![CompositeEntry {
+                    target: replacement_child,
+                    delay: 0,
+                    n_cycles: Some(1),
+                    mode: None,
+                }],
+            }],
+        }],
+    };
+    let replacement = compile_composite_plan(
+        &replacement_descriptor,
+        &catalog,
+        &[],
+        CompositePlanLimits::default(),
+    )
+    .unwrap();
+    let mut runtime = CompositeRuntime::new(&plan);
+    let mut replacement_runtime = CompositeRuntime::new(&plan);
+
+    assert_no_alloc(|| {
+        runtime
+            .transition_immediate(&plan, LoopMode::Playing, None, |_| true)
+            .unwrap();
+        runtime.sync_boundary(&plan, |_| true).unwrap();
+        runtime.seek(&plan, 2, |_| true).unwrap();
+        runtime.request_transition(LoopMode::Recording, 0).unwrap();
+        runtime.sync_boundary(&plan, |_| true).unwrap();
+        runtime.stop(&plan, |_| true).unwrap();
+        assert_eq!(runtime.active_children().count(), 0);
+
+        replacement_runtime
+            .transition_immediate(&plan, LoopMode::Playing, Some(2), |_| true)
+            .unwrap();
+        replacement_runtime
+            .activate_plan(&plan, &replacement, |_| true)
+            .unwrap();
+        replacement_runtime
+            .activate_deferred_at_iteration_zero(&plan, &replacement, |_| true)
+            .unwrap();
+    });
+}
+
+#[test]
+fn composite_timeline_processing_does_not_allocate_or_free() {
+    let mut session = Session::default();
+    let sync = session.create_loop();
+    let child = session.create_loop();
+    session.loop_mut(sync).unwrap().set_length(4);
+    session.loop_mut(child).unwrap().set_length(4);
+    session.set_loop_mode(sync, LoopMode::Playing).unwrap();
+
+    let source = LoopIdentity {
+        slot: 10,
+        generation: 1,
+        kind: LoopTargetKind::Composite,
+    };
+    let sync_identity = session.loop_identity(sync).unwrap();
+    let child_identity = session.loop_identity(child).unwrap();
+    let catalog = LoopTargetCatalog::new(vec![
+        LoopTargetMetadata {
+            identity: source,
+            length_samples: 4,
+        },
+        LoopTargetMetadata {
+            identity: sync_identity,
+            length_samples: 4,
+        },
+        LoopTargetMetadata {
+            identity: child_identity,
+            length_samples: 4,
+        },
+    ])
+    .unwrap();
+    let descriptor = CompositePlanDescriptor {
+        source,
+        sync_length: 4,
+        timelines: vec![CompositeTimeline {
+            sections: vec![CompositeSection {
+                entries: vec![CompositeEntry {
+                    target: child_identity,
+                    delay: 0,
+                    n_cycles: Some(1),
+                    mode: None,
+                }],
+            }],
+        }],
+    };
+    let plan =
+        compile_composite_plan(&descriptor, &catalog, &[], CompositePlanLimits::default()).unwrap();
+    let mut replacement_descriptor = descriptor.clone();
+    replacement_descriptor.timelines[0].sections[0].entries[0].n_cycles = Some(2);
+    let replacement_plan = compile_composite_plan(
+        &replacement_descriptor,
+        &catalog,
+        &[],
+        CompositePlanLimits::default(),
+    )
+    .unwrap();
+    let mut timeline = CompositeBoundaryTimeline::new(
+        vec![CompositeTimelineNode {
+            plan,
+            sync_source: sync_identity,
+        }],
+        CompositeTimelineLimits::default(),
+    )
+    .unwrap();
+    timeline.prepare_install(1, &[None, None]).unwrap();
+    let composite_state = std::sync::Arc::clone(timeline.state_mirror(source).unwrap());
+    let mut replacement_timeline = CompositeBoundaryTimeline::new(
+        vec![CompositeTimelineNode {
+            plan: replacement_plan,
+            sync_source: sync_identity,
+        }],
+        CompositeTimelineLimits::default(),
+    )
+    .unwrap();
+    replacement_timeline
+        .prepare_install(2, &[None, None])
+        .unwrap();
+
+    session
+        .apply_graph_changes()
+        .expect("graph should schedule");
+    let (mut engine, mut handle) = shoop_engine::engine::split(session, 16);
+    for _ in 0..4 {
+        engine.process(4);
+        handle.poll_trace();
+    }
+    let stale_timeline = timeline.clone();
+    let mut install = handle.send_composite_timeline(timeline).unwrap();
+    let mut stale_install = handle.send_composite_timeline(stale_timeline).unwrap();
+    let mut accepted = handle
+        .send_composite_control(
+            source,
+            BoundaryTargetAction::SetMode {
+                mode: LoopMode::Playing,
+                offset_samples: 0,
+                retrigger: true,
+            },
+            None,
+        )
+        .unwrap();
+
+    assert_no_alloc(|| {
+        engine.process(4);
+    });
+
+    assert_eq!(install.pop().unwrap().unwrap().n_composites(), 0);
+    let rejected = stale_install.pop().unwrap().unwrap_err();
+    assert_eq!(
+        rejected.error,
+        shoop_engine::SessionError::StaleCompositeVersion(1)
+    );
+    assert_eq!(accepted.pop(), Ok(Ok(0)));
+
+    let mut replacement = handle
+        .send_composite_timeline(replacement_timeline)
+        .unwrap();
+    assert_no_alloc(|| {
+        engine.process(4);
+    });
+    assert!(replacement.pop().unwrap().is_ok());
+    assert_eq!(engine.session().composite_timeline().n_retired_plans(), 1);
+
+    let mut reclaimed = handle.send_composite_plan_reclamation(64).unwrap();
+    assert_no_alloc(|| {
+        for _ in 0..8 {
+            engine.process(4);
+        }
+    });
+    assert_eq!(reclaimed.pop().unwrap().len(), 1);
+    let snapshot = composite_state.read();
+    assert!(snapshot.installed);
+    assert_eq!(snapshot.mode, LoopMode::Playing);
+    assert_eq!(snapshot.active_children().count(), 1);
+
+    let mut stopped = handle
+        .send_composite_control(
+            source,
+            BoundaryTargetAction::SetMode {
+                mode: LoopMode::Stopped,
+                offset_samples: 0,
+                retrigger: true,
+            },
+            None,
+        )
+        .unwrap();
+    assert_no_alloc(|| {
+        engine.process(4);
+    });
+    assert!(stopped.pop().unwrap().is_ok());
+    assert_eq!(
+        engine.session().loop_(child).unwrap().mode(),
+        LoopMode::Stopped
+    );
+
+    let mut restarted = handle
+        .send_composite_control(
+            source,
+            BoundaryTargetAction::SetMode {
+                mode: LoopMode::Playing,
+                offset_samples: 0,
+                retrigger: true,
+            },
+            None,
+        )
+        .unwrap();
+    assert_no_alloc(|| {
+        engine.process(4);
+    });
+    assert!(restarted.pop().unwrap().is_ok());
+
+    let mut empty_timeline =
+        CompositeBoundaryTimeline::new(Vec::new(), CompositeTimelineLimits::default()).unwrap();
+    empty_timeline.prepare_install(3, &[None, None]).unwrap();
+    let mut removed = handle.send_composite_timeline(empty_timeline).unwrap();
+    assert_no_alloc(|| {
+        engine.process(4);
+    });
+    let displaced = removed.pop().unwrap().unwrap();
+    assert_eq!(displaced.n_composites(), 1);
+    assert_eq!(engine.session().composite_timeline().n_composites(), 0);
+}
+
+#[test]
+fn dense_composite_events_and_fail_closed_overflow_do_not_allocate() {
+    let source = LoopIdentity {
+        slot: 100,
+        generation: 1,
+        kind: LoopTargetKind::Composite,
+    };
+    let sync = LoopIdentity {
+        slot: 0,
+        generation: 1,
+        kind: LoopTargetKind::Basic,
+    };
+    let children: Vec<_> = (1..=64)
+        .map(|slot| LoopIdentity {
+            slot,
+            generation: 1,
+            kind: LoopTargetKind::Basic,
+        })
+        .collect();
+    let mut metadata = vec![LoopTargetMetadata {
+        identity: source,
+        length_samples: 4,
+    }];
+    metadata.push(LoopTargetMetadata {
+        identity: sync,
+        length_samples: 4,
+    });
+    metadata.extend(children.iter().copied().map(|identity| LoopTargetMetadata {
+        identity,
+        length_samples: 4,
+    }));
+    let catalog = LoopTargetCatalog::new(metadata).unwrap();
+    let descriptor = CompositePlanDescriptor {
+        source,
+        sync_length: 4,
+        timelines: vec![CompositeTimeline {
+            sections: vec![CompositeSection {
+                entries: children
+                    .iter()
+                    .copied()
+                    .map(|target| CompositeEntry {
+                        target,
+                        delay: 0,
+                        n_cycles: Some(1),
+                        mode: Some(LoopMode::Playing),
+                    })
+                    .collect(),
+            }],
+        }],
+    };
+    let plan =
+        compile_composite_plan(&descriptor, &catalog, &[], CompositePlanLimits::default()).unwrap();
+    let mut dense = CompositeBoundaryTimeline::new(
+        vec![CompositeTimelineNode {
+            plan: plan.clone(),
+            sync_source: sync,
+        }],
+        CompositeTimelineLimits::default(),
+    )
+    .unwrap();
+    dense
+        .queue_control(shoop_engine::AcceptedTimelineControl {
+            at_sample: 0,
+            target: source,
+            action: BoundaryTargetAction::SetMode {
+                mode: LoopMode::Playing,
+                offset_samples: 0,
+                retrigger: true,
+            },
+            acceptance_sequence: 0,
+        })
+        .unwrap();
+    assert_no_alloc(|| {
+        dense.resolve_boundary(&[], &[], |_| true).unwrap();
+    });
+    assert_eq!(dense.runtime(source).unwrap().active_children().count(), 64);
+
+    let mut overflow = CompositeBoundaryTimeline::new(
+        vec![CompositeTimelineNode {
+            plan,
+            sync_source: sync,
+        }],
+        CompositeTimelineLimits {
+            max_primitive_events: 1,
+            ..CompositeTimelineLimits::default()
+        },
+    )
+    .unwrap();
+    assert_no_alloc(|| {
+        let error = overflow
+            .resolve_boundary(&[sync, children[0]], &[], |_| true)
+            .unwrap_err();
+        assert_eq!(
+            error.fault,
+            shoop_engine::CompositeTimelineFault::PrimitiveEventCapacity
+        );
+    });
+    assert_eq!(overflow.runtime(source).unwrap().mode(), LoopMode::Stopped);
+}
+
+#[test]
+fn composite_callback_state_sources_are_structurally_lock_free() {
+    for source in [
+        include_str!("../src/composite_plan.rs"),
+        include_str!("../src/composite_runtime.rs"),
+        include_str!("../src/composite_timeline.rs"),
+    ] {
+        for forbidden in ["Mutex", "RwLock", ".lock("] {
+            assert!(
+                !source.contains(forbidden),
+                "composite callback source contains lock primitive {forbidden}"
+            );
+        }
+    }
+}
+
+#[test]
+fn transactional_audio_ringbuffer_adoption_does_not_allocate_or_partially_apply() {
+    let mut session = Session::default();
+    let input = session.add_port(audio_port(1, "in", PortDirection::Input));
+    let first = session.create_loop();
+    let second = session.create_loop();
+    for loop_idx in [first, second] {
+        let channel = session
+            .add_audio_channel(loop_idx, 4, ChannelMode::Direct)
+            .unwrap();
+        session.connect_channel_input(channel, input).unwrap();
+    }
+    session.apply_graph_changes().unwrap();
+    session
+        .port_mut(input)
+        .unwrap()
+        .as_dummy_mut()
+        .unwrap()
+        .queue_data(&[0.1, 0.2, 0.3, 0.4]);
+    session.process(4);
+
+    let requests = [first, second].map(|loop_idx| AudioRingbufferAdoption {
+        loop_idx,
+        reverse_start_cycle: None,
+        cycles_length: None,
+        go_to_cycle: None,
+        go_to_mode: LoopMode::Playing,
+    });
+    assert_no_alloc(|| {
+        session.adopt_audio_ringbuffers(&requests).unwrap();
+    });
+    for loop_idx in [first, second] {
+        let loop_ = session.loop_(loop_idx).unwrap();
+        assert_eq!(loop_.mode(), LoopMode::Playing);
+        assert_eq!(loop_.length(), 4);
+        assert_eq!(
+            loop_.audio_channel(0).unwrap().data(),
+            vec![0.1, 0.2, 0.3, 0.4]
+        );
+    }
+
+    let shape = session
+        .describe_audio_ringbuffer_adoption(&requests)
+        .unwrap();
+    let shapes: Vec<_> = shape.channels().collect();
+    let mut prepared: Vec<_> = shapes
+        .iter()
+        .map(|channel| PreparedAudioRingbufferAdoptionChannel {
+            loop_idx: channel.loop_idx,
+            channel_idx: channel.channel_idx,
+            data: PreparedAudioChannelData::new(channel.chunk_size, channel.capacity),
+        })
+        .collect();
+    let mut copies: Vec<_> = shapes
+        .iter()
+        .map(|channel| Vec::with_capacity(channel.capacity))
+        .collect();
+    assert_no_alloc(|| {
+        session
+            .adopt_audio_ringbuffers_prepared_with_copies(&requests, &mut prepared, &mut copies)
+            .unwrap();
+    });
+    assert_eq!(copies, vec![vec![0.1, 0.2, 0.3, 0.4]; 2]);
+
+    let duplicate = [requests[0], requests[0]];
+    let before = session
+        .loop_(first)
+        .unwrap()
+        .audio_channel(0)
+        .unwrap()
+        .data();
+    assert_no_alloc(|| {
+        assert_eq!(
+            session.adopt_audio_ringbuffers(&duplicate),
+            Err(shoop_engine::SessionError::AudioRingbufferAdoptionCapacity)
+        );
+    });
+    assert_eq!(
+        session
+            .loop_(first)
+            .unwrap()
+            .audio_channel(0)
+            .unwrap()
+            .data(),
+        before
+    );
 }
 
 #[test]

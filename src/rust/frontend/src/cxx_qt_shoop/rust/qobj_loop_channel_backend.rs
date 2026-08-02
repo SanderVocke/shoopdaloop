@@ -46,8 +46,21 @@ macro_rules! error {
 impl LoopChannelBackend {
     pub fn initialize_impl(self: Pin<&mut LoopChannelBackend>) {}
 
+    unsafe fn channel_loop_session_id(&self) -> Option<u64> {
+        let strong = self.channel_loop.as_ref()?.to_strong().ok()??;
+        let loop_ptr = strong.data().ok()?;
+        if loop_ptr.is_null() {
+            return None;
+        }
+        LoopBackend::from_qobject_ref_ptr(loop_ptr)
+            .ok()?
+            .backend_loop
+            .as_ref()
+            .map(|loop_| loop_.session_id())
+    }
+
     pub fn update(mut self: Pin<&mut LoopChannelBackend>) {
-        if self.maybe_backend_channel.is_none() {
+        if !self.as_mut().maybe_initialize_backend() {
             return;
         }
 
@@ -146,7 +159,24 @@ impl LoopChannelBackend {
     pub fn maybe_initialize_backend(mut self: Pin<&mut LoopChannelBackend>) -> bool {
         match || -> Result<bool, anyhow::Error> {
             if self.initialized {
-                return Ok(true);
+                let channel_session_id = self
+                    .maybe_backend_channel
+                    .as_ref()
+                    .map(AnyBackendChannel::session_id);
+                let loop_session_id = unsafe { self.channel_loop_session_id() };
+                if channel_session_id.is_some() && channel_session_id == loop_session_id {
+                    return Ok(true);
+                }
+                {
+                    let mut rust_mut = self.as_mut().rust_mut();
+                    rust_mut.maybe_backend_channel = None;
+                    rust_mut.initialized = false;
+                }
+                unsafe {
+                    self.as_mut().initialized_changed(false);
+                }
+                // QML may synchronously rebuild the channel backend in response.
+                return Ok(false);
             }
 
             let mut non_ready_vars: HashSet<String> = HashSet::new();
@@ -263,16 +293,17 @@ impl LoopChannelBackend {
     }
 
     pub unsafe fn set_backend(mut self: Pin<&mut LoopChannelBackend>, backend: *mut QObject) {
-        if self.maybe_backend_channel.is_some() {
-            error!(
-                self,
-                "Can't change backend after backend has been initialized"
-            );
-            return;
-        }
         if self.backend != backend {
-            let mut rust_mut = self.as_mut().rust_mut();
-            rust_mut.backend = backend;
+            let was_initialized = self.initialized;
+            {
+                let mut rust_mut = self.as_mut().rust_mut();
+                rust_mut.backend = backend;
+                rust_mut.maybe_backend_channel = None;
+                rust_mut.initialized = false;
+            }
+            if was_initialized {
+                self.as_mut().initialized_changed(false);
+            }
             unsafe {
                 if !backend.is_null() {
                     let self_qobject = loop_channel_backend_qobject_from_ptr(

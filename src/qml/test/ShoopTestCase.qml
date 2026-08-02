@@ -268,19 +268,24 @@ Item {
                 done = true
             }
             connectOnce(backend.updated_on_gui_thread, updated)
-            wait_condition(() => done == true, 500, "Backend not updated in time")
+            // A publication can queue a follow-up schedule or state command. Fence each
+            // publication while controlled dummy processing is paused so the next one observes
+            // that command.
+            backend.wait_process()
+            wait_condition(() => done == true, 10000, "Backend not updated in time")
         }
-        // First let queued Qt calls reach the backend, then explicitly settle engine
-        // commands/graph work. Repeat after publishing because QML reactions to those
-        // mirrors may enqueue follow-up controls of their own.
-        wait_once()
-        wait_once()
-        wait_once()
+        // Let queued Qt calls reach the backend, then drive the dummy engine fence before
+        // waiting for publication. In controlled mode some platforms do not publish another
+        // frontend tick until that fence has run.
+        wait(30)
         backend.wait_process()
         wait_once()
         wait_once()
         wait_once()
+        // QML reactions to the first publication may enqueue follow-up controls.
         backend.wait_process()
+        wait_once()
+        wait_once()
         wait_once()
     }
 

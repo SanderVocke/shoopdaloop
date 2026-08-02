@@ -26,7 +26,7 @@ Architecture
     frontend - extensions
     frontend ..> scripting : embeds
 
-The split between front-end and engine is not entirely pure, as different parts of the functionality are implemented in the layer where it is most convenient.
+The front-end prepares configuration and presents observations, while timing-authoritative state machines run in the engine. In particular, composite playlists are compiled off the audio thread into immutable plans and accepted through bounded commands; Qt signals and snapshot polling do not advance them.
 
 The **shoop_engine** crate handles:
 
@@ -34,15 +34,16 @@ The **shoop_engine** crate handles:
 * Interconnections of ports, loop channels and FX
 * JACK, CPAL and MIDI driver integration
 * Logging and profiling
-* Basic loop synchronization (loop transitions)
+* Basic and composite loop synchronization, sample-boundary event resolution, and nested propagation
+* Bounded composite command, plan-reclamation, fault, trace, and snapshot transport
 
 The **front-end + extensions** handle:
 
 * The user interface
 * Session saving/loading
-* Advanced loop synchronization (scheduling loop transitions over multiple sync loop cycles)
-* Composite loops
-* Thread-decoupled forwarding of UI events to/from the engine
+* Composite authoring, validation feedback, and session persistence
+* Translation of UI references into stable engine identities and prepared plans
+* Thread-decoupled command submission and observational snapshot display
 
 The **LUA scripts** are meant for parts that may need to be added/modified by individual users, such as:
 

@@ -164,12 +164,18 @@ impl AudioPort {
     pub fn ringbuffer_n_samples(&self) -> usize {
         self.ringbuffer.n_samples()
     }
+    pub fn ringbuffer_capacity(&self) -> usize {
+        self.ringbuffer.sample_capacity()
+    }
     pub fn set_ringbuffer_n_samples(&mut self, n: usize) {
         self.ringbuffer.set_min_n_samples(n);
         self.publish_state();
     }
     pub fn ringbuffer_contents(&self) -> Snapshot {
         self.ringbuffer.snapshot()
+    }
+    pub fn visit_ringbuffer_range(&self, start: usize, end: usize, visit: impl FnMut(&[f32])) {
+        self.ringbuffer.visit_range(start, end, visit);
     }
 
     /// The effect inserted on this port, if any.

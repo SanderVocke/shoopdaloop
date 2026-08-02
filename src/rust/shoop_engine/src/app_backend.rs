@@ -18,9 +18,9 @@ pub use engine::{
     LoopMode, MidiEvent, MultichannelAudio, PortConnectabilityKind, PortDataType, PortDirection,
     ProfilingReport, ProfilingReportItem,
 };
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::marker::PhantomData;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -68,6 +68,19 @@ trait ObjectIdentity: Copy {
 struct LoopId(usize);
 
 impl ObjectIdentity for LoopId {
+    fn from_index(index: usize) -> Self {
+        Self(index)
+    }
+
+    fn index(self) -> usize {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CompositeId(usize);
+
+impl ObjectIdentity for CompositeId {
     fn from_index(index: usize) -> Self {
         Self(index)
     }
@@ -132,7 +145,8 @@ impl ObjectIdentity for MidiPortId {
 struct ObjectControl<I, M> {
     session_id: u64,
     lifecycle: std::sync::atomic::AtomicU8,
-    engine_index: std::sync::atomic::AtomicUsize,
+    engine_index: Arc<AtomicUsize>,
+    auxiliary_index: std::sync::atomic::AtomicUsize,
     creation_sequence: AtomicU64,
     acknowledged_data_sequence: AtomicU64,
     error: Mutex<Option<String>>,
@@ -142,14 +156,21 @@ struct ObjectControl<I, M> {
 
 impl<I: ObjectIdentity, M: Default> ObjectControl<I, M> {
     fn pending(session_id: u64) -> Self {
+        Self::pending_with_mirror(session_id, Arc::new(M::default()))
+    }
+}
+
+impl<I: ObjectIdentity, M> ObjectControl<I, M> {
+    fn pending_with_mirror(session_id: u64, mirror: Arc<M>) -> Self {
         Self {
             session_id,
             lifecycle: std::sync::atomic::AtomicU8::new(ObjectLifecycle::Pending as u8),
-            engine_index: std::sync::atomic::AtomicUsize::new(INVALID_OBJECT_INDEX),
+            engine_index: Arc::new(AtomicUsize::new(INVALID_OBJECT_INDEX)),
+            auxiliary_index: std::sync::atomic::AtomicUsize::new(INVALID_OBJECT_INDEX),
             creation_sequence: AtomicU64::new(CommandSequence::NONE.get()),
             acknowledged_data_sequence: AtomicU64::new(0),
             error: Mutex::new(None),
-            mirror: Arc::new(M::default()),
+            mirror,
             identity: PhantomData,
         }
     }
@@ -166,9 +187,18 @@ impl<I: ObjectIdentity, M> ObjectControl<I, M> {
     }
 
     fn mark_ready(&self, id: I) {
-        self.engine_index.store(id.index(), Ordering::Relaxed);
+        self.engine_index.store(id.index(), Ordering::Release);
         self.lifecycle
             .store(ObjectLifecycle::Ready as u8, Ordering::Release);
+    }
+
+    fn set_auxiliary_index(&self, index: usize) {
+        self.auxiliary_index.store(index, Ordering::Relaxed);
+    }
+
+    fn auxiliary_index(&self) -> Option<usize> {
+        let index = self.auxiliary_index.load(Ordering::Relaxed);
+        (index != INVALID_OBJECT_INDEX).then_some(index)
     }
 
     fn mark_failed(&self, error: impl Into<String>) {
@@ -1064,6 +1094,73 @@ impl CpalBackend {
 }
 
 #[derive(Clone)]
+struct CompositeConfig {
+    descriptor: engine::CompositePlanDescriptor,
+    sync_source: engine::LoopIdentity,
+    state: Arc<engine::CompositeStateMirror>,
+}
+
+#[derive(Clone, Default)]
+struct CompositeRegistry {
+    configs: BTreeMap<engine::LoopIdentity, CompositeConfig>,
+    metadata: BTreeMap<engine::LoopIdentity, engine::LoopTargetMetadata>,
+}
+
+fn compile_composite_registry(
+    registry: &CompositeRegistry,
+) -> Result<engine::CompositeBoundaryTimeline> {
+    let catalog = engine::LoopTargetCatalog::new(registry.metadata.values().copied().collect())
+        .map_err(|error| anyhow!("invalid composite target catalog: {error}"))?;
+    let dependencies: Vec<_> = registry
+        .configs
+        .values()
+        .map(|config| engine::CompositeDependency {
+            source: config.descriptor.source,
+            composite_children: config
+                .descriptor
+                .timelines
+                .iter()
+                .flat_map(|timeline| &timeline.sections)
+                .flat_map(|section| &section.entries)
+                .filter_map(|entry| {
+                    (entry.target.kind == engine::LoopTargetKind::Composite).then_some(entry.target)
+                })
+                .collect(),
+        })
+        .collect();
+    let mut nodes = Vec::with_capacity(registry.configs.len());
+    for config in registry.configs.values() {
+        let installed: Vec<_> = dependencies
+            .iter()
+            .filter(|dependency| dependency.source != config.descriptor.source)
+            .cloned()
+            .collect();
+        let plan = engine::compile_composite_plan(
+            &config.descriptor,
+            &catalog,
+            &installed,
+            engine::CompositePlanLimits::default(),
+        )
+        .map_err(|error| anyhow!("composite plan validation failed: {error}"))?;
+        nodes.push(engine::CompositeTimelineNode {
+            plan,
+            sync_source: config.sync_source,
+        });
+    }
+    let mut timeline =
+        engine::CompositeBoundaryTimeline::new(nodes, engine::CompositeTimelineLimits::default())
+            .map_err(|error| anyhow!("composite timeline validation failed: {error}"))?;
+    for config in registry.configs.values() {
+        if !timeline.set_state_mirror(config.descriptor.source, Arc::clone(&config.state)) {
+            return Err(anyhow!(
+                "compiled composite source is missing from its timeline"
+            ));
+        }
+    }
+    Ok(timeline)
+}
+
+#[derive(Clone)]
 struct ConnectionCacheRequest {
     name: String,
     direction: PortDirection,
@@ -1091,6 +1188,16 @@ impl Default for ConnectionCache {
     }
 }
 
+#[derive(Clone)]
+struct PrimitiveLoopControl {
+    control: Weak<ObjectControl<LoopId, engine::LoopStateMirror>>,
+    /// Stable identity storage retained separately because ready engine slots outlive controls.
+    engine_index: Arc<AtomicUsize>,
+    desired_source: Option<Weak<ObjectControl<LoopId, engine::LoopStateMirror>>>,
+    /// Source identity most recently accepted by the engine.
+    applied_source_index: Arc<AtomicUsize>,
+}
+
 struct SharedSession {
     session_id: u64,
     /// The control side of the engine. Only ever touched by non-audio threads.
@@ -1107,6 +1214,17 @@ struct SharedSession {
     /// session building still has to work. While the engine sits here the control thread
     /// drives it directly, which is sound precisely because nothing else can reach it.
     parked: Mutex<Option<engine::Engine>>,
+    next_composite_slot: AtomicU32,
+    next_composite_version: AtomicU32,
+    composite_registry: Mutex<CompositeRegistry>,
+    primitive_loop_controls: Mutex<Vec<PrimitiveLoopControl>>,
+    primitive_sync_sources: Mutex<Vec<Option<usize>>>,
+    audio_channel_controls: Mutex<
+        Vec<(
+            Weak<ObjectControl<LoopId, engine::LoopStateMirror>>,
+            Weak<ObjectControl<AudioChannelId, engine::AudioChannelStateMirror>>,
+        )>,
+    >,
     external: Mutex<Option<Arc<Mutex<engine::DummyExternalConnections>>>>,
     jack: Mutex<Option<Arc<Mutex<JackBackend>>>>,
     cpal: Mutex<Option<Arc<Mutex<CpalBackend>>>>,
@@ -1239,6 +1357,50 @@ impl SharedSession {
         answer
     }
 
+    fn queue_result<T: Send + 'static>(
+        &self,
+        f: impl FnOnce(&mut engine::Session) -> T + Send + 'static,
+    ) -> Result<(CommandSequence, rtrb::Consumer<T>)> {
+        if let Some(e) = self
+            .parked
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .as_mut()
+        {
+            e.pump();
+        }
+        let mut f = Some(f);
+        let mut warned = false;
+        let queued = loop {
+            let attempt = {
+                let mut handle = self
+                    .handle
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
+                match handle.try_reserve() {
+                    Ok(reservation) => Ok(handle.send_for_result_reserved(
+                        reservation,
+                        f.take().expect("request queued once"),
+                    )),
+                    Err(error) => Err(error),
+                }
+            };
+            match attempt {
+                Ok(queued) => break queued,
+                Err(SendError::Full) => {
+                    if !warned {
+                        log::warn!("engine command queue is full; waiting to queue request");
+                        warned = true;
+                    }
+                    self.pump_or_wait_for_capacity();
+                }
+                Err(error) => return Err(anyhow!("could not queue the request: {error}")),
+            }
+        };
+        self.pump_parked();
+        Ok(queued)
+    }
+
     fn query_graph_scheduler_response<T: Send + 'static>(
         &self,
         f: impl FnOnce(&mut engine::Session) -> T + Send + 'static,
@@ -1255,34 +1417,7 @@ impl SharedSession {
             return Ok(result);
         }
 
-        let mut f = Some(f);
-        let mut warned = false;
-        let rx = loop {
-            let attempt = {
-                let mut handle = self.handle.lock().unwrap_or_else(|e| e.into_inner());
-                match handle.try_reserve() {
-                    Ok(reservation) => {
-                        let (_, rx) = handle.send_for_result_reserved(
-                            reservation,
-                            f.take().expect("request queued once"),
-                        );
-                        Ok(rx)
-                    }
-                    Err(error) => Err(error),
-                }
-            };
-            match attempt {
-                Ok(rx) => break rx,
-                Err(SendError::Full) => {
-                    if !warned {
-                        log::warn!("engine command queue is full; waiting to queue request");
-                        warned = true;
-                    }
-                    self.pump_or_wait_for_capacity();
-                }
-                Err(error) => return Err(anyhow!("could not queue the request: {error}")),
-            }
-        };
+        let (_, rx) = self.queue_result(f)?;
         engine::wait_for_result(rx, engine::DEFAULT_WAIT_TIMEOUT)
             .map_err(|e| anyhow!("engine did not answer: {e}"))
     }
@@ -1294,6 +1429,14 @@ impl SharedSession {
         };
         engine::wait_for_command(&stats, sequence, timeout)
             .map_err(|e| anyhow!("engine did not reach command {}: {e}", sequence.get()))
+    }
+
+    fn poll_trace<T>(&self, f: impl FnOnce(&engine::CompositeTraceSnapshot) -> T) -> Option<T> {
+        self.handle
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .poll_trace()
+            .map(f)
     }
 
     /// Whether a schedule rebuild might be needed, without asking the audio thread.
@@ -1612,12 +1755,17 @@ fn jack_disconnect_port(
     };
 }
 
+#[derive(Clone)]
 pub struct BackendSession {
     shared: Arc<SharedSession>,
 }
 unsafe impl Send for BackendSession {}
 unsafe impl Sync for BackendSession {}
 impl BackendSession {
+    pub fn session_id(&self) -> u64 {
+        self.shared.session_id
+    }
+
     pub fn new() -> Result<Self> {
         Self::create()
     }
@@ -1638,6 +1786,12 @@ impl BackendSession {
             handle: Mutex::new(handle),
             engine_connected,
             parked: Mutex::new(Some(engine)),
+            next_composite_slot: AtomicU32::new(0x8000_0000),
+            next_composite_version: AtomicU32::new(1),
+            composite_registry: Mutex::new(CompositeRegistry::default()),
+            primitive_loop_controls: Mutex::new(Vec::new()),
+            primitive_sync_sources: Mutex::new(Vec::new()),
+            audio_channel_controls: Mutex::new(Vec::new()),
             external: Mutex::new(None),
             jack: Mutex::new(None),
             cpal: Mutex::new(None),
@@ -1739,6 +1893,11 @@ impl BackendSession {
         *self.shared.cpal.lock().unwrap_or_else(|e| e.into_inner()) = driver.cpal();
         Ok(())
     }
+    pub fn poll_composite_trace(&self) -> Option<Vec<engine::BoundaryTraceEntry>> {
+        self.shared
+            .poll_trace(|snapshot| snapshot.composite_trace.clone())
+    }
+
     pub fn wait_for_command(&self, sequence: CommandSequence, timeout: Duration) -> Result<()> {
         self.shared.wait_for_command(sequence, timeout)
     }
@@ -1763,11 +1922,448 @@ impl BackendSession {
             }
         })?;
         control.set_creation_sequence(sequence);
+        self.shared
+            .primitive_loop_controls
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push(PrimitiveLoopControl {
+                control: Arc::downgrade(&control),
+                engine_index: Arc::clone(&control.engine_index),
+                desired_source: None,
+                applied_source_index: Arc::new(AtomicUsize::new(INVALID_OBJECT_INDEX)),
+            });
         Ok(Loop {
             shared: self.shared.clone(),
             control,
         })
     }
+    pub fn create_composite_loop(&self) -> Result<CompositeLoop> {
+        let slot = self
+            .shared
+            .next_composite_slot
+            .fetch_add(1, Ordering::Relaxed);
+        if slot == u32::MAX {
+            return Err(anyhow!("composite identity capacity exhausted"));
+        }
+        let identity = engine::LoopIdentity {
+            slot,
+            generation: 1,
+            kind: engine::LoopTargetKind::Composite,
+        };
+        let control = Arc::new(
+            ObjectControl::<CompositeId, engine::CompositeStateMirror>::pending_with_mirror(
+                self.shared.session_id,
+                Arc::new(engine::CompositeStateMirror::new(identity)),
+            ),
+        );
+        let weak = Arc::downgrade(&control);
+        let sequence = self.shared.send_control(move |_session| {
+            if let Some(control) = weak.upgrade() {
+                control.mark_ready(CompositeId(slot as usize));
+            }
+        })?;
+        control.set_creation_sequence(sequence);
+        Ok(CompositeLoop {
+            shared: self.shared.clone(),
+            control,
+        })
+    }
+    pub fn primitive_sync_sources(&self) -> Vec<Option<usize>> {
+        self.primitive_sync_sources_if_ready().unwrap_or_else(|| {
+            self.shared
+                .primitive_sync_sources
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .clone()
+        })
+    }
+
+    /// Returns no topology while a live primitive handle is still pending. Callers can retry
+    /// on a later refresh without blocking that refresh on an engine command fence.
+    pub fn primitive_sync_sources_if_ready(&self) -> Option<Vec<Option<usize>>> {
+        let controls = self
+            .shared
+            .primitive_loop_controls
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if controls.iter().any(|entry| {
+            entry
+                .control
+                .upgrade()
+                .is_some_and(|control| control.lifecycle() == ObjectLifecycle::Pending)
+                || entry
+                    .desired_source
+                    .as_ref()
+                    .and_then(Weak::upgrade)
+                    .is_some_and(|source| source.lifecycle() == ObjectLifecycle::Pending)
+        }) {
+            return None;
+        }
+        let mut result = self
+            .shared
+            .primitive_sync_sources
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        for entry in controls.iter() {
+            let index = entry.engine_index.load(Ordering::Acquire);
+            if index == INVALID_OBJECT_INDEX {
+                continue;
+            }
+            if result.len() <= index {
+                result.resize(index + 1, None);
+            }
+            let source_index = entry.applied_source_index.load(Ordering::Acquire);
+            result[index] = (source_index != INVALID_OBJECT_INDEX).then_some(source_index);
+        }
+        Some(result.clone())
+    }
+
+    pub fn install_composite_timeline(
+        &self,
+        mut timeline: engine::CompositeBoundaryTimeline,
+        primitive_sync_sources: &[Option<usize>],
+    ) -> Result<u64> {
+        let version = u64::from(
+            self.shared
+                .next_composite_version
+                .fetch_add(1, Ordering::Relaxed),
+        );
+        timeline
+            .prepare_install(version, primitive_sync_sources)
+            .map_err(|error| {
+                anyhow!(
+                    "could not prepare composite timeline: {error}; primitive sync sources: {primitive_sync_sources:?}"
+                )
+            })?;
+        match self.shared.query_graph_scheduler_response(move |session| {
+            session.install_prepared_composite_timeline(timeline)
+        })? {
+            Ok(reclaimed) => {
+                drop(reclaimed);
+                Ok(version)
+            }
+            Err(rejected) => Err(anyhow!(
+                "engine rejected composite timeline version {version}: {}",
+                rejected.error
+            )),
+        }
+    }
+    pub fn configure_composite_loop(
+        &self,
+        composite: &CompositeLoop,
+        descriptor: engine::CompositePlanDescriptor,
+        sync_source: engine::LoopIdentity,
+        metadata: Vec<engine::LoopTargetMetadata>,
+        primitive_sync_sources: &[Option<usize>],
+    ) -> Result<u64> {
+        if descriptor.source != composite.identity()
+            || !Arc::ptr_eq(&self.shared, &composite.shared)
+        {
+            return Err(anyhow!(
+                "composite configuration belongs to another session"
+            ));
+        }
+        let mut registry = self
+            .shared
+            .composite_registry
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let mut candidate = registry.clone();
+        candidate.configs.insert(
+            composite.identity(),
+            CompositeConfig {
+                descriptor,
+                sync_source,
+                state: Arc::clone(&composite.control.mirror),
+            },
+        );
+        for item in metadata {
+            candidate.metadata.insert(item.identity, item);
+        }
+        let topology: Vec<_> = candidate
+            .configs
+            .values()
+            .map(|config| {
+                (
+                    config.descriptor.source,
+                    config.sync_source,
+                    config
+                        .descriptor
+                        .timelines
+                        .iter()
+                        .flat_map(|timeline| &timeline.sections)
+                        .flat_map(|section| &section.entries)
+                        .map(|entry| entry.target)
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect();
+        let timeline = compile_composite_registry(&candidate)?;
+        let version = self
+            .install_composite_timeline(timeline, primitive_sync_sources)
+            .map_err(|error| anyhow!("{error}; composite topology: {topology:?}"))?;
+        *registry = candidate;
+        Ok(version)
+    }
+
+    /// Compiles a composite registry update off the realtime thread and queues activation.
+    /// The returned acknowledgement is polled by the frontend; displaced or rejected plans
+    /// are always destroyed by the acknowledgement worker, never by the engine callback.
+    pub fn configure_composite_loop_queued(
+        &self,
+        composite: &CompositeLoop,
+        descriptor: engine::CompositePlanDescriptor,
+        sync_source: engine::LoopIdentity,
+        metadata: Vec<engine::LoopTargetMetadata>,
+        primitive_sync_sources: &[Option<usize>],
+        play_after_record: bool,
+    ) -> Result<CompositeInstallAck> {
+        if descriptor.source != composite.identity()
+            || !Arc::ptr_eq(&self.shared, &composite.shared)
+        {
+            return Err(anyhow!(
+                "composite configuration belongs to another session"
+            ));
+        }
+        let mut registry = self
+            .shared
+            .composite_registry
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let mut candidate = registry.clone();
+        candidate.configs.insert(
+            composite.identity(),
+            CompositeConfig {
+                descriptor,
+                sync_source,
+                state: Arc::clone(&composite.control.mirror),
+            },
+        );
+        for item in metadata {
+            candidate.metadata.insert(item.identity, item);
+        }
+        let mut timeline = compile_composite_registry(&candidate)?;
+        let version = u64::from(
+            self.shared
+                .next_composite_version
+                .fetch_add(1, Ordering::Relaxed),
+        );
+        timeline
+            .prepare_install(version, primitive_sync_sources)
+            .map_err(|error| anyhow!("could not prepare composite timeline: {error}"))?;
+        let source = composite.identity();
+        let installation_state = Arc::clone(&composite.control.mirror);
+        let (sequence, receiver) = self.shared.queue_result(move |session| {
+            // A setter can be queued while this installation is pending. Its desired mirror
+            // value is visible now even though its engine command follows this one.
+            let desired_play_after_record =
+                play_after_record || installation_state.read().play_after_record;
+            match session.install_prepared_composite_timeline(timeline) {
+                Ok(reclaimed) => {
+                    let _ = session
+                        .accept_composite_play_after_record(source, desired_play_after_record);
+                    Ok(reclaimed)
+                }
+                Err(rejected) => Err(rejected),
+            }
+        })?;
+        *registry = candidate;
+        drop(registry);
+
+        let outcome = Arc::new(Mutex::new(None));
+        let worker_outcome = Arc::clone(&outcome);
+        thread::spawn(move || {
+            // This wait runs on a reclamation worker, never on the GUI or realtime thread.
+            // Instrumented and packaged CI builds can take longer than the ordinary command
+            // fence while the frontend settles topology, so retain a bounded but generous
+            // transaction timeout here.
+            let result = match engine::wait_for_result(receiver, Duration::from_secs(5)) {
+                Ok(Ok(reclaimed)) => {
+                    drop(reclaimed);
+                    Ok(version)
+                }
+                Ok(Err(rejected)) => {
+                    let error = rejected.error.to_string();
+                    drop(rejected);
+                    Err(format!(
+                        "engine rejected composite timeline version {version}: {error}"
+                    ))
+                }
+                Err(error) => Err(format!(
+                    "engine did not acknowledge composite timeline version {version}: {error}"
+                )),
+            };
+            *worker_outcome
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()) = Some(result);
+        });
+        Ok(CompositeInstallAck { sequence, outcome })
+    }
+
+    pub fn adopt_audio_ringbuffers(
+        &self,
+        requests: Vec<engine::AudioRingbufferAdoption>,
+    ) -> Result<()> {
+        let shape_requests = requests.clone();
+        let shape = self
+            .shared
+            .query_graph_scheduler_response(move |session| {
+                session.describe_audio_ringbuffer_adoption(&shape_requests)
+            })??;
+        let shapes: Vec<_> = shape.channels().collect();
+        let mut prepared: Vec<_> = shapes
+            .iter()
+            .map(|channel| engine::PreparedAudioRingbufferAdoptionChannel {
+                loop_idx: channel.loop_idx,
+                channel_idx: channel.channel_idx,
+                data: engine::PreparedAudioChannelData::new(channel.chunk_size, channel.capacity),
+            })
+            .collect();
+        let mut copies: Vec<_> = shapes
+            .iter()
+            .map(|channel| Vec::with_capacity(channel.capacity))
+            .collect();
+        let controls = self
+            .shared
+            .audio_channel_controls
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        let mirrors: Vec<_> = shapes
+            .iter()
+            .map(|shape| {
+                controls
+                    .iter()
+                    .find_map(|(parent, channel)| {
+                        let parent = parent.upgrade()?;
+                        let channel = channel.upgrade()?;
+                        (parent.ready_id().map(ObjectIdentity::index) == Some(shape.loop_idx)
+                            && channel.auxiliary_index() == Some(shape.channel_idx))
+                        .then(|| Arc::clone(&channel.mirror))
+                    })
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "audio channel mirror is missing for loop {} channel {}",
+                            shape.loop_idx,
+                            shape.channel_idx
+                        )
+                    })
+            })
+            .collect::<Result<_>>()?;
+        let (result, returned, copies) =
+            self.shared.query_graph_scheduler_response(move |session| {
+                let result = session.adopt_audio_ringbuffers_prepared_with_copies(
+                    &requests,
+                    &mut prepared,
+                    &mut copies,
+                );
+                (result, prepared, copies)
+            })?;
+        drop(returned);
+        result?;
+        for (mirror, data) in mirrors.into_iter().zip(copies) {
+            mirror.replace_data(data);
+        }
+        Ok(())
+    }
+
+    pub fn remove_composite_loop(
+        &self,
+        composite: &CompositeLoop,
+        primitive_sync_sources: &[Option<usize>],
+    ) -> Result<u64> {
+        if !Arc::ptr_eq(&self.shared, &composite.shared) {
+            return Err(anyhow!("composite loop belongs to another session"));
+        }
+
+        let mut registry = self
+            .shared
+            .composite_registry
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let identity = composite.identity();
+        if !registry.configs.contains_key(&identity) {
+            composite.control.mark_closed();
+            return Ok(0);
+        }
+
+        let mut removed = BTreeSet::from([identity]);
+        loop {
+            let dependents: Vec<_> = registry
+                .configs
+                .values()
+                .filter(|config| {
+                    !removed.contains(&config.descriptor.source)
+                        && config
+                            .descriptor
+                            .timelines
+                            .iter()
+                            .flat_map(|timeline| &timeline.sections)
+                            .flat_map(|section| &section.entries)
+                            .any(|entry| removed.contains(&entry.target))
+                })
+                .map(|config| config.descriptor.source)
+                .collect();
+            if dependents.is_empty() {
+                break;
+            }
+            removed.extend(dependents);
+        }
+
+        for &identity in &removed {
+            let state = registry
+                .configs
+                .get(&identity)
+                .ok_or_else(|| anyhow!("composite registry entry disappeared"))?
+                .state
+                .read();
+            if state.installed && state.mode != LoopMode::Stopped {
+                self.shared
+                    .query_graph_scheduler_response(move |session| {
+                        session.accept_composite_immediate_transition(
+                            identity,
+                            engine::LoopMode::Stopped,
+                            0,
+                        )
+                    })?
+                    .map_err(|error| anyhow!("composite stop rejected: {error}"))?;
+            }
+        }
+        let deadline = Instant::now() + engine::DEFAULT_WAIT_TIMEOUT;
+        for &identity in &removed {
+            let mirror = Arc::clone(
+                &registry
+                    .configs
+                    .get(&identity)
+                    .ok_or_else(|| anyhow!("composite registry entry disappeared"))?
+                    .state,
+            );
+            loop {
+                let state = mirror.read();
+                if !state.installed || state.mode == LoopMode::Stopped {
+                    break;
+                }
+                if Instant::now() >= deadline {
+                    return Err(anyhow!("composite did not stop before removal"));
+                }
+                thread::sleep(Duration::from_millis(1));
+            }
+        }
+
+        let mut candidate = registry.clone();
+        candidate
+            .configs
+            .retain(|identity, _| !removed.contains(identity));
+        candidate
+            .metadata
+            .retain(|identity, _| !removed.contains(identity));
+        let timeline = compile_composite_registry(&candidate)?;
+        let version = self.install_composite_timeline(timeline, primitive_sync_sources)?;
+        *registry = candidate;
+        composite.control.mark_closed();
+        Ok(version)
+    }
+
     pub fn create_fx_chain(&self, chain_type: FXChainType, title: &str) -> Result<FXChain> {
         let backend = match chain_type {
             FXChainType::Test2x2x1 => FXChainBackendKind::Test2x2x1,
@@ -2583,12 +3179,229 @@ impl Drop for AudioDriver {
 }
 
 #[derive(Clone)]
+pub struct CompositeInstallAck {
+    sequence: CommandSequence,
+    outcome: Arc<Mutex<Option<std::result::Result<u64, String>>>>,
+}
+
+impl CompositeInstallAck {
+    pub fn sequence(&self) -> CommandSequence {
+        self.sequence
+    }
+
+    pub fn take_result(&self) -> Option<std::result::Result<u64, String>> {
+        self.outcome
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CompositeLoopState {
+    pub identity: engine::LoopIdentity,
+    pub active_plan_version: u64,
+    pub pending_plan_version: Option<u64>,
+    pub mode: LoopMode,
+    pub maybe_next_mode: Option<LoopMode>,
+    pub maybe_next_mode_delay: Option<u32>,
+    pub iteration: u32,
+    pub cycle_count: u64,
+    pub length: u64,
+    pub position: u64,
+    pub play_after_record: bool,
+    pub active_children: Vec<engine::ActiveCompositeChild>,
+    pub runtime_counters: engine::CompositeRuntimeCounters,
+    pub runtime_fault: engine::CompositeRuntimeFault,
+}
+
+impl CompositeLoopState {
+    fn from_mirror(snapshot: &engine::CompositeStateMirrorSnapshot) -> Self {
+        Self {
+            identity: snapshot.identity,
+            active_plan_version: snapshot.active_plan_version,
+            pending_plan_version: snapshot.pending_plan_version,
+            mode: snapshot.mode.into(),
+            maybe_next_mode: snapshot.next_mode.map(Into::into),
+            maybe_next_mode_delay: snapshot.next_mode_delay,
+            iteration: snapshot.iteration,
+            cycle_count: snapshot.cycle_count,
+            length: snapshot.length,
+            position: snapshot.position,
+            play_after_record: snapshot.play_after_record,
+            active_children: snapshot.active_children().collect(),
+            runtime_counters: snapshot.runtime_counters,
+            runtime_fault: snapshot.runtime_fault,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct CompositeLoop {
+    shared: Arc<SharedSession>,
+    control: Arc<ObjectControl<CompositeId, engine::CompositeStateMirror>>,
+}
+
+impl CompositeLoop {
+    /// Composite identities are reserved before their creation command is queued, so callers
+    /// can safely use them without waiting. Command sequencing guarantees that any later
+    /// configuration still executes after creation.
+    pub fn identity_if_ready(&self) -> Option<engine::LoopIdentity> {
+        matches!(
+            self.lifecycle(),
+            ObjectLifecycle::Pending | ObjectLifecycle::Ready
+        )
+        .then(|| self.control.mirror.identity())
+    }
+
+    pub fn identity(&self) -> engine::LoopIdentity {
+        self.control.mirror.identity()
+    }
+
+    pub fn lifecycle(&self) -> ObjectLifecycle {
+        observed_lifecycle(&self.shared, &self.control)
+    }
+
+    pub fn creation_sequence(&self) -> CommandSequence {
+        self.control.creation_sequence()
+    }
+
+    pub fn creation_error(&self) -> Option<String> {
+        self.control.error()
+    }
+
+    fn ensure_ready(&self) -> Result<()> {
+        match self.lifecycle() {
+            // Configuration and controls share the sequenced engine queue. A control queued
+            // while installation is pending is valid and executes after that install.
+            ObjectLifecycle::Ready => Ok(()),
+            ObjectLifecycle::Pending => Err(anyhow!("composite loop is pending creation")),
+            ObjectLifecycle::Failed => Err(anyhow!(
+                "composite loop creation failed: {}",
+                self.creation_error()
+                    .unwrap_or_else(|| "unknown error".to_string())
+            )),
+            ObjectLifecycle::Closed => Err(anyhow!("composite loop is closed")),
+        }
+    }
+
+    pub fn transition(&self, mode: LoopMode, delay: u32) -> Result<CommandSequence> {
+        self.ensure_ready()?;
+        if mode == LoopMode::Unknown {
+            return Err(anyhow!("unknown is not a valid composite mode"));
+        }
+        let source = self.identity();
+        let weak = Arc::downgrade(&self.control);
+        self.shared
+            .send_control(move |session| {
+                if weak.upgrade().is_some() {
+                    let _ = session.accept_composite_transition(source, mode.into(), delay);
+                }
+            })
+            .map_err(Into::into)
+    }
+
+    pub fn transition_immediate(&self, mode: LoopMode, iteration: i64) -> Result<CommandSequence> {
+        self.ensure_ready()?;
+        if mode == LoopMode::Unknown {
+            return Err(anyhow!("unknown is not a valid composite mode"));
+        }
+        let source = self.identity();
+        let weak = Arc::downgrade(&self.control);
+        self.shared
+            .send_control(move |session| {
+                if weak.upgrade().is_some() {
+                    let _ = session.accept_composite_immediate_transition(
+                        source,
+                        mode.into(),
+                        iteration,
+                    );
+                }
+            })
+            .map_err(Into::into)
+    }
+
+    pub fn set_play_after_record(&self, enabled: bool) -> Result<CommandSequence> {
+        self.ensure_ready()?;
+        let source = self.identity();
+        let weak = Arc::downgrade(&self.control);
+        let sequence = self.shared.send_control(move |session| {
+            if weak.upgrade().is_some() {
+                let _ = session.accept_composite_play_after_record(source, enabled);
+            }
+        })?;
+        self.control.mirror.set_play_after_record(enabled);
+        Ok(sequence)
+    }
+
+    pub fn poll_state(&self) -> Option<CompositeLoopState> {
+        if self.lifecycle() != ObjectLifecycle::Ready {
+            return None;
+        }
+        let snapshot = self.control.mirror.read();
+        snapshot
+            .installed
+            .then(|| CompositeLoopState::from_mirror(&snapshot))
+    }
+
+    pub fn get_state(&self) -> Result<CompositeLoopState> {
+        match self.lifecycle() {
+            ObjectLifecycle::Ready => {
+                let snapshot = self.control.mirror.read();
+                snapshot
+                    .installed
+                    .then(|| CompositeLoopState::from_mirror(&snapshot))
+                    .ok_or_else(|| anyhow!("composite loop is not installed"))
+            }
+            ObjectLifecycle::Pending => Err(anyhow!("composite loop is pending creation")),
+            ObjectLifecycle::Failed => Err(anyhow!(
+                "composite loop creation failed: {}",
+                self.creation_error()
+                    .unwrap_or_else(|| "unknown error".to_string())
+            )),
+            ObjectLifecycle::Closed => Err(anyhow!("composite loop is closed")),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct Loop {
     shared: Arc<SharedSession>,
     control: Arc<ObjectControl<LoopId, engine::LoopStateMirror>>,
 }
 pub type LoopState = engine::LoopState;
 impl Loop {
+    pub fn session_id(&self) -> u64 {
+        self.control.session_id
+    }
+
+    pub fn identity_if_ready(&self) -> Option<engine::LoopIdentity> {
+        let index = self.control.ready_id().map(ObjectIdentity::index)?;
+        Some(engine::LoopIdentity {
+            slot: index as u32,
+            generation: 1,
+            kind: engine::LoopTargetKind::Basic,
+        })
+    }
+
+    pub fn identity(&self) -> engine::LoopIdentity {
+        if self.lifecycle() == ObjectLifecycle::Pending {
+            let _ = self
+                .shared
+                .wait_for_command(self.creation_sequence(), engine::DEFAULT_WAIT_TIMEOUT);
+        }
+        let index = self
+            .control
+            .ready_id()
+            .map(ObjectIdentity::index)
+            .expect("loop identity requested before creation completed");
+        engine::LoopIdentity {
+            slot: index as u32,
+            generation: 1,
+            kind: engine::LoopTargetKind::Basic,
+        }
+    }
+
     pub fn lifecycle(&self) -> ObjectLifecycle {
         observed_lifecycle(&self.shared, &self.control)
     }
@@ -2623,11 +3436,21 @@ impl Loop {
                 mode.into(),
                 Arc::clone(&control.mirror),
             ) {
-                Ok(idx) => control.mark_ready(AudioChannelId(idx)),
+                Ok(idx) => {
+                    if let Some(mapping) = s.channel_mapping(idx) {
+                        control.set_auxiliary_index(mapping.channel_idx);
+                    }
+                    control.mark_ready(AudioChannelId(idx));
+                }
                 Err(error) => control.mark_failed(error.to_string()),
             }
         })?;
         control.set_creation_sequence(sequence);
+        self.shared
+            .audio_channel_controls
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push((Arc::downgrade(&self.control), Arc::downgrade(&control)));
         Ok(AudioChannel {
             shared: self.shared.clone(),
             parent: Arc::clone(&self.control),
@@ -2761,17 +3584,43 @@ impl Loop {
         if src.is_some_and(|source| source.control.session_id != self.control.session_id) {
             return Err(anyhow!("cannot sync loops from different backend sessions"));
         }
+        let source = src
+            .filter(|source| !Arc::ptr_eq(&source.control, &self.control))
+            .map(|source| Arc::clone(&source.control));
+        let applied_source_index = {
+            let mut controls = self
+                .shared
+                .primitive_loop_controls
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let entry = controls
+                .iter_mut()
+                .find(|entry| {
+                    entry
+                        .control
+                        .upgrade()
+                        .is_some_and(|control| Arc::ptr_eq(&control, &self.control))
+                })
+                .ok_or_else(|| anyhow!("primitive target control is no longer registered"))?;
+            entry.desired_source = source.as_ref().map(Arc::downgrade);
+            Arc::clone(&entry.applied_source_index)
+        };
         let control = Arc::clone(&self.control);
-        let source = src.map(|loop_| Arc::clone(&loop_.control));
+        let source_for_command = source.clone();
         Ok(self.shared.send_topology(move |s: &mut engine::Session| {
             let Some(idx) = control.ready_id().map(ObjectIdentity::index) else {
                 return;
             };
-            let source_idx = source
+            let source_idx = source_for_command
                 .as_ref()
                 .and_then(|source| source.ready_id())
                 .map(ObjectIdentity::index);
-            let _ = s.set_loop_sync_source(idx, source_idx);
+            if s.set_loop_sync_source(idx, source_idx).is_ok() {
+                applied_source_index.store(
+                    source_idx.unwrap_or(INVALID_OBJECT_INDEX),
+                    Ordering::Release,
+                );
+            }
         })?)
     }
 
@@ -2781,22 +3630,27 @@ impl Loop {
         cycles_length: Option<i32>,
         go_to_cycle: Option<i32>,
         go_to_mode: LoopMode,
-    ) -> Result<CommandSequence> {
-        let control = Arc::clone(&self.control);
-        Ok(self.shared.send_control(move |s: &mut engine::Session| {
-            let Some(idx) = control.ready_id().map(ObjectIdentity::index) else {
-                return;
-            };
-            if let Err(error) = s.adopt_audio_ringbuffers_for_loop(
-                idx,
-                reverse_start_cycle,
-                cycles_length,
-                go_to_cycle,
-                go_to_mode.into(),
-            ) {
-                log::error!("could not adopt loop ringbuffers: {error}");
-            }
-        })?)
+    ) -> Result<()> {
+        if self.lifecycle() == ObjectLifecycle::Pending {
+            self.shared
+                .wait_for_command(self.creation_sequence(), engine::DEFAULT_WAIT_TIMEOUT)?;
+        }
+        let loop_idx = self
+            .control
+            .ready_id()
+            .map(ObjectIdentity::index)
+            .ok_or_else(|| anyhow!("loop is not ready"))?;
+        let request = engine::AudioRingbufferAdoption {
+            loop_idx,
+            reverse_start_cycle,
+            cycles_length,
+            go_to_cycle,
+            go_to_mode: go_to_mode.into(),
+        };
+        BackendSession {
+            shared: self.shared.clone(),
+        }
+        .adopt_audio_ringbuffers(vec![request])
     }
 }
 
@@ -2830,6 +3684,10 @@ pub struct AudioChannel {
 }
 pub type AudioChannelState = engine::AudioChannelState;
 impl AudioChannel {
+    pub fn session_id(&self) -> u64 {
+        self.control.session_id
+    }
+
     pub fn lifecycle(&self) -> ObjectLifecycle {
         observed_lifecycle(&self.shared, &self.control)
     }
@@ -2985,6 +3843,10 @@ pub struct MidiChannel {
 }
 pub type MidiChannelState = engine::MidiChannelState;
 impl MidiChannel {
+    pub fn session_id(&self) -> u64 {
+        self.control.session_id
+    }
+
     pub fn lifecycle(&self) -> ObjectLifecycle {
         observed_lifecycle(&self.shared, &self.control)
     }
@@ -4674,6 +5536,29 @@ mod tests {
     }
 
     #[test]
+    fn primitive_topology_survives_dropped_ready_controls() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let source = sess.create_loop().expect("source");
+        let follower = sess.create_loop().expect("follower");
+        follower
+            .set_sync_source(Some(&source))
+            .expect("queue sync source");
+
+        // The relationship command keeps both pending controls alive just long enough to create
+        // them, but topology caching must not depend on either frontend control surviving.
+        drop(source);
+        drop(follower);
+        engine.pump();
+        assert_eq!(
+            sess.primitive_sync_sources_if_ready()
+                .expect("topology after control drops")[1],
+            Some(0)
+        );
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
     fn loop_relationships_reject_cross_session_handles() {
         let first = BackendSession::new().expect("first session");
         let second = BackendSession::new().expect("second session");
@@ -4697,6 +5582,21 @@ mod tests {
 
         engine.pump();
         assert_eq!(engine.session().n_loops(), 0);
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
+    fn dropping_a_pending_composite_releases_its_control() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let composite = sess.create_composite_loop().expect("pending composite");
+        assert_eq!(composite.lifecycle(), ObjectLifecycle::Pending);
+        let weak = Arc::downgrade(&composite.control);
+        drop(composite);
+
+        engine.pump();
+        assert!(weak.upgrade().is_none());
+        assert!(engine.session().composite_timeline().is_empty());
         sess.shared.return_engine(engine);
     }
 

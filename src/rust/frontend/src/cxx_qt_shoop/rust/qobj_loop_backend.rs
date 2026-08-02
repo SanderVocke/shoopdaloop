@@ -14,6 +14,7 @@ use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::qobject;
 use cxx_qt_lib_shoop::qobject::FromQObject;
+use cxx_qt_lib_shoop::qpointer::{qpointer_from_qobject, qpointer_to_qobject};
 use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use shoop_engine::LoopMode;
 use std::pin::Pin;
@@ -93,8 +94,19 @@ impl LoopBackend {
 
     pub fn set_backend(mut self: Pin<&mut LoopBackend>, backend: *mut QObject) {
         debug!(self, "set backend -> {:?}", backend);
-        let mut rust_mut = self.as_mut().rust_mut();
-        rust_mut.backend = backend;
+        let backend_changed = self.backend != backend;
+        let was_initialized = self.get_initialized();
+        {
+            let mut rust_mut = self.as_mut().rust_mut();
+            if backend_changed {
+                rust_mut.backend_loop = None;
+                rust_mut.sync_source_applied_session_id = None;
+            }
+            rust_mut.backend = backend;
+        }
+        if backend_changed && was_initialized {
+            self.as_mut().initialized_changed(false);
+        }
 
         self.as_mut().maybe_initialize_backend();
         if !self.get_initialized() && !backend.is_null() {
@@ -128,7 +140,28 @@ impl LoopBackend {
             let initialize_condition: bool;
 
             if self.as_ref().get_initialized() {
-                return Ok(true);
+                let current_session_id = unsafe {
+                    let backend = BackendWrapper::from_qobject_mut_ptr(self.as_ref().backend)?;
+                    backend.session.as_ref().map(|session| session.session_id())
+                };
+                let loop_session_id = self
+                    .as_ref()
+                    .rust()
+                    .backend_loop
+                    .as_ref()
+                    .map(|loop_| loop_.session_id());
+                if current_session_id == loop_session_id {
+                    return Ok(true);
+                }
+                {
+                    let mut rust_mut = self.as_mut().rust_mut();
+                    rust_mut.backend_loop = None;
+                    rust_mut.sync_source_applied_session_id = None;
+                }
+                self.as_mut().initialized_changed(false);
+                // Signal handlers may rebuild dependent QML objects synchronously. Retry
+                // initialization on the next frontend tick rather than continuing with self.
+                return Ok(false);
             }
 
             unsafe {
@@ -160,10 +193,21 @@ impl LoopBackend {
                     }
 
                     {
-                        let sync_source = *self.sync_source();
+                        let sync_source = self.as_ref().guarded_sync_source();
                         let length = self.as_ref().prev_state.length;
                         let position = self.as_ref().prev_state.position;
-                        self.as_mut().set_backend_sync_source(sync_source);
+                        let session_id = self
+                            .as_ref()
+                            .backend_loop
+                            .as_ref()
+                            .map(|loop_| loop_.session_id())
+                            .unwrap_or_default();
+                        if self
+                            .as_ref()
+                            .sync_source_is_ready_for_session(sync_source, session_id)
+                        {
+                            self.as_mut().set_backend_sync_source(sync_source);
+                        }
                         self.as_mut().set_length(length as i32);
                         self.as_mut().set_position(position as i32);
                     }
@@ -191,8 +235,24 @@ impl LoopBackend {
     }
 
     pub fn update(mut self: Pin<&mut LoopBackend>) {
-        if self.rust().backend_loop.is_none() {
+        if !self.as_mut().maybe_initialize_backend() {
             return;
+        }
+        let session_id = self
+            .as_ref()
+            .backend_loop
+            .as_ref()
+            .map(|loop_| loop_.session_id())
+            .unwrap_or_default();
+        let sync_source = self.as_ref().guarded_sync_source();
+        if self.sync_source_applied_session_id != Some(session_id)
+            && self
+                .as_ref()
+                .sync_source_is_ready_for_session(sync_source, session_id)
+        {
+            unsafe {
+                self.as_mut().set_backend_sync_source(sync_source);
+            }
         }
 
         let result = || -> Result<(), anyhow::Error> {
@@ -512,8 +572,36 @@ impl LoopBackend {
         }
     }
 
-    unsafe fn set_backend_sync_source(self: Pin<&mut LoopBackend>, sync_source: *mut QObject) {
+    fn guarded_sync_source(&self) -> *mut QObject {
+        if self.sync_source_guard.is_null() {
+            std::ptr::null_mut()
+        } else {
+            unsafe { qpointer_to_qobject(&self.sync_source_guard) }
+        }
+    }
+
+    fn sync_source_is_ready_for_session(&self, sync_source: *mut QObject, session_id: u64) -> bool {
+        if sync_source.is_null() {
+            return true;
+        }
+        unsafe {
+            let loop_ptr = qobject_to_loop_backend_ptr(sync_source);
+            !loop_ptr.is_null()
+                && (&*loop_ptr)
+                    .rust()
+                    .backend_loop
+                    .as_ref()
+                    .is_some_and(|loop_| loop_.session_id() == session_id)
+        }
+    }
+
+    unsafe fn set_backend_sync_source(mut self: Pin<&mut LoopBackend>, sync_source: *mut QObject) {
         debug!(self, "set sync source -> {:?}", sync_source);
+        let session_id = self
+            .as_ref()
+            .backend_loop
+            .as_ref()
+            .map(|loop_| loop_.session_id());
         let result: Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
             if !sync_source.is_null() {
                 let loop_ptr = qobject_to_loop_backend_ptr(sync_source);
@@ -542,7 +630,9 @@ impl LoopBackend {
             Ok(())
         })();
         match result {
-            Ok(_) => (),
+            Ok(_) => {
+                self.as_mut().rust_mut().sync_source_applied_session_id = session_id;
+            }
             Err(err) => {
                 error!(self, "Failed to update backend sync source: {:?}", err);
             }
@@ -557,15 +647,36 @@ impl LoopBackend {
             std::ptr::null_mut()
         };
 
+        let old_source = self.as_ref().guarded_sync_source();
+        let changed = old_source != sync_source_ptr;
+        if changed {
+            let sync_source_guard = if sync_source_ptr.is_null() {
+                cxx::UniquePtr::null()
+            } else {
+                unsafe { qpointer_from_qobject(sync_source_ptr) }
+            };
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.sync_source = sync_source_ptr;
+            rust_mut.sync_source_guard = sync_source_guard;
+            rust_mut.sync_source_applied_session_id = None;
+        }
+
         if !self.as_mut().maybe_initialize_backend() {
             debug!(self, "set_sync_source -> {:?} (deferred)", sync_source_ptr);
         } else {
-            self.as_mut().set_backend_sync_source(sync_source_ptr);
+            let session_id = self
+                .as_ref()
+                .backend_loop
+                .as_ref()
+                .map(|loop_| loop_.session_id())
+                .unwrap_or_default();
+            if self
+                .as_ref()
+                .sync_source_is_ready_for_session(sync_source_ptr, session_id)
+            {
+                self.as_mut().set_backend_sync_source(sync_source_ptr);
+            }
         }
-
-        let old_source = self.as_mut().rust_mut().sync_source;
-        let changed = old_source != sync_source_ptr;
-        self.as_mut().rust_mut().sync_source = sync_source_ptr;
 
         if changed {
             self.as_mut().sync_source_changed(sync_source_ptr);
@@ -609,6 +720,4 @@ impl LoopBackend {
                 .unwrap_or_else(|_| "Unknown".to_string())
         }
     }
-
-    pub fn dependent_will_handle_sync_loop_cycle(self: Pin<&mut LoopBackend>, _cycle_nr: i32) {}
 }

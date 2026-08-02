@@ -55,6 +55,63 @@ struct CycleBuf {
 }
 
 #[derive(Debug)]
+pub struct PreparedAudioChannelData {
+    buffers: ChunkedSamples<f32>,
+    length: usize,
+}
+
+impl PreparedAudioChannelData {
+    pub fn new(chunk_size: usize, capacity: usize) -> Self {
+        let n_chunks = capacity.max(1).div_ceil(chunk_size.max(1));
+        Self {
+            buffers: ChunkedSamples::with_reserve(chunk_size.max(1), n_chunks.saturating_sub(1)),
+            length: 0,
+        }
+    }
+
+    pub fn capacity(&self) -> usize {
+        (self.buffers.n_chunks() + self.buffers.n_spare()) * self.buffers.chunk_size()
+    }
+
+    pub(crate) fn begin_load(&mut self, length: usize) {
+        debug_assert!(length <= self.capacity());
+        self.buffers.reset();
+        if length > 0 {
+            self.buffers.ensure_available(length - 1);
+        }
+        self.length = length;
+    }
+
+    pub(crate) fn write(&mut self, mut offset: usize, mut samples: &[f32]) {
+        while !samples.is_empty() {
+            let available = self.buffers.space_for_sample(offset).min(samples.len());
+            let destination = self
+                .buffers
+                .chunk_slice_mut(offset)
+                .expect("prepared adoption storage has sufficient capacity");
+            destination[..available].copy_from_slice(&samples[..available]);
+            offset += available;
+            samples = &samples[available..];
+        }
+    }
+
+    pub(crate) fn copy_to_preallocated(&self, destination: &mut Vec<f32>) {
+        debug_assert!(destination.capacity() >= self.length);
+        destination.resize(self.length, 0.0);
+        let mut offset = 0;
+        while offset < self.length {
+            let source = self
+                .buffers
+                .chunk_slice(offset)
+                .expect("prepared adoption data is initialized");
+            let count = source.len().min(self.length - offset);
+            destination[offset..offset + count].copy_from_slice(&source[..count]);
+            offset += count;
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct AudioChannel {
     buffers: ChunkedSamples<f32>,
     data_length: usize,
@@ -136,6 +193,9 @@ impl AudioChannel {
     pub fn length(&self) -> usize {
         self.data_length
     }
+    pub fn chunk_size(&self) -> usize {
+        self.buffers.chunk_size()
+    }
     pub fn set_length(&mut self, length: usize) {
         self.data_length = length;
         self.publish_all_data();
@@ -203,6 +263,46 @@ impl AudioChannel {
         if self.state.complex_data_enabled() {
             self.state.replace_data(samples.to_vec());
         }
+        self.data_changed();
+    }
+
+    pub(crate) fn can_load_without_allocation(&self, length: usize) -> bool {
+        let available_chunks = self.buffers.n_chunks() + self.buffers.n_spare();
+        length <= available_chunks.saturating_mul(self.buffers.chunk_size())
+    }
+
+    pub(crate) fn begin_bounded_load(&mut self, length: usize) {
+        debug_assert!(self.can_load_without_allocation(length));
+        self.buffers.reset();
+        if length > 0 {
+            self.buffers.ensure_available(length - 1);
+        }
+        self.data_length = length;
+        self.start_offset = 0;
+    }
+
+    pub(crate) fn write_bounded_load(&mut self, mut offset: usize, mut samples: &[f32]) {
+        debug_assert!(offset.saturating_add(samples.len()) <= self.data_length);
+        while !samples.is_empty() {
+            let available = self.buffers.space_for_sample(offset).min(samples.len());
+            let destination = self
+                .buffers
+                .chunk_slice_mut(offset)
+                .expect("bounded load storage was prepared");
+            destination[..available].copy_from_slice(&samples[..available]);
+            offset += available;
+            samples = &samples[available..];
+        }
+    }
+
+    pub(crate) fn finish_bounded_load(&mut self) {
+        self.data_changed();
+    }
+
+    pub(crate) fn commit_prepared_data(&mut self, prepared: &mut PreparedAudioChannelData) {
+        std::mem::swap(&mut self.buffers, &mut prepared.buffers);
+        std::mem::swap(&mut self.data_length, &mut prepared.length);
+        self.start_offset = 0;
         self.data_changed();
     }
 

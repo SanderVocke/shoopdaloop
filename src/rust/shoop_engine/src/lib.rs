@@ -12,6 +12,10 @@ pub mod basic_loop;
 pub mod buffer_queue;
 pub mod channel_mode;
 pub mod chunked_samples;
+pub mod composite_plan;
+pub mod composite_runtime;
+pub mod composite_semantics;
+pub mod composite_timeline;
 #[cfg(feature = "cpal")]
 pub mod cpal_mock;
 pub mod decoupled_midi_port;
@@ -51,12 +55,42 @@ pub mod state;
 pub mod state_mirror;
 pub mod wave_generator;
 
-pub use audio_channel::{AudioChannel, ChannelError};
+pub use audio_channel::{AudioChannel, ChannelError, PreparedAudioChannelData};
 pub use audio_midi_loop::{AudioMidiLoop, LoopError};
 pub use basic_loop::{BasicLoop, PoiFlags, PointOfInterest, SyncSourceState};
 pub use buffer_queue::{BufferQueue, Snapshot};
 pub use channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 pub use chunked_samples::ChunkedSamples;
+pub use composite_plan::{
+    compile_composite_plan, CompiledActionRange, CompiledChildMode, CompiledCompositeKind,
+    CompiledCompositePlan, CompiledDesiredState, CompiledPlanAction, CompiledPlanActionKind,
+    CompositeCompileError, CompositeDependency, CompositeEntry, CompositePlanDescriptor,
+    CompositePlanLimits, CompositeSection, CompositeTimeline, LoopIdentity, LoopTargetCatalog,
+    LoopTargetKind, LoopTargetMetadata, MAX_COMPOSITE_BOUNDARY_OUTPUTS, MAX_COMPOSITE_TARGETS,
+};
+pub use composite_runtime::{
+    ActiveCompositeChild, CompositePlanReplacement, CompositeRuntime, CompositeRuntimeCounters,
+    CompositeRuntimeError, CompositeRuntimeFault, CompositeTargetAction, CompositeTargetTransition,
+    CompositeTransitionBatch, PendingCompositeTransition,
+};
+pub use composite_semantics::{
+    classify_plan_modes, command_disposition, countdown_execution_boundary, dependency_order,
+    empty_child_action, entry_duration, half_open_interval_contains,
+    nested_iteration_zero_is_same_sample, normalize_coincident_schedule_actions,
+    overflow_disposition, pass_end, plan_activation, plan_can_enter_running,
+    records_this_occurrence, resolve_target, seek_cycle_offset, source_emits_due_action,
+    valid_seek_iteration, BoundaryPhase, CommandDisposition, CommandTiming, CompiledBoundaryAction,
+    CompositeKind, DependencyError, DurationError, EmptyChildAction, IntentOrigin, IntentPriority,
+    ModePlanError, OverflowDisposition, OverflowSite, PassEnd, PlanActivation, RuntimeStatus,
+    TargetIdentity, TargetResolution, TimestampRelation, BOUNDARY_PHASE_ORDER,
+};
+pub use composite_timeline::{
+    AcceptedTimelineControl, BoundaryIntent, BoundaryIntentOrigin, BoundaryTargetAction,
+    BoundaryTraceEntry, CompositeBoundaryTimeline, CompositeTimelineBuildError,
+    CompositeTimelineControlError, CompositeTimelineCounters, CompositeTimelineFault,
+    CompositeTimelineFaultRecord, CompositeTimelineLimits, CompositeTimelineNode,
+    CompositeTimelineNodeState, MAX_COMPOSITE_CONTROLS,
+};
 pub use decoupled_midi_port::DecoupledMidiPort;
 pub use driver::{
     cpal_host_names, cpal_input_device_names, cpal_input_device_names_for_host,
@@ -68,8 +102,9 @@ pub use dummy_driver::{DriverMode, DriverSettings, DummyDriver};
 pub use dummy_midi_port::DummyMidiPort;
 pub use dummy_port::{DummyAudioPort, DummyExternalConnections, DummyPortError, PortId};
 pub use engine::{
-    split, wait_for_command, wait_for_result, Command, CommandReservation, CommandSequence, Engine,
-    EngineHandle, SendError, Stats, WaitError, DEFAULT_WAIT_TIMEOUT,
+    split, wait_for_command, wait_for_result, Command, CommandReservation, CommandSequence,
+    CompositeTraceSnapshot, Engine, EngineHandle, SendError, Stats, WaitError,
+    DEFAULT_WAIT_TIMEOUT,
 };
 pub use fx_chain::{FXChainState, FXChainType};
 pub use graph::{processing_order, GraphError, NodeIdx, NodeSpec};
@@ -89,9 +124,14 @@ pub use port::{
     AudioPort, PortConnectability, PortConnectabilityKind, PortDataType, PortDirection,
 };
 pub use profiling::{ProfilingReport, ProfilingReportItem};
-pub use session::{build_schedule, Port, PreparedSchedule, Session, SessionError, Topology};
+pub use session::{
+    build_schedule, AudioRingbufferAdoption, AudioRingbufferAdoptionChannelShape,
+    AudioRingbufferAdoptionShape, Port, PreparedAudioRingbufferAdoptionChannel, PreparedSchedule,
+    ReclaimedCompositeTimeline, RejectedCompositeTimeline, Session, SessionError, Topology,
+    MAX_AUDIO_RINGBUFFER_ADOPTIONS, MAX_AUDIO_RINGBUFFER_ADOPTION_CHANNELS,
+};
 pub use state::{AudioChannelState, AudioPortState, LoopState, MidiChannelState, MidiPortState};
 pub use state_mirror::{
-    AudioChannelStateMirror, AudioPortStateMirror, LoopStateMirror, MidiChannelStateMirror,
-    MidiPortStateMirror,
+    AudioChannelStateMirror, AudioPortStateMirror, CompositeStateMirror,
+    CompositeStateMirrorSnapshot, LoopStateMirror, MidiChannelStateMirror, MidiPortStateMirror,
 };

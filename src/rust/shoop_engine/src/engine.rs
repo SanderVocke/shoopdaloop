@@ -16,7 +16,13 @@
 //! Commands are `FnMut` rather than `FnOnce` because they are called through the box
 //! and the box then has to survive to be sent back. Each is called exactly once.
 
-use crate::session::Session;
+use crate::composite_plan::{CompiledCompositePlan, LoopIdentity};
+use crate::composite_timeline::{
+    BoundaryTargetAction, BoundaryTraceEntry, CompositeBoundaryTimeline,
+    CompositeTimelineControlError, CompositeTimelineCounters, CompositeTimelineFaultRecord,
+};
+use crate::loop_mode::LoopMode;
+use crate::session::{ReclaimedCompositeTimeline, RejectedCompositeTimeline, Session};
 
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
@@ -100,6 +106,8 @@ pub struct Stats {
     pub stuck_cycles: AtomicU32,
     /// Commands that arrived and were applied.
     pub commands_applied: AtomicU32,
+    /// Diagnostic trace publications skipped because every preallocated box was in use.
+    pub trace_snapshots_dropped: AtomicU32,
     /// The newest command sequence that finished executing.
     pub last_applied_command: AtomicU64,
     /// Cycles run against a schedule older than the session's topology.
@@ -144,11 +152,33 @@ impl Stats {
     }
 }
 
+/// Bounded session-level composite diagnostics.
+///
+/// Ordinary composite state uses `CompositeStateMirror`; this queue exists only for trace and
+/// timeline diagnostics whose history does not belong to any one object.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct CompositeTraceSnapshot {
+    pub composite_timeline_counters: CompositeTimelineCounters,
+    pub composite_timeline_fault: CompositeTimelineFaultRecord,
+    pub composite_timeline_version: u64,
+    pub n_retired_composite_plans: usize,
+    pub composite_trace: Vec<BoundaryTraceEntry>,
+    pub cycle: u32,
+    pub n_composite_trace_entries: usize,
+}
+
+impl CompositeTraceSnapshot {
+    pub fn truncated(&self) -> bool {
+        self.n_composite_trace_entries > self.composite_trace.len()
+    }
+}
 /// Owns the session on the audio thread.
 pub struct Engine {
     session: Session,
     commands: Consumer<SequencedCommand>,
     returns: Producer<SequencedCommand>,
+    filled: Producer<Box<CompositeTraceSnapshot>>,
+    empties: Consumer<Box<CompositeTraceSnapshot>>,
     stats: Arc<Stats>,
     alive: Arc<AtomicBool>,
 }
@@ -157,6 +187,9 @@ pub struct Engine {
 pub struct EngineHandle {
     commands: Producer<SequencedCommand>,
     returns: Consumer<SequencedCommand>,
+    filled: Consumer<Box<CompositeTraceSnapshot>>,
+    empties: Producer<Box<CompositeTraceSnapshot>>,
+    current: Option<Box<CompositeTraceSnapshot>>,
     stats: Arc<Stats>,
     alive: Arc<AtomicBool>,
     next_sequence: u64,
@@ -170,6 +203,21 @@ pub fn split(session: Session, capacity: usize) -> (Engine, EngineHandle) {
     let (cmd_tx, cmd_rx) = RingBuffer::new(capacity);
     let (ret_tx, ret_rx) = RingBuffer::new(capacity);
 
+    // Three snapshots in circulation: one being filled, one in flight, one being read.
+    const N_SNAPSHOTS: usize = 3;
+    let (filled_tx, filled_rx) = RingBuffer::new(N_SNAPSHOTS);
+    let (mut empties_tx, empties_rx) = RingBuffer::new(N_SNAPSHOTS);
+    let composite_trace_room = session
+        .composite_timeline()
+        .n_history_trace_entries()
+        .max(64);
+    for _ in 0..N_SNAPSHOTS {
+        let _ = empties_tx.push(Box::new(CompositeTraceSnapshot {
+            composite_trace: Vec::with_capacity(composite_trace_room),
+            ..Default::default()
+        }));
+    }
+
     let stats = Arc::new(Stats::default());
     let alive = Arc::new(AtomicBool::new(true));
     (
@@ -177,12 +225,17 @@ pub fn split(session: Session, capacity: usize) -> (Engine, EngineHandle) {
             session,
             commands: cmd_rx,
             returns: ret_tx,
+            filled: filled_tx,
+            empties: empties_rx,
             stats: Arc::clone(&stats),
             alive: Arc::clone(&alive),
         },
         EngineHandle {
             commands: cmd_tx,
             returns: ret_rx,
+            filled: filled_rx,
+            empties: empties_tx,
+            current: None,
             stats,
             alive,
             next_sequence: 1,
@@ -261,6 +314,33 @@ impl Engine {
         self.stats
             .stale_cycles
             .store(self.session.n_stale_cycles(), Ordering::Relaxed);
+        self.publish_trace();
+    }
+
+    /// Fills and publishes a diagnostic trace snapshot, if a box is free.
+    fn publish_trace(&mut self) {
+        let Ok(mut snap) = self.empties.pop() else {
+            self.stats
+                .trace_snapshots_dropped
+                .fetch_add(1, Ordering::Relaxed);
+            return;
+        };
+
+        snap.cycle = self.stats.cycles.load(Ordering::Relaxed);
+        snap.composite_timeline_version = self.session.composite_timeline_version();
+        snap.n_retired_composite_plans = self.session.composite_timeline().n_retired_plans();
+        snap.n_composite_trace_entries =
+            self.session.composite_timeline().n_history_trace_entries();
+
+        let timeline = self.session.composite_timeline();
+        snap.composite_timeline_counters = timeline.counters();
+        snap.composite_timeline_fault = timeline.fault();
+        snap.composite_trace.clear();
+        let trace_room = snap.composite_trace.capacity();
+        snap.composite_trace
+            .extend(timeline.history_trace().take(trace_room));
+
+        let _ = self.filled.push(snap);
     }
 
     /// Applies queued control work without running a cycle.
@@ -294,8 +374,12 @@ impl Engine {
     }
 
     fn apply_commands(&mut self) {
+        let accepted = self.commands.slots();
         let mut applied = 0u32;
-        while let Ok(mut queued) = self.commands.pop() {
+        for _ in 0..accepted {
+            let Ok(mut queued) = self.commands.pop() else {
+                break;
+            };
             crate::realtime_allow_alloc_once!("Engine::apply_commands command execution", || {
                 (queued.command)(&mut self.session)
             });
@@ -359,6 +443,12 @@ fn wait_until<T>(
         } else {
             std::thread::sleep(POLL_INTERVAL);
         }
+    }
+}
+
+fn grow_to<T>(values: &mut Vec<T>, wanted: usize) {
+    if wanted > values.capacity() {
+        values.reserve(wanted - values.capacity());
     }
 }
 
@@ -477,6 +567,90 @@ impl EngineHandle {
         (sequence, rx)
     }
 
+    /// Queues a validated timeline for callback-boundary installation.
+    ///
+    /// The displaced timeline is returned through the result queue so its plans are
+    /// destroyed by the control thread. The returned receiver also carries the
+    /// activation-time generation/topology recheck result.
+    pub fn send_composite_timeline(
+        &mut self,
+        timeline: CompositeBoundaryTimeline,
+    ) -> Result<Consumer<Result<ReclaimedCompositeTimeline, RejectedCompositeTimeline>>, SendError>
+    {
+        self.send_for_result(move |session| session.install_prepared_composite_timeline(timeline))
+            .map(|(_, receiver)| receiver)
+    }
+
+    /// Arms a synchronized composite transition at callback-start acceptance.
+    pub fn send_composite_transition(
+        &mut self,
+        source: LoopIdentity,
+        mode: LoopMode,
+        delay: u32,
+    ) -> Result<Consumer<Result<u64, CompositeTimelineControlError>>, SendError> {
+        self.send_for_result(move |session| {
+            session.accept_composite_transition(source, mode, delay)
+        })
+        .map(|(_, receiver)| receiver)
+    }
+
+    /// Queues an unsynchronized mode change and exact prevalidated iteration seek.
+    pub fn send_composite_immediate_transition(
+        &mut self,
+        source: LoopIdentity,
+        mode: LoopMode,
+        iteration: i64,
+    ) -> Result<Consumer<Result<u64, CompositeTimelineControlError>>, SendError> {
+        self.send_for_result(move |session| {
+            session.accept_composite_immediate_transition(source, mode, iteration)
+        })
+        .map(|(_, receiver)| receiver)
+    }
+
+    /// Changes record-pass completion behavior at callback-start acceptance.
+    pub fn send_composite_play_after_record(
+        &mut self,
+        source: LoopIdentity,
+        enabled: bool,
+    ) -> Result<Consumer<Result<u64, CompositeTimelineControlError>>, SendError> {
+        self.send_for_result(move |session| {
+            session.accept_composite_play_after_record(source, enabled)
+        })
+        .map(|(_, receiver)| receiver)
+    }
+
+    /// Returns plans displaced by deferred activation for control-thread destruction.
+    pub fn send_composite_plan_reclamation(
+        &mut self,
+        capacity: usize,
+    ) -> Result<Consumer<Vec<CompiledCompositePlan>>, SendError> {
+        let storage = Vec::with_capacity(capacity);
+        self.send_for_result(move |session| session.reclaim_composite_plans(storage))
+            .map(|(_, receiver)| receiver)
+    }
+
+    /// Queues recovery from a latched composite timeline fault.
+    pub fn send_composite_fault_reset(&mut self) -> Result<Consumer<u64>, SendError> {
+        self.send_for_result(Session::accept_composite_fault_reset)
+            .map(|(_, receiver)| receiver)
+    }
+
+    /// Queues a composite/basic target action for callback-start acceptance.
+    ///
+    /// `None` uses the callback-start sample. A timestamp retains its exact future
+    /// sample boundary; a past timestamp is reported by the result receiver.
+    pub fn send_composite_control(
+        &mut self,
+        target: LoopIdentity,
+        action: BoundaryTargetAction,
+        at_sample: Option<u64>,
+    ) -> Result<Consumer<Result<u64, CompositeTimelineControlError>>, SendError> {
+        self.send_for_result(move |session| {
+            session.accept_composite_control(target, action, at_sample)
+        })
+        .map(|(_, receiver)| receiver)
+    }
+
     /// Frees commands the engine has finished with. Safe to call at any time.
     pub fn reclaim(&mut self) -> usize {
         let mut n = 0;
@@ -484,6 +658,27 @@ impl EngineHandle {
             n += 1;
         }
         n
+    }
+
+    /// Takes the newest session-level composite diagnostics.
+    pub fn poll_trace(&mut self) -> Option<&CompositeTraceSnapshot> {
+        while let Ok(snap) = self.filled.pop() {
+            if let Some(old) = self.current.replace(snap) {
+                self.recycle(old);
+            }
+        }
+        if let Some(current) = self.current.as_mut() {
+            grow_to(
+                &mut current.composite_trace,
+                current.n_composite_trace_entries,
+            );
+        }
+        self.current.as_deref()
+    }
+
+    fn recycle(&mut self, mut snap: Box<CompositeTraceSnapshot>) {
+        snap.composite_trace.clear();
+        let _ = self.empties.push(snap);
     }
 
     /// Commands queued but not yet applied.

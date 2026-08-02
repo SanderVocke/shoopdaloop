@@ -1,6 +1,8 @@
 use crate::{
     composite_loop_schedule::CompositeLoopSchedule,
+    cxx_qt_shoop::qobj_backend_wrapper::BackendWrapper,
     cxx_qt_shoop::qobj_composite_loop_backend_bridge::ffi::*,
+    cxx_qt_shoop::qobj_loop_backend_bridge::ffi::qobject_to_loop_backend_ptr,
     loop_helpers::transition_backend_loops,
     loop_mode_helpers::{is_recording_mode, is_running_mode},
     references_qobject::ReferencesQObject,
@@ -13,14 +15,17 @@ use cxx_qt::QObject;
 use cxx_qt_lib_shoop::{
     connect::connect_or_report,
     connection_types,
-    invokable::invoke,
-    qobject::{self, qobject_has_property, AsQObject},
+    qobject::{self, AsQObject, FromQObject},
     qvariant_helpers::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
 };
-use shoop_engine::LoopMode;
+use shoop_engine::{
+    AudioRingbufferAdoption, CompositeEntry, CompositePlanDescriptor, CompositeSection,
+    CompositeTimeline as EngineCompositeTimeline, LoopIdentity, LoopMode, LoopTargetKind,
+    LoopTargetMetadata,
+};
 use std::{
     cmp::{max, min},
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     pin::Pin,
 };
 shoop_log_unit!("Frontend.CompositeLoop");
@@ -53,57 +58,207 @@ macro_rules! error {
     };
 }
 
-fn get_loop_iid(l: &*mut QObject) -> String {
-    if l.is_null() {
-        return "null".to_string();
-    }
-    unsafe {
-        match qobject::qobject_property_string(&**l, "instance_identifier") {
-            Ok(iid) => {
-                return iid.to_string();
-            }
-            Err(e) => {
-                raw_error!("Could not get instance identifier: {e}");
-                return "error-unknown".to_string();
-            }
-        }
-    }
-}
-
 type Transition = (*mut QObject, LoopMode);
 type Transitions = Vec<Transition>;
 type TransitionsPerIteration = BTreeMap<i32, Transitions>;
+type PreparedAdoptions = BTreeMap<LoopIdentity, (LoopIdentity, AudioRingbufferAdoption)>;
+
+unsafe fn engine_identity(obj: *mut QObject) -> Option<LoopIdentity> {
+    if obj.is_null() {
+        return None;
+    }
+    let basic = qobject_to_loop_backend_ptr(obj);
+    if !basic.is_null() {
+        return (&*basic)
+            .rust()
+            .backend_loop
+            .as_ref()
+            .and_then(|backend| backend.identity_if_ready());
+    }
+    let composite = qobject_to_composite_loop_backend_ptr(obj);
+    if !composite.is_null() {
+        return (&*composite)
+            .rust()
+            .engine_loop
+            .as_ref()
+            .and_then(|backend| backend.identity_if_ready());
+    }
+    None
+}
+
+unsafe fn engine_target(obj: *mut QObject) -> Option<(LoopIdentity, u64)> {
+    if obj.is_null() {
+        return None;
+    }
+    let basic = qobject_to_loop_backend_ptr(obj);
+    if !basic.is_null() {
+        let backend = (&*basic).rust().backend_loop.as_ref()?;
+        let identity = backend.identity_if_ready()?;
+        let length = backend.get_state().ok()?.length as u64;
+        return Some((identity, length));
+    }
+    let composite = qobject_to_composite_loop_backend_ptr(obj);
+    if !composite.is_null() {
+        let backend = (&*composite).rust().engine_loop.as_ref()?;
+        let identity = backend.identity_if_ready()?;
+        let length = backend.get_state().ok()?.length;
+        return Some((identity, length));
+    }
+    None
+}
 
 impl CompositeLoopBackend {
     pub fn initialize_impl(self: Pin<&mut Self>) {}
 
+    fn install_engine_schedule(mut self: Pin<&mut Self>) -> Result<(), anyhow::Error> {
+        if !self.engine_schedule_dirty {
+            return Ok(());
+        }
+        // A newer schedule may become dirty while an older installation acknowledgement is
+        // pending (notably during session restoration and ringbuffer adoption). Queue the newer
+        // prepared version now so a following transition cannot run against the stale registry.
+        // Dropping the older acknowledgement is safe: its worker still reclaims the result.
+        if self.engine_schedule_installing {
+            return Err(anyhow::anyhow!("recursive composite schedule dependency"));
+        }
+        self.as_mut().rust_mut().engine_schedule_installing = true;
+        let result = self.as_mut().install_engine_schedule_impl();
+        self.as_mut().rust_mut().engine_schedule_installing = false;
+        result
+    }
+
+    fn install_engine_schedule_impl(mut self: Pin<&mut Self>) -> Result<(), anyhow::Error> {
+        let session = self
+            .backend_session
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("engine session is not initialized"))?
+            .clone();
+        let composite = self
+            .engine_loop
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("engine composite is not initialized"))?
+            .clone();
+        let composite_identity = composite
+            .identity_if_ready()
+            .ok_or_else(|| anyhow::anyhow!("engine composite creation is still pending"))?;
+        let (sync_source, sync_length) = unsafe {
+            engine_target(self.sync_source)
+                .ok_or_else(|| anyhow::anyhow!("composite sync source is not engine-backed"))?
+        };
+        let mut metadata = BTreeMap::new();
+        metadata.insert(
+            composite_identity,
+            LoopTargetMetadata {
+                identity: composite_identity,
+                length_samples: self.length.max(0) as u64,
+            },
+        );
+        metadata.insert(
+            sync_source,
+            LoopTargetMetadata {
+                identity: sync_source,
+                length_samples: sync_length,
+            },
+        );
+        let mut entries = Vec::new();
+        for (&start, events) in &self.schedule.data {
+            for (target, explicit_mode) in &events.loops_start {
+                let target_obj = target.obj.as_qobject_ref() as *mut QObject;
+                unsafe {
+                    let dependency = qobject_to_composite_loop_backend_ptr(target_obj);
+                    let this = self.as_ref().get_ref() as *const Self as *mut Self;
+                    if !dependency.is_null() && dependency != this {
+                        Pin::new_unchecked(&mut *dependency).install_engine_schedule()?;
+                    }
+                }
+                let Some((identity, length_samples)) = (unsafe { engine_target(target_obj) })
+                else {
+                    return Err(anyhow::anyhow!(
+                        "composite schedule target is not engine-backed"
+                    ));
+                };
+                metadata.insert(
+                    identity,
+                    LoopTargetMetadata {
+                        identity,
+                        length_samples,
+                    },
+                );
+                let end = self
+                    .schedule
+                    .data
+                    .range(start.saturating_add(1)..)
+                    .find_map(|(&iteration, events)| {
+                        events.loops_end.contains(target).then_some(iteration)
+                    })
+                    .unwrap_or(self.n_cycles.max(start.saturating_add(1)));
+                entries.push(CompositeEntry {
+                    target: identity,
+                    delay: i64::from(start.max(0)),
+                    n_cycles: Some(i64::from((end - start).max(1))),
+                    mode: *explicit_mode,
+                });
+            }
+        }
+        let descriptor = CompositePlanDescriptor {
+            source: composite_identity,
+            sync_length,
+            timelines: vec![EngineCompositeTimeline {
+                sections: vec![CompositeSection { entries }],
+            }],
+        };
+        let primitive_sync_sources = session
+            .primitive_sync_sources_if_ready()
+            .ok_or_else(|| anyhow::anyhow!("primitive loop topology is still pending"))?;
+        let install = session.configure_composite_loop_queued(
+            &composite,
+            descriptor,
+            sync_source,
+            metadata.into_values().collect(),
+            &primitive_sync_sources,
+            self.play_after_record,
+        )?;
+        {
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.engine_schedule_install = Some(install);
+            rust_mut.engine_schedule_dirty = false;
+        }
+        Ok(())
+    }
+
     pub fn list_transitions(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         mode: LoopMode,
         start_cycle: i32,
         end_cycle: i32,
     ) -> TransitionsPerIteration {
-        let mut transitions: TransitionsPerIteration = BTreeMap::new();
+        let mut transitions = TransitionsPerIteration::new();
+        let mut previously_started = HashSet::new();
 
-        // Step through the transitions up to the given iteration.
-        if let Some((last, _)) = self.schedule.data.last_key_value() {
-            let until = last + 1;
-            for i in start_cycle..until {
-                let mut iteration_transitions: Transitions = Transitions::default();
-                self.as_mut().do_triggers_with_callback(
-                    i,
-                    mode,
-                    |obj: *mut QObject, obj_mode: LoopMode| {
-                        if !obj.is_null() {
-                            iteration_transitions.push((obj, obj_mode));
+        for (&iteration, events) in self.schedule.data.range(start_cycle..=end_cycle) {
+            let mut iteration_transitions = Transitions::new();
+            iteration_transitions.extend(events.loops_end.iter().filter_map(|target| {
+                let object = target.obj.as_qobject_ref() as *mut QObject;
+                (!object.is_null()).then_some((object, LoopMode::Stopped))
+            }));
+            iteration_transitions.extend(events.loops_start.iter().filter_map(
+                |(target, explicit_mode)| {
+                    let object = target.obj.as_qobject_ref() as *mut QObject;
+                    if object.is_null() {
+                        return None;
+                    }
+                    let target_mode = explicit_mode.unwrap_or_else(|| {
+                        if is_recording_mode(mode) && previously_started.contains(&object) {
+                            LoopMode::Stopped
+                        } else {
+                            mode
                         }
-                    },
-                );
-                transitions.insert(i, iteration_transitions);
-                if i >= end_cycle {
-                    break;
-                }
-            }
+                    });
+                    previously_started.insert(object);
+                    Some((object, target_mode))
+                },
+            ));
+            transitions.insert(iteration, iteration_transitions);
         }
 
         transitions
@@ -159,143 +314,6 @@ impl CompositeLoopBackend {
         }
     }
 
-    pub fn transition_with_immediate_sync(
-        mut self: Pin<&mut Self>,
-        to_mode: i32,
-        sync_at_cycle: i32,
-    ) {
-        if let Err(e) = || -> Result<(), anyhow::Error> {
-            let all_transitions =
-                self.as_mut()
-                    .list_transitions(LoopMode::try_from(to_mode)?, 0, sync_at_cycle);
-
-            debug!(
-                self,
-                "immediate sync transition - stepping through virtual transition list"
-            );
-            trace!(self, "virtual transition list: {all_transitions:?}");
-
-            // Find the last transition for each loop up until this point
-            type LastTransitionPerLoop = HashMap<*mut QObject, (LoopMode, i32)>;
-            let mut last_transition_per_loop: LastTransitionPerLoop = HashMap::new();
-            for (iteration, transitions) in all_transitions.iter() {
-                for (loop_obj, mode) in transitions.iter() {
-                    last_transition_per_loop.insert(*loop_obj, (*mode, *iteration));
-                }
-            }
-
-            // Get all currently active loops into their correct mode and cycle
-            for (loop_obj, (mode, iteration)) in last_transition_per_loop.iter() {
-                if loop_obj.is_null() {
-                    continue;
-                }
-                let n_cycles_ago = sync_at_cycle - iteration;
-                let mut n_cycles = 1;
-
-                unsafe {
-                    if qobject_has_property(&**loop_obj, "sync_source")? {
-                        let sync_source =
-                            qobject::qobject_property_qobject(&**loop_obj, "sync_source")?;
-                        let loop_length = qobject::qobject_property_int(&**loop_obj, "length")?;
-                        let sync_source_length =
-                            qobject::qobject_property_int(&*sync_source, "length")?;
-                        n_cycles = (loop_length as f32 / sync_source_length as f32).ceil() as i32;
-                    }
-
-                    let sync_to_immediate_cycle: Option<i32> = match mode {
-                        LoopMode::Stopped => None,
-                        LoopMode::Recording => Some(n_cycles_ago), // Keep going indefinitely
-                        _ => Some(n_cycles_ago % max(n_cycles, 1)), // Loop around
-                    };
-
-                    let iid = get_loop_iid(loop_obj);
-                    trace!(self, "loop {iid} -> {mode:?}, goto cycle {sync_to_immediate_cycle:?} (triggered {n_cycles_ago} cycles ago, loop length {n_cycles} cycles)");
-                    let sync_to_immediate_cycle = sync_to_immediate_cycle.unwrap_or(-1);
-                    invoke(
-                        &mut **loop_obj,
-                        "transition(::std::int32_t,::std::int32_t,::std::int32_t)",
-                        connection_types::DIRECT_CONNECTION,
-                        &(*mode as isize as i32, -1 as i32, sync_to_immediate_cycle),
-                    )?;
-                }
-            }
-
-            // Apply our own mode change
-            self.as_mut().set_mode(to_mode);
-            self.as_mut().set_iteration(sync_at_cycle);
-            self.as_mut().update_length();
-            self.as_mut().update_position();
-            let position = self.position;
-            trace!(self, "Immediate sync done. mode -> {to_mode}, iteration -> {sync_at_cycle}, position -> {position}");
-
-            // Trigger(s) for next loop cycle
-            let iteration = self.iteration;
-            self.as_mut()
-                .do_triggers(iteration + 1, LoopMode::try_from(to_mode)?);
-
-            Ok(())
-        }() {
-            error!(
-                self,
-                "Could not perform transition with immediate sync: {e}"
-            );
-        }
-    }
-
-    pub fn transition_regular(mut self: Pin<&mut Self>, to_mode: i32, delay: Option<i32>) {
-        if let Err(e) = || -> Result<(), anyhow::Error> {
-            let our_mode = LoopMode::try_from(self.mode)?;
-            let to_mode = LoopMode::try_from(to_mode)?;
-
-            let iteration = if !is_running_mode(our_mode) && is_running_mode(to_mode) {
-                trace!(self, "Starting to run - resetting iteration to -1");
-                -1
-            } else {
-                self.iteration
-            };
-            let next_transition_delay = delay.unwrap_or(0);
-            let next_mode = to_mode;
-
-            self.as_mut().set_iteration(iteration);
-            self.as_mut().set_next_mode(next_mode as isize as i32);
-            self.as_mut()
-                .set_next_transition_delay(next_transition_delay);
-
-            if next_transition_delay == 0 {
-                if is_running_mode(to_mode) {
-                    self.as_mut().do_triggers(0, to_mode);
-                } else {
-                    self.as_mut().cancel_all();
-                }
-            }
-
-            Ok(())
-        }() {
-            error!(self, "Could not perform transition: {e}");
-        }
-    }
-
-    pub fn cancel_all(mut self: Pin<&mut Self>) {
-        trace!(self, "cancel all");
-        if let Err(e) = transition_backend_loops(
-            self.running_loops
-                .iter()
-                .map(|l| qvariant_to_qobject_ptr(l).unwrap_or(std::ptr::null_mut()))
-                .filter(|l| !l.is_null()),
-            LoopMode::Stopped,
-            Some(0),
-            None,
-        ) {
-            error!(self, "Failed to transition backend loops: {e}");
-        }
-
-        let empty_running_loops = QList_QVariant::default();
-        self.as_mut().rust_mut().running_loops = empty_running_loops.clone();
-        unsafe {
-            self.as_mut().running_loops_changed(empty_running_loops);
-        }
-    }
-
     pub fn set_iteration(mut self: Pin<&mut Self>, iteration: i32) {
         if iteration != self.iteration {
             debug!(self, "iteration -> {iteration}");
@@ -331,25 +349,117 @@ impl CompositeLoopBackend {
     }
 
     pub fn transition(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         to_mode: i32,
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32,
     ) {
         debug!(self, "transition -> {to_mode}: wait {maybe_cycles_delay:?}, align @ {maybe_to_sync_at_cycle:?}");
-        let maybe_cycles_delay = match maybe_cycles_delay {
-            v if v < 0 => None,
-            other => Some(other),
+        let Some(engine_loop) = self.engine_loop.as_ref().cloned() else {
+            error!(self, "engine composite is not initialized");
+            return;
         };
-        let maybe_to_sync_at_cycle = match maybe_to_sync_at_cycle {
-            v if v < 0 => None,
-            other => Some(other),
-        };
-        if maybe_to_sync_at_cycle.is_some() {
-            self.transition_with_immediate_sync(to_mode, maybe_to_sync_at_cycle.unwrap_or(0));
-        } else {
-            self.transition_regular(to_mode, maybe_cycles_delay);
+        if let Err(error) = self.as_mut().install_engine_schedule() {
+            error!(self, "engine composite configuration failed: {error}");
+            return;
         }
+        let result = LoopMode::try_from(to_mode)
+            .map_err(anyhow::Error::from)
+            .and_then(|mode| {
+                if maybe_to_sync_at_cycle >= 0 {
+                    engine_loop
+                        .transition_immediate(mode, i64::from(maybe_to_sync_at_cycle))
+                        .map(|_| ())
+                } else {
+                    engine_loop
+                        .transition(mode, maybe_cycles_delay.max(0) as u32)
+                        .map(|_| ())
+                }
+            });
+        if let Err(error) = result {
+            error!(self, "engine composite transition failed: {error}");
+        }
+    }
+
+    fn collect_ringbuffer_adoptions(
+        mut self: Pin<&mut Self>,
+        adoptions: &mut PreparedAdoptions,
+        visited: &mut BTreeSet<LoopIdentity>,
+    ) -> Result<(), anyhow::Error> {
+        let source = self
+            .engine_loop
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("engine composite is not initialized"))?
+            .identity_if_ready()
+            .ok_or_else(|| anyhow::anyhow!("engine composite creation is still pending"))?;
+        if !visited.insert(source) || self.sync_source.is_null() || self.sync_length <= 0 {
+            return Ok(());
+        }
+
+        let n_cycles = self.n_cycles;
+        let transitions = self
+            .as_mut()
+            .list_transitions(LoopMode::Recording, 0, n_cycles);
+        let mut starts = HashMap::<*mut QObject, i32>::new();
+        let mut ends = HashMap::<*mut QObject, i32>::new();
+        for (&iteration, transitions) in &transitions {
+            for &(object, mode) in transitions {
+                if mode == LoopMode::Recording {
+                    starts
+                        .entry(object)
+                        .and_modify(|start| *start = min(*start, iteration))
+                        .or_insert(iteration);
+                } else if starts.get(&object).is_some_and(|start| iteration > *start) {
+                    ends.entry(object)
+                        .and_modify(|end| *end = min(*end, iteration))
+                        .or_insert(iteration);
+                }
+            }
+        }
+
+        let mut nested = Vec::new();
+        for (object, start) in starts {
+            let Some(identity) = (unsafe { engine_identity(object) }) else {
+                continue;
+            };
+            let end = ends.get(&object).copied().unwrap_or(self.n_cycles);
+            let mut reverse_start = self.n_cycles - start;
+            if !self.sync_mode_active {
+                reverse_start = max(reverse_start - 1, 0);
+            }
+            if identity.kind == LoopTargetKind::Basic {
+                let request = AudioRingbufferAdoption {
+                    loop_idx: identity.slot as usize,
+                    reverse_start_cycle: Some(reverse_start),
+                    cycles_length: Some(max(end - start, 1)),
+                    go_to_cycle: Some(0),
+                    go_to_mode: LoopMode::Unknown,
+                };
+                adoptions
+                    .entry(identity)
+                    .and_modify(|existing| {
+                        if source < existing.0 {
+                            *existing = (source, request);
+                        }
+                    })
+                    .or_insert((source, request));
+            } else {
+                nested.push((identity, object));
+            }
+        }
+        nested.sort_unstable_by_key(|(identity, _)| *identity);
+        for (_, object) in nested {
+            let dependency = unsafe { qobject_to_composite_loop_backend_ptr(object) };
+            if dependency.is_null() {
+                return Err(anyhow::anyhow!("nested composite target is unavailable"));
+            }
+            unsafe {
+                Pin::new_unchecked(&mut *dependency)
+                    .collect_ringbuffer_adoptions(adoptions, visited)?;
+            }
+        }
+        self.as_mut().rust_mut().engine_schedule_dirty = true;
+        Ok(())
     }
 
     pub fn adopt_ringbuffers(
@@ -364,120 +474,26 @@ impl CompositeLoopBackend {
                 warn!(self, "ignoring grab - undefined / empty sync loop");
                 return Ok(());
             }
-            let maybe_go_to_cycle_opt: Option<i32> = maybe_go_to_cycle.value::<i32>();
+            let maybe_go_to_cycle: Option<i32> = maybe_go_to_cycle.value::<i32>();
             let go_to_mode = LoopMode::try_from(go_to_mode)?;
-
-            trace!(self, "adopt ringbuffers and go to cycle {maybe_go_to_cycle_opt:?}, go to mode {go_to_mode:?}");
-
-            // Proceed through the schedule up to the point we want to go by
-            // calling our trigger function with a callback to just register
-            // the made transitions.
-            let n_cycles = self.n_cycles;
-            let transitions = self
-                .as_mut()
-                .list_transitions(LoopMode::Recording, 0, n_cycles);
-
-            trace!(self, "virtual transition list: {transitions:?}");
-
-            // Find the first recording range for each loop.
-            type IterationPerLoop = HashMap<*mut QObject, i32>;
-            let mut loop_recording_starts = IterationPerLoop::default();
-            let mut loop_recording_ends = IterationPerLoop::default();
-            for (iteration, transitions) in transitions.iter() {
-                for (loop_obj, mode) in transitions.iter() {
-                    if *mode == LoopMode::Recording {
-                        // Store only the first recording bounds.
-                        if !loop_recording_starts.contains_key(loop_obj) {
-                            loop_recording_starts.insert(*loop_obj, *iteration);
-                        } else {
-                            // TODO: Avoid panic call
-                            let v = loop_recording_starts
-                                .get_mut(loop_obj)
-                                .expect("Guarded by contains_key");
-                            *v = min(*v, *iteration);
-                        }
-                    }
-                }
+            let mut prepared = PreparedAdoptions::new();
+            self.as_mut()
+                .collect_ringbuffer_adoptions(&mut prepared, &mut BTreeSet::new())?;
+            if !prepared.is_empty() {
+                let requests = prepared.into_values().map(|(_, request)| request).collect();
+                self.backend_session
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("engine session is not initialized"))?
+                    .adopt_audio_ringbuffers(requests)?;
+                self.as_mut().install_engine_schedule()?;
             }
-            for (iteration, transitions) in transitions.iter() {
-                for (loop_obj, mode) in transitions.iter() {
-                    if *mode != LoopMode::Recording && loop_recording_starts.contains_key(loop_obj)
-                    {
-                        if let Some(start) = loop_recording_starts.get(loop_obj) {
-                            if iteration > start {
-                                if !loop_recording_ends.contains_key(loop_obj) {
-                                    loop_recording_ends.insert(*loop_obj, *iteration);
-                                } else {
-                                    // TODO: Avoid panic call
-                                    let v = loop_recording_ends
-                                        .get_mut(loop_obj)
-                                        .expect("Guarded by contains_key");
-                                    *v = min(*v, *iteration);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Determine the grabs to make on our sub-loops.
-            #[derive(Debug)]
-            struct ToGrab {
-                loop_obj: *mut QObject,
-                reverse_start: i32,
-                n_cycles: i32,
-            }
-            let mut to_grab: Vec<ToGrab> = Vec::new();
-            for (loop_obj, start_it) in loop_recording_starts.iter() {
-                let end_it = *loop_recording_ends
-                    .get(loop_obj)
-                    .unwrap_or(&self.n_cycles.clone());
-                let n_cycles = max(end_it - start_it, 1);
-                let mut reverse_start = self.n_cycles - start_it;
-                if !self.sync_mode_active {
-                    // With sync mode inactive, we want to end up inside the
-                    // last cycle with our grab.
-                    reverse_start = max(reverse_start - 1, 0);
-                }
-                let g = ToGrab {
-                    loop_obj: *loop_obj,
-                    reverse_start,
-                    n_cycles,
-                };
-                let iid = get_loop_iid(loop_obj);
-                trace!(self, "will grab {iid}: {g:?}");
-                to_grab.push(g);
-            }
-
-            for g in to_grab.iter() {
-                if g.loop_obj.is_null() {
-                    continue;
-                }
-                unsafe {
-                    // Note we don't allow the loop to directly go to the go_to_mode.
-                    // We will instead do that transition after all grabs are done.
-                    invoke(
-                        &mut *g.loop_obj,
-                        "adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)",
-                        connection_types::DIRECT_CONNECTION,
-                        &(
-                            QVariant::from(&g.reverse_start),
-                            QVariant::from(&g.n_cycles),
-                            QVariant::from(&0),
-                            LoopMode::Unknown as isize as i32,
-                        ),
-                    )?;
-                }
-            }
-
             if go_to_mode != LoopMode::Unknown {
                 self.as_mut().transition(
                     go_to_mode as isize as i32,
                     -1,
-                    maybe_go_to_cycle_opt.unwrap_or(-1),
+                    maybe_go_to_cycle.unwrap_or(-1),
                 );
             }
-
             Ok(())
         }() {
             error!(self, "Could not adopt ringbuffers: {e}");
@@ -506,18 +522,12 @@ impl CompositeLoopBackend {
     pub unsafe fn set_sync_source(mut self: Pin<&mut Self>, sync_source: *mut QObject) {
         debug!(self, "set sync source -> {sync_source:?}");
         if sync_source != self.sync_source {
-            if !self.sync_source.is_null() && !sync_source.is_null() {
-                let from_iid = get_loop_iid(&self.sync_source);
-                let to_iid = get_loop_iid(&sync_source);
-                error!(self, "cannot change sync source ({from_iid} -> {to_iid})");
-                return;
-            }
-
             let self_qobj = self.as_mut().pin_mut_qobject_ptr();
             let self_mut = self.as_mut();
             let mut rust_mut = self_mut.rust_mut();
 
             rust_mut.sync_source = sync_source;
+            rust_mut.engine_schedule_dirty = true;
 
             if !rust_mut.sync_source.is_null() {
                 connect_or_report(
@@ -532,13 +542,6 @@ impl CompositeLoopBackend {
                     "lengthChanged(::std::int32_t,::std::int32_t)",
                     &*self_qobj,
                     "update_sync_length()",
-                    connection_types::DIRECT_CONNECTION,
-                );
-                connect_or_report(
-                    &*sync_source,
-                    "cycled(::std::int32_t)",
-                    &*self_qobj,
-                    "handle_sync_loop_trigger(::std::int32_t)",
                     connection_types::DIRECT_CONNECTION,
                 );
                 self.as_mut().update_sync_position();
@@ -611,73 +614,6 @@ impl CompositeLoopBackend {
         }
     }
 
-    pub fn handle_sync_loop_trigger(mut self: Pin<&mut CompositeLoopBackend>, cycle_nr: i32) {
-        if let Err(e) = || -> Result<(), anyhow::Error> {
-            trace!(self, "handle sync trigger");
-
-            if Some(cycle_nr) == self.last_handled_sync_cycle {
-                trace!(self, "already handled sync cycle {cycle_nr}");
-                return Ok(());
-            }
-
-            unsafe {
-                // Before we start, give all of the loops in our schedule a chance
-                // to handle the sync cycle first. This ensures a deterministic ordering
-                // of events.
-                for loop_obj in self.as_mut().all_loops().iter() {
-                    if !loop_obj.is_null() {
-                        invoke::<QObject, (), i32>(
-                            &mut **loop_obj,
-                            "dependent_will_handle_sync_loop_cycle(::std::int32_t)",
-                            connection_types::DIRECT_CONNECTION,
-                            &(cycle_nr),
-                        )?;
-                    }
-                }
-
-                if self.next_transition_delay == 0 {
-                    let next_mode = self.next_mode;
-                    self.as_mut()
-                        .handle_transition(LoopMode::try_from(next_mode)?);
-                } else if self.next_transition_delay > 0 {
-                    let next_mode = LoopMode::try_from(self.next_mode)?;
-                    let next_transition_delay = self.next_transition_delay - 1;
-                    self.as_mut()
-                        .set_next_transition_delay(next_transition_delay);
-                    if next_transition_delay == 0 {
-                        self.as_mut().do_triggers(0, next_mode);
-                    }
-                }
-
-                if is_running_mode(LoopMode::try_from(self.mode)?) {
-                    let mut cycled = false;
-                    let mut new_iteration = self.iteration + 1;
-                    if new_iteration >= self.n_cycles {
-                        new_iteration = 0;
-                        cycled = true;
-                    }
-                    self.as_mut().set_iteration(new_iteration);
-
-                    let mode = LoopMode::try_from(self.mode)?;
-                    self.as_mut().do_triggers(new_iteration + 1, mode);
-
-                    if cycled {
-                        let cycle_nr = self.cycle_nr + 1;
-                        self.as_mut().set_cycle_nr(cycle_nr);
-                        self.as_mut().cycled(cycle_nr);
-                    }
-                }
-            }
-
-            let mut rust_mut = self.as_mut().rust_mut();
-            rust_mut.last_handled_sync_cycle = Some(cycle_nr);
-
-            Ok(())
-        }() {
-            error!(self, "Could not handle sync loop trigger: {e}");
-        }
-    }
-
     pub fn set_mode(mut self: Pin<&mut Self>, mode: i32) {
         debug!(self, "mode -> {mode:?}");
         if mode != self.mode {
@@ -689,26 +625,64 @@ impl CompositeLoopBackend {
         }
     }
 
-    pub fn handle_transition(mut self: Pin<&mut Self>, mode: LoopMode) {
-        if let Err(e) = || -> Result<(), anyhow::Error> {
-            debug!(self, "handle transition -> {mode:?}");
-            self.as_mut().set_next_transition_delay(-1);
-            self.as_mut().set_mode(mode as isize as i32);
-            if !is_running_mode(mode) {
-                self.as_mut().set_iteration(0);
-            }
-            Ok(())
-        }() {
-            error!(self, "Could not handle transition: {e}");
-        }
-    }
-
     pub unsafe fn set_backend(mut self: Pin<&mut Self>, backend: *mut QObject) {
         debug!(self, "set backend -> {backend:?}");
-        if !backend.is_null() {
-            let mut rust_mut = self.as_mut().rust_mut();
-            rust_mut.initialized = true;
-            self.initialized_changed(true);
+        let backend_changed = self.backend != backend;
+        let current_session = if backend.is_null() {
+            None
+        } else {
+            BackendWrapper::from_qobject_mut_ptr(backend)
+                .ok()
+                .and_then(|wrapper| wrapper.session.clone())
+        };
+        let current_session_id = current_session.as_ref().map(|session| session.session_id());
+        let installed_session_id = self
+            .backend_session
+            .as_ref()
+            .map(|session| session.session_id());
+        let session_changed = current_session_id != installed_session_id;
+
+        let mut defer_reinitialize = false;
+        if backend_changed || session_changed {
+            let was_initialized = self.initialized;
+            {
+                let mut rust_mut = self.as_mut().rust_mut();
+                rust_mut.backend = backend;
+                rust_mut.backend_session = None;
+                rust_mut.engine_loop = None;
+                rust_mut.engine_schedule_install = None;
+                rust_mut.engine_schedule_dirty = true;
+                rust_mut.engine_schedule_installed = false;
+                rust_mut.initialized = false;
+            }
+            if was_initialized {
+                self.as_mut().initialized_changed(false);
+                defer_reinitialize = true;
+            }
+            if backend_changed {
+                self.as_mut().backend_changed(backend);
+            }
+        }
+        // Signal handlers may synchronously rebuild dependent QML objects. Continue on the
+        // next frontend tick instead of accessing this object after invalidation.
+        if defer_reinitialize || backend.is_null() || self.engine_loop.is_some() {
+            return;
+        }
+        let result = || -> Result<(), anyhow::Error> {
+            let session =
+                current_session.ok_or_else(|| anyhow::anyhow!("Backend session is null"))?;
+            let engine_loop = session.create_composite_loop()?;
+            {
+                let mut rust_mut = self.as_mut().rust_mut();
+                rust_mut.backend_session = Some(session);
+                rust_mut.engine_loop = Some(engine_loop);
+                rust_mut.initialized = true;
+            }
+            self.as_mut().initialized_changed(true);
+            Ok(())
+        }();
+        if let Err(error) = result {
+            error!(self, "could not initialize engine composite: {error}");
         }
     }
 
@@ -730,6 +704,9 @@ impl CompositeLoopBackend {
     }
 
     pub fn update_position(mut self: Pin<&mut CompositeLoopBackend>) {
+        if self.engine_loop.is_some() {
+            return;
+        }
         trace!(self, "update position");
         let mut v = max(0, self.iteration) * self.sync_length;
         if is_running_mode(LoopMode::try_from(self.mode).unwrap_or(LoopMode::Unknown)) {
@@ -765,11 +742,30 @@ impl CompositeLoopBackend {
                 if converted_schedule != self.schedule {
                     debug!(self, "schedule updated");
                     trace!(self, "schedule: {converted_schedule:?}");
+                    if converted_schedule.data.is_empty() && self.engine_schedule_installed {
+                        if let Some(engine_loop) = self.engine_loop.as_ref().cloned() {
+                            if engine_loop
+                                .get_state()
+                                .is_ok_and(|state| state.mode != LoopMode::Stopped)
+                            {
+                                if let Err(error) =
+                                    engine_loop.transition_immediate(LoopMode::Stopped, 0)
+                                {
+                                    error!(self, "engine composite clear failed: {error}");
+                                }
+                            }
+                        }
+                    }
                     let self_mut = self.as_mut();
                     let mut rust_mut = self_mut.rust_mut();
                     rust_mut.schedule = converted_schedule;
+                    rust_mut.engine_schedule_dirty = true;
                     self.as_mut().schedule_changed(schedule);
                     self.as_mut().update_n_cycles();
+                } else {
+                    // An equal frontend schedule can now resolve to replacement backend object
+                    // identities after a session rebuild. Recompile it on an explicit refresh.
+                    self.as_mut().rust_mut().engine_schedule_dirty = true;
                 }
             }
             Err(e) => {
@@ -780,6 +776,13 @@ impl CompositeLoopBackend {
 
     pub unsafe fn set_play_after_record(mut self: Pin<&mut Self>, play_after_record: bool) {
         debug!(self, "play after record -> {play_after_record}");
+        if let Some(engine_loop) = self.engine_loop.as_ref() {
+            // Publish the desired option even while a timeline install is pending. The install
+            // command reads this mirror at acceptance, so a late QML binding update is not lost.
+            if let Err(error) = engine_loop.set_play_after_record(play_after_record) {
+                error!(self, "engine record option failed: {error}");
+            }
+        }
         if play_after_record != self.play_after_record {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.play_after_record = play_after_record;
@@ -802,6 +805,7 @@ impl CompositeLoopBackend {
         if kind != self.kind {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.kind = kind.clone();
+            rust_mut.engine_schedule_dirty = true;
             self.kind_changed(kind);
         }
     }
@@ -819,20 +823,129 @@ impl CompositeLoopBackend {
         }
     }
 
-    pub fn update(self: Pin<&mut Self>) {}
+    pub fn update(mut self: Pin<&mut Self>) {
+        unsafe {
+            let backend = self.backend;
+            self.as_mut().set_backend(backend);
+        }
+        if self.engine_loop.is_none() {
+            return;
+        }
+        let install_result = self
+            .engine_schedule_install
+            .as_ref()
+            .and_then(|install| install.take_result());
+        if let Some(result) = install_result {
+            self.as_mut().rust_mut().engine_schedule_install = None;
+            match result {
+                Ok(_) => {
+                    self.as_mut().rust_mut().engine_schedule_installed = true;
+                    if let Some(engine_loop) = self.engine_loop.as_ref() {
+                        if let Err(error) =
+                            engine_loop.set_play_after_record(self.play_after_record)
+                        {
+                            error!(self, "could not queue composite record option: {error}");
+                        }
+                    }
+                }
+                Err(error) => {
+                    error!(self, "engine composite configuration failed: {error}");
+                    self.as_mut().rust_mut().engine_schedule_dirty = true;
+                }
+            }
+        }
+        if self.engine_schedule_dirty && self.as_mut().install_engine_schedule().is_err() {
+            return;
+        }
+        let Some(state) = self.engine_loop.as_ref().and_then(|engine_loop| {
+            engine_loop
+                .poll_state()
+                .or_else(|| engine_loop.get_state().ok())
+        }) else {
+            return;
+        };
+        self.as_mut().set_mode(state.mode as i32);
+        self.as_mut()
+            .set_next_mode(state.maybe_next_mode.map(|mode| mode as i32).unwrap_or(-1));
+        self.as_mut().set_next_transition_delay(
+            state
+                .maybe_next_mode_delay
+                .map(|delay| delay as i32)
+                .unwrap_or(-1),
+        );
+        self.as_mut().set_iteration(state.iteration as i32);
+        let previous_cycle = self.cycle_nr;
+        let cycle = state.cycle_count.min(i32::MAX as u64) as i32;
+        self.as_mut().set_cycle_nr(cycle);
+        if cycle > previous_cycle {
+            self.as_mut().cycled(cycle);
+        }
+        let length = state.length.min(i32::MAX as u64) as i32;
+        let position = state.position.min(i32::MAX as u64) as i32;
+        let play_after_record_changed = self.play_after_record != state.play_after_record;
+        {
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.length = length;
+            rust_mut.position = position;
+            rust_mut.play_after_record = state.play_after_record;
+        }
+        unsafe {
+            self.as_mut().length_changed(length);
+            self.as_mut().position_changed(position);
+            if play_after_record_changed {
+                self.as_mut()
+                    .play_after_record_changed(state.play_after_record);
+            }
+        }
+
+        let active: BTreeSet<_> = state
+            .active_children
+            .iter()
+            .map(|child| child.identity)
+            .collect();
+        let mut running = QList_QVariant::default();
+        for object in self.as_mut().all_loops() {
+            if object.is_null() {
+                continue;
+            }
+            let Some(identity) = (unsafe { engine_identity(object) }) else {
+                continue;
+            };
+            if active.contains(&identity) {
+                if let Ok(variant) = qobject_ptr_to_qvariant(&object) {
+                    running.append(variant);
+                }
+            }
+        }
+        self.as_mut().rust_mut().running_loops = running.clone();
+        unsafe {
+            self.as_mut().running_loops_changed(running);
+        }
+    }
 
     pub fn get_schedule(self: &CompositeLoopBackend) -> QMap_QString_QVariant {
         self.schedule.to_qvariantmap()
     }
 
     pub fn clear(mut self: Pin<&mut CompositeLoopBackend>) {
+        if self.engine_schedule_installed {
+            if let Some(engine_loop) = self.engine_loop.as_ref().cloned() {
+                if engine_loop
+                    .get_state()
+                    .is_ok_and(|state| state.mode != LoopMode::Stopped)
+                {
+                    if let Err(error) = engine_loop.transition_immediate(LoopMode::Stopped, 0) {
+                        error!(self, "engine composite clear failed: {error}");
+                    }
+                }
+            }
+        }
         let empty_running_loops = QList_QVariant::default();
         let empty_schedule = CompositeLoopSchedule::default();
         {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.running_loops = empty_running_loops.clone();
             rust_mut.schedule = empty_schedule;
-            rust_mut.last_handled_sync_cycle = None;
             rust_mut.iteration = -1;
             rust_mut.mode = LoopMode::Stopped as isize as i32;
             rust_mut.next_mode = -1;
@@ -843,6 +956,7 @@ impl CompositeLoopBackend {
             rust_mut.sync_length = 0;
             rust_mut.position = 0;
             rust_mut.cycle_nr = 0;
+            rust_mut.engine_schedule_dirty = true;
         }
         unsafe {
             self.as_mut().running_loops_changed(empty_running_loops);
@@ -860,232 +974,30 @@ impl CompositeLoopBackend {
         }
     }
 
-    pub fn do_trigger<AlternativeTriggerCallback>(
-        mut self: Pin<&mut CompositeLoopBackend>,
-        loop_obj: *mut QObject,
-        mode: LoopMode,
-        mut callback: Option<&mut AlternativeTriggerCallback>,
-    ) where
-        AlternativeTriggerCallback: FnMut(*mut QObject, LoopMode),
-    {
-        if let Err(e) = || -> Result<(), anyhow::Error> {
-            if let Some(callback) = callback.as_mut() {
-                callback(loop_obj, mode);
-            } else {
-                let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
-                let loop_iid = get_loop_iid(&loop_obj);
-                if loop_obj.is_null() {
-                    warn!(self, "ignoring trigger of null loop to {mode:?}");
-                } else if loop_obj == self_qobj {
-                    // Instead of queueing, apply the transition immediately
-                    trace!(self, "Transition self to {mode:?}");
-                    self.as_mut().transition(mode as i32, -1, -1);
-                } else {
-                    trace!(self, "Transition referenced loop {loop_iid} to {mode:?}");
-                    transition_backend_loops(std::iter::once(loop_obj), mode, Some(0), None)?;
-                }
+    pub fn deinit(mut self: Pin<&mut CompositeLoopBackend>) {
+        if self.engine_schedule_installed {
+            let removal = self
+                .backend_session
+                .as_ref()
+                .zip(self.engine_loop.as_ref())
+                .map(|(session, engine_loop)| {
+                    let primitive_sync_sources = session.primitive_sync_sources();
+                    session.remove_composite_loop(engine_loop, &primitive_sync_sources)
+                });
+            if let Some(Err(error)) = removal {
+                error!(self, "engine composite removal failed: {error}");
+                return;
             }
-
-            Ok(())
-        }() {
-            error!(self, "Could not perform trigger: {e}");
         }
-    }
-
-    pub fn do_triggers(self: Pin<&mut Self>, iteration: i32, mode: LoopMode) {
-        type Callback = fn(*mut QObject, LoopMode);
-        self.do_triggers_impl::<Callback>(iteration, mode, None, false);
-    }
-
-    pub fn do_triggers_with_callback<TriggerCallback>(
-        self: Pin<&mut Self>,
-        iteration: i32,
-        mode: LoopMode,
-        mut callback: TriggerCallback,
-    ) where
-        TriggerCallback: FnMut(*mut QObject, LoopMode),
-    {
-        self.do_triggers_impl::<TriggerCallback>(iteration, mode, Some(&mut callback), false);
-    }
-
-    pub fn do_triggers_impl<AlternativeTriggerCallback>(
-        mut self: Pin<&mut Self>,
-        iteration: i32,
-        mode: LoopMode,
-        mut trigger_callback: Option<&mut AlternativeTriggerCallback>,
-        nested: bool,
-    ) where
-        AlternativeTriggerCallback: FnMut(*mut QObject, LoopMode),
-    {
-        if let Err(err) = || -> Result<(), anyhow::Error> {
-            let schedule = self.schedule.clone();
-            let kind = self.kind.to_string();
-
-            debug!(
-                self,
-                "{kind} composite loop - do triggers ({iteration}, {mode:?})"
-            );
-
-            if schedule.data.contains_key(&iteration) {
-                // Some triggers need to be executed for this iteration
-                // First clone some of our state data to operate on.
-                let events = &schedule.data[&iteration];
-                let loops_start = &events.loops_start;
-                let loops_end = &events.loops_end;
-                let mut running_loops: HashSet<*mut QObject> = self
-                    .as_mut()
-                    .running_loops
-                    .iter()
-                    .map(|variant| qvariant_to_qobject_ptr(variant))
-                    .collect::<Result<HashSet<_>, _>>()?;
-                let mut running_loops_changed = false;
-
-                // Handle any loop that needs to end this iteration.
-                for loop_end in loops_end.iter() {
-                    let loop_end = loop_end.obj.as_qobject_ref() as *mut QObject;
-                    let loop_iid = get_loop_iid(&loop_end);
-                    debug!(self, "loop end: {loop_iid}");
-                    self.as_mut().do_trigger(
-                        loop_end,
-                        LoopMode::Stopped,
-                        trigger_callback.as_mut(),
-                    );
-                    if !loop_end.is_null() {
-                        running_loops_changed = running_loops.remove(&loop_end);
-                    }
-                }
-
-                if is_running_mode(mode) {
-                    // Our new mode will be a running mode. Apply it to
-                    // loops that start this iteration.
-                    for (loop_start, maybe_explicit_mode) in loops_start.iter() {
-                        let loop_start_qobj = loop_start.obj.as_qobject_ref() as *mut QObject;
-                        let loop_iid = get_loop_iid(&loop_start_qobj);
-                        if let Some(explicit_mode) = maybe_explicit_mode {
-                            // Explicit mode, just apply it as scheduled
-                            debug!(
-                                self,
-                                "loop start (explicit mode {explicit_mode:?}): {loop_iid}"
-                            );
-                            self.as_mut().do_trigger(
-                                loop_start_qobj,
-                                *explicit_mode,
-                                trigger_callback.as_mut(),
-                            );
-                            if !loop_start_qobj.is_null() {
-                                running_loops_changed = running_loops.insert(loop_start_qobj);
-                            }
-                        } else {
-                            // Implicit mode, set it based on our own
-                            let implicit_mode = mode;
-
-                            let determine_already_recorded = || -> bool {
-                                // Recording is a special case. During one composite loop iteration,
-                                // the same loop may be played more than once.
-                                // That means that if we are set to "record" the composite loop, it
-                                // would be recorded more than once, which makes no sense.
-                                // In this case, we want the first time the sub-loop is played to be
-                                // its recording, then the loop should be ignored for the rest of the
-                                // recording iteration of the composite loop.
-                                // The recorded sub-loop will start playing back on the next composite
-                                // loop iteration.
-
-                                // Check whether we have already recorded.
-                                for i in 0..iteration {
-                                    if schedule.data.contains_key(&i) {
-                                        let earlier_loop_starts = &schedule.data[&i].loops_start;
-                                        if earlier_loop_starts.contains_key(loop_start) {
-                                            return true;
-                                        }
-                                    }
-                                }
-                                return false;
-                            };
-
-                            let handled_already_recording =
-                                is_recording_mode(mode) && determine_already_recorded();
-                            if handled_already_recording {
-                                // We have already recorded this loop.
-                                debug!(self, "Not re-recording {loop_iid}, stopping instead");
-                                self.as_mut().do_trigger(
-                                    loop_start_qobj,
-                                    LoopMode::Stopped,
-                                    trigger_callback.as_mut(),
-                                );
-                                if !loop_start_qobj.is_null() {
-                                    running_loops_changed = running_loops.remove(&loop_start_qobj);
-                                }
-                            } else {
-                                // Implicit mode, apply it
-                                let loop_iid = get_loop_iid(&loop_start_qobj);
-                                debug!(self, "generate loop start (implicit mode {implicit_mode:?}): {loop_iid}");
-                                self.as_mut().do_trigger(
-                                    loop_start_qobj,
-                                    implicit_mode,
-                                    trigger_callback.as_mut(),
-                                );
-                                if !loop_start_qobj.is_null() {
-                                    running_loops_changed = running_loops.insert(loop_start_qobj);
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if running_loops_changed {
-                    let mut new_running_loops: QList_QVariant = QList_QVariant::default();
-                    for l in running_loops.iter() {
-                        if l.is_null() {
-                            continue;
-                        }
-                        let loop_variant = qobject_ptr_to_qvariant(l)?;
-                        new_running_loops.append(loop_variant);
-                    }
-                    let mut rust_mut = self.as_mut().rust_mut();
-                    rust_mut.running_loops = new_running_loops.clone();
-                    unsafe {
-                        self.as_mut().running_loops_changed(new_running_loops);
-                    }
-                }
-            }
-
-            // Now, check if we are ending our composite loop this iteration.
-            if iteration >= self.n_cycles && !nested {
-                let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
-                let next_mode: Option<LoopMode> = LoopMode::try_from(self.next_mode).ok();
-                let next_mode_is_running_mode =
-                    next_mode.is_some() && is_running_mode(next_mode.unwrap_or(LoopMode::Unknown));
-                let self_mode = LoopMode::try_from(self.mode)?;
-                debug!(self, "Extra trigger for cycle end");
-                if self.kind.to_string() == "script"
-                    && !(self.next_transition_delay >= 0 && next_mode_is_running_mode)
-                {
-                    debug!(self, "Ending script");
-                    self.as_mut()
-                        .do_trigger(self_qobj, LoopMode::Stopped, trigger_callback);
-                } else if is_recording_mode(self_mode) {
-                    debug!(self, "Ending recording");
-                    // At end of recording cycle, transition to playing or stopped
-                    let new_mode = if self.play_after_record {
-                        LoopMode::Playing
-                    } else {
-                        LoopMode::Stopped
-                    };
-                    self.as_mut()
-                        .do_trigger(self_qobj, new_mode, trigger_callback);
-                } else {
-                    // Just cycle around
-                    let self_mode = LoopMode::try_from(self.mode)?;
-                    debug!(self, "cycling");
-                    self.as_mut()
-                        .do_triggers_impl(0, self_mode, trigger_callback, true);
-                }
-            }
-
-            Ok(())
-        }() {
-            error!(self, "Could not perform triggers: {err:?}");
-        }
+        let mut rust_mut = self.as_mut().rust_mut();
+        rust_mut.engine_loop = None;
+        rust_mut.backend_session = None;
+        rust_mut.engine_schedule_installed = false;
+        rust_mut.engine_schedule_installing = false;
+        rust_mut.engine_schedule_dirty = true;
+        rust_mut.sync_source = std::ptr::null_mut();
+        rust_mut.backend = std::ptr::null_mut();
+        rust_mut.initialized = false;
     }
 
     pub fn metatype_name() -> String {
@@ -1093,14 +1005,5 @@ impl CompositeLoopBackend {
             composite_loop_backend_metatype_name(std::ptr::null_mut())
                 .unwrap_or_else(|_| "unknown".to_string())
         }
-    }
-
-    pub fn dependent_will_handle_sync_loop_cycle(
-        self: Pin<&mut CompositeLoopBackend>,
-        cycle_nr: i32,
-    ) {
-        // Another loop which references this loop (composite) can notify this loop that it is
-        // about to handle a sync loop cycle in advance, to ensure a deterministic ordering.
-        self.handle_sync_loop_trigger(cycle_nr);
     }
 }

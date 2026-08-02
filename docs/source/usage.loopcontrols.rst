@@ -118,7 +118,7 @@ A **composite loop** can be created by selecting an empty slot, then holding **A
 
 Note that **Alt** + click will append to the first "timeline". So for example, if a short loop is composed in parallel with a long one, **Alt** - click will add an additional loop to play right after the short one.
 
-For advanced editing of the sequence, the loop details window should be used (note that at the time of writing this, that is unimplemented).
+Use the loop details window for advanced editing. It supports sequential and parallel timelines, delays, duplication, explicit cycle counts, and regular/script modes.
 
 Composite loops are shown in pink; if a composite loop is (solely) selected, all its sub-loops are highlighted with a pink border.
 
@@ -128,7 +128,9 @@ Composite loops are shown in pink; if a composite loop is (solely) selected, all
 Playback
 """"""""
 
-Playing back a composite loop will play the loops as sequenced. Empty sub-loops are skipped. The progress indicator on the composite loop shows the total progress. The playback will cycle back around to the start of the sequence.
+Playing back a composite loop will play the loops as sequenced. Empty sub-loops remain idle but reserve their scheduled duration. The progress indicator on the composite loop shows the total progress. Regular composites cycle back around to the start; script composites run once.
+
+Once a composition or control is accepted by the engine, iteration, nesting, child transitions, and recording decisions run on the audio timeline. GUI or display updates may lag without changing those boundaries.
 
 
 Recording
@@ -163,5 +165,10 @@ Generally speaking, grabbing on composite loops does what you would expect given
     * If the global **sync control** is active, the last completed sync cycle is mapped to the last cycle of the composite loop.
     * If the global **sync control** is inactive, the currently running sync cycle is mapped to the last cycle of the composite loop. The remainder of the current sync cycle will keep recording into the last part.
 
-Note that only regular composite loops can be grabbed.
+Note that only regular composite loops can be grabbed. Nested compositions are flattened before acceptance, and all affected primitive children adopt their captured ranges in one bounded engine transaction.
+
+Editing a running composition
+"""""""""""""""""""""
+
+Edits that retain the same composite dependency structure activate at the next iteration-zero boundary. An edit that changes nested dependencies activates as a complete callback-boundary restart: old children stop, retained running composites restart at iteration zero, and pending countdowns are canceled. The UI may observe the result one update later.
 

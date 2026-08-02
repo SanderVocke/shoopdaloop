@@ -99,12 +99,12 @@ impl BasicLoop {
     }
 
     fn publish_state(&self) {
-        self.state.publish(
-            self.mode,
-            self.length,
-            self.position,
-            self.first_planned_transition(),
-        );
+        self.publish_state_with_transition(self.first_planned_transition());
+    }
+
+    pub(crate) fn publish_state_with_transition(&self, transition: Option<(LoopMode, u32)>) {
+        self.state
+            .publish(self.mode, self.length, self.position, transition);
     }
 
     // --- queries ---

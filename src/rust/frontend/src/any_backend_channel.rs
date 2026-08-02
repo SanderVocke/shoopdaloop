@@ -16,6 +16,13 @@ fn report_queue_result(result: Result<CommandSequence, SendError>) {
 }
 
 impl AnyBackendChannel {
+    pub fn session_id(&self) -> u64 {
+        match self {
+            AnyBackendChannel::Audio(channel) => channel.session_id(),
+            AnyBackendChannel::Midi(channel) => channel.session_id(),
+        }
+    }
+
     pub fn audio_connect_input(&self, port: &AudioPort) {
         match self {
             AnyBackendChannel::Audio(audio_channel) => {

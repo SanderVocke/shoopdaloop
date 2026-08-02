@@ -16,9 +16,16 @@ use std::sync::Arc;
 #[cfg(feature = "lv2")]
 use std::sync::Mutex;
 
+use crate::audio_channel::PreparedAudioChannelData;
 use crate::audio_midi_loop::AudioMidiLoop;
 use crate::basic_loop::SyncSourceState;
 use crate::channel_mode::ChannelMode;
+use crate::composite_plan::{CompiledCompositePlan, LoopIdentity, LoopTargetKind};
+use crate::composite_timeline::{
+    AcceptedTimelineControl, BoundaryIntent, BoundaryIntentOrigin, BoundaryTargetAction,
+    CompositeBoundaryTimeline, CompositeTimelineBuildError, CompositeTimelineControlError,
+    CompositeTimelineFault,
+};
 use crate::dummy_midi_port::DummyMidiPort;
 use crate::dummy_port::DummyAudioPort;
 use crate::external_audio_port::ExternalAudioPort;
@@ -54,6 +61,44 @@ const MIDI_OUT_SCRATCH_CAPACITY: usize = MIDI_SCRATCH_CAPACITY + MAX_DIFF_MESSAG
 /// `n_recursive_0_procs` but increments on every recursion, not only zero-length
 /// ones, so it bounds total sub-blocks the same way.
 const MAX_SUB_BLOCKS: u32 = 16;
+pub const MAX_AUDIO_RINGBUFFER_ADOPTIONS: usize = 64;
+pub const MAX_AUDIO_RINGBUFFER_ADOPTION_CHANNELS: usize = 256;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AudioRingbufferAdoption {
+    pub loop_idx: usize,
+    pub reverse_start_cycle: Option<i32>,
+    pub cycles_length: Option<i32>,
+    pub go_to_cycle: Option<i32>,
+    pub go_to_mode: LoopMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AudioRingbufferAdoptionChannelShape {
+    pub loop_idx: usize,
+    pub channel_idx: usize,
+    pub chunk_size: usize,
+    pub capacity: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct AudioRingbufferAdoptionShape {
+    channels: [Option<AudioRingbufferAdoptionChannelShape>; MAX_AUDIO_RINGBUFFER_ADOPTION_CHANNELS],
+    n_channels: usize,
+}
+
+impl AudioRingbufferAdoptionShape {
+    pub fn channels(&self) -> impl Iterator<Item = AudioRingbufferAdoptionChannelShape> + '_ {
+        self.channels[..self.n_channels].iter().flatten().copied()
+    }
+}
+
+#[derive(Debug)]
+pub struct PreparedAudioRingbufferAdoptionChannel {
+    pub loop_idx: usize,
+    pub channel_idx: usize,
+    pub data: PreparedAudioChannelData,
+}
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SessionError {
@@ -67,6 +112,35 @@ pub enum SessionError {
     SelfSync(usize),
     #[error("no channel at index {0}, or it is not of the expected kind")]
     NoSuchChannel(usize),
+    #[error("audio ringbuffer adoption exceeds its bounded request or destination capacity")]
+    AudioRingbufferAdoptionCapacity,
+    #[error("the composite timeline references stale or missing primitive slot {0}")]
+    StaleCompositeTarget(u32),
+    #[error("the composite/session propagation topology is invalid: {0}")]
+    CompositeTimeline(#[from] CompositeTimelineBuildError),
+    #[error("the prepared composite timeline does not match the current primitive topology")]
+    StaleCompositeTopology,
+    #[error("the prepared composite timeline has no version or is not newer than version {0}")]
+    StaleCompositeVersion(u64),
+    #[error("running replacement exceeds bounded restart or retirement capacity")]
+    CompositeReplacementRequiresRuntimeTransfer,
+}
+
+#[derive(Debug)]
+pub struct RejectedCompositeTimeline {
+    pub error: SessionError,
+    pub timeline: CompositeBoundaryTimeline,
+}
+
+#[derive(Debug)]
+pub struct ReclaimedCompositeTimeline {
+    timeline: CompositeBoundaryTimeline,
+}
+
+impl ReclaimedCompositeTimeline {
+    pub fn n_composites(&self) -> usize {
+        self.timeline.n_composites()
+    }
 }
 
 /// A port the session owns. Kinds differ in where their data comes from.
@@ -261,6 +335,14 @@ pub struct Session {
     sync_sources: Vec<Option<usize>>,
     /// Snapshots gathered before they are handed to the loops, reused each cycle.
     sync_snapshots: Vec<Option<SyncSourceState>>,
+    /// Tombstones keep stale stable identities from being redirected.
+    loop_live: Vec<bool>,
+    /// Composite scheduling and same-sample resolution on the loop-group timeline.
+    composite_timeline: CompositeBoundaryTimeline,
+    /// Stable queue-order tie-break assigned when callback-start commands are accepted.
+    composite_acceptance_sequence: u64,
+    /// Most recent globally prepared timeline revision accepted by the callback.
+    composite_timeline_version: u64,
 
     specs: Vec<NodeSpec>,
     node_map: NodeMap,
@@ -287,6 +369,10 @@ pub struct Session {
     midi_mappings_by_loop: Vec<Vec<usize>>,
     /// Loop indices of the step being processed, reused each cycle.
     loop_group: Vec<usize>,
+    /// Primitive events and natural intents gathered at a settled boundary.
+    boundary_triggers: Vec<LoopIdentity>,
+    boundary_delivered_triggers: Vec<LoopIdentity>,
+    boundary_natural_intents: Vec<BoundaryIntent>,
     /// Active state for the temporary test2x2x1 FX-chain shim, keyed by chain title.
     test_fx_active: HashMap<String, bool>,
     /// Carla LV2 FX-chain processors, keyed by chain title.
@@ -338,8 +424,11 @@ pub struct PreparedSchedule {
     /// Per-MIDI-channel scratch, pre-reserved so no cycle grows one.
     midi_in_scratch: Vec<Vec<MidiStorageElem>>,
     midi_out_scratch: Vec<Vec<MidiStorageElem>>,
-    /// Loop-step scratch, likewise sized here rather than on first use.
+    /// Loop-step and boundary scratch, likewise sized here rather than on first use.
     loop_group: Vec<usize>,
+    boundary_triggers: Vec<LoopIdentity>,
+    boundary_delivered_triggers: Vec<LoopIdentity>,
+    boundary_natural_intents: Vec<BoundaryIntent>,
     /// Topology generation this covers.
     for_graph_id: u64,
 }
@@ -399,6 +488,9 @@ pub fn build_schedule(topology: Topology) -> Result<PreparedSchedule, SessionErr
         midi_in_scratch,
         midi_out_scratch,
         loop_group: Vec::with_capacity(n_loops),
+        boundary_triggers: Vec::with_capacity(n_loops),
+        boundary_delivered_triggers: Vec::with_capacity(n_loops),
+        boundary_natural_intents: Vec::with_capacity(n_loops),
         for_graph_id: graph_id,
     })
 }
@@ -421,6 +513,48 @@ enum NodeAction {
     ChannelProcess(usize),
     /// A node with no work, only ordering.
     None,
+}
+
+fn adoption_window(
+    request: &AudioRingbufferAdoption,
+    cycle_len: u32,
+    sync_pos: u32,
+    data_len: usize,
+) -> (usize, usize, usize) {
+    let cycles = request.cycles_length.unwrap_or(1).max(1) as u32;
+    let go_cycle = request.go_to_cycle.unwrap_or(0).max(0) as u32;
+    let wanted_len = if cycle_len > 0 {
+        if request.reverse_start_cycle == Some(0) {
+            sync_pos
+        } else if request.go_to_mode == LoopMode::Recording {
+            go_cycle.saturating_mul(cycle_len).saturating_add(sync_pos)
+        } else {
+            cycles.saturating_mul(cycle_len)
+        }
+    } else {
+        data_len.min(u32::MAX as usize) as u32
+    } as usize;
+    let end = if cycle_len > 0 {
+        if let Some(reverse_start_cycle) = request.reverse_start_cycle {
+            if reverse_start_cycle == 0 {
+                data_len
+            } else {
+                let cycles_before_current =
+                    (reverse_start_cycle.max(0) as u32).saturating_sub(cycles);
+                let offset =
+                    sync_pos.saturating_add(cycles_before_current.saturating_mul(cycle_len));
+                data_len.saturating_sub(offset as usize)
+            }
+        } else if request.go_to_mode == LoopMode::Recording {
+            data_len
+        } else {
+            let offset = sync_pos.saturating_add(go_cycle.saturating_mul(cycle_len));
+            data_len.saturating_sub(offset as usize)
+        }
+    } else {
+        data_len
+    };
+    (wanted_len, end.saturating_sub(wanted_len), end)
 }
 
 impl Session {
@@ -513,6 +647,306 @@ impl Session {
         self.loops.get_mut(idx)
     }
 
+    pub fn loop_identity(&self, idx: usize) -> Option<LoopIdentity> {
+        self.loop_live
+            .get(idx)
+            .copied()
+            .unwrap_or(false)
+            .then_some(LoopIdentity {
+                slot: idx as u32,
+                generation: 1,
+                kind: LoopTargetKind::Basic,
+            })
+    }
+
+    pub fn composite_timeline(&self) -> &CompositeBoundaryTimeline {
+        &self.composite_timeline
+    }
+
+    pub fn composite_timeline_mut(&mut self) -> &mut CompositeBoundaryTimeline {
+        &mut self.composite_timeline
+    }
+
+    pub fn composite_timeline_version(&self) -> u64 {
+        self.composite_timeline_version
+    }
+
+    pub fn accept_composite_transition(
+        &mut self,
+        source: LoopIdentity,
+        mode: LoopMode,
+        delay: u32,
+    ) -> Result<u64, CompositeTimelineControlError> {
+        let acceptance_sequence = self.composite_acceptance_sequence;
+        self.composite_timeline
+            .request_transition(source, mode, delay)?;
+        self.publish_composite_anticipated_transitions();
+        self.composite_acceptance_sequence = self.composite_acceptance_sequence.saturating_add(1);
+        Ok(acceptance_sequence)
+    }
+
+    pub fn accept_composite_immediate_transition(
+        &mut self,
+        source: LoopIdentity,
+        mode: LoopMode,
+        iteration: i64,
+    ) -> Result<u64, CompositeTimelineControlError> {
+        let acceptance_sequence = self.composite_acceptance_sequence;
+        self.composite_timeline.queue_immediate_transition(
+            source,
+            mode,
+            iteration,
+            acceptance_sequence,
+        )?;
+        self.apply_composite_controls_now()?;
+        self.publish_composite_anticipated_transitions();
+        self.composite_acceptance_sequence = self.composite_acceptance_sequence.saturating_add(1);
+        Ok(acceptance_sequence)
+    }
+
+    fn apply_composite_controls_now(&mut self) -> Result<(), CompositeTimelineControlError> {
+        let Session {
+            composite_timeline,
+            loops,
+            loop_live,
+            ..
+        } = self;
+        composite_timeline.align_sync_positions(|identity| {
+            if identity.kind != LoopTargetKind::Basic
+                || identity.generation != 1
+                || !loop_live
+                    .get(identity.slot as usize)
+                    .copied()
+                    .unwrap_or(false)
+            {
+                return None;
+            }
+            loops
+                .get(identity.slot as usize)
+                .map(|loop_| u64::from(loop_.position()))
+        });
+        let trace = composite_timeline
+            .resolve_boundary(&[], &[], |identity| {
+                identity.kind == LoopTargetKind::Basic
+                    && identity.generation == 1
+                    && loop_live
+                        .get(identity.slot as usize)
+                        .copied()
+                        .unwrap_or(false)
+            })
+            .map_err(|_| CompositeTimelineControlError::BoundaryFault)?;
+        for entry in trace {
+            if entry.target.kind != LoopTargetKind::Basic
+                || entry.target.generation != 1
+                || !loop_live
+                    .get(entry.target.slot as usize)
+                    .copied()
+                    .unwrap_or(false)
+            {
+                continue;
+            }
+            let Some(loop_) = loops.get_mut(entry.target.slot as usize) else {
+                continue;
+            };
+            match entry.action {
+                BoundaryTargetAction::Stop => loop_.set_mode(LoopMode::Stopped),
+                BoundaryTargetAction::SetMode {
+                    mode,
+                    offset_samples,
+                    retrigger,
+                } => {
+                    let mode_changed = loop_.mode() != mode;
+                    loop_.set_mode(mode);
+                    if retrigger || mode_changed {
+                        let offset = u32::try_from(offset_samples).unwrap_or(u32::MAX);
+                        if matches!(mode, LoopMode::Recording | LoopMode::RecordingDryIntoWet) {
+                            loop_.set_length(offset);
+                            loop_.set_position(0);
+                        } else {
+                            loop_.set_position(offset.min(loop_.length()));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn accept_composite_play_after_record(
+        &mut self,
+        source: LoopIdentity,
+        enabled: bool,
+    ) -> Result<u64, CompositeTimelineControlError> {
+        let acceptance_sequence = self.composite_acceptance_sequence;
+        self.composite_timeline
+            .set_play_after_record(source, enabled)?;
+        self.publish_composite_states();
+        self.composite_acceptance_sequence = self.composite_acceptance_sequence.saturating_add(1);
+        Ok(acceptance_sequence)
+    }
+
+    pub fn reclaim_composite_plans(
+        &mut self,
+        storage: Vec<CompiledCompositePlan>,
+    ) -> Vec<CompiledCompositePlan> {
+        self.composite_timeline.reclaim_retired_plans(storage)
+    }
+
+    pub fn accept_composite_fault_reset(&mut self) -> u64 {
+        let acceptance_sequence = self.composite_acceptance_sequence;
+        self.composite_timeline.reset_fault();
+        self.composite_acceptance_sequence = self.composite_acceptance_sequence.saturating_add(1);
+        acceptance_sequence
+    }
+
+    pub fn accept_composite_control(
+        &mut self,
+        target: LoopIdentity,
+        action: BoundaryTargetAction,
+        at_sample: Option<u64>,
+    ) -> Result<u64, CompositeTimelineControlError> {
+        let acceptance_sequence = self.composite_acceptance_sequence;
+        let control = AcceptedTimelineControl {
+            at_sample: at_sample.unwrap_or_else(|| self.composite_timeline.sample_clock()),
+            target,
+            action,
+            acceptance_sequence,
+        };
+        self.composite_timeline.queue_control(control)?;
+        self.publish_composite_anticipated_transitions();
+        self.composite_acceptance_sequence = self.composite_acceptance_sequence.saturating_add(1);
+        Ok(acceptance_sequence)
+    }
+
+    fn publish_composite_anticipated_transitions(&self) {
+        for (index, loop_) in self.loops.iter().enumerate() {
+            let transition = loop_.first_planned_transition().or_else(|| {
+                self.loop_identity(index)
+                    .and_then(|identity| self.composite_timeline.anticipated_transition(identity))
+            });
+            loop_.publish_state_with_transition(transition);
+        }
+        self.publish_composite_states();
+    }
+
+    fn publish_composite_states(&self) {
+        let timeline = &self.composite_timeline;
+        let loop_live = &self.loop_live;
+        timeline.publish_state_mirrors(|identity| match identity.kind {
+            LoopTargetKind::Basic => {
+                identity.generation == 1
+                    && loop_live
+                        .get(identity.slot as usize)
+                        .copied()
+                        .unwrap_or(false)
+            }
+            LoopTargetKind::Composite => timeline.is_current_composite(identity),
+        });
+    }
+
+    pub fn install_composite_timeline(
+        &mut self,
+        timeline: CompositeBoundaryTimeline,
+    ) -> Result<CompositeBoundaryTimeline, SessionError> {
+        self.validate_composite_targets(&timeline)?;
+        if !timeline.is_empty() {
+            timeline.validate_primitive_sync_sources(&self.sync_sources)?;
+        }
+        self.composite_timeline.mark_mirrors_removed_by(&timeline);
+        let previous = std::mem::replace(&mut self.composite_timeline, timeline);
+        self.publish_composite_states();
+        Ok(previous)
+    }
+
+    pub fn install_prepared_composite_timeline(
+        &mut self,
+        timeline: CompositeBoundaryTimeline,
+    ) -> Result<ReclaimedCompositeTimeline, RejectedCompositeTimeline> {
+        let result = self.validate_composite_targets(&timeline).and_then(|_| {
+            if !timeline.matches_prepared_primitive_sync_sources(&self.sync_sources) {
+                return Err(SessionError::StaleCompositeTopology);
+            }
+            match timeline.prepared_version() {
+                Some(version) if version > self.composite_timeline_version => Ok(version),
+                _ => Err(SessionError::StaleCompositeVersion(
+                    self.composite_timeline_version,
+                )),
+            }
+        });
+        let version = match result {
+            Ok(version) => version,
+            Err(error) => return Err(RejectedCompositeTimeline { error, timeline }),
+        };
+        if self
+            .composite_timeline
+            .replacement_requires_runtime_transfer()
+        {
+            if self
+                .composite_timeline
+                .can_queue_runtime_preserving_replacement(&timeline)
+            {
+                let reclaimed = self
+                    .composite_timeline
+                    .queue_runtime_preserving_replacement(timeline);
+                self.composite_timeline_version = version;
+                self.publish_composite_states();
+                return Ok(ReclaimedCompositeTimeline {
+                    timeline: reclaimed,
+                });
+            }
+            if !self
+                .composite_timeline
+                .can_restart_with_changed_topology(&timeline)
+            {
+                return Err(RejectedCompositeTimeline {
+                    error: SessionError::CompositeReplacementRequiresRuntimeTransfer,
+                    timeline,
+                });
+            }
+            for identity in self.composite_timeline.active_primitive_children() {
+                if let Some(loop_) = self.loops.get_mut(identity.slot as usize) {
+                    loop_.set_mode(LoopMode::Stopped);
+                }
+            }
+            let mut previous = std::mem::replace(&mut self.composite_timeline, timeline);
+            previous.mark_mirrors_removed_by(&self.composite_timeline);
+            self.composite_timeline.prepare_changed_topology_restart(
+                &mut previous,
+                &mut self.composite_acceptance_sequence,
+            );
+            self.composite_timeline_version = version;
+            self.publish_composite_states();
+            Ok(ReclaimedCompositeTimeline { timeline: previous })
+        } else {
+            let mut previous = std::mem::replace(&mut self.composite_timeline, timeline);
+            previous.mark_mirrors_removed_by(&self.composite_timeline);
+            self.composite_timeline
+                .prepare_stopped_replacement(&mut previous);
+            self.composite_timeline_version = version;
+            self.publish_composite_states();
+            Ok(ReclaimedCompositeTimeline { timeline: previous })
+        }
+    }
+
+    fn validate_composite_targets(
+        &self,
+        timeline: &CompositeBoundaryTimeline,
+    ) -> Result<(), SessionError> {
+        if let Some(identity) = timeline.first_invalid_primitive(|identity| {
+            identity.kind == LoopTargetKind::Basic
+                && identity.generation == 1
+                && self
+                    .loop_live
+                    .get(identity.slot as usize)
+                    .copied()
+                    .unwrap_or(false)
+        }) {
+            Err(SessionError::StaleCompositeTarget(identity.slot))
+        } else {
+            Ok(())
+        }
+    }
+
     /// True when the schedule matches the current topology.
     pub fn graph_up_to_date(&self) -> bool {
         self.graph_request_id == self.graph_applied_id
@@ -560,6 +994,7 @@ impl Session {
         self.loops.push(AudioMidiLoop::with_state_mirror(state));
         self.sync_sources.push(None);
         self.sync_snapshots.push(None);
+        self.loop_live.push(true);
         self.note_graph_change();
         self.loops.len() - 1
     }
@@ -784,6 +1219,7 @@ impl Session {
             l.clear(0);
         }
         self.sync_sources[loop_idx] = None;
+        self.loop_live[loop_idx] = false;
         for src in self.sync_sources.iter_mut() {
             if *src == Some(loop_idx) {
                 *src = None;
@@ -850,7 +1286,17 @@ impl Session {
                 return Err(SessionError::SelfSync(loop_idx));
             }
         }
+        let previous = self.sync_sources[loop_idx];
         self.sync_sources[loop_idx] = source;
+        if !self.composite_timeline.is_empty() {
+            if let Err(error) = self
+                .composite_timeline
+                .validate_primitive_sync_sources(&self.sync_sources)
+            {
+                self.sync_sources[loop_idx] = previous;
+                return Err(error.into());
+            }
+        }
         // A loop with no sync source transitions immediately rather than waiting
         // for a trigger, so this changes behaviour and not just wiring.
         self.loops[loop_idx].set_sync_source(source.map(|_| SyncSourceState::default()));
@@ -874,9 +1320,295 @@ impl Session {
         self.carla_fx_hosts.insert(title.into(), host);
     }
 
-    /// Retroactively fills a loop's audio channels from their input ports' rolling
-    /// layer: the selected window is copied into each channel, the loop length is
-    /// updated, and the requested post-grab mode/position is applied.
+    pub fn describe_audio_ringbuffer_adoption(
+        &mut self,
+        requests: &[AudioRingbufferAdoption],
+    ) -> Result<AudioRingbufferAdoptionShape, SessionError> {
+        if requests.len() > MAX_AUDIO_RINGBUFFER_ADOPTIONS {
+            return Err(SessionError::AudioRingbufferAdoptionCapacity);
+        }
+        self.refresh_sync_snapshots();
+        let mut shape = AudioRingbufferAdoptionShape {
+            channels: [None; MAX_AUDIO_RINGBUFFER_ADOPTION_CHANNELS],
+            n_channels: 0,
+        };
+        for (index, request) in requests.iter().enumerate() {
+            if request.loop_idx >= self.loops.len() {
+                return Err(SessionError::NoSuchLoop(request.loop_idx));
+            }
+            if requests[..index]
+                .iter()
+                .any(|previous| previous.loop_idx == request.loop_idx)
+            {
+                return Err(SessionError::AudioRingbufferAdoptionCapacity);
+            }
+            let sync = self.loops[request.loop_idx].sync_source();
+            let cycle_len = sync.map(|state| state.length).unwrap_or(0);
+            let sync_pos = sync.map(|state| state.position).unwrap_or(0);
+            for mapping in self.channels.iter().filter(|mapping| {
+                mapping.loop_idx == request.loop_idx && mapping.kind == ChannelKind::Audio
+            }) {
+                if shape.n_channels >= MAX_AUDIO_RINGBUFFER_ADOPTION_CHANNELS {
+                    return Err(SessionError::AudioRingbufferAdoptionCapacity);
+                }
+                let ring_capacity = mapping
+                    .input_port
+                    .and_then(|port| self.ports.get(port))
+                    .and_then(Port::audio)
+                    .map(|port| port.ringbuffer_capacity())
+                    .unwrap_or(0);
+                let wanted = adoption_window(request, cycle_len, sync_pos, ring_capacity).0;
+                let channel = self.loops[request.loop_idx]
+                    .audio_channel(mapping.channel_idx)
+                    .ok_or(SessionError::NoSuchChannel(mapping.channel_idx))?;
+                shape.channels[shape.n_channels] = Some(AudioRingbufferAdoptionChannelShape {
+                    loop_idx: request.loop_idx,
+                    channel_idx: mapping.channel_idx,
+                    chunk_size: channel.chunk_size(),
+                    capacity: ring_capacity.max(wanted),
+                });
+                shape.n_channels += 1;
+            }
+        }
+        Ok(shape)
+    }
+
+    pub fn adopt_audio_ringbuffers_prepared(
+        &mut self,
+        requests: &[AudioRingbufferAdoption],
+        prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
+    ) -> Result<(), SessionError> {
+        self.adopt_audio_ringbuffers_prepared_inner(requests, prepared, None)
+    }
+
+    /// The application backend variant also returns preallocated copies for control-thread
+    /// state-mirror publication. Filling the copies is bounded and allocation-free.
+    pub fn adopt_audio_ringbuffers_prepared_with_copies(
+        &mut self,
+        requests: &[AudioRingbufferAdoption],
+        prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
+        copies: &mut [Vec<f32>],
+    ) -> Result<(), SessionError> {
+        self.adopt_audio_ringbuffers_prepared_inner(requests, prepared, Some(copies))
+    }
+
+    fn adopt_audio_ringbuffers_prepared_inner(
+        &mut self,
+        requests: &[AudioRingbufferAdoption],
+        prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
+        mut copies: Option<&mut [Vec<f32>]>,
+    ) -> Result<(), SessionError> {
+        let shape = self.describe_audio_ringbuffer_adoption(requests)?;
+        if prepared.len() != shape.n_channels
+            || copies
+                .as_ref()
+                .is_some_and(|copies| copies.len() != shape.n_channels)
+        {
+            return Err(SessionError::AudioRingbufferAdoptionCapacity);
+        }
+        for (index, (slot, expected)) in prepared.iter_mut().zip(shape.channels()).enumerate() {
+            if slot.loop_idx != expected.loop_idx
+                || slot.channel_idx != expected.channel_idx
+                || slot.data.capacity() < expected.capacity
+                || copies
+                    .as_ref()
+                    .is_some_and(|copies| copies[index].capacity() < expected.capacity)
+            {
+                return Err(SessionError::AudioRingbufferAdoptionCapacity);
+            }
+            let request = requests
+                .iter()
+                .find(|request| request.loop_idx == slot.loop_idx)
+                .expect("prepared adoption target was described");
+            let sync = self.loops[request.loop_idx].sync_source();
+            let cycle_len = sync.map(|state| state.length).unwrap_or(0);
+            let sync_pos = sync.map(|state| state.position).unwrap_or(0);
+            let mapping = self
+                .channels
+                .iter()
+                .find(|mapping| {
+                    mapping.loop_idx == slot.loop_idx
+                        && mapping.kind == ChannelKind::Audio
+                        && mapping.channel_idx == slot.channel_idx
+                })
+                .expect("prepared adoption channel was described");
+            let source = mapping
+                .input_port
+                .and_then(|port| self.ports.get(port))
+                .and_then(Port::audio);
+            let data_len = source.map(|port| port.ringbuffer_n_samples()).unwrap_or(0);
+            let (wanted, start, end) = adoption_window(request, cycle_len, sync_pos, data_len);
+            slot.data.begin_load(wanted);
+            let mut offset = 0;
+            if let Some(source) = source {
+                source.visit_ringbuffer_range(start, end, |samples| {
+                    slot.data.write(offset, samples);
+                    offset += samples.len();
+                });
+            }
+            if let Some(copies) = copies.as_deref_mut() {
+                slot.data.copy_to_preallocated(&mut copies[index]);
+            }
+        }
+
+        for slot in prepared {
+            self.loops[slot.loop_idx]
+                .audio_channel_mut(slot.channel_idx)
+                .expect("prepared adoption channel was validated")
+                .commit_prepared_data(&mut slot.data);
+        }
+        self.apply_audio_ringbuffer_adoption_states(requests);
+        Ok(())
+    }
+
+    fn apply_audio_ringbuffer_adoption_states(&mut self, requests: &[AudioRingbufferAdoption]) {
+        for request in requests {
+            let sync = self.loops[request.loop_idx].sync_source();
+            let cycle_len = sync.map(|state| state.length).unwrap_or(0);
+            let sync_pos = sync.map(|state| state.position).unwrap_or(0);
+            let data_len = self
+                .channels
+                .iter()
+                .filter(|mapping| {
+                    mapping.loop_idx == request.loop_idx && mapping.kind == ChannelKind::Audio
+                })
+                .filter_map(|mapping| {
+                    self.loops[request.loop_idx]
+                        .audio_channel(mapping.channel_idx)
+                        .map(|channel| channel.length())
+                })
+                .max()
+                .unwrap_or(0);
+            let adopted_len = data_len.min(u32::MAX as usize) as u32;
+            let go_cycle = request.go_to_cycle.unwrap_or(0).max(0) as u32;
+            let loop_ = &mut self.loops[request.loop_idx];
+            match request.go_to_mode {
+                LoopMode::Recording => {
+                    loop_.set_mode(LoopMode::Recording);
+                    loop_.set_length(adopted_len);
+                }
+                LoopMode::Unknown => {
+                    loop_.set_length(adopted_len);
+                    loop_.set_mode(LoopMode::Stopped);
+                }
+                mode => {
+                    loop_.set_length(adopted_len);
+                    loop_.set_mode(mode);
+                    if cycle_len > 0 {
+                        loop_.set_position(
+                            go_cycle.saturating_mul(cycle_len).saturating_add(sync_pos),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// Retroactively fills loops' audio channels from their input ports' rolling
+    /// layers and commits all requested post-grab states in one bounded transaction.
+    pub fn adopt_audio_ringbuffers(
+        &mut self,
+        requests: &[AudioRingbufferAdoption],
+    ) -> Result<(), SessionError> {
+        if requests.len() > MAX_AUDIO_RINGBUFFER_ADOPTIONS {
+            return Err(SessionError::AudioRingbufferAdoptionCapacity);
+        }
+        for (index, request) in requests.iter().enumerate() {
+            if request.loop_idx >= self.loops.len() {
+                return Err(SessionError::NoSuchLoop(request.loop_idx));
+            }
+            if requests[..index]
+                .iter()
+                .any(|previous| previous.loop_idx == request.loop_idx)
+            {
+                return Err(SessionError::AudioRingbufferAdoptionCapacity);
+            }
+        }
+
+        self.refresh_sync_snapshots();
+        for request in requests {
+            let sync = self.loops[request.loop_idx].sync_source();
+            let cycle_len = sync.map(|state| state.length).unwrap_or(0);
+            let sync_pos = sync.map(|state| state.position).unwrap_or(0);
+            for mapping in self.channels.iter().filter(|mapping| {
+                mapping.loop_idx == request.loop_idx && mapping.kind == ChannelKind::Audio
+            }) {
+                let data_len = mapping
+                    .input_port
+                    .and_then(|port| self.ports.get(port))
+                    .and_then(Port::audio)
+                    .map(|port| port.ringbuffer_n_samples())
+                    .unwrap_or(0);
+                let wanted_len = adoption_window(request, cycle_len, sync_pos, data_len).0;
+                let channel = self.loops[request.loop_idx]
+                    .audio_channel(mapping.channel_idx)
+                    .ok_or(SessionError::NoSuchChannel(mapping.channel_idx))?;
+                if !channel.can_load_without_allocation(wanted_len) {
+                    return Err(SessionError::AudioRingbufferAdoptionCapacity);
+                }
+            }
+        }
+
+        let channels = &self.channels;
+        let ports = &self.ports;
+        let loops = &mut self.loops;
+        for request in requests {
+            let sync = loops[request.loop_idx].sync_source();
+            let cycle_len = sync.map(|state| state.length).unwrap_or(0);
+            let sync_pos = sync.map(|state| state.position).unwrap_or(0);
+            let go_cycle = request.go_to_cycle.unwrap_or(0).max(0) as u32;
+            let mut adopted_len = 0usize;
+
+            for mapping in channels.iter().filter(|mapping| {
+                mapping.loop_idx == request.loop_idx && mapping.kind == ChannelKind::Audio
+            }) {
+                let source = mapping
+                    .input_port
+                    .and_then(|port| ports.get(port))
+                    .and_then(Port::audio);
+                let data_len = source.map(|port| port.ringbuffer_n_samples()).unwrap_or(0);
+                let (wanted_len, start, end) =
+                    adoption_window(request, cycle_len, sync_pos, data_len);
+                adopted_len = adopted_len.max(wanted_len);
+                let channel = loops[request.loop_idx]
+                    .audio_channel_mut(mapping.channel_idx)
+                    .expect("adoption mappings were validated");
+                channel.begin_bounded_load(wanted_len);
+                let mut destination_offset = 0;
+                if let Some(source) = source {
+                    source.visit_ringbuffer_range(start, end, |samples| {
+                        channel.write_bounded_load(destination_offset, samples);
+                        destination_offset += samples.len();
+                    });
+                }
+                channel.finish_bounded_load();
+            }
+
+            let loop_ = &mut loops[request.loop_idx];
+            let adopted_len = adopted_len.min(u32::MAX as usize) as u32;
+            match request.go_to_mode {
+                LoopMode::Recording => {
+                    loop_.set_mode(LoopMode::Recording);
+                    loop_.set_length(adopted_len);
+                }
+                LoopMode::Unknown => {
+                    loop_.set_length(adopted_len);
+                    loop_.set_mode(LoopMode::Stopped);
+                }
+                mode => {
+                    loop_.set_length(adopted_len);
+                    loop_.set_mode(mode);
+                    if cycle_len > 0 {
+                        loop_.set_position(
+                            go_cycle.saturating_mul(cycle_len).saturating_add(sync_pos),
+                        );
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn adopt_audio_ringbuffers_for_loop(
         &mut self,
         loop_idx: usize,
@@ -885,105 +1617,13 @@ impl Session {
         go_to_cycle: Option<i32>,
         go_to_mode: LoopMode,
     ) -> Result<(), SessionError> {
-        if loop_idx >= self.loops.len() {
-            return Err(SessionError::NoSuchLoop(loop_idx));
-        }
-
-        self.refresh_sync_snapshots();
-        let sync = self.loops[loop_idx].sync_source();
-        let cycle_len = sync.map(|s| s.length).unwrap_or(0);
-        let sync_pos = sync.map(|s| s.position).unwrap_or(0);
-        let cycles = cycles_length.unwrap_or(1).max(1) as u32;
-        let go_cycle = go_to_cycle.unwrap_or(0).max(0) as u32;
-
-        let mappings: Vec<_> = self
-            .channels
-            .iter()
-            .filter(|m| m.loop_idx == loop_idx && m.kind == ChannelKind::Audio)
-            .cloned()
-            .collect();
-
-        let mut segments: Vec<(usize, Vec<f32>)> = Vec::new();
-        let mut adopted_len: u32 = 0;
-        for m in mappings.iter() {
-            let data = m
-                .input_port
-                .and_then(|p| self.ports.get(p))
-                .and_then(|p| p.audio())
-                .map(|a| a.ringbuffer_contents().contiguous())
-                .unwrap_or_default();
-
-            let wanted_len = if cycle_len > 0 {
-                if reverse_start_cycle == Some(0) {
-                    sync_pos
-                } else {
-                    match go_to_mode {
-                        LoopMode::Recording => go_cycle * cycle_len + sync_pos,
-                        _ => cycles * cycle_len,
-                    }
-                }
-            } else {
-                data.len() as u32
-            };
-            let wanted_len_usize = wanted_len as usize;
-            let data_len = data.len();
-            let end = if cycle_len > 0 {
-                if let Some(reverse_start_cycle) = reverse_start_cycle {
-                    if reverse_start_cycle == 0 {
-                        data_len
-                    } else {
-                        let cycles_before_current =
-                            (reverse_start_cycle.max(0) as u32).saturating_sub(cycles);
-                        data_len
-                            .saturating_sub((sync_pos + cycles_before_current * cycle_len) as usize)
-                    }
-                } else if go_to_mode == LoopMode::Recording {
-                    data_len
-                } else {
-                    data_len.saturating_sub((sync_pos + go_cycle * cycle_len) as usize)
-                }
-            } else {
-                data_len
-            };
-            let start = end.saturating_sub(wanted_len_usize);
-            let segment = if start <= end && end <= data_len {
-                data[start..end].to_vec()
-            } else {
-                Vec::new()
-            };
-            adopted_len = adopted_len.max(wanted_len.max(segment.len() as u32));
-            segments.push((m.channel_idx, segment));
-        }
-
-        if let Some(l) = self.loops.get_mut(loop_idx) {
-            for (channel_idx, segment) in segments {
-                if let Some(c) = l.audio_channel_mut(channel_idx) {
-                    c.load_data(&segment);
-                    if adopted_len as usize > segment.len() {
-                        c.set_length(adopted_len as usize);
-                    }
-                    c.set_start_offset(0);
-                }
-            }
-            match go_to_mode {
-                LoopMode::Recording => {
-                    l.set_mode(LoopMode::Recording);
-                    l.set_length(adopted_len);
-                }
-                LoopMode::Unknown => {
-                    l.set_length(adopted_len);
-                    l.set_mode(LoopMode::Stopped);
-                }
-                mode => {
-                    l.set_length(adopted_len);
-                    l.set_mode(mode);
-                    if cycle_len > 0 {
-                        l.set_position(go_cycle * cycle_len + sync_pos);
-                    }
-                }
-            }
-        }
-        Ok(())
+        self.adopt_audio_ringbuffers(&[AudioRingbufferAdoption {
+            loop_idx,
+            reverse_start_cycle,
+            cycles_length,
+            go_to_cycle,
+            go_to_mode,
+        }])
     }
 
     // --- schedule ---
@@ -1082,6 +1722,15 @@ impl Session {
         std::mem::swap(&mut self.midi_in_scratch, &mut prepared.midi_in_scratch);
         std::mem::swap(&mut self.midi_out_scratch, &mut prepared.midi_out_scratch);
         std::mem::swap(&mut self.loop_group, &mut prepared.loop_group);
+        std::mem::swap(&mut self.boundary_triggers, &mut prepared.boundary_triggers);
+        std::mem::swap(
+            &mut self.boundary_delivered_triggers,
+            &mut prepared.boundary_delivered_triggers,
+        );
+        std::mem::swap(
+            &mut self.boundary_natural_intents,
+            &mut prepared.boundary_natural_intents,
+        );
 
         self.graph_applied_id = covered;
         prepared
@@ -1140,6 +1789,7 @@ impl Session {
             self.n_stale_cycles = self.n_stale_cycles.saturating_add(1);
         }
         self.n_sub_blocks_last_cycle = 0;
+        self.composite_timeline.begin_callback();
         let steps = std::mem::take(&mut self.schedule);
         for step in &steps {
             // Loops in one step are co-processed, so they are gathered and
@@ -1147,51 +1797,27 @@ impl Session {
             self.loop_group.clear();
             for node in step {
                 match self.node_actions[node.0] {
-                    NodeAction::PortPrepare(i) => {
-                        crate::realtime_allow_alloc_once!("Session::PortPrepare", || {
-                            self.ports[i].prepare(n_frames)
-                        });
-                    }
+                    NodeAction::PortPrepare(i) => self.ports[i].prepare(n_frames),
                     NodeAction::PortProcess(i) => {
-                        crate::realtime_allow_alloc_once!("Session::PortProcess", || {
-                            self.ports[i].process(n_frames)
-                        });
-                        crate::realtime_allow_alloc_once!("Session::propagate_port", || {
-                            self.propagate_port(i, n_frames)
-                        });
+                        self.ports[i].process(n_frames);
+                        self.propagate_port(i, n_frames);
                         self.process_test2x2x1_fx_port(i, n_frames);
                     }
                     NodeAction::LoopProcess(i) => self.loop_group.push(i),
-                    NodeAction::ChannelPrepare(i) => {
-                        crate::realtime_allow_alloc_once!("Session::ChannelPrepare", || {
-                            self.channel_prepare(i, n_frames)
-                        });
-                    }
-                    NodeAction::ChannelProcess(i) => {
-                        crate::realtime_allow_alloc_once!("Session::ChannelProcess", || {
-                            self.channel_finalize(i, n_frames)
-                        });
-                    }
+                    NodeAction::ChannelPrepare(i) => self.channel_prepare(i, n_frames),
+                    NodeAction::ChannelProcess(i) => self.channel_finalize(i, n_frames),
                     NodeAction::None => {}
                 }
             }
             if !self.loop_group.is_empty() {
-                crate::realtime_allow_alloc_once!("Session::process_loop_group", || {
-                    self.process_loop_group(n_frames)
-                });
-                crate::realtime_allow_alloc_once!(
-                    "Session::synth_prerecorded_midi_playback",
-                    || { self.synth_prerecorded_midi_playback(n_frames) }
-                );
+                self.process_loop_group(n_frames);
+                self.synth_prerecorded_midi_playback(n_frames);
             }
         }
-        crate::realtime_allow_alloc_once!("Session::apply_test2x2x1_fx_outputs", || {
-            self.apply_test2x2x1_fx_outputs(n_frames)
-        });
+        self.apply_test2x2x1_fx_outputs(n_frames);
         #[cfg(feature = "lv2")]
-        crate::realtime_allow_alloc_once!("Session::process_carla_fx_chains", || {
-            self.process_carla_fx_chains(n_frames)
-        });
+        self.process_carla_fx_chains(n_frames);
+        self.publish_composite_anticipated_transitions();
         self.schedule = steps;
     }
 
@@ -1795,6 +2421,9 @@ impl Session {
     /// mid-buffer is advanced in pieces. Single loops go through the same path:
     /// loop still needs splitting when its end falls inside the buffer.
     fn process_loop_group(&mut self, n_frames: usize) {
+        if self.composite_timeline.fault().fault != CompositeTimelineFault::None {
+            return;
+        }
         let mut remaining = n_frames;
         let mut sub_blocks = 0u32;
 
@@ -1802,17 +2431,13 @@ impl Session {
             sub_blocks += 1;
             self.n_sub_blocks_last_cycle += 1;
             if sub_blocks > MAX_SUB_BLOCKS {
-                // A loop is reporting a point of interest it never clears. Give up
-                // on the rest of the cycle rather than spin on the audio thread.
-                self.n_stuck_cycles += 1;
+                self.n_stuck_cycles = self.n_stuck_cycles.saturating_add(1);
+                self.composite_timeline.latch_sub_block_overflow();
                 return;
             }
 
-            // Sync state is read while computing points of interest and trigger
-            // ETAs, so refresh it before measuring.
             self.refresh_sync_snapshots();
 
-            // Earliest point of interest across the group bounds this sub-block.
             let mut until = remaining;
             for gi in 0..self.loop_group.len() {
                 let li = self.loop_group[gi];
@@ -1821,22 +2446,167 @@ impl Session {
                     until = until.min(poi as usize);
                 }
             }
-
-            for gi in 0..self.loop_group.len() {
-                self.advance_loop(self.loop_group[gi], until);
+            if let Some(control_poi) = self.composite_timeline.next_control_poi(remaining) {
+                until = until.min(control_poi);
             }
-            // Points of interest and triggers resolve only once every loop has
-            // reached the same position, or a trigger could be seen a sub-block
-            // late by loops synced to it.
+
+            if until > 0 {
+                for gi in 0..self.loop_group.len() {
+                    self.advance_loop(self.loop_group[gi], until);
+                }
+                self.composite_timeline.advance_clock(until);
+            }
             for gi in 0..self.loop_group.len() {
                 self.loops[self.loop_group[gi]].handle_poi();
             }
-            // Triggers fired during this sub-block only become visible to
-            // dependents once every loop has advanced, so the snapshots are
-            // refreshed again between handling points of interest and sync.
-            self.refresh_sync_snapshots();
-            for gi in 0..self.loop_group.len() {
-                self.loops[self.loop_group[gi]].handle_sync();
+
+            self.boundary_delivered_triggers.clear();
+            let mut event_waves = 0usize;
+            let mut first_wave = true;
+            loop {
+                let mut sync_waves = 0usize;
+                loop {
+                    self.refresh_sync_snapshots();
+                    let mut changed = false;
+                    for gi in 0..self.loop_group.len() {
+                        let loop_idx = self.loop_group[gi];
+                        let was_triggering =
+                            self.loops[loop_idx].as_sync_source_state().triggering_now;
+                        self.loops[loop_idx].handle_sync();
+                        changed |= !was_triggering
+                            && self.loops[loop_idx].as_sync_source_state().triggering_now;
+                    }
+                    if !changed {
+                        break;
+                    }
+                    sync_waves += 1;
+                    if sync_waves >= self.composite_timeline.max_event_waves() {
+                        self.composite_timeline.latch_event_wave_overflow();
+                        return;
+                    }
+                }
+
+                self.boundary_triggers.clear();
+                self.boundary_natural_intents.clear();
+                for gi in 0..self.loop_group.len() {
+                    let loop_idx = self.loop_group[gi];
+                    let state = self.loops[loop_idx].as_sync_source_state();
+                    if !state.triggering_now || !self.loop_live[loop_idx] {
+                        continue;
+                    }
+                    let identity = LoopIdentity {
+                        slot: loop_idx as u32,
+                        generation: 1,
+                        kind: LoopTargetKind::Basic,
+                    };
+                    if self.boundary_delivered_triggers.contains(&identity) {
+                        continue;
+                    }
+                    self.boundary_triggers.push(identity);
+                    self.boundary_delivered_triggers.push(identity);
+                    self.boundary_natural_intents.push(BoundaryIntent {
+                        target: identity,
+                        action: BoundaryTargetAction::SetMode {
+                            mode: state.mode,
+                            offset_samples: u64::from(state.position),
+                            retrigger: false,
+                        },
+                        origin: BoundaryIntentOrigin::Natural { source: identity },
+                    });
+                }
+
+                if !first_wave && self.boundary_triggers.is_empty() {
+                    break;
+                }
+                first_wave = false;
+                event_waves += 1;
+                if event_waves > self.composite_timeline.max_event_waves() {
+                    self.composite_timeline.latch_event_wave_overflow();
+                    return;
+                }
+
+                {
+                    let Session {
+                        composite_timeline,
+                        loops,
+                        loop_live,
+                        boundary_triggers,
+                        boundary_delivered_triggers,
+                        boundary_natural_intents,
+                        ..
+                    } = self;
+                    composite_timeline.align_sync_positions(|identity| {
+                        if identity.kind != LoopTargetKind::Basic
+                            || identity.generation != 1
+                            || !loop_live
+                                .get(identity.slot as usize)
+                                .copied()
+                                .unwrap_or(false)
+                        {
+                            return None;
+                        }
+                        loops
+                            .get(identity.slot as usize)
+                            .map(|loop_| u64::from(loop_.position()))
+                    });
+                    let trace = match composite_timeline.resolve_boundary(
+                        boundary_triggers,
+                        boundary_natural_intents,
+                        |identity| {
+                            identity.kind == LoopTargetKind::Basic
+                                && identity.generation == 1
+                                && loop_live
+                                    .get(identity.slot as usize)
+                                    .copied()
+                                    .unwrap_or(false)
+                        },
+                    ) {
+                        Ok(trace) => trace,
+                        Err(_) => return,
+                    };
+                    for entry in trace {
+                        if entry.target.kind != LoopTargetKind::Basic
+                            || entry.target.generation != 1
+                            || !loop_live
+                                .get(entry.target.slot as usize)
+                                .copied()
+                                .unwrap_or(false)
+                        {
+                            continue;
+                        }
+                        let Some(loop_) = loops.get_mut(entry.target.slot as usize) else {
+                            continue;
+                        };
+                        match entry.action {
+                            BoundaryTargetAction::Stop => loop_.set_mode(LoopMode::Stopped),
+                            BoundaryTargetAction::SetMode {
+                                mode,
+                                offset_samples,
+                                retrigger,
+                            } => {
+                                let mode_changed = loop_.mode() != mode;
+                                loop_.set_mode(mode);
+                                if retrigger || mode_changed {
+                                    let offset = u32::try_from(offset_samples).unwrap_or(u32::MAX);
+                                    if matches!(
+                                        mode,
+                                        LoopMode::Recording | LoopMode::RecordingDryIntoWet
+                                    ) {
+                                        loop_.set_length(offset);
+                                        loop_.set_position(0);
+                                    } else {
+                                        loop_.set_position(offset.min(loop_.length()));
+                                    }
+                                }
+                                if loop_.as_sync_source_state().triggering_now {
+                                    if !boundary_delivered_triggers.contains(&entry.target) {
+                                        boundary_delivered_triggers.push(entry.target);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             remaining -= until;
