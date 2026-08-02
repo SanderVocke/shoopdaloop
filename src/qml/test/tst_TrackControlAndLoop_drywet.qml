@@ -226,6 +226,9 @@ ShoopTestFile {
                     session.backend.dummy_run_requested_frames()
                     session.backend.dummy_request_controlled_frames(2)
                     session.backend.dummy_run_requested_frames()
+                    // Channel data is mirrored off the realtime thread. Fence publication before
+                    // taking snapshots so a slow runner cannot observe the preceding test's data.
+                    testcase.wait_updated(session.backend)
 
                     let out1 = output_port_1.dummy_dequeue_audio_data(4)
                     let out2 = output_port_2.dummy_dequeue_audio_data(4)
