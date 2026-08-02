@@ -265,12 +265,14 @@ Item {
         // Let queued Lua/QML calls settle, then repeatedly fence engine commands and publish
         // mirrors. Reactions to one publication may queue controls for the next engine pass.
         wait(30)
-        for (var i = 0; i < 6; ++i) {
+        for (var i = 0; i < 10; ++i) {
             backend.wait_process()
             let expected_epoch = backend.refresh_epoch + 1
             backend.refresh()
             verify_true(backend.refresh_epoch >= expected_epoch)
-            wait(0)
+            // A positive delay guarantees at least one event-processing pass even when QML
+            // coverage instrumentation makes a single queued reaction exceed the delay.
+            wait(1)
         }
     }
 
