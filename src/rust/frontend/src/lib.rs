@@ -23,7 +23,7 @@ pub mod cxx_qt_shoop;
 mod loop_mode_helpers;
 
 #[cfg(not(feature = "prebuild"))]
-pub mod engine_update_thread;
+pub mod frontend_refresh;
 
 #[cfg(not(feature = "prebuild"))]
 pub mod test_results;

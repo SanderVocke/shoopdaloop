@@ -6,6 +6,10 @@ Project-specific information (read them on a need-to-know basis):
 - `info/ci-repro.md`: techniques for reproducing CI resource-contention failures locally on Linux hosts
 - `info/run.md`: how to run the app. including in development mode.
 
+Prompts for specific tasks:
+
+- `prompts/write_plan.md`: read when asked to write an implementation plan for a large feature or feature set.
+
 Rules and guidelines agents should respect:
 
 - `rules/mandates.md`: always read. contains steps/actions every agent is expected to perform in certain scenarios.

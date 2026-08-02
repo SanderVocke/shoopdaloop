@@ -14,9 +14,6 @@ pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        include!("cxx-qt-lib-shoop/qthread.h");
-        type QThread = cxx_qt_lib_shoop::qthread::QThread;
-
         include!("cxx-qt-lib-shoop/qtimer.h");
         type QTimer = cxx_qt_lib_shoop::qtimer::QTimer;
 
@@ -39,7 +36,7 @@ pub mod ffi {
         #[qml_element]
         #[base = QQuickItem]
         #[qproperty(bool, ready)]
-        #[qproperty(i32, update_interval_ms)]
+        #[qproperty(i32, update_interval_ms, READ=get_update_interval_ms, WRITE=set_update_interval_ms, NOTIFY=update_interval_ms_changed)]
         #[qproperty(i32, actual_backend_type)]
         #[qproperty(QString, client_name_hint)]
         #[qproperty(i32, backend_type)]
@@ -54,6 +51,7 @@ pub mod ffi {
         #[qproperty(i32, sample_rate)]
         #[qproperty(i32, buffer_size)]
         #[qproperty(f32, last_update_interval)]
+        #[qproperty(i32, refresh_epoch)]
         #[qproperty(QMap_QString_QVariant, driver_setting_overrides)]
         type BackendWrapper = super::BackendWrapperRust;
 
@@ -61,19 +59,16 @@ pub mod ffi {
         pub fn updated_on_gui_thread(self: Pin<&mut BackendWrapper>);
 
         #[qsignal]
-        pub fn updated_on_backend_thread(self: Pin<&mut BackendWrapper>);
+        pub fn update_interval_ms_changed(self: Pin<&mut BackendWrapper>, update_interval_ms: i32);
 
         #[qinvokable]
-        pub fn update_on_gui_thread(self: Pin<&mut BackendWrapper>);
+        pub fn refresh(self: Pin<&mut BackendWrapper>);
 
         #[qinvokable]
-        pub fn update_on_other_thread(self: Pin<&mut BackendWrapper>);
+        pub fn get_update_interval_ms(self: &BackendWrapper) -> i32;
 
         #[qinvokable]
-        pub fn get_gui_thread(self: &BackendWrapper) -> *mut QThread;
-
-        #[qinvokable]
-        pub fn get_backend_thread(self: &BackendWrapper) -> *mut QThread;
+        pub fn set_update_interval_ms(self: Pin<&mut BackendWrapper>, update_interval_ms: i32);
 
         #[qinvokable]
         pub fn close(self: Pin<&mut BackendWrapper>);
@@ -185,21 +180,10 @@ pub mod ffi {
 pub use ffi::BackendWrapper;
 use ffi::*;
 
-#[derive(Copy, Clone)]
-pub struct BackendWrapperUpdateData {
-    pub xruns: i32,
-    pub stale_graph_cycles: i32,
-    pub dsp_load: f32,
-    pub last_processed: i32,
-    pub n_audio_buffers_created: i32,
-    pub n_audio_buffers_available: i32,
-    pub sample_rate: i32,
-    pub buffer_size: i32,
-}
 pub struct BackendWrapperRust {
     // Properties
     ready: bool,
-    update_interval_ms: i32,
+    pub update_interval_ms: i32,
     actual_backend_type: i32,
     client_name_hint: QString,
     backend_type: i32,
@@ -213,13 +197,13 @@ pub struct BackendWrapperRust {
     n_audio_buffers_created: i32,
     n_audio_buffers_available: i32,
     last_update_interval: f32,
+    refresh_epoch: i32,
     sample_rate: i32,
     buffer_size: i32,
 
     // Rust-side only
     pub driver: Option<AudioDriver>,
     pub session: Option<BackendSession>,
-    pub update_data: Option<BackendWrapperUpdateData>,
     pub closed: bool,
     pub last_updated: Option<time::Instant>,
 }
@@ -243,13 +227,13 @@ impl Default for BackendWrapperRust {
             n_audio_buffers_available: 0,
             n_audio_buffers_created: 0,
             last_update_interval: 1.0,
+            refresh_epoch: 0,
             sample_rate: 1,
             buffer_size: 1,
 
             // Rust-side only
             driver: None,
             session: None,
-            update_data: None,
             closed: false,
             last_updated: None,
         }

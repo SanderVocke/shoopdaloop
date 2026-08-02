@@ -1,6 +1,6 @@
 pub use crate::cxx_qt_shoop::qobj_qmlengine_bridge::QmlEngine;
 use crate::cxx_qt_shoop::qobj_qmlengine_bridge::{self, ffi::*};
-use crate::engine_update_thread;
+use crate::frontend_refresh;
 use anyhow::anyhow;
 use common::util::PATH_LIST_SEPARATOR;
 use cxx_qt::CxxQtType;
@@ -33,17 +33,16 @@ impl QmlEngine {
         let window = self.as_mut().get_root_window()?;
         if !window.is_null() {
             unsafe {
-                let update_thread = engine_update_thread::get_engine_update_thread();
-                let update_thread = update_thread.ref_qobject_ptr();
+                let refresh = frontend_refresh::qobject_ptr();
                 connect::connect_or_report(
                     window
                         .as_ref()
                         .ok_or(anyhow!("Unable to get root window reference"))?,
                     "frameSwapped()",
-                    update_thread
+                    refresh
                         .as_ref()
-                        .ok_or(anyhow!("Unable to get update thread reference"))?,
-                    "frontend_frame_swapped()",
+                        .ok_or(anyhow!("Unable to get frontend refresh coordinator"))?,
+                    "request_refresh()",
                     connection_types::QUEUED_CONNECTION,
                 );
             }
@@ -78,7 +77,7 @@ impl QmlEngine {
     pub fn load_and_init_qml(
         mut self: Pin<&mut Self>,
         path: &Path,
-        connect_frameswapped_to_update_thread: bool,
+        connect_frameswapped_to_refresh: bool,
     ) -> Result<(), anyhow::Error> {
         // Ensure we are initialized
         self.as_mut().initialize()?;
@@ -88,7 +87,7 @@ impl QmlEngine {
             .load(&QString::from(path.to_string_lossy().to_string()));
 
         // Set up back-end update connection
-        if connect_frameswapped_to_update_thread {
+        if connect_frameswapped_to_refresh {
             self.as_mut().initialize_backend_updates()?;
         }
 

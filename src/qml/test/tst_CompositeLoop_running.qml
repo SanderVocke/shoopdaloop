@@ -653,12 +653,9 @@ ShoopTestFile {
 
                     c().on_play_clicked()
                     s().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
-                    testcase.wait_updated(session.backend)
 
-                    verify_eq(c().mode, ShoopRustConstants.LoopMode.Stopped)
-                    verify_eq(c().next_mode, ShoopRustConstants.LoopMode.Playing)
-                    verify_eq(c().next_transition_delay, 0)
-
+                    // Start processing and block immediately, without a frontend refresh between
+                    // accepting the controls and stalling the GUI.
                     start_process_async(42000)
                     // We started the process helper to process. Now, freeze the GUI
                     // while the loops continue in the background.

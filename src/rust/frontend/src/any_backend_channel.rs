@@ -4,6 +4,7 @@ use shoop_engine::{
     AudioChannelState, ChannelMode, CommandSequence, MidiChannelState, MidiEvent, SendError,
 };
 shoop_log_unit!("Frontend.AnyChannel");
+#[derive(Clone)]
 pub enum AnyBackendChannel {
     Audio(AudioChannel),
     Midi(MidiChannel),
