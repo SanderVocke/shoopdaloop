@@ -1966,6 +1966,7 @@ impl BackendSession {
         Ok(CompositeLoop {
             shared: self.shared.clone(),
             control,
+            desired_play_after_record: Arc::new(AtomicBool::new(false)),
         })
     }
     pub fn primitive_sync_sources(&self) -> Vec<Option<usize>> {
@@ -2152,12 +2153,13 @@ impl BackendSession {
             .prepare_install(version, primitive_sync_sources)
             .map_err(|error| anyhow!("could not prepare composite timeline: {error}"))?;
         let source = composite.identity();
-        let installation_state = Arc::clone(&composite.control.mirror);
+        let desired_play_after_record = Arc::clone(&composite.desired_play_after_record);
         let (sequence, receiver) = self.shared.queue_result(move |session| {
-            // A setter can be queued while this installation is pending. Its desired mirror
-            // value is visible now even though its engine command follows this one.
+            // A setter can be queued while this installation is pending. Keep its desired value
+            // separate from the state mirror, which realtime publication may overwrite with the
+            // still-current engine value before this command is accepted.
             let desired_play_after_record =
-                play_after_record || installation_state.read().play_after_record;
+                play_after_record || desired_play_after_record.load(Ordering::Acquire);
             match session.install_prepared_composite_timeline(timeline) {
                 Ok(reclaimed) => {
                     let _ = session
@@ -3240,6 +3242,7 @@ impl CompositeLoopState {
 pub struct CompositeLoop {
     shared: Arc<SharedSession>,
     control: Arc<ObjectControl<CompositeId, engine::CompositeStateMirror>>,
+    desired_play_after_record: Arc<AtomicBool>,
 }
 
 impl CompositeLoop {
@@ -3322,16 +3325,24 @@ impl CompositeLoop {
     }
 
     pub fn set_play_after_record(&self, enabled: bool) -> Result<CommandSequence> {
-        self.ensure_ready()?;
+        // The frontend can publish this option while creation or timeline installation is still
+        // pending. Keep the desired value in the mirror so a later installation command observes
+        // it even when the earlier engine-side setter has no timeline to update yet.
+        if self.lifecycle() != ObjectLifecycle::Pending {
+            self.ensure_ready()?;
+        }
+        self.desired_play_after_record
+            .store(enabled, Ordering::Release);
+        self.control.mirror.set_play_after_record(enabled);
         let source = self.identity();
         let weak = Arc::downgrade(&self.control);
-        let sequence = self.shared.send_control(move |session| {
-            if weak.upgrade().is_some() {
-                let _ = session.accept_composite_play_after_record(source, enabled);
-            }
-        })?;
-        self.control.mirror.set_play_after_record(enabled);
-        Ok(sequence)
+        self.shared
+            .send_control(move |session| {
+                if weak.upgrade().is_some() {
+                    let _ = session.accept_composite_play_after_record(source, enabled);
+                }
+            })
+            .map_err(Into::into)
     }
 
     pub fn poll_state(&self) -> Option<CompositeLoopState> {
@@ -5582,6 +5593,26 @@ mod tests {
 
         engine.pump();
         assert_eq!(engine.session().n_loops(), 0);
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
+    fn pending_composite_retains_desired_play_after_record() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let composite = sess.create_composite_loop().expect("pending composite");
+        assert_eq!(composite.lifecycle(), ObjectLifecycle::Pending);
+
+        let option_sequence = composite
+            .set_play_after_record(true)
+            .expect("queue pending option");
+        assert!(option_sequence > composite.creation_sequence());
+        assert!(composite.control.mirror.read().play_after_record);
+        assert!(composite.desired_play_after_record.load(Ordering::Acquire));
+
+        engine.pump();
+        assert_eq!(composite.lifecycle(), ObjectLifecycle::Ready);
+        assert!(composite.control.mirror.read().play_after_record);
         sess.shared.return_engine(engine);
     }
 

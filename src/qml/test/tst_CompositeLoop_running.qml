@@ -1545,7 +1545,12 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     c().on_grab_clicked()
-                    testcase.wait_updated(session.backend)
+                    // The adoption itself is the useful fence here. A completed adoption can
+                    // leave no subsequent global update signal on a slow update thread.
+                    testcase.wait_condition(
+                        () => l0().length === 100 && l1().length === 100,
+                        10000,
+                        "nested composite ringbuffer adoption did not settle")
 
                     verify_eq(l0().length, 100)
                     verify_eq(l1().length, 100)

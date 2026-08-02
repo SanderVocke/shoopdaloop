@@ -919,20 +919,14 @@ impl CompositeLoopBackend {
         }
         let length = state.length.min(i32::MAX as u64) as i32;
         let position = state.position.min(i32::MAX as u64) as i32;
-        let play_after_record_changed = self.play_after_record != state.play_after_record;
         {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.length = length;
             rust_mut.position = position;
-            rust_mut.play_after_record = state.play_after_record;
         }
         unsafe {
             self.as_mut().length_changed(length);
             self.as_mut().position_changed(position);
-            if play_after_record_changed {
-                self.as_mut()
-                    .play_after_record_changed(state.play_after_record);
-            }
         }
 
         let active: BTreeSet<_> = state
