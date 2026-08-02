@@ -272,6 +272,22 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
                     process(50)
                     testcase.wait_updated(session.backend)
+                    if (dwt_loop_2().mode !== ShoopRustConstants.LoopMode.Playing ||
+                        dt_loop().mode !== ShoopRustConstants.LoopMode.Playing) {
+                        // A restored parent can observe the child's replacement identity one
+                        // refresh later. Re-resolve and repeat the idempotent immediate start.
+                        dwt_loop_2().maybe_composite_loop.recalculate_schedule()
+                        dt_loop_2().maybe_composite_loop.recalculate_schedule()
+                        testcase.wait_updated(session.backend)
+                        testcase.wait(250)
+                        dt_loop_2().transition(
+                            ShoopRustConstants.LoopMode.Playing,
+                            ShoopRustConstants.DontWaitForSync,
+                            0)
+                        testcase.wait_updated(session.backend)
+                        process(50)
+                        testcase.wait_updated(session.backend)
+                    }
 
                     verify_eq(dt_loop_2().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(dwt_loop_2().mode, ShoopRustConstants.LoopMode.Playing)

@@ -508,6 +508,10 @@ impl CompositeLoopGui {
                     rust_mut.schedule = schedule;
                     self.as_mut().update_backend_schedule();
                     self.as_mut().schedule_changed(variant_schedule);
+                } else {
+                    // The QML objects embedded in an equal schedule can wrap replacement backend
+                    // identities after session restoration. Forward an explicit recalculation.
+                    self.as_mut().update_backend_schedule();
                 }
             }
             Err(err) => {

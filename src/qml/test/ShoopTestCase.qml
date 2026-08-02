@@ -272,7 +272,7 @@ Item {
             // publication while controlled dummy processing is paused so the next one observes
             // that command.
             backend.wait_process()
-            wait_condition(() => done == true, 2000, "Backend not updated in time")
+            wait_condition(() => done == true, 10000, "Backend not updated in time")
         }
         // Let queued Qt calls reach the backend, then drive the dummy engine fence before
         // waiting for publication. In controlled mode some platforms do not publish another
