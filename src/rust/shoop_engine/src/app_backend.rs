@@ -20,7 +20,7 @@ pub use engine::{
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::marker::PhantomData;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -145,7 +145,7 @@ impl ObjectIdentity for MidiPortId {
 struct ObjectControl<I, M> {
     session_id: u64,
     lifecycle: std::sync::atomic::AtomicU8,
-    engine_index: std::sync::atomic::AtomicUsize,
+    engine_index: Arc<AtomicUsize>,
     auxiliary_index: std::sync::atomic::AtomicUsize,
     creation_sequence: AtomicU64,
     acknowledged_data_sequence: AtomicU64,
@@ -165,7 +165,7 @@ impl<I: ObjectIdentity, M> ObjectControl<I, M> {
         Self {
             session_id,
             lifecycle: std::sync::atomic::AtomicU8::new(ObjectLifecycle::Pending as u8),
-            engine_index: std::sync::atomic::AtomicUsize::new(INVALID_OBJECT_INDEX),
+            engine_index: Arc::new(AtomicUsize::new(INVALID_OBJECT_INDEX)),
             auxiliary_index: std::sync::atomic::AtomicUsize::new(INVALID_OBJECT_INDEX),
             creation_sequence: AtomicU64::new(CommandSequence::NONE.get()),
             acknowledged_data_sequence: AtomicU64::new(0),
@@ -187,7 +187,7 @@ impl<I: ObjectIdentity, M> ObjectControl<I, M> {
     }
 
     fn mark_ready(&self, id: I) {
-        self.engine_index.store(id.index(), Ordering::Relaxed);
+        self.engine_index.store(id.index(), Ordering::Release);
         self.lifecycle
             .store(ObjectLifecycle::Ready as u8, Ordering::Release);
     }
@@ -1188,6 +1188,16 @@ impl Default for ConnectionCache {
     }
 }
 
+#[derive(Clone)]
+struct PrimitiveLoopControl {
+    control: Weak<ObjectControl<LoopId, engine::LoopStateMirror>>,
+    /// Stable identity storage retained separately because ready engine slots outlive controls.
+    engine_index: Arc<AtomicUsize>,
+    desired_source: Option<Weak<ObjectControl<LoopId, engine::LoopStateMirror>>>,
+    /// Source identity most recently accepted by the engine.
+    applied_source_index: Arc<AtomicUsize>,
+}
+
 struct SharedSession {
     session_id: u64,
     /// The control side of the engine. Only ever touched by non-audio threads.
@@ -1207,12 +1217,7 @@ struct SharedSession {
     next_composite_slot: AtomicU32,
     next_composite_version: AtomicU32,
     composite_registry: Mutex<CompositeRegistry>,
-    primitive_loop_controls: Mutex<
-        Vec<(
-            Weak<ObjectControl<LoopId, engine::LoopStateMirror>>,
-            Option<Weak<ObjectControl<LoopId, engine::LoopStateMirror>>>,
-        )>,
-    >,
+    primitive_loop_controls: Mutex<Vec<PrimitiveLoopControl>>,
     primitive_sync_sources: Mutex<Vec<Option<usize>>>,
     audio_channel_controls: Mutex<
         Vec<(
@@ -1921,7 +1926,12 @@ impl BackendSession {
             .primitive_loop_controls
             .lock()
             .unwrap_or_else(|error| error.into_inner())
-            .push((Arc::downgrade(&control), None));
+            .push(PrimitiveLoopControl {
+                control: Arc::downgrade(&control),
+                engine_index: Arc::clone(&control.engine_index),
+                desired_source: None,
+                applied_source_index: Arc::new(AtomicUsize::new(INVALID_OBJECT_INDEX)),
+            });
         Ok(Loop {
             shared: self.shared.clone(),
             control,
@@ -1975,13 +1985,14 @@ impl BackendSession {
             .shared
             .primitive_loop_controls
             .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .clone();
-        if controls.iter().any(|(control, source)| {
-            control
+            .unwrap_or_else(|error| error.into_inner());
+        if controls.iter().any(|entry| {
+            entry
+                .control
                 .upgrade()
                 .is_some_and(|control| control.lifecycle() == ObjectLifecycle::Pending)
-                || source
+                || entry
+                    .desired_source
                     .as_ref()
                     .and_then(Weak::upgrade)
                     .is_some_and(|source| source.lifecycle() == ObjectLifecycle::Pending)
@@ -1993,20 +2004,16 @@ impl BackendSession {
             .primitive_sync_sources
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        for (control, source) in controls {
-            if let Some(index) = control
-                .upgrade()
-                .and_then(|control| control.ready_id())
-                .map(ObjectIdentity::index)
-            {
-                if result.len() <= index {
-                    result.resize(index + 1, None);
-                }
-                result[index] = source
-                    .and_then(|source| source.upgrade())
-                    .and_then(|source| source.ready_id())
-                    .map(ObjectIdentity::index);
+        for entry in controls.iter() {
+            let index = entry.engine_index.load(Ordering::Acquire);
+            if index == INVALID_OBJECT_INDEX {
+                continue;
             }
+            if result.len() <= index {
+                result.resize(index + 1, None);
+            }
+            let source_index = entry.applied_source_index.load(Ordering::Acquire);
+            result[index] = (source_index != INVALID_OBJECT_INDEX).then_some(source_index);
         }
         Some(result.clone())
     }
@@ -3580,9 +3587,27 @@ impl Loop {
         let source = src
             .filter(|source| !Arc::ptr_eq(&source.control, &self.control))
             .map(|source| Arc::clone(&source.control));
+        let applied_source_index = {
+            let mut controls = self
+                .shared
+                .primitive_loop_controls
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let entry = controls
+                .iter_mut()
+                .find(|entry| {
+                    entry
+                        .control
+                        .upgrade()
+                        .is_some_and(|control| Arc::ptr_eq(&control, &self.control))
+                })
+                .ok_or_else(|| anyhow!("primitive target control is no longer registered"))?;
+            entry.desired_source = source.as_ref().map(Arc::downgrade);
+            Arc::clone(&entry.applied_source_index)
+        };
         let control = Arc::clone(&self.control);
         let source_for_command = source.clone();
-        let sequence = self.shared.send_topology(move |s: &mut engine::Session| {
+        Ok(self.shared.send_topology(move |s: &mut engine::Session| {
             let Some(idx) = control.ready_id().map(ObjectIdentity::index) else {
                 return;
             };
@@ -3590,19 +3615,13 @@ impl Loop {
                 .as_ref()
                 .and_then(|source| source.ready_id())
                 .map(ObjectIdentity::index);
-            let _ = s.set_loop_sync_source(idx, source_idx);
-        })?;
-        if let Some((_, cached_source)) = self
-            .shared
-            .primitive_loop_controls
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .iter_mut()
-            .find(|(control, _)| control.ptr_eq(&Arc::downgrade(&self.control)))
-        {
-            *cached_source = source.as_ref().map(Arc::downgrade);
-        }
-        Ok(sequence)
+            if s.set_loop_sync_source(idx, source_idx).is_ok() {
+                applied_source_index.store(
+                    source_idx.unwrap_or(INVALID_OBJECT_INDEX),
+                    Ordering::Release,
+                );
+            }
+        })?)
     }
 
     pub fn adopt_ringbuffer_contents(
@@ -5513,6 +5532,29 @@ mod tests {
         assert_eq!(source.lifecycle(), ObjectLifecycle::Ready);
         assert_eq!(follower.lifecycle(), ObjectLifecycle::Ready);
         assert_eq!(source.get_state().expect("source state").length, 64);
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
+    fn primitive_topology_survives_dropped_ready_controls() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let source = sess.create_loop().expect("source");
+        let follower = sess.create_loop().expect("follower");
+        follower
+            .set_sync_source(Some(&source))
+            .expect("queue sync source");
+
+        // The relationship command keeps both pending controls alive just long enough to create
+        // them, but topology caching must not depend on either frontend control surviving.
+        drop(source);
+        drop(follower);
+        engine.pump();
+        assert_eq!(
+            sess.primitive_sync_sources_if_ready()
+                .expect("topology after control drops")[1],
+            Some(0)
+        );
         sess.shared.return_engine(engine);
     }
 
