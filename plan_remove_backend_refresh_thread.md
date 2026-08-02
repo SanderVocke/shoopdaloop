@@ -19,15 +19,15 @@ This includes the refresh coordinator, backend wrapper publication, loop, compos
 
 ## Acceptance criteria (immutable)
 
-- [ ] No dedicated `QThread`, global update-thread singleton, or backup timer on a worker thread is used for frontend state refresh.
-- [ ] Loop, composite-loop, loop-channel, port, and FX-chain frontend types no longer create paired backend QObjects or communicate through `backend_*` proxy signals.
-- [ ] All frontend QObjects are accessed only on their Qt affinity thread; engine relationships use stable engine handles or identities rather than cross-thread QObject pointers.
-- [ ] Existing public QML types, properties, signals, commands, session persistence, and test behavior remain compatible unless an internal backend-handle API is removed with all callers migrated.
-- [ ] Realtime audio, MIDI, primitive loops, and composite schedules continue while the GUI thread is blocked; state converges to the current engine snapshot on the next GUI refresh.
-- [ ] A control accepted before a GUI stall is not lost, and resuming the GUI does not replay an unbounded backlog of sampled state publications.
-- [ ] Periodic GUI refresh performs no engine waits or bulk data transfer and emits property notifications only for observed changes.
-- [ ] Realtime processing still allocates, frees, and locks no additional resources; preparation and reclamation remain off the realtime thread.
-- [ ] Clean object destruction, session rebuilds, nested composites, ringbuffer adoption, port connections, and bulk loop data operations remain covered without stale-object crashes.
+- [x] No dedicated `QThread`, global update-thread singleton, or backup timer on a worker thread is used for frontend state refresh.
+- [x] Loop, composite-loop, loop-channel, port, and FX-chain frontend types no longer create paired backend QObjects or communicate through `backend_*` proxy signals.
+- [x] All frontend QObjects are accessed only on their Qt affinity thread; engine relationships use stable engine handles or identities rather than cross-thread QObject pointers.
+- [x] Existing public QML types, properties, signals, commands, session persistence, and test behavior remain compatible unless an internal backend-handle API is removed with all callers migrated.
+- [x] Realtime audio, MIDI, primitive loops, and composite schedules continue while the GUI thread is blocked; state converges to the current engine snapshot on the next GUI refresh.
+- [x] A control accepted before a GUI stall is not lost, and resuming the GUI does not replay an unbounded backlog of sampled state publications.
+- [x] Periodic GUI refresh performs no engine waits or bulk data transfer and emits property notifications only for observed changes.
+- [x] Realtime processing still allocates, frees, and locks no additional resources; preparation and reclamation remain off the realtime thread.
+- [x] Clean object destruction, session rebuilds, nested composites, ringbuffer adoption, port connections, and bulk loop data operations remain covered without stale-object crashes.
 - [ ] Formatting, warning-free build, Rust tests, the full QML suite, relevant stress tests, and all required pull-request checks pass.
 
 ## Design rules
@@ -91,7 +91,7 @@ This includes the refresh coordinator, backend wrapper publication, loop, compos
 - [x] Compile schedules from stable loop identities/handles; retain QObject references only to map active identities back to live GUI objects.
 - [x] Preserve nested schedule installation, pending options, schedule replacement, transition anticipation, and transactional ringbuffer adoption without polling-thread correctness dependencies.
 - [x] Ensure schedule preparation and result reclamation remain outside realtime processing and do not block periodic GUI refresh.
-- [ ] Remove the composite backend bridge and run the complete composite, nested, restoration, ringbuffer, and GUI/file-I/O stall tests repeatedly; commit the stage.
+- [x] Remove the composite backend bridge and run the complete composite, nested, restoration, ringbuffer, and GUI/file-I/O stall tests repeatedly; commit the stage.
 
 ### Stage 7 — Retire compatibility infrastructure
 
@@ -100,7 +100,7 @@ This includes the refresh coordinator, backend wrapper publication, loop, compos
 - [x] Connect QML-engine frame publication and the compatible refresh-interval setting directly to the GUI coordinator.
 - [x] Update test fences to request and observe explicit GUI refresh epochs after engine commands settle.
 - [x] Add structural tests or checks proving migrated QObjects have GUI affinity and no removed backend/update types remain.
-- [ ] Stress object creation/destruction and repeated session rebuilds, then commit the stage.
+- [x] Stress object creation/destruction and repeated session rebuilds, then commit the stage.
 
 ### Implementation evidence through Stages 2–7
 
@@ -110,15 +110,30 @@ This includes the refresh coordinator, backend wrapper publication, loop, compos
 - Audio/MIDI file jobs extract cloneable engine channel handles before spawning; periodic updates only poll mirrors and never wait or transfer bulk data.
 - Static checks find no removed backend/update modules or types, no blocking queued connections/waits in promoted periodic updates, and no thread creation in the refresh coordinator.
 - Warning-free builds pass. The 192-case QML suite passes with 191 passed and the expected unsupported CPAL case skipped; focused backend refresh, Lua controls, composite, and dry/wet tests also pass.
+- Stress evidence: 10 complete composite-running runs, 5 session save/load runs, 10 MIDI runs, and 5 port/channel dry/wet runs passed.
+- Final local gates: formatting and diff checks pass; warning-free build passes; the serialized workspace suite passes with missing hardware backends explicitly allowed (including all 19 no-allocation tests); final QML suite passes 193/194 with the one supported CPAL skip. The ordinary parallel workspace run exposed a pre-existing Carla/JUCE test-process teardown SIGSEGV, while its 582-test engine library body passed and the serialized required suite completed cleanly.
+
+### Acceptance audit evidence
+
+1. Static searches show no update-thread modules/types, worker `QThread`, move-to-thread call, or refresh-thread crash registration; `FrontendRefresh` owns only a GUI-affine `QTimer`.
+2. The five `*_backend` QObject implementations and bridges are deleted and absent from build/module registration. Promoted GUI objects own the engine handles.
+3. All remaining QObject casts/invocations are direct GUI-thread paths. Async file/data work receives cloned `AnyBackendChannel` handles before spawning and captures no GUI QObject.
+4. The unchanged QML components load and the complete behavior, Lua-control, persistence, restoration, audio, MIDI, FX, and port suite passes.
+5. `test_ui_frozen` and `test_fileio_frozen` prove realtime primitive/composite progress through GUI stalls and current-state convergence after refresh.
+6. The stall test queues the control before blocking and checks its resulting cycle/mode. `FrontendRefresh::refresh_queued` coalesces requests, so a stall can leave at most one queued publication.
+7. `BackendWrapper::refresh` and each promoted periodic `update` poll mirrors without command fences, waits, blocking invocations, file I/O, or bulk channel copies; field notifications compare previous/current values.
+8. All 19 realtime no-allocation tests pass, including composite timelines, dense events, ringbuffer adoption, channels, MIDI, and command application.
+9. Full and repeated composite, restoration, MIDI, port/channel, data, and teardown runs pass without stale QObject crashes.
+10. Local gates are green. Cross-platform pull-request checks remain the final open acceptance item.
 
 ### Stage 8 — End-to-end validation
 
-- [ ] Run `cargo fmt --all -- --check` and `git diff --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build`.
-- [ ] Run `cargo test --workspace --features shoop_engine/app_backend`, including realtime no-allocation tests.
-- [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 target/debug/shoopdaloop_dev.sh --self-test`.
-- [ ] Repeatedly stress composite stalls, nested composites, session save/load, MIDI, port/channel publication, and object teardown.
-- [ ] Audit every acceptance criterion against current code and test evidence.
+- [x] Run `cargo fmt --all -- --check` and `git diff --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build`.
+- [x] Run `cargo test --workspace --features shoop_engine/app_backend`, including realtime no-allocation tests.
+- [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 target/debug/shoopdaloop_dev.sh --self-test`.
+- [x] Repeatedly stress composite stalls, nested composites, session save/load, MIDI, port/channel publication, and object teardown.
+- [x] Audit every acceptance criterion against current code and test evidence.
 - [ ] Push the branch, open or update the pull request, inspect failures with `gh`, and iterate until all required checks are green.
 - [ ] Commit any final documentation/evidence updates and mark the plan complete.
 
