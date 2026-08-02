@@ -1197,6 +1197,7 @@ ShoopTestFile {
                                   50, 0, 0, 50, 550)
 
                     process(100) // first cycle of next composite iteration
+                    testcase.wait_updated(session.backend)
 
                     verify_states(ShoopRustConstants.LoopMode.Playing, // s
                                   ShoopRustConstants.LoopMode.Playing, // l0
@@ -1329,6 +1330,7 @@ ShoopTestFile {
                                   100, 100, 50, 0, 200)
 
                     process(100) // first cycle of next composite iteration
+                    testcase.wait_updated(session.backend)
 
                     verify_states(ShoopRustConstants.LoopMode.Playing,   // s
                                   ShoopRustConstants.LoopMode.Playing,   // l0
@@ -1396,6 +1398,7 @@ ShoopTestFile {
                                   100, 100, 50, 0, 200)
 
                     process(100) // first cycle of next composite iteration
+                    testcase.wait_updated(session.backend)
 
                     verify_states(ShoopRustConstants.LoopMode.Playing,   // s
                                   ShoopRustConstants.LoopMode.Stopped,   // l0

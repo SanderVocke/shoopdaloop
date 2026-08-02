@@ -1,4 +1,5 @@
 use common::logging::macros::*;
+use cxx_qt_lib_shoop::qpointer::QPointerQObject;
 use shoop_engine::app_backend::Loop as BackendLoop;
 use shoop_engine::LoopState;
 
@@ -255,6 +256,7 @@ pub struct LoopBackendRust {
 
     // Rust members
     pub backend_loop: Option<BackendLoop>,
+    pub sync_source_guard: cxx::UniquePtr<QPointerQObject>,
     pub sync_source_applied_session_id: Option<u64>,
     pub prev_state: LoopState,
     pub prev_cycle_nr: i32,
@@ -267,6 +269,7 @@ impl Default for LoopBackendRust {
             frontend_loop: std::ptr::null_mut(),
             instance_identifier: QString::from("unknown"),
             backend_loop: None,
+            sync_source_guard: cxx::UniquePtr::null(),
             sync_source_applied_session_id: None,
             prev_state: LoopState::default(),
             prev_cycle_nr: 0,

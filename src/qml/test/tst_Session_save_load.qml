@@ -264,6 +264,7 @@ ShoopTestFile {
                         0)
                     testcase.wait_updated(session.backend)
                     process(50)
+                    testcase.wait_updated(session.backend)
 
                     verify_eq(dt_loop_2().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(dwt_loop_2().mode, ShoopRustConstants.LoopMode.Playing)

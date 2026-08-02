@@ -14,6 +14,7 @@ use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::qobject;
 use cxx_qt_lib_shoop::qobject::FromQObject;
+use cxx_qt_lib_shoop::qpointer::{qpointer_from_qobject, qpointer_to_qobject};
 use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use shoop_engine::LoopMode;
 use std::pin::Pin;
@@ -192,7 +193,7 @@ impl LoopBackend {
                     }
 
                     {
-                        let sync_source = *self.sync_source();
+                        let sync_source = self.as_ref().guarded_sync_source();
                         let length = self.as_ref().prev_state.length;
                         let position = self.as_ref().prev_state.position;
                         let session_id = self
@@ -201,7 +202,10 @@ impl LoopBackend {
                             .as_ref()
                             .map(|loop_| loop_.session_id())
                             .unwrap_or_default();
-                        if self.as_ref().sync_source_is_ready_for_session(session_id) {
+                        if self
+                            .as_ref()
+                            .sync_source_is_ready_for_session(sync_source, session_id)
+                        {
                             self.as_mut().set_backend_sync_source(sync_source);
                         }
                         self.as_mut().set_length(length as i32);
@@ -240,10 +244,12 @@ impl LoopBackend {
             .as_ref()
             .map(|loop_| loop_.session_id())
             .unwrap_or_default();
+        let sync_source = self.as_ref().guarded_sync_source();
         if self.sync_source_applied_session_id != Some(session_id)
-            && self.as_ref().sync_source_is_ready_for_session(session_id)
+            && self
+                .as_ref()
+                .sync_source_is_ready_for_session(sync_source, session_id)
         {
-            let sync_source = self.sync_source;
             unsafe {
                 self.as_mut().set_backend_sync_source(sync_source);
             }
@@ -566,12 +572,20 @@ impl LoopBackend {
         }
     }
 
-    fn sync_source_is_ready_for_session(&self, session_id: u64) -> bool {
-        if self.sync_source.is_null() {
+    fn guarded_sync_source(&self) -> *mut QObject {
+        if self.sync_source_guard.is_null() {
+            std::ptr::null_mut()
+        } else {
+            unsafe { qpointer_to_qobject(&self.sync_source_guard) }
+        }
+    }
+
+    fn sync_source_is_ready_for_session(&self, sync_source: *mut QObject, session_id: u64) -> bool {
+        if sync_source.is_null() {
             return true;
         }
         unsafe {
-            let loop_ptr = qobject_to_loop_backend_ptr(self.sync_source);
+            let loop_ptr = qobject_to_loop_backend_ptr(sync_source);
             !loop_ptr.is_null()
                 && (&*loop_ptr)
                     .rust()
@@ -633,11 +647,17 @@ impl LoopBackend {
             std::ptr::null_mut()
         };
 
-        let old_source = self.sync_source;
+        let old_source = self.as_ref().guarded_sync_source();
         let changed = old_source != sync_source_ptr;
         if changed {
+            let sync_source_guard = if sync_source_ptr.is_null() {
+                cxx::UniquePtr::null()
+            } else {
+                unsafe { qpointer_from_qobject(sync_source_ptr) }
+            };
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.sync_source = sync_source_ptr;
+            rust_mut.sync_source_guard = sync_source_guard;
             rust_mut.sync_source_applied_session_id = None;
         }
 
@@ -650,7 +670,10 @@ impl LoopBackend {
                 .as_ref()
                 .map(|loop_| loop_.session_id())
                 .unwrap_or_default();
-            if self.as_ref().sync_source_is_ready_for_session(session_id) {
+            if self
+                .as_ref()
+                .sync_source_is_ready_for_session(sync_source_ptr, session_id)
+            {
                 self.as_mut().set_backend_sync_source(sync_source_ptr);
             }
         }

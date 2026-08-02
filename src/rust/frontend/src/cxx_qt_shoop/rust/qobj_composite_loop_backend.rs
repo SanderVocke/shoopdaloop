@@ -111,9 +111,13 @@ impl CompositeLoopBackend {
     pub fn initialize_impl(self: Pin<&mut Self>) {}
 
     fn install_engine_schedule(mut self: Pin<&mut Self>) -> Result<(), anyhow::Error> {
-        if !self.engine_schedule_dirty || self.engine_schedule_install.is_some() {
+        if !self.engine_schedule_dirty {
             return Ok(());
         }
+        // A newer schedule may become dirty while an older installation acknowledgement is
+        // pending (notably during session restoration and ringbuffer adoption). Queue the newer
+        // prepared version now so a following transition cannot run against the stale registry.
+        // Dropping the older acknowledgement is safe: its worker still reclaims the result.
         if self.engine_schedule_installing {
             return Err(anyhow::anyhow!("recursive composite schedule dependency"));
         }
