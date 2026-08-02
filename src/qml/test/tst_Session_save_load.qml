@@ -243,6 +243,13 @@ ShoopTestFile {
                               dt_loop().maybe_backend_loop.initialized,
                         5000,
                         "loaded primitive backends did not initialize")
+                    // Re-resolve engine targets after all restored backend objects have their new
+                    // session identities; parent schedules may have settled before their child.
+                    dwt_loop_2().maybe_composite_loop.recalculate_schedule()
+                    dt_loop_2().maybe_composite_loop.recalculate_schedule()
+                    testcase.wait_updated(session.backend)
+                    testcase.wait(250)
+                    testcase.wait_updated(session.backend)
 
                     sync_loop().queue_set_length(100)
                     dt_loop().queue_set_length(200)

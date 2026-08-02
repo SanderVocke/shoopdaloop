@@ -268,6 +268,10 @@ Item {
                 done = true
             }
             connectOnce(backend.updated_on_gui_thread, updated)
+            // A publication can queue a follow-up schedule or state command. Fence each
+            // publication while controlled dummy processing is paused so the next one observes
+            // that command.
+            backend.wait_process()
             wait_condition(() => done == true, 2000, "Backend not updated in time")
         }
         // Let queued Qt calls reach the backend, then drive the dummy engine fence before

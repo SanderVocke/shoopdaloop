@@ -762,6 +762,10 @@ impl CompositeLoopBackend {
                     rust_mut.engine_schedule_dirty = true;
                     self.as_mut().schedule_changed(schedule);
                     self.as_mut().update_n_cycles();
+                } else {
+                    // An equal frontend schedule can now resolve to replacement backend object
+                    // identities after a session rebuild. Recompile it on an explicit refresh.
+                    self.as_mut().rust_mut().engine_schedule_dirty = true;
                 }
             }
             Err(e) => {
@@ -772,11 +776,11 @@ impl CompositeLoopBackend {
 
     pub unsafe fn set_play_after_record(mut self: Pin<&mut Self>, play_after_record: bool) {
         debug!(self, "play after record -> {play_after_record}");
-        if !self.engine_schedule_dirty {
-            if let Some(engine_loop) = self.engine_loop.as_ref() {
-                if let Err(error) = engine_loop.set_play_after_record(play_after_record) {
-                    error!(self, "engine record option failed: {error}");
-                }
+        if let Some(engine_loop) = self.engine_loop.as_ref() {
+            // Publish the desired option even while a timeline install is pending. The install
+            // command reads this mirror at acceptance, so a late QML binding update is not lost.
+            if let Err(error) = engine_loop.set_play_after_record(play_after_record) {
+                error!(self, "engine record option failed: {error}");
             }
         }
         if play_after_record != self.play_after_record {

@@ -314,6 +314,7 @@ ShoopTestFile {
                     clear()
 
                     s().queue_set_length(100)
+                    AppRegistries.state_registry.set_play_after_record_active(true)
 
                     testcase.wait_updated(session.backend)
 
@@ -326,6 +327,8 @@ ShoopTestFile {
                         ]
                     })
 
+                    testcase.wait_updated(session.backend)
+                    testcase.wait(250)
                     testcase.wait_updated(session.backend)
 
                     verify_states(ShoopRustConstants.LoopMode.Stopped,
@@ -346,6 +349,7 @@ ShoopTestFile {
                     verify_eq(l0().next_mode, ShoopRustConstants.LoopMode.Recording)
 
                     process(100) // middle of 1st step
+                    testcase.wait_updated(session.backend)
 
                     verify_states(ShoopRustConstants.LoopMode.Playing, // sync
                                 ShoopRustConstants.LoopMode.Recording, // l0
@@ -356,6 +360,7 @@ ShoopTestFile {
                                 100, 50, 0, 0, 400)
 
                     process(100) // middle of 2nd step
+                    testcase.wait_updated(session.backend)
 
                     verify_states(ShoopRustConstants.LoopMode.Playing, // sync
                                 ShoopRustConstants.LoopMode.Recording, // l0
@@ -366,6 +371,7 @@ ShoopTestFile {
                                 100, 150, 0, 0, 400)
 
                     process(100) // middle of 3rd step (delay)
+                    testcase.wait_updated(session.backend)
 
                     verify_states(ShoopRustConstants.LoopMode.Playing, // sync
                                 ShoopRustConstants.LoopMode.Stopped,   // l0
@@ -376,6 +382,7 @@ ShoopTestFile {
                                 100, 200, 0, 0, 400)
 
                     process(100) // middle of 4th step (record 2nd loop)
+                    testcase.wait_updated(session.backend)
 
                     verify_states(ShoopRustConstants.LoopMode.Playing, // sync
                                 ShoopRustConstants.LoopMode.Stopped,   // l0
@@ -386,6 +393,7 @@ ShoopTestFile {
                                 100, 200, 50, 0, 400)
 
                     process(100) // middle of 5th step (whole thing starts playing after finish recording)
+                    testcase.wait_updated(session.backend)
 
                     verify_states(ShoopRustConstants.LoopMode.Playing, // sync
                                 ShoopRustConstants.LoopMode.Playing,   // l0
@@ -1300,6 +1308,8 @@ ShoopTestFile {
                         ]
                     })
 
+                    testcase.wait_updated(session.backend)
+                    testcase.wait(250)
                     testcase.wait_updated(session.backend)
 
                     verify_states(ShoopRustConstants.LoopMode.Stopped,
