@@ -1,7 +1,9 @@
 //! Verifies that tracing-enabled realtime cycles keep allocation permission inside the
 //! direct Tracy helpers. Ordinary engine work is still enclosed by the global guard.
 
-use assert_no_alloc::{assert_no_alloc, AllocDisabler};
+use assert_no_alloc::assert_no_alloc;
+#[cfg(debug_assertions)]
+use assert_no_alloc::AllocDisabler;
 use shoop_engine::channel_mode::ChannelMode;
 use shoop_engine::dummy_port::{DummyAudioPort, PortId};
 use shoop_engine::port::PortDirection;
