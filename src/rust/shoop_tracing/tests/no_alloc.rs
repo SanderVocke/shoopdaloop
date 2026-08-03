@@ -1,4 +1,6 @@
-use assert_no_alloc::{assert_no_alloc, AllocDisabler};
+use assert_no_alloc::assert_no_alloc;
+#[cfg(debug_assertions)]
+use assert_no_alloc::AllocDisabler;
 
 #[cfg(debug_assertions)]
 #[global_allocator]

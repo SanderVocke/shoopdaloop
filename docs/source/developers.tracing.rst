@@ -30,6 +30,9 @@ inside Tracy. They may cause xruns and alter callback timing. Prewarming
 engine-owned threads reduces first-use overhead where possible, but does not
 prove that Tracy is bounded, allocation-free, or lock-free. Driver-owned
 callback threads cannot always be entered before the host API activates them.
+The client uses Tracy's portable timer fallback so non-invariant-TSC and
+virtualized hosts can start safely; use the timer resolution recorded in each
+trace when interpreting short zones.
 
 Direct callback zones use static source locations and numeric values. Both the
 global tracing-output gate and the engine-detail gate are checked before Tracy
