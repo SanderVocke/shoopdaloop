@@ -242,19 +242,32 @@ Commit the completed inventory and documentation as a milestone.
 
 Depends on all prior stages. Do not mark the plan complete based only on source inspection or passing unit tests.
 
-- [ ] Run `cargo fmt --all` and `git diff --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build`.
-- [ ] Run `cargo test --workspace --features shoop_engine/app_backend`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo test -p frontend --lib`.
-- [ ] Run targeted QML tests while iterating, then the broad QML suite with tracing disabled.
-- [ ] Run a deterministic dummy QML/engine scenario under `--rt-alloc-guard` with tracing disabled. Repeat with `--tracing` and engine-detail tracing to verify that only direct Tracy helper operations use the documented exception; record profiling-induced timing changes.
-- [ ] Run at least two QML files with `--tracing-capture --rt-alloc-guard`; verify one non-empty trace and one successful manifest row per file, no allocation exception outside Tracy helper scopes, no orphan capture process, and no capture instrumentation failure.
-- [ ] Parse all generated traces with the matching `tracy-csvexport` and open representative captures in Tracy.
-- [ ] Confirm the trace contains: application lifecycle, frontend control span, engine command sequence, graph scheduling where applicable, realtime callback/cycle, session processing categories, state publication, frontend refresh, and engine health plots.
-- [ ] Compare trace values against engine `Stats`, profiler reports, QML outcomes, and capture manifests; do not rely on visual plausibility alone.
-- [ ] Run available JACK/CPAL/LV2 integration tests and record environmental skips separately from regressions.
-- [ ] Confirm automatic workflow events still leave capture disabled and statically validate the existing opt-in trace archive path. Do not claim a manual CI capture run unless one is explicitly requested and actually performed.
-- [ ] Update PR documentation with exact commands, pass counts, trace evidence, known environment limitations, and any justified inventory exclusions.
+- [x] Run `cargo fmt --all` and `git diff --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build`.
+- [x] Run `cargo test --workspace --features shoop_engine/app_backend`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo test -p frontend --lib`.
+- [x] Run targeted QML tests while iterating, then the broad QML suite with tracing disabled.
+- [x] Run a deterministic dummy QML/engine scenario under `--rt-alloc-guard` with tracing disabled. Repeat with `--tracing` and engine-detail tracing to verify that only direct Tracy helper operations use the documented exception; record profiling-induced timing changes.
+- [x] Run at least two QML files with `--tracing-capture --rt-alloc-guard`; verify one non-empty trace and one successful manifest row per file, no allocation exception outside Tracy helper scopes, no orphan capture process, and no capture instrumentation failure.
+- [x] Parse all generated traces with the matching `tracy-csvexport` and open representative captures in Tracy.
+- [x] Confirm the trace contains: application lifecycle, frontend control span, engine command sequence, graph scheduling where applicable, realtime callback/cycle, session processing categories, state publication, frontend refresh, and engine health plots.
+- [x] Compare trace values against engine `Stats`, profiler reports, QML outcomes, and capture manifests; do not rely on visual plausibility alone.
+- [x] Run available JACK/CPAL/LV2 integration tests and record environmental skips separately from regressions.
+- [x] Confirm automatic workflow events still leave capture disabled and statically validate the existing opt-in trace archive path. Do not claim a manual CI capture run unless one is explicitly requested and actually performed.
+- [x] Update PR documentation with exact commands, pass counts, trace evidence, known environment limitations, and any justified inventory exclusions.
+
+Final evidence:
+
+- Formatting, diff checks, the closed 221-module inventory, and the warning-free workspace build pass. The warning-free frontend suite passes 32 tests; the serial all-feature engine suite passes 582 tests; and the complete workspace suite passes with ``SHOOP_ALLOW_MISSING_BACKENDS=1``, including 19 strict disabled-path allocation tests and the dedicated coarse/detail Tracy exception-scope test.
+- The exact workspace command was also run without the skip variable and reached only the expected three virtual-MIDI failures because ``/dev/snd/seq`` is unavailable. One earlier all-feature pass observed the known timing-sensitive audio peak poll flake; its focused rerun and two subsequent serial 582-test runs passed.
+- The tracing-disabled broad QML run completed 194 tests: 193 passed and only the accepted environment/config-dependent CPAL virtual playback case failed because CPAL settings were unavailable. It emitted no capture lifecycle line and created no default trace.
+- Guarded ``tst_Session_channels.qml`` passes disabled, live coarse, and final detailed-capture modes. The final detail trace is 4,905,702 bytes, parses with Tracy 0.13.1, opens in the matching profiler (with headless Mesa/EGL warnings), and has no instrumentation failure. Explicit first-cycle engine preparation warnings are the existing named buffer/mirror scopes; the strict coarse/detail allocation test proves no exception in warmed surrounding engine work.
+- Guarded ``tst_SessionDescriptor_*.qml`` rotation passes 2/2 and produces exactly two non-empty parseable traces (3,428,325 and 4,924,666 bytes), two ``passed`` manifest rows, no orphan capture process, and no instrumentation failure.
+- Parsed final zones include frontend file/control/refresh, engine command queue and graph application, numeric driver kind, callback/cycle/session nesting, detailed port/channel/loop/composite/MIDI/routing/FX categories, and state publication. Process/QML application lifecycle was additionally established by the Stage 2 startup/quit trace; capture rotation intentionally starts after process startup.
+- Final plot values agree with published state rather than visual inference: cycles/frames ``6/1536``, pending commands ``0``, commands applied ``341``, schedule request/applied ``13/13``, stuck cycles ``0``, expected transient stale cycles ``2``, sub-blocks ``1``, callback budget overruns ``0``, and capture under/overruns ``0/0``. The integration test also reads a non-empty deterministic stage-profiler report after traced cycles; QML and manifest outcomes are ``passed``.
+- JACK integration passes four tests; CPAL mock and LV2/Carla tests pass. The missing ALSA sequencer and unavailable QML CPAL settings are recorded as environment limitations, not regressions.
+- Static workflow review confirms ``qml_trace_capture`` defaults false for every automatic event, the Linux trace job additionally requires manual ``workflow_dispatch``, Tracy installation is confined to that job, and metadata/archive upload uses ``if: always()``. The trace-producing CI path was not dispatched or claimed as validated.
+- PR #660 now contains the exact commands, evidence, realtime caveats, inventory counts, trace interpretation, known failures, and explicit CI non-validation statement.
 
 If Tracy 0.13.1 tools are unavailable, if the tracing-disabled realtime path cannot be validated under the allocation guard, if a representative trace cannot be parsed/opened, or if any production module remains unclassified, stop with the gathered evidence and blocker; do not mark the work complete.
 
