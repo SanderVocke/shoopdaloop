@@ -10,6 +10,7 @@
 
 use assert_no_alloc::*;
 use shoop_engine::channel_mode::ChannelMode;
+use shoop_engine::content_snapshot::ContentSnapshotRuntime;
 use shoop_engine::dummy_midi_port::DummyMidiPort;
 use shoop_engine::dummy_port::{DummyAudioPort, PortId};
 use shoop_engine::internal_audio_port::InternalAudioPort;
@@ -21,9 +22,9 @@ use shoop_engine::session::{AudioRingbufferAdoption, Port, Session};
 use shoop_engine::{
     compile_composite_plan, BoundaryTargetAction, CompositeBoundaryTimeline, CompositeEntry,
     CompositePlanDescriptor, CompositePlanLimits, CompositeRuntime, CompositeSection,
-    CompositeTimeline, CompositeTimelineLimits, CompositeTimelineNode, LoopIdentity,
-    LoopTargetCatalog, LoopTargetKind, LoopTargetMetadata, PreparedAudioChannelData,
-    PreparedAudioRingbufferAdoptionChannel,
+    CompositeTimeline, CompositeTimelineLimits, CompositeTimelineNode, ContentMutation,
+    LoopIdentity, LoopTargetCatalog, LoopTargetKind, LoopTargetMetadata, MidiStorageElem,
+    PreparedAudioChannelData, PreparedAudioRingbufferAdoptionChannel,
 };
 
 #[cfg(debug_assertions)]
@@ -39,6 +40,57 @@ fn realtime_guard_reverse_guard_allows_exceptional_allocations() {
         });
     });
     realtime_alloc_guard::set_enabled(false);
+}
+
+#[test]
+fn snapshot_process_publication_is_allocation_free() {
+    let runtime = ContentSnapshotRuntime::new();
+    let (mut audio, _audio_control, _audio_reader) = runtime.create_audio_channel(8, 4);
+    let (mut midi, _midi_control, _midi_reader) = runtime.create_midi_channel(4, 20);
+    let mut midi_events = [MidiStorageElem::default(); 32];
+    for (index, event) in midi_events.iter_mut().enumerate() {
+        *event = MidiStorageElem::new(index as u32, &[0x90, index as u8, 100]).expect("valid MIDI");
+    }
+    let (mut audio_install, audio_control, _reader) = runtime.create_audio_channel(8, 2);
+    let audio_prepared = audio_control
+        .prepare(&[1.0, 2.0], ContentMutation::Loading)
+        .expect("prepare audio");
+    let (mut midi_install, midi_control, _reader) = runtime.create_midi_channel(4, 2);
+    let midi_prepared = midi_control
+        .prepare(
+            &[shoop_engine::MidiEvent::new(1, vec![0x90, 60, 100])],
+            4,
+            ContentMutation::Loading,
+        )
+        .expect("prepare MIDI");
+
+    assert_no_alloc(|| {
+        assert!(audio.begin_mutation(ContentMutation::Recording));
+        assert!(audio
+            .publish_range(0, &[1.0, 2.0, 3.0, 4.0], 4, true)
+            .is_some());
+        audio.finish_mutation(false);
+
+        assert!(midi.begin_mutation(ContentMutation::Recording));
+        assert!(midi.append_state_events(&midi_events[..16], 32).is_some());
+        assert!(midi.append_storage_events(&midi_events, 32, true).is_some());
+        midi.finish_mutation(false);
+
+        assert!(audio_install.install_prepared(audio_prepared));
+        assert!(midi_install.install_prepared(midi_prepared));
+    });
+}
+
+#[test]
+fn snapshot_process_endpoint_retirement_defers_pooled_destruction() {
+    let runtime = ContentSnapshotRuntime::new();
+    let (audio, _audio_control, _audio_reader) = runtime.create_audio_channel(8, 4);
+    let (midi, _midi_control, _midi_reader) = runtime.create_midi_channel(4, 4);
+
+    assert_no_alloc(|| {
+        drop(audio);
+        drop(midi);
+    });
 }
 
 fn audio_port(id: u64, name: &str, dir: PortDirection) -> Port {

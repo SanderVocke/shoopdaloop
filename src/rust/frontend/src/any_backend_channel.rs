@@ -1,8 +1,10 @@
 use common::logging::macros::*;
 use shoop_engine::app_backend::{AudioChannel, AudioPort, MidiChannel, MidiPort};
 use shoop_engine::{
-    AudioChannelState, ChannelMode, CommandSequence, MidiChannelState, MidiEvent, SendError,
+    AudioChannelState, ChannelMode, CommandSequence, ContentRevision, CurrentDataError,
+    MidiChannelState, MidiEvent, SendError, SnapshotRead,
 };
+use std::sync::Arc;
 shoop_log_unit!("Frontend.AnyChannel");
 #[derive(Clone)]
 pub enum AnyBackendChannel {
@@ -80,6 +82,26 @@ impl AnyBackendChannel {
         }
     }
 
+    pub fn audio_latest_data(
+        &self,
+    ) -> Result<SnapshotRead<shoop_engine::AudioContentSnapshot>, anyhow::Error> {
+        match self {
+            AnyBackendChannel::Audio(channel) => Ok(channel.get_latest_data_snapshot()),
+            AnyBackendChannel::Midi(_) => {
+                Err(anyhow::anyhow!("audio data requested from MIDI channel"))
+            }
+        }
+    }
+
+    pub fn audio_current_data(
+        &self,
+    ) -> Result<Arc<shoop_engine::AudioContentSnapshot>, CurrentDataError> {
+        match self {
+            AnyBackendChannel::Audio(channel) => channel.try_get_current_data_snapshot(),
+            AnyBackendChannel::Midi(_) => Err(CurrentDataError::PublicationSaturated),
+        }
+    }
+
     pub fn audio_set_gain(&self, gain: f32) {
         match self {
             AnyBackendChannel::Audio(audio_channel) => {
@@ -100,6 +122,47 @@ impl AnyBackendChannel {
             AnyBackendChannel::Midi(midi_channel) => {
                 return midi_channel.get_all_midi_data();
             }
+        }
+    }
+
+    pub fn midi_latest_data(
+        &self,
+    ) -> Result<SnapshotRead<shoop_engine::MidiContentSnapshot>, anyhow::Error> {
+        match self {
+            AnyBackendChannel::Midi(channel) => Ok(channel.get_latest_data_snapshot()),
+            AnyBackendChannel::Audio(_) => {
+                Err(anyhow::anyhow!("MIDI data requested from audio channel"))
+            }
+        }
+    }
+
+    pub fn midi_current_data(
+        &self,
+    ) -> Result<Arc<shoop_engine::MidiContentSnapshot>, CurrentDataError> {
+        match self {
+            AnyBackendChannel::Midi(channel) => channel.try_get_current_data_snapshot(),
+            AnyBackendChannel::Audio(_) => Err(CurrentDataError::PublicationSaturated),
+        }
+    }
+
+    pub fn acknowledge_data_revision(&self, revision: ContentRevision) {
+        match self {
+            AnyBackendChannel::Audio(channel) => channel.acknowledge_data_revision(revision),
+            AnyBackendChannel::Midi(channel) => channel.acknowledge_data_revision(revision),
+        }
+    }
+
+    pub fn capture_content_epoch(&self) -> Option<u64> {
+        match self {
+            AnyBackendChannel::Audio(channel) => channel.capture_content_epoch(),
+            AnyBackendChannel::Midi(channel) => channel.capture_content_epoch(),
+        }
+    }
+
+    pub fn validate_content_epoch(&self, captured: u64) -> bool {
+        match self {
+            AnyBackendChannel::Audio(channel) => channel.validate_content_epoch(captured),
+            AnyBackendChannel::Midi(channel) => channel.validate_content_epoch(captured),
         }
     }
 

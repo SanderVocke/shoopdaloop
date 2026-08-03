@@ -28,6 +28,12 @@ pub mod ffi {
         type FileIO = super::FileIORust;
 
         #[qinvokable]
+        pub fn begin_session_content_capture(self: &FileIO);
+
+        #[qinvokable]
+        pub fn end_session_content_capture(self: &FileIO) -> bool;
+
+        #[qinvokable]
         pub fn wait_blocking(self: &FileIO, delay_ms: u64);
 
         #[qinvokable]

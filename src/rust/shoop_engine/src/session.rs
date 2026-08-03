@@ -1055,11 +1055,23 @@ impl Session {
         mode: ChannelMode,
         state: Arc<AudioChannelStateMirror>,
     ) -> Result<usize, SessionError> {
+        self.add_audio_channel_with_state_and_snapshots(loop_idx, chunk_size, mode, state, None)
+    }
+
+    pub fn add_audio_channel_with_state_and_snapshots(
+        &mut self,
+        loop_idx: usize,
+        chunk_size: usize,
+        mode: ChannelMode,
+        state: Arc<AudioChannelStateMirror>,
+        snapshots: Option<crate::content_snapshot::AudioProcessSnapshotWriter>,
+    ) -> Result<usize, SessionError> {
         let l = self
             .loops
             .get_mut(loop_idx)
             .ok_or(SessionError::NoSuchLoop(loop_idx))?;
-        let channel_idx = l.add_audio_channel_with_state(chunk_size, mode, state);
+        let channel_idx =
+            l.add_audio_channel_with_state_and_snapshots(chunk_size, mode, state, snapshots);
         self.channels.push(ChannelMapping {
             loop_idx,
             kind: ChannelKind::Audio,
@@ -1093,11 +1105,23 @@ impl Session {
         mode: ChannelMode,
         state: Arc<MidiChannelStateMirror>,
     ) -> Result<usize, SessionError> {
+        self.add_midi_channel_with_state_and_snapshots(loop_idx, capacity_elems, mode, state, None)
+    }
+
+    pub fn add_midi_channel_with_state_and_snapshots(
+        &mut self,
+        loop_idx: usize,
+        capacity_elems: usize,
+        mode: ChannelMode,
+        state: Arc<MidiChannelStateMirror>,
+        snapshots: Option<crate::content_snapshot::MidiProcessSnapshotWriter>,
+    ) -> Result<usize, SessionError> {
         let l = self
             .loops
             .get_mut(loop_idx)
             .ok_or(SessionError::NoSuchLoop(loop_idx))?;
-        let channel_idx = l.add_midi_channel_with_state(capacity_elems, mode, state);
+        let channel_idx =
+            l.add_midi_channel_with_state_and_snapshots(capacity_elems, mode, state, snapshots);
         self.channels.push(ChannelMapping {
             loop_idx,
             kind: ChannelKind::Midi,
@@ -1407,46 +1431,19 @@ impl Session {
         Ok(shape)
     }
 
-    pub fn adopt_audio_ringbuffers_prepared(
+    pub fn prepare_audio_ringbuffers_prepared(
         &mut self,
         requests: &[AudioRingbufferAdoption],
         prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
-    ) -> Result<(), SessionError> {
-        self.adopt_audio_ringbuffers_prepared_inner(requests, prepared, None)
-    }
-
-    /// The application backend variant also returns preallocated copies for control-thread
-    /// state-mirror publication. Filling the copies is bounded and allocation-free.
-    pub fn adopt_audio_ringbuffers_prepared_with_copies(
-        &mut self,
-        requests: &[AudioRingbufferAdoption],
-        prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
-        copies: &mut [Vec<f32>],
-    ) -> Result<(), SessionError> {
-        self.adopt_audio_ringbuffers_prepared_inner(requests, prepared, Some(copies))
-    }
-
-    fn adopt_audio_ringbuffers_prepared_inner(
-        &mut self,
-        requests: &[AudioRingbufferAdoption],
-        prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
-        mut copies: Option<&mut [Vec<f32>]>,
     ) -> Result<(), SessionError> {
         let shape = self.describe_audio_ringbuffer_adoption(requests)?;
-        if prepared.len() != shape.n_channels
-            || copies
-                .as_ref()
-                .is_some_and(|copies| copies.len() != shape.n_channels)
-        {
+        if prepared.len() != shape.n_channels {
             return Err(SessionError::AudioRingbufferAdoptionCapacity);
         }
-        for (index, (slot, expected)) in prepared.iter_mut().zip(shape.channels()).enumerate() {
+        for (slot, expected) in prepared.iter_mut().zip(shape.channels()) {
             if slot.loop_idx != expected.loop_idx
                 || slot.channel_idx != expected.channel_idx
                 || slot.data.capacity() < expected.capacity
-                || copies
-                    .as_ref()
-                    .is_some_and(|copies| copies[index].capacity() < expected.capacity)
             {
                 return Err(SessionError::AudioRingbufferAdoptionCapacity);
             }
@@ -1480,8 +1477,68 @@ impl Session {
                     offset += samples.len();
                 });
             }
-            if let Some(copies) = copies.as_deref_mut() {
-                slot.data.copy_to_preallocated(&mut copies[index]);
+        }
+        Ok(())
+    }
+
+    pub fn commit_audio_ringbuffers_prepared_with_snapshots(
+        &mut self,
+        requests: &[AudioRingbufferAdoption],
+        prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
+        snapshots: &[crate::content_snapshot::PreparedAudioSnapshot],
+    ) -> Result<(), SessionError> {
+        if prepared.len() != snapshots.len() {
+            return Err(SessionError::AudioRingbufferAdoptionCapacity);
+        }
+        for (slot, snapshot) in prepared.iter_mut().zip(snapshots.iter().copied()) {
+            self.loops[slot.loop_idx]
+                .audio_channel_mut(slot.channel_idx)
+                .ok_or(SessionError::NoSuchChannel(slot.channel_idx))?
+                .commit_prepared_data_and_snapshot(&mut slot.data, snapshot);
+        }
+        self.apply_audio_ringbuffer_adoption_states(requests);
+        Ok(())
+    }
+
+    pub fn adopt_audio_ringbuffers_prepared(
+        &mut self,
+        requests: &[AudioRingbufferAdoption],
+        prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
+    ) -> Result<(), SessionError> {
+        self.adopt_audio_ringbuffers_prepared_inner(requests, prepared, None)
+    }
+
+    /// The application backend variant also returns preallocated copies for control-thread
+    /// state-mirror publication. Filling the copies is bounded and allocation-free.
+    pub fn adopt_audio_ringbuffers_prepared_with_copies(
+        &mut self,
+        requests: &[AudioRingbufferAdoption],
+        prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
+        copies: &mut [Vec<f32>],
+    ) -> Result<(), SessionError> {
+        self.adopt_audio_ringbuffers_prepared_inner(requests, prepared, Some(copies))
+    }
+
+    fn adopt_audio_ringbuffers_prepared_inner(
+        &mut self,
+        requests: &[AudioRingbufferAdoption],
+        prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
+        mut copies: Option<&mut [Vec<f32>]>,
+    ) -> Result<(), SessionError> {
+        if let Some(copies) = copies.as_ref() {
+            if copies.len() != prepared.len()
+                || copies
+                    .iter()
+                    .zip(prepared.iter())
+                    .any(|(copy, slot)| copy.capacity() < slot.data.capacity())
+            {
+                return Err(SessionError::AudioRingbufferAdoptionCapacity);
+            }
+        }
+        self.prepare_audio_ringbuffers_prepared(requests, prepared)?;
+        if let Some(copies) = copies.as_deref_mut() {
+            for (slot, copy) in prepared.iter().zip(copies.iter_mut()) {
+                slot.data.copy_to_preallocated(copy);
             }
         }
 

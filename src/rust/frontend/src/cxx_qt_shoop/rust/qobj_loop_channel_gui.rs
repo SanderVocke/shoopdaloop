@@ -24,7 +24,11 @@ use cxx_qt_lib_shoop::{
     },
 };
 use shoop_engine::{ChannelMode, MidiEvent, PortConnectability, PortDataType};
-use std::{collections::HashSet, pin::Pin};
+use std::{
+    collections::HashSet,
+    pin::Pin,
+    sync::{atomic::Ordering, Arc},
+};
 shoop_log_unit!("Frontend.LoopChannel");
 
 macro_rules! trace {
@@ -717,15 +721,21 @@ impl LoopChannelGui {
             let send_to_object = send_to_object as usize;
             let method_signature = method_signature.to_string();
             let is_midi = matches!(channel, AnyBackendChannel::Midi(_));
+            let delivered_revision = Arc::clone(&self.last_delivered_data_revision);
             task.as_mut()
                 .exec_concurrent_rust_then_finish(move || -> Result<(), anyhow::Error> {
                     let mut data = QVector_QVariant::default();
+                    let revision;
                     if is_midi {
-                        for event in channel.midi_get_data() {
+                        let read = channel.midi_latest_data()?;
+                        revision = read.snapshot.revision;
+                        for event in read.snapshot.events() {
                             data.append(event.to_qvariant());
                         }
                     } else {
-                        for sample in channel.audio_get_data() {
+                        let read = channel.audio_latest_data()?;
+                        revision = read.snapshot.revision;
+                        for sample in read.snapshot.samples() {
                             data.append(QVariant::from(&sample));
                         }
                     }
@@ -745,6 +755,7 @@ impl LoopChannelGui {
                             )?;
                         }
                     }
+                    delivered_revision.store(revision.0, Ordering::Release);
                     Ok(())
                 });
             Ok(())
@@ -758,7 +769,10 @@ impl LoopChannelGui {
 
     pub fn clear_data_dirty(self: Pin<&mut LoopChannelGui>) {
         if let Some(chan) = self.maybe_backend_channel.as_ref() {
-            chan.clear_data_dirty();
+            let revision = shoop_engine::ContentRevision(
+                self.last_delivered_data_revision.load(Ordering::Acquire),
+            );
+            chan.acknowledge_data_revision(revision);
         }
     }
 

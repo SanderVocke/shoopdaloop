@@ -26,8 +26,47 @@ use std::collections::HashMap;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
+
+#[derive(Clone)]
+struct SessionCaptureBatch {
+    session_id: Option<u64>,
+    epoch: Option<u64>,
+    validator: Option<AnyBackendChannel>,
+}
+
+static SESSION_CAPTURE_BATCH: OnceLock<Mutex<Option<SessionCaptureBatch>>> = OnceLock::new();
+
+fn session_capture_batch() -> &'static Mutex<Option<SessionCaptureBatch>> {
+    SESSION_CAPTURE_BATCH.get_or_init(|| Mutex::new(None))
+}
+
+fn observe_session_capture(channel: &AnyBackendChannel, epoch: u64) -> Result<(), anyhow::Error> {
+    let mut guard = session_capture_batch()
+        .lock()
+        .map_err(|_| anyhow!("session content capture state is poisoned"))?;
+    let Some(batch) = guard.as_mut() else {
+        return Ok(());
+    };
+    match (batch.session_id, batch.epoch) {
+        (None, None) => {
+            batch.session_id = Some(channel.session_id());
+            batch.epoch = Some(epoch);
+            batch.validator = Some(channel.clone());
+            Ok(())
+        }
+        (Some(session_id), Some(captured_epoch))
+            if session_id == channel.session_id() && captured_epoch == epoch =>
+        {
+            Ok(())
+        }
+        _ => Err(anyhow!(
+            "session content changed while collecting exact channel snapshots"
+        )),
+    }
+}
 
 pub fn register_qml_singleton(module_name: &str, type_name: &str) {
     let mut mdl = String::from(module_name);
@@ -157,14 +196,37 @@ pub fn save_qlist_data_to_soundfile_impl(
     Ok(())
 }
 
-fn save_channel_midi_data_impl(
+struct CapturedMidiChannel {
+    messages: Vec<MidiEvent>,
+    total_length: usize,
+}
+
+fn capture_channel_midi_data(
+    channel: &AnyBackendChannel,
+) -> Result<CapturedMidiChannel, anyhow::Error> {
+    let epoch = channel
+        .capture_content_epoch()
+        .ok_or_else(|| anyhow!("channel content is changing"))?;
+    let snapshot = channel
+        .midi_current_data()
+        .map_err(|error| anyhow!("MIDI content is not settled: {error}"))?;
+    if !channel.validate_content_epoch(epoch) {
+        return Err(anyhow!("channel content changed during capture"));
+    }
+    observe_session_capture(channel, epoch)?;
+    Ok(CapturedMidiChannel {
+        messages: snapshot.contiguous(),
+        total_length: snapshot.metadata.length as usize,
+    })
+}
+
+fn save_captured_midi_data_impl(
     filename: &Path,
     samplerate: usize,
-    channel: &AnyBackendChannel,
+    captured: CapturedMidiChannel,
 ) -> Result<(), anyhow::Error> {
-    let msgs = channel.midi_get_data();
-    let total_length = channel.get_state()?.length as usize;
-
+    let msgs = captured.messages;
+    let total_length = captured.total_length;
     let extension = filename
         .extension()
         .ok_or(anyhow!("Could not get file extension"))?
@@ -186,6 +248,14 @@ fn save_channel_midi_data_impl(
     }
 
     Ok(())
+}
+
+fn save_channel_midi_data_impl(
+    filename: &Path,
+    samplerate: usize,
+    channel: &AnyBackendChannel,
+) -> Result<(), anyhow::Error> {
+    save_captured_midi_data_impl(filename, samplerate, capture_channel_midi_data(channel)?)
 }
 
 fn load_midi_to_channels_impl<'a>(
@@ -378,21 +448,63 @@ fn qlist_qvariant_channels_to_backend(channels: &QList_QVariant) -> Vec<AnyBacke
 }
 
 fn audio_channels_to_variant(channels: &QList_QVariant) -> Result<QVariant, anyhow::Error> {
+    let channels = qlist_qvariant_channels_to_backend(channels);
+    let first = channels
+        .first()
+        .ok_or_else(|| anyhow!("no audio channels selected"))?;
+    let epoch = first
+        .capture_content_epoch()
+        .ok_or_else(|| anyhow!("channel content is changing"))?;
     let mut result = QList_QVariant::default();
-    for channel in qlist_qvariant_channels_to_backend(channels) {
-        let samples = channel.audio_get_data();
+    for channel in &channels {
+        if channel.session_id() != first.session_id() {
+            return Err(anyhow!("cannot capture channels from different sessions"));
+        }
+        let snapshot = channel
+            .audio_current_data()
+            .map_err(|error| anyhow!("audio content is not settled: {error}"))?;
         let mut samples_list = QList_f32::default();
-        samples_list.reserve(samples.len() as isize);
-        for sample in samples {
+        samples_list.reserve(snapshot.metadata.length as isize);
+        for sample in snapshot.samples() {
             samples_list.append(sample);
         }
         result.append(qlist_f32_to_qvariant(&samples_list)?);
     }
+    if !first.validate_content_epoch(epoch) {
+        return Err(anyhow!("channel content changed during capture"));
+    }
+    observe_session_capture(first, epoch)?;
     Ok(qvariantlist_to_qvariant(&result)?)
 }
 
 #[allow(unreachable_code)]
 impl FileIO {
+    pub fn begin_session_content_capture(self: &FileIO) {
+        let mut guard = session_capture_batch()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        *guard = Some(SessionCaptureBatch {
+            session_id: None,
+            epoch: None,
+            validator: None,
+        });
+    }
+
+    pub fn end_session_content_capture(self: &FileIO) -> bool {
+        let batch = session_capture_batch()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take();
+        match batch {
+            Some(SessionCaptureBatch {
+                epoch: Some(epoch),
+                validator: Some(channel),
+                ..
+            }) => channel.validate_content_epoch(epoch),
+            Some(_) | None => true,
+        }
+    }
+
     pub fn wait_blocking(self: &FileIO, delay_ms: u64) {
         debug!("waiting for {} ms", delay_ms);
         thread::sleep(Duration::from_millis(delay_ms));
@@ -702,10 +814,12 @@ impl FileIO {
                 .as_ref()
                 .cloned()
                 .ok_or_else(|| anyhow!("Channel is not initialized"))?;
+            let captured = capture_channel_midi_data(&channel_backend)
+                .map_err(|error| anyhow!("Failed to capture channel MIDI data: {error}"));
             pin_async_task.as_mut().exec_concurrent_rust_then_finish(
                 move || -> Result<(), anyhow::Error> {
                     let filename = PathBuf::from(filename.to_string());
-                    save_channel_midi_data_impl(&filename, samplerate as usize, &channel_backend)
+                    save_captured_midi_data_impl(&filename, samplerate as usize, captured?)
                         .map_err(|e| anyhow!("Failed to save channel MIDI data: {e}"))
                 },
             );
@@ -858,17 +972,13 @@ impl FileIO {
         let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };
         pin_async_task.as_mut().set_cpp_ownership();
 
-        let variant = match audio_channels_to_variant(&channels) {
-            Ok(variant) => variant,
-            Err(error) => {
-                error!("Failed to collect audio channel data: {error}");
-                QVariant::default()
-            }
-        };
+        let variant = audio_channels_to_variant(&channels)
+            .map_err(|error| anyhow!("Failed to collect audio channel data: {error}"));
 
         pin_async_task
             .as_mut()
             .exec_concurrent_rust_then_finish(move || {
+                let variant = variant?;
                 save_qlist_data_to_soundfile_impl(filename, samplerate, variant)
                     .map_err(|e| anyhow!("Failed to save channels audio to file: {e}"))
             });
@@ -1018,6 +1128,46 @@ impl FileIO {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn session_capture_batch_rejects_an_epoch_change_between_channels() {
+        let session = shoop_engine::app_backend::BackendSession::new().expect("session");
+        let loop_ = session.create_loop().expect("loop");
+        let channel = loop_
+            .add_audio_channel(shoop_engine::ChannelMode::Direct)
+            .expect("channel");
+        session
+            .wait_for_command(
+                channel.creation_sequence(),
+                shoop_engine::DEFAULT_WAIT_TIMEOUT,
+            )
+            .expect("channel ready");
+        let channel = AnyBackendChannel::Audio(channel.clone());
+        let file_io = make_unique_fileio();
+        file_io.begin_session_content_capture();
+        let first_epoch = channel.capture_content_epoch().expect("stable epoch");
+        observe_session_capture(&channel, first_epoch).expect("first capture");
+
+        let sequence = match &channel {
+            AnyBackendChannel::Audio(channel) => channel.load_data(&[1.0]).expect("load"),
+            AnyBackendChannel::Midi(_) => unreachable!(),
+        };
+        session
+            .wait_for_command(sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)
+            .expect("load applied");
+        let start = std::time::Instant::now();
+        while match &channel {
+            AnyBackendChannel::Audio(channel) => channel.try_get_current_data_snapshot().is_err(),
+            AnyBackendChannel::Midi(_) => unreachable!(),
+        } {
+            assert!(start.elapsed() < Duration::from_secs(1));
+            std::thread::yield_now();
+        }
+        let second_epoch = channel.capture_content_epoch().expect("new stable epoch");
+        assert_ne!(second_epoch, first_epoch);
+        assert!(observe_session_capture(&channel, second_epoch).is_err());
+        assert!(!file_io.end_session_content_capture());
+    }
 
     #[test]
     fn test_wait_blocking() {

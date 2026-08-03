@@ -16,9 +16,9 @@
 //! interest.
 
 use crate::channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
+use crate::content_snapshot::MidiProcessSnapshotWriter;
 use crate::loop_mode::LoopMode;
 use crate::midi;
-use crate::midi_event::MidiEvent;
 use crate::midi_state::{MidiStateTracker, TrackWhat, MAX_DIFF_MESSAGES};
 use crate::midi_storage::{Cursor, MidiStorage, MidiStorageElem, TruncateSide};
 use crate::state_mirror::MidiChannelStateMirror;
@@ -64,6 +64,50 @@ impl OutBuf {
     }
 }
 
+fn snapshot_mutation(flags: ProcessFlags) -> Option<crate::content_snapshot::ContentMutation> {
+    if flags.contains(ProcessFlags::REPLACE) {
+        Some(crate::content_snapshot::ContentMutation::Replacing)
+    } else if flags.contains(ProcessFlags::RECORD) {
+        Some(crate::content_snapshot::ContentMutation::Recording)
+    } else if flags.contains(ProcessFlags::PRE_RECORD) {
+        Some(crate::content_snapshot::ContentMutation::PreRecording)
+    } else {
+        None
+    }
+}
+
+#[cfg(feature = "app_backend")]
+#[derive(Debug)]
+pub struct PreparedMidiChannelData {
+    storage: MidiStorage,
+    prerecord_storage: MidiStorage,
+    length: u32,
+    start_state: MidiStateTracker,
+    start_state_valid: bool,
+}
+
+#[cfg(feature = "app_backend")]
+impl PreparedMidiChannelData {
+    pub fn new(messages: &[MidiStorageElem], length: u32, start_state: Option<&[Vec<u8>]>) -> Self {
+        let capacity = messages.len().max(1);
+        let mut storage = MidiStorage::with_capacity_elems(capacity);
+        for message in messages {
+            storage.append(message.time, message.data(), false, None);
+        }
+        let mut state = MidiStateTracker::new(TrackWhat::ALL);
+        for message in start_state.unwrap_or(&[]) {
+            state.process(message);
+        }
+        Self {
+            storage,
+            prerecord_storage: MidiStorage::with_capacity_elems(capacity),
+            length,
+            start_state: state,
+            start_state_valid: start_state.is_some(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct MidiChannel {
     storage: MidiStorage,
@@ -106,6 +150,7 @@ pub struct MidiChannel {
     /// never grows it.
     restore_scratch: Vec<MidiStorageElem>,
     state: Arc<MidiChannelStateMirror>,
+    content_snapshots: Option<MidiProcessSnapshotWriter>,
 }
 
 impl MidiChannel {
@@ -121,6 +166,15 @@ impl MidiChannel {
         capacity: usize,
         mode: ChannelMode,
         state: Arc<MidiChannelStateMirror>,
+    ) -> Self {
+        Self::with_capacity_state_and_snapshots(capacity, mode, state, None)
+    }
+
+    pub fn with_capacity_state_and_snapshots(
+        capacity: usize,
+        mode: ChannelMode,
+        state: Arc<MidiChannelStateMirror>,
+        content_snapshots: Option<MidiProcessSnapshotWriter>,
     ) -> Self {
         let storage = MidiStorage::with_capacity_elems(capacity);
         let playback_cursor = storage.create_cursor();
@@ -151,6 +205,7 @@ impl MidiChannel {
             play: None,
             restore_scratch: Vec::with_capacity(MAX_DIFF_MESSAGES),
             state,
+            content_snapshots,
         };
         channel.publish_state();
         channel
@@ -168,20 +223,30 @@ impl MidiChannel {
         );
     }
 
-    fn publish_data(&self) {
-        if !self.state.complex_data_enabled() {
+    /// Compatibility publication for legacy control-side setters. Realtime recording and
+    /// prepared application loads use bounded incremental/prepared operations instead.
+    fn publish_snapshot_contents(&mut self, mutation: crate::content_snapshot::ContentMutation) {
+        let MidiChannel {
+            storage,
+            data_length,
+            recording_start_state,
+            restore_scratch,
+            content_snapshots,
+            ..
+        } = self;
+        let Some(snapshots) = content_snapshots.as_mut() else {
             return;
+        };
+        snapshots.begin_working_generation();
+        snapshots.begin_mutation(mutation);
+        snapshots.clear(false);
+        recording_start_state.state_as_messages_into(restore_scratch);
+        snapshots.append_state_events(restore_scratch, *data_length);
+        for event in storage.iter() {
+            snapshots.append_storage_events(&[*event], *data_length, false);
         }
-        let mut data: Vec<MidiEvent> = self
-            .recording_start_state_messages()
-            .into_iter()
-            .map(|data| MidiEvent { time: -1, data })
-            .collect();
-        data.extend(self.storage.iter().map(|event| MidiEvent {
-            time: event.time as i32,
-            data: event.data().to_vec(),
-        }));
-        self.state.replace_data(data);
+        snapshots.append_storage_events(&[], *data_length, true);
+        snapshots.finish_mutation(false);
     }
 
     // --- accessors ---
@@ -264,7 +329,12 @@ impl MidiChannel {
         self.pending_playback_valid = false;
         self.loaded_contents = false;
         self.start_offset = 0;
-        self.publish_data();
+        if let Some(snapshots) = self.content_snapshots.as_mut() {
+            snapshots.begin_working_generation();
+            snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Clearing);
+            snapshots.clear(true);
+            snapshots.finish_mutation(false);
+        }
         self.data_changed();
     }
 
@@ -300,17 +370,46 @@ impl MidiChannel {
         for m in start_state.unwrap_or(&[]) {
             self.recording_start_state.process(m);
         }
-        self.publish_data();
+        self.publish_snapshot_contents(crate::content_snapshot::ContentMutation::Loading);
+        self.data_changed();
+    }
+
+    #[cfg(feature = "app_backend")]
+    pub(crate) fn commit_prepared_data_and_snapshot(
+        &mut self,
+        prepared: &mut PreparedMidiChannelData,
+        snapshot: crate::content_snapshot::PreparedMidiSnapshot,
+    ) {
+        std::mem::swap(&mut self.storage, &mut prepared.storage);
+        std::mem::swap(&mut self.prerecord_storage, &mut prepared.prerecord_storage);
+        std::mem::swap(&mut self.data_length, &mut prepared.length);
+        std::mem::swap(&mut self.recording_start_state, &mut prepared.start_state);
+        self.recording_start_valid = prepared.start_state_valid;
+        self.playback_cursor = self.storage.create_cursor();
+        self.loaded_contents = true;
+        if let Some(snapshots) = self.content_snapshots.as_mut() {
+            snapshots.install_prepared(snapshot);
+        }
         self.data_changed();
     }
 
     pub fn set_length(&mut self, length: u32) {
+        let old_length = self.data_length;
         let mut len = self.data_length;
         Self::set_length_impl(&mut self.storage, &mut len, length);
         let changed = len != self.data_length;
         self.data_length = len;
         if changed {
-            self.publish_data();
+            if let Some(snapshots) = self.content_snapshots.as_mut() {
+                snapshots.begin_working_generation();
+                snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Loading);
+                if length < old_length {
+                    snapshots.truncate_after(length as i32, length, true);
+                } else {
+                    snapshots.append_storage_events(&[], length, true);
+                }
+                snapshots.finish_mutation(false);
+            }
             self.data_changed();
         }
     }
@@ -428,6 +527,36 @@ impl MidiChannel {
             flags = ProcessFlags(flags.0 & !ProcessFlags::PLAYBACK.0);
         }
 
+        let previous_mutation = snapshot_mutation(self.prev_process_flags);
+        let current_mutation = snapshot_mutation(flags);
+        if previous_mutation != current_mutation {
+            if let Some(previous) = previous_mutation {
+                if let Some(snapshots) = self.content_snapshots.as_mut() {
+                    if previous == crate::content_snapshot::ContentMutation::PreRecording
+                        && current_mutation
+                            != Some(crate::content_snapshot::ContentMutation::Recording)
+                    {
+                        snapshots.cancel_mutation();
+                    } else {
+                        snapshots.finish_mutation(
+                            previous == crate::content_snapshot::ContentMutation::Replacing,
+                        );
+                    }
+                }
+            }
+            if let Some(mutation) = current_mutation {
+                if let Some(snapshots) = self.content_snapshots.as_mut() {
+                    let carries_prerecord = previous_mutation
+                        == Some(crate::content_snapshot::ContentMutation::PreRecording)
+                        && mutation == crate::content_snapshot::ContentMutation::Recording;
+                    if !carries_prerecord {
+                        snapshots.begin_working_generation();
+                    }
+                    snapshots.begin_mutation(mutation);
+                }
+            }
+        }
+
         // Anything other than plain forward playback leaves notes hanging.
         let interrupted = self.prev_process_flags.contains(ProcessFlags::PLAYBACK)
             && (!flags.contains(ProcessFlags::PLAYBACK)
@@ -507,7 +636,6 @@ impl MidiChannel {
         self.prev_process_flags = flags;
 
         if adopted_prerecording {
-            self.publish_data();
             self.data_changed();
         }
         if !processed_input {
@@ -575,6 +703,11 @@ impl MidiChannel {
             };
             Self::set_length_impl(storage, len, record_from);
         }
+        if !into_prerecord {
+            if let Some(snapshots) = self.content_snapshots.as_mut() {
+                snapshots.truncate_after(record_from as i32, record_from, false);
+            }
+        }
 
         let record_end = rec.n_frames_processed + n_samples;
         let mut changed = false;
@@ -606,8 +739,26 @@ impl MidiChannel {
                     }
                     if into_prerecord {
                         self.temp_prerecording_valid = true;
+                        let MidiChannel {
+                            temp_prerecording_start_state,
+                            restore_scratch,
+                            ..
+                        } = self;
+                        temp_prerecording_start_state.state_as_messages_into(restore_scratch);
+                        if let Some(snapshots) = self.content_snapshots.as_mut() {
+                            snapshots.append_state_events(restore_scratch, record_from);
+                        }
                     } else {
                         self.recording_start_valid = true;
+                        let MidiChannel {
+                            recording_start_state,
+                            restore_scratch,
+                            ..
+                        } = self;
+                        recording_start_state.state_as_messages_into(restore_scratch);
+                        if let Some(snapshots) = self.content_snapshots.as_mut() {
+                            snapshots.append_state_events(restore_scratch, record_from);
+                        }
                     }
                 }
                 let at = record_from + e.time - rec.n_frames_processed;
@@ -616,6 +767,13 @@ impl MidiChannel {
                 } else {
                     self.storage.append(at, e.data(), false, None)
                 };
+                if stored {
+                    if let Some(snapshots) = self.content_snapshots.as_mut() {
+                        if let Some(event) = MidiStorageElem::new(at, e.data()) {
+                            snapshots.append_storage_events(&[event], at, false);
+                        }
+                    }
+                }
                 changed |= stored;
             }
             self.input_state.process(e.data());
@@ -633,8 +791,18 @@ impl MidiChannel {
             let target = *len + n_samples;
             Self::set_length_impl(storage, len, target);
         }
+        if let Some(snapshots) = self.content_snapshots.as_mut() {
+            snapshots.append_storage_events(
+                &[],
+                if into_prerecord {
+                    self.prerecord_data_length
+                } else {
+                    self.data_length
+                },
+                !into_prerecord,
+            );
+        }
         if changed {
-            self.publish_data();
             self.data_changed();
         }
         Ok(())
