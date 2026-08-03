@@ -1066,7 +1066,33 @@ dependencies = [
  "cxx-qt-build",
  "cxx-qt-lib",
  "egui",
+ "egui-cxx-qt-macros",
  "egui_glow",
+]
+
+[[package]]
+name = "egui-cxx-qt-build"
+version = "0.1.0"
+dependencies = [
+ "cxx-qt-build",
+ "egui-cxx-qt-codegen",
+]
+
+[[package]]
+name = "egui-cxx-qt-codegen"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.104",
+]
+
+[[package]]
+name = "egui-cxx-qt-macros"
+version = "0.1.0"
+dependencies = [
+ "egui-cxx-qt-codegen",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -1311,6 +1337,7 @@ dependencies = [
  "directories",
  "dunce",
  "egui-cxx-qt",
+ "egui-cxx-qt-build",
  "enum-iterator",
  "glob",
  "itertools 0.14.0",

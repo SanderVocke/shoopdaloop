@@ -201,7 +201,7 @@ Item {
             throw new Error("LoopWidget: Egui window factory not ready")
         } else {
             egui_window_factory.createObject(root, {
-                loopName: root.name,
+                loopWidget: root,
                 visible: true
             })
         }
