@@ -67,6 +67,7 @@ libc = "0.2"
 winapi = "0.3"
 assert2 = "0.3"
 assert_no_alloc = "1.1"
+arc-swap = "1.7"
 rtrb = "0.3"
 jack = "0.13"
 # Pinned to what rodio (used by the frontend) already brings in: cpal declares

@@ -9,6 +9,7 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 log = { workspace = true }
 regex = { workspace = true }
+arc-swap = { workspace = true }
 rtrb = { workspace = true }
 rubato = { workspace = true }
 # Optional so the engine builds and tests without libjack present.

@@ -16,6 +16,7 @@ pub mod composite_plan;
 pub mod composite_runtime;
 pub mod composite_semantics;
 pub mod composite_timeline;
+pub mod content_snapshot;
 #[cfg(feature = "cpal")]
 pub mod cpal_mock;
 pub mod decoupled_midi_port;
@@ -90,6 +91,11 @@ pub use composite_timeline::{
     CompositeTimelineControlError, CompositeTimelineCounters, CompositeTimelineFault,
     CompositeTimelineFaultRecord, CompositeTimelineLimits, CompositeTimelineNode,
     CompositeTimelineNodeState, MAX_COMPOSITE_CONTROLS,
+};
+pub use content_snapshot::{
+    AudioContentSnapshot, AudioSnapshotMetadata, ContentMutation, ContentRevision,
+    CurrentDataError, MidiContentSnapshot, MidiSnapshotMetadata, SnapshotCurrentness, SnapshotRead,
+    StaleReason,
 };
 pub use decoupled_midi_port::DecoupledMidiPort;
 pub use driver::{
