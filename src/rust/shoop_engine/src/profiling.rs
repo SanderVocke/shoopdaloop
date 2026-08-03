@@ -108,20 +108,28 @@ impl Profiler {
         self.enabled.store(enabled, Ordering::Relaxed);
     }
 
+    pub fn begin(&self) -> Option<std::time::Instant> {
+        self.enabled().then(std::time::Instant::now)
+    }
+
+    pub fn finish(&self, stage: Stage, began: Option<std::time::Instant>) {
+        let Some(began) = began else {
+            return;
+        };
+        let ns = began.elapsed().as_nanos().min(u64::MAX as u128) as u64;
+        let c = &self.stages[stage.index()];
+        c.accumulating_ns.fetch_add(ns, Ordering::Relaxed);
+        c.accumulating_calls.fetch_add(1, Ordering::Relaxed);
+    }
+
     /// Times `f`, if enabled. Returns whatever `f` returns either way.
     ///
     /// Taking a closure rather than start/stop calls means a stage cannot be left unclosed by an
     /// early return.
     pub fn time<T>(&self, stage: Stage, f: impl FnOnce() -> T) -> T {
-        if !self.enabled() {
-            return f();
-        }
-        let began = std::time::Instant::now();
+        let began = self.begin();
         let out = f();
-        let ns = began.elapsed().as_nanos() as u64;
-        let c = &self.stages[stage.index()];
-        c.accumulating_ns.fetch_add(ns, Ordering::Relaxed);
-        c.accumulating_calls.fetch_add(1, Ordering::Relaxed);
+        self.finish(stage, began);
         out
     }
 

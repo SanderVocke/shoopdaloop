@@ -33,7 +33,7 @@ fn coarse_and_detailed_tracy_keep_the_engine_guarded() {
         .expect("channel output");
     session.apply_graph_changes().expect("graph schedule");
 
-    let (mut engine, _handle) = shoop_engine::engine::split(session, 8);
+    let (mut engine, mut handle) = shoop_engine::engine::split(session, 8);
     engine.run_cycle(64);
 
     let _client = tracy_client::Client::start();
@@ -45,6 +45,17 @@ fn coarse_and_detailed_tracy_keep_the_engine_guarded() {
 
     shoop_tracing::set_engine_detail_enabled(true);
     assert_no_alloc(|| engine.run_cycle(64));
+
+    let (_, report_rx) = handle
+        .send_for_result(|session| session.profiling_report())
+        .expect("queue profiling report");
+    engine.pump();
+    let report = shoop_engine::engine::wait_for_result(
+        report_rx,
+        shoop_engine::engine::DEFAULT_WAIT_TIMEOUT,
+    )
+    .expect("profiling report");
+    assert!(report.items.iter().any(|item| item.n_samples > 0.0));
 
     shoop_tracing::set_engine_detail_enabled(false);
     shoop_tracing::set_tracing_enabled(false);

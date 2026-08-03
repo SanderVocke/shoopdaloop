@@ -36,6 +36,7 @@ use crate::internal_audio_port::InternalAudioPort;
 use crate::loop_mode::LoopMode;
 use crate::midi_state::MAX_DIFF_MESSAGES;
 use crate::midi_storage::MidiStorageElem;
+use crate::profiling::{Profiler, ProfilingReport, ProfilingReportItem, Stage};
 use crate::state_mirror::{
     AudioChannelStateMirror, AudioPortStateMirror, LoopStateMirror, MidiChannelStateMirror,
     MidiPortStateMirror,
@@ -392,6 +393,8 @@ pub struct Session {
     /// A performance signal as much as a correctness one: every extra sub-block is
     /// another pass over every loop in the step.
     n_sub_blocks_last_cycle: u32,
+    /// Existing deterministic stage profiler, enabled only for explicit tracing sessions.
+    profiler: Profiler,
 }
 
 /// A topology snapshot: everything [`build_schedule`] needs, borrowing nothing.
@@ -580,6 +583,28 @@ impl Session {
     }
     pub fn n_channels(&self) -> usize {
         self.channels.len()
+    }
+
+    pub fn profiling_report(&self) -> ProfilingReport {
+        ProfilingReport {
+            items: Stage::ALL
+                .iter()
+                .map(|stage| {
+                    let report = self.profiler.report(*stage);
+                    ProfilingReportItem {
+                        key: stage.name().to_string(),
+                        n_samples: report.calls as f32,
+                        average: if report.calls == 0 {
+                            0.0
+                        } else {
+                            report.last_ns as f32 / report.calls as f32
+                        },
+                        worst: report.worst_ns as f32,
+                        most_recent: report.last_ns as f32,
+                    }
+                })
+                .collect(),
+        }
     }
 
     /// Where a channel sits: which loop, which kind, and which index within that loop.
@@ -1790,6 +1815,8 @@ impl Session {
     /// nothing reported anywhere. There is now no error to drop: a stale cycle runs and is
     /// counted in [`Self::n_stale_cycles`].
     pub fn process(&mut self, n_frames: usize) {
+        self.profiler
+            .set_enabled(shoop_tracing::is_tracing_requested());
         let _session_span = shoop_tracing::realtime_span!("engine.rt.session", value = n_frames);
         // A stale graph runs the last-applied schedule rather than refusing the cycle.
         //
@@ -1823,13 +1850,16 @@ impl Session {
                             "engine.rt.ports.prepare",
                             value = i
                         );
+                        let began = self.profiler.begin();
                         self.ports[i].prepare(n_frames);
+                        self.profiler.finish(Stage::PortPrepare, began);
                     }
                     NodeAction::PortProcess(i) => {
                         let _span = shoop_tracing::realtime_span_detail!(
                             "engine.rt.ports.process",
                             value = i
                         );
+                        let began = self.profiler.begin();
                         self.ports[i].process(n_frames);
                         {
                             let _routing_span = shoop_tracing::realtime_span_detail!(
@@ -1839,6 +1869,7 @@ impl Session {
                             self.propagate_port(i, n_frames);
                         }
                         self.process_test2x2x1_fx_port(i, n_frames);
+                        self.profiler.finish(Stage::PortProcess, began);
                     }
                     NodeAction::LoopProcess(i) => self.loop_group.push(i),
                     NodeAction::ChannelPrepare(i) => {
@@ -1846,14 +1877,18 @@ impl Session {
                             "engine.rt.channels.prepare",
                             value = i
                         );
+                        let began = self.profiler.begin();
                         self.channel_prepare(i, n_frames);
+                        self.profiler.finish(Stage::ChannelPrepare, began);
                     }
                     NodeAction::ChannelProcess(i) => {
                         let _span = shoop_tracing::realtime_span_detail!(
                             "engine.rt.channels.process",
                             value = i
                         );
+                        let began = self.profiler.begin();
                         self.channel_finalize(i, n_frames);
+                        self.profiler.finish(Stage::ChannelProcess, began);
                     }
                     NodeAction::None => {}
                 }
@@ -1864,7 +1899,9 @@ impl Session {
                         "engine.rt.loops",
                         value = self.loop_group.len()
                     );
+                    let began = self.profiler.begin();
                     self.process_loop_group(n_frames);
+                    self.profiler.finish(Stage::LoopProcess, began);
                 }
                 {
                     let _span = shoop_tracing::realtime_span_detail!("engine.rt.midi.playback");
@@ -1882,6 +1919,7 @@ impl Session {
             let _span = shoop_tracing::realtime_span!("engine.rt.state_publication");
             self.publish_composite_anticipated_transitions();
         }
+        self.profiler.end_cycle();
         self.schedule = steps;
     }
 

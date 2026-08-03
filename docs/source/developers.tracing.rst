@@ -96,8 +96,10 @@ A useful investigation normally follows these links:
 #. follow ``engine.rt.state_publication`` to ``frontend.refresh.run`` and the
    object/health plots.
 
-The deterministic engine stage profiler remains a separate facility. Tracy
-zones do not replace or change its semantics; agreement between profiler/state
+The deterministic engine stage profiler remains a separate facility. Explicit
+tracing enables its port/channel/loop stage clocks and the frontend report uses
+nanoseconds (latest cycle total, per-call average, and worst cycle). Tracy zones
+do not replace its counters or semantics; agreement between profiler/state
 reports and trace plots is a validation check.
 
 QML capture files

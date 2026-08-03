@@ -2598,7 +2598,9 @@ impl BackendSession {
         Ok(chain)
     }
     pub fn get_profiling_report(&self) -> ProfilingReport {
-        ProfilingReport::default()
+        self.shared
+            .query_graph_scheduler_response(|session| session.profiling_report())
+            .unwrap_or_default()
     }
     pub fn segfault_on_process_thread(&self) {}
     pub fn abort_on_process_thread(&self) {}
