@@ -200,6 +200,7 @@ pub struct EngineHandle {
 /// `capacity` bounds how many commands can be outstanding; beyond that
 /// [`EngineHandle::send`] refuses rather than blocking or growing.
 pub fn split(session: Session, capacity: usize) -> (Engine, EngineHandle) {
+    let _span = tracing::info_span!("engine.control.split", command_capacity = capacity).entered();
     let (cmd_tx, cmd_rx) = RingBuffer::new(capacity);
     let (ret_tx, ret_rx) = RingBuffer::new(capacity);
 
@@ -408,7 +409,18 @@ pub fn wait_for_result<T>(
     mut rx: Consumer<T>,
     timeout: std::time::Duration,
 ) -> Result<T, WaitError> {
-    wait_until(timeout, || rx.pop().ok())
+    let span = tracing::debug_span!(
+        "engine.control.wait_result",
+        timeout_ms = timeout.as_millis() as u64,
+        outcome = tracing::field::Empty
+    );
+    let _entered = span.enter();
+    let result = wait_until(timeout, || rx.pop().ok());
+    span.record(
+        "outcome",
+        if result.is_ok() { "applied" } else { "timeout" },
+    );
+    result
 }
 
 pub fn wait_for_command(
@@ -416,9 +428,21 @@ pub fn wait_for_command(
     sequence: CommandSequence,
     timeout: std::time::Duration,
 ) -> Result<(), WaitError> {
-    wait_until(timeout, || {
+    let span = tracing::debug_span!(
+        "engine.control.wait_command",
+        sequence = sequence.get(),
+        timeout_ms = timeout.as_millis() as u64,
+        outcome = tracing::field::Empty
+    );
+    let _entered = span.enter();
+    let result = wait_until(timeout, || {
         (stats.last_applied_command.load(Ordering::Acquire) >= sequence.get()).then_some(())
-    })
+    });
+    span.record(
+        "outcome",
+        if result.is_ok() { "applied" } else { "timeout" },
+    );
+    result
 }
 
 fn wait_until<T>(
@@ -470,8 +494,30 @@ impl EngineHandle {
     /// Reclaiming here rather than in a separate step keeps the queue from silently
     /// filling up in a caller that only ever sends.
     pub fn send(&mut self, command: Command) -> Result<CommandSequence, SendError> {
-        let reservation = self.try_reserve()?;
-        Ok(self.send_reserved(reservation, command))
+        let span = tracing::debug_span!(
+            "engine.control.send",
+            pending_before = self.n_pending(),
+            sequence = tracing::field::Empty,
+            outcome = tracing::field::Empty
+        );
+        let _entered = span.enter();
+        let reservation = match self.try_reserve() {
+            Ok(reservation) => reservation,
+            Err(error) => {
+                span.record(
+                    "outcome",
+                    match &error {
+                        SendError::Full => "full",
+                        SendError::Disconnected => "disconnected",
+                    },
+                );
+                return Err(error);
+            }
+        };
+        let sequence = self.send_reserved(reservation, command);
+        span.record("sequence", sequence.get());
+        span.record("outcome", "queued");
+        Ok(sequence)
     }
 
     pub fn try_reserve(&mut self) -> Result<CommandReservation, SendError> {
@@ -493,6 +539,12 @@ impl EngineHandle {
         command: Command,
     ) -> CommandSequence {
         let sequence = reservation.sequence;
+        let _span = tracing::trace_span!(
+            "engine.control.enqueue",
+            sequence = sequence.get(),
+            pending_before = self.n_pending()
+        )
+        .entered();
         self.commands
             .push(SequencedCommand { sequence, command })
             .unwrap_or_else(|_| unreachable!("a reserved command slot must remain available"));
@@ -518,8 +570,17 @@ impl EngineHandle {
         T: Send + 'static,
         F: FnOnce(&mut Session) -> T + Send + 'static,
     {
-        let (_, rx) = self.send_for_result(f)?;
-        wait_for_result(rx, timeout)
+        let span = tracing::debug_span!(
+            "engine.control.send_and_wait",
+            sequence = tracing::field::Empty,
+            outcome = tracing::field::Empty
+        );
+        let _entered = span.enter();
+        let (sequence, rx) = self.send_for_result(f)?;
+        span.record("sequence", sequence.get());
+        let result = wait_for_result(rx, timeout);
+        span.record("outcome", if result.is_ok() { "applied" } else { "failed" });
+        result
     }
 
     /// Queues work and hands back the slot its result will arrive in.
@@ -653,6 +714,7 @@ impl EngineHandle {
 
     /// Frees commands the engine has finished with. Safe to call at any time.
     pub fn reclaim(&mut self) -> usize {
+        let _span = tracing::trace_span!("engine.control.reclaim").entered();
         let mut n = 0;
         while self.returns.pop().is_ok() {
             n += 1;
@@ -662,6 +724,7 @@ impl EngineHandle {
 
     /// Takes the newest session-level composite diagnostics.
     pub fn poll_trace(&mut self) -> Option<&CompositeTraceSnapshot> {
+        let _span = tracing::trace_span!("engine.control.poll_trace").entered();
         while let Ok(snap) = self.filled.pop() {
             if let Some(old) = self.current.replace(snap) {
                 self.recycle(old);

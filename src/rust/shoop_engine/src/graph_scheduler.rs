@@ -68,6 +68,11 @@ pub struct GraphScheduler {
 impl GraphScheduler {
     /// Starts the worker. `apply` is called with no lock held by this module.
     pub fn start(window: Duration, apply: Box<dyn Fn() + Send>) -> Self {
+        let _span = tracing::info_span!(
+            "engine.graph.scheduler_start",
+            window_us = window.as_micros() as u64
+        )
+        .entered();
         let shared = Arc::new(Shared {
             state: Mutex::new(State::default()),
             cv: Condvar::new(),
@@ -87,6 +92,7 @@ impl GraphScheduler {
     }
 
     fn run(shared: Arc<Shared>, apply: Box<dyn Fn() + Send>) {
+        let _worker_span = tracing::info_span!("worker.engine.graph_scheduler").entered();
         loop {
             let covering_gen = {
                 let mut state = shared.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -118,7 +124,11 @@ impl GraphScheduler {
                 }
             };
 
-            apply();
+            {
+                let _span =
+                    tracing::info_span!("engine.graph.apply", generation = covering_gen).entered();
+                apply();
+            }
 
             let mut state = shared.state.lock().unwrap_or_else(|e| e.into_inner());
             state.applied_gen = state.applied_gen.max(covering_gen);
@@ -133,6 +143,13 @@ impl GraphScheduler {
     /// the deadline does **not** move.
     pub fn arm(&self) {
         let mut state = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        let coalesced = state.deadline.is_some();
+        let _span = tracing::trace_span!(
+            "engine.graph.arm",
+            generation = state.dirty_gen.wrapping_add(1),
+            coalesced
+        )
+        .entered();
         // Always, even when a batch is already pending: this is what tells a later flush
         // that a change exists which no in-flight apply can have seen.
         state.dirty_gen += 1;
@@ -147,6 +164,7 @@ impl GraphScheduler {
     /// For the points where a caller needs the schedule to be current before it goes on:
     /// startup, driver activation, and the test suite's "let everything settle" call.
     pub fn flush_blocking(&self) {
+        let _span = tracing::info_span!("engine.graph.flush").entered();
         let mut state = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
         let target = state.dirty_gen;
         if state.applied_gen >= target {

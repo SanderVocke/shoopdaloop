@@ -177,18 +177,18 @@ Commit this stage as the frontend coverage milestone.
 
 Depends on Stages 1 and 3; keep this stage off realtime callbacks.
 
-- [ ] Instrument `app_backend` session/driver lifecycle, object pending→ready/failed/closed transitions, control validation, queue outcomes, graph dirtying, state reads, connection-cache refresh, and reclamation workers.
-- [ ] Instrument `EngineHandle` reservation/send/send-and-wait/result/reclaim/poll operations with command sequence, pending depth, wait duration, timeout/full/disconnected outcome, and trace-snapshot drops.
-- [ ] Instrument graph topology construction, schedule compilation, `GraphScheduler` arm/coalescing/apply/flush, and stale-to-current transitions.
-- [ ] Instrument composite plan compilation/validation/installation and non-realtime control requests without logging target tables or user data.
-- [ ] Instrument LV2/Carla discovery, instantiation, UI/state operations, and non-realtime setup/teardown separately from plugin processing.
-- [ ] Name engine-owned non-realtime workers and expose queue depth, coalescing, wait, and dropped-work plots.
+- [x] Instrument `app_backend` session/driver lifecycle, object pending→ready/failed/closed observation, control validation, queue outcomes, graph dirtying, state reads, connection-cache refresh, and reclamation workers.
+- [x] Instrument `EngineHandle` reservation/send/send-and-wait/result/reclaim/poll operations with command sequence, pending depth, wait duration, timeout/full/disconnected outcome, and trace-snapshot drops.
+- [x] Instrument graph topology construction, schedule compilation, `GraphScheduler` arm/coalescing/apply/flush, and stale-to-current transitions.
+- [x] Instrument composite plan compilation/validation/installation and non-realtime control requests without logging target tables or user data.
+- [x] Instrument LV2/Carla discovery, instantiation, UI/state operations, and non-realtime setup/teardown separately from plugin processing.
+- [x] Name engine-owned non-realtime workers and expose queue depth, coalescing, wait, and dropped-work plots.
 
 Verification:
 
-- [ ] Engine control, graph, composite, external-port, JACK/CPAL mock, and app-backend tests pass.
-- [ ] A control-heavy test trace correlates command sequence numbers from frontend enqueue through engine acknowledgement/reclamation.
-- [ ] Queue-full, timeout, failed object creation, and graph-rebuild paths produce bounded diagnostic events without changing returned errors.
+- [x] Focused engine control, graph, composite, external-port, CPAL mock, app-backend, and LV2/Carla tests pass. (The parallel all-feature engine test process later hit the pre-existing Carla global teardown race after 582 tests; final validation repeats it serially.)
+- [x] A control-heavy QML trace correlates frontend control zones, engine command sequences/queue spans, graph application, acknowledgement waits, reclamation, and frontend state plots.
+- [x] Queue-full, timeout, failed object creation, and graph-rebuild tests pass while the corresponding spans preserve existing returned errors.
 
 Commit this stage before touching realtime processing.
 

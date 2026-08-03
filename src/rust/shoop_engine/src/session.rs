@@ -439,6 +439,7 @@ pub struct PreparedSchedule {
 /// and grows every buffer a cycle will need. Nothing here touches a [`Session`], which is
 /// the point: it can run on any thread, at any time, while audio keeps flowing against the
 /// schedule already installed.
+#[tracing::instrument(name = "engine.graph.build_schedule", skip_all)]
 pub fn build_schedule(topology: Topology) -> Result<PreparedSchedule, SessionError> {
     let Topology {
         graph,

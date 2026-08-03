@@ -2999,6 +2999,7 @@ dependencies = [
  "serde_json",
  "shoop_tracing",
  "thiserror 2.0.19",
+ "tracing",
 ]
 
 [[package]]

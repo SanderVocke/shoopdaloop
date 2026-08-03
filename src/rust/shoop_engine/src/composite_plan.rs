@@ -326,6 +326,11 @@ impl ScheduledOccurrence {
     }
 }
 
+#[tracing::instrument(
+    name = "engine.control.compile_composite_plan",
+    skip_all,
+    fields(timelines = descriptor.timelines.len())
+)]
 pub fn compile_composite_plan(
     descriptor: &CompositePlanDescriptor,
     catalog: &LoopTargetCatalog,

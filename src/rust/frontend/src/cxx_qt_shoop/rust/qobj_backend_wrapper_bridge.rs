@@ -221,6 +221,16 @@ pub struct BackendWrapperRust {
     pub plotter_sample_rate: TracyPlotter,
     pub plotter_buffer_size: TracyPlotter,
     pub plotter_update_interval: TracyPlotter,
+    pub plotter_cycles: TracyPlotter,
+    pub plotter_frames: TracyPlotter,
+    pub plotter_pending_commands: TracyPlotter,
+    pub plotter_commands_applied: TracyPlotter,
+    pub plotter_last_applied_command: TracyPlotter,
+    pub plotter_trace_snapshots_dropped: TracyPlotter,
+    pub plotter_capture_underruns: TracyPlotter,
+    pub plotter_capture_overruns: TracyPlotter,
+    pub plotter_graph_arms: TracyPlotter,
+    pub plotter_graph_applies: TracyPlotter,
 }
 
 impl Default for BackendWrapperRust {
@@ -265,6 +275,16 @@ impl Default for BackendWrapperRust {
             plotter_sample_rate: TracyPlotter::new("sample_rate"),
             plotter_buffer_size: TracyPlotter::new("buffer_size"),
             plotter_update_interval: TracyPlotter::new("update_interval_ms"),
+            plotter_cycles: TracyPlotter::new("cycles"),
+            plotter_frames: TracyPlotter::new("frames"),
+            plotter_pending_commands: TracyPlotter::new("pending_commands"),
+            plotter_commands_applied: TracyPlotter::new("commands_applied"),
+            plotter_last_applied_command: TracyPlotter::new("last_applied_command"),
+            plotter_trace_snapshots_dropped: TracyPlotter::new("trace_snapshots_dropped"),
+            plotter_capture_underruns: TracyPlotter::new("capture_underruns"),
+            plotter_capture_overruns: TracyPlotter::new("capture_overruns"),
+            plotter_graph_arms: TracyPlotter::new("graph_arms"),
+            plotter_graph_applies: TracyPlotter::new("graph_applies"),
         }
     }
 }

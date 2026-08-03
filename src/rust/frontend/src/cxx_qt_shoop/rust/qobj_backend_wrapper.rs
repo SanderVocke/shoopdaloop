@@ -419,6 +419,28 @@ impl BackendWrapper {
                 .plot(driver_state.buffer_size as f64, "BackendWrapper");
             rust.plotter_update_interval
                 .plot(update_interval_ms, "BackendWrapper");
+            rust.plotter_cycles
+                .plot(session_state.cycles as f64, "BackendWrapper");
+            rust.plotter_frames
+                .plot(session_state.frames as f64, "BackendWrapper");
+            rust.plotter_pending_commands
+                .plot(session_state.pending_commands as f64, "BackendWrapper");
+            rust.plotter_commands_applied
+                .plot(session_state.commands_applied as f64, "BackendWrapper");
+            rust.plotter_last_applied_command
+                .plot(session_state.last_applied_command as f64, "BackendWrapper");
+            rust.plotter_trace_snapshots_dropped.plot(
+                session_state.trace_snapshots_dropped as f64,
+                "BackendWrapper",
+            );
+            rust.plotter_capture_underruns
+                .plot(session_state.capture_underruns as f64, "BackendWrapper");
+            rust.plotter_capture_overruns
+                .plot(session_state.capture_overruns as f64, "BackendWrapper");
+            rust.plotter_graph_arms
+                .plot(session_state.graph_arms as f64, "BackendWrapper");
+            rust.plotter_graph_applies
+                .plot(session_state.graph_applies as f64, "BackendWrapper");
         }
         self.as_mut().updated_on_gui_thread();
         trace!("End frontend refresh");

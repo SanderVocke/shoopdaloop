@@ -315,15 +315,18 @@ impl DeviceTrait for MockDevice {
             playback: StreamInstant::new(0, 0),
         });
 
-        let thread = std::thread::spawn(move || {
-            // Allocated once outside the loop so the audio path does not allocate.
-            let mut buffer: Vec<f32> = vec![0.0; buffer_len];
-            while !stop_thread.load(Ordering::Relaxed) {
-                let mut data = unsafe { make_data(&mut buffer, sample_format) };
-                data_callback(&mut data, &info);
-                std::thread::sleep(cycle_interval);
-            }
-        });
+        let thread = std::thread::Builder::new()
+            .name("engine-cpal-mock-output".to_string())
+            .spawn(move || {
+                // Allocated once outside the loop so the audio path does not allocate.
+                let mut buffer: Vec<f32> = vec![0.0; buffer_len];
+                while !stop_thread.load(Ordering::Relaxed) {
+                    let mut data = unsafe { make_data(&mut buffer, sample_format) };
+                    data_callback(&mut data, &info);
+                    std::thread::sleep(cycle_interval);
+                }
+            })
+            .expect("spawn CPAL mock output thread");
 
         Ok(MockStream {
             stop: Some(stop),
@@ -371,14 +374,17 @@ impl DeviceTrait for MockDevice {
             capture: StreamInstant::new(0, 0),
         });
 
-        let thread = std::thread::spawn(move || {
-            let buffer: Vec<f32> = vec![0.0; buffer_len];
-            while !stop_thread.load(Ordering::Relaxed) {
-                let data = unsafe { make_data_const(&buffer, sample_format) };
-                data_callback(&data, &info);
-                std::thread::sleep(cycle_interval);
-            }
-        });
+        let thread = std::thread::Builder::new()
+            .name("engine-cpal-mock-input".to_string())
+            .spawn(move || {
+                let buffer: Vec<f32> = vec![0.0; buffer_len];
+                while !stop_thread.load(Ordering::Relaxed) {
+                    let data = unsafe { make_data_const(&buffer, sample_format) };
+                    data_callback(&data, &info);
+                    std::thread::sleep(cycle_interval);
+                }
+            })
+            .expect("spawn CPAL mock input thread");
 
         Ok(MockStream {
             stop: Some(stop),

@@ -43,6 +43,16 @@ pub struct BackendSessionState {
     pub audio_driver: *mut (),
     pub n_audio_buffers_created: u32,
     pub n_audio_buffers_available: u32,
+    pub cycles: u32,
+    pub frames: u32,
+    pub pending_commands: u32,
+    pub commands_applied: u32,
+    pub last_applied_command: u64,
+    pub trace_snapshots_dropped: u32,
+    pub capture_underruns: u32,
+    pub capture_overruns: u32,
+    pub graph_arms: u64,
+    pub graph_applies: u64,
 }
 
 pub fn driver_type_supported(driver_type: AudioDriverType) -> bool {
