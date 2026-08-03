@@ -3,7 +3,6 @@
 resolver = "2"
 
 members = ["src/rust/*"]
-exclude = ["third_party/egui-cxx-qt"]
 
 [workspace.lints.rust]
 unknown_lints = "allow"
@@ -37,6 +36,9 @@ dunce = "1.0"
 cxx-qt = "0.9.1"
 cxx-qt-lib = { version = "0.9.1", features = ["full"] }
 cxx-qt-build = { version = "0.9.1", features = ["link_qt_object_files"] }
+egui-cxx-qt = { git = "https://github.com/SanderVocke/egui-cxx-qt.git", rev = "6f0de7d570e4b8d3543556d76935a2c76bfbddb7" }
+egui-cxx-qt-build = { git = "https://github.com/SanderVocke/egui-cxx-qt.git", rev = "6f0de7d570e4b8d3543556d76935a2c76bfbddb7" }
+egui_material_icons = "0.7"
 quote = "1.0"
 syn = { version = "2.0", features = ["full"] }
 walkdir = "2.5"

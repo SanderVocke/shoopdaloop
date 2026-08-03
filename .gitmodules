@@ -1,6 +1,3 @@
 [submodule "src/qml/third_party/QtMaterialDesignIcons"]
 	path = src/qml/third_party/QtMaterialDesignIcons
 	url = https://github.com/sthlm58/QtMaterialDesignIcons.git
-[submodule "third_party/egui-cxx-qt"]
-	path = third_party/egui-cxx-qt
-	url = https://github.com/SanderVocke/egui-cxx-qt.git

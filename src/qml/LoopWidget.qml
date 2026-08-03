@@ -357,6 +357,35 @@ Item {
         if (targeted) { untarget() } else { target() }
     }
 
+    function on_state_icon_clicked() {
+        if (ShoopRustKeyModifiers.alt_pressed) {
+            if (root.selected_loops.size == 1) {
+                let selected = Array.from(root.selected_loops)[0]
+                if (selected != root) {
+                    selected.create_composite_loop()
+                    if (selected.maybe_composite_loop) {
+                        if (ShoopRustKeyModifiers.control_pressed) {
+                            selected.maybe_composite_loop.add_loop(root, 0, AppRegistries.state_registry.apply_n_cycles, undefined)
+                        } else {
+                            selected.maybe_composite_loop.add_loop(root, 0, AppRegistries.state_registry.apply_n_cycles, 0)
+                        }
+                    }
+                }
+            }
+        } else if (root.targeted) {
+            root.untarget()
+            root.deselect()
+        } else {
+            root.toggle_selected(!ShoopRustKeyModifiers.control_pressed)
+        }
+    }
+
+    function on_state_icon_double_clicked() {
+        if (!ShoopRustKeyModifiers.alt_pressed) {
+            root.target()
+        }
+    }
+
     function get_audio_channels() {
         return maybe_loop ? maybe_loop.audio_channels : []
     }
@@ -382,6 +411,7 @@ Item {
 
     function set_gain_fader(value) {
         statusrect.gain_dial.set_as_range_fraction(value)
+        statusrect.gain_dial.push_value()
     }
     readonly property real gain_fader : statusrect.gain_dial.position
 
@@ -957,30 +987,16 @@ Item {
                         muted: false
                         empty: !statusrect.loop || statusrect.loop.length == 0
                         onDoubleClicked: (event) => {
-                                if (!ShoopRustKeyModifiers.alt_pressed && event.button === Qt.LeftButton) { root.target() }
+                            if (event.button === Qt.LeftButton) {
+                                root.on_state_icon_double_clicked()
                             }
+                        }
                         onClicked: (event) => {
                             if (event.button === Qt.LeftButton) {
-                                if (ShoopRustKeyModifiers.alt_pressed) {
-                                    if (root.selected_loops.size == 1) {
-                                        let selected = Array.from(root.selected_loops)[0]
-                                        if (selected != root) {
-                                            selected.create_composite_loop()
-                                            if (selected.maybe_composite_loop) {
-                                                // Add the selected loop to the currently selected composite loop.
-                                                // If ctrl pressed, as a new parallel timeline; otherwise at the end of the default timeline.
-                                                if (ShoopRustKeyModifiers.control_pressed) {
-                                                    selected.maybe_composite_loop.add_loop(root, 0, AppRegistries.state_registry.apply_n_cycles, undefined)
-                                                } else {
-                                                    selected.maybe_composite_loop.add_loop(root, 0, AppRegistries.state_registry.apply_n_cycles, 0)
-                                                }
-                                            }
-                                        }
-                                    }
-                                } else if (root.targeted) { root.untarget(); root.deselect() }
-                                else { root.toggle_selected(!ShoopRustKeyModifiers.control_pressed) }
+                                root.on_state_icon_clicked()
+                            } else if (event.button === Qt.RightButton) {
+                                context_menu_loader.popup()
                             }
-                            else if (event.button === Qt.RightButton) { context_menu_loader.popup() }
                         }
                     }
                     LoopStateIcon {
@@ -1448,7 +1464,8 @@ Item {
                     show_value_tooltip: true
                     value_tooltip_postfix: ' dB'
 
-                    onMoved: {
+                    onMoved: push_value()
+                    function push_value() {
                         convert_gain.dB = gain_dial.value
                         push_gain(convert_gain.linear)
                     }

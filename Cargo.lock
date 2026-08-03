@@ -1060,6 +1060,7 @@ dependencies = [
 [[package]]
 name = "egui-cxx-qt"
 version = "0.1.0"
+source = "git+https://github.com/SanderVocke/egui-cxx-qt.git?rev=6f0de7d570e4b8d3543556d76935a2c76bfbddb7#6f0de7d570e4b8d3543556d76935a2c76bfbddb7"
 dependencies = [
  "cxx",
  "cxx-qt",
@@ -1073,6 +1074,7 @@ dependencies = [
 [[package]]
 name = "egui-cxx-qt-build"
 version = "0.1.0"
+source = "git+https://github.com/SanderVocke/egui-cxx-qt.git?rev=6f0de7d570e4b8d3543556d76935a2c76bfbddb7#6f0de7d570e4b8d3543556d76935a2c76bfbddb7"
 dependencies = [
  "cxx-qt-build",
  "egui-cxx-qt-codegen",
@@ -1081,6 +1083,7 @@ dependencies = [
 [[package]]
 name = "egui-cxx-qt-codegen"
 version = "0.1.0"
+source = "git+https://github.com/SanderVocke/egui-cxx-qt.git?rev=6f0de7d570e4b8d3543556d76935a2c76bfbddb7#6f0de7d570e4b8d3543556d76935a2c76bfbddb7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1090,6 +1093,7 @@ dependencies = [
 [[package]]
 name = "egui-cxx-qt-macros"
 version = "0.1.0"
+source = "git+https://github.com/SanderVocke/egui-cxx-qt.git?rev=6f0de7d570e4b8d3543556d76935a2c76bfbddb7#6f0de7d570e4b8d3543556d76935a2c76bfbddb7"
 dependencies = [
  "egui-cxx-qt-codegen",
  "syn 2.0.104",
@@ -1107,6 +1111,15 @@ dependencies = [
  "log",
  "memoffset",
  "profiling",
+]
+
+[[package]]
+name = "egui_material_icons"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd64a174529ad8ad5b3fcf74bafa368ed24aacc5887c2742b1e69ce4151c1a61"
+dependencies = [
+ "egui",
 ]
 
 [[package]]
@@ -1338,6 +1351,7 @@ dependencies = [
  "dunce",
  "egui-cxx-qt",
  "egui-cxx-qt-build",
+ "egui_material_icons",
  "enum-iterator",
  "glob",
  "itertools 0.14.0",
