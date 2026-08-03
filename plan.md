@@ -1,453 +1,263 @@
-# Plan: per-QML-testcase Tracy capture and opt-in CI trace artifacts
+# Plan: application-wide Rust tracing, including `shoop_engine`
 
-## Objective
+## Goals
 
-Extend the tracing work on `tracing_frontend` / PR #660 so that:
+1. Add coherent Tracy-visible instrumentation across the production Rust runtime: application startup/shutdown, common services, crash handling, CXX-Qt/frontend work, Lua and asynchronous helpers, control-thread engine APIs, driver lifecycle, and `shoop_engine` processing.
+2. Make `shoop_engine` traces answer an end-to-end performance question: from a GUI/control request, through command queueing and graph scheduling, to the audio callback, session schedule, loops/channels/ports/composites/FX, state publication, and frontend refresh.
+3. Preserve normal realtime correctness when tracing is disabled. When tracing is explicitly enabled for debugging, direct Tracy calls in audio/MIDI callbacks may allocate or lock internally and may perturb realtime performance; this exception must be confined to Tracy calls and clearly documented.
+4. Keep tracing disabled by default and retain the existing `--tracing`, `--tracing-capture`, per-QML-file capture rotation, and default-off CI capture behavior.
+5. Leave a maintainable coverage inventory so “the entire app Rust code” is auditable rather than inferred from a few representative traces.
 
-1. A developer can run QML self-tests locally with Tracy enabled and receive one finalized `.tracy` capture for each QML test file loaded by `TestFileRunner`.
-2. The manually dispatched `build_and_test` workflow exposes a boolean input that is **off by default**. Enabling it schedules a dedicated Linux QML trace-capture job and uploads the resulting captures as an archive, even when QML tests fail.
-3. Normal app runs, normal QML tests, pull-request runs, pushes, and scheduled CI runs do not download Tracy tools, launch `tracy-capture`, create trace files, or upload trace artifacts.
-4. The implementation is validated locally only in this phase. The new trace-producing CI path is not dispatched or otherwise tested in CI yet.
+## Immutable acceptance criteria
 
-The capture boundary in this plan is one QML test file (`tst_*.qml`) as advanced by `TestFileRunner`. In the current suite each such file is the isolated QML engine load and contains one `ShoopTestCase`/`ShoopSessionTestCase`, so this provides one trace per QML testcase without restarting the capture process for every individual `test_*` function.
+These criteria may not be weakened or changed without explicit user approval.
 
-## Mandatory preflight and allowed stop condition
-
-Before editing code, locate and validate a compatible capture executable:
-
-```sh
-command -v tracy-capture
-tracy-capture --help
-```
-
-Also check `TRACY_CAPTURE_TOOL` and common local installation paths if `command -v` fails. The embedded client from `tracy-client-sys 0.28.0` is Tracy **0.13.1**, so the preferred capture tool is Tracy 0.13.1.
-
-If no executable `tracy-capture` is available in the development environment, the executor is explicitly allowed to stop immediately. Report:
-
-- every path/environment variable checked;
-- the command output or error;
-- the required compatible version;
-- that no implementation or CI execution was attempted.
-
-Do not substitute the GUI profiler executable for `tracy-capture`.
-
-## Current state and prior art
-
-- PR #660 already enables the Tracy client with `--tracing` and has frontend spans, plots, and frame marks.
-- There is currently no capture-process manager, capture CLI, per-test capture lifecycle, or trace artifact upload.
-- `tracing_cxx` contains useful prior art:
-  - `src/rust/common/src/tracing_capture.rs`;
-  - commits `adb023c7`, `983c057c`, `80695263`, `89348f5c`, and subsequent fixes through `69da8692`;
-  - `.github/actions/install_tracy/action.yml`.
-- Do **not** cherry-pick those commits wholesale. They contain obsolete C++ backend work, stale CI structure, an unnecessary QML singleton, loose argument parsing, and unrelated changes.
-- The old runner restarted capture in `maybe_run_next_test_file`, which means the previous trace was finalized immediately before the next file. Preserve the useful per-file behavior, but make ownership and finalization explicit and error-aware.
+- A checked-in tracing coverage inventory accounts for every production `.rs` module under `src/rust`. Each module is marked as instrumented, indirectly covered by a named caller, or excluded with a concrete reason. Test-only code, generated/FFI declarations, proc-macro/build support, and trivial pure accessors may be excluded; runtime orchestration or processing code may not be silently omitted.
+- The runtime crates `common`, `config`, `crashhandling`, `cxx_qt_lib_shoop`, `frontend`, `midi_processing`, `shoopdaloop`, and especially `shoop_engine` have useful coverage at their major operation and thread boundaries. The standalone `packaging` tool is also covered at command/subcommand and long-running scan/package stages. Build-only `macros` and `qt_header_bindings` are inventoried even when excluded.
+- A captured trace demonstrates one causal path from frontend/control work through `app_backend`, engine command acceptance, an engine callback/cycle, session processing, state-mirror publication, and the following frontend refresh.
+- Engine traces expose at least: driver/callback kind, callback duration and frame count, command queue depth and commands applied, graph rebuild scheduling/application, stale cycles, xruns, DSP load, capture under/overruns, processing-stage timing, loop/composite transitions, and state publication/drop counters.
+- Detailed engine tracing covers the bounded processing categories—ports, channels, loops, composite runtime/timeline, and FX—without per-sample or per-MIDI-message zones and without unbounded-cardinality names.
+- With tracing disabled, deterministic dummy/engine processing tests complete under `--rt-alloc-guard` with no allocation exception. Realtime Tracy helpers return before calling Tracy unless `--tracing`, `--tracing-capture`, or the subordinate `--tracing-engine-detail` option explicitly enables output.
+- With tracing enabled, allocations and locks performed by direct Tracy calls are an accepted debugging-mode exception. Any Rust allocation made by the Tracy wrapper is enclosed in the narrowest practical `realtime_alloc_guard::allow_alloc` scope; unrelated engine processing remains guarded. Passing the Rust allocation guard is not presented as proof that Tracy's C++ internals are allocation-free or lock-free.
+- Realtime callsites use direct `tracy-client` APIs rather than `tracing` subscriber spans/events or ordinary logging. Static source locations, bounded metadata, and no callstacks remain preferred to limit perturbation and trace volume, not as a realtime-safety guarantee.
+- The same global enabled/output gate controls subscriber tracing, direct realtime Tracy zones, plots, frame marks, and capture quiescence. Rotating captures does not produce “zone ended twice,” instrumentation failures, truncated follow-on traces, or zones spanning a disconnect/reconnect.
+- Tracing-disabled runs do not create captures and do not perform Tracy plot/span work beyond bounded atomic gate checks. Existing application and engine behavior and test results remain unchanged.
+- Trace names and fields follow one documented naming scheme, use stable low-cardinality identifiers, and do not include audio payloads, raw MIDI payloads, session contents, secrets, or uncontrolled user strings.
+- `cargo fmt --all`, a warning-free workspace build, the full Rust suite, frontend unit tests, targeted and broad QML tests, realtime allocation tests, capture rotation, and manual trace inspection all satisfy the final validation stage.
+- Existing capture CLI, manifests, local documentation, and the default-off Linux CI trace archive continue to work. No automatic workflow trigger starts trace capture.
 
 ## Scope
 
 ### In scope
 
-- A Rust capture-process manager in `common`.
-- CLI options for enabling capture, selecting the tool, and selecting an output directory.
-- Automatic Tracy-layer enablement when capture is requested.
-- Deterministic, sanitized, unique per-QML-file capture names.
-- Connection readiness checks and bounded graceful shutdown.
-- Explicit finalization before the test process reports completion.
-- Local unit/integration testing of capture lifecycle.
-- A default-off manual workflow input.
-- A dedicated Linux trace job using the release portable artifact.
-- Installation of a version-compatible Linux `tracy-capture` only in that job.
-- Packaging captures, metadata, capture logs, and JUnit output into an archive and uploading it with `actions/upload-artifact`.
+- Shared tracing enable/output state and helpers.
+- Non-realtime `tracing` spans/events and Tracy plots.
+- Gated direct Tracy zones/frame marks for carefully selected realtime boundaries, with an explicit debugging-mode exception for Tracy-internal allocation and locking.
+- Existing engine profiler/stat/mirror mechanisms as the preferred way to move detailed realtime measurements to non-realtime consumers.
+- Thread naming and spans around thread startup, queueing, waits, worker work, and shutdown.
+- Current frontend architecture, including `FrontendRefresh` and GUI objects backed directly by engine handles/state mirrors.
+- Engine control plane, drivers, callback cycle, schedule stages, graph scheduler, loops/channels/ports/composites/FX, and diagnostic publication.
+- Coverage documentation, tests, and end-to-end trace review.
 
 ### Out of scope
 
-- Any new engine/backend instrumentation.
-- Tracy capture for Rust unit tests, screenshots, monkey tests, or ordinary app CI jobs.
-- Automatic capture on PR, push, schedule, or release events.
-- Automatic capture for every `test_*` function inside a QML testcase.
-- A QML-exposed `ShoopRustTracingCapture` singleton. Rust `TestFileRunner` can call the capture manager directly.
-- Tracy profiler/capture CI execution during this implementation phase.
-- Running `gh workflow run`, manually dispatching the workflow, or otherwise testing the new trace job on GitHub Actions.
-- Broadly rewriting `build_tracy.yml` unless the existing pinned capture asset is proven unusable.
+- QML or C++ instrumentation except where a Rust FFI boundary is timed from Rust.
+- Restoring deleted frontend backend/update-thread QObjects.
+- Per-sample, per-audio-value, or unrestricted per-MIDI-event tracing.
+- Logging or formatting on realtime threads.
+- Capturing audio/MIDI/session payload contents.
+- Making Tracy mandatory for normal runs or automatic CI events.
+- Instrumenting every trivial getter, parser branch, generated bridge declaration, or test helper solely to increase a count.
 
-## Design decisions
+## Design rules and constraints
 
-### Capture lifecycle
+### Two instrumentation paths
 
-Use a single process-global capture controller because the application has one Tracy client and can have only one capture consumer at a time. Keep all mutable state behind one `Mutex` and return errors instead of panicking on poisoned locks or invalid lifecycle calls.
+- **Non-realtime path:** use `tracing` spans/events so existing `SHOOP_LOG`/`RUST_LOG` behavior and `tracing_tracy::TracyLayer` remain the integration point. Use entered spans only for synchronous work; use explicit span lifetimes for queued/worker work.
+- **Realtime path:** do not use the subscriber. Use a small direct `tracy-client` helper with static source locations, no call stacks, optional numeric values only, and a shared atomic gate. With tracing disabled, the helper must return before calling Tracy. With tracing enabled, Tracy-internal allocation and locking are accepted as debugging overhead.
+- Prefer expanding `shoop_engine::profiling`, `Stats`, and preallocated trace snapshots when detailed data can be published atomically or through an existing bounded queue and plotted later on the control/GUI thread; use direct Tracy zones where exact callback-thread nesting is valuable.
 
-Suggested public API in `common::tracing_capture`:
+### Shared gate and dependency direction
 
-```rust
-pub struct CaptureConfig {
-    pub tool: PathBuf,
-    pub output_dir: PathBuf,
-    pub connect_timeout: Duration,
-    pub stop_timeout: Duration,
-}
+Introduce a minimal runtime tracing support crate (for example `shoop_tracing`) rather than making `shoop_engine` depend on the UI-oriented `common` crate. It should own:
 
-pub fn configure(config: CaptureConfig) -> Result<(), CaptureError>;
-pub fn is_configured() -> bool;
-pub fn start_named_capture(label: &str) -> Result<PathBuf, CaptureError>;
-pub fn start_default_capture() -> Result<PathBuf, CaptureError>;
-pub fn stop_capture() -> Result<Option<PathBuf>, CaptureError>;
-pub fn shutdown() -> Result<(), CaptureError>;
-```
+- global tracing-enabled and tracing-output-enabled atomics;
+- static realtime span/location helpers or the primitives needed by an engine-local helper;
+- thread/frame helper functions that do not depend on logging or Qt.
 
-Exact names may vary, but preserve these semantics:
+`common` should use or re-export this gate for its subscriber filter, plotter, and capture quiescence. `shoop_engine` should depend only on this lightweight crate plus `tracy-client`. Preserve `prebuild` feature behavior and avoid dependency cycles.
 
-- `configure` validates that the tool exists and is executable and creates the output directory.
-- `start_named_capture` first finalizes any active capture, sanitizes the label, chooses a unique path, launches `tracy-capture -o <path>`, and waits for `tracy_client::Client::is_connected()`.
-- `stop_capture` sends a graceful interrupt, waits with a bounded timeout, force-kills only after timeout, waits for the process, and verifies that the expected output exists and is non-empty.
-- `shutdown` is idempotent and safe from a cleanup guard.
-- Starting capture while unconfigured is an error, not a warning/no-op.
-- Capture failures requested by the user or CI are fatal to that run. Do not silently continue without traces.
+### Realtime policy and tracing exception
 
-### Process I/O and shutdown
+- Normal realtime guarantees apply when no tracing CLI option is enabled. The disabled realtime helper path may perform bounded atomic gate checks but must not enter Tracy, allocate, lock, log, format, sleep, or wait.
+- `--tracing` enables coarse direct Tracy zones in realtime callbacks. `--tracing-capture` implies the same behavior. `--tracing-engine-detail` is subordinate to tracing and enables additional per-node/category zones.
+- Direct Tracy calls are the only approved exception to the usual realtime allocation and mutex rules. Keep `realtime_alloc_guard::allow_alloc` scopes inside the helper around Tracy begin/end/metadata operations; do not exempt surrounding engine work.
+- Do not use the `tracing` subscriber, ordinary logging, application mutexes, sleeps, waits, or new blocking queues from realtime code. The exception does not authorize unrelated allocations or synchronization.
+- Prefer static category locations, numeric metadata, no callstacks, and no `emit_text`. These reduce profiler overhead and cardinality even though tracing mode is not claimed realtime-safe.
+- Prewarm Tracy/client state where practical, but do not claim this eliminates all allocation or locking: Tracy owns C++ thread-local producers and queue storage outside Rust's allocation guard.
+- Document that tracing may cause xruns, deadline misses, or altered callback timing and that traces are debugging evidence rather than transparent performance measurements.
+- Capture stop must disable both subscriber and direct realtime output, allow active zones to drain, then disconnect. Capture start re-enables output only after the new capturer connects.
 
-Prefer redirecting the child process's stdout and stderr to a capture log in the trace output directory rather than maintaining indefinitely blocking pipe-reader threads. If immediate forwarding is required, use reader threads with bounded joining, but avoid the old helper-thread/detach pattern unless local tests prove it necessary.
+### Naming and cardinality
 
-On Unix, send `SIGINT` with `libc::kill` so `tracy-capture` finalizes the file. Poll `Child::try_wait()` up to a fixed timeout (five seconds is a reasonable initial value), then use `Child::kill()` as a last resort. Always call `wait()` after termination to reap the child.
+Use stable snake-case names grouped by layer, for example:
 
-The code must still compile on Windows and macOS. The first CI capture job is Linux-only. Use `cfg` blocks for platform termination behavior and return a clear unsupported/graceful-finalization error where reliable behavior has not been implemented, rather than pretending a forcibly terminated capture is valid.
+- `app.*`, `frontend.*`, `worker.*`
+- `engine.control.*`, `engine.graph.*`, `engine.driver.*`
+- `engine.rt.callback`, `engine.rt.commands`, `engine.rt.session`
+- `engine.rt.ports`, `engine.rt.channels`, `engine.rt.loops`, `engine.rt.composites`, `engine.rt.fx`
 
-After stopping a capture, wait briefly for `Client::is_connected()` to become false before launching the next capture. After launching, wait until it becomes true before loading the next QML file. This avoids losing the beginning of a testcase or accidentally sending it to the prior capture. Both waits must time out with actionable errors.
+Use stable plot prefixes per session/object type. Dynamic object labels may be used only off the realtime thread and must be sanitized/bounded. Record numeric values such as frame count, queue depth, sequence number, stage kind, object index, mode, and drop count without embedding them in span names.
 
-### File naming and manifest
+### Coverage granularity
 
-Create captures under an explicit output directory, defaulting to `traces` for local runs. Use a monotonic sequence plus a sanitized test stem, for example:
+Instrument operation boundaries and state transitions, not every function. A module is indirectly covered only when a named enclosing span genuinely includes its meaningful work. Pure algorithms should receive spans at their public orchestration boundary; hot inner loops should remain free of nested tracing unless a bounded detail mode is justified and tested.
 
-```text
-traces/
-  0001-tst_TwoLoops.tracy
-  0002-tst_MidiControlPort.tracy
-  tracy-capture.log
-  manifest.tsv
-```
+## Staged implementation
 
-Sanitization must:
+Stages are ordered. A later stage may not begin until the preceding stage's verification is recorded, except for independent inventory/documentation work.
 
-- use only the final file stem, never a caller-controlled directory;
-- replace characters outside `[A-Za-z0-9._-]` with `_`;
-- reject `.`/`..` and empty results;
-- use the numeric sequence to prevent collisions from duplicate stems.
+### Stage 0 — Baseline and coverage inventory
 
-Append a manifest row only after a capture is finalized successfully. Include sequence, source QML path, capture filename, start/end timestamps, final child status, and if readily available the testcase pass/fail outcome. The CI archive should also include the workflow SHA and Tracy version in a small metadata file.
+- [x] Create a checked-in Rust tracing coverage inventory listing every production module by crate, thread context, major operations, realtime status, intended spans/plots, and any exclusion rationale.
+- [x] Remove stale inventory entries for deleted backend/update-thread QObjects and map their former diagnostics to current GUI/state-mirror/frontend-refresh paths.
+- [x] Record baseline traces for a targeted QML test and a controlled dummy-engine run, including current zones, trace size, instrumentation warnings, callback timing, and capture rotation behavior.
+- [x] Record baseline tracing-disabled and tracing-enabled engine processing measurements using deterministic tests; do not set a fragile wall-clock threshold. (The captured baseline proves engine zones are absent, so existing profiler/allocation results are the engine baseline.)
+- [x] Identify all thread creation/callback entrypoints and all regions protected by `realtime_alloc_guard`.
 
-### CLI behavior
+Verification:
 
-Add developer options in `src/rust/shoopdaloop/src/cli_args.rs`:
+- [x] Inventory has no unclassified production Rust module.
+- [x] `cargo build` and targeted baseline tests pass before behavior changes.
+- [x] Baseline `.tracy` files parse with the matching Tracy tools and are retained for before/after comparison.
 
-- `--tracing-capture`: enable external capture;
-- `--tracing-capture-tool <PATH>`: capture executable, falling back to `TRACY_CAPTURE_TOOL`, then `tracy-capture` on `PATH`;
-- `--tracing-capture-output-dir <PATH>`: default `traces`;
-- optionally a connect timeout only if local testing demonstrates a need to tune it.
+Commit this stage as the inventory/baseline milestone.
 
-Do not expose a free-form shell argument string. Invoke `Command` with separate arguments so output paths with spaces work and no shell parsing is involved.
+### Stage 1 — Shared tracing infrastructure and gate proof
 
-Capture must imply tracing. Update the pre-logging argument scan in `main_impl.rs` so either `--tracing` or `--tracing-capture` calls `set_tracing_enabled(true)` before `common::init()`. Keep the parsed CLI validation too, and make tool/output options require capture where Clap supports it.
+Depends on Stage 0.
 
-In `lib_impl.rs`:
+- [ ] Add the minimal shared tracing support crate and move the enabled/output gate behind it while preserving current public behavior through `common`.
+- [ ] Add a separate `--tracing-engine-detail` gate and CLI option that requires `--tracing` or `--tracing-capture`.
+- [ ] Add realtime location/span helpers with a fast disabled path, narrow allocation-permitted scopes around direct Tracy operations, and a best-effort prewarm API called before driver activation.
+- [ ] Make capture quiescence disable subscriber spans, direct realtime zones, frame marks, and plots through the same output gate.
+- [ ] Add unit tests for gate combinations, disabled behavior, prewarming, capture disable/re-enable, and static-location reuse.
+- [ ] Add allocation-guard tests proving the disabled path does not allocate and that enabled tracing does not require exempting surrounding engine processing. Document that these tests cannot observe or certify Tracy's C++ allocator/locking behavior.
 
-- configure capture after parsing arguments and after logging/Tracy initialization;
-- for an ordinary app run, start one default capture immediately;
-- for `--self-test`, configure the controller but let `TestFileRunner` start the first named capture, avoiding an extra startup-only `.tracy` file;
-- install an RAII cleanup guard around the application entry point so all normal returns finalize an active capture;
-- propagate configuration/startup errors to the top-level error result.
+Verification:
 
-### QML test boundary integration
+- [ ] Existing live tracing and per-QML capture still work.
+- [ ] Two rotated captures both parse and contain valid follow-on zones with no Tracy instrumentation warning.
+- [ ] Realtime helper tests pass with the allocation guard enabled: no exception when tracing is disabled, and only the direct Tracy wrapper is allocation-permitted when tracing is enabled.
+- [ ] Warning-free workspace build passes on the host platform; platform-specific code remains `cfg`-clean.
 
-Modify `src/rust/frontend/src/cxx_qt_shoop/rust/test/qobj_test_file_runner.rs` directly; do not add a QML singleton.
+Commit this stage before adding broad instrumentation.
 
-Track enough state in `TestFileRunnerRust` to know the current source test path and whether it owns an active capture. The intended sequence is:
+### Stage 2 — Application, support crates, and worker lifecycle
 
-1. `start` discovers and orders test files as it does now.
-2. `maybe_run_next_test_file` removes the next path.
-3. If capture is configured, start a named capture for that path and wait for connection readiness.
-4. Only then emit `reload_qml`.
-5. `on_testcase_done` gathers results and unloads QML as it does now; keep capture active during unload so destruction-related activity remains in the same trace.
-6. `on_qml_engine_destroyed` finalizes and verifies the current capture before advancing to the next file.
-7. After the last file, report results and emit `done` only after the last capture is finalized.
-8. On capture start/stop/finalization failure, record a clear error, stop advancing files, and emit a nonzero result. Preserve whatever traces/logs were already finalized.
+Depends on Stage 1; contains no realtime instrumentation.
 
-Keep capture-disabled behavior byte-for-byte close to the current control flow. Do not warn once per testcase when capture is not configured.
+- [ ] Instrument `shoopdaloop` bootstrap, configuration loading, argument-driven exits, crash-handler setup, application creation/event loop, self-test setup, and normal shutdown.
+- [ ] Instrument major `common` environment/filesystem/shell operations without tracing the logger or capture handler recursively.
+- [ ] Instrument `config` loading/path resolution and `crashhandling` client/server/process/message lifecycle, excluding signal/exception handlers and `atexit` paths that cannot safely use tracing TLS.
+- [ ] Instrument meaningful CXX-Qt helper crossings in `cxx_qt_lib_shoop`; inventory trivial conversion/accessor helpers as indirectly covered or excluded.
+- [ ] Instrument `midi_processing` batch conversions with counts only, never payload bytes.
+- [ ] Add top-level spans to `packaging` subcommands and long-running dependency scan/copy/archive stages; keep build/proc-macro crates inventoried as build-only.
+- [ ] Name application-owned worker threads at startup and trace queue/wait/work/shutdown lifecycles.
 
-If local inspection finds a QML file with more than one `ShoopTestCase` object, document that it produces one trace for the file-level engine lifetime. Do not add per-function restarts in this task.
+Verification:
 
-## Implementation steps
+- [ ] Focused unit tests for each touched crate pass.
+- [ ] A startup/quit trace shows ordered app, config, crash-handler, Qt, and shutdown spans.
+- [ ] Packaging smoke commands retain exit behavior and produce useful top-level spans when tracing is explicitly enabled.
 
-### 1. Add the capture controller
+Commit this stage as a non-realtime runtime milestone.
 
-Files:
+### Stage 3 — Current frontend and GUI/state propagation
 
-- `src/rust/common/src/tracing_capture.rs` (new);
-- `src/rust/common/src/lib.rs`;
-- `src/rust/common/Cargo.toml`;
-- workspace dependencies only if needed;
-- `.gitignore`.
+Depends on Stage 2 and the current post-refresh-thread architecture.
 
-Actions:
+- [ ] Instrument `FrontendRefresh` request coalescing, queued delay, fallback timer source, refresh duration, and a named frontend-refresh frame mark.
+- [ ] Instrument `BackendWrapper::refresh` and plot current engine/driver stats: readiness, backend kind, cycles/frames, pending/applied commands, xruns, stale cycles, DSP load, buffer state, and capture under/overruns.
+- [ ] Add state-change plots/spans to current GUI objects for loops, composite loops, loop channels, ports, FX chains, MIDI control, and connection cache publication; do not restore deleted backend QObjects.
+- [ ] Instrument frontend-to-`app_backend` control calls with operation category, bounded object/session IDs, queue outcome, and synchronous wait duration.
+- [ ] Instrument QML load/unload/reload, Lua evaluation/callback boundaries, file/session I/O, schema/settings work, waveform/MIDI rendering, async tasks, click-track work, and session-control dispatch at their coarse operation boundaries.
+- [ ] Trace worker handoff latency and completion for frontend-owned threads without holding spans across unrelated work.
+- [ ] Remove or repurpose stale plotter fields that no longer have a current producer after the backend-refresh-thread removal.
 
-1. Add the module and typed errors.
-2. Add only the minimal dependency needed for Unix `SIGINT` (`libc` is already a workspace dependency). Avoid `shlex` by using structured command arguments.
-3. Implement configuration, start, readiness wait, graceful stop, output verification, idempotent shutdown, and label sanitization.
-4. Ignore `*.tracy` and the local trace output directory.
-5. Add focused unit tests for sanitization, unique naming, invalid lifecycle calls, and timeout behavior. Use a temporary fake capture executable/script for process lifecycle tests where possible; serialize tests that touch global state.
+Verification:
 
-### 2. Add CLI and application lifecycle wiring
+- [ ] Frontend unit tests pass warning-free.
+- [ ] Targeted QML traces show control request, state propagation, and subsequent frontend refresh with stable object labels.
+- [ ] Tracing-disabled targeted QML output/results remain unchanged and no capture process starts.
 
-Files:
+Commit this stage as the frontend coverage milestone.
 
-- `src/rust/shoopdaloop/src/cli_args.rs`;
-- `src/rust/shoopdaloop/src/main_impl.rs`;
-- `src/rust/shoopdaloop/src/lib_impl.rs`.
+### Stage 4 — `shoop_engine` control plane and background workers
 
-Actions:
+Depends on Stages 1 and 3; keep this stage off realtime callbacks.
 
-1. Add capture options and help text.
-2. Make capture imply early Tracy initialization.
-3. Resolve the tool path in the order CLI, environment, `PATH`.
-4. Configure capture and choose ordinary-app versus self-test ownership.
-5. Add an idempotent cleanup guard.
-6. Ensure `--help` and `--version` do not launch capture.
-7. Ensure invalid tool paths produce a concise nonzero startup failure.
+- [ ] Instrument `app_backend` session/driver lifecycle, object pending→ready/failed/closed transitions, control validation, queue outcomes, graph dirtying, state reads, connection-cache refresh, and reclamation workers.
+- [ ] Instrument `EngineHandle` reservation/send/send-and-wait/result/reclaim/poll operations with command sequence, pending depth, wait duration, timeout/full/disconnected outcome, and trace-snapshot drops.
+- [ ] Instrument graph topology construction, schedule compilation, `GraphScheduler` arm/coalescing/apply/flush, and stale-to-current transitions.
+- [ ] Instrument composite plan compilation/validation/installation and non-realtime control requests without logging target tables or user data.
+- [ ] Instrument LV2/Carla discovery, instantiation, UI/state operations, and non-realtime setup/teardown separately from plugin processing.
+- [ ] Name engine-owned non-realtime workers and expose queue depth, coalescing, wait, and dropped-work plots.
 
-### 3. Integrate capture with `TestFileRunner`
+Verification:
 
-Files:
+- [ ] Engine control, graph, composite, external-port, JACK/CPAL mock, and app-backend tests pass.
+- [ ] A control-heavy test trace correlates command sequence numbers from frontend enqueue through engine acknowledgement/reclamation.
+- [ ] Queue-full, timeout, failed object creation, and graph-rebuild paths produce bounded diagnostic events without changing returned errors.
 
-- `src/rust/frontend/src/cxx_qt_shoop/rust/test/qobj_test_file_runner.rs`;
-- `src/rust/frontend/src/cxx_qt_shoop/rust/test/qobj_test_file_runner_bridge.rs` only if additional Rust-side state is required.
+Commit this stage before touching realtime processing.
 
-Actions:
+### Stage 5 — `shoop_engine` realtime callbacks and processing
 
-1. Start a connected named capture before each QML reload.
-2. Keep it running through QML unload.
-3. Finalize it on engine destruction before the next file.
-4. Finalize the last trace before reporting completion.
-5. Propagate capture errors into the test runner's exit code.
-6. Append manifest information after successful finalization.
+Depends on Stage 1's gate and exception-scope proof and Stage 4's control-plane coverage.
 
-### 4. Make the QML test action optionally pass capture arguments
+- [ ] Prewarm realtime source locations and Tracy client state where practical before JACK/CPAL/dummy activation; treat this as overhead reduction rather than proof of allocation-free behavior.
+- [ ] Add coarse static zones around JACK, CPAL output/input coordination, and dummy callback cycles; attach frame count and driver kind as numeric values.
+- [ ] Instrument `Engine::process`/`run_cycle` into bounded zones for command draining, graph-staleness publication, session cycle, diagnostic publication, and cycle completion.
+- [ ] Expand engine stats/profiling for callback budget, command count, pending depth, schedule generation, stale/stuck cycles, and trace snapshot drops.
+- [ ] Instrument `Session::process` by schedule category: port prepare/process, channel prepare/process/finalize, loop group, composite timeline/runtime, external routing, and FX processing.
+- [ ] Add optional engine-detail zones for individual scheduled nodes using static category locations and numeric indices; keep it disabled unless explicitly requested.
+- [ ] Expose loop mode/position/transition, composite mode/iteration/fault, port peaks/event counts, channel mode/record state, and FX active/bypass metrics through existing mirrors/stats or preallocated snapshots, then emit plots on a non-realtime consumer.
+- [ ] Cover MIDI driver staging and audio capture-ring under/overrun counters without tracing individual events or samples.
+- [ ] Verify every direct realtime callsite is subordinate to both global tracing gates and uses only the narrow helper exception. Verify engine work surrounding Tracy remains subject to the normal realtime guard; do not claim Tracy itself is bounded, lock-free, or allocation-free.
 
-File:
+Verification:
 
-- `.github/actions/test_qml/action.yml`.
+- [ ] Run engine processing, dummy driver, CPAL mock, composite runtime/timeline, channel, port, MIDI, and FX tests under `--rt-alloc-guard` equivalent setup with tracing disabled; repeat representative scenarios with coarse and engine-detail tracing to verify the scoped Tracy exception.
+- [ ] Tracing-disabled tests have no allocation exception. Tracing-enabled tests have no allocation exception outside the explicit Tracy helper scope, no application deadlock or logging call, and no Tracy instrumentation warning. Record any xruns or timing perturbation as expected profiling overhead rather than hiding it.
+- [ ] A controlled trace shows callback→engine→session stage nesting and non-realtime plots agree with engine stats/profiling reports.
+- [ ] Deterministic dummy runs show no new stuck/stale cycles or processing-result differences.
 
-Add default-off inputs such as:
+Commit coarse realtime coverage first; commit optional detailed coverage separately after its overhead and trace volume are reviewed.
 
-```yaml
-inputs:
-  capture_traces:
-    type: boolean
-    default: false
-  tracy_capture_tool:
-    type: string
-    default: ''
-  tracy_capture_output_dir:
-    type: string
-    default: traces/qml
-```
+### Stage 6 — Coverage closure and consistency audit
 
-Build the command in a shell block/array so the tool and output paths remain correctly quoted. When `capture_traces` is false, invoke exactly the existing command. When true, append:
+Depends on Stages 2–5.
 
-```text
---tracing
---tracing-capture
---tracing-capture-tool <tool>
---tracing-capture-output-dir <dir>
-```
+- [ ] Revisit every inventory row and inspect actual trace evidence rather than accepting source annotations alone.
+- [ ] Instrument uncovered runtime orchestration or document a valid indirect-coverage/exclusion reason.
+- [ ] Audit span lifetime correctness across callbacks, queued work, threads, early returns, errors, and capture rotation.
+- [ ] Audit naming/cardinality and remove duplicate, noisy, per-item, payload-bearing, or misleading instrumentation.
+- [ ] Audit all realtime modules for accidental `tracing` subscriber use, logging, unrelated allocation/locking, overly broad allocation-permitted scopes, dynamic high-cardinality locations, and callstack use.
+- [ ] Update developer documentation with tracing levels, engine detail option, naming, expected overhead/safety rules, and trace interpretation examples.
 
-Retain `pipefail`, timeout behavior, console teeing, JUnit generation, and result publication. Do not remove the existing `QOVERAGERESULT` filtering from normal runs merely to support tracing.
+Verification:
 
-### 5. Add a Tracy capture installer used only by the opt-in job
+- [ ] Inventory checker/script reports zero unclassified production modules.
+- [ ] Representative traces contain every acceptance-criteria layer and no uncontrolled-cardinality names.
+- [ ] Disabled, coarse, and detailed modes are distinguishable and documented.
 
-Preferred file:
+Commit the completed inventory and documentation as a milestone.
 
-- `.github/actions/install_tracy_capture/action.yml` (new).
+### Stage 7 — Final end-to-end validation
 
-For the initial CI integration, support Linux x86_64 only because the dedicated job is Linux-only. The action should:
+Depends on all prior stages. Do not mark the plan complete based only on source inspection or passing unit tests.
 
-1. Download the existing pinned 0.13.1 `tracy-capture` build asset from the project's build-assets release using `curl --fail --location --retry`.
-2. Extract into a job-local directory.
-3. Find exactly one `tracy-capture`, mark it executable, and normalize its path.
-4. Verify it can execute and reports/accepts the expected 0.13.1 protocol version.
-5. expose `tracy_capture_tool` as an action output rather than relying only on a global environment variable.
+- [ ] Run `cargo fmt --all` and `git diff --check`.
+- [ ] Run `RUSTFLAGS="-D warnings" cargo build`.
+- [ ] Run `cargo test --workspace --features shoop_engine/app_backend`.
+- [ ] Run `RUSTFLAGS="-D warnings" cargo test -p frontend --lib`.
+- [ ] Run targeted QML tests while iterating, then the broad QML suite with tracing disabled.
+- [ ] Run a deterministic dummy QML/engine scenario under `--rt-alloc-guard` with tracing disabled. Repeat with `--tracing` and engine-detail tracing to verify that only direct Tracy helper operations use the documented exception; record profiling-induced timing changes.
+- [ ] Run at least two QML files with `--tracing-capture --rt-alloc-guard`; verify one non-empty trace and one successful manifest row per file, no allocation exception outside Tracy helper scopes, no orphan capture process, and no capture instrumentation failure.
+- [ ] Parse all generated traces with the matching `tracy-csvexport` and open representative captures in Tracy.
+- [ ] Confirm the trace contains: application lifecycle, frontend control span, engine command sequence, graph scheduling where applicable, realtime callback/cycle, session processing categories, state publication, frontend refresh, and engine health plots.
+- [ ] Compare trace values against engine `Stats`, profiler reports, QML outcomes, and capture manifests; do not rely on visual plausibility alone.
+- [ ] Run available JACK/CPAL/LV2 integration tests and record environmental skips separately from regressions.
+- [ ] Confirm automatic workflow events still leave capture disabled and statically validate the existing opt-in trace archive path. Do not claim a manual CI capture run unless one is explicitly requested and actually performed.
+- [ ] Update PR documentation with exact commands, pass counts, trace evidence, known environment limitations, and any justified inventory exclusions.
 
-Before coding against the old URL, inspect the `build-assets-2` release and archive locally. The old branch used nested `.tar.gz.zip` assets; do not assume that layout without checking it.
+If Tracy 0.13.1 tools are unavailable, if the tracing-disabled realtime path cannot be validated under the allocation guard, if a representative trace cannot be parsed/opened, or if any production module remains unclassified, stop with the gathered evidence and blocker; do not mark the work complete.
 
-If the existing asset is missing or incompatible, update the manually dispatched `build_tracy.yml` producer to build/package the `capture` component from pinned Tracy 0.13.1, based on the final `tracing_cxx` workflow. Do not execute that workflow in this phase.
+## Execution contract
 
-### 6. Add the default-off manual workflow input and dedicated job
-
-File:
-
-- `.github/workflows/build_and_test.yml`.
-
-Add a `workflow_dispatch` boolean input:
-
-```yaml
-qml_trace_capture:
-  description: 'Capture one Tracy trace per QML testcase and upload an archive (Linux)'
-  type: boolean
-  default: false
-```
-
-Thread it through the existing setup resolver with `QML_TRACE_CAPTURE_DEFAULT: 'false'` and a `setup` output. Emit each resolved output once. When trace capture is true, ensure the prerequisites `linux=true` and `release=true` are resolved so checking the trace input reliably creates the Linux release artifact needed by the trace job. Do not enable ordinary test matrices or other platforms implicitly.
-
-Add a dedicated `trace_qml_linux` job with all of these guards:
-
-```yaml
-if: >-
-  github.event_name == 'workflow_dispatch' &&
-  needs.setup.outputs.qml_trace_capture == 'true'
-```
-
-The job should:
-
-1. Depend on `setup` and the Linux release build.
-2. Run in the existing Linux runtime container used by `release_debian_stable`.
-3. Check out the same commit.
-4. Download only the release Linux portable artifact.
-5. Install it through `.github/actions/install_package` so `COMMAND_SHOOPDALOOP` is populated consistently.
-6. Install/validate `tracy-capture` through the new installer action.
-7. Create dedicated `traces/qml`, `reports`, and metadata paths.
-8. Invoke `.github/actions/test_qml` with capture enabled and the explicit tool/output paths.
-9. Regardless of QML pass/fail, write metadata containing commit SHA, run ID/attempt, runner OS/arch, Tracy version, and command configuration.
-10. Regardless of QML pass/fail, archive the trace directory, manifest, capture log, QML console log, and JUnit XML into a deterministic `.tar.gz`.
-11. Upload that tarball with `actions/upload-artifact@v4`, a unique name such as `qml-traces-linux-${{ github.run_id }}-${{ github.run_attempt }}`, and a finite retention period (14 or 30 days).
-12. After the upload step, fail the trace job if no non-empty `.tracy` files were produced. Keep the upload step under `if: always()` so diagnostics remain available.
-
-Normal `test_linux`, macOS, and Windows jobs must not receive the capture inputs. The installer and trace job must be skipped on every non-manual event and on manual runs where the input remains false.
-
-### 7. Update user-facing documentation
-
-Add concise developer documentation in the most appropriate existing developer document (or a small tracing document if no suitable location exists) covering:
-
-- compatible Tracy/capture version;
-- local capture command;
-- output naming and test-file boundary;
-- how to open `.tracy` files;
-- how to manually enable the workflow input;
-- Linux-only CI capture scope;
-- artifact contents and retention;
-- the fact that capture is disabled by default.
-
-Update PR #660's description after implementation so it no longer says capture-process integration and tracing CI are excluded.
-
-## Local testing plan
-
-**Do not dispatch or run the new CI trace path. All validation below is local.**
-
-### A. Static and unit validation
-
-1. Run `cargo fmt --all`.
-2. Run `RUSTFLAGS="-D warnings" cargo build` as required by project instructions.
-3. Run focused tests for the capture controller, including the fake-process lifecycle tests.
-4. Run `RUSTFLAGS="-D warnings" cargo test -p frontend --lib`.
-5. Run `git diff --check`.
-6. If `actionlint` is already available locally, run it against the changed workflow/action YAML. Do not install a large new toolchain solely for this.
-
-### B. Default-off regression
-
-Use a clean temporary directory and run one targeted QML file without any capture options:
-
-```sh
-target/debug/shoopdaloop_dev.sh \
-  --self-test \
-  --test-files-pattern 'src/qml/test/tst_TwoLoops.qml'
-```
-
-Verify:
-
-- tests retain their current result;
-- no `.tracy` files or trace directory are created;
-- no `tracy-capture` child remains.
-
-### C. Single-test capture
-
-```sh
-rm -rf /tmp/shoop-qml-traces-one
-
-target/debug/shoopdaloop_dev.sh \
-  --tracing-capture \
-  --tracing-capture-tool "$(command -v tracy-capture)" \
-  --tracing-capture-output-dir /tmp/shoop-qml-traces-one \
-  --self-test \
-  --test-files-pattern 'src/qml/test/tst_TwoLoops.qml'
-```
-
-Verify:
-
-- the six targeted QML test functions still pass;
-- exactly one non-empty `.tracy` file exists;
-- its name contains a sequence and `tst_TwoLoops`;
-- the manifest points to the correct QML source;
-- the capture log shows a connection and graceful finalization;
-- `pgrep -af tracy-capture` shows no child from the test run;
-- the process exits cleanly without Tracy TLS/`atexit` panics.
-
-Open the result in the local Tracy profiler and confirm that frontend spans, log messages, plots, and `frontend_state_update` frame marks are present. If `tracy-csvexport` from the same version is available, use it as an additional noninteractive sanity check, not as a replacement for opening one trace.
-
-### D. Multi-test rotation
-
-Run a pattern selecting at least two small QML files. Verify:
-
-- one and only one `.tracy` file per selected QML test file;
-- unique deterministic names in execution order;
-- each file is finalized before the next starts;
-- the manifest has one successful row per trace;
-- no startup-only or trailing timestamp trace appears;
-- no capture child remains afterward.
-
-### E. Error paths
-
-1. Pass a nonexistent `--tracing-capture-tool` and verify startup fails nonzero before QML execution with an actionable path error.
-2. Use a fake capture process that never connects and verify the connection timeout is bounded, the child is reaped, and the run fails.
-3. Use a fake process that ignores graceful termination and verify bounded force-kill/reap behavior.
-4. Confirm paths containing spaces work because arguments are not shell-split.
-5. Confirm an invalid testcase label cannot escape the output directory.
-
-Do not add a permanently failing QML testcase merely to test artifact retention. The CI archive steps should be structured with `if: always()` and reviewed statically in this phase.
-
-## Explicit CI-testing prohibition for this phase
-
-The executor must **not**:
-
-- run `gh workflow run`;
-- dispatch `build_and_test` with `qml_trace_capture=true`;
-- create a temporary workflow solely to exercise the trace job;
-- claim that trace artifact creation has been validated on a GitHub runner.
-
-It is acceptable to edit the workflow and inspect it locally. If changes are pushed and ordinary default-off PR checks run automatically, they do not count as validation of the trace-producing path; do not enable the input or rely on those checks to claim CI capture success. Leave actual manual CI trace execution for a later, explicit user request.
-
-## Acceptance criteria
-
-Implementation is complete when all of the following are true:
-
-- Capture is disabled by default locally and in every automatic CI trigger.
-- `--tracing-capture` implies the Tracy layer is initialized early enough.
-- A targeted local QML run produces one valid, openable, non-empty `.tracy` file per loaded `tst_*.qml` file.
-- Capture starts only after the external capturer is connected and finalizes before test completion/rotation.
-- Trace filenames are sanitized, unique, deterministic, and confined to the configured directory.
-- Capture-process errors fail an explicitly requested capture run rather than being reduced to warnings.
-- Normal shutdown and per-file rotation leave no `tracy-capture` children.
-- Local formatting, warning-free build, unit tests, targeted QML tests, and trace inspection pass.
-- `workflow_dispatch` exposes `qml_trace_capture` with default `false`.
-- The dedicated Linux trace job exists only for a manual true input and installs a compatible capture tool.
-- The job archives traces plus manifest/logs/results and uploads under `if: always()`.
-- No CI trace run has been dispatched or claimed as tested in this phase.
-- No backend instrumentation, obsolete C++ tracing, or unrelated CI changes are introduced.
-
-## Risks and mitigations
-
-- **Capture connects too late:** wait on `Client::is_connected()` before QML load.
-- **New capture inherits the old connection:** wait for disconnect after finalizing before spawning the next process.
-- **Truncated trace on exit:** use graceful `SIGINT`, bounded wait, and explicit finalization before `done`.
-- **Hung child or full output pipe:** redirect output to a file and enforce stop/connect timeouts.
-- **Trace files overwrite each other:** sequence names and create-new semantics.
-- **Path traversal from test names:** derive from file stem and sanitize.
-- **Requested capture silently missing:** propagate errors and validate non-empty outputs.
-- **Artifacts disappear when tests fail:** package/upload steps use `if: always()`.
-- **Normal CI becomes slower:** installer, capture args, archive, and job are all guarded by a default-false manual input.
-- **Protocol mismatch:** pin external capture to Tracy 0.13.1, matching `tracy-client-sys 0.28.0`, and verify it before running tests.
-- **Shutdown-order TLS panic:** never log from `atexit`; keep capture cleanup in normal Rust control flow and preserve the existing `reap_server_atexit` logging restriction.
+- Keep this plan updated as work progresses and check off completed items.
+- Commit each completed stage or meaningful milestone.
+- Implementation steps may be revised when new evidence warrants it.
+- Design rules may be revised for a documented, well-supported reason.
+- Goals and acceptance criteria must not be changed without explicit user approval.
