@@ -149,6 +149,10 @@ ShoopTestFile {
                 dt_loop(s).clear(0)
                 mt_loop(s).clear(0)
                 dwt_loop(s).clear(0)
+                // The mirrors can already be zero before these commands run. Fence the process
+                // queue so the next load cannot overlap an outstanding snapshot mutation.
+                s.backend.wait_process()
+                testcase.wait_updated(s.backend)
                 testcase.wait_condition(
                     () => all_clear(s),
                     5000,
