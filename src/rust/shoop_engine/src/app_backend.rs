@@ -10,6 +10,7 @@
 use crate as engine;
 use crate::graph_scheduler::{GraphScheduler, DEFAULT_WINDOW};
 use anyhow::{anyhow, Result};
+use arc_swap::ArcSwap;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 pub use engine::{
     cpal_host_names, cpal_input_device_names, cpal_input_device_names_for_host,
@@ -1219,18 +1220,13 @@ struct SharedSession {
     composite_registry: Mutex<CompositeRegistry>,
     primitive_loop_controls: Mutex<Vec<PrimitiveLoopControl>>,
     primitive_sync_sources: Mutex<Vec<Option<usize>>>,
-    audio_channel_controls: Mutex<
-        Vec<(
-            Weak<ObjectControl<LoopId, engine::LoopStateMirror>>,
-            Weak<ObjectControl<AudioChannelId, engine::AudioChannelStateMirror>>,
-        )>,
-    >,
     external: Mutex<Option<Arc<Mutex<engine::DummyExternalConnections>>>>,
     jack: Mutex<Option<Arc<Mutex<JackBackend>>>>,
     cpal: Mutex<Option<Arc<Mutex<CpalBackend>>>>,
     connection_cache: Arc<Mutex<ConnectionCache>>,
     sample_rate: AtomicU32,
     buffer_size: AtomicU32,
+    snapshots: engine::content_snapshot::ContentSnapshotRuntime,
     /// Rebuilds the schedule after topology changes.
     ///
     /// A `OnceLock` rather than a `Mutex`: it is set once immediately after construction
@@ -1791,13 +1787,13 @@ impl BackendSession {
             composite_registry: Mutex::new(CompositeRegistry::default()),
             primitive_loop_controls: Mutex::new(Vec::new()),
             primitive_sync_sources: Mutex::new(Vec::new()),
-            audio_channel_controls: Mutex::new(Vec::new()),
             external: Mutex::new(None),
             jack: Mutex::new(None),
             cpal: Mutex::new(None),
             connection_cache: Arc::new(Mutex::new(ConnectionCache::default())),
             sample_rate: AtomicU32::new(48_000),
             buffer_size: AtomicU32::new(256),
+            snapshots: engine::content_snapshot::ContentSnapshotRuntime::new(),
             scheduler: OnceLock::new(),
         });
 
@@ -2221,52 +2217,12 @@ impl BackendSession {
                 data: engine::PreparedAudioChannelData::new(channel.chunk_size, channel.capacity),
             })
             .collect();
-        let mut copies: Vec<_> = shapes
-            .iter()
-            .map(|channel| Vec::with_capacity(channel.capacity))
-            .collect();
-        let controls = self
-            .shared
-            .audio_channel_controls
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .clone();
-        let mirrors: Vec<_> = shapes
-            .iter()
-            .map(|shape| {
-                controls
-                    .iter()
-                    .find_map(|(parent, channel)| {
-                        let parent = parent.upgrade()?;
-                        let channel = channel.upgrade()?;
-                        (parent.ready_id().map(ObjectIdentity::index) == Some(shape.loop_idx)
-                            && channel.auxiliary_index() == Some(shape.channel_idx))
-                        .then(|| Arc::clone(&channel.mirror))
-                    })
-                    .ok_or_else(|| {
-                        anyhow!(
-                            "audio channel mirror is missing for loop {} channel {}",
-                            shape.loop_idx,
-                            shape.channel_idx
-                        )
-                    })
-            })
-            .collect::<Result<_>>()?;
-        let (result, returned, copies) =
-            self.shared.query_graph_scheduler_response(move |session| {
-                let result = session.adopt_audio_ringbuffers_prepared_with_copies(
-                    &requests,
-                    &mut prepared,
-                    &mut copies,
-                );
-                (result, prepared, copies)
-            })?;
+        let (result, returned) = self.shared.query_graph_scheduler_response(move |session| {
+            let result = session.adopt_audio_ringbuffers_prepared(&requests, &mut prepared);
+            (result, prepared)
+        })?;
         drop(returned);
-        result?;
-        for (mirror, data) in mirrors.into_iter().zip(copies) {
-            mirror.replace_data(data);
-        }
-        Ok(())
+        Ok(result?)
     }
 
     pub fn remove_composite_loop(
@@ -3424,11 +3380,13 @@ impl Loop {
     }
 
     pub fn add_audio_channel(&self, mode: ChannelMode) -> Result<AudioChannel> {
+        let (snapshot_writer, snapshot_control, snapshot_reader) =
+            self.shared.snapshots.create_audio_channel(1024, 256);
+        let mut snapshot_writer = Some(snapshot_writer);
         let control = Arc::new(ObjectControl::<
             AudioChannelId,
             engine::AudioChannelStateMirror,
         >::pending(self.shared.session_id));
-        control.mirror.enable_complex_data();
         let control_for_command = Arc::downgrade(&control);
         let parent = Arc::clone(&self.control);
         let sequence = self.shared.send_topology(move |s: &mut engine::Session| {
@@ -3439,11 +3397,12 @@ impl Loop {
                 control.mark_failed("parent loop was not created");
                 return;
             };
-            match s.add_audio_channel_with_state(
+            match s.add_audio_channel_with_state_and_snapshots(
                 loop_idx,
                 64,
                 mode.into(),
                 Arc::clone(&control.mirror),
+                snapshot_writer.take(),
             ) {
                 Ok(idx) => {
                     if let Some(mapping) = s.channel_mapping(idx) {
@@ -3455,25 +3414,25 @@ impl Loop {
             }
         })?;
         control.set_creation_sequence(sequence);
-        self.shared
-            .audio_channel_controls
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .push((Arc::downgrade(&self.control), Arc::downgrade(&control)));
         Ok(AudioChannel {
             shared: self.shared.clone(),
             parent: Arc::clone(&self.control),
             control,
+            snapshots: snapshot_reader,
+            snapshot_control,
+            desired_data: Arc::new(ArcSwap::from_pointee(Vec::new())),
         })
     }
 
     pub fn add_midi_channel(&self, mode: ChannelMode) -> Result<MidiChannel> {
+        let (snapshot_writer, snapshot_control, snapshot_reader) =
+            self.shared.snapshots.create_midi_channel(64, 64);
+        let mut snapshot_writer = Some(snapshot_writer);
         let control = Arc::new(
             ObjectControl::<MidiChannelId, engine::MidiChannelStateMirror>::pending(
                 self.shared.session_id,
             ),
         );
-        control.mirror.enable_complex_data();
         let control_for_command = Arc::downgrade(&control);
         let parent = Arc::clone(&self.control);
         let sequence = self.shared.send_topology(move |s: &mut engine::Session| {
@@ -3484,11 +3443,12 @@ impl Loop {
                 control.mark_failed("parent loop was not created");
                 return;
             };
-            match s.add_midi_channel_with_state(
+            match s.add_midi_channel_with_state_and_snapshots(
                 loop_idx,
                 1024,
                 mode.into(),
                 Arc::clone(&control.mirror),
+                snapshot_writer.take(),
             ) {
                 Ok(idx) => control.mark_ready(MidiChannelId(idx)),
                 Err(error) => control.mark_failed(error.to_string()),
@@ -3499,6 +3459,9 @@ impl Loop {
             shared: self.shared.clone(),
             parent: Arc::clone(&self.control),
             control,
+            snapshots: snapshot_reader,
+            snapshot_control,
+            desired_data: Arc::new(ArcSwap::from_pointee(Vec::new())),
         })
     }
 
@@ -3690,6 +3653,9 @@ pub struct AudioChannel {
     shared: Arc<SharedSession>,
     parent: Arc<ObjectControl<LoopId, engine::LoopStateMirror>>,
     control: Arc<ObjectControl<AudioChannelId, engine::AudioChannelStateMirror>>,
+    snapshots: engine::content_snapshot::AudioSnapshotReader,
+    snapshot_control: engine::content_snapshot::AudioSnapshotControl,
+    desired_data: Arc<ArcSwap<Vec<f32>>>,
 }
 pub type AudioChannelState = engine::AudioChannelState;
 impl AudioChannel {
@@ -3763,34 +3729,84 @@ impl AudioChannel {
 
     pub fn load_data(&self, data: &[f32]) -> std::result::Result<CommandSequence, SendError> {
         let owned = data.to_vec();
-        let result = self.with_mut({
-            let owned = owned.clone();
-            move |channel| channel.load_data(&owned)
+        let snapshot = self
+            .snapshot_control
+            .prepare(&owned, engine::content_snapshot::ContentMutation::Loading)
+            .ok_or(SendError::Full)?;
+        let mut prepared = engine::PreparedAudioChannelData::new(64, owned.len());
+        prepared.begin_load(owned.len());
+        prepared.write(0, &owned);
+        let mut prepared = Some(prepared);
+        let result = self.with_mut(move |channel| {
+            if let Some(mut prepared) = prepared.take() {
+                channel.commit_prepared_data_and_snapshot(&mut prepared, snapshot);
+            }
         });
         if result.is_ok() {
-            self.control.mirror.replace_data(owned);
+            self.desired_data.store(Arc::new(owned));
+        } else {
+            self.snapshot_control.cancel();
         }
         result
     }
 
     pub fn get_data(&self) -> Vec<f32> {
-        self.control.mirror.data()
+        let latest = self.snapshots.latest();
+        if matches!(
+            latest.currentness,
+            engine::content_snapshot::SnapshotCurrentness::Stale(
+                engine::content_snapshot::StaleReason::MutationActive(
+                    engine::content_snapshot::ContentMutation::Loading
+                ) | engine::content_snapshot::StaleReason::PublicationPending { .. }
+            )
+        ) {
+            self.desired_data.load_full().as_ref().clone()
+        } else {
+            latest.snapshot.contiguous()
+        }
+    }
+
+    pub fn get_latest_data_snapshot(
+        &self,
+    ) -> engine::content_snapshot::SnapshotRead<engine::content_snapshot::AudioContentSnapshot>
+    {
+        self.snapshots.latest()
+    }
+
+    pub fn try_get_current_data_snapshot(
+        &self,
+    ) -> std::result::Result<
+        Arc<engine::content_snapshot::AudioContentSnapshot>,
+        engine::content_snapshot::CurrentDataError,
+    > {
+        self.snapshots.try_current()
+    }
+
+    pub fn acknowledge_data_revision(&self, revision: engine::content_snapshot::ContentRevision) {
+        self.snapshots.acknowledge(revision);
     }
 
     pub fn poll_state(&self) -> Option<AudioChannelState> {
         (self.lifecycle() == ObjectLifecycle::Ready).then(|| {
-            self.control
+            let mut state = self
+                .control
                 .mirror
-                .read(self.control.acknowledged_data_sequence())
+                .read(self.control.acknowledged_data_sequence());
+            state.data_dirty = self.snapshots.is_dirty();
+            state
         })
     }
 
     pub fn get_state(&self) -> Result<AudioChannelState> {
         match self.lifecycle() {
-            ObjectLifecycle::Ready => Ok(self
-                .control
-                .mirror
-                .read(self.control.acknowledged_data_sequence())),
+            ObjectLifecycle::Ready => {
+                let mut state = self
+                    .control
+                    .mirror
+                    .read(self.control.acknowledged_data_sequence());
+                state.data_dirty = self.snapshots.is_dirty();
+                Ok(state)
+            }
             ObjectLifecycle::Pending => Err(anyhow!("audio channel is pending creation")),
             ObjectLifecycle::Failed => Err(anyhow!(
                 "audio channel creation failed: {}",
@@ -3835,12 +3851,19 @@ impl AudioChannel {
     }
 
     pub fn clear_data_dirty(&self) {
-        self.control
-            .acknowledge_data_sequence(self.control.mirror.data_sequence());
+        let revision = self.snapshots.latest().snapshot.revision;
+        self.snapshots.acknowledge(revision);
     }
 
     pub fn clear(&self, length: u32) -> std::result::Result<CommandSequence, SendError> {
-        self.with_mut(move |channel| channel.clear(length as usize))
+        let mutation_started = self
+            .snapshots
+            .begin_mutation(engine::content_snapshot::ContentMutation::Clearing);
+        let result = self.with_mut(move |channel| channel.clear(length as usize));
+        if result.is_err() && mutation_started {
+            self.snapshots.cancel_mutation();
+        }
+        result
     }
 }
 
@@ -3849,6 +3872,9 @@ pub struct MidiChannel {
     shared: Arc<SharedSession>,
     parent: Arc<ObjectControl<LoopId, engine::LoopStateMirror>>,
     control: Arc<ObjectControl<MidiChannelId, engine::MidiChannelStateMirror>>,
+    snapshots: engine::content_snapshot::MidiSnapshotReader,
+    snapshot_control: engine::content_snapshot::MidiSnapshotControl,
+    desired_data: Arc<ArcSwap<Vec<MidiEvent>>>,
 }
 pub type MidiChannelState = engine::MidiChannelState;
 impl MidiChannel {
@@ -3879,7 +3905,38 @@ impl MidiChannel {
     }
 
     pub fn get_all_midi_data(&self) -> Vec<MidiEvent> {
-        self.control.mirror.data()
+        let latest = self.snapshots.latest();
+        if matches!(
+            latest.currentness,
+            engine::content_snapshot::SnapshotCurrentness::Stale(
+                engine::content_snapshot::StaleReason::MutationActive(
+                    engine::content_snapshot::ContentMutation::Loading
+                ) | engine::content_snapshot::StaleReason::PublicationPending { .. }
+            )
+        ) {
+            self.desired_data.load_full().as_ref().clone()
+        } else {
+            latest.snapshot.contiguous()
+        }
+    }
+
+    pub fn get_latest_data_snapshot(
+        &self,
+    ) -> engine::content_snapshot::SnapshotRead<engine::content_snapshot::MidiContentSnapshot> {
+        self.snapshots.latest()
+    }
+
+    pub fn try_get_current_data_snapshot(
+        &self,
+    ) -> std::result::Result<
+        Arc<engine::content_snapshot::MidiContentSnapshot>,
+        engine::content_snapshot::CurrentDataError,
+    > {
+        self.snapshots.try_current()
+    }
+
+    pub fn acknowledge_data_revision(&self, revision: engine::content_snapshot::ContentRevision) {
+        self.snapshots.acknowledge(revision);
     }
 
     pub fn load_all_midi_data(
@@ -3903,15 +3960,46 @@ impl MidiChannel {
             .map(|element| element.time)
             .max()
             .unwrap_or(0);
-        let result = self.with_mut(move |channel| {
-            channel.set_contents(
-                &elements,
+        let mut state_tracker = engine::MidiStateTracker::new(engine::TrackWhat::ALL);
+        for message in &state {
+            state_tracker.process(message);
+        }
+        let mut snapshot_events: Vec<MidiEvent> = if state.is_empty() {
+            Vec::new()
+        } else {
+            state_tracker
+                .state_as_messages()
+                .into_iter()
+                .map(|data| MidiEvent { time: -1, data })
+                .collect()
+        };
+        snapshot_events.extend(elements.iter().map(|event| MidiEvent {
+            time: event.time as i32,
+            data: event.data().to_vec(),
+        }));
+        let snapshot = self
+            .snapshot_control
+            .prepare(
+                &snapshot_events,
                 length,
-                (!state.is_empty()).then_some(state.as_slice()),
+                engine::content_snapshot::ContentMutation::Loading,
             )
+            .ok_or(SendError::Full)?;
+        let prepared = engine::PreparedMidiChannelData::new(
+            &elements,
+            length,
+            (!state.is_empty()).then_some(state.as_slice()),
+        );
+        let mut prepared = Some(prepared);
+        let result = self.with_mut(move |channel| {
+            if let Some(mut prepared) = prepared.take() {
+                channel.commit_prepared_data_and_snapshot(&mut prepared, snapshot);
+            }
         });
         if result.is_ok() {
-            self.control.mirror.replace_data(msgs.to_vec());
+            self.desired_data.store(Arc::new(msgs.to_vec()));
+        } else {
+            self.snapshot_control.cancel();
         }
         result
     }
@@ -3960,18 +4048,25 @@ impl MidiChannel {
 
     pub fn poll_state(&self) -> Option<MidiChannelState> {
         (self.lifecycle() == ObjectLifecycle::Ready).then(|| {
-            self.control
+            let mut state = self
+                .control
                 .mirror
-                .read(self.control.acknowledged_data_sequence())
+                .read(self.control.acknowledged_data_sequence());
+            state.data_dirty = self.snapshots.is_dirty();
+            state
         })
     }
 
     pub fn get_state(&self) -> Result<MidiChannelState> {
         match self.lifecycle() {
-            ObjectLifecycle::Ready => Ok(self
-                .control
-                .mirror
-                .read(self.control.acknowledged_data_sequence())),
+            ObjectLifecycle::Ready => {
+                let mut state = self
+                    .control
+                    .mirror
+                    .read(self.control.acknowledged_data_sequence());
+                state.data_dirty = self.snapshots.is_dirty();
+                Ok(state)
+            }
             ObjectLifecycle::Pending => Err(anyhow!("MIDI channel is pending creation")),
             ObjectLifecycle::Failed => Err(anyhow!(
                 "MIDI channel creation failed: {}",
@@ -4008,12 +4103,19 @@ impl MidiChannel {
     }
 
     pub fn clear_data_dirty(&self) {
-        self.control
-            .acknowledge_data_sequence(self.control.mirror.data_sequence());
+        let revision = self.snapshots.latest().snapshot.revision;
+        self.snapshots.acknowledge(revision);
     }
 
     pub fn clear(&self) -> std::result::Result<CommandSequence, SendError> {
-        self.with_mut(move |channel| channel.clear())
+        let mutation_started = self
+            .snapshots
+            .begin_mutation(engine::content_snapshot::ContentMutation::Clearing);
+        let result = self.with_mut(move |channel| channel.clear());
+        if result.is_err() && mutation_started {
+            self.snapshots.cancel_mutation();
+        }
+        result
     }
 
     pub fn reset_state_tracking(&self) -> std::result::Result<CommandSequence, SendError> {
@@ -5461,6 +5563,93 @@ mod tests {
     }
 
     #[test]
+    fn exact_and_stale_channel_snapshots_report_pending_and_recording_states() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let loop_ = sess.create_loop().expect("loop");
+        let audio = loop_
+            .add_audio_channel(ChannelMode::Direct)
+            .expect("audio channel");
+        let midi = loop_
+            .add_midi_channel(ChannelMode::Direct)
+            .expect("MIDI channel");
+        engine.pump();
+
+        audio.load_data(&[1.0, 2.0]).expect("queue audio data");
+        midi.load_all_midi_data(&[MidiEvent {
+            time: 1,
+            data: vec![0x90, 60, 100],
+        }])
+        .expect("queue MIDI data");
+        assert!(matches!(
+            audio.try_get_current_data_snapshot(),
+            Err(engine::content_snapshot::CurrentDataError::MutationActive(
+                engine::content_snapshot::ContentMutation::Loading
+            ))
+        ));
+        assert!(matches!(
+            midi.try_get_current_data_snapshot(),
+            Err(engine::content_snapshot::CurrentDataError::MutationActive(
+                engine::content_snapshot::ContentMutation::Loading
+            ))
+        ));
+        assert!(audio
+            .get_latest_data_snapshot()
+            .snapshot
+            .contiguous()
+            .is_empty());
+        assert!(midi
+            .get_latest_data_snapshot()
+            .snapshot
+            .contiguous()
+            .is_empty());
+
+        engine.pump();
+        let start = Instant::now();
+        while audio.try_get_current_data_snapshot().is_err()
+            || midi.try_get_current_data_snapshot().is_err()
+        {
+            assert!(start.elapsed() < Duration::from_secs(1));
+            thread::yield_now();
+        }
+        assert_eq!(
+            audio
+                .try_get_current_data_snapshot()
+                .expect("current audio")
+                .contiguous(),
+            vec![1.0, 2.0]
+        );
+        assert_eq!(
+            midi.try_get_current_data_snapshot()
+                .expect("current MIDI")
+                .events()
+                .count(),
+            1
+        );
+
+        loop_
+            .transition(LoopMode::Recording, -1, -1)
+            .expect("queue recording");
+        engine.pump();
+        engine
+            .session_mut()
+            .apply_graph_changes()
+            .expect("apply graph");
+        engine.process(4);
+        assert!(matches!(
+            audio.try_get_current_data_snapshot(),
+            Err(engine::content_snapshot::CurrentDataError::MutationActive(
+                engine::content_snapshot::ContentMutation::Recording
+            ))
+        ));
+        assert_eq!(
+            audio.get_latest_data_snapshot().snapshot.contiguous(),
+            vec![1.0, 2.0]
+        );
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
     fn channel_data_dirty_is_acknowledged_on_the_frontend() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -5470,6 +5659,11 @@ mod tests {
         let sequence = audio.load_data(&[1.0, 2.0]).expect("queue data");
         sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
             .expect("data command");
+        let start = Instant::now();
+        while audio.try_get_current_data_snapshot().is_err() {
+            assert!(start.elapsed() < Duration::from_secs(1));
+            thread::yield_now();
+        }
 
         assert!(audio.get_state().expect("dirty state").data_dirty);
         audio.clear_data_dirty();
@@ -5477,6 +5671,11 @@ mod tests {
         let sequence = audio.clear(0).expect("queue clear");
         sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
             .expect("clear command");
+        let start = Instant::now();
+        while audio.try_get_current_data_snapshot().is_err() {
+            assert!(start.elapsed() < Duration::from_secs(1));
+            thread::yield_now();
+        }
         assert!(audio.get_state().expect("dirty again").data_dirty);
     }
 

@@ -64,6 +64,14 @@ impl<T: ContentSnapshot> ManifestPublisher<T> {
 }
 
 impl<T: ContentSnapshot> ManifestReader<T> {
+    pub fn begin_mutation(&self, mutation: super::ContentMutation) -> bool {
+        self.shared.status.begin_mutation(mutation)
+    }
+
+    pub fn cancel_mutation(&self) {
+        self.shared.status.cancel_mutation();
+    }
+
     pub fn latest(&self) -> SnapshotRead<T> {
         SnapshotRead {
             snapshot: self.shared.current.load_full(),

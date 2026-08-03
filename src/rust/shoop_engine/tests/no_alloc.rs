@@ -10,6 +10,9 @@
 
 use assert_no_alloc::*;
 use shoop_engine::channel_mode::ChannelMode;
+use shoop_engine::content_snapshot::{
+    audio_snapshot_channel, midi_snapshot_channel, SessionContentEpoch,
+};
 use shoop_engine::dummy_midi_port::DummyMidiPort;
 use shoop_engine::dummy_port::{DummyAudioPort, PortId};
 use shoop_engine::internal_audio_port::InternalAudioPort;
@@ -21,10 +24,11 @@ use shoop_engine::session::{AudioRingbufferAdoption, Port, Session};
 use shoop_engine::{
     compile_composite_plan, BoundaryTargetAction, CompositeBoundaryTimeline, CompositeEntry,
     CompositePlanDescriptor, CompositePlanLimits, CompositeRuntime, CompositeSection,
-    CompositeTimeline, CompositeTimelineLimits, CompositeTimelineNode, LoopIdentity,
-    LoopTargetCatalog, LoopTargetKind, LoopTargetMetadata, PreparedAudioChannelData,
-    PreparedAudioRingbufferAdoptionChannel,
+    CompositeTimeline, CompositeTimelineLimits, CompositeTimelineNode, ContentMutation,
+    LoopIdentity, LoopTargetCatalog, LoopTargetKind, LoopTargetMetadata, MidiStorageElem,
+    PreparedAudioChannelData, PreparedAudioRingbufferAdoptionChannel,
 };
+use std::sync::Arc;
 
 #[cfg(debug_assertions)]
 #[global_allocator]
@@ -39,6 +43,30 @@ fn realtime_guard_reverse_guard_allows_exceptional_allocations() {
         });
     });
     realtime_alloc_guard::set_enabled(false);
+}
+
+#[test]
+fn snapshot_process_publication_is_allocation_free() {
+    let (mut audio, _audio_control, _audio_publisher, _audio_reader) =
+        audio_snapshot_channel(Arc::new(SessionContentEpoch::default()), 8, 4);
+    let (mut midi, _midi_control, _midi_publisher, _midi_reader) =
+        midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 4, 4);
+    let midi_events = [
+        MidiStorageElem::new(1, &[0x90, 60, 100]).expect("valid MIDI"),
+        MidiStorageElem::new(3, &[0x80, 60, 0]).expect("valid MIDI"),
+    ];
+
+    assert_no_alloc(|| {
+        assert!(audio.begin_mutation(ContentMutation::Recording));
+        assert!(audio
+            .publish_range(0, &[1.0, 2.0, 3.0, 4.0], 4, true)
+            .is_some());
+        audio.finish_mutation(false);
+
+        assert!(midi.begin_mutation(ContentMutation::Recording));
+        assert!(midi.append_storage_events(&midi_events, 4, true).is_some());
+        midi.finish_mutation(false);
+    });
 }
 
 fn audio_port(id: u64, name: &str, dir: PortDirection) -> Port {

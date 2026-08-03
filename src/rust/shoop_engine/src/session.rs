@@ -1021,11 +1021,23 @@ impl Session {
         mode: ChannelMode,
         state: Arc<AudioChannelStateMirror>,
     ) -> Result<usize, SessionError> {
+        self.add_audio_channel_with_state_and_snapshots(loop_idx, chunk_size, mode, state, None)
+    }
+
+    pub fn add_audio_channel_with_state_and_snapshots(
+        &mut self,
+        loop_idx: usize,
+        chunk_size: usize,
+        mode: ChannelMode,
+        state: Arc<AudioChannelStateMirror>,
+        snapshots: Option<crate::content_snapshot::AudioProcessSnapshotWriter>,
+    ) -> Result<usize, SessionError> {
         let l = self
             .loops
             .get_mut(loop_idx)
             .ok_or(SessionError::NoSuchLoop(loop_idx))?;
-        let channel_idx = l.add_audio_channel_with_state(chunk_size, mode, state);
+        let channel_idx =
+            l.add_audio_channel_with_state_and_snapshots(chunk_size, mode, state, snapshots);
         self.channels.push(ChannelMapping {
             loop_idx,
             kind: ChannelKind::Audio,
@@ -1059,11 +1071,23 @@ impl Session {
         mode: ChannelMode,
         state: Arc<MidiChannelStateMirror>,
     ) -> Result<usize, SessionError> {
+        self.add_midi_channel_with_state_and_snapshots(loop_idx, capacity_elems, mode, state, None)
+    }
+
+    pub fn add_midi_channel_with_state_and_snapshots(
+        &mut self,
+        loop_idx: usize,
+        capacity_elems: usize,
+        mode: ChannelMode,
+        state: Arc<MidiChannelStateMirror>,
+        snapshots: Option<crate::content_snapshot::MidiProcessSnapshotWriter>,
+    ) -> Result<usize, SessionError> {
         let l = self
             .loops
             .get_mut(loop_idx)
             .ok_or(SessionError::NoSuchLoop(loop_idx))?;
-        let channel_idx = l.add_midi_channel_with_state(capacity_elems, mode, state);
+        let channel_idx =
+            l.add_midi_channel_with_state_and_snapshots(capacity_elems, mode, state, snapshots);
         self.channels.push(ChannelMapping {
             loop_idx,
             kind: ChannelKind::Midi,

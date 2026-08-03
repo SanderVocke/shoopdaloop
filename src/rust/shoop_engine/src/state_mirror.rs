@@ -4,11 +4,9 @@ use crate::composite_runtime::{
     ActiveCompositeChild, CompositeRuntimeCounters, CompositeRuntimeFault,
 };
 use crate::loop_mode::LoopMode;
-use crate::midi_event::MidiEvent;
 use crate::state::{AudioChannelState, AudioPortState, LoopState, MidiChannelState, MidiPortState};
 use std::array;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, AtomicUsize, Ordering};
-use std::sync::Mutex;
 
 const NO_MODE: i32 = -1;
 const NO_DELAY: u64 = u64::MAX;
@@ -419,7 +417,6 @@ impl Default for CompositeStateMirror {
 
 #[derive(Debug)]
 pub struct AudioChannelStateMirror {
-    complex_data_enabled: AtomicBool,
     mode: AtomicI32,
     gain: AtomicU32,
     output_peak: AtomicU32,
@@ -428,13 +425,11 @@ pub struct AudioChannelStateMirror {
     played_back_sample: AtomicI32,
     n_preplay_samples: AtomicU32,
     data_sequence: AtomicU64,
-    data: Mutex<Vec<f32>>,
 }
 
 impl Default for AudioChannelStateMirror {
     fn default() -> Self {
         Self {
-            complex_data_enabled: AtomicBool::new(false),
             mode: AtomicI32::new(ChannelMode::Disabled as i32),
             gain: AtomicU32::new(0.0f32.to_bits()),
             output_peak: AtomicU32::new(0.0f32.to_bits()),
@@ -443,20 +438,11 @@ impl Default for AudioChannelStateMirror {
             played_back_sample: AtomicI32::new(NO_SAMPLE),
             n_preplay_samples: AtomicU32::new(0),
             data_sequence: AtomicU64::new(0),
-            data: Mutex::new(Vec::new()),
         }
     }
 }
 
 impl AudioChannelStateMirror {
-    pub fn enable_complex_data(&self) {
-        self.complex_data_enabled.store(true, Ordering::Relaxed);
-    }
-
-    pub fn complex_data_enabled(&self) -> bool {
-        self.complex_data_enabled.load(Ordering::Relaxed)
-    }
-
     pub fn publish(
         &self,
         mode: ChannelMode,
@@ -516,37 +502,10 @@ impl AudioChannelStateMirror {
     pub fn data_sequence(&self) -> u64 {
         self.data_sequence.load(Ordering::Relaxed)
     }
-
-    pub fn replace_data(&self, data: Vec<f32>) {
-        if self.complex_data_enabled() {
-            *self.data.lock().unwrap_or_else(|e| e.into_inner()) = data;
-        }
-    }
-
-    pub fn write_data(&self, offset: usize, source: &[f32], length: usize) {
-        if !self.complex_data_enabled() {
-            return;
-        }
-        let mut data = self.data.lock().unwrap_or_else(|e| e.into_inner());
-        if data.len() < length {
-            data.resize(length, 0.0);
-        } else {
-            data.truncate(length);
-        }
-        let end = offset.saturating_add(source.len()).min(data.len());
-        if offset < end {
-            data[offset..end].copy_from_slice(&source[..end - offset]);
-        }
-    }
-
-    pub fn data(&self) -> Vec<f32> {
-        self.data.lock().unwrap_or_else(|e| e.into_inner()).clone()
-    }
 }
 
 #[derive(Debug)]
 pub struct MidiChannelStateMirror {
-    complex_data_enabled: AtomicBool,
     mode: AtomicI32,
     n_events_triggered: AtomicU32,
     n_notes_active: AtomicU32,
@@ -555,13 +514,11 @@ pub struct MidiChannelStateMirror {
     played_back_sample: AtomicI32,
     n_preplay_samples: AtomicU32,
     data_sequence: AtomicU64,
-    data: Mutex<Vec<MidiEvent>>,
 }
 
 impl Default for MidiChannelStateMirror {
     fn default() -> Self {
         Self {
-            complex_data_enabled: AtomicBool::new(false),
             mode: AtomicI32::new(ChannelMode::Disabled as i32),
             n_events_triggered: AtomicU32::new(0),
             n_notes_active: AtomicU32::new(0),
@@ -570,20 +527,11 @@ impl Default for MidiChannelStateMirror {
             played_back_sample: AtomicI32::new(NO_SAMPLE),
             n_preplay_samples: AtomicU32::new(0),
             data_sequence: AtomicU64::new(0),
-            data: Mutex::new(Vec::new()),
         }
     }
 }
 
 impl MidiChannelStateMirror {
-    pub fn enable_complex_data(&self) {
-        self.complex_data_enabled.store(true, Ordering::Relaxed);
-    }
-
-    pub fn complex_data_enabled(&self) -> bool {
-        self.complex_data_enabled.load(Ordering::Relaxed)
-    }
-
     pub fn publish(
         &self,
         mode: ChannelMode,
@@ -638,16 +586,6 @@ impl MidiChannelStateMirror {
 
     pub fn data_sequence(&self) -> u64 {
         self.data_sequence.load(Ordering::Relaxed)
-    }
-
-    pub fn replace_data(&self, data: Vec<MidiEvent>) {
-        if self.complex_data_enabled() {
-            *self.data.lock().unwrap_or_else(|e| e.into_inner()) = data;
-        }
-    }
-
-    pub fn data(&self) -> Vec<MidiEvent> {
-        self.data.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 }
 

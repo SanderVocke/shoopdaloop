@@ -2,7 +2,7 @@ use crate::midi_event::MidiEvent;
 use std::sync::Arc;
 use thiserror::Error;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct ContentRevision(pub u64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

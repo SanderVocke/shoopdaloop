@@ -6,6 +6,9 @@ use super::{
 };
 use crate::midi_event::MidiEvent;
 use crate::midi_storage::{MidiStorageElem, MAX_MSG_BYTES};
+use std::collections::HashMap;
+use std::fmt;
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -40,6 +43,7 @@ enum MidiUpdateKind {
     Clear,
     TruncateAfter(i32),
     Publish,
+    Install(ContentRevision),
 }
 
 #[derive(Debug)]
@@ -67,6 +71,24 @@ impl MidiUpdateBlock {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PreparedMidiSnapshot {
+    revision: ContentRevision,
+    length: u32,
+}
+
+struct PreparedMidiManifest {
+    token: PreparedMidiSnapshot,
+    chunks: Arc<[Arc<[MidiEvent]>]>,
+}
+
+#[derive(Clone)]
+pub struct MidiSnapshotControl {
+    status: Arc<ContentStatus>,
+    prepared: Sender<PreparedMidiManifest>,
+    chunk_events: usize,
+}
+
 pub struct MidiProcessSnapshotWriter {
     updates: ProcessSender<MidiUpdateBlock>,
     returned: PublisherReceiver<MidiUpdateBlock>,
@@ -77,9 +99,21 @@ pub struct MidiProcessSnapshotWriter {
     block_events: usize,
 }
 
+impl fmt::Debug for MidiProcessSnapshotWriter {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("MidiProcessSnapshotWriter")
+            .field("latest_revision", &self.latest_revision)
+            .field("latest_length", &self.latest_length)
+            .finish_non_exhaustive()
+    }
+}
+
 pub struct MidiSnapshotPublisher {
     updates: PublisherReceiver<MidiUpdateBlock>,
     returned: ProcessSender<MidiUpdateBlock>,
+    prepared: Receiver<PreparedMidiManifest>,
+    prepared_by_revision: HashMap<ContentRevision, PreparedMidiManifest>,
     manifest: ManifestPublisher<MidiContentSnapshot>,
     events: Vec<MidiEvent>,
     snapshot_chunk_events: usize,
@@ -93,6 +127,7 @@ pub fn midi_snapshot_channel(
     transport_blocks: usize,
 ) -> (
     MidiProcessSnapshotWriter,
+    MidiSnapshotControl,
     MidiSnapshotPublisher,
     MidiSnapshotReader,
 ) {
@@ -104,6 +139,7 @@ pub fn midi_snapshot_channel(
     let status = Arc::new(ContentStatus::new(epoch));
     let (updates_tx, updates_rx) = bounded_transport(transport_blocks, Arc::clone(&status));
     let (returned_tx, returned_rx) = bounded_transport(transport_blocks, Arc::clone(&status));
+    let (prepared_tx, prepared_rx) = mpsc::channel();
     let initial = MidiContentSnapshot::new(
         ContentRevision(0),
         MidiSnapshotMetadata { length: 0 },
@@ -119,14 +155,21 @@ pub fn midi_snapshot_channel(
             updates: updates_tx,
             returned: returned_rx,
             free,
-            status,
+            status: Arc::clone(&status),
             latest_revision: ContentRevision(0),
             latest_length: 0,
             block_events,
         },
+        MidiSnapshotControl {
+            status,
+            prepared: prepared_tx,
+            chunk_events: block_events,
+        },
         MidiSnapshotPublisher {
             updates: updates_rx,
             returned: returned_tx,
+            prepared: prepared_rx,
+            prepared_by_revision: HashMap::new(),
             manifest,
             events: Vec::new(),
             snapshot_chunk_events: block_events,
@@ -276,6 +319,27 @@ impl MidiProcessSnapshotWriter {
         Some(())
     }
 
+    pub fn install_prepared(&mut self, prepared: PreparedMidiSnapshot) -> bool {
+        if !self.reserve_blocks(1) {
+            return false;
+        }
+        let mut block = self.free.pop().expect("capacity checked");
+        block.used = 0;
+        block.kind = MidiUpdateKind::Install(prepared.revision);
+        block.total_length = prepared.length;
+        block.revision = prepared.revision;
+        block.final_block = true;
+        block.publish = true;
+        if let Err(block) = self.updates.try_send(block) {
+            self.free.push(block);
+            return false;
+        }
+        self.latest_revision = prepared.revision;
+        self.latest_length = prepared.length;
+        self.status.finish_mutation(prepared.revision);
+        true
+    }
+
     pub fn finish_mutation(&mut self, publish_final: bool) -> ContentRevision {
         if publish_final && self.reserve_blocks(1) {
             let revision = self.latest_revision;
@@ -290,10 +354,50 @@ impl MidiProcessSnapshotWriter {
     }
 }
 
+impl MidiSnapshotControl {
+    pub fn prepare(
+        &self,
+        events: &[MidiEvent],
+        length: u32,
+        mutation: ContentMutation,
+    ) -> Option<PreparedMidiSnapshot> {
+        if !self.status.begin_mutation(mutation) {
+            return None;
+        }
+        let revision = self.status.next_revision();
+        let chunks: Vec<Arc<[MidiEvent]>> = events
+            .chunks(self.chunk_events)
+            .map(|events| Arc::from(events))
+            .collect();
+        let token = PreparedMidiSnapshot { revision, length };
+        if self
+            .prepared
+            .send(PreparedMidiManifest {
+                token,
+                chunks: Arc::from(chunks),
+            })
+            .is_err()
+        {
+            self.status.cancel_mutation();
+            return None;
+        }
+        Some(token)
+    }
+
+    pub fn cancel(&self) {
+        self.status.cancel_mutation();
+    }
+}
+
 impl MidiSnapshotPublisher {
     pub fn pump(&mut self) -> usize {
+        while let Ok(prepared) = self.prepared.try_recv() {
+            self.prepared_by_revision
+                .insert(prepared.token.revision, prepared);
+        }
         let mut processed = 0;
         while let Some(block) = self.updates.try_recv() {
+            let mut installed = false;
             match block.kind {
                 MidiUpdateKind::Append => {
                     self.events
@@ -305,6 +409,23 @@ impl MidiSnapshotPublisher {
                         .retain(|event| event.time < 0 || event.time <= time);
                 }
                 MidiUpdateKind::Publish => {}
+                MidiUpdateKind::Install(prepared_revision) => {
+                    if let Some(prepared) = self.prepared_by_revision.remove(&prepared_revision) {
+                        self.events = prepared
+                            .chunks
+                            .iter()
+                            .flat_map(|chunk| chunk.iter().cloned())
+                            .collect();
+                        self.manifest.publish(MidiContentSnapshot::new(
+                            prepared.token.revision,
+                            MidiSnapshotMetadata {
+                                length: prepared.token.length,
+                            },
+                            prepared.chunks,
+                        ));
+                        installed = true;
+                    }
+                }
             }
             let final_block = block.final_block;
             let publish = block.publish;
@@ -313,7 +434,7 @@ impl MidiSnapshotPublisher {
             self.returned
                 .try_send(block)
                 .expect("return queue capacity matches the transport pool");
-            if final_block && publish {
+            if final_block && publish && !installed {
                 let chunks: Vec<Arc<[MidiEvent]>> = self
                     .events
                     .chunks(self.snapshot_chunk_events)
@@ -342,7 +463,7 @@ mod tests {
 
     #[test]
     fn recording_publishes_ordered_complete_event_blocks() {
-        let (mut writer, mut publisher, reader) =
+        let (mut writer, _control, mut publisher, reader) =
             midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 3);
         assert!(writer.begin_mutation(ContentMutation::Recording));
         let revision = writer
@@ -375,7 +496,7 @@ mod tests {
 
     #[test]
     fn exact_midi_requires_final_publication() {
-        let (mut writer, mut publisher, reader) =
+        let (mut writer, _control, mut publisher, reader) =
             midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 2);
         assert!(writer.begin_mutation(ContentMutation::Loading));
         let revision = writer
@@ -397,7 +518,7 @@ mod tests {
 
     #[test]
     fn hidden_replace_is_published_only_when_committed() {
-        let (mut writer, mut publisher, reader) =
+        let (mut writer, _control, mut publisher, reader) =
             midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 3);
         assert!(writer.begin_mutation(ContentMutation::Loading));
         writer.append_storage_events(

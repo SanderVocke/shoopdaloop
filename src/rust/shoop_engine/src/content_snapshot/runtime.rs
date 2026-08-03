@@ -1,7 +1,7 @@
 use super::{
     audio_snapshot_channel, midi_snapshot_channel, AudioProcessSnapshotWriter,
-    AudioSnapshotPublisher, AudioSnapshotReader, MidiProcessSnapshotWriter, MidiSnapshotPublisher,
-    MidiSnapshotReader, SessionContentEpoch,
+    AudioSnapshotControl, AudioSnapshotPublisher, AudioSnapshotReader, MidiProcessSnapshotWriter,
+    MidiSnapshotControl, MidiSnapshotPublisher, MidiSnapshotReader, SessionContentEpoch,
 };
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
@@ -53,22 +53,30 @@ impl ContentSnapshotRuntime {
         &self,
         chunk_size: usize,
         transport_blocks: usize,
-    ) -> (AudioProcessSnapshotWriter, AudioSnapshotReader) {
-        let (writer, publisher, reader) =
+    ) -> (
+        AudioProcessSnapshotWriter,
+        AudioSnapshotControl,
+        AudioSnapshotReader,
+    ) {
+        let (writer, control, publisher, reader) =
             audio_snapshot_channel(Arc::clone(&self.inner.epoch), chunk_size, transport_blocks);
         self.inner
             .commands
             .send(RuntimeCommand::AddAudio(publisher))
             .expect("content snapshot worker is alive");
-        (writer, reader)
+        (writer, control, reader)
     }
 
     pub fn create_midi_channel(
         &self,
         block_events: usize,
         transport_blocks: usize,
-    ) -> (MidiProcessSnapshotWriter, MidiSnapshotReader) {
-        let (writer, publisher, reader) = midi_snapshot_channel(
+    ) -> (
+        MidiProcessSnapshotWriter,
+        MidiSnapshotControl,
+        MidiSnapshotReader,
+    ) {
+        let (writer, control, publisher, reader) = midi_snapshot_channel(
             Arc::clone(&self.inner.epoch),
             block_events,
             transport_blocks,
@@ -77,7 +85,7 @@ impl ContentSnapshotRuntime {
             .commands
             .send(RuntimeCommand::AddMidi(publisher))
             .expect("content snapshot worker is alive");
-        (writer, reader)
+        (writer, control, reader)
     }
 
     pub fn capture_epoch(&self) -> Option<u64> {
@@ -149,8 +157,9 @@ mod tests {
     #[test]
     fn one_worker_publishes_multiple_channel_streams() {
         let runtime = ContentSnapshotRuntime::new();
-        let (mut first_writer, first_reader) = runtime.create_audio_channel(4, 4);
-        let (mut second_writer, second_reader) = runtime.create_audio_channel(4, 4);
+        let (mut first_writer, _first_control, first_reader) = runtime.create_audio_channel(4, 4);
+        let (mut second_writer, _second_control, second_reader) =
+            runtime.create_audio_channel(4, 4);
 
         assert!(first_writer.begin_mutation(ContentMutation::Loading));
         let first_revision = first_writer
@@ -181,8 +190,8 @@ mod tests {
     #[test]
     fn session_epoch_spans_all_registered_channels() {
         let runtime = ContentSnapshotRuntime::new();
-        let (first, _) = runtime.create_audio_channel(4, 2);
-        let (second, _) = runtime.create_audio_channel(4, 2);
+        let (first, _first_control, _) = runtime.create_audio_channel(4, 2);
+        let (second, _second_control, _) = runtime.create_audio_channel(4, 2);
         let stable = runtime.capture_epoch().expect("stable");
         assert!(first.begin_mutation(ContentMutation::Recording));
         assert!(runtime.capture_epoch().is_none());
