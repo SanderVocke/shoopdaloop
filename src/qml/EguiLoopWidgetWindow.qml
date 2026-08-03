@@ -5,21 +5,33 @@ ShoopApplicationWindow {
     id: root
 
     property var loopWidget: null
+    property bool canvasReady: false
     readonly property string loopName: loopWidget ? loopWidget.name : "Loop"
-    readonly property real loopPosition: loopWidget && loopWidget.length > 0
-        ? loopWidget.position / loopWidget.length
-        : 0.0
-    readonly property bool loopPlaying: loopWidget
-        && (loopWidget.mode === ShoopRustConstants.LoopMode.Playing
-            || loopWidget.mode === ShoopRustConstants.LoopMode.PlayingDryThroughWet)
 
     function updateCanvas() {
-        canvas.setLoopState(loopName, loopPosition, loopPlaying)
+        if (!canvasReady) {
+            return
+        }
+        const position = loopWidget && loopWidget.length > 0
+            ? loopWidget.position / loopWidget.length
+            : 0.0
+        const playing = loopWidget
+            && (loopWidget.mode === ShoopRustConstants.LoopMode.Playing
+                || loopWidget.mode === ShoopRustConstants.LoopMode.PlayingDryThroughWet)
+        canvas.setLoopState(loopName, position, playing)
     }
 
-    onLoopNameChanged: updateCanvas()
-    onLoopPositionChanged: updateCanvas()
-    onLoopPlayingChanged: updateCanvas()
+    onLoopWidgetChanged: updateCanvas()
+
+    Connections {
+        target: root.loopWidget
+        ignoreUnknownSignals: true
+
+        function onNameChanged() { root.updateCanvas() }
+        function onPositionChanged() { root.updateCanvas() }
+        function onLengthChanged() { root.updateCanvas() }
+        function onModeChanged() { root.updateCanvas() }
+    }
 
     title: loopName + " — egui prototype"
     width: 620
@@ -32,7 +44,10 @@ ShoopApplicationWindow {
         anchors.fill: parent
         focus: true
 
-        Component.onCompleted: root.updateCanvas()
+        Component.onCompleted: {
+            root.canvasReady = true
+            root.updateCanvas()
+        }
         onPlayClicked: if (root.loopWidget) root.loopWidget.on_play_clicked()
         onStopClicked: if (root.loopWidget) root.loopWidget.on_stop_clicked()
     }

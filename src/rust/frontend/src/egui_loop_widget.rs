@@ -77,7 +77,7 @@ impl Default for LoopState {
     fn default() -> Self {
         Self {
             name: "Loop".to_owned(),
-            position: 0.38,
+            position: 0.0,
             playing: false,
         }
     }
