@@ -63,6 +63,13 @@ impl PortGui {
     }
 
     pub fn update(mut self: Pin<&mut PortGui>) {
+        let span = tracing::debug_span!(
+            "frontend.port.update",
+            input_events = tracing::field::Empty,
+            output_events = tracing::field::Empty,
+            ringbuffer_samples = tracing::field::Empty
+        );
+        let _entered = span.enter();
         if self.maybe_backend_port.is_none() {
             return;
         }
@@ -80,6 +87,9 @@ impl PortGui {
                     prev_state.clone()
                 }
             };
+            span.record("input_events", new_state.n_input_events);
+            span.record("output_events", new_state.n_output_events);
+            span.record("ringbuffer_samples", new_state.ringbuffer_n_samples);
             let connections_raw = port.get_connections_state();
 
             {

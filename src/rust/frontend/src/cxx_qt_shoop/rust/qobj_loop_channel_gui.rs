@@ -69,6 +69,13 @@ impl LoopChannelGui {
     }
 
     pub fn update(mut self: Pin<&mut LoopChannelGui>) {
+        let span = tracing::debug_span!(
+            "frontend.channel.update",
+            mode = tracing::field::Empty,
+            length = tracing::field::Empty,
+            events = tracing::field::Empty
+        );
+        let _entered = span.enter();
         if !self.as_mut().maybe_initialize_backend() {
             return;
         }
@@ -90,6 +97,9 @@ impl LoopChannelGui {
                     prev_state.clone()
                 }
             };
+            span.record("mode", new_state.mode as u32);
+            span.record("length", new_state.length);
+            span.record("events", new_state.n_events_triggered);
 
             {
                 let mut rust_mut = self.as_mut().rust_mut();

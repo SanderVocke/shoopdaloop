@@ -50,10 +50,15 @@ impl AsyncTask {
                 connection_types::DIRECT_CONNECTION,
             );
 
+            let queued_at = std::time::Instant::now();
             let _ = std::thread::Builder::new()
                 .name("frontend-async-task".to_string())
                 .spawn(move || {
-                    let _span = tracing::info_span!("worker.frontend.async_task").entered();
+                    let _span = tracing::info_span!(
+                        "worker.frontend.async_task",
+                        handoff_us = queued_at.elapsed().as_micros() as u64
+                    )
+                    .entered();
                     let mut success = true;
                     let shared = notifier_shared;
 

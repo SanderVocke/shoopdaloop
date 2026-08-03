@@ -96,6 +96,7 @@ fn save_data_to_soundfile_impl<'a>(
     Ok(())
 }
 
+#[tracing::instrument(name = "frontend.file.save_soundfile_data", skip_all)]
 pub fn save_qlist_data_to_soundfile_impl(
     filename: QString,
     samplerate: i32,
@@ -410,6 +411,7 @@ impl FileIO {
         };
     }
 
+    #[tracing::instrument(name = "frontend.file.write", skip_all)]
     pub fn write_file(self: &FileIO, file_name: QString, data: QString) -> bool {
         let file_name = file_name.to_string();
         let data = data.to_string();
@@ -426,6 +428,7 @@ impl FileIO {
         }
     }
 
+    #[tracing::instrument(name = "frontend.file.read", skip_all)]
     pub fn read_file(self: &FileIO, file_name: QString) -> QString {
         let file_name = file_name.to_string();
         let result = std::fs::read_to_string(&file_name);
@@ -550,6 +553,7 @@ impl FileIO {
         }
     }
 
+    #[tracing::instrument(name = "frontend.file.extract_archive", skip_all)]
     pub fn extract_tarfile(self: &FileIO, tarfile: QString, destination: QString) -> bool {
         use std::fs::File;
         use tar::Archive;
@@ -578,6 +582,7 @@ impl FileIO {
         }
     }
 
+    #[tracing::instrument(name = "frontend.file.create_archive", skip_all)]
     pub fn make_tarfile(self: &FileIO, tarfile: QString, source: QString) -> bool {
         use std::fs::File;
         use tar::Builder;
@@ -678,6 +683,7 @@ impl FileIO {
         return true;
     }
 
+    #[tracing::instrument(name = "frontend.file.save_midi_async", skip_all)]
     pub fn save_channel_to_midi_async(
         mut self: Pin<&mut FileIO>,
         filename: QString,
@@ -735,6 +741,7 @@ impl FileIO {
         return true;
     }
 
+    #[tracing::instrument(name = "frontend.file.load_midi_async", skip_all)]
     pub fn load_midi_to_channels_async(
         mut self: Pin<&mut FileIO>,
         filename: QString,
@@ -839,6 +846,7 @@ impl FileIO {
         return true;
     }
 
+    #[tracing::instrument(name = "frontend.file.save_soundfile_async", skip_all)]
     pub fn save_channels_to_soundfile_async(
         mut self: Pin<&mut FileIO>,
         filename: QString,
@@ -889,6 +897,7 @@ impl FileIO {
         return success;
     }
 
+    #[tracing::instrument(name = "frontend.file.load_soundfile_async", skip_all)]
     pub fn load_soundfile_to_channels_async(
         mut self: Pin<&mut FileIO>,
         filename: QString,
@@ -965,6 +974,7 @@ impl FileIO {
         return true;
     }
 
+    #[tracing::instrument(name = "frontend.file.soundfile_info", skip_all)]
     pub fn get_soundfile_info(self: &FileIO, filename: QString) -> QMap_QString_QVariant {
         match sndfile::OpenOptions::ReadOnly(sndfile::ReadOptions::Auto)
             .from_path(&PathBuf::from(filename.to_string()))

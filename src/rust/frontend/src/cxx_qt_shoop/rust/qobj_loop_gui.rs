@@ -249,6 +249,13 @@ impl LoopGui {
     }
 
     pub fn update(mut self: Pin<&mut LoopGui>) {
+        let span = tracing::debug_span!(
+            "frontend.loop.update",
+            mode = tracing::field::Empty,
+            position = tracing::field::Empty,
+            length = tracing::field::Empty
+        );
+        let _entered = span.enter();
         if !self.as_mut().maybe_initialize_backend() {
             return;
         }
@@ -281,6 +288,9 @@ impl LoopGui {
             let Some(new_state) = backend_loop.poll_state() else {
                 return Ok(());
             };
+            span.record("mode", new_state.mode as u32);
+            span.record("position", new_state.position);
+            span.record("length", new_state.length);
 
             let prev_state;
             let prev_cycle_nr: i32;
@@ -380,6 +390,13 @@ impl LoopGui {
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32,
     ) {
+        let _span = tracing::info_span!(
+            "frontend.control.transition_loops",
+            loops = loops.len(),
+            to_mode,
+            cycles_delay = maybe_cycles_delay
+        )
+        .entered();
         let to_mode_enum = match LoopMode::try_from(to_mode) {
             Ok(m) => m,
             Err(e) => {
@@ -424,6 +441,13 @@ impl LoopGui {
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32,
     ) {
+        let _span = tracing::info_span!(
+            "frontend.control.transition_engine_loops",
+            loops = loops.len(),
+            to_mode,
+            cycles_delay = maybe_cycles_delay
+        )
+        .entered();
         raw_debug!(
             "Transitioning {} loops to {} with delay {}, sync at cycle {}",
             loops.len(),
@@ -484,6 +508,12 @@ impl LoopGui {
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32,
     ) {
+        let _span = tracing::info_span!(
+            "frontend.control.transition_loop",
+            to_mode,
+            cycles_delay = maybe_cycles_delay
+        )
+        .entered();
         if !self.as_mut().maybe_initialize_backend() {
             error!(self, "transition: not initialized");
             return;

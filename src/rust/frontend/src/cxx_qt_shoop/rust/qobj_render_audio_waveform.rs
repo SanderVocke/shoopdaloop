@@ -57,10 +57,15 @@ impl ffi::RenderAudioWaveform {
                     );
                 }
 
+                let queued_at = std::time::Instant::now();
                 let _ = std::thread::Builder::new()
                 .name("frontend-waveform".to_string())
                 .spawn(move || unsafe {
-                    let _span = tracing::info_span!("worker.frontend.waveform").entered();
+                    let _span = tracing::info_span!(
+                        "worker.frontend.waveform",
+                        handoff_us = queued_at.elapsed().as_micros() as u64
+                    )
+                    .entered();
                     if let Err(e) = || -> Result<(), anyhow::Error> {
                     let shared_data = qvariant_to_qsharedpointer_qvector_qvariant(&shared_data)
                         .map_err(|e| {
@@ -120,6 +125,7 @@ impl ffi::RenderAudioWaveform {
     }
 
     pub unsafe fn paint(self: Pin<&mut Self>, painter: *mut ffi::QPainter) {
+        let _span = tracing::trace_span!("frontend.render.waveform").entered();
         trace!(
             "paint (offset {}, scale {})",
             self.samples_offset,

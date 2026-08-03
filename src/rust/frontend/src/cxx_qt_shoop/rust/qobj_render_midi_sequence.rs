@@ -24,6 +24,8 @@ pub fn register_qml_type(module_name: &str, type_name: &str) {
 
 impl RenderMidiSequence {
     pub unsafe fn paint(mut self: Pin<&mut RenderMidiSequence>, painter: *mut QPainter) {
+        let _span =
+            tracing::trace_span!("frontend.render.midi", notes = self.notes.len()).entered();
         trace!(
             "paint (offset {}, scale {})",
             self.samples_offset,
@@ -93,6 +95,7 @@ impl RenderMidiSequence {
     }
 
     pub unsafe fn parse(mut self: Pin<&mut RenderMidiSequence>) {
+        let _span = tracing::debug_span!("frontend.render.midi_parse").entered();
         if let Err(e) = || -> Result<(), anyhow::Error> {
             let shared = qvariant_to_qsharedpointer_qvector_qvariant(&self.input_data)?;
             let vector = shared

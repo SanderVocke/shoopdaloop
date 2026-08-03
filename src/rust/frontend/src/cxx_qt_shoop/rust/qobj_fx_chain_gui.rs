@@ -49,6 +49,13 @@ impl FXChainGui {
     }
 
     pub fn update(mut self: Pin<&mut FXChainGui>) {
+        let span = tracing::debug_span!(
+            "frontend.fx.update",
+            ready = tracing::field::Empty,
+            active = tracing::field::Empty,
+            visible = tracing::field::Empty
+        );
+        let _entered = span.enter();
         if self.backend_chain_wrapper.is_none() {
             return;
         }
@@ -66,6 +73,9 @@ impl FXChainGui {
                     prev_state.clone()
                 }
             };
+            span.record("ready", new_state.ready != 0);
+            span.record("active", new_state.active != 0);
+            span.record("visible", new_state.visible != 0);
 
             {
                 let mut rust_mut = self.as_mut().rust_mut();

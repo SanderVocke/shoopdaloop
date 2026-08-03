@@ -63,6 +63,7 @@ fn generate_click_track_timings(
     }
 }
 
+#[tracing::instrument(name = "frontend.click_track.midi", skip_all)]
 fn generate_click_track_midi(
     notes: Vec<u8>,
     channels: Vec<u8>,
@@ -152,6 +153,7 @@ fn scan_available_clicks() -> BTreeMap<String, PathBuf> {
     rval
 }
 
+#[tracing::instrument(name = "frontend.click_track.audio", skip_all)]
 fn generate_click_track_audio(
     clicks: &[String],
     bpm: f64,
@@ -425,10 +427,15 @@ impl ClickTrackGenerator {
                 sample_rate as usize,
             )?;
 
+            let queued_at = std::time::Instant::now();
             let _ = std::thread::Builder::new()
                 .name("frontend-click-preview".to_string())
                 .spawn(move || {
-                    let _span = tracing::info_span!("worker.frontend.click_preview").entered();
+                    let _span = tracing::info_span!(
+                        "worker.frontend.click_preview",
+                        handoff_us = queued_at.elapsed().as_micros() as u64
+                    )
+                    .entered();
                     if let Err(e) = || -> Result<(), anyhow::Error> {
                         let mut stream_handle =
                             rodio::OutputStreamBuilder::open_default_stream()

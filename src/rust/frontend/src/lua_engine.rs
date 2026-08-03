@@ -211,9 +211,16 @@ impl LuaEngineImpl {
     where
         R: mlua::FromLuaMulti,
     {
+        let _span = tracing::info_span!(
+            "frontend.lua.evaluate",
+            sandboxed,
+            code_bytes = code.len(),
+            named_script = script_name.is_some()
+        )
+        .entered();
         trace!(
-            "evaluate (sandboxed: {sandboxed}, name: {}):\n{code}",
-            script_name.unwrap_or("(none)")
+            "evaluate Lua code (sandboxed: {sandboxed}, bytes: {})",
+            code.len()
         );
         match sandboxed {
             true => self
@@ -259,6 +266,11 @@ impl LuaEngineImpl {
         get_builtin_script_fn: impl Fn(&str) -> Result<String, anyhow::Error> + 'static,
         builtin_libs: HashMap<String, String>,
     ) -> Result<(), anyhow::Error> {
+        let _span = tracing::info_span!(
+            "frontend.lua.initialize",
+            builtin_libraries = builtin_libs.len()
+        )
+        .entered();
         debug!("Initializing engine");
 
         self.preloaded_libs = builtin_libs;
@@ -281,6 +293,9 @@ impl LuaEngineImpl {
         self.lua
             .create_function(
                 move |_, (multi,): (mlua::MultiValue,)| -> Result<mlua::Value, mlua::Error> {
+                    let _span =
+                        tracing::debug_span!("frontend.lua.callback", arguments = multi.len())
+                            .entered();
                     match || -> Result<mlua::Value, anyhow::Error> {
                         let strong_cb = weak
                             .upgrade()

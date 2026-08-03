@@ -50,7 +50,7 @@ impl Application {
 
     pub fn reload_qml(mut self: Pin<&mut Application>, qml: QString) {
         let qml: PathBuf = PathBuf::from(qml.to_string());
-        let _span = debug_span!("reload_qml", path = %qml.display()).entered();
+        let _span = debug_span!("frontend.qml.reload").entered();
         self.as_mut().unload_qml();
         self.as_mut().wait(50);
         match self.as_mut().load_qml(&qml) {
@@ -62,7 +62,7 @@ impl Application {
     }
 
     pub fn unload_qml(mut self: Pin<&mut Application>) {
-        let _span = debug_span!("unload_qml").entered();
+        let _span = debug_span!("frontend.qml.unload").entered();
         debug!("Unloading QML.");
         let self_mut = self.as_mut();
         let mut rust_mut = self_mut.rust_mut();
@@ -81,7 +81,7 @@ impl Application {
     }
 
     pub fn load_qml(mut self: Pin<&mut Application>, qml: &Path) -> Result<(), anyhow::Error> {
-        let _span = debug_span!("load_qml", path = %qml.display()).entered();
+        let _span = debug_span!("frontend.qml.load").entered();
         debug!("Load qml: {qml:?}");
         let qml_engine: *mut QmlEngine;
 
@@ -156,7 +156,7 @@ impl Application {
     where
         QmlEngineCreatedCallback: FnMut(Pin<&mut QmlEngine>) + 'static,
     {
-        let _span = debug_span!("initialize_application").entered();
+        let _span = debug_span!("frontend.application.initialize").entered();
         {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.config = config.clone();

@@ -58,10 +58,15 @@ impl DummyProcessHelper {
         let self_aptr = AtomicPtr::new(self_qobj_ptr);
         let backend_aptr = AtomicPtr::new(backend_ptr);
 
+        let queued_at = std::time::Instant::now();
         let _ = thread::Builder::new()
             .name("frontend-dummy-process".to_string())
             .spawn(move || {
-                let _span = tracing::info_span!("worker.frontend.dummy_process").entered();
+                let _span = tracing::info_span!(
+                    "worker.frontend.dummy_process",
+                    handoff_us = queued_at.elapsed().as_micros() as u64
+                )
+                .entered();
                 let self_thread_ptr = self_aptr.load(Ordering::SeqCst);
                 let backend_thread_ptr = backend_aptr.load(Ordering::SeqCst);
 

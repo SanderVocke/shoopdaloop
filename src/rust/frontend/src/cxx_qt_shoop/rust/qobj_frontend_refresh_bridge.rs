@@ -51,6 +51,7 @@ pub mod ffi {
     impl cxx_qt::Constructor<()> for FrontendRefresh {}
 }
 
+use common::tracing_helpers::TracyPlotter;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 pub use ffi::FrontendRefresh;
 
@@ -68,6 +69,8 @@ pub struct FrontendRefreshRust {
     pub fallback_timer: *mut ffi::QTimer,
     pub fallback_interval_ms: i32,
     pub refresh_queued: bool,
+    pub refresh_requested_at: Option<std::time::Instant>,
+    pub queue_delay_plotter: TracyPlotter,
 }
 
 impl Default for FrontendRefreshRust {
@@ -76,6 +79,8 @@ impl Default for FrontendRefreshRust {
             fallback_timer: std::ptr::null_mut(),
             fallback_interval_ms: DEFAULT_FALLBACK_REFRESH_INTERVAL_MS,
             refresh_queued: false,
+            refresh_requested_at: None,
+            queue_delay_plotter: TracyPlotter::new("queue_delay_us"),
         }
     }
 }

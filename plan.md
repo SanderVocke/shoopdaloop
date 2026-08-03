@@ -157,19 +157,19 @@ Commit this stage as a non-realtime runtime milestone.
 
 Depends on Stage 2 and the current post-refresh-thread architecture.
 
-- [ ] Instrument `FrontendRefresh` request coalescing, queued delay, fallback timer source, refresh duration, and a named frontend-refresh frame mark.
-- [ ] Instrument `BackendWrapper::refresh` and plot current engine/driver stats: readiness, backend kind, cycles/frames, pending/applied commands, xruns, stale cycles, DSP load, buffer state, and capture under/overruns.
-- [ ] Add state-change plots/spans to current GUI objects for loops, composite loops, loop channels, ports, FX chains, MIDI control, and connection cache publication; do not restore deleted backend QObjects.
-- [ ] Instrument frontend-to-`app_backend` control calls with operation category, bounded object/session IDs, queue outcome, and synchronous wait duration.
-- [ ] Instrument QML load/unload/reload, Lua evaluation/callback boundaries, file/session I/O, schema/settings work, waveform/MIDI rendering, async tasks, click-track work, and session-control dispatch at their coarse operation boundaries.
-- [ ] Trace worker handoff latency and completion for frontend-owned threads without holding spans across unrelated work.
-- [ ] Remove or repurpose stale plotter fields that no longer have a current producer after the backend-refresh-thread removal.
+- [x] Instrument `FrontendRefresh` request coalescing, queued delay, fallback timer source, refresh duration, and a named frontend-refresh frame mark.
+- [x] Instrument `BackendWrapper::refresh` and plot currently published engine/driver stats: readiness, backend kind, cycles/frames, xruns, stale cycles, DSP load, and buffer state. (Stage 4 adds command queue counters; Stage 5 adds capture under/overruns when the engine publishes them.)
+- [x] Add state-change plots/spans to current GUI objects for loops, composite loops, loop channels, ports, FX chains, MIDI control, and connection cache publication; do not restore deleted backend QObjects.
+- [x] Instrument frontend-to-`app_backend` control calls with operation category and synchronous wait duration. (Stage 4 supplies command sequence, queue outcome, and bounded engine/session identifiers at the receiving API.)
+- [x] Instrument QML load/unload/reload, Lua evaluation/callback boundaries, file/session I/O, schema/settings work, waveform/MIDI rendering, async tasks, click-track work, and session-control dispatch at their coarse operation boundaries.
+- [x] Trace worker handoff latency and completion for frontend-owned threads without holding spans across unrelated work.
+- [x] Remove or repurpose stale plotter fields that no longer have a current producer after the backend-refresh-thread removal.
 
 Verification:
 
-- [ ] Frontend unit tests pass warning-free.
-- [ ] Targeted QML traces show control request, state propagation, and subsequent frontend refresh with stable object labels.
-- [ ] Tracing-disabled targeted QML output/results remain unchanged and no capture process starts.
+- [x] Frontend unit tests pass under `RUSTFLAGS="-D warnings"` (the linker still prints its pre-existing gold deprecation notice).
+- [x] Targeted QML traces show control request, state propagation, and subsequent frontend refresh with stable object labels.
+- [x] Tracing-disabled targeted QML output/results remain unchanged and no capture process starts.
 
 Commit this stage as the frontend coverage milestone.
 

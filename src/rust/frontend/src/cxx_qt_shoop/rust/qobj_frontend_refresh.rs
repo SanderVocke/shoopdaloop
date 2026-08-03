@@ -11,6 +11,7 @@ shoop_log_unit!("Frontend.Refresh");
 
 impl FrontendRefresh {
     pub fn initialize_impl(mut self: Pin<&mut Self>) {
+        let _span = tracing::info_span!("frontend.refresh.initialize").entered();
         unsafe {
             let self_qobject = self.as_mut().pin_mut_qobject_ptr();
             let timer_ptr = QTimer::make_raw_with_parent(self_qobject);
@@ -26,10 +27,19 @@ impl FrontendRefresh {
     }
 
     pub fn request_refresh(mut self: Pin<&mut Self>) {
+        let _span = tracing::trace_span!(
+            "frontend.refresh.request",
+            already_queued = self.refresh_queued
+        )
+        .entered();
         if self.refresh_queued {
             return;
         }
-        self.as_mut().rust_mut().refresh_queued = true;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.refresh_queued = true;
+            rust.refresh_requested_at = Some(std::time::Instant::now());
+        }
         unsafe {
             let self_qobject = self.as_mut().pin_mut_qobject_ptr();
             if let Err(error) = invokable::invoke::<_, (), _>(
@@ -46,15 +56,35 @@ impl FrontendRefresh {
     }
 
     pub fn do_queued_refresh(mut self: Pin<&mut Self>) {
-        self.as_mut().rust_mut().refresh_queued = false;
+        let delay_us = self
+            .as_mut()
+            .rust_mut()
+            .refresh_requested_at
+            .take()
+            .map(|requested| requested.elapsed().as_micros() as u64)
+            .unwrap_or(0);
+        let _span = tracing::debug_span!("frontend.refresh.queued", delay_us).entered();
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.refresh_queued = false;
+            rust.queue_delay_plotter
+                .plot(delay_us as f64, "FrontendRefresh");
+        }
         self.as_mut().refresh_now();
     }
 
     pub fn refresh_now(mut self: Pin<&mut Self>) {
+        let _span = tracing::debug_span!("frontend.refresh.run").entered();
         self.as_mut().refresh();
+        if common::tracing_helpers::is_tracing_enabled() {
+            if let Some(client) = tracy_client::Client::running() {
+                client.secondary_frame_mark(tracy_client::frame_name!("frontend.refresh"));
+            }
+        }
     }
 
     pub fn timer_tick(self: Pin<&mut Self>) {
+        let _span = tracing::trace_span!("frontend.refresh.fallback_timer").entered();
         self.request_refresh();
     }
 

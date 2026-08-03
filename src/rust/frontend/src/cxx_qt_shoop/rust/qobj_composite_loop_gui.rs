@@ -861,6 +861,13 @@ impl CompositeLoopGui {
     }
 
     pub fn update(mut self: Pin<&mut Self>) {
+        let span = tracing::debug_span!(
+            "frontend.composite.update",
+            mode = tracing::field::Empty,
+            iteration = tracing::field::Empty,
+            position = tracing::field::Empty
+        );
+        let _entered = span.enter();
         unsafe {
             let backend = self.backend;
             self.as_mut().set_backend(backend);
@@ -901,6 +908,9 @@ impl CompositeLoopGui {
         }) else {
             return;
         };
+        span.record("mode", state.mode as u32);
+        span.record("iteration", state.iteration);
+        span.record("position", state.position);
         self.as_mut().set_mode(state.mode as i32);
         self.as_mut()
             .set_next_mode(state.maybe_next_mode.map(|mode| mode as i32).unwrap_or(-1));
