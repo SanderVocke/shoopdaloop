@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy)]
 enum AudioUpdateKind {
+    BeginWorking,
     Range,
     PreRecordRange,
     ClearPreRecord,
@@ -52,6 +53,12 @@ pub struct PreparedAudioSnapshot {
     length: usize,
 }
 
+impl PreparedAudioSnapshot {
+    pub fn revision(self) -> ContentRevision {
+        self.revision
+    }
+}
+
 struct PreparedAudioManifest {
     token: PreparedAudioSnapshot,
     chunks: Arc<[Arc<[f32]>]>,
@@ -72,6 +79,7 @@ pub struct AudioProcessSnapshotWriter {
     latest_revision: ContentRevision,
     latest_length: usize,
     block_size: usize,
+    retirement: ProcessSender<Vec<AudioUpdateBlock>>,
 }
 
 impl fmt::Debug for AudioProcessSnapshotWriter {
@@ -91,8 +99,11 @@ pub struct AudioSnapshotPublisher {
     prepared_by_revision: HashMap<ContentRevision, PreparedAudioManifest>,
     manifest: ManifestPublisher<AudioContentSnapshot>,
     chunks: Vec<Arc<[f32]>>,
+    committed_chunks: Vec<Arc<[f32]>>,
     prerecord_chunks: Vec<Arc<[f32]>>,
     chunk_size: usize,
+    retirement: PublisherReceiver<Vec<AudioUpdateBlock>>,
+    retired: bool,
 }
 
 pub type AudioSnapshotReader = ManifestReader<AudioContentSnapshot>;
@@ -115,6 +126,7 @@ pub fn audio_snapshot_channel(
     let status = Arc::new(ContentStatus::new(epoch));
     let (updates_tx, updates_rx) = bounded_transport(transport_blocks, Arc::clone(&status));
     let (returned_tx, returned_rx) = bounded_transport(transport_blocks, Arc::clone(&status));
+    let (retirement_tx, retirement_rx) = bounded_transport(1, Arc::clone(&status));
     let (prepared_tx, prepared_rx) = mpsc::channel();
     let initial = AudioContentSnapshot::new(
         ContentRevision(0),
@@ -135,6 +147,7 @@ pub fn audio_snapshot_channel(
             latest_revision: ContentRevision(0),
             latest_length: 0,
             block_size: chunk_size,
+            retirement: retirement_tx,
         },
         AudioSnapshotControl {
             status,
@@ -148,11 +161,25 @@ pub fn audio_snapshot_channel(
             prepared_by_revision: HashMap::new(),
             manifest,
             chunks: Vec::new(),
+            committed_chunks: Vec::new(),
             prerecord_chunks: Vec::new(),
             chunk_size,
+            retirement: retirement_rx,
+            retired: false,
         },
         reader,
     )
+}
+
+impl Drop for AudioProcessSnapshotWriter {
+    fn drop(&mut self) {
+        let resources = std::mem::take(&mut self.free);
+        if let Err(resources) = self.retirement.try_send(resources) {
+            // The single producer retires only once, so this is unreachable unless the
+            // publisher has already gone away. Leaking is preferable to realtime destruction.
+            std::mem::forget(resources);
+        }
+    }
 }
 
 impl AudioProcessSnapshotWriter {
@@ -164,6 +191,23 @@ impl AudioProcessSnapshotWriter {
         while let Some(block) = self.returned.try_recv() {
             self.free.push(block);
         }
+    }
+
+    pub fn begin_working_generation(&mut self) -> bool {
+        self.reclaim();
+        if self.free.is_empty() || self.updates.slots() == 0 {
+            self.status.mark_saturated();
+            return false;
+        }
+        let mut block = self.free.pop().expect("capacity checked");
+        block.used = 0;
+        block.kind = AudioUpdateKind::BeginWorking;
+        if let Err(block) = self.updates.try_send(block) {
+            self.free.push(block);
+            self.status.mark_saturated();
+            return false;
+        }
+        true
     }
 
     pub fn publish_range(
@@ -332,7 +376,11 @@ impl AudioSnapshotControl {
         let revision = self.status.next_revision();
         let chunks: Vec<Arc<[f32]>> = samples
             .chunks(self.chunk_size)
-            .map(|chunk| Arc::from(chunk))
+            .map(|chunk| {
+                let mut padded = vec![0.0; self.chunk_size];
+                padded[..chunk.len()].copy_from_slice(chunk);
+                Arc::from(padded.into_boxed_slice())
+            })
             .collect();
         let token = PreparedAudioSnapshot {
             revision,
@@ -358,7 +406,12 @@ impl AudioSnapshotControl {
 }
 
 impl AudioSnapshotPublisher {
+    pub fn is_retired(&self) -> bool {
+        self.retired
+    }
+
     pub fn pump(&mut self) -> usize {
+        let retired_resources = self.retirement.try_recv();
         while let Ok(prepared) = self.prepared.try_recv() {
             self.prepared_by_revision
                 .insert(prepared.token.revision, prepared);
@@ -370,6 +423,9 @@ impl AudioSnapshotPublisher {
             let revision = block.revision;
             let length = block.total_length;
             match block.kind {
+                AudioUpdateKind::BeginWorking => {
+                    self.chunks = self.committed_chunks.clone();
+                }
                 AudioUpdateKind::Range => {
                     Self::apply_to(&mut self.chunks, self.chunk_size, &block);
                     if final_block && publish {
@@ -378,6 +434,7 @@ impl AudioSnapshotPublisher {
                             AudioSnapshotMetadata { length },
                             Arc::from(self.chunks.clone()),
                         ));
+                        self.committed_chunks = self.chunks.clone();
                     }
                 }
                 AudioUpdateKind::PreRecordRange => {
@@ -392,6 +449,7 @@ impl AudioSnapshotPublisher {
                         AudioSnapshotMetadata { length },
                         Arc::from(self.chunks.clone()),
                     ));
+                    self.committed_chunks = self.chunks.clone();
                 }
                 AudioUpdateKind::Silence => {
                     self.chunks = (0..length.div_ceil(self.chunk_size))
@@ -402,6 +460,7 @@ impl AudioSnapshotPublisher {
                         AudioSnapshotMetadata { length },
                         Arc::from(self.chunks.clone()),
                     ));
+                    self.committed_chunks = self.chunks.clone();
                 }
                 AudioUpdateKind::Install(prepared_revision) => {
                     if let Some(prepared) = self.prepared_by_revision.remove(&prepared_revision) {
@@ -413,6 +472,7 @@ impl AudioSnapshotPublisher {
                             },
                             prepared.chunks,
                         ));
+                        self.committed_chunks = self.chunks.clone();
                     }
                 }
             }
@@ -420,6 +480,10 @@ impl AudioSnapshotPublisher {
                 .try_send(block)
                 .expect("return queue capacity matches the transport pool");
             processed += 1;
+        }
+        if let Some(resources) = retired_resources {
+            drop(resources);
+            self.retired = true;
         }
         processed
     }
@@ -541,6 +605,55 @@ mod tests {
         assert_eq!(
             reader.latest().snapshot.contiguous(),
             vec![1.0, 9.0, 8.0, 4.0]
+        );
+    }
+
+    #[test]
+    fn cancelled_private_work_is_reset_from_the_committed_generation() {
+        let (mut writer, _control, mut publisher, reader) =
+            audio_snapshot_channel(Arc::new(SessionContentEpoch::default()), 4, 6);
+        assert!(writer.begin_mutation(ContentMutation::Loading));
+        writer.publish_range(0, &[1.0, 2.0, 3.0, 4.0], 4, true);
+        writer.finish_mutation(false);
+        publisher.pump();
+
+        assert!(writer.begin_mutation(ContentMutation::Replacing));
+        assert!(writer.begin_working_generation());
+        writer.publish_range(0, &[9.0], 4, false);
+        publisher.pump();
+        writer.cancel_mutation();
+
+        assert!(writer.begin_mutation(ContentMutation::Recording));
+        assert!(writer.begin_working_generation());
+        writer.publish_range(3, &[5.0], 4, true);
+        writer.finish_mutation(false);
+        publisher.pump();
+        assert_eq!(
+            reader.latest().snapshot.contiguous(),
+            vec![1.0, 2.0, 3.0, 5.0]
+        );
+    }
+
+    #[test]
+    fn prepared_generation_installs_without_process_side_content_copying() {
+        let (mut writer, control, mut publisher, reader) =
+            audio_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 2);
+        let prepared = control
+            .prepare(&[1.0, 2.0, 3.0], ContentMutation::Loading)
+            .expect("prepare generation");
+        assert!(matches!(
+            reader.try_current(),
+            Err(CurrentDataError::MutationActive(ContentMutation::Loading))
+        ));
+        assert!(writer.install_prepared(prepared));
+        assert!(matches!(
+            reader.try_current(),
+            Err(CurrentDataError::PublicationPending { .. })
+        ));
+        publisher.pump();
+        assert_eq!(
+            reader.try_current().expect("installed").contiguous(),
+            vec![1.0, 2.0, 3.0]
         );
     }
 

@@ -1220,6 +1220,13 @@ struct SharedSession {
     composite_registry: Mutex<CompositeRegistry>,
     primitive_loop_controls: Mutex<Vec<PrimitiveLoopControl>>,
     primitive_sync_sources: Mutex<Vec<Option<usize>>>,
+    audio_snapshot_controls: Mutex<
+        Vec<(
+            Weak<ObjectControl<LoopId, engine::LoopStateMirror>>,
+            Weak<ObjectControl<AudioChannelId, engine::AudioChannelStateMirror>>,
+            engine::content_snapshot::AudioSnapshotControl,
+        )>,
+    >,
     external: Mutex<Option<Arc<Mutex<engine::DummyExternalConnections>>>>,
     jack: Mutex<Option<Arc<Mutex<JackBackend>>>>,
     cpal: Mutex<Option<Arc<Mutex<CpalBackend>>>>,
@@ -1787,6 +1794,7 @@ impl BackendSession {
             composite_registry: Mutex::new(CompositeRegistry::default()),
             primitive_loop_controls: Mutex::new(Vec::new()),
             primitive_sync_sources: Mutex::new(Vec::new()),
+            audio_snapshot_controls: Mutex::new(Vec::new()),
             external: Mutex::new(None),
             jack: Mutex::new(None),
             cpal: Mutex::new(None),
@@ -2217,12 +2225,83 @@ impl BackendSession {
                 data: engine::PreparedAudioChannelData::new(channel.chunk_size, channel.capacity),
             })
             .collect();
-        let (result, returned) = self.shared.query_graph_scheduler_response(move |session| {
-            let result = session.adopt_audio_ringbuffers_prepared(&requests, &mut prepared);
+        let prepare_requests = requests.clone();
+        let (result, mut prepared) =
+            self.shared.query_graph_scheduler_response(move |session| {
+                let result =
+                    session.prepare_audio_ringbuffers_prepared(&prepare_requests, &mut prepared);
+                (result, prepared)
+            })?;
+        result?;
+
+        let registered = self
+            .shared
+            .audio_snapshot_controls
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        let controls: Vec<_> = shapes
+            .iter()
+            .map(|shape| {
+                registered
+                    .iter()
+                    .find_map(|(parent, channel, snapshots)| {
+                        let parent = parent.upgrade()?;
+                        let channel = channel.upgrade()?;
+                        (parent.ready_id().map(ObjectIdentity::index) == Some(shape.loop_idx)
+                            && channel.auxiliary_index() == Some(shape.channel_idx))
+                        .then(|| snapshots.clone())
+                    })
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "audio snapshot control is missing for loop {} channel {}",
+                            shape.loop_idx,
+                            shape.channel_idx
+                        )
+                    })
+            })
+            .collect::<Result<_>>()?;
+        let mut snapshots = Vec::with_capacity(prepared.len());
+        for (slot, control) in prepared.iter().zip(&controls) {
+            let samples = slot.data.contiguous_copy();
+            let Some(snapshot) = control.prepare(
+                &samples,
+                engine::content_snapshot::ContentMutation::RingbufferAdoption,
+            ) else {
+                for control in controls.iter().take(snapshots.len()) {
+                    control.cancel();
+                }
+                return Err(anyhow!("audio snapshot channel is busy"));
+            };
+            snapshots.push(snapshot);
+        }
+        let install = self.shared.query_graph_scheduler_response(move |session| {
+            let result = session.commit_audio_ringbuffers_prepared_with_snapshots(
+                &requests,
+                &mut prepared,
+                &snapshots,
+            );
             (result, prepared)
-        })?;
-        drop(returned);
-        Ok(result?)
+        });
+        match install {
+            Ok((Ok(()), returned)) => {
+                drop(returned);
+                Ok(())
+            }
+            Ok((Err(error), returned)) => {
+                drop(returned);
+                for control in controls {
+                    control.cancel();
+                }
+                Err(error.into())
+            }
+            Err(error) => {
+                for control in controls {
+                    control.cancel();
+                }
+                Err(error)
+            }
+        }
     }
 
     pub fn remove_composite_loop(
@@ -3414,6 +3493,15 @@ impl Loop {
             }
         })?;
         control.set_creation_sequence(sequence);
+        self.shared
+            .audio_snapshot_controls
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push((
+                Arc::downgrade(&self.control),
+                Arc::downgrade(&control),
+                snapshot_control.clone(),
+            ));
         Ok(AudioChannel {
             shared: self.shared.clone(),
             parent: Arc::clone(&self.control),
@@ -3663,6 +3751,14 @@ impl AudioChannel {
         self.control.session_id
     }
 
+    pub fn capture_content_epoch(&self) -> Option<u64> {
+        self.shared.snapshots.capture_epoch()
+    }
+
+    pub fn validate_content_epoch(&self, captured: u64) -> bool {
+        self.shared.snapshots.validate_epoch(captured)
+    }
+
     pub fn lifecycle(&self) -> ObjectLifecycle {
         observed_lifecycle(&self.shared, &self.control)
     }
@@ -3757,13 +3853,37 @@ impl AudioChannel {
             engine::content_snapshot::SnapshotCurrentness::Stale(
                 engine::content_snapshot::StaleReason::MutationActive(
                     engine::content_snapshot::ContentMutation::Loading
-                ) | engine::content_snapshot::StaleReason::PublicationPending { .. }
+                )
             )
         ) {
-            self.desired_data.load_full().as_ref().clone()
-        } else {
-            latest.snapshot.contiguous()
+            return self.desired_data.load_full().as_ref().clone();
         }
+        if matches!(
+            latest.currentness,
+            engine::content_snapshot::SnapshotCurrentness::Stale(
+                engine::content_snapshot::StaleReason::MutationActive(_)
+            )
+        ) {
+            // Legacy synchronous callers historically observed process writes immediately.
+            // Give the off-thread publisher one poll while preserving stale-read semantics.
+            std::thread::sleep(Duration::from_millis(2));
+            return self.snapshots.latest().snapshot.contiguous();
+        }
+        if matches!(
+            latest.currentness,
+            engine::content_snapshot::SnapshotCurrentness::Stale(
+                engine::content_snapshot::StaleReason::PublicationPending { .. }
+            )
+        ) {
+            let deadline = Instant::now() + Duration::from_millis(100);
+            while Instant::now() < deadline {
+                if let Ok(snapshot) = self.snapshots.try_current() {
+                    return snapshot.contiguous();
+                }
+                std::thread::sleep(Duration::from_micros(100));
+            }
+        }
+        latest.snapshot.contiguous()
     }
 
     pub fn get_latest_data_snapshot(
@@ -3856,11 +3976,14 @@ impl AudioChannel {
     }
 
     pub fn clear(&self, length: u32) -> std::result::Result<CommandSequence, SendError> {
-        let mutation_started = self
+        if !self
             .snapshots
-            .begin_mutation(engine::content_snapshot::ContentMutation::Clearing);
+            .begin_mutation(engine::content_snapshot::ContentMutation::Clearing)
+        {
+            return Err(SendError::Full);
+        }
         let result = self.with_mut(move |channel| channel.clear(length as usize));
-        if result.is_err() && mutation_started {
+        if result.is_err() {
             self.snapshots.cancel_mutation();
         }
         result
@@ -3880,6 +4003,14 @@ pub type MidiChannelState = engine::MidiChannelState;
 impl MidiChannel {
     pub fn session_id(&self) -> u64 {
         self.control.session_id
+    }
+
+    pub fn capture_content_epoch(&self) -> Option<u64> {
+        self.shared.snapshots.capture_epoch()
+    }
+
+    pub fn validate_content_epoch(&self, captured: u64) -> bool {
+        self.shared.snapshots.validate_epoch(captured)
     }
 
     pub fn lifecycle(&self) -> ObjectLifecycle {
@@ -3911,13 +4042,37 @@ impl MidiChannel {
             engine::content_snapshot::SnapshotCurrentness::Stale(
                 engine::content_snapshot::StaleReason::MutationActive(
                     engine::content_snapshot::ContentMutation::Loading
-                ) | engine::content_snapshot::StaleReason::PublicationPending { .. }
+                )
             )
         ) {
-            self.desired_data.load_full().as_ref().clone()
-        } else {
-            latest.snapshot.contiguous()
+            return self.desired_data.load_full().as_ref().clone();
         }
+        if matches!(
+            latest.currentness,
+            engine::content_snapshot::SnapshotCurrentness::Stale(
+                engine::content_snapshot::StaleReason::MutationActive(_)
+            )
+        ) {
+            // Legacy synchronous callers historically observed process writes immediately.
+            // Give the off-thread publisher one poll while preserving stale-read semantics.
+            std::thread::sleep(Duration::from_millis(2));
+            return self.snapshots.latest().snapshot.contiguous();
+        }
+        if matches!(
+            latest.currentness,
+            engine::content_snapshot::SnapshotCurrentness::Stale(
+                engine::content_snapshot::StaleReason::PublicationPending { .. }
+            )
+        ) {
+            let deadline = Instant::now() + Duration::from_millis(100);
+            while Instant::now() < deadline {
+                if let Ok(snapshot) = self.snapshots.try_current() {
+                    return snapshot.contiguous();
+                }
+                std::thread::sleep(Duration::from_micros(100));
+            }
+        }
+        latest.snapshot.contiguous()
     }
 
     pub fn get_latest_data_snapshot(
@@ -4108,11 +4263,14 @@ impl MidiChannel {
     }
 
     pub fn clear(&self) -> std::result::Result<CommandSequence, SendError> {
-        let mutation_started = self
+        if !self
             .snapshots
-            .begin_mutation(engine::content_snapshot::ContentMutation::Clearing);
+            .begin_mutation(engine::content_snapshot::ContentMutation::Clearing)
+        {
+            return Err(SendError::Full);
+        }
         let result = self.with_mut(move |channel| channel.clear());
-        if result.is_err() && mutation_started {
+        if result.is_err() {
             self.snapshots.cancel_mutation();
         }
         result
@@ -5646,6 +5804,35 @@ mod tests {
             audio.get_latest_data_snapshot().snapshot.contiguous(),
             vec![1.0, 2.0]
         );
+        assert!(matches!(
+            midi.try_get_current_data_snapshot(),
+            Err(engine::content_snapshot::CurrentDataError::MutationActive(
+                engine::content_snapshot::ContentMutation::Recording
+            ))
+        ));
+        assert_eq!(
+            midi.get_latest_data_snapshot().snapshot.contiguous().len(),
+            1
+        );
+
+        // Mutations that would overlap recording are rejected without touching content.
+        assert!(matches!(audio.load_data(&[9.0]), Err(SendError::Full)));
+        assert!(matches!(audio.clear(0), Err(SendError::Full)));
+        assert!(matches!(midi.load_all_midi_data(&[]), Err(SendError::Full)));
+        assert!(matches!(midi.clear(), Err(SendError::Full)));
+
+        loop_
+            .transition(LoopMode::Stopped, -1, -1)
+            .expect("queue stop");
+        engine.pump();
+        engine.process(1);
+        let start = Instant::now();
+        while audio.try_get_current_data_snapshot().is_err()
+            || midi.try_get_current_data_snapshot().is_err()
+        {
+            assert!(start.elapsed() < Duration::from_secs(1));
+            thread::yield_now();
+        }
         sess.shared.return_engine(engine);
     }
 

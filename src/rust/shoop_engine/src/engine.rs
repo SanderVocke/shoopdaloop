@@ -457,6 +457,7 @@ impl EngineHandle {
         self.alive.load(Ordering::Acquire)
     }
 
+    #[cfg(feature = "app_backend")]
     pub(crate) fn connected_flag(&self) -> Arc<AtomicBool> {
         Arc::clone(&self.alive)
     }

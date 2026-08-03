@@ -304,6 +304,8 @@ pub use ffi::LoopChannelGui;
 use ffi::*;
 
 use crate::any_backend_channel::{AnyBackendChannel, AnyBackendChannelState};
+use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
 
 pub struct LoopChannelGuiRust {
     // Properties
@@ -320,6 +322,7 @@ pub struct LoopChannelGuiRust {
     pub ports_to_connect: QList_QVariant,
     pub ports_connected: QList_QVariant,
     pub instance_identifier: QString,
+    pub last_delivered_data_revision: Arc<AtomicU64>,
 }
 
 impl Default for LoopChannelGuiRust {
@@ -336,6 +339,7 @@ impl Default for LoopChannelGuiRust {
             ports_connected: QList_QVariant::default(),
             instance_identifier: QString::from("unknown"),
             recording_started_at: QVariant::default(),
+            last_delivered_data_revision: Arc::new(AtomicU64::new(0)),
         }
     }
 }

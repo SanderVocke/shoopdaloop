@@ -39,6 +39,7 @@ impl WireMidiEvent {
 
 #[derive(Debug, Clone, Copy)]
 enum MidiUpdateKind {
+    BeginWorking,
     Append,
     Clear,
     TruncateAfter(i32),
@@ -77,6 +78,12 @@ pub struct PreparedMidiSnapshot {
     length: u32,
 }
 
+impl PreparedMidiSnapshot {
+    pub fn revision(self) -> ContentRevision {
+        self.revision
+    }
+}
+
 struct PreparedMidiManifest {
     token: PreparedMidiSnapshot,
     chunks: Arc<[Arc<[MidiEvent]>]>,
@@ -97,6 +104,7 @@ pub struct MidiProcessSnapshotWriter {
     latest_revision: ContentRevision,
     latest_length: u32,
     block_events: usize,
+    retirement: ProcessSender<Vec<MidiUpdateBlock>>,
 }
 
 impl fmt::Debug for MidiProcessSnapshotWriter {
@@ -116,7 +124,10 @@ pub struct MidiSnapshotPublisher {
     prepared_by_revision: HashMap<ContentRevision, PreparedMidiManifest>,
     manifest: ManifestPublisher<MidiContentSnapshot>,
     events: Vec<MidiEvent>,
+    committed_events: Vec<MidiEvent>,
     snapshot_chunk_events: usize,
+    retirement: PublisherReceiver<Vec<MidiUpdateBlock>>,
+    retired: bool,
 }
 
 pub type MidiSnapshotReader = ManifestReader<MidiContentSnapshot>;
@@ -139,6 +150,7 @@ pub fn midi_snapshot_channel(
     let status = Arc::new(ContentStatus::new(epoch));
     let (updates_tx, updates_rx) = bounded_transport(transport_blocks, Arc::clone(&status));
     let (returned_tx, returned_rx) = bounded_transport(transport_blocks, Arc::clone(&status));
+    let (retirement_tx, retirement_rx) = bounded_transport(1, Arc::clone(&status));
     let (prepared_tx, prepared_rx) = mpsc::channel();
     let initial = MidiContentSnapshot::new(
         ContentRevision(0),
@@ -159,6 +171,7 @@ pub fn midi_snapshot_channel(
             latest_revision: ContentRevision(0),
             latest_length: 0,
             block_events,
+            retirement: retirement_tx,
         },
         MidiSnapshotControl {
             status,
@@ -172,10 +185,23 @@ pub fn midi_snapshot_channel(
             prepared_by_revision: HashMap::new(),
             manifest,
             events: Vec::new(),
+            committed_events: Vec::new(),
             snapshot_chunk_events: block_events,
+            retirement: retirement_rx,
+            retired: false,
         },
         reader,
     )
+}
+
+impl Drop for MidiProcessSnapshotWriter {
+    fn drop(&mut self) {
+        let resources = std::mem::take(&mut self.free);
+        if let Err(resources) = self.retirement.try_send(resources) {
+            // The single producer retires only once. Never destroy pooled payloads here.
+            std::mem::forget(resources);
+        }
+    }
 }
 
 impl MidiProcessSnapshotWriter {
@@ -187,6 +213,23 @@ impl MidiProcessSnapshotWriter {
         while let Some(block) = self.returned.try_recv() {
             self.free.push(block);
         }
+    }
+
+    pub fn begin_working_generation(&mut self) -> bool {
+        self.reclaim();
+        if self.free.is_empty() || self.updates.slots() == 0 {
+            self.status.mark_saturated();
+            return false;
+        }
+        let mut block = self.free.pop().expect("capacity checked");
+        block.used = 0;
+        block.kind = MidiUpdateKind::BeginWorking;
+        if let Err(block) = self.updates.try_send(block) {
+            self.free.push(block);
+            self.status.mark_saturated();
+            return false;
+        }
+        true
     }
 
     fn reserve_blocks(&mut self, count: usize) -> bool {
@@ -204,6 +247,24 @@ impl MidiProcessSnapshotWriter {
         total_length: u32,
         publish: bool,
     ) -> Option<ContentRevision> {
+        self.append_storage_events_with_time(events, total_length, publish, false)
+    }
+
+    pub fn append_state_events(
+        &mut self,
+        events: &[MidiStorageElem],
+        total_length: u32,
+    ) -> Option<ContentRevision> {
+        self.append_storage_events_with_time(events, total_length, false, true)
+    }
+
+    fn append_storage_events_with_time(
+        &mut self,
+        events: &[MidiStorageElem],
+        total_length: u32,
+        publish: bool,
+        state_events: bool,
+    ) -> Option<ContentRevision> {
         let count = events.len().max(1).div_ceil(self.block_events);
         if !self.reserve_blocks(count) {
             return None;
@@ -215,7 +276,10 @@ impl MidiProcessSnapshotWriter {
             for (index, source) in events.chunks(self.block_events).enumerate() {
                 let mut block = self.free.pop().expect("capacity checked");
                 for (destination, event) in block.events.iter_mut().zip(source) {
-                    destination.set(event.time as i32, event.data());
+                    destination.set(
+                        if state_events { -1 } else { event.time as i32 },
+                        event.data(),
+                    );
                 }
                 block.used = source.len();
                 block.kind = MidiUpdateKind::Append;
@@ -390,7 +454,12 @@ impl MidiSnapshotControl {
 }
 
 impl MidiSnapshotPublisher {
+    pub fn is_retired(&self) -> bool {
+        self.retired
+    }
+
     pub fn pump(&mut self) -> usize {
+        let retired_resources = self.retirement.try_recv();
         while let Ok(prepared) = self.prepared.try_recv() {
             self.prepared_by_revision
                 .insert(prepared.token.revision, prepared);
@@ -399,6 +468,9 @@ impl MidiSnapshotPublisher {
         while let Some(block) = self.updates.try_recv() {
             let mut installed = false;
             match block.kind {
+                MidiUpdateKind::BeginWorking => {
+                    self.events.clone_from(&self.committed_events);
+                }
                 MidiUpdateKind::Append => {
                     self.events
                         .extend(block.events[..block.used].iter().map(WireMidiEvent::event));
@@ -416,6 +488,7 @@ impl MidiSnapshotPublisher {
                             .iter()
                             .flat_map(|chunk| chunk.iter().cloned())
                             .collect();
+                        self.committed_events.clone_from(&self.events);
                         self.manifest.publish(MidiContentSnapshot::new(
                             prepared.token.revision,
                             MidiSnapshotMetadata {
@@ -445,8 +518,13 @@ impl MidiSnapshotPublisher {
                     MidiSnapshotMetadata { length },
                     Arc::from(chunks),
                 ));
+                self.committed_events.clone_from(&self.events);
             }
             processed += 1;
+        }
+        if let Some(resources) = retired_resources {
+            drop(resources);
+            self.retired = true;
         }
         processed
     }
@@ -514,6 +592,59 @@ mod tests {
         let snapshot = reader.try_current().expect("current snapshot");
         assert_eq!(snapshot.metadata.length, 20);
         assert_eq!(snapshot.events().next().map(|event| event.time), Some(-1));
+    }
+
+    #[test]
+    fn prepared_generation_installs_with_explicit_duration() {
+        let (mut writer, control, mut publisher, reader) =
+            midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 2);
+        let events = [MidiEvent {
+            time: 3,
+            data: vec![0x90, 60, 100],
+        }];
+        let prepared = control
+            .prepare(&events, 100, ContentMutation::Loading)
+            .expect("prepare generation");
+        assert!(writer.install_prepared(prepared));
+        assert!(matches!(
+            reader.try_current(),
+            Err(CurrentDataError::PublicationPending { .. })
+        ));
+        publisher.pump();
+        let snapshot = reader.try_current().expect("installed");
+        assert_eq!(snapshot.metadata.length, 100);
+        assert_eq!(snapshot.events().next().map(|event| event.time), Some(3));
+    }
+
+    #[test]
+    fn cancelled_midi_work_is_reset_before_the_next_generation() {
+        let (mut writer, _control, mut publisher, reader) =
+            midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 6);
+        assert!(writer.begin_mutation(ContentMutation::Loading));
+        writer.append_storage_events(&[event(1, &[0x90, 60, 100])], 8, true);
+        writer.finish_mutation(false);
+        publisher.pump();
+
+        assert!(writer.begin_mutation(ContentMutation::Replacing));
+        assert!(writer.begin_working_generation());
+        writer.append_storage_events(&[event(2, &[0x90, 61, 100])], 8, false);
+        publisher.pump();
+        writer.cancel_mutation();
+
+        assert!(writer.begin_mutation(ContentMutation::Recording));
+        assert!(writer.begin_working_generation());
+        writer.append_storage_events(&[event(3, &[0x90, 62, 100])], 8, true);
+        writer.finish_mutation(false);
+        publisher.pump();
+        assert_eq!(
+            reader
+                .latest()
+                .snapshot
+                .events()
+                .map(|event| event.time)
+                .collect::<Vec<_>>(),
+            vec![1, 3]
+        );
     }
 
     #[test]

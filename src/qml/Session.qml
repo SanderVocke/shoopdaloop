@@ -200,7 +200,13 @@ Item {
         // activated lets queued backend notifications change the descriptor between the
         // user's save action and serialization.
         var observer = create_task_observer()
-        var descriptor = actual_session_descriptor(true, tempdir, observer)
+        var descriptor
+        ShoopRustFileIO.begin_session_content_capture()
+        try {
+            descriptor = actual_session_descriptor(true, tempdir, observer)
+        } finally {
+            ShoopRustFileIO.end_session_content_capture()
+        }
         AppRegistries.state_registry.set_active_io_task_fn(() => {
             AppRegistries.state_registry.set_force_io_active(true)
 

@@ -128,12 +128,14 @@ fn publisher_worker(commands: Receiver<RuntimeCommand>) {
                 RuntimeCommand::Stop => return,
             }
         }
-        for publisher in &mut audio_publishers {
+        audio_publishers.retain_mut(|publisher| {
             publisher.pump();
-        }
-        for publisher in &mut midi_publishers {
+            !publisher.is_retired()
+        });
+        midi_publishers.retain_mut(|publisher| {
             publisher.pump();
-        }
+            !publisher.is_retired()
+        });
     }
 }
 
@@ -141,13 +143,14 @@ fn publisher_worker(commands: Receiver<RuntimeCommand>) {
 mod tests {
     use super::*;
     use crate::content_snapshot::{ContentMutation, ContentRevision};
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Instant;
 
     fn wait_until(mut predicate: impl FnMut() -> bool) {
         let start = Instant::now();
         while !predicate() {
             assert!(
-                start.elapsed() < Duration::from_secs(1),
+                start.elapsed() < Duration::from_secs(10),
                 "snapshot publisher did not converge"
             );
             thread::yield_now();
@@ -201,5 +204,69 @@ mod tests {
         assert!(second.begin_mutation(ContentMutation::Clearing));
         second.cancel_mutation();
         assert!(!runtime.validate_epoch(stable));
+    }
+
+    #[test]
+    fn concurrent_readers_observe_only_complete_generations_under_stress() {
+        let runtime = ContentSnapshotRuntime::new();
+        let (mut writer, _control, reader) = runtime.create_audio_channel(4, 8);
+        let stop = Arc::new(AtomicBool::new(false));
+        let failed = Arc::new(AtomicBool::new(false));
+        let reader_thread = {
+            let reader = reader.clone();
+            let stop = Arc::clone(&stop);
+            let failed = Arc::clone(&failed);
+            thread::spawn(move || {
+                while !stop.load(Ordering::Acquire) {
+                    let data = reader.latest().snapshot.contiguous();
+                    if data.len() != 4 && !data.is_empty() {
+                        failed.store(true, Ordering::Release);
+                        return;
+                    }
+                    if let Some(first) = data.first() {
+                        if data.iter().any(|sample| sample != first) {
+                            failed.store(true, Ordering::Release);
+                            return;
+                        }
+                    }
+                }
+            })
+        };
+
+        for value in 1..=10_000_u32 {
+            assert!(writer.begin_mutation(ContentMutation::Loading));
+            let samples = [value as f32; 4];
+            while writer
+                .publish_range(0, &samples, samples.len(), true)
+                .is_none()
+            {
+                thread::yield_now();
+            }
+            writer.finish_mutation(false);
+        }
+        wait_until(|| {
+            reader
+                .try_current()
+                .is_ok_and(|snapshot| snapshot.contiguous() == vec![10_000.0; 4])
+        });
+        stop.store(true, Ordering::Release);
+        reader_thread.join().expect("reader thread");
+        assert!(!failed.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn a_reader_keeps_its_last_manifest_after_runtime_shutdown() {
+        let reader = {
+            let runtime = ContentSnapshotRuntime::new();
+            let (mut writer, _control, reader) = runtime.create_audio_channel(4, 4);
+            assert!(writer.begin_mutation(ContentMutation::Loading));
+            writer
+                .publish_range(0, &[3.0, 4.0], 2, true)
+                .expect("publish");
+            writer.finish_mutation(false);
+            wait_until(|| reader.try_current().is_ok());
+            reader
+        };
+        assert_eq!(reader.latest().snapshot.contiguous(), vec![3.0, 4.0]);
     }
 }

@@ -93,14 +93,12 @@ impl ContentStatus {
     pub fn mark_published(&self, revision: ContentRevision) {
         self.published_revision
             .fetch_max(revision.0, Ordering::Release);
+        // A newer complete manifest proves the bounded transport and publisher recovered.
+        self.saturated.store(false, Ordering::Release);
     }
 
     pub fn mark_saturated(&self) {
         self.saturated.store(true, Ordering::Release);
-    }
-
-    pub fn clear_saturated(&self) {
-        self.saturated.store(false, Ordering::Release);
     }
 
     pub fn settled_revision(&self) -> ContentRevision {
@@ -167,6 +165,26 @@ mod tests {
     }
 
     #[test]
+    fn every_unsettled_mutation_has_a_typed_exact_read_error() {
+        for mutation in [
+            ContentMutation::Recording,
+            ContentMutation::PreRecording,
+            ContentMutation::Replacing,
+            ContentMutation::Loading,
+            ContentMutation::Clearing,
+            ContentMutation::RingbufferAdoption,
+        ] {
+            let status = ContentStatus::new(Arc::new(SessionContentEpoch::default()));
+            assert!(status.begin_mutation(mutation));
+            assert_eq!(
+                status.require_current(),
+                Err(CurrentDataError::MutationActive(mutation))
+            );
+            status.cancel_mutation();
+        }
+    }
+
+    #[test]
     fn saturation_retains_revisions_but_blocks_exact_reads_until_recovered() {
         let status = ContentStatus::new(Arc::new(SessionContentEpoch::default()));
         let revision = status.next_revision();
@@ -179,7 +197,7 @@ mod tests {
             Err(CurrentDataError::PublicationSaturated)
         );
         assert_eq!(status.published_revision(), revision);
-        status.clear_saturated();
+        status.mark_published(revision);
         assert_eq!(status.require_current(), Ok(revision));
     }
 

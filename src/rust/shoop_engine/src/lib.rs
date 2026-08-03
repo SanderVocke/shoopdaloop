@@ -118,7 +118,9 @@ pub use graph_build::{ChannelDesc, GraphDesc, LoopDesc, PortDesc};
 pub use internal_audio_port::InternalAudioPort;
 pub use loop_mode::LoopMode;
 pub use midi_buffering_input_port::MidiBufferingInputPort;
-pub use midi_channel::{MidiChannel, MidiChannelError, PreparedMidiChannelData};
+#[cfg(feature = "app_backend")]
+pub use midi_channel::PreparedMidiChannelData;
+pub use midi_channel::{MidiChannel, MidiChannelError};
 pub use midi_event::MidiEvent;
 pub use midi_port::MidiPort;
 pub use midi_ringbuffer::MidiRingbuffer;

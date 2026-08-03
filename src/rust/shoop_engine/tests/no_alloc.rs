@@ -11,7 +11,7 @@
 use assert_no_alloc::*;
 use shoop_engine::channel_mode::ChannelMode;
 use shoop_engine::content_snapshot::{
-    audio_snapshot_channel, midi_snapshot_channel, SessionContentEpoch,
+    audio_snapshot_channel, midi_snapshot_channel, ContentSnapshotRuntime, SessionContentEpoch,
 };
 use shoop_engine::dummy_midi_port::DummyMidiPort;
 use shoop_engine::dummy_port::{DummyAudioPort, PortId};
@@ -50,11 +50,25 @@ fn snapshot_process_publication_is_allocation_free() {
     let (mut audio, _audio_control, _audio_publisher, _audio_reader) =
         audio_snapshot_channel(Arc::new(SessionContentEpoch::default()), 8, 4);
     let (mut midi, _midi_control, _midi_publisher, _midi_reader) =
-        midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 4, 4);
-    let midi_events = [
-        MidiStorageElem::new(1, &[0x90, 60, 100]).expect("valid MIDI"),
-        MidiStorageElem::new(3, &[0x80, 60, 0]).expect("valid MIDI"),
-    ];
+        midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 4, 20);
+    let mut midi_events = [MidiStorageElem::default(); 32];
+    for (index, event) in midi_events.iter_mut().enumerate() {
+        *event = MidiStorageElem::new(index as u32, &[0x90, index as u8, 100]).expect("valid MIDI");
+    }
+    let (mut audio_install, audio_control, _publisher, _reader) =
+        audio_snapshot_channel(Arc::new(SessionContentEpoch::default()), 8, 2);
+    let audio_prepared = audio_control
+        .prepare(&[1.0, 2.0], ContentMutation::Loading)
+        .expect("prepare audio");
+    let (mut midi_install, midi_control, _publisher, _reader) =
+        midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 4, 2);
+    let midi_prepared = midi_control
+        .prepare(
+            &[shoop_engine::MidiEvent::new(1, vec![0x90, 60, 100])],
+            4,
+            ContentMutation::Loading,
+        )
+        .expect("prepare MIDI");
 
     assert_no_alloc(|| {
         assert!(audio.begin_mutation(ContentMutation::Recording));
@@ -64,8 +78,24 @@ fn snapshot_process_publication_is_allocation_free() {
         audio.finish_mutation(false);
 
         assert!(midi.begin_mutation(ContentMutation::Recording));
-        assert!(midi.append_storage_events(&midi_events, 4, true).is_some());
+        assert!(midi.append_state_events(&midi_events[..16], 32).is_some());
+        assert!(midi.append_storage_events(&midi_events, 32, true).is_some());
         midi.finish_mutation(false);
+
+        assert!(audio_install.install_prepared(audio_prepared));
+        assert!(midi_install.install_prepared(midi_prepared));
+    });
+}
+
+#[test]
+fn snapshot_process_endpoint_retirement_defers_pooled_destruction() {
+    let runtime = ContentSnapshotRuntime::new();
+    let (audio, _audio_control, _audio_reader) = runtime.create_audio_channel(8, 4);
+    let (midi, _midi_control, _midi_reader) = runtime.create_midi_channel(4, 4);
+
+    assert_no_alloc(|| {
+        drop(audio);
+        drop(midi);
     });
 }
 
