@@ -528,6 +528,7 @@ dependencies = [
  "lazy_static",
  "libc",
  "log",
+ "shoop_tracing",
  "tempfile",
  "thiserror 2.0.19",
  "toml",
@@ -2991,7 +2992,16 @@ dependencies = [
  "rtrb",
  "rubato",
  "serde_json",
+ "shoop_tracing",
  "thiserror 2.0.19",
+]
+
+[[package]]
+name = "shoop_tracing"
+version = "0.0.0"
+dependencies = [
+ "assert_no_alloc",
+ "tracy-client",
 ]
 
 [[package]]

@@ -210,6 +210,7 @@ src/rust/shoop_engine/src/session.rs,realtime_or_callback,planned_direct,Direct 
 src/rust/shoop_engine/src/state.rs,mixed_control_and_callback,planned_direct,Instrument non-realtime lifecycle plus gated callback/driver/staging boundary where this module owns meaningful work.
 src/rust/shoop_engine/src/state_mirror.rs,mixed_control_and_callback,planned_direct,Instrument non-realtime lifecycle plus gated callback/driver/staging boundary where this module owns meaningful work.
 src/rust/shoop_engine/src/wave_generator.rs,realtime_leaf,planned_indirect,Covered by a named engine.rt session/port/channel/loop/MIDI stage; no separate zone in this hot leaf data structure or algorithm.
+src/rust/shoop_tracing/src/lib.rs,mixed_tracing_support,planned_direct,Own the shared tracing/output/detail gates and narrow direct-Tracy realtime helper exception.
 src/rust/shoopdaloop/build.rs,build_only,excluded,"Build-time code, generated binding support, or proc-macro implementation; not part of the application runtime."
 src/rust/shoopdaloop/src/audio_driver_names.rs,non_realtime,planned_indirect,Covered by application bootstrap or standalone query caller; constants/export glue get no separate zone.
 src/rust/shoopdaloop/src/bin/print_shoopdaloop_out_dir.rs,non_realtime,planned_indirect,Covered by application bootstrap or standalone query caller; constants/export glue get no separate zone.

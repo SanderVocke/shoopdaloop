@@ -117,19 +117,19 @@ Commit this stage as the inventory/baseline milestone.
 
 Depends on Stage 0.
 
-- [ ] Add the minimal shared tracing support crate and move the enabled/output gate behind it while preserving current public behavior through `common`.
-- [ ] Add a separate `--tracing-engine-detail` gate and CLI option that requires `--tracing` or `--tracing-capture`.
-- [ ] Add realtime location/span helpers with a fast disabled path, narrow allocation-permitted scopes around direct Tracy operations, and a best-effort prewarm API called before driver activation.
-- [ ] Make capture quiescence disable subscriber spans, direct realtime zones, frame marks, and plots through the same output gate.
-- [ ] Add unit tests for gate combinations, disabled behavior, prewarming, capture disable/re-enable, and static-location reuse.
-- [ ] Add allocation-guard tests proving the disabled path does not allocate and that enabled tracing does not require exempting surrounding engine processing. Document that these tests cannot observe or certify Tracy's C++ allocator/locking behavior.
+- [x] Add the minimal shared tracing support crate and move the enabled/output gate behind it while preserving current public behavior through `common`.
+- [x] Add a separate `--tracing-engine-detail` gate and CLI option that requires `--tracing` or `--tracing-capture`.
+- [x] Add realtime location/span helpers with a fast disabled path, narrow allocation-permitted scopes around direct Tracy operations, and a best-effort prewarm API. (Stage 5 connects actual engine locations to driver activation.)
+- [x] Make capture quiescence disable subscriber spans, direct realtime zones, frame marks, and plots through the same output gate.
+- [x] Add unit tests for gate combinations, disabled behavior, prewarming/cached locations, capture disable/re-enable, and static-location reuse.
+- [x] Add allocation-guard tests proving the disabled path does not allocate and that enabled tracing does not require exempting surrounding engine processing. Document that these tests cannot observe or certify Tracy's C++ allocator/locking behavior.
 
 Verification:
 
-- [ ] Existing live tracing and per-QML capture still work.
-- [ ] Two rotated captures both parse and contain valid follow-on zones with no Tracy instrumentation warning.
-- [ ] Realtime helper tests pass with the allocation guard enabled: no exception when tracing is disabled, and only the direct Tracy wrapper is allocation-permitted when tracing is enabled.
-- [ ] Warning-free workspace build passes on the host platform; platform-specific code remains `cfg`-clean.
+- [x] Existing live tracing and per-QML capture still work.
+- [x] Two rotated captures both parse and contain valid follow-on zones with no Tracy instrumentation warning.
+- [x] Realtime helper tests pass with the allocation guard enabled: no exception when tracing is disabled, and only the direct Tracy wrapper is allocation-permitted when tracing is enabled.
+- [x] Warning-free workspace build passes on the host platform; platform-specific code remains `cfg`-clean.
 
 Commit this stage before adding broad instrumentation.
 

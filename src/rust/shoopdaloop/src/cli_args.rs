@@ -180,6 +180,10 @@ pub struct DeveloperOptions {
     #[clap(long = "tracing", help_heading = "Developer options")]
     pub tracing: bool,
 
+    /// Add detailed per-node engine zones. Requires tracing or tracing capture.
+    #[clap(long = "tracing-engine-detail", help_heading = "Developer options")]
+    pub tracing_engine_detail: bool,
+
     /// Capture Tracy profiling data with an external tracy-capture process.
     #[clap(long = "tracing-capture", help_heading = "Developer options")]
     pub tracing_capture: bool,

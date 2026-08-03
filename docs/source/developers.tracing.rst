@@ -1,9 +1,16 @@
 Tracy profiling and QML test captures
 --------------------------------------
 
-ShoopDaLoop can expose its frontend tracing data to Tracy 0.13.1. Start the
+ShoopDaLoop can expose its Rust tracing data to Tracy 0.13.1. Start the
 application with ``--tracing`` and connect the Tracy profiler for a live
-session.
+session. This enables coarse engine callback zones as well as non-realtime
+application spans. Add ``--tracing-engine-detail`` for more intrusive per-node
+engine zones; that option requires ``--tracing`` or ``--tracing-capture``.
+
+Tracing is a debugging mode, not a transparent realtime measurement mode.
+Direct Tracy calls in audio/MIDI callbacks may allocate or lock inside Tracy and
+may cause xruns or alter callback timing. With all tracing options omitted, the
+realtime helper returns after atomic gate checks without calling Tracy.
 
 To capture QML self-tests to files, install the Tracy 0.13.1
 ``tracy-capture`` executable and run, for example::
