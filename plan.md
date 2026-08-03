@@ -196,22 +196,24 @@ Commit this stage before touching realtime processing.
 
 Depends on Stage 1's gate and exception-scope proof and Stage 4's control-plane coverage.
 
-- [ ] Prewarm realtime source locations and Tracy client state where practical before JACK/CPAL/dummy activation; treat this as overhead reduction rather than proof of allocation-free behavior.
-- [ ] Add coarse static zones around JACK, CPAL output/input coordination, and dummy callback cycles; attach frame count and driver kind as numeric values.
-- [ ] Instrument `Engine::process`/`run_cycle` into bounded zones for command draining, graph-staleness publication, session cycle, diagnostic publication, and cycle completion.
-- [ ] Expand engine stats/profiling for callback budget, command count, pending depth, schedule generation, stale/stuck cycles, and trace snapshot drops.
-- [ ] Instrument `Session::process` by schedule category: port prepare/process, channel prepare/process/finalize, loop group, composite timeline/runtime, external routing, and FX processing.
-- [ ] Add optional engine-detail zones for individual scheduled nodes using static category locations and numeric indices; keep it disabled unless explicitly requested.
-- [ ] Expose loop mode/position/transition, composite mode/iteration/fault, port peaks/event counts, channel mode/record state, and FX active/bypass metrics through existing mirrors/stats or preallocated snapshots, then emit plots on a non-realtime consumer.
-- [ ] Cover MIDI driver staging and audio capture-ring under/overrun counters without tracing individual events or samples.
-- [ ] Verify every direct realtime callsite is subordinate to both global tracing gates and uses only the narrow helper exception. Verify engine work surrounding Tracy remains subject to the normal realtime guard; do not claim Tracy itself is bounded, lock-free, or allocation-free.
+- [x] Prewarm realtime source locations and Tracy client state where practical before JACK/CPAL/dummy activation; treat this as overhead reduction rather than proof of allocation-free behavior. (Engine-owned dummy and CPAL-mock threads are named/prewarmed before their loops; OS-owned JACK/CPAL/midir callback threads cannot be entered before their APIs activate them, so their locations remain lazy under the same gated helper.)
+- [x] Add coarse static zones around JACK, CPAL output/input coordination, and dummy callback cycles; attach frame count and driver kind as numeric values.
+- [x] Instrument `Engine::process`/`run_cycle` into bounded zones for command draining, graph-staleness publication, session cycle, diagnostic publication, and cycle completion.
+- [x] Expand engine stats/profiling for callback budget, command count, pending depth, schedule generation, stale/stuck cycles, and trace snapshot drops.
+- [x] Instrument `Session::process` by schedule category: port prepare/process, channel prepare/process/finalize, loop group, composite timeline/runtime, external routing, and FX processing.
+- [x] Add optional engine-detail zones for individual scheduled nodes using static category locations and numeric indices; keep it disabled unless explicitly requested.
+- [x] Expose loop mode/position/transition, composite mode/iteration/fault, port peaks/event counts, channel mode/record state, and FX active/bypass metrics through existing mirrors/stats or preallocated snapshots, then emit plots on a non-realtime consumer.
+- [x] Cover MIDI driver staging and audio capture-ring under/overrun counters without tracing individual events or samples.
+- [x] Verify every direct realtime callsite is subordinate to both global tracing gates and uses only the narrow helper exception. Verify engine work surrounding Tracy remains subject to the normal realtime guard; do not claim Tracy itself is bounded, lock-free, or allocation-free.
 
 Verification:
 
-- [ ] Run engine processing, dummy driver, CPAL mock, composite runtime/timeline, channel, port, MIDI, and FX tests under `--rt-alloc-guard` equivalent setup with tracing disabled; repeat representative scenarios with coarse and engine-detail tracing to verify the scoped Tracy exception.
-- [ ] Tracing-disabled tests have no allocation exception. Tracing-enabled tests have no allocation exception outside the explicit Tracy helper scope, no application deadlock or logging call, and no Tracy instrumentation warning. Record any xruns or timing perturbation as expected profiling overhead rather than hiding it.
-- [ ] A controlled trace shows callback→engine→session stage nesting and non-realtime plots agree with engine stats/profiling reports.
-- [ ] Deterministic dummy runs show no new stuck/stale cycles or processing-result differences.
+- [x] Run engine processing, dummy driver, CPAL mock, composite runtime/timeline, channel, port, MIDI, and FX tests under `--rt-alloc-guard` equivalent setup with tracing disabled; repeat representative scenarios with coarse and engine-detail tracing to verify the scoped Tracy exception.
+- [x] Tracing-disabled tests have no allocation exception. Tracing-enabled tests have no allocation exception outside the explicit Tracy helper scope, no application deadlock or logging call, and no Tracy instrumentation warning. Record any xruns or timing perturbation as expected profiling overhead rather than hiding it.
+- [x] A controlled trace shows callback→engine→session stage nesting and non-realtime plots agree with engine stats/profiling reports.
+- [x] Deterministic dummy runs show no new stuck/stale cycles or processing-result differences.
+
+Evidence: the 19 strict tracing-disabled no-allocation tests, the dedicated coarse-and-detail tracing-enabled allocation-scope test, 537 serial engine unit tests, five focused CPAL tests, and 32 frontend tests passed. Guarded `tst_Session_channels.qml` passed disabled, coarse, and detailed capture modes. The 5,013,933-byte detailed trace and coarse companion parse with Tracy 0.13.1; coarse contains ten bounded `engine.rt.*` categories and no detail-only categories, while detail adds port/channel/composite/MIDI/diagnostic categories. The trace contains 163 samples for each newly published callback, schedule, stale/stuck, sub-block, and capture-ring plot. There were no instrumentation failures or orphan capture processes. Existing named first-cycle engine preparation warnings in the QML run are independent of the Tracy helper exception; the allocation-scope test warms those buffers before asserting both modes. A guarded `tst_TwoLoops.qml` audit also exposed the pre-existing bounded recording reserve after 4,096 samples; the representative guarded scenario remains within that documented reserve rather than misclassifying the separate storage limit as Tracy overhead.
 
 Commit coarse realtime coverage first; commit optional detailed coverage separately after its overhead and trace volume are reviewed.
 

@@ -319,6 +319,9 @@ struct JackProcess {
 impl jack::ProcessHandler for JackProcess {
     fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
         let n_frames = ps.n_frames() as usize;
+        let _driver_kind =
+            shoop_tracing::realtime_span!("engine.rt.driver", value = AudioDriverType::Jack as i32);
+        let _span = shoop_tracing::realtime_span!("engine.rt.driver.jack", value = n_frames);
         if let Some(callback) = self.maybe_process_callback {
             unsafe {
                 callback();
@@ -769,6 +772,8 @@ impl CpalBackend {
         let mut input_channels = 0usize;
         let mut capture_names = Vec::new();
         let xruns = Arc::new(AtomicU32::new(0));
+        let capture_underruns = Arc::new(AtomicU32::new(0));
+        let capture_overruns = Arc::new(AtomicU32::new(0));
         if settings.input_device != "none" {
             if let Some(input_device) =
                 select_cpal_device(host.input_devices()?, &settings.input_device)
@@ -790,14 +795,25 @@ impl CpalBackend {
                 let ring = Arc::new(Mutex::new(VecDeque::with_capacity(cap)));
                 let cb_ring = ring.clone();
                 let cb_xruns_in = xruns.clone();
+                let cb_capture_overruns = capture_overruns.clone();
                 input_stream = Some(input_device.build_input_stream(
                     &input_config,
                     move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                        let _driver_kind = shoop_tracing::realtime_span!(
+                            "engine.rt.driver",
+                            value = AudioDriverType::Cpal as i32
+                        );
+                        let n_frames = data.len().checked_div(input_channels.max(1)).unwrap_or(0);
+                        let _span = shoop_tracing::realtime_span!(
+                            "engine.rt.driver.cpal_input",
+                            value = n_frames
+                        );
                         let mut ring = cb_ring.lock().unwrap_or_else(|e| e.into_inner());
                         for &s in data {
                             if ring.len() >= cap {
                                 ring.pop_front();
                                 cb_xruns_in.fetch_add(1, Ordering::Relaxed);
+                                cb_capture_overruns.fetch_add(1, Ordering::Relaxed);
                             }
                             ring.push_back(s);
                         }
@@ -895,6 +911,8 @@ impl CpalBackend {
         let midi_inputs_ret = midi_inputs_cb.clone();
         let midi_outputs_ret = midi_outputs_cb.clone();
         let external_cb = external.clone();
+        let capture_underruns_cb = capture_underruns.clone();
+        let capture_overruns_cb = capture_overruns.clone();
         let last_processed = Arc::new(AtomicU32::new(0));
         let last_processed_cb = last_processed.clone();
         let xruns_cb = xruns.clone();
@@ -909,6 +927,12 @@ impl CpalBackend {
             &output_config,
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                 let n_frames = data.len().checked_div(output_channels.max(1)).unwrap_or(0);
+                let _driver_kind = shoop_tracing::realtime_span!(
+                    "engine.rt.driver",
+                    value = AudioDriverType::Cpal as i32
+                );
+                let _span =
+                    shoop_tracing::realtime_span!("engine.rt.driver.cpal_output", value = n_frames);
                 last_processed_cb.store(n_frames as u32, Ordering::Relaxed);
                 for s in data.iter_mut() {
                     *s = 0.0;
@@ -928,10 +952,28 @@ impl CpalBackend {
                 }
                 if let Some(ring) = input_ring_cb.as_ref() {
                     let mut ring = ring.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut underflowed = false;
                     for s in &mut capture_scratch[..wanted] {
-                        *s = ring.pop_front().unwrap_or(0.0);
+                        match ring.pop_front() {
+                            Some(value) => *s = value,
+                            None => {
+                                *s = 0.0;
+                                underflowed = true;
+                            }
+                        }
+                    }
+                    if underflowed {
+                        capture_underruns_cb.fetch_add(1, Ordering::Relaxed);
                     }
                 }
+                engine.stats().capture_underruns.store(
+                    capture_underruns_cb.load(Ordering::Relaxed),
+                    Ordering::Relaxed,
+                );
+                engine.stats().capture_overruns.store(
+                    capture_overruns_cb.load(Ordering::Relaxed),
+                    Ordering::Relaxed,
+                );
 
                 // Control work first, at the cycle boundary, and with no lock anywhere: the
                 // callback owns the engine, so a GUI thread polling state cannot make this
@@ -2006,6 +2048,14 @@ impl BackendSession {
                 .get()
                 .map(GraphScheduler::n_applies)
                 .unwrap_or(0),
+            callback_last_ns: stats.callback_last_ns.load(Ordering::Relaxed),
+            callback_worst_ns: stats.callback_worst_ns.load(Ordering::Relaxed),
+            callback_budget_overruns: stats.callback_budget_overruns.load(Ordering::Relaxed),
+            schedule_request_id: stats.schedule_request_id.load(Ordering::Relaxed),
+            schedule_applied_id: stats.schedule_applied_id.load(Ordering::Relaxed),
+            stuck_cycles: stats.stuck_cycles.load(Ordering::Relaxed),
+            stale_cycles: stats.stale_cycles.load(Ordering::Relaxed),
+            sub_blocks_last_cycle: stats.sub_blocks_last_cycle.load(Ordering::Relaxed),
         }
     }
     /// Adds a loop and returns its stable handle as soon as creation is queued.
@@ -2671,7 +2721,7 @@ fn process_dummy_driver_iteration(
     inner: &Arc<Mutex<DriverInner>>,
     engine: &mut Option<engine::Engine>,
 ) {
-    let (session, n, sample_rate, buffer_size, callback) = {
+    let (session, n, sample_rate, buffer_size, callback, driver_type) = {
         let mut i = inner.lock().unwrap_or_else(|e| e.into_inner());
         if !i.dummy.active() || !driver_uses_dummy_processing(i.driver_type) {
             i.last_processed = 0;
@@ -2689,8 +2739,12 @@ fn process_dummy_driver_iteration(
             i.dummy.sample_rate(),
             i.dummy.buffer_size(),
             i.maybe_process_callback,
+            i.driver_type,
         )
     };
+    let _driver_kind =
+        shoop_tracing::realtime_span!("engine.rt.driver", value = driver_type as i32);
+    let _span = shoop_tracing::realtime_span!("engine.rt.driver.dummy", value = n);
 
     if let Some(callback) = callback {
         unsafe {
@@ -2944,6 +2998,7 @@ impl AudioDriver {
                 thread::Builder::new()
                     .name("engine-dummy-driver".to_string())
                     .spawn(move || {
+                        shoop_tracing::prewarm_realtime_thread("engine-dummy-driver");
                         let _span = tracing::info_span!("worker.engine.dummy_driver").entered();
                         // Claimed on the first turn after a session is attached, and owned by this
                         // thread from then on.

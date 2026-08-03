@@ -76,6 +76,16 @@ impl FXChainGui {
             span.record("ready", new_state.ready != 0);
             span.record("active", new_state.active != 0);
             span.record("visible", new_state.visible != 0);
+            if common::tracing_helpers::is_tracing_enabled() {
+                tracy_client::plot!(
+                    "engine.fx.ready",
+                    if new_state.ready != 0 { 1.0 } else { 0.0 }
+                );
+                tracy_client::plot!(
+                    "engine.fx.active",
+                    if new_state.active != 0 { 1.0 } else { 0.0 }
+                );
+            }
 
             {
                 let mut rust_mut = self.as_mut().rust_mut();

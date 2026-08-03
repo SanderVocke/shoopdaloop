@@ -441,6 +441,24 @@ impl BackendWrapper {
                 .plot(session_state.graph_arms as f64, "BackendWrapper");
             rust.plotter_graph_applies
                 .plot(session_state.graph_applies as f64, "BackendWrapper");
+            rust.plotter_callback_last_ns
+                .plot(session_state.callback_last_ns as f64, "BackendWrapper");
+            rust.plotter_callback_worst_ns
+                .plot(session_state.callback_worst_ns as f64, "BackendWrapper");
+            rust.plotter_callback_budget_overruns.plot(
+                session_state.callback_budget_overruns as f64,
+                "BackendWrapper",
+            );
+            rust.plotter_schedule_request_id
+                .plot(session_state.schedule_request_id as f64, "BackendWrapper");
+            rust.plotter_schedule_applied_id
+                .plot(session_state.schedule_applied_id as f64, "BackendWrapper");
+            rust.plotter_stuck_cycles
+                .plot(session_state.stuck_cycles as f64, "BackendWrapper");
+            rust.plotter_stale_cycles
+                .plot(session_state.stale_cycles as f64, "BackendWrapper");
+            rust.plotter_sub_blocks_last_cycle
+                .plot(session_state.sub_blocks_last_cycle as f64, "BackendWrapper");
         }
         self.as_mut().updated_on_gui_thread();
         trace!("End frontend refresh");

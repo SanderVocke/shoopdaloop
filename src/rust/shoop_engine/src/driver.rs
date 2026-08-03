@@ -53,6 +53,14 @@ pub struct BackendSessionState {
     pub capture_overruns: u32,
     pub graph_arms: u64,
     pub graph_applies: u64,
+    pub callback_last_ns: u64,
+    pub callback_worst_ns: u64,
+    pub callback_budget_overruns: u32,
+    pub schedule_request_id: u64,
+    pub schedule_applied_id: u64,
+    pub stuck_cycles: u32,
+    pub stale_cycles: u32,
+    pub sub_blocks_last_cycle: u32,
 }
 
 pub fn driver_type_supported(driver_type: AudioDriverType) -> bool {

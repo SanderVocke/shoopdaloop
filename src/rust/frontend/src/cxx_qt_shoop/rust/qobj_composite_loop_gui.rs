@@ -911,6 +911,15 @@ impl CompositeLoopGui {
         span.record("mode", state.mode as u32);
         span.record("iteration", state.iteration);
         span.record("position", state.position);
+        if common::tracing_helpers::is_tracing_enabled() {
+            tracy_client::plot!("engine.composite.mode", state.mode as u32 as f64);
+            tracy_client::plot!("engine.composite.iteration", state.iteration as f64);
+            tracy_client::plot!("engine.composite.position", state.position as f64);
+            tracy_client::plot!(
+                "engine.composite.runtime_fault",
+                state.runtime_fault as u8 as f64
+            );
+        }
         self.as_mut().set_mode(state.mode as i32);
         self.as_mut()
             .set_next_mode(state.maybe_next_mode.map(|mode| mode as i32).unwrap_or(-1));

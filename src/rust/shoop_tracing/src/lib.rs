@@ -29,6 +29,11 @@ pub fn set_engine_detail_enabled(enabled: bool) {
     ENGINE_DETAIL_ENABLED.store(enabled, Ordering::Relaxed);
 }
 
+/// Whether tracing was explicitly requested, independent of capture quiescence.
+pub fn is_tracing_requested() -> bool {
+    TRACING_ENABLED.load(Ordering::Relaxed)
+}
+
 /// Whether ordinary tracing output may currently be emitted.
 pub fn is_tracing_enabled() -> bool {
     TRACING_ENABLED.load(Ordering::Relaxed) && TRACING_OUTPUT_ENABLED.load(Ordering::Acquire)
@@ -106,6 +111,36 @@ where
     });
 }
 
+/// Name and prewarm the current callback thread before driver activation when possible.
+///
+/// This deliberately runs only for explicit tracing sessions. Tracy may allocate while
+/// naming the thread and creating its producer queue, so the operation is kept inside the
+/// same narrow diagnostic allocation exception as direct realtime instrumentation.
+pub fn prewarm_realtime_thread(name: &str) {
+    if !is_tracing_requested() {
+        return;
+    }
+    assert_no_alloc::permit_alloc(|| {
+        if let Some(client) = tracy_client::Client::running() {
+            client.set_thread_name(name);
+            client.secondary_frame_mark(tracy_client::frame_name!("engine.prewarm"));
+        }
+    });
+}
+
+/// Emit a named callback frame mark when tracing output is active.
+#[doc(hidden)]
+pub fn emit_realtime_frame_mark(name: tracy_client::FrameName) {
+    if !is_tracing_enabled() {
+        return;
+    }
+    assert_no_alloc::permit_alloc(|| {
+        if let Some(client) = tracy_client::Client::running() {
+            client.secondary_frame_mark(name);
+        }
+    });
+}
+
 /// Create a coarse direct Tracy span guarded by the application tracing flags.
 #[macro_export]
 macro_rules! realtime_span {
@@ -133,6 +168,14 @@ macro_rules! realtime_span_detail {
             || $crate::tracy_client::span_location!($name),
             Some($value as u64),
         )
+    };
+}
+
+/// Emit a secondary frame mark from a realtime callback.
+#[macro_export]
+macro_rules! realtime_frame_mark {
+    ($name:literal) => {
+        $crate::emit_realtime_frame_mark($crate::tracy_client::frame_name!($name))
     };
 }
 

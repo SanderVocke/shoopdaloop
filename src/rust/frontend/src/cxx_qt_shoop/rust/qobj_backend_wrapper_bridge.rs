@@ -231,6 +231,14 @@ pub struct BackendWrapperRust {
     pub plotter_capture_overruns: TracyPlotter,
     pub plotter_graph_arms: TracyPlotter,
     pub plotter_graph_applies: TracyPlotter,
+    pub plotter_callback_last_ns: TracyPlotter,
+    pub plotter_callback_worst_ns: TracyPlotter,
+    pub plotter_callback_budget_overruns: TracyPlotter,
+    pub plotter_schedule_request_id: TracyPlotter,
+    pub plotter_schedule_applied_id: TracyPlotter,
+    pub plotter_stuck_cycles: TracyPlotter,
+    pub plotter_stale_cycles: TracyPlotter,
+    pub plotter_sub_blocks_last_cycle: TracyPlotter,
 }
 
 impl Default for BackendWrapperRust {
@@ -285,6 +293,14 @@ impl Default for BackendWrapperRust {
             plotter_capture_overruns: TracyPlotter::new("capture_overruns"),
             plotter_graph_arms: TracyPlotter::new("graph_arms"),
             plotter_graph_applies: TracyPlotter::new("graph_applies"),
+            plotter_callback_last_ns: TracyPlotter::new("callback_last_ns"),
+            plotter_callback_worst_ns: TracyPlotter::new("callback_worst_ns"),
+            plotter_callback_budget_overruns: TracyPlotter::new("callback_budget_overruns"),
+            plotter_schedule_request_id: TracyPlotter::new("schedule_request_id"),
+            plotter_schedule_applied_id: TracyPlotter::new("schedule_applied_id"),
+            plotter_stuck_cycles: TracyPlotter::new("stuck_cycles"),
+            plotter_stale_cycles: TracyPlotter::new("stale_cycles"),
+            plotter_sub_blocks_last_cycle: TracyPlotter::new("sub_blocks_last_cycle"),
         }
     }
 }

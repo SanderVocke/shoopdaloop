@@ -3000,6 +3000,7 @@ dependencies = [
  "shoop_tracing",
  "thiserror 2.0.19",
  "tracing",
+ "tracy-client",
 ]
 
 [[package]]

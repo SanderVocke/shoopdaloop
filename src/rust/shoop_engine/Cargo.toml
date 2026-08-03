@@ -42,3 +42,4 @@ app_backend = ["jack", "cpal", "midir", "lv2"]
 [dev-dependencies]
 assert2 = { workspace = true }
 rtrb = { workspace = true }
+tracy-client = { workspace = true }

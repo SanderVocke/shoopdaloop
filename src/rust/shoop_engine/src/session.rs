@@ -953,6 +953,14 @@ impl Session {
         self.graph_request_id == self.graph_applied_id
     }
 
+    pub fn graph_request_id(&self) -> u64 {
+        self.graph_request_id
+    }
+
+    pub fn graph_applied_id(&self) -> u64 {
+        self.graph_applied_id
+    }
+
     fn note_graph_change(&mut self) {
         self.graph_request_id += 1;
     }
@@ -1712,6 +1720,14 @@ impl Session {
         let covered = prepared.for_graph_id;
         prepared.for_graph_id = self.graph_applied_id;
 
+        // Schedule installation is the control-path opportunity to size optional FX scratch.
+        // Doing it here keeps the first realtime cycle from discovering the effect's buffer.
+        for port in &mut self.ports {
+            if let Some(audio) = port.audio_mut() {
+                audio.reserve_processing(self.buffer_size as usize);
+            }
+        }
+
         std::mem::swap(&mut self.specs, &mut prepared.specs);
         std::mem::swap(&mut self.node_map, &mut prepared.node_map);
         std::mem::swap(&mut self.schedule, &mut prepared.schedule);
@@ -1774,6 +1790,7 @@ impl Session {
     /// nothing reported anywhere. There is now no error to drop: a stale cycle runs and is
     /// counted in [`Self::n_stale_cycles`].
     pub fn process(&mut self, n_frames: usize) {
+        let _session_span = shoop_tracing::realtime_span!("engine.rt.session", value = n_frames);
         // A stale graph runs the last-applied schedule rather than refusing the cycle.
         //
         // Refusing meant a single un-applied connection silenced the whole session until
@@ -1790,7 +1807,10 @@ impl Session {
             self.n_stale_cycles = self.n_stale_cycles.saturating_add(1);
         }
         self.n_sub_blocks_last_cycle = 0;
-        self.composite_timeline.begin_callback();
+        {
+            let _span = shoop_tracing::realtime_span_detail!("engine.rt.composites.begin");
+            self.composite_timeline.begin_callback();
+        }
         let steps = std::mem::take(&mut self.schedule);
         for step in &steps {
             // Loops in one step are co-processed, so they are gathered and
@@ -1798,27 +1818,70 @@ impl Session {
             self.loop_group.clear();
             for node in step {
                 match self.node_actions[node.0] {
-                    NodeAction::PortPrepare(i) => self.ports[i].prepare(n_frames),
+                    NodeAction::PortPrepare(i) => {
+                        let _span = shoop_tracing::realtime_span_detail!(
+                            "engine.rt.ports.prepare",
+                            value = i
+                        );
+                        self.ports[i].prepare(n_frames);
+                    }
                     NodeAction::PortProcess(i) => {
+                        let _span = shoop_tracing::realtime_span_detail!(
+                            "engine.rt.ports.process",
+                            value = i
+                        );
                         self.ports[i].process(n_frames);
-                        self.propagate_port(i, n_frames);
+                        {
+                            let _routing_span = shoop_tracing::realtime_span_detail!(
+                                "engine.rt.routing.external",
+                                value = i
+                            );
+                            self.propagate_port(i, n_frames);
+                        }
                         self.process_test2x2x1_fx_port(i, n_frames);
                     }
                     NodeAction::LoopProcess(i) => self.loop_group.push(i),
-                    NodeAction::ChannelPrepare(i) => self.channel_prepare(i, n_frames),
-                    NodeAction::ChannelProcess(i) => self.channel_finalize(i, n_frames),
+                    NodeAction::ChannelPrepare(i) => {
+                        let _span = shoop_tracing::realtime_span_detail!(
+                            "engine.rt.channels.prepare",
+                            value = i
+                        );
+                        self.channel_prepare(i, n_frames);
+                    }
+                    NodeAction::ChannelProcess(i) => {
+                        let _span = shoop_tracing::realtime_span_detail!(
+                            "engine.rt.channels.process",
+                            value = i
+                        );
+                        self.channel_finalize(i, n_frames);
+                    }
                     NodeAction::None => {}
                 }
             }
             if !self.loop_group.is_empty() {
-                self.process_loop_group(n_frames);
-                self.synth_prerecorded_midi_playback(n_frames);
+                {
+                    let _span = shoop_tracing::realtime_span!(
+                        "engine.rt.loops",
+                        value = self.loop_group.len()
+                    );
+                    self.process_loop_group(n_frames);
+                }
+                {
+                    let _span = shoop_tracing::realtime_span_detail!("engine.rt.midi.playback");
+                    self.synth_prerecorded_midi_playback(n_frames);
+                }
             }
         }
-        self.apply_test2x2x1_fx_outputs(n_frames);
-        #[cfg(feature = "lv2")]
-        self.process_carla_fx_chains(n_frames);
-        self.publish_composite_anticipated_transitions();
+        {
+            let _span = shoop_tracing::realtime_span!("engine.rt.fx");
+            self.apply_test2x2x1_fx_outputs(n_frames);
+            #[cfg(feature = "lv2")]
+            self.process_carla_fx_chains(n_frames);
+        }
+        {
+            let _span = shoop_tracing::realtime_span!("engine.rt.state_publication");
+            self.publish_composite_anticipated_transitions();
+        }
         self.schedule = steps;
     }
 
@@ -2422,6 +2485,7 @@ impl Session {
     /// mid-buffer is advanced in pieces. Single loops go through the same path:
     /// loop still needs splitting when its end falls inside the buffer.
     fn process_loop_group(&mut self, n_frames: usize) {
+        let _composite_span = shoop_tracing::realtime_span_detail!("engine.rt.composites.timeline");
         if self.composite_timeline.fault().fault != CompositeTimelineFault::None {
             return;
         }

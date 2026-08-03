@@ -100,6 +100,14 @@ impl LoopChannelGui {
             span.record("mode", new_state.mode as u32);
             span.record("length", new_state.length);
             span.record("events", new_state.n_events_triggered);
+            if common::tracing_helpers::is_tracing_enabled() {
+                tracy_client::plot!("engine.channel.mode", new_state.mode as u32 as f64);
+                tracy_client::plot!("engine.channel.length", new_state.length as f64);
+                tracy_client::plot!(
+                    "engine.channel.events_triggered",
+                    new_state.n_events_triggered as f64
+                );
+            }
 
             {
                 let mut rust_mut = self.as_mut().rust_mut();

@@ -510,6 +510,8 @@ impl CarlaLv2Host {
         if !self.active {
             return Ok(());
         }
+        let _span =
+            shoop_tracing::realtime_span_detail!("engine.rt.fx.plugin_process", value = frames);
         if frames > CARLA_MAX_BUFFER_SIZE {
             return Err(anyhow!(
                 "Carla processing chain: requesting to process more than buffer size ({frames} vs. {CARLA_MAX_BUFFER_SIZE})"

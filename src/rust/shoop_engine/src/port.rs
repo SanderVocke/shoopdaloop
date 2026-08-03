@@ -188,6 +188,20 @@ impl AudioPort {
     /// Inserts an effect, or removes one. Allocates, so it is a control-path call.
     pub fn set_fx(&mut self, fx: Option<crate::fx_chain::FxChain>) {
         self.fx = fx.map(Box::new);
+        if self.fx.is_some() {
+            // `set_fx` is a control-path call. Use the port's already bounded capture
+            // capacity as headroom so controlled dummy runs may process several ordinary
+            // buffers in one request without growing effect scratch in the callback.
+            self.fx_scratch
+                .resize(self.ringbuffer.sample_capacity().max(1), 0.0);
+        }
+    }
+
+    /// Reserve effect scratch on a control-path schedule installation.
+    pub fn reserve_processing(&mut self, n_frames: usize) {
+        if self.fx.is_some() && self.fx_scratch.len() < n_frames {
+            self.fx_scratch.resize(n_frames, 0.0);
+        }
     }
 
     /// Applies gain or muting in place, updates meters, and captures the result.
@@ -201,8 +215,12 @@ impl AudioPort {
             // In place: the chain writes what it reads, and a port has one buffer.
             let mut scratch = std::mem::take(&mut self.fx_scratch);
             if scratch.len() < buf.len() {
-                // Only when a cycle grows, which is off the steady state.
-                scratch.resize(buf.len(), 0.0);
+                // Only when a controlled cycle grows beyond the installed driver buffer,
+                // which is off the steady state and follows the same one-time exception as
+                // the concrete port buffers.
+                crate::realtime_allow_alloc_once!("AudioPort::process FX scratch resize", || {
+                    scratch.resize(buf.len(), 0.0)
+                });
             }
             let n = buf.len();
             scratch[..n].copy_from_slice(&buf[..n]);

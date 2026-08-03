@@ -291,6 +291,24 @@ impl LoopGui {
             span.record("mode", new_state.mode as u32);
             span.record("position", new_state.position);
             span.record("length", new_state.length);
+            if common::tracing_helpers::is_tracing_enabled() {
+                tracy_client::plot!("engine.loop.mode", new_state.mode as u32 as f64);
+                tracy_client::plot!("engine.loop.position", new_state.position as f64);
+                tracy_client::plot!(
+                    "engine.loop.next_mode",
+                    new_state
+                        .maybe_next_mode
+                        .map(|mode| mode as u32 as f64)
+                        .unwrap_or(-1.0)
+                );
+                tracy_client::plot!(
+                    "engine.loop.transition_delay",
+                    new_state
+                        .maybe_next_mode_delay
+                        .map(f64::from)
+                        .unwrap_or(-1.0)
+                );
+            }
 
             let prev_state;
             let prev_cycle_nr: i32;

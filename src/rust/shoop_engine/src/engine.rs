@@ -124,6 +124,17 @@ pub struct Stats {
     pub capture_underruns: AtomicU32,
     /// Samples a duplex driver's capture ring had to drop because it was full.
     pub capture_overruns: AtomicU32,
+    /// Duration of the most recent engine callback/cycle while tracing was requested.
+    pub callback_last_ns: AtomicU64,
+    /// Worst callback/cycle duration while tracing was requested.
+    pub callback_worst_ns: AtomicU64,
+    /// Traced callbacks whose duration exceeded their nominal audio buffer budget.
+    pub callback_budget_overruns: AtomicU32,
+    /// Latest topology and applied-schedule generations published by the engine.
+    pub schedule_request_id: AtomicU64,
+    pub schedule_applied_id: AtomicU64,
+    /// Sub-blocks processed by the latest session cycle.
+    pub sub_blocks_last_cycle: AtomicU32,
     /// Whether the session's topology has outrun its schedule, as of the last cycle.
     ///
     /// Published so the control side can tell whether a rebuild is needed without asking --
@@ -280,7 +291,11 @@ impl Engine {
     /// Commands run before processing so a mode change lands on the cycle boundary
     /// rather than part-way through a buffer.
     pub fn process(&mut self, n_frames: usize) {
+        let _span = shoop_tracing::realtime_span!("engine.rt.callback", value = n_frames);
+        let started = shoop_tracing::is_tracing_requested().then(std::time::Instant::now);
         crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| self.process_inner(n_frames));
+        self.finish_callback_timing(started, n_frames);
+        shoop_tracing::realtime_frame_mark!("engine.callback");
     }
 
     /// Runs one cycle without applying control work first.
@@ -292,16 +307,50 @@ impl Engine {
     /// Reaching for `session_mut().process(..)` instead skips engine counters and should only
     /// be used by code that intentionally bypasses the driver boundary.
     pub fn run_cycle(&mut self, n_frames: usize) {
+        let _span = shoop_tracing::realtime_span!("engine.rt.callback", value = n_frames);
+        let started = shoop_tracing::is_tracing_requested().then(std::time::Instant::now);
         crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| self.cycle_inner(n_frames));
+        self.finish_callback_timing(started, n_frames);
+        shoop_tracing::realtime_frame_mark!("engine.callback");
+    }
+
+    fn finish_callback_timing(&self, started: Option<std::time::Instant>, n_frames: usize) {
+        let Some(started) = started else {
+            return;
+        };
+        let elapsed_ns = started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
+        self.stats
+            .callback_last_ns
+            .store(elapsed_ns, Ordering::Relaxed);
+        self.stats
+            .callback_worst_ns
+            .fetch_max(elapsed_ns, Ordering::Relaxed);
+        let sample_rate = u64::from(self.session.sample_rate().max(1));
+        let budget_ns = (n_frames as u64)
+            .saturating_mul(1_000_000_000)
+            .checked_div(sample_rate)
+            .unwrap_or(u64::MAX);
+        if elapsed_ns > budget_ns {
+            self.stats
+                .callback_budget_overruns
+                .fetch_add(1, Ordering::Relaxed);
+        }
     }
 
     fn process_inner(&mut self, n_frames: usize) {
-        self.apply_commands();
-        self.publish_graph_staleness();
+        {
+            let _span = shoop_tracing::realtime_span!("engine.rt.commands");
+            self.apply_commands();
+        }
+        {
+            let _span = shoop_tracing::realtime_span!("engine.rt.graph_state");
+            self.publish_graph_staleness();
+        }
         self.cycle_inner(n_frames);
     }
 
     fn cycle_inner(&mut self, n_frames: usize) {
+        let _span = shoop_tracing::realtime_span!("engine.rt.cycle", value = n_frames);
         self.session.process(n_frames);
         self.stats.cycles.fetch_add(1, Ordering::Relaxed);
         self.stats
@@ -315,11 +364,21 @@ impl Engine {
         self.stats
             .stale_cycles
             .store(self.session.n_stale_cycles(), Ordering::Relaxed);
+        self.stats
+            .schedule_request_id
+            .store(self.session.graph_request_id(), Ordering::Relaxed);
+        self.stats
+            .schedule_applied_id
+            .store(self.session.graph_applied_id(), Ordering::Relaxed);
+        self.stats
+            .sub_blocks_last_cycle
+            .store(self.session.n_sub_blocks_last_cycle(), Ordering::Relaxed);
         self.publish_trace();
     }
 
     /// Fills and publishes a diagnostic trace snapshot, if a box is free.
     fn publish_trace(&mut self) {
+        let _span = shoop_tracing::realtime_span_detail!("engine.rt.publish_trace");
         let Ok(mut snap) = self.empties.pop() else {
             self.stats
                 .trace_snapshots_dropped
@@ -358,9 +417,16 @@ impl Engine {
     /// The allocation guard applies as it does to [`Self::process`], because in the first
     /// case this *is* the audio thread.
     pub fn pump(&mut self) {
+        let _span = shoop_tracing::realtime_span!("engine.rt.pump");
         crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| {
-            self.apply_commands();
-            self.publish_graph_staleness();
+            {
+                let _commands_span = shoop_tracing::realtime_span!("engine.rt.commands");
+                self.apply_commands();
+            }
+            {
+                let _graph_span = shoop_tracing::realtime_span!("engine.rt.graph_state");
+                self.publish_graph_staleness();
+            }
         });
     }
 

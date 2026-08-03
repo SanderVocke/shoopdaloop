@@ -31,6 +31,8 @@ pub struct ExternalMidiPort {
     midi: MidiPort,
     /// Staged by the driver before the cycle; `prepare` moves it into `incoming`.
     staged: Vec<MidiStorageElem>,
+    /// Reused while rebasing events deferred into a later cycle.
+    deferred: Vec<MidiStorageElem>,
     /// This cycle's arrivals, as the engine sees them.
     incoming: Vec<MidiStorageElem>,
     /// What the engine wrote this cycle, for the driver to hand to the backend.
@@ -51,6 +53,7 @@ impl ExternalMidiPort {
             direction,
             midi: MidiPort::new(TrackWhat::ALL),
             staged: Vec::with_capacity(RESERVE),
+            deferred: Vec::with_capacity(RESERVE),
             incoming: Vec::with_capacity(RESERVE),
             outgoing: MidiSortingBuffer::with_capacity(RESERVE),
             outgoing_collected: Vec::with_capacity(RESERVE),
@@ -191,16 +194,16 @@ impl ExternalMidiPort {
             self.collect_current_outgoing(self.last_collect_start);
         }
         self.incoming.clear();
-        let mut deferred = Vec::with_capacity(self.staged.len());
+        self.deferred.clear();
         for mut e in self.staged.drain(..) {
             if e.time < n_frames {
                 self.incoming.push(e);
             } else {
                 e.time -= n_frames;
-                deferred.push(e);
+                self.deferred.push(e);
             }
         }
-        self.staged = deferred;
+        std::mem::swap(&mut self.staged, &mut self.deferred);
         self.outgoing.prepare();
         self.outgoing_current_collected = false;
     }
