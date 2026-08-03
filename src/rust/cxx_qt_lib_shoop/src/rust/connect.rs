@@ -63,6 +63,7 @@ where
     Sender: QObjectOrConvertible,
     Receiver: QObjectOrConvertible,
 {
+    let _span = tracing::debug_span!("app.qt.connect", connection_type).entered();
     unsafe {
         let sender_qobj = sender.qobject_ref();
         let receiver_qobj = receiver.qobject_ref();

@@ -36,6 +36,7 @@ use crate::internal_audio_port::InternalAudioPort;
 use crate::loop_mode::LoopMode;
 use crate::midi_state::MAX_DIFF_MESSAGES;
 use crate::midi_storage::MidiStorageElem;
+use crate::profiling::{Profiler, ProfilingReport, ProfilingReportItem, Stage};
 use crate::state_mirror::{
     AudioChannelStateMirror, AudioPortStateMirror, LoopStateMirror, MidiChannelStateMirror,
     MidiPortStateMirror,
@@ -392,6 +393,8 @@ pub struct Session {
     /// A performance signal as much as a correctness one: every extra sub-block is
     /// another pass over every loop in the step.
     n_sub_blocks_last_cycle: u32,
+    /// Existing deterministic stage profiler, enabled only for explicit tracing sessions.
+    profiler: Profiler,
 }
 
 /// A topology snapshot: everything [`build_schedule`] needs, borrowing nothing.
@@ -439,6 +442,7 @@ pub struct PreparedSchedule {
 /// and grows every buffer a cycle will need. Nothing here touches a [`Session`], which is
 /// the point: it can run on any thread, at any time, while audio keeps flowing against the
 /// schedule already installed.
+#[tracing::instrument(name = "engine.graph.build_schedule", skip_all)]
 pub fn build_schedule(topology: Topology) -> Result<PreparedSchedule, SessionError> {
     let Topology {
         graph,
@@ -579,6 +583,28 @@ impl Session {
     }
     pub fn n_channels(&self) -> usize {
         self.channels.len()
+    }
+
+    pub fn profiling_report(&self) -> ProfilingReport {
+        ProfilingReport {
+            items: Stage::ALL
+                .iter()
+                .map(|stage| {
+                    let report = self.profiler.report(*stage);
+                    ProfilingReportItem {
+                        key: stage.name().to_string(),
+                        n_samples: report.calls as f32,
+                        average: if report.calls == 0 {
+                            0.0
+                        } else {
+                            report.last_ns as f32 / report.calls as f32
+                        },
+                        worst: report.worst_ns as f32,
+                        most_recent: report.last_ns as f32,
+                    }
+                })
+                .collect(),
+        }
     }
 
     /// Where a channel sits: which loop, which kind, and which index within that loop.
@@ -950,6 +976,14 @@ impl Session {
     /// True when the schedule matches the current topology.
     pub fn graph_up_to_date(&self) -> bool {
         self.graph_request_id == self.graph_applied_id
+    }
+
+    pub fn graph_request_id(&self) -> u64 {
+        self.graph_request_id
+    }
+
+    pub fn graph_applied_id(&self) -> u64 {
+        self.graph_applied_id
     }
 
     fn note_graph_change(&mut self) {
@@ -1711,6 +1745,14 @@ impl Session {
         let covered = prepared.for_graph_id;
         prepared.for_graph_id = self.graph_applied_id;
 
+        // Schedule installation is the control-path opportunity to size optional FX scratch.
+        // Doing it here keeps the first realtime cycle from discovering the effect's buffer.
+        for port in &mut self.ports {
+            if let Some(audio) = port.audio_mut() {
+                audio.reserve_processing(self.buffer_size as usize);
+            }
+        }
+
         std::mem::swap(&mut self.specs, &mut prepared.specs);
         std::mem::swap(&mut self.node_map, &mut prepared.node_map);
         std::mem::swap(&mut self.schedule, &mut prepared.schedule);
@@ -1773,6 +1815,9 @@ impl Session {
     /// nothing reported anywhere. There is now no error to drop: a stale cycle runs and is
     /// counted in [`Self::n_stale_cycles`].
     pub fn process(&mut self, n_frames: usize) {
+        self.profiler
+            .set_enabled(shoop_tracing::is_tracing_requested());
+        let _session_span = shoop_tracing::realtime_span!("engine.rt.session", value = n_frames);
         // A stale graph runs the last-applied schedule rather than refusing the cycle.
         //
         // Refusing meant a single un-applied connection silenced the whole session until
@@ -1789,7 +1834,10 @@ impl Session {
             self.n_stale_cycles = self.n_stale_cycles.saturating_add(1);
         }
         self.n_sub_blocks_last_cycle = 0;
-        self.composite_timeline.begin_callback();
+        {
+            let _span = shoop_tracing::realtime_span_detail!("engine.rt.composites.begin");
+            self.composite_timeline.begin_callback();
+        }
         let steps = std::mem::take(&mut self.schedule);
         for step in &steps {
             // Loops in one step are co-processed, so they are gathered and
@@ -1797,27 +1845,81 @@ impl Session {
             self.loop_group.clear();
             for node in step {
                 match self.node_actions[node.0] {
-                    NodeAction::PortPrepare(i) => self.ports[i].prepare(n_frames),
+                    NodeAction::PortPrepare(i) => {
+                        let _span = shoop_tracing::realtime_span_detail!(
+                            "engine.rt.ports.prepare",
+                            value = i
+                        );
+                        let began = self.profiler.begin();
+                        self.ports[i].prepare(n_frames);
+                        self.profiler.finish(Stage::PortPrepare, began);
+                    }
                     NodeAction::PortProcess(i) => {
+                        let _span = shoop_tracing::realtime_span_detail!(
+                            "engine.rt.ports.process",
+                            value = i
+                        );
+                        let began = self.profiler.begin();
                         self.ports[i].process(n_frames);
-                        self.propagate_port(i, n_frames);
+                        {
+                            let _routing_span = shoop_tracing::realtime_span_detail!(
+                                "engine.rt.routing.external",
+                                value = i
+                            );
+                            self.propagate_port(i, n_frames);
+                        }
                         self.process_test2x2x1_fx_port(i, n_frames);
+                        self.profiler.finish(Stage::PortProcess, began);
                     }
                     NodeAction::LoopProcess(i) => self.loop_group.push(i),
-                    NodeAction::ChannelPrepare(i) => self.channel_prepare(i, n_frames),
-                    NodeAction::ChannelProcess(i) => self.channel_finalize(i, n_frames),
+                    NodeAction::ChannelPrepare(i) => {
+                        let _span = shoop_tracing::realtime_span_detail!(
+                            "engine.rt.channels.prepare",
+                            value = i
+                        );
+                        let began = self.profiler.begin();
+                        self.channel_prepare(i, n_frames);
+                        self.profiler.finish(Stage::ChannelPrepare, began);
+                    }
+                    NodeAction::ChannelProcess(i) => {
+                        let _span = shoop_tracing::realtime_span_detail!(
+                            "engine.rt.channels.process",
+                            value = i
+                        );
+                        let began = self.profiler.begin();
+                        self.channel_finalize(i, n_frames);
+                        self.profiler.finish(Stage::ChannelProcess, began);
+                    }
                     NodeAction::None => {}
                 }
             }
             if !self.loop_group.is_empty() {
-                self.process_loop_group(n_frames);
-                self.synth_prerecorded_midi_playback(n_frames);
+                {
+                    let _span = shoop_tracing::realtime_span!(
+                        "engine.rt.loops",
+                        value = self.loop_group.len()
+                    );
+                    let began = self.profiler.begin();
+                    self.process_loop_group(n_frames);
+                    self.profiler.finish(Stage::LoopProcess, began);
+                }
+                {
+                    let _span = shoop_tracing::realtime_span_detail!("engine.rt.midi.playback");
+                    self.synth_prerecorded_midi_playback(n_frames);
+                }
             }
         }
-        self.apply_test2x2x1_fx_outputs(n_frames);
-        #[cfg(feature = "lv2")]
-        self.process_carla_fx_chains(n_frames);
-        self.publish_composite_anticipated_transitions();
+        {
+            let _span = shoop_tracing::realtime_span!("engine.rt.fx");
+            self.apply_test2x2x1_fx_outputs(n_frames);
+            #[cfg(feature = "lv2")]
+            self.process_carla_fx_chains(n_frames);
+        }
+        {
+            let _span = shoop_tracing::realtime_span!("engine.rt.state_publication");
+            self.publish_composite_anticipated_transitions();
+        }
+        self.profiler.end_cycle();
         self.schedule = steps;
     }
 
@@ -2421,6 +2523,7 @@ impl Session {
     /// mid-buffer is advanced in pieces. Single loops go through the same path:
     /// loop still needs splitting when its end falls inside the buffer.
     fn process_loop_group(&mut self, n_frames: usize) {
+        let _composite_span = shoop_tracing::realtime_span_detail!("engine.rt.composites.timeline");
         if self.composite_timeline.fault().fault != CompositeTimelineFault::None {
             return;
         }

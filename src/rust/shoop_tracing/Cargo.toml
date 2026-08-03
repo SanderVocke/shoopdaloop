@@ -1,0 +1,15 @@
+[package]
+name = "shoop_tracing"
+edition = "2021"
+
+[lib]
+
+[dependencies]
+assert_no_alloc = { workspace = true }
+tracy-client = { workspace = true }
+
+[lints]
+workspace = true
+
+[features]
+prebuild = []

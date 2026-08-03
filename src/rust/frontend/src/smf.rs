@@ -7,6 +7,7 @@ use shoop_engine::MidiEvent;
 // ShoopDaLoop. not to be confused with "standard MIDI format".
 pub type Smf = String;
 
+#[tracing::instrument(name = "frontend.midi.encode_smf", skip_all)]
 pub fn to_smf<'a>(
     events: impl Iterator<Item = &'a MidiEvent>,
     total_length: usize,
@@ -43,6 +44,11 @@ pub struct ParseSmfResult {
     pub sample_rate: usize,
 }
 
+#[tracing::instrument(
+    name = "frontend.midi.parse_smf",
+    skip_all,
+    fields(bytes = smf.len(), target_sample_rate)
+)]
 pub fn parse_smf(smf: &str, target_sample_rate: usize) -> Result<ParseSmfResult, anyhow::Error> {
     let mut conversion_error: Option<anyhow::Error> = None;
 

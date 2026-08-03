@@ -15,7 +15,6 @@ bindgen = "0.70"
 log = "0.4"
 colored = "2.1"
 humantime = "2.1"
-fern = { version = "0.6", features = ["colored"] }
 lazy_static = "1.5"
 ctor = "0.2"
 toml = "0.8"
@@ -81,6 +80,12 @@ lv2_raw = "0.2"
 # plain sample planes, which buys nothing here.
 rubato = "0.16"
 thiserror = "2.0"
+tracing = "0.1"
+tracing-log = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-tracy = { version = "0.11", features = ["ondemand"] }
+tracy-client = { version = "0.18.4", features = ["ondemand", "delayed-init", "timer-fallback"] }
+shoop_tracing = { path = "src/rust/shoop_tracing" }
 
 [patch.crates-io]
 # Patched qt-build-utils to handle Windows debug Qt library "d" suffix

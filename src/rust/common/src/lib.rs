@@ -2,11 +2,14 @@
 
 pub mod env;
 pub mod logging;
+pub mod tracing_capture;
+pub mod tracing_helpers;
 pub mod util;
 use anyhow::Context;
 
 pub fn init() -> Result<(), anyhow::Error> {
     logging::init_logging().with_context(|| "Failed to initialize logging")?;
+    tracing::debug!(target: "app.common", "common runtime initialized");
     Ok(())
 }
 

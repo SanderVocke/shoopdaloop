@@ -249,6 +249,13 @@ impl LoopGui {
     }
 
     pub fn update(mut self: Pin<&mut LoopGui>) {
+        let span = tracing::debug_span!(
+            "frontend.loop.update",
+            mode = tracing::field::Empty,
+            position = tracing::field::Empty,
+            length = tracing::field::Empty
+        );
+        let _entered = span.enter();
         if !self.as_mut().maybe_initialize_backend() {
             return;
         }
@@ -281,7 +288,9 @@ impl LoopGui {
             let Some(new_state) = backend_loop.poll_state() else {
                 return Ok(());
             };
-
+            span.record("mode", new_state.mode as u32);
+            span.record("position", new_state.position);
+            span.record("length", new_state.length);
             let prev_state;
             let prev_cycle_nr: i32;
             let new_cycle_nr: i32;
@@ -295,6 +304,33 @@ impl LoopGui {
 
                 rust.prev_state = new_state.clone();
                 rust.prev_cycle_nr = new_cycle_nr;
+            }
+
+            if common::tracing_helpers::is_tracing_enabled() {
+                if new_state.mode != prev_state.mode {
+                    tracy_client::plot!("engine.loop.mode", new_state.mode as u32 as f64);
+                }
+                if new_state.position != prev_state.position {
+                    tracy_client::plot!("engine.loop.position", new_state.position as f64);
+                }
+                if new_state.maybe_next_mode != prev_state.maybe_next_mode {
+                    tracy_client::plot!(
+                        "engine.loop.next_mode",
+                        new_state
+                            .maybe_next_mode
+                            .map(|mode| mode as u32 as f64)
+                            .unwrap_or(-1.0)
+                    );
+                }
+                if new_state.maybe_next_mode_delay != prev_state.maybe_next_mode_delay {
+                    tracy_client::plot!(
+                        "engine.loop.transition_delay",
+                        new_state
+                            .maybe_next_mode_delay
+                            .map(f64::from)
+                            .unwrap_or(-1.0)
+                    );
+                }
             }
 
             self.as_mut().state_changed(
@@ -380,6 +416,13 @@ impl LoopGui {
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32,
     ) {
+        let _span = tracing::info_span!(
+            "frontend.control.transition_loops",
+            loops = loops.len(),
+            to_mode,
+            cycles_delay = maybe_cycles_delay
+        )
+        .entered();
         let to_mode_enum = match LoopMode::try_from(to_mode) {
             Ok(m) => m,
             Err(e) => {
@@ -424,6 +467,13 @@ impl LoopGui {
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32,
     ) {
+        let _span = tracing::info_span!(
+            "frontend.control.transition_engine_loops",
+            loops = loops.len(),
+            to_mode,
+            cycles_delay = maybe_cycles_delay
+        )
+        .entered();
         raw_debug!(
             "Transitioning {} loops to {} with delay {}, sync at cycle {}",
             loops.len(),
@@ -484,6 +534,12 @@ impl LoopGui {
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32,
     ) {
+        let _span = tracing::info_span!(
+            "frontend.control.transition_loop",
+            to_mode,
+            cycles_delay = maybe_cycles_delay
+        )
+        .entered();
         if !self.as_mut().maybe_initialize_backend() {
             error!(self, "transition: not initialized");
             return;

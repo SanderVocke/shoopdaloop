@@ -25,6 +25,7 @@ pub fn source_root() -> Result<PathBuf, anyhow::Error> {
         })
 }
 
+#[tracing::instrument(name = "tool.packaging.copy_directory", skip_all)]
 pub fn recursive_dir_cpy(src: &Path, dst: &Path) -> Result<(), anyhow::Error> {
     for entry in std::fs::read_dir(src).with_context(|| format!("Cannot read dir {src:?}"))? {
         let entry = entry.with_context(|| format!("Invalid entry"))?;

@@ -55,6 +55,7 @@ impl QmlEngine {
         Ok(())
     }
 
+    #[tracing::instrument(name = "frontend.qml_engine.initialize", skip_all)]
     pub fn initialize(mut self: Pin<&mut Self>) -> Result<(), anyhow::Error> {
         let initialized: bool;
         {
@@ -74,6 +75,7 @@ impl QmlEngine {
         Ok(())
     }
 
+    #[tracing::instrument(name = "frontend.qml_engine.load", skip_all)]
     pub fn load_and_init_qml(
         mut self: Pin<&mut Self>,
         path: &Path,
@@ -94,6 +96,7 @@ impl QmlEngine {
         Ok(())
     }
 
+    #[tracing::instrument(name = "frontend.qml_engine.unload", skip_all)]
     pub fn unload(mut self: Pin<&mut Self>) {
         self.as_mut().collect_garbage();
         self.as_mut().close_root();

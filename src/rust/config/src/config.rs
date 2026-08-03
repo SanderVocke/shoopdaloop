@@ -137,6 +137,7 @@ impl Default for ShoopConfig {
 }
 
 impl ShoopConfig {
+    #[tracing::instrument(name = "app.config.parse_toml", skip_all)]
     pub fn _parse_toml_values(
         base_config: &ShoopConfig,
         content_str: &str,
@@ -152,11 +153,13 @@ impl ShoopConfig {
         Ok(config)
     }
 
+    #[tracing::instrument(name = "app.config.serialize_toml", skip_all)]
     pub fn serialize_toml_values(self: &Self) -> Result<String, anyhow::Error> {
         let toml_config = ShoopTomlConfig::from_config(self);
         toml::to_string(&toml_config).context("Could not serialize config to TOML")
     }
 
+    #[tracing::instrument(name = "app.config.load", skip_all)]
     pub fn _load(
         config_path: &Path,
         maybe_substitute_root_path: Option<&Path>,
@@ -189,6 +192,7 @@ impl ShoopConfig {
         Ok(config)
     }
 
+    #[tracing::instrument(name = "app.config.load_default", skip_all)]
     pub fn _load_default(root_path: &Path) -> Result<ShoopConfig, anyhow::Error> {
         let normalize_path = |path: &Path| -> PathBuf {
             match std::fs::canonicalize(path) {

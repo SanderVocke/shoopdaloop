@@ -13,6 +13,10 @@ use crate::chunked_samples::ChunkedSamples;
 use crate::loop_mode::LoopMode;
 use crate::state_mirror::AudioChannelStateMirror;
 
+/// At most two copy commands (record and playback) per session sub-block.
+/// The session processes no more than 16 sub-blocks in one callback.
+const COPY_COMMAND_CAPACITY: usize = 32;
+
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -162,7 +166,7 @@ impl AudioChannel {
             prev_process_flags: ProcessFlags::NONE,
             playback: None,
             recording: None,
-            queue: Vec::new(),
+            queue: Vec::with_capacity(COPY_COMMAND_CAPACITY),
             state,
         };
         channel.publish_state();
@@ -440,7 +444,10 @@ impl AudioChannel {
             if flags.contains(ProcessFlags::RECORD) {
                 // Transitioning pre-record -> record: adopt what was buffered,
                 // and offset playback so the lead-in sits before sample 0.
-                self.buffers = self.prerecord_buffers.clone();
+                // Adopt the pre-recorded chunks by swapping ownership. Cloning here used
+                // to allocate in the callback exactly when recording began; the displaced
+                // main storage becomes the reusable prerecord buffer below.
+                std::mem::swap(&mut self.buffers, &mut self.prerecord_buffers);
                 self.data_length = self.prerecord_data_length;
                 self.start_offset = self.prerecord_data_length as i32;
                 self.publish_all_data();

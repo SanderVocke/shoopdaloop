@@ -19,6 +19,10 @@ shoop_log_unit!("packaging");
 #[command(name = "package")]
 #[command(about = "in-tree packaging tool for ShoopDaLoop")]
 struct Cli {
+    /// Enable Tracy profiling for the packaging process.
+    #[arg(long, global = true)]
+    tracing: bool,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -114,9 +118,19 @@ enum Commands {
 
 #[cfg(not(feature = "prebuild"))]
 pub fn main_impl() -> Result<(), anyhow::Error> {
+    let tracing_requested = std::env::args().any(|arg| arg == "--tracing");
+    common::tracing_helpers::set_tracing_enabled(tracing_requested);
     common::init()?;
 
     let args = Cli::parse();
+    let command = match &args.command {
+        Some(Commands::BuildPortableFolder { .. }) => "build_portable_folder",
+        Some(Commands::BuildTestBinaries { .. }) => "build_test_binaries",
+        Some(Commands::ScanDependencies { .. }) => "scan_dependencies",
+        Some(Commands::BuildAppImage { .. }) => "build_appimage",
+        None => "none",
+    };
+    let _span = tracing::info_span!("tool.packaging.command", command).entered();
 
     let exe = std::env::current_exe()?;
     let exe_dir = exe.parent().ok_or(anyhow!("Unable to find exe dir"))?;

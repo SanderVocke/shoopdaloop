@@ -1,0 +1,54 @@
+name: Install Tracy capture
+description: Install the pinned Tracy 0.13.1 command-line capture tool
+
+outputs:
+  tracy_capture_tool:
+    description: Absolute path to tracy-capture
+    value: ${{ steps.install.outputs.tracy_capture_tool }}
+  tracy_version:
+    description: Pinned Tracy protocol/tool version
+    value: ${{ steps.install.outputs.tracy_version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Download and verify Tracy capture
+      id: install
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ "${RUNNER_OS}" != "Linux" || "${RUNNER_ARCH}" != "X64" ]]; then
+          echo "Tracy capture CI installation currently supports Linux X64 only" >&2
+          exit 1
+        fi
+
+        version=0.13.1
+        asset_url=https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-2/tracy-linux-x64.tar.gz.zip
+        asset_sha256=49744c7a44a305c570de07fdf47da021e2991252e540830889e79848a8ca0b65
+        install_dir="${RUNNER_TEMP}/tracy-capture-${version}"
+        rm -rf "${install_dir}"
+        mkdir -p "${install_dir}"
+
+        curl --fail --location --retry 3 --retry-all-errors \
+          --output "${install_dir}/asset.zip" "${asset_url}"
+        echo "${asset_sha256}  ${install_dir}/asset.zip" | sha256sum --check --strict
+        unzip -q "${install_dir}/asset.zip" -d "${install_dir}"
+        tar -xzf "${install_dir}/tracy-linux-x64.tar.gz" -C "${install_dir}"
+
+        mapfile -t tools < <(find "${install_dir}" -type f -name tracy-capture)
+        if [[ "${#tools[@]}" -ne 1 ]]; then
+          echo "Expected exactly one tracy-capture executable, found ${#tools[@]}" >&2
+          printf '%s\n' "${tools[@]}" >&2
+          exit 1
+        fi
+        tool="$(realpath "${tools[0]}")"
+        chmod +x "${tool}"
+        help_output="$("${tool}" --help 2>&1 || true)"
+        if ! grep -Fq 'Usage: capture -o output.tracy' <<<"${help_output}"; then
+          echo "Downloaded Tracy capture tool failed its usage check" >&2
+          echo "${help_output}" >&2
+          exit 1
+        fi
+
+        echo "tracy_capture_tool=${tool}" | tee -a "${GITHUB_OUTPUT}"
+        echo "tracy_version=${version}" | tee -a "${GITHUB_OUTPUT}"

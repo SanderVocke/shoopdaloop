@@ -13,6 +13,7 @@ fn check_status(status: ExitStatus, operation: &str) -> Result<(), anyhow::Error
     }
 }
 
+#[tracing::instrument(name = "tool.packaging.populate_test_binaries", skip_all)]
 fn populate_folder(folder: &Path, cargo_profile: &str) -> Result<(), anyhow::Error> {
     let source_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
@@ -73,31 +74,40 @@ fn populate_folder(folder: &Path, cargo_profile: &str) -> Result<(), anyhow::Err
         check_status(status, "cargo-nextest download")?;
     }
 
+    {
+        let _span = tracing::info_span!("tool.packaging.nextest_ready").entered();
+        std::fs::metadata(&nextest_path).context("downloaded cargo-nextest is missing")?;
+    }
+
     info!("Creating nextest archive for all workspace tests...");
     let archive = folder.join("nextest-archive.tar.zst");
-    let status = Command::new(&nextest_path)
-        .current_dir(&source_root)
-        .args([
-            "nextest",
-            "archive",
-            "--workspace",
-            "--features",
-            "shoop_engine/app_backend",
-            "--archive-file",
-            archive
-                .to_str()
-                .ok_or_else(|| anyhow!("Invalid unicode in nextest archive path"))?,
-            "--cargo-profile",
-            cargo_profile,
-        ])
-        .status()
-        .context("failed to launch cargo-nextest archive")?;
+    let status = {
+        let _span = tracing::info_span!("tool.packaging.nextest_archive").entered();
+        Command::new(&nextest_path)
+            .current_dir(&source_root)
+            .args([
+                "nextest",
+                "archive",
+                "--workspace",
+                "--features",
+                "shoop_engine/app_backend",
+                "--archive-file",
+                archive
+                    .to_str()
+                    .ok_or_else(|| anyhow!("Invalid unicode in nextest archive path"))?,
+                "--cargo-profile",
+                cargo_profile,
+            ])
+            .status()
+            .context("failed to launch cargo-nextest archive")?
+    };
     check_status(status, "cargo-nextest archive")?;
 
     info!("Test artifact produced in {}", folder.display());
     Ok(())
 }
 
+#[tracing::instrument(name = "tool.packaging.build_test_binaries", skip_all)]
 pub fn build_test_binaries_folder(
     output_dir: &Path,
     cargo_profile: &str,

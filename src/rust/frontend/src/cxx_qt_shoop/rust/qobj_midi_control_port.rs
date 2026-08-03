@@ -110,6 +110,11 @@ impl MidiControlPort {
     }
 
     pub fn maybe_initialize(mut self: Pin<&mut MidiControlPort>) {
+        let _span = tracing::info_span!(
+            "frontend.midi_control.initialize",
+            direction = self.direction
+        )
+        .entered();
         if self.backend.is_null() {
             return;
         }
@@ -185,7 +190,12 @@ impl MidiControlPort {
 
             self.as_mut().opened();
             self.as_mut().autoconnect_update();
-            self.set_initialized(true);
+            self.as_mut().set_initialized(true);
+
+            if common::tracing_helpers::is_tracing_enabled() {
+                let mut rust_mut = self.as_mut().rust_mut();
+                rust_mut.plotter_initialized.plot(1.0, "MidiControlPort");
+            }
 
             Ok(())
         }() {
@@ -237,12 +247,19 @@ impl MidiControlPort {
     }
 
     pub fn update_send_queue(mut self: Pin<&mut MidiControlPort>) {
+        let queue_len = self.send_queue.len();
+        let _span = tracing::debug_span!(
+            "frontend.midi_control.flush_send_queue",
+            queue_len,
+            rate_limit_hz = self.send_rate_limit_hz
+        )
+        .entered();
         let do_send = |msg: &[u8], rust_mut: &mut MidiControlPortRust| {
             if PortDirection::try_from(rust_mut.direction).unwrap_or(PortDirection::Input)
                 == PortDirection::Output
             {
                 if let Some(port) = rust_mut.backend_port_wrapper.as_ref() {
-                    debug!("Sending: {:?}", msg);
+                    debug!("Sending MIDI message ({} bytes)", msg.len());
                     port.send_midi(msg);
                 } else {
                     warn!("Dropping message to send: port not initialized");
@@ -255,11 +272,19 @@ impl MidiControlPort {
         let mut rust_mut = self.as_mut().rust_mut();
 
         if rust_mut.send_rate_limit_hz == 0 {
-            while rust_mut.send_queue.len() > 0 {
+            while !rust_mut.send_queue.is_empty() {
                 do_send(&rust_mut.send_queue.remove(0), &mut rust_mut);
             }
-        } else if rust_mut.send_queue.len() > 0 {
+            if common::tracing_helpers::is_tracing_enabled() {
+                let len = rust_mut.send_queue.len() as f64;
+                rust_mut.plotter_send_queue_len.plot(len, "MidiControlPort");
+            }
+        } else if !rust_mut.send_queue.is_empty() {
             do_send(&rust_mut.send_queue.remove(0), &mut rust_mut);
+            if common::tracing_helpers::is_tracing_enabled() {
+                let len = rust_mut.send_queue.len() as f64;
+                rust_mut.plotter_send_queue_len.plot(len, "MidiControlPort");
+            }
             unsafe {
                 if let Err(e) = invoke::<_, (), _>(
                     &mut *self.send_timer,
@@ -276,6 +301,10 @@ impl MidiControlPort {
     pub fn queue_send_msg_impl(mut self: Pin<&mut MidiControlPort>, msg: Vec<u8>) {
         let mut rust_mut = self.as_mut().rust_mut();
         rust_mut.send_queue.push(msg);
+        if common::tracing_helpers::is_tracing_enabled() {
+            let len = rust_mut.send_queue.len() as f64;
+            rust_mut.plotter_send_queue_len.plot(len, "MidiControlPort");
+        }
         if rust_mut.send_rate_limit_hz > 0 {
             unsafe {
                 if let Err(e) = invoke::<_, (), _>(
@@ -359,6 +388,10 @@ impl MidiControlPort {
             rust_mut.active_notes.remove(&(channel(msg), note(msg)));
         } else if is_cc(msg) {
             rust_mut.cc_states[channel(msg) as usize][note(msg) as usize] = Some(msg[2]);
+        }
+        if common::tracing_helpers::is_tracing_enabled() {
+            let len = rust_mut.active_notes.len() as f64;
+            rust_mut.plotter_n_active_notes.plot(len, "MidiControlPort");
         }
         let mut list: QList<u8> = QList::default();
         for byte in msg {

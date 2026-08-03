@@ -61,6 +61,10 @@ on:
           description: 'create draft release and upload build artifacts to it'
           type: boolean
           default: false
+        qml_trace_capture:
+          description: 'Capture one Tracy trace per QML testcase and upload an archive (Linux)'
+          type: boolean
+          default: false
     schedule:
       - cron: "0 1 * * *" # every day at 1am
 
@@ -92,6 +96,7 @@ env:
   CHECKPOINTS_DEFAULT: 'false'
   PI_CHECKPOINTS_DEFAULT: 'false'
   CREATE_DRAFT_RELEASE_DEFAULT: 'false'
+  QML_TRACE_CAPTURE_DEFAULT: 'false'
   CONVERT_PATH_FN: "echo"
   RUST_BACKTRACE: "1"
   QT_QPA_PLATFORM: "offscreen"
@@ -118,38 +123,53 @@ jobs:
       checkpoints: ${{ steps.resolve.outputs.checkpoints }}
       pi_checkpoints: ${{ steps.resolve.outputs.pi_checkpoints }}
       create_draft_release: ${{ steps.resolve.outputs.create_draft_release }}
+      qml_trace_capture: ${{ steps.resolve.outputs.qml_trace_capture }}
     steps:
       - name: Resolve boolean inputs with fallback defaults
         id: resolve
         shell: bash
         run: |
-          resolve() {
-            local name="$1"
-            local default="$2"
-            local input_val="$3"
+          resolve_value() {
+            local default="$1"
+            local input_val="$2"
             if [ -n "$input_val" ]; then
-              echo "$name=$input_val" | tee -a "$GITHUB_OUTPUT"
+              echo "$input_val"
             else
-              echo "$name=$default" | tee -a "$GITHUB_OUTPUT"
+              echo "$default"
             fi
           }
-          resolve windows "${{ env.WINDOWS_DEFAULT }}" "${{ github.event.inputs.windows }}"
-          resolve linux "${{ env.LINUX_DEFAULT }}" "${{ github.event.inputs.linux }}"
-          resolve macos "${{ env.MACOS_DEFAULT }}" "${{ github.event.inputs.macos }}"
-          resolve test_enabled "${{ env.TEST_ENABLED_DEFAULT }}" "${{ github.event.inputs.test_enabled }}"
-          resolve release "${{ env.RELEASE_DEFAULT }}" "${{ github.event.inputs.release }}"
-          resolve debug "${{ env.DEBUG_DEFAULT }}" "${{ github.event.inputs.debug }}"
-          resolve coverage "${{ env.COVERAGE_DEFAULT }}" "${{ github.event.inputs.coverage }}"
-          resolve vcpkg_force_rebuild "${{ env.VCPKG_FORCE_REBUILD_DEFAULT }}" "${{ github.event.inputs.vcpkg_force_rebuild }}"
-          resolve checkpoints "${{ env.CHECKPOINTS_DEFAULT }}" "${{ github.event.inputs.checkpoints }}"
-          resolve pi_checkpoints "${{ env.PI_CHECKPOINTS_DEFAULT }}" "${{ github.event.inputs.pi_checkpoints }}"
-          resolve create_draft_release "${{ env.CREATE_DRAFT_RELEASE_DEFAULT }}" "${{ github.event.inputs.create_draft_release }}"
 
-          # For draft PRs, only run debug builds and tests (no release/coverage)
+          declare -A values
+          values[windows]="$(resolve_value "${{ env.WINDOWS_DEFAULT }}" "${{ github.event.inputs.windows }}")"
+          values[linux]="$(resolve_value "${{ env.LINUX_DEFAULT }}" "${{ github.event.inputs.linux }}")"
+          values[macos]="$(resolve_value "${{ env.MACOS_DEFAULT }}" "${{ github.event.inputs.macos }}")"
+          values[test_enabled]="$(resolve_value "${{ env.TEST_ENABLED_DEFAULT }}" "${{ github.event.inputs.test_enabled }}")"
+          values[release]="$(resolve_value "${{ env.RELEASE_DEFAULT }}" "${{ github.event.inputs.release }}")"
+          values[debug]="$(resolve_value "${{ env.DEBUG_DEFAULT }}" "${{ github.event.inputs.debug }}")"
+          values[coverage]="$(resolve_value "${{ env.COVERAGE_DEFAULT }}" "${{ github.event.inputs.coverage }}")"
+          values[vcpkg_force_rebuild]="$(resolve_value "${{ env.VCPKG_FORCE_REBUILD_DEFAULT }}" "${{ github.event.inputs.vcpkg_force_rebuild }}")"
+          values[checkpoints]="$(resolve_value "${{ env.CHECKPOINTS_DEFAULT }}" "${{ github.event.inputs.checkpoints }}")"
+          values[pi_checkpoints]="$(resolve_value "${{ env.PI_CHECKPOINTS_DEFAULT }}" "${{ github.event.inputs.pi_checkpoints }}")"
+          values[create_draft_release]="$(resolve_value "${{ env.CREATE_DRAFT_RELEASE_DEFAULT }}" "${{ github.event.inputs.create_draft_release }}")"
+          values[qml_trace_capture]="$(resolve_value "${{ env.QML_TRACE_CAPTURE_DEFAULT }}" "${{ github.event.inputs.qml_trace_capture }}")"
+
+          # For draft PRs, only run debug builds and tests (no release/coverage).
           if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.draft }}" = "true" ]; then
-            echo "release=false" | tee -a "$GITHUB_OUTPUT"
-            echo "coverage=false" | tee -a "$GITHUB_OUTPUT"
+            values[release]=false
+            values[coverage]=false
           fi
+
+          # A requested trace capture always has its Linux release package prerequisite.
+          if [ "${values[qml_trace_capture]}" = "true" ]; then
+            values[linux]=true
+            values[release]=true
+          fi
+
+          for name in windows linux macos test_enabled release debug coverage \
+            vcpkg_force_rebuild checkpoints pi_checkpoints create_draft_release \
+            qml_trace_capture; do
+            echo "$name=${values[$name]}" | tee -a "$GITHUB_OUTPUT"
+          done
 
   ##############################################################
   ## Release creation for tag pushes
@@ -383,13 +403,104 @@ jobs:
 
 
 
-
-
-
-
-
-
-  
+  trace_qml_linux:
+    runs-on: ubuntu-latest
+    needs: [build_linux, setup]
+    if: >-
+      always() &&
+      github.event_name == 'workflow_dispatch' &&
+      needs.setup.result == 'success' &&
+      needs.build_linux.result == 'success' &&
+      needs.setup.outputs.qml_trace_capture == 'true'
+    container:
+      image: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
+      options: --user root --workdir /
+    env:
+      SHOOP_ALLOW_MISSING_BACKENDS: '1'
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Retrieve Linux release portable package
+      uses: actions/download-artifact@v4
+      with:
+        pattern: shoopdaloop.*.release-linux-x64.portable.tar.gz
+        path: ./package
+        merge-multiple: true
+    - name: Find Linux release portable package
+      id: find_package
+      shell: bash
+      run: |
+        set -euo pipefail
+        mapfile -t packages < <(find package -maxdepth 1 -type f)
+        if [[ "${#packages[@]}" -ne 1 ]]; then
+          echo "Expected exactly one Linux release portable package, found ${#packages[@]}" >&2
+          printf '%s\n' "${packages[@]}" >&2
+          exit 1
+        fi
+        echo "package=$(realpath "${packages[0]}")" | tee -a "$GITHUB_OUTPUT"
+    - name: Install Linux release portable package
+      uses: ./.github/actions/install_package
+      with:
+        package: ${{ steps.find_package.outputs.package }}
+    - name: Install Tracy capture
+      id: tracy
+      uses: ./.github/actions/install_tracy_capture
+    - name: Prepare trace directories
+      shell: bash
+      run: mkdir -p traces/qml reports trace-artifact
+    - name: Capture QML test traces
+      uses: ./.github/actions/test_qml
+      with:
+        capture_traces: true
+        tracy_capture_tool: ${{ steps.tracy.outputs.tracy_capture_tool }}
+        tracy_capture_output_dir: traces/qml
+        tee_all_output_to: reports/qml-console-output.log
+    - name: Write trace metadata
+      if: always()
+      shell: bash
+      run: |
+        mkdir -p trace-artifact
+        cat > trace-artifact/metadata.txt <<EOF
+        git_sha=${GITHUB_SHA}
+        run_id=${GITHUB_RUN_ID}
+        run_attempt=${GITHUB_RUN_ATTEMPT}
+        runner_os=${RUNNER_OS}
+        runner_arch=${RUNNER_ARCH}
+        tracy_version=${{ steps.tracy.outputs.tracy_version }}
+        capture_boundary=qml_test_file
+        capture_output_dir=traces/qml
+        EOF
+    - name: Package QML trace archive
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ -d traces/qml ]]; then
+          cp -a traces/qml trace-artifact/qml
+        fi
+        if [[ -d reports ]]; then
+          cp -a reports trace-artifact/reports
+        fi
+        tar -czf "qml-traces-linux-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tar.gz" trace-artifact
+    - name: Upload QML trace archive
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: qml-traces-linux-${{ github.run_id }}-${{ github.run_attempt }}
+        path: qml-traces-linux-${{ github.run_id }}-${{ github.run_attempt }}.tar.gz
+        if-no-files-found: error
+        retention-days: 30
+    - name: Validate captured traces
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        mapfile -t traces < <(find traces/qml -maxdepth 1 -type f -name '*.tracy' -size +0c 2>/dev/null)
+        if [[ "${#traces[@]}" -eq 0 ]]; then
+          echo "No non-empty QML Tracy captures were produced" >&2
+          exit 1
+        fi
+        echo "Captured ${#traces[@]} non-empty QML trace files"
 
   ##############################################################
   ## MacOS

@@ -5,6 +5,7 @@ use shoop_engine::MidiEvent;
 use std::path::Path;
 shoop_log_unit!("Frontend.MidiIO");
 
+#[tracing::instrument(name = "frontend.midi.save_standard_file", skip_all)]
 pub fn save_to_standard_midi<'a>(
     filename: &Path,
     events: impl Iterator<Item = &'a MidiEvent>,
@@ -39,6 +40,7 @@ pub fn save_to_standard_midi<'a>(
     smf.save(filename).map_err(|e| anyhow!(e))
 }
 
+#[tracing::instrument(name = "frontend.midi.load_standard_file", skip_all)]
 pub fn load_standard_midi<'a>(
     filename: &Path,
     target_sample_rate: usize,

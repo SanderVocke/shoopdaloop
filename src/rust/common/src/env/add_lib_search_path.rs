@@ -2,6 +2,7 @@ use std::env;
 use std::path::Path;
 
 pub fn add_lib_search_path(path: &Path) {
+    let _span = tracing::info_span!("app.common.add_lib_search_path").entered();
     let mut name: &str = "";
     if cfg!(target_os = "windows") {
         name = "PATH";

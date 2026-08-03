@@ -45,6 +45,7 @@ fn populate_appdir(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Error> 
     Ok(())
 }
 
+#[tracing::instrument(name = "tool.packaging.build_linux_appdir", skip_all)]
 pub fn build_appdir(exe_path: &Path, output_dir: &Path) -> Result<(), anyhow::Error> {
     let output_dir = std::path::absolute(output_dir)?;
     if output_dir.exists() {

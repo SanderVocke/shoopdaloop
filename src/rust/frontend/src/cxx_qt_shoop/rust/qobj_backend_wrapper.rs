@@ -127,6 +127,7 @@ fn audio_driver_settings_from_qvariantmap(
 
 impl BackendWrapper {
     pub fn init(mut self: Pin<&mut BackendWrapper>) -> Result<(), anyhow::Error> {
+        let _span = tracing::info_span!("frontend.backend.initialize").entered();
         let driver_type: AudioDriverType;
         let settings: AudioDriverSettings;
         let mut settings_map: QMap_QString_QVariant;
@@ -302,6 +303,7 @@ impl BackendWrapper {
     }
 
     pub fn close(mut self: Pin<&mut BackendWrapper>) {
+        let _span = tracing::info_span!("frontend.backend.close").entered();
         let closed: bool;
         {
             let ref_self = self.as_ref();
@@ -343,6 +345,11 @@ impl BackendWrapper {
     }
 
     pub fn refresh(mut self: Pin<&mut BackendWrapper>) {
+        let _span = tracing::debug_span!(
+            "frontend.backend.refresh",
+            refresh_epoch = *self.refresh_epoch()
+        )
+        .entered();
         trace!("Begin frontend refresh");
         if !self.ready() {
             return;
@@ -384,6 +391,75 @@ impl BackendWrapper {
         self.as_mut()
             .set_sample_rate(driver_state.sample_rate as i32);
         self.as_mut().set_refresh_epoch(refresh_epoch);
+        {
+            let backend_type = *self.actual_backend_type() as f64;
+            let update_interval_ms = *self.last_update_interval() as f64 * 1000.0;
+            let mut rust = self.as_mut().rust_mut();
+            rust.plotter_ready.plot(1.0, "BackendWrapper");
+            rust.plotter_backend_type
+                .plot(backend_type, "BackendWrapper");
+            rust.plotter_xruns.plot(xruns as f64, "BackendWrapper");
+            rust.plotter_stale_graph_cycles
+                .plot(driver_state.stale_graph_cycles as f64, "BackendWrapper");
+            rust.plotter_dsp_load
+                .plot(driver_state.dsp_load_percent as f64, "BackendWrapper");
+            rust.plotter_last_processed
+                .plot(driver_state.last_processed as f64, "BackendWrapper");
+            rust.plotter_audio_buffers_available.plot(
+                session_state.n_audio_buffers_available as f64,
+                "BackendWrapper",
+            );
+            rust.plotter_audio_buffers_created.plot(
+                session_state.n_audio_buffers_created as f64,
+                "BackendWrapper",
+            );
+            rust.plotter_sample_rate
+                .plot(driver_state.sample_rate as f64, "BackendWrapper");
+            rust.plotter_buffer_size
+                .plot(driver_state.buffer_size as f64, "BackendWrapper");
+            rust.plotter_update_interval
+                .plot(update_interval_ms, "BackendWrapper");
+            rust.plotter_cycles
+                .plot(session_state.cycles as f64, "BackendWrapper");
+            rust.plotter_frames
+                .plot(session_state.frames as f64, "BackendWrapper");
+            rust.plotter_pending_commands
+                .plot(session_state.pending_commands as f64, "BackendWrapper");
+            rust.plotter_commands_applied
+                .plot(session_state.commands_applied as f64, "BackendWrapper");
+            rust.plotter_last_applied_command
+                .plot(session_state.last_applied_command as f64, "BackendWrapper");
+            rust.plotter_trace_snapshots_dropped.plot(
+                session_state.trace_snapshots_dropped as f64,
+                "BackendWrapper",
+            );
+            rust.plotter_capture_underruns
+                .plot(session_state.capture_underruns as f64, "BackendWrapper");
+            rust.plotter_capture_overruns
+                .plot(session_state.capture_overruns as f64, "BackendWrapper");
+            rust.plotter_graph_arms
+                .plot(session_state.graph_arms as f64, "BackendWrapper");
+            rust.plotter_graph_applies
+                .plot(session_state.graph_applies as f64, "BackendWrapper");
+            rust.plotter_callback_last_ns
+                .plot(session_state.callback_last_ns as f64, "BackendWrapper");
+            rust.plotter_callback_worst_ns
+                .plot(session_state.callback_worst_ns as f64, "BackendWrapper");
+            rust.plotter_callback_budget_overruns.plot(
+                session_state.callback_budget_overruns as f64,
+                "BackendWrapper",
+            );
+            rust.plotter_schedule_request_id
+                .plot(session_state.schedule_request_id as f64, "BackendWrapper");
+            rust.plotter_schedule_applied_id
+                .plot(session_state.schedule_applied_id as f64, "BackendWrapper");
+            rust.plotter_stuck_cycles
+                .plot(session_state.stuck_cycles as f64, "BackendWrapper");
+            rust.plotter_stale_cycles
+                .plot(session_state.stale_cycles as f64, "BackendWrapper");
+            rust.plotter_sub_blocks_last_cycle
+                .plot(session_state.sub_blocks_last_cycle as f64, "BackendWrapper");
+        }
         self.as_mut().updated_on_gui_thread();
         trace!("End frontend refresh");
     }
@@ -393,6 +469,7 @@ impl BackendWrapper {
 
         if let Some(driver) = mut_rust.driver.as_mut() {
             driver.dummy_enter_controlled_mode();
+            mut_rust.plotter_mode.plot(1.0, "BackendWrapper");
         } else {
             warn!("dummy_enter_controlled_mode called on a BackendWrapper with no driver");
         }
@@ -403,6 +480,7 @@ impl BackendWrapper {
 
         if let Some(driver) = mut_rust.driver.as_mut() {
             driver.dummy_enter_automatic_mode();
+            mut_rust.plotter_mode.plot(0.0, "BackendWrapper");
         } else {
             warn!("dummy_enter_automatic_mode called on a BackendWrapper with no driver");
         }
@@ -430,11 +508,15 @@ impl BackendWrapper {
     }
 
     pub fn dummy_request_controlled_frames(mut self: Pin<&mut BackendWrapper>, n: i32) {
+        let _span = tracing::debug_span!("frontend.backend.dummy_request", frames = n).entered();
         trace!("dummy_request_controlled_frames {}", n);
         let mut mut_rust = self.as_mut().rust_mut();
 
         if let Some(driver) = mut_rust.driver.as_mut() {
             driver.dummy_request_controlled_frames(n as u32);
+            mut_rust
+                .plotter_samples_requested
+                .plot(n as f64, "BackendWrapper");
         } else {
             warn!("dummy_request_controlled_frames called on a BackendWrapper with no driver");
         }
@@ -442,21 +524,27 @@ impl BackendWrapper {
     }
 
     pub fn dummy_n_requested_frames(mut self: Pin<&mut BackendWrapper>) -> i32 {
-        let mut_rust = self.as_mut().rust_mut();
+        let mut mut_rust = self.as_mut().rust_mut();
 
-        if let Some(driver) = mut_rust.driver.as_ref() {
+        let result = if let Some(driver) = mut_rust.driver.as_ref() {
             driver.dummy_n_requested_frames() as i32
         } else {
             warn!("dummy_n_requested_frames called on a BackendWrapper with no driver");
             0
-        }
+        };
+        mut_rust
+            .plotter_samples_pending
+            .plot(result as f64, "BackendWrapper");
+        result
     }
 
     pub fn dummy_run_requested_frames(mut self: Pin<&mut BackendWrapper>) {
+        let _span = tracing::debug_span!("frontend.backend.dummy_run").entered();
         let mut mut_rust = self.as_mut().rust_mut();
 
         if let Some(driver) = mut_rust.driver.as_mut() {
             driver.dummy_run_requested_frames();
+            mut_rust.plotter_samples_pending.plot(0.0, "BackendWrapper");
         } else {
             warn!("dummy_run_requested_frames called on a BackendWrapper with no driver");
         }
@@ -502,6 +590,7 @@ impl BackendWrapper {
     }
 
     pub fn wait_process(mut self: Pin<&mut BackendWrapper>) {
+        let _span = tracing::debug_span!("frontend.backend.wait_process").entered();
         let mut mut_rust = self.as_mut().rust_mut();
 
         if let Some(driver) = mut_rust.driver.as_mut() {

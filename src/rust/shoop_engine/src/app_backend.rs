@@ -241,7 +241,13 @@ fn observed_lifecycle<I: ObjectIdentity, M>(
 ) -> ObjectLifecycle {
     let lifecycle = control.lifecycle();
     if lifecycle == ObjectLifecycle::Pending && !shared.engine_connected() {
-        control.mark_failed("engine disconnected while object creation was pending");
+        tracing::debug_span!(
+            "engine.control.object_creation_failed",
+            session_id = shared.session_id
+        )
+        .in_scope(|| {
+            control.mark_failed("engine disconnected while object creation was pending");
+        });
         ObjectLifecycle::Failed
     } else {
         lifecycle
@@ -313,6 +319,9 @@ struct JackProcess {
 impl jack::ProcessHandler for JackProcess {
     fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
         let n_frames = ps.n_frames() as usize;
+        let _driver_kind =
+            shoop_tracing::realtime_span!("engine.rt.driver", value = AudioDriverType::Jack as i32);
+        let _span = shoop_tracing::realtime_span!("engine.rt.driver.jack", value = n_frames);
         if let Some(callback) = self.maybe_process_callback {
             unsafe {
                 callback();
@@ -763,6 +772,8 @@ impl CpalBackend {
         let mut input_channels = 0usize;
         let mut capture_names = Vec::new();
         let xruns = Arc::new(AtomicU32::new(0));
+        let capture_underruns = Arc::new(AtomicU32::new(0));
+        let capture_overruns = Arc::new(AtomicU32::new(0));
         if settings.input_device != "none" {
             if let Some(input_device) =
                 select_cpal_device(host.input_devices()?, &settings.input_device)
@@ -784,14 +795,25 @@ impl CpalBackend {
                 let ring = Arc::new(Mutex::new(VecDeque::with_capacity(cap)));
                 let cb_ring = ring.clone();
                 let cb_xruns_in = xruns.clone();
+                let cb_capture_overruns = capture_overruns.clone();
                 input_stream = Some(input_device.build_input_stream(
                     &input_config,
                     move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                        let _driver_kind = shoop_tracing::realtime_span!(
+                            "engine.rt.driver",
+                            value = AudioDriverType::Cpal as i32
+                        );
+                        let n_frames = data.len().checked_div(input_channels.max(1)).unwrap_or(0);
+                        let _span = shoop_tracing::realtime_span!(
+                            "engine.rt.driver.cpal_input",
+                            value = n_frames
+                        );
                         let mut ring = cb_ring.lock().unwrap_or_else(|e| e.into_inner());
                         for &s in data {
                             if ring.len() >= cap {
                                 ring.pop_front();
                                 cb_xruns_in.fetch_add(1, Ordering::Relaxed);
+                                cb_capture_overruns.fetch_add(1, Ordering::Relaxed);
                             }
                             ring.push_back(s);
                         }
@@ -889,6 +911,8 @@ impl CpalBackend {
         let midi_inputs_ret = midi_inputs_cb.clone();
         let midi_outputs_ret = midi_outputs_cb.clone();
         let external_cb = external.clone();
+        let capture_underruns_cb = capture_underruns.clone();
+        let capture_overruns_cb = capture_overruns.clone();
         let last_processed = Arc::new(AtomicU32::new(0));
         let last_processed_cb = last_processed.clone();
         let xruns_cb = xruns.clone();
@@ -903,6 +927,12 @@ impl CpalBackend {
             &output_config,
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                 let n_frames = data.len().checked_div(output_channels.max(1)).unwrap_or(0);
+                let _driver_kind = shoop_tracing::realtime_span!(
+                    "engine.rt.driver",
+                    value = AudioDriverType::Cpal as i32
+                );
+                let _span =
+                    shoop_tracing::realtime_span!("engine.rt.driver.cpal_output", value = n_frames);
                 last_processed_cb.store(n_frames as u32, Ordering::Relaxed);
                 for s in data.iter_mut() {
                     *s = 0.0;
@@ -922,10 +952,28 @@ impl CpalBackend {
                 }
                 if let Some(ring) = input_ring_cb.as_ref() {
                     let mut ring = ring.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut underflowed = false;
                     for s in &mut capture_scratch[..wanted] {
-                        *s = ring.pop_front().unwrap_or(0.0);
+                        match ring.pop_front() {
+                            Some(value) => *s = value,
+                            None => {
+                                *s = 0.0;
+                                underflowed = true;
+                            }
+                        }
+                    }
+                    if underflowed {
+                        capture_underruns_cb.fetch_add(1, Ordering::Relaxed);
                     }
                 }
+                engine.stats().capture_underruns.store(
+                    capture_underruns_cb.load(Ordering::Relaxed),
+                    Ordering::Relaxed,
+                );
+                engine.stats().capture_overruns.store(
+                    capture_overruns_cb.load(Ordering::Relaxed),
+                    Ordering::Relaxed,
+                );
 
                 // Control work first, at the cycle boundary, and with no lock anywhere: the
                 // callback owns the engine, so a GUI thread polling state cannot make this
@@ -1106,6 +1154,11 @@ struct CompositeRegistry {
     metadata: BTreeMap<engine::LoopIdentity, engine::LoopTargetMetadata>,
 }
 
+#[tracing::instrument(
+    name = "engine.control.compile_composite_registry",
+    skip_all,
+    fields(composites = registry.configs.len(), targets = registry.metadata.len())
+)]
 fn compile_composite_registry(
     registry: &CompositeRegistry,
 ) -> Result<engine::CompositeBoundaryTimeline> {
@@ -1266,8 +1319,18 @@ impl SharedSession {
         f: impl FnMut(&mut engine::Session) + Send + 'static,
         changes_topology: bool,
     ) -> std::result::Result<CommandSequence, SendError> {
+        let span = tracing::debug_span!(
+            "engine.control.queue",
+            session_id = self.session_id,
+            changes_topology,
+            sequence = tracing::field::Empty,
+            retries = tracing::field::Empty,
+            outcome = tracing::field::Empty
+        );
+        let _entered = span.enter();
         let mut f = Some(f);
         let mut warned = false;
+        let mut retries = 0_u32;
         let sequence = loop {
             let attempt = {
                 let mut handle = self.handle.lock().unwrap_or_else(|e| e.into_inner());
@@ -1282,6 +1345,7 @@ impl SharedSession {
             match attempt {
                 Ok(sequence) => break sequence,
                 Err(SendError::Full) => {
+                    retries = retries.saturating_add(1);
                     if !warned {
                         let caller = std::panic::Location::caller();
                         log::warn!(
@@ -1293,9 +1357,16 @@ impl SharedSession {
                     }
                     self.pump_or_wait_for_capacity();
                 }
-                Err(error) => return Err(error),
+                Err(error) => {
+                    span.record("outcome", "disconnected");
+                    span.record("retries", retries);
+                    return Err(error);
+                }
             }
         };
+        span.record("sequence", sequence.get());
+        span.record("retries", retries);
+        span.record("outcome", "queued");
 
         if changes_topology {
             if let Some(scheduler) = self.scheduler.get() {
@@ -1361,6 +1432,14 @@ impl SharedSession {
         &self,
         f: impl FnOnce(&mut engine::Session) -> T + Send + 'static,
     ) -> Result<(CommandSequence, rtrb::Consumer<T>)> {
+        let span = tracing::debug_span!(
+            "engine.control.queue_result",
+            session_id = self.session_id,
+            sequence = tracing::field::Empty,
+            retries = tracing::field::Empty,
+            outcome = tracing::field::Empty
+        );
+        let _entered = span.enter();
         if let Some(e) = self
             .parked
             .lock()
@@ -1371,6 +1450,7 @@ impl SharedSession {
         }
         let mut f = Some(f);
         let mut warned = false;
+        let mut retries = 0_u32;
         let queued = loop {
             let attempt = {
                 let mut handle = self
@@ -1388,15 +1468,22 @@ impl SharedSession {
             match attempt {
                 Ok(queued) => break queued,
                 Err(SendError::Full) => {
+                    retries = retries.saturating_add(1);
                     if !warned {
                         log::warn!("engine command queue is full; waiting to queue request");
                         warned = true;
                     }
                     self.pump_or_wait_for_capacity();
                 }
-                Err(error) => return Err(anyhow!("could not queue the request: {error}")),
+                Err(error) => {
+                    span.record("outcome", "disconnected");
+                    return Err(anyhow!("could not queue the request: {error}"));
+                }
             }
         };
+        span.record("sequence", queued.0.get());
+        span.record("retries", retries);
+        span.record("outcome", "queued");
         self.pump_parked();
         Ok(queued)
     }
@@ -1405,6 +1492,9 @@ impl SharedSession {
         &self,
         f: impl FnOnce(&mut engine::Session) -> T + Send + 'static,
     ) -> Result<T> {
+        let _span =
+            tracing::debug_span!("engine.control.graph_query", session_id = self.session_id)
+                .entered();
         if let Some(e) = self
             .parked
             .lock()
@@ -1490,6 +1580,12 @@ impl SharedSession {
     /// against the old configuration -- which is how a test that sets a port's retained window
     /// and then records came out with nothing retained.
     fn drain_queue(&self, timeout: Duration) {
+        let _span = tracing::debug_span!(
+            "engine.control.drain_queue",
+            session_id = self.session_id,
+            timeout_ms = timeout.as_millis() as u64
+        )
+        .entered();
         let deadline = Instant::now() + timeout;
         loop {
             let pending = self
@@ -1516,6 +1612,9 @@ impl SharedSession {
 
     /// Applies any pending graph changes and returns once they have landed.
     fn flush_graph_changes(&self) {
+        let _span =
+            tracing::debug_span!("engine.graph.flush_session", session_id = self.session_id)
+                .entered();
         if let Some(s) = self.scheduler.get() {
             s.flush_blocking();
         }
@@ -1569,7 +1668,10 @@ impl SharedSession {
             let cache = Arc::clone(&self.connection_cache);
             let jack = self.jack();
             let external = self.external();
-            thread::spawn(move || refresh_connection_cache(cache, jack, external, generation));
+            let _ = thread::Builder::new()
+                .name("engine-connection-cache".to_string())
+                .spawn(move || refresh_connection_cache(cache, jack, external, generation))
+                .expect("spawn engine connection cache worker");
         }
         cached
     }
@@ -1675,11 +1777,19 @@ fn refresh_connection_cache(
     external: Option<Arc<Mutex<engine::DummyExternalConnections>>>,
     generation: u64,
 ) {
+    let span = tracing::debug_span!(
+        "worker.engine.connection_cache",
+        generation,
+        requests = tracing::field::Empty,
+        published = tracing::field::Empty
+    );
+    let _entered = span.enter();
     let requests = cache
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .requests
         .clone();
+    span.record("requests", requests.len());
     let mut states = HashMap::new();
     if let Some(jack) = jack {
         let jack = jack.lock().unwrap_or_else(|e| e.into_inner());
@@ -1721,6 +1831,9 @@ fn refresh_connection_cache(
     if cache.generation == generation {
         cache.states = states;
         cache.refresh_in_flight = false;
+        span.record("published", true);
+    } else {
+        span.record("published", false);
     }
 }
 
@@ -1769,6 +1882,7 @@ impl BackendSession {
     pub fn new() -> Result<Self> {
         Self::create()
     }
+    #[tracing::instrument(name = "engine.control.create_session", skip_all)]
     pub fn create() -> Result<Self> {
         Self::create_with_capacity(COMMAND_QUEUE_CAPACITY)
     }
@@ -1866,6 +1980,11 @@ impl BackendSession {
 
         Ok(Self { shared })
     }
+    #[tracing::instrument(
+        name = "engine.control.attach_driver",
+        skip_all,
+        fields(session_id = self.session_id())
+    )]
     pub fn set_audio_driver(&self, driver: &AudioDriver) -> Result<()> {
         let state = driver.get_state();
         if state.sample_rate > 0 {
@@ -1903,13 +2022,48 @@ impl BackendSession {
     }
 
     pub fn get_state(&self) -> BackendSessionState {
+        let handle = self.shared.handle.lock().unwrap_or_else(|e| e.into_inner());
+        let stats = handle.stats();
         BackendSessionState {
             audio_driver: std::ptr::null_mut(),
             n_audio_buffers_created: 0,
             n_audio_buffers_available: 0,
+            cycles: stats.cycles.load(Ordering::Relaxed),
+            frames: stats.frames.load(Ordering::Relaxed),
+            pending_commands: handle.n_pending().min(u32::MAX as usize) as u32,
+            commands_applied: stats.commands_applied.load(Ordering::Relaxed),
+            last_applied_command: stats.last_applied_command.load(Ordering::Relaxed),
+            trace_snapshots_dropped: stats.trace_snapshots_dropped.load(Ordering::Relaxed),
+            capture_underruns: stats.capture_underruns.load(Ordering::Relaxed),
+            capture_overruns: stats.capture_overruns.load(Ordering::Relaxed),
+            graph_arms: self
+                .shared
+                .scheduler
+                .get()
+                .map(GraphScheduler::n_arms)
+                .unwrap_or(0),
+            graph_applies: self
+                .shared
+                .scheduler
+                .get()
+                .map(GraphScheduler::n_applies)
+                .unwrap_or(0),
+            callback_last_ns: stats.callback_last_ns.load(Ordering::Relaxed),
+            callback_worst_ns: stats.callback_worst_ns.load(Ordering::Relaxed),
+            callback_budget_overruns: stats.callback_budget_overruns.load(Ordering::Relaxed),
+            schedule_request_id: stats.schedule_request_id.load(Ordering::Relaxed),
+            schedule_applied_id: stats.schedule_applied_id.load(Ordering::Relaxed),
+            stuck_cycles: stats.stuck_cycles.load(Ordering::Relaxed),
+            stale_cycles: stats.stale_cycles.load(Ordering::Relaxed),
+            sub_blocks_last_cycle: stats.sub_blocks_last_cycle.load(Ordering::Relaxed),
         }
     }
     /// Adds a loop and returns its stable handle as soon as creation is queued.
+    #[tracing::instrument(
+        name = "engine.control.create_loop",
+        skip_all,
+        fields(session_id = self.session_id())
+    )]
     pub fn create_loop(&self) -> Result<Loop> {
         let control = Arc::new(ObjectControl::<LoopId, engine::LoopStateMirror>::pending(
             self.shared.session_id,
@@ -1937,6 +2091,11 @@ impl BackendSession {
             control,
         })
     }
+    #[tracing::instrument(
+        name = "engine.control.create_composite",
+        skip_all,
+        fields(session_id = self.session_id())
+    )]
     pub fn create_composite_loop(&self) -> Result<CompositeLoop> {
         let slot = self
             .shared
@@ -2110,6 +2269,11 @@ impl BackendSession {
     /// Compiles a composite registry update off the realtime thread and queues activation.
     /// The returned acknowledgement is polled by the frontend; displaced or rejected plans
     /// are always destroyed by the acknowledgement worker, never by the engine callback.
+    #[tracing::instrument(
+        name = "engine.control.configure_composite",
+        skip_all,
+        fields(session_id = self.session_id())
+    )]
     pub fn configure_composite_loop_queued(
         &self,
         composite: &CompositeLoop,
@@ -2174,31 +2338,40 @@ impl BackendSession {
 
         let outcome = Arc::new(Mutex::new(None));
         let worker_outcome = Arc::clone(&outcome);
-        thread::spawn(move || {
-            // This wait runs on a reclamation worker, never on the GUI or realtime thread.
-            // Instrumented and packaged CI builds can take longer than the ordinary command
-            // fence while the frontend settles topology, so retain a bounded but generous
-            // transaction timeout here.
-            let result = match engine::wait_for_result(receiver, Duration::from_secs(30)) {
-                Ok(Ok(reclaimed)) => {
-                    drop(reclaimed);
-                    Ok(version)
-                }
-                Ok(Err(rejected)) => {
-                    let error = rejected.error.to_string();
-                    drop(rejected);
-                    Err(format!(
-                        "engine rejected composite timeline version {version}: {error}"
-                    ))
-                }
-                Err(error) => Err(format!(
-                    "engine did not acknowledge composite timeline version {version}: {error}"
-                )),
-            };
-            *worker_outcome
-                .lock()
-                .unwrap_or_else(|error| error.into_inner()) = Some(result);
-        });
+        let _ = thread::Builder::new()
+            .name("engine-composite-ack".to_string())
+            .spawn(move || {
+                let _span = tracing::info_span!(
+                    "worker.engine.composite_ack",
+                    sequence = sequence.get(),
+                    version
+                )
+                .entered();
+                // This wait runs on a reclamation worker, never on the GUI or realtime thread.
+                // Instrumented and packaged CI builds can take longer than the ordinary command
+                // fence while the frontend settles topology, so retain a bounded but generous
+                // transaction timeout here.
+                let result = match engine::wait_for_result(receiver, Duration::from_secs(30)) {
+                    Ok(Ok(reclaimed)) => {
+                        drop(reclaimed);
+                        Ok(version)
+                    }
+                    Ok(Err(rejected)) => {
+                        let error = rejected.error.to_string();
+                        drop(rejected);
+                        Err(format!(
+                            "engine rejected composite timeline version {version}: {error}"
+                        ))
+                    }
+                    Err(error) => Err(format!(
+                        "engine did not acknowledge composite timeline version {version}: {error}"
+                    )),
+                };
+                *worker_outcome
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner()) = Some(result);
+            })
+            .expect("spawn composite acknowledgement worker");
         Ok(CompositeInstallAck { sequence, outcome })
     }
 
@@ -2366,6 +2539,11 @@ impl BackendSession {
         Ok(version)
     }
 
+    #[tracing::instrument(
+        name = "engine.control.create_fx",
+        skip_all,
+        fields(session_id = self.session_id(), chain_type = chain_type as u32)
+    )]
     pub fn create_fx_chain(&self, chain_type: FXChainType, title: &str) -> Result<FXChain> {
         let backend = match chain_type {
             FXChainType::Test2x2x1 => FXChainBackendKind::Test2x2x1,
@@ -2420,7 +2598,9 @@ impl BackendSession {
         Ok(chain)
     }
     pub fn get_profiling_report(&self) -> ProfilingReport {
-        ProfilingReport::default()
+        self.shared
+            .query_graph_scheduler_response(|session| session.profiling_report())
+            .unwrap_or_default()
     }
     pub fn segfault_on_process_thread(&self) {}
     pub fn abort_on_process_thread(&self) {}
@@ -2543,7 +2723,7 @@ fn process_dummy_driver_iteration(
     inner: &Arc<Mutex<DriverInner>>,
     engine: &mut Option<engine::Engine>,
 ) {
-    let (session, n, sample_rate, buffer_size, callback) = {
+    let (session, n, sample_rate, buffer_size, callback, driver_type) = {
         let mut i = inner.lock().unwrap_or_else(|e| e.into_inner());
         if !i.dummy.active() || !driver_uses_dummy_processing(i.driver_type) {
             i.last_processed = 0;
@@ -2561,8 +2741,12 @@ fn process_dummy_driver_iteration(
             i.dummy.sample_rate(),
             i.dummy.buffer_size(),
             i.maybe_process_callback,
+            i.driver_type,
         )
     };
+    let _driver_kind =
+        shoop_tracing::realtime_span!("engine.rt.driver", value = driver_type as i32);
+    let _span = shoop_tracing::realtime_span!("engine.rt.driver.dummy", value = n);
 
     if let Some(callback) = callback {
         unsafe {
@@ -2631,6 +2815,11 @@ fn wait_for_dummy_generation(inner: &Arc<Mutex<DriverInner>>, target: u64, timeo
 unsafe impl Send for AudioDriver {}
 unsafe impl Sync for AudioDriver {}
 impl AudioDriver {
+    #[tracing::instrument(
+        name = "engine.driver.create",
+        skip_all,
+        fields(driver_type = driver_type as u32)
+    )]
     pub fn new(
         driver_type: AudioDriverType,
         _maybe_callback: Option<ProcessCallback>,
@@ -2719,6 +2908,7 @@ impl AudioDriver {
         i.cpal = Some(Arc::new(Mutex::new(backend)));
         Ok(())
     }
+    #[tracing::instrument(name = "engine.driver.start", skip_all)]
     pub fn start(&self, settings: &AudioDriverSettings) -> Result<()> {
         let mut i = self.inner.lock().unwrap();
         // Settled here as a local and handed to the driver once at the end, rather than
@@ -2806,59 +2996,66 @@ impl AudioDriver {
             i.finish.store(false, Ordering::Relaxed);
             let inner = self.inner.clone();
             let finish = i.finish.clone();
-            i.dummy_thread = Some(thread::spawn(move || {
-                // Claimed on the first turn after a session is attached, and owned by this
-                // thread from then on.
-                let mut engine: Option<engine::Engine> = None;
-                while !finish.load(Ordering::Relaxed) {
-                    let (sample_rate, buffer_size) = {
-                        let i = inner.lock().unwrap_or_else(|e| e.into_inner());
-                        (i.dummy.sample_rate().max(1), i.dummy.buffer_size().max(1))
-                    };
-                    let micros = ((buffer_size as f64 / sample_rate as f64) * 1_000_000.0)
-                        .ceil()
-                        .max(1.0) as u64;
-                    let started = Instant::now();
-                    process_dummy_driver_iteration(&inner, &mut engine);
-                    let interval = Duration::from_micros(micros);
+            i.dummy_thread = Some(
+                thread::Builder::new()
+                    .name("engine-dummy-driver".to_string())
+                    .spawn(move || {
+                        shoop_tracing::prewarm_realtime_thread("engine-dummy-driver");
+                        let _span = tracing::info_span!("worker.engine.dummy_driver").entered();
+                        // Claimed on the first turn after a session is attached, and owned by this
+                        // thread from then on.
+                        let mut engine: Option<engine::Engine> = None;
+                        while !finish.load(Ordering::Relaxed) {
+                            let (sample_rate, buffer_size) = {
+                                let i = inner.lock().unwrap_or_else(|e| e.into_inner());
+                                (i.dummy.sample_rate().max(1), i.dummy.buffer_size().max(1))
+                            };
+                            let micros = ((buffer_size as f64 / sample_rate as f64) * 1_000_000.0)
+                                .ceil()
+                                .max(1.0) as u64;
+                            let started = Instant::now();
+                            process_dummy_driver_iteration(&inner, &mut engine);
+                            let interval = Duration::from_micros(micros);
 
-                    // Sleep in slices, draining control work between cycles rather than
-                    // through them. A blocking read from the GUI thread would otherwise wait
-                    // out the whole cycle interval, and the QML suite makes thousands of them:
-                    // sleeping the interval in one go made the suite several times slower for
-                    // no reason other than latency. Only pumps when something is actually
-                    // queued, so an idle driver still sleeps.
-                    const SLICE: Duration = Duration::from_micros(100);
-                    while started.elapsed() < interval {
-                        if finish.load(Ordering::Relaxed) {
-                            break;
-                        }
-                        if let Some(e) = engine.as_mut() {
-                            if e.has_pending_commands() {
-                                e.pump();
+                            // Sleep in slices, draining control work between cycles rather than
+                            // through them. A blocking read from the GUI thread would otherwise wait
+                            // out the whole cycle interval, and the QML suite makes thousands of them:
+                            // sleeping the interval in one go made the suite several times slower for
+                            // no reason other than latency. Only pumps when something is actually
+                            // queued, so an idle driver still sleeps.
+                            const SLICE: Duration = Duration::from_micros(100);
+                            while started.elapsed() < interval {
+                                if finish.load(Ordering::Relaxed) {
+                                    break;
+                                }
+                                if let Some(e) = engine.as_mut() {
+                                    if e.has_pending_commands() {
+                                        e.pump();
+                                    }
+                                }
+                                let left = interval.saturating_sub(started.elapsed());
+                                thread::sleep(SLICE.min(left));
                             }
                         }
-                        let left = interval.saturating_sub(started.elapsed());
-                        thread::sleep(SLICE.min(left));
-                    }
-                }
 
-                // Hand the engine back before this thread ends. Dropping it here would destroy
-                // the session on this thread, and a session holding Carla LV2 hosts does not
-                // survive being torn down off the thread that created its plugins. It would
-                // also leave the session unreachable for whatever outlives this driver.
-                if let Some(e) = engine.take() {
-                    let session = inner
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .session
-                        .as_ref()
-                        .and_then(|w| w.upgrade());
-                    if let Some(shared) = session {
-                        shared.return_engine(e);
-                    }
-                }
-            }));
+                        // Hand the engine back before this thread ends. Dropping it here would destroy
+                        // the session on this thread, and a session holding Carla LV2 hosts does not
+                        // survive being torn down off the thread that created its plugins. It would
+                        // also leave the session unreachable for whatever outlives this driver.
+                        if let Some(e) = engine.take() {
+                            let session = inner
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .session
+                                .as_ref()
+                                .and_then(|w| w.upgrade());
+                            if let Some(shared) = session {
+                                shared.return_engine(e);
+                            }
+                        }
+                    })
+                    .expect("spawn dummy driver thread"),
+            );
         }
         Ok(())
     }
@@ -2997,6 +3194,7 @@ impl AudioDriver {
     /// against the previous schedule until the coalescing window elapsed -- fine for
     /// audio, wrong for a test asserting on the very next cycle. This is the suite's
     /// "let everything settle" call, so settling the graph belongs here.
+    #[tracing::instrument(name = "engine.driver.wait_process", skip_all)]
     pub fn wait_process(&self) {
         let (is_dummy, target, session) = {
             let i = self.inner.lock().unwrap_or_else(|e| e.into_inner());
@@ -3423,6 +3621,11 @@ impl Loop {
         self.control.error()
     }
 
+    #[tracing::instrument(
+        name = "engine.control.create_audio_channel",
+        skip_all,
+        fields(session_id = self.session_id(), mode = mode as u32)
+    )]
     pub fn add_audio_channel(&self, mode: ChannelMode) -> Result<AudioChannel> {
         let control = Arc::new(ObjectControl::<
             AudioChannelId,
@@ -3467,6 +3670,11 @@ impl Loop {
         })
     }
 
+    #[tracing::instrument(
+        name = "engine.control.create_midi_channel",
+        skip_all,
+        fields(session_id = self.session_id(), mode = mode as u32)
+    )]
     pub fn add_midi_channel(&self, mode: ChannelMode) -> Result<MidiChannel> {
         let control = Arc::new(
             ObjectControl::<MidiChannelId, engine::MidiChannelStateMirror>::pending(
@@ -3663,6 +3871,11 @@ impl Loop {
     }
 }
 
+#[tracing::instrument(
+    name = "engine.control.transition_loops",
+    skip_all,
+    fields(loops = loops.len(), mode = to_state as u32)
+)]
 pub fn transition_multiple_loops(
     loops: &[&Loop],
     to_state: LoopMode,
@@ -4033,6 +4246,11 @@ pub struct AudioPort {
 }
 pub type AudioPortState = engine::AudioPortState;
 impl AudioPort {
+    #[tracing::instrument(
+        name = "engine.control.create_audio_port",
+        skip_all,
+        fields(session_id = sess.session_id(), direction = *direction as u32)
+    )]
     pub fn new_driver_port(
         sess: &BackendSession,
         driver: &AudioDriver,
@@ -4348,6 +4566,11 @@ impl MidiPort {
         self.control.error()
     }
 
+    #[tracing::instrument(
+        name = "engine.control.create_midi_port",
+        skip_all,
+        fields(session_id = sess.session_id(), direction = *direction as u32)
+    )]
     pub fn new_driver_port(
         sess: &BackendSession,
         driver: &AudioDriver,
@@ -4704,20 +4927,24 @@ impl DecoupledMidiPort {
             self.direction,
             self.port_id,
         );
-        thread::spawn(move || {
-            let state = if let Some(jack) = jack {
-                let jack = jack.lock().unwrap_or_else(|e| e.into_inner());
-                jack_connections_state_locked(&jack, &name, direction, PortDataType::Midi)
-            } else {
-                external
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .connection_status_of(port_id)
-                    .into_iter()
-                    .collect()
-            };
-            *cache.lock().unwrap_or_else(|e| e.into_inner()) = state;
-        });
+        let _ = thread::Builder::new()
+            .name("engine-midi-connection-cache".to_string())
+            .spawn(move || {
+                let _span = tracing::debug_span!("worker.engine.midi_connection_cache").entered();
+                let state = if let Some(jack) = jack {
+                    let jack = jack.lock().unwrap_or_else(|e| e.into_inner());
+                    jack_connections_state_locked(&jack, &name, direction, PortDataType::Midi)
+                } else {
+                    external
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .connection_status_of(port_id)
+                        .into_iter()
+                        .collect()
+                };
+                *cache.lock().unwrap_or_else(|e| e.into_inner()) = state;
+            })
+            .expect("spawn MIDI connection cache worker");
         cached
     }
     /// Synchronously refreshes after an explicit user-triggered reconciliation.

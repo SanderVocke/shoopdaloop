@@ -154,6 +154,7 @@ fn declared_library_name(_path: &Path) -> Option<std::ffi::OsString> {
     None
 }
 
+#[tracing::instrument(name = "tool.packaging.populate_portable_folder", skip_all)]
 pub fn populate_portable_folder(
     folder: &Path,
     exe_path: &Path,

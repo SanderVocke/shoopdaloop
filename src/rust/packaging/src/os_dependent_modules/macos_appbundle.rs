@@ -116,6 +116,7 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
     Ok(())
 }
 
+#[tracing::instrument(name = "tool.packaging.build_macos_appbundle", skip_all)]
 pub fn build_appbundle(exe_path: &Path, output_dir: &Path) -> Result<(), anyhow::Error> {
     if output_dir.exists() {
         return Err(anyhow!("Output directory {:?} already exists", output_dir));

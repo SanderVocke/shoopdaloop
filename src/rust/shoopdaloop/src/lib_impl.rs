@@ -59,6 +59,11 @@ fn crash_info_callback() -> Vec<crashhandling::AdditionalCrashAttachment> {
 }
 
 fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Error> {
+    let _app_span = tracing::info_span!(
+        "app.lifecycle",
+        self_test = cli_args.self_test_options.self_test
+    )
+    .entered();
     let title: String = match cli_args.self_test_options.self_test {
         true => "ShoopDaLoop Self-Test".to_string(),
         false => "ShoopDaLoop".to_string(),
@@ -199,6 +204,8 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
             }
         }
 
+        let initialize_span = tracing::info_span!("app.qt.initialize");
+        let initialize_entered = initialize_span.enter();
         app.as_mut().initialize(
             config.clone(),
             |mut qml_engine: Pin<&mut QmlEngine>| {
@@ -257,6 +264,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
             qml,
             startup_settings,
         )?;
+        drop(initialize_entered);
 
         if cli_args.self_test_options.self_test {
             // use frontend::cxx_qt_shoop::test::qobj_test_file_runner::TestFileRunner;
@@ -307,11 +315,17 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
             }
         }
 
-        unsafe { Ok(app.exec()) }
+        let exit_code = {
+            let _event_loop_span = tracing::info_span!("app.qt.event_loop").entered();
+            unsafe { app.exec() }
+        };
+        tracing::info_span!("app.shutdown").in_scope(|| {});
+        Ok(exit_code)
     }
 }
 
 fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
+    let _entry_span = tracing::info_span!("app.entry_point").entered();
     let qt_plugins_path = &config.qt_plugins_dir;
     if !qt_plugins_path.is_empty() {
         env::set_var("QT_PLUGIN_PATH", qt_plugins_path);
@@ -331,6 +345,7 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
     let cli_args = if is_crashhandling_server {
         None
     } else {
+        let _span = tracing::info_span!("app.parse_arguments").entered();
         Some(crate::cli_args::parse_arguments(args.iter()))
     };
 
@@ -359,6 +374,20 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
             return Ok(1);
         }
     };
+
+    if cli_args.developer_options.tracing_engine_detail
+        && !(cli_args.developer_options.tracing || cli_args.developer_options.tracing_capture)
+    {
+        return Err(anyhow!(
+            "--tracing-engine-detail requires --tracing or --tracing-capture"
+        ));
+    }
+    if cli_args.developer_options.tracing || cli_args.developer_options.tracing_capture {
+        common::tracing_helpers::set_tracing_enabled(true);
+    }
+    common::tracing_helpers::set_engine_detail_enabled(
+        cli_args.developer_options.tracing_engine_detail,
+    );
 
     shoop_engine::realtime_alloc_guard::set_enabled(cli_args.developer_options.rt_alloc_guard);
     if cli_args.developer_options.rt_alloc_guard {
@@ -448,11 +477,45 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
         return Ok(0);
     }
 
+    if cli_args.developer_options.tracing_capture {
+        let tool = common::tracing_capture::resolve_capture_tool(
+            cli_args.developer_options.tracing_capture_tool.as_deref(),
+        )?;
+        let output_dir = cli_args
+            .developer_options
+            .tracing_capture_output_dir
+            .clone()
+            .unwrap_or_else(|| PathBuf::from("traces"));
+        common::tracing_capture::configure(common::tracing_capture::CaptureConfig::new(
+            tool, output_dir,
+        ))?;
+        if !cli_args.self_test_options.self_test {
+            common::tracing_capture::start_default_capture()?;
+            tracing::info_span!("app.startup.configuration_ready").in_scope(|| {});
+            tracing::info_span!(
+                "app.startup.crash_handler_ready",
+                enabled = !cli_args.developer_options.no_crash_handling
+            )
+            .in_scope(|| {});
+        }
+    }
+
     app_main(&cli_args, config)
+}
+
+struct TracingCaptureCleanupGuard;
+
+impl Drop for TracingCaptureCleanupGuard {
+    fn drop(&mut self) {
+        if let Err(error) = common::tracing_capture::shutdown() {
+            error!("Failed to shut down Tracy capture: {error}");
+        }
+    }
 }
 
 #[cfg(not(feature = "prebuild"))]
 pub fn shoopdaloop_main(config: ShoopConfig) -> i32 {
+    let _tracing_capture_cleanup = TracingCaptureCleanupGuard;
     match entry_point(config) {
         Ok(r) => {
             return r;

@@ -101,6 +101,8 @@ fn make_callback(
     n_dropped: std::sync::Arc<std::sync::atomic::AtomicU32>,
 ) -> impl FnMut(u64, &[u8], &mut ()) + Send + 'static {
     move |_timestamp, bytes, _| {
+        let _span =
+            shoop_tracing::realtime_span!("engine.rt.driver.midi_input", value = bytes.len());
         use std::sync::atomic::Ordering;
         if bytes.is_empty() || bytes.len() > MAX_MSG_BYTES {
             n_refused.fetch_add(1, Ordering::Relaxed);

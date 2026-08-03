@@ -197,6 +197,11 @@ impl std::fmt::Debug for CarlaLv2Host {
 }
 
 impl CarlaLv2Host {
+    #[tracing::instrument(
+        name = "engine.plugin.instantiate",
+        skip_all,
+        fields(chain_type = chain_type as u32, sample_rate, buffer_size)
+    )]
     pub fn instantiate(
         chain_type: FXChainType,
         sample_rate: u32,
@@ -332,6 +337,7 @@ impl CarlaLv2Host {
         self.active
     }
 
+    #[tracing::instrument(name = "engine.plugin.set_visible", skip_all, fields(visible))]
     pub fn set_visible(&mut self, visible: bool) -> Result<()> {
         self.refresh_ui_closed();
         if visible {
@@ -374,22 +380,28 @@ impl CarlaLv2Host {
                 let widget = runtime.widget as usize;
                 let stop = runtime.stop.clone();
                 let closed = (&*runtime.closed as *const AtomicBool) as usize;
-                runtime.thread = Some(thread::spawn(move || {
-                    while !stop.load(Ordering::Relaxed) {
-                        let widget = widget as *const LV2UIExternalUIWidget;
-                        if widget.is_null() {
-                            break;
-                        }
-                        if (*(closed as *const AtomicBool)).load(Ordering::Relaxed) {
-                            break;
-                        }
-                        if let Some(run) = (*widget).run {
-                            run(widget);
-                        }
-                        let next = Instant::now() + Duration::from_millis(30);
-                        thread::sleep(next.saturating_duration_since(Instant::now()));
-                    }
-                }));
+                runtime.thread = Some(
+                    thread::Builder::new()
+                        .name("engine-plugin-ui".to_string())
+                        .spawn(move || {
+                            let _span = tracing::info_span!("worker.engine.plugin_ui").entered();
+                            while !stop.load(Ordering::Relaxed) {
+                                let widget = widget as *const LV2UIExternalUIWidget;
+                                if widget.is_null() {
+                                    break;
+                                }
+                                if (*(closed as *const AtomicBool)).load(Ordering::Relaxed) {
+                                    break;
+                                }
+                                if let Some(run) = (*widget).run {
+                                    run(widget);
+                                }
+                                let next = Instant::now() + Duration::from_millis(30);
+                                thread::sleep(next.saturating_duration_since(Instant::now()));
+                            }
+                        })
+                        .expect("spawn plugin UI worker"),
+                );
             }
         }
         self.visible = true;
@@ -498,6 +510,8 @@ impl CarlaLv2Host {
         if !self.active {
             return Ok(());
         }
+        let _span =
+            shoop_tracing::realtime_span_detail!("engine.rt.fx.plugin_process", value = frames);
         if frames > CARLA_MAX_BUFFER_SIZE {
             return Err(anyhow!(
                 "Carla processing chain: requesting to process more than buffer size ({frames} vs. {CARLA_MAX_BUFFER_SIZE})"
@@ -551,6 +565,7 @@ impl CarlaLv2Host {
             .midi_events()
     }
 
+    #[tracing::instrument(name = "engine.plugin.save_state", skip_all)]
     pub fn save_state_string(&mut self) -> Result<String> {
         let state_interface = self
             .state_interface
@@ -576,6 +591,11 @@ impl CarlaLv2Host {
         state.serialize(&self._urid_mapper)
     }
 
+    #[tracing::instrument(
+        name = "engine.plugin.restore_state",
+        skip_all,
+        fields(state_bytes = s.len())
+    )]
     pub fn restore_state_string(&mut self, s: &str) -> Result<()> {
         let state_interface = self
             .state_interface
@@ -947,6 +967,11 @@ pub fn carla_audio_port_count(chain_type: FXChainType) -> Option<usize> {
     }
 }
 
+#[tracing::instrument(
+    name = "engine.plugin.discover",
+    skip_all,
+    fields(chain_type = chain_type as u32)
+)]
 pub fn discover_carla_plugin(chain_type: FXChainType) -> Result<CarlaPluginInfo> {
     let plugin_uri = carla_plugin_uri(chain_type)
         .ok_or_else(|| anyhow!("{chain_type:?} is not a Carla LV2 chain type"))?;
