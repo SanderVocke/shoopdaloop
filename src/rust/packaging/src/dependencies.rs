@@ -26,6 +26,7 @@ shoop_log_unit!("packaging");
 /// scanner, which already seeds itself the same way via `patchelf --add-needed`.
 /// See [`crate::deps_walker`] for why seeding from the whole folder rather than
 /// from the executable alone is the entire point.
+#[tracing::instrument(name = "tool.packaging.dependencies", skip_all)]
 pub fn get_dependency_libs(
     executable: &Path,
     include_directory: &Path,

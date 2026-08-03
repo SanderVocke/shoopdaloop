@@ -120,6 +120,8 @@ fn try_create_server(name: &str) -> Option<Server> {
 }
 
 pub fn crashhandling_server() {
+    let setup_span = tracing::info_span!("app.crash_handling.server_setup");
+    let setup_entered = setup_span.enter();
     #[cfg(unix)]
     debug!(
         "Server process starting: pid={}, ppid={}",
@@ -354,8 +356,9 @@ pub fn crashhandling_server() {
     watchdog::start();
 
     debug!("Server: About to create Handler struct and call server.run()");
+    drop(setup_entered);
 
-    // NOTE: don't put any logging beyond this point. On Windows,
+    // NOTE: don't put any logging or tracing beyond this point. On Windows,
     // it may cause deadlocks because of trying to write to the
     // nonexistent parent process' output stream.
 
@@ -395,32 +398,35 @@ mod watchdog {
 
     pub fn start() {
         let _ = DO_EXIT_IN.get_or_init(|| Mutex::new(None));
-        thread::spawn(move || {
-            let get_timeout = || -> Option<Duration> {
-                match DO_EXIT_IN.get() {
-                    Some(mutex) => match mutex.lock() {
-                        Ok(lock) => match lock.as_ref() {
-                            Some(a) => Some(*a),
-                            None => None,
+        thread::Builder::new()
+            .name("crash-watchdog".to_string())
+            .spawn(move || {
+                let get_timeout = || -> Option<Duration> {
+                    match DO_EXIT_IN.get() {
+                        Some(mutex) => match mutex.lock() {
+                            Ok(lock) => match lock.as_ref() {
+                                Some(a) => Some(*a),
+                                None => None,
+                            },
+                            Err(_) => None,
                         },
-                        Err(_) => None,
-                    },
-                    None => None,
-                }
-            };
+                        None => None,
+                    }
+                };
 
-            while get_timeout().is_none() {
-                thread::sleep(Duration::from_millis(1000));
-            }
-
-            if let Some(timeout) = get_timeout() {
-                thread::sleep(timeout);
-                let process_handle: HANDLE = unsafe { GetCurrentProcess() };
-                unsafe {
-                    TerminateProcess(process_handle, 1);
+                while get_timeout().is_none() {
+                    thread::sleep(Duration::from_millis(1000));
                 }
-            }
-        });
+
+                if let Some(timeout) = get_timeout() {
+                    thread::sleep(timeout);
+                    let process_handle: HANDLE = unsafe { GetCurrentProcess() };
+                    unsafe {
+                        TerminateProcess(process_handle, 1);
+                    }
+                }
+            })
+            .expect("spawn crash watchdog thread");
     }
 
     pub fn notify(timeout: std::time::Duration) {

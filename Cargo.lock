@@ -562,6 +562,7 @@ dependencies = [
  "regex",
  "serde",
  "toml",
+ "tracing",
 ]
 
 [[package]]
@@ -700,6 +701,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tracing",
  "uuid",
  "winapi",
 ]
@@ -865,6 +867,7 @@ dependencies = [
  "regex",
  "tar",
  "tempfile",
+ "tracing",
 ]
 
 [[package]]
@@ -1924,6 +1927,7 @@ dependencies = [
  "assert2",
  "common",
  "shoop_engine",
+ "tracing",
 ]
 
 [[package]]
@@ -2363,6 +2367,7 @@ dependencies = [
  "log",
  "regex",
  "tempfile",
+ "tracing",
  "walkdir",
 ]
 
@@ -3029,6 +3034,7 @@ dependencies = [
  "serde_json",
  "shoop_engine",
  "toml",
+ "tracing",
 ]
 
 [[package]]

@@ -12,6 +12,7 @@ pub fn dev_config_path() -> PathBuf {
 }
 
 #[cfg(not(feature = "prebuild"))]
+#[tracing::instrument(name = "app.config.dynamic_library_environment", skip_all)]
 pub fn config_dynlib_env_var(
     config: &config::ShoopConfig,
 ) -> Result<(String, String), anyhow::Error> {

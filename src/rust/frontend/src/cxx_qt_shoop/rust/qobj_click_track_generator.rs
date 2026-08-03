@@ -425,24 +425,29 @@ impl ClickTrackGenerator {
                 sample_rate as usize,
             )?;
 
-            std::thread::spawn(move || {
-                if let Err(e) = || -> Result<(), anyhow::Error> {
-                    let mut stream_handle = rodio::OutputStreamBuilder::open_default_stream()
-                        .map_err(|e| anyhow!("Failed to open rodio stream: {e}"))?;
-                    stream_handle.log_on_drop(false);
-                    let sink = rodio::Sink::connect_new(&stream_handle.mixer());
-                    let source = rodio::buffer::SamplesBuffer::new(1, sample_rate as u32, wave);
+            let _ = std::thread::Builder::new()
+                .name("frontend-click-preview".to_string())
+                .spawn(move || {
+                    let _span = tracing::info_span!("worker.frontend.click_preview").entered();
+                    if let Err(e) = || -> Result<(), anyhow::Error> {
+                        let mut stream_handle =
+                            rodio::OutputStreamBuilder::open_default_stream()
+                                .map_err(|e| anyhow!("Failed to open rodio stream: {e}"))?;
+                        stream_handle.log_on_drop(false);
+                        let sink = rodio::Sink::connect_new(&stream_handle.mixer());
+                        let source = rodio::buffer::SamplesBuffer::new(1, sample_rate as u32, wave);
 
-                    // Append the source to the sink
-                    sink.append(source);
-                    sink.play();
-                    sink.sleep_until_end();
+                        // Append the source to the sink
+                        sink.append(source);
+                        sink.play();
+                        sink.sleep_until_end();
 
-                    Ok(())
-                }() {
-                    error!("Failed to playback click track: {e}");
-                }
-            });
+                        Ok(())
+                    }() {
+                        error!("Failed to playback click track: {e}");
+                    }
+                })
+                .expect("spawn frontend click preview");
 
             Ok(())
         }() {

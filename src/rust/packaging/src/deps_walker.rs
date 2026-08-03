@@ -338,6 +338,7 @@ pub struct ScanRequest {
 /// classify every edge itself. `collect_deps` then re-derives the copy decision
 /// from the same lists, as a cross-check, and remains the single source of
 /// truth for what is copied.
+#[tracing::instrument(name = "tool.packaging.dependency_tree", skip_all)]
 pub fn build_dependency_tree<S: BinaryScanner>(
     scanner: &S,
     request: &ScanRequest,

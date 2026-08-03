@@ -80,8 +80,11 @@ pub fn crashhandling_client(
     let (sender, receiver) = mpsc::channel::<CrashHandlingMessage>();
     let start_server_arg = start_server_arg.to_string();
 
-    let handle = thread::spawn(move || {
-        #[cfg(unix)]
+    let handle = thread::Builder::new()
+        .name("crash-client".to_string())
+        .spawn(move || {
+            let _span = tracing::info_span!("worker.crash_client").entered();
+            #[cfg(unix)]
         debug!(
             "Client thread started: pid={}, ppid={}",
             std::process::id(),
@@ -663,8 +666,9 @@ pub fn crashhandling_client(
         } else {
             debug!("No server child handle (external server), nothing to reap.");
         }
-        debug!("Client thread done.");
-    });
+            debug!("Client thread done.");
+        })
+        .expect("spawn crash handling client thread");
 
     CrashHandlerHandle {
         sender: sender,

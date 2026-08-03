@@ -37,13 +37,20 @@ pub fn main() {
 
         let installed_path = normalize_path(parent)?;
 
-        let config: ShoopConfig = ShoopConfig::_load_default(&installed_path)
-            .map_err(|e| format!("Failed to load config: {}", e))?;
+        let config: ShoopConfig = {
+            let _span = tracing::info_span!("app.startup.load_configuration").entered();
+            ShoopConfig::_load_default(&installed_path)
+                .map_err(|e| format!("Failed to load config: {}", e))?
+        };
 
         Ok(shoopdaloop_main(config))
     };
 
-    match run() {
+    let run_result = {
+        let _span = tracing::info_span!("app.startup").entered();
+        run()
+    };
+    match run_result {
         Ok(errcode) => std::process::exit(errcode),
         Err(e) => {
             eprintln!("Error during startup: {}", e);

@@ -16,6 +16,7 @@ copy_dir = { workspace = true }
 log = { workspace = true }
 ctor = { workspace = true }
 toml = { workspace = true }
+tracing = { workspace = true }
 # derive is used directly here; do not rely on another crate's feature unifying in
 serde = { workspace = true, features = ["derive"] }
 
@@ -31,6 +32,7 @@ toml = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 log = { workspace = true }
 ctor = { workspace = true }
+tracing = { workspace = true }
 
 [features]
 # Dummy build to build dependencies only

@@ -25,6 +25,7 @@ pub fn init_crashhandling(
     start_server_arg: &str,
     on_crash_callback: Option<client::CrashCallback>,
 ) {
+    let _span = tracing::info_span!("app.crash_handling.initialize", server = is_server).entered();
     debug!("init_crashhandling called: is_server={is_server}, start_server_arg={start_server_arg}, pid={}", std::process::id());
 
     let maybe_dump_folder: Option<String> = std::env::var("SHOOP_CRASHDUMP_DIR").ok();
@@ -55,6 +56,7 @@ pub fn init_crashhandling(
 }
 
 pub fn set_crash_json_partial(partial_json: JsonValue) {
+    let _span = tracing::debug_span!("app.crash_handling.update_metadata").entered();
     let handle = CLIENTSIDE_HANDLE.get_or_init(|| None);
     let handle = if let Some(h) = handle.as_ref() {
         h

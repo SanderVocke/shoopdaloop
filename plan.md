@@ -137,19 +137,19 @@ Commit this stage before adding broad instrumentation.
 
 Depends on Stage 1; contains no realtime instrumentation.
 
-- [ ] Instrument `shoopdaloop` bootstrap, configuration loading, argument-driven exits, crash-handler setup, application creation/event loop, self-test setup, and normal shutdown.
-- [ ] Instrument major `common` environment/filesystem/shell operations without tracing the logger or capture handler recursively.
-- [ ] Instrument `config` loading/path resolution and `crashhandling` client/server/process/message lifecycle, excluding signal/exception handlers and `atexit` paths that cannot safely use tracing TLS.
-- [ ] Instrument meaningful CXX-Qt helper crossings in `cxx_qt_lib_shoop`; inventory trivial conversion/accessor helpers as indirectly covered or excluded.
-- [ ] Instrument `midi_processing` batch conversions with counts only, never payload bytes.
-- [ ] Add top-level spans to `packaging` subcommands and long-running dependency scan/copy/archive stages; keep build/proc-macro crates inventoried as build-only.
-- [ ] Name application-owned worker threads at startup and trace queue/wait/work/shutdown lifecycles.
+- [x] Instrument `shoopdaloop` bootstrap, configuration loading, argument-driven exits, crash-handler setup, application creation/event loop, self-test setup, and normal shutdown.
+- [x] Instrument major `common` environment/filesystem/shell operations without tracing the logger or capture handler recursively.
+- [x] Instrument `config` loading/path resolution and `crashhandling` client/server/process/message lifecycle, excluding signal/exception handlers and `atexit` paths that cannot safely use tracing TLS.
+- [x] Instrument meaningful CXX-Qt helper crossings in `cxx_qt_lib_shoop`; inventory trivial conversion/accessor helpers as indirectly covered or excluded.
+- [x] Instrument `midi_processing` batch conversions with counts only, never payload bytes.
+- [x] Add top-level spans to `packaging` subcommands and long-running dependency scan/copy/archive stages; keep build/proc-macro crates inventoried as build-only.
+- [x] Name application-owned worker threads at startup and trace queue/wait/work/shutdown lifecycles.
 
 Verification:
 
-- [ ] Focused unit tests for each touched crate pass.
-- [ ] A startup/quit trace shows ordered app, config, crash-handler, Qt, and shutdown spans.
-- [ ] Packaging smoke commands retain exit behavior and produce useful top-level spans when tracing is explicitly enabled.
+- [x] Focused unit tests for each touched crate pass.
+- [x] A startup/quit trace shows ordered app, configuration-ready, crash-handler-ready, Qt initialization/event-loop, and shutdown spans.
+- [x] Packaging smoke commands retain exit behavior and produce useful top-level spans when tracing is explicitly enabled.
 
 Commit this stage as a non-realtime runtime milestone.
 
