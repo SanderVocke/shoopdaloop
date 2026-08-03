@@ -101,12 +101,18 @@ impl LoopChannelGui {
             span.record("length", new_state.length);
             span.record("events", new_state.n_events_triggered);
             if common::tracing_helpers::is_tracing_enabled() {
-                tracy_client::plot!("engine.channel.mode", new_state.mode as u32 as f64);
-                tracy_client::plot!("engine.channel.length", new_state.length as f64);
-                tracy_client::plot!(
-                    "engine.channel.events_triggered",
-                    new_state.n_events_triggered as f64
-                );
+                if new_state.mode != prev_state.mode {
+                    tracy_client::plot!("engine.channel.mode", new_state.mode as u32 as f64);
+                }
+                if new_state.length != prev_state.length {
+                    tracy_client::plot!("engine.channel.length", new_state.length as f64);
+                }
+                if new_state.n_events_triggered != prev_state.n_events_triggered {
+                    tracy_client::plot!(
+                        "engine.channel.events_triggered",
+                        new_state.n_events_triggered as f64
+                    );
+                }
             }
 
             {

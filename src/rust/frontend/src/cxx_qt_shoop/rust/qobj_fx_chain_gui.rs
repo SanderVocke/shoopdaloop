@@ -77,14 +77,18 @@ impl FXChainGui {
             span.record("active", new_state.active != 0);
             span.record("visible", new_state.visible != 0);
             if common::tracing_helpers::is_tracing_enabled() {
-                tracy_client::plot!(
-                    "engine.fx.ready",
-                    if new_state.ready != 0 { 1.0 } else { 0.0 }
-                );
-                tracy_client::plot!(
-                    "engine.fx.active",
-                    if new_state.active != 0 { 1.0 } else { 0.0 }
-                );
+                if new_state.ready != prev_state.ready {
+                    tracy_client::plot!(
+                        "engine.fx.ready",
+                        if new_state.ready != 0 { 1.0 } else { 0.0 }
+                    );
+                }
+                if new_state.active != prev_state.active {
+                    tracy_client::plot!(
+                        "engine.fx.active",
+                        if new_state.active != 0 { 1.0 } else { 0.0 }
+                    );
+                }
             }
 
             {

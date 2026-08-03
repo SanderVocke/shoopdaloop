@@ -7,18 +7,17 @@ Coverage inventory
 ``docs/tracing_coverage.csv`` is the machine-checkable inventory for production
 Rust modules. Its classifications are:
 
-``planned_direct``
-  The module owns a meaningful runtime boundary that is scheduled for direct
-  instrumentation.
+``instrumented_direct``
+  The module contains gated spans/events at its meaningful runtime boundary.
 
-``planned_indirect``
-  The module's meaningful work is covered by the named orchestration/category
-  caller in ``coverage_or_rationale``. A separate zone would only duplicate a
-  leaf operation or add noise to a hot loop.
+``instrumented_indirect``
+  The module's work is visible inside the named orchestration/category caller in
+  ``coverage_or_rationale``. A separate zone would duplicate a leaf operation
+  or add noise to a hot loop.
 
-``instrumented_direct`` / ``instrumented_indirect``
-  Final classifications used after trace evidence confirms the corresponding
-  direct or caller-owned coverage.
+``planned_direct`` / ``planned_indirect``
+  Temporary implementation classifications. The closed inventory contains none;
+  ``--require-closed`` rejects either value.
 
 ``excluded``
   Build-time/generated declaration code or logging glue for which runtime

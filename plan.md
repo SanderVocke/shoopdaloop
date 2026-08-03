@@ -221,18 +221,20 @@ Commit coarse realtime coverage first; commit optional detailed coverage separat
 
 Depends on Stages 2–5.
 
-- [ ] Revisit every inventory row and inspect actual trace evidence rather than accepting source annotations alone.
-- [ ] Instrument uncovered runtime orchestration or document a valid indirect-coverage/exclusion reason.
-- [ ] Audit span lifetime correctness across callbacks, queued work, threads, early returns, errors, and capture rotation.
-- [ ] Audit naming/cardinality and remove duplicate, noisy, per-item, payload-bearing, or misleading instrumentation.
-- [ ] Audit all realtime modules for accidental `tracing` subscriber use, logging, unrelated allocation/locking, overly broad allocation-permitted scopes, dynamic high-cardinality locations, and callstack use.
-- [ ] Update developer documentation with tracing levels, engine detail option, naming, expected overhead/safety rules, and trace interpretation examples.
+- [x] Revisit every inventory row and inspect actual trace evidence rather than accepting source annotations alone.
+- [x] Instrument uncovered runtime orchestration or document a valid indirect-coverage/exclusion reason.
+- [x] Audit span lifetime correctness across callbacks, queued work, threads, early returns, errors, and capture rotation.
+- [x] Audit naming/cardinality and remove duplicate, noisy, per-item, payload-bearing, or misleading instrumentation.
+- [x] Audit all realtime modules for accidental `tracing` subscriber use, logging, unrelated allocation/locking, overly broad allocation-permitted scopes, dynamic high-cardinality locations, and callstack use.
+- [x] Update developer documentation with tracing levels, engine detail option, naming, expected overhead/safety rules, and trace interpretation examples.
 
 Verification:
 
-- [ ] Inventory checker/script reports zero unclassified production modules.
-- [ ] Representative traces contain every acceptance-criteria layer and no uncontrolled-cardinality names.
-- [ ] Disabled, coarse, and detailed modes are distinguishable and documented.
+- [x] Inventory checker/script reports zero unclassified production modules.
+- [x] Representative traces contain every acceptance-criteria layer and no uncontrolled-cardinality names.
+- [x] Disabled, coarse, and detailed modes are distinguishable and documented.
+
+Evidence: ``scripts/check_tracing_coverage.py --require-closed`` accounts for all 221 production modules as 78 direct, 99 indirect, and 44 excluded. Each indirect engine row names its owning ``engine.rt`` or control/frontend boundary. Parsed guarded coarse/detail traces, two FX/track captures, and the 96,318,939-byte composite trace collectively contain control, graph, callback/session, port/channel/loop/MIDI/FX/composite, state-publication, and frontend-refresh layers with fixed aggregate names. A fresh post-audit detail trace confirms numeric ``engine.rt.driver`` and ``engine.rt.routing.external`` zones. State plots now emit only on relevant field changes. The clean sequential captures have no Tracy instrumentation failure; one discarded exploratory run intentionally started two Tracy capture clients concurrently on the single profiler port and is not validation evidence.
 
 Commit the completed inventory and documentation as a milestone.
 

@@ -91,13 +91,24 @@ impl PortGui {
             span.record("output_events", new_state.n_output_events);
             span.record("ringbuffer_samples", new_state.ringbuffer_n_samples);
             if common::tracing_helpers::is_tracing_enabled() {
-                tracy_client::plot!("engine.port.input_peak", new_state.input_peak as f64);
-                tracy_client::plot!("engine.port.output_peak", new_state.output_peak as f64);
-                tracy_client::plot!("engine.port.input_events", new_state.n_input_events as f64);
-                tracy_client::plot!(
-                    "engine.port.output_events",
-                    new_state.n_output_events as f64
-                );
+                if new_state.input_peak != prev_state.input_peak {
+                    tracy_client::plot!("engine.port.input_peak", new_state.input_peak as f64);
+                }
+                if new_state.output_peak != prev_state.output_peak {
+                    tracy_client::plot!("engine.port.output_peak", new_state.output_peak as f64);
+                }
+                if new_state.n_input_events != prev_state.n_input_events {
+                    tracy_client::plot!(
+                        "engine.port.input_events",
+                        new_state.n_input_events as f64
+                    );
+                }
+                if new_state.n_output_events != prev_state.n_output_events {
+                    tracy_client::plot!(
+                        "engine.port.output_events",
+                        new_state.n_output_events as f64
+                    );
+                }
             }
             let connections_raw = port.get_connections_state();
 
