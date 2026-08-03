@@ -505,6 +505,25 @@ Item {
                 text: "If set, recording actions will run for the specified fixed amount of cycles."
             }
         }
+
+        ToolSeparator {
+            orientation: Qt.Vertical
+            height: 40
+        }
+
+        ExtendedButton {
+            tooltip: "Toggle egui prototype loop rendering."
+            height: 40
+            width: 48
+            highlighted: AppRegistries.state_registry.egui_prototype_active
+            onClicked: AppRegistries.state_registry.set_egui_prototype_active(!AppRegistries.state_registry.egui_prototype_active)
+
+            Label {
+                anchors.centerIn: parent
+                text: "egui"
+                font.pixelSize: 12
+            }
+        }
     }
 
     SettingsWindow {

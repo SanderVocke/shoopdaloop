@@ -193,20 +193,6 @@ Item {
 
     property var additional_context_menu_options : null // dict of option name -> functor
 
-    readonly property var egui_window_factory: Qt.createComponent("EguiLoopWidgetWindow.qml")
-    function spawn_egui_window() {
-        if (egui_window_factory.status == Component.Error) {
-            throw new Error("LoopWidget: Failed to load egui window factory: " + egui_window_factory.errorString())
-        } else if (egui_window_factory.status != Component.Ready) {
-            throw new Error("LoopWidget: Egui window factory not ready")
-        } else {
-            egui_window_factory.createObject(root, {
-                loopWidget: root,
-                visible: true
-            })
-        }
-    }
-
     onIs_loadedChanged: if(is_loaded) { root.logger.debug("Loaded back-end loop.") }
     onIs_syncChanged: if(is_sync) { create_backend_loop() }
 
@@ -684,10 +670,13 @@ Item {
     property bool sync_active : AppRegistries.state_registry.sync_active
     onSync_activeChanged: root.logger.debug(`Sync active: ${sync_active}`)
 
+    readonly property bool use_egui_prototype: AppRegistries.state_registry.egui_prototype_active
+
     // UI
     StatusRect {
         id: statusrect
         loop: root.maybe_loop
+        visible: !root.use_egui_prototype
 
         anchors {
             left: parent.left
@@ -706,6 +695,20 @@ Item {
             sourceComponent: ContextMenu {
                 id: contextmenu
             }
+        }
+    }
+
+    Loader {
+        anchors {
+            left: parent.left
+            right: parent.right
+        }
+        height: statusrect.height
+        active: root.use_egui_prototype
+        visible: active
+
+        sourceComponent: EguiLoopWidget {
+            loopWidget: root
         }
     }
 
@@ -1780,10 +1783,6 @@ Item {
                   if(root.main_details_pane) { root.main_details_pane.add_user_item(root.name, root) }
                   AppRegistries.state_registry.set_details_open(true)
                }
-            }
-            ShoopMenuItem {
-                text: "Open egui prototype..."
-                onClicked: root.spawn_egui_window()
             }
             ShoopMenuItem {
                text: "Click loop..."

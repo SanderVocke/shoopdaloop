@@ -155,51 +155,70 @@ impl EguiUi for LoopWidgetUi {
             .frame(
                 egui::Frame::new()
                     .fill(egui::Color32::from_rgb(30, 30, 30))
-                    .inner_margin(24.0),
+                    .inner_margin(1.0),
             )
             .show(root_ui, |ui| {
-                ui.add_space(((ui.available_height() - 44.0) / 2.0).max(0.0));
-                let size = egui::vec2(ui.available_width(), 44.0);
+                let size = egui::vec2(ui.available_width(), ui.available_height());
                 let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
-                let rounding = egui::CornerRadius::same(5);
-                let painter = ui.painter();
+                let rounding = egui::CornerRadius::same(3);
 
-                painter.rect_filled(rect, rounding, egui::Color32::from_rgb(0, 0, 68));
+                ui.painter()
+                    .rect_filled(rect, rounding, egui::Color32::from_rgb(0, 0, 68));
                 let progress_rect = egui::Rect::from_min_size(
                     rect.min,
                     egui::vec2(rect.width() * position, rect.height()),
                 );
-                painter.rect_filled(progress_rect, rounding, egui::Color32::from_rgb(0, 68, 0));
-                painter.rect_stroke(
+                ui.painter().rect_filled(
+                    progress_rect,
+                    rounding,
+                    egui::Color32::from_rgb(0, 68, 0),
+                );
+                ui.painter().rect_stroke(
                     rect,
                     rounding,
-                    egui::Stroke::new(2.0, egui::Color32::from_gray(220)),
+                    egui::Stroke::new(1.0, egui::Color32::from_gray(220)),
                     egui::StrokeKind::Inside,
                 );
-                painter.text(
-                    egui::pos2(rect.left() + 14.0, rect.center().y),
-                    egui::Align2::LEFT_CENTER,
-                    format!("{name}  ·  {:02}%", (position * 100.0) as u32),
-                    egui::FontId::proportional(15.0),
-                    egui::Color32::WHITE,
-                );
 
-                let button_size = egui::vec2(44.0, 30.0);
+                let gap = (rect.width() / 12.0).min(2.0);
+                let button_width = ((rect.width() - gap * 3.0) / 2.0).clamp(1.0, 22.0);
+                let button_height = (rect.height() - gap * 2.0).max(1.0);
+                let button_size = egui::vec2(button_width, button_height);
                 let stop_rect = egui::Rect::from_center_size(
-                    egui::pos2(rect.right() - 28.0, rect.center().y),
+                    egui::pos2(rect.right() - gap - button_width / 2.0, rect.center().y),
                     button_size,
                 );
-                let play_rect = stop_rect.translate(egui::vec2(-50.0, 0.0));
+                let play_rect = stop_rect.translate(egui::vec2(-button_width - gap, 0.0));
+                let font_size = (rect.height() * 0.46).clamp(8.0, 12.0);
+                let text_right = (play_rect.left() - gap).max(rect.left());
+                let text_rect =
+                    egui::Rect::from_min_max(rect.min, egui::pos2(text_right, rect.bottom()));
+                if text_rect.width() > 8.0 {
+                    let text = if text_rect.width() > 100.0 {
+                        format!("{name}  ·  {:02}%", (position * 100.0) as u32)
+                    } else {
+                        name
+                    };
+                    ui.painter().with_clip_rect(text_rect).text(
+                        egui::pos2(rect.left() + 5.0, rect.center().y),
+                        egui::Align2::LEFT_CENTER,
+                        text,
+                        egui::FontId::proportional(font_size),
+                        egui::Color32::WHITE,
+                    );
+                }
+
                 let play_color = if playing {
                     egui::Color32::from_rgb(120, 255, 140)
                 } else {
                     egui::Color32::from_rgb(80, 220, 100)
                 };
-
                 if ui
                     .put(
                         play_rect,
-                        egui::Button::new(egui::RichText::new("▶").color(play_color)),
+                        egui::Button::new(
+                            egui::RichText::new("▶").size(font_size).color(play_color),
+                        ),
                     )
                     .clicked()
                 {
@@ -208,7 +227,11 @@ impl EguiUi for LoopWidgetUi {
                 if ui
                     .put(
                         stop_rect,
-                        egui::Button::new(egui::RichText::new("■").color(egui::Color32::WHITE)),
+                        egui::Button::new(
+                            egui::RichText::new("■")
+                                .size(font_size)
+                                .color(egui::Color32::WHITE),
+                        ),
                     )
                     .clicked()
                 {

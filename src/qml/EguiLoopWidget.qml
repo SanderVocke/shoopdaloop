@@ -1,12 +1,11 @@
 import QtQuick 6.6
 import ShoopDaLoop.Rust
 
-ShoopApplicationWindow {
+Item {
     id: root
 
     property var loopWidget: null
     property bool canvasReady: false
-    readonly property string loopName: loopWidget ? loopWidget.name : "Loop"
 
     function updateCanvas() {
         if (!canvasReady) {
@@ -18,7 +17,7 @@ ShoopApplicationWindow {
         const playing = loopWidget
             && (loopWidget.mode === ShoopRustConstants.LoopMode.Playing
                 || loopWidget.mode === ShoopRustConstants.LoopMode.PlayingDryThroughWet)
-        canvas.setLoopState(loopName, position, playing)
+        canvas.setLoopState(loopWidget ? loopWidget.name : "Loop", position, playing)
     }
 
     onLoopWidgetChanged: updateCanvas()
@@ -32,12 +31,6 @@ ShoopApplicationWindow {
         function onLengthChanged() { root.updateCanvas() }
         function onModeChanged() { root.updateCanvas() }
     }
-
-    title: loopName + " — egui prototype"
-    width: 620
-    height: 150
-    minimumWidth: 360
-    minimumHeight: 100
 
     ShoopEguiLoopWidget {
         id: canvas

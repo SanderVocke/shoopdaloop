@@ -117,6 +117,17 @@ Registry {
     onDefault_recording_actionChanged: my_logger.debug(`Default recording action: ${default_recording_action}`)
 
     RegistryLookup {
+        id: lookup_egui_prototype_active
+        registry: root
+        key: 'egui_prototype_active'
+    }
+    readonly property bool egui_prototype_active : lookup_egui_prototype_active.object != null ? lookup_egui_prototype_active.object : false
+    function set_egui_prototype_active(val) {
+        replace('egui_prototype_active', val)
+    }
+    onEgui_prototype_activeChanged: my_logger.debug(`egui prototype active: ${egui_prototype_active}`)
+
+    RegistryLookup {
         id: lookup_apply_n_cycles
         registry: root
         key: 'apply_n_cycles'
@@ -158,6 +169,7 @@ Registry {
         set_sync_active(true)
         set_play_after_record_active(true)
         set_solo_active(false)
+        set_egui_prototype_active(false)
         untarget_loop()
     }
 
