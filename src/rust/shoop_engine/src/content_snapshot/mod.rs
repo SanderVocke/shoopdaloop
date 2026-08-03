@@ -46,19 +46,18 @@ mod runtime;
 mod status;
 mod transport;
 
+pub(crate) use audio::{audio_snapshot_channel, AudioSnapshotPublisher};
 pub use audio::{
-    audio_snapshot_channel, AudioProcessSnapshotWriter, AudioSnapshotControl,
-    AudioSnapshotPublisher, AudioSnapshotReader, PreparedAudioSnapshot,
+    AudioProcessSnapshotWriter, AudioSnapshotControl, AudioSnapshotReader, PreparedAudioSnapshot,
 };
 pub use contracts::{
     AudioContentSnapshot, AudioSnapshotMetadata, ContentMutation, ContentRevision,
     CurrentDataError, MidiContentSnapshot, MidiSnapshotMetadata, SnapshotCurrentness, SnapshotRead,
     StaleReason,
 };
-pub use manifest::{manifest_pair, ContentSnapshot, ManifestPublisher, ManifestReader};
+pub(crate) use midi::{midi_snapshot_channel, MidiSnapshotPublisher};
 pub use midi::{
-    midi_snapshot_channel, MidiProcessSnapshotWriter, MidiSnapshotControl, MidiSnapshotPublisher,
-    MidiSnapshotReader, PreparedMidiSnapshot,
+    MidiProcessSnapshotWriter, MidiSnapshotControl, MidiSnapshotReader, PreparedMidiSnapshot,
 };
 pub use runtime::ContentSnapshotRuntime;
-pub use status::{ContentStatus, SessionContentEpoch};
+pub(crate) use status::{ContentStatus, SessionContentEpoch};

@@ -358,13 +358,17 @@ impl AudioProcessSnapshotWriter {
     pub fn cancel_mutation(&self) {
         self.status.cancel_mutation();
     }
-
-    pub fn status(&self) -> &Arc<ContentStatus> {
-        &self.status
-    }
 }
 
 impl AudioSnapshotControl {
+    pub fn begin_mutation(&self, mutation: ContentMutation) -> bool {
+        self.status.begin_mutation(mutation)
+    }
+
+    pub fn cancel_mutation(&self) {
+        self.status.cancel_mutation();
+    }
+
     pub fn prepare(
         &self,
         samples: &[f32],
@@ -412,10 +416,23 @@ impl AudioSnapshotPublisher {
 
     pub fn pump(&mut self) -> usize {
         let retired_resources = self.retirement.try_recv();
+        self.drain_prepared();
+        let processed = self.pump_updates();
+        if let Some(resources) = retired_resources {
+            drop(resources);
+            self.retired = true;
+        }
+        processed
+    }
+
+    fn drain_prepared(&mut self) {
         while let Ok(prepared) = self.prepared.try_recv() {
             self.prepared_by_revision
                 .insert(prepared.token.revision, prepared);
         }
+    }
+
+    fn pump_updates(&mut self) -> usize {
         let mut processed = 0;
         while let Some(block) = self.updates.try_recv() {
             let final_block = block.final_block;
@@ -461,8 +478,12 @@ impl AudioSnapshotPublisher {
                         Arc::from(self.chunks.clone()),
                     ));
                     self.committed_chunks = self.chunks.clone();
+                    self.manifest.recover_saturation();
                 }
                 AudioUpdateKind::Install(prepared_revision) => {
+                    // Preparation and process commands use different transports. The command can
+                    // arrive after this pump's initial prepared drain, so close that race here.
+                    self.drain_prepared();
                     if let Some(prepared) = self.prepared_by_revision.remove(&prepared_revision) {
                         self.chunks = prepared.chunks.to_vec();
                         self.manifest.publish(AudioContentSnapshot::new(
@@ -473,6 +494,7 @@ impl AudioSnapshotPublisher {
                             prepared.chunks,
                         ));
                         self.committed_chunks = self.chunks.clone();
+                        self.manifest.recover_saturation();
                     }
                 }
             }
@@ -480,10 +502,6 @@ impl AudioSnapshotPublisher {
                 .try_send(block)
                 .expect("return queue capacity matches the transport pool");
             processed += 1;
-        }
-        if let Some(resources) = retired_resources {
-            drop(resources);
-            self.retired = true;
         }
         processed
     }
@@ -609,6 +627,22 @@ mod tests {
     }
 
     #[test]
+    fn install_closes_the_cross_transport_preparation_race() {
+        let (mut writer, control, mut publisher, reader) =
+            audio_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 2);
+        publisher.drain_prepared();
+        let token = control
+            .prepare(&[7.0, 8.0], ContentMutation::Loading)
+            .expect("prepare after the initial drain");
+        assert!(writer.install_prepared(token));
+        assert_eq!(publisher.pump_updates(), 1);
+        assert_eq!(
+            reader.try_current().expect("installed").contiguous(),
+            vec![7.0, 8.0]
+        );
+    }
+
+    #[test]
     fn cancelled_private_work_is_reset_from_the_committed_generation() {
         let (mut writer, _control, mut publisher, reader) =
             audio_snapshot_channel(Arc::new(SessionContentEpoch::default()), 4, 6);
@@ -658,16 +692,98 @@ mod tests {
     }
 
     #[test]
+    fn clear_keeps_retained_readers_and_publishes_a_newer_complete_revision() {
+        let (mut writer, _control, mut publisher, reader) =
+            audio_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 6);
+        assert!(writer.begin_mutation(ContentMutation::Loading));
+        let loaded = writer
+            .publish_range(0, &[1.0, 2.0, 3.0], 3, true)
+            .expect("load across chunk boundary");
+        writer.finish_mutation(false);
+        publisher.pump();
+        let retained = reader.latest().snapshot;
+
+        assert!(writer.begin_mutation(ContentMutation::Clearing));
+        assert!(writer.begin_working_generation());
+        let cleared = writer.publish_silence(3).expect("clear generation");
+        writer.finish_mutation(false);
+        publisher.pump();
+
+        assert!(cleared > loaded);
+        assert_eq!(retained.contiguous(), vec![1.0, 2.0, 3.0]);
+        assert_eq!(
+            reader.try_current().expect("cleared current").contiguous(),
+            vec![0.0, 0.0, 0.0]
+        );
+    }
+
+    #[test]
+    fn rapid_load_clear_replace_and_slow_readers_converge() {
+        use std::collections::VecDeque;
+
+        let (mut writer, control, mut publisher, reader) =
+            audio_snapshot_channel(Arc::new(SessionContentEpoch::default()), 4, 8);
+        let mut retained = VecDeque::new();
+        for generation in 0..1_000_u32 {
+            let prepared = control
+                .prepare(&[generation as f32; 9], ContentMutation::Loading)
+                .expect("prepare load");
+            assert!(writer.install_prepared(prepared));
+            publisher.pump();
+
+            assert!(writer.begin_mutation(ContentMutation::Replacing));
+            assert!(writer.begin_working_generation());
+            writer
+                .publish_range(4, &[generation as f32 + 0.5], 9, false)
+                .expect("private replacement");
+            if generation % 2 == 0 {
+                writer.finish_mutation(true);
+            } else {
+                writer.cancel_mutation();
+            }
+            publisher.pump();
+
+            if generation % 5 == 0 {
+                assert!(writer.begin_mutation(ContentMutation::Clearing));
+                assert!(writer.begin_working_generation());
+                writer.publish_silence(9).expect("clear");
+                writer.finish_mutation(false);
+                publisher.pump();
+            }
+
+            retained.push_back(reader.latest().snapshot);
+            if retained.len() > 64 {
+                retained.pop_front();
+            }
+        }
+        let current = reader.try_current().expect("stress converged");
+        assert_eq!(current.metadata.length, 9);
+        assert_eq!(retained.len(), 64);
+    }
+
+    #[test]
     fn saturation_keeps_the_last_complete_snapshot() {
-        let (mut writer, _control, _publisher, reader) =
+        let (mut writer, control, mut publisher, reader) =
             audio_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 1);
         assert!(writer.begin_mutation(ContentMutation::Recording));
         assert!(writer.publish_range(0, &[1.0, 2.0], 2, true).is_some());
         assert!(writer.publish_range(2, &[3.0], 3, true).is_none());
+        publisher.pump();
+        writer.finish_mutation(false);
         assert!(matches!(
             reader.latest().currentness,
             SnapshotCurrentness::Stale(StaleReason::PublicationSaturated)
         ));
-        assert!(reader.latest().snapshot.contiguous().is_empty());
+        assert_eq!(reader.latest().snapshot.contiguous(), vec![1.0, 2.0]);
+
+        let prepared = control
+            .prepare(&[1.0, 2.0, 3.0], ContentMutation::Loading)
+            .expect("explicit full-generation recovery");
+        assert!(writer.install_prepared(prepared));
+        publisher.pump();
+        assert_eq!(
+            reader.try_current().expect("recovered").contiguous(),
+            vec![1.0, 2.0, 3.0]
+        );
     }
 }

@@ -6,26 +6,41 @@ use std::sync::Arc;
 pub struct SessionContentEpoch {
     epoch: AtomicU64,
     active_mutations: AtomicU32,
+    exhausted: AtomicBool,
 }
 
 impl SessionContentEpoch {
     pub fn capture(&self) -> Option<u64> {
-        (self.active_mutations.load(Ordering::Acquire) == 0)
+        (!self.exhausted.load(Ordering::Acquire)
+            && self.active_mutations.load(Ordering::Acquire) == 0)
             .then(|| self.epoch.load(Ordering::Acquire))
     }
 
     pub fn validate(&self, captured: u64) -> bool {
-        self.active_mutations.load(Ordering::Acquire) == 0
+        !self.exhausted.load(Ordering::Acquire)
+            && self.active_mutations.load(Ordering::Acquire) == 0
             && self.epoch.load(Ordering::Acquire) == captured
+    }
+
+    fn bump_epoch(&self) {
+        let previous = self
+            .epoch
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                Some(current.saturating_add(1))
+            })
+            .expect("epoch update closure always succeeds");
+        if previous == u64::MAX {
+            self.exhausted.store(true, Ordering::Release);
+        }
     }
 
     fn mutation_started(&self) {
         self.active_mutations.fetch_add(1, Ordering::AcqRel);
-        self.epoch.fetch_add(1, Ordering::AcqRel);
+        self.bump_epoch();
     }
 
     fn mutation_finished(&self) {
-        self.epoch.fetch_add(1, Ordering::AcqRel);
+        self.bump_epoch();
         self.active_mutations.fetch_sub(1, Ordering::AcqRel);
     }
 }
@@ -40,6 +55,7 @@ pub struct ContentStatus {
     settled_revision: AtomicU64,
     published_revision: AtomicU64,
     saturated: AtomicBool,
+    revision_exhausted: AtomicBool,
 }
 
 impl ContentStatus {
@@ -51,6 +67,7 @@ impl ContentStatus {
             settled_revision: AtomicU64::new(0),
             published_revision: AtomicU64::new(0),
             saturated: AtomicBool::new(false),
+            revision_exhausted: AtomicBool::new(false),
         }
     }
 
@@ -72,7 +89,16 @@ impl ContentStatus {
     }
 
     pub fn next_revision(&self) -> ContentRevision {
-        ContentRevision(self.next_revision.fetch_add(1, Ordering::Relaxed))
+        let revision = self
+            .next_revision
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                Some(current.saturating_add(1))
+            })
+            .expect("revision update closure always succeeds");
+        if revision == u64::MAX {
+            self.revision_exhausted.store(true, Ordering::Release);
+        }
+        ContentRevision(revision)
     }
 
     pub fn finish_mutation(&self, settled: ContentRevision) {
@@ -93,7 +119,9 @@ impl ContentStatus {
     pub fn mark_published(&self, revision: ContentRevision) {
         self.published_revision
             .fetch_max(revision.0, Ordering::Release);
-        // A newer complete manifest proves the bounded transport and publisher recovered.
+    }
+
+    pub fn recover_saturation(&self) {
         self.saturated.store(false, Ordering::Release);
     }
 
@@ -110,7 +138,8 @@ impl ContentStatus {
     }
 
     pub fn currentness(&self) -> SnapshotCurrentness {
-        if self.saturated.load(Ordering::Acquire) {
+        if self.saturated.load(Ordering::Acquire) || self.revision_exhausted.load(Ordering::Acquire)
+        {
             return SnapshotCurrentness::Stale(StaleReason::PublicationSaturated);
         }
         if let Some(mutation) = ContentMutation::from_raw(self.mutation.load(Ordering::Acquire)) {
@@ -198,7 +227,40 @@ mod tests {
         );
         assert_eq!(status.published_revision(), revision);
         status.mark_published(revision);
+        assert_eq!(
+            status.require_current(),
+            Err(CurrentDataError::PublicationSaturated)
+        );
+        status.recover_saturation();
         assert_eq!(status.require_current(), Ok(revision));
+    }
+
+    #[test]
+    fn revision_counter_saturates_instead_of_wrapping() {
+        let status = ContentStatus::new(Arc::new(SessionContentEpoch::default()));
+        status.next_revision.store(u64::MAX - 1, Ordering::Relaxed);
+        assert_eq!(status.next_revision(), ContentRevision(u64::MAX - 1));
+        assert_eq!(status.next_revision(), ContentRevision(u64::MAX));
+        assert_eq!(status.next_revision(), ContentRevision(u64::MAX));
+        assert_eq!(
+            status.require_current(),
+            Err(CurrentDataError::PublicationSaturated)
+        );
+        status.recover_saturation();
+        assert_eq!(
+            status.require_current(),
+            Err(CurrentDataError::PublicationSaturated)
+        );
+    }
+
+    #[test]
+    fn session_epoch_exhaustion_fails_closed() {
+        let epoch = SessionContentEpoch::default();
+        epoch.epoch.store(u64::MAX, Ordering::Relaxed);
+        epoch.mutation_started();
+        epoch.mutation_finished();
+        assert!(epoch.capture().is_none());
+        assert!(!epoch.validate(u64::MAX));
     }
 
     #[test]

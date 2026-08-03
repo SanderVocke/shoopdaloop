@@ -10,9 +10,7 @@
 
 use assert_no_alloc::*;
 use shoop_engine::channel_mode::ChannelMode;
-use shoop_engine::content_snapshot::{
-    audio_snapshot_channel, midi_snapshot_channel, ContentSnapshotRuntime, SessionContentEpoch,
-};
+use shoop_engine::content_snapshot::ContentSnapshotRuntime;
 use shoop_engine::dummy_midi_port::DummyMidiPort;
 use shoop_engine::dummy_port::{DummyAudioPort, PortId};
 use shoop_engine::internal_audio_port::InternalAudioPort;
@@ -28,7 +26,6 @@ use shoop_engine::{
     LoopIdentity, LoopTargetCatalog, LoopTargetKind, LoopTargetMetadata, MidiStorageElem,
     PreparedAudioChannelData, PreparedAudioRingbufferAdoptionChannel,
 };
-use std::sync::Arc;
 
 #[cfg(debug_assertions)]
 #[global_allocator]
@@ -47,21 +44,18 @@ fn realtime_guard_reverse_guard_allows_exceptional_allocations() {
 
 #[test]
 fn snapshot_process_publication_is_allocation_free() {
-    let (mut audio, _audio_control, _audio_publisher, _audio_reader) =
-        audio_snapshot_channel(Arc::new(SessionContentEpoch::default()), 8, 4);
-    let (mut midi, _midi_control, _midi_publisher, _midi_reader) =
-        midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 4, 20);
+    let runtime = ContentSnapshotRuntime::new();
+    let (mut audio, _audio_control, _audio_reader) = runtime.create_audio_channel(8, 4);
+    let (mut midi, _midi_control, _midi_reader) = runtime.create_midi_channel(4, 20);
     let mut midi_events = [MidiStorageElem::default(); 32];
     for (index, event) in midi_events.iter_mut().enumerate() {
         *event = MidiStorageElem::new(index as u32, &[0x90, index as u8, 100]).expect("valid MIDI");
     }
-    let (mut audio_install, audio_control, _publisher, _reader) =
-        audio_snapshot_channel(Arc::new(SessionContentEpoch::default()), 8, 2);
+    let (mut audio_install, audio_control, _reader) = runtime.create_audio_channel(8, 2);
     let audio_prepared = audio_control
         .prepare(&[1.0, 2.0], ContentMutation::Loading)
         .expect("prepare audio");
-    let (mut midi_install, midi_control, _publisher, _reader) =
-        midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 4, 2);
+    let (mut midi_install, midi_control, _reader) = runtime.create_midi_channel(4, 2);
     let midi_prepared = midi_control
         .prepare(
             &[shoop_engine::MidiEvent::new(1, vec![0x90, 60, 100])],

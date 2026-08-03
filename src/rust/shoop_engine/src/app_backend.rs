@@ -3977,14 +3977,14 @@ impl AudioChannel {
 
     pub fn clear(&self, length: u32) -> std::result::Result<CommandSequence, SendError> {
         if !self
-            .snapshots
+            .snapshot_control
             .begin_mutation(engine::content_snapshot::ContentMutation::Clearing)
         {
             return Err(SendError::Full);
         }
         let result = self.with_mut(move |channel| channel.clear(length as usize));
         if result.is_err() {
-            self.snapshots.cancel_mutation();
+            self.snapshot_control.cancel_mutation();
         }
         result
     }
@@ -4264,14 +4264,14 @@ impl MidiChannel {
 
     pub fn clear(&self) -> std::result::Result<CommandSequence, SendError> {
         if !self
-            .snapshots
+            .snapshot_control
             .begin_mutation(engine::content_snapshot::ContentMutation::Clearing)
         {
             return Err(SendError::Full);
         }
         let result = self.with_mut(move |channel| channel.clear());
         if result.is_err() {
-            self.snapshots.cancel_mutation();
+            self.snapshot_control.cancel_mutation();
         }
         result
     }
@@ -5785,6 +5785,36 @@ mod tests {
             1
         );
 
+        for mutation in [
+            engine::content_snapshot::ContentMutation::Recording,
+            engine::content_snapshot::ContentMutation::PreRecording,
+            engine::content_snapshot::ContentMutation::Replacing,
+            engine::content_snapshot::ContentMutation::Loading,
+            engine::content_snapshot::ContentMutation::Clearing,
+            engine::content_snapshot::ContentMutation::RingbufferAdoption,
+        ] {
+            assert!(audio.snapshot_control.begin_mutation(mutation));
+            assert!(matches!(
+                audio.try_get_current_data_snapshot(),
+                Err(engine::content_snapshot::CurrentDataError::MutationActive(found))
+                    if found == mutation
+            ));
+            assert_eq!(
+                audio.get_latest_data_snapshot().snapshot.contiguous(),
+                vec![1.0, 2.0]
+            );
+            audio.snapshot_control.cancel_mutation();
+
+            assert!(midi.snapshot_control.begin_mutation(mutation));
+            assert!(matches!(
+                midi.try_get_current_data_snapshot(),
+                Err(engine::content_snapshot::CurrentDataError::MutationActive(found))
+                    if found == mutation
+            ));
+            assert_eq!(midi.get_latest_data_snapshot().snapshot.events().count(), 1);
+            midi.snapshot_control.cancel_mutation();
+        }
+
         loop_
             .transition(LoopMode::Recording, -1, -1)
             .expect("queue recording");
@@ -6413,6 +6443,9 @@ mod tests {
 
         let port = AudioPort::new_driver_port(&sess, &driver, "input", &PortDirection::Input, 0)
             .expect("port");
+        sess.wait_for_command(port.creation_sequence(), engine::DEFAULT_WAIT_TIMEOUT)
+            .expect("port creation");
+        sess.shared.flush_graph_changes();
         driver.wait_process();
         let initial = match port.poll_state() {
             Some(state) => state,
@@ -6428,7 +6461,7 @@ mod tests {
             .expect("first input command");
         driver.dummy_request_controlled_frames(BUFFER);
         driver.dummy_run_requested_frames();
-        let first = port.get_state().expect("first state");
+        let first = port.poll_state().expect("first state");
         assert_eq!(first.input_peak, 0.8);
         assert_eq!(first.output_peak, 0.8);
 

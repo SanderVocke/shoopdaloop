@@ -201,11 +201,16 @@ Item {
         // user's save action and serialization.
         var observer = create_task_observer()
         var descriptor
+        var content_capture_coherent = false
         ShoopRustFileIO.begin_session_content_capture()
         try {
             descriptor = actual_session_descriptor(true, tempdir, observer)
         } finally {
-            ShoopRustFileIO.end_session_content_capture()
+            content_capture_coherent = ShoopRustFileIO.end_session_content_capture()
+        }
+        if (!content_capture_coherent) {
+            ShoopRustFileIO.delete_recursive(tempdir)
+            throw new Error("Session content changed while collecting exact snapshots")
         }
         AppRegistries.state_registry.set_active_io_task_fn(() => {
             AppRegistries.state_registry.set_force_io_active(true)

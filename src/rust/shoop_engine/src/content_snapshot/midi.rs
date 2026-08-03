@@ -419,6 +419,14 @@ impl MidiProcessSnapshotWriter {
 }
 
 impl MidiSnapshotControl {
+    pub fn begin_mutation(&self, mutation: ContentMutation) -> bool {
+        self.status.begin_mutation(mutation)
+    }
+
+    pub fn cancel_mutation(&self) {
+        self.status.cancel_mutation();
+    }
+
     pub fn prepare(
         &self,
         events: &[MidiEvent],
@@ -460,13 +468,30 @@ impl MidiSnapshotPublisher {
 
     pub fn pump(&mut self) -> usize {
         let retired_resources = self.retirement.try_recv();
+        self.drain_prepared();
+        let processed = self.pump_updates();
+        if let Some(resources) = retired_resources {
+            drop(resources);
+            self.retired = true;
+        }
+        processed
+    }
+
+    fn drain_prepared(&mut self) {
         while let Ok(prepared) = self.prepared.try_recv() {
             self.prepared_by_revision
                 .insert(prepared.token.revision, prepared);
         }
+    }
+
+    fn pump_updates(&mut self) -> usize {
         let mut processed = 0;
         while let Some(block) = self.updates.try_recv() {
             let mut installed = false;
+            let recovers_saturation = matches!(
+                block.kind,
+                MidiUpdateKind::Clear | MidiUpdateKind::Install(_)
+            );
             match block.kind {
                 MidiUpdateKind::BeginWorking => {
                     self.events.clone_from(&self.committed_events);
@@ -482,6 +507,9 @@ impl MidiSnapshotPublisher {
                 }
                 MidiUpdateKind::Publish => {}
                 MidiUpdateKind::Install(prepared_revision) => {
+                    // Preparation and process commands use different transports. The command can
+                    // arrive after this pump's initial prepared drain, so close that race here.
+                    self.drain_prepared();
                     if let Some(prepared) = self.prepared_by_revision.remove(&prepared_revision) {
                         self.events = prepared
                             .chunks
@@ -496,6 +524,7 @@ impl MidiSnapshotPublisher {
                             },
                             prepared.chunks,
                         ));
+                        self.manifest.recover_saturation();
                         installed = true;
                     }
                 }
@@ -519,12 +548,11 @@ impl MidiSnapshotPublisher {
                     Arc::from(chunks),
                 ));
                 self.committed_events.clone_from(&self.events);
+                if recovers_saturation {
+                    self.manifest.recover_saturation();
+                }
             }
             processed += 1;
-        }
-        if let Some(resources) = retired_resources {
-            drop(resources);
-            self.retired = true;
         }
         processed
     }
@@ -617,6 +645,23 @@ mod tests {
     }
 
     #[test]
+    fn midi_install_closes_the_cross_transport_preparation_race() {
+        let (mut writer, control, mut publisher, reader) =
+            midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 2);
+        publisher.drain_prepared();
+        let token = control
+            .prepare(
+                &[MidiEvent::new(1, vec![0x90, 60, 100])],
+                8,
+                ContentMutation::Loading,
+            )
+            .expect("prepare after the initial drain");
+        assert!(writer.install_prepared(token));
+        assert_eq!(publisher.pump_updates(), 1);
+        assert_eq!(reader.try_current().expect("installed").events().count(), 1);
+    }
+
+    #[test]
     fn cancelled_midi_work_is_reset_before_the_next_generation() {
         let (mut writer, _control, mut publisher, reader) =
             midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 6);
@@ -645,6 +690,76 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![1, 3]
         );
+    }
+
+    #[test]
+    fn payload_boundaries_partial_publication_and_clear_are_deterministic() {
+        let (mut writer, _control, mut publisher, reader) =
+            midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 6);
+        assert!(writer.begin_mutation(ContentMutation::Recording));
+        writer
+            .append_raw_event(1, &[0xf0, 1, 2, 3], 8, false)
+            .expect("maximum payload");
+        publisher.pump();
+        assert!(reader.latest().snapshot.events().next().is_none());
+        assert!(writer
+            .append_raw_event(2, &[0xf0, 1, 2, 3, 4], 8, true)
+            .is_none());
+        let published = writer
+            .append_raw_event(3, &[0x90, 60, 100], 8, true)
+            .expect("valid payload after rejection");
+        writer.finish_mutation(false);
+        publisher.pump();
+        let retained = reader.latest().snapshot;
+        assert_eq!(retained.revision, published);
+        assert_eq!(
+            retained
+                .events()
+                .map(|event| event.time)
+                .collect::<Vec<_>>(),
+            vec![1, 3]
+        );
+
+        assert!(writer.begin_mutation(ContentMutation::Clearing));
+        assert!(writer.begin_working_generation());
+        let cleared = writer.clear(true).expect("clear");
+        writer.finish_mutation(false);
+        publisher.pump();
+        assert!(cleared > published);
+        assert_eq!(retained.events().count(), 2);
+        let current = reader.try_current().expect("clear settled");
+        assert_eq!(current.metadata.length, 0);
+        assert_eq!(current.events().count(), 0);
+    }
+
+    #[test]
+    fn midi_saturation_is_sticky_until_a_full_clear_recovers() {
+        let (mut writer, _control, mut publisher, reader) =
+            midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 1, 1);
+        assert!(writer.begin_mutation(ContentMutation::Recording));
+        writer
+            .append_storage_events(&[event(1, &[0x90, 60, 100])], 4, true)
+            .expect("first block");
+        assert!(writer
+            .append_storage_events(&[event(2, &[0x80, 60, 0])], 4, true)
+            .is_none());
+        publisher.pump();
+        writer.finish_mutation(false);
+        assert!(matches!(
+            reader.latest().currentness,
+            SnapshotCurrentness::Stale(StaleReason::PublicationSaturated)
+        ));
+
+        assert!(writer.begin_mutation(ContentMutation::Clearing));
+        writer.clear(true).expect("full clear recovery");
+        writer.finish_mutation(false);
+        publisher.pump();
+        assert!(reader
+            .try_current()
+            .expect("recovered")
+            .events()
+            .next()
+            .is_none());
     }
 
     #[test]

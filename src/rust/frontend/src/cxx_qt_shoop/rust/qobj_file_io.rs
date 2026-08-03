@@ -30,10 +30,11 @@ use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone)]
 struct SessionCaptureBatch {
     session_id: Option<u64>,
     epoch: Option<u64>,
+    validator: Option<AnyBackendChannel>,
 }
 
 static SESSION_CAPTURE_BATCH: OnceLock<Mutex<Option<SessionCaptureBatch>>> = OnceLock::new();
@@ -53,6 +54,7 @@ fn observe_session_capture(channel: &AnyBackendChannel, epoch: u64) -> Result<()
         (None, None) => {
             batch.session_id = Some(channel.session_id());
             batch.epoch = Some(epoch);
+            batch.validator = Some(channel.clone());
             Ok(())
         }
         (Some(session_id), Some(captured_epoch))
@@ -483,14 +485,23 @@ impl FileIO {
         *guard = Some(SessionCaptureBatch {
             session_id: None,
             epoch: None,
+            validator: None,
         });
     }
 
-    pub fn end_session_content_capture(self: &FileIO) {
-        let mut guard = session_capture_batch()
+    pub fn end_session_content_capture(self: &FileIO) -> bool {
+        let batch = session_capture_batch()
             .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        *guard = None;
+            .unwrap_or_else(|error| error.into_inner())
+            .take();
+        match batch {
+            Some(SessionCaptureBatch {
+                epoch: Some(epoch),
+                validator: Some(channel),
+                ..
+            }) => channel.validate_content_epoch(epoch),
+            Some(_) | None => true,
+        }
     }
 
     pub fn wait_blocking(self: &FileIO, delay_ms: u64) {
@@ -1107,6 +1118,46 @@ impl FileIO {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn session_capture_batch_rejects_an_epoch_change_between_channels() {
+        let session = shoop_engine::app_backend::BackendSession::new().expect("session");
+        let loop_ = session.create_loop().expect("loop");
+        let channel = loop_
+            .add_audio_channel(shoop_engine::ChannelMode::Direct)
+            .expect("channel");
+        session
+            .wait_for_command(
+                channel.creation_sequence(),
+                shoop_engine::DEFAULT_WAIT_TIMEOUT,
+            )
+            .expect("channel ready");
+        let channel = AnyBackendChannel::Audio(channel.clone());
+        let file_io = make_unique_fileio();
+        file_io.begin_session_content_capture();
+        let first_epoch = channel.capture_content_epoch().expect("stable epoch");
+        observe_session_capture(&channel, first_epoch).expect("first capture");
+
+        let sequence = match &channel {
+            AnyBackendChannel::Audio(channel) => channel.load_data(&[1.0]).expect("load"),
+            AnyBackendChannel::Midi(_) => unreachable!(),
+        };
+        session
+            .wait_for_command(sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)
+            .expect("load applied");
+        let start = std::time::Instant::now();
+        while match &channel {
+            AnyBackendChannel::Audio(channel) => channel.try_get_current_data_snapshot().is_err(),
+            AnyBackendChannel::Midi(_) => unreachable!(),
+        } {
+            assert!(start.elapsed() < Duration::from_secs(1));
+            std::thread::yield_now();
+        }
+        let second_epoch = channel.capture_content_epoch().expect("new stable epoch");
+        assert_ne!(second_epoch, first_epoch);
+        assert!(observe_session_capture(&channel, second_epoch).is_err());
+        assert!(!file_io.end_session_content_capture());
+    }
 
     #[test]
     fn test_wait_blocking() {

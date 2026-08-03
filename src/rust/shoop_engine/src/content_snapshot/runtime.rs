@@ -209,7 +209,7 @@ mod tests {
     #[test]
     fn concurrent_readers_observe_only_complete_generations_under_stress() {
         let runtime = ContentSnapshotRuntime::new();
-        let (mut writer, _control, reader) = runtime.create_audio_channel(4, 8);
+        let (mut writer, control, reader) = runtime.create_audio_channel(4, 8);
         let stop = Arc::new(AtomicBool::new(false));
         let failed = Arc::new(AtomicBool::new(false));
         let reader_thread = {
@@ -243,6 +243,12 @@ mod tests {
                 thread::yield_now();
             }
             writer.finish_mutation(false);
+        }
+        let recovery = control
+            .prepare(&[10_000.0; 4], ContentMutation::Loading)
+            .expect("prepare explicit recovery");
+        while !writer.install_prepared(recovery) {
+            thread::yield_now();
         }
         wait_until(|| {
             reader
