@@ -27,7 +27,10 @@ fn production_engine_mutexes_use_the_checked_abstraction() {
             continue;
         }
         let source = fs::read_to_string(&path).expect("read Rust source");
-        let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
+        let production = source
+            .split("\n#[cfg(test)]\nmod tests")
+            .next()
+            .unwrap_or(&source);
         permission_count += production.matches("realtime_allow_lock!").count();
         let compact: String = production
             .chars()
