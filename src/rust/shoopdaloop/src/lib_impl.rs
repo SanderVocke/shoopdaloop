@@ -32,20 +32,35 @@ thread_local! {
 
 fn crash_info_callback_impl() -> Result<Vec<crashhandling::AdditionalCrashAttachment>, anyhow::Error>
 {
-    let maybe_qml_engine = unsafe { get_registered_qml_engine()? };
+    let mut attachments = Vec::new();
+    if let Some(location) = shoop_engine::realtime_lock_guard::first_violation() {
+        attachments.push(crashhandling::AdditionalCrashAttachment {
+            id: "realtime_lock_violation".to_string(),
+            contents: format!(
+                "{}:{}:{}",
+                location.file(),
+                location.line(),
+                location.column()
+            ),
+        });
+    }
+
+    let maybe_qml_engine = match unsafe { get_registered_qml_engine() } {
+        Ok(engine) => engine,
+        Err(_) if !attachments.is_empty() => return Ok(attachments),
+        Err(error) => return Err(error),
+    };
     if !maybe_qml_engine.is_null() {
         unsafe {
             let maybe_qml_engine = std::pin::Pin::new_unchecked(&mut *maybe_qml_engine);
             let qml_stack = get_qml_engine_stack(maybe_qml_engine);
-            let info = crashhandling::AdditionalCrashAttachment {
+            attachments.push(crashhandling::AdditionalCrashAttachment {
                 id: "qml_stack".to_string(),
                 contents: qml_stack,
-            };
-            Ok(vec![info])
+            });
         }
-    } else {
-        Ok(vec![])
     }
+    Ok(attachments)
 }
 
 fn crash_info_callback() -> Vec<crashhandling::AdditionalCrashAttachment> {
@@ -392,6 +407,10 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
     shoop_engine::realtime_alloc_guard::set_enabled(cli_args.developer_options.rt_alloc_guard);
     if cli_args.developer_options.rt_alloc_guard {
         info!("Realtime allocation guard enabled for top-level process calls");
+    }
+    shoop_engine::realtime_lock_guard::set_enabled(cli_args.developer_options.rt_lock_guard);
+    if cli_args.developer_options.rt_lock_guard {
+        info!("Realtime project mutex guard enabled for process callbacks");
     }
 
     if cli_args.print_backends {

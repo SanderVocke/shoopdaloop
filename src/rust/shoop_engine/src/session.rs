@@ -11,10 +11,10 @@
 //!
 //! Audio only for now: MIDI channels are not yet routed through the session.
 
+#[cfg(feature = "lv2")]
+use crate::realtime_lock_guard::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
-#[cfg(feature = "lv2")]
-use std::sync::Mutex;
 
 use crate::audio_channel::PreparedAudioChannelData;
 use crate::audio_midi_loop::AudioMidiLoop;
@@ -2119,7 +2119,8 @@ impl Session {
             .map(|(title, host)| (title.clone(), host.clone()))
             .collect();
         for (title, host) in chains {
-            let mut host = host.lock().unwrap_or_else(|e| e.into_inner());
+            let mut host = crate::realtime_allow_lock!("Carla host processing", host.lock())
+                .unwrap_or_else(|e| e.into_inner());
             if !host.is_active() {
                 continue;
             }
@@ -3995,7 +3996,7 @@ mod tests {
             );
             return;
         };
-        let host = std::sync::Arc::new(std::sync::Mutex::new(host));
+        let host = std::sync::Arc::new(Mutex::new(host));
         let mut s = Session::default();
         s.set_sample_rate(48_000);
         s.set_buffer_size(64);
@@ -4023,7 +4024,7 @@ mod tests {
             return;
         };
         host.set_active(true);
-        let host = std::sync::Arc::new(std::sync::Mutex::new(host));
+        let host = std::sync::Arc::new(Mutex::new(host));
         let mut s = Session::default();
         s.set_sample_rate(48_000);
         s.set_buffer_size(64);

@@ -11,7 +11,8 @@
 //! cycles so a test can set up a whole sequence up front.
 
 use crate::port::{AudioPort, PortConnectability, PortDataType, PortDirection};
-use std::sync::{Arc, Mutex};
+use crate::realtime_lock_guard::Mutex;
+use std::sync::Arc;
 
 /// Ceiling on retained output, in samples. Roughly a second at 48 kHz.
 ///
@@ -170,8 +171,7 @@ impl ExternalAudioPort {
 
     pub fn clear_output_queue(&mut self) {
         self.capture_output = true;
-        self.outgoing
-            .lock()
+        crate::realtime_allow_lock!("external audio output capture reset", self.outgoing.lock())
             .unwrap_or_else(|e| e.into_inner())
             .clear();
         self.processed_len = 0;
@@ -192,7 +192,11 @@ impl ExternalAudioPort {
             *output += *sample;
         }
         if self.capture_output && self.direction == PortDirection::Output {
-            let mut outgoing = self.outgoing.lock().unwrap_or_else(|e| e.into_inner());
+            let mut outgoing = crate::realtime_allow_lock!(
+                "external audio late output capture",
+                self.outgoing.lock()
+            )
+            .unwrap_or_else(|e| e.into_inner());
             if outgoing.len() >= samples.len() {
                 let start = outgoing.len() - samples.len();
                 for (output, sample) in outgoing[start..].iter_mut().zip(samples) {
@@ -220,7 +224,11 @@ impl ExternalAudioPort {
         if self.capture_output && self.direction == PortDirection::Output && self.processed_len > 0
         {
             let n = self.processed_len.min(self.buffer.len());
-            let mut outgoing = self.outgoing.lock().unwrap_or_else(|e| e.into_inner());
+            let mut outgoing = crate::realtime_allow_lock!(
+                "external audio deferred output capture",
+                self.outgoing.lock()
+            )
+            .unwrap_or_else(|e| e.into_inner());
             crate::realtime_allow_alloc_once!("ExternalAudioPort::prepare outgoing extend", || {
                 outgoing.extend_from_slice(&self.buffer[..n])
             });
@@ -257,7 +265,11 @@ impl ExternalAudioPort {
         if self.direction == PortDirection::Output {
             self.processed_len = n_frames;
             if self.capture_output {
-                let mut outgoing = self.outgoing.lock().unwrap_or_else(|e| e.into_inner());
+                let mut outgoing = crate::realtime_allow_lock!(
+                    "external audio process output capture",
+                    self.outgoing.lock()
+                )
+                .unwrap_or_else(|e| e.into_inner());
                 crate::realtime_allow_alloc_once!(
                     "ExternalAudioPort::process shared output capture",
                     || outgoing.extend_from_slice(&self.buffer[..n_frames])

@@ -9,6 +9,7 @@
 
 use crate as engine;
 use crate::graph_scheduler::{GraphScheduler, DEFAULT_WINDOW};
+use crate::realtime_lock_guard::Mutex;
 use anyhow::{anyhow, Result};
 use arc_swap::ArcSwap;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -22,7 +23,7 @@ pub use engine::{
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, OnceLock, Weak};
+use std::sync::{Arc, OnceLock, Weak};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -203,7 +204,8 @@ impl<I: ObjectIdentity, M> ObjectControl<I, M> {
     }
 
     fn mark_failed(&self, error: impl Into<String>) {
-        *self.error.lock().unwrap_or_else(|e| e.into_inner()) = Some(error.into());
+        *crate::realtime_allow_lock!("object creation failure publication", self.error.lock())
+            .unwrap_or_else(|e| e.into_inner()) = Some(error.into());
         self.lifecycle
             .store(ObjectLifecycle::Failed as u8, Ordering::Release);
     }
@@ -319,6 +321,12 @@ struct JackProcess {
 }
 impl jack::ProcessHandler for JackProcess {
     fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        crate::realtime_lock_guard::forbid_locks_if_enabled(|| self.process_inner(ps))
+    }
+}
+
+impl JackProcess {
+    fn process_inner(&mut self, ps: &jack::ProcessScope) -> jack::Control {
         let n_frames = ps.n_frames() as usize;
         let _driver_kind =
             shoop_tracing::realtime_span!("engine.rt.driver", value = AudioDriverType::Jack as i32);
@@ -348,7 +356,8 @@ impl jack::ProcessHandler for JackProcess {
         let session = engine.session_mut();
         session.set_sample_rate(sample_rate);
         session.set_buffer_size(n_frames as u32);
-        let mut ports = ports.lock().unwrap_or_else(|e| e.into_inner());
+        let mut ports = crate::realtime_allow_lock!("JACK registered port registry", ports.lock())
+            .unwrap_or_else(|e| e.into_inner());
 
         for p in ports.iter() {
             match p {
@@ -373,7 +382,11 @@ impl jack::ProcessHandler for JackProcess {
                     }
                 }
                 JackRegisteredPort::DecoupledMidiIn { queue, jack } => {
-                    let mut queue = queue.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut queue = crate::realtime_allow_lock!(
+                        "JACK decoupled MIDI input queue",
+                        queue.lock()
+                    )
+                    .unwrap_or_else(|e| e.into_inner());
                     for e in jack.iter(ps) {
                         queue.push(MidiEvent::new(e.time as i32, e.bytes.to_vec()));
                     }
@@ -426,7 +439,11 @@ impl jack::ProcessHandler for JackProcess {
                 }
                 JackRegisteredPort::DecoupledMidiOut { queue, jack } => {
                     let mut writer = jack.writer(ps);
-                    let mut queue = queue.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut queue = crate::realtime_allow_lock!(
+                        "JACK decoupled MIDI output queue",
+                        queue.lock()
+                    )
+                    .unwrap_or_else(|e| e.into_inner());
                     for e in queue.drain(..) {
                         let time = (e.time.max(0) as u32).min(n_frames.saturating_sub(1) as u32);
                         let _ = writer.write(&jack::RawMidi {
@@ -698,7 +715,9 @@ fn route_virtual_midi_inputs(
             .iter()
             .filter(|p| p.port_id == *port_id && p.direction == PortDirection::Input)
         {
-            let mut queue = port.queue.lock().unwrap_or_else(|e| e.into_inner());
+            let mut queue =
+                crate::realtime_allow_lock!("CPAL decoupled MIDI input queue", port.queue.lock())
+                    .unwrap_or_else(|e| e.into_inner());
             for e in events {
                 queue.push(MidiEvent::new(0, e.data().to_vec()));
             }
@@ -722,7 +741,9 @@ fn drain_decoupled_midi_output_events(
         {
             continue;
         }
-        let mut queue = port.queue.lock().unwrap_or_else(|e| e.into_inner());
+        let mut queue =
+            crate::realtime_allow_lock!("CPAL decoupled MIDI output queue", port.queue.lock())
+                .unwrap_or_else(|e| e.into_inner());
         for e in queue.drain(..) {
             if let Some(elem) =
                 engine::midi_storage::MidiStorageElem::new(e.time.max(0) as u32, &e.data)
@@ -800,24 +821,31 @@ impl CpalBackend {
                 input_stream = Some(input_device.build_input_stream(
                     &input_config,
                     move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                        let _driver_kind = shoop_tracing::realtime_span!(
-                            "engine.rt.driver",
-                            value = AudioDriverType::Cpal as i32
-                        );
-                        let n_frames = data.len().checked_div(input_channels.max(1)).unwrap_or(0);
-                        let _span = shoop_tracing::realtime_span!(
-                            "engine.rt.driver.cpal_input",
-                            value = n_frames
-                        );
-                        let mut ring = cb_ring.lock().unwrap_or_else(|e| e.into_inner());
-                        for &s in data {
-                            if ring.len() >= cap {
-                                ring.pop_front();
-                                cb_xruns_in.fetch_add(1, Ordering::Relaxed);
-                                cb_capture_overruns.fetch_add(1, Ordering::Relaxed);
+                        crate::realtime_lock_guard::forbid_locks_if_enabled(|| {
+                            let _driver_kind = shoop_tracing::realtime_span!(
+                                "engine.rt.driver",
+                                value = AudioDriverType::Cpal as i32
+                            );
+                            let n_frames =
+                                data.len().checked_div(input_channels.max(1)).unwrap_or(0);
+                            let _span = shoop_tracing::realtime_span!(
+                                "engine.rt.driver.cpal_input",
+                                value = n_frames
+                            );
+                            let mut ring = crate::realtime_allow_lock!(
+                                "CPAL capture ring input",
+                                cb_ring.lock()
+                            )
+                            .unwrap_or_else(|e| e.into_inner());
+                            for &s in data {
+                                if ring.len() >= cap {
+                                    ring.pop_front();
+                                    cb_xruns_in.fetch_add(1, Ordering::Relaxed);
+                                    cb_capture_overruns.fetch_add(1, Ordering::Relaxed);
+                                }
+                                ring.push_back(s);
                             }
-                            ring.push_back(s);
-                        }
+                        });
                     },
                     |_| {},
                     None,
@@ -927,134 +955,155 @@ impl CpalBackend {
         let output_stream = output_device.build_output_stream(
             &output_config,
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                let n_frames = data.len().checked_div(output_channels.max(1)).unwrap_or(0);
-                let _driver_kind = shoop_tracing::realtime_span!(
-                    "engine.rt.driver",
-                    value = AudioDriverType::Cpal as i32
-                );
-                let _span =
-                    shoop_tracing::realtime_span!("engine.rt.driver.cpal_output", value = n_frames);
-                last_processed_cb.store(n_frames as u32, Ordering::Relaxed);
-                for s in data.iter_mut() {
-                    *s = 0.0;
-                }
-                if let Some(callback) = maybe_process_callback {
-                    unsafe {
-                        callback();
+                crate::realtime_lock_guard::forbid_locks_if_enabled(|| {
+                    let n_frames = data.len().checked_div(output_channels.max(1)).unwrap_or(0);
+                    let _driver_kind = shoop_tracing::realtime_span!(
+                        "engine.rt.driver",
+                        value = AudioDriverType::Cpal as i32
+                    );
+                    let _span = shoop_tracing::realtime_span!(
+                        "engine.rt.driver.cpal_output",
+                        value = n_frames
+                    );
+                    last_processed_cb.store(n_frames as u32, Ordering::Relaxed);
+                    for s in data.iter_mut() {
+                        *s = 0.0;
                     }
-                }
-                let connections = external_cb
-                    .lock()
+                    if let Some(callback) = maybe_process_callback {
+                        unsafe {
+                            callback();
+                        }
+                    }
+                    let connections = crate::realtime_allow_lock!(
+                        "CPAL external connection registry",
+                        external_cb.lock()
+                    )
                     .unwrap_or_else(|e| e.into_inner())
                     .connections();
-                let wanted = n_frames * input_channels;
-                if capture_scratch.len() < wanted {
-                    capture_scratch.resize(wanted, 0.0);
-                }
-                if let Some(ring) = input_ring_cb.as_ref() {
-                    let mut ring = ring.lock().unwrap_or_else(|e| e.into_inner());
-                    let mut underflowed = false;
-                    for s in &mut capture_scratch[..wanted] {
-                        match ring.pop_front() {
-                            Some(value) => *s = value,
-                            None => {
-                                *s = 0.0;
-                                underflowed = true;
-                            }
-                        }
+                    let wanted = n_frames * input_channels;
+                    if capture_scratch.len() < wanted {
+                        capture_scratch.resize(wanted, 0.0);
                     }
-                    if underflowed {
-                        capture_underruns_cb.fetch_add(1, Ordering::Relaxed);
-                    }
-                }
-                engine.stats().capture_underruns.store(
-                    capture_underruns_cb.load(Ordering::Relaxed),
-                    Ordering::Relaxed,
-                );
-                engine.stats().capture_overruns.store(
-                    capture_overruns_cb.load(Ordering::Relaxed),
-                    Ordering::Relaxed,
-                );
-
-                // Control work first, at the cycle boundary, and with no lock anywhere: the
-                // callback owns the engine, so a GUI thread polling state cannot make this
-                // one wait. On cpal that waiting showed up as glitching rather than as a
-                // zombied client, which made it easier to miss and no less real.
-                engine.pump();
-                let session = engine.session_mut();
-                session.set_sample_rate(sample_rate);
-                session.set_buffer_size(n_frames as u32);
-
-                stage_virtual_audio_inputs(
-                    session,
-                    &connections,
-                    &capture_names_cb,
-                    input_channels,
-                    &capture_scratch[..wanted],
-                    n_frames,
-                );
-                {
-                    let decoupled = decoupled_cb
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .clone();
-                    let mut inputs = midi_inputs_cb.lock().unwrap_or_else(|e| e.into_inner());
-                    for input in inputs.iter_mut() {
-                        let events = input.capture.drain_pending();
-                        if !events.is_empty() {
-                            route_virtual_midi_inputs(
-                                session,
-                                &connections,
-                                &input.name,
-                                &events,
-                                &decoupled,
-                            );
-                        }
-                    }
-                }
-
-                engine.run_cycle(n_frames);
-                let session = engine.session();
-                stale_cb.store(session.n_stale_cycles(), Ordering::Relaxed);
-
-                collect_virtual_audio_outputs(
-                    session,
-                    &connections,
-                    &playback_names_cb,
-                    output_channels,
-                    data,
-                    n_frames,
-                );
-                {
-                    let decoupled = decoupled_cb
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .clone();
-                    let mut outputs = midi_outputs_cb.lock().unwrap_or_else(|e| e.into_inner());
-                    for output in outputs.iter_mut() {
-                        for (port_id, ext_name) in &connections {
-                            if ext_name != &output.name {
-                                continue;
-                            }
-                            if let Some(session_idx) = port_id.0.checked_sub(1).map(|v| v as usize)
-                            {
-                                if let Some(port) =
-                                    session.port(session_idx).and_then(|p| p.as_external_midi())
-                                {
-                                    output.playback.send_from(port);
+                    if let Some(ring) = input_ring_cb.as_ref() {
+                        let mut ring =
+                            crate::realtime_allow_lock!("CPAL capture ring output", ring.lock())
+                                .unwrap_or_else(|e| e.into_inner());
+                        let mut underflowed = false;
+                        for s in &mut capture_scratch[..wanted] {
+                            match ring.pop_front() {
+                                Some(value) => *s = value,
+                                None => {
+                                    *s = 0.0;
+                                    underflowed = true;
                                 }
                             }
                         }
-                        let events = drain_decoupled_midi_output_events(
-                            &connections,
-                            &output.name,
-                            &decoupled,
-                        );
-                        if !events.is_empty() {
-                            output.playback.send_events(&events);
+                        if underflowed {
+                            capture_underruns_cb.fetch_add(1, Ordering::Relaxed);
                         }
                     }
-                }
+                    engine.stats().capture_underruns.store(
+                        capture_underruns_cb.load(Ordering::Relaxed),
+                        Ordering::Relaxed,
+                    );
+                    engine.stats().capture_overruns.store(
+                        capture_overruns_cb.load(Ordering::Relaxed),
+                        Ordering::Relaxed,
+                    );
+
+                    // Control work first, at the cycle boundary, and with no lock anywhere: the
+                    // callback owns the engine, so a GUI thread polling state cannot make this
+                    // one wait. On cpal that waiting showed up as glitching rather than as a
+                    // zombied client, which made it easier to miss and no less real.
+                    engine.pump();
+                    let session = engine.session_mut();
+                    session.set_sample_rate(sample_rate);
+                    session.set_buffer_size(n_frames as u32);
+
+                    stage_virtual_audio_inputs(
+                        session,
+                        &connections,
+                        &capture_names_cb,
+                        input_channels,
+                        &capture_scratch[..wanted],
+                        n_frames,
+                    );
+                    {
+                        let decoupled = crate::realtime_allow_lock!(
+                            "CPAL decoupled MIDI input registry",
+                            decoupled_cb.lock()
+                        )
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clone();
+                        let mut inputs = crate::realtime_allow_lock!(
+                            "CPAL MIDI input endpoint registry",
+                            midi_inputs_cb.lock()
+                        )
+                        .unwrap_or_else(|e| e.into_inner());
+                        for input in inputs.iter_mut() {
+                            let events = input.capture.drain_pending();
+                            if !events.is_empty() {
+                                route_virtual_midi_inputs(
+                                    session,
+                                    &connections,
+                                    &input.name,
+                                    &events,
+                                    &decoupled,
+                                );
+                            }
+                        }
+                    }
+
+                    engine.run_cycle(n_frames);
+                    let session = engine.session();
+                    stale_cb.store(session.n_stale_cycles(), Ordering::Relaxed);
+
+                    collect_virtual_audio_outputs(
+                        session,
+                        &connections,
+                        &playback_names_cb,
+                        output_channels,
+                        data,
+                        n_frames,
+                    );
+                    {
+                        let decoupled = crate::realtime_allow_lock!(
+                            "CPAL decoupled MIDI output registry",
+                            decoupled_cb.lock()
+                        )
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clone();
+                        let mut outputs = crate::realtime_allow_lock!(
+                            "CPAL MIDI output endpoint registry",
+                            midi_outputs_cb.lock()
+                        )
+                        .unwrap_or_else(|e| e.into_inner());
+                        for output in outputs.iter_mut() {
+                            for (port_id, ext_name) in &connections {
+                                if ext_name != &output.name {
+                                    continue;
+                                }
+                                if let Some(session_idx) =
+                                    port_id.0.checked_sub(1).map(|v| v as usize)
+                                {
+                                    if let Some(port) =
+                                        session.port(session_idx).and_then(|p| p.as_external_midi())
+                                    {
+                                        output.playback.send_from(port);
+                                    }
+                                }
+                            }
+                            let events = drain_decoupled_midi_output_events(
+                                &connections,
+                                &output.name,
+                                &decoupled,
+                            );
+                            if !events.is_empty() {
+                                output.playback.send_events(&events);
+                            }
+                        }
+                    }
+                });
             },
             move |_| {
                 xruns_cb.fetch_add(1, Ordering::Relaxed);
@@ -1561,7 +1610,9 @@ impl SharedSession {
 
     /// Hands the engine to a driver that is about to start cycling it.
     fn take_engine(&self) -> Option<engine::Engine> {
-        self.parked.lock().unwrap_or_else(|e| e.into_inner()).take()
+        crate::realtime_allow_lock!("dummy driver engine claim", self.parked.lock())
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
     }
 
     /// Takes the engine back from a driver that has stopped.
@@ -2758,8 +2809,18 @@ fn process_dummy_driver_iteration(
     inner: &Arc<Mutex<DriverInner>>,
     engine: &mut Option<engine::Engine>,
 ) {
+    crate::realtime_lock_guard::forbid_locks_if_enabled(|| {
+        process_dummy_driver_iteration_inner(inner, engine)
+    });
+}
+
+fn process_dummy_driver_iteration_inner(
+    inner: &Arc<Mutex<DriverInner>>,
+    engine: &mut Option<engine::Engine>,
+) {
     let (session, n, sample_rate, buffer_size, callback, driver_type) = {
-        let mut i = inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut i = crate::realtime_allow_lock!("dummy driver iteration state", inner.lock())
+            .unwrap_or_else(|e| e.into_inner());
         if !i.dummy.active() || !driver_uses_dummy_processing(i.driver_type) {
             i.last_processed = 0;
             i.process_generation = i.process_generation.wrapping_add(1);
@@ -2796,8 +2857,7 @@ fn process_dummy_driver_iteration(
     }
     let Some(engine) = engine.as_mut() else {
         if n == 0 {
-            inner
-                .lock()
+            crate::realtime_allow_lock!("dummy driver idle state", inner.lock())
                 .unwrap_or_else(|e| e.into_inner())
                 .last_processed = 0;
         }
@@ -2810,8 +2870,7 @@ fn process_dummy_driver_iteration(
     engine.pump();
 
     if n == 0 {
-        inner
-            .lock()
+        crate::realtime_allow_lock!("dummy driver zero-frame state", inner.lock())
             .unwrap_or_else(|e| e.into_inner())
             .last_processed = 0;
         return;
@@ -2826,8 +2885,7 @@ fn process_dummy_driver_iteration(
     // changes are applied by the scheduler thread within its window; a caller that needs them
     // landed first calls `AudioDriver::wait_process`, which flushes.
     engine.run_cycle(n as usize);
-    inner
-        .lock()
+    crate::realtime_allow_lock!("dummy driver completion state", inner.lock())
         .unwrap_or_else(|e| e.into_inner())
         .last_processed = n;
 }
@@ -4737,10 +4795,12 @@ impl AudioPort {
             let (control, name) = (Arc::clone(&self.control), name.to_string());
             if let Err(error) = self.shared.send_control(move |_: &mut engine::Session| {
                 if let Some(id) = control.ready_id() {
-                    let _ = ext
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .connect(compat_port_id(id.index()), &name);
+                    let _ = crate::realtime_allow_lock!(
+                        "deferred external audio connection",
+                        ext.lock()
+                    )
+                    .unwrap_or_else(|e| e.into_inner())
+                    .connect(compat_port_id(id.index()), &name);
                 }
             }) {
                 log::error!("could not queue external audio connection: {error}");
@@ -4778,10 +4838,12 @@ impl AudioPort {
             let (control, name) = (Arc::clone(&self.control), name.to_string());
             if let Err(error) = self.shared.send_control(move |_: &mut engine::Session| {
                 if let Some(id) = control.ready_id() {
-                    let _ = ext
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .disconnect(compat_port_id(id.index()), &name);
+                    let _ = crate::realtime_allow_lock!(
+                        "deferred external audio disconnection",
+                        ext.lock()
+                    )
+                    .unwrap_or_else(|e| e.into_inner())
+                    .disconnect(compat_port_id(id.index()), &name);
                 }
             }) {
                 log::error!("could not queue external audio disconnection: {error}");
@@ -5056,10 +5118,12 @@ impl MidiPort {
             let (control, name) = (Arc::clone(&self.control), name.to_string());
             if let Err(error) = self.shared.send_control(move |_: &mut engine::Session| {
                 if let Some(id) = control.ready_id() {
-                    let _ = ext
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .connect(compat_port_id(id.index()), &name);
+                    let _ = crate::realtime_allow_lock!(
+                        "deferred external MIDI connection",
+                        ext.lock()
+                    )
+                    .unwrap_or_else(|e| e.into_inner())
+                    .connect(compat_port_id(id.index()), &name);
                 }
             }) {
                 log::error!("could not queue external MIDI connection: {error}");
@@ -5097,10 +5161,12 @@ impl MidiPort {
             let (control, name) = (Arc::clone(&self.control), name.to_string());
             if let Err(error) = self.shared.send_control(move |_: &mut engine::Session| {
                 if let Some(id) = control.ready_id() {
-                    let _ = ext
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .disconnect(compat_port_id(id.index()), &name);
+                    let _ = crate::realtime_allow_lock!(
+                        "deferred external MIDI disconnection",
+                        ext.lock()
+                    )
+                    .unwrap_or_else(|e| e.into_inner())
+                    .disconnect(compat_port_id(id.index()), &name);
                 }
             }) {
                 log::error!("could not queue external MIDI disconnection: {error}");
@@ -6783,6 +6849,49 @@ mod tests {
 
         assert_eq!(driver.dummy_n_requested_frames(), 0);
         assert_eq!(loop_.get_state().expect("state").position, REQUEST);
+    }
+
+    #[test]
+    fn dummy_iteration_uses_only_explicit_realtime_lock_permissions() {
+        struct DisableGuard;
+        impl Drop for DisableGuard {
+            fn drop(&mut self) {
+                crate::realtime_lock_guard::set_enabled(false);
+            }
+        }
+
+        let mut dummy = engine::DummyDriver::default();
+        dummy.start(engine::DriverSettings {
+            sample_rate: 48_000,
+            buffer_size: 64,
+            client_name: "lock-guard-test".to_string(),
+        });
+        let inner = Arc::new(Mutex::new(DriverInner {
+            driver_type: AudioDriverType::Dummy,
+            dummy,
+            last_processed: 0,
+            process_generation: 0,
+            finish: Arc::new(AtomicBool::new(false)),
+            dummy_thread: None,
+            session: None,
+            jack: None,
+            cpal: None,
+            cpal_settings: None,
+            cpal_decoupled_midi_ports: Arc::new(Mutex::new(Vec::new())),
+            maybe_process_callback: None,
+        }));
+        let mut session = engine::Session::default();
+        session.apply_graph_changes().unwrap();
+        let (engine, _handle) = engine::split(session, 4);
+        let mut engine = Some(engine);
+
+        crate::realtime_lock_guard::set_enabled(true);
+        let _disable = DisableGuard;
+        process_dummy_driver_iteration(&inner, &mut engine);
+        crate::realtime_lock_guard::set_enabled(false);
+
+        let state = inner.lock().unwrap_or_else(|error| error.into_inner());
+        assert_eq!(state.last_processed, 64);
     }
 
     #[test]

@@ -293,7 +293,9 @@ impl Engine {
     pub fn process(&mut self, n_frames: usize) {
         let _span = shoop_tracing::realtime_span!("engine.rt.callback", value = n_frames);
         let started = shoop_tracing::is_tracing_requested().then(std::time::Instant::now);
-        crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| self.process_inner(n_frames));
+        crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| {
+            crate::realtime_lock_guard::forbid_locks_if_enabled(|| self.process_inner(n_frames))
+        });
         self.finish_callback_timing(started, n_frames);
         shoop_tracing::realtime_frame_mark!("engine.callback");
     }
@@ -309,7 +311,9 @@ impl Engine {
     pub fn run_cycle(&mut self, n_frames: usize) {
         let _span = shoop_tracing::realtime_span!("engine.rt.callback", value = n_frames);
         let started = shoop_tracing::is_tracing_requested().then(std::time::Instant::now);
-        crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| self.cycle_inner(n_frames));
+        crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| {
+            crate::realtime_lock_guard::forbid_locks_if_enabled(|| self.cycle_inner(n_frames))
+        });
         self.finish_callback_timing(started, n_frames);
         shoop_tracing::realtime_frame_mark!("engine.callback");
     }
@@ -419,14 +423,16 @@ impl Engine {
     pub fn pump(&mut self) {
         let _span = shoop_tracing::realtime_span!("engine.rt.pump");
         crate::realtime_alloc_guard::forbid_alloc_if_enabled(|| {
-            {
-                let _commands_span = shoop_tracing::realtime_span!("engine.rt.commands");
-                self.apply_commands();
-            }
-            {
-                let _graph_span = shoop_tracing::realtime_span!("engine.rt.graph_state");
-                self.publish_graph_staleness();
-            }
+            crate::realtime_lock_guard::forbid_locks_if_enabled(|| {
+                {
+                    let _commands_span = shoop_tracing::realtime_span!("engine.rt.commands");
+                    self.apply_commands();
+                }
+                {
+                    let _graph_span = shoop_tracing::realtime_span!("engine.rt.graph_state");
+                    self.publish_graph_staleness();
+                }
+            });
         });
     }
 

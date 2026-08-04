@@ -17,7 +17,8 @@
 use crate::dummy_port::{DummyExternalConnections, ExternalPortDescriptor, PortId};
 use crate::port::{PortDataType, PortDirection};
 
-use std::sync::{Arc, Mutex};
+use crate::realtime_lock_guard::Mutex;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DriverSettings {
