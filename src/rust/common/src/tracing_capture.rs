@@ -286,16 +286,24 @@ impl CaptureController {
             config.tool.display(),
             path.display()
         );
-        let child = Command::new(&config.tool)
+        let mut command = Command::new(&config.tool);
+        command
             .arg("-o")
             .arg(&path)
             .stdout(Stdio::from(stdout))
-            .stderr(Stdio::from(stderr))
-            .spawn()
-            .map_err(|source| CaptureError::Spawn {
-                tool: config.tool.clone(),
-                source,
-            })?;
+            .stderr(Stdio::from(stderr));
+        #[cfg(windows)]
+        {
+            // Give tracy-capture a private console so a helper can send Ctrl+C without
+            // interrupting ShoopDaLoop or the CI shell sharing its original console.
+            use std::os::windows::process::CommandExt;
+            const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+            command.creation_flags(CREATE_NEW_CONSOLE);
+        }
+        let child = command.spawn().map_err(|source| CaptureError::Spawn {
+            tool: config.tool.clone(),
+            source,
+        })?;
 
         self.active = Some(ActiveCapture {
             child,
@@ -552,7 +560,53 @@ fn signal_capture_process(child: &mut Child) -> Result<(), CaptureError> {
     }
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn signal_capture_process(child: &mut Child) -> Result<(), CaptureError> {
+    let pid = child.id();
+    // tracy-capture installs a SIGINT handler on Windows and saves after Ctrl+C.
+    // A short-lived PowerShell helper attaches to the private child console, ignores
+    // the event itself, and emits Ctrl+C only within that console. Keeping this in a
+    // helper avoids detaching the GUI/test process from the CI runner's console.
+    let script = format!(
+        r#"
+$native = @'
+using System;
+using System.Runtime.InteropServices;
+public static class ShoopConsoleSignal {{
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool FreeConsole();
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool AttachConsole(uint processId);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool SetConsoleCtrlHandler(IntPtr handler, bool add);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool GenerateConsoleCtrlEvent(uint ctrlEvent, uint processGroupId);
+}}
+'@
+Add-Type -TypeDefinition $native
+[ShoopConsoleSignal]::FreeConsole() | Out-Null
+if (-not [ShoopConsoleSignal]::AttachConsole({pid})) {{ exit 10 }}
+if (-not [ShoopConsoleSignal]::SetConsoleCtrlHandler([IntPtr]::Zero, $true)) {{ exit 11 }}
+if (-not [ShoopConsoleSignal]::GenerateConsoleCtrlEvent(0, 0)) {{ exit 12 }}
+Start-Sleep -Milliseconds 100
+"#
+    );
+    let status = Command::new("powershell.exe")
+        .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"])
+        .arg(script)
+        .status()
+        .map_err(|source| CaptureError::Signal { pid, source })?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(CaptureError::Signal {
+            pid,
+            source: std::io::Error::other(format!("Windows Ctrl+C helper exited with {status}")),
+        })
+    }
+}
+
+#[cfg(all(not(unix), not(windows)))]
 fn signal_capture_process(_child: &mut Child) -> Result<(), CaptureError> {
     Err(CaptureError::UnsupportedPlatform)
 }
