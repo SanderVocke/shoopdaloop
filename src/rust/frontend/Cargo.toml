@@ -13,8 +13,8 @@ shoop_engine = { path = "../shoop_engine", features = ["app_backend"] }
 crashhandling = { path = "../crashhandling" }
 config = { path = "../config" }
 cxx_qt_lib_shoop = { path = "../cxx_qt_lib_shoop" }
+shoop_egui = { path = "../shoop_egui" }
 egui-cxx-qt = { workspace = true }
-egui_material_icons = { workspace = true }
 midi_processing = { path = "../midi_processing" }
 qt_header_bindings = { path = "../qt_header_bindings"}
 

@@ -1,0 +1,10 @@
+[package]
+name = "shoop_egui"
+edition = "2021"
+
+[dependencies]
+egui = { workspace = true }
+egui_material_icons = { workspace = true }
+
+[lints]
+workspace = true

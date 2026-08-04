@@ -5,8 +5,9 @@ use cxx_qt_lib::QString;
 use egui_cxx_qt::{
     egui, CanvasHandle, CanvasInfo, CanvasQueueError, CanvasSubclass, CanvasUiFactory, EguiUi,
 };
+use shoop_egui::{IndexedLoopAction, LoopState, LoopWidgetAction, TrackState, TracksWidget};
 
-use crate::egui_loop_widget::{draw_loop_widget, LoopState, LoopWidgetActionSink};
+use crate::egui_loop_widget::{apply_loop_state, apply_peak_state};
 
 #[egui_cxx_qt::canvas_bridge]
 pub mod ffi {
@@ -120,12 +121,6 @@ pub fn register_qml_type(module_name: &str, type_name: &str) {
     }
 }
 
-#[derive(Clone, Default)]
-struct TrackState {
-    name: String,
-    loops: Vec<LoopState>,
-}
-
 pub struct ShoopEguiWindowRust {
     tracks: Arc<RwLock<Vec<TrackState>>>,
 }
@@ -196,7 +191,8 @@ impl ffi::ShoopEguiWindow {
         let Some(state) = indexed_loop_mut(&mut tracks, track_index, loop_index) else {
             return;
         };
-        state.update_loop_state(
+        apply_loop_state(
+            state,
             name.to_string(),
             position,
             mode,
@@ -233,7 +229,7 @@ impl ffi::ShoopEguiWindow {
         let Some(state) = indexed_loop_mut(&mut tracks, track_index, loop_index) else {
             return;
         };
-        state.update_peak_state(stereo, peak_left_db, peak_right_db, midi_activity);
+        apply_peak_state(state, stereo, peak_left_db, peak_right_db, midi_activity);
         drop(tracks);
         self.as_mut().request_repaint();
     }
@@ -247,7 +243,7 @@ impl CanvasSubclass for ffi::ShoopEguiWindow {
                 tracks: Arc::clone(&tracks),
                 canvas: canvas.clone(),
                 icons_initialized: false,
-                gain_drag_starts: Vec::new(),
+                widget: TracksWidget::default(),
             })
         })
     }
@@ -257,17 +253,33 @@ struct EguiWindowUi {
     tracks: Arc<RwLock<Vec<TrackState>>>,
     canvas: CanvasHandle<ffi::ShoopEguiWindow>,
     icons_initialized: bool,
-    gain_drag_starts: Vec<Vec<Option<f32>>>,
+    widget: TracksWidget,
 }
 
-struct WindowLoopActionSink<'a> {
-    canvas: CanvasHandle<ffi::ShoopEguiWindow>,
-    track_index: i32,
-    loop_index: i32,
-    gain_drag_start: &'a mut Option<f32>,
-}
+impl EguiWindowUi {
+    fn emit_action(&self, indexed: IndexedLoopAction) {
+        let Ok(track_index) = i32::try_from(indexed.track_index) else {
+            return;
+        };
+        let Ok(loop_index) = i32::try_from(indexed.loop_index) else {
+            return;
+        };
+        self.queue_signal(move |mut canvas| match indexed.action {
+            LoopWidgetAction::IconClicked => canvas.as_mut().icon_clicked(track_index, loop_index),
+            LoopWidgetAction::IconDoubleClicked => {
+                canvas.as_mut().icon_double_clicked(track_index, loop_index)
+            }
+            LoopWidgetAction::PlayClicked => canvas.as_mut().play_clicked(track_index, loop_index),
+            LoopWidgetAction::RecordClicked => {
+                canvas.as_mut().record_clicked(track_index, loop_index)
+            }
+            LoopWidgetAction::StopClicked => canvas.as_mut().stop_clicked(track_index, loop_index),
+            LoopWidgetAction::GainChanged(value) => {
+                canvas.as_mut().gain_changed(track_index, loop_index, value)
+            }
+        });
+    }
 
-impl WindowLoopActionSink<'_> {
     fn queue_signal(&self, signal: impl FnOnce(Pin<&mut ffi::ShoopEguiWindow>) + Send + 'static) {
         match self.canvas.queue(signal) {
             Ok(()) | Err(CanvasQueueError::ObjectDestroyed) => {}
@@ -276,52 +288,10 @@ impl WindowLoopActionSink<'_> {
     }
 }
 
-impl LoopWidgetActionSink for WindowLoopActionSink<'_> {
-    fn emit_icon_clicked(&mut self) {
-        let (track_index, loop_index) = (self.track_index, self.loop_index);
-        self.queue_signal(move |mut canvas| canvas.as_mut().icon_clicked(track_index, loop_index));
-    }
-
-    fn emit_icon_double_clicked(&mut self) {
-        let (track_index, loop_index) = (self.track_index, self.loop_index);
-        self.queue_signal(move |mut canvas| {
-            canvas.as_mut().icon_double_clicked(track_index, loop_index)
-        });
-    }
-
-    fn emit_play_clicked(&mut self) {
-        let (track_index, loop_index) = (self.track_index, self.loop_index);
-        self.queue_signal(move |mut canvas| canvas.as_mut().play_clicked(track_index, loop_index));
-    }
-
-    fn emit_record_clicked(&mut self) {
-        let (track_index, loop_index) = (self.track_index, self.loop_index);
-        self.queue_signal(move |mut canvas| {
-            canvas.as_mut().record_clicked(track_index, loop_index)
-        });
-    }
-
-    fn emit_stop_clicked(&mut self) {
-        let (track_index, loop_index) = (self.track_index, self.loop_index);
-        self.queue_signal(move |mut canvas| canvas.as_mut().stop_clicked(track_index, loop_index));
-    }
-
-    fn emit_gain_changed(&mut self, value: f32) {
-        let (track_index, loop_index) = (self.track_index, self.loop_index);
-        self.queue_signal(move |mut canvas| {
-            canvas.as_mut().gain_changed(track_index, loop_index, value)
-        });
-    }
-
-    fn gain_drag_start(&mut self) -> &mut Option<f32> {
-        self.gain_drag_start
-    }
-}
-
 impl EguiUi for EguiWindowUi {
     fn draw(&mut self, root_ui: &mut egui::Ui, _canvas: CanvasInfo) {
         if !self.icons_initialized {
-            egui_material_icons::initialize(root_ui.ctx());
+            shoop_egui::initialize(root_ui.ctx());
             self.icons_initialized = true;
         }
 
@@ -330,49 +300,16 @@ impl EguiUi for EguiWindowUi {
             .read()
             .expect("egui window state lock poisoned")
             .clone();
-        self.gain_drag_starts.resize_with(tracks.len(), Vec::new);
-        for (track, drag_starts) in tracks.iter().zip(&mut self.gain_drag_starts) {
-            drag_starts.resize(track.loops.len(), None);
-        }
-
-        let canvas = self.canvas.clone();
-        let gain_drag_starts = &mut self.gain_drag_starts;
-        egui::CentralPanel::default()
+        let actions = egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
                     .fill(egui::Color32::from_rgb(30, 30, 30))
                     .inner_margin(8.0),
             )
-            .show(root_ui, |ui| {
-                egui::ScrollArea::both().show(ui, |ui| {
-                    ui.horizontal_top(|ui| {
-                        for (track_index, track) in tracks.iter().enumerate() {
-                            ui.push_id(track_index, |ui| {
-                                ui.group(|ui| {
-                                    ui.set_width(180.0);
-                                    ui.label(egui::RichText::new(&track.name).strong());
-                                    for (loop_index, state) in track.loops.iter().enumerate() {
-                                        ui.push_id(loop_index, |ui| {
-                                            let mut sink = WindowLoopActionSink {
-                                                canvas: canvas.clone(),
-                                                track_index: track_index as i32,
-                                                loop_index: loop_index as i32,
-                                                gain_drag_start: &mut gain_drag_starts[track_index]
-                                                    [loop_index],
-                                            };
-                                            draw_loop_widget(
-                                                &mut sink,
-                                                ui,
-                                                state,
-                                                egui::vec2(ui.available_width(), 26.0),
-                                            );
-                                        });
-                                    }
-                                });
-                            });
-                        }
-                    });
-                });
-            });
+            .show(root_ui, |ui| self.widget.show(ui, &tracks))
+            .inner;
+        for action in actions {
+            self.emit_action(action);
+        }
     }
 }
