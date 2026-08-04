@@ -31,22 +31,24 @@ impl TracksWidget {
                 for (track_index, track) in tracks.iter().enumerate() {
                     ui.push_id(track_index, |ui| {
                         ui.group(|ui| {
-                            ui.set_width(180.0);
-                            ui.label(egui::RichText::new(&track.name).strong());
-                            for (loop_index, state) in track.loops.iter().enumerate() {
-                                ui.push_id(loop_index, |ui| {
-                                    let size = egui::vec2(ui.available_width(), 26.0);
-                                    let response = self.loop_widgets[track_index][loop_index]
-                                        .show(ui, state, size);
-                                    actions.extend(response.actions.into_iter().map(|action| {
-                                        IndexedLoopAction {
-                                            track_index,
-                                            loop_index,
-                                            action,
-                                        }
-                                    }));
-                                });
-                            }
+                            ui.vertical(|ui| {
+                                ui.set_width(180.0);
+                                ui.label(egui::RichText::new(&track.name).strong());
+                                for (loop_index, state) in track.loops.iter().enumerate() {
+                                    ui.push_id(loop_index, |ui| {
+                                        let size = egui::vec2(ui.available_width(), 26.0);
+                                        let response = self.loop_widgets[track_index][loop_index]
+                                            .show(ui, state, size);
+                                        actions.extend(response.actions.into_iter().map(
+                                            |action| IndexedLoopAction {
+                                                track_index,
+                                                loop_index,
+                                                action,
+                                            },
+                                        ));
+                                    });
+                                }
+                            });
                         });
                     });
                 }
