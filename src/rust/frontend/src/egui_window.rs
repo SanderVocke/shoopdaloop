@@ -293,6 +293,8 @@ impl EguiUi for EguiWindowUi {
         if !self.icons_initialized {
             shoop_egui::initialize(root_ui.ctx());
             self.icons_initialized = true;
+            root_ui.ctx().request_repaint();
+            return;
         }
 
         let tracks = self
