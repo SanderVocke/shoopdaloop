@@ -27,6 +27,8 @@ pub mod engine_update_thread;
 
 #[cfg(not(feature = "prebuild"))]
 pub mod egui_loop_widget;
+#[cfg(not(feature = "prebuild"))]
+pub mod egui_window;
 
 #[cfg(not(feature = "prebuild"))]
 pub mod test_results;

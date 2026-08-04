@@ -91,6 +91,20 @@ Item {
 
     property var tracks: [sync_track, ...tracks_widget.tracks]
 
+    readonly property var egui_window_factory: Qt.createComponent("EguiWindow.qml")
+    function spawn_egui_window() {
+        if (egui_window_factory.status == Component.Error) {
+            throw new Error("Session: Failed to load egui window factory: " + egui_window_factory.errorString())
+        } else if (egui_window_factory.status != Component.Ready) {
+            throw new Error("Session: Egui window factory not ready")
+        } else {
+            egui_window_factory.createObject(root, {
+                tracks: Array.from(root.tracks),
+                visible: true
+            })
+        }
+    }
+
     property bool settings_io_enabled: false
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
@@ -551,6 +565,7 @@ Item {
             onProcessThreadSegfault: session_backend.segfault_on_process_thread()
             onProcessThreadAbort: session_backend.abort_on_process_thread()
             onOpenConnections: connections_window.visible = true
+            onOpenEguiWindow: root.spawn_egui_window()
         }
 
         Item {

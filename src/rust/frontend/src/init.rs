@@ -41,6 +41,7 @@ fn register_qml_types_and_singletons() {
     qobj_midi_control_port::register_qml_type(&mdl, "ShoopRustMidiControlPort");
     qobj_logger::register_qml_type(&mdl, "ShoopRustLogger");
     crate::egui_loop_widget::register_qml_type(&mdl, "ShoopEguiLoopWidget");
+    crate::egui_window::register_qml_type(&mdl, "ShoopEguiWindow");
 
     // Singletons (QML) - must be AFTER types since they may depend on them
     if let Some(config) = GLOBAL_CONFIG.get() {

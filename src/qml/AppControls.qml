@@ -15,6 +15,7 @@ Item {
     signal processThreadSegfault()
     signal processThreadAbort()
     signal openConnections()
+    signal openEguiWindow()
 
     property alias sync_active : sync_active_button.sync_active
     property alias solo_active : solo_active_button.solo_active
@@ -512,11 +513,10 @@ Item {
         }
 
         ExtendedButton {
-            tooltip: "Toggle egui prototype loop rendering."
+            tooltip: "Open the egui prototype window."
             height: 40
             width: 48
-            highlighted: AppRegistries.state_registry.egui_prototype_active
-            onClicked: AppRegistries.state_registry.set_egui_prototype_active(!AppRegistries.state_registry.egui_prototype_active)
+            onClicked: root.openEguiWindow()
 
             Label {
                 anchors.centerIn: parent
