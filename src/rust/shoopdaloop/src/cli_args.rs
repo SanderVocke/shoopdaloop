@@ -172,6 +172,10 @@ pub struct DeveloperOptions {
     #[clap(long = "rt-alloc-guard", help_heading = "Developer options")]
     pub rt_alloc_guard: bool,
 
+    /// Abort on an unapproved project-owned mutex acquisition in realtime processing.
+    #[clap(long = "rt-lock-guard", help_heading = "Developer options")]
+    pub rt_lock_guard: bool,
+
     // Disables the crash handler.
     #[clap(long = "no-crash-handling", help_heading = "Developer options")]
     pub no_crash_handling: bool,
@@ -249,4 +253,18 @@ where
     I::Item: Into<std::ffi::OsString> + Clone,
 {
     CliArgs::parse_from(args_iter)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn realtime_lock_guard_is_disabled_by_default_and_can_be_enabled() {
+        let defaults = parse_arguments(["shoopdaloop"]);
+        assert!(!defaults.developer_options.rt_lock_guard);
+
+        let enabled = parse_arguments(["shoopdaloop", "--rt-lock-guard"]);
+        assert!(enabled.developer_options.rt_lock_guard);
+    }
 }
