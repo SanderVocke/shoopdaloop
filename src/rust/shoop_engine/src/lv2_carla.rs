@@ -5,6 +5,7 @@
 //! afterwards; realtime processing/state/UI instantiation can build on this without
 //! making frontend code depend on Lilv lifetimes.
 
+use crate::realtime_lock_guard::Mutex;
 use crate::FXChainType;
 use anyhow::{anyhow, Result};
 use base64::Engine;
@@ -13,7 +14,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_uint, c_void};
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -896,15 +897,15 @@ impl UridMapper {
     }
 
     fn map_str(&self, uri: &str) -> LV2Urid {
-        let mut by_uri = self.by_uri.lock().unwrap_or_else(|e| e.into_inner());
+        let mut by_uri = crate::realtime_allow_lock!("LV2 URID map", self.by_uri.lock())
+            .unwrap_or_else(|e| e.into_inner());
         if let Some(id) = by_uri.get(uri) {
             *id
         } else {
             let id = by_uri.len() as LV2Urid + 1;
             by_uri.insert(uri.to_string(), id);
             drop(by_uri);
-            self.by_id
-                .lock()
+            crate::realtime_allow_lock!("LV2 URID reverse map update", self.by_id.lock())
                 .unwrap_or_else(|e| e.into_inner())
                 .insert(id, CString::new(uri).unwrap_or_default());
             id
@@ -912,8 +913,7 @@ impl UridMapper {
     }
 
     fn unmap(&self, urid: LV2Urid) -> Option<String> {
-        self.by_id
-            .lock()
+        crate::realtime_allow_lock!("LV2 URID unmap", self.by_id.lock())
             .unwrap_or_else(|e| e.into_inner())
             .get(&urid)
             .map(|s| s.to_string_lossy().to_string())
@@ -934,9 +934,7 @@ extern "C" fn unmap_urid(handle: LV2UridMapHandle, urid: LV2Urid) -> *const c_ch
         return std::ptr::null();
     }
     let mapper = unsafe { &*(handle.cast::<UridMapper>()) };
-    mapper
-        .by_id
-        .lock()
+    crate::realtime_allow_lock!("LV2 URID callback unmap", mapper.by_id.lock())
         .unwrap_or_else(|e| e.into_inner())
         .get(&urid)
         .map(|s| s.as_ptr())

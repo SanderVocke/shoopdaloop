@@ -3,8 +3,9 @@ use super::{
     AudioSnapshotControl, AudioSnapshotPublisher, AudioSnapshotReader, MidiProcessSnapshotWriter,
     MidiSnapshotControl, MidiSnapshotPublisher, MidiSnapshotReader, SessionContentEpoch,
 };
+use crate::realtime_lock_guard::Mutex;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
