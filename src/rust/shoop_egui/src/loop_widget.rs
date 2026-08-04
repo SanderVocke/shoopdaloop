@@ -171,7 +171,8 @@ impl LoopWidget {
         size: egui::Vec2,
     ) -> LoopWidgetResponse {
         let mut result = LoopWidgetResponse::default();
-        let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
+        let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+        let hovered = ui.rect_contains_pointer(rect);
         let rounding = egui::CornerRadius::same(2);
         let background = if state.composite_kind == CompositeKind::Regular {
             egui::Color32::from_rgb(255, 192, 203)
@@ -343,7 +344,7 @@ impl LoopWidget {
             );
         }
 
-        let icon_click_rect = if response.hovered() {
+        let icon_click_rect = if hovered {
             egui::Rect::from_min_max(
                 icon_rect.min,
                 egui::pos2(icon_rect.left() + 20.0, icon_rect.bottom()),
@@ -371,7 +372,7 @@ impl LoopWidget {
             None
         };
 
-        if response.hovered() {
+        if hovered {
             let controls_left = rect.left() + 20.0;
             let controls_right = dial_rect
                 .map(|dial| dial.left() - 2.0)
