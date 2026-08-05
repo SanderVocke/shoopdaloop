@@ -1241,6 +1241,59 @@ mod tests {
     }
 
     #[test]
+    fn replacement_split_at_loop_wrap_uses_each_side_of_the_boundary() {
+        let mut ch = channel();
+        ch.set_contents(
+            &[
+                ev(0, &midi::note_on(0, 60, 100)),
+                ev(1, &midi::note_off(0, 60, 0)),
+                ev(6, &midi::note_on(0, 61, 100)),
+                ev(7, &midi::note_off(0, 61, 0)),
+            ],
+            8,
+            None,
+        );
+        let input = [
+            ev(1, &midi::note_on(0, 64, 100)),
+            ev(3, &midi::note_off(0, 64, 0)),
+        ];
+        ch.set_recording_buffer(4);
+        ch.set_playback_buffer(4);
+        let mut out = Vec::new();
+
+        ch.process(
+            L::Replacing,
+            L::Unknown,
+            None,
+            None,
+            2,
+            6,
+            8,
+            8,
+            &input,
+            &mut out,
+        )
+        .unwrap();
+        ch.process(
+            L::Replacing,
+            L::Unknown,
+            None,
+            None,
+            2,
+            0,
+            2,
+            8,
+            &input,
+            &mut out,
+        )
+        .unwrap();
+
+        check!(times(&ch.contents()) == vec![1, 7]);
+        check!(ch.contents()[0].data() == midi::note_off(0, 64, 0).as_slice());
+        check!(ch.contents()[1].data() == midi::note_on(0, 64, 100).as_slice());
+    }
+
+    #[test]
     fn replacement_skips_input_before_the_channel_start_offset() {
         let mut ch = channel();
         ch.set_contents(
