@@ -1,0 +1,51 @@
+name: WebAssembly preview
+
+on:
+  push:
+    branches: ["master", "egui"]
+    paths:
+      - ".github/workflows/wasm_preview.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "rust-toolchain.toml"
+      - "src/rust/shoop_app_api/**"
+      - "src/rust/shoop_egui/**"
+      - "src/rust/shoop_egui_preview/**"
+  pull_request:
+    paths:
+      - ".github/workflows/wasm_preview.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "rust-toolchain.toml"
+      - "src/rust/shoop_app_api/**"
+      - "src/rust/shoop_egui/**"
+      - "src/rust/shoop_egui_preview/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust nightly with WebAssembly target
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Trunk
+        run: cargo install --locked trunk --version 0.21.14
+
+      - name: Build browser preview
+        working-directory: src/rust/shoop_egui_preview
+        run: trunk build --release
+
+      - name: Upload browser bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: shoop-egui-wasm-preview
+          path: src/rust/shoop_egui_preview/dist/

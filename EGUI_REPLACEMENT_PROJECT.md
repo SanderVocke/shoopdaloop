@@ -27,7 +27,7 @@ Milestone plans must reference both this document and the parity matrix, and mus
 | Framework-independent application API | Complete | `shoop_app_api` owns stable IDs, snapshots, capability state, and typed milestone intents without framework/backend dependencies. |
 | Rust business-logic application core | Usable | `shoop_app` owns the milestone's direct tracks/loops, topology mutation, control policies, details, snapshots, and observable errors. |
 | Native backend façade | Usable | `shoop_backend` provides fake and engine-backed dummy implementations for direct audio/MIDI topology, controls, data, polling, and status. |
-| Pure native egui executable | Usable | `shoopdaloop_native` and the isolated `shoop_egui_preview` pass milestone workflows and launch at minimum/common Xvfb screen sizes. |
+| Pure native egui executable | Usable | `shoopdaloop_native` passes milestone workflows; the isolated `shoop_egui_preview` runs natively and as a browser WebAssembly bundle. |
 | Qt/frontend removal | Not started | Removal is a final migration result, not part of the first milestone. |
 
 Use the status terms `Not started`, `Partially explored`, `Planned`, `In progress`, `Usable`, `Complete`, and `Blocked` consistently. Notes should identify the active milestone or the evidence needed for the next status change.
@@ -189,7 +189,7 @@ Fast recompilation is an architectural requirement:
 
 - `shoop_egui` depends only on egui, assets, and small API/value crates.
 - Backend, engine, driver, Lua, media-I/O, and native-shell crates stay out of the GUI dependency graph.
-- A preview executable supplies representative mock snapshots and records emitted intents without linking audio, LV2, Lua, or Qt dependencies.
+- A preview executable supplies representative mock snapshots and records emitted intents without linking audio, LV2, Lua, or Qt dependencies; the same preview has native and browser WebAssembly entry points.
 - Native renderer and file-dialog dependencies remain in the composition root.
 - GUI tests run with `cargo test -p shoop_egui`; browser compatibility remains a separate check.
 - The full application is linked for integration milestones, not for every presentation-only iteration.

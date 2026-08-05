@@ -4253,8 +4253,12 @@ name = "shoop_egui_preview"
 version = "0.0.0"
 dependencies = [
  "eframe",
+ "log",
  "shoop_app_api",
  "shoop_egui",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

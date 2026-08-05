@@ -5,6 +5,9 @@ use shoop_app_api::{
 };
 use shoop_egui::AppWidget;
 
+#[cfg(any(target_arch = "wasm32", test))]
+const WEB_CANVAS_ID: &str = "shoop_canvas";
+
 struct PreviewApp {
     widget: AppWidget,
     snapshot: AppSnapshot,
@@ -231,6 +234,14 @@ fn representative_snapshot() -> AppSnapshot {
     }
 }
 
+fn create_app(
+    context: &eframe::CreationContext<'_>,
+) -> Result<Box<dyn eframe::App>, Box<dyn std::error::Error + Send + Sync>> {
+    shoop_egui::initialize(&context.egui_ctx);
+    Ok(Box::new(PreviewApp::default()))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -239,19 +250,40 @@ fn main() -> eframe::Result {
             .with_min_inner_size([360.0, 200.0]),
         ..Default::default()
     };
-    eframe::run_native(
-        "ShoopDaLoop egui preview",
-        options,
-        Box::new(|context| {
-            shoop_egui::initialize(&context.egui_ctx);
-            Ok(Box::new(PreviewApp::default()))
-        }),
-    )
+    eframe::run_native("ShoopDaLoop egui preview", options, Box::new(create_app))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn main() {
+    use wasm_bindgen::JsCast as _;
+
+    eframe::WebLogger::init(log::LevelFilter::Debug).ok();
+    wasm_bindgen_futures::spawn_local(async {
+        let window = web_sys::window().expect("browser window is unavailable");
+        let document = window.document().expect("browser document is unavailable");
+        let canvas = document
+            .get_element_by_id(WEB_CANVAS_ID)
+            .expect("missing #shoop_canvas element")
+            .dyn_into::<web_sys::HtmlCanvasElement>()
+            .expect("#shoop_canvas is not a canvas");
+
+        eframe::WebRunner::new()
+            .start(canvas, eframe::WebOptions::default(), Box::new(create_app))
+            .await
+            .expect("failed to start ShoopDaLoop egui preview");
+    });
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn web_shell_targets_the_preview_canvas() {
+        let html = include_str!("../index.html");
+        assert!(html.contains("data-trunk"));
+        assert!(html.contains(&format!("id=\"{WEB_CANVAS_ID}\"")));
+    }
 
     #[test]
     fn preview_contains_all_representative_track_shapes() {
