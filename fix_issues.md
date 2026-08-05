@@ -80,10 +80,10 @@ Unrelated routing, UI redesign, plugin-host features, and the pre-existing CPAL 
 
 ### Stage 0 — Reproduce and isolate the current failures
 
-- [ ] Rebuild and rerun the focused QML regressions, recording the exact 11 failing cases and preserving a JUnit/log baseline.
-- [ ] Rerun the two real-JACK tests both with and without the missing-backend allowance.
-- [ ] Confirm Rack, Patchbay, Patchbay 16x, and JACK availability before interpreting any skip.
-- [ ] Add no behavior changes in this stage; record whether each hypothesis above is confirmed or revised.
+- [x] Rebuild and rerun the focused QML regressions, recording the exact 11 failing cases and preserving a JUnit/log baseline. Evidence: 53 passed and the same 11 cases failed in `/tmp/drywet-fixes-baseline.log`; JUnit is `/tmp/drywet-fixes-baseline.xml`.
+- [x] Rerun the two real-JACK tests both with and without the missing-backend allowance. Evidence: both failed without the allowance in `/tmp/drywet-fixes-jack-baseline.log`; with the allowance, audio failed and MIDI passed once in `/tmp/drywet-fixes-jack-allowed-baseline.log`, confirming the MIDI case is timing-sensitive rather than an environmental skip.
+- [x] Confirm Rack, Patchbay, Patchbay 16x, and JACK availability before interpreting any skip. Evidence: all three Carla hosts initialized in the focused QML run and both JACK tests executed real callbacks; no capability was skipped.
+- [x] Add no behavior changes in this stage; record whether each hypothesis above is confirmed or revised. Evidence: the four code-grounded hypotheses remain consistent with the reproduced values. JACK MIDI is additionally nondeterministic; JACK audio remains a deterministic zero-output failure, so Stage 6 must validate each connection and remove peer-client feedback before deciding whether production code is implicated.
 
 Verification:
 
