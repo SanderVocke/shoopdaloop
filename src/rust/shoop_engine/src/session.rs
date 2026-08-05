@@ -19,7 +19,7 @@ use std::sync::Arc;
 use crate::audio_channel::PreparedAudioChannelData;
 use crate::audio_midi_loop::AudioMidiLoop;
 use crate::basic_loop::SyncSourceState;
-use crate::channel_mode::ChannelMode;
+use crate::channel_mode::{loop_mode_to_channel_process_flags, ChannelMode, ProcessFlags};
 use crate::composite_plan::{CompiledCompositePlan, LoopIdentity, LoopTargetKind};
 use crate::composite_timeline::{
     AcceptedTimelineControl, BoundaryIntent, BoundaryIntentOrigin, BoundaryTargetAction,
@@ -2234,6 +2234,11 @@ impl Session {
                 let Some(ch) = l.midi_channel(m.channel_idx) else {
                     continue;
                 };
+                if !loop_mode_to_channel_process_flags(l.mode(), ch.mode())
+                    .contains(ProcessFlags::PLAYBACK)
+                {
+                    continue;
+                }
                 if ch.contents_were_loaded() {
                     continue;
                 }
