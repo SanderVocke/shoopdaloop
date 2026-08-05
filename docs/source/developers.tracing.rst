@@ -142,9 +142,11 @@ hardware, JACK, Carla, or Mesa acceleration should be recorded separately from
 trace-format or instrumentation failures.
 
 CI capture is intentionally opt-in. Manually dispatch the ``Build and test``
-workflow and enable ``qml_trace_capture`` to run the dedicated Linux capture
-job. Its uploaded archive contains captures, manifest, capture log, QML console
-output, JUnit report, and workflow metadata. The input defaults to false,
-automatic workflow events do not install or invoke the capture tool, failure
-artifacts use ``if: always()``, and artifacts are retained for 30 days. Do not
-claim this CI path was exercised unless that manual dispatch actually occurred.
+workflow and enable ``qml_trace_capture_all_variants`` to capture every active
+non-coverage package-test variant on Linux, macOS, and Windows. Each variant's
+uploaded artifact contains captures, manifest, capture log, QML console output,
+JUnit report, and workflow metadata. The input defaults to false, automatic
+workflow events do not install or invoke the capture tool, failure artifacts use
+``if: always()``, and artifacts are retained for 30 days. Coverage remains an
+untraced negative control. Do not claim this CI path was exercised unless that
+manual dispatch actually occurred.
