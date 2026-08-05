@@ -61,14 +61,16 @@ Verification: six `shoop_egui` unit tests pass and the crate checks for `wasm32-
 
 Depends on Stage 1.
 
-- [ ] Replace the simple grouped track heading in `src/rust/shoop_egui/src/tracks_widget.rs` with a QML-like track card: dark track background, editable title, inert menu button, loop stack, and a reserved controls area.
-- [ ] Implement output/input gain sliders, stereo balance controls, output mute, input monitor/mute, peak meters, and MIDI indicators from the plain track-control state.
-- [ ] Extend `src/rust/frontend/src/egui_window.rs` with invokables for track/control state and signals for typed track actions, keeping conversion and queueing in the frontend crate.
-- [ ] Add a QML track-state bridge analogous to `EguiLoopStateBridge.qml`; bind it to each `TrackWidget` and its `TrackControlWidget`, and route egui signals to existing setters/properties.
-- [ ] Ensure title/control changes made by either UI are reflected by the other and do not create update loops.
-- [ ] Add focused tests for frontend state conversion and QML-side track-control routing where practical.
-- [ ] Verify with `cargo test -p shoop_egui`, `RUSTFLAGS="-D warnings" cargo build`, and a manual prototype check using mono, stereo, audio, and MIDI tracks.
-- [ ] Commit the completed track presentation and integration milestone.
+- [x] Replace the simple grouped track heading in `src/rust/shoop_egui/src/tracks_widget.rs` with a QML-like track card: dark track background, editable title, inert menu button, loop stack, and a reserved controls area.
+- [x] Implement output/input gain sliders, stereo balance controls, output mute, input monitor/mute, peak meters, and MIDI indicators from the plain track-control state.
+- [x] Extend `src/rust/frontend/src/egui_window.rs` with invokables for track/control state and signals for typed track actions, keeping conversion and queueing in the frontend crate.
+- [x] Add a QML track-state bridge analogous to `EguiLoopStateBridge.qml`; bind it to each `TrackWidget` and its `TrackControlWidget`, and route egui signals to existing setters/properties.
+- [x] Ensure title/control changes made by either UI are reflected by the other and do not create update loops.
+- [x] Add focused tests for frontend state conversion and QML-side track-control routing where practical.
+- [x] Verify with `cargo test -p shoop_egui`, `RUSTFLAGS="-D warnings" cargo build`, and a prototype integration test using mono, stereo, audio, and MIDI tracks.
+- [x] Commit the completed track presentation and integration milestone.
+
+Verification: the warning-free workspace build and crate tests pass; `tst_EguiWindow.qml` initializes stereo, mono, and MIDI tracks and verifies all title/control routing handlers.
 
 ### Stage 3 — Add the application shell, logo/status, and global controls
 

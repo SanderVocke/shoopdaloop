@@ -5,7 +5,10 @@ use cxx_qt_lib::QString;
 use egui_cxx_qt::{
     egui, CanvasHandle, CanvasInfo, CanvasQueueError, CanvasSubclass, CanvasUiFactory, EguiUi,
 };
-use shoop_egui::{IndexedLoopAction, LoopState, LoopWidgetAction, TrackState, TracksWidget};
+use shoop_egui::{
+    IndexedLoopAction, IndexedTrackAction, LoopState, LoopWidgetAction, TrackState,
+    TrackWidgetAction, TracksWidget,
+};
 
 use crate::egui_loop_widget::{apply_loop_state, apply_peak_state};
 
@@ -49,6 +52,50 @@ pub mod ffi {
             value: f32,
         );
 
+        #[qsignal]
+        #[cxx_name = "trackNameChanged"]
+        fn track_name_changed(self: Pin<&mut ShoopEguiWindow>, track_index: i32, name: QString);
+
+        #[qsignal]
+        #[cxx_name = "trackOutputGainChanged"]
+        fn track_output_gain_changed(self: Pin<&mut ShoopEguiWindow>, track_index: i32, value: f32);
+
+        #[qsignal]
+        #[cxx_name = "trackOutputBalanceChanged"]
+        fn track_output_balance_changed(
+            self: Pin<&mut ShoopEguiWindow>,
+            track_index: i32,
+            value: f32,
+        );
+
+        #[qsignal]
+        #[cxx_name = "trackOutputMuteChanged"]
+        fn track_output_mute_changed(
+            self: Pin<&mut ShoopEguiWindow>,
+            track_index: i32,
+            value: bool,
+        );
+
+        #[qsignal]
+        #[cxx_name = "trackInputGainChanged"]
+        fn track_input_gain_changed(self: Pin<&mut ShoopEguiWindow>, track_index: i32, value: f32);
+
+        #[qsignal]
+        #[cxx_name = "trackInputBalanceChanged"]
+        fn track_input_balance_changed(
+            self: Pin<&mut ShoopEguiWindow>,
+            track_index: i32,
+            value: f32,
+        );
+
+        #[qsignal]
+        #[cxx_name = "trackInputMonitoringChanged"]
+        fn track_input_monitoring_changed(
+            self: Pin<&mut ShoopEguiWindow>,
+            track_index: i32,
+            value: bool,
+        );
+
         #[qinvokable]
         #[cxx_name = "setTrack"]
         fn set_track(
@@ -56,6 +103,31 @@ pub mod ffi {
             track_index: i32,
             name: QString,
             loop_count: i32,
+        );
+
+        #[qinvokable]
+        #[cxx_name = "setTrackControlState"]
+        fn set_track_control_state(
+            self: Pin<&mut ShoopEguiWindow>,
+            track_index: i32,
+            has_output: bool,
+            has_output_audio: bool,
+            output_stereo: bool,
+            output_gain_db: f32,
+            output_balance: f32,
+            output_muted: bool,
+            output_peak_left_db: f32,
+            output_peak_right_db: f32,
+            output_midi_activity: bool,
+            has_input: bool,
+            has_input_audio: bool,
+            input_stereo: bool,
+            input_gain_db: f32,
+            input_balance: f32,
+            input_monitoring: bool,
+            input_peak_left_db: f32,
+            input_peak_right_db: f32,
+            input_midi_activity: bool,
         );
 
         #[qinvokable]
@@ -159,6 +231,62 @@ impl ffi::ShoopEguiWindow {
         tracks[track_index]
             .loops
             .resize_with(loop_count, LoopState::default);
+        drop(tracks);
+        self.as_mut().request_repaint();
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn set_track_control_state(
+        mut self: Pin<&mut Self>,
+        track_index: i32,
+        has_output: bool,
+        has_output_audio: bool,
+        output_stereo: bool,
+        output_gain_db: f32,
+        output_balance: f32,
+        output_muted: bool,
+        output_peak_left_db: f32,
+        output_peak_right_db: f32,
+        output_midi_activity: bool,
+        has_input: bool,
+        has_input_audio: bool,
+        input_stereo: bool,
+        input_gain_db: f32,
+        input_balance: f32,
+        input_monitoring: bool,
+        input_peak_left_db: f32,
+        input_peak_right_db: f32,
+        input_midi_activity: bool,
+    ) {
+        let Ok(track_index) = usize::try_from(track_index) else {
+            return;
+        };
+        let mut tracks = self
+            .tracks
+            .write()
+            .expect("egui window state lock poisoned");
+        let Some(track) = tracks.get_mut(track_index) else {
+            return;
+        };
+        track.controls.has_output = has_output;
+        track.controls.has_output_audio = has_output_audio;
+        track.controls.output_stereo = output_stereo;
+        track.controls.output_gain_db = output_gain_db;
+        track.controls.output_balance = output_balance;
+        track.controls.output_muted = output_muted;
+        track.controls.output_peak_left_db = output_peak_left_db;
+        track.controls.output_peak_right_db = output_peak_right_db;
+        track.controls.output_midi_activity = output_midi_activity;
+        track.controls.has_input = has_input;
+        track.controls.has_input_audio = has_input_audio;
+        track.controls.input_stereo = input_stereo;
+        track.controls.input_gain_db = input_gain_db;
+        track.controls.input_balance = input_balance;
+        track.controls.input_monitoring = input_monitoring;
+        track.controls.input_peak_left_db = input_peak_left_db;
+        track.controls.input_peak_right_db = input_peak_right_db;
+        track.controls.input_midi_activity = input_midi_activity;
+        track.controls.clamp();
         drop(tracks);
         self.as_mut().request_repaint();
     }
@@ -280,6 +408,35 @@ impl EguiWindowUi {
         });
     }
 
+    fn emit_track_action(&self, indexed: IndexedTrackAction) {
+        let Ok(track_index) = i32::try_from(indexed.track_index) else {
+            return;
+        };
+        self.queue_signal(move |mut canvas| match indexed.action {
+            TrackWidgetAction::NameChanged(name) => canvas
+                .as_mut()
+                .track_name_changed(track_index, QString::from(&name)),
+            TrackWidgetAction::OutputGainChanged(value) => canvas
+                .as_mut()
+                .track_output_gain_changed(track_index, value),
+            TrackWidgetAction::OutputBalanceChanged(value) => canvas
+                .as_mut()
+                .track_output_balance_changed(track_index, value),
+            TrackWidgetAction::OutputMuteChanged(value) => canvas
+                .as_mut()
+                .track_output_mute_changed(track_index, value),
+            TrackWidgetAction::InputGainChanged(value) => {
+                canvas.as_mut().track_input_gain_changed(track_index, value)
+            }
+            TrackWidgetAction::InputBalanceChanged(value) => canvas
+                .as_mut()
+                .track_input_balance_changed(track_index, value),
+            TrackWidgetAction::InputMonitoringChanged(value) => canvas
+                .as_mut()
+                .track_input_monitoring_changed(track_index, value),
+        });
+    }
+
     fn queue_signal(&self, signal: impl FnOnce(Pin<&mut ffi::ShoopEguiWindow>) + Send + 'static) {
         match self.canvas.queue(signal) {
             Ok(()) | Err(CanvasQueueError::ObjectDestroyed) => {}
@@ -302,7 +459,7 @@ impl EguiUi for EguiWindowUi {
             .read()
             .expect("egui window state lock poisoned")
             .clone();
-        let actions = egui::CentralPanel::default()
+        let response = egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
                     .fill(egui::Color32::from_rgb(30, 30, 30))
@@ -310,8 +467,11 @@ impl EguiUi for EguiWindowUi {
             )
             .show(root_ui, |ui| self.widget.show(ui, &tracks))
             .inner;
-        for action in actions {
+        for action in response.loop_actions {
             self.emit_action(action);
+        }
+        for action in response.track_actions {
+            self.emit_track_action(action);
         }
     }
 }

@@ -7,6 +7,7 @@ ShoopApplicationWindow {
     property var tracks: []
     property var trackSnapshots: []
     property var loopBridges: []
+    property var trackBridges: []
     property bool canvasReady: false
     property bool initialized: false
 
@@ -19,6 +20,50 @@ ShoopApplicationWindow {
     function loopWidget(trackIndex, loopIndex) {
         const track = trackSnapshots[trackIndex]
         return track && track.loops ? track.loops[loopIndex] : null
+    }
+
+    function trackWidget(trackIndex) {
+        return tracks[trackIndex] || null
+    }
+
+    function trackControl(trackIndex) {
+        const track = trackWidget(trackIndex)
+        return track ? track.control_widget : null
+    }
+
+    function handleTrackNameChanged(trackIndex, name) {
+        const track = trackWidget(trackIndex)
+        if (track) track.name = name
+    }
+
+    function handleTrackOutputGainChanged(trackIndex, value) {
+        const control = trackControl(trackIndex)
+        if (control) control.gain_dB = value
+    }
+
+    function handleTrackOutputBalanceChanged(trackIndex, value) {
+        const control = trackControl(trackIndex)
+        if (control) control.set_balance(value)
+    }
+
+    function handleTrackOutputMuteChanged(trackIndex, value) {
+        const control = trackControl(trackIndex)
+        if (control) control.set_mute(value)
+    }
+
+    function handleTrackInputGainChanged(trackIndex, value) {
+        const control = trackControl(trackIndex)
+        if (control) control.input_gain_dB = value
+    }
+
+    function handleTrackInputBalanceChanged(trackIndex, value) {
+        const control = trackControl(trackIndex)
+        if (control) control.input_balance = value
+    }
+
+    function handleTrackInputMonitoringChanged(trackIndex, value) {
+        const control = trackControl(trackIndex)
+        if (control) control.set_monitor(value)
     }
 
     function initializeCanvas() {
@@ -38,6 +83,38 @@ ShoopApplicationWindow {
 
         snapshots.forEach((track, trackIndex) => {
             canvas.setTrack(trackIndex, track.name, track.loops.length)
+            const trackBridge = trackBridgeFactory.createObject(canvas, {
+                trackWidget: tracks[trackIndex],
+                stateSink: state => {
+                    canvas.setTrack(trackIndex, state.name, track.loops.length)
+                    canvas.setTrackControlState(
+                        trackIndex,
+                        state.hasOutput,
+                        state.hasOutputAudio,
+                        state.outputStereo,
+                        state.outputGainDb,
+                        state.outputBalance,
+                        state.outputMuted,
+                        state.outputPeakLeftDb,
+                        state.outputPeakRightDb,
+                        state.outputMidiActivity,
+                        state.hasInput,
+                        state.hasInputAudio,
+                        state.inputStereo,
+                        state.inputGainDb,
+                        state.inputBalance,
+                        state.inputMonitoring,
+                        state.inputPeakLeftDb,
+                        state.inputPeakRightDb,
+                        state.inputMidiActivity
+                    )
+                }
+            })
+            if (!trackBridge) {
+                throw new Error("EguiWindow: Failed to create track state bridge")
+            }
+            trackBridges.push(trackBridge)
+
             track.loops.forEach((loop, loopIndex) => {
                 const bridge = loopBridgeFactory.createObject(canvas, {
                     loopWidget: loop,
@@ -82,6 +159,11 @@ ShoopApplicationWindow {
         EguiLoopStateBridge {}
     }
 
+    Component {
+        id: trackBridgeFactory
+        EguiTrackStateBridge {}
+    }
+
     ShoopEguiWindow {
         id: canvas
         anchors.fill: parent
@@ -116,6 +198,13 @@ ShoopApplicationWindow {
             const loop = root.loopWidget(trackIndex, loopIndex)
             if (loop) loop.set_gain_fader(value)
         }
+        onTrackNameChanged: (trackIndex, name) => root.handleTrackNameChanged(trackIndex, name)
+        onTrackOutputGainChanged: (trackIndex, value) => root.handleTrackOutputGainChanged(trackIndex, value)
+        onTrackOutputBalanceChanged: (trackIndex, value) => root.handleTrackOutputBalanceChanged(trackIndex, value)
+        onTrackOutputMuteChanged: (trackIndex, value) => root.handleTrackOutputMuteChanged(trackIndex, value)
+        onTrackInputGainChanged: (trackIndex, value) => root.handleTrackInputGainChanged(trackIndex, value)
+        onTrackInputBalanceChanged: (trackIndex, value) => root.handleTrackInputBalanceChanged(trackIndex, value)
+        onTrackInputMonitoringChanged: (trackIndex, value) => root.handleTrackInputMonitoringChanged(trackIndex, value)
     }
 
     Component.onCompleted: initializeCanvas()

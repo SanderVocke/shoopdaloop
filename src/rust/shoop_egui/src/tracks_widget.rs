@@ -1,46 +1,51 @@
-use crate::{IndexedLoopAction, LoopWidget, TrackState};
+use crate::{IndexedLoopAction, IndexedTrackAction, TrackState, TrackWidget, TrackWidgetAction};
+
+#[derive(Debug, Default)]
+pub struct TracksWidgetResponse {
+    pub loop_actions: Vec<IndexedLoopAction>,
+    pub track_actions: Vec<IndexedTrackAction>,
+}
 
 #[derive(Debug, Default)]
 pub struct TracksWidget {
-    loop_widgets: Vec<Vec<LoopWidget>>,
+    track_widgets: Vec<TrackWidget>,
 }
 
 impl TracksWidget {
-    pub fn show(&mut self, ui: &mut egui::Ui, tracks: &[TrackState]) -> Vec<IndexedLoopAction> {
-        self.loop_widgets.resize_with(tracks.len(), Vec::new);
-        for (track, widgets) in tracks.iter().zip(&mut self.loop_widgets) {
-            widgets.resize_with(track.loops.len(), LoopWidget::default);
-        }
+    pub fn show(&mut self, ui: &mut egui::Ui, tracks: &[TrackState]) -> TracksWidgetResponse {
+        self.track_widgets
+            .resize_with(tracks.len(), TrackWidget::default);
 
-        let mut actions = Vec::new();
+        let mut result = TracksWidgetResponse::default();
         egui::ScrollArea::both().show(ui, |ui| {
             ui.horizontal_top(|ui| {
-                for (track_index, track) in tracks.iter().enumerate() {
+                ui.spacing_mut().item_spacing.x = 3.0;
+                for (track_index, (track, widget)) in
+                    tracks.iter().zip(&mut self.track_widgets).enumerate()
+                {
                     ui.push_id(track_index, |ui| {
-                        ui.group(|ui| {
-                            ui.vertical(|ui| {
-                                ui.set_width(180.0);
-                                ui.label(egui::RichText::new(&track.name).strong());
-                                for (loop_index, state) in track.loops.iter().enumerate() {
-                                    ui.push_id(loop_index, |ui| {
-                                        let size = egui::vec2(ui.available_width(), 26.0);
-                                        let response = self.loop_widgets[track_index][loop_index]
-                                            .show(ui, state, size);
-                                        actions.extend(response.actions.into_iter().map(
-                                            |action| IndexedLoopAction {
-                                                track_index,
-                                                loop_index,
-                                                action,
-                                            },
-                                        ));
-                                    });
-                                }
-                            });
-                        });
+                        let response = widget.show(ui, track);
+                        result
+                            .loop_actions
+                            .extend(response.loop_actions.into_iter().map(
+                                |(loop_index, action)| IndexedLoopAction {
+                                    track_index,
+                                    loop_index,
+                                    action,
+                                },
+                            ));
+                        result
+                            .track_actions
+                            .extend(response.actions.into_iter().map(
+                                |action: TrackWidgetAction| IndexedTrackAction {
+                                    track_index,
+                                    action,
+                                },
+                            ));
                     });
                 }
             });
         });
-        actions
+        result
     }
 }

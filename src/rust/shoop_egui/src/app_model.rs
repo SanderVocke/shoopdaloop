@@ -51,6 +51,7 @@ impl StatusState {
 #[derive(Clone, Debug)]
 pub struct TrackControlState {
     pub has_output: bool,
+    pub has_output_audio: bool,
     pub output_stereo: bool,
     pub output_gain_db: f32,
     pub output_balance: f32,
@@ -59,6 +60,7 @@ pub struct TrackControlState {
     pub output_peak_right_db: f32,
     pub output_midi_activity: bool,
     pub has_input: bool,
+    pub has_input_audio: bool,
     pub input_stereo: bool,
     pub input_gain_db: f32,
     pub input_balance: f32,
@@ -72,6 +74,7 @@ impl Default for TrackControlState {
     fn default() -> Self {
         Self {
             has_output: false,
+            has_output_audio: false,
             output_stereo: false,
             output_gain_db: 0.0,
             output_balance: 0.0,
@@ -80,6 +83,7 @@ impl Default for TrackControlState {
             output_peak_right_db: -200.0,
             output_midi_activity: false,
             has_input: false,
+            has_input_audio: false,
             input_stereo: false,
             input_gain_db: 0.0,
             input_balance: 0.0,

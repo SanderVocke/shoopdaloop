@@ -2,6 +2,8 @@
 
 mod app_model;
 mod loop_widget;
+mod track_controls;
+mod track_widget;
 mod tracks_widget;
 mod waveform;
 
@@ -14,5 +16,7 @@ pub use loop_widget::{
     initialize, CompositeKind, LoopMode, LoopState, LoopWidget, LoopWidgetAction,
     LoopWidgetResponse,
 };
-pub use tracks_widget::TracksWidget;
+pub use track_controls::TrackControls;
+pub use track_widget::{TrackWidget, TrackWidgetResponse};
+pub use tracks_widget::{TracksWidget, TracksWidgetResponse};
 pub use waveform::{waveform_bins, WaveformBin};
