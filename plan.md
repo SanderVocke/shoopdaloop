@@ -7,7 +7,7 @@ I read:
 - `.agents/info/test.md`
 - `.agents/info/build.md`
 
-No implementation changes were made.
+At plan-writing time, no implementation changes had been made.
 
 # Plan: Complete dry/wet external-routing test coverage
 
