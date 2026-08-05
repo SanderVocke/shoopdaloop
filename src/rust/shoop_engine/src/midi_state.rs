@@ -249,35 +249,49 @@ impl MidiStateTracker {
     /// Controllers come before notes so a note sounds with the intended
     /// controller values already applied.
     pub fn state_as_messages(&self) -> Vec<Vec<u8>> {
-        let mut out = Vec::new();
+        let mut storage = Vec::with_capacity(MAX_DIFF_MESSAGES);
+        self.state_as_messages_into(&mut storage);
+        storage
+            .iter()
+            .map(|message| message.data().to_vec())
+            .collect()
+    }
+
+    /// Allocation-free variant for process-side publication.
+    pub fn state_as_messages_into(&self, out: &mut Vec<MidiStorageElem>) {
+        out.clear();
+        let mut push = |data: &[u8]| {
+            if let Some(message) = MidiStorageElem::new(0, data) {
+                out.push(message);
+            }
+        };
         for ch in 0..N_CHANNELS as u8 {
             if let Some(c) = self.controls.get(ch as usize) {
-                for (controller, v) in c.cc.iter().enumerate() {
-                    if let Some(v) = v {
-                        out.push(midi::cc(ch, controller as u8, *v).to_vec());
+                for (controller, value) in c.cc.iter().enumerate() {
+                    if let Some(value) = value {
+                        push(&midi::cc(ch, controller as u8, *value));
                     }
                 }
-                if let Some(v) = c.pitch_wheel {
-                    out.push(midi::pitch_wheel(ch, v).to_vec());
+                if let Some(value) = c.pitch_wheel {
+                    push(&midi::pitch_wheel(ch, value));
                 }
-                if let Some(v) = c.channel_pressure {
-                    out.push(midi::channel_pressure(ch, v).to_vec());
+                if let Some(value) = c.channel_pressure {
+                    push(&midi::channel_pressure(ch, value));
                 }
             }
-            if let Some(p) = self.program(ch) {
-                out.push(midi::program_change(ch, p).to_vec());
+            if let Some(program) = self.program(ch) {
+                push(&midi::program_change(ch, program));
             }
         }
         for ch in 0..N_CHANNELS as u8 {
             if let Some(slots) = self.notes.get(ch as usize) {
-                for (note, v) in slots.iter().enumerate() {
-                    if let Some(v) = v {
-                        out.push(midi::note_on(ch, note as u8, *v).to_vec());
+                for (note, velocity) in slots.iter().enumerate() {
+                    if let Some(velocity) = velocity {
+                        push(&midi::note_on(ch, note as u8, *velocity));
                     }
                 }
             }
         }
-        out
     }
 
     /// [`Self::diff_to`] without allocating, appending into `out`.

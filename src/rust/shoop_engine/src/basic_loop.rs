@@ -83,6 +83,7 @@ pub struct BasicLoop {
     already_triggered: bool,
     length: u32,
     position: u32,
+    cycle_count: u64,
     state: Arc<LoopStateMirror>,
 }
 
@@ -103,8 +104,13 @@ impl BasicLoop {
     }
 
     pub(crate) fn publish_state_with_transition(&self, transition: Option<(LoopMode, u32)>) {
-        self.state
-            .publish(self.mode, self.length, self.position, transition);
+        self.state.publish(
+            self.mode,
+            self.length,
+            self.position,
+            self.cycle_count,
+            transition,
+        );
     }
 
     // --- queries ---
@@ -275,6 +281,7 @@ impl BasicLoop {
 
         if self.mode.is_playing_mode() && self.position >= self.length {
             self.position = 0;
+            self.cycle_count = self.cycle_count.saturating_add(1);
         }
 
         for c in self.planned_countdowns.iter_mut() {
@@ -739,10 +746,12 @@ mod tests {
 
         l.process(1);
         check!(l.is_triggering_now() == true);
+        check!(l.state_mirror().read().cycle_count == 1);
 
         l.handle_poi();
 
         check!(l.position() == 0);
+        check!(l.state_mirror().read().cycle_count == 1);
 
         l.process(5);
 

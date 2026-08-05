@@ -202,6 +202,7 @@ fn loop_float_prop(l: &*mut QObject, prop: &str) -> Result<f32, anyhow::Error> {
 }
 
 impl SessionControlHandlerLuaTarget {
+    #[tracing::instrument(name = "frontend.control.install_lua_interface", skip_all)]
     pub fn install_on_lua_engine(&mut self, engine: *mut QObject) {
         struct SessionControlCallback {
             weak_target: Weak<RefCell<SessionControlHandlerLuaTarget>>,
@@ -2978,6 +2979,7 @@ impl SessionControlHandler {
     Coordinates map to the loop grid. Only the sync loop has a special location [-1,0].
     @shoop_lua_fn_docstring.end
     */
+    #[tracing::instrument(name = "frontend.control.loop_event", skip_all)]
     pub fn on_loop_event(self: Pin<&mut SessionControlHandler>, event: QMap_QString_QVariant) {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             for registered_cb in self
@@ -3021,6 +3023,7 @@ impl SessionControlHandler {
       'type' (global_event_type)
     @shoop_lua_fn_docstring.end
     */
+    #[tracing::instrument(name = "frontend.control.global_event", skip_all)]
     pub fn on_global_event(self: Pin<&mut SessionControlHandler>, event: QMap_QString_QVariant) {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             for registered_cb in self
@@ -3059,6 +3062,7 @@ impl SessionControlHandler {
     - 'modifiers' (integer, flag combination of e.g. shoop_control.constants.KeyModifier_[...]Modifier)
     @shoop_lua_fn_docstring.end
     */
+    #[tracing::instrument(name = "frontend.control.key_event", skip_all)]
     pub fn on_key_event(self: Pin<&mut SessionControlHandler>, event: QMap_QString_QVariant) {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             for registered_cb in self

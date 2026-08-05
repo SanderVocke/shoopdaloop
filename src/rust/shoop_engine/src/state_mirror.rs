@@ -4,11 +4,9 @@ use crate::composite_runtime::{
     ActiveCompositeChild, CompositeRuntimeCounters, CompositeRuntimeFault,
 };
 use crate::loop_mode::LoopMode;
-use crate::midi_event::MidiEvent;
 use crate::state::{AudioChannelState, AudioPortState, LoopState, MidiChannelState, MidiPortState};
 use std::array;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, AtomicUsize, Ordering};
-use std::sync::Mutex;
 
 const NO_MODE: i32 = -1;
 const NO_DELAY: u64 = u64::MAX;
@@ -19,6 +17,7 @@ pub struct LoopStateMirror {
     mode: AtomicI32,
     length: AtomicU32,
     position: AtomicU32,
+    cycle_count: AtomicU64,
     next_mode: AtomicI32,
     next_delay: AtomicU64,
 }
@@ -29,6 +28,7 @@ impl Default for LoopStateMirror {
             mode: AtomicI32::new(LoopMode::Stopped as i32),
             length: AtomicU32::new(0),
             position: AtomicU32::new(0),
+            cycle_count: AtomicU64::new(0),
             next_mode: AtomicI32::new(NO_MODE),
             next_delay: AtomicU64::new(NO_DELAY),
         }
@@ -41,11 +41,13 @@ impl LoopStateMirror {
         mode: LoopMode,
         length: u32,
         position: u32,
+        cycle_count: u64,
         next: Option<(LoopMode, u32)>,
     ) {
         self.mode.store(mode as i32, Ordering::Relaxed);
         self.length.store(length, Ordering::Relaxed);
         self.position.store(position, Ordering::Relaxed);
+        self.cycle_count.store(cycle_count, Ordering::Relaxed);
         self.next_mode.store(
             next.map(|(mode, _)| mode as i32).unwrap_or(NO_MODE),
             Ordering::Relaxed,
@@ -78,6 +80,7 @@ impl LoopStateMirror {
                 .unwrap_or(LoopMode::Unknown),
             length: self.length.load(Ordering::Relaxed),
             position: self.position.load(Ordering::Relaxed),
+            cycle_count: self.cycle_count.load(Ordering::Relaxed),
             maybe_next_mode: (next_mode != NO_MODE)
                 .then(|| LoopMode::try_from(next_mode).unwrap_or(LoopMode::Unknown)),
             maybe_next_mode_delay: (next_delay != NO_DELAY).then_some(next_delay as u32),
@@ -414,7 +417,6 @@ impl Default for CompositeStateMirror {
 
 #[derive(Debug)]
 pub struct AudioChannelStateMirror {
-    complex_data_enabled: AtomicBool,
     mode: AtomicI32,
     gain: AtomicU32,
     output_peak: AtomicU32,
@@ -423,13 +425,11 @@ pub struct AudioChannelStateMirror {
     played_back_sample: AtomicI32,
     n_preplay_samples: AtomicU32,
     data_sequence: AtomicU64,
-    data: Mutex<Vec<f32>>,
 }
 
 impl Default for AudioChannelStateMirror {
     fn default() -> Self {
         Self {
-            complex_data_enabled: AtomicBool::new(false),
             mode: AtomicI32::new(ChannelMode::Disabled as i32),
             gain: AtomicU32::new(0.0f32.to_bits()),
             output_peak: AtomicU32::new(0.0f32.to_bits()),
@@ -438,20 +438,11 @@ impl Default for AudioChannelStateMirror {
             played_back_sample: AtomicI32::new(NO_SAMPLE),
             n_preplay_samples: AtomicU32::new(0),
             data_sequence: AtomicU64::new(0),
-            data: Mutex::new(Vec::new()),
         }
     }
 }
 
 impl AudioChannelStateMirror {
-    pub fn enable_complex_data(&self) {
-        self.complex_data_enabled.store(true, Ordering::Relaxed);
-    }
-
-    pub fn complex_data_enabled(&self) -> bool {
-        self.complex_data_enabled.load(Ordering::Relaxed)
-    }
-
     pub fn publish(
         &self,
         mode: ChannelMode,
@@ -511,37 +502,10 @@ impl AudioChannelStateMirror {
     pub fn data_sequence(&self) -> u64 {
         self.data_sequence.load(Ordering::Relaxed)
     }
-
-    pub fn replace_data(&self, data: Vec<f32>) {
-        if self.complex_data_enabled() {
-            *self.data.lock().unwrap_or_else(|e| e.into_inner()) = data;
-        }
-    }
-
-    pub fn write_data(&self, offset: usize, source: &[f32], length: usize) {
-        if !self.complex_data_enabled() {
-            return;
-        }
-        let mut data = self.data.lock().unwrap_or_else(|e| e.into_inner());
-        if data.len() < length {
-            data.resize(length, 0.0);
-        } else {
-            data.truncate(length);
-        }
-        let end = offset.saturating_add(source.len()).min(data.len());
-        if offset < end {
-            data[offset..end].copy_from_slice(&source[..end - offset]);
-        }
-    }
-
-    pub fn data(&self) -> Vec<f32> {
-        self.data.lock().unwrap_or_else(|e| e.into_inner()).clone()
-    }
 }
 
 #[derive(Debug)]
 pub struct MidiChannelStateMirror {
-    complex_data_enabled: AtomicBool,
     mode: AtomicI32,
     n_events_triggered: AtomicU32,
     n_notes_active: AtomicU32,
@@ -550,13 +514,11 @@ pub struct MidiChannelStateMirror {
     played_back_sample: AtomicI32,
     n_preplay_samples: AtomicU32,
     data_sequence: AtomicU64,
-    data: Mutex<Vec<MidiEvent>>,
 }
 
 impl Default for MidiChannelStateMirror {
     fn default() -> Self {
         Self {
-            complex_data_enabled: AtomicBool::new(false),
             mode: AtomicI32::new(ChannelMode::Disabled as i32),
             n_events_triggered: AtomicU32::new(0),
             n_notes_active: AtomicU32::new(0),
@@ -565,20 +527,11 @@ impl Default for MidiChannelStateMirror {
             played_back_sample: AtomicI32::new(NO_SAMPLE),
             n_preplay_samples: AtomicU32::new(0),
             data_sequence: AtomicU64::new(0),
-            data: Mutex::new(Vec::new()),
         }
     }
 }
 
 impl MidiChannelStateMirror {
-    pub fn enable_complex_data(&self) {
-        self.complex_data_enabled.store(true, Ordering::Relaxed);
-    }
-
-    pub fn complex_data_enabled(&self) -> bool {
-        self.complex_data_enabled.load(Ordering::Relaxed)
-    }
-
     pub fn publish(
         &self,
         mode: ChannelMode,
@@ -633,16 +586,6 @@ impl MidiChannelStateMirror {
 
     pub fn data_sequence(&self) -> u64 {
         self.data_sequence.load(Ordering::Relaxed)
-    }
-
-    pub fn replace_data(&self, data: Vec<MidiEvent>) {
-        if self.complex_data_enabled() {
-            *self.data.lock().unwrap_or_else(|e| e.into_inner()) = data;
-        }
-    }
-
-    pub fn data(&self) -> Vec<MidiEvent> {
-        self.data.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 }
 
@@ -916,15 +859,22 @@ mod tests {
         let mirror = LoopStateMirror::default();
         check!(mirror.read().mode == LoopMode::Stopped);
 
-        mirror.publish(LoopMode::Playing, 128, 17, Some((LoopMode::Recording, 2)));
+        mirror.publish(
+            LoopMode::Playing,
+            128,
+            17,
+            3,
+            Some((LoopMode::Recording, 2)),
+        );
         let state = mirror.read();
         check!(state.mode == LoopMode::Playing);
         check!(state.length == 128);
         check!(state.position == 17);
+        check!(state.cycle_count == 3);
         check!(state.maybe_next_mode == Some(LoopMode::Recording));
         check!(state.maybe_next_mode_delay == Some(2));
 
-        mirror.publish(LoopMode::Stopped, 0, 0, None);
+        mirror.publish(LoopMode::Stopped, 0, 0, 4, None);
         let state = mirror.read();
         check!(state.maybe_next_mode.is_none());
         check!(state.maybe_next_mode_delay.is_none());

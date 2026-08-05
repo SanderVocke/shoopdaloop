@@ -9,6 +9,7 @@
 use crate::audio_channel::{AudioChannel, ChannelError};
 use crate::basic_loop::{BasicLoop, SyncSourceState};
 use crate::channel_mode::ChannelMode;
+use crate::content_snapshot::{AudioProcessSnapshotWriter, MidiProcessSnapshotWriter};
 use crate::loop_mode::LoopMode;
 use crate::midi_channel::{MidiChannel, MidiChannelError};
 use crate::midi_storage::MidiStorageElem;
@@ -58,9 +59,19 @@ impl AudioMidiLoop {
         mode: ChannelMode,
         state: Arc<AudioChannelStateMirror>,
     ) -> usize {
+        self.add_audio_channel_with_state_and_snapshots(chunk_size, mode, state, None)
+    }
+
+    pub fn add_audio_channel_with_state_and_snapshots(
+        &mut self,
+        chunk_size: usize,
+        mode: ChannelMode,
+        state: Arc<AudioChannelStateMirror>,
+        snapshots: Option<AudioProcessSnapshotWriter>,
+    ) -> usize {
         self.audio_channels
-            .push(AudioChannel::with_chunk_size_and_state(
-                chunk_size, mode, state,
+            .push(AudioChannel::with_chunk_size_state_and_snapshots(
+                chunk_size, mode, state, snapshots,
             ));
         self.resync_poi();
         self.audio_channels.len() - 1
@@ -100,11 +111,22 @@ impl AudioMidiLoop {
         mode: ChannelMode,
         state: Arc<MidiChannelStateMirror>,
     ) -> usize {
+        self.add_midi_channel_with_state_and_snapshots(capacity_elems, mode, state, None)
+    }
+
+    pub fn add_midi_channel_with_state_and_snapshots(
+        &mut self,
+        capacity_elems: usize,
+        mode: ChannelMode,
+        state: Arc<MidiChannelStateMirror>,
+        snapshots: Option<MidiProcessSnapshotWriter>,
+    ) -> usize {
         self.midi_channels
-            .push(MidiChannel::with_capacity_elems_and_state(
+            .push(MidiChannel::with_capacity_state_and_snapshots(
                 capacity_elems,
                 mode,
                 state,
+                snapshots,
             ));
         self.resync_poi();
         self.midi_channels.len() - 1

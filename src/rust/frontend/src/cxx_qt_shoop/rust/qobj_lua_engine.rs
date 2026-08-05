@@ -73,6 +73,7 @@ impl LuaEngine {
         maybe_script_name: QVariant,
         sandboxed: bool,
     ) -> QVariant {
+        let _span = tracing::info_span!("frontend.qml_lua.evaluate", sandboxed).entered();
         match || -> Result<QVariant, anyhow::Error> {
             let maybe_script_name: Option<String> =
                 maybe_script_name.value::<QString>().map(|s| s.to_string());
@@ -103,6 +104,7 @@ impl LuaEngine {
     }
 
     pub fn execute(self: &LuaEngine, code: QString, maybe_script_name: QVariant, sandboxed: bool) {
+        let _span = tracing::info_span!("frontend.qml_lua.execute", sandboxed).entered();
         if let Err(e) = || -> Result<(), anyhow::Error> {
             let maybe_script_name: Option<String> =
                 maybe_script_name.value::<QString>().map(|s| s.to_string());
@@ -149,8 +151,8 @@ impl LuaEngine {
             );
 
             debug!(
-                "Created Qt to Lua callback \"{:?}\" with code:\n{:?}",
-                name, code
+                "Created Qt to Lua callback ({} code bytes)",
+                code.to_string().len()
             );
 
             Ok(wrapped)

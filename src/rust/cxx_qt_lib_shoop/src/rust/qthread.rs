@@ -55,10 +55,12 @@ unsafe impl ExternType for QThread {
 
 impl QThread {
     pub fn start(self: Pin<&mut Self>) {
+        let _span = tracing::info_span!("app.qt.thread_start").entered();
         ffi::qthread_start(self);
     }
 
     pub fn exit(self: Pin<&mut Self>) {
+        let _span = tracing::info_span!("app.qt.thread_exit").entered();
         ffi::qthread_exit(self);
     }
 

@@ -403,6 +403,7 @@ pub fn log_report_summary(report: &ScanReport) {
 }
 
 #[cfg(windows)]
+#[tracing::instrument(name = "tool.packaging.scan", skip_all)]
 pub fn run_scan(options: &ScanOptions) -> Result<ScanReport, anyhow::Error> {
     if !options.folder.is_dir() {
         return Err(anyhow!("Not a directory: {:?}", options.folder));
@@ -456,6 +457,7 @@ pub fn run_scan(options: &ScanOptions) -> Result<ScanReport, anyhow::Error> {
 }
 
 #[cfg(not(windows))]
+#[tracing::instrument(name = "tool.packaging.scan", skip_all)]
 pub fn run_scan(_options: &ScanOptions) -> Result<ScanReport, anyhow::Error> {
     Err(anyhow!(
         "scan-dependencies is currently implemented for Windows only"

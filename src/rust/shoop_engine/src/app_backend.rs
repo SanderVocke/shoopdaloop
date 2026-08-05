@@ -9,7 +9,9 @@
 
 use crate as engine;
 use crate::graph_scheduler::{GraphScheduler, DEFAULT_WINDOW};
+use crate::realtime_lock_guard::Mutex;
 use anyhow::{anyhow, Result};
+use arc_swap::ArcSwap;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 pub use engine::{
     cpal_host_names, cpal_input_device_names, cpal_input_device_names_for_host,
@@ -21,7 +23,7 @@ pub use engine::{
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, OnceLock, Weak};
+use std::sync::{Arc, OnceLock, Weak};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -202,7 +204,8 @@ impl<I: ObjectIdentity, M> ObjectControl<I, M> {
     }
 
     fn mark_failed(&self, error: impl Into<String>) {
-        *self.error.lock().unwrap_or_else(|e| e.into_inner()) = Some(error.into());
+        *crate::realtime_allow_lock!("object creation failure publication", self.error.lock())
+            .unwrap_or_else(|e| e.into_inner()) = Some(error.into());
         self.lifecycle
             .store(ObjectLifecycle::Failed as u8, Ordering::Release);
     }
@@ -241,7 +244,13 @@ fn observed_lifecycle<I: ObjectIdentity, M>(
 ) -> ObjectLifecycle {
     let lifecycle = control.lifecycle();
     if lifecycle == ObjectLifecycle::Pending && !shared.engine_connected() {
-        control.mark_failed("engine disconnected while object creation was pending");
+        tracing::debug_span!(
+            "engine.control.object_creation_failed",
+            session_id = shared.session_id
+        )
+        .in_scope(|| {
+            control.mark_failed("engine disconnected while object creation was pending");
+        });
         ObjectLifecycle::Failed
     } else {
         lifecycle
@@ -312,7 +321,16 @@ struct JackProcess {
 }
 impl jack::ProcessHandler for JackProcess {
     fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        crate::realtime_lock_guard::forbid_locks_if_enabled(|| self.process_inner(ps))
+    }
+}
+
+impl JackProcess {
+    fn process_inner(&mut self, ps: &jack::ProcessScope) -> jack::Control {
         let n_frames = ps.n_frames() as usize;
+        let _driver_kind =
+            shoop_tracing::realtime_span!("engine.rt.driver", value = AudioDriverType::Jack as i32);
+        let _span = shoop_tracing::realtime_span!("engine.rt.driver.jack", value = n_frames);
         if let Some(callback) = self.maybe_process_callback {
             unsafe {
                 callback();
@@ -338,7 +356,8 @@ impl jack::ProcessHandler for JackProcess {
         let session = engine.session_mut();
         session.set_sample_rate(sample_rate);
         session.set_buffer_size(n_frames as u32);
-        let mut ports = ports.lock().unwrap_or_else(|e| e.into_inner());
+        let mut ports = crate::realtime_allow_lock!("JACK registered port registry", ports.lock())
+            .unwrap_or_else(|e| e.into_inner());
 
         for p in ports.iter() {
             match p {
@@ -363,7 +382,11 @@ impl jack::ProcessHandler for JackProcess {
                     }
                 }
                 JackRegisteredPort::DecoupledMidiIn { queue, jack } => {
-                    let mut queue = queue.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut queue = crate::realtime_allow_lock!(
+                        "JACK decoupled MIDI input queue",
+                        queue.lock()
+                    )
+                    .unwrap_or_else(|e| e.into_inner());
                     for e in jack.iter(ps) {
                         queue.push(MidiEvent::new(e.time as i32, e.bytes.to_vec()));
                     }
@@ -416,7 +439,11 @@ impl jack::ProcessHandler for JackProcess {
                 }
                 JackRegisteredPort::DecoupledMidiOut { queue, jack } => {
                     let mut writer = jack.writer(ps);
-                    let mut queue = queue.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut queue = crate::realtime_allow_lock!(
+                        "JACK decoupled MIDI output queue",
+                        queue.lock()
+                    )
+                    .unwrap_or_else(|e| e.into_inner());
                     for e in queue.drain(..) {
                         let time = (e.time.max(0) as u32).min(n_frames.saturating_sub(1) as u32);
                         let _ = writer.write(&jack::RawMidi {
@@ -688,7 +715,9 @@ fn route_virtual_midi_inputs(
             .iter()
             .filter(|p| p.port_id == *port_id && p.direction == PortDirection::Input)
         {
-            let mut queue = port.queue.lock().unwrap_or_else(|e| e.into_inner());
+            let mut queue =
+                crate::realtime_allow_lock!("CPAL decoupled MIDI input queue", port.queue.lock())
+                    .unwrap_or_else(|e| e.into_inner());
             for e in events {
                 queue.push(MidiEvent::new(0, e.data().to_vec()));
             }
@@ -712,7 +741,9 @@ fn drain_decoupled_midi_output_events(
         {
             continue;
         }
-        let mut queue = port.queue.lock().unwrap_or_else(|e| e.into_inner());
+        let mut queue =
+            crate::realtime_allow_lock!("CPAL decoupled MIDI output queue", port.queue.lock())
+                .unwrap_or_else(|e| e.into_inner());
         for e in queue.drain(..) {
             if let Some(elem) =
                 engine::midi_storage::MidiStorageElem::new(e.time.max(0) as u32, &e.data)
@@ -763,6 +794,8 @@ impl CpalBackend {
         let mut input_channels = 0usize;
         let mut capture_names = Vec::new();
         let xruns = Arc::new(AtomicU32::new(0));
+        let capture_underruns = Arc::new(AtomicU32::new(0));
+        let capture_overruns = Arc::new(AtomicU32::new(0));
         if settings.input_device != "none" {
             if let Some(input_device) =
                 select_cpal_device(host.input_devices()?, &settings.input_device)
@@ -784,17 +817,35 @@ impl CpalBackend {
                 let ring = Arc::new(Mutex::new(VecDeque::with_capacity(cap)));
                 let cb_ring = ring.clone();
                 let cb_xruns_in = xruns.clone();
+                let cb_capture_overruns = capture_overruns.clone();
                 input_stream = Some(input_device.build_input_stream(
                     &input_config,
                     move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                        let mut ring = cb_ring.lock().unwrap_or_else(|e| e.into_inner());
-                        for &s in data {
-                            if ring.len() >= cap {
-                                ring.pop_front();
-                                cb_xruns_in.fetch_add(1, Ordering::Relaxed);
+                        crate::realtime_lock_guard::forbid_locks_if_enabled(|| {
+                            let _driver_kind = shoop_tracing::realtime_span!(
+                                "engine.rt.driver",
+                                value = AudioDriverType::Cpal as i32
+                            );
+                            let n_frames =
+                                data.len().checked_div(input_channels.max(1)).unwrap_or(0);
+                            let _span = shoop_tracing::realtime_span!(
+                                "engine.rt.driver.cpal_input",
+                                value = n_frames
+                            );
+                            let mut ring = crate::realtime_allow_lock!(
+                                "CPAL capture ring input",
+                                cb_ring.lock()
+                            )
+                            .unwrap_or_else(|e| e.into_inner());
+                            for &s in data {
+                                if ring.len() >= cap {
+                                    ring.pop_front();
+                                    cb_xruns_in.fetch_add(1, Ordering::Relaxed);
+                                    cb_capture_overruns.fetch_add(1, Ordering::Relaxed);
+                                }
+                                ring.push_back(s);
                             }
-                            ring.push_back(s);
-                        }
+                        });
                     },
                     |_| {},
                     None,
@@ -889,6 +940,8 @@ impl CpalBackend {
         let midi_inputs_ret = midi_inputs_cb.clone();
         let midi_outputs_ret = midi_outputs_cb.clone();
         let external_cb = external.clone();
+        let capture_underruns_cb = capture_underruns.clone();
+        let capture_overruns_cb = capture_overruns.clone();
         let last_processed = Arc::new(AtomicU32::new(0));
         let last_processed_cb = last_processed.clone();
         let xruns_cb = xruns.clone();
@@ -902,110 +955,155 @@ impl CpalBackend {
         let output_stream = output_device.build_output_stream(
             &output_config,
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                let n_frames = data.len().checked_div(output_channels.max(1)).unwrap_or(0);
-                last_processed_cb.store(n_frames as u32, Ordering::Relaxed);
-                for s in data.iter_mut() {
-                    *s = 0.0;
-                }
-                if let Some(callback) = maybe_process_callback {
-                    unsafe {
-                        callback();
+                crate::realtime_lock_guard::forbid_locks_if_enabled(|| {
+                    let n_frames = data.len().checked_div(output_channels.max(1)).unwrap_or(0);
+                    let _driver_kind = shoop_tracing::realtime_span!(
+                        "engine.rt.driver",
+                        value = AudioDriverType::Cpal as i32
+                    );
+                    let _span = shoop_tracing::realtime_span!(
+                        "engine.rt.driver.cpal_output",
+                        value = n_frames
+                    );
+                    last_processed_cb.store(n_frames as u32, Ordering::Relaxed);
+                    for s in data.iter_mut() {
+                        *s = 0.0;
                     }
-                }
-                let connections = external_cb
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .connections();
-                let wanted = n_frames * input_channels;
-                if capture_scratch.len() < wanted {
-                    capture_scratch.resize(wanted, 0.0);
-                }
-                if let Some(ring) = input_ring_cb.as_ref() {
-                    let mut ring = ring.lock().unwrap_or_else(|e| e.into_inner());
-                    for s in &mut capture_scratch[..wanted] {
-                        *s = ring.pop_front().unwrap_or(0.0);
-                    }
-                }
-
-                // Control work first, at the cycle boundary, and with no lock anywhere: the
-                // callback owns the engine, so a GUI thread polling state cannot make this
-                // one wait. On cpal that waiting showed up as glitching rather than as a
-                // zombied client, which made it easier to miss and no less real.
-                engine.pump();
-                let session = engine.session_mut();
-                session.set_sample_rate(sample_rate);
-                session.set_buffer_size(n_frames as u32);
-
-                stage_virtual_audio_inputs(
-                    session,
-                    &connections,
-                    &capture_names_cb,
-                    input_channels,
-                    &capture_scratch[..wanted],
-                    n_frames,
-                );
-                {
-                    let decoupled = decoupled_cb
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .clone();
-                    let mut inputs = midi_inputs_cb.lock().unwrap_or_else(|e| e.into_inner());
-                    for input in inputs.iter_mut() {
-                        let events = input.capture.drain_pending();
-                        if !events.is_empty() {
-                            route_virtual_midi_inputs(
-                                session,
-                                &connections,
-                                &input.name,
-                                &events,
-                                &decoupled,
-                            );
+                    if let Some(callback) = maybe_process_callback {
+                        unsafe {
+                            callback();
                         }
                     }
-                }
-
-                engine.run_cycle(n_frames);
-                let session = engine.session();
-                stale_cb.store(session.n_stale_cycles(), Ordering::Relaxed);
-
-                collect_virtual_audio_outputs(
-                    session,
-                    &connections,
-                    &playback_names_cb,
-                    output_channels,
-                    data,
-                    n_frames,
-                );
-                {
-                    let decoupled = decoupled_cb
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .clone();
-                    let mut outputs = midi_outputs_cb.lock().unwrap_or_else(|e| e.into_inner());
-                    for output in outputs.iter_mut() {
-                        for (port_id, ext_name) in &connections {
-                            if ext_name != &output.name {
-                                continue;
-                            }
-                            if let Some(session_idx) = port_id.0.checked_sub(1).map(|v| v as usize)
-                            {
-                                if let Some(port) =
-                                    session.port(session_idx).and_then(|p| p.as_external_midi())
-                                {
-                                    output.playback.send_from(port);
+                    let connections = crate::realtime_allow_lock!(
+                        "CPAL external connection registry",
+                        external_cb.lock()
+                    )
+                    .unwrap_or_else(|e| e.into_inner())
+                    .connections();
+                    let wanted = n_frames * input_channels;
+                    if capture_scratch.len() < wanted {
+                        capture_scratch.resize(wanted, 0.0);
+                    }
+                    if let Some(ring) = input_ring_cb.as_ref() {
+                        let mut ring =
+                            crate::realtime_allow_lock!("CPAL capture ring output", ring.lock())
+                                .unwrap_or_else(|e| e.into_inner());
+                        let mut underflowed = false;
+                        for s in &mut capture_scratch[..wanted] {
+                            match ring.pop_front() {
+                                Some(value) => *s = value,
+                                None => {
+                                    *s = 0.0;
+                                    underflowed = true;
                                 }
                             }
                         }
-                        let events = drain_decoupled_midi_output_events(
-                            &connections,
-                            &output.name,
-                            &decoupled,
-                        );
-                        if !events.is_empty() {
-                            output.playback.send_events(&events);
+                        if underflowed {
+                            capture_underruns_cb.fetch_add(1, Ordering::Relaxed);
                         }
                     }
-                }
+                    engine.stats().capture_underruns.store(
+                        capture_underruns_cb.load(Ordering::Relaxed),
+                        Ordering::Relaxed,
+                    );
+                    engine.stats().capture_overruns.store(
+                        capture_overruns_cb.load(Ordering::Relaxed),
+                        Ordering::Relaxed,
+                    );
+
+                    // Control work first, at the cycle boundary, and with no lock anywhere: the
+                    // callback owns the engine, so a GUI thread polling state cannot make this
+                    // one wait. On cpal that waiting showed up as glitching rather than as a
+                    // zombied client, which made it easier to miss and no less real.
+                    engine.pump();
+                    let session = engine.session_mut();
+                    session.set_sample_rate(sample_rate);
+                    session.set_buffer_size(n_frames as u32);
+
+                    stage_virtual_audio_inputs(
+                        session,
+                        &connections,
+                        &capture_names_cb,
+                        input_channels,
+                        &capture_scratch[..wanted],
+                        n_frames,
+                    );
+                    {
+                        let decoupled = crate::realtime_allow_lock!(
+                            "CPAL decoupled MIDI input registry",
+                            decoupled_cb.lock()
+                        )
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clone();
+                        let mut inputs = crate::realtime_allow_lock!(
+                            "CPAL MIDI input endpoint registry",
+                            midi_inputs_cb.lock()
+                        )
+                        .unwrap_or_else(|e| e.into_inner());
+                        for input in inputs.iter_mut() {
+                            let events = input.capture.drain_pending();
+                            if !events.is_empty() {
+                                route_virtual_midi_inputs(
+                                    session,
+                                    &connections,
+                                    &input.name,
+                                    &events,
+                                    &decoupled,
+                                );
+                            }
+                        }
+                    }
+
+                    engine.run_cycle(n_frames);
+                    let session = engine.session();
+                    stale_cb.store(session.n_stale_cycles(), Ordering::Relaxed);
+
+                    collect_virtual_audio_outputs(
+                        session,
+                        &connections,
+                        &playback_names_cb,
+                        output_channels,
+                        data,
+                        n_frames,
+                    );
+                    {
+                        let decoupled = crate::realtime_allow_lock!(
+                            "CPAL decoupled MIDI output registry",
+                            decoupled_cb.lock()
+                        )
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clone();
+                        let mut outputs = crate::realtime_allow_lock!(
+                            "CPAL MIDI output endpoint registry",
+                            midi_outputs_cb.lock()
+                        )
+                        .unwrap_or_else(|e| e.into_inner());
+                        for output in outputs.iter_mut() {
+                            for (port_id, ext_name) in &connections {
+                                if ext_name != &output.name {
+                                    continue;
+                                }
+                                if let Some(session_idx) =
+                                    port_id.0.checked_sub(1).map(|v| v as usize)
+                                {
+                                    if let Some(port) =
+                                        session.port(session_idx).and_then(|p| p.as_external_midi())
+                                    {
+                                        output.playback.send_from(port);
+                                    }
+                                }
+                            }
+                            let events = drain_decoupled_midi_output_events(
+                                &connections,
+                                &output.name,
+                                &decoupled,
+                            );
+                            if !events.is_empty() {
+                                output.playback.send_events(&events);
+                            }
+                        }
+                    }
+                });
             },
             move |_| {
                 xruns_cb.fetch_add(1, Ordering::Relaxed);
@@ -1106,6 +1204,11 @@ struct CompositeRegistry {
     metadata: BTreeMap<engine::LoopIdentity, engine::LoopTargetMetadata>,
 }
 
+#[tracing::instrument(
+    name = "engine.control.compile_composite_registry",
+    skip_all,
+    fields(composites = registry.configs.len(), targets = registry.metadata.len())
+)]
 fn compile_composite_registry(
     registry: &CompositeRegistry,
 ) -> Result<engine::CompositeBoundaryTimeline> {
@@ -1219,10 +1322,11 @@ struct SharedSession {
     composite_registry: Mutex<CompositeRegistry>,
     primitive_loop_controls: Mutex<Vec<PrimitiveLoopControl>>,
     primitive_sync_sources: Mutex<Vec<Option<usize>>>,
-    audio_channel_controls: Mutex<
+    audio_snapshot_controls: Mutex<
         Vec<(
             Weak<ObjectControl<LoopId, engine::LoopStateMirror>>,
             Weak<ObjectControl<AudioChannelId, engine::AudioChannelStateMirror>>,
+            engine::content_snapshot::AudioSnapshotControl,
         )>,
     >,
     external: Mutex<Option<Arc<Mutex<engine::DummyExternalConnections>>>>,
@@ -1231,6 +1335,7 @@ struct SharedSession {
     connection_cache: Arc<Mutex<ConnectionCache>>,
     sample_rate: AtomicU32,
     buffer_size: AtomicU32,
+    snapshots: engine::content_snapshot::ContentSnapshotRuntime,
     /// Rebuilds the schedule after topology changes.
     ///
     /// A `OnceLock` rather than a `Mutex`: it is set once immediately after construction
@@ -1266,8 +1371,18 @@ impl SharedSession {
         f: impl FnMut(&mut engine::Session) + Send + 'static,
         changes_topology: bool,
     ) -> std::result::Result<CommandSequence, SendError> {
+        let span = tracing::debug_span!(
+            "engine.control.queue",
+            session_id = self.session_id,
+            changes_topology,
+            sequence = tracing::field::Empty,
+            retries = tracing::field::Empty,
+            outcome = tracing::field::Empty
+        );
+        let _entered = span.enter();
         let mut f = Some(f);
         let mut warned = false;
+        let mut retries = 0_u32;
         let sequence = loop {
             let attempt = {
                 let mut handle = self.handle.lock().unwrap_or_else(|e| e.into_inner());
@@ -1282,6 +1397,7 @@ impl SharedSession {
             match attempt {
                 Ok(sequence) => break sequence,
                 Err(SendError::Full) => {
+                    retries = retries.saturating_add(1);
                     if !warned {
                         let caller = std::panic::Location::caller();
                         log::warn!(
@@ -1293,9 +1409,16 @@ impl SharedSession {
                     }
                     self.pump_or_wait_for_capacity();
                 }
-                Err(error) => return Err(error),
+                Err(error) => {
+                    span.record("outcome", "disconnected");
+                    span.record("retries", retries);
+                    return Err(error);
+                }
             }
         };
+        span.record("sequence", sequence.get());
+        span.record("retries", retries);
+        span.record("outcome", "queued");
 
         if changes_topology {
             if let Some(scheduler) = self.scheduler.get() {
@@ -1361,6 +1484,14 @@ impl SharedSession {
         &self,
         f: impl FnOnce(&mut engine::Session) -> T + Send + 'static,
     ) -> Result<(CommandSequence, rtrb::Consumer<T>)> {
+        let span = tracing::debug_span!(
+            "engine.control.queue_result",
+            session_id = self.session_id,
+            sequence = tracing::field::Empty,
+            retries = tracing::field::Empty,
+            outcome = tracing::field::Empty
+        );
+        let _entered = span.enter();
         if let Some(e) = self
             .parked
             .lock()
@@ -1371,6 +1502,7 @@ impl SharedSession {
         }
         let mut f = Some(f);
         let mut warned = false;
+        let mut retries = 0_u32;
         let queued = loop {
             let attempt = {
                 let mut handle = self
@@ -1388,15 +1520,22 @@ impl SharedSession {
             match attempt {
                 Ok(queued) => break queued,
                 Err(SendError::Full) => {
+                    retries = retries.saturating_add(1);
                     if !warned {
                         log::warn!("engine command queue is full; waiting to queue request");
                         warned = true;
                     }
                     self.pump_or_wait_for_capacity();
                 }
-                Err(error) => return Err(anyhow!("could not queue the request: {error}")),
+                Err(error) => {
+                    span.record("outcome", "disconnected");
+                    return Err(anyhow!("could not queue the request: {error}"));
+                }
             }
         };
+        span.record("sequence", queued.0.get());
+        span.record("retries", retries);
+        span.record("outcome", "queued");
         self.pump_parked();
         Ok(queued)
     }
@@ -1405,6 +1544,9 @@ impl SharedSession {
         &self,
         f: impl FnOnce(&mut engine::Session) -> T + Send + 'static,
     ) -> Result<T> {
+        let _span =
+            tracing::debug_span!("engine.control.graph_query", session_id = self.session_id)
+                .entered();
         if let Some(e) = self
             .parked
             .lock()
@@ -1468,7 +1610,9 @@ impl SharedSession {
 
     /// Hands the engine to a driver that is about to start cycling it.
     fn take_engine(&self) -> Option<engine::Engine> {
-        self.parked.lock().unwrap_or_else(|e| e.into_inner()).take()
+        crate::realtime_allow_lock!("dummy driver engine claim", self.parked.lock())
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
     }
 
     /// Takes the engine back from a driver that has stopped.
@@ -1490,6 +1634,12 @@ impl SharedSession {
     /// against the old configuration -- which is how a test that sets a port's retained window
     /// and then records came out with nothing retained.
     fn drain_queue(&self, timeout: Duration) {
+        let _span = tracing::debug_span!(
+            "engine.control.drain_queue",
+            session_id = self.session_id,
+            timeout_ms = timeout.as_millis() as u64
+        )
+        .entered();
         let deadline = Instant::now() + timeout;
         loop {
             let pending = self
@@ -1516,6 +1666,9 @@ impl SharedSession {
 
     /// Applies any pending graph changes and returns once they have landed.
     fn flush_graph_changes(&self) {
+        let _span =
+            tracing::debug_span!("engine.graph.flush_session", session_id = self.session_id)
+                .entered();
         if let Some(s) = self.scheduler.get() {
             s.flush_blocking();
         }
@@ -1569,7 +1722,10 @@ impl SharedSession {
             let cache = Arc::clone(&self.connection_cache);
             let jack = self.jack();
             let external = self.external();
-            thread::spawn(move || refresh_connection_cache(cache, jack, external, generation));
+            let _ = thread::Builder::new()
+                .name("engine-connection-cache".to_string())
+                .spawn(move || refresh_connection_cache(cache, jack, external, generation))
+                .expect("spawn engine connection cache worker");
         }
         cached
     }
@@ -1675,11 +1831,19 @@ fn refresh_connection_cache(
     external: Option<Arc<Mutex<engine::DummyExternalConnections>>>,
     generation: u64,
 ) {
+    let span = tracing::debug_span!(
+        "worker.engine.connection_cache",
+        generation,
+        requests = tracing::field::Empty,
+        published = tracing::field::Empty
+    );
+    let _entered = span.enter();
     let requests = cache
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .requests
         .clone();
+    span.record("requests", requests.len());
     let mut states = HashMap::new();
     if let Some(jack) = jack {
         let jack = jack.lock().unwrap_or_else(|e| e.into_inner());
@@ -1721,6 +1885,9 @@ fn refresh_connection_cache(
     if cache.generation == generation {
         cache.states = states;
         cache.refresh_in_flight = false;
+        span.record("published", true);
+    } else {
+        span.record("published", false);
     }
 }
 
@@ -1769,6 +1936,7 @@ impl BackendSession {
     pub fn new() -> Result<Self> {
         Self::create()
     }
+    #[tracing::instrument(name = "engine.control.create_session", skip_all)]
     pub fn create() -> Result<Self> {
         Self::create_with_capacity(COMMAND_QUEUE_CAPACITY)
     }
@@ -1791,13 +1959,14 @@ impl BackendSession {
             composite_registry: Mutex::new(CompositeRegistry::default()),
             primitive_loop_controls: Mutex::new(Vec::new()),
             primitive_sync_sources: Mutex::new(Vec::new()),
-            audio_channel_controls: Mutex::new(Vec::new()),
+            audio_snapshot_controls: Mutex::new(Vec::new()),
             external: Mutex::new(None),
             jack: Mutex::new(None),
             cpal: Mutex::new(None),
             connection_cache: Arc::new(Mutex::new(ConnectionCache::default())),
             sample_rate: AtomicU32::new(48_000),
             buffer_size: AtomicU32::new(256),
+            snapshots: engine::content_snapshot::ContentSnapshotRuntime::new(),
             scheduler: OnceLock::new(),
         });
 
@@ -1866,6 +2035,11 @@ impl BackendSession {
 
         Ok(Self { shared })
     }
+    #[tracing::instrument(
+        name = "engine.control.attach_driver",
+        skip_all,
+        fields(session_id = self.session_id())
+    )]
     pub fn set_audio_driver(&self, driver: &AudioDriver) -> Result<()> {
         let state = driver.get_state();
         if state.sample_rate > 0 {
@@ -1903,13 +2077,48 @@ impl BackendSession {
     }
 
     pub fn get_state(&self) -> BackendSessionState {
+        let handle = self.shared.handle.lock().unwrap_or_else(|e| e.into_inner());
+        let stats = handle.stats();
         BackendSessionState {
             audio_driver: std::ptr::null_mut(),
             n_audio_buffers_created: 0,
             n_audio_buffers_available: 0,
+            cycles: stats.cycles.load(Ordering::Relaxed),
+            frames: stats.frames.load(Ordering::Relaxed),
+            pending_commands: handle.n_pending().min(u32::MAX as usize) as u32,
+            commands_applied: stats.commands_applied.load(Ordering::Relaxed),
+            last_applied_command: stats.last_applied_command.load(Ordering::Relaxed),
+            trace_snapshots_dropped: stats.trace_snapshots_dropped.load(Ordering::Relaxed),
+            capture_underruns: stats.capture_underruns.load(Ordering::Relaxed),
+            capture_overruns: stats.capture_overruns.load(Ordering::Relaxed),
+            graph_arms: self
+                .shared
+                .scheduler
+                .get()
+                .map(GraphScheduler::n_arms)
+                .unwrap_or(0),
+            graph_applies: self
+                .shared
+                .scheduler
+                .get()
+                .map(GraphScheduler::n_applies)
+                .unwrap_or(0),
+            callback_last_ns: stats.callback_last_ns.load(Ordering::Relaxed),
+            callback_worst_ns: stats.callback_worst_ns.load(Ordering::Relaxed),
+            callback_budget_overruns: stats.callback_budget_overruns.load(Ordering::Relaxed),
+            schedule_request_id: stats.schedule_request_id.load(Ordering::Relaxed),
+            schedule_applied_id: stats.schedule_applied_id.load(Ordering::Relaxed),
+            stuck_cycles: stats.stuck_cycles.load(Ordering::Relaxed),
+            stale_cycles: stats.stale_cycles.load(Ordering::Relaxed),
+            sub_blocks_last_cycle: stats.sub_blocks_last_cycle.load(Ordering::Relaxed),
         }
     }
     /// Adds a loop and returns its stable handle as soon as creation is queued.
+    #[tracing::instrument(
+        name = "engine.control.create_loop",
+        skip_all,
+        fields(session_id = self.session_id())
+    )]
     pub fn create_loop(&self) -> Result<Loop> {
         let control = Arc::new(ObjectControl::<LoopId, engine::LoopStateMirror>::pending(
             self.shared.session_id,
@@ -1937,6 +2146,11 @@ impl BackendSession {
             control,
         })
     }
+    #[tracing::instrument(
+        name = "engine.control.create_composite",
+        skip_all,
+        fields(session_id = self.session_id())
+    )]
     pub fn create_composite_loop(&self) -> Result<CompositeLoop> {
         let slot = self
             .shared
@@ -2110,6 +2324,11 @@ impl BackendSession {
     /// Compiles a composite registry update off the realtime thread and queues activation.
     /// The returned acknowledgement is polled by the frontend; displaced or rejected plans
     /// are always destroyed by the acknowledgement worker, never by the engine callback.
+    #[tracing::instrument(
+        name = "engine.control.configure_composite",
+        skip_all,
+        fields(session_id = self.session_id())
+    )]
     pub fn configure_composite_loop_queued(
         &self,
         composite: &CompositeLoop,
@@ -2174,31 +2393,40 @@ impl BackendSession {
 
         let outcome = Arc::new(Mutex::new(None));
         let worker_outcome = Arc::clone(&outcome);
-        thread::spawn(move || {
-            // This wait runs on a reclamation worker, never on the GUI or realtime thread.
-            // Instrumented and packaged CI builds can take longer than the ordinary command
-            // fence while the frontend settles topology, so retain a bounded but generous
-            // transaction timeout here.
-            let result = match engine::wait_for_result(receiver, Duration::from_secs(5)) {
-                Ok(Ok(reclaimed)) => {
-                    drop(reclaimed);
-                    Ok(version)
-                }
-                Ok(Err(rejected)) => {
-                    let error = rejected.error.to_string();
-                    drop(rejected);
-                    Err(format!(
-                        "engine rejected composite timeline version {version}: {error}"
-                    ))
-                }
-                Err(error) => Err(format!(
-                    "engine did not acknowledge composite timeline version {version}: {error}"
-                )),
-            };
-            *worker_outcome
-                .lock()
-                .unwrap_or_else(|error| error.into_inner()) = Some(result);
-        });
+        let _ = thread::Builder::new()
+            .name("engine-composite-ack".to_string())
+            .spawn(move || {
+                let _span = tracing::info_span!(
+                    "worker.engine.composite_ack",
+                    sequence = sequence.get(),
+                    version
+                )
+                .entered();
+                // This wait runs on a reclamation worker, never on the GUI or realtime thread.
+                // Instrumented and packaged CI builds can take longer than the ordinary command
+                // fence while the frontend settles topology, so retain a bounded but generous
+                // transaction timeout here.
+                let result = match engine::wait_for_result(receiver, Duration::from_secs(30)) {
+                    Ok(Ok(reclaimed)) => {
+                        drop(reclaimed);
+                        Ok(version)
+                    }
+                    Ok(Err(rejected)) => {
+                        let error = rejected.error.to_string();
+                        drop(rejected);
+                        Err(format!(
+                            "engine rejected composite timeline version {version}: {error}"
+                        ))
+                    }
+                    Err(error) => Err(format!(
+                        "engine did not acknowledge composite timeline version {version}: {error}"
+                    )),
+                };
+                *worker_outcome
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner()) = Some(result);
+            })
+            .expect("spawn composite acknowledgement worker");
         Ok(CompositeInstallAck { sequence, outcome })
     }
 
@@ -2221,52 +2449,83 @@ impl BackendSession {
                 data: engine::PreparedAudioChannelData::new(channel.chunk_size, channel.capacity),
             })
             .collect();
-        let mut copies: Vec<_> = shapes
-            .iter()
-            .map(|channel| Vec::with_capacity(channel.capacity))
-            .collect();
-        let controls = self
+        let prepare_requests = requests.clone();
+        let (result, mut prepared) =
+            self.shared.query_graph_scheduler_response(move |session| {
+                let result =
+                    session.prepare_audio_ringbuffers_prepared(&prepare_requests, &mut prepared);
+                (result, prepared)
+            })?;
+        result?;
+
+        let registered = self
             .shared
-            .audio_channel_controls
+            .audio_snapshot_controls
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .clone();
-        let mirrors: Vec<_> = shapes
+        let controls: Vec<_> = shapes
             .iter()
             .map(|shape| {
-                controls
+                registered
                     .iter()
-                    .find_map(|(parent, channel)| {
+                    .find_map(|(parent, channel, snapshots)| {
                         let parent = parent.upgrade()?;
                         let channel = channel.upgrade()?;
                         (parent.ready_id().map(ObjectIdentity::index) == Some(shape.loop_idx)
                             && channel.auxiliary_index() == Some(shape.channel_idx))
-                        .then(|| Arc::clone(&channel.mirror))
+                        .then(|| snapshots.clone())
                     })
                     .ok_or_else(|| {
                         anyhow!(
-                            "audio channel mirror is missing for loop {} channel {}",
+                            "audio snapshot control is missing for loop {} channel {}",
                             shape.loop_idx,
                             shape.channel_idx
                         )
                     })
             })
             .collect::<Result<_>>()?;
-        let (result, returned, copies) =
-            self.shared.query_graph_scheduler_response(move |session| {
-                let result = session.adopt_audio_ringbuffers_prepared_with_copies(
-                    &requests,
-                    &mut prepared,
-                    &mut copies,
-                );
-                (result, prepared, copies)
-            })?;
-        drop(returned);
-        result?;
-        for (mirror, data) in mirrors.into_iter().zip(copies) {
-            mirror.replace_data(data);
+        let mut snapshots = Vec::with_capacity(prepared.len());
+        for (slot, control) in prepared.iter().zip(&controls) {
+            let samples = slot.data.contiguous_copy();
+            let Some(snapshot) = control.prepare(
+                &samples,
+                engine::content_snapshot::ContentMutation::RingbufferAdoption,
+            ) else {
+                for control in controls.iter().take(snapshots.len()) {
+                    control.cancel();
+                }
+                return Err(anyhow!("audio snapshot channel is busy"));
+            };
+            snapshots.push(snapshot);
         }
-        Ok(())
+        let install = self.shared.query_graph_scheduler_response(move |session| {
+            let result = session.commit_audio_ringbuffers_prepared_with_snapshots(
+                &requests,
+                &mut prepared,
+                &snapshots,
+            );
+            (result, prepared)
+        });
+        match install {
+            Ok((Ok(()), returned)) => {
+                drop(returned);
+                Ok(())
+            }
+            Ok((Err(error), returned)) => {
+                drop(returned);
+                for control in controls {
+                    control.cancel();
+                }
+                Err(error.into())
+            }
+            Err(error) => {
+                for control in controls {
+                    control.cancel();
+                }
+                Err(error)
+            }
+        }
     }
 
     pub fn remove_composite_loop(
@@ -2366,6 +2625,11 @@ impl BackendSession {
         Ok(version)
     }
 
+    #[tracing::instrument(
+        name = "engine.control.create_fx",
+        skip_all,
+        fields(session_id = self.session_id(), chain_type = chain_type as u32)
+    )]
     pub fn create_fx_chain(&self, chain_type: FXChainType, title: &str) -> Result<FXChain> {
         let backend = match chain_type {
             FXChainType::Test2x2x1 => FXChainBackendKind::Test2x2x1,
@@ -2420,7 +2684,9 @@ impl BackendSession {
         Ok(chain)
     }
     pub fn get_profiling_report(&self) -> ProfilingReport {
-        ProfilingReport::default()
+        self.shared
+            .query_graph_scheduler_response(|session| session.profiling_report())
+            .unwrap_or_default()
     }
     pub fn segfault_on_process_thread(&self) {}
     pub fn abort_on_process_thread(&self) {}
@@ -2543,8 +2809,18 @@ fn process_dummy_driver_iteration(
     inner: &Arc<Mutex<DriverInner>>,
     engine: &mut Option<engine::Engine>,
 ) {
-    let (session, n, sample_rate, buffer_size, callback) = {
-        let mut i = inner.lock().unwrap_or_else(|e| e.into_inner());
+    crate::realtime_lock_guard::forbid_locks_if_enabled(|| {
+        process_dummy_driver_iteration_inner(inner, engine)
+    });
+}
+
+fn process_dummy_driver_iteration_inner(
+    inner: &Arc<Mutex<DriverInner>>,
+    engine: &mut Option<engine::Engine>,
+) {
+    let (session, n, sample_rate, buffer_size, callback, driver_type) = {
+        let mut i = crate::realtime_allow_lock!("dummy driver iteration state", inner.lock())
+            .unwrap_or_else(|e| e.into_inner());
         if !i.dummy.active() || !driver_uses_dummy_processing(i.driver_type) {
             i.last_processed = 0;
             i.process_generation = i.process_generation.wrapping_add(1);
@@ -2561,8 +2837,12 @@ fn process_dummy_driver_iteration(
             i.dummy.sample_rate(),
             i.dummy.buffer_size(),
             i.maybe_process_callback,
+            i.driver_type,
         )
     };
+    let _driver_kind =
+        shoop_tracing::realtime_span!("engine.rt.driver", value = driver_type as i32);
+    let _span = shoop_tracing::realtime_span!("engine.rt.driver.dummy", value = n);
 
     if let Some(callback) = callback {
         unsafe {
@@ -2577,8 +2857,7 @@ fn process_dummy_driver_iteration(
     }
     let Some(engine) = engine.as_mut() else {
         if n == 0 {
-            inner
-                .lock()
+            crate::realtime_allow_lock!("dummy driver idle state", inner.lock())
                 .unwrap_or_else(|e| e.into_inner())
                 .last_processed = 0;
         }
@@ -2591,8 +2870,7 @@ fn process_dummy_driver_iteration(
     engine.pump();
 
     if n == 0 {
-        inner
-            .lock()
+        crate::realtime_allow_lock!("dummy driver zero-frame state", inner.lock())
             .unwrap_or_else(|e| e.into_inner())
             .last_processed = 0;
         return;
@@ -2607,8 +2885,7 @@ fn process_dummy_driver_iteration(
     // changes are applied by the scheduler thread within its window; a caller that needs them
     // landed first calls `AudioDriver::wait_process`, which flushes.
     engine.run_cycle(n as usize);
-    inner
-        .lock()
+    crate::realtime_allow_lock!("dummy driver completion state", inner.lock())
         .unwrap_or_else(|e| e.into_inner())
         .last_processed = n;
 }
@@ -2631,6 +2908,11 @@ fn wait_for_dummy_generation(inner: &Arc<Mutex<DriverInner>>, target: u64, timeo
 unsafe impl Send for AudioDriver {}
 unsafe impl Sync for AudioDriver {}
 impl AudioDriver {
+    #[tracing::instrument(
+        name = "engine.driver.create",
+        skip_all,
+        fields(driver_type = driver_type as u32)
+    )]
     pub fn new(
         driver_type: AudioDriverType,
         _maybe_callback: Option<ProcessCallback>,
@@ -2719,6 +3001,7 @@ impl AudioDriver {
         i.cpal = Some(Arc::new(Mutex::new(backend)));
         Ok(())
     }
+    #[tracing::instrument(name = "engine.driver.start", skip_all)]
     pub fn start(&self, settings: &AudioDriverSettings) -> Result<()> {
         let mut i = self.inner.lock().unwrap();
         // Settled here as a local and handed to the driver once at the end, rather than
@@ -2806,59 +3089,66 @@ impl AudioDriver {
             i.finish.store(false, Ordering::Relaxed);
             let inner = self.inner.clone();
             let finish = i.finish.clone();
-            i.dummy_thread = Some(thread::spawn(move || {
-                // Claimed on the first turn after a session is attached, and owned by this
-                // thread from then on.
-                let mut engine: Option<engine::Engine> = None;
-                while !finish.load(Ordering::Relaxed) {
-                    let (sample_rate, buffer_size) = {
-                        let i = inner.lock().unwrap_or_else(|e| e.into_inner());
-                        (i.dummy.sample_rate().max(1), i.dummy.buffer_size().max(1))
-                    };
-                    let micros = ((buffer_size as f64 / sample_rate as f64) * 1_000_000.0)
-                        .ceil()
-                        .max(1.0) as u64;
-                    let started = Instant::now();
-                    process_dummy_driver_iteration(&inner, &mut engine);
-                    let interval = Duration::from_micros(micros);
+            i.dummy_thread = Some(
+                thread::Builder::new()
+                    .name("engine-dummy-driver".to_string())
+                    .spawn(move || {
+                        shoop_tracing::prewarm_realtime_thread("engine-dummy-driver");
+                        let _span = tracing::info_span!("worker.engine.dummy_driver").entered();
+                        // Claimed on the first turn after a session is attached, and owned by this
+                        // thread from then on.
+                        let mut engine: Option<engine::Engine> = None;
+                        while !finish.load(Ordering::Relaxed) {
+                            let (sample_rate, buffer_size) = {
+                                let i = inner.lock().unwrap_or_else(|e| e.into_inner());
+                                (i.dummy.sample_rate().max(1), i.dummy.buffer_size().max(1))
+                            };
+                            let micros = ((buffer_size as f64 / sample_rate as f64) * 1_000_000.0)
+                                .ceil()
+                                .max(1.0) as u64;
+                            let started = Instant::now();
+                            process_dummy_driver_iteration(&inner, &mut engine);
+                            let interval = Duration::from_micros(micros);
 
-                    // Sleep in slices, draining control work between cycles rather than
-                    // through them. A blocking read from the GUI thread would otherwise wait
-                    // out the whole cycle interval, and the QML suite makes thousands of them:
-                    // sleeping the interval in one go made the suite several times slower for
-                    // no reason other than latency. Only pumps when something is actually
-                    // queued, so an idle driver still sleeps.
-                    const SLICE: Duration = Duration::from_micros(100);
-                    while started.elapsed() < interval {
-                        if finish.load(Ordering::Relaxed) {
-                            break;
-                        }
-                        if let Some(e) = engine.as_mut() {
-                            if e.has_pending_commands() {
-                                e.pump();
+                            // Sleep in slices, draining control work between cycles rather than
+                            // through them. A blocking read from the GUI thread would otherwise wait
+                            // out the whole cycle interval, and the QML suite makes thousands of them:
+                            // sleeping the interval in one go made the suite several times slower for
+                            // no reason other than latency. Only pumps when something is actually
+                            // queued, so an idle driver still sleeps.
+                            const SLICE: Duration = Duration::from_micros(100);
+                            while started.elapsed() < interval {
+                                if finish.load(Ordering::Relaxed) {
+                                    break;
+                                }
+                                if let Some(e) = engine.as_mut() {
+                                    if e.has_pending_commands() {
+                                        e.pump();
+                                    }
+                                }
+                                let left = interval.saturating_sub(started.elapsed());
+                                thread::sleep(SLICE.min(left));
                             }
                         }
-                        let left = interval.saturating_sub(started.elapsed());
-                        thread::sleep(SLICE.min(left));
-                    }
-                }
 
-                // Hand the engine back before this thread ends. Dropping it here would destroy
-                // the session on this thread, and a session holding Carla LV2 hosts does not
-                // survive being torn down off the thread that created its plugins. It would
-                // also leave the session unreachable for whatever outlives this driver.
-                if let Some(e) = engine.take() {
-                    let session = inner
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .session
-                        .as_ref()
-                        .and_then(|w| w.upgrade());
-                    if let Some(shared) = session {
-                        shared.return_engine(e);
-                    }
-                }
-            }));
+                        // Hand the engine back before this thread ends. Dropping it here would destroy
+                        // the session on this thread, and a session holding Carla LV2 hosts does not
+                        // survive being torn down off the thread that created its plugins. It would
+                        // also leave the session unreachable for whatever outlives this driver.
+                        if let Some(e) = engine.take() {
+                            let session = inner
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .session
+                                .as_ref()
+                                .and_then(|w| w.upgrade());
+                            if let Some(shared) = session {
+                                shared.return_engine(e);
+                            }
+                        }
+                    })
+                    .expect("spawn dummy driver thread"),
+            );
         }
         Ok(())
     }
@@ -2997,6 +3287,7 @@ impl AudioDriver {
     /// against the previous schedule until the coalescing window elapsed -- fine for
     /// audio, wrong for a test asserting on the very next cycle. This is the suite's
     /// "let everything settle" call, so settling the graph belongs here.
+    #[tracing::instrument(name = "engine.driver.wait_process", skip_all)]
     pub fn wait_process(&self) {
         let (is_dummy, target, session) = {
             let i = self.inner.lock().unwrap_or_else(|e| e.into_inner());
@@ -3273,12 +3564,12 @@ impl CompositeLoop {
         self.control.error()
     }
 
-    fn ensure_ready(&self) -> Result<()> {
+    fn ensure_usable(&self) -> Result<()> {
         match self.lifecycle() {
-            // Configuration and controls share the sequenced engine queue. A control queued
-            // while installation is pending is valid and executes after that install.
-            ObjectLifecycle::Ready => Ok(()),
-            ObjectLifecycle::Pending => Err(anyhow!("composite loop is pending creation")),
+            // Creation, prepared timeline installation, and controls share the sequenced engine
+            // queue. Frontends may therefore configure and control a newly reserved composite
+            // without first fencing its lightweight creation command.
+            ObjectLifecycle::Pending | ObjectLifecycle::Ready => Ok(()),
             ObjectLifecycle::Failed => Err(anyhow!(
                 "composite loop creation failed: {}",
                 self.creation_error()
@@ -3289,7 +3580,7 @@ impl CompositeLoop {
     }
 
     pub fn transition(&self, mode: LoopMode, delay: u32) -> Result<CommandSequence> {
-        self.ensure_ready()?;
+        self.ensure_usable()?;
         if mode == LoopMode::Unknown {
             return Err(anyhow!("unknown is not a valid composite mode"));
         }
@@ -3305,7 +3596,7 @@ impl CompositeLoop {
     }
 
     pub fn transition_immediate(&self, mode: LoopMode, iteration: i64) -> Result<CommandSequence> {
-        self.ensure_ready()?;
+        self.ensure_usable()?;
         if mode == LoopMode::Unknown {
             return Err(anyhow!("unknown is not a valid composite mode"));
         }
@@ -3328,9 +3619,7 @@ impl CompositeLoop {
         // The frontend can publish this option while creation or timeline installation is still
         // pending. Keep the desired value in the mirror so a later installation command observes
         // it even when the earlier engine-side setter has no timeline to update yet.
-        if self.lifecycle() != ObjectLifecycle::Pending {
-            self.ensure_ready()?;
-        }
+        self.ensure_usable()?;
         self.desired_play_after_record
             .store(enabled, Ordering::Release);
         self.control.mirror.set_play_after_record(enabled);
@@ -3425,12 +3714,19 @@ impl Loop {
         self.control.error()
     }
 
+    #[tracing::instrument(
+        name = "engine.control.create_audio_channel",
+        skip_all,
+        fields(session_id = self.session_id(), mode = mode as u32)
+    )]
     pub fn add_audio_channel(&self, mode: ChannelMode) -> Result<AudioChannel> {
+        let (snapshot_writer, snapshot_control, snapshot_reader) =
+            self.shared.snapshots.create_audio_channel(1024, 256);
+        let mut snapshot_writer = Some(snapshot_writer);
         let control = Arc::new(ObjectControl::<
             AudioChannelId,
             engine::AudioChannelStateMirror,
         >::pending(self.shared.session_id));
-        control.mirror.enable_complex_data();
         let control_for_command = Arc::downgrade(&control);
         let parent = Arc::clone(&self.control);
         let sequence = self.shared.send_topology(move |s: &mut engine::Session| {
@@ -3441,11 +3737,12 @@ impl Loop {
                 control.mark_failed("parent loop was not created");
                 return;
             };
-            match s.add_audio_channel_with_state(
+            match s.add_audio_channel_with_state_and_snapshots(
                 loop_idx,
                 64,
                 mode.into(),
                 Arc::clone(&control.mirror),
+                snapshot_writer.take(),
             ) {
                 Ok(idx) => {
                     if let Some(mapping) = s.channel_mapping(idx) {
@@ -3458,24 +3755,38 @@ impl Loop {
         })?;
         control.set_creation_sequence(sequence);
         self.shared
-            .audio_channel_controls
+            .audio_snapshot_controls
             .lock()
             .unwrap_or_else(|error| error.into_inner())
-            .push((Arc::downgrade(&self.control), Arc::downgrade(&control)));
+            .push((
+                Arc::downgrade(&self.control),
+                Arc::downgrade(&control),
+                snapshot_control.clone(),
+            ));
         Ok(AudioChannel {
             shared: self.shared.clone(),
             parent: Arc::clone(&self.control),
             control,
+            snapshots: snapshot_reader,
+            snapshot_control,
+            desired_data: Arc::new(ArcSwap::from_pointee(Vec::new())),
         })
     }
 
+    #[tracing::instrument(
+        name = "engine.control.create_midi_channel",
+        skip_all,
+        fields(session_id = self.session_id(), mode = mode as u32)
+    )]
     pub fn add_midi_channel(&self, mode: ChannelMode) -> Result<MidiChannel> {
+        let (snapshot_writer, snapshot_control, snapshot_reader) =
+            self.shared.snapshots.create_midi_channel(64, 64);
+        let mut snapshot_writer = Some(snapshot_writer);
         let control = Arc::new(
             ObjectControl::<MidiChannelId, engine::MidiChannelStateMirror>::pending(
                 self.shared.session_id,
             ),
         );
-        control.mirror.enable_complex_data();
         let control_for_command = Arc::downgrade(&control);
         let parent = Arc::clone(&self.control);
         let sequence = self.shared.send_topology(move |s: &mut engine::Session| {
@@ -3486,11 +3797,12 @@ impl Loop {
                 control.mark_failed("parent loop was not created");
                 return;
             };
-            match s.add_midi_channel_with_state(
+            match s.add_midi_channel_with_state_and_snapshots(
                 loop_idx,
                 1024,
                 mode.into(),
                 Arc::clone(&control.mirror),
+                snapshot_writer.take(),
             ) {
                 Ok(idx) => control.mark_ready(MidiChannelId(idx)),
                 Err(error) => control.mark_failed(error.to_string()),
@@ -3501,6 +3813,9 @@ impl Loop {
             shared: self.shared.clone(),
             parent: Arc::clone(&self.control),
             control,
+            snapshots: snapshot_reader,
+            snapshot_control,
+            desired_data: Arc::new(ArcSwap::from_pointee(Vec::new())),
         })
     }
 
@@ -3665,6 +3980,11 @@ impl Loop {
     }
 }
 
+#[tracing::instrument(
+    name = "engine.control.transition_loops",
+    skip_all,
+    fields(loops = loops.len(), mode = to_state as u32)
+)]
 pub fn transition_multiple_loops(
     loops: &[&Loop],
     to_state: LoopMode,
@@ -3692,11 +4012,22 @@ pub struct AudioChannel {
     shared: Arc<SharedSession>,
     parent: Arc<ObjectControl<LoopId, engine::LoopStateMirror>>,
     control: Arc<ObjectControl<AudioChannelId, engine::AudioChannelStateMirror>>,
+    snapshots: engine::content_snapshot::AudioSnapshotReader,
+    snapshot_control: engine::content_snapshot::AudioSnapshotControl,
+    desired_data: Arc<ArcSwap<Vec<f32>>>,
 }
 pub type AudioChannelState = engine::AudioChannelState;
 impl AudioChannel {
     pub fn session_id(&self) -> u64 {
         self.control.session_id
+    }
+
+    pub fn capture_content_epoch(&self) -> Option<u64> {
+        self.shared.snapshots.capture_epoch()
+    }
+
+    pub fn validate_content_epoch(&self, captured: u64) -> bool {
+        self.shared.snapshots.validate_epoch(captured)
     }
 
     pub fn lifecycle(&self) -> ObjectLifecycle {
@@ -3765,34 +4096,108 @@ impl AudioChannel {
 
     pub fn load_data(&self, data: &[f32]) -> std::result::Result<CommandSequence, SendError> {
         let owned = data.to_vec();
-        let result = self.with_mut({
-            let owned = owned.clone();
-            move |channel| channel.load_data(&owned)
+        let snapshot = self
+            .snapshot_control
+            .prepare(&owned, engine::content_snapshot::ContentMutation::Loading)
+            .ok_or(SendError::Full)?;
+        let mut prepared = engine::PreparedAudioChannelData::new(64, owned.len());
+        prepared.begin_load(owned.len());
+        prepared.write(0, &owned);
+        let mut prepared = Some(prepared);
+        let result = self.with_mut(move |channel| {
+            if let Some(mut prepared) = prepared.take() {
+                channel.commit_prepared_data_and_snapshot(&mut prepared, snapshot);
+            }
         });
         if result.is_ok() {
-            self.control.mirror.replace_data(owned);
+            self.desired_data.store(Arc::new(owned));
+        } else {
+            self.snapshot_control.cancel();
         }
         result
     }
 
     pub fn get_data(&self) -> Vec<f32> {
-        self.control.mirror.data()
+        let latest = self.snapshots.latest();
+        if matches!(
+            latest.currentness,
+            engine::content_snapshot::SnapshotCurrentness::Stale(
+                engine::content_snapshot::StaleReason::MutationActive(
+                    engine::content_snapshot::ContentMutation::Loading
+                )
+            )
+        ) {
+            return self.desired_data.load_full().as_ref().clone();
+        }
+        if matches!(
+            latest.currentness,
+            engine::content_snapshot::SnapshotCurrentness::Stale(
+                engine::content_snapshot::StaleReason::MutationActive(_)
+            )
+        ) {
+            // Legacy synchronous callers historically observed process writes immediately.
+            // Give the off-thread publisher one poll while preserving stale-read semantics.
+            std::thread::sleep(Duration::from_millis(2));
+            return self.snapshots.latest().snapshot.contiguous();
+        }
+        if matches!(
+            latest.currentness,
+            engine::content_snapshot::SnapshotCurrentness::Stale(
+                engine::content_snapshot::StaleReason::PublicationPending { .. }
+            )
+        ) {
+            let deadline = Instant::now() + Duration::from_millis(100);
+            while Instant::now() < deadline {
+                if let Ok(snapshot) = self.snapshots.try_current() {
+                    return snapshot.contiguous();
+                }
+                std::thread::sleep(Duration::from_micros(100));
+            }
+        }
+        latest.snapshot.contiguous()
+    }
+
+    pub fn get_latest_data_snapshot(
+        &self,
+    ) -> engine::content_snapshot::SnapshotRead<engine::content_snapshot::AudioContentSnapshot>
+    {
+        self.snapshots.latest()
+    }
+
+    pub fn try_get_current_data_snapshot(
+        &self,
+    ) -> std::result::Result<
+        Arc<engine::content_snapshot::AudioContentSnapshot>,
+        engine::content_snapshot::CurrentDataError,
+    > {
+        self.snapshots.try_current()
+    }
+
+    pub fn acknowledge_data_revision(&self, revision: engine::content_snapshot::ContentRevision) {
+        self.snapshots.acknowledge(revision);
     }
 
     pub fn poll_state(&self) -> Option<AudioChannelState> {
         (self.lifecycle() == ObjectLifecycle::Ready).then(|| {
-            self.control
+            let mut state = self
+                .control
                 .mirror
-                .read(self.control.acknowledged_data_sequence())
+                .read(self.control.acknowledged_data_sequence());
+            state.data_dirty = self.snapshots.is_dirty();
+            state
         })
     }
 
     pub fn get_state(&self) -> Result<AudioChannelState> {
         match self.lifecycle() {
-            ObjectLifecycle::Ready => Ok(self
-                .control
-                .mirror
-                .read(self.control.acknowledged_data_sequence())),
+            ObjectLifecycle::Ready => {
+                let mut state = self
+                    .control
+                    .mirror
+                    .read(self.control.acknowledged_data_sequence());
+                state.data_dirty = self.snapshots.is_dirty();
+                Ok(state)
+            }
             ObjectLifecycle::Pending => Err(anyhow!("audio channel is pending creation")),
             ObjectLifecycle::Failed => Err(anyhow!(
                 "audio channel creation failed: {}",
@@ -3837,12 +4242,22 @@ impl AudioChannel {
     }
 
     pub fn clear_data_dirty(&self) {
-        self.control
-            .acknowledge_data_sequence(self.control.mirror.data_sequence());
+        let revision = self.snapshots.latest().snapshot.revision;
+        self.snapshots.acknowledge(revision);
     }
 
     pub fn clear(&self, length: u32) -> std::result::Result<CommandSequence, SendError> {
-        self.with_mut(move |channel| channel.clear(length as usize))
+        if !self
+            .snapshot_control
+            .begin_mutation(engine::content_snapshot::ContentMutation::Clearing)
+        {
+            return Err(SendError::Full);
+        }
+        let result = self.with_mut(move |channel| channel.clear(length as usize));
+        if result.is_err() {
+            self.snapshot_control.cancel_mutation();
+        }
+        result
     }
 }
 
@@ -3851,11 +4266,22 @@ pub struct MidiChannel {
     shared: Arc<SharedSession>,
     parent: Arc<ObjectControl<LoopId, engine::LoopStateMirror>>,
     control: Arc<ObjectControl<MidiChannelId, engine::MidiChannelStateMirror>>,
+    snapshots: engine::content_snapshot::MidiSnapshotReader,
+    snapshot_control: engine::content_snapshot::MidiSnapshotControl,
+    desired_data: Arc<ArcSwap<Vec<MidiEvent>>>,
 }
 pub type MidiChannelState = engine::MidiChannelState;
 impl MidiChannel {
     pub fn session_id(&self) -> u64 {
         self.control.session_id
+    }
+
+    pub fn capture_content_epoch(&self) -> Option<u64> {
+        self.shared.snapshots.capture_epoch()
+    }
+
+    pub fn validate_content_epoch(&self, captured: u64) -> bool {
+        self.shared.snapshots.validate_epoch(captured)
     }
 
     pub fn lifecycle(&self) -> ObjectLifecycle {
@@ -3881,7 +4307,62 @@ impl MidiChannel {
     }
 
     pub fn get_all_midi_data(&self) -> Vec<MidiEvent> {
-        self.control.mirror.data()
+        let latest = self.snapshots.latest();
+        if matches!(
+            latest.currentness,
+            engine::content_snapshot::SnapshotCurrentness::Stale(
+                engine::content_snapshot::StaleReason::MutationActive(
+                    engine::content_snapshot::ContentMutation::Loading
+                )
+            )
+        ) {
+            return self.desired_data.load_full().as_ref().clone();
+        }
+        if matches!(
+            latest.currentness,
+            engine::content_snapshot::SnapshotCurrentness::Stale(
+                engine::content_snapshot::StaleReason::MutationActive(_)
+            )
+        ) {
+            // Legacy synchronous callers historically observed process writes immediately.
+            // Give the off-thread publisher one poll while preserving stale-read semantics.
+            std::thread::sleep(Duration::from_millis(2));
+            return self.snapshots.latest().snapshot.contiguous();
+        }
+        if matches!(
+            latest.currentness,
+            engine::content_snapshot::SnapshotCurrentness::Stale(
+                engine::content_snapshot::StaleReason::PublicationPending { .. }
+            )
+        ) {
+            let deadline = Instant::now() + Duration::from_millis(100);
+            while Instant::now() < deadline {
+                if let Ok(snapshot) = self.snapshots.try_current() {
+                    return snapshot.contiguous();
+                }
+                std::thread::sleep(Duration::from_micros(100));
+            }
+        }
+        latest.snapshot.contiguous()
+    }
+
+    pub fn get_latest_data_snapshot(
+        &self,
+    ) -> engine::content_snapshot::SnapshotRead<engine::content_snapshot::MidiContentSnapshot> {
+        self.snapshots.latest()
+    }
+
+    pub fn try_get_current_data_snapshot(
+        &self,
+    ) -> std::result::Result<
+        Arc<engine::content_snapshot::MidiContentSnapshot>,
+        engine::content_snapshot::CurrentDataError,
+    > {
+        self.snapshots.try_current()
+    }
+
+    pub fn acknowledge_data_revision(&self, revision: engine::content_snapshot::ContentRevision) {
+        self.snapshots.acknowledge(revision);
     }
 
     pub fn load_all_midi_data(
@@ -3905,15 +4386,46 @@ impl MidiChannel {
             .map(|element| element.time)
             .max()
             .unwrap_or(0);
-        let result = self.with_mut(move |channel| {
-            channel.set_contents(
-                &elements,
+        let mut state_tracker = engine::MidiStateTracker::new(engine::TrackWhat::ALL);
+        for message in &state {
+            state_tracker.process(message);
+        }
+        let mut snapshot_events: Vec<MidiEvent> = if state.is_empty() {
+            Vec::new()
+        } else {
+            state_tracker
+                .state_as_messages()
+                .into_iter()
+                .map(|data| MidiEvent { time: -1, data })
+                .collect()
+        };
+        snapshot_events.extend(elements.iter().map(|event| MidiEvent {
+            time: event.time as i32,
+            data: event.data().to_vec(),
+        }));
+        let snapshot = self
+            .snapshot_control
+            .prepare(
+                &snapshot_events,
                 length,
-                (!state.is_empty()).then_some(state.as_slice()),
+                engine::content_snapshot::ContentMutation::Loading,
             )
+            .ok_or(SendError::Full)?;
+        let prepared = engine::PreparedMidiChannelData::new(
+            &elements,
+            length,
+            (!state.is_empty()).then_some(state.as_slice()),
+        );
+        let mut prepared = Some(prepared);
+        let result = self.with_mut(move |channel| {
+            if let Some(mut prepared) = prepared.take() {
+                channel.commit_prepared_data_and_snapshot(&mut prepared, snapshot);
+            }
         });
         if result.is_ok() {
-            self.control.mirror.replace_data(msgs.to_vec());
+            self.desired_data.store(Arc::new(msgs.to_vec()));
+        } else {
+            self.snapshot_control.cancel();
         }
         result
     }
@@ -3962,18 +4474,25 @@ impl MidiChannel {
 
     pub fn poll_state(&self) -> Option<MidiChannelState> {
         (self.lifecycle() == ObjectLifecycle::Ready).then(|| {
-            self.control
+            let mut state = self
+                .control
                 .mirror
-                .read(self.control.acknowledged_data_sequence())
+                .read(self.control.acknowledged_data_sequence());
+            state.data_dirty = self.snapshots.is_dirty();
+            state
         })
     }
 
     pub fn get_state(&self) -> Result<MidiChannelState> {
         match self.lifecycle() {
-            ObjectLifecycle::Ready => Ok(self
-                .control
-                .mirror
-                .read(self.control.acknowledged_data_sequence())),
+            ObjectLifecycle::Ready => {
+                let mut state = self
+                    .control
+                    .mirror
+                    .read(self.control.acknowledged_data_sequence());
+                state.data_dirty = self.snapshots.is_dirty();
+                Ok(state)
+            }
             ObjectLifecycle::Pending => Err(anyhow!("MIDI channel is pending creation")),
             ObjectLifecycle::Failed => Err(anyhow!(
                 "MIDI channel creation failed: {}",
@@ -4010,12 +4529,22 @@ impl MidiChannel {
     }
 
     pub fn clear_data_dirty(&self) {
-        self.control
-            .acknowledge_data_sequence(self.control.mirror.data_sequence());
+        let revision = self.snapshots.latest().snapshot.revision;
+        self.snapshots.acknowledge(revision);
     }
 
     pub fn clear(&self) -> std::result::Result<CommandSequence, SendError> {
-        self.with_mut(move |channel| channel.clear())
+        if !self
+            .snapshot_control
+            .begin_mutation(engine::content_snapshot::ContentMutation::Clearing)
+        {
+            return Err(SendError::Full);
+        }
+        let result = self.with_mut(move |channel| channel.clear());
+        if result.is_err() {
+            self.snapshot_control.cancel_mutation();
+        }
+        result
     }
 
     pub fn reset_state_tracking(&self) -> std::result::Result<CommandSequence, SendError> {
@@ -4035,6 +4564,11 @@ pub struct AudioPort {
 }
 pub type AudioPortState = engine::AudioPortState;
 impl AudioPort {
+    #[tracing::instrument(
+        name = "engine.control.create_audio_port",
+        skip_all,
+        fields(session_id = sess.session_id(), direction = *direction as u32)
+    )]
     pub fn new_driver_port(
         sess: &BackendSession,
         driver: &AudioDriver,
@@ -4261,10 +4795,12 @@ impl AudioPort {
             let (control, name) = (Arc::clone(&self.control), name.to_string());
             if let Err(error) = self.shared.send_control(move |_: &mut engine::Session| {
                 if let Some(id) = control.ready_id() {
-                    let _ = ext
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .connect(compat_port_id(id.index()), &name);
+                    let _ = crate::realtime_allow_lock!(
+                        "deferred external audio connection",
+                        ext.lock()
+                    )
+                    .unwrap_or_else(|e| e.into_inner())
+                    .connect(compat_port_id(id.index()), &name);
                 }
             }) {
                 log::error!("could not queue external audio connection: {error}");
@@ -4302,10 +4838,12 @@ impl AudioPort {
             let (control, name) = (Arc::clone(&self.control), name.to_string());
             if let Err(error) = self.shared.send_control(move |_: &mut engine::Session| {
                 if let Some(id) = control.ready_id() {
-                    let _ = ext
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .disconnect(compat_port_id(id.index()), &name);
+                    let _ = crate::realtime_allow_lock!(
+                        "deferred external audio disconnection",
+                        ext.lock()
+                    )
+                    .unwrap_or_else(|e| e.into_inner())
+                    .disconnect(compat_port_id(id.index()), &name);
                 }
             }) {
                 log::error!("could not queue external audio disconnection: {error}");
@@ -4350,6 +4888,11 @@ impl MidiPort {
         self.control.error()
     }
 
+    #[tracing::instrument(
+        name = "engine.control.create_midi_port",
+        skip_all,
+        fields(session_id = sess.session_id(), direction = *direction as u32)
+    )]
     pub fn new_driver_port(
         sess: &BackendSession,
         driver: &AudioDriver,
@@ -4575,10 +5118,12 @@ impl MidiPort {
             let (control, name) = (Arc::clone(&self.control), name.to_string());
             if let Err(error) = self.shared.send_control(move |_: &mut engine::Session| {
                 if let Some(id) = control.ready_id() {
-                    let _ = ext
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .connect(compat_port_id(id.index()), &name);
+                    let _ = crate::realtime_allow_lock!(
+                        "deferred external MIDI connection",
+                        ext.lock()
+                    )
+                    .unwrap_or_else(|e| e.into_inner())
+                    .connect(compat_port_id(id.index()), &name);
                 }
             }) {
                 log::error!("could not queue external MIDI connection: {error}");
@@ -4616,10 +5161,12 @@ impl MidiPort {
             let (control, name) = (Arc::clone(&self.control), name.to_string());
             if let Err(error) = self.shared.send_control(move |_: &mut engine::Session| {
                 if let Some(id) = control.ready_id() {
-                    let _ = ext
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .disconnect(compat_port_id(id.index()), &name);
+                    let _ = crate::realtime_allow_lock!(
+                        "deferred external MIDI disconnection",
+                        ext.lock()
+                    )
+                    .unwrap_or_else(|e| e.into_inner())
+                    .disconnect(compat_port_id(id.index()), &name);
                 }
             }) {
                 log::error!("could not queue external MIDI disconnection: {error}");
@@ -4706,20 +5253,24 @@ impl DecoupledMidiPort {
             self.direction,
             self.port_id,
         );
-        thread::spawn(move || {
-            let state = if let Some(jack) = jack {
-                let jack = jack.lock().unwrap_or_else(|e| e.into_inner());
-                jack_connections_state_locked(&jack, &name, direction, PortDataType::Midi)
-            } else {
-                external
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .connection_status_of(port_id)
-                    .into_iter()
-                    .collect()
-            };
-            *cache.lock().unwrap_or_else(|e| e.into_inner()) = state;
-        });
+        let _ = thread::Builder::new()
+            .name("engine-midi-connection-cache".to_string())
+            .spawn(move || {
+                let _span = tracing::debug_span!("worker.engine.midi_connection_cache").entered();
+                let state = if let Some(jack) = jack {
+                    let jack = jack.lock().unwrap_or_else(|e| e.into_inner());
+                    jack_connections_state_locked(&jack, &name, direction, PortDataType::Midi)
+                } else {
+                    external
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .connection_status_of(port_id)
+                        .into_iter()
+                        .collect()
+                };
+                *cache.lock().unwrap_or_else(|e| e.into_inner()) = state;
+            })
+            .expect("spawn MIDI connection cache worker");
         cached
     }
     /// Synchronously refreshes after an explicit user-triggered reconciliation.
@@ -5463,6 +6014,152 @@ mod tests {
     }
 
     #[test]
+    fn exact_and_stale_channel_snapshots_report_pending_and_recording_states() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let loop_ = sess.create_loop().expect("loop");
+        let audio = loop_
+            .add_audio_channel(ChannelMode::Direct)
+            .expect("audio channel");
+        let midi = loop_
+            .add_midi_channel(ChannelMode::Direct)
+            .expect("MIDI channel");
+        engine.pump();
+
+        audio.load_data(&[1.0, 2.0]).expect("queue audio data");
+        midi.load_all_midi_data(&[MidiEvent {
+            time: 1,
+            data: vec![0x90, 60, 100],
+        }])
+        .expect("queue MIDI data");
+        assert!(matches!(
+            audio.try_get_current_data_snapshot(),
+            Err(engine::content_snapshot::CurrentDataError::MutationActive(
+                engine::content_snapshot::ContentMutation::Loading
+            ))
+        ));
+        assert!(matches!(
+            midi.try_get_current_data_snapshot(),
+            Err(engine::content_snapshot::CurrentDataError::MutationActive(
+                engine::content_snapshot::ContentMutation::Loading
+            ))
+        ));
+        assert!(audio
+            .get_latest_data_snapshot()
+            .snapshot
+            .contiguous()
+            .is_empty());
+        assert!(midi
+            .get_latest_data_snapshot()
+            .snapshot
+            .contiguous()
+            .is_empty());
+
+        engine.pump();
+        let start = Instant::now();
+        while audio.try_get_current_data_snapshot().is_err()
+            || midi.try_get_current_data_snapshot().is_err()
+        {
+            assert!(start.elapsed() < Duration::from_secs(1));
+            thread::yield_now();
+        }
+        assert_eq!(
+            audio
+                .try_get_current_data_snapshot()
+                .expect("current audio")
+                .contiguous(),
+            vec![1.0, 2.0]
+        );
+        assert_eq!(
+            midi.try_get_current_data_snapshot()
+                .expect("current MIDI")
+                .events()
+                .count(),
+            1
+        );
+
+        for mutation in [
+            engine::content_snapshot::ContentMutation::Recording,
+            engine::content_snapshot::ContentMutation::PreRecording,
+            engine::content_snapshot::ContentMutation::Replacing,
+            engine::content_snapshot::ContentMutation::Loading,
+            engine::content_snapshot::ContentMutation::Clearing,
+            engine::content_snapshot::ContentMutation::RingbufferAdoption,
+        ] {
+            assert!(audio.snapshot_control.begin_mutation(mutation));
+            assert!(matches!(
+                audio.try_get_current_data_snapshot(),
+                Err(engine::content_snapshot::CurrentDataError::MutationActive(found))
+                    if found == mutation
+            ));
+            assert_eq!(
+                audio.get_latest_data_snapshot().snapshot.contiguous(),
+                vec![1.0, 2.0]
+            );
+            audio.snapshot_control.cancel_mutation();
+
+            assert!(midi.snapshot_control.begin_mutation(mutation));
+            assert!(matches!(
+                midi.try_get_current_data_snapshot(),
+                Err(engine::content_snapshot::CurrentDataError::MutationActive(found))
+                    if found == mutation
+            ));
+            assert_eq!(midi.get_latest_data_snapshot().snapshot.events().count(), 1);
+            midi.snapshot_control.cancel_mutation();
+        }
+
+        loop_
+            .transition(LoopMode::Recording, -1, -1)
+            .expect("queue recording");
+        engine.pump();
+        engine
+            .session_mut()
+            .apply_graph_changes()
+            .expect("apply graph");
+        engine.process(4);
+        assert!(matches!(
+            audio.try_get_current_data_snapshot(),
+            Err(engine::content_snapshot::CurrentDataError::MutationActive(
+                engine::content_snapshot::ContentMutation::Recording
+            ))
+        ));
+        assert_eq!(
+            audio.get_latest_data_snapshot().snapshot.contiguous(),
+            vec![1.0, 2.0]
+        );
+        assert!(matches!(
+            midi.try_get_current_data_snapshot(),
+            Err(engine::content_snapshot::CurrentDataError::MutationActive(
+                engine::content_snapshot::ContentMutation::Recording
+            ))
+        ));
+        assert_eq!(
+            midi.get_latest_data_snapshot().snapshot.contiguous().len(),
+            1
+        );
+
+        // Mutations that would overlap recording are rejected without touching content.
+        assert!(matches!(audio.load_data(&[9.0]), Err(SendError::Full)));
+        assert!(matches!(audio.clear(0), Err(SendError::Full)));
+        assert!(matches!(midi.load_all_midi_data(&[]), Err(SendError::Full)));
+        assert!(matches!(midi.clear(), Err(SendError::Full)));
+
+        loop_
+            .transition(LoopMode::Stopped, -1, -1)
+            .expect("queue stop");
+        engine.pump();
+        engine.process(1);
+        let start = Instant::now();
+        while audio.try_get_current_data_snapshot().is_err()
+            || midi.try_get_current_data_snapshot().is_err()
+        {
+            assert!(start.elapsed() < Duration::from_secs(1));
+            thread::yield_now();
+        }
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
     fn channel_data_dirty_is_acknowledged_on_the_frontend() {
         let sess = BackendSession::new().expect("session");
         let loop_ = sess.create_loop().expect("loop");
@@ -5472,6 +6169,11 @@ mod tests {
         let sequence = audio.load_data(&[1.0, 2.0]).expect("queue data");
         sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
             .expect("data command");
+        let start = Instant::now();
+        while audio.try_get_current_data_snapshot().is_err() {
+            assert!(start.elapsed() < Duration::from_secs(1));
+            thread::yield_now();
+        }
 
         assert!(audio.get_state().expect("dirty state").data_dirty);
         audio.clear_data_dirty();
@@ -5479,6 +6181,11 @@ mod tests {
         let sequence = audio.clear(0).expect("queue clear");
         sess.wait_for_command(sequence, engine::DEFAULT_WAIT_TIMEOUT)
             .expect("clear command");
+        let start = Instant::now();
+        while audio.try_get_current_data_snapshot().is_err() {
+            assert!(start.elapsed() < Duration::from_secs(1));
+            thread::yield_now();
+        }
         assert!(audio.get_state().expect("dirty again").data_dirty);
     }
 
@@ -6029,6 +6736,9 @@ mod tests {
 
         let port = AudioPort::new_driver_port(&sess, &driver, "input", &PortDirection::Input, 0)
             .expect("port");
+        sess.wait_for_command(port.creation_sequence(), engine::DEFAULT_WAIT_TIMEOUT)
+            .expect("port creation");
+        sess.shared.flush_graph_changes();
         driver.wait_process();
         let initial = match port.poll_state() {
             Some(state) => state,
@@ -6044,7 +6754,7 @@ mod tests {
             .expect("first input command");
         driver.dummy_request_controlled_frames(BUFFER);
         driver.dummy_run_requested_frames();
-        let first = port.get_state().expect("first state");
+        let first = port.poll_state().expect("first state");
         assert_eq!(first.input_peak, 0.8);
         assert_eq!(first.output_peak, 0.8);
 
@@ -6139,6 +6849,49 @@ mod tests {
 
         assert_eq!(driver.dummy_n_requested_frames(), 0);
         assert_eq!(loop_.get_state().expect("state").position, REQUEST);
+    }
+
+    #[test]
+    fn dummy_iteration_uses_only_explicit_realtime_lock_permissions() {
+        struct DisableGuard;
+        impl Drop for DisableGuard {
+            fn drop(&mut self) {
+                crate::realtime_lock_guard::set_enabled(false);
+            }
+        }
+
+        let mut dummy = engine::DummyDriver::default();
+        dummy.start(engine::DriverSettings {
+            sample_rate: 48_000,
+            buffer_size: 64,
+            client_name: "lock-guard-test".to_string(),
+        });
+        let inner = Arc::new(Mutex::new(DriverInner {
+            driver_type: AudioDriverType::Dummy,
+            dummy,
+            last_processed: 0,
+            process_generation: 0,
+            finish: Arc::new(AtomicBool::new(false)),
+            dummy_thread: None,
+            session: None,
+            jack: None,
+            cpal: None,
+            cpal_settings: None,
+            cpal_decoupled_midi_ports: Arc::new(Mutex::new(Vec::new())),
+            maybe_process_callback: None,
+        }));
+        let mut session = engine::Session::default();
+        session.apply_graph_changes().unwrap();
+        let (engine, _handle) = engine::split(session, 4);
+        let mut engine = Some(engine);
+
+        crate::realtime_lock_guard::set_enabled(true);
+        let _disable = DisableGuard;
+        process_dummy_driver_iteration(&inner, &mut engine);
+        crate::realtime_lock_guard::set_enabled(false);
+
+        let state = inner.lock().unwrap_or_else(|error| error.into_inner());
+        assert_eq!(state.last_processed, 64);
     }
 
     #[test]

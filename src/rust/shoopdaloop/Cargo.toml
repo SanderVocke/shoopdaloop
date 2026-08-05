@@ -36,6 +36,7 @@ once_cell = { workspace = true }
 cxx-qt = { workspace = true }
 cxx-qt-lib = { workspace = true, features = ["full"] }
 assert_no_alloc = { workspace = true }
+tracing = { workspace = true }
 
 [lints]
 workspace = true

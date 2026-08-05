@@ -11,10 +11,10 @@
 //!
 //! Audio only for now: MIDI channels are not yet routed through the session.
 
+#[cfg(feature = "lv2")]
+use crate::realtime_lock_guard::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
-#[cfg(feature = "lv2")]
-use std::sync::Mutex;
 
 use crate::audio_channel::PreparedAudioChannelData;
 use crate::audio_midi_loop::AudioMidiLoop;
@@ -36,6 +36,7 @@ use crate::internal_audio_port::InternalAudioPort;
 use crate::loop_mode::LoopMode;
 use crate::midi_state::MAX_DIFF_MESSAGES;
 use crate::midi_storage::MidiStorageElem;
+use crate::profiling::{Profiler, ProfilingReport, ProfilingReportItem, Stage};
 use crate::state_mirror::{
     AudioChannelStateMirror, AudioPortStateMirror, LoopStateMirror, MidiChannelStateMirror,
     MidiPortStateMirror,
@@ -392,6 +393,8 @@ pub struct Session {
     /// A performance signal as much as a correctness one: every extra sub-block is
     /// another pass over every loop in the step.
     n_sub_blocks_last_cycle: u32,
+    /// Existing deterministic stage profiler, enabled only for explicit tracing sessions.
+    profiler: Profiler,
 }
 
 /// A topology snapshot: everything [`build_schedule`] needs, borrowing nothing.
@@ -439,6 +442,7 @@ pub struct PreparedSchedule {
 /// and grows every buffer a cycle will need. Nothing here touches a [`Session`], which is
 /// the point: it can run on any thread, at any time, while audio keeps flowing against the
 /// schedule already installed.
+#[tracing::instrument(name = "engine.graph.build_schedule", skip_all)]
 pub fn build_schedule(topology: Topology) -> Result<PreparedSchedule, SessionError> {
     let Topology {
         graph,
@@ -579,6 +583,28 @@ impl Session {
     }
     pub fn n_channels(&self) -> usize {
         self.channels.len()
+    }
+
+    pub fn profiling_report(&self) -> ProfilingReport {
+        ProfilingReport {
+            items: Stage::ALL
+                .iter()
+                .map(|stage| {
+                    let report = self.profiler.report(*stage);
+                    ProfilingReportItem {
+                        key: stage.name().to_string(),
+                        n_samples: report.calls as f32,
+                        average: if report.calls == 0 {
+                            0.0
+                        } else {
+                            report.last_ns as f32 / report.calls as f32
+                        },
+                        worst: report.worst_ns as f32,
+                        most_recent: report.last_ns as f32,
+                    }
+                })
+                .collect(),
+        }
     }
 
     /// Where a channel sits: which loop, which kind, and which index within that loop.
@@ -952,6 +978,14 @@ impl Session {
         self.graph_request_id == self.graph_applied_id
     }
 
+    pub fn graph_request_id(&self) -> u64 {
+        self.graph_request_id
+    }
+
+    pub fn graph_applied_id(&self) -> u64 {
+        self.graph_applied_id
+    }
+
     fn note_graph_change(&mut self) {
         self.graph_request_id += 1;
     }
@@ -1021,11 +1055,23 @@ impl Session {
         mode: ChannelMode,
         state: Arc<AudioChannelStateMirror>,
     ) -> Result<usize, SessionError> {
+        self.add_audio_channel_with_state_and_snapshots(loop_idx, chunk_size, mode, state, None)
+    }
+
+    pub fn add_audio_channel_with_state_and_snapshots(
+        &mut self,
+        loop_idx: usize,
+        chunk_size: usize,
+        mode: ChannelMode,
+        state: Arc<AudioChannelStateMirror>,
+        snapshots: Option<crate::content_snapshot::AudioProcessSnapshotWriter>,
+    ) -> Result<usize, SessionError> {
         let l = self
             .loops
             .get_mut(loop_idx)
             .ok_or(SessionError::NoSuchLoop(loop_idx))?;
-        let channel_idx = l.add_audio_channel_with_state(chunk_size, mode, state);
+        let channel_idx =
+            l.add_audio_channel_with_state_and_snapshots(chunk_size, mode, state, snapshots);
         self.channels.push(ChannelMapping {
             loop_idx,
             kind: ChannelKind::Audio,
@@ -1059,11 +1105,23 @@ impl Session {
         mode: ChannelMode,
         state: Arc<MidiChannelStateMirror>,
     ) -> Result<usize, SessionError> {
+        self.add_midi_channel_with_state_and_snapshots(loop_idx, capacity_elems, mode, state, None)
+    }
+
+    pub fn add_midi_channel_with_state_and_snapshots(
+        &mut self,
+        loop_idx: usize,
+        capacity_elems: usize,
+        mode: ChannelMode,
+        state: Arc<MidiChannelStateMirror>,
+        snapshots: Option<crate::content_snapshot::MidiProcessSnapshotWriter>,
+    ) -> Result<usize, SessionError> {
         let l = self
             .loops
             .get_mut(loop_idx)
             .ok_or(SessionError::NoSuchLoop(loop_idx))?;
-        let channel_idx = l.add_midi_channel_with_state(capacity_elems, mode, state);
+        let channel_idx =
+            l.add_midi_channel_with_state_and_snapshots(capacity_elems, mode, state, snapshots);
         self.channels.push(ChannelMapping {
             loop_idx,
             kind: ChannelKind::Midi,
@@ -1373,46 +1431,19 @@ impl Session {
         Ok(shape)
     }
 
-    pub fn adopt_audio_ringbuffers_prepared(
+    pub fn prepare_audio_ringbuffers_prepared(
         &mut self,
         requests: &[AudioRingbufferAdoption],
         prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
-    ) -> Result<(), SessionError> {
-        self.adopt_audio_ringbuffers_prepared_inner(requests, prepared, None)
-    }
-
-    /// The application backend variant also returns preallocated copies for control-thread
-    /// state-mirror publication. Filling the copies is bounded and allocation-free.
-    pub fn adopt_audio_ringbuffers_prepared_with_copies(
-        &mut self,
-        requests: &[AudioRingbufferAdoption],
-        prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
-        copies: &mut [Vec<f32>],
-    ) -> Result<(), SessionError> {
-        self.adopt_audio_ringbuffers_prepared_inner(requests, prepared, Some(copies))
-    }
-
-    fn adopt_audio_ringbuffers_prepared_inner(
-        &mut self,
-        requests: &[AudioRingbufferAdoption],
-        prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
-        mut copies: Option<&mut [Vec<f32>]>,
     ) -> Result<(), SessionError> {
         let shape = self.describe_audio_ringbuffer_adoption(requests)?;
-        if prepared.len() != shape.n_channels
-            || copies
-                .as_ref()
-                .is_some_and(|copies| copies.len() != shape.n_channels)
-        {
+        if prepared.len() != shape.n_channels {
             return Err(SessionError::AudioRingbufferAdoptionCapacity);
         }
-        for (index, (slot, expected)) in prepared.iter_mut().zip(shape.channels()).enumerate() {
+        for (slot, expected) in prepared.iter_mut().zip(shape.channels()) {
             if slot.loop_idx != expected.loop_idx
                 || slot.channel_idx != expected.channel_idx
                 || slot.data.capacity() < expected.capacity
-                || copies
-                    .as_ref()
-                    .is_some_and(|copies| copies[index].capacity() < expected.capacity)
             {
                 return Err(SessionError::AudioRingbufferAdoptionCapacity);
             }
@@ -1446,8 +1477,68 @@ impl Session {
                     offset += samples.len();
                 });
             }
-            if let Some(copies) = copies.as_deref_mut() {
-                slot.data.copy_to_preallocated(&mut copies[index]);
+        }
+        Ok(())
+    }
+
+    pub fn commit_audio_ringbuffers_prepared_with_snapshots(
+        &mut self,
+        requests: &[AudioRingbufferAdoption],
+        prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
+        snapshots: &[crate::content_snapshot::PreparedAudioSnapshot],
+    ) -> Result<(), SessionError> {
+        if prepared.len() != snapshots.len() {
+            return Err(SessionError::AudioRingbufferAdoptionCapacity);
+        }
+        for (slot, snapshot) in prepared.iter_mut().zip(snapshots.iter().copied()) {
+            self.loops[slot.loop_idx]
+                .audio_channel_mut(slot.channel_idx)
+                .ok_or(SessionError::NoSuchChannel(slot.channel_idx))?
+                .commit_prepared_data_and_snapshot(&mut slot.data, snapshot);
+        }
+        self.apply_audio_ringbuffer_adoption_states(requests);
+        Ok(())
+    }
+
+    pub fn adopt_audio_ringbuffers_prepared(
+        &mut self,
+        requests: &[AudioRingbufferAdoption],
+        prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
+    ) -> Result<(), SessionError> {
+        self.adopt_audio_ringbuffers_prepared_inner(requests, prepared, None)
+    }
+
+    /// The application backend variant also returns preallocated copies for control-thread
+    /// state-mirror publication. Filling the copies is bounded and allocation-free.
+    pub fn adopt_audio_ringbuffers_prepared_with_copies(
+        &mut self,
+        requests: &[AudioRingbufferAdoption],
+        prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
+        copies: &mut [Vec<f32>],
+    ) -> Result<(), SessionError> {
+        self.adopt_audio_ringbuffers_prepared_inner(requests, prepared, Some(copies))
+    }
+
+    fn adopt_audio_ringbuffers_prepared_inner(
+        &mut self,
+        requests: &[AudioRingbufferAdoption],
+        prepared: &mut [PreparedAudioRingbufferAdoptionChannel],
+        mut copies: Option<&mut [Vec<f32>]>,
+    ) -> Result<(), SessionError> {
+        if let Some(copies) = copies.as_ref() {
+            if copies.len() != prepared.len()
+                || copies
+                    .iter()
+                    .zip(prepared.iter())
+                    .any(|(copy, slot)| copy.capacity() < slot.data.capacity())
+            {
+                return Err(SessionError::AudioRingbufferAdoptionCapacity);
+            }
+        }
+        self.prepare_audio_ringbuffers_prepared(requests, prepared)?;
+        if let Some(copies) = copies.as_deref_mut() {
+            for (slot, copy) in prepared.iter().zip(copies.iter_mut()) {
+                slot.data.copy_to_preallocated(copy);
             }
         }
 
@@ -1711,6 +1802,14 @@ impl Session {
         let covered = prepared.for_graph_id;
         prepared.for_graph_id = self.graph_applied_id;
 
+        // Schedule installation is the control-path opportunity to size optional FX scratch.
+        // Doing it here keeps the first realtime cycle from discovering the effect's buffer.
+        for port in &mut self.ports {
+            if let Some(audio) = port.audio_mut() {
+                audio.reserve_processing(self.buffer_size as usize);
+            }
+        }
+
         std::mem::swap(&mut self.specs, &mut prepared.specs);
         std::mem::swap(&mut self.node_map, &mut prepared.node_map);
         std::mem::swap(&mut self.schedule, &mut prepared.schedule);
@@ -1773,6 +1872,9 @@ impl Session {
     /// nothing reported anywhere. There is now no error to drop: a stale cycle runs and is
     /// counted in [`Self::n_stale_cycles`].
     pub fn process(&mut self, n_frames: usize) {
+        self.profiler
+            .set_enabled(shoop_tracing::is_tracing_requested());
+        let _session_span = shoop_tracing::realtime_span!("engine.rt.session", value = n_frames);
         // A stale graph runs the last-applied schedule rather than refusing the cycle.
         //
         // Refusing meant a single un-applied connection silenced the whole session until
@@ -1789,7 +1891,10 @@ impl Session {
             self.n_stale_cycles = self.n_stale_cycles.saturating_add(1);
         }
         self.n_sub_blocks_last_cycle = 0;
-        self.composite_timeline.begin_callback();
+        {
+            let _span = shoop_tracing::realtime_span_detail!("engine.rt.composites.begin");
+            self.composite_timeline.begin_callback();
+        }
         let steps = std::mem::take(&mut self.schedule);
         for step in &steps {
             // Loops in one step are co-processed, so they are gathered and
@@ -1797,27 +1902,81 @@ impl Session {
             self.loop_group.clear();
             for node in step {
                 match self.node_actions[node.0] {
-                    NodeAction::PortPrepare(i) => self.ports[i].prepare(n_frames),
+                    NodeAction::PortPrepare(i) => {
+                        let _span = shoop_tracing::realtime_span_detail!(
+                            "engine.rt.ports.prepare",
+                            value = i
+                        );
+                        let began = self.profiler.begin();
+                        self.ports[i].prepare(n_frames);
+                        self.profiler.finish(Stage::PortPrepare, began);
+                    }
                     NodeAction::PortProcess(i) => {
+                        let _span = shoop_tracing::realtime_span_detail!(
+                            "engine.rt.ports.process",
+                            value = i
+                        );
+                        let began = self.profiler.begin();
                         self.ports[i].process(n_frames);
-                        self.propagate_port(i, n_frames);
+                        {
+                            let _routing_span = shoop_tracing::realtime_span_detail!(
+                                "engine.rt.routing.external",
+                                value = i
+                            );
+                            self.propagate_port(i, n_frames);
+                        }
                         self.process_test2x2x1_fx_port(i, n_frames);
+                        self.profiler.finish(Stage::PortProcess, began);
                     }
                     NodeAction::LoopProcess(i) => self.loop_group.push(i),
-                    NodeAction::ChannelPrepare(i) => self.channel_prepare(i, n_frames),
-                    NodeAction::ChannelProcess(i) => self.channel_finalize(i, n_frames),
+                    NodeAction::ChannelPrepare(i) => {
+                        let _span = shoop_tracing::realtime_span_detail!(
+                            "engine.rt.channels.prepare",
+                            value = i
+                        );
+                        let began = self.profiler.begin();
+                        self.channel_prepare(i, n_frames);
+                        self.profiler.finish(Stage::ChannelPrepare, began);
+                    }
+                    NodeAction::ChannelProcess(i) => {
+                        let _span = shoop_tracing::realtime_span_detail!(
+                            "engine.rt.channels.process",
+                            value = i
+                        );
+                        let began = self.profiler.begin();
+                        self.channel_finalize(i, n_frames);
+                        self.profiler.finish(Stage::ChannelProcess, began);
+                    }
                     NodeAction::None => {}
                 }
             }
             if !self.loop_group.is_empty() {
-                self.process_loop_group(n_frames);
-                self.synth_prerecorded_midi_playback(n_frames);
+                {
+                    let _span = shoop_tracing::realtime_span!(
+                        "engine.rt.loops",
+                        value = self.loop_group.len()
+                    );
+                    let began = self.profiler.begin();
+                    self.process_loop_group(n_frames);
+                    self.profiler.finish(Stage::LoopProcess, began);
+                }
+                {
+                    let _span = shoop_tracing::realtime_span_detail!("engine.rt.midi.playback");
+                    self.synth_prerecorded_midi_playback(n_frames);
+                }
             }
         }
-        self.apply_test2x2x1_fx_outputs(n_frames);
-        #[cfg(feature = "lv2")]
-        self.process_carla_fx_chains(n_frames);
-        self.publish_composite_anticipated_transitions();
+        {
+            let _span = shoop_tracing::realtime_span!("engine.rt.fx");
+            self.apply_test2x2x1_fx_outputs(n_frames);
+            #[cfg(feature = "lv2")]
+            self.process_carla_fx_chains(n_frames);
+        }
+        {
+            let _span = shoop_tracing::realtime_span!("engine.rt.state_publication");
+            self.publish_composite_anticipated_transitions();
+        }
+        self.profiler.end_cycle();
         self.schedule = steps;
     }
 
@@ -1960,7 +2119,8 @@ impl Session {
             .map(|(title, host)| (title.clone(), host.clone()))
             .collect();
         for (title, host) in chains {
-            let mut host = host.lock().unwrap_or_else(|e| e.into_inner());
+            let mut host = crate::realtime_allow_lock!("Carla host processing", host.lock())
+                .unwrap_or_else(|e| e.into_inner());
             if !host.is_active() {
                 continue;
             }
@@ -2421,6 +2581,7 @@ impl Session {
     /// mid-buffer is advanced in pieces. Single loops go through the same path:
     /// loop still needs splitting when its end falls inside the buffer.
     fn process_loop_group(&mut self, n_frames: usize) {
+        let _composite_span = shoop_tracing::realtime_span_detail!("engine.rt.composites.timeline");
         if self.composite_timeline.fault().fault != CompositeTimelineFault::None {
             return;
         }
@@ -3835,7 +3996,7 @@ mod tests {
             );
             return;
         };
-        let host = std::sync::Arc::new(std::sync::Mutex::new(host));
+        let host = std::sync::Arc::new(Mutex::new(host));
         let mut s = Session::default();
         s.set_sample_rate(48_000);
         s.set_buffer_size(64);
@@ -3863,7 +4024,7 @@ mod tests {
             return;
         };
         host.set_active(true);
-        let host = std::sync::Arc::new(std::sync::Mutex::new(host));
+        let host = std::sync::Arc::new(Mutex::new(host));
         let mut s = Session::default();
         s.set_sample_rate(48_000);
         s.set_buffer_size(64);

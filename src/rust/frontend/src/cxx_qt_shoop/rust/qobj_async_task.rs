@@ -50,32 +50,41 @@ impl AsyncTask {
                 connection_types::DIRECT_CONNECTION,
             );
 
-            let _ = std::thread::spawn(move || {
-                let mut success = true;
-                let shared = notifier_shared;
+            let queued_at = std::time::Instant::now();
+            let _ = std::thread::Builder::new()
+                .name("frontend-async-task".to_string())
+                .spawn(move || {
+                    let _span = tracing::info_span!(
+                        "worker.frontend.async_task",
+                        handoff_us = queued_at.elapsed().as_micros() as u64
+                    )
+                    .entered();
+                    let mut success = true;
+                    let shared = notifier_shared;
 
-                debug!("{self_ptr_formatted}: start work in concurrent thread");
-                if let Err(e) = concurrent_fn() {
-                    error!("async task failed: {e}");
-                    success = false;
-                }
-                debug!("{self_ptr_formatted}: work done, callback - success {success}");
-                let notifier_ptr = match shared.data() {
-                    Ok(ptr) => ptr,
-                    Err(_) => {
-                        error!("Notifier QSharedPointer is null");
-                        return;
+                    debug!("{self_ptr_formatted}: start work in concurrent thread");
+                    if let Err(e) = concurrent_fn() {
+                        error!("async task failed: {e}");
+                        success = false;
                     }
-                };
-                if let Err(e) = invoke::<_, (), _>(
-                    &mut *notifier_ptr,
-                    "notify_done(bool)",
-                    connection_types::BLOCKING_QUEUED_CONNECTION,
-                    &(success),
-                ) {
-                    error!("Failed to notify after async task: {e}");
-                }
-            });
+                    debug!("{self_ptr_formatted}: work done, callback - success {success}");
+                    let notifier_ptr = match shared.data() {
+                        Ok(ptr) => ptr,
+                        Err(_) => {
+                            error!("Notifier QSharedPointer is null");
+                            return;
+                        }
+                    };
+                    if let Err(e) = invoke::<_, (), _>(
+                        &mut *notifier_ptr,
+                        "notify_done(bool)",
+                        connection_types::BLOCKING_QUEUED_CONNECTION,
+                        &(success),
+                    ) {
+                        error!("Failed to notify after async task: {e}");
+                    }
+                })
+                .expect("spawn frontend async task");
         }
     }
 

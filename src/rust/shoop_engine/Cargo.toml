@@ -9,6 +9,7 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 log = { workspace = true }
 regex = { workspace = true }
+arc-swap = { workspace = true }
 rtrb = { workspace = true }
 rubato = { workspace = true }
 # Optional so the engine builds and tests without libjack present.
@@ -23,6 +24,8 @@ base64 = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 libloading = { workspace = true, optional = true }
 assert_no_alloc = { workspace = true }
+shoop_tracing = { workspace = true }
+tracing = { workspace = true }
 enum-iterator = { workspace = true }
 num_enum = { workspace = true }
 
@@ -40,3 +43,4 @@ app_backend = ["jack", "cpal", "midir", "lv2"]
 [dev-dependencies]
 assert2 = { workspace = true }
 rtrb = { workspace = true }
+tracy-client = { workspace = true }

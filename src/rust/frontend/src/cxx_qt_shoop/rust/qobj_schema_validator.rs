@@ -19,6 +19,7 @@ pub fn register_qml_singleton(module_name: &str, type_name: &str) {
 }
 
 impl SchemaValidator {
+    #[tracing::instrument(name = "frontend.schema.validate", skip_all)]
     pub fn validate_schema(
         self: Pin<&mut SchemaValidator>,
         object: QMap_QString_QVariant,

@@ -172,9 +172,43 @@ pub struct DeveloperOptions {
     #[clap(long = "rt-alloc-guard", help_heading = "Developer options")]
     pub rt_alloc_guard: bool,
 
+    /// Abort on an unapproved project-owned mutex acquisition in realtime processing.
+    #[clap(long = "rt-lock-guard", help_heading = "Developer options")]
+    pub rt_lock_guard: bool,
+
     // Disables the crash handler.
     #[clap(long = "no-crash-handling", help_heading = "Developer options")]
     pub no_crash_handling: bool,
+
+    /// Enable Tracy profiling.
+    #[clap(long = "tracing", help_heading = "Developer options")]
+    pub tracing: bool,
+
+    /// Add detailed per-node engine zones. Requires tracing or tracing capture.
+    #[clap(long = "tracing-engine-detail", help_heading = "Developer options")]
+    pub tracing_engine_detail: bool,
+
+    /// Capture Tracy profiling data with an external tracy-capture process.
+    #[clap(long = "tracing-capture", help_heading = "Developer options")]
+    pub tracing_capture: bool,
+
+    /// Path to a tracy-capture executable. Defaults to TRACY_CAPTURE_TOOL or PATH.
+    #[clap(
+        long = "tracing-capture-tool",
+        value_name = "PATH",
+        help_heading = "Developer options",
+        requires = "tracing_capture"
+    )]
+    pub tracing_capture_tool: Option<std::path::PathBuf>,
+
+    /// Directory in which Tracy capture files are written. Defaults to ./traces.
+    #[clap(
+        long = "tracing-capture-output-dir",
+        value_name = "DIRECTORY",
+        help_heading = "Developer options",
+        requires = "tracing_capture"
+    )]
+    pub tracing_capture_output_dir: Option<std::path::PathBuf>,
 }
 
 /// Developer options group.
@@ -219,4 +253,18 @@ where
     I::Item: Into<std::ffi::OsString> + Clone,
 {
     CliArgs::parse_from(args_iter)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn realtime_lock_guard_is_disabled_by_default_and_can_be_enabled() {
+        let defaults = parse_arguments(["shoopdaloop"]);
+        assert!(!defaults.developer_options.rt_lock_guard);
+
+        let enabled = parse_arguments(["shoopdaloop", "--rt-lock-guard"]);
+        assert!(enabled.developer_options.rt_lock_guard);
+    }
 }

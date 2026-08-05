@@ -394,14 +394,10 @@ kill_process_tree() {
         : # echo "[run_with_timeout] DEBUG:   no stored pgid, skipping group kill"
     fi
     
-    # Kill by session
-    if [[ -n "$stored_sid" ]] && [[ "$stored_sid" != "" ]] && [[ "$stored_sid" != "$$" ]]; then
-        echo "[run_with_timeout] Killing session $stored_sid with ${signal_name}"
-        # echo "[run_with_timeout] DEBUG:   kill -${signal} -${stored_sid}"
-        kill "-${signal}" "-${stored_sid}" 2>/dev/null || true
-    else
-        : # echo "[run_with_timeout] DEBUG:   no stored sid (or sid==$$), skipping session kill"
-    fi
+    # Do not pass a session ID as a negative PID to kill. Negative PIDs target
+    # process groups, not sessions; in particular, `kill -SIGNAL -0` signals
+    # the caller's process group and can terminate the CI runner. Isolated
+    # session members are found and killed individually during final cleanup.
     
     # Find and kill descendants individually
     local descendants=""
@@ -704,9 +700,19 @@ if [[ $IS_WINDOWS -eq 0 ]]; then
     sleep 0.1
     STORED_SID=$(ps -o ${PS_SESSION_FIELD}= -p $CHILD_PID 2>/dev/null | tr -d ' ') || true
     STORED_Pgid=$(ps -o pgid= -p $CHILD_PID 2>/dev/null | tr -d ' ') || true
-    if [[ ! "${STORED_SID:-}" =~ ^[0-9]+$ ]]; then STORED_SID=""; fi
-    if [[ ! "${STORED_Pgid:-}" =~ ^[0-9]+$ ]]; then STORED_Pgid=""; fi
-    echo "[run_with_timeout] Stored Session: ${STORED_SID:-unknown}, Stored Process Group: ${STORED_Pgid:-unknown}"
+    SELF_SID=$(ps -o ${PS_SESSION_FIELD}= -p $$ 2>/dev/null | tr -d ' ') || true
+    SELF_PGID=$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ') || true
+
+    # Only retain scopes that are both meaningful and isolated from this
+    # wrapper. macOS may report session 0 here; targeting ID 0 would signal
+    # the wrapper's own process group and can shut down the Actions runner.
+    if [[ ! "${STORED_SID:-}" =~ ^[0-9]+$ ]] || [[ "$STORED_SID" -le 1 ]] || [[ "$STORED_SID" == "${SELF_SID:-}" ]]; then
+        STORED_SID=""
+    fi
+    if [[ ! "${STORED_Pgid:-}" =~ ^[0-9]+$ ]] || [[ "$STORED_Pgid" -le 1 ]] || [[ "$STORED_Pgid" == "${SELF_PGID:-}" ]]; then
+        STORED_Pgid=""
+    fi
+    echo "[run_with_timeout] Stored isolated session: ${STORED_SID:-none}, isolated process group: ${STORED_Pgid:-none}"
 else
     : # echo "[run_with_timeout] DEBUG: Windows path: skipping sid/pgid storage (not applicable)"
 fi
@@ -736,7 +742,7 @@ while true; do
         if [[ $IS_WINDOWS -eq 1 ]] && [[ $ELAPSED_AT_EXIT -lt 10 ]] && [[ $CHILD_EXIT_CODE -ne 0 ]] && [[ $CHILD_EXIT_CODE -ne 124 ]]; then
             echo ""
             echo "[run_with_timeout] =========================================="
-            echo "[run_with_timeout] WINDOWS DLL LOAD FAILURE DETECTED"
+            echo "[run_with_timeout] POSSIBLE WINDOWS DLL LOAD FAILURE DETECTED"
             echo "[run_with_timeout] =========================================="
             echo "[run_with_timeout] Command exited after only ${ELAPSED_AT_EXIT}s with code ${CHILD_EXIT_CODE}"
             echo "[run_with_timeout] This typically indicates a missing DLL dependency."
@@ -762,9 +768,27 @@ while true; do
             echo "[run_with_timeout] 4. Verify the executable was built for the correct architecture"
             echo ""
             
-            # Try to identify the executable from COMMAND
+            # Try to identify the PE executable from COMMAND. Windows packages use
+            # a .bat launcher, which Dependencies.exe cannot inspect directly.
             EXE_PATH="${COMMAND[0]}"
-            if [[ -n "$EXE_PATH" ]] && command -v Dependencies.exe &>/dev/null; then
+            if [[ "${EXE_PATH,,}" == *.bat ]]; then
+                WRAPPER_PATH="$EXE_PATH"
+                WRAPPED_EXE=""
+                if [[ -f "$WRAPPER_PATH" ]]; then
+                    WRAPPED_EXE=$(grep -Eio '%~dp0[^"[:space:]]*\.exe' "$WRAPPER_PATH" | head -n 1 || true)
+                fi
+                if [[ -n "$WRAPPED_EXE" ]]; then
+                    WRAPPED_EXE="${WRAPPED_EXE#%~dp0}"
+                    WRAPPED_EXE="${WRAPPED_EXE//\\//}"
+                    EXE_PATH="$(dirname "$WRAPPER_PATH")/$WRAPPED_EXE"
+                else
+                    # ShoopDaLoop's launcher and real executable use this naming
+                    # convention. Keep it as a fallback if the wrapper cannot be read.
+                    EXE_PATH="${WRAPPER_PATH%.*}_exe.exe"
+                fi
+                echo "[run_with_timeout] Resolved batch launcher $WRAPPER_PATH to $EXE_PATH"
+            fi
+            if [[ -n "$EXE_PATH" ]] && [[ "${EXE_PATH,,}" == *.exe ]] && command -v Dependencies.exe &>/dev/null; then
                 echo "[run_with_timeout] Running Dependencies.exe on $EXE_PATH..."
                 Dependencies.exe -modules "$EXE_PATH" 2>&1 | head -30 || true
                 echo ""

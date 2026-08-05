@@ -1,211 +1,268 @@
-use crate::{
-    cxx_qt_shoop::{
-        qobj_fx_chain_backend_bridge::ffi::{
-            fx_chain_backend_qobject_from_ptr, make_raw_fx_chain_backend,
-        },
-        qobj_fx_chain_gui_bridge::ffi::*,
-    },
-    engine_update_thread,
-};
-use anyhow::anyhow;
-use cxx_qt::QObject;
-use std::pin::Pin;
-
-use common::logging::macros::{debug as raw_debug, error as raw_error, shoop_log_unit};
 use cxx_qt::CxxQtType;
+use cxx_qt::QObject;
 use cxx_qt_lib_shoop::{
     connect::connect_or_report,
-    connection_types, invokable,
-    qobject::{qobject_move_to_thread, AsQObject},
-    qsharedpointer_qobject::QSharedPointer_QObject,
-    qvariant_helpers::qsharedpointer_qobject_to_qvariant,
+    connection_types,
+    qobject::{qobject_property_bool, FromQObject},
 };
+use shoop_engine::FXChainType;
+
+pub use crate::cxx_qt_shoop::qobj_fx_chain_gui_bridge::ffi::FXChainGui;
+use crate::cxx_qt_shoop::{qobj_backend_wrapper::BackendWrapper, qobj_fx_chain_gui_bridge::ffi::*};
+use anyhow::anyhow;
+use common::logging::macros::{
+    debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace, warn as raw_warn,
+};
+use std::pin::Pin;
 shoop_log_unit!("Frontend.FXChain");
+
+macro_rules! trace {
+    ($self:ident, $($arg:tt)*) => {
+        raw_trace!("[{}-backend] {}", $self.display_name().to_string(), format!($($arg)*))
+    };
+}
 
 macro_rules! debug {
     ($self:ident, $($arg:tt)*) => {
-        raw_debug!("[{}] {}", $self.display_name().to_string(), format!($($arg)*))
+        raw_debug!("[{}-backend] {}", $self.display_name().to_string(), format!($($arg)*))
     };
 }
 
 macro_rules! error {
     ($self:ident, $($arg:tt)*) => {
-        raw_error!("[{}] {}", $self.display_name().to_string(), format!($($arg)*))
+        raw_error!("[{}-backend] {}", $self.display_name().to_string(), format!($($arg)*))
+    };
+}
+
+macro_rules! warn {
+    ($self:ident, $($arg:tt)*) => {
+        raw_warn!("[{}-backend] {}", $self.display_name().to_string(), format!($($arg)*))
     };
 }
 
 impl FXChainGui {
+    pub fn initialize_impl(self: Pin<&mut Self>) {}
+
     pub fn deinit(mut self: Pin<&mut Self>) {
-        self.as_mut().rust_mut().backend_chain_wrapper = cxx::UniquePtr::null();
-        self.as_mut().rust_mut().initialized = false;
-        unsafe {
-            self.as_mut().initialized_changed(false);
+        self.as_mut().rust_mut().backend_chain_wrapper = None;
+        self.as_mut().set_initialized(false);
+    }
+
+    pub fn update(mut self: Pin<&mut FXChainGui>) {
+        let span = tracing::debug_span!(
+            "frontend.fx.update",
+            ready = tracing::field::Empty,
+            active = tracing::field::Empty,
+            visible = tracing::field::Empty
+        );
+        let _entered = span.enter();
+        if self.backend_chain_wrapper.is_none() {
+            return;
+        }
+
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            let chain = self
+                .backend_chain_wrapper
+                .as_ref()
+                .ok_or(anyhow!("Backend chain wrapper is None in update"))?;
+            let prev_state = self.prev_state.clone();
+            let new_state = match chain.get_state() {
+                Some(state) => state,
+                None => {
+                    debug!(self, "Skipping update: could not get FX chain state");
+                    prev_state.clone()
+                }
+            };
+            span.record("ready", new_state.ready != 0);
+            span.record("active", new_state.active != 0);
+            span.record("visible", new_state.visible != 0);
+            if common::tracing_helpers::is_tracing_enabled() {
+                if new_state.ready != prev_state.ready {
+                    tracy_client::plot!(
+                        "engine.fx.ready",
+                        if new_state.ready != 0 { 1.0 } else { 0.0 }
+                    );
+                }
+                if new_state.active != prev_state.active {
+                    tracy_client::plot!(
+                        "engine.fx.active",
+                        if new_state.active != 0 { 1.0 } else { 0.0 }
+                    );
+                }
+            }
+
+            {
+                let mut rust_mut = self.as_mut().rust_mut();
+                rust_mut.prev_state = new_state.clone();
+            }
+
+            // Self "state_changed" signal
+            unsafe {
+                let initialized = self.initialized;
+                self.as_mut().state_changed(
+                    initialized,
+                    new_state.ready != 0,
+                    new_state.active != 0,
+                    new_state.visible != 0,
+                );
+            }
+
+            // Update individual field signals
+            unsafe {
+                if new_state.ready != prev_state.ready {
+                    self.as_mut().ready_changed(new_state.ready != 0);
+                }
+                if new_state.active != prev_state.active {
+                    self.as_mut().active_changed(new_state.active != 0);
+                }
+                if new_state.visible != prev_state.visible {
+                    self.as_mut().ui_visible_changed(new_state.visible != 0);
+                }
+            }
+
+            Ok(())
+        }() {
+            error!(self, "Could not update: {e}");
         }
     }
 
-    pub fn initialize_impl(mut self: Pin<&mut Self>) {
-        debug!(self, "Initializing");
+    pub fn maybe_initialize_backend(mut self: Pin<&mut FXChainGui>) -> bool {
+        if self.initialized {
+            return true;
+        }
 
+        let mut non_ready_vars: Vec<String> = Vec::new();
         unsafe {
-            let backend_fx_chain = make_raw_fx_chain_backend();
-            let backend_fx_chain_qobj = fx_chain_backend_qobject_from_ptr(backend_fx_chain);
-            if let Err(e) = qobject_move_to_thread(
-                backend_fx_chain_qobj,
-                engine_update_thread::get_engine_update_thread().thread,
-            ) {
-                error!(self, "Failed to move backend fx chain to thread: {e}");
+            if self.backend.is_null() {
+                non_ready_vars.push("backend".to_string());
             }
+            if !self.backend.is_null() {
+                let ready = if let Some(backend_ref) = self.backend.as_ref() {
+                    qobject_property_bool(backend_ref, "ready").unwrap_or(false)
+                } else {
+                    false
+                };
+                if !ready {
+                    non_ready_vars.push("backend_ready".to_string());
+                }
+            }
+            if self.chain_type.is_none() {
+                non_ready_vars.push("chain_type".to_string());
+            }
+            if self.title.is_none() {
+                non_ready_vars.push("title".to_string());
+            }
+        }
 
-            let self_ref = self.as_ref().get_ref();
+        let initialize_condition: bool = !self.initialized && non_ready_vars.is_empty();
 
-            {
-                let backend_ref = &*backend_fx_chain_qobj;
-                let backend_thread_wrapper =
-                    &*engine_update_thread::get_engine_update_thread().ref_qobject_ptr();
+        let result = if initialize_condition {
+            if let Err(e) = || -> Result<(), anyhow::Error> {
+                unsafe {
+                    let backend =
+                        BackendWrapper::from_qobject_ref_ptr(self.backend as *const QObject)?;
+                    let chain_type = self
+                        .chain_type
+                        .ok_or(anyhow!("Chain type not set for init"))?;
+                    let title = self
+                        .title
+                        .as_ref()
+                        .ok_or(anyhow!("Title not set for init"))?;
 
-                {
-                    // Connections: update thread -> backend object
+                    let chain = backend
+                        .session
+                        .as_ref()
+                        .ok_or(anyhow!("No session in backend"))?
+                        .create_fx_chain(chain_type, title.as_str())?;
+
+                    // To push any state that was already set on us before initializing
+                    let state = &self.prev_state;
+                    debug!(self, "Push deferred state: {state:?}");
+                    chain.set_active(state.active != 0);
+                    chain.set_visible(state.visible != 0);
+
+                    let mut rust_mut = self.as_mut().rust_mut();
+                    rust_mut.backend_chain_wrapper = Some(chain);
+
+                    Ok(())
+                }
+            }() {
+                error!(self, "Failed to initialize backend FX chain: {e}");
+                false
+            } else {
+                true
+            }
+        } else {
+            trace!(
+                self,
+                "not initializing backend yet. Non-ready variables: {non_ready_vars:?}"
+            );
+            false
+        };
+
+        self.set_initialized(result);
+        result
+    }
+
+    pub fn display_name(self: &Self) -> String {
+        if let Some(t) = self.title.as_ref() {
+            if !t.is_empty() {
+                return t.to_string();
+            }
+        }
+        "unknown".to_string()
+    }
+
+    pub fn set_backend(mut self: Pin<&mut Self>, backend: *mut QObject) {
+        self.as_mut().maybe_initialize_backend();
+        if self.backend_chain_wrapper.is_some() {
+            error!(
+                self,
+                "Can't change backend after backend has been initialized"
+            );
+            return;
+        }
+        if self.backend != backend {
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.backend = backend;
+            unsafe {
+                if !backend.is_null() {
+                    trace!(self, "Connect back-end ready signal");
                     connect_or_report(
-                        backend_thread_wrapper,
-                        "update()",
-                        backend_ref,
+                        &mut *backend,
+                        "readyChanged()",
+                        self.as_ref().get_ref(),
+                        "maybe_initialize_backend()",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        &mut *backend,
+                        "updated_on_gui_thread()",
+                        self.as_ref().get_ref(),
                         "update()",
                         connection_types::DIRECT_CONNECTION,
                     );
                 }
-                {
-                    // Connections: GUI -> backend object
-                    connect_or_report(
-                        self_ref,
-                        "backend_set_backend(QObject*)",
-                        backend_ref,
-                        "set_backend(QObject*)",
-                        connection_types::QUEUED_CONNECTION,
-                    );
-                    connect_or_report(
-                        self_ref,
-                        "backend_set_title(QString)",
-                        backend_ref,
-                        "set_title(QString)",
-                        connection_types::QUEUED_CONNECTION,
-                    );
-                    connect_or_report(
-                        self_ref,
-                        "backend_set_chain_type(::std::int32_t)",
-                        backend_ref,
-                        "set_chain_type(::std::int32_t)",
-                        connection_types::QUEUED_CONNECTION,
-                    );
-                    connect_or_report(
-                        self_ref,
-                        "backend_push_active(bool)",
-                        backend_ref,
-                        "push_active(bool)",
-                        connection_types::QUEUED_CONNECTION,
-                    );
-                    connect_or_report(
-                        self_ref,
-                        "backend_push_ui_visible(bool)",
-                        backend_ref,
-                        "push_ui_visible(bool)",
-                        connection_types::QUEUED_CONNECTION,
-                    );
-                    connect_or_report(
-                        self_ref,
-                        "backend_restore_state(QString)",
-                        backend_ref,
-                        "restore_state(QString)",
-                        connection_types::QUEUED_CONNECTION,
-                    );
-                }
-                {
-                    // Connections: backend object -> GUI
-                    connect_or_report(
-                        backend_ref,
-                        "state_changed(bool,bool,bool,bool)",
-                        self_ref,
-                        "backend_state_changed(bool,bool,bool,bool)",
-                        connection_types::QUEUED_CONNECTION,
-                    )
-                }
-
-                let wrapper = QSharedPointer_QObject::from_ptr_delete_later(backend_fx_chain_qobj)
-                    .unwrap_or_else(|e| {
-                        error!(
-                            self,
-                            "Failed to create shared pointer for backend fx chain: {e}"
-                        );
-                        cxx::UniquePtr::null()
-                    });
-                let mut rust_mut = self.as_mut().rust_mut();
-                rust_mut.backend_chain_wrapper = wrapper;
-            }
-        }
-    }
-
-    pub fn display_name(self: &Self) -> String {
-        if self.title.len() > 0 {
-            self.title.to_string()
-        } else {
-            "unknown".to_string()
-        }
-    }
-
-    pub unsafe fn backend_state_changed(
-        mut self: Pin<&mut FXChainGui>,
-        initialized: bool,
-        ready: bool,
-        active: bool,
-        visible: bool,
-    ) {
-        if initialized != self.initialized {
-            debug!(self, "initialized -> {initialized}");
-            self.as_mut().rust_mut().initialized = initialized;
-            unsafe {
-                self.as_mut().initialized_changed(initialized);
-            }
-        }
-        if ready != self.ready {
-            debug!(self, "ready -> {ready}");
-            self.as_mut().rust_mut().ready = ready;
-            unsafe {
-                self.as_mut().ready_changed(ready);
-            }
-        }
-        if active != self.active {
-            debug!(self, "active -> {active}");
-            self.as_mut().rust_mut().active = active;
-            unsafe {
-                self.as_mut().active_changed(active);
-            }
-        }
-        if visible != self.ui_visible {
-            debug!(self, "ui visible -> {visible}");
-            self.as_mut().rust_mut().ui_visible = visible;
-            unsafe {
-                self.as_mut().ui_visible_changed(visible);
-            }
-        }
-    }
-
-    pub fn set_backend(mut self: Pin<&mut Self>, backend: *mut QObject) {
-        unsafe {
-            self.as_mut().backend_set_backend(backend);
-        }
-        if backend != self.backend {
-            self.as_mut().rust_mut().backend = backend;
-            unsafe {
+                debug!(self, "backend -> {backend:?}");
                 self.as_mut().backend_changed(backend);
             }
         }
     }
 
     pub fn set_title(mut self: Pin<&mut Self>, title: QString) {
-        unsafe {
-            self.as_mut().backend_set_title(title.clone());
+        self.as_mut().maybe_initialize_backend();
+        if self.backend_chain_wrapper.is_some() {
+            error!(
+                self,
+                "Can't change title after backend has been initialized"
+            );
+            return;
         }
-        if title != self.title {
-            self.as_mut().rust_mut().title = title.clone();
+        let title_string = title.to_string();
+        if !self.title.as_ref().is_some_and(|v| *v == title_string) {
+            debug!(self, "title -> {title_string}");
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.title = Some(title_string);
             unsafe {
                 self.as_mut().title_changed(title);
             }
@@ -213,11 +270,29 @@ impl FXChainGui {
     }
 
     pub fn set_chain_type(mut self: Pin<&mut Self>, chain_type: i32) {
-        unsafe {
-            self.as_mut().backend_set_chain_type(chain_type);
+        self.as_mut().maybe_initialize_backend();
+        if self.backend_chain_wrapper.is_some() {
+            error!(
+                self,
+                "Can't change chain type after backend has been initialized"
+            );
+            return;
         }
-        if chain_type != self.chain_type {
-            self.as_mut().rust_mut().chain_type = chain_type;
+        let chain_type_enum = match FXChainType::try_from(chain_type) {
+            Ok(t) => t,
+            Err(e) => {
+                error!(self, "Invalid chain type {chain_type}: {e}");
+                return;
+            }
+        };
+        if !self
+            .chain_type
+            .as_ref()
+            .is_some_and(|v| *v == chain_type_enum)
+        {
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.chain_type = Some(chain_type_enum);
+            debug!(self, "chain_type -> {chain_type_enum:?}");
             unsafe {
                 self.as_mut().chain_type_changed(chain_type);
             }
@@ -225,70 +300,138 @@ impl FXChainGui {
     }
 
     pub fn get_state_str(self: Pin<&mut Self>) -> QString {
-        match || -> Result<QString, anyhow::Error> {
-            let backend_wrapper = self.backend_chain_wrapper.data()?;
-            unsafe {
-                Ok(invokable::invoke(
-                    &mut *backend_wrapper,
-                    "get_state_str()",
-                    invokable::BLOCKING_QUEUED_CONNECTION,
-                    &(),
-                )?)
-            }
-        }() {
-            Ok(data) => data,
-            Err(e) => {
-                error!(self, "Could not get state string: {e}");
+        if let Some(backend_chain) = self.backend_chain_wrapper.as_ref() {
+            let state_str = backend_chain.get_state_str();
+            if let Some(state_str) = state_str {
+                QString::from(state_str.as_str())
+            } else {
+                warn!(self, "Got null state string from backend FX chain");
                 QString::from("")
             }
+        } else {
+            error!(self, "Cannot get state string of uninitialized FX chain");
+            QString::from("")
         }
     }
 
-    pub fn restore_state(self: Pin<&mut Self>, state_str: QString) {
-        unsafe {
-            self.backend_restore_state(state_str);
+    pub fn restore_state(mut self: Pin<&mut Self>, state_str: QString) {
+        self.as_mut().maybe_initialize_backend();
+        if let Some(backend_chain) = self.backend_chain_wrapper.as_ref() {
+            backend_chain.restore_state(state_str.to_string().as_str());
+        } else {
+            error!(
+                self,
+                "Cannot restore from state string for uninitialized FX chain"
+            );
         }
     }
 
-    pub unsafe fn get_backend_fx_chain(self: Pin<&mut FXChainGui>) -> QVariant {
-        match || -> Result<QVariant, anyhow::Error> {
-            if self.backend_chain_wrapper.is_null() {
-                return Ok(QVariant::default());
-            } else {
-                return Ok(qsharedpointer_qobject_to_qvariant(
-                    self.backend_chain_wrapper
-                        .as_ref()
-                        .ok_or(anyhow!("Backend wrapper not set"))?,
-                )?);
+    pub fn get_midi_input_port(
+        self: Pin<&mut Self>,
+        idx: u32,
+    ) -> Option<shoop_engine::app_backend::MidiPort> {
+        if let Some(backend_chain) = self.backend_chain_wrapper.as_ref() {
+            backend_chain.get_midi_input_port(idx)
+        } else {
+            error!(
+                self,
+                "Cannot get MIDI input port for uninitialized FX chain"
+            );
+            None
+        }
+    }
+
+    pub fn get_audio_input_port(
+        self: Pin<&mut Self>,
+        idx: u32,
+    ) -> Option<shoop_engine::app_backend::AudioPort> {
+        if let Some(backend_chain) = self.backend_chain_wrapper.as_ref() {
+            backend_chain.get_audio_input_port(idx)
+        } else {
+            error!(
+                self,
+                "Cannot get audio input port for uninitialized FX chain"
+            );
+            None
+        }
+    }
+
+    pub fn get_audio_output_port(
+        self: Pin<&mut Self>,
+        idx: u32,
+    ) -> Option<shoop_engine::app_backend::AudioPort> {
+        if let Some(backend_chain) = self.backend_chain_wrapper.as_ref() {
+            backend_chain.get_audio_output_port(idx)
+        } else {
+            error!(
+                self,
+                "Cannot get audio output port for uninitialized FX chain"
+            );
+            None
+        }
+    }
+
+    pub fn push_ui_visible(mut self: Pin<&mut FXChainGui>, ui_visible: bool) {
+        self.as_mut().maybe_initialize_backend();
+        if let Some(chain) = self.backend_chain_wrapper.as_ref() {
+            chain.set_visible(ui_visible);
+        } else {
+            debug!(self, "ui visible (deferred) -> {ui_visible}");
+            self.as_mut().rust_mut().prev_state.visible = if ui_visible { 1 } else { 0 };
+        }
+    }
+
+    pub fn push_active(mut self: Pin<&mut FXChainGui>, active: bool) {
+        self.as_mut().maybe_initialize_backend();
+        if let Some(chain) = self.backend_chain_wrapper.as_ref() {
+            chain.set_active(active);
+        } else {
+            debug!(self, "active (deferred) -> {active}");
+            self.as_mut().rust_mut().prev_state.active = if active { 1 } else { 0 };
+        }
+    }
+
+    pub fn get_ui_visible(self: Pin<&mut FXChainGui>) -> bool {
+        self.prev_state.visible != 0
+    }
+
+    pub fn get_ready(self: Pin<&mut FXChainGui>) -> bool {
+        self.prev_state.ready != 0
+    }
+
+    pub fn get_active(self: Pin<&mut FXChainGui>) -> bool {
+        self.prev_state.active != 0
+    }
+
+    pub fn get_chain_type(self: Pin<&mut FXChainGui>) -> i32 {
+        self.chain_type.unwrap_or(FXChainType::CarlaRack) as i32
+    }
+
+    pub fn get_title(self: Pin<&mut FXChainGui>) -> QString {
+        QString::from(self.title.as_ref().unwrap_or(&"FX Chain".to_string()))
+    }
+
+    pub fn set_initialized(mut self: Pin<&mut FXChainGui>, initialized: bool) {
+        let mut rust_mut = self.as_mut().rust_mut();
+        if rust_mut.initialized != initialized {
+            rust_mut.initialized = initialized;
+            unsafe {
+                self.as_mut().initialized_changed(initialized);
             }
-        }() {
-            Ok(obj) => {
-                return obj;
-            }
-            Err(e) => {
-                error!(self, "Could not get backend object: {e}");
-                return QVariant::default();
-            }
-        }
-    }
-
-    pub fn push_active(mut self: Pin<&mut Self>, active: bool) {
-        unsafe {
-            self.as_mut().backend_push_active(active);
-        }
-    }
-
-    pub fn push_ui_visible(mut self: Pin<&mut Self>, visible: bool) {
-        unsafe {
-            self.as_mut().backend_push_ui_visible(visible);
         }
     }
 }
 
 pub fn register_qml_type(module_name: &str, type_name: &str) {
-    let mut mdl = String::from(module_name);
-    let mut tp = String::from(type_name);
+    let mut module_name = String::from(module_name);
+    let mut type_name = String::from(type_name);
     unsafe {
-        register_qml_type_fx_chain_gui(std::ptr::null_mut(), &mut mdl, 1, 0, &mut tp);
+        register_qml_type_fx_chain_gui(
+            std::ptr::null_mut(),
+            &mut module_name,
+            1,
+            0,
+            &mut type_name,
+        );
     }
 }

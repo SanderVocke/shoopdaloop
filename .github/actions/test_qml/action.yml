@@ -3,12 +3,22 @@ description: Integration tests at the QML level
 
 inputs:
   tee_all_output_to:
-    type: string
     default: /dev/null
   macos_rpath_patch:
-    type: boolean
     required: false
     default: false
+  capture_traces:
+    description: Whether to capture one Tracy trace per QML test file
+    required: false
+    default: false
+  tracy_capture_tool:
+    description: Absolute path to tracy-capture
+    required: false
+    default: ''
+  tracy_capture_output_dir:
+    description: Directory in which QML Tracy captures are written
+    required: false
+    default: traces/qml
 
 runs:
   using: "composite"
@@ -23,10 +33,27 @@ runs:
   - name: QML test
     if: always()
     shell: wrap-shell {0}
-    run: >
-      QT_ASSUME_STDERR_HAS_CONSOLE=1
-      ${{ env.RUN_CMD_PREFIX }} ./scripts/run_with_timeout.sh 1200 ${{ env.COMMAND_SHOOPDALOOP }} --self-test --junit-xml ${{ env.RESULTS_XML }}
-      2>&1 | tee ${{ inputs.tee_all_output_to }} | grep -v "QOVERAGERESULT"
+    run: |
+      capture_args=()
+      if [[ "${{ inputs.capture_traces }}" == "true" ]]; then
+        if [[ ! -x "${{ inputs.tracy_capture_tool }}" ]]; then
+          echo "tracy-capture is missing or not executable: ${{ inputs.tracy_capture_tool }}" >&2
+          exit 1
+        fi
+        mkdir -p "${{ inputs.tracy_capture_output_dir }}"
+        capture_args+=(
+          --tracing
+          --tracing-capture
+          --tracing-capture-tool "${{ inputs.tracy_capture_tool }}"
+          --tracing-capture-output-dir "${{ inputs.tracy_capture_output_dir }}"
+        )
+      fi
+
+      QT_ASSUME_STDERR_HAS_CONSOLE=1 \
+        ${{ env.RUN_CMD_PREFIX }} ./scripts/run_with_timeout.sh 1200 \
+        ${{ env.COMMAND_SHOOPDALOOP }} --self-test \
+        --junit-xml "${{ env.RESULTS_XML }}" "${capture_args[@]}" \
+        2>&1 | tee "${{ inputs.tee_all_output_to }}" | grep -v "QOVERAGERESULT"
 
   - name: Report results filename
     shell: wrap-shell {0}

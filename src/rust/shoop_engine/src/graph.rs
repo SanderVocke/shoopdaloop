@@ -72,6 +72,11 @@ impl UnionFind {
 /// ordering constraint between them.
 ///
 /// Ties within a dependency layer break on the group's lowest node name, which
+#[tracing::instrument(
+    name = "engine.graph.processing_order",
+    skip_all,
+    fields(nodes = nodes.len())
+)]
 pub fn processing_order(nodes: &[NodeSpec]) -> Result<Vec<Vec<NodeIdx>>, GraphError> {
     let n = nodes.len();
     let check = |i: NodeIdx| {

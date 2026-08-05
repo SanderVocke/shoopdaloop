@@ -146,6 +146,12 @@ ShoopTestFile {
                     let chans = lut.get_audio_output_channels()
                     let loop1 = chans[0].get_data()
                     let loop2 = chans[1].get_data()
+                    let busy_audio_filename = ShoopRustFileIO.generate_temporary_filename() + '.wav'
+                    verify_true(!ShoopRustFileIO.save_channels_to_soundfile(
+                                     busy_audio_filename,
+                                     session.backend.sample_rate,
+                                     chans))
+                    verify_true(!ShoopRustFileIO.exists(busy_audio_filename))
 
                     verify_eq(out1, [0, 0, 0, 0])
                     verify_eq(out2, [0, 0, 0, 0])

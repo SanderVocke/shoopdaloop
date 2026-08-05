@@ -20,6 +20,7 @@ indexmap = { workspace = true }
 log = { workspace = true }
 ctor = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
+tracing = { workspace = true }
 
 # Only the in-process dependency walkers need this, and only Windows and macOS
 # use them -- Linux keeps its lddtree-based scanner. Target-gating keeps the

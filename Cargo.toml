@@ -15,7 +15,6 @@ bindgen = "0.70"
 log = "0.4"
 colored = "2.1"
 humantime = "2.1"
-fern = { version = "0.6", features = ["colored"] }
 lazy_static = "1.5"
 ctor = "0.2"
 toml = "0.8"
@@ -73,6 +72,7 @@ libc = "0.2"
 winapi = "0.3"
 assert2 = "0.3"
 assert_no_alloc = "1.1"
+arc-swap = "1.7"
 rtrb = "0.3"
 jack = "0.13"
 # Pinned to what rodio (used by the frontend) already brings in: cpal declares
@@ -87,6 +87,12 @@ lv2_raw = "0.2"
 # plain sample planes, which buys nothing here.
 rubato = "0.16"
 thiserror = "2.0"
+tracing = "0.1"
+tracing-log = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-tracy = { version = "0.11", features = ["ondemand"] }
+tracy-client = { version = "0.18.4", features = ["ondemand", "delayed-init", "timer-fallback"] }
+shoop_tracing = { path = "src/rust/shoop_tracing" }
 
 # cxx-qt =  { path = "C:/sdev/cxx-qt/crates/cxx-qt" }
 # qt-build-utils = { path = "C:/sdev/cxx-qt/crates/qt-build-utils" }

@@ -16,6 +16,7 @@ pub mod composite_plan;
 pub mod composite_runtime;
 pub mod composite_semantics;
 pub mod composite_timeline;
+pub mod content_snapshot;
 #[cfg(feature = "cpal")]
 pub mod cpal_mock;
 pub mod decoupled_midi_port;
@@ -49,6 +50,7 @@ pub mod multichannel_audio;
 pub mod port;
 pub mod profiling;
 pub mod realtime_alloc_guard;
+pub mod realtime_lock_guard;
 pub mod resample;
 pub mod session;
 pub mod state;
@@ -91,6 +93,11 @@ pub use composite_timeline::{
     CompositeTimelineFaultRecord, CompositeTimelineLimits, CompositeTimelineNode,
     CompositeTimelineNodeState, MAX_COMPOSITE_CONTROLS,
 };
+pub use content_snapshot::{
+    AudioContentSnapshot, AudioSnapshotMetadata, ContentMutation, ContentRevision,
+    CurrentDataError, MidiContentSnapshot, MidiSnapshotMetadata, SnapshotCurrentness, SnapshotRead,
+    StaleReason,
+};
 pub use decoupled_midi_port::DecoupledMidiPort;
 pub use driver::{
     cpal_host_names, cpal_input_device_names, cpal_input_device_names_for_host,
@@ -112,6 +119,8 @@ pub use graph_build::{ChannelDesc, GraphDesc, LoopDesc, PortDesc};
 pub use internal_audio_port::InternalAudioPort;
 pub use loop_mode::LoopMode;
 pub use midi_buffering_input_port::MidiBufferingInputPort;
+#[cfg(feature = "app_backend")]
+pub use midi_channel::PreparedMidiChannelData;
 pub use midi_channel::{MidiChannel, MidiChannelError};
 pub use midi_event::MidiEvent;
 pub use midi_port::MidiPort;

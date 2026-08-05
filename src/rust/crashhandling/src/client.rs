@@ -22,10 +22,8 @@ static ATEXIT_REGISTERED: AtomicBool = AtomicBool::new(false);
 extern "C" fn reap_server_atexit() {
     let pid = SERVER_PID.load(Ordering::SeqCst);
     if pid <= 0 {
-        debug!("atexit: no server child to reap");
         return;
     }
-    debug!("atexit: cleaning up server child pid={pid}");
 
     // Send SIGKILL first to ensure the server terminates promptly.
     // It may have already exited (clients disconnected), but kill()
@@ -35,16 +33,14 @@ extern "C" fn reap_server_atexit() {
     }
 
     // Reap with retries. The server should exit very quickly after SIGKILL.
-    for attempt in 0..50 {
+    for _attempt in 0..50 {
         match unsafe { libc::waitpid(pid, std::ptr::null_mut(), libc::WNOHANG) } {
             r if r == pid => {
-                debug!("atexit: reaped server child pid={pid} (attempt {attempt})");
                 SERVER_PID.store(-1, Ordering::SeqCst);
                 return;
             }
             -1 => {
                 // waitpid failed — child may have already been reaped by the thread's try_wait()
-                debug!("atexit: waitpid failed for pid={pid} (already reaped or error)");
                 SERVER_PID.store(-1, Ordering::SeqCst);
                 return;
             }
@@ -60,7 +56,6 @@ extern "C" fn reap_server_atexit() {
             }
         }
     }
-    debug!("atexit: failed to reap server child pid={pid} after 1s");
 }
 
 pub struct CrashHandlerHandle {
@@ -85,8 +80,11 @@ pub fn crashhandling_client(
     let (sender, receiver) = mpsc::channel::<CrashHandlingMessage>();
     let start_server_arg = start_server_arg.to_string();
 
-    let handle = thread::spawn(move || {
-        #[cfg(unix)]
+    let handle = thread::Builder::new()
+        .name("crash-client".to_string())
+        .spawn(move || {
+            let _span = tracing::info_span!("worker.crash_client").entered();
+            #[cfg(unix)]
         debug!(
             "Client thread started: pid={}, ppid={}",
             std::process::id(),
@@ -155,7 +153,7 @@ pub fn crashhandling_client(
                     }
                 }
                 Err(e) => {
-                    debug!("client: client::with_name failed: {:?}", e);
+                    warn!("client: client::with_name failed: {:?}", e);
                 }
             }
 
@@ -668,8 +666,9 @@ pub fn crashhandling_client(
         } else {
             debug!("No server child handle (external server), nothing to reap.");
         }
-        debug!("Client thread done.");
-    });
+            debug!("Client thread done.");
+        })
+        .expect("spawn crash handling client thread");
 
     CrashHandlerHandle {
         sender: sender,

@@ -4,7 +4,7 @@ pub use crate::cxx_qt_shoop::qobj_application_bridge::Application;
 use crate::cxx_qt_shoop::qobj_application_bridge::ApplicationStartupSettings;
 use crate::cxx_qt_shoop::qobj_qmlengine::register_qml_engine;
 use crate::cxx_qt_shoop::qobj_qmlengine_bridge::QmlEngine;
-use crate::engine_update_thread;
+use crate::frontend_refresh;
 use anyhow::anyhow;
 use crashhandling::set_crash_json_tag;
 use cxx::UniquePtr;
@@ -17,6 +17,7 @@ use cxx_qt_lib_shoop::{connection_types, qobject};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::time::{Duration, Instant};
+use tracing::debug_span;
 
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.Application");
@@ -49,6 +50,7 @@ impl Application {
 
     pub fn reload_qml(mut self: Pin<&mut Application>, qml: QString) {
         let qml: PathBuf = PathBuf::from(qml.to_string());
+        let _span = debug_span!("frontend.qml.reload").entered();
         self.as_mut().unload_qml();
         self.as_mut().wait(50);
         match self.as_mut().load_qml(&qml) {
@@ -60,6 +62,7 @@ impl Application {
     }
 
     pub fn unload_qml(mut self: Pin<&mut Application>) {
+        let _span = debug_span!("frontend.qml.unload").entered();
         debug!("Unloading QML.");
         let self_mut = self.as_mut();
         let mut rust_mut = self_mut.rust_mut();
@@ -78,6 +81,7 @@ impl Application {
     }
 
     pub fn load_qml(mut self: Pin<&mut Application>, qml: &Path) -> Result<(), anyhow::Error> {
+        let _span = debug_span!("frontend.qml.load").entered();
         debug!("Load qml: {qml:?}");
         let qml_engine: *mut QmlEngine;
 
@@ -152,6 +156,7 @@ impl Application {
     where
         QmlEngineCreatedCallback: FnMut(Pin<&mut QmlEngine>) + 'static,
     {
+        let _span = debug_span!("frontend.application.initialize").entered();
         {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.config = config.clone();
@@ -178,18 +183,16 @@ impl Application {
         // Initialize metatypes, oncecells, etc.
         crate::init::init(&config);
 
-        // Initialize shoop engine update thread
+        // Keep the existing setting compatible while applying it to GUI refresh fallback.
         unsafe {
             let self_ref = self.as_ref();
             let rust = self_ref.rust();
-            let update_thread = engine_update_thread::get_engine_update_thread();
-            let update_thread = update_thread.mut_qobject_ptr();
             qobject::qobject_set_property_int(
-                update_thread,
-                "backup_timer_interval_ms",
+                frontend_refresh::qobject_ptr(),
+                "fallback_interval_ms",
                 &(rust.settings.backend_backup_refresh_interval_ms as i32),
             )
-            .map_err(|e| anyhow!("Unable to set timer interval property: {e}"))?;
+            .map_err(|e| anyhow!("Unable to set frontend refresh interval: {e}"))?;
         }
 
         if main_qml.is_some() {

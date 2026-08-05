@@ -118,13 +118,22 @@ done
 echo "---------------------------------------"
 echo "Generating LLVM lcov report"
 echo "---------------------------------------"
+report_path="$report_dir/$report_name.info"
+export_status=0
 "$llvm_cov" export \
     -instr-profile=coverage.profdata \
     -format=lcov \
     "${object_args[@]}" \
-    > "$report_dir/$report_name.info"
+    > "$report_path" || export_status=$?
 
-if [[ ! -s "$report_dir/$report_name.info" ]]; then
-    echo "ERROR: generated report $report_dir/$report_name.info is empty" >&2
+# llvm-cov can return non-zero after successfully exporting the available data when this
+# multi-object set includes instrumented binaries that the current one-process profile did not
+# execute. Accept only a structurally complete, non-empty LCOV report in that case; all empty or
+# malformed output remains fatal.
+if [[ ! -s "$report_path" ]] || ! grep -q '^SF:' "$report_path" || ! grep -q '^end_of_record$' "$report_path"; then
+    echo "ERROR: generated report $report_path is empty or malformed (llvm-cov status $export_status)" >&2
     exit 1
+fi
+if (( export_status != 0 )); then
+    echo "WARNING: llvm-cov returned $export_status after producing a complete report; continuing" >&2
 fi

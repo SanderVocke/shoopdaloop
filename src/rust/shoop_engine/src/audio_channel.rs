@@ -10,8 +10,13 @@
 
 use crate::channel_mode::{channel_process_params, ChannelMode, ProcessFlags};
 use crate::chunked_samples::ChunkedSamples;
+use crate::content_snapshot::AudioProcessSnapshotWriter;
 use crate::loop_mode::LoopMode;
 use crate::state_mirror::AudioChannelStateMirror;
+
+/// At most two copy commands (record and playback) per session sub-block.
+/// The session processes no more than 16 sub-blocks in one callback.
+const COPY_COMMAND_CAPACITY: usize = 32;
 
 use std::sync::Arc;
 use thiserror::Error;
@@ -45,6 +50,18 @@ enum CopyCmd {
         len: usize,
         gain: f32,
     },
+}
+
+fn snapshot_mutation(flags: ProcessFlags) -> Option<crate::content_snapshot::ContentMutation> {
+    if flags.contains(ProcessFlags::REPLACE) {
+        Some(crate::content_snapshot::ContentMutation::Replacing)
+    } else if flags.contains(ProcessFlags::RECORD) {
+        Some(crate::content_snapshot::ContentMutation::Recording)
+    } else if flags.contains(ProcessFlags::PRE_RECORD) {
+        Some(crate::content_snapshot::ContentMutation::PreRecording)
+    } else {
+        None
+    }
 }
 
 /// Tracks how much of a port buffer this cycle has been consumed.
@@ -95,6 +112,11 @@ impl PreparedAudioChannelData {
         }
     }
 
+    #[cfg(feature = "app_backend")]
+    pub(crate) fn contiguous_copy(&self) -> Vec<f32> {
+        self.buffers.contiguous_copy(self.length)
+    }
+
     pub(crate) fn copy_to_preallocated(&self, destination: &mut Vec<f32>) {
         debug_assert!(destination.capacity() >= self.length);
         destination.resize(self.length, 0.0);
@@ -131,6 +153,8 @@ pub struct AudioChannel {
     recording: Option<CycleBuf>,
     queue: Vec<CopyCmd>,
     state: Arc<AudioChannelStateMirror>,
+    content_snapshots: Option<AudioProcessSnapshotWriter>,
+    publish_snapshot_updates: bool,
 }
 
 impl AudioChannel {
@@ -147,6 +171,15 @@ impl AudioChannel {
         mode: ChannelMode,
         state: Arc<AudioChannelStateMirror>,
     ) -> Self {
+        Self::with_chunk_size_state_and_snapshots(chunk_size, mode, state, None)
+    }
+
+    pub fn with_chunk_size_state_and_snapshots(
+        chunk_size: usize,
+        mode: ChannelMode,
+        state: Arc<AudioChannelStateMirror>,
+        content_snapshots: Option<AudioProcessSnapshotWriter>,
+    ) -> Self {
         let channel = Self {
             buffers: ChunkedSamples::with_chunk_size(chunk_size),
             data_length: 0,
@@ -162,8 +195,10 @@ impl AudioChannel {
             prev_process_flags: ProcessFlags::NONE,
             playback: None,
             recording: None,
-            queue: Vec::new(),
+            queue: Vec::with_capacity(COPY_COMMAND_CAPACITY),
             state,
+            content_snapshots,
+            publish_snapshot_updates: true,
         };
         channel.publish_state();
         channel
@@ -181,10 +216,29 @@ impl AudioChannel {
         );
     }
 
-    fn publish_all_data(&self) {
-        if self.state.complex_data_enabled() {
-            self.state
-                .replace_data(self.buffers.contiguous_copy(self.data_length));
+    fn publish_all_data(&mut self) {
+        if let Some(snapshots) = self.content_snapshots.as_mut() {
+            snapshots.begin_working_generation();
+            snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Loading);
+            let mut offset = 0;
+            while offset < self.data_length {
+                let source = self
+                    .buffers
+                    .chunk_slice(offset)
+                    .expect("channel data is addressable");
+                let count = source.len().min(self.data_length - offset);
+                snapshots.publish_range(
+                    offset,
+                    &source[..count],
+                    self.data_length,
+                    offset + count == self.data_length,
+                );
+                offset += count;
+            }
+            if self.data_length == 0 {
+                snapshots.publish_range(0, &[], 0, true);
+            }
+            snapshots.finish_mutation(false);
         }
     }
 
@@ -198,7 +252,12 @@ impl AudioChannel {
     }
     pub fn set_length(&mut self, length: usize) {
         self.data_length = length;
-        self.publish_all_data();
+        if let Some(snapshots) = self.content_snapshots.as_mut() {
+            snapshots.begin_working_generation();
+            snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Loading);
+            snapshots.publish_range(0, &[], length, true);
+            snapshots.finish_mutation(false);
+        }
         self.data_changed();
     }
     pub fn mode(&self) -> ChannelMode {
@@ -260,8 +319,11 @@ impl AudioChannel {
         self.buffers.set_contents(samples);
         self.data_length = samples.len();
         self.start_offset = 0;
-        if self.state.complex_data_enabled() {
-            self.state.replace_data(samples.to_vec());
+        if let Some(snapshots) = self.content_snapshots.as_mut() {
+            snapshots.begin_working_generation();
+            snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Loading);
+            snapshots.publish_range(0, samples, samples.len(), true);
+            snapshots.finish_mutation(false);
         }
         self.data_changed();
     }
@@ -303,6 +365,21 @@ impl AudioChannel {
         std::mem::swap(&mut self.buffers, &mut prepared.buffers);
         std::mem::swap(&mut self.data_length, &mut prepared.length);
         self.start_offset = 0;
+        self.publish_all_data();
+        self.data_changed();
+    }
+
+    pub(crate) fn commit_prepared_data_and_snapshot(
+        &mut self,
+        prepared: &mut PreparedAudioChannelData,
+        snapshot: crate::content_snapshot::PreparedAudioSnapshot,
+    ) {
+        std::mem::swap(&mut self.buffers, &mut prepared.buffers);
+        std::mem::swap(&mut self.data_length, &mut prepared.length);
+        self.start_offset = 0;
+        if let Some(snapshots) = self.content_snapshots.as_mut() {
+            snapshots.install_prepared(snapshot);
+        }
         self.data_changed();
     }
 
@@ -314,7 +391,12 @@ impl AudioChannel {
         self.buffers.ensure_available(length);
         self.data_length = length;
         self.start_offset = 0;
-        self.publish_all_data();
+        if let Some(snapshots) = self.content_snapshots.as_mut() {
+            snapshots.begin_working_generation();
+            snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Clearing);
+            snapshots.publish_range(0, &[], length, true);
+            snapshots.finish_mutation(false);
+        }
         self.data_changed();
     }
 
@@ -326,8 +408,11 @@ impl AudioChannel {
         self.buffers.fill(length, 0.0);
         self.data_length = length;
         self.start_offset = 0;
-        if self.state.complex_data_enabled() {
-            self.state.replace_data(vec![0.0; length]);
+        if let Some(snapshots) = self.content_snapshots.as_mut() {
+            snapshots.begin_working_generation();
+            snapshots.begin_mutation(crate::content_snapshot::ContentMutation::Clearing);
+            snapshots.publish_silence(length);
+            snapshots.finish_mutation(false);
         }
         self.data_changed();
     }
@@ -434,16 +519,47 @@ impl AudioChannel {
             flags = ProcessFlags(flags.0 & !ProcessFlags::PLAYBACK.0);
         }
 
+        let previous_mutation = snapshot_mutation(self.prev_process_flags);
+        let current_mutation = snapshot_mutation(flags);
+        if previous_mutation != current_mutation {
+            if let Some(previous) = previous_mutation {
+                if let Some(snapshots) = self.content_snapshots.as_mut() {
+                    if previous == crate::content_snapshot::ContentMutation::PreRecording {
+                        snapshots.cancel_mutation();
+                    } else {
+                        snapshots.finish_mutation(
+                            previous == crate::content_snapshot::ContentMutation::Replacing,
+                        );
+                    }
+                }
+            }
+            if let Some(mutation) = current_mutation {
+                if let Some(snapshots) = self.content_snapshots.as_mut() {
+                    snapshots.begin_working_generation();
+                    snapshots.begin_mutation(mutation);
+                }
+            }
+        }
+        self.publish_snapshot_updates =
+            current_mutation != Some(crate::content_snapshot::ContentMutation::Replacing);
+
         if !flags.contains(ProcessFlags::PRE_RECORD)
             && self.prev_process_flags.contains(ProcessFlags::PRE_RECORD)
         {
             if flags.contains(ProcessFlags::RECORD) {
                 // Transitioning pre-record -> record: adopt what was buffered,
                 // and offset playback so the lead-in sits before sample 0.
-                self.buffers = self.prerecord_buffers.clone();
+                // Adopt the pre-recorded chunks by swapping ownership. Cloning here used
+                // to allocate in the callback exactly when recording began; the displaced
+                // main storage becomes the reusable prerecord buffer below.
+                std::mem::swap(&mut self.buffers, &mut self.prerecord_buffers);
                 self.data_length = self.prerecord_data_length;
                 self.start_offset = self.prerecord_data_length as i32;
-                self.publish_all_data();
+                if let Some(snapshots) = self.content_snapshots.as_mut() {
+                    snapshots.adopt_prerecord(self.data_length);
+                }
+            } else if let Some(snapshots) = self.content_snapshots.as_mut() {
+                snapshots.clear_prerecord();
             }
             self.prerecord_buffers.reset();
             self.prerecord_data_length = 0;
@@ -655,14 +771,21 @@ impl AudioChannel {
                 CopyCmd::IntoMain { dst, src, len } => {
                     let source = &record_src[src..src + len];
                     copy_in(&mut self.buffers, dst, source);
-                    self.state.write_data(dst, source, self.data_length);
+                    if let Some(snapshots) = self.content_snapshots.as_mut() {
+                        snapshots.publish_range(
+                            dst,
+                            source,
+                            self.data_length,
+                            self.publish_snapshot_updates,
+                        );
+                    }
                 }
                 CopyCmd::IntoPreRecord { dst, src, len } => {
-                    copy_in(
-                        &mut self.prerecord_buffers,
-                        dst,
-                        &record_src[src..src + len],
-                    );
+                    let source = &record_src[src..src + len];
+                    copy_in(&mut self.prerecord_buffers, dst, source);
+                    if let Some(snapshots) = self.content_snapshots.as_mut() {
+                        snapshots.publish_prerecord_range(dst, source, self.prerecord_data_length);
+                    }
                 }
                 CopyCmd::OutOfMain {
                     src,
