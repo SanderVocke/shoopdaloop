@@ -736,7 +736,7 @@ while true; do
         if [[ $IS_WINDOWS -eq 1 ]] && [[ $ELAPSED_AT_EXIT -lt 10 ]] && [[ $CHILD_EXIT_CODE -ne 0 ]] && [[ $CHILD_EXIT_CODE -ne 124 ]]; then
             echo ""
             echo "[run_with_timeout] =========================================="
-            echo "[run_with_timeout] WINDOWS DLL LOAD FAILURE DETECTED"
+            echo "[run_with_timeout] POSSIBLE WINDOWS DLL LOAD FAILURE DETECTED"
             echo "[run_with_timeout] =========================================="
             echo "[run_with_timeout] Command exited after only ${ELAPSED_AT_EXIT}s with code ${CHILD_EXIT_CODE}"
             echo "[run_with_timeout] This typically indicates a missing DLL dependency."
@@ -762,9 +762,27 @@ while true; do
             echo "[run_with_timeout] 4. Verify the executable was built for the correct architecture"
             echo ""
             
-            # Try to identify the executable from COMMAND
+            # Try to identify the PE executable from COMMAND. Windows packages use
+            # a .bat launcher, which Dependencies.exe cannot inspect directly.
             EXE_PATH="${COMMAND[0]}"
-            if [[ -n "$EXE_PATH" ]] && command -v Dependencies.exe &>/dev/null; then
+            if [[ "${EXE_PATH,,}" == *.bat ]]; then
+                WRAPPER_PATH="$EXE_PATH"
+                WRAPPED_EXE=""
+                if [[ -f "$WRAPPER_PATH" ]]; then
+                    WRAPPED_EXE=$(grep -Eio '%~dp0[^"[:space:]]*\.exe' "$WRAPPER_PATH" | head -n 1 || true)
+                fi
+                if [[ -n "$WRAPPED_EXE" ]]; then
+                    WRAPPED_EXE="${WRAPPED_EXE#%~dp0}"
+                    WRAPPED_EXE="${WRAPPED_EXE//\\//}"
+                    EXE_PATH="$(dirname "$WRAPPER_PATH")/$WRAPPED_EXE"
+                else
+                    # ShoopDaLoop's launcher and real executable use this naming
+                    # convention. Keep it as a fallback if the wrapper cannot be read.
+                    EXE_PATH="${WRAPPER_PATH%.*}_exe.exe"
+                fi
+                echo "[run_with_timeout] Resolved batch launcher $WRAPPER_PATH to $EXE_PATH"
+            fi
+            if [[ -n "$EXE_PATH" ]] && [[ "${EXE_PATH,,}" == *.exe ]] && command -v Dependencies.exe &>/dev/null; then
                 echo "[run_with_timeout] Running Dependencies.exe on $EXE_PATH..."
                 Dependencies.exe -modules "$EXE_PATH" 2>&1 | head -30 || true
                 echo ""
