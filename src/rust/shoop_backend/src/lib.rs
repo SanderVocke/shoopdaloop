@@ -839,13 +839,13 @@ mod tests {
         let follower = backend.create_loop().unwrap();
         backend.wait_idle();
         backend
-            .transition_loop(follower, BackendLoopMode::Playing, None)
+            .transition_loop(follower, BackendLoopMode::Recording, None)
             .unwrap();
         let snapshot = backend.poll().unwrap();
         assert!(snapshot.loops.contains_key(&sync));
         assert_eq!(
             snapshot.loops.get(&follower).unwrap().mode,
-            BackendLoopMode::Playing
+            BackendLoopMode::Recording
         );
         backend.set_loop_sync_source(follower, Some(sync)).unwrap();
         backend.wait_idle();

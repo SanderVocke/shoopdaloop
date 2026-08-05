@@ -77,27 +77,44 @@ mod tests {
     #[test]
     fn dummy_native_workflow_creates_and_controls_tracks_and_loops() {
         let app = NativeApp::new().unwrap();
-        app.handle
-            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
-                name: "Native stereo".to_owned(),
-                audio_channels: 2,
-                midi: true,
-            }))
-            .unwrap();
+        let track_specs = [
+            ("Native stereo + MIDI", 2, true),
+            ("Native mono", 1, false),
+            ("Native MIDI", 0, true),
+            ("Native disabled", 0, false),
+            ("Native custom", 4, false),
+        ];
+        for (name, audio_channels, midi) in track_specs {
+            app.handle
+                .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                    name: name.to_owned(),
+                    audio_channels,
+                    midi,
+                }))
+                .unwrap();
+        }
         let started = Instant::now();
         let snapshot = loop {
             let snapshot = app.handle.snapshot();
-            if snapshot.tracks.len() == 2 {
+            if snapshot.tracks.len() == track_specs.len() + 1 {
                 break snapshot;
             }
             assert!(started.elapsed() < Duration::from_secs(3));
             thread::sleep(Duration::from_millis(5));
         };
-        let track = &snapshot.tracks[1];
-        assert_eq!(track.loops.len(), 8);
-        assert!(track.controls.output_stereo);
-        let track_id = track.id;
-        let loop_id = track.loops[0].id;
+        assert!(snapshot.tracks[1..]
+            .iter()
+            .all(|track| track.loops.len() == 8));
+        assert!(snapshot.tracks[1].controls.output_stereo);
+        assert!(snapshot.tracks[2].controls.has_output_audio);
+        assert!(!snapshot.tracks[2].controls.output_stereo);
+        assert!(snapshot.tracks[3].controls.has_output);
+        assert!(!snapshot.tracks[3].controls.has_output_audio);
+        assert!(!snapshot.tracks[4].controls.has_output);
+        assert!(snapshot.tracks[5].controls.has_output_audio);
+        assert!(!snapshot.tracks[5].controls.output_stereo);
+        let track_id = snapshot.tracks[1].id;
+        let loop_id = snapshot.tracks[1].loops[0].id;
         app.handle
             .dispatch(AppIntent::Track {
                 track_id,

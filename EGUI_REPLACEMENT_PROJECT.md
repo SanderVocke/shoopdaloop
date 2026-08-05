@@ -22,12 +22,12 @@ Milestone plans must reference both this document and the parity matrix, and mus
 |---|---|---|
 | Project architecture | Planned | The target crate boundaries and one-process application-actor approach are accepted. |
 | Feature-parity discovery | Partially explored | The tracks/loops milestone subset is explored and built; settings, persistence, connections, FX, scripting, MIDI control, and advanced editing remain largely unexplored for replacement purposes. |
-| First major milestone | In progress | Implementation and focused integration are complete through Stage 5; final whole-workspace/QML validation remains. |
+| First major milestone | Complete | The pure-egui tracks/loops vertical slice meets all acceptance criteria; full workspace, retained QML, wasm, dependency, native-workflow, and runtime-smoke gates pass. |
 | egui presentation | Usable | `shoop_egui` renders the native and backend-free preview applications through stable snapshot/intent contracts while the retained Qt prototype adapter still compiles. |
 | Framework-independent application API | Complete | `shoop_app_api` owns stable IDs, snapshots, capability state, and typed milestone intents without framework/backend dependencies. |
 | Rust business-logic application core | Usable | `shoop_app` owns the milestone's direct tracks/loops, topology mutation, control policies, details, snapshots, and observable errors. |
 | Native backend façade | Usable | `shoop_backend` provides fake and engine-backed dummy implementations for direct audio/MIDI topology, controls, data, polling, and status. |
-| Pure native egui executable | Usable | `shoopdaloop_native` and the isolated `shoop_egui_preview` build, pass focused tests, and launch under Xvfb. |
+| Pure native egui executable | Usable | `shoopdaloop_native` and the isolated `shoop_egui_preview` pass milestone workflows and launch at minimum/common Xvfb screen sizes. |
 | Qt/frontend removal | Not started | Removal is a final migration result, not part of the first milestone. |
 
 Use the status terms `Not started`, `Partially explored`, `Planned`, `In progress`, `Usable`, `Complete`, and `Blocked` consistently. Notes should identify the active milestone or the evidence needed for the next status change.

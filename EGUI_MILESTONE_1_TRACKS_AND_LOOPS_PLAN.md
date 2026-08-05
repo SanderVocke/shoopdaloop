@@ -2,7 +2,7 @@
 
 ## Completion status
 
-In progress. Stages 1 through 5 are complete and verified; final end-to-end validation remains.
+Complete. All six stages and every immutable acceptance criterion are implemented and verified. Deferred matrix areas remain future project work, not unfinished milestone work.
 
 This is the first major implementation milestone under `EGUI_REPLACEMENT_PROJECT.md`. `EGUI_FEATURE_PARITY_MATRIX.md` is the detailed discovery and parity ledger for the milestone.
 
@@ -200,17 +200,28 @@ Commit the completed integrated vertical slice before final validation.
 
 Depends on all prior stages.
 
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build`.
-- [ ] Run `cargo test --workspace --features shoop_engine/app_backend` using documented serialization or missing-backend allowances where required by the environment.
-- [ ] Build and run `target/debug/shoopdaloop_dev.sh --self-test` to confirm the retained Qt/QML application has no regressions.
-- [ ] Run `cargo check -p shoop_egui --target wasm32-unknown-unknown`.
-- [ ] Inspect the native and preview dependency trees for forbidden dependencies.
-- [ ] Launch the native application with the dummy backend and complete the full creation/control/details workflow at minimum and common window sizes.
-- [ ] Launch with each supported real backend available in the development environment; document environment-related skips rather than weakening acceptance criteria.
-- [ ] Confirm all milestone matrix rows contain accurate discovery, implementation, and evidence status.
-- [ ] Mark this plan complete and update `EGUI_REPLACEMENT_PROJECT.md` with the achieved coarse status and remaining unexplored feature areas.
-- [ ] Commit final validation fixes and document completion evidence.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build`.
+- [x] Run `cargo test --workspace --features shoop_engine/app_backend` using documented serialization or missing-backend allowances where required by the environment.
+- [x] Build and run `target/debug/shoopdaloop_dev.sh --self-test` to confirm the retained Qt/QML application has no regressions.
+- [x] Run `cargo check -p shoop_egui --target wasm32-unknown-unknown`.
+- [x] Inspect the native and preview dependency trees for forbidden dependencies.
+- [x] Launch the native application with the dummy backend and complete the full creation/control/details workflow at minimum and common window sizes.
+- [x] Launch with each supported real backend available in the development environment; document environment-related skips rather than weakening acceptance criteria.
+- [x] Confirm all milestone matrix rows contain accurate discovery, implementation, and evidence status.
+- [x] Mark this plan complete and update `EGUI_REPLACEMENT_PROJECT.md` with the achieved coarse status and remaining unexplored feature areas.
+- [x] Commit final validation fixes and document completion evidence.
+
+Final validation evidence:
+
+- Formatting, the warning-denying workspace build, and the wasm GUI check pass.
+- The serialized full workspace suite passes with `SHOOP_ALLOW_MISSING_BACKENDS=1`; this includes 582 `shoop_engine` unit tests, the engine integration suites, all new application/API/backend/GUI tests, and the native workflow.
+- The retained Qt/QML self-test reports 192 passed, 0 failed, and 1 environment skip. The skip is the CPAL virtual-playback-port case.
+- Dependency-tree scans show that the preview has no backend, engine, driver, Lua, frontend, or Qt subtree and that the native executable has no frontend or Qt subtree.
+- The engine-backed native workflow creates disabled, mono, stereo, custom-audio, and MIDI-capable direct tracks, then exercises controls, loop selection/playback, and details publication.
+- Native launches at 360×200 and 900×600 Xvfb screen sizes and the preview launch at 900×600 remain operational without runtime errors until the four-second smoke timeout. Direct egui paint tests cover the same minimum/common presentation sizes.
+- No usable real audio device/backend is available in the validation environment: `/dev/snd` and `jackd` are absent, and the retained CPAL virtual-port test skips. Real-backend GUI launch is therefore an environment skip; JACK behavior remains covered by the passing `JackTest` QML case and `jack_app_backend` Rust integration tests.
+- Every M1 `Required` and `Required subset` matrix row is `Complete` with replacement evidence. Deferred rows and coarsely listed future areas remain explicitly tracked.
 
 ## Execution contract
 

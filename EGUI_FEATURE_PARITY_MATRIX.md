@@ -64,8 +64,9 @@ Evidence referenced below consists of:
 - Presentation: `shoop_egui` action, applicability, dialog, waveform, inert-menu, and minimum/common-size paint tests.
 - Native integration: `shoopdaloop_native::tests::dummy_native_workflow_creates_and_controls_tracks_and_loops`.
 - Preview isolation: representative-shape test plus dependency-tree inspection showing only eframe, `shoop_app_api`, and `shoop_egui` as direct dependencies and no backend/engine/Qt/Lua subtree.
-- Runtime smoke: both `shoopdaloop_native` and `shoop_egui_preview` stayed operational until a four-second timeout under Xvfb with no runtime errors.
-- Compatibility gates completed during implementation: warning-free workspace builds, retained frontend compilation, and the `wasm32-unknown-unknown` GUI check. Final whole-workspace and QML regression results are recorded by Stage 6.
+- Runtime smoke: `shoopdaloop_native` stayed operational at 360×200 and 900×600 Xvfb screen sizes and `shoop_egui_preview` at 900×600 until a four-second timeout, with no runtime errors.
+- Final compatibility gates: formatting, warning-free workspace build, `wasm32-unknown-unknown` GUI check, serialized full-workspace tests, and retained Qt/QML self-tests all pass. The QML suite reports 192 passed, 0 failed, and one environment skip for unavailable CPAL virtual playback ports.
+- Real-backend environment note: no usable real audio device/backend was available (`/dev/snd` and `jackd` absent). Passing JACK engine/QML test backends provide regression evidence, while a real-device GUI launch remains an environment skip rather than an implementation deferral.
 
 ## First-milestone matrix
 
