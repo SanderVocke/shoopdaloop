@@ -128,12 +128,12 @@ SHOOP_ALLOW_MISSING_BACKENDS=1 QT_QPA_PLATFORM=offscreen \
 
 ### Stage 2 — Coherent monitoring defaults and session restoration
 
-- [ ] Make newly generated explicit wet-return and internal FX-output passthrough state agree with monitoring-off defaults.
-- [ ] Establish a deterministic load sequence in which all relevant ports are initialized before the effective track monitor state is applied.
-- [ ] Ensure a late port `push_all()` cannot overwrite the control’s effective routing state after fresh creation or reload.
-- [ ] Preserve monitoring-on and per-port gain/mute restoration.
-- [ ] Add focused initialization-order coverage if the fix relies on late registry/port availability.
-- [ ] Run fresh, monitoring-off, and monitoring-on persistence tests and existing session-save tests, then commit.
+- [x] Make newly generated explicit wet-return and internal FX-output passthrough state agree with monitoring-off defaults.
+- [x] Establish a deterministic load sequence in which all relevant ports are initialized before the effective track monitor state is applied. Decision: persisted descriptor state remains the port-initialization authority; generated dry inputs, wet returns, and FX outputs now encode the same monitoring-off value, and later monitor changes update them together.
+- [x] Ensure a late port `push_all()` cannot overwrite the control’s effective routing state after fresh creation or reload. Evidence: late descriptor application now reapplies the same coherent value; fresh/off/on backend assertions all pass.
+- [x] Preserve monitoring-on and per-port gain/mute restoration. Evidence: monitoring-on persistence and the six existing save/load cases pass.
+- [x] Add focused initialization-order coverage if the fix relies on late registry/port availability. Not needed: the fix removes the conflicting initial values rather than adding a timing dependency; existing fresh/load tests exercise late object creation, and Carla activation tests now assert FX-output passthrough state off→on→off.
+- [x] Run fresh, monitoring-off, and monitoring-on persistence tests and existing session-save tests, then commit. Evidence: 3/3 external persistence tests passed in `/tmp/drywet-fixes-stage2-persistence.log`, 6/6 existing save/load tests passed in `/tmp/drywet-fixes-stage2-existing-save.log`, and 3/3 Carla FX-output default/activation cases passed in `/tmp/drywet-fixes-stage2-fx-defaults.log`.
 
 Verification:
 

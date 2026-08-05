@@ -124,12 +124,15 @@ ShoopTestFile {
                 prepare_content(loop)
 
                 verify_eq(chain.active, false)
+                verify_eq(port(track, "fx_chain_audio_out_1").passthrough_muted, true)
                 track.control_widget.monitor = true
                 testcase.wait_updated(session.backend)
                 verify_eq(chain.active, true)
+                verify_eq(port(track, "fx_chain_audio_out_1").passthrough_muted, false)
                 track.control_widget.monitor = false
                 testcase.wait_updated(session.backend)
                 verify_eq(chain.active, false)
+                verify_eq(port(track, "fx_chain_audio_out_1").passthrough_muted, true)
 
                 transition(loop, ShoopRustConstants.LoopMode.Recording)
                 verify_eq(chain.active, true)

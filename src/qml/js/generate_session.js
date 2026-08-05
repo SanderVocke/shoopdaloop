@@ -190,7 +190,7 @@ function generate_default_track(
                 ['internal'], // output
                 1.0,
                 false,
-                false,
+                true,
                 [id + external_port_id_part("audio", "out", "wet",  i)], // internal connections
                 [],
                 default_ringbuffer_size // always on ringbuffer on, because this port will be recorded by a channel
@@ -275,7 +275,7 @@ function generate_default_track(
                 ['internal'], // output
                 1.0,
                 false,
-                false,
+                true,
                 [out_id], // internal connections
                 [],
                 default_ringbuffer_size // always on ringbuffer on, because this port will be recorded by a channel
