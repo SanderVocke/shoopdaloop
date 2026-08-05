@@ -6,7 +6,7 @@ Implemented and validated. The work was delivered in four staged implementation 
 
 - `cargo fmt --all -- --check`
 - `RUSTFLAGS="-D warnings" cargo build`
-- Eight focused `shoop_egui` tests, including minimum/common-size application painting and bounded million-sample waveform binning
+- Twelve focused `shoop_egui` tests, including direct action generation, applicability, inert-menu, minimum/common-size application painting, and bounded million-sample waveform coverage
 - `cargo check -p shoop_egui --target wasm32-unknown-unknown`
 - Full serial workspace tests with unavailable hardware backends allowed to skip
 - Full QML suite: 193 testcases, 192 passed, 0 failed, 1 supported CPAL hardware skip

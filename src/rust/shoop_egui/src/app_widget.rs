@@ -14,7 +14,7 @@ impl Default for AppWidget {
     fn default() -> Self {
         Self {
             tracks: TracksWidget::default(),
-            global_controls: GlobalControls,
+            global_controls: GlobalControls::default(),
             details: DetailsPane::default(),
             details_open: true,
             logo: None,
