@@ -25,8 +25,8 @@ Milestone plans must reference both this document and the parity matrix, and mus
 | First major milestone | In progress | Stage 1 established the framework-independent API and stable-ID intent path. |
 | egui presentation | Usable | `shoop_egui` contains reusable prototype widgets, but the working application state and actions are still supplied through Qt/QML adapters. |
 | Framework-independent application API | Complete | `shoop_app_api` owns stable IDs, snapshots, capability state, and typed milestone intents without framework/backend dependencies. |
-| Rust business-logic application core | Not started | Application behavior is still distributed across QML and frontend QObject code. |
-| Native backend façade | Partially explored | `shoop_engine::app_backend` is reusable Rust code, but no application-facing crate boundary independent of the old frontend has been established. |
+| Rust business-logic application core | In progress | `shoop_app` owns a bounded actor, stable-ID sync-track model, snapshots, selection/target/global state, and observable errors; direct track topology is next. |
+| Native backend façade | Usable | `shoop_backend` provides fake and engine-backed dummy implementations for loop lifecycle, transitions, polling, and status; port/channel topology is next. |
 | Pure native egui executable | Not started | The egui prototype is hosted by the Qt application. |
 | Qt/frontend removal | Not started | Removal is a final migration result, not part of the first milestone. |
 

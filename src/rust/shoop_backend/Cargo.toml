@@ -1,0 +1,10 @@
+[package]
+name = "shoop_backend"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+shoop_engine = { path = "../shoop_engine", features = ["app_backend"] }
+
+[lints]
+workspace = true

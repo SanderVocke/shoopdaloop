@@ -2,7 +2,7 @@
 
 ## Completion status
 
-In progress. Stage 1 is complete and verified.
+In progress. Stages 1 and 2 are complete and verified.
 
 This is the first major implementation milestone under `EGUI_REPLACEMENT_PROJECT.md`. `EGUI_FEATURE_PARITY_MATRIX.md` is the detailed discovery and parity ledger for the milestone.
 
@@ -105,15 +105,15 @@ Commit the application contract and stable-identity milestone before proceeding.
 
 Depends on Stage 1.
 
-- [ ] Create the non-Qt backend crate/boundary around the reusable Rust application-backend API without moving Qt compatibility types into it.
-- [ ] Expose only the operations and observations needed for driver/session startup, direct track/loop construction, controls, state polling, and waveform retrieval.
-- [ ] Provide a fake backend for deterministic application tests and an engine-backed implementation using the dummy driver.
-- [ ] Create the application crate and single-owner actor/handle model with bounded command delivery, explicit busy/disconnected errors, and immutable snapshot publication.
-- [ ] Model the sync track, ordered main tracks, ordered loop slots, stable IDs, selection, target, and global control state independently of widgets.
-- [ ] Implement initialization of a minimal session with one distinct sync track/loop and no required main tracks.
-- [ ] Convert backend driver/loop/port/channel state into structural and live snapshot sections at bounded cadence.
-- [ ] Add application/backend contract tests proving that UI or snapshot readers cannot block the real-time callback and stale entities cannot be mistaken for replacement entities.
-- [ ] Update the project status and matrix with newly discovered backend behavior and verification evidence.
+- [x] Create the non-Qt backend crate/boundary around the reusable Rust application-backend API without moving Qt compatibility types into it.
+- [x] Expose the Stage 2 operations and observations needed for driver/session startup, loop construction/control, state polling, and status; direct port/channel and waveform operations are added with their Stage 3 topology.
+- [x] Provide a fake backend for deterministic application tests and an engine-backed implementation using the dummy driver.
+- [x] Create the application crate and single-owner actor/handle model with bounded command delivery, explicit busy/disconnected errors, and immutable snapshot publication.
+- [x] Model the sync track, ordered main tracks, ordered loop slots, stable IDs, selection, target, and global control state independently of widgets.
+- [x] Implement initialization of a minimal session with one distinct sync track/loop and no required main tracks.
+- [x] Convert available backend driver/loop state into structural and live snapshot sections at bounded cadence; port/channel state is verified with Stage 3 topology.
+- [x] Add application/backend contract tests demonstrating snapshot-reader independence, observable stale-ID rejection, and identical fake/dummy basic backend behavior without exposing the real-time engine to readers.
+- [x] Update the project status and matrix with newly discovered backend behavior and verification evidence.
 
 Verification:
 
