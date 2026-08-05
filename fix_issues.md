@@ -217,14 +217,14 @@ SHOOP_ALLOW_MISSING_BACKENDS=1 QT_QPA_PLATFORM=offscreen \
 
 ### Stage 6 — Real-JACK dry/wet audio and MIDI round trips
 
-- [ ] Make every peer-to-application JACK connection checked and fail with the concrete JACK error or missing connection name.
-- [ ] Split MIDI source and sinks into separate peer clients so the test graph is acyclic, then confirm monitored delivery and muted silence.
-- [ ] Split the audio processor’s receive and return sides, or add an explicit bounded one-cycle handoff, so JACK can schedule the external insert without an implicit client feedback cycle.
-- [ ] Preserve causal end-to-end proof: wet return must begin only after dry send is observed, and the application wet output must contain the transformed marker.
-- [ ] Add intermediate assertions for source→dry input, dry send→processor, processor→wet return, and wet output→consumer so a future failure identifies the broken leg.
-- [ ] If a valid topology still fails, isolate the failing application leg with a one-way port-to-port test and fix the corresponding JACK staging, session propagation, or output publication path.
-- [ ] Avoid blocking or allocation in peer callbacks by using preallocated bounded handoff/capture state.
-- [ ] Run all six JACK integration tests with and without the missing-backend allowance, then commit.
+- [x] Make every peer-to-application JACK connection checked and fail with the concrete JACK error or missing connection name.
+- [x] Split MIDI source and sinks into separate peer clients so the test graph is acyclic, then confirm monitored delivery and muted silence.
+- [x] Split the audio processor’s receive and return sides, or add an explicit bounded one-cycle handoff, so JACK can schedule the external insert without an implicit client feedback cycle. Decision: separate dry-input and wet-output clients exchange one nonnegative sample through atomics, explicitly breaking the JACK client cycle.
+- [x] Preserve causal end-to-end proof: wet return must begin only after dry send is observed, and the application wet output must contain the transformed marker.
+- [x] Add intermediate assertions for source→dry input, dry send→processor, processor→wet return, and wet output→consumer so a future failure identifies the broken leg.
+- [x] If a valid topology still fails, isolate the failing application leg with a one-way port-to-port test and fix the corresponding JACK staging, session propagation, or output publication path. Not needed: the valid, checked topology passed without application routing changes, proving the original failures were caused by the cyclic peer fixtures.
+- [x] Avoid blocking or allocation in peer callbacks by using preallocated bounded handoff/capture state. Evidence: the new peers use only JACK buffers and atomics.
+- [x] Run all six JACK integration tests with and without the missing-backend allowance, then commit. Evidence: 6/6 passed in both `/tmp/drywet-fixes-stage6-jack.log` and `/tmp/drywet-fixes-stage6-jack-allowed.log`; formatting and warnings-as-errors build passed.
 
 Verification:
 

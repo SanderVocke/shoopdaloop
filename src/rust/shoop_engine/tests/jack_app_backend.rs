@@ -12,7 +12,7 @@
 
 #![cfg(all(feature = "jack", feature = "app_backend"))]
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -92,41 +92,78 @@ impl jack::ProcessHandler for AudioConsumer {
     }
 }
 
-struct ExternalAudioProcessor {
-    source: jack::Port<jack::AudioOut>,
-    dry_send: jack::Port<jack::AudioIn>,
-    wet_return: jack::Port<jack::AudioOut>,
-    wet_output: jack::Port<jack::AudioIn>,
-    captured: Arc<Mutex<Vec<f32>>>,
+struct ConstantAudioSource {
+    port: jack::Port<jack::AudioOut>,
 }
-impl jack::ProcessHandler for ExternalAudioProcessor {
+impl jack::ProcessHandler for ConstantAudioSource {
     fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
-        self.source.as_mut_slice(ps).fill(1.0);
-        let processed = self
-            .dry_send
-            .as_slice(ps)
-            .iter()
-            .map(|sample| sample * 2.0)
-            .collect::<Vec<_>>();
-        self.wet_return.as_mut_slice(ps).copy_from_slice(&processed);
-        self.captured
-            .lock()
-            .unwrap()
-            .extend_from_slice(self.wet_output.as_slice(ps));
+        self.port.as_mut_slice(ps).fill(1.0);
         jack::Control::Continue
     }
 }
 
-struct MidiFanoutPeer {
-    source: jack::Port<jack::MidiOut>,
-    monitored: jack::Port<jack::MidiIn>,
-    muted: jack::Port<jack::MidiIn>,
-    monitored_events: Arc<Mutex<Vec<Vec<u8>>>>,
-    muted_events: Arc<Mutex<Vec<Vec<u8>>>>,
+struct DryProcessorInput {
+    port: jack::Port<jack::AudioIn>,
+    sample_bits: Arc<AtomicU32>,
+    seen: Arc<AtomicBool>,
 }
-impl jack::ProcessHandler for MidiFanoutPeer {
+impl jack::ProcessHandler for DryProcessorInput {
     fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
-        let mut writer = self.source.writer(ps);
+        if let Some(sample) = self
+            .port
+            .as_slice(ps)
+            .iter()
+            .copied()
+            .find(|sample| *sample != 0.0)
+        {
+            self.sample_bits.store(sample.to_bits(), Ordering::Release);
+            self.seen.store(true, Ordering::Release);
+        }
+        jack::Control::Continue
+    }
+}
+
+struct WetProcessorOutput {
+    port: jack::Port<jack::AudioOut>,
+    sample_bits: Arc<AtomicU32>,
+    dry_seen: Arc<AtomicBool>,
+    produced: Arc<AtomicBool>,
+}
+impl jack::ProcessHandler for WetProcessorOutput {
+    fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        let sample = if self.dry_seen.load(Ordering::Acquire) {
+            f32::from_bits(self.sample_bits.load(Ordering::Acquire)) * 2.0
+        } else {
+            0.0
+        };
+        self.port.as_mut_slice(ps).fill(sample);
+        if sample != 0.0 {
+            self.produced.store(true, Ordering::Release);
+        }
+        jack::Control::Continue
+    }
+}
+
+struct AtomicAudioConsumer {
+    port: jack::Port<jack::AudioIn>,
+    max_bits: Arc<AtomicU32>,
+}
+impl jack::ProcessHandler for AtomicAudioConsumer {
+    fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        for sample in self.port.as_slice(ps).iter().copied() {
+            self.max_bits
+                .fetch_max(sample.max(0.0).to_bits(), Ordering::Relaxed);
+        }
+        jack::Control::Continue
+    }
+}
+
+struct MidiSource {
+    port: jack::Port<jack::MidiOut>,
+}
+impl jack::ProcessHandler for MidiSource {
+    fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        let mut writer = self.port.writer(ps);
         let _ = writer.write(&jack::RawMidi {
             time: 0,
             bytes: &[0x90, 72, 100],
@@ -135,16 +172,47 @@ impl jack::ProcessHandler for MidiFanoutPeer {
             time: 1.min(ps.n_frames().saturating_sub(1)),
             bytes: &[0x80, 72, 0],
         });
-        self.monitored_events
-            .lock()
-            .unwrap()
-            .extend(self.monitored.iter(ps).map(|event| event.bytes.to_vec()));
-        self.muted_events
-            .lock()
-            .unwrap()
-            .extend(self.muted.iter(ps).map(|event| event.bytes.to_vec()));
         jack::Control::Continue
     }
+}
+
+struct MidiSinks {
+    monitored: jack::Port<jack::MidiIn>,
+    muted: jack::Port<jack::MidiIn>,
+    monitored_note_on: Arc<AtomicBool>,
+    monitored_note_off: Arc<AtomicBool>,
+    muted_events: Arc<AtomicUsize>,
+}
+impl jack::ProcessHandler for MidiSinks {
+    fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        for event in self.monitored.iter(ps) {
+            if event.bytes == [0x90, 72, 100] {
+                self.monitored_note_on.store(true, Ordering::Release);
+            }
+            if event.bytes == [0x80, 72, 0] {
+                self.monitored_note_off.store(true, Ordering::Release);
+            }
+        }
+        self.muted_events
+            .fetch_add(self.muted.iter(ps).count(), Ordering::Relaxed);
+        jack::Control::Continue
+    }
+}
+
+fn connect_checked(client: &jack::Client, source: &str, destination: &str) {
+    client
+        .connect_ports_by_name(source, destination)
+        .unwrap_or_else(|error| panic!("connect {source} -> {destination}: {error}"));
+    let source_port = client
+        .port_by_name(source)
+        .unwrap_or_else(|| panic!("connected source port disappeared: {source}"));
+    assert!(
+        source_port
+            .get_connections()
+            .iter()
+            .any(|connection| connection == destination),
+        "JACK did not retain connection {source} -> {destination}"
+    );
 }
 
 #[test]
@@ -381,30 +449,43 @@ fn audio_keeps_flowing_across_a_mid_stream_topology_change() {
 #[test]
 fn external_dry_wet_audio_round_trip_reaches_jack_output() {
     let suffix = std::process::id();
-    let Some(peer) = peer_client(&format!("shoop-dry-wet-peer-{suffix}")) else {
+    let Some(source_client) = peer_client(&format!("shoop-dry-source-{suffix}")) else {
         return;
     };
-    let source = peer
+    let source = source_client
         .register_port("source", jack::AudioOut::default())
         .expect("source port");
-    let dry_send = peer
+    let source_name = source.name().expect("source name");
+    let Some(dry_client) = peer_client(&format!("shoop-dry-processor-{suffix}")) else {
+        return;
+    };
+    let dry_send = dry_client
         .register_port("dry_send", jack::AudioIn::default())
         .expect("dry send port");
-    let wet_return = peer
+    let dry_send_name = dry_send.name().expect("dry send name");
+    let Some(wet_client) = peer_client(&format!("shoop-wet-processor-{suffix}")) else {
+        return;
+    };
+    let wet_return = wet_client
         .register_port("wet_return", jack::AudioOut::default())
         .expect("wet return port");
-    let wet_output = peer
+    let wet_return_name = wet_return.name().expect("wet return name");
+    let Some(consumer_client) = peer_client(&format!("shoop-wet-consumer-{suffix}")) else {
+        return;
+    };
+    let wet_output = consumer_client
         .register_port("wet_output", jack::AudioIn::default())
         .expect("wet output port");
-    let source_name = source.name().expect("source name");
-    let dry_send_name = dry_send.name().expect("dry send name");
-    let wet_return_name = wet_return.name().expect("wet return name");
     let wet_output_name = wet_output.name().expect("wet output name");
-    let captured = Arc::new(Mutex::new(Vec::new()));
+    let dry_sample_bits = Arc::new(AtomicU32::new(0));
+    let dry_seen = Arc::new(AtomicBool::new(false));
+    let wet_produced = Arc::new(AtomicBool::new(false));
+    let output_max_bits = Arc::new(AtomicU32::new(0));
 
     let Some((driver, session)) = app_jack(&format!("shoop-dry-wet-{suffix}")) else {
         return;
     };
+    let app_name = driver.get_state().maybe_instance_name;
     let ring = driver.get_state().buffer_size.max(1);
     let app_dry_input = AudioPort::new_driver_port(
         &session,
@@ -448,35 +529,77 @@ fn external_dry_wet_audio_round_trip_reaches_jack_output() {
     std::thread::sleep(Duration::from_millis(100));
     driver.wait_process();
 
-    let active = peer
+    let source_active = source_client
+        .activate_async((), ConstantAudioSource { port: source })
+        .expect("activate source");
+    let dry_active = dry_client
         .activate_async(
             (),
-            ExternalAudioProcessor {
-                source,
-                dry_send,
-                wet_return,
-                wet_output,
-                captured: captured.clone(),
+            DryProcessorInput {
+                port: dry_send,
+                sample_bits: dry_sample_bits.clone(),
+                seen: dry_seen.clone(),
             },
         )
-        .expect("activate external processor");
+        .expect("activate dry processor input");
+    let wet_active = wet_client
+        .activate_async(
+            (),
+            WetProcessorOutput {
+                port: wet_return,
+                sample_bits: dry_sample_bits,
+                dry_seen: dry_seen.clone(),
+                produced: wet_produced.clone(),
+            },
+        )
+        .expect("activate wet processor output");
+    let consumer_active = consumer_client
+        .activate_async(
+            (),
+            AtomicAudioConsumer {
+                port: wet_output,
+                max_bits: output_max_bits.clone(),
+            },
+        )
+        .expect("activate wet consumer");
 
-    app_dry_input.connect_external_port(&source_name);
-    app_dry_send.connect_external_port(&dry_send_name);
-    app_wet_return.connect_external_port(&wet_return_name);
-    app_wet_output.connect_external_port(&wet_output_name);
+    let connector = source_active.as_client();
+    connect_checked(connector, &source_name, &format!("{app_name}:audio_dry_in"));
+    connect_checked(
+        connector,
+        &format!("{app_name}:audio_dry_send"),
+        &dry_send_name,
+    );
+    connect_checked(
+        connector,
+        &wet_return_name,
+        &format!("{app_name}:audio_wet_return"),
+    );
+    connect_checked(
+        connector,
+        &format!("{app_name}:audio_wet_out"),
+        &wet_output_name,
+    );
     driver.wait_process();
 
     let received_processed =
-        wait_until(|| captured.lock().unwrap().iter().any(|sample| *sample == 2.0));
-    let observed = captured.lock().unwrap();
-    let observed_max = observed.iter().copied().fold(0.0_f32, f32::max);
-    let observed_len = observed.len();
-    drop(observed);
-    let _ = active.deactivate();
+        wait_until(|| f32::from_bits(output_max_bits.load(Ordering::Acquire)) >= 2.0);
+    let observed_max = f32::from_bits(output_max_bits.load(Ordering::Acquire));
+    assert!(
+        dry_seen.load(Ordering::Acquire),
+        "dry send never reached processor input"
+    );
+    assert!(
+        wet_produced.load(Ordering::Acquire),
+        "processor never produced a wet return after observing dry input"
+    );
+    let _ = consumer_active.deactivate();
+    let _ = wet_active.deactivate();
+    let _ = dry_active.deactivate();
+    let _ = source_active.deactivate();
     assert!(
         received_processed,
-        "expected transformed sample 2.0, observed max {observed_max} across {observed_len} samples"
+        "expected transformed sample 2.0 at wet output, observed max {observed_max}"
     );
 }
 
@@ -487,27 +610,32 @@ fn external_dry_wet_audio_round_trip_reaches_jack_output() {
 #[test]
 fn external_midi_fanout_respects_each_tracks_passthrough_mute() {
     let suffix = std::process::id();
-    let Some(peer) = peer_client(&format!("shoop-midi-fanout-peer-{suffix}")) else {
+    let Some(source_client) = peer_client(&format!("shoop-midi-source-{suffix}")) else {
         return;
     };
-    let source = peer
+    let source = source_client
         .register_port("source", jack::MidiOut::default())
         .expect("MIDI source port");
-    let monitored = peer
+    let source_name = source.name().expect("source name");
+    let Some(sink_client) = peer_client(&format!("shoop-midi-sinks-{suffix}")) else {
+        return;
+    };
+    let monitored = sink_client
         .register_port("monitored", jack::MidiIn::default())
         .expect("monitored sink port");
-    let muted = peer
+    let muted = sink_client
         .register_port("muted", jack::MidiIn::default())
         .expect("muted sink port");
-    let source_name = source.name().expect("source name");
     let monitored_name = monitored.name().expect("monitored name");
     let muted_name = muted.name().expect("muted name");
-    let monitored_events = Arc::new(Mutex::new(Vec::new()));
-    let muted_events = Arc::new(Mutex::new(Vec::new()));
+    let monitored_note_on = Arc::new(AtomicBool::new(false));
+    let monitored_note_off = Arc::new(AtomicBool::new(false));
+    let muted_events = Arc::new(AtomicUsize::new(0));
 
     let Some((driver, session)) = app_jack(&format!("shoop-midi-fanout-{suffix}")) else {
         return;
     };
+    let app_name = driver.get_state().maybe_instance_name;
     let ring = driver.get_state().buffer_size.max(1);
     let monitored_input = MidiPort::new_driver_port(
         &session,
@@ -554,38 +682,58 @@ fn external_midi_fanout_respects_each_tracks_passthrough_mute() {
     std::thread::sleep(Duration::from_millis(100));
     driver.wait_process();
 
-    let active = peer
+    let source_active = source_client
+        .activate_async((), MidiSource { port: source })
+        .expect("activate MIDI source");
+    let sink_active = sink_client
         .activate_async(
             (),
-            MidiFanoutPeer {
-                source,
+            MidiSinks {
                 monitored,
                 muted,
-                monitored_events: monitored_events.clone(),
+                monitored_note_on: monitored_note_on.clone(),
+                monitored_note_off: monitored_note_off.clone(),
                 muted_events: muted_events.clone(),
             },
         )
-        .expect("activate MIDI fanout peer");
+        .expect("activate MIDI sinks");
 
-    monitored_input.connect_external_port(&source_name);
-    muted_input.connect_external_port(&source_name);
-    monitored_send.connect_external_port(&monitored_name);
-    muted_send.connect_external_port(&muted_name);
+    let connector = source_active.as_client();
+    connect_checked(
+        connector,
+        &source_name,
+        &format!("{app_name}:monitored_dry_midi_in"),
+    );
+    connect_checked(
+        connector,
+        &source_name,
+        &format!("{app_name}:muted_dry_midi_in"),
+    );
+    connect_checked(
+        connector,
+        &format!("{app_name}:monitored_dry_midi_send"),
+        &monitored_name,
+    );
+    connect_checked(
+        connector,
+        &format!("{app_name}:muted_dry_midi_send"),
+        &muted_name,
+    );
     driver.wait_process();
 
-    let received_monitored = wait_until(|| monitored_events.lock().unwrap().len() >= 2);
+    let received_monitored = wait_until(|| {
+        monitored_note_on.load(Ordering::Acquire) && monitored_note_off.load(Ordering::Acquire)
+    });
     std::thread::sleep(Duration::from_millis(100));
-    let monitored = monitored_events.lock().unwrap().clone();
-    let muted = muted_events.lock().unwrap().clone();
-    let _ = active.deactivate();
+    let muted_count = muted_events.load(Ordering::Acquire);
+    let _ = sink_active.deactivate();
+    let _ = source_active.deactivate();
     assert!(
         received_monitored,
-        "expected monitored note-on/note-off, observed {monitored:?}"
+        "monitored JACK sink did not receive both note-on and note-off"
     );
-    assert!(
-        muted.is_empty(),
-        "passthrough-muted JACK track must emit no MIDI events; observed {muted:?}"
+    assert_eq!(
+        muted_count, 0,
+        "passthrough-muted JACK track emitted {muted_count} MIDI events"
     );
-    assert!(monitored.iter().any(|event| event == &[0x90, 72, 100]));
-    assert!(monitored.iter().any(|event| event == &[0x80, 72, 0]));
 }
