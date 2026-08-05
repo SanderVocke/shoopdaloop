@@ -149,12 +149,12 @@ QT_QPA_PLATFORM=offscreen \
 
 ### Stage 3 — Synchronized boundary timing
 
-- [ ] Add Stopped→Recording coverage with unique markers immediately before and at the sync boundary.
-- [ ] Add Recording→Playing coverage proving dry input closes at the boundary without one-buffer leakage.
-- [ ] Add Playing→RecordingDryIntoWet coverage proving the first wet-return frame is captured and live input is excluded.
-- [ ] Assert audio samples and MIDI timestamps on both sides of each boundary.
-- [ ] Include held-note cleanup in the boundary assertions rather than testing only complete note pairs.
-- [ ] Run, document failures, rerun, and commit.
+- [x] Add Stopped→Recording coverage with unique markers immediately before and at the sync boundary.
+- [x] Add Recording→Playing coverage proving dry input closes at the boundary without one-buffer leakage.
+- [x] Add Playing→RecordingDryIntoWet coverage proving the first wet-return frame is captured and live input is excluded.
+- [x] Assert audio samples and MIDI timestamps on both sides of each boundary.
+- [x] Include held-note cleanup in the boundary assertions rather than testing only complete note pairs.
+- [x] Run, document failures, rerun, and commit. Evidence: all 3 synchronized transition tests passed in `/tmp/drywet-stage3-third.log`; processing was split exactly at each boundary so QML routing mirrors were fenced before post-boundary assertions.
 
 Verification:
 
