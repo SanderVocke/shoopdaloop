@@ -173,12 +173,12 @@ QT_QPA_PLATFORM=offscreen \
 
 ### Stage 4 — Active MIDI-note cleanup on passthrough gating
 
-- [ ] Track the MIDI state actually forwarded by each passthrough source independently from its incoming/capture state.
-- [ ] On an unmuted-to-muted transition, queue bounded note cleanup for delivery through normal internal connections at the next process boundary.
-- [ ] Clear forwarded state only after cleanup is emitted; do not repeatedly emit cleanup on later muted cycles.
-- [ ] Handle monitor toggles, immediate mode changes, synchronized boundaries, forced monitoring-off, and mute/unmute changes before the next cycle.
-- [ ] Add engine unit tests for one note, multiple channels/notes, already-released notes, repeated mute, and events received while muted.
-- [ ] Run the four cleanup regressions and relevant no-allocation tests, then commit.
+- [x] Track the MIDI state actually forwarded by each passthrough source independently from its incoming/capture state.
+- [x] On an unmuted-to-muted transition, queue bounded note cleanup for delivery through normal internal connections at the next process boundary.
+- [x] Clear forwarded state only after cleanup is emitted; do not repeatedly emit cleanup on later muted cycles.
+- [x] Handle monitor toggles, immediate mode changes, synchronized boundaries, forced monitoring-off, and mute/unmute changes before the next cycle.
+- [x] Add engine unit tests for one note, multiple channels/notes, already-released notes, repeated mute, and events received while muted. Evidence: port-level state tests and an end-to-end session routing test passed in `/tmp/drywet-fixes-stage4-midi-port.log` and `/tmp/drywet-fixes-stage4-session.log`.
+- [x] Run the four cleanup regressions and relevant no-allocation tests, then commit. Evidence: all 4 QML cleanup cases passed in `/tmp/drywet-fixes-stage4-qml.log`; all 24 no-allocation tests passed in `/tmp/drywet-fixes-stage4-no-alloc.log`; formatting and warnings-as-errors build passed.
 
 Verification:
 

@@ -138,6 +138,32 @@ fn midi_replacement_is_allocation_free() {
 }
 
 #[test]
+fn midi_passthrough_cleanup_is_allocation_free() {
+    let mut session = Session::default();
+    let source = session.add_port(midi_port(1, "source", PortDirection::Input));
+    let target = session.add_port(midi_port(2, "target", PortDirection::Output));
+    session.connect_ports_internal(source, target).unwrap();
+    session.apply_graph_changes().unwrap();
+    session
+        .port_mut(source)
+        .unwrap()
+        .as_dummy_midi_mut()
+        .unwrap()
+        .queue_msg(0, &midi::note_on(0, 60, 100));
+    session.process(1);
+
+    assert_no_alloc(|| {
+        session
+            .port_mut(source)
+            .unwrap()
+            .midi_mut()
+            .unwrap()
+            .set_passthrough_muted(true);
+        session.process(1);
+    });
+}
+
+#[test]
 fn snapshot_process_endpoint_retirement_defers_pooled_destruction() {
     let runtime = ContentSnapshotRuntime::new();
     let (audio, _audio_control, _audio_reader) = runtime.create_audio_channel(8, 4);

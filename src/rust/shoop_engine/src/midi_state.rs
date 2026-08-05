@@ -369,19 +369,35 @@ impl MidiStateTracker {
         buf.iter().map(|m| m.data().to_vec()).collect()
     }
 
-    /// Note-offs for everything currently sounding.
-    pub fn all_notes_off_messages(&self) -> Vec<Vec<u8>> {
-        let mut out = Vec::new();
+    /// Appends note-offs for everything currently sounding without growing `out`.
+    pub fn all_notes_off_into(&self, out: &mut Vec<MidiStorageElem>) {
+        out.clear();
         for ch in 0..N_CHANNELS as u8 {
             if let Some(slots) = self.notes.get(ch as usize) {
-                for (note, v) in slots.iter().enumerate() {
-                    if v.is_some() {
-                        out.push(midi::note_off(ch, note as u8, 0).to_vec());
+                for (note, velocity) in slots.iter().enumerate() {
+                    if velocity.is_some() {
+                        if out.len() == out.capacity() {
+                            return;
+                        }
+                        if let Some(message) =
+                            MidiStorageElem::new(0, &midi::note_off(ch, note as u8, 0))
+                        {
+                            out.push(message);
+                        }
                     }
                 }
             }
         }
-        out
+    }
+
+    /// Note-offs for everything currently sounding.
+    pub fn all_notes_off_messages(&self) -> Vec<Vec<u8>> {
+        let mut storage = Vec::with_capacity(MAX_DIFF_MESSAGES);
+        self.all_notes_off_into(&mut storage);
+        storage
+            .iter()
+            .map(|message| message.data().to_vec())
+            .collect()
     }
 }
 
