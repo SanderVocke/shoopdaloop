@@ -835,7 +835,7 @@ jobs:
               if: false
     runs-on: ${{ matrix.kind.os }}
     needs: [build_windows, setup]
-    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.windows == 'true' }}
+    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.windows == 'true' && (needs.setup.outputs.release == 'true' || needs.setup.outputs.qml_trace_capture_all_variants == 'true') }}
     env:
       QML_TRACE_CAPTURE_ENABLED: ${{ needs.setup.outputs.qml_trace_capture_all_variants == 'true' && matrix.kind.trace_capture == true }}
       pi_checkpoint_enabled: ${{ needs.setup.outputs.pi_checkpoints }}
