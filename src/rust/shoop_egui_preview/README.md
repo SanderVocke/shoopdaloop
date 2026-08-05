@@ -32,7 +32,13 @@ For a deployable bundle instead:
 trunk build --release
 ```
 
-The static output is written to `src/rust/shoop_egui_preview/dist/`. The `WebAssembly preview` GitHub Actions workflow verifies this release bundle and uploads it as the `shoop-egui-wasm-preview` artifact.
+To additionally create one self-contained HTML file with the JavaScript, WebAssembly, fonts, images, and other application resources embedded:
+
+```sh
+python3 build_single_file_preview.py dist
+```
+
+The static output is written to `src/rust/shoop_egui_preview/dist/`, with the single-file build at `dist/preview.html`. The `WebAssembly preview` GitHub Actions workflow verifies the release build, uploads the regular bundle as `shoop-egui-wasm-preview`, and uploads `preview.html` without an archive so it can be opened directly from the Actions page.
 
 A compiler-only verification can be run from the repository root without Trunk:
 

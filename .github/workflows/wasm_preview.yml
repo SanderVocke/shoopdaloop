@@ -44,8 +44,18 @@ jobs:
         working-directory: src/rust/shoop_egui_preview
         run: trunk build --release
 
+      - name: Build self-contained preview
+        working-directory: src/rust/shoop_egui_preview
+        run: python3 build_single_file_preview.py dist
+
       - name: Upload browser bundle
         uses: actions/upload-artifact@v4
         with:
           name: shoop-egui-wasm-preview
           path: src/rust/shoop_egui_preview/dist/
+
+      - name: Upload preview
+        uses: actions/upload-artifact@v7
+        with:
+          path: src/rust/shoop_egui_preview/dist/preview.html
+          archive: false
