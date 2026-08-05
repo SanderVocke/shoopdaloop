@@ -108,12 +108,12 @@ No empty commit is required for baseline-only work.
 
 ### Stage 1 — Active MIDI-note cleanup
 
-- [ ] Add a test for monitor-on note-on followed by monitor-off before note-off.
-- [ ] Add a test for a held note across immediate Recording→Playing.
-- [ ] Add a test for a held note across synchronized Recording→Playing.
-- [ ] Add a test for monitoring being forced off when entering dry re-recording with a live note active.
-- [ ] Reconstruct external sink note state and assert no active note remains after each transition.
-- [ ] Run, document failures, rerun, and commit this milestone.
+- [x] Add a test for monitor-on note-on followed by monitor-off before note-off.
+- [x] Add a test for a held note across immediate Recording→Playing.
+- [x] Add a test for a held note across synchronized Recording→Playing.
+- [x] Add a test for monitoring being forced off when entering dry re-recording with a live note active.
+- [x] Reconstruct external sink note state and assert no active note remains after each transition.
+- [x] Run, document failures, rerun, and commit this milestone. Evidence: synchronized cleanup passed; monitor-off, immediate play, and forced re-record cleanup failed with `[]` and are documented inline; final log `/tmp/drywet-stage1-final.log`.
 
 Verification:
 

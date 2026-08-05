@@ -169,7 +169,164 @@ ShoopTestFile {
                     .find((channel) => channel.obj_id.match(/.*_wet_.*/))
             }
 
+            function is_cleanup_for_note(message, note) {
+                let data = message.data
+                let status = data[0] & 0xF0
+                return (status === 0x80 && data[1] === note) ||
+                    (status === 0x90 && data[1] === note && data[2] === 0) ||
+                    (status === 0xB0 && (data[1] === 120 || data[1] === 123))
+            }
+
+            function verify_note_cleanup(messages, note) {
+                verify_true(
+                    messages.some((message) => is_cleanup_for_note(message, note)),
+                    `Expected cleanup for MIDI note ${note}, observed ${JSON.stringify(messages)}`
+                )
+            }
+
+            function queue_note_on_and_collect(note) {
+                monitored_midi_input.dummy_queue_midi_msgs([
+                    { 'time': 0, 'data': [0x90, note, 100] }
+                ])
+                monitored_midi_send.dummy_request_data(1)
+                session.backend.dummy_request_controlled_frames(1)
+                session.backend.dummy_run_requested_frames()
+                return monitored_midi_send.dummy_dequeue_midi_msgs()
+            }
+
+            function collect_midi_send(n_frames) {
+                monitored_midi_send.dummy_request_data(n_frames)
+                session.backend.dummy_request_controlled_frames(n_frames)
+                session.backend.dummy_run_requested_frames()
+                testcase.wait_updated(session.backend)
+                return monitored_midi_send.dummy_dequeue_midi_msgs()
+            }
+
             test_fns: ({
+                // Purpose: Muting monitoring must clean up notes already sent to an external synth.
+                // Use case: A performer releases a held key after switching input monitoring off.
+                // Failure: Expected a note-off, zero-velocity note-on, CC120, or CC123 for note 72;
+                // observed []. The passthrough mute likely drops later events without flushing note state.
+                'test_midi_cleanup_when_monitoring_is_disabled': () => {
+                    check_backend()
+                    reset()
+                    monitored_track.control_widget.monitor = true
+                    testcase.wait_updated(session.backend)
+
+                    let note = 72
+                    let started = queue_note_on_and_collect(note)
+                    verify_eq(started, [
+                        { 'time': 0, 'data': [0x90, note, 100] }
+                    ], null, true)
+
+                    monitored_track.control_widget.monitor = false
+                    testcase.wait_updated(session.backend)
+                    monitored_midi_input.dummy_queue_midi_msgs([
+                        { 'time': 0, 'data': [0x80, note, 0] }
+                    ])
+                    let cleanup = collect_midi_send(1)
+                    verify_note_cleanup(cleanup, note)
+                },
+
+                // Purpose: Immediate recording-to-playback must clean a live note before dry MIDI is gated.
+                // Use case: A performer holds a key across the end of an unsynchronized recording.
+                // Failure: Expected a note-off, zero-velocity note-on, CC120, or CC123 for note 73;
+                // observed []. Immediate mode changes likely gate passthrough without flushing note state.
+                'test_midi_cleanup_for_held_note_on_immediate_record_to_play': () => {
+                    check_backend()
+                    reset()
+                    monitored_loop.transition(
+                        ShoopRustConstants.LoopMode.Recording,
+                        ShoopRustConstants.DontWaitForSync,
+                        ShoopRustConstants.DontAlignToSyncImmediately
+                    )
+                    testcase.wait_updated(session.backend)
+
+                    let note = 73
+                    let started = queue_note_on_and_collect(note)
+                    verify_eq(started, [
+                        { 'time': 0, 'data': [0x90, note, 100] }
+                    ], null, true)
+
+                    monitored_loop.transition(
+                        ShoopRustConstants.LoopMode.Playing,
+                        ShoopRustConstants.DontWaitForSync,
+                        ShoopRustConstants.DontAlignToSyncImmediately
+                    )
+                    testcase.wait_updated(session.backend)
+                    monitored_midi_input.dummy_queue_midi_msgs([
+                        { 'time': 0, 'data': [0x80, note, 0] }
+                    ])
+                    let cleanup = collect_midi_send(1)
+                    verify_note_cleanup(cleanup, note)
+                },
+
+                // Purpose: A synchronized recording boundary must not leave an external note active.
+                // Use case: A synchronized loop finishes recording while the performer still holds a key.
+                'test_midi_cleanup_for_held_note_on_synchronized_record_to_play': () => {
+                    check_backend()
+                    reset()
+                    sync_loop.queue_set_length(4)
+                    sync_loop.transition(
+                        ShoopRustConstants.LoopMode.Playing,
+                        ShoopRustConstants.DontWaitForSync,
+                        ShoopRustConstants.DontAlignToSyncImmediately
+                    )
+                    monitored_loop.transition(
+                        ShoopRustConstants.LoopMode.Recording,
+                        ShoopRustConstants.DontWaitForSync,
+                        ShoopRustConstants.DontAlignToSyncImmediately
+                    )
+                    testcase.wait_updated(session.backend)
+
+                    let note = 74
+                    let started = queue_note_on_and_collect(note)
+                    verify_eq(started, [
+                        { 'time': 0, 'data': [0x90, note, 100] }
+                    ], null, true)
+
+                    monitored_loop.transition(
+                        ShoopRustConstants.LoopMode.Playing,
+                        0,
+                        ShoopRustConstants.DontAlignToSyncImmediately
+                    )
+                    testcase.wait_updated(session.backend)
+                    monitored_midi_input.dummy_queue_midi_msgs([
+                        { 'time': 3, 'data': [0x80, note, 0] }
+                    ])
+                    let cleanup = collect_midi_send(4)
+                    verify_eq(monitored_loop.mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_note_cleanup(cleanup, note)
+                },
+
+                // Purpose: Forced monitor-off during dry re-recording must clean live external notes.
+                // Use case: A performer starts reprocessing a loop while a monitored key is held.
+                // Failure: Expected a note-off, zero-velocity note-on, CC120, or CC123 for note 75;
+                // observed []. Forced monitoring-off likely mutes passthrough without flushing note state.
+                'test_midi_cleanup_when_rerecord_forces_monitoring_off': () => {
+                    check_backend()
+                    reset()
+                    monitored_track.control_widget.monitor = true
+                    monitored_loop.queue_set_length(4)
+                    testcase.wait_updated(session.backend)
+
+                    let note = 75
+                    let started = queue_note_on_and_collect(note)
+                    verify_eq(started, [
+                        { 'time': 0, 'data': [0x90, note, 100] }
+                    ], null, true)
+
+                    monitored_loop.transition(
+                        ShoopRustConstants.LoopMode.RecordingDryIntoWet,
+                        ShoopRustConstants.DontWaitForSync,
+                        ShoopRustConstants.DontAlignToSyncImmediately
+                    )
+                    testcase.wait_updated(session.backend)
+                    verify_eq(monitored_track.control_widget.monitor, false)
+                    let cleanup = collect_midi_send(1)
+                    verify_note_cleanup(cleanup, note)
+                },
+
                 'test_input_muted_external_midi_is_not_sent': () => {
                     check_backend()
                     reset()
