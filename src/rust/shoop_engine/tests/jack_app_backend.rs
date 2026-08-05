@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use shoop_engine::app_backend::{
-    AudioDriver, AudioDriverSettings, AudioPort, BackendSession, JackAudioDriverSettings,
+    AudioDriver, AudioDriverSettings, AudioPort, BackendSession, JackAudioDriverSettings, MidiPort,
 };
 use shoop_engine::{AudioDriverType, ChannelMode, LoopMode, PortDirection};
 
@@ -88,6 +88,61 @@ impl jack::ProcessHandler for AudioConsumer {
             .lock()
             .unwrap()
             .extend_from_slice(self.port.as_slice(ps));
+        jack::Control::Continue
+    }
+}
+
+struct ExternalAudioProcessor {
+    source: jack::Port<jack::AudioOut>,
+    dry_send: jack::Port<jack::AudioIn>,
+    wet_return: jack::Port<jack::AudioOut>,
+    wet_output: jack::Port<jack::AudioIn>,
+    captured: Arc<Mutex<Vec<f32>>>,
+}
+impl jack::ProcessHandler for ExternalAudioProcessor {
+    fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        self.source.as_mut_slice(ps).fill(1.0);
+        let processed = self
+            .dry_send
+            .as_slice(ps)
+            .iter()
+            .map(|sample| sample * 2.0)
+            .collect::<Vec<_>>();
+        self.wet_return.as_mut_slice(ps).copy_from_slice(&processed);
+        self.captured
+            .lock()
+            .unwrap()
+            .extend_from_slice(self.wet_output.as_slice(ps));
+        jack::Control::Continue
+    }
+}
+
+struct MidiFanoutPeer {
+    source: jack::Port<jack::MidiOut>,
+    monitored: jack::Port<jack::MidiIn>,
+    muted: jack::Port<jack::MidiIn>,
+    monitored_events: Arc<Mutex<Vec<Vec<u8>>>>,
+    muted_events: Arc<Mutex<Vec<Vec<u8>>>>,
+}
+impl jack::ProcessHandler for MidiFanoutPeer {
+    fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        let mut writer = self.source.writer(ps);
+        let _ = writer.write(&jack::RawMidi {
+            time: 0,
+            bytes: &[0x90, 72, 100],
+        });
+        let _ = writer.write(&jack::RawMidi {
+            time: 1.min(ps.n_frames().saturating_sub(1)),
+            bytes: &[0x80, 72, 0],
+        });
+        self.monitored_events
+            .lock()
+            .unwrap()
+            .extend(self.monitored.iter(ps).map(|event| event.bytes.to_vec()));
+        self.muted_events
+            .lock()
+            .unwrap()
+            .extend(self.muted.iter(ps).map(|event| event.bytes.to_vec()));
         jack::Control::Continue
     }
 }
@@ -317,4 +372,220 @@ fn audio_keeps_flowing_across_a_mid_stream_topology_change() {
     );
 
     let _ = consumer.deactivate();
+}
+
+// Purpose: Exercise the complete JACK dry-send to processor to wet-return audio graph.
+// Use case: A user connects an external effects client and hears transformed input at wet out.
+// Failure: Expected transformed sample 2.0; observed max 0 across 96,256 captured samples.
+// The real JACK port-to-port passthrough graph may not propagate internal connections.
+#[test]
+fn external_dry_wet_audio_round_trip_reaches_jack_output() {
+    let suffix = std::process::id();
+    let Some(peer) = peer_client(&format!("shoop-dry-wet-peer-{suffix}")) else {
+        return;
+    };
+    let source = peer
+        .register_port("source", jack::AudioOut::default())
+        .expect("source port");
+    let dry_send = peer
+        .register_port("dry_send", jack::AudioIn::default())
+        .expect("dry send port");
+    let wet_return = peer
+        .register_port("wet_return", jack::AudioOut::default())
+        .expect("wet return port");
+    let wet_output = peer
+        .register_port("wet_output", jack::AudioIn::default())
+        .expect("wet output port");
+    let source_name = source.name().expect("source name");
+    let dry_send_name = dry_send.name().expect("dry send name");
+    let wet_return_name = wet_return.name().expect("wet return name");
+    let wet_output_name = wet_output.name().expect("wet output name");
+    let captured = Arc::new(Mutex::new(Vec::new()));
+
+    let Some((driver, session)) = app_jack(&format!("shoop-dry-wet-{suffix}")) else {
+        return;
+    };
+    let ring = driver.get_state().buffer_size.max(1);
+    let app_dry_input = AudioPort::new_driver_port(
+        &session,
+        &driver,
+        "audio_dry_in",
+        &PortDirection::Input,
+        ring,
+    )
+    .expect("app dry input");
+    let app_dry_send = AudioPort::new_driver_port(
+        &session,
+        &driver,
+        "audio_dry_send",
+        &PortDirection::Output,
+        0,
+    )
+    .expect("app dry send");
+    let app_wet_return = AudioPort::new_driver_port(
+        &session,
+        &driver,
+        "audio_wet_return",
+        &PortDirection::Input,
+        ring,
+    )
+    .expect("app wet return");
+    let app_wet_output = AudioPort::new_driver_port(
+        &session,
+        &driver,
+        "audio_wet_out",
+        &PortDirection::Output,
+        0,
+    )
+    .expect("app wet output");
+    app_dry_input
+        .connect_internal(&app_dry_send)
+        .expect("dry internal route");
+    app_wet_return
+        .connect_internal(&app_wet_output)
+        .expect("wet internal route");
+    driver.wait_process();
+    std::thread::sleep(Duration::from_millis(100));
+    driver.wait_process();
+
+    let active = peer
+        .activate_async(
+            (),
+            ExternalAudioProcessor {
+                source,
+                dry_send,
+                wet_return,
+                wet_output,
+                captured: captured.clone(),
+            },
+        )
+        .expect("activate external processor");
+
+    app_dry_input.connect_external_port(&source_name);
+    app_dry_send.connect_external_port(&dry_send_name);
+    app_wet_return.connect_external_port(&wet_return_name);
+    app_wet_output.connect_external_port(&wet_output_name);
+    driver.wait_process();
+
+    let received_processed =
+        wait_until(|| captured.lock().unwrap().iter().any(|sample| *sample == 2.0));
+    let observed = captured.lock().unwrap();
+    let observed_max = observed.iter().copied().fold(0.0_f32, f32::max);
+    let observed_len = observed.len();
+    drop(observed);
+    let _ = active.deactivate();
+    assert!(
+        received_processed,
+        "expected transformed sample 2.0, observed max {observed_max} across {observed_len} samples"
+    );
+}
+
+// Purpose: Verify one JACK MIDI source reaches only the external track with passthrough enabled.
+// Use case: A shared controller feeds several external synth tracks but only the monitored one sounds.
+// Failure: Expected monitored [[0x90,72,100],[0x80,72,0]] and muted []; observed both [].
+// The real JACK MIDI input-to-send internal connection may not enter the session propagation graph.
+#[test]
+fn external_midi_fanout_respects_each_tracks_passthrough_mute() {
+    let suffix = std::process::id();
+    let Some(peer) = peer_client(&format!("shoop-midi-fanout-peer-{suffix}")) else {
+        return;
+    };
+    let source = peer
+        .register_port("source", jack::MidiOut::default())
+        .expect("MIDI source port");
+    let monitored = peer
+        .register_port("monitored", jack::MidiIn::default())
+        .expect("monitored sink port");
+    let muted = peer
+        .register_port("muted", jack::MidiIn::default())
+        .expect("muted sink port");
+    let source_name = source.name().expect("source name");
+    let monitored_name = monitored.name().expect("monitored name");
+    let muted_name = muted.name().expect("muted name");
+    let monitored_events = Arc::new(Mutex::new(Vec::new()));
+    let muted_events = Arc::new(Mutex::new(Vec::new()));
+
+    let Some((driver, session)) = app_jack(&format!("shoop-midi-fanout-{suffix}")) else {
+        return;
+    };
+    let ring = driver.get_state().buffer_size.max(1);
+    let monitored_input = MidiPort::new_driver_port(
+        &session,
+        &driver,
+        "monitored_dry_midi_in",
+        &PortDirection::Input,
+        ring,
+    )
+    .expect("monitored input");
+    let monitored_send = MidiPort::new_driver_port(
+        &session,
+        &driver,
+        "monitored_dry_midi_send",
+        &PortDirection::Output,
+        0,
+    )
+    .expect("monitored send");
+    let muted_input = MidiPort::new_driver_port(
+        &session,
+        &driver,
+        "muted_dry_midi_in",
+        &PortDirection::Input,
+        ring,
+    )
+    .expect("muted input");
+    let muted_send = MidiPort::new_driver_port(
+        &session,
+        &driver,
+        "muted_dry_midi_send",
+        &PortDirection::Output,
+        0,
+    )
+    .expect("muted send");
+    monitored_input
+        .connect_internal(&monitored_send)
+        .expect("monitored internal route");
+    muted_input
+        .connect_internal(&muted_send)
+        .expect("muted internal route");
+    muted_input
+        .set_passthrough_muted(true)
+        .expect("mute second track passthrough");
+    driver.wait_process();
+    std::thread::sleep(Duration::from_millis(100));
+    driver.wait_process();
+
+    let active = peer
+        .activate_async(
+            (),
+            MidiFanoutPeer {
+                source,
+                monitored,
+                muted,
+                monitored_events: monitored_events.clone(),
+                muted_events: muted_events.clone(),
+            },
+        )
+        .expect("activate MIDI fanout peer");
+
+    monitored_input.connect_external_port(&source_name);
+    muted_input.connect_external_port(&source_name);
+    monitored_send.connect_external_port(&monitored_name);
+    muted_send.connect_external_port(&muted_name);
+    driver.wait_process();
+
+    let received_monitored = wait_until(|| monitored_events.lock().unwrap().len() >= 2);
+    std::thread::sleep(Duration::from_millis(100));
+    let monitored = monitored_events.lock().unwrap().clone();
+    let muted = muted_events.lock().unwrap().clone();
+    let _ = active.deactivate();
+    assert!(
+        received_monitored,
+        "expected monitored note-on/note-off, observed {monitored:?}"
+    );
+    assert!(
+        muted.is_empty(),
+        "passthrough-muted JACK track must emit no MIDI events; observed {muted:?}"
+    );
+    assert!(monitored.iter().any(|event| event == &[0x90, 72, 100]));
+    assert!(monitored.iter().any(|event| event == &[0x80, 72, 0]));
 }

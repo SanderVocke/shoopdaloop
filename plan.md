@@ -201,14 +201,14 @@ QT_QPA_PLATFORM=offscreen \
 
 ### Stage 6 — Real JACK round trip
 
-- [ ] Reuse the existing raw JACK peer-client test pattern.
-- [ ] Add an explicit external dry-send→peer processor→wet-return→wet-output audio round trip.
-- [ ] Add a MIDI source fanout case with monitored and input-muted routes.
-- [ ] Assert eventual transformed audio and MIDI delivery without assuming exact JACK-cycle alignment.
-- [ ] Fail by default when JACK is expected but broken; skip only under the existing explicit missing-backend policy.
-- [ ] Run with and without the missing-backend allowance where the host supports JACK.
-- [ ] Apply the same purpose/use-case/failure comments to Rust tests.
-- [ ] Run formatting and warning checks, then commit.
+- [x] Reuse the existing raw JACK peer-client test pattern.
+- [x] Add an explicit external dry-send→peer processor→wet-return→wet-output audio round trip.
+- [x] Add a MIDI source fanout case with monitored and input-muted routes.
+- [x] Assert eventual transformed audio and MIDI delivery without assuming exact JACK-cycle alignment.
+- [x] Fail by default when JACK is expected but broken; skip only under the existing explicit missing-backend policy.
+- [x] Run with and without the missing-backend allowance where the host supports JACK.
+- [x] Apply the same purpose/use-case/failure comments to Rust tests.
+- [x] Run formatting and warning checks, then commit. Evidence: 4 existing JACK tests passed; both new round-trip tests failed with zero output and are documented inline in `/tmp/drywet-stage6-final.log`; missing-backend-policy run showed the same failures; `cargo fmt --all` and warnings-as-errors build passed.
 
 Verification:
 
