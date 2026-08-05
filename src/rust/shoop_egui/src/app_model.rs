@@ -138,6 +138,7 @@ impl Default for WaveformChannelState {
 
 #[derive(Clone, Debug, Default)]
 pub struct LoopDetailsState {
+    pub generation: u64,
     pub title: String,
     pub loading: bool,
     pub channels: Vec<WaveformChannelState>,

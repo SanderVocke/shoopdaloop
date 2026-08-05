@@ -92,14 +92,16 @@ Verification: the warning-free workspace build, crate tests, wasm check, and `ts
 
 Depends on Stages 1 and 3.
 
-- [ ] Implement a reusable egui waveform component using viewport-width min/max or peak bins, with clear channel labels, center lines, and playback/loop-region markers when the supplied state provides them.
-- [ ] Implement the details pane with selection title, collapsible/resizable presentation, per-audio-channel waveforms, and no-selection/loading/no-audio placeholders.
-- [ ] Add a QML details bridge that tracks the same selected-loop registry data as `DetailsPane.qml`, observes channel metadata/data dirtiness, and requests channel data through the existing asynchronous fetch mechanism.
-- [ ] Add frontend QVariant/shared-channel-data conversion that owns the resulting samples in plain Rust state and requests repaint without blocking the egui draw path.
-- [ ] Guard against stale asynchronous results when selection or channel identity changes.
-- [ ] Verify selection changes, recording/data updates, empty loops, mono/stereo loops, window resizing, and large recordings.
-- [ ] Run waveform unit tests, `cargo check -p shoop_egui --target wasm32-unknown-unknown`, and `RUSTFLAGS="-D warnings" cargo build`.
-- [ ] Commit the details-pane and waveform milestone.
+- [x] Implement a reusable egui waveform component using viewport-width min/max or peak bins, with clear channel labels, center lines, and playback/loop-region markers when the supplied state provides them.
+- [x] Implement the details pane with selection title, collapsible/resizable presentation, per-audio-channel waveforms, and no-selection/loading/no-audio placeholders.
+- [x] Add a QML details bridge that tracks the same selected-loop registry data as `DetailsPane.qml`, observes channel metadata/data dirtiness, and requests channel data through the existing asynchronous fetch mechanism.
+- [x] Add frontend QVariant/shared-channel-data conversion that owns the resulting samples in plain Rust state and requests repaint without blocking the egui draw path.
+- [x] Guard against stale asynchronous results when selection or channel identity changes.
+- [x] Verify selection changes, recording/data updates, empty loops, mono/stereo track layouts, resizable rendering, and bounded rendering for large recordings.
+- [x] Run waveform unit tests, `cargo check -p shoop_egui --target wasm32-unknown-unknown`, and `RUSTFLAGS="-D warnings" cargo build`.
+- [x] Commit the details-pane and waveform milestone.
+
+Verification: eight `shoop_egui` tests pass, including bounded million-sample binning and a full application paint test. The wasm check, warning-free build, and `tst_EguiWindow.qml` selected-loop waveform transfer pass.
 
 ### Stage 5 — End-to-end validation and polish
 

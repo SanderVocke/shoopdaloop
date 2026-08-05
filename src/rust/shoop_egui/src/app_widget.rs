@@ -1,12 +1,25 @@
-use crate::{AppAction, AppState, GlobalControls, TracksWidget};
+use crate::{AppAction, AppState, DetailsPane, GlobalControls, TracksWidget};
 
 const LOGO_BYTES: &[u8] = include_bytes!("../../../../resources/logo-small.png");
 
-#[derive(Default)]
 pub struct AppWidget {
     tracks: TracksWidget,
     global_controls: GlobalControls,
+    details: DetailsPane,
+    details_open: bool,
     logo: Option<egui::TextureHandle>,
+}
+
+impl Default for AppWidget {
+    fn default() -> Self {
+        Self {
+            tracks: TracksWidget::default(),
+            global_controls: GlobalControls,
+            details: DetailsPane::default(),
+            details_open: true,
+            logo: None,
+        }
+    }
 }
 
 impl AppWidget {
@@ -32,6 +45,29 @@ impl AppWidget {
                         );
                     });
             });
+
+        egui::Panel::bottom("details_toggle")
+            .resizable(false)
+            .exact_size(24.0)
+            .show(ui, |ui| {
+                if ui.selectable_label(self.details_open, "details").clicked() {
+                    self.details_open = !self.details_open;
+                }
+            });
+
+        if self.details_open {
+            egui::Panel::bottom("details")
+                .resizable(true)
+                .default_size(200.0)
+                .min_size(70.0)
+                .max_size(400.0)
+                .frame(
+                    egui::Frame::new()
+                        .fill(egui::Color32::from_rgb(85, 85, 85))
+                        .inner_margin(egui::Margin::same(6)),
+                )
+                .show(ui, |ui| self.details.show(ui, state.details.as_ref()));
+        }
 
         egui::Panel::right("logo_and_status")
             .resizable(false)
@@ -103,5 +139,43 @@ impl AppWidget {
                 ui.label("-- ms");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::{LoopDetailsState, TrackState, WaveformChannelState};
+
+    #[test]
+    fn complete_application_state_produces_paint_commands() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut widget = AppWidget::default();
+        let state = AppState {
+            tracks: vec![TrackState {
+                name: "Track".to_owned(),
+                ..Default::default()
+            }],
+            details: Some(LoopDetailsState {
+                title: "Loop".to_owned(),
+                channels: vec![WaveformChannelState {
+                    id: "audio".to_owned(),
+                    samples: Arc::from([-0.5, 0.25, 0.75, -0.1]),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let output = context.run_ui(Default::default(), |ui| {
+            widget.show(ui, &state);
+        });
+
+        assert!(output.shapes.len() > 10);
+        assert!(!output.textures_delta.set.is_empty());
     }
 }

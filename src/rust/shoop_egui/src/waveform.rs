@@ -72,6 +72,17 @@ mod tests {
     }
 
     #[test]
+    fn output_size_is_bounded_for_large_recordings() {
+        let samples = vec![0.5; 1_000_000];
+        let bins = waveform_bins(&samples, 800);
+
+        assert_eq!(bins.len(), 800);
+        assert!(bins
+            .iter()
+            .all(|bin| *bin == WaveformBin { min: 0.0, max: 0.5 }));
+    }
+
+    #[test]
     fn non_finite_values_are_ignored() {
         assert_eq!(
             waveform_bins(&[f32::NAN, -0.4, f32::INFINITY], 1),

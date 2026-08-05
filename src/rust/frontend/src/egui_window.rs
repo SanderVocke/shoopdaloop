@@ -1,13 +1,15 @@
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
 
-use cxx_qt_lib::QString;
+use cxx_qt_lib::{QString, QVariant};
+use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qsharedpointer_qvector_qvariant;
 use egui_cxx_qt::{
     egui, CanvasHandle, CanvasInfo, CanvasQueueError, CanvasSubclass, CanvasUiFactory, EguiUi,
 };
 use shoop_egui::{
     AppAction, AppState, AppWidget, DefaultRecordingAction, GlobalControlAction, IndexedLoopAction,
-    IndexedTrackAction, LoopState, LoopWidgetAction, TrackState, TrackWidgetAction,
+    IndexedTrackAction, LoopDetailsState, LoopState, LoopWidgetAction, TrackState,
+    TrackWidgetAction, WaveformChannelState,
 };
 
 use crate::egui_loop_widget::{apply_loop_state, apply_peak_state};
@@ -16,7 +18,9 @@ use crate::egui_loop_widget::{apply_loop_state, apply_peak_state};
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
+        include!("cxx-qt-lib/qvariant.h");
         type QString = cxx_qt_lib::QString;
+        type QVariant = cxx_qt_lib::QVariant;
     }
 
     extern "RustQt" {
@@ -149,6 +153,41 @@ pub mod ffi {
         );
 
         #[qinvokable]
+        #[cxx_name = "setDetailsState"]
+        fn set_details_state(
+            self: Pin<&mut ShoopEguiWindow>,
+            generation: i32,
+            has_selection: bool,
+            title: QString,
+            loading: bool,
+            channel_count: i32,
+        );
+
+        #[qinvokable]
+        #[cxx_name = "setDetailsChannelState"]
+        fn set_details_channel_state(
+            self: Pin<&mut ShoopEguiWindow>,
+            generation: i32,
+            channel_index: i32,
+            id: QString,
+            start_offset: i32,
+            loop_length: i32,
+            played_sample: i32,
+        );
+
+        #[qinvokable]
+        #[cxx_name = "setDetailsDataTarget"]
+        fn set_details_data_target(
+            self: Pin<&mut ShoopEguiWindow>,
+            generation: i32,
+            channel_index: i32,
+        );
+
+        #[qinvokable]
+        #[cxx_name = "setDetailsChannelData"]
+        fn set_details_channel_data(self: Pin<&mut ShoopEguiWindow>, input_data: QVariant);
+
+        #[qinvokable]
         #[cxx_name = "setTrack"]
         fn set_track(
             self: Pin<&mut ShoopEguiWindow>,
@@ -247,12 +286,14 @@ pub fn register_qml_type(module_name: &str, type_name: &str) {
 
 pub struct ShoopEguiWindowRust {
     state: Arc<RwLock<AppState>>,
+    details_data_target: Arc<RwLock<Option<(u64, usize)>>>,
 }
 
 impl Default for ShoopEguiWindowRust {
     fn default() -> Self {
         Self {
             state: Arc::new(RwLock::new(AppState::default())),
+            details_data_target: Arc::new(RwLock::new(None)),
         }
     }
 }
@@ -297,6 +338,118 @@ impl ffi::ShoopEguiWindow {
         state.global_controls.sync = sync;
         state.global_controls.solo = solo;
         state.global_controls.apply_n_cycles = u32::try_from(apply_n_cycles).unwrap_or(0);
+        drop(state);
+        self.as_mut().request_repaint();
+    }
+
+    fn set_details_state(
+        mut self: Pin<&mut Self>,
+        generation: i32,
+        has_selection: bool,
+        title: QString,
+        loading: bool,
+        channel_count: i32,
+    ) {
+        let (Ok(generation), Ok(channel_count)) =
+            (u64::try_from(generation), usize::try_from(channel_count))
+        else {
+            return;
+        };
+        let mut state = self.state.write().expect("egui window state lock poisoned");
+        if has_selection {
+            let details = state.details.get_or_insert_with(LoopDetailsState::default);
+            if details.generation != generation {
+                *details = LoopDetailsState {
+                    generation,
+                    ..Default::default()
+                };
+            }
+            details.title = title.to_string();
+            details.loading = loading;
+            details
+                .channels
+                .resize_with(channel_count, WaveformChannelState::default);
+        } else {
+            state.details = None;
+        }
+        drop(state);
+        self.as_mut().request_repaint();
+    }
+
+    fn set_details_channel_state(
+        mut self: Pin<&mut Self>,
+        generation: i32,
+        channel_index: i32,
+        id: QString,
+        start_offset: i32,
+        loop_length: i32,
+        played_sample: i32,
+    ) {
+        let (Ok(generation), Ok(channel_index)) =
+            (u64::try_from(generation), usize::try_from(channel_index))
+        else {
+            return;
+        };
+        let mut state = self.state.write().expect("egui window state lock poisoned");
+        let Some(channel) = state
+            .details
+            .as_mut()
+            .filter(|details| details.generation == generation)
+            .and_then(|details| details.channels.get_mut(channel_index))
+        else {
+            return;
+        };
+        channel.id = id.to_string();
+        channel.start_offset = i64::from(start_offset);
+        channel.loop_length = u64::try_from(loop_length).unwrap_or(0);
+        channel.played_sample = (played_sample >= 0).then_some(i64::from(played_sample));
+        drop(state);
+        self.as_mut().request_repaint();
+    }
+
+    fn set_details_data_target(self: Pin<&mut Self>, generation: i32, channel_index: i32) {
+        let target = u64::try_from(generation)
+            .ok()
+            .zip(usize::try_from(channel_index).ok());
+        *self
+            .details_data_target
+            .write()
+            .expect("egui details target lock poisoned") = target;
+    }
+
+    fn set_details_channel_data(mut self: Pin<&mut Self>, input_data: QVariant) {
+        let target = *self
+            .details_data_target
+            .read()
+            .expect("egui details target lock poisoned");
+        let Some((generation, channel_index)) = target else {
+            return;
+        };
+        let samples = (|| {
+            let shared = qvariant_to_qsharedpointer_qvector_qvariant(&input_data).ok()?;
+            let vector = unsafe { shared.data().ok()?.as_ref()? };
+            Some(
+                vector
+                    .iter()
+                    .map(|value| value.value::<f32>().unwrap_or(0.0))
+                    .collect::<Vec<_>>(),
+            )
+        })();
+        let Some(samples) = samples else {
+            eprintln!("failed to convert egui waveform channel data");
+            return;
+        };
+
+        let mut state = self.state.write().expect("egui window state lock poisoned");
+        let Some(channel) = state
+            .details
+            .as_mut()
+            .filter(|details| details.generation == generation)
+            .and_then(|details| details.channels.get_mut(channel_index))
+        else {
+            return;
+        };
+        channel.samples = Arc::from(samples);
         drop(state);
         self.as_mut().request_repaint();
     }

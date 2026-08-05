@@ -12,6 +12,7 @@ ShoopApplicationWindow {
     property var trackBridges: []
     property bool canvasReady: false
     property bool initialized: false
+    property alias detailsStateBridge: detailsBridge
 
     title: "ShoopDaLoop — egui prototype"
     width: 900
@@ -216,6 +217,16 @@ ShoopApplicationWindow {
             state.solo,
             state.applyNCycles
         )
+    }
+
+    SelectedLoops {
+        id: selectedLoopsLookup
+    }
+
+    EguiDetailsStateBridge {
+        id: detailsBridge
+        canvas: canvas
+        selectedLoops: Array.from(selectedLoopsLookup.loops).filter(loop => loop)
     }
 
     ShoopEguiWindow {

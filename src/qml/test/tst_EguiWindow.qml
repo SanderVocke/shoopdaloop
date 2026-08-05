@@ -95,6 +95,29 @@ ShoopTestFile {
 
                     track.name = "Renamed in QML"
 
+                    const selectedLoop = track.loops[0]
+                    selectedLoop.create_backend_loop()
+                    selectedLoop.queue_set_length(4800)
+                    wait_updated(session.backend)
+                    selectedLoop.select(true)
+                    wait_condition(
+                        () => window.detailsStateBridge.selectedLoop === selectedLoop,
+                        2000,
+                        "selected loop did not reach egui details bridge")
+                    wait_condition(
+                        () => window.detailsStateBridge.channels.length > 0
+                            && window.detailsStateBridge.fetchedChannels.size
+                                === window.detailsStateBridge.channels.length,
+                        5000,
+                        "audio waveform data did not reach egui")
+
+                    const screenshotDir = ShoopRustOSUtils.get_env_var(
+                        "SHOOP_EGUI_TEST_SCREENSHOT_DIR")
+                    if (screenshotDir) {
+                        ShoopRustTestScreenGrabber.grab_all(screenshotDir)
+                        wait(200)
+                    }
+
                     window.handleDefaultRecordingActionChanged(1)
                     window.handlePlayAfterRecordChanged(false)
                     window.handleSyncChanged(false)
@@ -130,6 +153,12 @@ ShoopTestFile {
                     verify_eq(calls.join(","),
                         "stop,deselect,recordings:false,all:true,record:0,playAfter:true,sync:true,solo:false,cycles:4")
 
+                    selectedLoop.deselect(true)
+                    wait_condition(
+                        () => window.detailsStateBridge.selectedLoop === null
+                            && window.detailsStateBridge.runningFetch === null,
+                        2000,
+                        "egui details bridge did not become idle")
                     wait(100)
                     window.close()
                 }
