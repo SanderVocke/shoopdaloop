@@ -86,11 +86,11 @@ After each focused run:
 
 ### Stage 0 — Baseline and fixture design
 
-- [ ] Run the current full QML suite and save a JUnit/log baseline.
-- [ ] Confirm the existing six external tests still pass.
-- [ ] Define distinct audio/MIDI markers and reusable collection helpers.
-- [ ] Decide whether the external fixture should gain multiple loops or whether transition/multi-loop tests need dedicated files.
-- [ ] Record available JACK and Carla capabilities before writing conditional integration tests.
+- [x] Run the current full QML suite and save a JUnit/log baseline. Evidence: 202 passed, 0 failed, 1 CPAL skip in `/tmp/drywet-baseline.log`; JUnit in `/tmp/drywet-baseline.xml`.
+- [x] Confirm the existing six external tests still pass. Evidence: 6 passed in `/tmp/drywet-external-baseline.log`.
+- [x] Define distinct audio/MIDI markers and reusable collection helpers. Decision: use disjoint single-digit audio sequences and MIDI note ranges per source, with queue/process/dequeue helpers in each focused fixture.
+- [x] Decide whether the external fixture should gain multiple loops or whether transition/multi-loop tests need dedicated files. Decision: keep the single-loop matrix and cleanup cases in the existing file; use dedicated transition, multiple-loop, persistence, and Carla files.
+- [x] Record available JACK and Carla capabilities before writing conditional integration tests. Evidence: real JACK registration test passed; Carla Rack discovery passed; available backends are dummy, JACK, JACK test, CPAL, and CPAL test.
 
 Verification:
 
@@ -101,7 +101,7 @@ SHOOP_ALLOW_MISSING_BACKENDS=1 QT_QPA_PLATFORM=offscreen \
 
 QT_QPA_PLATFORM=offscreen \
   target/debug/shoopdaloop_dev.sh --self-test \
-  -f 'tst_TrackControlAndLoop_drywet_external.qml'
+  -f "${PWD}/src/qml/test/tst_TrackControlAndLoop_drywet_external.qml"
 ```
 
 No empty commit is required for baseline-only work.
@@ -120,7 +120,7 @@ Verification:
 ```bash
 QT_QPA_PLATFORM=offscreen \
   target/debug/shoopdaloop_dev.sh --self-test \
-  -f 'tst_TrackControlAndLoop_drywet_external*.qml' \
+  -f "${PWD}/src/qml/test/tst_TrackControlAndLoop_drywet_external*.qml" \
   --filter '.*midi.*(cleanup|held|mute|boundary).*'
 ```
 
@@ -144,7 +144,7 @@ Verification:
 ```bash
 QT_QPA_PLATFORM=offscreen \
   target/debug/shoopdaloop_dev.sh --self-test \
-  -f 'tst_TrackControlAndLoop_drywet_external*.qml'
+  -f "${PWD}/src/qml/test/tst_TrackControlAndLoop_drywet_external*.qml"
 ```
 
 ### Stage 3 — Synchronized boundary timing
@@ -161,7 +161,7 @@ Verification:
 ```bash
 QT_QPA_PLATFORM=offscreen \
   target/debug/shoopdaloop_dev.sh --self-test \
-  -f 'tst_TrackControlAndLoop_drywet_external*transition*.qml'
+  -f "${PWD}/src/qml/test/tst_TrackControlAndLoop_drywet_external*transition*.qml"
 ```
 
 ### Stage 4 — Multiple loops on one track
@@ -179,7 +179,7 @@ Verification:
 ```bash
 QT_QPA_PLATFORM=offscreen \
   target/debug/shoopdaloop_dev.sh --self-test \
-  -f 'tst_TrackControlAndLoop_drywet_external*multiple*.qml'
+  -f "${PWD}/src/qml/test/tst_TrackControlAndLoop_drywet_external*multiple*.qml"
 ```
 
 ### Stage 5 — Defaults and session persistence
@@ -196,7 +196,7 @@ Verification:
 ```bash
 QT_QPA_PLATFORM=offscreen \
   target/debug/shoopdaloop_dev.sh --self-test \
-  -f 'tst_*save_load*drywet_external*.qml'
+  -f "${PWD}/src/qml/test/tst_*save_load*drywet_external*.qml"
 ```
 
 ### Stage 6 — Real JACK round trip
@@ -240,7 +240,7 @@ Verification:
 ```bash
 SHOOP_ALLOW_MISSING_BACKENDS=1 QT_QPA_PLATFORM=offscreen \
   target/debug/shoopdaloop_dev.sh --self-test \
-  -f 'tst_*drywet*carla*.qml'
+  -f "${PWD}/src/qml/test/tst_*drywet*carla*.qml"
 
 SHOOP_ALLOW_MISSING_BACKENDS=1 \
   cargo test -p shoop_engine --features app_backend,lv2 carla
