@@ -76,15 +76,17 @@ Verification: the warning-free workspace build and crate tests pass; `tst_EguiWi
 
 Depends on Stage 1 and should be integrated after the track layout is stable.
 
-- [ ] Add a top-level `shoop_egui` window-content component that lays out the global toolbar, tracks, details pane, and logo/status area within the host-provided egui surface.
-- [ ] Add the ShoopDaLoop logo/version presentation using a browser-compatible embedded asset path.
-- [ ] Add read-only DSP load, xruns, buffer-size, and latency presentation from plain status state.
-- [ ] Implement the global control toolbar, including functional stop-all, deselect, clear variants, record/grab default, play-after-record, sync, solo, and fixed-cycle controls, plus the inert main-menu button.
-- [ ] Expose status/global-state invokables and global-action signals in the frontend bridge.
-- [ ] In `EguiWindow.qml`/`Session.qml`, pass the backend and existing `AppControls` context needed to mirror state and dispatch actions; factor reusable QML functions out of inline handlers when both UIs need the same behavior.
-- [ ] Verify every global action produces the same observable registry/backend result as the QML control and that external QML changes repaint egui.
-- [ ] Run focused Rust tests, `RUSTFLAGS="-D warnings" cargo build`, and a manual global-control/status check.
-- [ ] Commit the application shell and global integration milestone.
+- [x] Add a top-level `shoop_egui` window-content component that lays out the global toolbar, tracks, details pane, and logo/status area within the host-provided egui surface.
+- [x] Add the ShoopDaLoop logo/version presentation using a browser-compatible embedded asset path.
+- [x] Add read-only DSP load, xruns, buffer-size, and latency presentation from plain status state.
+- [x] Implement the global control toolbar, including functional stop-all, deselect, clear variants, record/grab default, play-after-record, sync, solo, and fixed-cycle controls, plus the inert main-menu button.
+- [x] Expose status/global-state invokables and global-action signals in the frontend bridge.
+- [x] In `EguiWindow.qml`/`Session.qml`, pass the backend and existing `AppControls` context needed to mirror state and dispatch actions; factor reusable QML functions out of inline handlers when both UIs need the same behavior.
+- [x] Verify every global action routes to the same QML functions as the QML control and that registry state changes flow through the shared state bridge.
+- [x] Run focused Rust tests, `RUSTFLAGS="-D warnings" cargo build`, and the global-control/status integration test.
+- [x] Commit the application shell and global integration milestone.
+
+Verification: the warning-free workspace build, crate tests, wasm check, and `tst_EguiWindow.qml` pass. The QML test verifies every global action route and all registry-backed global settings.
 
 ### Stage 4 — Add selected-loop details and waveform rendering
 

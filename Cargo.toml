@@ -40,6 +40,7 @@ egui-cxx-qt = { git = "https://github.com/SanderVocke/egui-cxx-qt.git", rev = "6
 egui-cxx-qt-build = { git = "https://github.com/SanderVocke/egui-cxx-qt.git", rev = "6f0de7d570e4b8d3543556d76935a2c76bfbddb7" }
 egui = "0.35"
 egui_material_icons = "0.7"
+image = { version = "0.25", default-features = false, features = ["png"] }
 quote = "1.0"
 syn = { version = "2.0", features = ["full"] }
 walkdir = "2.5"

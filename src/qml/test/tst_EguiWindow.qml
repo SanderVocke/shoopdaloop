@@ -66,6 +66,8 @@ ShoopTestFile {
                 'test_window_and_track_bridges_initialize': () => {
                     const window = eguiWindowFactory.createObject(session, {
                         tracks: Array.from(session.tracks),
+                        backend: session.backend,
+                        appControls: session.application_controls,
                         visible: true
                     })
                     verify_true(window)
@@ -92,6 +94,42 @@ ShoopTestFile {
                     verify_eq(control.monitor, true)
 
                     track.name = "Renamed in QML"
+
+                    window.handleDefaultRecordingActionChanged(1)
+                    window.handlePlayAfterRecordChanged(false)
+                    window.handleSyncChanged(false)
+                    window.handleSoloChanged(true)
+                    window.handleApplyNCyclesChanged(3)
+                    verify_eq(AppRegistries.state_registry.default_recording_action, "grab")
+                    verify_eq(AppRegistries.state_registry.play_after_record_active, false)
+                    verify_eq(AppRegistries.state_registry.sync_active, false)
+                    verify_eq(AppRegistries.state_registry.solo_active, true)
+                    verify_eq(AppRegistries.state_registry.apply_n_cycles, 3)
+
+                    const calls = []
+                    window.appControls = {
+                        stop_all: () => calls.push("stop"),
+                        deselect_all: () => calls.push("deselect"),
+                        request_clear_recordings: includeSync => calls.push(`recordings:${includeSync}`),
+                        request_clear_all: includeSync => calls.push(`all:${includeSync}`),
+                        set_default_recording_action: value => calls.push(`record:${value}`),
+                        set_play_after_record: value => calls.push(`playAfter:${value}`),
+                        set_sync: value => calls.push(`sync:${value}`),
+                        set_solo: value => calls.push(`solo:${value}`),
+                        set_apply_n_cycles: value => calls.push(`cycles:${value}`)
+                    }
+                    window.handleGlobalStopAll()
+                    window.handleGlobalDeselectAll()
+                    window.handleGlobalClearRecordings(false)
+                    window.handleGlobalClearAll(true)
+                    window.handleDefaultRecordingActionChanged(0)
+                    window.handlePlayAfterRecordChanged(true)
+                    window.handleSyncChanged(true)
+                    window.handleSoloChanged(false)
+                    window.handleApplyNCyclesChanged(4)
+                    verify_eq(calls.join(","),
+                        "stop,deselect,recordings:false,all:true,record:0,playAfter:true,sync:true,solo:false,cycles:4")
+
                     wait(100)
                     window.close()
                 }

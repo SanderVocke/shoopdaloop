@@ -6,8 +6,8 @@ use egui_cxx_qt::{
     egui, CanvasHandle, CanvasInfo, CanvasQueueError, CanvasSubclass, CanvasUiFactory, EguiUi,
 };
 use shoop_egui::{
-    IndexedLoopAction, IndexedTrackAction, LoopState, LoopWidgetAction, TrackState,
-    TrackWidgetAction, TracksWidget,
+    AppAction, AppState, AppWidget, DefaultRecordingAction, GlobalControlAction, IndexedLoopAction,
+    IndexedTrackAction, LoopState, LoopWidgetAction, TrackState, TrackWidgetAction,
 };
 
 use crate::egui_loop_widget::{apply_loop_state, apply_peak_state};
@@ -94,6 +94,58 @@ pub mod ffi {
             self: Pin<&mut ShoopEguiWindow>,
             track_index: i32,
             value: bool,
+        );
+
+        #[qsignal]
+        #[cxx_name = "globalStopAll"]
+        fn global_stop_all(self: Pin<&mut ShoopEguiWindow>);
+
+        #[qsignal]
+        #[cxx_name = "globalDeselectAll"]
+        fn global_deselect_all(self: Pin<&mut ShoopEguiWindow>);
+
+        #[qsignal]
+        #[cxx_name = "globalClearRecordings"]
+        fn global_clear_recordings(self: Pin<&mut ShoopEguiWindow>, include_sync: bool);
+
+        #[qsignal]
+        #[cxx_name = "globalClearAll"]
+        fn global_clear_all(self: Pin<&mut ShoopEguiWindow>, include_sync: bool);
+
+        #[qsignal]
+        #[cxx_name = "defaultRecordingActionChanged"]
+        fn default_recording_action_changed(self: Pin<&mut ShoopEguiWindow>, value: i32);
+
+        #[qsignal]
+        #[cxx_name = "playAfterRecordChanged"]
+        fn play_after_record_changed(self: Pin<&mut ShoopEguiWindow>, value: bool);
+
+        #[qsignal]
+        #[cxx_name = "syncChanged"]
+        fn sync_changed(self: Pin<&mut ShoopEguiWindow>, value: bool);
+
+        #[qsignal]
+        #[cxx_name = "soloChanged"]
+        fn solo_changed(self: Pin<&mut ShoopEguiWindow>, value: bool);
+
+        #[qsignal]
+        #[cxx_name = "applyNCyclesChanged"]
+        fn apply_n_cycles_changed(self: Pin<&mut ShoopEguiWindow>, value: i32);
+
+        #[qinvokable]
+        #[cxx_name = "setGlobalState"]
+        fn set_global_state(
+            self: Pin<&mut ShoopEguiWindow>,
+            version: QString,
+            dsp_load_percent: f32,
+            xruns: i32,
+            buffer_size: i32,
+            sample_rate: i32,
+            default_recording_action: i32,
+            play_after_record: bool,
+            sync: bool,
+            solo: bool,
+            apply_n_cycles: i32,
         );
 
         #[qinvokable]
@@ -194,44 +246,76 @@ pub fn register_qml_type(module_name: &str, type_name: &str) {
 }
 
 pub struct ShoopEguiWindowRust {
-    tracks: Arc<RwLock<Vec<TrackState>>>,
+    state: Arc<RwLock<AppState>>,
 }
 
 impl Default for ShoopEguiWindowRust {
     fn default() -> Self {
         Self {
-            tracks: Arc::new(RwLock::new(Vec::new())),
+            state: Arc::new(RwLock::new(AppState::default())),
         }
     }
 }
 
 fn indexed_loop_mut(
-    tracks: &mut [TrackState],
+    state: &mut AppState,
     track_index: i32,
     loop_index: i32,
 ) -> Option<&mut LoopState> {
     let track_index = usize::try_from(track_index).ok()?;
     let loop_index = usize::try_from(loop_index).ok()?;
-    tracks.get_mut(track_index)?.loops.get_mut(loop_index)
+    state.tracks.get_mut(track_index)?.loops.get_mut(loop_index)
 }
 
 impl ffi::ShoopEguiWindow {
+    #[allow(clippy::too_many_arguments)]
+    fn set_global_state(
+        mut self: Pin<&mut Self>,
+        version: QString,
+        dsp_load_percent: f32,
+        xruns: i32,
+        buffer_size: i32,
+        sample_rate: i32,
+        default_recording_action: i32,
+        play_after_record: bool,
+        sync: bool,
+        solo: bool,
+        apply_n_cycles: i32,
+    ) {
+        let mut state = self.state.write().expect("egui window state lock poisoned");
+        state.status.version = version.to_string();
+        state.status.dsp_load_percent = dsp_load_percent.clamp(0.0, 100.0);
+        state.status.xruns = u32::try_from(xruns).unwrap_or(0);
+        state.status.buffer_size = u32::try_from(buffer_size).unwrap_or(0);
+        state.status.sample_rate = u32::try_from(sample_rate).unwrap_or(0);
+        state.global_controls.default_recording_action = if default_recording_action == 1 {
+            DefaultRecordingAction::Grab
+        } else {
+            DefaultRecordingAction::Record
+        };
+        state.global_controls.play_after_record = play_after_record;
+        state.global_controls.sync = sync;
+        state.global_controls.solo = solo;
+        state.global_controls.apply_n_cycles = u32::try_from(apply_n_cycles).unwrap_or(0);
+        drop(state);
+        self.as_mut().request_repaint();
+    }
+
     fn set_track(mut self: Pin<&mut Self>, track_index: i32, name: QString, loop_count: i32) {
         let (Ok(track_index), Ok(loop_count)) =
             (usize::try_from(track_index), usize::try_from(loop_count))
         else {
             return;
         };
-        let mut tracks = self
+        let mut state = self.state.write().expect("egui window state lock poisoned");
+        state
             .tracks
-            .write()
-            .expect("egui window state lock poisoned");
-        tracks.resize_with(track_index + 1, TrackState::default);
-        tracks[track_index].name = name.to_string();
-        tracks[track_index]
+            .resize_with(track_index + 1, TrackState::default);
+        state.tracks[track_index].name = name.to_string();
+        state.tracks[track_index]
             .loops
             .resize_with(loop_count, LoopState::default);
-        drop(tracks);
+        drop(state);
         self.as_mut().request_repaint();
     }
 
@@ -261,11 +345,8 @@ impl ffi::ShoopEguiWindow {
         let Ok(track_index) = usize::try_from(track_index) else {
             return;
         };
-        let mut tracks = self
-            .tracks
-            .write()
-            .expect("egui window state lock poisoned");
-        let Some(track) = tracks.get_mut(track_index) else {
+        let mut state = self.state.write().expect("egui window state lock poisoned");
+        let Some(track) = state.tracks.get_mut(track_index) else {
             return;
         };
         track.controls.has_output = has_output;
@@ -287,7 +368,7 @@ impl ffi::ShoopEguiWindow {
         track.controls.input_peak_right_db = input_peak_right_db;
         track.controls.input_midi_activity = input_midi_activity;
         track.controls.clamp();
-        drop(tracks);
+        drop(state);
         self.as_mut().request_repaint();
     }
 
@@ -312,15 +393,12 @@ impl ffi::ShoopEguiWindow {
         gain: f32,
         play_after_record: bool,
     ) {
-        let mut tracks = self
-            .tracks
-            .write()
-            .expect("egui window state lock poisoned");
-        let Some(state) = indexed_loop_mut(&mut tracks, track_index, loop_index) else {
+        let mut app_state = self.state.write().expect("egui window state lock poisoned");
+        let Some(loop_state) = indexed_loop_mut(&mut app_state, track_index, loop_index) else {
             return;
         };
         apply_loop_state(
-            state,
+            loop_state,
             name.to_string(),
             position,
             mode,
@@ -337,7 +415,7 @@ impl ffi::ShoopEguiWindow {
             gain,
             play_after_record,
         );
-        drop(tracks);
+        drop(app_state);
         self.as_mut().request_repaint();
     }
 
@@ -350,38 +428,41 @@ impl ffi::ShoopEguiWindow {
         peak_right_db: f32,
         midi_activity: bool,
     ) {
-        let mut tracks = self
-            .tracks
-            .write()
-            .expect("egui window state lock poisoned");
-        let Some(state) = indexed_loop_mut(&mut tracks, track_index, loop_index) else {
+        let mut app_state = self.state.write().expect("egui window state lock poisoned");
+        let Some(loop_state) = indexed_loop_mut(&mut app_state, track_index, loop_index) else {
             return;
         };
-        apply_peak_state(state, stereo, peak_left_db, peak_right_db, midi_activity);
-        drop(tracks);
+        apply_peak_state(
+            loop_state,
+            stereo,
+            peak_left_db,
+            peak_right_db,
+            midi_activity,
+        );
+        drop(app_state);
         self.as_mut().request_repaint();
     }
 }
 
 impl CanvasSubclass for ffi::ShoopEguiWindow {
     fn ui_factory(self: Pin<&mut Self>, canvas: CanvasHandle<Self>) -> CanvasUiFactory {
-        let tracks = Arc::clone(&self.tracks);
+        let state = Arc::clone(&self.state);
         CanvasUiFactory::new(move || {
             Box::new(EguiWindowUi {
-                tracks: Arc::clone(&tracks),
+                state: Arc::clone(&state),
                 canvas: canvas.clone(),
                 icons_initialized: false,
-                widget: TracksWidget::default(),
+                widget: AppWidget::default(),
             })
         })
     }
 }
 
 struct EguiWindowUi {
-    tracks: Arc<RwLock<Vec<TrackState>>>,
+    state: Arc<RwLock<AppState>>,
     canvas: CanvasHandle<ffi::ShoopEguiWindow>,
     icons_initialized: bool,
-    widget: TracksWidget,
+    widget: AppWidget,
 }
 
 impl EguiWindowUi {
@@ -437,6 +518,36 @@ impl EguiWindowUi {
         });
     }
 
+    fn emit_global_action(&self, action: GlobalControlAction) {
+        self.queue_signal(move |mut canvas| match action {
+            GlobalControlAction::StopAll => canvas.as_mut().global_stop_all(),
+            GlobalControlAction::DeselectAll => canvas.as_mut().global_deselect_all(),
+            GlobalControlAction::ClearRecordings { include_sync } => {
+                canvas.as_mut().global_clear_recordings(include_sync)
+            }
+            GlobalControlAction::ClearAll { include_sync } => {
+                canvas.as_mut().global_clear_all(include_sync)
+            }
+            GlobalControlAction::SetDefaultRecordingAction(value) => {
+                let value = match value {
+                    DefaultRecordingAction::Record => 0,
+                    DefaultRecordingAction::Grab => 1,
+                };
+                canvas.as_mut().default_recording_action_changed(value);
+            }
+            GlobalControlAction::SetPlayAfterRecord(value) => {
+                canvas.as_mut().play_after_record_changed(value)
+            }
+            GlobalControlAction::SetSync(value) => canvas.as_mut().sync_changed(value),
+            GlobalControlAction::SetSolo(value) => canvas.as_mut().solo_changed(value),
+            GlobalControlAction::SetApplyNCycles(value) => {
+                if let Ok(value) = i32::try_from(value) {
+                    canvas.as_mut().apply_n_cycles_changed(value);
+                }
+            }
+        });
+    }
+
     fn queue_signal(&self, signal: impl FnOnce(Pin<&mut ffi::ShoopEguiWindow>) + Send + 'static) {
         match self.canvas.queue(signal) {
             Ok(()) | Err(CanvasQueueError::ObjectDestroyed) => {}
@@ -454,24 +565,17 @@ impl EguiUi for EguiWindowUi {
             return;
         }
 
-        let tracks = self
-            .tracks
+        let state = self
+            .state
             .read()
             .expect("egui window state lock poisoned")
             .clone();
-        let response = egui::CentralPanel::default()
-            .frame(
-                egui::Frame::new()
-                    .fill(egui::Color32::from_rgb(30, 30, 30))
-                    .inner_margin(8.0),
-            )
-            .show(root_ui, |ui| self.widget.show(ui, &tracks))
-            .inner;
-        for action in response.loop_actions {
-            self.emit_action(action);
-        }
-        for action in response.track_actions {
-            self.emit_track_action(action);
+        for action in self.widget.show(root_ui, &state) {
+            match action {
+                AppAction::Loop(action) => self.emit_action(action),
+                AppAction::Track(action) => self.emit_track_action(action),
+                AppAction::Global(action) => self.emit_global_action(action),
+            }
         }
     }
 }

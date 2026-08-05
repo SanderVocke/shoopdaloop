@@ -36,6 +36,69 @@ Item {
 
     property bool settings_io_enabled: false
 
+    function stop_all() {
+        const loops = AppRegistries.objects_registry.select_values(
+            object => object.objectName === "Qml.LoopWidget"
+                && object.mode !== ShoopRustConstants.LoopMode.Stopped)
+        if (loops.length > 0) {
+            loops[0].transition_loops(
+                loops,
+                ShoopRustConstants.LoopMode.Stopped,
+                root.sync_active ? 0 : ShoopRustConstants.DontWaitForSync)
+        }
+    }
+
+    function deselect_all() {
+        AppRegistries.state_registry.clear_set('selected_loop_ids')
+    }
+
+    function request_clear_recordings(include_sync) {
+        confirm_clear_dialog.text = include_sync
+            ? 'Clear ALL loop recordings?'
+            : 'Clear ALL loop recordings except sync?'
+        confirm_clear_dialog.action = () => {
+            const loops = AppRegistries.objects_registry.select_values(object =>
+                object.objectName === "Qml.LoopWidget"
+                    && object.maybe_backend_loop
+                    && (include_sync || !object.is_sync))
+            loops.forEach(loop => loop.clear())
+        }
+        confirm_clear_dialog.open()
+    }
+
+    function request_clear_all(include_sync) {
+        confirm_clear_dialog.text = include_sync
+            ? 'Clear ALL loops?'
+            : 'Clear ALL loops except sync?'
+        confirm_clear_dialog.action = () => {
+            const loops = AppRegistries.objects_registry.select_values(object =>
+                object.objectName === "Qml.LoopWidget"
+                    && (include_sync || !object.is_sync))
+            loops.forEach(loop => loop.clear())
+        }
+        confirm_clear_dialog.open()
+    }
+
+    function set_default_recording_action(value) {
+        AppRegistries.state_registry.set_default_recording_action(value === 1 ? "grab" : "record")
+    }
+
+    function set_play_after_record(value) {
+        AppRegistries.state_registry.set_play_after_record_active(value)
+    }
+
+    function set_sync(value) {
+        AppRegistries.state_registry.set_sync_active(value)
+    }
+
+    function set_solo(value) {
+        AppRegistries.state_registry.set_solo_active(value)
+    }
+
+    function set_apply_n_cycles(value) {
+        AppRegistries.state_registry.set_apply_n_cycles(value)
+    }
+
     function add_dsp_load_point(dsp_load) {
         monitorwindow.add_dsp_load_point(dsp_load)
     }
@@ -200,15 +263,7 @@ Item {
 
             height: 40
             width: 30
-            onClicked: {
-                var loops = AppRegistries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.mode !== ShoopRustConstants.LoopMode.Stopped)
-                if (loops.length > 0) {
-                    loops[0].transition_loops(
-                        loops,
-                        ShoopRustConstants.LoopMode.Stopped,
-                        root.sync_active ? 0 : ShoopRustConstants.DontWaitForSync)
-                }
-            }
+            onClicked: root.stop_all()
 
             MaterialDesignIcon {
                 size: Math.min(parent.width, parent.height) - 10
@@ -223,7 +278,7 @@ Item {
             id: deselect_button
             height: 40
             width: 30
-            onClicked: AppRegistries.state_registry.clear_set('selected_loop_ids')
+            onClicked: root.deselect_all()
 
             MaterialDesignIcon {
                 size: Math.min(parent.width, parent.height) - 10
@@ -255,47 +310,19 @@ Item {
 
                 ShoopMenuItem {
                     text: "Clear recordings"
-                    onClicked: {
-                        confirm_clear_dialog.text = 'Clear ALL loop recordings?'
-                        confirm_clear_dialog.action = () => {
-                            var loops = AppRegistries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.maybe_backend_loop)
-                            loops.forEach(l => l.clear())
-                        }
-                        confirm_clear_dialog.open()
-                    }
+                    onClicked: root.request_clear_recordings(true)
                 }
                 ShoopMenuItem {
                     text: "Clear recordings except sync"
-                    onClicked: {
-                        confirm_clear_dialog.text = 'Clear ALL loop recordings except sync?'
-                        confirm_clear_dialog.action = () => {
-                            var loops = AppRegistries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.maybe_backend_loop && !o.is_sync)
-                            loops.forEach(l => l.clear())
-                        }
-                        confirm_clear_dialog.open()
-                    }
+                    onClicked: root.request_clear_recordings(false)
                 }
                 ShoopMenuItem {
                     text: "Clear all"
-                    onClicked: {
-                        confirm_clear_dialog.text = 'Clear ALL loops?'
-                        confirm_clear_dialog.action = () => {
-                            var loops = AppRegistries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget")
-                            loops.forEach(l => l.clear())
-                        }
-                        confirm_clear_dialog.open()
-                    }
+                    onClicked: root.request_clear_all(true)
                 }
                 ShoopMenuItem {
                     text: "Clear all except sync"
-                    onClicked: {
-                        confirm_clear_dialog.text = 'Clear ALL loops except sync?'
-                        confirm_clear_dialog.action = () => {
-                            var loops = AppRegistries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && !o.is_sync)
-                            loops.forEach(l => l.clear())
-                        }
-                        confirm_clear_dialog.open()
-                    }
+                    onClicked: root.request_clear_all(false)
                 }
             }
 
@@ -381,7 +408,7 @@ Item {
             Connections {
                 target: AppRegistries.state_registry
                 function onPlay_after_record_activeChanged() {
-                    let v = AppRegistries.state_registry.play_after_record || false
+                    let v = AppRegistries.state_registry.play_after_record_active
                     play_after_record_active_button.state = play_after_record_active_button.inverted ? !v : v
                 }
             }

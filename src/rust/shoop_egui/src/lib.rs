@@ -1,6 +1,8 @@
 //! Controller-independent egui elements and their input/output data models.
 
 mod app_model;
+mod app_widget;
+mod global_controls;
 mod loop_widget;
 mod track_controls;
 mod track_widget;
@@ -12,6 +14,8 @@ pub use app_model::{
     IndexedLoopAction, IndexedTrackAction, LoopDetailsState, StatusState, TrackControlState,
     TrackState, TrackWidgetAction, WaveformChannelState, MAX_TRACK_GAIN_DB, MIN_TRACK_GAIN_DB,
 };
+pub use app_widget::AppWidget;
+pub use global_controls::GlobalControls;
 pub use loop_widget::{
     initialize, CompositeKind, LoopMode, LoopState, LoopWidget, LoopWidgetAction,
     LoopWidgetResponse,

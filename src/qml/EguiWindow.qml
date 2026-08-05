@@ -5,6 +5,8 @@ ShoopApplicationWindow {
     id: root
 
     property var tracks: []
+    property var backend: null
+    property var appControls: null
     property var trackSnapshots: []
     property var loopBridges: []
     property var trackBridges: []
@@ -64,6 +66,42 @@ ShoopApplicationWindow {
     function handleTrackInputMonitoringChanged(trackIndex, value) {
         const control = trackControl(trackIndex)
         if (control) control.set_monitor(value)
+    }
+
+    function handleGlobalStopAll() {
+        if (appControls) appControls.stop_all()
+    }
+
+    function handleGlobalDeselectAll() {
+        if (appControls) appControls.deselect_all()
+    }
+
+    function handleGlobalClearRecordings(includeSync) {
+        if (appControls) appControls.request_clear_recordings(includeSync)
+    }
+
+    function handleGlobalClearAll(includeSync) {
+        if (appControls) appControls.request_clear_all(includeSync)
+    }
+
+    function handleDefaultRecordingActionChanged(value) {
+        if (appControls) appControls.set_default_recording_action(value)
+    }
+
+    function handlePlayAfterRecordChanged(value) {
+        if (appControls) appControls.set_play_after_record(value)
+    }
+
+    function handleSyncChanged(value) {
+        if (appControls) appControls.set_sync(value)
+    }
+
+    function handleSoloChanged(value) {
+        if (appControls) appControls.set_solo(value)
+    }
+
+    function handleApplyNCyclesChanged(value) {
+        if (appControls) appControls.set_apply_n_cycles(value)
     }
 
     function initializeCanvas() {
@@ -164,6 +202,22 @@ ShoopApplicationWindow {
         EguiTrackStateBridge {}
     }
 
+    EguiGlobalStateBridge {
+        backend: root.backend
+        stateSink: state => canvas.setGlobalState(
+            state.version,
+            state.dspLoadPercent,
+            state.xruns,
+            state.bufferSize,
+            state.sampleRate,
+            state.defaultRecordingAction,
+            state.playAfterRecord,
+            state.sync,
+            state.solo,
+            state.applyNCycles
+        )
+    }
+
     ShoopEguiWindow {
         id: canvas
         anchors.fill: parent
@@ -205,6 +259,16 @@ ShoopApplicationWindow {
         onTrackInputGainChanged: (trackIndex, value) => root.handleTrackInputGainChanged(trackIndex, value)
         onTrackInputBalanceChanged: (trackIndex, value) => root.handleTrackInputBalanceChanged(trackIndex, value)
         onTrackInputMonitoringChanged: (trackIndex, value) => root.handleTrackInputMonitoringChanged(trackIndex, value)
+
+        onGlobalStopAll: root.handleGlobalStopAll()
+        onGlobalDeselectAll: root.handleGlobalDeselectAll()
+        onGlobalClearRecordings: includeSync => root.handleGlobalClearRecordings(includeSync)
+        onGlobalClearAll: includeSync => root.handleGlobalClearAll(includeSync)
+        onDefaultRecordingActionChanged: value => root.handleDefaultRecordingActionChanged(value)
+        onPlayAfterRecordChanged: value => root.handlePlayAfterRecordChanged(value)
+        onSyncChanged: value => root.handleSyncChanged(value)
+        onSoloChanged: value => root.handleSoloChanged(value)
+        onApplyNCyclesChanged: value => root.handleApplyNCyclesChanged(value)
     }
 
     Component.onCompleted: initializeCanvas()
