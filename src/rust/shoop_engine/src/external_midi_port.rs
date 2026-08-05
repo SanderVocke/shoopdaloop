@@ -19,7 +19,8 @@ use crate::midi_sorting_buffer::MidiSortingBuffer;
 use crate::midi_state::TrackWhat;
 use crate::midi_storage::MidiStorageElem;
 use crate::port::{PortConnectability, PortDataType, PortDirection};
-use std::sync::{Arc, Mutex};
+use crate::realtime_lock_guard::Mutex;
+use std::sync::Arc;
 
 /// Events reserved per cycle, so a normal cycle never grows either buffer.
 const RESERVE: usize = 256;
@@ -143,7 +144,9 @@ impl ExternalMidiPort {
         self.outgoing.prepare();
         self.outgoing_collected.clear();
         if let Some(output) = &self.output_capture {
-            output.lock().unwrap_or_else(|e| e.into_inner()).clear();
+            crate::realtime_allow_lock!("external MIDI capture clear", output.lock())
+                .unwrap_or_else(|e| e.into_inner())
+                .clear();
         }
         self.collect_pos = 0;
         self.last_collect_start = 0;
@@ -153,7 +156,9 @@ impl ExternalMidiPort {
     pub fn request_output(&mut self) {
         self.outgoing_collected.clear();
         if let Some(output) = &self.output_capture {
-            output.lock().unwrap_or_else(|e| e.into_inner()).clear();
+            crate::realtime_allow_lock!("external MIDI capture reset", output.lock())
+                .unwrap_or_else(|e| e.into_inner())
+                .clear();
         }
         self.collect_pos = 0;
         self.last_collect_start = 0;
@@ -266,10 +271,12 @@ impl ExternalMidiPort {
                 if !is_initial_all_sound_off {
                     self.outgoing_collected.push(e);
                     if let Some(output) = &self.output_capture {
-                        output
-                            .lock()
-                            .unwrap_or_else(|error| error.into_inner())
-                            .push(MidiEvent::new(e.time as i32, data.to_vec()));
+                        crate::realtime_allow_lock!(
+                            "external MIDI process output capture",
+                            output.lock()
+                        )
+                        .unwrap_or_else(|error| error.into_inner())
+                        .push(MidiEvent::new(e.time as i32, data.to_vec()));
                     }
                 }
             }

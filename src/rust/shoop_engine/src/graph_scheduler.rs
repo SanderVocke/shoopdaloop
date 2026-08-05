@@ -22,7 +22,8 @@
 //! runs the last-applied schedule and counts the cycle, so the window costs slightly stale
 //! routing rather than dropped audio.
 
-use std::sync::{Arc, Condvar, Mutex};
+use crate::realtime_lock_guard::Mutex;
+use std::sync::{Arc, Condvar};
 use std::thread;
 use std::time::{Duration, Instant};
 

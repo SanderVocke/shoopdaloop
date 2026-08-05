@@ -43,6 +43,24 @@ fn realtime_guard_reverse_guard_allows_exceptional_allocations() {
 }
 
 #[test]
+fn realtime_lock_guard_is_allocation_free() {
+    use shoop_engine::realtime_lock_guard;
+
+    let mutex = realtime_lock_guard::Mutex::new(0_u32);
+    realtime_lock_guard::set_enabled(true);
+    assert_no_alloc(|| {
+        realtime_lock_guard::forbid_locks_if_enabled(|| {
+            let mut value =
+                shoop_engine::realtime_allow_lock!("no-allocation test permission", mutex.lock())
+                    .unwrap();
+            *value += 1;
+        });
+    });
+    realtime_lock_guard::set_enabled(false);
+    assert_eq!(*mutex.lock().unwrap(), 1);
+}
+
+#[test]
 fn snapshot_process_publication_is_allocation_free() {
     let runtime = ContentSnapshotRuntime::new();
     let (mut audio, _audio_control, _audio_reader) = runtime.create_audio_channel(8, 4);

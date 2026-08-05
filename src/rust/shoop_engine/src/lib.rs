@@ -50,6 +50,7 @@ pub mod multichannel_audio;
 pub mod port;
 pub mod profiling;
 pub mod realtime_alloc_guard;
+pub mod realtime_lock_guard;
 pub mod resample;
 pub mod session;
 pub mod state;
