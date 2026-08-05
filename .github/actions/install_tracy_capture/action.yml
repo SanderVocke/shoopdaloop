@@ -116,7 +116,7 @@ runs:
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path $wrapper)) {
           throw "Failed to compile Windows Tracy capture wrapper"
         }
-        $help = & $wrapper 2>&1 | Out-String
+        $help = & $wrapper --help | Out-String
         if ($help -notmatch "Usage: shoop-tracy-capture-wrapper.exe") {
           throw "Windows Tracy capture wrapper failed its usage check"
         }

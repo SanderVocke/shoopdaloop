@@ -15,6 +15,11 @@ static void print_last_error(const wchar_t *operation) {
 }
 
 int wmain(int argc, wchar_t **argv) {
+    if (argc == 2 && wcscmp(argv[1], L"--help") == 0) {
+        wprintf(L"Usage: shoop-tracy-capture-wrapper.exe "
+                L"<tracy-capture.exe> <output.tracy> <stop-request>\n");
+        return 0;
+    }
     if (argc != 4) {
         fwprintf(stderr,
                  L"Usage: shoop-tracy-capture-wrapper.exe "
