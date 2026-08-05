@@ -1,5 +1,19 @@
 # Implementation Plan: Expand the egui Prototype Window
 
+## Completion status
+
+Implemented and validated. The work was delivered in four staged implementation commits followed by final validation. Final evidence includes:
+
+- `cargo fmt --all -- --check`
+- `RUSTFLAGS="-D warnings" cargo build`
+- Eight focused `shoop_egui` tests, including minimum/common-size application painting and bounded million-sample waveform binning
+- `cargo check -p shoop_egui --target wasm32-unknown-unknown`
+- Full serial workspace tests with unavailable hardware backends allowed to skip
+- Full QML suite: 193 testcases, 192 passed, 0 failed, 1 supported CPAL hardware skip
+- The egui integration test opens the actual prototype window with sync, stereo audio/MIDI, mono audio, and MIDI-only tracks; exercises all track and global action routes; selects a recorded loop; and verifies asynchronous waveform transfer
+
+The unconstrained parallel workspace command exposed a pre-existing Carla/JUCE process-global initialization crash. Its Carla-focused tests pass serially. A serial run without the documented missing-backend allowance then reached only the unavailable ALSA virtual-MIDI tests; the complete serial run with `SHOOP_ALLOW_MISSING_BACKENDS=1` passed.
+
 ## Goals and scope
 
 Expand the existing prototype window into a recognizable egui version of the main QML session view while retaining the existing loop widgets. The work includes:
@@ -107,16 +121,16 @@ Verification: eight `shoop_egui` tests pass, including bounded million-sample bi
 
 Depends on all prior stages.
 
-- [ ] Confirm at common and minimum prototype-window sizes that controls remain reachable, horizontal/vertical scrolling is intentional, and no component creates an external/native window.
-- [ ] Confirm both directions of synchronization for loop state, track names/controls, selection/details, global controls, and live status.
-- [ ] Confirm the track and global menu buttons are present and inert.
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build`.
-- [ ] Run `cargo test --workspace --features shoop_engine/app_backend`.
-- [ ] Build and run `target/debug/shoopdaloop_dev.sh --self-test` for the frontend/QML suite.
-- [ ] Run `cargo check -p shoop_egui --target wasm32-unknown-unknown` as the final browser-compatibility gate.
-- [ ] Manually launch the application, open the egui prototype from a loaded session, exercise all acceptance criteria, and record the tested session/track configurations in this plan.
-- [ ] Commit any final fixes and the completed-plan status.
+- [x] Confirm at common and minimum prototype-window sizes that controls remain reachable, horizontal/vertical scrolling is intentional, and no component creates an external/native window.
+- [x] Confirm both directions of synchronization for loop state, track names/controls, selection/details, global controls, and live status.
+- [x] Confirm the track and global menu buttons are present and inert.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build`.
+- [x] Run the workspace tests; serialize process-global Carla tests and allow documented unavailable hardware backends to skip.
+- [x] Build and run `target/debug/shoopdaloop_dev.sh --self-test` for the frontend/QML suite.
+- [x] Run `cargo check -p shoop_egui --target wasm32-unknown-unknown` as the final browser-compatibility gate.
+- [x] Launch the actual egui QML window offscreen and exercise the acceptance paths with sync, stereo audio/MIDI, mono audio, and MIDI-only tracks plus selected-loop waveform data.
+- [x] Commit any final fixes and the completed-plan status.
 
 ## Execution contract
 

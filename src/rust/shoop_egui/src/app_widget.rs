@@ -171,11 +171,21 @@ mod tests {
             ..Default::default()
         };
 
-        let output = context.run_ui(Default::default(), |ui| {
-            widget.show(ui, &state);
-        });
+        let mut uploaded_logo = false;
+        for size in [egui::vec2(360.0, 200.0), egui::vec2(900.0, 600.0)] {
+            let output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+                    ..Default::default()
+                },
+                |ui| {
+                    widget.show(ui, &state);
+                },
+            );
 
-        assert!(output.shapes.len() > 10);
-        assert!(!output.textures_delta.set.is_empty());
+            assert!(output.shapes.len() > 10);
+            uploaded_logo |= !output.textures_delta.set.is_empty();
+        }
+        assert!(uploaded_logo);
     }
 }
