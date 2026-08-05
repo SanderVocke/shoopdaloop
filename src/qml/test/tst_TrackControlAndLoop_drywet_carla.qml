@@ -229,8 +229,6 @@ ShoopTestFile {
 
                 // Purpose: Inactive Carla Rack MIDI input must be gated and resume only while active.
                 // Use case: A synth hosted in Rack must not receive live notes from an unmonitored track.
-                // Failure: Expected active FX input [{time:0,data:[0x90,72,100]}]; observed [].
-                // Carla MIDI input capture may bypass or miss the session's internal MIDI propagation.
                 'test_carla_rack_midi_activation_gating': () => {
                     check_backend()
                     verify_midi_gating(tracks[0])
@@ -238,8 +236,6 @@ ShoopTestFile {
 
                 // Purpose: Inactive Carla Patchbay MIDI input must be gated and resume only while active.
                 // Use case: A Patchbay synth graph must not receive notes from an unmonitored track.
-                // Failure: Expected active FX input [{time:0,data:[0x90,72,100]}]; observed [].
-                // Carla MIDI input capture may bypass or miss the session's internal MIDI propagation.
                 'test_carla_patchbay_midi_activation_gating': () => {
                     check_backend()
                     verify_midi_gating(tracks[1])
@@ -247,8 +243,6 @@ ShoopTestFile {
 
                 // Purpose: Inactive Carla Patchbay 16x MIDI input must be gated and resume while active.
                 // Use case: A large Patchbay graph must not receive notes from an unmonitored track.
-                // Failure: Expected active FX input [{time:0,data:[0x90,72,100]}]; observed [].
-                // Carla MIDI input capture may bypass or miss the session's internal MIDI propagation.
                 'test_carla_patchbay_16_midi_activation_gating': () => {
                     check_backend()
                     verify_midi_gating(tracks[2])

@@ -444,8 +444,6 @@ fn audio_keeps_flowing_across_a_mid_stream_topology_change() {
 
 // Purpose: Exercise the complete JACK dry-send to processor to wet-return audio graph.
 // Use case: A user connects an external effects client and hears transformed input at wet out.
-// Failure: Expected transformed sample 2.0; observed max 0 across 96,256 captured samples.
-// The real JACK port-to-port passthrough graph may not propagate internal connections.
 #[test]
 fn external_dry_wet_audio_round_trip_reaches_jack_output() {
     let suffix = std::process::id();
@@ -605,8 +603,6 @@ fn external_dry_wet_audio_round_trip_reaches_jack_output() {
 
 // Purpose: Verify one JACK MIDI source reaches only the external track with passthrough enabled.
 // Use case: A shared controller feeds several external synth tracks but only the monitored one sounds.
-// Failure: Expected monitored [[0x90,72,100],[0x80,72,0]] and muted []; observed both [].
-// The real JACK MIDI input-to-send internal connection may not enter the session propagation graph.
 #[test]
 fn external_midi_fanout_respects_each_tracks_passthrough_mute() {
     let suffix = std::process::id();

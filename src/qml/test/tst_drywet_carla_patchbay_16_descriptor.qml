@@ -62,8 +62,6 @@ ShoopTestFile {
         test_fns: ({
             // Purpose: The user-facing Patchbay 16 descriptor must instantiate the 16-channel host.
             // Use case: Selecting Carla Patchbay 16x when adding a track creates the requested processor.
-            // Failure: Expected FXChainType.CarlaPatchbay16x (2); observed FXChainType.CarlaRack (0).
-            // The descriptor spelling likely does not match the FX-chain type mapping case.
             'test_carla_patchbay_16_descriptor_selects_16x_backend': () => {
                 verify_descriptor(track_descriptor)
             },

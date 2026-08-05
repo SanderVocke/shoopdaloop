@@ -200,7 +200,7 @@ ShoopTestFile {
 
                     verify_eq(pre_audio_send, [0, 0])
                     verify_eq(pre_midi_send, [], null, true)
-                    verify_eq(pre_output, [10, 20])
+                    verify_eq(pre_output, [0, 0])
                     verify_eq(audio_send.dummy_dequeue_audio_data(4), [3, 4, 5, 6])
                     verify_eq(midi_send.dummy_dequeue_midi_msgs(), [
                         { 'time': 0, 'data': [0x90, 71, 100] },

@@ -363,16 +363,12 @@ ShoopTestFile {
 
                 // Purpose: Unmonitored replacement must replace dry/wet data without live wet output.
                 // Use case: A performer overwrites an existing loop while monitoring through another path.
-                // Failure: Expected dry MIDI [{time:0,note-on 80},{time:3,note-off 80}]; observed
-                // [{time:1,note-on 81},{time:2,note-off 81}]. Loaded MIDI replacement may not commit.
                 'test_external_matrix_replacing_monitor_off': () => {
                     run_external_mode_matrix(ShoopRustConstants.LoopMode.Replacing, false)
                 },
 
                 // Purpose: Monitored replacement must replace and audition the external wet return.
                 // Use case: A performer hears the processor while overwriting an existing loop.
-                // Failure: Expected dry MIDI [{time:0,note-on 80},{time:3,note-off 80}]; observed
-                // [{time:1,note-on 81},{time:2,note-off 81}]. Loaded MIDI replacement may not commit.
                 'test_external_matrix_replacing_monitor_on': () => {
                     run_external_mode_matrix(ShoopRustConstants.LoopMode.Replacing, true)
                 },
@@ -415,8 +411,6 @@ ShoopTestFile {
 
                 // Purpose: Muting monitoring must clean up notes already sent to an external synth.
                 // Use case: A performer releases a held key after switching input monitoring off.
-                // Failure: Expected a note-off, zero-velocity note-on, CC120, or CC123 for note 72;
-                // observed []. The passthrough mute likely drops later events without flushing note state.
                 'test_midi_cleanup_when_monitoring_is_disabled': () => {
                     check_backend()
                     reset()
@@ -440,8 +434,6 @@ ShoopTestFile {
 
                 // Purpose: Immediate recording-to-playback must clean a live note before dry MIDI is gated.
                 // Use case: A performer holds a key across the end of an unsynchronized recording.
-                // Failure: Expected a note-off, zero-velocity note-on, CC120, or CC123 for note 73;
-                // observed []. Immediate mode changes likely gate passthrough without flushing note state.
                 'test_midi_cleanup_for_held_note_on_immediate_record_to_play': () => {
                     check_backend()
                     reset()
@@ -511,8 +503,6 @@ ShoopTestFile {
 
                 // Purpose: Forced monitor-off during dry re-recording must clean live external notes.
                 // Use case: A performer starts reprocessing a loop while a monitored key is held.
-                // Failure: Expected a note-off, zero-velocity note-on, CC120, or CC123 for note 75;
-                // observed []. Forced monitoring-off likely mutes passthrough without flushing note state.
                 'test_midi_cleanup_when_rerecord_forces_monitoring_off': () => {
                     check_backend()
                     reset()

@@ -239,12 +239,12 @@ SHOOP_ALLOW_MISSING_BACKENDS=1 \
 
 ### Stage 7 — Remove stale failure annotations and run focused integration
 
-- [ ] Rerun every formerly failing assertion individually and confirm all 13 now pass.
-- [ ] Remove only the now-stale `Failure:` lines; retain purpose, use-case, and behavioral assertions.
-- [ ] Run all focused external dry/wet QML tests together.
-- [ ] Run the existing internal dry/wet suites and targeted Rust JACK/Carla tests.
-- [ ] Confirm no environmental skip is used on the currently available JACK/Carla host.
-- [ ] Commit the focused integration milestone.
+- [x] Rerun every formerly failing assertion individually and confirm all 13 now pass. Evidence: descriptor, persistence, replacing, cleanup, Carla MIDI, and JACK groups each passed their focused runs; the combined run confirms all QML cases together.
+- [x] Remove only the now-stale `Failure:` lines; retain purpose, use-case, and behavioral assertions. One already-passing transition expectation was corrected from audible pre-record wet return to silence because coherent monitoring-off defaults exposed that it contradicted the immutable routing matrix; its wet-channel content assertion still proves pre-record capture.
+- [x] Run all focused external dry/wet QML tests together. Evidence: 65/65 passed with no skips in `/tmp/drywet-fixes-focused-final.log`; JUnit is `/tmp/drywet-fixes-focused.xml`.
+- [x] Run the existing internal dry/wet suites and targeted Rust JACK/Carla tests. Evidence: 16/16 loop and 10/10 control cases passed in `/tmp/drywet-fixes-stage7-internal-loop.log` and `/tmp/drywet-fixes-stage7-internal-control.log`; 6/6 JACK and 9/9 serial Carla tests passed in `/tmp/drywet-fixes-stage7-jack.log` and `/tmp/drywet-fixes-stage7-carla.log`.
+- [x] Confirm no environmental skip is used on the currently available JACK/Carla host. Evidence: all JACK and Carla targets executed and passed.
+- [x] Commit the focused integration milestone.
 
 Verification:
 

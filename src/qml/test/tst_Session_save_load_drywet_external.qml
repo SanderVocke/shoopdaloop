@@ -153,8 +153,6 @@ ShoopTestFile {
             test_fns: ({
                 // Purpose: A fresh explicit external track must start with every live path effectively muted.
                 // Use case: Adding an external-effects track must not immediately pass input or return audio.
-                // Failure: Expected wet-return passthrough_muted=true and output [0,0,0,0]; observed
-                // passthrough_muted=false and [10,20,30,40]. Initial port registration may miss monitor push.
                 'test_fresh_external_track_defaults_to_monitoring_off': () => {
                     check_backend()
                     verify_monitor_state(false)
@@ -163,8 +161,6 @@ ShoopTestFile {
 
                 // Purpose: Saving monitoring off must restore control and backend passthrough mute state.
                 // Use case: A silent external track remains silent after closing and reopening a session.
-                // Failure: Expected wet-return passthrough_muted=true and output [0,0,0,0]; observed
-                // passthrough_muted=false and [10,20,30,40]. Reload may not reapply unchanged monitor state.
                 'test_save_load_external_monitoring_off': () => {
                     check_backend()
                     save_then_mutate_and_load(false, true)
