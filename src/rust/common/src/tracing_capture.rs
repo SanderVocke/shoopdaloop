@@ -16,6 +16,61 @@ shoop_log_unit!("Tracing.Capture");
 const POLL_INTERVAL: Duration = Duration::from_millis(25);
 const TRACING_QUIESCE_INTERVAL: Duration = Duration::from_millis(250);
 
+#[cfg(windows)]
+const WINDOWS_CAPTURE_WRAPPER_SCRIPT: &str = r#"
+$ErrorActionPreference = 'Stop'
+$native = @'
+using System;
+using System.Runtime.InteropServices;
+public static class ShoopConsoleSignal {
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool SetConsoleCtrlHandler(IntPtr handler, bool add);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool GenerateConsoleCtrlEvent(uint ctrlEvent, uint processGroupId);
+}
+'@
+Add-Type -TypeDefinition $native
+$tool = $env:SHOOP_TRACY_CAPTURE_TOOL
+$output = $env:SHOOP_TRACY_CAPTURE_OUTPUT
+$stopRequest = $env:SHOOP_TRACY_CAPTURE_STOP_REQUEST
+$startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+$startInfo.FileName = $tool
+$startInfo.Arguments = '-o "' + $output + '"'
+$startInfo.UseShellExecute = $false
+$startInfo.CreateNoWindow = $false
+$process = [System.Diagnostics.Process]::new()
+$process.StartInfo = $startInfo
+$started = $false
+$exitCode = 1
+try {
+    $started = $process.Start()
+    if (-not $started) { throw 'tracy-capture did not start' }
+    while (-not $process.WaitForExit(25)) {
+        if (Test-Path -LiteralPath $stopRequest) {
+            # The wrapper and tracy-capture share the wrapper's private console.
+            # Ignore our own broadcast, then let Tracy's SIGINT handler disconnect
+            # and save the trace before exiting.
+            if (-not [ShoopConsoleSignal]::SetConsoleCtrlHandler([IntPtr]::Zero, $true)) {
+                throw "SetConsoleCtrlHandler failed: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+            }
+            if (-not [ShoopConsoleSignal]::GenerateConsoleCtrlEvent(0, 0)) {
+                throw "GenerateConsoleCtrlEvent failed: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+            }
+            break
+        }
+    }
+    $process.WaitForExit()
+    $exitCode = $process.ExitCode
+} catch {
+    Write-Error $_
+    if ($started -and -not $process.HasExited) { $process.Kill() }
+} finally {
+    Remove-Item -LiteralPath $stopRequest -Force -ErrorAction SilentlyContinue
+    $process.Dispose()
+}
+exit $exitCode
+"#;
+
 #[derive(Clone, Debug)]
 pub struct CaptureConfig {
     pub tool: PathBuf,
@@ -91,6 +146,15 @@ struct ActiveCapture {
     source_label: String,
     path: PathBuf,
     started_at: SystemTime,
+    #[cfg(windows)]
+    stop_request_path: PathBuf,
+}
+
+impl Drop for ActiveCapture {
+    fn drop(&mut self) {
+        #[cfg(windows)]
+        let _ = std::fs::remove_file(&self.stop_request_path);
+    }
 }
 
 #[derive(Default)]
@@ -286,20 +350,36 @@ impl CaptureController {
             config.tool.display(),
             path.display()
         );
-        let mut command = Command::new(&config.tool);
-        command
-            .arg("-o")
-            .arg(&path)
-            .stdout(Stdio::from(stdout))
-            .stderr(Stdio::from(stderr));
+        #[cfg(not(windows))]
+        let mut command = {
+            let mut command = Command::new(&config.tool);
+            command.arg("-o").arg(&path);
+            command
+        };
         #[cfg(windows)]
-        {
-            // Give tracy-capture a private console so a helper can send Ctrl+C without
-            // interrupting ShoopDaLoop or the CI shell sharing its original console.
+        let (mut command, stop_request_path) = {
             use std::os::windows::process::CommandExt;
             const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
-            command.creation_flags(CREATE_NEW_CONSOLE);
-        }
+
+            // Keep the signal sender alive in the same private console as
+            // tracy-capture. A stop-request file asks it to broadcast Ctrl+C.
+            // This avoids the unreliable attach/broadcast/detach race of a
+            // short-lived helper process while keeping Ctrl+C away from the app.
+            let stop_request_path = path.with_extension("tracy.stop");
+            let _ = std::fs::remove_file(&stop_request_path);
+            let mut command = Command::new("powershell.exe");
+            command
+                .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"])
+                .arg(WINDOWS_CAPTURE_WRAPPER_SCRIPT)
+                .env("SHOOP_TRACY_CAPTURE_TOOL", &config.tool)
+                .env("SHOOP_TRACY_CAPTURE_OUTPUT", &path)
+                .env("SHOOP_TRACY_CAPTURE_STOP_REQUEST", &stop_request_path)
+                .creation_flags(CREATE_NEW_CONSOLE);
+            (command, stop_request_path)
+        };
+        command
+            .stdout(Stdio::from(stdout))
+            .stderr(Stdio::from(stderr));
         let child = command.spawn().map_err(|source| CaptureError::Spawn {
             tool: config.tool.clone(),
             source,
@@ -310,6 +390,8 @@ impl CaptureController {
             source_label: label.to_string(),
             path: path.clone(),
             started_at: SystemTime::now(),
+            #[cfg(windows)]
+            stop_request_path,
         });
 
         let start = Instant::now();
@@ -372,7 +454,7 @@ impl CaptureController {
             }
         };
         if status.is_none() {
-            if let Err(error) = signal_capture_process(&mut active.child) {
+            if let Err(error) = signal_capture_process(&mut active) {
                 force_kill_and_reap(&mut active.child);
                 return Err(error);
             }
@@ -426,8 +508,8 @@ impl CaptureController {
         )?;
         info!("Finalized Tracy capture {}", active.path.display());
         Ok(Some(CapturedTrace {
-            source_label: active.source_label,
-            path: active.path,
+            source_label: active.source_label.clone(),
+            path: active.path.clone(),
         }))
     }
 }
@@ -542,13 +624,23 @@ fn wait_for_connection_state(connected: bool, timeout: Duration) -> Result<(), C
 }
 
 fn force_kill_and_reap(child: &mut Child) {
+    #[cfg(windows)]
+    {
+        // The managed capture process is a PowerShell wrapper on Windows. Kill
+        // its process tree so the real tracy-capture child cannot be orphaned.
+        let _ = Command::new("taskkill.exe")
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
     let _ = child.kill();
     let _ = child.wait();
 }
 
 #[cfg(unix)]
-fn signal_capture_process(child: &mut Child) -> Result<(), CaptureError> {
-    let pid = child.id();
+fn signal_capture_process(active: &mut ActiveCapture) -> Result<(), CaptureError> {
+    let pid = active.child.id();
     let result = unsafe { libc::kill(pid as i32, libc::SIGINT) };
     if result == 0 {
         Ok(())
@@ -561,53 +653,14 @@ fn signal_capture_process(child: &mut Child) -> Result<(), CaptureError> {
 }
 
 #[cfg(windows)]
-fn signal_capture_process(child: &mut Child) -> Result<(), CaptureError> {
-    let pid = child.id();
-    // tracy-capture installs a SIGINT handler on Windows and saves after Ctrl+C.
-    // A short-lived PowerShell helper attaches to the private child console, ignores
-    // the event itself, and emits Ctrl+C only within that console. Keeping this in a
-    // helper avoids detaching the GUI/test process from the CI runner's console.
-    let script = format!(
-        r#"
-$native = @'
-using System;
-using System.Runtime.InteropServices;
-public static class ShoopConsoleSignal {{
-    [DllImport("kernel32.dll", SetLastError = true)]
-    public static extern bool FreeConsole();
-    [DllImport("kernel32.dll", SetLastError = true)]
-    public static extern bool AttachConsole(uint processId);
-    [DllImport("kernel32.dll", SetLastError = true)]
-    public static extern bool SetConsoleCtrlHandler(IntPtr handler, bool add);
-    [DllImport("kernel32.dll", SetLastError = true)]
-    public static extern bool GenerateConsoleCtrlEvent(uint ctrlEvent, uint processGroupId);
-}}
-'@
-Add-Type -TypeDefinition $native
-[ShoopConsoleSignal]::FreeConsole() | Out-Null
-if (-not [ShoopConsoleSignal]::AttachConsole({pid})) {{ exit 10 }}
-if (-not [ShoopConsoleSignal]::SetConsoleCtrlHandler([IntPtr]::Zero, $true)) {{ exit 11 }}
-if (-not [ShoopConsoleSignal]::GenerateConsoleCtrlEvent(0, 0)) {{ exit 12 }}
-Start-Sleep -Milliseconds 100
-"#
-    );
-    let status = Command::new("powershell.exe")
-        .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"])
-        .arg(script)
-        .status()
-        .map_err(|source| CaptureError::Signal { pid, source })?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(CaptureError::Signal {
-            pid,
-            source: std::io::Error::other(format!("Windows Ctrl+C helper exited with {status}")),
-        })
-    }
+fn signal_capture_process(active: &mut ActiveCapture) -> Result<(), CaptureError> {
+    let pid = active.child.id();
+    std::fs::write(&active.stop_request_path, b"stop\n")
+        .map_err(|source| CaptureError::Signal { pid, source })
 }
 
 #[cfg(all(not(unix), not(windows)))]
-fn signal_capture_process(_child: &mut Child) -> Result<(), CaptureError> {
+fn signal_capture_process(_active: &mut ActiveCapture) -> Result<(), CaptureError> {
     Err(CaptureError::UnsupportedPlatform)
 }
 
