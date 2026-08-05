@@ -251,16 +251,16 @@ RUSTFLAGS="-D warnings" cargo build
 
 ### Stage 8 — Final end-to-end validation
 
-- [ ] Run all focused external dry/wet tests together.
-- [ ] Run existing internal dry/wet suites to detect fixture or expectation regressions.
-- [ ] Run the complete QML suite.
-- [ ] Run the Rust workspace suite because JACK/Carla test code was added.
-- [ ] Produce a final list of:
-  - Passing new tests.
-  - Failing new tests and their documented expected/actual behavior.
-  - Environmental skips.
-  - Unrelated baseline failures.
-- [ ] Confirm no production code was changed and the worktree contains only committed test milestones.
+- [x] Run all focused external dry/wet tests together. Evidence: 64 focused QML tests, 53 passed and 11 documented failures in `/tmp/drywet-focused-final.log`; JUnit in `/tmp/drywet-focused-final.xml`.
+- [x] Run existing internal dry/wet suites to detect fixture or expectation regressions. Evidence: 16/16 loop tests and 10/10 control tests passed in `/tmp/drywet-internal-loop-final.log` and `/tmp/drywet-internal-control-final.log`.
+- [x] Run the complete QML suite. Evidence: 235 total, 223 passed, 11 documented failures, and 1 unrelated CPAL skip in `/tmp/drywet-expanded-final.log`; JUnit in `/tmp/drywet-expanded-final.xml`.
+- [x] Run the Rust workspace suite because JACK/Carla test code was added. Evidence: all tests reached the JACK integration target; 4 existing JACK tests passed and the 2 documented new round-trip tests failed in `/tmp/drywet-rust-workspace-final.log`.
+- [x] Produce a final list of:
+  - Passing new tests: 21 QML tests covering synchronized cleanup, ten routing-matrix cases, boundaries, multi-loop combinations, monitoring-on persistence, and Carla activation/deactivation.
+  - Failing new tests: 11 QML tests and 2 real-JACK tests, each with expected/actual output and a potential root cause in its adjacent comment.
+  - Environmental skips: none for the new tests; all Carla variants and real JACK were available.
+  - Unrelated baseline failures: none; the pre-existing CPAL playback-port case remains an environmental skip.
+- [x] Confirm no production code was changed and the worktree contains only committed test milestones. Evidence: the goal-range diff from `3b29fc80` contains only `plan.md`, QML tests, and the Rust JACK integration test.
 
 Commands:
 
