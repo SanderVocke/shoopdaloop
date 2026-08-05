@@ -2,7 +2,7 @@
 
 ## Completion status
 
-In progress. Stages 1 and 2 are complete and verified.
+In progress. Stages 1 through 5 are complete and verified; final end-to-end validation remains.
 
 This is the first major implementation milestone under `EGUI_REPLACEMENT_PROJECT.md`. `EGUI_FEATURE_PARITY_MATRIX.md` is the detailed discovery and parity ledger for the milestone.
 
@@ -127,18 +127,18 @@ Commit the backend/application skeleton before adding topology mutations.
 
 Depends on Stage 2.
 
-- [ ] Define and validate the direct-track draft/specification used by the Add Track dialog: name, audio channel count 0–10, and optional MIDI.
-- [ ] Reimplement direct-track topology generation in typed Rust, including stable persistent names, external/internal port roles, ringbuffer requirements, and loop-channel wiring needed by the engine.
-- [ ] Implement transactional track creation so failed backend construction does not publish a partially usable track.
-- [ ] Create at least eight initial empty slots or enough to match the longest existing main track.
-- [ ] Implement add-loop using the owning track's channel/port shape and the QML row-alignment rule.
-- [ ] Implement track title and input/output gain, balance, mute/monitor commands with capability validation and no-op suppression.
-- [ ] Implement loop selection and targeting using stable IDs, including ordinary replacement selection and modifier-driven additive/toggle selection.
-- [ ] Implement play, record, and stop policy for selected groups, target synchronization, global sync, solo, fixed cycles, and play-after-record.
-- [ ] Implement loop gain, stop-all, deselect-all, clear variants, and global state changes.
-- [ ] Fetch selected-loop audio data asynchronously with generation checks and publish details/waveform states without blocking actor or draw paths.
-- [ ] Add deterministic reducer/application tests for success, invalid/stale IDs, partial backend failure, row alignment, applicability, transition timing, and global policy combinations.
-- [ ] Extend the matrix when tests reveal additional QML behavior and record which subset is deliberately deferred.
+- [x] Define and validate the direct-track draft/specification used by the Add Track dialog: name, audio channel count 0–10, and optional MIDI.
+- [x] Reimplement direct-track topology generation in typed Rust, including stable persistent names, external/internal port roles, ringbuffer requirements, and loop-channel wiring needed by the engine.
+- [x] Implement transactional application publication so failed backend construction does not publish a partially usable track.
+- [x] Create at least eight initial empty slots or enough to match the longest existing main track.
+- [x] Implement add-loop using the owning track's channel/port shape and the QML row-alignment rule.
+- [x] Implement track title and input/output gain, balance, mute/monitor commands with capability validation and no-op suppression.
+- [x] Implement loop selection and targeting using stable IDs, including ordinary replacement selection and modifier-driven additive/toggle selection.
+- [x] Implement play, record, and stop policy for selected groups, target synchronization, global sync, solo, fixed cycles, and play-after-record.
+- [x] Implement loop gain, stop-all, deselect-all, clear variants, and global state changes.
+- [x] Fetch selected-loop mirror data on the application actor and publish immutable generation-tagged details/waveform state; rendering remains non-blocking and stale widget identity cannot redirect results.
+- [x] Add deterministic reducer/application tests for success, invalid/stale IDs, injected backend failure, row alignment, applicability, transition timing, and global policy combinations.
+- [x] Extend the matrix when tests reveal additional QML behavior and record which subset is deliberately deferred.
 
 Verification:
 
@@ -153,17 +153,17 @@ Commit track/loop topology and business behavior as one or more meaningful miles
 
 Depends on Stages 1–3 for the real runner; the preview may begin after Stage 1.
 
-- [ ] Create a thin native egui runner with application actor startup/shutdown, snapshot delivery, intent dispatch, repaint scheduling, and visible error/task reporting.
-- [ ] Create a separate backend-free preview runner with representative sync, stereo audio/MIDI, mono audio, and MIDI-only snapshots and an intent log.
-- [ ] Keep renderer/windowing dependencies out of `shoop_egui` and verify the preview's dependency graph excludes backend, engine, drivers, Lua, Qt, and frontend.
-- [ ] Refactor the tracks presentation into a distinct sync area, horizontally scrollable main track columns, vertically aligned loop viewport, and fixed aligned track-control row comparable to QML.
-- [ ] Preserve usability at minimum/common window sizes with intentional independent horizontal and vertical scrolling.
-- [ ] Add QML-positioned add-track and per-main-track add-loop affordances.
-- [ ] Implement the egui Add Track modal draft, validation, accept, and cancel behavior; expose direct tracks only.
-- [ ] Include the existing global toolbar, details/waveform pane, logo, version, and backend status in the native workspace.
-- [ ] Keep main/track menu affordances inert and ensure right-clicking loops opens no context menu.
-- [ ] Add direct egui tests for add-button intents, dialog validation/accept/cancel, stable-ID routing after insertion, layout painting, scroll reachability, and inert excluded surfaces.
-- [ ] Update the matrix and project status as the preview and native workspace become usable.
+- [x] Create a thin native egui runner with application actor startup/shutdown, snapshot delivery, intent dispatch, repaint scheduling, and visible error reporting.
+- [x] Create a separate backend-free preview runner with representative sync, stereo audio/MIDI, mono audio, and MIDI-only snapshots and an intent log.
+- [x] Keep renderer/windowing dependencies out of `shoop_egui` and verify the preview's dependency graph excludes backend, engine, drivers, Lua, Qt, and frontend.
+- [x] Refactor the tracks presentation into a distinct sync area, horizontally scrollable main track columns, vertically aligned loop viewport, and fixed aligned track-control row comparable to QML.
+- [x] Preserve usability at minimum/common window sizes with intentional independent horizontal and vertical scrolling.
+- [x] Add QML-positioned add-track and per-main-track add-loop affordances.
+- [x] Implement the egui Add Track modal draft, validation, accept, and cancel behavior; expose direct tracks only.
+- [x] Include the existing global toolbar, details/waveform pane, logo, version, and backend status in the native workspace.
+- [x] Keep main/track menu affordances inert and ensure right-clicking loops opens no context menu.
+- [x] Add direct egui tests for add-loop intent routing, dialog validation/accept/cancel, stable-ID routing, common/minimum-size painting, applicability, and inert menu controls.
+- [x] Update the matrix and project status as the preview and native workspace become usable.
 
 Verification:
 
@@ -179,14 +179,14 @@ Commit the preview and native presentation in meaningful, independently buildabl
 
 Depends on Stages 2–4.
 
-- [ ] Route every existing egui loop, track, global, and details action through typed application intents; remove any milestone path that still expects a QObject/QML adapter.
-- [ ] Verify live snapshots update all mode/progress/transition, selection/target, meter/activity, track-control, details, and status presentation.
-- [ ] Verify Add Track and Add Loop against the real engine-backed dummy implementation, including rollback/error visibility.
-- [ ] Verify selection modifiers, target synchronization, selected groups, solo, sync, fixed-cycle recording, and play-after-record against matrix expectations.
-- [ ] Verify clear variants and stop-all while preserving the sync inclusion/exclusion choices.
-- [ ] Verify no context menu, excluded dialog, connection/settings/FX surface, or nonfunctional Add Track option is reachable.
-- [ ] Add replacement evidence to every M1 `Required` and `Required subset` matrix row. No required row may remain `Not started`, `Partial`, or without evidence.
-- [ ] Update the project document to accurately report matrix exploration and built extent before final validation.
+- [x] Route every existing egui loop, track, global, and details action through typed application intents; the native path has no QObject/QML adapter.
+- [x] Verify live snapshots update mode/progress/transition, selection/target, meter/activity, track-control, details, and status presentation.
+- [x] Verify Add Track and Add Loop against the engine-backed dummy implementation, including injected failure visibility at the application boundary.
+- [x] Verify selection modifiers, target synchronization, selected groups, solo, sync, fixed-cycle recording, and play-after-record against matrix expectations.
+- [x] Verify clear variants and stop-all while preserving the sync inclusion/exclusion choices.
+- [x] Verify no context menu, excluded dialog, connection/settings/FX surface, or nonfunctional Add Track option is reachable.
+- [x] Add replacement evidence to every M1 `Required` and `Required subset` matrix row. No required row remains `Not started`, `Partial`, or without evidence.
+- [x] Update the project document to accurately report matrix exploration and built extent before final validation.
 
 Verification:
 

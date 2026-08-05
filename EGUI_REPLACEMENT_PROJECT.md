@@ -21,13 +21,13 @@ Milestone plans must reference both this document and the parity matrix, and mus
 | Area | Status | Notes |
 |---|---|---|
 | Project architecture | Planned | The target crate boundaries and one-process application-actor approach are accepted. |
-| Feature-parity discovery | Partially explored | An initial matrix covers the tracks/loops first-milestone subset. Most settings, persistence, connections, FX, scripting, MIDI control, and advanced editing behavior remain unexplored for replacement purposes. |
-| First major milestone | In progress | Stage 1 established the framework-independent API and stable-ID intent path. |
-| egui presentation | Usable | `shoop_egui` contains reusable prototype widgets, but the working application state and actions are still supplied through Qt/QML adapters. |
+| Feature-parity discovery | Partially explored | The tracks/loops milestone subset is explored and built; settings, persistence, connections, FX, scripting, MIDI control, and advanced editing remain largely unexplored for replacement purposes. |
+| First major milestone | In progress | Implementation and focused integration are complete through Stage 5; final whole-workspace/QML validation remains. |
+| egui presentation | Usable | `shoop_egui` renders the native and backend-free preview applications through stable snapshot/intent contracts while the retained Qt prototype adapter still compiles. |
 | Framework-independent application API | Complete | `shoop_app_api` owns stable IDs, snapshots, capability state, and typed milestone intents without framework/backend dependencies. |
-| Rust business-logic application core | In progress | `shoop_app` owns a bounded actor, stable-ID sync-track model, snapshots, selection/target/global state, and observable errors; direct track topology is next. |
-| Native backend façade | Usable | `shoop_backend` provides fake and engine-backed dummy implementations for loop lifecycle, transitions, polling, and status; port/channel topology is next. |
-| Pure native egui executable | Not started | The egui prototype is hosted by the Qt application. |
+| Rust business-logic application core | Usable | `shoop_app` owns the milestone's direct tracks/loops, topology mutation, control policies, details, snapshots, and observable errors. |
+| Native backend façade | Usable | `shoop_backend` provides fake and engine-backed dummy implementations for direct audio/MIDI topology, controls, data, polling, and status. |
+| Pure native egui executable | Usable | `shoopdaloop_native` and the isolated `shoop_egui_preview` build, pass focused tests, and launch under Xvfb. |
 | Qt/frontend removal | Not started | Removal is a final migration result, not part of the first milestone. |
 
 Use the status terms `Not started`, `Partially explored`, `Planned`, `In progress`, `Usable`, `Complete`, and `Blocked` consistently. Notes should identify the active milestone or the evidence needed for the next status change.

@@ -7,10 +7,14 @@ use std::time::Duration;
 
 use anyhow::Result;
 use shoop_app_api::{
-    AppIntent, AppNotification, AppSnapshot, GlobalControlAction, LoopAction, LoopId, LoopMode,
-    LoopState, NotificationLevel, StatusState, TrackId, TrackState,
+    AppIntent, AppNotification, AppSnapshot, ChannelId, DirectTrackSpec, GlobalControlAction,
+    LoopAction, LoopDetailsState, LoopId, LoopMode, LoopState, NotificationLevel, StatusState,
+    TrackAction, TrackControlState, TrackId, TrackState, WaveformChannelState,
 };
-use shoop_backend::{Backend, BackendLoopId, BackendLoopMode, BackendSnapshot};
+use shoop_backend::{
+    Backend, BackendLoopId, BackendLoopMode, BackendSnapshot, BackendTrackControl, BackendTrackId,
+    DirectTrackRequest,
+};
 
 const COMMAND_CAPACITY: usize = 1024;
 const POLL_INTERVAL: Duration = Duration::from_millis(16);
@@ -129,6 +133,8 @@ fn run_actor(
 
 struct ApplicationModel {
     revision: u64,
+    next_track_id: u64,
+    next_loop_id: u64,
     tracks: Vec<TrackModel>,
     loops: BTreeMap<LoopId, LoopModel>,
     global: shoop_app_api::GlobalControlState,
@@ -138,9 +144,13 @@ struct ApplicationModel {
 
 struct TrackModel {
     id: TrackId,
+    backend_id: BackendTrackId,
     name: String,
+    port_name_base: String,
     is_sync: bool,
+    audio_channels: u8,
     loops: Vec<LoopId>,
+    controls: TrackControlState,
 }
 
 struct LoopModel {
@@ -149,12 +159,21 @@ struct LoopModel {
     track_id: TrackId,
     name: String,
     state: LoopState,
+    length: u32,
+    position: u32,
+    audio_data: Option<Vec<Arc<[f32]>>>,
 }
 
 impl ApplicationModel {
     fn initialize(backend: &mut dyn Backend) -> Result<Self> {
-        let backend_loop = backend.create_loop()?;
+        let created = backend.create_direct_track(DirectTrackRequest {
+            port_name_base: "sync_loop".to_owned(),
+            audio_channels: 1,
+            midi: false,
+            initial_loops: 1,
+        })?;
         backend.wait_idle();
+        let backend_loop = created.loops[0];
         let track_id = TrackId::from_raw(1);
         let loop_id = LoopId::from_raw(1);
         let loop_model = LoopModel {
@@ -166,16 +185,26 @@ impl ApplicationModel {
                 id: loop_id,
                 name: "sync loop".to_owned(),
                 sync: true,
+                show_gain: true,
                 ..Default::default()
             },
+            length: 0,
+            position: 0,
+            audio_data: None,
         };
         Ok(Self {
             revision: 1,
+            next_track_id: 2,
+            next_loop_id: 2,
             tracks: vec![TrackModel {
                 id: track_id,
+                backend_id: created.track_id,
                 name: "Sync".to_owned(),
+                port_name_base: "sync_loop".to_owned(),
                 is_sync: true,
+                audio_channels: 1,
                 loops: vec![loop_id],
+                controls: Default::default(),
             }],
             loops: BTreeMap::from([(loop_id, loop_model)]),
             global: Default::default(),
@@ -192,16 +221,214 @@ impl ApplicationModel {
                 action,
             } => self.handle_loop_action(backend, track_id, loop_id, action),
             AppIntent::Global(action) => self.handle_global_action(backend, action),
-            AppIntent::Track { track_id, .. } => Err(format!(
-                "track controls are not available for track {track_id} yet"
-            )),
-            AppIntent::AddTrack(_) => Err("track creation is not available yet".to_owned()),
-            AppIntent::AddLoop { track_id } => Err(format!(
-                "loop creation is not available for track {track_id} yet"
-            )),
+            AppIntent::Track { track_id, action } => {
+                self.handle_track_action(backend, track_id, action)
+            }
+            AppIntent::AddTrack(spec) => self.add_track(backend, spec),
+            AppIntent::AddLoop { track_id } => self.add_aligned_loop_row(backend, track_id),
         };
         if let Err(error) = result {
             self.notify_error(error);
+        }
+    }
+
+    fn add_track(
+        &mut self,
+        backend: &mut dyn Backend,
+        spec: DirectTrackSpec,
+    ) -> Result<(), String> {
+        spec.validate()
+            .map_err(|error| format!("invalid track: {error:?}"))?;
+        let slot_count = self
+            .tracks
+            .iter()
+            .filter(|track| !track.is_sync)
+            .map(|track| track.loops.len())
+            .max()
+            .unwrap_or(0)
+            .max(8);
+        let track_id = TrackId::from_raw(self.next_track_id);
+        let port_name_base = self.unique_port_name(&spec.name, track_id);
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: port_name_base.clone(),
+                audio_channels: spec.audio_channels,
+                midi: spec.midi,
+                initial_loops: slot_count,
+            })
+            .map_err(|error| format!("could not create track: {error}"))?;
+        let sync_backend = self.sync_backend_loop();
+        for backend_loop in &created.loops {
+            backend
+                .set_loop_sync_source(*backend_loop, sync_backend)
+                .map_err(|error| format!("could not synchronize new loop: {error}"))?;
+        }
+        self.next_track_id = self.next_track_id.saturating_add(1);
+        let mut loop_ids = Vec::with_capacity(created.loops.len());
+        for (index, backend_loop) in created.loops.into_iter().enumerate() {
+            loop_ids.push(self.insert_loop(
+                track_id,
+                backend_loop,
+                format!("({})", index + 1),
+                spec.audio_channels,
+            ));
+        }
+        self.tracks.push(TrackModel {
+            id: track_id,
+            backend_id: created.track_id,
+            name: spec.name,
+            port_name_base,
+            is_sync: false,
+            audio_channels: spec.audio_channels,
+            loops: loop_ids,
+            controls: Default::default(),
+        });
+        Ok(())
+    }
+
+    fn add_aligned_loop_row(
+        &mut self,
+        backend: &mut dyn Backend,
+        track_id: TrackId,
+    ) -> Result<(), String> {
+        let target = self
+            .tracks
+            .iter()
+            .position(|track| track.id == track_id && !track.is_sync)
+            .ok_or_else(|| format!("stale, unknown, or sync track {track_id}"))?;
+        let previous_len = self.tracks[target].loops.len();
+        let after_len = previous_len + 1;
+        let max_after = self
+            .tracks
+            .iter()
+            .filter(|track| !track.is_sync)
+            .map(|track| track.loops.len())
+            .max()
+            .unwrap_or(0)
+            .max(after_len);
+        let affected: Vec<_> = self
+            .tracks
+            .iter()
+            .enumerate()
+            .filter(|(index, track)| {
+                !track.is_sync
+                    && (*index == target
+                        || after_len == max_after && track.loops.len() == previous_len)
+            })
+            .map(|(index, track)| (index, track.backend_id, track.audio_channels))
+            .collect();
+        let mut created = Vec::with_capacity(affected.len());
+        for (index, backend_track, audio_channels) in affected {
+            let backend_loop = backend
+                .add_loop_to_track(backend_track)
+                .map_err(|error| format!("could not add aligned loop: {error}"))?;
+            if let Some(sync) = self.sync_backend_loop() {
+                backend
+                    .set_loop_sync_source(backend_loop, Some(sync))
+                    .map_err(|error| format!("could not synchronize added loop: {error}"))?;
+            }
+            created.push((index, backend_loop, audio_channels));
+        }
+        for (track_index, backend_loop, audio_channels) in created {
+            let name = format!("({})", self.tracks[track_index].loops.len() + 1);
+            let id = self.insert_loop(
+                self.tracks[track_index].id,
+                backend_loop,
+                name,
+                audio_channels,
+            );
+            self.tracks[track_index].loops.push(id);
+        }
+        Ok(())
+    }
+
+    fn handle_track_action(
+        &mut self,
+        backend: &mut dyn Backend,
+        track_id: TrackId,
+        action: TrackAction,
+    ) -> Result<(), String> {
+        let track = self
+            .tracks
+            .iter_mut()
+            .find(|track| track.id == track_id)
+            .ok_or_else(|| format!("stale or unknown track {track_id}"))?;
+        let backend_action = match action {
+            TrackAction::NameChanged(name) => {
+                track.name = name;
+                return Ok(());
+            }
+            TrackAction::OutputGainChanged(value) => BackendTrackControl::OutputGainDb(value),
+            TrackAction::OutputBalanceChanged(value) => BackendTrackControl::OutputBalance(value),
+            TrackAction::OutputMuteChanged(value) => BackendTrackControl::OutputMute(value),
+            TrackAction::InputGainChanged(value) => BackendTrackControl::InputGainDb(value),
+            TrackAction::InputBalanceChanged(value) => BackendTrackControl::InputBalance(value),
+            TrackAction::InputMonitoringChanged(value) => {
+                BackendTrackControl::InputMonitoring(value)
+            }
+        };
+        backend
+            .set_track_control(track.backend_id, backend_action)
+            .map_err(|error| format!("could not update track {track_id}: {error}"))
+    }
+
+    fn insert_loop(
+        &mut self,
+        track_id: TrackId,
+        backend_id: BackendLoopId,
+        name: String,
+        audio_channels: u8,
+    ) -> LoopId {
+        let id = LoopId::from_raw(self.next_loop_id);
+        self.next_loop_id = self.next_loop_id.saturating_add(1);
+        self.loops.insert(
+            id,
+            LoopModel {
+                id,
+                backend_id,
+                track_id,
+                name: name.clone(),
+                state: LoopState {
+                    id,
+                    name,
+                    show_gain: audio_channels > 0,
+                    stereo: audio_channels == 2,
+                    ..Default::default()
+                },
+                length: 0,
+                position: 0,
+                audio_data: None,
+            },
+        );
+        id
+    }
+
+    fn sync_backend_loop(&self) -> Option<BackendLoopId> {
+        self.tracks
+            .iter()
+            .find(|track| track.is_sync)
+            .and_then(|track| track.loops.first())
+            .and_then(|id| self.loops.get(id))
+            .map(|model| model.backend_id)
+    }
+
+    fn unique_port_name(&self, name: &str, id: TrackId) -> String {
+        let base: String = name
+            .trim()
+            .to_lowercase()
+            .chars()
+            .map(|character| {
+                if character.is_ascii_alphanumeric() || character == '_' {
+                    character
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        if self.tracks.iter().any(|track| track.port_name_base == base) {
+            format!("{base}_{}", id.raw())
+        } else {
+            base
         }
     }
 
@@ -222,18 +449,31 @@ impl ApplicationModel {
         }
         match action {
             LoopAction::IconClicked(modifiers) => {
-                if !modifiers.additive {
-                    for model in self.loops.values_mut() {
+                let was_selected = self
+                    .loops
+                    .get(&loop_id)
+                    .is_some_and(|model| model.state.selected);
+                let was_targeted = self
+                    .loops
+                    .get(&loop_id)
+                    .is_some_and(|model| model.state.targeted);
+                if was_targeted {
+                    if let Some(model) = self.loops.get_mut(&loop_id) {
+                        model.state.targeted = false;
                         model.state.selected = false;
                     }
+                } else {
+                    if !modifiers.additive && !was_selected {
+                        for model in self.loops.values_mut() {
+                            model.state.selected = false;
+                        }
+                    }
+                    if let Some(model) = self.loops.get_mut(&loop_id) {
+                        model.state.targeted = false;
+                        model.state.selected = !was_selected;
+                    }
                 }
-                if let Some(model) = self.loops.get_mut(&loop_id) {
-                    model.state.selected = if modifiers.additive {
-                        !model.state.selected
-                    } else {
-                        true
-                    };
-                }
+                self.refresh_selected_audio(backend)?;
                 Ok(())
             }
             LoopAction::IconDoubleClicked => {
@@ -246,9 +486,11 @@ impl ApplicationModel {
                 }
                 if !was_targeted {
                     if let Some(model) = self.loops.get_mut(&loop_id) {
+                        model.state.selected = false;
                         model.state.targeted = true;
                     }
                 }
+                self.refresh_selected_audio(backend)?;
                 Ok(())
             }
             LoopAction::PlayClicked => {
@@ -260,8 +502,37 @@ impl ApplicationModel {
             LoopAction::StopClicked => {
                 self.transition_targets(backend, loop_id, BackendLoopMode::Stopped)
             }
-            LoopAction::GainChanged(_) => Ok(()),
+            LoopAction::GainChanged(value) => {
+                backend
+                    .set_loop_gain(loop_model.backend_id, value)
+                    .map_err(|error| format!("could not set loop gain: {error}"))?;
+                if let Some(model) = self.loops.get_mut(&loop_id) {
+                    model.state.gain = value.clamp(0.0, 1.0);
+                }
+                Ok(())
+            }
         }
+    }
+
+    fn refresh_selected_audio(&mut self, backend: &mut dyn Backend) -> Result<(), String> {
+        let selected: Vec<_> = self
+            .loops
+            .values()
+            .filter(|model| model.state.selected)
+            .map(|model| (model.id, model.backend_id))
+            .collect();
+        for model in self.loops.values_mut() {
+            model.audio_data = None;
+        }
+        if let [(id, backend_id)] = selected.as_slice() {
+            let data = backend
+                .loop_audio_data(*backend_id)
+                .map_err(|error| format!("could not fetch selected loop audio: {error}"))?;
+            if let Some(model) = self.loops.get_mut(id) {
+                model.audio_data = Some(data);
+            }
+        }
+        Ok(())
     }
 
     fn transition_targets(
@@ -280,15 +551,70 @@ impl ApplicationModel {
             .filter(|model| {
                 model.id == initiating_loop || initiating_selected && model.state.selected
             })
-            .map(|model| (model.id, model.backend_id))
+            .map(|model| (model.id, model.track_id, model.backend_id))
             .collect();
-        let delay = self.global.sync.then_some(0);
-        for (id, backend_id) in targets {
+        let delay = self.global.sync.then_some(self.target_delay());
+        if self.global.solo && matches!(mode, BackendLoopMode::Playing | BackendLoopMode::Recording)
+        {
+            let track_ids: Vec<_> = targets.iter().map(|(_, track_id, _)| *track_id).collect();
+            let selected_ids: Vec<_> = targets.iter().map(|(id, _, _)| *id).collect();
+            let others: Vec<_> = self
+                .loops
+                .values()
+                .filter(|model| {
+                    track_ids.contains(&model.track_id) && !selected_ids.contains(&model.id)
+                })
+                .map(|model| (model.id, model.backend_id))
+                .collect();
+            for (id, backend_id) in others {
+                backend
+                    .transition_loop(backend_id, BackendLoopMode::Stopped, delay)
+                    .map_err(|error| format!("could not solo-stop loop {id}: {error}"))?;
+            }
+        }
+        for (id, _, backend_id) in targets {
             backend
                 .transition_loop(backend_id, mode, delay)
                 .map_err(|error| format!("could not transition loop {id}: {error}"))?;
+            if mode == BackendLoopMode::Recording && self.global.apply_n_cycles > 0 {
+                let after = delay
+                    .unwrap_or(0)
+                    .saturating_add(self.global.apply_n_cycles);
+                let next = if self.global.play_after_record {
+                    BackendLoopMode::Playing
+                } else {
+                    BackendLoopMode::Stopped
+                };
+                backend
+                    .transition_loop(backend_id, next, Some(after))
+                    .map_err(|error| {
+                        format!("could not schedule recording end for {id}: {error}")
+                    })?;
+            }
         }
         Ok(())
+    }
+
+    fn target_delay(&self) -> u32 {
+        let Some(target) = self.loops.values().find(|model| model.state.targeted) else {
+            return 0;
+        };
+        if let Some(delay) = target.state.next_transition_delay {
+            return delay;
+        }
+        let sync_length = self
+            .tracks
+            .iter()
+            .find(|track| track.is_sync)
+            .and_then(|track| track.loops.first())
+            .and_then(|id| self.loops.get(id))
+            .map(|model| model.length)
+            .unwrap_or(0);
+        if sync_length == 0 || target.length <= target.position {
+            0
+        } else {
+            (target.length - target.position) / sync_length
+        }
     }
 
     fn handle_global_action(
@@ -312,6 +638,7 @@ impl ApplicationModel {
             GlobalControlAction::DeselectAll => {
                 for model in self.loops.values_mut() {
                     model.state.selected = false;
+                    model.audio_data = None;
                 }
             }
             GlobalControlAction::ClearRecordings { include_sync }
@@ -353,10 +680,50 @@ impl ApplicationModel {
         self.status.xruns = self.status.xruns.saturating_add(snapshot.status.xruns);
         self.status.buffer_size = snapshot.status.buffer_size;
         self.status.sample_rate = snapshot.status.sample_rate;
+        for track in &mut self.tracks {
+            let Some(backend_state) = snapshot.tracks.get(&track.backend_id) else {
+                continue;
+            };
+            let controls = &mut track.controls;
+            controls.has_output = backend_state.audio_channels > 0 || backend_state.midi;
+            controls.has_output_audio = backend_state.audio_channels > 0;
+            controls.output_stereo = backend_state.audio_channels == 2;
+            controls.output_gain_db = backend_state.output_gain_db;
+            controls.output_balance = backend_state.output_balance;
+            controls.output_muted = backend_state.output_muted;
+            controls.output_peak_left_db = backend_state
+                .output_peaks
+                .first()
+                .copied()
+                .unwrap_or(-200.0);
+            controls.output_peak_right_db = backend_state
+                .output_peaks
+                .get(1)
+                .copied()
+                .unwrap_or(controls.output_peak_left_db);
+            controls.output_midi_activity = backend_state.output_midi_activity;
+            controls.has_input = backend_state.audio_channels > 0 || backend_state.midi;
+            controls.has_input_audio = backend_state.audio_channels > 0;
+            controls.input_stereo = backend_state.audio_channels == 2;
+            controls.input_gain_db = backend_state.input_gain_db;
+            controls.input_balance = backend_state.input_balance;
+            controls.input_monitoring = backend_state.input_monitoring;
+            controls.input_peak_left_db =
+                backend_state.input_peaks.first().copied().unwrap_or(-200.0);
+            controls.input_peak_right_db = backend_state
+                .input_peaks
+                .get(1)
+                .copied()
+                .unwrap_or(controls.input_peak_left_db);
+            controls.input_midi_activity = backend_state.input_midi_activity;
+            controls.clamp();
+        }
         for model in self.loops.values_mut() {
             let Some(backend_state) = snapshot.loops.get(&model.backend_id) else {
                 continue;
             };
+            model.length = backend_state.length;
+            model.position = backend_state.position;
             model.state.mode = app_loop_mode(backend_state.mode);
             model.state.next_mode = backend_state
                 .next_mode
@@ -369,6 +736,14 @@ impl ApplicationModel {
             } else {
                 backend_state.position as f32 / backend_state.length as f32
             };
+            model.state.stereo = backend_state.stereo;
+            model.state.peak_left_db = backend_state.audio_peaks.first().copied().unwrap_or(-200.0);
+            model.state.peak_right_db = backend_state
+                .audio_peaks
+                .get(1)
+                .copied()
+                .unwrap_or(model.state.peak_left_db);
+            model.state.midi_activity = backend_state.midi_activity;
         }
     }
 
@@ -392,14 +767,48 @@ impl ApplicationModel {
                             state
                         })
                         .collect(),
-                    controls: Default::default(),
+                    controls: track.controls.clone(),
                 })
                 .collect(),
             global_controls: self.global.clone(),
             status: self.status.clone(),
-            details: None,
+            details: self.details_snapshot(),
             notifications: self.notifications.clone(),
         }
+    }
+
+    fn details_snapshot(&self) -> Option<LoopDetailsState> {
+        let mut selected = self.loops.values().filter(|model| model.state.selected);
+        let model = selected.next()?;
+        if selected.next().is_some() {
+            return None;
+        }
+        let channels = model
+            .audio_data
+            .as_ref()
+            .map(|channels| {
+                channels
+                    .iter()
+                    .enumerate()
+                    .map(|(index, samples)| WaveformChannelState {
+                        id: ChannelId::from_raw((model.id.raw() << 8) | index as u64 + 1),
+                        label: format!("audio {}", index + 1),
+                        samples: Arc::clone(samples),
+                        start_offset: 0,
+                        loop_length: model.length as u64,
+                        played_sample: matches!(model.state.mode, LoopMode::Playing)
+                            .then_some(model.position as i64),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Some(LoopDetailsState {
+            generation: self.revision,
+            loop_id: model.id,
+            title: model.name.clone(),
+            loading: model.audio_data.is_none(),
+            channels,
+        })
     }
 
     fn notify_error(&mut self, message: String) {
@@ -506,7 +915,167 @@ mod tests {
             })
             .unwrap();
         let snapshot = wait_for(&handle, |snapshot| snapshot.notifications.len() >= 2);
-        assert!(snapshot.notifications[1].message.contains("not available"));
+        assert!(snapshot.notifications[1]
+            .message
+            .contains("stale or unknown track"));
+    }
+
+    #[test]
+    fn failed_track_creation_is_observable_and_not_partially_published() {
+        let mut backend = FakeBackend::default();
+        backend.fail_track_creation_after(1);
+        let runtime = ApplicationRuntime::start(Box::new(backend)).unwrap();
+        let handle = runtime.handle();
+        handle
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Will fail".to_owned(),
+                audio_channels: 2,
+                midi: false,
+            }))
+            .unwrap();
+        let snapshot = wait_for(&handle, |snapshot| !snapshot.notifications.is_empty());
+        assert_eq!(snapshot.tracks.len(), 1);
+        assert!(snapshot.notifications[0]
+            .message
+            .contains("injected track creation failure"));
+    }
+
+    #[test]
+    fn direct_track_creation_and_aligned_rows_are_published() {
+        let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        let handle = runtime.handle();
+        for (name, audio_channels, midi) in [
+            ("Stereo", 2, true),
+            ("Mono", 1, false),
+            ("MIDI", 0, true),
+            ("Silent", 0, false),
+        ] {
+            handle
+                .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                    name: name.to_owned(),
+                    audio_channels,
+                    midi,
+                }))
+                .unwrap();
+        }
+        let snapshot = wait_for(&handle, |snapshot| snapshot.tracks.len() == 5);
+        assert!(snapshot.tracks[1..]
+            .iter()
+            .all(|track| track.loops.len() == 8));
+        assert!(snapshot.tracks[1].controls.output_stereo);
+        assert!(!snapshot.tracks[4].controls.has_output);
+
+        let first = snapshot.tracks[1].id;
+        handle
+            .dispatch(AppIntent::AddLoop { track_id: first })
+            .unwrap();
+        let snapshot = wait_for(&handle, |snapshot| snapshot.tracks[1].loops.len() == 9);
+        assert!(snapshot.tracks[1..]
+            .iter()
+            .all(|track| track.loops.len() == 9));
+    }
+
+    #[test]
+    fn controls_selection_details_solo_and_fixed_recording_are_functional() {
+        let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        let handle = runtime.handle();
+        handle
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Track".to_owned(),
+                audio_channels: 2,
+                midi: true,
+            }))
+            .unwrap();
+        let snapshot = wait_for(&handle, |snapshot| snapshot.tracks.len() == 2);
+        let track_id = snapshot.tracks[1].id;
+        let first = snapshot.tracks[1].loops[0].id;
+        let second = snapshot.tracks[1].loops[1].id;
+        handle
+            .dispatch(AppIntent::Track {
+                track_id,
+                action: TrackAction::OutputGainChanged(-6.0),
+            })
+            .unwrap();
+        handle
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id: first,
+                action: LoopAction::IconClicked(SelectionModifiers::default()),
+            })
+            .unwrap();
+        let snapshot = wait_for(&handle, |snapshot| {
+            snapshot.tracks[1].controls.output_gain_db == -6.0
+                && snapshot
+                    .details
+                    .as_ref()
+                    .is_some_and(|details| details.loop_id == first)
+        });
+        assert_eq!(snapshot.details.as_ref().unwrap().channels.len(), 2);
+
+        handle
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id: first,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        wait_for(&handle, |snapshot| {
+            snapshot.tracks[1].loops[0].mode == LoopMode::Playing
+        });
+        handle
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSolo(true)))
+            .unwrap();
+        handle
+            .dispatch(AppIntent::Global(GlobalControlAction::SetApplyNCycles(2)))
+            .unwrap();
+        handle
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id: second,
+                action: LoopAction::RecordClicked,
+            })
+            .unwrap();
+        let snapshot = wait_for(&handle, |snapshot| {
+            snapshot.tracks[1].loops[0].mode == LoopMode::Stopped
+                && snapshot.tracks[1].loops[1].mode == LoopMode::Playing
+        });
+        assert!(snapshot.global_controls.solo);
+        assert_eq!(snapshot.global_controls.apply_n_cycles, 2);
+    }
+
+    #[test]
+    fn target_delay_is_derived_from_target_and_sync_lengths() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(&mut backend).unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Track".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let sync = model.tracks[0].loops[0];
+        model.loops.get_mut(&sync).unwrap().length = 100;
+        let target = model.tracks[1].loops[0];
+        let initiating = model.tracks[1].loops[1];
+        let target_model = model.loops.get_mut(&target).unwrap();
+        target_model.state.targeted = true;
+        target_model.length = 400;
+        target_model.position = 100;
+        model
+            .transition_targets(&mut backend, initiating, BackendLoopMode::Playing)
+            .unwrap();
+        assert!(backend.operations().iter().any(|operation| matches!(
+            operation,
+            shoop_backend::FakeOperation::Transition(
+                id,
+                BackendLoopMode::Playing,
+                Some(3)
+            ) if *id == model.loops[&initiating].backend_id
+        )));
     }
 
     #[test]

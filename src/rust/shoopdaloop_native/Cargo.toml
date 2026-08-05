@@ -1,0 +1,13 @@
+[package]
+name = "shoopdaloop_native"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+eframe = { workspace = true }
+shoop_app = { path = "../shoop_app" }
+shoop_backend = { path = "../shoop_backend" }
+shoop_egui = { path = "../shoop_egui" }
+
+[lints]
+workspace = true

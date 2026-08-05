@@ -1,4 +1,6 @@
-use crate::{AppAction, AppState, DetailsPane, GlobalControls, TracksWidget};
+use crate::{
+    AppAction, AppState, DetailsPane, DirectTrackSpec, GlobalControls, TrackWidget, TracksWidget,
+};
 
 const LOGO_BYTES: &[u8] = include_bytes!("../../../../resources/logo-small.png");
 
@@ -6,8 +8,17 @@ pub struct AppWidget {
     tracks: TracksWidget,
     global_controls: GlobalControls,
     details: DetailsPane,
+    sync_track: TrackWidget,
     details_open: bool,
+    add_track_open: bool,
+    add_track_name: String,
+    add_track_audio_channels: u8,
+    add_track_midi: bool,
     logo: Option<egui::TextureHandle>,
+    #[cfg(test)]
+    add_track_accept_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    add_track_cancel_rect: Option<egui::Rect>,
 }
 
 impl Default for AppWidget {
@@ -16,8 +27,17 @@ impl Default for AppWidget {
             tracks: TracksWidget::default(),
             global_controls: GlobalControls::default(),
             details: DetailsPane::default(),
+            sync_track: TrackWidget::default(),
             details_open: true,
+            add_track_open: false,
+            add_track_name: String::new(),
+            add_track_audio_channels: 2,
+            add_track_midi: false,
             logo: None,
+            #[cfg(test)]
+            add_track_accept_rect: None,
+            #[cfg(test)]
+            add_track_cancel_rect: None,
         }
     }
 }
@@ -69,15 +89,39 @@ impl AppWidget {
                 .show(ui, |ui| self.details.show(ui, state.details.as_ref()));
         }
 
-        egui::Panel::right("logo_and_status")
+        egui::Panel::right("logo_status_and_sync")
             .resizable(false)
-            .exact_size(180.0)
+            .exact_size(190.0)
             .frame(
                 egui::Frame::new()
                     .fill(egui::Color32::from_rgb(42, 42, 42))
-                    .inner_margin(egui::Margin::same(8)),
+                    .inner_margin(egui::Margin::same(5)),
             )
-            .show(ui, |ui| self.show_logo_and_status(ui, state));
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("status_and_sync_scroll")
+                    .show(ui, |ui| {
+                        self.show_logo_and_status(ui, state);
+                        if let Some(sync) = state.tracks.iter().find(|track| track.is_sync) {
+                            ui.add_space(8.0);
+                            ui.separator();
+                            let response = self.sync_track.show(ui, sync);
+                            actions.extend(response.loop_actions.into_iter().map(
+                                |(loop_id, action)| AppAction::Loop {
+                                    track_id: sync.id,
+                                    loop_id,
+                                    action,
+                                },
+                            ));
+                            actions.extend(response.actions.into_iter().map(|action| {
+                                AppAction::Track {
+                                    track_id: sync.id,
+                                    action,
+                                }
+                            }));
+                        }
+                    });
+            });
 
         egui::CentralPanel::default()
             .frame(
@@ -86,11 +130,124 @@ impl AppWidget {
                     .inner_margin(8.0),
             )
             .show(ui, |ui| {
-                let response = self.tracks.show(ui, &state.tracks);
+                let main_tracks: Vec<_> = state
+                    .tracks
+                    .iter()
+                    .filter(|track| !track.is_sync)
+                    .cloned()
+                    .collect();
+                let response = self.tracks.show(ui, &main_tracks);
+                if response.add_track_requested {
+                    self.add_track_name = format!("Track {}", main_tracks.len() + 1);
+                    self.add_track_audio_channels = 2;
+                    self.add_track_midi = false;
+                    self.add_track_open = true;
+                }
                 actions.extend(response.intents);
             });
 
+        self.show_add_track_dialog(ui.ctx(), &mut actions);
         actions
+    }
+
+    fn show_add_track_dialog(&mut self, context: &egui::Context, actions: &mut Vec<AppAction>) {
+        if !self.add_track_open {
+            return;
+        }
+        let mut open = self.add_track_open;
+        let mut accepted = false;
+        let mut cancelled = false;
+        egui::Window::new("Add track")
+            .id(egui::Id::new("add_track_dialog"))
+            .collapsible(false)
+            .resizable(false)
+            .open(&mut open)
+            .show(context, |ui| {
+                ui.label("Choose the settings for your direct track.");
+                egui::Grid::new("add_track_fields")
+                    .num_columns(2)
+                    .spacing([10.0, 6.0])
+                    .show(ui, |ui| {
+                        ui.label("Name:");
+                        ui.text_edit_singleline(&mut self.add_track_name);
+                        ui.end_row();
+                        ui.label("Audio:");
+                        egui::ComboBox::from_id_salt("add_track_audio")
+                            .selected_text(audio_channel_label(self.add_track_audio_channels))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.add_track_audio_channels,
+                                    0,
+                                    "Disabled",
+                                );
+                                ui.selectable_value(&mut self.add_track_audio_channels, 1, "Mono");
+                                ui.selectable_value(
+                                    &mut self.add_track_audio_channels,
+                                    2,
+                                    "Stereo",
+                                );
+                                for channels in 3..=10 {
+                                    ui.selectable_value(
+                                        &mut self.add_track_audio_channels,
+                                        channels,
+                                        format!("Custom ({channels})"),
+                                    );
+                                }
+                            });
+                        ui.end_row();
+                        ui.label("MIDI:");
+                        ui.checkbox(&mut self.add_track_midi, "Enabled");
+                        ui.end_row();
+                    });
+                ui.separator();
+                ui.horizontal(|ui| {
+                    let valid = !self.add_track_name.trim().is_empty();
+                    let add = ui.add_enabled(valid, egui::Button::new("Add"));
+                    #[cfg(test)]
+                    {
+                        self.add_track_accept_rect = Some(add.rect);
+                    }
+                    if add.clicked() {
+                        accepted = true;
+                    }
+                    let cancel = ui.button("Cancel");
+                    #[cfg(test)]
+                    {
+                        self.add_track_cancel_rect = Some(cancel.rect);
+                    }
+                    if cancel.clicked() {
+                        cancelled = true;
+                    }
+                });
+            });
+        if accepted {
+            if let Some(action) = self.accept_add_track() {
+                actions.push(action);
+            }
+            open = false;
+        }
+        if cancelled {
+            self.cancel_add_track();
+            open = false;
+        }
+        self.add_track_open = open;
+    }
+
+    fn accept_add_track(&mut self) -> Option<AppAction> {
+        let name = self.add_track_name.trim();
+        if name.is_empty() {
+            return None;
+        }
+        self.add_track_open = false;
+        Some(AppAction::AddTrack(DirectTrackSpec {
+            name: name.to_owned(),
+            audio_channels: self.add_track_audio_channels,
+            midi: self.add_track_midi,
+        }))
+    }
+
+    fn cancel_add_track(&mut self) {
+        self.add_track_open = false;
     }
 
     fn ensure_logo(&mut self, context: &egui::Context) {
@@ -141,12 +298,79 @@ impl AppWidget {
     }
 }
 
+fn audio_channel_label(channels: u8) -> String {
+    match channels {
+        0 => "Disabled".to_owned(),
+        1 => "Mono".to_owned(),
+        2 => "Stereo".to_owned(),
+        channels => format!("Custom ({channels})"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
     use super::*;
     use crate::{LoopDetailsState, TrackState, WaveformChannelState};
+
+    fn frame(
+        context: &egui::Context,
+        widget: &mut AppWidget,
+        state: &AppState,
+        events: Vec<egui::Event>,
+    ) -> Vec<AppAction> {
+        let mut actions = Vec::new();
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 600.0),
+                )),
+                events,
+                ..Default::default()
+            },
+            |ui| actions = widget.show(ui, state),
+        );
+        actions
+    }
+
+    #[test]
+    fn add_track_is_the_only_dialog_and_accept_emits_validated_spec() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = AppState::default();
+        let mut widget = AppWidget::default();
+        widget.add_track_open = true;
+        widget.add_track_name = "New Track".to_owned();
+        widget.add_track_audio_channels = 4;
+        widget.add_track_midi = true;
+        frame(&context, &mut widget, &state, Vec::new());
+        assert!(widget.add_track_accept_rect.is_some());
+        assert_eq!(
+            widget.accept_add_track(),
+            Some(AppAction::AddTrack(DirectTrackSpec {
+                name: "New Track".to_owned(),
+                audio_channels: 4,
+                midi: true,
+            }))
+        );
+        assert!(!widget.add_track_open);
+    }
+
+    #[test]
+    fn cancelling_add_track_has_no_action() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = AppState::default();
+        let mut widget = AppWidget::default();
+        widget.add_track_open = true;
+        widget.add_track_name = "Cancelled".to_owned();
+        frame(&context, &mut widget, &state, Vec::new());
+        assert!(widget.add_track_cancel_rect.is_some());
+        widget.cancel_add_track();
+        assert!(!widget.add_track_open);
+    }
 
     #[test]
     fn complete_application_state_produces_paint_commands() {
