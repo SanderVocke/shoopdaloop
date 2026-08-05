@@ -166,13 +166,13 @@ QT_QPA_PLATFORM=offscreen \
 
 ### Stage 4 — Multiple loops on one track
 
-- [ ] Add one loop Recording while another plays wet.
-- [ ] Add normal wet playback alongside PlayingDryThroughWet.
-- [ ] Add normal wet playback alongside RecordingDryIntoWet.
-- [ ] Assert aggregate `any_loop_*` routing behavior through actual send/return data, not only QML properties.
-- [ ] Verify which loop records or replaces content and which contributes playback.
-- [ ] Include MIDI sends where dry MIDI playback or live input is relevant.
-- [ ] Run, document failures, rerun, and commit.
+- [x] Add one loop Recording while another plays wet.
+- [x] Add normal wet playback alongside PlayingDryThroughWet.
+- [x] Add normal wet playback alongside RecordingDryIntoWet.
+- [x] Assert aggregate `any_loop_*` routing behavior through actual send/return data, not only QML properties.
+- [x] Verify which loop records or replaces content and which contributes playback.
+- [x] Include MIDI sends where dry MIDI playback or live input is relevant.
+- [x] Run, document failures, rerun, and commit. Evidence: all 3 multi-loop routing tests passed in `/tmp/drywet-stage4-first.log`.
 
 Verification:
 
