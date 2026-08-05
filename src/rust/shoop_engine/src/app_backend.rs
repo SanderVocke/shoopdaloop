@@ -5521,6 +5521,8 @@ impl FXChain {
             ),
         );
         let weak = Arc::downgrade(&control);
+        let dummy_output = Arc::new(Mutex::new(Vec::new()));
+        let output_capture = Arc::clone(&dummy_output);
         let mut owned = Some(name.clone());
         let sequence = self
             .shared
@@ -5529,9 +5531,10 @@ impl FXChain {
                     return;
                 };
                 let Some(owned) = owned.take() else { return };
-                let port = engine::session::Port::ExternalMidi(
-                    engine::external_midi_port::ExternalMidiPort::new(owned, direction.into()),
-                );
+                let mut external =
+                    engine::external_midi_port::ExternalMidiPort::new(owned, direction.into());
+                external.set_output_capture(output_capture.clone());
+                let port = engine::session::Port::ExternalMidi(external);
                 match s.add_midi_port_with_state(port, Arc::clone(&control.mirror)) {
                     Ok(idx) => control.mark_ready(MidiPortId(idx)),
                     Err(error) => control.mark_failed(error.to_string()),
@@ -5542,7 +5545,7 @@ impl FXChain {
         Some(MidiPort {
             shared: self.shared.clone(),
             control,
-            dummy_output: Arc::new(Mutex::new(Vec::new())),
+            dummy_output,
             direction,
             name,
         })
@@ -6705,6 +6708,100 @@ mod tests {
             engine.stats().commands_applied.load(Ordering::Relaxed),
             commands
         );
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
+    fn internal_fx_midi_capture_observes_routed_host_input() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let chain = sess
+            .create_fx_chain(FXChainType::Test2x2x1, "captured-fx")
+            .expect("chain");
+        let midi_input = chain.get_midi_input_port(0).expect("MIDI input");
+        engine.pump();
+        let target = midi_input
+            .control
+            .ready_id()
+            .expect("ready FX MIDI port")
+            .index();
+        let source = engine
+            .session_mut()
+            .add_port(engine::session::Port::ExternalMidi(
+                engine::external_midi_port::ExternalMidiPort::new(
+                    "source",
+                    engine::PortDirection::Input,
+                ),
+            ));
+        engine
+            .session_mut()
+            .connect_ports_internal(source, target)
+            .unwrap();
+        engine.session_mut().apply_graph_changes().unwrap();
+        engine
+            .session_mut()
+            .port_mut(source)
+            .unwrap()
+            .as_external_midi_mut()
+            .unwrap()
+            .push_incoming(0, &[0x90, 72, 100]);
+        engine
+            .session_mut()
+            .port_mut(target)
+            .unwrap()
+            .as_external_midi_mut()
+            .unwrap()
+            .request_output();
+        engine.session_mut().process(1);
+
+        assert_eq!(
+            midi_input.dummy_dequeue_data(),
+            vec![MidiEvent::new(0, vec![0x90, 72, 100])]
+        );
+
+        engine
+            .session_mut()
+            .port_mut(source)
+            .unwrap()
+            .midi_mut()
+            .unwrap()
+            .set_passthrough_muted(true);
+        engine
+            .session_mut()
+            .port_mut(source)
+            .unwrap()
+            .as_external_midi_mut()
+            .unwrap()
+            .push_incoming(0, &[0x90, 73, 100]);
+        engine
+            .session_mut()
+            .port_mut(target)
+            .unwrap()
+            .as_external_midi_mut()
+            .unwrap()
+            .request_output();
+        engine.session_mut().process(1);
+        assert_eq!(
+            midi_input.dummy_dequeue_data(),
+            vec![MidiEvent::new(0, vec![0x80, 72, 0])]
+        );
+
+        engine
+            .session_mut()
+            .port_mut(source)
+            .unwrap()
+            .as_external_midi_mut()
+            .unwrap()
+            .push_incoming(0, &[0x90, 74, 100]);
+        engine
+            .session_mut()
+            .port_mut(target)
+            .unwrap()
+            .as_external_midi_mut()
+            .unwrap()
+            .request_output();
+        engine.session_mut().process(1);
+        assert!(midi_input.dummy_dequeue_data().is_empty());
         sess.shared.return_engine(engine);
     }
 

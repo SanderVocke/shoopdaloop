@@ -196,11 +196,11 @@ QT_QPA_PLATFORM=offscreen \
 
 ### Stage 5 — Carla MIDI host delivery and observation
 
-- [ ] Trace one monitored MIDI event from the external dry input through `Session::propagate_port()` into the internal FX MIDI port and Carla host input.
-- [ ] Wire the existing backend MIDI capture handle to internal FX MIDI ports, or replace it with an equally bounded observation of the exact events delivered to the host.
-- [ ] Ensure observation does not consume, duplicate, reorder, or bypass host delivery.
-- [ ] Add a Rust test proving active host input receives MIDI and inactive host input does not.
-- [ ] Run all three QML Carla MIDI-gating cases and the targeted Rust Carla suite, then commit.
+- [x] Trace one monitored MIDI event from the external dry input through `Session::propagate_port()` into the internal FX MIDI port and Carla host input.
+- [x] Wire the existing backend MIDI capture handle to internal FX MIDI ports, or replace it with an equally bounded observation of the exact events delivered to the host. Decision: internal FX MIDI ports now attach the same bounded output-capture queue already owned by their backend handles.
+- [x] Ensure observation does not consume, duplicate, reorder, or bypass host delivery. Evidence: capture is populated by `ExternalMidiPort::process()` from the same sorted outgoing buffer read by FX host processing.
+- [x] Add a Rust test proving active host input receives MIDI and inactive host input does not. Evidence: the app-backend test observes active note-on, one deactivation cleanup note-off, and no subsequent muted notes.
+- [x] Run all three QML Carla MIDI-gating cases and the targeted Rust Carla suite, then commit. Evidence: all 3 QML cases passed in `/tmp/drywet-fixes-stage5-qml-final.log`; all 9 targeted Carla tests passed serially in `/tmp/drywet-fixes-stage5-rust-carla-serial.log`. The parallel Carla run deadlocked two host tests, consistent with Carla's process-global initialization assertions, so Carla verification remains serial. Formatting and warnings-as-errors build passed.
 
 Verification:
 

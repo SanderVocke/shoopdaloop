@@ -193,6 +193,15 @@ ShoopTestFile {
                 external_input.dummy_queue_midi_msgs(muted_event)
                 fx_input.dummy_request_data(1)
                 process(1)
+                verify_eq(fx_input.dummy_dequeue_midi_msgs(), [
+                    { 'time': 0, 'data': [0x80, 72, 0] }
+                ], null, true)
+
+                external_input.dummy_queue_midi_msgs([
+                    { 'time': 0, 'data': [0x90, 74, 100] }
+                ])
+                fx_input.dummy_request_data(1)
+                process(1)
                 verify_eq(fx_input.dummy_dequeue_midi_msgs(), [], null, true)
             }
 
