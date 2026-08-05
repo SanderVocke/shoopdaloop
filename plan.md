@@ -126,18 +126,18 @@ QT_QPA_PLATFORM=offscreen \
 
 ### Stage 2 — Complete external mode matrix
 
-- [ ] Add monitoring-off and monitoring-on tests for Stopped.
-- [ ] Add monitoring-off and monitoring-on tests for Recording.
-- [ ] Add monitoring-off and monitoring-on tests for Replacing.
-- [ ] Complete normal Playing coverage for both monitoring states.
-- [ ] Add both monitoring states for PlayingDryThroughWet.
-- [ ] Add requested monitoring-off/on cases for RecordingDryIntoWet and assert monitoring is forced off.
-- [ ] For every case, inspect:
+- [x] Add monitoring-off and monitoring-on tests for Stopped.
+- [x] Add monitoring-off and monitoring-on tests for Recording.
+- [x] Add monitoring-off and monitoring-on tests for Replacing.
+- [x] Complete normal Playing coverage for both monitoring states.
+- [x] Add both monitoring states for PlayingDryThroughWet.
+- [x] Add requested monitoring-off/on cases for RecordingDryIntoWet and assert monitoring is forced off.
+- [x] For every case, inspect:
   - Audio dry send.
   - MIDI dry send.
   - Wet return contribution to wet output.
   - Dry/wet recorded content where the mode records or replaces.
-- [ ] Run, document failures, rerun, and commit.
+- [x] Run, document failures, rerun, and commit. Evidence: 10 matrix cases passed; both Replacing cases retained old loaded MIDI instead of replacement input and are documented inline; final log `/tmp/drywet-stage2-final.log`.
 
 Verification:
 
