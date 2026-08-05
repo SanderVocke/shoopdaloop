@@ -87,8 +87,7 @@ impl AppWidget {
             )
             .show(ui, |ui| {
                 let response = self.tracks.show(ui, &state.tracks);
-                actions.extend(response.loop_actions.into_iter().map(AppAction::Loop));
-                actions.extend(response.track_actions.into_iter().map(AppAction::Track));
+                actions.extend(response.intents);
             });
 
         actions
@@ -156,13 +155,15 @@ mod tests {
         let mut widget = AppWidget::default();
         let state = AppState {
             tracks: vec![TrackState {
+                id: crate::TrackId::from_raw(1),
                 name: "Track".to_owned(),
                 ..Default::default()
             }],
             details: Some(LoopDetailsState {
                 title: "Loop".to_owned(),
                 channels: vec![WaveformChannelState {
-                    id: "audio".to_owned(),
+                    id: crate::ChannelId::from_raw(1),
+                    label: "audio".to_owned(),
                     samples: Arc::from([-0.5, 0.25, 0.75, -0.1]),
                     ..Default::default()
                 }],

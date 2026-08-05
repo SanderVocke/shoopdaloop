@@ -285,7 +285,7 @@ struct LoopWidgetUi {
 impl LoopWidgetUi {
     fn emit_action(&self, action: LoopWidgetAction) {
         self.queue_signal(move |mut canvas| match action {
-            LoopWidgetAction::IconClicked => canvas.as_mut().icon_clicked(),
+            LoopWidgetAction::IconClicked(_) => canvas.as_mut().icon_clicked(),
             LoopWidgetAction::IconDoubleClicked => canvas.as_mut().icon_double_clicked(),
             LoopWidgetAction::PlayClicked => canvas.as_mut().play_clicked(),
             LoopWidgetAction::RecordClicked => canvas.as_mut().record_clicked(),

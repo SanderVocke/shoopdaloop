@@ -1,0 +1,6 @@
+[package]
+name = "shoop_app_api"
+edition = "2021"
+
+[lints]
+workspace = true

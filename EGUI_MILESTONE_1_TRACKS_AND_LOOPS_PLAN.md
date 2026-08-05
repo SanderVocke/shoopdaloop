@@ -2,7 +2,7 @@
 
 ## Completion status
 
-Planned; implementation has not started.
+In progress. Stage 1 is complete and verified.
 
 This is the first major implementation milestone under `EGUI_REPLACEMENT_PROJECT.md`. `EGUI_FEATURE_PARITY_MATRIX.md` is the detailed discovery and parity ledger for the milestone.
 
@@ -82,15 +82,15 @@ These criteria may not change without explicit user approval.
 
 No implementation stage may narrow acceptance criteria based on incomplete parity discovery.
 
-- [ ] Review every `Required` and `Required subset` matrix entry against relevant QML, frontend Rust, user documentation, and tests; split entries where independently testable behavior is found.
-- [ ] Record known ambiguities or intentional milestone limitations in the matrix rather than hiding them in implementation.
-- [ ] Create the small framework-independent application API crate.
-- [ ] Define stable opaque IDs for tracks, loops, ports/channels as needed, snapshot revisions, and asynchronous data generations.
-- [ ] Move or replace shared application-facing state/action contracts currently owned by `shoop_egui`; define typed intents for all milestone controls plus add-track/add-loop.
-- [ ] Represent capability/applicability in snapshots so egui never derives backend validity from names or engine handles.
-- [ ] Convert `shoop_egui` action routing and persistent UI IDs from positional identity to stable IDs.
-- [ ] Add contract tests for ID stability, stale-ID rejection semantics, state clamping, and intent construction.
-- [ ] Update the project document's coarse status and matrix implementation/evidence columns with the completed contract work.
+- [x] Review every `Required` and `Required subset` matrix entry against relevant QML, frontend Rust, user documentation, and tests; split entries where independently testable behavior is found.
+- [x] Record known ambiguities or intentional milestone limitations in the matrix rather than hiding them in implementation.
+- [x] Create the small framework-independent application API crate.
+- [x] Define stable opaque IDs for tracks, loops, ports/channels as needed, snapshot revisions, and asynchronous data generations.
+- [x] Move or replace shared application-facing state/action contracts currently owned by `shoop_egui`; define typed intents for all milestone controls plus add-track/add-loop.
+- [x] Represent capability/applicability in snapshots so egui never derives backend validity from names or engine handles.
+- [x] Convert `shoop_egui` action routing and persistent UI IDs from positional identity to stable IDs.
+- [x] Add contract tests for ID stability, state clamping, direct-track validation, modifier-carrying intent construction, and compatibility routing; application-level stale-ID rejection is verified in Stage 2.
+- [x] Update the project document's coarse status and matrix implementation/evidence columns with the completed contract work.
 
 Verification:
 

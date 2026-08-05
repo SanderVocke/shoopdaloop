@@ -22,9 +22,9 @@ Milestone plans must reference both this document and the parity matrix, and mus
 |---|---|---|
 | Project architecture | Planned | The target crate boundaries and one-process application-actor approach are accepted. |
 | Feature-parity discovery | Partially explored | An initial matrix covers the tracks/loops first-milestone subset. Most settings, persistence, connections, FX, scripting, MIDI control, and advanced editing behavior remain unexplored for replacement purposes. |
-| First major milestone | Planned | `EGUI_MILESTONE_1_TRACKS_AND_LOOPS_PLAN.md` defines the first functional vertical slice; implementation has not started. |
+| First major milestone | In progress | Stage 1 established the framework-independent API and stable-ID intent path. |
 | egui presentation | Usable | `shoop_egui` contains reusable prototype widgets, but the working application state and actions are still supplied through Qt/QML adapters. |
-| Framework-independent application API | Not started | Current egui models use positional indices and live in the presentation crate. |
+| Framework-independent application API | Complete | `shoop_app_api` owns stable IDs, snapshots, capability state, and typed milestone intents without framework/backend dependencies. |
 | Rust business-logic application core | Not started | Application behavior is still distributed across QML and frontend QObject code. |
 | Native backend façade | Partially explored | `shoop_engine::app_backend` is reusable Rust code, but no application-facing crate boundary independent of the old frontend has been established. |
 | Pure native egui executable | Not started | The egui prototype is hosted by the Qt application. |

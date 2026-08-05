@@ -49,6 +49,8 @@ The initial matrix is based on:
 - Loop behavior: `src/qml/LoopWidget.qml`, `src/qml/AppControls.qml`, and `docs/source/usage.loopcontrols.rst`.
 - Existing egui behavior: the models and widgets in `src/rust/shoop_egui/src` plus the Qt adapter in `src/rust/frontend/src/egui_window.rs`.
 - Existing integration evidence: `src/qml/test/tst_EguiWindow.qml` and the loop/track QML test suites listed by `src/qml/test`.
+- Group transition, target, sync, and solo behavior: `src/qml/test/tst_TwoLoops.qml` and `src/qml/test/tst_ThreeLoops.qml`; grab-only cases remain deferred.
+- Direct track topology and controls: `src/qml/test/tst_TrackControl_direct.qml`, `src/qml/test/tst_TrackControlAndLoop_direct.qml`, and the corresponding dry/wet tests used only to identify deferred behavior.
 
 These sources do not exhaustively specify even the milestone subset. Stage 1 of the milestone plan must continue discovery and add more precise test references where behavior is subtle.
 
@@ -57,9 +59,9 @@ These sources do not exhaustively specify even the milestone subset. Stage 1 of 
 | ID | Capability or behavior | Old application baseline | Discovery | M1 target | Current implementation | Replacement evidence |
 |---|---|---|---|---|---|---|
 | ARCH-001 | Pure native egui process | Production startup creates a Qt application and QML engine; the prototype is a Qt-hosted egui canvas. | Explored for M1 | Required | Prototype through Qt | Pending |
-| ARCH-002 | Presentation/business/backend separation | QML widgets currently own substantial session and control behavior. | Explored for M1 | Required | Not started | Pending |
-| ARCH-003 | Stable entity identity | QML uses object IDs plus coordinates; the egui prototype routes actions by track and loop indices. | Explored for M1 | Required | Not started | Pending |
-| ARCH-004 | Immutable snapshot and typed intent flow | The prototype has plain state/actions but receives snapshots and emits actions through QObject adapters. | Explored for M1 | Required | Prototype through Qt | Pending |
+| ARCH-002 | Presentation/business/backend separation | QML widgets currently own substantial session and control behavior. | Explored for M1 | Required | Partial — API/presentation boundary exists; application/backend layers remain | `shoop_app_api` has no dependencies; `shoop_egui` depends on it but not the engine/backend |
+| ARCH-003 | Stable entity identity | QML uses object IDs plus coordinates; the egui prototype routes actions by track and loop indices. | Explored for M1 | Required | Complete | `shoop_app_api::tests::ids_retain_raw_identity_and_invalid_is_distinct` and stable-ID routing in `TracksWidget` |
+| ARCH-004 | Immutable snapshot and typed intent flow | The prototype has plain state/actions but receives snapshots and emits actions through QObject adapters. | Explored for M1 | Required | Partial — framework-independent snapshot/intent types and GUI routing are complete; actor publication remains | `shoop_app_api::tests::intents_preserve_stable_ids_and_selection_modifiers`; `cargo test -p shoop_egui` |
 | ARCH-005 | Backend-free egui preview | No standalone preview executable currently supplies mock application snapshots. | Explored for M1 | Required | Not started | Pending |
 | SHELL-001 | Existing egui application shell | Current `AppWidget` includes global controls, tracks, details, logo, and backend status. | Explored for M1 | Required | Existing widget | Pending |
 | SHELL-002 | Logo, version, DSP, xrun, buffer, and latency display | QML and the prototype show these live values. | Explored for M1 | Required | Prototype through Qt | Pending |

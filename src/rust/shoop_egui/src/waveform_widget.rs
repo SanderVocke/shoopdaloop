@@ -18,7 +18,7 @@ impl Default for WaveformWidget {
 impl WaveformWidget {
     pub fn show(&mut self, ui: &mut egui::Ui, channel: &WaveformChannelState) {
         ui.horizontal(|ui| {
-            ui.label(&channel.id);
+            ui.label(&channel.label);
             ui.add(
                 egui::Slider::new(&mut self.zoom, 1.0..=64.0)
                     .logarithmic(true)

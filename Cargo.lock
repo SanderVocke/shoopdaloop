@@ -3312,12 +3312,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
+name = "shoop_app_api"
+version = "0.0.0"
+
+[[package]]
 name = "shoop_egui"
 version = "0.0.0"
 dependencies = [
  "egui",
  "egui_material_icons",
  "image 0.25.6",
+ "shoop_app_api",
 ]
 
 [[package]]

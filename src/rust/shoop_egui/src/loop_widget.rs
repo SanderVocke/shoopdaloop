@@ -4,85 +4,10 @@ use egui_material_icons::icons::{
 };
 use egui_material_icons::MaterialIcon;
 
+use crate::{CompositeKind, LoopMode, LoopState, LoopWidgetAction, SelectionModifiers};
+
 pub fn initialize(context: &egui::Context) {
     egui_material_icons::initialize(context);
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum LoopMode {
-    #[default]
-    Unknown,
-    Stopped,
-    Playing,
-    Recording,
-    Replacing,
-    PlayingDryThroughWet,
-    RecordingDryIntoWet,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum CompositeKind {
-    #[default]
-    None,
-    Regular,
-    Script,
-}
-
-#[derive(Clone, Debug)]
-pub struct LoopState {
-    pub name: String,
-    pub position: f32,
-    pub mode: LoopMode,
-    pub next_mode: LoopMode,
-    pub next_transition_delay: Option<u32>,
-    pub empty: bool,
-    pub composite_kind: CompositeKind,
-    pub sync: bool,
-    pub targeted: bool,
-    pub selected: bool,
-    pub selected_composite_kind: CompositeKind,
-    pub show_gain: bool,
-    pub gain: f32,
-    pub play_after_record: bool,
-    pub stereo: bool,
-    pub peak_left_db: f32,
-    pub peak_right_db: f32,
-    pub midi_activity: bool,
-}
-
-impl Default for LoopState {
-    fn default() -> Self {
-        Self {
-            name: "Loop".to_owned(),
-            position: 0.0,
-            mode: LoopMode::Unknown,
-            next_mode: LoopMode::Unknown,
-            next_transition_delay: None,
-            empty: true,
-            composite_kind: CompositeKind::None,
-            sync: false,
-            targeted: false,
-            selected: false,
-            selected_composite_kind: CompositeKind::None,
-            show_gain: false,
-            gain: 0.6,
-            play_after_record: true,
-            stereo: false,
-            peak_left_db: -200.0,
-            peak_right_db: -200.0,
-            midi_activity: false,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum LoopWidgetAction {
-    IconClicked,
-    IconDoubleClicked,
-    PlayClicked,
-    RecordClicked,
-    StopClicked,
-    GainChanged(f32),
 }
 
 #[derive(Debug, Default)]
@@ -360,7 +285,11 @@ impl LoopWidget {
         if icon_response.double_clicked() {
             result.actions.push(LoopWidgetAction::IconDoubleClicked);
         } else if icon_response.clicked() {
-            result.actions.push(LoopWidgetAction::IconClicked);
+            result
+                .actions
+                .push(LoopWidgetAction::IconClicked(SelectionModifiers {
+                    additive: ui.input(|input| input.modifiers.command),
+                }));
         }
 
         let dial_rect = if state.show_gain {

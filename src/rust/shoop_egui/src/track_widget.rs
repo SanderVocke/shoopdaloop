@@ -1,10 +1,10 @@
-use crate::{LoopWidget, LoopWidgetAction, TrackControls, TrackState, TrackWidgetAction};
+use crate::{LoopId, LoopWidget, LoopWidgetAction, TrackControls, TrackState, TrackWidgetAction};
 use egui_material_icons::icons::ICON_MORE_VERT;
 
 #[derive(Debug, Default)]
 pub struct TrackWidgetResponse {
     pub actions: Vec<TrackWidgetAction>,
-    pub loop_actions: Vec<(usize, LoopWidgetAction)>,
+    pub loop_actions: Vec<(LoopId, LoopWidgetAction)>,
 }
 
 #[derive(Debug, Default)]
@@ -56,17 +56,15 @@ impl TrackWidget {
                 });
 
                 ui.add_space(2.0);
-                for (loop_index, (loop_state, widget)) in
-                    state.loops.iter().zip(&mut self.loop_widgets).enumerate()
-                {
-                    ui.push_id(loop_index, |ui| {
+                for (loop_state, widget) in state.loops.iter().zip(&mut self.loop_widgets) {
+                    ui.push_id(loop_state.id, |ui| {
                         let size = egui::vec2(ui.available_width(), 26.0);
                         let response = widget.show(ui, loop_state, size);
                         result.loop_actions.extend(
                             response
                                 .actions
                                 .into_iter()
-                                .map(|action| (loop_index, action)),
+                                .map(|action| (loop_state.id, action)),
                         );
                     });
                     ui.add_space(2.0);

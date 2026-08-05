@@ -7,9 +7,9 @@ use egui_cxx_qt::{
     egui, CanvasHandle, CanvasInfo, CanvasQueueError, CanvasSubclass, CanvasUiFactory, EguiUi,
 };
 use shoop_egui::{
-    AppAction, AppState, AppWidget, DefaultRecordingAction, GlobalControlAction, IndexedLoopAction,
-    IndexedTrackAction, LoopDetailsState, LoopState, LoopWidgetAction, TrackState,
-    TrackWidgetAction, WaveformChannelState,
+    AppAction, AppState, AppWidget, ChannelId, DefaultRecordingAction, GlobalControlAction,
+    LoopDetailsState, LoopId, LoopState, LoopWidgetAction, TrackId, TrackState, TrackWidgetAction,
+    WaveformChannelState,
 };
 
 use crate::egui_loop_widget::{apply_loop_state, apply_peak_state};
@@ -298,6 +298,14 @@ impl Default for ShoopEguiWindowRust {
     }
 }
 
+fn legacy_track_id(track_index: usize) -> TrackId {
+    TrackId::from_raw(track_index as u64 + 1)
+}
+
+fn legacy_loop_id(track_index: usize, loop_index: usize) -> LoopId {
+    LoopId::from_raw(((track_index as u64 + 1) << 32) | loop_index as u64 + 1)
+}
+
 fn indexed_loop_mut(
     state: &mut AppState,
     track_index: i32,
@@ -399,7 +407,8 @@ impl ffi::ShoopEguiWindow {
         else {
             return;
         };
-        channel.id = id.to_string();
+        channel.id = ChannelId::from_raw(channel_index as u64 + 1);
+        channel.label = id.to_string();
         channel.start_offset = i64::from(start_offset);
         channel.loop_length = u64::try_from(loop_length).unwrap_or(0);
         channel.played_sample = (played_sample >= 0).then_some(i64::from(played_sample));
@@ -464,10 +473,14 @@ impl ffi::ShoopEguiWindow {
         state
             .tracks
             .resize_with(track_index + 1, TrackState::default);
+        state.tracks[track_index].id = legacy_track_id(track_index);
         state.tracks[track_index].name = name.to_string();
         state.tracks[track_index]
             .loops
             .resize_with(loop_count, LoopState::default);
+        for (loop_index, loop_state) in state.tracks[track_index].loops.iter_mut().enumerate() {
+            loop_state.id = legacy_loop_id(track_index, loop_index);
+        }
         drop(state);
         self.as_mut().request_repaint();
     }
@@ -550,6 +563,10 @@ impl ffi::ShoopEguiWindow {
         let Some(loop_state) = indexed_loop_mut(&mut app_state, track_index, loop_index) else {
             return;
         };
+        loop_state.id = legacy_loop_id(
+            usize::try_from(track_index).unwrap_or_default(),
+            usize::try_from(loop_index).unwrap_or_default(),
+        );
         apply_loop_state(
             loop_state,
             name.to_string(),
@@ -568,6 +585,14 @@ impl ffi::ShoopEguiWindow {
             gain,
             play_after_record,
         );
+        if sync {
+            if let Some(track) = usize::try_from(track_index)
+                .ok()
+                .and_then(|index| app_state.tracks.get_mut(index))
+            {
+                track.is_sync = true;
+            }
+        }
         drop(app_state);
         self.as_mut().request_repaint();
     }
@@ -619,15 +644,32 @@ struct EguiWindowUi {
 }
 
 impl EguiWindowUi {
-    fn emit_action(&self, indexed: IndexedLoopAction) {
-        let Ok(track_index) = i32::try_from(indexed.track_index) else {
+    fn loop_indices(&self, track_id: TrackId, loop_id: LoopId) -> Option<(i32, i32)> {
+        let state = self.state.read().ok()?;
+        let track_index = state.tracks.iter().position(|track| track.id == track_id)?;
+        let loop_index = state.tracks[track_index]
+            .loops
+            .iter()
+            .position(|loop_state| loop_state.id == loop_id)?;
+        Some((
+            i32::try_from(track_index).ok()?,
+            i32::try_from(loop_index).ok()?,
+        ))
+    }
+
+    fn track_index(&self, track_id: TrackId) -> Option<i32> {
+        let state = self.state.read().ok()?;
+        i32::try_from(state.tracks.iter().position(|track| track.id == track_id)?).ok()
+    }
+
+    fn emit_action(&self, track_id: TrackId, loop_id: LoopId, action: LoopWidgetAction) {
+        let Some((track_index, loop_index)) = self.loop_indices(track_id, loop_id) else {
             return;
         };
-        let Ok(loop_index) = i32::try_from(indexed.loop_index) else {
-            return;
-        };
-        self.queue_signal(move |mut canvas| match indexed.action {
-            LoopWidgetAction::IconClicked => canvas.as_mut().icon_clicked(track_index, loop_index),
+        self.queue_signal(move |mut canvas| match action {
+            LoopWidgetAction::IconClicked(_) => {
+                canvas.as_mut().icon_clicked(track_index, loop_index)
+            }
             LoopWidgetAction::IconDoubleClicked => {
                 canvas.as_mut().icon_double_clicked(track_index, loop_index)
             }
@@ -642,11 +684,11 @@ impl EguiWindowUi {
         });
     }
 
-    fn emit_track_action(&self, indexed: IndexedTrackAction) {
-        let Ok(track_index) = i32::try_from(indexed.track_index) else {
+    fn emit_track_action(&self, track_id: TrackId, action: TrackWidgetAction) {
+        let Some(track_index) = self.track_index(track_id) else {
             return;
         };
-        self.queue_signal(move |mut canvas| match indexed.action {
+        self.queue_signal(move |mut canvas| match action {
             TrackWidgetAction::NameChanged(name) => canvas
                 .as_mut()
                 .track_name_changed(track_index, QString::from(&name)),
@@ -725,9 +767,14 @@ impl EguiUi for EguiWindowUi {
             .clone();
         for action in self.widget.show(root_ui, &state) {
             match action {
-                AppAction::Loop(action) => self.emit_action(action),
-                AppAction::Track(action) => self.emit_track_action(action),
+                AppAction::Loop {
+                    track_id,
+                    loop_id,
+                    action,
+                } => self.emit_action(track_id, loop_id, action),
+                AppAction::Track { track_id, action } => self.emit_track_action(track_id, action),
                 AppAction::Global(action) => self.emit_global_action(action),
+                AppAction::AddTrack(_) | AppAction::AddLoop { .. } => {}
             }
         }
     }

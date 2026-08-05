@@ -3,6 +3,7 @@ name = "shoop_egui"
 edition = "2021"
 
 [dependencies]
+shoop_app_api = { path = "../shoop_app_api" }
 egui = { workspace = true }
 egui_material_icons = { workspace = true }
 image = { workspace = true }
