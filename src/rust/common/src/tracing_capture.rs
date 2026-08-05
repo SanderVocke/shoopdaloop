@@ -367,14 +367,31 @@ impl CaptureController {
             // short-lived helper process while keeping Ctrl+C away from the app.
             let stop_request_path = path.with_extension("tracy.stop");
             let _ = std::fs::remove_file(&stop_request_path);
-            let mut command = Command::new("powershell.exe");
-            command
-                .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"])
-                .arg(WINDOWS_CAPTURE_WRAPPER_SCRIPT)
-                .env("SHOOP_TRACY_CAPTURE_TOOL", &config.tool)
-                .env("SHOOP_TRACY_CAPTURE_OUTPUT", &path)
-                .env("SHOOP_TRACY_CAPTURE_STOP_REQUEST", &stop_request_path)
-                .creation_flags(CREATE_NEW_CONSOLE);
+            let mut command = if let Some(wrapper) = env::var_os("TRACY_CAPTURE_WRAPPER_TOOL")
+                .map(PathBuf::from)
+                .filter(|wrapper| is_executable(wrapper))
+            {
+                info!(
+                    "Using native Windows Tracy capture wrapper {}",
+                    wrapper.display()
+                );
+                let mut command = Command::new(wrapper);
+                command.arg(&config.tool).arg(&path).arg(&stop_request_path);
+                command
+            } else {
+                warn!(
+                    "TRACY_CAPTURE_WRAPPER_TOOL is unavailable; using PowerShell capture wrapper"
+                );
+                let mut command = Command::new("powershell.exe");
+                command
+                    .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"])
+                    .arg(WINDOWS_CAPTURE_WRAPPER_SCRIPT)
+                    .env("SHOOP_TRACY_CAPTURE_TOOL", &config.tool)
+                    .env("SHOOP_TRACY_CAPTURE_OUTPUT", &path)
+                    .env("SHOOP_TRACY_CAPTURE_STOP_REQUEST", &stop_request_path);
+                command
+            };
+            command.creation_flags(CREATE_NEW_CONSOLE);
             (command, stop_request_path)
         };
         command

@@ -8,10 +8,17 @@ outputs:
   tracy_version:
     description: Pinned Tracy protocol/tool version
     value: ${{ steps.install.outputs.tracy_version }}
+  tracy_capture_wrapper_tool:
+    description: Windows helper that gracefully finalizes tracy-capture
+    value: ${{ steps.windows_wrapper.outputs.tracy_capture_wrapper_tool }}
 
 runs:
   using: composite
   steps:
+    - name: Configure MSVC for Windows capture wrapper
+      if: runner.os == 'Windows'
+      uses: ilammy/msvc-dev-cmd@v1
+
     - name: Download and verify Tracy capture
       id: install
       shell: bash
@@ -95,3 +102,23 @@ runs:
 
         echo "tracy_capture_tool=${tool}" | tee -a "${GITHUB_OUTPUT}"
         echo "tracy_version=${version}" | tee -a "${GITHUB_OUTPUT}"
+
+    - name: Build Windows capture-control wrapper
+      id: windows_wrapper
+      if: runner.os == 'Windows'
+      shell: powershell
+      run: |
+        $installDir = Join-Path $env:RUNNER_TEMP "tracy-capture-0.13.1"
+        $source = Join-Path "${{ github.action_path }}" "windows_capture_wrapper.c"
+        $wrapper = Join-Path $installDir "shoop-tracy-capture-wrapper.exe"
+        $object = Join-Path $installDir "shoop-tracy-capture-wrapper.obj"
+        & cl.exe /nologo /O2 /MT /W4 "/Fe:$wrapper" "/Fo:$object" $source
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $wrapper)) {
+          throw "Failed to compile Windows Tracy capture wrapper"
+        }
+        $help = & $wrapper 2>&1 | Out-String
+        if ($help -notmatch "Usage: shoop-tracy-capture-wrapper.exe") {
+          throw "Windows Tracy capture wrapper failed its usage check"
+        }
+        "tracy_capture_wrapper_tool=$wrapper" | Tee-Object -FilePath $env:GITHUB_OUTPUT -Append
+        "TRACY_CAPTURE_WRAPPER_TOOL=$wrapper" | Tee-Object -FilePath $env:GITHUB_ENV -Append
