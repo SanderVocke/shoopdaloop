@@ -269,13 +269,13 @@ SHOOP_ALLOW_MISSING_BACKENDS=1 \
 
 ### Stage 8 — Final end-to-end validation
 
-- [ ] Run formatting and a warnings-as-errors build.
-- [ ] Run the complete Rust workspace suite serially if host resource contention recurs.
-- [ ] Run the complete QML suite and save its JUnit/log result.
-- [ ] Confirm all 235 QML cases pass except explicitly unavailable backend capabilities; track the unrelated CPAL capability separately.
-- [ ] Confirm the Rust workspace has no behavioral failures on available JACK/Carla backends.
-- [ ] Review the final diff for realtime safety, compatibility aliases, stale failure comments, unrelated formatting, and test weakening.
-- [ ] Update this plan with final evidence and commit the completed validation stage.
+- [x] Run formatting and a warnings-as-errors build. Evidence: `cargo fmt --all` and `RUSTFLAGS="-D warnings" cargo build` passed; build log is `/tmp/drywet-fixes-final-build.log`.
+- [x] Run the complete Rust workspace suite serially if host resource contention recurs. Evidence: the serial workspace run passed in `/tmp/drywet-fixes-final-rust.log`.
+- [x] Run the complete QML suite and save its JUnit/log result. Evidence: `/tmp/drywet-fixes-final-qml.log` and `/tmp/drywet-fixes-final.xml`.
+- [x] Confirm all 235 QML cases pass except explicitly unavailable backend capabilities; track the unrelated CPAL capability separately. Evidence: the suite now contains 236 cases because descriptor-alias coverage added one; 235 passed, 0 failed, and only the pre-existing CPAL playback-port capability skipped.
+- [x] Confirm the Rust workspace has no behavioral failures on available JACK/Carla backends. Evidence: the workspace log includes all 6 real-JACK tests and all Carla engine/app tests with no failures.
+- [x] Review the final diff for realtime safety, compatibility aliases, stale failure comments, unrelated formatting, and test weakening. Evidence: replacement and cleanup process paths have explicit no-allocation coverage; both descriptor spellings pass schema and mapping tests; no `Failure:` annotations remain in the repaired regressions; `git diff --check` passed. The only corrected prior expectation now asserts monitoring-off silence while retaining its wet-content capture assertion.
+- [x] Update this plan with final evidence and commit the completed validation stage.
 
 Verification:
 
