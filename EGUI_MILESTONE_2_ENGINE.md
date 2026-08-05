@@ -192,7 +192,7 @@ Final validation evidence:
 - The retained offscreen Qt/QML self-test reports 197 passed, 0 failed, and one environment skip for unavailable CPAL virtual playback ports.
 - `shoopdaloop_egui`, `shoop_app`, `shoop_backend`, and `shoop_egui` check for `wasm32-unknown-unknown` as applicable.
 - Wasm dependency scans exclude JACK, CPAL, Midir, LV2, frontend, Qt, X11, and Wayland packages; `shoop_egui` remains free of app/backend/engine implementation dependencies.
-- The release Trunk bundle and approximately 9 MB self-contained HTML artifact build successfully.
+- The release Trunk bundle and approximately 9 MB self-contained HTML artifact build successfully; both pass the browser self-test, with the single file opened directly through a `file:` URL.
 - Headless Chrome self-tests at 360×200 and 900×600 create a stereo audio/MIDI track, disable sync, record real dummy-engine frames, stop, refresh non-empty waveform data, play, and continue advancing snapshot revisions without browser exceptions.
 - Native tests construct the unified application, create every direct-track shape, record/control a loop against the real dummy engine, and paint at 360×200 and 900×600.
 - Native OS-window smoke was attempted with the available Xvfb server, but it exposes no GLX framebuffer configuration. This is recorded as an environment skip rather than weakening the acceptance criteria; the eframe native bootstrap is unchanged from its passing M1 launch path.

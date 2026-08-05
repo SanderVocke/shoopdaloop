@@ -41,7 +41,7 @@ After a release bundle is built, a Chrome/Chromium smoke test can run the browse
 node --experimental-websocket browser_smoke.mjs
 ```
 
-Set `CHROME_BIN` when the browser executable is not named `google-chrome`.
+Set `CHROME_BIN` when the browser executable is not named `google-chrome`. Set `BROWSER_SIZE=360,200` to choose the viewport or `SELF_CONTAINED=1` to verify the directly opened single-file artifact.
 
 A compiler-only check can be run from the repository root:
 

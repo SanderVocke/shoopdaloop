@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 if (typeof WebSocket === 'undefined') {
   throw new Error('WebSocket is unavailable; run Node with --experimental-websocket');
@@ -12,6 +13,7 @@ const webPort = 8765;
 const debugPort = 9222;
 const chrome = process.env.CHROME_BIN || 'google-chrome';
 const browserSize = process.env.BROWSER_SIZE || '900,600';
+const selfContained = process.env.SELF_CONTAINED === '1';
 const profile = await mkdtemp(join(tmpdir(), 'shoopdaloop-egui-chrome-'));
 const children = [];
 
@@ -41,7 +43,9 @@ async function waitForJson(url, timeoutMilliseconds) {
 
 let websocket;
 try {
-  start('python3', ['-m', 'http.server', String(webPort), '--bind', host], { cwd: 'dist' });
+  if (!selfContained) {
+    start('python3', ['-m', 'http.server', String(webPort), '--bind', host], { cwd: 'dist' });
+  }
   start(chrome, [
     '--headless=new',
     '--no-sandbox',
@@ -90,7 +94,10 @@ try {
 
   await call('Runtime.enable');
   await call('Page.enable');
-  await call('Page.navigate', { url: `http://${host}:${webPort}/?self-test=1` });
+  const entryUrl = selfContained
+    ? `${pathToFileURL(join(process.cwd(), 'dist', 'shoopdaloop_egui.html')).href}?self-test=1`
+    : `http://${host}:${webPort}/?self-test=1`;
+  await call('Page.navigate', { url: entryUrl });
 
   const expression = `({
     status: document.getElementById('runtime_status')?.textContent,
@@ -127,7 +134,7 @@ try {
   }
 
   console.log(
-    `browser dummy-engine self-test passed at ${browserSize} and revision ${state.revision}`,
+    `browser dummy-engine self-test passed for ${selfContained ? 'self-contained HTML' : 'bundle'} at ${browserSize} and revision ${state.revision}`,
   );
 } finally {
   if (websocket) websocket.close();
