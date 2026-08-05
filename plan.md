@@ -223,17 +223,17 @@ RUSTFLAGS="-D warnings" cargo build
 
 ### Stage 7 — Carla Rack and Patchbay variants
 
-- [ ] Add QML coverage for `carla_rack`, `carla_patchbay`, and `carla_patchbay_16`.
-- [ ] For each available variant, assert FX activation for:
+- [x] Add QML coverage for `carla_rack`, `carla_patchbay`, and `carla_patchbay_16`.
+- [x] For each available variant, assert FX activation for:
   - Stopped with monitoring off/on.
   - Recording and Replacing.
   - Normal Playing with monitoring off/on.
   - Dry playback.
   - Dry re-recording.
-- [ ] Assert dry MIDI reaches the FX input only while routing requires the processor to be active.
-- [ ] Assert deactivation prevents unintended processing/tails where the installed host provides a deterministic observable output.
-- [ ] Report each unavailable Carla variant explicitly rather than treating it as a behavioral pass.
-- [ ] Run QML and targeted Rust Carla tests, document failures, rerun, format/build, and commit.
+- [x] Assert dry MIDI reaches the FX input only while routing requires the processor to be active.
+- [x] Assert deactivation prevents unintended processing/tails where the installed host provides a deterministic observable output.
+- [x] Report each unavailable Carla variant explicitly rather than treating it as a behavioral pass. Evidence: Rack, Patchbay, and Patchbay 16x were all installed and initialized; no environmental skips were needed.
+- [x] Run QML and targeted Rust Carla tests, document failures, rerun, format/build, and commit. Evidence: all 3 activation/deactivation tests passed; all 3 active MIDI-input captures returned `[]`; the user-facing Patchbay 16 descriptor selected Rack (0) instead of Patchbay16x (2); failures are documented inline and summarized in `/tmp/drywet-stage7-qml-final.log`. Nine targeted Rust Carla tests passed in `/tmp/drywet-stage7-rust.log`; formatting and warnings-as-errors build passed.
 
 Verification:
 
