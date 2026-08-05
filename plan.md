@@ -184,12 +184,12 @@ QT_QPA_PLATFORM=offscreen \
 
 ### Stage 5 — Defaults and session persistence
 
-- [ ] Add a fresh explicit-external track test asserting the effective initial monitoring state of dry inputs and wet returns.
-- [ ] Add save/load coverage for monitoring off.
-- [ ] Add save/load coverage for monitoring on.
-- [ ] After loading, verify both control-widget state and backend `passthrough_muted` state for every dry input and wet return.
-- [ ] Verify routing with actual queued data after reload, not descriptor equality alone.
-- [ ] Run, document failures, rerun, and commit.
+- [x] Add a fresh explicit-external track test asserting the effective initial monitoring state of dry inputs and wet returns.
+- [x] Add save/load coverage for monitoring off.
+- [x] Add save/load coverage for monitoring on.
+- [x] After loading, verify both control-widget state and backend `passthrough_muted` state for every dry input and wet return.
+- [x] Verify routing with actual queued data after reload, not descriptor equality alone.
+- [x] Run, document failures, rerun, and commit. Evidence: monitoring-on persistence passed; fresh defaults and monitoring-off reload left wet return unmuted and are documented inline; final log `/tmp/drywet-stage5-final.log`.
 
 Verification:
 
