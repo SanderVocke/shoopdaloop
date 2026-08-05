@@ -91,9 +91,9 @@ As seen in the comparison table, ShoopDaLoop is closest to Luppp in what it offe
 
 See the Releases page and [INSTALL](INSTALL.md) for details.
 
-# egui development preview
+# egui dummy-engine application
 
-The backend-free pure-egui workspace preview runs natively and in a browser. See [`src/rust/shoop_egui_preview/README.md`](src/rust/shoop_egui_preview/README.md) for native, WebAssembly, and release-bundle commands. The web preview demonstrates the GUI and intent flow only; it does not run the audio backend.
+The pure-egui application runs natively and in a browser through the same application, backend, and engine state. See [`src/rust/shoopdaloop_egui/README.md`](src/rust/shoopdaloop_egui/README.md) for native, WebAssembly, and release-bundle commands. It uses only the deterministic dummy driver: loop processing advances, but there is no microphone capture, audible output, or physical MIDI I/O.
 
 # Packages / Packaging
 

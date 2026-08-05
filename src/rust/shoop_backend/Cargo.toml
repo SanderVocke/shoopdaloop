@@ -4,7 +4,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = { workspace = true }
-shoop_engine = { path = "../shoop_engine", features = ["app_backend"] }
+shoop_engine = { path = "../shoop_engine" }
 
 [lints]
 workspace = true

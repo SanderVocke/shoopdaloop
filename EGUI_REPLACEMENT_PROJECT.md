@@ -20,15 +20,17 @@ Milestone plans must reference both this document and the parity matrix, and mus
 
 | Area | Status | Notes |
 |---|---|---|
-| Project architecture | Planned | The target crate boundaries and one-process application-actor approach are accepted. |
-| Feature-parity discovery | Partially explored | The tracks/loops milestone subset is explored and built; settings, persistence, connections, FX, scripting, MIDI control, and advanced editing remain largely unexplored for replacement purposes. |
-| First major milestone | Complete | The pure-egui tracks/loops vertical slice meets all acceptance criteria; full workspace, retained QML, wasm, dependency, native-workflow, and runtime-smoke gates pass. |
-| egui presentation | Usable | `shoop_egui` renders the native and backend-free preview applications through stable snapshot/intent contracts while the retained Qt prototype adapter still compiles. |
+| Project architecture | Planned | The accepted crate boundaries now include one cross-target composition root and native/cooperative application ownership; persistence, scripting, and production real-driver composition remain future architecture work. |
+| Feature-parity discovery | Partially explored | The tracks/loops subset and cross-target dummy-engine portability surface are explored and built; settings, persistence, connections, FX, scripting, MIDI control, and advanced editing remain largely unexplored for replacement purposes. |
+| First major milestone | Complete | The pure-egui tracks/loops vertical slice met all acceptance criteria at its completion boundary. |
+| Second major milestone | Complete | `EGUI_MILESTONE_2_ENGINE.md` consolidates the runners in `shoopdaloop_egui`; native and browser targets run the authoritative app/backend/dummy-engine path with cross-target tests and browser artifacts. |
+| egui presentation | Usable | `shoop_egui` renders plain snapshots and emits typed intents while remaining independently browser-compatible and backend-free. |
 | Framework-independent application API | Complete | `shoop_app_api` owns stable IDs, snapshots, capability state, and typed milestone intents without framework/backend dependencies. |
-| Rust business-logic application core | Usable | `shoop_app` owns the milestone's direct tracks/loops, topology mutation, control policies, details, snapshots, and observable errors. |
-| Native backend façade | Usable | `shoop_backend` provides fake and engine-backed dummy implementations for direct audio/MIDI topology, controls, data, polling, and status. |
-| Pure native egui executable | Usable | `shoopdaloop_native` passes milestone workflows; the isolated `shoop_egui_preview` runs natively and as a browser WebAssembly bundle. |
-| Qt/frontend removal | Not started | Removal is a final migration result, not part of the first milestone. |
+| Rust business-logic application core | Usable | `shoop_app` runs the same tracks/loops model through a native actor or a bounded cooperative browser runtime. |
+| Backend façade | Usable | `shoop_backend` owns a Wasm-safe dummy façade directly over the engine `Session` core, with deterministic elapsed-time processing, synchronous graph updates, and direct stable content reads. |
+| Unified egui executable | Usable | `shoopdaloop_egui` is the only egui runner package and passes native construction/workflow/paint tests plus Wasm build and browser workflow smoke. |
+| Browser egui application | Usable | Release and self-contained browser artifacts run the actual dummy engine; scripted Chrome tests pass at minimum and common sizes. |
+| Qt/frontend removal | Not started | Removal is a final migration result, not part of the first two milestones. |
 
 Use the status terms `Not started`, `Partially explored`, `Planned`, `In progress`, `Usable`, `Complete`, and `Blocked` consistently. Notes should identify the active milestone or the evidence needed for the next status change.
 
@@ -50,13 +52,15 @@ Pixel-identical rendering is not required. Behavioral parity, recognizable layou
 ## Target architecture
 
 ```text
-shoopdaloop_native
+shoopdaloop_egui (native + browser)
 ├── shoop_egui ──────────────> shoop_app_api
 └── shoop_app ───────────────> shoop_app_api
     ├── shoop_backend ───────> shoop_engine
     ├── shoop_session
     └── shoop_scripting
 ```
+
+Milestone 2 uses only the engine-backed dummy driver in this composition root. Its façade owns the target-neutral engine `Session` directly: the native application actor and browser event loop drive the same bounded elapsed-time processing, while topology and content operations complete synchronously at stable control points. Native real-driver composition remains later project work; the retained Qt application continues to exercise the full threaded application backend and existing native drivers during the migration.
 
 These names describe intended responsibilities. A milestone may establish a boundary before all implementation has physically moved into its final crate, but dependency direction must not be compromised.
 
@@ -83,7 +87,7 @@ The authoritative business-logic layer. It owns:
 - Snapshot publication and user-visible errors/task progress.
 - The common command/query surface used by GUI, scripting, MIDI control, and tests.
 
-A single logical application actor owns mutable business state and processes commands in order. Long-running media or filesystem work runs on workers and reports typed results back to the actor.
+A single logical application owner holds mutable business state and processes commands in order. Native composition may place it on an actor thread; browser composition may drive the same state machine cooperatively. Long-running media or filesystem work runs on appropriate asynchronous services and reports typed results back through the same command path.
 
 ### `shoop_backend`
 
@@ -118,28 +122,32 @@ A presentation-only crate. Widgets receive immutable plain Rust state, retain lo
 
 The crate remains host-independent and browser-compatible where practical. It does not create native windows or use native dialogs.
 
-### `shoopdaloop_native`
+### `shoopdaloop_egui`
 
-The thin native composition root. It owns windowing, renderer setup, native dialogs, clipboard/OS integration, startup and shutdown, command-channel wiring, and application snapshot delivery. Native-only dependencies do not leak into `shoop_egui`.
+The target-neutral egui composition root delivered by Milestone 2. It owns eframe startup and shutdown, application/backend wiring, snapshot delivery, and target-specific runtime scheduling. Native builds own windowing and run the application owner on its actor thread; browser builds own WebRunner startup and cooperative application/dummy-engine progress. Target adapters share one eframe application and do not leak into `shoop_egui`.
+
+This runner supports only the dummy driver. It supersedes both `shoopdaloop_native` and the standalone backend-free `shoop_egui_preview`; the completed Milestone 1 plan remains historical evidence of the earlier arrangement.
 
 ## Runtime model
 
 ```text
-Audio callback
-    │ state mirrors
-    ▼
-shoop_backend
-    │ observations and command results
-    ▼
-shoop_app actor ───────────────> Arc<AppSnapshot>
-    ▲                                  │
-    │ typed intents                    ▼
-GUI / Lua / MIDI / CLI            shoop_egui
+Native driver callback / browser cooperative dummy tick
+                    │ state mirrors
+                    ▼
+               shoop_backend
+                    │ observations and command results
+                    ▼
+shoop_app logical owner ─────────> Arc<AppSnapshot>
+(native actor / browser pump)             │
+                    ▲                     ▼
+                    │ typed intents  shoop_egui
+             GUI / Lua / MIDI / CLI
 ```
 
 Required properties:
 
-- The real-time callback never waits for the GUI or application actor.
+- The native real-time callback never waits for the GUI or application actor.
+- Browser dummy execution advances through bounded non-blocking ticks; it does not pretend to be a real-time audio callback.
 - The GUI does not poll or mutate individual engine handles.
 - Commands are bounded or apply explicit backpressure and are never silently lost.
 - Structural snapshots use stable IDs and structural sharing rather than positional identity and full deep copies every frame.
@@ -181,7 +189,7 @@ Use incremental vertical slices rather than translating QML file by file.
    - a small number of native end-to-end workflows.
 8. Delete old code only after its matrix area is complete or an explicit difference has been accepted.
 
-The first vertical slice is defined in `EGUI_MILESTONE_1_TRACKS_AND_LOOPS_PLAN.md`.
+The first vertical slice is defined in `EGUI_MILESTONE_1_TRACKS_AND_LOOPS_PLAN.md`. The cross-target dummy-engine consolidation is defined in `EGUI_MILESTONE_2_ENGINE.md`.
 
 ## Fast GUI iteration
 
@@ -189,10 +197,11 @@ Fast recompilation is an architectural requirement:
 
 - `shoop_egui` depends only on egui, assets, and small API/value crates.
 - Backend, engine, driver, Lua, media-I/O, and native-shell crates stay out of the GUI dependency graph.
-- A preview executable supplies representative mock snapshots and records emitted intents without linking audio, LV2, Lua, or Qt dependencies; the same preview has native and browser WebAssembly entry points.
-- Native renderer and file-dialog dependencies remain in the composition root.
-- GUI tests run with `cargo test -p shoop_egui`; browser compatibility remains a separate check.
-- The full application is linked for integration milestones, not for every presentation-only iteration.
+- `shoop_egui` tests and fixtures supply representative plain snapshots and capture emitted intents without linking backend, engine, driver, LV2, Lua, or Qt dependencies.
+- The Milestone 2 `shoopdaloop_egui` runner deliberately links the real application/backend/dummy-engine path on both native and browser targets; there is no separate fixture-driven executable after consolidation.
+- Native renderer and OS-integration dependencies remain target-specific in the composition root.
+- GUI tests run with `cargo test -p shoop_egui`; presentation browser compatibility and the engine-backed browser application remain separate checks.
+- Presentation-only iteration does not relink the engine unless the consolidated application itself is being built.
 
 Use an in-process architecture initially. A separate backend process is justified only if measured build or runtime evidence outweighs the additional IPC and lifecycle complexity.
 
@@ -200,13 +209,14 @@ Use an in-process architecture initially. A separate backend process is justifie
 
 This roadmap gives ordering, not fixed future milestone scope:
 
-1. Tracks/loops vertical slice in a pure egui application.
-2. Session persistence and media workflows required to use that slice across runs.
-3. Track topology, connections, settings, and driver-management workflows.
-4. Dry/wet tracks, FX chains, and advanced loop details/editing.
-5. Composite-loop creation and editing.
-6. Lua scripting, MIDI control, monitoring, profiling, and remaining utility/developer surfaces.
-7. Whole-matrix validation, production entry-point switch, packaging migration, and Qt deletion.
+1. Tracks/loops vertical slice in a pure egui application. Complete.
+2. Consolidated native/browser egui application running the real application/backend path with cooperative dummy-engine processing in the browser. Complete.
+3. Session persistence and media workflows required to use the tracks/loops slice across runs.
+4. Track topology, connections, settings, and real driver-management workflows.
+5. Dry/wet tracks, FX chains, and advanced loop details/editing.
+6. Composite-loop creation and editing.
+7. Lua scripting, MIDI control, monitoring, profiling, and remaining utility/developer surfaces.
+8. Whole-matrix validation, production entry-point switch, packaging migration, and Qt deletion.
 
 Future discovery may reorder or split these areas. Any such change must update this document and the parity matrix.
 

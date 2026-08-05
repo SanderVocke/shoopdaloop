@@ -89,12 +89,12 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        help="output file (default: DIST/preview.html)",
+        help="output file (default: DIST/shoopdaloop_egui.html)",
     )
     args = parser.parse_args()
-    output = args.output or args.dist / "preview.html"
+    output = args.output or args.dist / "shoopdaloop_egui.html"
     build_single_file(args.dist, output)
-    print(f"wrote self-contained preview: {output} ({output.stat().st_size} bytes)")
+    print(f"wrote self-contained application: {output} ({output.stat().st_size} bytes)")
 
 
 if __name__ == "__main__":

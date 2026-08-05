@@ -1,0 +1,76 @@
+name: WebAssembly egui dummy engine
+
+on:
+  push:
+    branches: ["master", "egui"]
+    paths:
+      - ".github/workflows/wasm_egui.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "rust-toolchain.toml"
+      - "src/rust/shoop_app_api/**"
+      - "src/rust/shoop_app/**"
+      - "src/rust/shoop_backend/**"
+      - "src/rust/shoop_engine/**"
+      - "src/rust/shoop_egui/**"
+      - "src/rust/shoopdaloop_egui/**"
+  pull_request:
+    paths:
+      - ".github/workflows/wasm_egui.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "rust-toolchain.toml"
+      - "src/rust/shoop_app_api/**"
+      - "src/rust/shoop_app/**"
+      - "src/rust/shoop_backend/**"
+      - "src/rust/shoop_engine/**"
+      - "src/rust/shoop_egui/**"
+      - "src/rust/shoopdaloop_egui/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust nightly with WebAssembly target
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Trunk
+        run: cargo install --locked trunk --version 0.21.14
+
+      - name: Check dummy-only Wasm package
+        run: cargo check -p shoopdaloop_egui --target wasm32-unknown-unknown
+
+      - name: Build browser application
+        working-directory: src/rust/shoopdaloop_egui
+        run: trunk build --release
+
+      - name: Build self-contained application
+        working-directory: src/rust/shoopdaloop_egui
+        run: python3 build_single_file_app.py dist
+
+      - name: Run browser dummy-engine workflow
+        working-directory: src/rust/shoopdaloop_egui
+        run: |
+          BROWSER_SIZE=360,200 node --experimental-websocket browser_smoke.mjs
+          BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
+
+      - name: Upload browser bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: shoopdaloop-egui-wasm
+          path: src/rust/shoopdaloop_egui/dist/
+
+      - name: Upload self-contained application
+        uses: actions/upload-artifact@v7
+        with:
+          path: src/rust/shoopdaloop_egui/dist/shoopdaloop_egui.html
+          archive: false

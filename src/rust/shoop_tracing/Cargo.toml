@@ -6,10 +6,12 @@ edition = "2021"
 
 [dependencies]
 assert_no_alloc = { workspace = true }
-tracy-client = { workspace = true }
+tracy-client = { workspace = true, optional = true }
 
 [lints]
 workspace = true
 
 [features]
+default = ["tracy"]
 prebuild = []
+tracy = ["dep:tracy-client"]

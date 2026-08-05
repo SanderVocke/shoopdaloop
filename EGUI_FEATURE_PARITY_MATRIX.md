@@ -21,6 +21,7 @@ The initial entries cover the first tracks/loops vertical slice defined in `EGUI
 Discovery:
 
 - `Explored for M1`: investigated enough to define the first milestone behavior.
+- `Explored for M2`: investigated enough to define the cross-target dummy-engine milestone behavior.
 - `Partially explored`: some relevant behavior is known, but later work must continue discovery.
 - `Unexplored`: not yet inventoried for replacement.
 
@@ -37,7 +38,9 @@ Milestone target:
 
 - `Required`: must be complete for milestone 1.
 - `Required subset`: only the behavior stated in the notes is required for milestone 1.
-- `Deferred`: explicitly outside milestone 1, but not outside the project.
+- `M2 required`: must be complete for `EGUI_MILESTONE_2_ENGINE.md`.
+- `Superseded in M2`: completed Milestone 1 behavior intentionally replaced by the accepted Milestone 2 architecture; its historical evidence remains valid.
+- `Deferred`: explicitly outside the active milestone, but not outside the project.
 
 ## Baseline sources inspected for milestone 1
 
@@ -53,6 +56,34 @@ The initial matrix is based on:
 - Direct track topology and controls: `src/qml/test/tst_TrackControl_direct.qml`, `src/qml/test/tst_TrackControlAndLoop_direct.qml`, and the corresponding dry/wet tests used only to identify deferred behavior.
 
 These sources do not exhaustively specify later milestones. The milestone-1 subset was refined through implementation and its focused tests.
+
+## Baseline sources inspected for milestone 2 planning
+
+The initial cross-target dummy-engine plan is based on:
+
+- Current composition roots and browser packaging: `src/rust/shoopdaloop_native`, `src/rust/shoop_egui_preview`, and `.github/workflows/wasm_preview.yml`.
+- Application ownership and polling: `src/rust/shoop_app/src/lib.rs`.
+- Dummy backend topology and engine translation: `src/rust/shoop_backend/src/lib.rs`.
+- Engine feature boundaries and application backend: `src/rust/shoop_engine/Cargo.toml` and `src/rust/shoop_engine/src/app_backend.rs`.
+- Worker-owned engine services: `src/rust/shoop_engine/src/graph_scheduler.rs` and `src/rust/shoop_engine/src/content_snapshot/runtime.rs`.
+- Dummy cycle semantics: `src/rust/shoop_engine/src/dummy_driver.rs` and existing controlled-driver tests.
+
+Milestone 2 intentionally replaces the standalone backend-free preview with one engine-backed dummy application for native and browser targets. The user explicitly approved that direction. Milestone 1 evidence remains a historical statement of what passed at its completion boundary; new rows below track the superseding implementation rather than rewriting that evidence.
+
+The portability inventory supported a simpler implementation than adapting the full native application-backend worker layer: `shoop_backend` now uses the target-neutral `shoop_engine::Session` core directly for its dummy-only façade. Topology changes are applied synchronously, loop content is read directly at stable application points, elapsed-time processing is bounded, and the native application actor drives the same backend from its thread. The retained frontend continues using the full threaded `shoop_engine/app_backend` feature and its existing JACK/CPAL/Midir/LV2 paths.
+
+## Milestone-2 replacement evidence
+
+Evidence referenced by the M2 rows consists of:
+
+- Cooperative backend processing: `shoop_backend` contracts plus exact-frame record/play, fractional-time accumulation, bounded catch-up, and xrun tests.
+- Application ownership: `shoop_app` threaded actor tests and cooperative real-engine workflow, waveform refresh, queue-capacity, stale-ID, and failure tests.
+- Unified composition: `shoopdaloop_egui` native workflow, shared minimum/common-size paint test, and WebAssembly compiler check.
+- Browser runtime: release Trunk bundle plus the Chrome DevTools smoke at 360×200 and 900×600; `?self-test=1` creates a stereo/MIDI track, records real dummy-engine frames, stops, refreshes waveform details, plays, and proves revisions continue advancing without browser exceptions.
+- Browser artifacts: `build_single_file_app.py` produces the self-contained `shoopdaloop_egui.html`; the migrated workflow builds, tests, and uploads both artifact forms.
+- Dependency isolation: the Wasm runner tree contains `shoop_app`, `shoop_backend`, and `shoop_engine` but no JACK, CPAL, Midir, LV2, frontend, Qt, X11, or Wayland package; the `shoop_egui` tree remains limited to presentation dependencies and `shoop_app_api`.
+- Compatibility gates: warning-denying builds, formatting, all workspace Rust tests with the full engine application backend, and retained QML self-tests pass. The QML suite reports 197 passed, 0 failed, and one environment skip for unavailable CPAL virtual playback ports.
+- Native graphical environment note: native construction, real-engine workflows, and 360×200/900×600 paint tests pass. A local Xvfb process could not provide a GLX framebuffer configuration, so OS-window runtime smoke is an environment skip; the unchanged eframe native bootstrap is compiled and its prior M1 Xvfb evidence remains applicable.
 
 ## Milestone-1 replacement evidence
 
@@ -137,6 +168,24 @@ Evidence referenced below consists of:
 | BACKEND-001 | Create direct track ports, loops, and channels | QML descriptor generation plus QObject wrappers constructs corresponding engine entities and wiring. | Explored for M1 | Required | Complete | Engine-backed direct-track contract and native workflow |
 | BACKEND-002 | Poll loop, channel, port, and driver state | QObject update code currently converts state mirrors into QML properties and prototype snapshots. | Explored for M1 | Required | Complete | Engine state aggregation, backend contracts, actor publication, and native workflow |
 | BACKEND-003 | Dummy-backend deterministic operation | Existing tests use a dummy backend for headless behavior. | Explored for M1 | Required | Complete | Shared contract passes for fake and engine-backed dummy implementations |
+
+## Milestone-2 planned matrix
+
+These rows track the completed `EGUI_MILESTONE_2_ENGINE.md` implementation.
+
+| ID | Capability or behavior | Current baseline | Discovery | M2 target | Current implementation | Replacement evidence |
+|---|---|---|---|---|---|---|
+| M2-ARCH-001 | One native/browser composition package | M1 used separate native and fixture-preview runners. | Explored for M2 | M2 required | Complete | `shoopdaloop_egui` shared source, native workflow/paint tests, Wasm check, and browser smoke |
+| M2-ARCH-002 | Standalone backend-free preview superseded without losing presentation isolation | M1 delivered a backend-free preview executable; M2 intentionally replaces that runner while retaining backend-free `shoop_egui` tests and contracts. | Explored for M2 | Superseded in M2 | Complete | Old packages removed; source/workflow/document scans and presentation dependency scan pass |
+| M2-BUILD-001 | Dummy-only cross-target dependency graph | The full engine application-backend feature enables native drivers and plugins. | Explored for M2 | M2 required | Complete | `shoop_backend` uses engine core without `app_backend`; Wasm forbidden-package scan passes while full native feature builds/tests pass |
+| M2-RUNTIME-001 | Shared application pump with threaded and cooperative adapters | M1 exposed only a native application actor. | Explored for M2 | M2 required | Complete | Shared model/update path, native actor tests, cooperative capacity/failure tests, and real-engine workflow |
+| M2-RUNTIME-002 | Cooperative browser dummy-engine cycles | M1's browser fixture had no engine. | Explored for M2 | M2 required | Complete | Exact-frame audio/MIDI-capable loop test, elapsed-time tests, Wasm build, and browser scripted record/play workflow |
+| M2-RUNTIME-003 | Cooperative graph and content progress | The full native backend uses graph and content workers. | Explored for M2 | M2 required | Complete | Dummy façade applies core `Session` graph changes synchronously and reads stable channel content directly; waveform workflow passes |
+| M2-RUNTIME-004 | Bounded browser pause/resume behavior | M1 had no engine-backed browser timing. | Explored for M2 | M2 required | Complete | Eight-cycle per-update cap, fractional remainder, ten-second gap/xrun test, and continuing browser revisions |
+| M2-SHELL-001 | Browser uses authoritative app/engine snapshots and intents | M1's preview mutated representative state locally. | Explored for M2 | M2 required | Complete | Browser self-test reaches authoritative add-track/record/stop/details/play snapshots with no exceptions |
+| M2-SHELL-002 | Unified browser bundle and self-contained artifact | M1 tooling belonged to the preview package. | Explored for M2 | M2 required | Complete | Trunk bundle, self-contained HTML, migrated README and `wasm_egui.yml` workflow |
+| M2-TEST-001 | Equivalent native/cooperative dummy observations | M1 had native dummy and fake contracts only. | Explored for M2 | M2 required | Complete | Backend exact-frame contracts, native actor workflow, cooperative app workflow, native runner workflow, and two-size browser smoke |
+| M2-ARCH-003 | Presentation remains independently backend-free | `shoop_egui` accepts plain snapshots and emits typed intents. | Explored for M2 | M2 required | Complete | GUI tests/Wasm check pass and dependency tree contains `shoop_app_api` but no app/backend/engine implementation |
 
 ## Coarsely listed future areas
 

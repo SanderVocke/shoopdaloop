@@ -4304,19 +4304,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "shoop_egui_preview"
-version = "0.0.0"
-dependencies = [
- "eframe",
- "log",
- "shoop_app_api",
- "shoop_egui",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
-]
-
-[[package]]
 name = "shoop_engine"
 version = "0.0.0"
 dependencies = [
@@ -4381,14 +4368,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "shoopdaloop_native"
+name = "shoopdaloop_egui"
 version = "0.0.0"
 dependencies = [
  "anyhow",
  "eframe",
+ "log",
  "shoop_app",
  "shoop_backend",
  "shoop_egui",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "web-time",
 ]
 
 [[package]]

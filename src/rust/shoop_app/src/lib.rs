@@ -1,9 +1,9 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::sync::{Arc, RwLock};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use shoop_app_api::{
@@ -17,6 +17,7 @@ use shoop_backend::{
 };
 
 const COMMAND_CAPACITY: usize = 1024;
+const MAX_COOPERATIVE_COMMANDS_PER_TICK: usize = 64;
 const POLL_INTERVAL: Duration = Duration::from_millis(16);
 
 #[derive(Clone)]
@@ -104,6 +105,54 @@ impl Drop for ApplicationRuntime {
     }
 }
 
+pub struct CooperativeApplicationRuntime {
+    model: ApplicationModel,
+    backend: Box<dyn Backend>,
+    commands: VecDeque<AppIntent>,
+    snapshot: Arc<AppSnapshot>,
+}
+
+impl CooperativeApplicationRuntime {
+    pub fn start(mut backend: Box<dyn Backend>) -> Result<Self> {
+        let model = ApplicationModel::initialize(&mut *backend)?;
+        let snapshot = Arc::new(model.snapshot());
+        Ok(Self {
+            model,
+            backend,
+            commands: VecDeque::with_capacity(COMMAND_CAPACITY),
+            snapshot,
+        })
+    }
+
+    pub fn dispatch(&mut self, intent: AppIntent) -> Result<(), DispatchError> {
+        if self.commands.len() >= COMMAND_CAPACITY {
+            return Err(DispatchError::Full);
+        }
+        self.commands.push_back(intent);
+        Ok(())
+    }
+
+    pub fn snapshot(&self) -> Arc<AppSnapshot> {
+        Arc::clone(&self.snapshot)
+    }
+
+    pub fn tick(&mut self, elapsed: Duration) {
+        for _ in 0..MAX_COOPERATIVE_COMMANDS_PER_TICK {
+            let Some(intent) = self.commands.pop_front() else {
+                break;
+            };
+            self.model.handle_intent(&mut *self.backend, intent);
+        }
+        update_application(&mut self.model, &mut *self.backend, elapsed, |snapshot| {
+            self.snapshot = snapshot
+        });
+    }
+
+    pub fn has_pending_commands(&self) -> bool {
+        !self.commands.is_empty()
+    }
+}
+
 enum ApplicationMessage {
     Intent(AppIntent),
     Shutdown,
@@ -115,6 +164,7 @@ fn run_actor(
     receiver: Receiver<ApplicationMessage>,
     published: Arc<RwLock<Arc<AppSnapshot>>>,
 ) {
+    let mut last_update = Instant::now();
     loop {
         match receiver.recv_timeout(POLL_INTERVAL) {
             Ok(ApplicationMessage::Intent(intent)) => model.handle_intent(&mut *backend, intent),
@@ -122,13 +172,28 @@ fn run_actor(
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
             Err(mpsc::RecvTimeoutError::Timeout) => {}
         }
-        match backend.poll() {
-            Ok(snapshot) => model.apply_backend_snapshot(snapshot),
-            Err(error) => model.notify_error(format!("backend poll failed: {error}")),
-        }
-        model.revision = model.revision.wrapping_add(1);
-        *published.write().unwrap_or_else(|error| error.into_inner()) = Arc::new(model.snapshot());
+        let now = Instant::now();
+        let elapsed = now.saturating_duration_since(last_update);
+        last_update = now;
+        update_application(&mut model, &mut *backend, elapsed, |snapshot| {
+            *published.write().unwrap_or_else(|error| error.into_inner()) = snapshot;
+        });
     }
+}
+
+fn update_application(
+    model: &mut ApplicationModel,
+    backend: &mut dyn Backend,
+    elapsed: Duration,
+    publish: impl FnOnce(Arc<AppSnapshot>),
+) {
+    backend.advance(elapsed);
+    match backend.poll() {
+        Ok(snapshot) => model.apply_backend_snapshot(snapshot),
+        Err(error) => model.notify_error(format!("backend poll failed: {error}")),
+    }
+    model.revision = model.revision.wrapping_add(1);
+    publish(Arc::new(model.snapshot()));
 }
 
 struct ApplicationModel {
@@ -841,7 +906,7 @@ mod tests {
     use std::time::Instant;
 
     use shoop_app_api::{SelectionModifiers, TrackAction};
-    use shoop_backend::FakeBackend;
+    use shoop_backend::{EngineBackend, FakeBackend};
 
     use super::*;
 
@@ -1089,5 +1154,114 @@ mod tests {
         let updated = wait_for(&handle, |snapshot| !snapshot.global_controls.sync);
         assert!(held.global_controls.sync);
         assert!(!updated.global_controls.sync);
+    }
+
+    #[test]
+    fn cooperative_runtime_drives_the_engine_backed_dummy_workflow() {
+        let backend = EngineBackend::new_dummy(48_000, 256).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Browser".to_owned(),
+                audio_channels: 2,
+                midi: true,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let snapshot = runtime.snapshot();
+        assert_eq!(snapshot.tracks.len(), 2);
+        let track_id = snapshot.tracks[1].id;
+        let loop_id = snapshot.tracks[1].loops[0].id;
+
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::IconClicked(SelectionModifiers::default()),
+            })
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::RecordClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(20));
+        let recording = runtime.snapshot();
+        assert_eq!(recording.tracks[1].loops[0].mode, LoopMode::Recording);
+        assert!(recording.details.is_some());
+        assert!(recording.details.as_ref().unwrap().channels.len() == 2);
+
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(6));
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Stopped
+        );
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::IconClicked(SelectionModifiers::default()),
+            })
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::IconClicked(SelectionModifiers::default()),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().details.as_ref().is_some_and(|details| {
+            details
+                .channels
+                .first()
+                .is_some_and(|channel| !channel.samples.is_empty())
+        }));
+
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(6));
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Playing
+        );
+    }
+
+    #[test]
+    fn cooperative_runtime_bounds_command_work_and_reports_capacity() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        for _ in 0..COMMAND_CAPACITY {
+            runtime
+                .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+                .unwrap();
+        }
+        assert_eq!(
+            runtime.dispatch(AppIntent::Global(GlobalControlAction::SetSync(true))),
+            Err(DispatchError::Full)
+        );
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.has_pending_commands());
+        for _ in 0..COMMAND_CAPACITY / MAX_COOPERATIVE_COMMANDS_PER_TICK {
+            runtime.tick(Duration::ZERO);
+        }
+        assert!(!runtime.has_pending_commands());
     }
 }
