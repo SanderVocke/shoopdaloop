@@ -48,6 +48,7 @@ ShoopRustFXChainGui {
             switch(descriptor.type) {
                 case "carla_rack": chain_type = ShoopRustConstants.FXChainType.CarlaRack; break;
                 case "carla_patchbay": chain_type = ShoopRustConstants.FXChainType.CarlaPatchbay; break;
+                case "carla_patchbay_16":
                 case "carla_patchbay_16x": chain_type = ShoopRustConstants.FXChainType.CarlaPatchbay16x; break;
                 case "test2x2x1": chain_type = ShoopRustConstants.FXChainType.Test2x2x1; break;
             }

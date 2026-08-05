@@ -22,8 +22,6 @@ ShoopTestFile {
                 "patchbay16", 1, "patchbay16", false, "patchbay16", 16, 16, 0,
                 true, false, false, "carla_patchbay_16"
             )
-            // Use the backend-facing spelling to isolate host behavior from descriptor parsing.
-            patchbay16.fx_chain.type = "carla_patchbay_16x"
             return GenerateSession.generate_default_session(
                 global_args.version_string,
                 null,

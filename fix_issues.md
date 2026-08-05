@@ -107,11 +107,11 @@ No empty commit is required for baseline-only work.
 
 ### Stage 1 — Carla Patchbay 16x descriptor compatibility
 
-- [ ] Add descriptor-boundary support for both `carla_patchbay_16` and `carla_patchbay_16x`, mapping both to `CarlaPatchbay16x`.
-- [ ] Choose and document one canonical generated spelling, while keeping the other as a load-time compatibility alias.
-- [ ] Remove the temporary descriptor rewrite from the Carla fixture so it exercises the user-facing value end to end.
-- [ ] Verify Rack and ordinary Patchbay mappings are unchanged.
-- [ ] Run the descriptor and Carla activation tests, then commit the milestone.
+- [x] Add descriptor-boundary support for both `carla_patchbay_16` and `carla_patchbay_16x`, mapping both to `CarlaPatchbay16x`.
+- [x] Choose and document one canonical generated spelling, while keeping the other as a load-time compatibility alias. Decision: generated/user-facing descriptors remain `carla_patchbay_16`; the schema, generator input, and FX-chain mapping also accept the backend-style `carla_patchbay_16x` alias.
+- [x] Remove the temporary descriptor rewrite from the Carla fixture so it exercises the user-facing value end to end.
+- [x] Verify Rack and ordinary Patchbay mappings are unchanged. Evidence: all three Carla activation-mode cases passed using their generated descriptors in `/tmp/drywet-fixes-stage1-activation.log`.
+- [x] Run the descriptor and Carla activation tests, then commit the milestone. Evidence: both Patchbay 16 spellings passed schema validation and selected `CarlaPatchbay16x` in `/tmp/drywet-fixes-stage1-descriptor-final.log`; all 3 activation cases passed.
 
 Verification:
 
