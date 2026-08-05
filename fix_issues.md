@@ -154,7 +154,7 @@ QT_QPA_PLATFORM=offscreen \
 - [x] Preserve events outside the replaced interval, insert incoming events in timestamp order, and handle negative offsets and loop-boundary splits consistently with audio replacement.
 - [x] Update recording-start/input/playback state so the replaced sequence starts and loops without stale note state.
 - [x] Extend snapshot mutation support as needed so partial replacement is hidden until commit and publishes the same events as engine storage. Evidence: snapshot range removal, commit-time sorting, and an app-backend engine/snapshot equality regression pass.
-- [x] Add Rust unit tests for full replacement, partial replacement, empty-input erasure, boundary splitting, state restoration, capacity behavior, and snapshot publication. Evidence: 37 storage, 44 channel, and 9 snapshot tests passed in `/tmp/drywet-fixes-stage3-midi-storage.log`, `/tmp/drywet-fixes-stage3-midi-channel-final.log`, and `/tmp/drywet-fixes-stage3-snapshot.log`; focused negative-offset and app-backend snapshot tests also passed.
+- [x] Add Rust unit tests for full replacement, partial replacement, empty-input erasure, boundary splitting, state restoration, capacity behavior, and snapshot publication. Evidence: 37 storage, 44 channel, and 9 snapshot tests passed in `/tmp/drywet-fixes-stage3-midi-storage.log`, `/tmp/drywet-fixes-stage3-midi-channel-final.log`, and `/tmp/drywet-fixes-stage3-snapshot.log`; focused negative-offset, app-backend snapshot, and actual loop-wrap split tests also passed.
 - [x] Run the two QML Replacing cases plus Rust MIDI/channel/content tests, then commit. Evidence: both QML cases passed in `/tmp/drywet-fixes-stage3-qml-final.log`; `midi_replacement_is_allocation_free` and a warnings-as-errors build passed.
 
 Verification:
@@ -270,7 +270,7 @@ SHOOP_ALLOW_MISSING_BACKENDS=1 \
 ### Stage 8 — Final end-to-end validation
 
 - [x] Run formatting and a warnings-as-errors build. Evidence: `cargo fmt --all` and `RUSTFLAGS="-D warnings" cargo build` passed; build log is `/tmp/drywet-fixes-final-build.log`.
-- [x] Run the complete Rust workspace suite serially if host resource contention recurs. Evidence: the serial workspace run passed in `/tmp/drywet-fixes-final-rust.log`.
+- [x] Run the complete Rust workspace suite serially if host resource contention recurs. Evidence: the final serial workspace run, including the loop-wrap audit test, passed in `/tmp/drywet-fixes-final-rust-audited.log`.
 - [x] Run the complete QML suite and save its JUnit/log result. Evidence: `/tmp/drywet-fixes-final-qml.log` and `/tmp/drywet-fixes-final.xml`.
 - [x] Confirm all 235 QML cases pass except explicitly unavailable backend capabilities; track the unrelated CPAL capability separately. Evidence: the suite now contains 236 cases because descriptor-alias coverage added one; 235 passed, 0 failed, and only the pre-existing CPAL playback-port capability skipped.
 - [x] Confirm the Rust workspace has no behavioral failures on available JACK/Carla backends. Evidence: the workspace log includes all 6 real-JACK tests and all Carla engine/app tests with no failures.
