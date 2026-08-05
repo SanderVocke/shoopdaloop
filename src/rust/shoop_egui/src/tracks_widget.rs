@@ -1,17 +1,4 @@
-use crate::{LoopState, LoopWidget, LoopWidgetAction};
-
-#[derive(Clone, Debug, Default)]
-pub struct TrackState {
-    pub name: String,
-    pub loops: Vec<LoopState>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct IndexedLoopAction {
-    pub track_index: usize,
-    pub loop_index: usize,
-    pub action: LoopWidgetAction,
-}
+use crate::{IndexedLoopAction, LoopWidget, TrackState};
 
 #[derive(Debug, Default)]
 pub struct TracksWidget {
