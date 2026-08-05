@@ -8,40 +8,90 @@ outputs:
   tracy_version:
     description: Pinned Tracy protocol/tool version
     value: ${{ steps.install.outputs.tracy_version }}
+  tracy_capture_wrapper_tool:
+    description: Windows helper that gracefully finalizes tracy-capture
+    value: ${{ steps.windows_wrapper.outputs.tracy_capture_wrapper_tool }}
 
 runs:
   using: composite
   steps:
+    - name: Configure MSVC for Windows capture wrapper
+      if: runner.os == 'Windows'
+      uses: ilammy/msvc-dev-cmd@v1
+
     - name: Download and verify Tracy capture
       id: install
       shell: bash
       run: |
         set -euo pipefail
-        if [[ "${RUNNER_OS}" != "Linux" || "${RUNNER_ARCH}" != "X64" ]]; then
-          echo "Tracy capture CI installation currently supports Linux X64 only" >&2
-          exit 1
-        fi
 
         version=0.13.1
-        asset_url=https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-2/tracy-linux-x64.tar.gz.zip
-        asset_sha256=49744c7a44a305c570de07fdf47da021e2991252e540830889e79848a8ca0b65
+        base_url=https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-2
+        archive_kind=nested_tar
+        tool_name=tracy-capture
+
+        case "${RUNNER_OS}/${RUNNER_ARCH}" in
+          Linux/X64)
+            asset=tracy-linux-x64.tar.gz.zip
+            asset_sha256=49744c7a44a305c570de07fdf47da021e2991252e540830889e79848a8ca0b65
+            ;;
+          macOS/X64)
+            asset=tracy-macos-x64.tar.gz.zip
+            asset_sha256=73f1612576b6bd3788c50a31bd30ecc8b8f401d90fd9ec8178f141cc94e15b85
+            ;;
+          macOS/ARM64)
+            asset=tracy-macos-arm64.tar.gz.zip
+            asset_sha256=df1724fc7b7087a2a1fe5cedcc02c5858a2f83d2be88ecd4150d19de06b90317
+            ;;
+          Windows/X64)
+            asset=tracy-windows-msvc-x64.zip
+            asset_sha256=e8210f590cc8513730440aa11a511faae20c6890491e91a0ebfa9af3a35eb5a7
+            archive_kind=zip
+            tool_name=tracy-capture.exe
+            ;;
+          *)
+            echo "Tracy capture CI installation does not support ${RUNNER_OS}/${RUNNER_ARCH}" >&2
+            exit 1
+            ;;
+        esac
+
         install_dir="${RUNNER_TEMP}/tracy-capture-${version}"
         rm -rf "${install_dir}"
         mkdir -p "${install_dir}"
 
         curl --fail --location --retry 3 --retry-all-errors \
-          --output "${install_dir}/asset.zip" "${asset_url}"
-        echo "${asset_sha256}  ${install_dir}/asset.zip" | sha256sum --check --strict
+          --output "${install_dir}/asset.zip" "${base_url}/${asset}"
+        if command -v sha256sum >/dev/null 2>&1; then
+          echo "${asset_sha256}  ${install_dir}/asset.zip" | sha256sum --check --strict
+        else
+          actual_sha256="$(shasum -a 256 "${install_dir}/asset.zip" | awk '{print $1}')"
+          if [[ "${actual_sha256}" != "${asset_sha256}" ]]; then
+            echo "SHA-256 mismatch for ${asset}: expected ${asset_sha256}, got ${actual_sha256}" >&2
+            exit 1
+          fi
+        fi
         unzip -q "${install_dir}/asset.zip" -d "${install_dir}"
-        tar -xzf "${install_dir}/tracy-linux-x64.tar.gz" -C "${install_dir}"
 
-        mapfile -t tools < <(find "${install_dir}" -type f -name tracy-capture)
-        if [[ "${#tools[@]}" -ne 1 ]]; then
-          echo "Expected exactly one tracy-capture executable, found ${#tools[@]}" >&2
-          printf '%s\n' "${tools[@]}" >&2
+        if [[ "${archive_kind}" == nested_tar ]]; then
+          tarball_count="$(find "${install_dir}" -type f -name '*.tar.gz' | wc -l | tr -d '[:space:]')"
+          if [[ "${tarball_count}" -ne 1 ]]; then
+            echo "Expected exactly one Tracy tarball, found ${tarball_count}" >&2
+            find "${install_dir}" -type f -name '*.tar.gz' -print >&2
+            exit 1
+          fi
+          tarball="$(find "${install_dir}" -type f -name '*.tar.gz' -print | head -n 1)"
+          tar -xzf "${tarball}" -C "${install_dir}"
+        fi
+
+        tool_count="$(find "${install_dir}" -type f -name "${tool_name}" | wc -l | tr -d '[:space:]')"
+        if [[ "${tool_count}" -ne 1 ]]; then
+          echo "Expected exactly one ${tool_name} executable, found ${tool_count}" >&2
+          find "${install_dir}" -type f -name "${tool_name}" -print >&2
           exit 1
         fi
-        tool="$(realpath "${tools[0]}")"
+        tool_path="$(find "${install_dir}" -type f -name "${tool_name}" -print | head -n 1)"
+        tool_dir="$(cd "$(dirname "${tool_path}")" && pwd -P)"
+        tool="${tool_dir}/$(basename "${tool_path}")"
         chmod +x "${tool}"
         help_output="$("${tool}" --help 2>&1 || true)"
         if ! grep -Fq 'Usage: capture -o output.tracy' <<<"${help_output}"; then
@@ -52,3 +102,23 @@ runs:
 
         echo "tracy_capture_tool=${tool}" | tee -a "${GITHUB_OUTPUT}"
         echo "tracy_version=${version}" | tee -a "${GITHUB_OUTPUT}"
+
+    - name: Build Windows capture-control wrapper
+      id: windows_wrapper
+      if: runner.os == 'Windows'
+      shell: powershell
+      run: |
+        $installDir = Join-Path $env:RUNNER_TEMP "tracy-capture-0.13.1"
+        $source = Join-Path "${{ github.action_path }}" "windows_capture_wrapper.c"
+        $wrapper = Join-Path $installDir "shoop-tracy-capture-wrapper.exe"
+        $object = Join-Path $installDir "shoop-tracy-capture-wrapper.obj"
+        & cl.exe /nologo /O2 /MT /W4 "/Fe:$wrapper" "/Fo:$object" $source
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $wrapper)) {
+          throw "Failed to compile Windows Tracy capture wrapper"
+        }
+        $help = & $wrapper --help | Out-String
+        if ($help -notmatch "Usage: shoop-tracy-capture-wrapper.exe") {
+          throw "Windows Tracy capture wrapper failed its usage check"
+        }
+        "tracy_capture_wrapper_tool=$wrapper" | Tee-Object -FilePath $env:GITHUB_OUTPUT -Append
+        "TRACY_CAPTURE_WRAPPER_TOOL=$wrapper" | Tee-Object -FilePath $env:GITHUB_ENV -Append

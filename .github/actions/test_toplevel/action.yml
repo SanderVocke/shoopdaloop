@@ -28,6 +28,9 @@ inputs:
   run_cmd_prefix:
     type: string
     default: ''
+  capture_traces:
+    description: Capture and upload one Tracy trace per QML test file
+    default: 'false'
 
 runs:
   using: "composite"
@@ -206,6 +209,10 @@ runs:
       rm -rf "$NEXTEST_EXTRACT_DIR"
   - uses: ./.github/actions/checkpoint
     if: always()
+  - name: Install Tracy capture for QML tests
+    id: tracy_capture
+    if: always() && (inputs.capture_traces == 'true' || env.QML_TRACE_CAPTURE_ENABLED == 'true') && inputs.do_qml_tests == 'true'
+    uses: ./.github/actions/install_tracy_capture
   - shell: wrap-shell {0}
     if: always() && (inputs.do_qml_tests == 'true')
     env:
@@ -226,6 +233,57 @@ runs:
       variant_name: release
       macos_rpath_patch: ${{ contains(inputs.name, 'macos') }}
       tee_all_output_to: test-qml-console-output.log
+      capture_traces: ${{ inputs.capture_traces == 'true' || env.QML_TRACE_CAPTURE_ENABLED == 'true' }}
+      tracy_capture_tool: ${{ steps.tracy_capture.outputs.tracy_capture_tool }}
+      tracy_capture_output_dir: traces/qml
+  - name: Write QML trace metadata
+    if: always() && (inputs.capture_traces == 'true' || env.QML_TRACE_CAPTURE_ENABLED == 'true')
+    shell: bash
+    run: |
+      mkdir -p trace-artifact
+      cat > trace-artifact/metadata.txt <<EOF
+      git_sha=${GITHUB_SHA}
+      run_id=${GITHUB_RUN_ID}
+      run_attempt=${GITHUB_RUN_ATTEMPT}
+      variant=${{ inputs.name }}
+      runner_os=${RUNNER_OS}
+      runner_arch=${RUNNER_ARCH}
+      tracy_version=${{ steps.tracy_capture.outputs.tracy_version }}
+      capture_boundary=qml_test_file
+      capture_output_dir=traces/qml
+      EOF
+  - name: Validate QML trace captures
+    if: always() && (inputs.capture_traces == 'true' || env.QML_TRACE_CAPTURE_ENABLED == 'true')
+    shell: bash
+    run: |
+      set -euo pipefail
+      if [[ ! -d traces/qml ]]; then
+        echo "QML Tracy capture directory was not created" >&2
+        exit 1
+      fi
+      trace_count="$(find traces/qml -type f -name '*.tracy' -size +0c | wc -l | tr -d '[:space:]')"
+      if [[ "${trace_count}" -eq 0 ]]; then
+        echo "No non-empty QML Tracy captures were produced" >&2
+        exit 1
+      fi
+      if [[ ! -s traces/qml/manifest.tsv ]]; then
+        echo "QML Tracy capture manifest is missing or empty" >&2
+        exit 1
+      fi
+      echo "Captured ${trace_count} non-empty QML trace files for ${{ inputs.name }}"
+  - name: Upload QML trace files
+    if: always() && (inputs.capture_traces == 'true' || env.QML_TRACE_CAPTURE_ENABLED == 'true')
+    uses: actions/upload-artifact@v4
+    with:
+      name: qml-traces-${{ inputs.name }}-${{ github.run_id }}-${{ github.run_attempt }}
+      path: |
+        traces/qml
+        trace-artifact
+        test-qml-console-output.log
+        reports/qml_test_results.xml
+      if-no-files-found: error
+      retention-days: 30
+      compression-level: 0
   - uses: ./.github/actions/checkpoint
     if: always()
   - name: Qoverage - Generate report
