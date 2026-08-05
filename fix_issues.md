@@ -149,13 +149,13 @@ QT_QPA_PLATFORM=offscreen \
 
 ### Stage 3 — MIDI replacement semantics
 
-- [ ] Add a bounded `MidiStorage` operation for replacing a half-open timestamp interval without allocating in the process callback.
-- [ ] Implement the missing `ProcessFlags::REPLACE` branch in `MidiChannel::process()` using the current process position and input-buffer cursor.
-- [ ] Preserve events outside the replaced interval, insert incoming events in timestamp order, and handle negative offsets and loop-boundary splits consistently with audio replacement.
-- [ ] Update recording-start/input/playback state so the replaced sequence starts and loops without stale note state.
-- [ ] Extend snapshot mutation support as needed so partial replacement is hidden until commit and publishes the same events as engine storage.
-- [ ] Add Rust unit tests for full replacement, partial replacement, empty-input erasure, boundary splitting, state restoration, capacity behavior, and snapshot publication.
-- [ ] Run the two QML Replacing cases plus Rust MIDI/channel/content tests, then commit.
+- [x] Add a bounded `MidiStorage` operation for replacing a half-open timestamp interval without allocating in the process callback.
+- [x] Implement the missing `ProcessFlags::REPLACE` branch in `MidiChannel::process()` using the current process position, parent loop length, and input-buffer cursor.
+- [x] Preserve events outside the replaced interval, insert incoming events in timestamp order, and handle negative offsets and loop-boundary splits consistently with audio replacement.
+- [x] Update recording-start/input/playback state so the replaced sequence starts and loops without stale note state.
+- [x] Extend snapshot mutation support as needed so partial replacement is hidden until commit and publishes the same events as engine storage. Evidence: snapshot range removal, commit-time sorting, and an app-backend engine/snapshot equality regression pass.
+- [x] Add Rust unit tests for full replacement, partial replacement, empty-input erasure, boundary splitting, state restoration, capacity behavior, and snapshot publication. Evidence: 37 storage, 44 channel, and 9 snapshot tests passed in `/tmp/drywet-fixes-stage3-midi-storage.log`, `/tmp/drywet-fixes-stage3-midi-channel-final.log`, and `/tmp/drywet-fixes-stage3-snapshot.log`; focused negative-offset and app-backend snapshot tests also passed.
+- [x] Run the two QML Replacing cases plus Rust MIDI/channel/content tests, then commit. Evidence: both QML cases passed in `/tmp/drywet-fixes-stage3-qml-final.log`; `midi_replacement_is_allocation_free` and a warnings-as-errors build passed.
 
 Verification:
 

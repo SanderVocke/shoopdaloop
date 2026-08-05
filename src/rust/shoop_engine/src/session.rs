@@ -3576,6 +3576,50 @@ mod tests {
     }
 
     #[test]
+    fn replacing_midi_through_a_session_overwrites_loaded_events() {
+        use crate::midi;
+        let mut s = Session::default();
+        let input = s.add_port(dummy_midi(1, "min", PortDirection::Input));
+        let l = s.create_loop();
+        let_assert!(Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
+        let_assert!(Ok(()) = s.connect_channel_input(c, input));
+        let_assert!(Ok(()) = s.apply_graph_changes());
+        s.loop_mut(l)
+            .unwrap()
+            .midi_channel_mut(0)
+            .unwrap()
+            .set_contents(
+                &[
+                    MidiStorageElem::new(1, &midi::note_on(0, 60, 100)).unwrap(),
+                    MidiStorageElem::new(2, &midi::note_off(0, 60, 0)).unwrap(),
+                ],
+                4,
+                None,
+            );
+        s.loop_mut(l).unwrap().set_length(4);
+        s.port_mut(input)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(0, &midi::note_on(0, 64, 100));
+        s.port_mut(input)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(3, &midi::note_off(0, 64, 0));
+
+        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Replacing));
+        s.process(4);
+
+        let contents = s.loop_(l).unwrap().midi_channel(0).unwrap().contents();
+        check!(contents.len() == 2);
+        check!(contents[0].time == 0);
+        check!(contents[0].data() == midi::note_on(0, 64, 100).as_slice());
+        check!(contents[1].time == 3);
+        check!(contents[1].data() == midi::note_off(0, 64, 0).as_slice());
+    }
+
+    #[test]
     fn a_midi_channel_without_ports_still_advances_the_loop() {
         let mut s = Session::default();
         let l = s.create_loop();

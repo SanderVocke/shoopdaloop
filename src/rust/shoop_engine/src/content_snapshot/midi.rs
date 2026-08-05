@@ -43,6 +43,7 @@ enum MidiUpdateKind {
     Append,
     Clear,
     TruncateAfter(i32),
+    RemoveRange(i32, i32),
     Publish,
     Install(ContentRevision),
 }
@@ -362,6 +363,27 @@ impl MidiProcessSnapshotWriter {
         Some(revision)
     }
 
+    pub fn remove_range(
+        &mut self,
+        start: i32,
+        end: i32,
+        total_length: u32,
+    ) -> Option<ContentRevision> {
+        if start >= end || !self.reserve_blocks(1) {
+            return None;
+        }
+        let revision = self.status.next_revision();
+        self.send_control(
+            MidiUpdateKind::RemoveRange(start, end),
+            total_length,
+            revision,
+            false,
+        )?;
+        self.latest_revision = revision;
+        self.latest_length = total_length;
+        Some(revision)
+    }
+
     fn send_control(
         &mut self,
         kind: MidiUpdateKind,
@@ -505,7 +527,11 @@ impl MidiSnapshotPublisher {
                     self.events
                         .retain(|event| event.time < 0 || event.time <= time);
                 }
-                MidiUpdateKind::Publish => {}
+                MidiUpdateKind::RemoveRange(start, end) => {
+                    self.events
+                        .retain(|event| event.time < 0 || event.time < start || event.time >= end);
+                }
+                MidiUpdateKind::Publish => self.events.sort_by_key(|event| event.time),
                 MidiUpdateKind::Install(prepared_revision) => {
                     // Preparation and process commands use different transports. The command can
                     // arrive after this pump's initial prepared drain, so close that race here.
@@ -760,6 +786,51 @@ mod tests {
             .events()
             .next()
             .is_none());
+    }
+
+    #[test]
+    fn range_replacement_is_sorted_and_hidden_until_committed() {
+        let (mut writer, _control, mut publisher, reader) =
+            midi_snapshot_channel(Arc::new(SessionContentEpoch::default()), 2, 5);
+        assert!(writer.begin_mutation(ContentMutation::Loading));
+        writer.append_storage_events(
+            &[
+                event(1, &[0x90, 60, 100]),
+                event(4, &[0x80, 60, 0]),
+                event(8, &[0x90, 61, 100]),
+            ],
+            10,
+            true,
+        );
+        writer.finish_mutation(false);
+        publisher.pump();
+
+        assert!(writer.begin_mutation(ContentMutation::Replacing));
+        assert!(writer.begin_working_generation());
+        writer.remove_range(3, 6, 10);
+        writer.append_storage_events(&[event(3, &[0x90, 64, 100])], 10, false);
+        publisher.pump();
+        assert_eq!(
+            reader
+                .latest()
+                .snapshot
+                .events()
+                .map(|event| event.time)
+                .collect::<Vec<_>>(),
+            vec![1, 4, 8]
+        );
+
+        writer.finish_mutation(true);
+        publisher.pump();
+        assert_eq!(
+            reader
+                .latest()
+                .snapshot
+                .events()
+                .map(|event| event.time)
+                .collect::<Vec<_>>(),
+            vec![1, 3, 8]
+        );
     }
 
     #[test]

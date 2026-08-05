@@ -100,6 +100,44 @@ fn snapshot_process_publication_is_allocation_free() {
 }
 
 #[test]
+fn midi_replacement_is_allocation_free() {
+    let mut channel =
+        shoop_engine::midi_channel::MidiChannel::with_capacity_elems(64, ChannelMode::Direct);
+    channel.set_contents(
+        &[
+            MidiStorageElem::new(1, &midi::note_on(0, 60, 100)).unwrap(),
+            MidiStorageElem::new(2, &midi::note_off(0, 60, 0)).unwrap(),
+        ],
+        4,
+        None,
+    );
+    channel.set_recording_buffer(4);
+    channel.set_playback_buffer(4);
+    let input = [
+        MidiStorageElem::new(0, &midi::note_on(0, 64, 100)).unwrap(),
+        MidiStorageElem::new(3, &midi::note_off(0, 64, 0)).unwrap(),
+    ];
+    let mut output = Vec::with_capacity(8);
+
+    assert_no_alloc(|| {
+        channel
+            .process(
+                LoopMode::Replacing,
+                LoopMode::Unknown,
+                None,
+                None,
+                4,
+                0,
+                4,
+                4,
+                &input,
+                &mut output,
+            )
+            .unwrap();
+    });
+}
+
+#[test]
 fn snapshot_process_endpoint_retirement_defers_pooled_destruction() {
     let runtime = ContentSnapshotRuntime::new();
     let (audio, _audio_control, _audio_reader) = runtime.create_audio_channel(8, 4);

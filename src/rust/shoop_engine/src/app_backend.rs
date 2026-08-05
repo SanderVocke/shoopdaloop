@@ -5803,6 +5803,71 @@ mod tests {
     }
 
     #[test]
+    fn midi_replacement_snapshot_matches_engine_storage() {
+        let sess = BackendSession::new().expect("session");
+        let mut engine = sess.shared.take_engine().expect("parked engine");
+        let loop_ = sess.create_loop().expect("loop");
+        let midi = loop_
+            .add_midi_channel(ChannelMode::Direct)
+            .expect("MIDI channel");
+        engine.pump();
+        midi.load_all_midi_data(&[
+            MidiEvent::new(1, vec![0x90, 60, 100]),
+            MidiEvent::new(2, vec![0x80, 60, 0]),
+        ])
+        .expect("loaded data");
+        engine.pump();
+
+        let channel = engine
+            .session_mut()
+            .midi_channel_mut(0)
+            .expect("engine channel");
+        channel.set_recording_buffer(4);
+        channel.set_playback_buffer(4);
+        let mut output = Vec::new();
+        channel
+            .process(
+                LoopMode::Replacing,
+                LoopMode::Unknown,
+                None,
+                None,
+                4,
+                0,
+                4,
+                4,
+                &[
+                    engine::MidiStorageElem::new(0, &[0x90, 64, 100]).unwrap(),
+                    engine::MidiStorageElem::new(3, &[0x80, 64, 0]).unwrap(),
+                ],
+                &mut output,
+            )
+            .unwrap();
+        channel.set_recording_buffer(1);
+        channel.set_playback_buffer(1);
+        channel
+            .process(
+                LoopMode::Stopped,
+                LoopMode::Unknown,
+                None,
+                None,
+                1,
+                0,
+                1,
+                4,
+                &[],
+                &mut output,
+            )
+            .unwrap();
+
+        std::thread::sleep(Duration::from_millis(10));
+        let actual = midi.get_all_midi_data();
+        assert_eq!(actual.len(), 2);
+        assert_eq!(actual[0], MidiEvent::new(0, vec![0x90, 64, 100]));
+        assert_eq!(actual[1], MidiEvent::new(3, vec![0x80, 64, 0]));
+        sess.shared.return_engine(engine);
+    }
+
+    #[test]
     fn channel_creation_cancels_on_drop_and_fails_with_its_parent() {
         let sess = BackendSession::new().expect("session");
         let mut engine = sess.shared.take_engine().expect("parked engine");
