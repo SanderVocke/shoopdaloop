@@ -175,25 +175,34 @@ jobs:
           --output-dir artifacts
 
       - name: Upload native application
-        if: matrix.target != 'web'
+        if: matrix.target != 'web' && env.ACT != 'true'
         uses: actions/upload-artifact@v7
         with:
           path: artifacts/${{ matrix.artifact }}
           archive: false
 
       - name: Upload hosted web bundle
-        if: matrix.target == 'web'
+        if: matrix.target == 'web' && env.ACT != 'true'
         uses: actions/upload-artifact@v7
         with:
           path: artifacts/${{ matrix.artifact }}
           archive: false
 
       - name: Upload self-contained web application
-        if: matrix.target == 'web'
+        if: matrix.target == 'web' && env.ACT != 'true'
         uses: actions/upload-artifact@v7
         with:
           path: artifacts/${{ matrix.html_artifact }}
           archive: false
+
+      - name: Stage application artifacts for local act
+        if: env.ACT == 'true'
+        run: |
+          test -s "artifacts/${{ matrix.artifact }}"
+          if [ "${{ matrix.target }}" = "web" ]; then
+            test -s "artifacts/${{ matrix.html_artifact }}"
+          fi
+          ls -lh artifacts
 
       # Tests deliberately follow artifact upload so failed tests leave a build to inspect.
       - name: Verify native application archive
