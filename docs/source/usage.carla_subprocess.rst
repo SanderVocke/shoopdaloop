@@ -1,7 +1,7 @@
 Carla Process Isolation
 -----------------------
 
-Carla Rack and Patchbay FX chains can run either inside ShoopDaLoop or in a separate worker process for each chain. Select the mode under **Settings > Carla hosting**.
+Carla Rack and Patchbay FX chains can run either inside ShoopDaLoop or in a separate worker process for each chain. Select the mode under **Settings > Carla hosting**. The Carla LV2 bundle must be installed and discoverable through ``LV2_PATH`` in both modes. On Windows, the official Carla win64 archive contains ``Carla.lv2``; add the directory containing that bundle to ``LV2_PATH`` before starting ShoopDaLoop.
 
 The setting is global and takes effect the next time ShoopDaLoop starts. Running FX chains are not migrated when the setting changes. Existing settings files default to **In application process**, which preserves earlier behavior.
 
