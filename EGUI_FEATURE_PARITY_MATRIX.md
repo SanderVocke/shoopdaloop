@@ -20,6 +20,17 @@ The cleanup is complete:
 - Source, lockfile, deleted-document-reference, and workflow scans contain no stale integration reference outside the retained execution record.
 - Release-browser and cross-platform gates are recorded as passing under the user's explicit instruction to accept those unchanged checks without another run for this documentation closure.
 
+## Current cross-target build and CI status
+
+`EGUI_CI_AND_BUILD_FLAVORS_PLAN.md` is implementing the current product workflow in `.github/workflows/build_and_test_egui.yml`:
+
+- One eight-cell matrix covers Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly in debug and release; no coverage flavor exists yet.
+- Every cell builds, packages, uploads, then tests in one job. Native outputs are unsigned application archives. Each web profile emits the authoritative hosted application archive and a separate self-contained HTML file.
+- The hosted production bundle contains the complete Web Audio/AudioWorklet microphone path and the connections dialog. Neither product web artifact is a connection-fixture preview.
+- `build_worklet.py` follows Trunk's profile, and package verification requires the UI Wasm/glue, worklet shim, and dedicated worklet Wasm while rejecting extra/stale bundle files.
+- `Swatinem/rust-cache@v2` is configured per target/profile. `nektos/act` Linux/web debug paths pass build/package/staging and focused checks locally; GitHub-hosted cache/upload/cross-platform results remain pending.
+- `shoop_egui_preview` remains a backend-free fixture/test package and retains a Wasm compiler check, but it is not uploaded by the product workflow.
+
 ## Maintenance rules
 
 - Update discovery, implementation, and evidence as part of the stage that changes them.
@@ -97,7 +108,7 @@ Evidence referenced by the M2 rows consists of:
 - Application ownership: `shoop_app` threaded actor tests and cooperative real-engine workflow, waveform refresh, queue-capacity, stale-ID, and failure tests.
 - Unified composition: `shoopdaloop_egui` native workflow, shared minimum/common-size paint test, and WebAssembly compiler check.
 - Browser runtime: release Trunk bundle plus the Chrome DevTools smoke at 360×200 and 900×600; `?self-test=1` creates a stereo/MIDI track, records real dummy-engine frames, stops, refreshes waveform details, plays, and proves revisions continue advancing without browser exceptions.
-- Browser artifacts: `build_single_file_app.py` produces the self-contained `shoopdaloop_egui.html`; the migrated workflow browser-tests and uploads both forms, including opening the single file directly through a `file:` URL.
+- Browser artifacts: `build_single_file_app.py` embeds the application in one HTML file; the current profile-aware packager emits uniquely named hosted archives and standalone HTML files, and the product workflow browser-tests both forms, including direct `file:` behavior.
 - Dependency isolation: the Wasm runner tree contains `shoop_app`, `shoop_backend`, and `shoop_engine` but no JACK, CPAL, Midir, LV2, frontend, Qt, X11, or Wayland package; the `shoop_egui` tree remains limited to presentation dependencies and `shoop_app_api`.
 - Compatibility gates: warning-denying builds, formatting, all workspace Rust tests with the full engine application backend, and retained QML self-tests pass. The QML suite reports 197 passed, 0 failed, and one environment skip for unavailable CPAL virtual playback ports.
 - Native graphical environment note: native construction, real-engine workflows, and 360×200/900×600 paint tests pass. A local Xvfb process could not provide a GLX framebuffer configuration, so OS-window runtime smoke is an environment skip; the unchanged eframe native bootstrap is compiled and its prior M1 Xvfb evidence remains applicable.
@@ -106,7 +117,7 @@ Evidence referenced by the M2 rows consists of:
 
 The direct browser audio plan is based on:
 
-- Browser composition, cooperative runtime, status diagnostics, packaging, and smoke automation: `src/rust/shoopdaloop_egui/src/main.rs`, its HTML/Trunk/single-file tooling, and `.github/workflows/wasm_egui.yml`.
+- Browser composition, cooperative runtime, status diagnostics, packaging, and smoke automation: `src/rust/shoopdaloop_egui/src/main.rs`, its HTML/Trunk/single-file tooling, and the current `.github/workflows/build_and_test_egui.yml` successor to the original milestone workflow.
 - Synchronous backend and application assumptions: `src/rust/shoop_backend/src/lib.rs` and `src/rust/shoop_app/src/lib.rs`.
 - Engine audio-thread ownership, bounded command queues, state mirrors, and real-time guards: `src/rust/shoop_engine/src/engine.rs`, `state_mirror.rs`, `realtime_alloc_guard.rs`, `realtime_lock_guard.rs`, and the no-allocation/lock integration tests.
 - Audio ports, recording storage, and topology scheduling constraints: `external_audio_port.rs`, `audio_channel.rs`, `chunked_samples.rs`, `session.rs`, and `graph_scheduler.rs`.
@@ -214,7 +225,7 @@ These rows track the completed `EGUI_MILESTONE_2_ENGINE.md` implementation.
 | M2-RUNTIME-003 | Cooperative graph and content progress | The full native backend uses graph and content workers. | Explored for M2 | M2 required | Complete | Dummy façade applies core `Session` graph changes synchronously and reads stable channel content directly; waveform workflow passes |
 | M2-RUNTIME-004 | Bounded browser pause/resume behavior | M1 had no engine-backed browser timing. | Explored for M2 | M2 required | Complete | Eight-cycle per-update cap, fractional remainder, ten-second gap/xrun test, and continuing browser revisions |
 | M2-SHELL-001 | Browser uses authoritative app/engine snapshots and intents | M1's preview mutated representative state locally. | Explored for M2 | M2 required | Complete | Browser self-test reaches authoritative add-track/record/stop/details/play snapshots with no exceptions |
-| M2-SHELL-002 | Unified browser bundle and self-contained artifact | M1 tooling belonged to the preview package. | Explored for M2 | M2 required | Complete | Trunk bundle, self-contained HTML, migrated README and `wasm_egui.yml` workflow |
+| M2-SHELL-002 | Unified browser bundle and self-contained artifact | M1 tooling belonged to the preview package. | Explored for M2 | M2 required | Complete | Trunk bundle, self-contained HTML, package README, and current cross-target egui workflow |
 | M2-TEST-001 | Equivalent native/cooperative dummy observations | M1 had native dummy and fake contracts only. | Explored for M2 | M2 required | Complete | Backend exact-frame contracts, native actor workflow, cooperative app workflow, native runner workflow, and two-size browser smoke |
 | M2-ARCH-003 | Presentation remains independently backend-free | `shoop_egui` accepts plain snapshots and emits typed intents. | Explored for M2 | M2 required | Complete | GUI tests/Wasm check pass and dependency tree contains `shoop_app_api` but no app/backend/engine implementation |
 
@@ -260,7 +271,7 @@ Replacement evidence referenced below consists of:
 - `shoop_app` actor/cooperative tests for sync/main ownership, stable app/backend mapping, deterministic snapshots, pending/confirmation/failure, churn, stale IDs, timeout, saturation, and retained confirmed truth.
 - `shoop_egui` tests for global and sync/main track menu entry points, stable scope routing, category order/omission, exact cell intents, unavailable cells, first-colon display handling, and matrix painting at 360×200 and 900×600.
 - `shoopdaloop_egui::tests::native_dummy_workflow_creates_records_and_controls_tracks_and_loops`, which now connects sync and main audio/MIDI ports, observes confirmations, disconnects, and continues the existing track/loop workflow.
-- The restored backend-free `shoop_egui_preview`, whose fixtures contain every category, sync/main scopes, multiple clients, connected/disconnected/unavailable/pending/error/loading/backend-unavailable states, endpoint churn, and intent confirmation/failure controls. Its dependency tree contains neither application/backend/engine nor frontend/Qt crates, and the CI workflow builds regular/self-contained Wasm artifacts and browser-smokes both scopes at minimum/common sizes.
+- The restored backend-free `shoop_egui_preview`, whose fixtures contain every category, sync/main scopes, multiple clients, connected/disconnected/unavailable/pending/error/loading/backend-unavailable states, endpoint churn, and intent confirmation/failure controls. Its dependency tree contains neither application/backend/engine nor frontend/Qt crates. Its milestone-completion regular/self-contained browser evidence remains historical; the current product workflow retains its compiler check without uploading it as an application artifact.
 - The direct hosted Web Audio backend publishes typed local audio/MIDI descriptors but explicitly reports arbitrary external connection management unavailable; its existing browser-default physical routing remains unchanged. The native dummy connection path is the integrated mutation evidence until native real-driver selection is added.
 
 | ID | Capability or behavior | Retained baseline | Discovery | Milestone target | Current implementation | Replacement evidence |
@@ -286,7 +297,7 @@ Replacement evidence referenced below consists of:
 | CONN-ERR-001 | Stale ID, disappearance, incompatibility, rejection | Old UI has no typed per-cell failure contract. | Explored for connections | Connections required | Complete | Typed error kinds, notifications, backend validation, actor churn/failure tests |
 | CONN-ERR-002 | Saturation and timeout visibility | Old bridge can log/optimistically cache failure. | Explored for connections | Connections required | Complete | Saturation error publication and deterministic two-second cooperative timeout test |
 | CONN-PRES-001 | Close/reopen/scope presentation safety | QML creates independent windows with local selected/scroll state. | Explored for connections | Connections required | Complete | One egui window with stable scope IDs, scope-specific scroll IDs, stable-key intents, and stale-track state |
-| CONN-PREVIEW-001 | Backend-free native/browser preview | The old standalone M1 preview was removed by M2. | Explored for connections | Connections required | Complete | Connection-focused preview restored without app/backend/engine dependencies; fixture/intent tests and CI artifacts |
+| CONN-PREVIEW-001 | Backend-free native/browser preview | The old standalone M1 preview was removed by M2. | Explored for connections | Connections required | Complete | Connection-focused fixture restored without app/backend/engine dependencies; fixture/intent tests, retained Wasm check, and historical milestone browser artifacts |
 | CONN-WASM-001 | Browser-compatible presentation | QML path is native; pure egui presentation must compile for Wasm. | Explored for connections | Connections required | Complete | GUI/preview Wasm checks; Web Audio reports unsupported arbitrary external mutation without changing default routing |
 | CONN-E2E-001 | Native fake/dummy integrated workflow | Retained tests exercise JACK/CPAL through QML. | Explored for connections | Connections required | Complete | Shared contracts, actor tests, and native sync/audio/MIDI connection workflow |
 | CONN-DEF-001 | Persisted external connections and autoconnect | Sessions can hold external connection names; this milestone excludes persistence/rules. | Explored for connections | Deferred | Deferred | Tracked for persistence/autoconnect milestone |

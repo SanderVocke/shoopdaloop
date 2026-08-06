@@ -76,7 +76,7 @@ Verification: warning-denying focused and workspace builds passed. Dependency tr
 - [x] Remove obsolete bridge-specific dependency-scan terms from workflows while preserving generic Qt/frontend isolation checks for standalone Wasm artifacts.
 - [x] Run a repository-wide tracked-source scan for integration-specific package names, QObject/type names, QML component names, prototype flags, module names, and launch hooks; zero stale matches remain outside this execution record.
 
-Verification: deleted documents and implementation files have no tracked references, active links resolve, and `.github/workflows/wasm_egui.yml` retains the generic forbidden-dependency checks.
+Verification: deleted documents and implementation files have no tracked references, active links resolve, and the successor `.github/workflows/build_and_test_egui.yml` retains the generic forbidden-dependency checks.
 
 ### Stage 4 — Focused regression validation
 

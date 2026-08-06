@@ -66,6 +66,24 @@ Native CI outputs are unsigned application archives rather than installers or po
 
 Generated `dist`, worklet, staging, and artifact files are not committed.
 
+## Cross-target CI
+
+`.github/workflows/build_and_test_egui.yml` has one eight-cell matrix: Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly, each in debug and release. Every cell builds, packages, uploads, and then tests. Native cells upload unsigned application archives; web cells upload a hosted bundle archive and a separately downloadable self-contained HTML file. The matrix has no coverage flavor yet.
+
+For fast workflow iteration with `nektos/act` 0.2.89 or newer, run the Linux and web debug cells on a suitable self-hosted development environment:
+
+```sh
+act pull_request -W .github/workflows/build_and_test_egui.yml \
+  -j build_and_test --matrix target:linux --matrix profile:debug \
+  -P ubuntu-24.04=-self-hosted --artifact-server-path .act/artifacts
+
+act pull_request -W .github/workflows/build_and_test_egui.yml \
+  -j build_and_test --matrix target:web --matrix profile:debug \
+  -P ubuntu-24.04=-self-hosted --artifact-server-path .act/artifacts
+```
+
+The web command needs Trunk 0.21.14 and `wasm32-unknown-unknown`; the local workflow skips GitHub cache/upload actions and browser/device automation while still building, packaging, validating, testing, and checking dependency isolation. GitHub-hosted runners remain authoritative for uploads, caches, Chrome/Firefox, Windows, and macOS.
+
 ## Browser verification
 
 After building, run Chrome/Chromium with a deterministic generated fake microphone:
