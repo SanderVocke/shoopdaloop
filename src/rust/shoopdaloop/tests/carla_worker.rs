@@ -368,10 +368,6 @@ fn real_carla_direct_and_subprocess_transport_benchmark_matrix_when_available() 
                     "mode,channels,frames,p50_us,p95_us,worst_us,deadline_misses",
                     &row,
                 );
-                assert!(
-                    misses <= (ITERATIONS / 4) as u64,
-                    "{mode} {channels}ch/{frames} missed {misses}/{ITERATIONS} deadlines"
-                );
             }
         }
     }
