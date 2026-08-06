@@ -18,6 +18,7 @@ const secureLimit = process.env.SECURE_LIMIT === '1';
 const denyFirst = process.env.DENY_FIRST === '1';
 const lifecycle = process.env.LIFECYCLE === '1';
 const stress = process.env.STRESS === '1';
+const saturate = process.env.SATURATE === '1';
 const profile = await mkdtemp(join(tmpdir(), 'shoopdaloop-egui-chrome-'));
 const fakeAudio = join(profile, 'fake-microphone.wav');
 const children = [];
@@ -171,6 +172,8 @@ try {
     revision: Number(document.getElementById('runtime_status')?.getAttribute('data-engine-revision')),
     selfTest: document.getElementById('runtime_status')?.getAttribute('data-self-test'),
     driver: document.getElementById('runtime_status')?.getAttribute('data-driver-state'),
+    generation: Number(document.getElementById('runtime_status')?.getAttribute('data-audio-generation')),
+    ownedMediaTracks: Number(document.getElementById('runtime_status')?.getAttribute('data-owned-media-tracks')),
     callbacks: Number(document.getElementById('runtime_status')?.getAttribute('data-callback-count')),
     frames: Number(document.getElementById('runtime_status')?.getAttribute('data-processed-frames')),
     inputPeak: Number(document.getElementById('runtime_status')?.getAttribute('data-input-peak')),
@@ -243,6 +246,9 @@ try {
     if (!(state.sampleRate > 0 && state.quantum === 128 && state.captureChannels > 0)) {
       throw new Error(`context rate/quantum diagnostics are invalid: ${JSON.stringify(state)}`);
     }
+    if (!(state.generation > 0 && state.ownedMediaTracks > 0)) {
+      throw new Error(`audio generation does not own a live media track: ${JSON.stringify(state)}`);
+    }
     if (state.budgetOverruns !== 0 || state.overflows !== 0 || state.webMidi !== 'unavailable') {
       throw new Error(`bounded protocol or Web MIDI diagnostics are invalid: ${JSON.stringify(state)}`);
     }
@@ -250,10 +256,23 @@ try {
       throw new Error(`canvas was not sized: ${JSON.stringify(state)}`);
     }
     const firstCallbacks = state.callbacks;
+    const firstGeneration = state.generation;
+    await evaluate("document.getElementById('enable_audio').click()");
     await delay(250);
     state = await evaluate(statusExpression);
-    if (!(state.callbacks > firstCallbacks)) {
-      throw new Error(`audio callbacks stopped advancing: ${JSON.stringify(state)}`);
+    if (!(state.callbacks > firstCallbacks) || state.generation !== firstGeneration) {
+      throw new Error(`repeated start changed the active generation or stopped callbacks: ${JSON.stringify(state)}`);
+    }
+    if (saturate) {
+      const callbacksBeforeSaturation = state.callbacks;
+      await evaluate("dispatchEvent(new Event('shoop-test-audio-saturate'))");
+      state = await waitFor(
+        candidate => candidate.overflows > 0 && candidate.callbacks > callbacksBeforeSaturation,
+        'bounded command saturation was not observable or stopped callbacks',
+      );
+      if (state.driver !== 'Running') {
+        throw new Error(`driver did not remain running after bounded saturation: ${JSON.stringify(state)}`);
+      }
     }
     if (lifecycle) {
       await evaluate("dispatchEvent(new Event('shoop-test-audio-suspend'))");
@@ -262,6 +281,17 @@ try {
       state = await waitFor(
         candidate => candidate.driver === 'Running' && candidate.callbacks > suspended.callbacks,
         'context did not resume callback progress',
+      );
+      await evaluate("dispatchEvent(new Event('shoop-test-audio-track-end'))");
+      const trackEnded = await waitFor(
+        candidate => candidate.driver === 'Failed' && candidate.ownedMediaTracks === 0,
+        'media-track end did not fail visibly and release graph ownership',
+      );
+      if (trackEnded.enableHidden) throw new Error('retry action stayed hidden after media-track end');
+      await clickEnable();
+      state = await waitFor(
+        candidate => candidate.driver === 'Running' && candidate.callbacks > 0 && candidate.ownedMediaTracks > 0,
+        'media-track retry did not create one running generation',
       );
       await evaluate("dispatchEvent(new Event('shoop-test-audio-fail'))");
       const failed = await waitFor(candidate => candidate.driver === 'Failed', 'worklet failure was not visible');
@@ -276,8 +306,8 @@ try {
       const stoppedCallbacks = stopped.callbacks;
       await delay(250);
       state = await evaluate(statusExpression);
-      if (state.callbacks !== stoppedCallbacks || state.enableHidden) {
-        throw new Error(`shutdown did not stop callbacks and expose retry: ${JSON.stringify(state)}`);
+      if (state.callbacks !== stoppedCallbacks || state.enableHidden || state.ownedMediaTracks !== 0) {
+        throw new Error(`shutdown did not stop callbacks, release media, and expose retry: ${JSON.stringify(state)}`);
       }
     }
     console.log(`browser Web Audio self-test passed at ${browserSize}, callback ${state.callbacks}`);

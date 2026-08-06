@@ -22,7 +22,7 @@ The observable lifecycle is `AwaitingGesture`, `RequestingPermission`, `Starting
 
 The enable button synchronously creates/resumes `AudioContext` and invokes `getUserMedia` before awaiting either promise. Startup requests the default microphone with echo cancellation, noise suppression, and automatic gain control disabled as optional preferences. Browser negotiation is authoritative.
 
-Each start/retry increments a generation. Message, processor-error, context-state, and track-ended callbacks ignore old generations. Before replacement or shutdown, microphone tracks are stopped, node handlers are detached, ports and nodes are disconnected, and the context is closed. A retry replays the bounded command journal into one new worklet host; it never runs a second engine concurrently.
+Each start/retry increments a generation. Start requests are ignored while that generation is requesting permission, starting, running, or suspended. Message, processor-error, context-state, and track-ended callbacks ignore old generations. A failed generation releases its graph on the next bounded presentation update. Before replacement or shutdown, microphone tracks are stopped, node handlers are detached, ports and nodes are disconnected, and the context is closed. A retry replays the bounded command journal into one new worklet host; it never runs a second engine concurrently. Automation observes the generation and owned-media-track count and verifies that track loss and shutdown reduce ownership to zero.
 
 `file:` is not treated as microphone-capable. `?offline=1` explicitly selects the dummy engine. Without that selection, the UI reports the secure-context limitation.
 
@@ -37,7 +37,7 @@ Each start/retry increments a generation. Message, processor-error, context-stat
 - Status poll cadence: no faster than 50 ms.
 - Stable IDs: assigned by the application-side proxy and verified against worklet creation results.
 - Ordering: every posted command carries a strictly increasing sequence. Duplicate, stale, skipped, malformed, and out-of-order commands return a typed error and do not silently retarget an object.
-- Backpressure: submission at capacity fails synchronously and increments `command_overflows`. Nothing waits for queue space.
+- Backpressure: submission at capacity fails synchronously and increments `command_overflows`. Nothing waits for queue space; an intentional saturation test verifies that callbacks and later protocol progress recover.
 - Main-thread behavior: all sends use `MessagePort.postMessage`; no operation waits for an acknowledgement or worklet result.
 - Waveforms: requested by loop ID and revision, then transferred in ordered `(channel, offset)` chunks with total length and final-chunk markers. Unknown or cancelled revisions are ignored.
 
@@ -53,7 +53,7 @@ Track/loop topology and fixed recording storage are fully constructed in the con
 - Actual callback length is passed to the engine and reported; common Chrome evidence is 128 frames.
 - Sample rate is `AudioContext.sampleRate`; Shoop performs no device-rate conversion.
 - Input and output support the current mono/stereo direct-track scope.
-- JavaScript creates channel views once and uses indexed copies without per-quantum `subarray`, arrays, messages, or promises.
+- JavaScript creates channel views once and uses indexed copies without per-quantum `subarray`, arrays, messages, or promises. High-resolution timer reads compare copy-plus-DSP duration with the callback's frame budget and increment `callback_budget_overruns`.
 - Rust work buffers, session scratch, schedules, port buffers, copy-command queues, and recording chunks are prepared before rendering.
 - The render call takes no mutex, sleeps, waits, joins, filesystem/DOM operation, or `postMessage` path.
 - Render failure, shape overflow, or in-callback Wasm memory growth returns `false` and emits a visible failure message on the exceptional path.

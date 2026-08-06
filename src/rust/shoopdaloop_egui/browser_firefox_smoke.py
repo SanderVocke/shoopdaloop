@@ -64,6 +64,12 @@ def main() -> None:
                 "output_peak": float(status.get_attribute("data-output-peak") or 0),
                 "quantum": int(status.get_attribute("data-render-quantum") or 0),
                 "overflows": int(status.get_attribute("data-command-overflows") or 0),
+                "budget_overruns": int(
+                    status.get_attribute("data-callback-budget-overruns") or 0
+                ),
+                "owned_media_tracks": int(
+                    status.get_attribute("data-owned-media-tracks") or 0
+                ),
             }
             if state["self_test"] == "passed":
                 break
@@ -79,6 +85,8 @@ def main() -> None:
             and state["output_peak"] > 0
             and state["quantum"] > 0
             and state["overflows"] == 0
+            and state["budget_overruns"] == 0
+            and state["owned_media_tracks"] > 0
         ):
             raise RuntimeError(f"Firefox browser evidence is incomplete: {state}")
         print(f"Firefox Web Audio self-test passed: {state}")

@@ -78,6 +78,7 @@ jobs:
           BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
           DENY_FIRST=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
           LIFECYCLE=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
+          SATURATE=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
           STRESS=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
 
       - name: Install Firefox browser test tools

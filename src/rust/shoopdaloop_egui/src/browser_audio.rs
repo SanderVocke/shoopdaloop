@@ -169,6 +169,8 @@ pub struct BrowserAudioController {
     suspend_handler: Closure<dyn FnMut(WebEvent)>,
     resume_handler: Closure<dyn FnMut(WebEvent)>,
     fail_handler: Closure<dyn FnMut(WebEvent)>,
+    track_end_handler: Closure<dyn FnMut(WebEvent)>,
+    saturate_handler: Closure<dyn FnMut(WebEvent)>,
     shutdown_handler: Closure<dyn FnMut(WebEvent)>,
 }
 
@@ -223,6 +225,31 @@ impl BrowserAudioController {
             }
         }) as Box<dyn FnMut(_)>);
         let weak = Rc::downgrade(&inner);
+        let track_end_handler = Closure::wrap(Box::new(move |_event: WebEvent| {
+            let stream = weak
+                .upgrade()
+                .and_then(|inner| inner.borrow().stream.clone());
+            let Some(value) = stream.and_then(|stream| stream.get_audio_tracks().iter().next())
+            else {
+                return;
+            };
+            if let Ok(track) = value.dyn_into::<MediaStreamTrack>() {
+                track.stop();
+                if let Ok(event) = WebEvent::new("ended") {
+                    let _ = track.dispatch_event(&event);
+                }
+            }
+        }) as Box<dyn FnMut(_)>);
+        let weak = Rc::downgrade(&inner);
+        let saturate_handler = Closure::wrap(Box::new(move |_event: WebEvent| {
+            if let Some(inner) = weak.upgrade() {
+                let transport = inner.borrow().transport.clone();
+                for _ in 0..=COMMAND_CAPACITY {
+                    let _ = transport.borrow_mut().ephemeral(Command::Poll);
+                }
+            }
+        }) as Box<dyn FnMut(_)>);
+        let weak = Rc::downgrade(&inner);
         let shutdown_handler = Closure::wrap(Box::new(move |_event: WebEvent| {
             if let Some(inner) = weak.upgrade() {
                 shutdown_inner(&mut inner.borrow_mut());
@@ -232,6 +259,8 @@ impl BrowserAudioController {
             ("shoop-test-audio-suspend", &suspend_handler),
             ("shoop-test-audio-resume", &resume_handler),
             ("shoop-test-audio-fail", &fail_handler),
+            ("shoop-test-audio-track-end", &track_end_handler),
+            ("shoop-test-audio-saturate", &saturate_handler),
             ("shoop-test-audio-shutdown", &shutdown_handler),
         ] {
             window
@@ -244,6 +273,8 @@ impl BrowserAudioController {
             suspend_handler,
             resume_handler,
             fail_handler,
+            track_end_handler,
+            saturate_handler,
             shutdown_handler,
         })
     }
@@ -253,7 +284,27 @@ impl BrowserAudioController {
     }
 
     pub fn update_presentation(&self) {
-        let state = self.state();
+        let (state, generation, owned_media_tracks) = {
+            let mut inner = self.inner.borrow_mut();
+            let state = inner.transport.borrow().driver_state;
+            if state == BackendDriverState::Failed && inner.context.is_some() {
+                shutdown_graph(&mut inner);
+            }
+            let owned_media_tracks = inner
+                .stream
+                .as_ref()
+                .map(|stream| stream.get_tracks().length())
+                .unwrap_or(0);
+            (state, inner.generation, owned_media_tracks)
+        };
+        if let Some(element) = web_sys::window()
+            .and_then(|window| window.document())
+            .and_then(|document| document.get_element_by_id("runtime_status"))
+        {
+            let _ = element.set_attribute("data-audio-generation", &generation.to_string());
+            let _ =
+                element.set_attribute("data-owned-media-tracks", &owned_media_tracks.to_string());
+        }
         if let Ok(button) = enable_button() {
             button.set_hidden(matches!(
                 state,
@@ -284,13 +335,23 @@ impl BrowserAudioController {
 
 impl Drop for BrowserAudioController {
     fn drop(&mut self) {
-        let _ = (
-            &self.enable_handler,
-            &self.suspend_handler,
-            &self.resume_handler,
-            &self.fail_handler,
-            &self.shutdown_handler,
-        );
+        let _ = &self.enable_handler;
+        if let Ok(button) = enable_button() {
+            button.set_onclick(None);
+        }
+        if let Some(window) = web_sys::window() {
+            for (name, handler) in [
+                ("shoop-test-audio-suspend", &self.suspend_handler),
+                ("shoop-test-audio-resume", &self.resume_handler),
+                ("shoop-test-audio-fail", &self.fail_handler),
+                ("shoop-test-audio-track-end", &self.track_end_handler),
+                ("shoop-test-audio-saturate", &self.saturate_handler),
+                ("shoop-test-audio-shutdown", &self.shutdown_handler),
+            ] {
+                let _ = window
+                    .remove_event_listener_with_callback(name, handler.as_ref().unchecked_ref());
+            }
+        }
         self.shutdown();
     }
 }
@@ -305,6 +366,15 @@ fn enable_button() -> Result<HtmlButtonElement> {
 }
 
 fn begin_enable(inner: Rc<RefCell<BrowserControllerInner>>) {
+    if matches!(
+        inner.borrow().transport.borrow().driver_state,
+        BackendDriverState::RequestingPermission
+            | BackendDriverState::Starting
+            | BackendDriverState::Running
+            | BackendDriverState::Suspended
+    ) {
+        return;
+    }
     let Some(window) = web_sys::window() else {
         inner
             .borrow()

@@ -4,7 +4,7 @@
 
 Complete. Hosted secure browser runs now use direct `web-sys` Web Audio and a dedicated worklet-owned Shoop engine after an explicit microphone enable action. Native runs retain the threaded dummy backend, and direct-file artifacts expose only explicit offline dummy operation.
 
-`BROWSER_AUDIO_CONTRACT.md` records protocol, storage, routing, lifecycle, artifact, and real-time limits. `EGUI_FEATURE_PARITY_MATRIX.md` records detailed implementation evidence. Chrome 147 and Firefox 150 deterministic fake-media workflows prove non-zero capture, recording, waveform, playback, and output. Physical hardware was unavailable on the validation host, and Safari remains an explicit untested compatibility limitation.
+`BROWSER_AUDIO_CONTRACT.md` records protocol, storage, routing, lifecycle, artifact, and real-time limits. `EGUI_MILESTONE_3_COMPLETION_AUDIT.md` maps every criterion, staged item, command, gate, and deliverable to direct evidence. `EGUI_FEATURE_PARITY_MATRIX.md` records detailed implementation evidence. Chrome 147 and Firefox 150 deterministic fake-media workflows prove non-zero capture, recording, waveform, playback, and output. Physical hardware was unavailable on the validation host, and Safari remains an explicit untested compatibility limitation.
 
 Milestone 2 remains the completed historical record for the unified dummy-engine application.
 
@@ -227,7 +227,7 @@ Final validation demonstrates that the hosted browser application selects a dire
 - Targeted protocol/worklet/backend/application/presentation/runner and full `shoop_engine` suites pass, including allocation-guarded 128-frame full duplex and bounded-storage exhaustion.
 - `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend -- --test-threads=1` passes, including retained JACK test-backend paths.
 - `QT_QPA_PLATFORM=offscreen SHOOP_ALLOW_MISSING_BACKENDS=1 target/debug/shoopdaloop_dev.sh --self-test` reports 236 passed, 0 failed, and one CPAL virtual-port environment skip.
-- Release Trunk and self-contained builds pass. Chrome 147 passes 360×200, 900×600, denial/retry, suspension/recovery, worklet loss/retry, shutdown, 1,500-callback stress, explicit offline, and direct-file secure-context-limitation scenarios. Firefox 150 passes the non-zero fake-media workflow at 900×600.
+- Release Trunk and self-contained builds pass. Chrome 147 passes 360×200, 900×600, denial/retry, repeated-start prevention, suspension/recovery, media-track loss/retry, worklet loss/retry, bounded queue saturation/recovery, shutdown with zero owned media tracks, 1,500-callback stress, explicit offline, and direct-file secure-context-limitation scenarios. Firefox 150 passes the non-zero fake-media workflow at 900×600.
 - Worklet dependency inspection excludes browser abstractions, native drivers, frontend, Qt, and window-system crates. `WebAssembly.Module.imports()` returns an empty list for the worklet artifact.
 - The validation host has no `/dev/snd`; no physical microphone/headphone claim is made. Safari remains untested. The immutable criteria permit deterministic fake-media I/O evidence, which is used here.
 

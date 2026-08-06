@@ -36,6 +36,7 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     this.renderDiscontinuities = 0;
+    this.callbackBudgetOverruns = 0;
     this.memoryGrowths = 0;
     this.expectedFrame = null;
     try {
@@ -94,7 +95,7 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
     const event = JSON.parse(response);
     if (event.event?.kind === 'snapshot') {
       event.event.render_discontinuities = this.renderDiscontinuities;
-      event.event.callback_budget_overruns = this.renderDiscontinuities;
+      event.event.callback_budget_overruns = this.callbackBudgetOverruns;
       event.event.memory_growths = this.memoryGrowths;
       response = JSON.stringify(event);
     }
@@ -124,6 +125,8 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
     if (this.exports.memory.buffer !== this.memoryBuffer) {
       return this.fail('worklet Wasm memory grew between control and process callbacks');
     }
+    const timer = globalThis.performance;
+    const startedAt = timer ? timer.now() : 0;
     const nInputs = Math.min(inputChannels.length, MAX_CHANNELS);
     const nOutputs = Math.min(outputChannels.length, MAX_CHANNELS);
     for (let channel = 0; channel < nInputs; channel += 1) {
@@ -141,6 +144,9 @@ class ShoopAudioProcessor extends AudioWorkletProcessor {
       const destination = outputChannels[channel];
       const offset = channel * this.maxQuantum;
       for (let frame = 0; frame < frames; frame += 1) destination[frame] = this.output[offset + frame];
+    }
+    if (timer && timer.now() - startedAt > frames * 1000 / sampleRate) {
+      this.callbackBudgetOverruns += 1;
     }
     return true;
   }
