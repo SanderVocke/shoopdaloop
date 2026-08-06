@@ -224,6 +224,7 @@ jobs:
           -p shoop_app
           -p shoop_egui
           -p shoopdaloop_egui
+          -- --test-threads=1
 
       - name: Check formatting
         if: matrix.target == 'linux' && matrix.profile == 'debug'
