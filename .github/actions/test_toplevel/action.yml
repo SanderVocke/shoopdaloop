@@ -199,6 +199,14 @@ runs:
     env:
       LLVM_REPORTNAME: rust_lcov
       GHA_RUN_ALWAYS: 1
+  - name: Upload Carla subprocess benchmark evidence
+    if: always() && env.COMMAND_TEST_RUST != ''
+    uses: actions/upload-artifact@v4
+    with:
+      name: carla-subprocess-benchmarks-${{ inputs.name }}-${{ github.run_id }}
+      path: carla-subprocess-benchmarks
+      if-no-files-found: warn
+      retention-days: 30
   - uses: ./.github/actions/checkpoint
     if: always()
   - name: Cleanup Rust test binaries between coverage runs

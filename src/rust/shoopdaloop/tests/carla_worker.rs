@@ -9,6 +9,30 @@ use shoop_engine::lv2_carla::CarlaLv2Host;
 use shoop_engine::FXChainType;
 use shoop_plugin_protocol::{ChainId, ProcessGeneration, WorkerExitKind};
 
+fn record_ci_benchmark(kind: &str, header: &str, row: &str) {
+    if std::env::var_os("CI").is_none() {
+        return;
+    }
+    use std::io::Write;
+    let directory = std::path::Path::new("carla-subprocess-benchmarks");
+    std::fs::create_dir_all(directory).expect("create benchmark artifact directory");
+    let path = directory.join(format!(
+        "{kind}-{}-{}.csv",
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    ));
+    let needs_header = !path.exists() || path.metadata().is_ok_and(|metadata| metadata.len() == 0);
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .expect("open benchmark artifact");
+    if needs_header {
+        writeln!(file, "{header}").expect("write benchmark header");
+    }
+    writeln!(file, "{row}").expect("write benchmark row");
+}
+
 fn wait_until_not_ready(processor: &mut impl CarlaProcessor) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
     while processor.is_ready() && std::time::Instant::now() < deadline {
@@ -247,7 +271,14 @@ fn fake_direct_and_subprocess_transport_benchmark_matrix() {
                 let p50 = samples[samples.len() / 2];
                 let p95 = samples[samples.len() * 95 / 100];
                 let worst = samples[samples.len() - 1];
-                println!("{mode},{channels},{frames},{p50:.3},{p95:.3},{worst:.3},{misses}");
+                let row =
+                    format!("{mode},{channels},{frames},{p50:.3},{p95:.3},{worst:.3},{misses}");
+                println!("{row}");
+                record_ci_benchmark(
+                    "fixture",
+                    "mode,channels,frames,p50_us,p95_us,worst_us,deadline_misses",
+                    &row,
+                );
                 assert!(
                     misses <= (ITERATIONS / 4) as u64,
                     "{mode} {channels}ch/{frames} missed {misses}/{ITERATIONS} deadlines"
@@ -326,7 +357,14 @@ fn real_carla_direct_and_subprocess_transport_benchmark_matrix_when_available() 
                 let p50 = samples[samples.len() / 2];
                 let p95 = samples[samples.len() * 95 / 100];
                 let worst = samples[samples.len() - 1];
-                println!("{mode},{channels},{frames},{p50:.3},{p95:.3},{worst:.3},{misses}");
+                let row =
+                    format!("{mode},{channels},{frames},{p50:.3},{p95:.3},{worst:.3},{misses}");
+                println!("{row}");
+                record_ci_benchmark(
+                    "real-carla",
+                    "mode,channels,frames,p50_us,p95_us,worst_us,deadline_misses",
+                    &row,
+                );
                 assert!(
                     misses <= (ITERATIONS / 4) as u64,
                     "{mode} {channels}ch/{frames} missed {misses}/{ITERATIONS} deadlines"
