@@ -25,6 +25,7 @@ def main() -> None:
     options.set_preference("media.navigator.permission.disabled", True)
     options.set_preference("media.autoplay.default", 0)
     options.set_preference("media.autoplay.blocking_policy", 0)
+    options.set_preference("media.cubeb.backend", "null")
     options.set_preference("webgl.disabled", False)
     options.set_preference("webgl.force-enabled", True)
     options.set_preference("webgl.software", True)
