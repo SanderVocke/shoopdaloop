@@ -774,7 +774,9 @@ impl EguiUi for EguiWindowUi {
                 } => self.emit_action(track_id, loop_id, action),
                 AppAction::Track { track_id, action } => self.emit_track_action(track_id, action),
                 AppAction::Global(action) => self.emit_global_action(action),
-                AppAction::AddTrack(_) | AppAction::AddLoop { .. } => {}
+                AppAction::AddTrack(_)
+                | AppAction::AddLoop { .. }
+                | AppAction::SetPortConnected { .. } => {}
             }
         }
     }

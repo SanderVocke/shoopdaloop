@@ -4,7 +4,7 @@
 
 This is the living feature-discovery and implementation ledger for the pure egui replacement described in `EGUI_REPLACEMENT_PROJECT.md`. It is intentionally incomplete. Entries are discovered and refined as milestone work reaches each part of the old application.
 
-The initial entries cover the first tracks/loops vertical slice defined in `EGUI_MILESTONE_1_TRACKS_AND_LOOPS_PLAN.md`. Areas outside that slice are listed only coarsely and remain to be explored.
+The detailed entries cover the completed tracks/loops, cross-target engine, browser-audio, and track-port connections milestones. Areas outside those slices remain listed coarsely until their milestone discovery begins.
 
 ## Maintenance rules
 
@@ -23,6 +23,7 @@ Discovery:
 - `Explored for M1`: investigated enough to define the first milestone behavior.
 - `Explored for M2`: investigated enough to define the cross-target dummy-engine milestone behavior.
 - `Explored for M3`: investigated enough to define the direct browser Web Audio milestone behavior.
+- `Explored for connections`: investigated enough to define the track-port connections milestone behavior.
 - `Partially explored`: some relevant behavior is known, but later work must continue discovery.
 - `Unexplored`: not yet inventoried for replacement.
 
@@ -41,6 +42,7 @@ Milestone target:
 - `Required subset`: only the behavior stated in the notes is required for milestone 1.
 - `M2 required`: must be complete for `EGUI_MILESTONE_2_ENGINE.md`.
 - `M3 required`: must be complete for `EGUI_MILESTONE_3_BROWSER_AUDIO.md`.
+- `Connections required`: must be complete for `EGUI_MILESTONE_X_CONNECTIONS_DIALOG.md`.
 - `Superseded in M2`: completed Milestone 1 behavior intentionally replaced by the accepted Milestone 2 architecture; its historical evidence remains valid.
 - `Deferred`: explicitly outside the active milestone, but not outside the project.
 
@@ -70,7 +72,7 @@ The initial cross-target dummy-engine plan is based on:
 - Worker-owned engine services: `src/rust/shoop_engine/src/graph_scheduler.rs` and `src/rust/shoop_engine/src/content_snapshot/runtime.rs`.
 - Dummy cycle semantics: `src/rust/shoop_engine/src/dummy_driver.rs` and existing controlled-driver tests.
 
-Milestone 2 intentionally replaces the standalone backend-free preview with one engine-backed dummy application for native and browser targets. The user explicitly approved that direction. Milestone 1 evidence remains a historical statement of what passed at its completion boundary; new rows below track the superseding implementation rather than rewriting that evidence.
+Milestone 2 intentionally replaced the standalone general-purpose backend-free preview with one engine-backed dummy application for native and browser targets. The user explicitly approved that direction. Milestone 1 evidence remains a historical statement of what passed at its completion boundary. The later connections milestone restores only a narrowly fixture-driven connection presentation surface; it does not duplicate or replace the authoritative consolidated runner.
 
 The portability inventory supported a simpler implementation than adapting the full native application-backend worker layer: `shoop_backend` now uses the target-neutral `shoop_engine::Session` core directly for its dummy-only façade. Topology changes are applied synchronously, loop content is read directly at stable application points, elapsed-time processing is bounded, and the native application actor drives the same backend from its thread. The retained frontend continues using the full threaded `shoop_engine/app_backend` feature and its existing JACK/CPAL/Midir/LV2 paths.
 
@@ -147,7 +149,7 @@ Evidence referenced below consists of:
 | TRACK-014 | Audio level and MIDI activity display | QML and the prototype aggregate applicable port activity into track controls. | Explored for M1 | Required | Complete | Engine state polling into application snapshots and representative preview test |
 | TRACK-015 | Hide inapplicable controls | Audio gain/balance controls are absent or disabled when a track has no applicable channels. | Explored for M1 | Required | Complete | `inapplicable_track_controls_are_not_rendered` and supported-shape test |
 | TRACK-016 | Track reordering and width resizing | QML supports drag reordering and per-track width adjustment. | Partially explored | Deferred | Deferred | Later layout-management milestone |
-| TRACK-017 | Track deletion and track context menu | QML track options include connections, deletion, and FX state actions. | Partially explored | Deferred | Deferred | Inert affordance retained; no context menus in M1 |
+| TRACK-017 | Track options menu | QML track options include connections, deletion, and FX state actions. | Explored for connections | Connections required subset | Partial | **Connections...** is complete for sync/main tracks; deletion and FX actions remain unavailable and deferred |
 | LOOP-001 | Add Loop button creates a backend-capable empty loop | QML clones the track's channel shape and port wiring into a new loop slot. | Explored for M1 | Required | Complete | Stable-ID add intent test, backend direct-track contract, and application row test |
 | LOOP-002 | Add Loop preserves aligned rows | Adding from a longest track extends tracks that were one row shorter so the grid remains aligned. | Explored for M1 | Required | Complete | `direct_track_creation_and_aligned_rows_are_published` |
 | LOOP-003 | Loop names and generated slot labels | New loops receive generated labels such as `(N)` and render generated labels distinctly. | Explored for M1 | Required | Complete | Application row creation and loop-widget rendering tests |
@@ -174,12 +176,13 @@ Evidence referenced below consists of:
 | GLOBAL-006 | Sync mode | Toggle determines immediate versus synchronized loop actions. | Explored for M1 | Required | Complete | Global action and snapshot-independence tests plus transition delay policy |
 | GLOBAL-007 | Solo mode | Toggle determines whether sibling loops stop on play/record. | Explored for M1 | Required | Complete | Solo/fixed-recording application test |
 | GLOBAL-008 | Fixed recording cycles | Numeric control sets infinite or N-cycle recording behavior. | Explored for M1 | Required | Complete | Solo/fixed-recording application test |
-| GLOBAL-009 | Main menu | QML opens connections, session I/O, monitoring, profiling, settings, and developer surfaces. | Partially explored | Deferred | Deferred | Inert affordance retained; no main-menu implementation in M1 |
+| GLOBAL-009 | Main menu | QML opens connections, session I/O, monitoring, profiling, settings, and developer surfaces. | Explored for connections | Connections required subset | Partial | **Connections** is complete; unrelated entries remain unavailable/deferred |
 | DETAILS-001 | Details pane selection | Existing egui pane follows the selected loop and handles no selection. | Explored for M1 | Required | Complete | Selection/details application and native workflow tests |
 | DETAILS-002 | Audio waveform display | Existing egui waveform renders selected-loop audio data, offsets, loop regions, and play position. | Explored for M1 | Required | Complete | Backend channel-data path, immutable details snapshots, and bounded waveform tests |
 | DETAILS-003 | Advanced details editing | QML details windows edit preplay, offsets, MIDI, and composites. | Partially explored | Deferred | Deferred | Later details/editing milestone |
-| DIALOG-001 | Only Add Track is implemented as a dialog | QML has many dialogs; milestone 1 requests only Add Track. | Explored for M1 | Required | Complete | Add dialog paint/accept/cancel tests and source inspection; no other native `egui::Window` |
-| MENU-001 | No track or loop context menus | QML has both; milestone 1 explicitly excludes them. | Explored for M1 | Deferred | Deferred | Main/track affordances are inert and loop context is absent |
+| DIALOG-001 | Add Track dialog | QML has many dialogs; milestone 1 requested Add Track. | Explored for M1 | Required | Complete | Add dialog paint/accept/cancel tests |
+| DIALOG-002 | Track-port Connections dialog | QML provides track-scoped and global connection windows. | Explored for connections | Connections required | Complete | Reusable connection dialog, scope/matrix/geometry tests, preview, and native dummy workflow |
+| MENU-001 | Deferred context and main-menu actions | QML has track, loop, and global actions beyond connections. | Partially explored | Deferred | Deferred | Connections entries are enabled; deletion, FX, session, settings, and loop-context actions remain unavailable/deferred |
 | BACKEND-001 | Create direct track ports, loops, and channels | QML descriptor generation plus QObject wrappers constructs corresponding engine entities and wiring. | Explored for M1 | Required | Complete | Engine-backed direct-track contract and native workflow |
 | BACKEND-002 | Poll loop, channel, port, and driver state | QObject update code currently converts state mirrors into QML properties and prototype snapshots. | Explored for M1 | Required | Complete | Engine state aggregation, backend contracts, actor publication, and native workflow |
 | BACKEND-003 | Dummy-backend deterministic operation | Existing tests use a dummy backend for headless behavior. | Explored for M1 | Required | Complete | Shared contract passes for fake and engine-backed dummy implementations |
@@ -191,7 +194,7 @@ These rows track the completed `EGUI_MILESTONE_2_ENGINE.md` implementation.
 | ID | Capability or behavior | Current baseline | Discovery | M2 target | Current implementation | Replacement evidence |
 |---|---|---|---|---|---|---|
 | M2-ARCH-001 | One native/browser composition package | M1 used separate native and fixture-preview runners. | Explored for M2 | M2 required | Complete | `shoopdaloop_egui` shared source, native workflow/paint tests, Wasm check, and browser smoke |
-| M2-ARCH-002 | Standalone backend-free preview superseded without losing presentation isolation | M1 delivered a backend-free preview executable; M2 intentionally replaces that runner while retaining backend-free `shoop_egui` tests and contracts. | Explored for M2 | Superseded in M2 | Complete | Old packages removed; source/workflow/document scans and presentation dependency scan pass |
+| M2-ARCH-002 | General-purpose backend-free preview superseded without losing presentation isolation | M1 delivered a backend-free preview executable; M2 replaced that general runner while retaining backend-free `shoop_egui` tests and contracts. | Explored for M2 | Superseded in M2 | Complete | M1 runner was removed at M2; the later connection-only fixture preview leaves unified authoritative composition intact |
 | M2-BUILD-001 | Dummy-only cross-target dependency graph | The full engine application-backend feature enables native drivers and plugins. | Explored for M2 | M2 required | Complete | `shoop_backend` uses engine core without `app_backend`; Wasm forbidden-package scan passes while full native feature builds/tests pass |
 | M2-RUNTIME-001 | Shared application pump with threaded and cooperative adapters | M1 exposed only a native application actor. | Explored for M2 | M2 required | Complete | Shared model/update path, native actor tests, cooperative capacity/failure tests, and real-engine workflow |
 | M2-RUNTIME-002 | Cooperative browser dummy-engine cycles | M1's browser fixture had no engine. | Explored for M2 | M2 required | Complete | Exact-frame audio/MIDI-capable loop test, elapsed-time tests, Wasm build, and browser scripted record/play workflow |
@@ -231,6 +234,53 @@ Milestone 3 is complete. The frozen architecture and limits are recorded in `BRO
 | M3-TEST-001 | Physical-audio evidence without native regressions | Browser smoke proved dummy progression but not non-zero device I/O. | Explored for M3 | M3 required | Complete | Two-size Chrome, Firefox, denial, lifecycle, queue-saturation recovery, stress, offline, and direct-file limitation workflows plus warning-free/full-workspace/QML regression gates |
 | M3-ARCH-001 | Presentation/native isolation remains intact | `shoop_egui` was backend-free and native egui used the threaded dummy actor. | Explored for M3 | M3 required | Complete | `shoop_egui` dependency scan stays backend/Web-Audio-free; native tests and retained full backend/QML suites pass |
 
+## Track-port connections milestone discovery and evidence
+
+The connections slice is explored from `ConnectionsControl.qml`, `ConnectionsWindow.qml`, the category/entry-point wiring in `TrackWidget.qml`, `AppControls.qml`, and `Session.qml`, the frontend audio/MIDI port bridge, `tst_Jack_ports.qml`, `tst_Cpal_ports.qml`, and the engine dummy/JACK connection tests. The retained behavior is: omit empty categories in Audio in/out/send/return then MIDI in/out/send order; aggregate sync and main tracks globally; scope a track menu to that one track; use opposite direction and matching data type; union endpoint rows; group full endpoint names by client for presentation; show ineligible cells; mutate exact full-name pairs; and refresh external truth while visible.
+
+The replacement deliberately uses a resizable egui window and a both-axis scrolling matrix rather than QML's rotated fixed header and vertical-only scroll. Full endpoint names remain identities; the first `:` is split only for robust client/short-name presentation, including names with no colon or additional colons.
+
+Replacement evidence referenced below consists of:
+
+- `shoop_app_api` identity/contract and structural-sharing tests for typed data type, direction, role, desired state, exact endpoint preservation, and immutable connection views.
+- Shared `shoop_backend` contracts against `FakeBackend` and `EngineBackend::new_dummy`, including audio/MIDI descriptors, direction/type filtering, application-owned dummy candidates, idempotent connect/disconnect, missing endpoints, endpoint churn, out-of-process changes, deferred completion, and injected failure.
+- `shoop_app` actor/cooperative tests for sync/main ownership, stable app/backend mapping, deterministic snapshots, pending/confirmation/failure, churn, stale IDs, timeout, saturation, and retained confirmed truth.
+- `shoop_egui` tests for global and sync/main track menu entry points, stable scope routing, category order/omission, exact cell intents, unavailable cells, first-colon display handling, and matrix painting at 360×200 and 900×600.
+- `shoopdaloop_egui::tests::native_dummy_workflow_creates_records_and_controls_tracks_and_loops`, which now connects sync and main audio/MIDI ports, observes confirmations, disconnects, and continues the existing track/loop workflow.
+- The restored backend-free `shoop_egui_preview`, whose fixtures contain every category, sync/main scopes, multiple clients, connected/disconnected/unavailable/pending/error/loading/backend-unavailable states, endpoint churn, and intent confirmation/failure controls. Its dependency tree contains neither application/backend/engine nor frontend/Qt crates, and the CI workflow builds regular/self-contained Wasm artifacts and browser-smokes both scopes at minimum/common sizes.
+- The direct hosted Web Audio backend publishes typed local audio/MIDI descriptors but explicitly reports arbitrary external connection management unavailable; its existing browser-default physical routing remains unchanged. The native dummy connection path is the integrated mutation evidence until native real-driver selection is added.
+
+| ID | Capability or behavior | Retained baseline | Discovery | Milestone target | Current implementation | Replacement evidence |
+|---|---|---|---|---|---|---|
+| CONN-ARCH-001 | Presentation dependency isolation | QML calls QObject port methods directly. | Explored for connections | Connections required | Complete | `shoop_egui` consumes API snapshots/intents only; GUI and preview dependency scans |
+| CONN-MODEL-001 | Stable typed local-port identity and ownership | QML objects/descriptor IDs and regex-derived categories identify ports. | Explored for connections | Connections required | Complete | Stable `PortId`, owning `TrackId`, explicit type/direction/role/name; API and actor tests |
+| CONN-MODEL-002 | Immutable revisioned connection state | QML reconstructs per-port maps every 100 ms. | Explored for connections | Connections required | Complete | `Arc<ConnectionViewState>` and shared port arrays are reused until structural state changes |
+| CONN-ENTRY-001 | Sync/main track **Connections...** entry | Every QML track options menu opens its own window. | Explored for connections | Connections required | Complete | Track-widget menu interaction test and stable track-scope routing |
+| CONN-ENTRY-002 | Global **Connections** entry | QML main menu opens an aggregate window. | Explored for connections | Connections required | Complete | Global-controls menu interaction test and `AllTracks` scope |
+| CONN-SCOPE-001 | Track scope isolation | Track QML passes only that track's category lists. | Explored for connections | Connections required | Complete | Dialog scope filtering by owning `TrackId`; scope/paint tests include sync/main fixtures |
+| CONN-SCOPE-002 | Global sync/main aggregation | Session QML flattens sync plus all main-track categories. | Explored for connections | Connections required | Complete | `AllTracks` filters no tracked ports; unrelated non-track ports are absent from app inventory |
+| CONN-CAT-001 | Ordered non-empty role tabs | QML order is Audio in/out/send/return, MIDI in/out/send. | Explored for connections | Connections required | Complete | Explicit `PortRole::ORDERED`; category and preview tests cover all seven roles |
+| CONN-TOPO-001 | Current direct/sync audio and MIDI input/output inventory | Descriptor generation creates externally connectable direct ports. | Explored for connections | Connections required | Complete | Engine/Fake/Web Audio descriptors and app ownership tests; send/return topology remains deferred |
+| CONN-DISC-001 | Compatible endpoint discovery | Port state maps expose compatible opposite-direction endpoints. | Explored for connections | Connections required | Complete | Compact backend poll snapshots; shared fake/engine discovery contracts |
+| CONN-COMPAT-001 | Direction and data-type eligibility | Inputs see outputs; outputs see inputs; audio/MIDI do not mix. | Explored for connections | Connections required | Complete | Backend contract assertions and ineligible-cell GUI fixtures |
+| CONN-DISC-002 | Application-owned driver ports may be candidates | JACK QML test includes `shoop:*` opposite ports. | Explored for connections | Connections required | Complete | Engine dummy registry publishes typed `shoop:*` candidates and contract verifies them |
+| CONN-LAYOUT-001 | Local columns, endpoint rows, grouping, indicators | QML uses rotated columns, grouped client labels, circles/cancel icons. | Explored for connections | Connections required | Complete | egui grid with deterministic columns/rows, client groups, connected/open/unavailable/pending/error indicators |
+| CONN-LAYOUT-002 | Large-matrix overflow and small-window usability | QML scrolls endpoint rows; replacement requires both axes. | Explored for connections | Connections required | Complete | Both-axis scroll area and 360×200/900×600 paint tests |
+| CONN-MUT-001 | Exact desired-state connect/disconnect intent | QML performs a blind toggle on the clicked object/name. | Explored for connections | Connections required | Complete | `SetPortConnected { PortId, external_port, connected }`; API/GUI/backend tests |
+| CONN-MUT-002 | Actor validation and command ordering | QObject calls bypass the new actor model. | Explored for connections | Connections required | Complete | Actor validates stable local ID, exact eligible endpoint, and serializes backend calls |
+| CONN-STATE-001 | Confirmed truth remains separate from pending | QML refreshes immediately after commands. | Explored for connections | Connections required | Complete | Pending desired state overlays confirmed snapshot and clears only on observation/failure/timeout |
+| CONN-STATE-002 | External changes and endpoint churn | Visible QML timer refreshes every 100 ms. | Explored for connections | Connections required | Complete | 16 ms bounded app poll; actor test adds/removes endpoints and changes connection externally |
+| CONN-ERR-001 | Stale ID, disappearance, incompatibility, rejection | Old UI has no typed per-cell failure contract. | Explored for connections | Connections required | Complete | Typed error kinds, notifications, backend validation, actor churn/failure tests |
+| CONN-ERR-002 | Saturation and timeout visibility | Old bridge can log/optimistically cache failure. | Explored for connections | Connections required | Complete | Saturation error publication and deterministic two-second cooperative timeout test |
+| CONN-PRES-001 | Close/reopen/scope presentation safety | QML creates independent windows with local selected/scroll state. | Explored for connections | Connections required | Complete | One egui window with stable scope IDs, scope-specific scroll IDs, stable-key intents, and stale-track state |
+| CONN-PREVIEW-001 | Backend-free native/browser preview | The old standalone M1 preview was removed by M2. | Explored for connections | Connections required | Complete | Connection-focused preview restored without app/backend/engine dependencies; fixture/intent tests and CI artifacts |
+| CONN-WASM-001 | Browser-compatible presentation | QML path is native; pure egui presentation must compile for Wasm. | Explored for connections | Connections required | Complete | GUI/preview Wasm checks; Web Audio reports unsupported arbitrary external mutation without changing default routing |
+| CONN-E2E-001 | Native fake/dummy integrated workflow | Retained tests exercise JACK/CPAL through QML. | Explored for connections | Connections required | Complete | Shared contracts, actor tests, and native sync/audio/MIDI connection workflow |
+| CONN-DEF-001 | Persisted external connections and autoconnect | Sessions can hold external connection names; this milestone excludes persistence/rules. | Explored for connections | Deferred | Deferred | Tracked for persistence/autoconnect milestone |
+| CONN-DEF-002 | Driver selection/settings and native real-driver composition | Retained frontend owns JACK/CPAL settings and drivers. | Explored for connections | Deferred | Deferred | Typed unavailable state in hosted Web Audio; native egui real-driver composition remains roadmap work |
+| CONN-DEF-003 | Dry/wet send/return topology and FX chains | QML dry/wet tracks supply send/return categories. | Explored for connections | Deferred | Deferred | Role model/preview support is complete; topology creation remains FX milestone work |
+| CONN-DEF-004 | MIDI-control and other non-track ports | Global QML session dialog aggregates track ports, not the control port. | Explored for connections | Deferred | Deferred | Explicitly excluded from authoritative track inventory |
+
 ## Coarsely listed future areas
 
 These areas remain `Unexplored` for whole-feature replacement and must be expanded before their milestones set acceptance criteria:
@@ -239,8 +289,8 @@ These areas remain `Unexplored` for whole-feature replacement and must be expand
 |---|---|---|
 | Session save/load, archive compatibility, schema migration, and resampling | Unexplored | Deferred |
 | Audio and MIDI import/export and click-track generation | Unexplored | Deferred |
-| Connections, autoconnect, buses, and external-port monitoring | Unexplored | Deferred |
-| Driver and application settings | Unexplored | Deferred |
+| Persisted connections, autoconnect rules, buses, and reconnect policy | Partially explored | Deferred |
+| Driver and application settings, device selection, and native real-driver composition | Partially explored | Deferred |
 | Dry/wet topology and FX-chain hosting/state management | Partially explored | Deferred |
 | Composite-loop creation, scheduling, editing, and nesting | Partially explored | Deferred |
 | Lua scripting API and built-in scripts | Unexplored | Deferred |

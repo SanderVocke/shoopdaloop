@@ -499,7 +499,9 @@ fn main() {
 mod tests {
     use std::thread;
 
-    use shoop_egui::{DirectTrackSpec, LoopAction, LoopMode, SelectionModifiers, TrackAction};
+    use shoop_egui::{
+        DirectTrackSpec, LoopAction, LoopMode, PortRole, SelectionModifiers, TrackAction,
+    };
 
     use super::*;
 
@@ -563,6 +565,86 @@ mod tests {
         assert!(snapshot.tracks[1].controls.output_stereo);
         assert!(!snapshot.tracks[3].controls.has_output_audio);
         assert!(!snapshot.tracks[4].controls.has_output);
+
+        let snapshot = loop {
+            let snapshot = app.runtime.snapshot();
+            if snapshot.connections.ports.iter().any(|port| {
+                port.track_id == snapshot.tracks[1].id
+                    && port.role == PortRole::MidiInput
+                    && !port.candidates.is_empty()
+            }) {
+                break snapshot;
+            }
+            assert!(started.elapsed() < Duration::from_secs(3));
+            thread::sleep(Duration::from_millis(5));
+        };
+        let connection_targets: Vec<_> = [
+            (
+                snapshot.tracks[0].id,
+                PortRole::AudioInput,
+                "system:capture_1",
+            ),
+            (
+                snapshot.tracks[1].id,
+                PortRole::AudioInput,
+                "system:capture_2",
+            ),
+            (
+                snapshot.tracks[1].id,
+                PortRole::MidiInput,
+                "controller:midi_out",
+            ),
+        ]
+        .into_iter()
+        .map(|(track_id, role, endpoint)| {
+            let port_id = snapshot
+                .connections
+                .ports
+                .iter()
+                .find(|port| port.track_id == track_id && port.role == role)
+                .unwrap()
+                .id;
+            (port_id, endpoint)
+        })
+        .collect();
+        for (port_id, endpoint) in &connection_targets {
+            app.runtime
+                .dispatch(AppIntent::SetPortConnected {
+                    port_id: *port_id,
+                    external_port: (*endpoint).to_owned(),
+                    connected: true,
+                })
+                .unwrap();
+        }
+        let started_connections = Instant::now();
+        loop {
+            let snapshot = app.runtime.snapshot();
+            let all_connected = connection_targets.iter().all(|(port_id, endpoint)| {
+                snapshot
+                    .connections
+                    .ports
+                    .iter()
+                    .find(|port| port.id == *port_id)
+                    .and_then(|port| {
+                        port.candidates
+                            .iter()
+                            .find(|candidate| candidate.full_name == *endpoint)
+                    })
+                    .is_some_and(|candidate| candidate.connected && candidate.pending.is_none())
+            });
+            if all_connected {
+                break;
+            }
+            assert!(started_connections.elapsed() < Duration::from_secs(3));
+            thread::sleep(Duration::from_millis(5));
+        }
+        app.runtime
+            .dispatch(AppIntent::SetPortConnected {
+                port_id: connection_targets[1].0,
+                external_port: connection_targets[1].1.to_owned(),
+                connected: false,
+            })
+            .unwrap();
 
         let track_id = snapshot.tracks[1].id;
         let loop_id = snapshot.tracks[1].loops[0].id;

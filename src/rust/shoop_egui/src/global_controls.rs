@@ -7,6 +7,7 @@ use crate::{DefaultRecordingAction, GlobalControlAction, GlobalControlState};
 
 #[derive(Debug, Default)]
 pub struct GlobalControls {
+    connections_requested: bool,
     #[cfg(test)]
     test_rects: TestGlobalControlRects,
 }
@@ -14,6 +15,7 @@ pub struct GlobalControls {
 #[derive(Clone, Copy, Debug)]
 enum TestGlobalControl {
     MainMenu,
+    Connections,
     StopAll,
     DeselectAll,
     Clear,
@@ -29,6 +31,7 @@ enum TestGlobalControl {
 #[derive(Debug, Default)]
 struct TestGlobalControlRects {
     main_menu: Option<egui::Rect>,
+    connections: Option<egui::Rect>,
     stop_all: Option<egui::Rect>,
     deselect_all: Option<egui::Rect>,
     clear: Option<egui::Rect>,
@@ -46,9 +49,23 @@ impl GlobalControls {
         ui: &mut egui::Ui,
         state: &GlobalControlState,
     ) -> Vec<GlobalControlAction> {
+        self.connections_requested = false;
         let mut actions = Vec::new();
         ui.horizontal(|ui| {
-            let response = icon_button(ui, ICON_MENU, "Main menu (not implemented)");
+            let response = ui
+                .menu_button(ICON_MENU.rich_text().size(20.0), |ui| {
+                    let connections = ui.button("Connections");
+                    self.record_rect(TestGlobalControl::Connections, &connections);
+                    if connections.clicked() {
+                        self.connections_requested = true;
+                        ui.close();
+                    }
+                    ui.separator();
+                    ui.add_enabled(false, egui::Button::new("Session I/O"));
+                    ui.add_enabled(false, egui::Button::new("Settings"));
+                })
+                .response
+                .on_hover_text("Main menu");
             self.record_rect(TestGlobalControl::MainMenu, &response);
             ui.separator();
 
@@ -165,10 +182,15 @@ impl GlobalControls {
         actions
     }
 
+    pub fn take_connections_requested(&mut self) -> bool {
+        std::mem::take(&mut self.connections_requested)
+    }
+
     #[cfg(test)]
     fn record_rect(&mut self, control: TestGlobalControl, response: &egui::Response) {
         let target = match control {
             TestGlobalControl::MainMenu => &mut self.test_rects.main_menu,
+            TestGlobalControl::Connections => &mut self.test_rects.connections,
             TestGlobalControl::StopAll => &mut self.test_rects.stop_all,
             TestGlobalControl::DeselectAll => &mut self.test_rects.deselect_all,
             TestGlobalControl::Clear => &mut self.test_rects.clear,
@@ -191,6 +213,7 @@ impl GlobalControls {
     fn test_rect(&self, control: TestGlobalControl) -> Option<egui::Rect> {
         match control {
             TestGlobalControl::MainMenu => self.test_rects.main_menu,
+            TestGlobalControl::Connections => self.test_rects.connections,
             TestGlobalControl::StopAll => self.test_rects.stop_all,
             TestGlobalControl::DeselectAll => self.test_rects.deselect_all,
             TestGlobalControl::Clear => self.test_rects.clear,
@@ -277,13 +300,21 @@ mod tests {
     }
 
     #[test]
-    fn buttons_generate_typed_global_actions_and_main_menu_is_inert() {
+    fn buttons_generate_typed_global_actions_and_main_menu_has_no_business_intent() {
         let context = egui::Context::default();
         crate::initialize(&context);
         let state = GlobalControlState::default();
         let mut controls = GlobalControls::default();
 
         assert!(click(&context, &mut controls, &state, TestGlobalControl::MainMenu).is_empty());
+        assert!(click(
+            &context,
+            &mut controls,
+            &state,
+            TestGlobalControl::Connections
+        )
+        .is_empty());
+        assert!(controls.take_connections_requested());
         assert_eq!(
             click(&context, &mut controls, &state, TestGlobalControl::StopAll),
             vec![GlobalControlAction::StopAll]

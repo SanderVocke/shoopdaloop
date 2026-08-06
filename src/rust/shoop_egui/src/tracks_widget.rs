@@ -5,6 +5,7 @@ use egui_material_icons::icons::ICON_ADD;
 pub struct TracksWidgetResponse {
     pub intents: Vec<AppIntent>,
     pub add_track_requested: bool,
+    pub connection_track_requested: Option<crate::TrackId>,
 }
 
 #[derive(Debug, Default)]
@@ -94,6 +95,9 @@ fn collect_response(
             .intents
             .push(AppIntent::AddLoop { track_id: track.id });
     }
+    if response.connections_requested {
+        result.connection_track_requested = Some(track.id);
+    }
 }
 
 #[cfg(test)]
@@ -114,10 +118,12 @@ mod tests {
                 LoopWidgetAction::IconClicked(SelectionModifiers { additive: true }),
             )],
             add_loop_requested: true,
+            connections_requested: true,
             ..Default::default()
         };
         let mut result = TracksWidgetResponse::default();
         collect_response(&mut result, &track, response);
+        assert_eq!(result.connection_track_requested, Some(track.id));
         assert_eq!(
             result.intents,
             vec![

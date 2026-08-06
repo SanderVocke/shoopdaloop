@@ -6,6 +6,7 @@ pub struct TrackWidgetResponse {
     pub actions: Vec<TrackWidgetAction>,
     pub loop_actions: Vec<(LoopId, LoopWidgetAction)>,
     pub add_loop_requested: bool,
+    pub connections_requested: bool,
 }
 
 #[derive(Debug, Default)]
@@ -16,6 +17,10 @@ pub struct TrackWidget {
     controls: TrackControls,
     #[cfg(test)]
     test_loop_rects: Vec<egui::Rect>,
+    #[cfg(test)]
+    test_options_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    test_connections_rect: Option<egui::Rect>,
 }
 
 impl TrackWidget {
@@ -127,9 +132,25 @@ impl TrackWidget {
                         .push(TrackWidgetAction::NameChanged(self.name_edit.clone()));
                 }
             }
-            let _ = ui
-                .add(egui::Button::new(ICON_MORE_VERT.rich_text().size(17.0)).frame(false))
-                .on_hover_text("Track options (not implemented)");
+            let menu = ui.menu_button(ICON_MORE_VERT.rich_text().size(17.0), |ui| {
+                let connections = ui.button("Connections...");
+                #[cfg(test)]
+                {
+                    self.test_connections_rect = Some(connections.rect);
+                }
+                if connections.clicked() {
+                    result.connections_requested = true;
+                    ui.close();
+                }
+                if !state.is_sync {
+                    ui.add_enabled(false, egui::Button::new("Delete Track"));
+                }
+            });
+            #[cfg(test)]
+            {
+                self.test_options_rect = Some(menu.response.rect);
+            }
+            menu.response.on_hover_text("Track options");
         });
     }
 }
@@ -138,6 +159,84 @@ impl TrackWidget {
 mod tests {
     use super::*;
     use crate::{LoopState, TrackId};
+
+    fn frame(
+        context: &egui::Context,
+        widget: &mut TrackWidget,
+        state: &TrackState,
+        events: Vec<egui::Event>,
+    ) -> TrackWidgetResponse {
+        let mut response = TrackWidgetResponse::default();
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(500.0, 400.0),
+                )),
+                events,
+                ..Default::default()
+            },
+            |ui| response = widget.show_content(ui, state, false),
+        );
+        response
+    }
+
+    fn click(
+        context: &egui::Context,
+        widget: &mut TrackWidget,
+        state: &TrackState,
+        position: egui::Pos2,
+    ) -> TrackWidgetResponse {
+        let _ = frame(
+            context,
+            widget,
+            state,
+            vec![
+                egui::Event::PointerMoved(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        frame(
+            context,
+            widget,
+            state,
+            vec![
+                egui::Event::PointerMoved(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        )
+    }
+
+    #[test]
+    fn track_and_sync_options_menus_request_connection_scope() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        for is_sync in [false, true] {
+            let state = TrackState {
+                id: TrackId::from_raw(if is_sync { 1 } else { 2 }),
+                name: if is_sync { "Sync" } else { "Track" }.to_owned(),
+                is_sync,
+                ..Default::default()
+            };
+            let mut widget = TrackWidget::default();
+            let _ = frame(&context, &mut widget, &state, Vec::new());
+            let options = widget.test_options_rect.unwrap().center();
+            assert!(!click(&context, &mut widget, &state, options).connections_requested);
+            let _ = frame(&context, &mut widget, &state, Vec::new());
+            let connections = widget.test_connections_rect.unwrap().center();
+            assert!(click(&context, &mut widget, &state, connections).connections_requested);
+        }
+    }
 
     #[test]
     fn loops_stack_vertically_inside_a_horizontal_track_row() {

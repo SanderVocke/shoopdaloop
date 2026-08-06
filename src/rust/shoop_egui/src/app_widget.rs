@@ -1,5 +1,6 @@
 use crate::{
-    AppAction, AppState, DetailsPane, DirectTrackSpec, GlobalControls, TrackWidget, TracksWidget,
+    AppAction, AppState, ConnectionDialog, ConnectionScope, DetailsPane, DirectTrackSpec,
+    GlobalControls, TrackWidget, TracksWidget,
 };
 
 const LOGO_BYTES: &[u8] = include_bytes!("../../../../resources/logo-small.png");
@@ -9,6 +10,7 @@ pub struct AppWidget {
     global_controls: GlobalControls,
     details: DetailsPane,
     sync_track: TrackWidget,
+    connections: ConnectionDialog,
     details_open: bool,
     add_track_open: bool,
     add_track_name: String,
@@ -28,6 +30,7 @@ impl Default for AppWidget {
             global_controls: GlobalControls::default(),
             details: DetailsPane::default(),
             sync_track: TrackWidget::default(),
+            connections: ConnectionDialog::default(),
             details_open: true,
             add_track_open: false,
             add_track_name: String::new(),
@@ -43,6 +46,14 @@ impl Default for AppWidget {
 }
 
 impl AppWidget {
+    pub fn open_connections(&mut self, scope: ConnectionScope) {
+        self.connections.open(scope);
+    }
+
+    pub fn open_connection_scope(&self) -> Option<ConnectionScope> {
+        self.connections.is_open().then(|| self.connections.scope())
+    }
+
     pub fn show(&mut self, ui: &mut egui::Ui, state: &AppState) -> Vec<AppAction> {
         self.ensure_logo(ui.ctx());
         let mut actions = Vec::new();
@@ -63,6 +74,9 @@ impl AppWidget {
                                 .into_iter()
                                 .map(AppAction::Global),
                         );
+                        if self.global_controls.take_connections_requested() {
+                            self.connections.open(ConnectionScope::AllTracks);
+                        }
                     });
             });
 
@@ -113,6 +127,9 @@ impl AppWidget {
                                     action,
                                 },
                             ));
+                            if response.connections_requested {
+                                self.connections.open(ConnectionScope::Track(sync.id));
+                            }
                             actions.extend(response.actions.into_iter().map(|action| {
                                 AppAction::Track {
                                     track_id: sync.id,
@@ -143,10 +160,14 @@ impl AppWidget {
                     self.add_track_midi = false;
                     self.add_track_open = true;
                 }
+                if let Some(track_id) = response.connection_track_requested {
+                    self.connections.open(ConnectionScope::Track(track_id));
+                }
                 actions.extend(response.intents);
             });
 
         self.show_add_track_dialog(ui.ctx(), &mut actions);
+        actions.extend(self.connections.show(ui.ctx(), state));
         actions
     }
 
@@ -360,7 +381,7 @@ mod tests {
     }
 
     #[test]
-    fn add_track_is_the_only_dialog_and_accept_emits_validated_spec() {
+    fn add_track_accept_emits_validated_spec() {
         let context = egui::Context::default();
         crate::initialize(&context);
         let state = AppState::default();

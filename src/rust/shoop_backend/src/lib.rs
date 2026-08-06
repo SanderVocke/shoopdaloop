@@ -1,13 +1,13 @@
-use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use shoop_engine::dummy_midi_port::DummyMidiPort;
-use shoop_engine::dummy_port::{DummyAudioPort, PortId};
+use shoop_engine::dummy_port::{DummyAudioPort, DummyExternalConnections, PortId};
 use shoop_engine::external_audio_port::ExternalAudioPort;
 use shoop_engine::session::{Port, Session};
-use shoop_engine::{ChannelMode, LoopMode, PortDirection};
+use shoop_engine::{ChannelMode, LoopMode, PortDataType as EnginePortDataType, PortDirection};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct BackendLoopId(u64);
@@ -35,6 +35,80 @@ impl BackendTrackId {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct BackendPortId(u64);
+
+impl BackendPortId {
+    pub const fn from_raw(value: u64) -> Self {
+        Self(value)
+    }
+
+    pub const fn raw(self) -> u64 {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum BackendPortDataType {
+    Audio,
+    Midi,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum BackendPortDirection {
+    Input,
+    Output,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum BackendPortRole {
+    AudioInput,
+    AudioOutput,
+    AudioSend,
+    AudioReturn,
+    MidiInput,
+    MidiOutput,
+    MidiSend,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BackendPortDescriptor {
+    pub id: BackendPortId,
+    pub name: String,
+    pub data_type: BackendPortDataType,
+    pub direction: BackendPortDirection,
+    pub role: BackendPortRole,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BackendExternalPortState {
+    pub full_name: String,
+    pub eligible: bool,
+    pub connected: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BackendPortConnectionState {
+    pub port: BackendPortDescriptor,
+    pub candidates: Vec<BackendExternalPortState>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BackendConnectionFailure {
+    pub port_id: BackendPortId,
+    pub external_port: String,
+    pub desired_connected: bool,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct BackendConnectionSnapshot {
+    pub revision: u64,
+    pub available: bool,
+    pub ports: BTreeMap<BackendPortId, BackendPortConnectionState>,
+    pub failures: Vec<BackendConnectionFailure>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DirectTrackRequest {
     pub port_name_base: String,
@@ -47,6 +121,7 @@ pub struct DirectTrackRequest {
 pub struct BackendTrackCreation {
     pub track_id: BackendTrackId,
     pub loops: Vec<BackendLoopId>,
+    pub ports: Vec<BackendPortDescriptor>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -139,6 +214,7 @@ pub struct BackendSnapshot {
     pub status: BackendStatus,
     pub tracks: BTreeMap<BackendTrackId, BackendTrackState>,
     pub loops: BTreeMap<BackendLoopId, BackendLoopState>,
+    pub connections: BackendConnectionSnapshot,
 }
 
 pub trait Backend {
@@ -164,6 +240,15 @@ pub trait Backend {
         cycles_delay: Option<u32>,
     ) -> Result<()>;
     fn clear_loop(&mut self, loop_id: BackendLoopId) -> Result<()>;
+    fn set_port_connected(
+        &mut self,
+        port_id: BackendPortId,
+        external_port: &str,
+        connected: bool,
+    ) -> Result<()> {
+        let _ = (port_id, external_port, connected);
+        Err(anyhow!("external connection management is unavailable"))
+    }
     fn advance(&mut self, elapsed: Duration);
     fn poll(&mut self) -> Result<BackendSnapshot>;
     fn wait_idle(&mut self);
@@ -194,6 +279,10 @@ pub struct EngineBackend {
     next_loop_id: u64,
     next_track_id: u64,
     next_port_id: u64,
+    next_backend_port_id: u64,
+    connection_revision: u64,
+    connection_ports: BTreeMap<BackendPortId, EngineConnectionPort>,
+    external_connections: DummyExternalConnections,
     mode: EngineBackendMode,
     callback_count: u64,
     input_peak: f32,
@@ -204,6 +293,11 @@ pub struct EngineBackend {
 struct EngineLoopChannels {
     audio: Vec<usize>,
     midi: Vec<usize>,
+}
+
+struct EngineConnectionPort {
+    descriptor: BackendPortDescriptor,
+    registry_id: PortId,
 }
 
 struct EngineTrack {
@@ -243,6 +337,10 @@ impl EngineBackend {
             next_loop_id: 1,
             next_track_id: 1,
             next_port_id: 1,
+            next_backend_port_id: 1,
+            connection_revision: 1,
+            connection_ports: BTreeMap::new(),
+            external_connections: representative_external_connections(),
             mode: EngineBackendMode::Dummy,
             callback_count: 0,
             input_peak: 0.0,
@@ -365,6 +463,109 @@ impl EngineBackend {
         id
     }
 
+    fn register_connection_port(
+        &mut self,
+        registry_id: PortId,
+        name: String,
+        data_type: BackendPortDataType,
+        direction: BackendPortDirection,
+        role: BackendPortRole,
+    ) -> BackendPortDescriptor {
+        let id = BackendPortId::from_raw(self.next_backend_port_id);
+        self.next_backend_port_id = self.next_backend_port_id.saturating_add(1);
+        let descriptor = BackendPortDescriptor {
+            id,
+            name: name.clone(),
+            data_type,
+            direction,
+            role,
+        };
+        self.connection_ports.insert(
+            id,
+            EngineConnectionPort {
+                descriptor: descriptor.clone(),
+                registry_id,
+            },
+        );
+        self.external_connections.add_mock_port(
+            format!("shoop:{name}"),
+            engine_direction(direction),
+            engine_data_type(data_type),
+        );
+        self.connection_revision = self.connection_revision.wrapping_add(1);
+        descriptor
+    }
+
+    pub fn add_external_mock_port(
+        &mut self,
+        name: impl Into<String>,
+        direction: BackendPortDirection,
+        data_type: BackendPortDataType,
+    ) {
+        self.external_connections.add_mock_port(
+            name,
+            engine_direction(direction),
+            engine_data_type(data_type),
+        );
+        self.connection_revision = self.connection_revision.wrapping_add(1);
+    }
+
+    pub fn remove_external_mock_port(&mut self, name: &str) {
+        self.external_connections.remove_mock_port(name);
+        self.connection_revision = self.connection_revision.wrapping_add(1);
+    }
+
+    pub fn externally_set_port_connected(
+        &mut self,
+        port_id: BackendPortId,
+        external_port: &str,
+        connected: bool,
+    ) -> Result<()> {
+        self.set_port_connected(port_id, external_port, connected)
+    }
+
+    fn connection_snapshot(&self) -> BackendConnectionSnapshot {
+        let ports = self
+            .connection_ports
+            .iter()
+            .map(|(id, local)| {
+                let external_direction = opposite_backend_direction(local.descriptor.direction);
+                let candidates = self
+                    .external_connections
+                    .find_external_ports(
+                        None,
+                        engine_direction(external_direction),
+                        engine_data_type(local.descriptor.data_type),
+                    )
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|candidate| BackendExternalPortState {
+                        connected: self
+                            .external_connections
+                            .connections_for(local.registry_id)
+                            .iter()
+                            .any(|name| name == &candidate.name),
+                        full_name: candidate.name,
+                        eligible: true,
+                    })
+                    .collect();
+                (
+                    *id,
+                    BackendPortConnectionState {
+                        port: local.descriptor.clone(),
+                        candidates,
+                    },
+                )
+            })
+            .collect();
+        BackendConnectionSnapshot {
+            revision: self.connection_revision,
+            available: self.mode == EngineBackendMode::Dummy,
+            ports,
+            failures: Vec::new(),
+        }
+    }
+
     fn engine_loop_index(&self, id: BackendLoopId) -> Result<usize> {
         self.loops
             .get(&id)
@@ -430,6 +631,66 @@ impl EngineBackend {
     }
 }
 
+fn representative_external_connections() -> DummyExternalConnections {
+    let mut connections = DummyExternalConnections::default();
+    for (name, direction, data_type) in [
+        (
+            "system:capture_1",
+            PortDirection::Output,
+            EnginePortDataType::Audio,
+        ),
+        (
+            "system:capture_2",
+            PortDirection::Output,
+            EnginePortDataType::Audio,
+        ),
+        (
+            "system:playback_1",
+            PortDirection::Input,
+            EnginePortDataType::Audio,
+        ),
+        (
+            "system:playback_2",
+            PortDirection::Input,
+            EnginePortDataType::Audio,
+        ),
+        (
+            "controller:midi_out",
+            PortDirection::Output,
+            EnginePortDataType::Midi,
+        ),
+        (
+            "synth:midi_in",
+            PortDirection::Input,
+            EnginePortDataType::Midi,
+        ),
+    ] {
+        connections.add_mock_port(name, direction, data_type);
+    }
+    connections
+}
+
+fn engine_direction(direction: BackendPortDirection) -> PortDirection {
+    match direction {
+        BackendPortDirection::Input => PortDirection::Input,
+        BackendPortDirection::Output => PortDirection::Output,
+    }
+}
+
+fn opposite_backend_direction(direction: BackendPortDirection) -> BackendPortDirection {
+    match direction {
+        BackendPortDirection::Input => BackendPortDirection::Output,
+        BackendPortDirection::Output => BackendPortDirection::Input,
+    }
+}
+
+fn engine_data_type(data_type: BackendPortDataType) -> EnginePortDataType {
+    match data_type {
+        BackendPortDataType::Audio => EnginePortDataType::Audio,
+        BackendPortDataType::Midi => EnginePortDataType::Midi,
+    }
+}
+
 fn balance_factors(balance: f32) -> (f32, f32) {
     let balance = balance.clamp(-1.0, 1.0);
     if balance < 0.0 {
@@ -466,6 +727,7 @@ impl Backend for EngineBackend {
         }
         let mut audio_inputs = Vec::with_capacity(request.audio_channels as usize);
         let mut audio_outputs = Vec::with_capacity(request.audio_channels as usize);
+        let mut ports = Vec::with_capacity(request.audio_channels as usize * 2 + 2);
         for index in 0..request.audio_channels {
             let suffix = if request.audio_channels == 1 {
                 String::new()
@@ -474,56 +736,85 @@ impl Backend for EngineBackend {
             };
             let input_name = format!("{}_direct_in{suffix}", request.port_name_base);
             let output_name = format!("{}_direct_out{suffix}", request.port_name_base);
+            let input_registry_id = self.next_port_id();
+            let output_registry_id = self.next_port_id();
             let (input, output) = if self.mode == EngineBackendMode::Physical {
                 let mut input = ExternalAudioPort::new(
-                    input_name,
+                    input_name.clone(),
                     PortDirection::Input,
                     self.buffer_size as usize,
                 );
                 input.audio_mut().set_passthrough_muted(true);
                 let input = self.session.add_port(Port::External(input));
                 let output = self.session.add_port(Port::External(ExternalAudioPort::new(
-                    output_name,
+                    output_name.clone(),
                     PortDirection::Output,
                     self.buffer_size as usize,
                 )));
                 (input, output)
             } else {
                 let mut input = DummyAudioPort::new(
-                    self.next_port_id(),
-                    input_name,
+                    input_registry_id,
+                    input_name.clone(),
                     PortDirection::Input,
                     self.buffer_size as usize,
                 );
                 input.audio_mut().set_passthrough_muted(true);
                 let input = self.session.add_port(Port::Dummy(input));
-                let output_id = self.next_port_id();
                 let output = self.session.add_port(Port::Dummy(DummyAudioPort::new(
-                    output_id,
-                    output_name,
+                    output_registry_id,
+                    output_name.clone(),
                     PortDirection::Output,
                     1,
                 )));
                 (input, output)
             };
+            ports.push(self.register_connection_port(
+                input_registry_id,
+                input_name,
+                BackendPortDataType::Audio,
+                BackendPortDirection::Input,
+                BackendPortRole::AudioInput,
+            ));
+            ports.push(self.register_connection_port(
+                output_registry_id,
+                output_name,
+                BackendPortDataType::Audio,
+                BackendPortDirection::Output,
+                BackendPortRole::AudioOutput,
+            ));
             self.session.connect_ports_internal(input, output)?;
             audio_inputs.push(input);
             audio_outputs.push(output);
         }
         let (midi_input, midi_output) = if request.midi {
-            let mut input = DummyMidiPort::new(
-                self.next_port_id(),
-                format!("{}_direct_midi_in", request.port_name_base),
-                PortDirection::Input,
-            );
+            let input_name = format!("{}_direct_midi_in", request.port_name_base);
+            let output_name = format!("{}_direct_midi_out", request.port_name_base);
+            let input_registry_id = self.next_port_id();
+            let output_registry_id = self.next_port_id();
+            let mut input =
+                DummyMidiPort::new(input_registry_id, input_name.clone(), PortDirection::Input);
             input.midi_mut().set_passthrough_muted(true);
             let input = self.session.add_port(Port::DummyMidi(input));
-            let output_id = self.next_port_id();
             let output = self.session.add_port(Port::DummyMidi(DummyMidiPort::new(
-                output_id,
-                format!("{}_direct_midi_out", request.port_name_base),
+                output_registry_id,
+                output_name.clone(),
                 PortDirection::Output,
             )));
+            ports.push(self.register_connection_port(
+                input_registry_id,
+                input_name,
+                BackendPortDataType::Midi,
+                BackendPortDirection::Input,
+                BackendPortRole::MidiInput,
+            ));
+            ports.push(self.register_connection_port(
+                output_registry_id,
+                output_name,
+                BackendPortDataType::Midi,
+                BackendPortDirection::Output,
+                BackendPortRole::MidiOutput,
+            ));
             self.session.connect_ports_internal(input, output)?;
             (Some(input), Some(output))
         } else {
@@ -552,7 +843,11 @@ impl Backend for EngineBackend {
             loops.push(self.create_track_loop(track_id)?);
         }
         self.apply_graph_changes()?;
-        Ok(BackendTrackCreation { track_id, loops })
+        Ok(BackendTrackCreation {
+            track_id,
+            loops,
+            ports,
+        })
     }
 
     fn add_loop_to_track(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {
@@ -724,6 +1019,42 @@ impl Backend for EngineBackend {
         Ok(())
     }
 
+    fn set_port_connected(
+        &mut self,
+        port_id: BackendPortId,
+        external_port: &str,
+        connected: bool,
+    ) -> Result<()> {
+        if self.mode != EngineBackendMode::Dummy {
+            return Err(anyhow!("external connection management is unavailable"));
+        }
+        let local = self
+            .connection_ports
+            .get(&port_id)
+            .ok_or_else(|| anyhow!("unknown backend port {port_id:?}"))?;
+        let candidate = self
+            .external_connections
+            .mock_ports()
+            .iter()
+            .find(|candidate| candidate.name == external_port)
+            .ok_or_else(|| anyhow!("external port disappeared: {external_port}"))?;
+        if candidate.direction
+            != engine_direction(opposite_backend_direction(local.descriptor.direction))
+            || candidate.data_type != engine_data_type(local.descriptor.data_type)
+        {
+            return Err(anyhow!("external port is incompatible: {external_port}"));
+        }
+        if connected {
+            self.external_connections
+                .connect(local.registry_id, external_port)?;
+        } else {
+            self.external_connections
+                .disconnect(local.registry_id, external_port)?;
+        }
+        self.connection_revision = self.connection_revision.wrapping_add(1);
+        Ok(())
+    }
+
     fn advance(&mut self, elapsed: Duration) {
         if self.mode == EngineBackendMode::Physical {
             return;
@@ -878,6 +1209,7 @@ impl Backend for EngineBackend {
             },
             tracks,
             loops,
+            connections: self.connection_snapshot(),
         })
     }
 
@@ -910,6 +1242,177 @@ fn to_engine_mode(mode: BackendLoopMode) -> LoopMode {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct FakeConnectionControl {
+    state: Arc<Mutex<FakeConnectionState>>,
+}
+
+#[derive(Debug)]
+struct FakeConnectionState {
+    revision: u64,
+    available: bool,
+    ports: BTreeMap<BackendPortId, BackendPortDescriptor>,
+    external_ports: BTreeMap<String, (BackendPortDirection, BackendPortDataType)>,
+    connected: BTreeSet<(BackendPortId, String)>,
+    pending: Vec<(BackendPortId, String, bool)>,
+    failures: Vec<BackendConnectionFailure>,
+    defer_mutations: bool,
+    fail_next: Option<String>,
+}
+
+impl Default for FakeConnectionState {
+    fn default() -> Self {
+        let mut external_ports = BTreeMap::new();
+        for (name, direction, data_type) in [
+            (
+                "system:capture_1",
+                BackendPortDirection::Output,
+                BackendPortDataType::Audio,
+            ),
+            (
+                "system:capture_2",
+                BackendPortDirection::Output,
+                BackendPortDataType::Audio,
+            ),
+            (
+                "system:playback_1",
+                BackendPortDirection::Input,
+                BackendPortDataType::Audio,
+            ),
+            (
+                "system:playback_2",
+                BackendPortDirection::Input,
+                BackendPortDataType::Audio,
+            ),
+            (
+                "controller:midi_out",
+                BackendPortDirection::Output,
+                BackendPortDataType::Midi,
+            ),
+            (
+                "synth:midi_in",
+                BackendPortDirection::Input,
+                BackendPortDataType::Midi,
+            ),
+        ] {
+            external_ports.insert(name.to_owned(), (direction, data_type));
+        }
+        Self {
+            revision: 1,
+            available: true,
+            ports: BTreeMap::new(),
+            external_ports,
+            connected: BTreeSet::new(),
+            pending: Vec::new(),
+            failures: Vec::new(),
+            defer_mutations: false,
+            fail_next: None,
+        }
+    }
+}
+
+impl FakeConnectionControl {
+    fn with_state<T>(&self, apply: impl FnOnce(&mut FakeConnectionState) -> T) -> T {
+        apply(&mut self.state.lock().unwrap_or_else(|error| error.into_inner()))
+    }
+
+    pub fn add_external_port(
+        &self,
+        name: impl Into<String>,
+        direction: BackendPortDirection,
+        data_type: BackendPortDataType,
+    ) {
+        self.with_state(|state| {
+            state
+                .external_ports
+                .insert(name.into(), (direction, data_type));
+            state.revision = state.revision.wrapping_add(1);
+        });
+    }
+
+    pub fn remove_external_port(&self, name: &str) {
+        self.with_state(|state| {
+            state.external_ports.remove(name);
+            state.connected.retain(|(_, endpoint)| endpoint != name);
+            state.pending.retain(|(_, endpoint, _)| endpoint != name);
+            state.revision = state.revision.wrapping_add(1);
+        });
+    }
+
+    pub fn externally_set_connected(
+        &self,
+        port_id: BackendPortId,
+        external_port: impl Into<String>,
+        connected: bool,
+    ) {
+        self.with_state(|state| {
+            apply_fake_connection(state, port_id, external_port.into(), connected);
+        });
+    }
+
+    pub fn set_available(&self, available: bool) {
+        self.with_state(|state| {
+            state.available = available;
+            state.revision = state.revision.wrapping_add(1);
+        });
+    }
+
+    pub fn defer_mutations(&self, defer: bool) {
+        self.with_state(|state| state.defer_mutations = defer);
+    }
+
+    pub fn fail_next_mutation(&self, message: impl Into<String>) {
+        self.with_state(|state| state.fail_next = Some(message.into()));
+    }
+
+    pub fn complete_pending(&self, succeed: bool) {
+        self.with_state(|state| {
+            for (port_id, external_port, connected) in std::mem::take(&mut state.pending) {
+                if succeed {
+                    apply_fake_connection(state, port_id, external_port, connected);
+                } else {
+                    state.failures.push(BackendConnectionFailure {
+                        port_id,
+                        external_port,
+                        desired_connected: connected,
+                        message: "injected deferred connection failure".to_owned(),
+                    });
+                    state.revision = state.revision.wrapping_add(1);
+                }
+            }
+        });
+    }
+
+    pub fn pending_len(&self) -> usize {
+        self.with_state(|state| state.pending.len())
+    }
+
+    pub fn port_id_by_name(&self, name: &str) -> Option<BackendPortId> {
+        self.with_state(|state| {
+            state
+                .ports
+                .values()
+                .find(|port| port.name == name)
+                .map(|port| port.id)
+        })
+    }
+}
+
+fn apply_fake_connection(
+    state: &mut FakeConnectionState,
+    port_id: BackendPortId,
+    external_port: String,
+    connected: bool,
+) {
+    let key = (port_id, external_port);
+    if connected {
+        state.connected.insert(key);
+    } else {
+        state.connected.remove(&key);
+    }
+    state.revision = state.revision.wrapping_add(1);
+}
+
 #[derive(Debug)]
 pub struct FakeBackend {
     status: BackendStatus,
@@ -918,8 +1421,10 @@ pub struct FakeBackend {
     sync_sources: BTreeMap<BackendLoopId, Option<BackendLoopId>>,
     next_loop_id: u64,
     next_track_id: u64,
+    next_port_id: u64,
     fail_track_creation_after: Option<usize>,
     operations: Vec<FakeOperation>,
+    connections: FakeConnectionControl,
 }
 
 #[derive(Debug)]
@@ -938,6 +1443,7 @@ pub enum FakeOperation {
     SetSyncSource(BackendLoopId, Option<BackendLoopId>),
     Transition(BackendLoopId, BackendLoopMode, Option<u32>),
     Clear(BackendLoopId),
+    SetPortConnected(BackendPortId, String, bool),
 }
 
 impl Default for FakeBackend {
@@ -953,8 +1459,12 @@ impl Default for FakeBackend {
             sync_sources: BTreeMap::new(),
             next_loop_id: 1,
             next_track_id: 1,
+            next_port_id: 1,
             fail_track_creation_after: None,
             operations: Vec::new(),
+            connections: FakeConnectionControl {
+                state: Arc::new(Mutex::new(FakeConnectionState::default())),
+            },
         }
     }
 }
@@ -966,6 +1476,69 @@ impl FakeBackend {
 
     pub fn fail_track_creation_after(&mut self, successful_creations: usize) {
         self.fail_track_creation_after = Some(successful_creations);
+    }
+
+    pub fn connection_control(&self) -> FakeConnectionControl {
+        self.connections.clone()
+    }
+
+    fn next_port_descriptor(
+        &mut self,
+        name: String,
+        data_type: BackendPortDataType,
+        direction: BackendPortDirection,
+        role: BackendPortRole,
+    ) -> BackendPortDescriptor {
+        let descriptor = BackendPortDescriptor {
+            id: BackendPortId::from_raw(self.next_port_id),
+            name,
+            data_type,
+            direction,
+            role,
+        };
+        self.next_port_id = self.next_port_id.saturating_add(1);
+        self.connections.with_state(|state| {
+            state.ports.insert(descriptor.id, descriptor.clone());
+            state.revision = state.revision.wrapping_add(1);
+        });
+        descriptor
+    }
+
+    fn connection_snapshot(&self) -> BackendConnectionSnapshot {
+        self.connections.with_state(|state| {
+            let ports = state
+                .ports
+                .iter()
+                .map(|(port_id, port)| {
+                    let candidates = state
+                        .external_ports
+                        .iter()
+                        .filter(|(_, (direction, data_type))| {
+                            *direction == opposite_backend_direction(port.direction)
+                                && *data_type == port.data_type
+                        })
+                        .map(|(full_name, _)| BackendExternalPortState {
+                            full_name: full_name.clone(),
+                            eligible: true,
+                            connected: state.connected.contains(&(*port_id, full_name.clone())),
+                        })
+                        .collect();
+                    (
+                        *port_id,
+                        BackendPortConnectionState {
+                            port: port.clone(),
+                            candidates,
+                        },
+                    )
+                })
+                .collect();
+            BackendConnectionSnapshot {
+                revision: state.revision,
+                available: state.available,
+                ports,
+                failures: std::mem::take(&mut state.failures),
+            }
+        })
     }
 
     fn require_loop(&self, id: BackendLoopId) -> Result<()> {
@@ -1003,6 +1576,40 @@ impl Backend for FakeBackend {
         if request.audio_channels > 10 {
             return Err(anyhow!("direct track audio channel count exceeds 10"));
         }
+        let mut ports = Vec::with_capacity(request.audio_channels as usize * 2 + 2);
+        for index in 0..request.audio_channels {
+            let suffix = if request.audio_channels == 1 {
+                String::new()
+            } else {
+                format!("_{}", index + 1)
+            };
+            ports.push(self.next_port_descriptor(
+                format!("{}_direct_in{suffix}", request.port_name_base),
+                BackendPortDataType::Audio,
+                BackendPortDirection::Input,
+                BackendPortRole::AudioInput,
+            ));
+            ports.push(self.next_port_descriptor(
+                format!("{}_direct_out{suffix}", request.port_name_base),
+                BackendPortDataType::Audio,
+                BackendPortDirection::Output,
+                BackendPortRole::AudioOutput,
+            ));
+        }
+        if request.midi {
+            ports.push(self.next_port_descriptor(
+                format!("{}_direct_midi_in", request.port_name_base),
+                BackendPortDataType::Midi,
+                BackendPortDirection::Input,
+                BackendPortRole::MidiInput,
+            ));
+            ports.push(self.next_port_descriptor(
+                format!("{}_direct_midi_out", request.port_name_base),
+                BackendPortDataType::Midi,
+                BackendPortDirection::Output,
+                BackendPortRole::MidiOutput,
+            ));
+        }
         let track_id = BackendTrackId::from_raw(self.next_track_id);
         self.next_track_id = self.next_track_id.saturating_add(1);
         self.tracks.insert(
@@ -1021,7 +1628,11 @@ impl Backend for FakeBackend {
         for _ in 0..request.initial_loops {
             loops.push(self.add_loop_to_track(track_id)?);
         }
-        Ok(BackendTrackCreation { track_id, loops })
+        Ok(BackendTrackCreation {
+            track_id,
+            loops,
+            ports,
+        })
     }
 
     fn add_loop_to_track(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {
@@ -1135,6 +1746,55 @@ impl Backend for FakeBackend {
         Ok(())
     }
 
+    fn set_port_connected(
+        &mut self,
+        port_id: BackendPortId,
+        external_port: &str,
+        connected: bool,
+    ) -> Result<()> {
+        let result = self.connections.with_state(|state| {
+            let port = state
+                .ports
+                .get(&port_id)
+                .ok_or_else(|| anyhow!("unknown fake port {port_id:?}"))?;
+            let (direction, data_type) = state
+                .external_ports
+                .get(external_port)
+                .copied()
+                .ok_or_else(|| anyhow!("external port disappeared: {external_port}"))?;
+            if direction != opposite_backend_direction(port.direction)
+                || data_type != port.data_type
+            {
+                return Err(anyhow!("external port is incompatible: {external_port}"));
+            }
+            if let Some(message) = state.fail_next.take() {
+                return Err(anyhow!(message));
+            }
+            if state.defer_mutations {
+                if !state
+                    .pending
+                    .iter()
+                    .any(|pending| pending == &(port_id, external_port.to_owned(), connected))
+                {
+                    state
+                        .pending
+                        .push((port_id, external_port.to_owned(), connected));
+                }
+            } else {
+                apply_fake_connection(state, port_id, external_port.to_owned(), connected);
+            }
+            Ok(())
+        });
+        if result.is_ok() {
+            self.operations.push(FakeOperation::SetPortConnected(
+                port_id,
+                external_port.to_owned(),
+                connected,
+            ));
+        }
+        result
+    }
+
     fn advance(&mut self, _elapsed: Duration) {}
 
     fn poll(&mut self) -> Result<BackendSnapshot> {
@@ -1146,6 +1806,7 @@ impl Backend for FakeBackend {
                 .map(|(id, track)| (*id, track.state.clone()))
                 .collect(),
             loops: self.loops.clone(),
+            connections: self.connection_snapshot(),
         })
     }
 
@@ -1171,6 +1832,63 @@ mod tests {
         );
         backend.set_loop_sync_source(follower, Some(sync)).unwrap();
         backend.wait_idle();
+    }
+
+    fn connection_contract(backend: &mut dyn Backend) {
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "connections".to_owned(),
+                audio_channels: 1,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        assert_eq!(created.ports.len(), 4);
+        let audio_input = created
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::AudioInput)
+            .unwrap();
+        assert_eq!(audio_input.direction, BackendPortDirection::Input);
+        assert_eq!(audio_input.data_type, BackendPortDataType::Audio);
+        let snapshot = backend.poll().unwrap().connections;
+        assert!(snapshot.available);
+        let candidates = &snapshot.ports[&audio_input.id].candidates;
+        assert!(candidates
+            .iter()
+            .any(|candidate| candidate.full_name == "system:capture_1"));
+        assert!(!candidates
+            .iter()
+            .any(|candidate| candidate.full_name == "system:playback_1"));
+        assert!(!candidates
+            .iter()
+            .any(|candidate| candidate.full_name == "controller:midi_out"));
+        if candidates
+            .iter()
+            .any(|candidate| candidate.full_name.starts_with("shoop:"))
+        {
+            assert!(candidates
+                .iter()
+                .any(|candidate| candidate.full_name == "shoop:connections_direct_out"));
+        }
+
+        backend
+            .set_port_connected(audio_input.id, "system:capture_1", true)
+            .unwrap();
+        backend
+            .set_port_connected(audio_input.id, "system:capture_1", true)
+            .unwrap();
+        let snapshot = backend.poll().unwrap().connections;
+        assert!(snapshot.ports[&audio_input.id]
+            .candidates
+            .iter()
+            .any(|candidate| candidate.full_name == "system:capture_1" && candidate.connected));
+        backend
+            .set_port_connected(audio_input.id, "system:capture_1", false)
+            .unwrap();
+        assert!(backend
+            .set_port_connected(audio_input.id, "missing:endpoint", true)
+            .is_err());
     }
 
     fn direct_track_contract(backend: &mut dyn Backend) {
@@ -1210,6 +1928,7 @@ mod tests {
         let mut backend = FakeBackend::default();
         backend_contract(&mut backend);
         direct_track_contract(&mut backend);
+        connection_contract(&mut backend);
     }
 
     #[test]
@@ -1217,6 +1936,52 @@ mod tests {
         let mut backend = EngineBackend::new_dummy(48_000, 256).unwrap();
         backend_contract(&mut backend);
         direct_track_contract(&mut backend);
+        connection_contract(&mut backend);
+    }
+
+    #[test]
+    fn fake_connection_control_covers_churn_external_change_and_deferred_failure() {
+        let mut backend = FakeBackend::default();
+        let control = backend.connection_control();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "fake".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 0,
+            })
+            .unwrap();
+        let input = created
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::AudioInput)
+            .unwrap()
+            .id;
+        control.add_external_port(
+            "device:new_output",
+            BackendPortDirection::Output,
+            BackendPortDataType::Audio,
+        );
+        control.externally_set_connected(input, "device:new_output", true);
+        assert!(backend.poll().unwrap().connections.ports[&input]
+            .candidates
+            .iter()
+            .any(|candidate| candidate.full_name == "device:new_output" && candidate.connected));
+        control.remove_external_port("device:new_output");
+        assert!(!backend.poll().unwrap().connections.ports[&input]
+            .candidates
+            .iter()
+            .any(|candidate| candidate.full_name == "device:new_output"));
+
+        control.defer_mutations(true);
+        backend
+            .set_port_connected(input, "system:capture_1", true)
+            .unwrap();
+        assert_eq!(control.pending_len(), 1);
+        control.complete_pending(false);
+        let failures = backend.poll().unwrap().connections.failures;
+        assert_eq!(failures.len(), 1);
+        assert_eq!(failures[0].port_id, input);
     }
 
     #[test]
@@ -1295,7 +2060,10 @@ mod tests {
             .process_audio_quantum(&vec![0.0; 128], 1, &mut output, 2, 128)
             .unwrap();
         assert!(output.iter().any(|sample| *sample != 0.0));
-        let status = backend.poll().unwrap().status;
+        let snapshot = backend.poll().unwrap();
+        assert!(!snapshot.connections.available);
+        assert_eq!(snapshot.connections.ports.len(), 2);
+        let status = snapshot.status;
         assert_eq!(status.callback_count, 2);
         assert_eq!(status.processed_frames, 256);
         assert!(status.input_peak == 0.0);

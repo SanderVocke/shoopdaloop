@@ -12,9 +12,10 @@ use shoop_audio_protocol::{
     WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
-    Backend, BackendDriverState, BackendLoopId, BackendLoopMode, BackendLoopState, BackendSnapshot,
-    BackendStatus, BackendTrackControl, BackendTrackCreation, BackendTrackId, BackendTrackState,
-    DirectTrackRequest,
+    Backend, BackendDriverState, BackendLoopId, BackendLoopMode, BackendLoopState,
+    BackendPortConnectionState, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
+    BackendPortId, BackendPortRole, BackendSnapshot, BackendStatus, BackendTrackControl,
+    BackendTrackCreation, BackendTrackId, BackendTrackState, DirectTrackRequest,
 };
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
@@ -769,6 +770,7 @@ pub struct WebAudioBackend {
     snapshot: BackendSnapshot,
     next_track_id: u64,
     next_loop_id: u64,
+    next_port_id: u64,
     last_poll: Instant,
     waveform_revisions: BTreeMap<BackendLoopId, u64>,
     waveforms: BTreeMap<BackendLoopId, WaveformAssembly>,
@@ -789,6 +791,7 @@ impl WebAudioBackend {
                 },
                 next_track_id: 1,
                 next_loop_id: 1,
+                next_port_id: 1,
                 last_poll: Instant::now(),
                 waveform_revisions: BTreeMap::new(),
                 waveforms: BTreeMap::new(),
@@ -917,6 +920,60 @@ impl WebAudioBackend {
     }
 }
 
+fn browser_port_descriptors(
+    base: &str,
+    audio_channels: u8,
+    midi: bool,
+    next_port_id: &mut u64,
+) -> Vec<BackendPortDescriptor> {
+    let mut ports = Vec::with_capacity(audio_channels as usize * 2 + 2);
+    let mut add = |name: String, data_type, direction, role| {
+        let id = BackendPortId::from_raw(*next_port_id);
+        *next_port_id = next_port_id.saturating_add(1);
+        ports.push(BackendPortDescriptor {
+            id,
+            name,
+            data_type,
+            direction,
+            role,
+        });
+    };
+    for index in 0..audio_channels {
+        let suffix = if audio_channels == 1 {
+            String::new()
+        } else {
+            format!("_{}", index + 1)
+        };
+        add(
+            format!("{base}_direct_in{suffix}"),
+            BackendPortDataType::Audio,
+            BackendPortDirection::Input,
+            BackendPortRole::AudioInput,
+        );
+        add(
+            format!("{base}_direct_out{suffix}"),
+            BackendPortDataType::Audio,
+            BackendPortDirection::Output,
+            BackendPortRole::AudioOutput,
+        );
+    }
+    if midi {
+        add(
+            format!("{base}_direct_midi_in"),
+            BackendPortDataType::Midi,
+            BackendPortDirection::Input,
+            BackendPortRole::MidiInput,
+        );
+        add(
+            format!("{base}_direct_midi_out"),
+            BackendPortDataType::Midi,
+            BackendPortDirection::Output,
+            BackendPortRole::MidiOutput,
+        );
+    }
+    ports
+}
+
 impl Backend for WebAudioBackend {
     fn create_loop(&mut self) -> Result<BackendLoopId> {
         Err(anyhow!("standalone browser loops are unsupported"))
@@ -924,13 +981,19 @@ impl Backend for WebAudioBackend {
 
     fn create_direct_track(&mut self, request: DirectTrackRequest) -> Result<BackendTrackCreation> {
         let track_id = BackendTrackId::from_raw(self.next_track_id);
+        let ports = browser_port_descriptors(
+            &request.port_name_base,
+            request.audio_channels,
+            request.midi,
+            &mut self.next_port_id,
+        );
         let loops: Vec<_> = (0..request.initial_loops)
             .map(|offset| BackendLoopId::from_raw(self.next_loop_id + offset as u64))
             .collect();
         self.submit(Command::CreateTrack {
             expected_track_id: track_id.raw(),
             expected_loop_ids: loops.iter().map(|id| id.raw()).collect(),
-            port_name_base: request.port_name_base,
+            port_name_base: request.port_name_base.clone(),
             audio_channels: request.audio_channels,
             midi: request.midi,
         })?;
@@ -946,6 +1009,16 @@ impl Backend for WebAudioBackend {
                 ..Default::default()
             },
         );
+        for port in &ports {
+            self.snapshot.connections.ports.insert(
+                port.id,
+                BackendPortConnectionState {
+                    port: port.clone(),
+                    candidates: Vec::new(),
+                },
+            );
+        }
+        self.snapshot.connections.revision = self.snapshot.connections.revision.wrapping_add(1);
         for loop_id in &loops {
             self.snapshot.loops.insert(
                 *loop_id,
@@ -958,7 +1031,11 @@ impl Backend for WebAudioBackend {
                 },
             );
         }
-        Ok(BackendTrackCreation { track_id, loops })
+        Ok(BackendTrackCreation {
+            track_id,
+            loops,
+            ports,
+        })
     }
 
     fn add_loop_to_track(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {

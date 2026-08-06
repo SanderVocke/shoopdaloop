@@ -239,6 +239,113 @@ impl Default for LoopState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum PortDataType {
+    Audio,
+    Midi,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum PortDirection {
+    Input,
+    Output,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum PortRole {
+    AudioInput,
+    AudioOutput,
+    AudioSend,
+    AudioReturn,
+    MidiInput,
+    MidiOutput,
+    MidiSend,
+}
+
+impl PortRole {
+    pub const ORDERED: [Self; 7] = [
+        Self::AudioInput,
+        Self::AudioOutput,
+        Self::AudioSend,
+        Self::AudioReturn,
+        Self::MidiInput,
+        Self::MidiOutput,
+        Self::MidiSend,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::AudioInput => "Audio in",
+            Self::AudioOutput => "Audio out",
+            Self::AudioSend => "Audio send",
+            Self::AudioReturn => "Audio return",
+            Self::MidiInput => "MIDI in",
+            Self::MidiOutput => "MIDI out",
+            Self::MidiSend => "MIDI send",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExternalPortConnectionState {
+    pub full_name: String,
+    pub eligible: bool,
+    pub connected: bool,
+    pub pending: Option<bool>,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LocalPortConnectionState {
+    pub id: PortId,
+    pub track_id: TrackId,
+    pub name: String,
+    pub data_type: PortDataType,
+    pub direction: PortDirection,
+    pub role: PortRole,
+    pub candidates: Arc<[ExternalPortConnectionState]>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConnectionErrorKind {
+    StaleLocalPort,
+    EndpointUnavailable,
+    Incompatible,
+    CommandSaturated,
+    BackendRejected,
+    TimedOut,
+    BackendUnavailable,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConnectionErrorState {
+    pub port_id: Option<PortId>,
+    pub external_port: Option<String>,
+    pub kind: ConnectionErrorKind,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConnectionViewState {
+    pub revision: u64,
+    pub loading: bool,
+    pub backend_available: bool,
+    pub ports: Arc<[LocalPortConnectionState]>,
+    pub errors: Arc<[ConnectionErrorState]>,
+}
+
+impl Default for ConnectionViewState {
+    fn default() -> Self {
+        Self {
+            revision: 0,
+            loading: true,
+            backend_available: false,
+            ports: Arc::from([]),
+            errors: Arc::from([]),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct TrackState {
     pub id: TrackId,
@@ -246,6 +353,7 @@ pub struct TrackState {
     pub is_sync: bool,
     pub loops: Vec<LoopState>,
     pub controls: TrackControlState,
+    pub port_ids: Arc<[PortId]>,
 }
 
 #[derive(Clone, Debug)]
@@ -287,6 +395,7 @@ pub struct AppSnapshot {
     pub global_controls: GlobalControlState,
     pub status: StatusState,
     pub details: Option<LoopDetailsState>,
+    pub connections: Arc<ConnectionViewState>,
     pub notifications: Vec<AppNotification>,
 }
 
@@ -376,6 +485,11 @@ pub enum AppIntent {
     AddLoop {
         track_id: TrackId,
     },
+    SetPortConnected {
+        port_id: PortId,
+        external_port: String,
+        connected: bool,
+    },
 }
 
 pub type AppAction = AppIntent;
@@ -453,6 +567,79 @@ mod tests {
                 action: LoopAction::IconClicked(SelectionModifiers { additive: true }),
             }
         );
+    }
+
+    #[test]
+    fn connection_contract_preserves_identity_roles_and_exact_desired_state() {
+        let port_id = PortId::from_raw(17);
+        let track_id = TrackId::from_raw(3);
+        let endpoint = "client:name:with:colons".to_owned();
+        let port = LocalPortConnectionState {
+            id: port_id,
+            track_id,
+            name: "Track direct in".to_owned(),
+            data_type: PortDataType::Audio,
+            direction: PortDirection::Input,
+            role: PortRole::AudioInput,
+            candidates: Arc::from([ExternalPortConnectionState {
+                full_name: endpoint.clone(),
+                eligible: true,
+                connected: false,
+                pending: Some(true),
+                error: None,
+            }]),
+        };
+        assert_eq!(port.track_id, track_id);
+        assert_eq!(port.role, PortRole::AudioInput);
+        assert_eq!(port.candidates[0].full_name, endpoint);
+        assert_eq!(
+            AppIntent::SetPortConnected {
+                port_id,
+                external_port: endpoint.clone(),
+                connected: true,
+            },
+            AppIntent::SetPortConnected {
+                port_id,
+                external_port: endpoint,
+                connected: true,
+            }
+        );
+        assert_eq!(
+            PortRole::ORDERED.map(PortRole::label),
+            [
+                "Audio in",
+                "Audio out",
+                "Audio send",
+                "Audio return",
+                "MIDI in",
+                "MIDI out",
+                "MIDI send",
+            ]
+        );
+    }
+
+    #[test]
+    fn connection_snapshots_are_structurally_shared_and_independent() {
+        let ports: Arc<[LocalPortConnectionState]> = Arc::from([]);
+        let first = AppSnapshot {
+            connections: Arc::new(ConnectionViewState {
+                revision: 4,
+                loading: false,
+                backend_available: true,
+                ports: Arc::clone(&ports),
+                errors: Arc::from([]),
+            }),
+            ..Default::default()
+        };
+        let mut second = first.clone();
+        second.revision = 9;
+        assert!(Arc::ptr_eq(&first.connections, &second.connections));
+        assert!(Arc::ptr_eq(
+            &first.connections.ports,
+            &second.connections.ports
+        ));
+        assert_eq!(first.revision, 0);
+        assert_eq!(first.connections.revision, 4);
     }
 
     #[test]
