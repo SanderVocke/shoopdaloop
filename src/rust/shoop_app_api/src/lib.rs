@@ -89,6 +89,21 @@ impl Default for GlobalControlState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum AudioDriverState {
+    #[default]
+    Dummy,
+    AwaitingGesture,
+    RequestingPermission,
+    Starting,
+    Running,
+    Suspended,
+    Denied,
+    Unsupported,
+    Failed,
+    Stopped,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct StatusState {
     pub version: String,
@@ -96,6 +111,17 @@ pub struct StatusState {
     pub xruns: u32,
     pub buffer_size: u32,
     pub sample_rate: u32,
+    pub audio_driver: AudioDriverState,
+    pub callback_count: u64,
+    pub processed_frames: u64,
+    pub input_peak: f32,
+    pub output_peak: f32,
+    pub callback_budget_overruns: u32,
+    pub render_discontinuities: u32,
+    pub memory_growths: u32,
+    pub command_overflows: u32,
+    pub storage_low_channels: u32,
+    pub storage_exhaustions: u32,
 }
 
 impl StatusState {

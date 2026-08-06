@@ -22,6 +22,7 @@ Discovery:
 
 - `Explored for M1`: investigated enough to define the first milestone behavior.
 - `Explored for M2`: investigated enough to define the cross-target dummy-engine milestone behavior.
+- `Explored for M3`: investigated enough to define the direct browser Web Audio milestone behavior.
 - `Partially explored`: some relevant behavior is known, but later work must continue discovery.
 - `Unexplored`: not yet inventoried for replacement.
 
@@ -39,6 +40,7 @@ Milestone target:
 - `Required`: must be complete for milestone 1.
 - `Required subset`: only the behavior stated in the notes is required for milestone 1.
 - `M2 required`: must be complete for `EGUI_MILESTONE_2_ENGINE.md`.
+- `M3 required`: must be complete for `EGUI_MILESTONE_3_BROWSER_AUDIO.md`.
 - `Superseded in M2`: completed Milestone 1 behavior intentionally replaced by the accepted Milestone 2 architecture; its historical evidence remains valid.
 - `Deferred`: explicitly outside the active milestone, but not outside the project.
 
@@ -84,6 +86,19 @@ Evidence referenced by the M2 rows consists of:
 - Dependency isolation: the Wasm runner tree contains `shoop_app`, `shoop_backend`, and `shoop_engine` but no JACK, CPAL, Midir, LV2, frontend, Qt, X11, or Wayland package; the `shoop_egui` tree remains limited to presentation dependencies and `shoop_app_api`.
 - Compatibility gates: warning-denying builds, formatting, all workspace Rust tests with the full engine application backend, and retained QML self-tests pass. The QML suite reports 197 passed, 0 failed, and one environment skip for unavailable CPAL virtual playback ports.
 - Native graphical environment note: native construction, real-engine workflows, and 360×200/900×600 paint tests pass. A local Xvfb process could not provide a GLX framebuffer configuration, so OS-window runtime smoke is an environment skip; the unchanged eframe native bootstrap is compiled and its prior M1 Xvfb evidence remains applicable.
+
+## Baseline sources inspected for milestone 3 planning
+
+The direct browser audio plan is based on:
+
+- Browser composition, cooperative runtime, status diagnostics, packaging, and smoke automation: `src/rust/shoopdaloop_egui/src/main.rs`, its HTML/Trunk/single-file tooling, and `.github/workflows/wasm_egui.yml`.
+- Synchronous backend and application assumptions: `src/rust/shoop_backend/src/lib.rs` and `src/rust/shoop_app/src/lib.rs`.
+- Engine audio-thread ownership, bounded command queues, state mirrors, and real-time guards: `src/rust/shoop_engine/src/engine.rs`, `state_mirror.rs`, `realtime_alloc_guard.rs`, `realtime_lock_guard.rs`, and the no-allocation/lock integration tests.
+- Audio ports, recording storage, and topology scheduling constraints: `external_audio_port.rs`, `audio_channel.rs`, `chunked_samples.rs`, `session.rs`, and `graph_scheduler.rs`.
+- Native worker paths that cannot be invoked from a browser worklet: `content_snapshot/runtime.rs` and the full `app_backend.rs`.
+- Browser platform contracts: `getUserMedia` permission is asynchronous and secure-context-only; AudioWorklet runs at the owning `AudioContext` sample rate and normally supplies 128-frame render quantums; browser source/destination boundaries perform device-rate conversion.
+
+The plan deliberately uses `web-sys` and a repository-owned minimal AudioWorklet shim rather than CPAL, Firewheel, or ScriptProcessorNode. It keeps the native egui dummy path and retained native production drivers unchanged. Because microphone permission and AudioWorklet require a secure context, hosted browser audio and directly opened offline artifacts have separate acceptance evidence.
 
 ## Milestone-1 replacement evidence
 
@@ -186,6 +201,35 @@ These rows track the completed `EGUI_MILESTONE_2_ENGINE.md` implementation.
 | M2-SHELL-002 | Unified browser bundle and self-contained artifact | M1 tooling belonged to the preview package. | Explored for M2 | M2 required | Complete | Trunk bundle, self-contained HTML, migrated README and `wasm_egui.yml` workflow |
 | M2-TEST-001 | Equivalent native/cooperative dummy observations | M1 had native dummy and fake contracts only. | Explored for M2 | M2 required | Complete | Backend exact-frame contracts, native actor workflow, cooperative app workflow, native runner workflow, and two-size browser smoke |
 | M2-ARCH-003 | Presentation remains independently backend-free | `shoop_egui` accepts plain snapshots and emits typed intents. | Explored for M2 | M2 required | Complete | GUI tests/Wasm check pass and dependency tree contains `shoop_app_api` but no app/backend/engine implementation |
+
+## Milestone-3 replacement evidence
+
+Milestone 3 is complete. The frozen architecture and limits are recorded in `BROWSER_AUDIO_CONTRACT.md`. Evidence referenced below consists of:
+
+- Dedicated worklet core: `shoop_audio_protocol` and the raw-import-free `shoop_audio_worklet.wasm` artifact, with protocol ordering/malformed/shutdown tests and an allocation-guarded 128-frame full-duplex record/monitor/waveform/playback test.
+- Engine path: physical `ExternalAudioPort` staging, deterministic mono/stereo mapping and mixing, actual-quantum processing, ten-second hard-bounded channel storage, visible low/exhausted counters, and tests proving exhaustion stops safely without render allocation.
+- Browser controller: direct target-gated `web-sys` `AudioContext`, `getUserMedia`, `MediaStreamAudioSourceNode`, `AudioWorklet`, `AudioWorkletNode`, lifecycle listeners, generation-safe retry, and teardown. The UI backend's elapsed-time `advance` is a no-op.
+- Hosted browser evidence: Chrome 147 at 360×200 and 900×600 and Firefox 150 at 900×600 use deterministic non-silent fake microphones. They click enable, create mono and stereo tracks, monitor, record non-zero data, transfer a non-zero waveform, play non-zero output, and retain callback progress with zero protocol overflow.
+- Failure/stress evidence: Chrome denial followed by same-page retry, context suspend/resume, forced processor termination/retry, explicit shutdown, and a 1,500-callback sustained recording workflow all pass without console exceptions or callback-budget diagnostics.
+- Artifact evidence: Trunk reproducibly builds/copies the dedicated worklet. The hosted bundle passes physical-audio automation; the self-contained file passes only when `?offline=1` explicitly selects dummy mode. Dependency trees exclude CPAL, Firewheel, Midir, JACK, LV2, frontend, Qt, X11, and Wayland from the worklet, and module inspection reports no Wasm imports.
+- Native compatibility: warning-denying full workspace build, serialized full workspace tests with `shoop_engine/app_backend`, native egui workflow/paint tests, engine real-time lock/no-allocation tests, JACK test-backend paths, and offscreen QML tests pass. QML reports 236 passed, 0 failed, and one environment skip for unavailable CPAL virtual playback ports.
+- Environment/browser scope: this host has no `/dev/snd`, so physical microphone/headphone hardware was unavailable; deterministic browser fake capture is the acceptance I/O evidence. Safari is untested and is an explicit compatibility limitation rather than a support claim.
+
+| ID | Capability or behavior | Previous baseline | Discovery | M3 target | Current implementation | Replacement evidence |
+|---|---|---|---|---|---|---|
+| M3-AUDIO-001 | Automatic target-selected browser audio driver | The unified browser runner always constructed the cooperative dummy backend. | Explored for M3 | M3 required | Complete | Hosted runs construct only `WebAudioBackend` and wait for enable; native workflow remains threaded dummy; `?offline=1` is explicit |
+| M3-AUDIO-002 | Microphone permission and secure-context lifecycle | No browser media permission or physical device was requested. | Explored for M3 | M3 required | Complete | Chrome grant, deny/retry, suspend, forced failure/retry, shutdown, explicit offline, and direct-file secure-context-limitation tests; generation-safe media cleanup |
+| M3-AUDIO-003 | AudioWorklet-owned Shoop engine clock | Browser engine cycles followed UI elapsed time with a catch-up cap. | Explored for M3 | M3 required | Complete | Browser proxy `advance` is a no-op; worklet callback/frame counters and suspend/resume evidence prove callback-only advancement |
+| M3-AUDIO-004 | Full-duplex microphone/monitor/loop/output path | Browser dummy inputs contained silence and produced no audible destination output. | Explored for M3 | M3 required | Complete | Chrome and Firefox fake-media workflows prove non-zero capture, monitor, recording, waveform, playback, and destination output |
+| M3-AUDIO-005 | Browser-owned sample rate and channel mapping | Dummy processing was fixed at 48 kHz/256 frames and had no device channel negotiation. | Explored for M3 | M3 required | Complete | Actual 48 kHz/128-frame browser evidence plus native mono duplication/stereo mapping/full-duplex contracts; no engine device resampling |
+| M3-RUNTIME-001 | Bounded asynchronous application/worklet protocol | Browser application called a session-owning backend synchronously on the UI thread. | Explored for M3 | M3 required | Complete | Versioned JSON values, stable-ID verification, 256-command/event bounds, strict sequence tests, malformed/stale errors, journal replay, and observable overflow |
+| M3-RUNTIME-002 | Worklet real-time topology and recording storage | M2 synchronously rebuilt graphs and had a small implicit recording reserve. | Explored for M3 | M3 required | Complete | Control-task graph preparation, pre-sized render scratch, hard-bounded ten-second storage, allocation-guarded processing, and exhaustion-stop tests |
+| M3-RUNTIME-003 | Bounded state, meter, and waveform publication | M2 directly polled session state and copied selected-loop data on the browser UI thread. | Explored for M3 | M3 required | Complete | 50 ms requested snapshots and revisioned ordered 512-sample waveform chunks; stress workflow maintains callback progress |
+| M3-RUNTIME-004 | Audio lifecycle and failure recovery | M2 handled elapsed-time tab gaps but had no context, stream, track, or worklet lifecycle. | Explored for M3 | M3 required | Complete | Chrome suspend/resume, denial/retry, processor-loss/retry, generation replacement, handler detachment, track stop, and context close evidence |
+| M3-BUILD-001 | Direct `web-sys` worklet artifact and isolated features | Browser artifact contained one UI Wasm module and no audio worklet. | Explored for M3 | M3 required | Complete | Trunk pre-build worklet production, raw no-import module inspection, and clean target dependency scans |
+| M3-SHELL-001 | Permission, monitoring, driver, and error presentation | Browser status described a dummy engine only. | Explored for M3 | M3 required | Complete | Enable/retry control, typed driver state, callback/rate/quantum/activity/limit DOM attributes, egui diagnostics, and Web MIDI absence label |
+| M3-TEST-001 | Physical-audio evidence without native regressions | Browser smoke proved dummy progression but not non-zero device I/O. | Explored for M3 | M3 required | Complete | Two-size Chrome, Firefox, denial, lifecycle, stress, offline, and direct-file limitation workflows plus warning-free/full-workspace/QML regression gates |
+| M3-ARCH-001 | Presentation/native isolation remains intact | `shoop_egui` was backend-free and native egui used the threaded dummy actor. | Explored for M3 | M3 required | Complete | `shoop_egui` dependency scan stays backend/Web-Audio-free; native tests and retained full backend/QML suites pass |
 
 ## Coarsely listed future areas
 

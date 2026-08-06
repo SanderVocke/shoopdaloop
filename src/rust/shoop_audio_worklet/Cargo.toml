@@ -1,0 +1,17 @@
+[package]
+name = "shoop_audio_worklet"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+shoop_audio_protocol = { path = "../shoop_audio_protocol" }
+shoop_backend = { path = "../shoop_backend" }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+assert_no_alloc = { workspace = true }
+
+[lints]
+workspace = true

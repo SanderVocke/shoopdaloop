@@ -1,0 +1,12 @@
+[package]
+name = "shoop_audio_protocol"
+edition = "2021"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

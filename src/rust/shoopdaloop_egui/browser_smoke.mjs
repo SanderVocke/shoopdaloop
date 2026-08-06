@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -14,7 +14,12 @@ const debugPort = 9222;
 const chrome = process.env.CHROME_BIN || 'google-chrome';
 const browserSize = process.env.BROWSER_SIZE || '900,600';
 const selfContained = process.env.SELF_CONTAINED === '1';
+const secureLimit = process.env.SECURE_LIMIT === '1';
+const denyFirst = process.env.DENY_FIRST === '1';
+const lifecycle = process.env.LIFECYCLE === '1';
+const stress = process.env.STRESS === '1';
 const profile = await mkdtemp(join(tmpdir(), 'shoopdaloop-egui-chrome-'));
+const fakeAudio = join(profile, 'fake-microphone.wav');
 const children = [];
 
 function start(command, args, options = {}) {
@@ -41,23 +46,53 @@ async function waitForJson(url, timeoutMilliseconds) {
   throw new Error(`timed out waiting for ${url}`);
 }
 
+function fakeMicrophoneWav() {
+  const sampleRate = 48000;
+  const samples = sampleRate * 30;
+  const dataBytes = samples * 2;
+  const output = Buffer.alloc(44 + dataBytes);
+  output.write('RIFF', 0);
+  output.writeUInt32LE(36 + dataBytes, 4);
+  output.write('WAVEfmt ', 8);
+  output.writeUInt32LE(16, 16);
+  output.writeUInt16LE(1, 20);
+  output.writeUInt16LE(1, 22);
+  output.writeUInt32LE(sampleRate, 24);
+  output.writeUInt32LE(sampleRate * 2, 28);
+  output.writeUInt16LE(2, 32);
+  output.writeUInt16LE(16, 34);
+  output.write('data', 36);
+  output.writeUInt32LE(dataBytes, 40);
+  for (let index = 0; index < samples; index += 1) {
+    const sample = Math.round(Math.sin(2 * Math.PI * 440 * index / sampleRate) * 12000);
+    output.writeInt16LE(sample, 44 + index * 2);
+  }
+  return output;
+}
+
 let websocket;
 try {
+  await writeFile(fakeAudio, fakeMicrophoneWav());
   if (!selfContained) {
     start('python3', ['-m', 'http.server', String(webPort), '--bind', host], { cwd: 'dist' });
   }
-  start(chrome, [
+  const chromeArgs = [
     '--headless=new',
     '--no-sandbox',
     '--disable-gpu-sandbox',
     '--enable-webgl',
     '--enable-unsafe-swiftshader',
     '--ignore-gpu-blocklist',
+    '--autoplay-policy=no-user-gesture-required',
+    '--use-fake-device-for-media-stream',
+    `--use-file-for-fake-audio-capture=${fakeAudio}`,
     `--window-size=${browserSize}`,
     `--remote-debugging-port=${debugPort}`,
     `--user-data-dir=${profile}`,
     'about:blank',
-  ]);
+  ];
+  if (!denyFirst) chromeArgs.splice(9, 0, '--use-fake-ui-for-media-stream');
+  start(chrome, chromeArgs);
 
   const targets = await waitForJson(`http://${host}:${debugPort}/json`, 15_000);
   const target = targets.find(candidate => candidate.type === 'page');
@@ -80,10 +115,9 @@ try {
       return;
     }
     if (message.method === 'Runtime.exceptionThrown') failures.push(message);
-    if (
-      message.method === 'Runtime.consoleAPICalled'
-      && message.params.type === 'error'
-    ) failures.push(message);
+    if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') {
+      failures.push(message);
+    }
   };
 
   function call(method, params = {}) {
@@ -92,50 +126,165 @@ try {
     return new Promise(resolve => pending.set(id, resolve));
   }
 
+  async function evaluate(expression) {
+    const response = await call('Runtime.evaluate', { expression, returnByValue: true });
+    return response.result?.result?.value;
+  }
+
+  async function waitFor(predicate, description, timeout = 30_000) {
+    const deadline = Date.now() + timeout;
+    let state;
+    while (Date.now() < deadline) {
+      state = await evaluate(statusExpression);
+      if (predicate(state)) return state;
+      await delay(100);
+    }
+    throw new Error(`${description}: ${JSON.stringify(state)}`);
+  }
+
+  async function clickEnable() {
+    const bounds = await evaluate(`(() => {
+      const rect = document.getElementById('enable_audio').getBoundingClientRect();
+      return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+    })()`);
+    await call('Input.dispatchMouseEvent', { type: 'mousePressed', x: bounds.x, y: bounds.y, button: 'left', clickCount: 1 });
+    await call('Input.dispatchMouseEvent', { type: 'mouseReleased', x: bounds.x, y: bounds.y, button: 'left', clickCount: 1 });
+  }
+
   await call('Runtime.enable');
   await call('Page.enable');
+  const origin = `http://${host}:${webPort}`;
+  if (denyFirst) {
+    await call('Browser.setPermission', {
+      permission: { name: 'audioCapture' },
+      setting: 'denied',
+      origin,
+    });
+  }
   const entryUrl = selfContained
-    ? `${pathToFileURL(join(process.cwd(), 'dist', 'shoopdaloop_egui.html')).href}?self-test=1`
-    : `http://${host}:${webPort}/?self-test=1`;
+    ? `${pathToFileURL(join(process.cwd(), 'dist', 'shoopdaloop_egui.html')).href}${secureLimit ? '' : '?offline=1'}`
+    : `${origin}/?self-test=1${stress ? '&stress=1' : ''}`;
   await call('Page.navigate', { url: entryUrl });
 
-  const expression = `({
+  const statusExpression = `({
     status: document.getElementById('runtime_status')?.textContent,
     revision: Number(document.getElementById('runtime_status')?.getAttribute('data-engine-revision')),
     selfTest: document.getElementById('runtime_status')?.getAttribute('data-self-test'),
+    driver: document.getElementById('runtime_status')?.getAttribute('data-driver-state'),
+    callbacks: Number(document.getElementById('runtime_status')?.getAttribute('data-callback-count')),
+    frames: Number(document.getElementById('runtime_status')?.getAttribute('data-processed-frames')),
+    inputPeak: Number(document.getElementById('runtime_status')?.getAttribute('data-input-peak')),
+    outputPeak: Number(document.getElementById('runtime_status')?.getAttribute('data-output-peak')),
+    sampleRate: Number(document.getElementById('runtime_status')?.getAttribute('data-sample-rate')),
+    captureChannels: Number(document.getElementById('runtime_status')?.getAttribute('data-capture-channels')),
+    quantum: Number(document.getElementById('runtime_status')?.getAttribute('data-render-quantum')),
+    budgetOverruns: Number(document.getElementById('runtime_status')?.getAttribute('data-callback-budget-overruns')),
+    discontinuities: Number(document.getElementById('runtime_status')?.getAttribute('data-render-discontinuities')),
+    memoryGrowths: Number(document.getElementById('runtime_status')?.getAttribute('data-memory-growths')),
+    overflows: Number(document.getElementById('runtime_status')?.getAttribute('data-command-overflows')),
+    webMidi: document.getElementById('runtime_status')?.getAttribute('data-web-midi'),
+    waveformSamples: Number(document.getElementById('runtime_status')?.getAttribute('data-waveform-samples')),
+    waveformPeak: Number(document.getElementById('runtime_status')?.getAttribute('data-waveform-peak')),
+    waveformLoading: document.getElementById('runtime_status')?.getAttribute('data-waveform-loading'),
+    enableHidden: document.getElementById('enable_audio')?.hidden,
     canvasWidth: document.getElementById('shoop_canvas')?.width,
     canvasHeight: document.getElementById('shoop_canvas')?.height,
   })`;
-  const deadline = Date.now() + 20_000;
-  let state;
-  while (Date.now() < deadline) {
-    const response = await call('Runtime.evaluate', { expression, returnByValue: true });
-    state = response.result?.result?.value;
-    if (state?.selfTest === 'passed' && state.revision > 0) break;
-    if (state?.selfTest === 'failed') throw new Error('browser self-test reported failure');
-    await delay(100);
-  }
-  if (state?.selfTest !== 'passed') {
-    throw new Error(`browser self-test did not finish: ${JSON.stringify(state)}`);
-  }
-  if (!(state.canvasWidth > 0 && state.canvasHeight > 0)) {
-    throw new Error(`canvas was not sized: ${JSON.stringify(state)}`);
-  }
 
-  const firstRevision = state.revision;
-  await delay(250);
-  const later = await call('Runtime.evaluate', { expression, returnByValue: true });
-  state = later.result?.result?.value;
-  if (!(state.revision > firstRevision)) {
-    throw new Error(`application revisions stopped advancing: ${JSON.stringify(state)}`);
+  if (selfContained) {
+    if (secureLimit) {
+      await waitFor(
+        candidate => candidate.driver === 'Unsupported' && candidate.revision > 0,
+        'direct-file secure-context limitation was not visible',
+      );
+      await clickEnable();
+      const state = await waitFor(
+        candidate => candidate.status.includes('requires HTTPS or localhost'),
+        'direct-file microphone limitation was not precise',
+      );
+      console.log(`self-contained secure-context limitation passed at ${browserSize}: ${state.status}`);
+    } else {
+      const state = await waitFor(
+        candidate => candidate.driver === 'Dummy' && candidate.revision > 0,
+        'offline dummy mode did not start',
+      );
+      if (!state.status.includes('Explicit offline dummy')) {
+        throw new Error(`offline artifact was not explicit: ${JSON.stringify(state)}`);
+      }
+      console.log(`explicit self-contained offline dummy passed at ${browserSize}`);
+    }
+  } else {
+    await waitFor(candidate => candidate.selfTest === 'awaiting-audio', 'enable action was not presented');
+    await clickEnable();
+    if (denyFirst) {
+      const denied = await waitFor(candidate => candidate.driver === 'Denied', 'permission denial was not visible');
+      if (denied.enableHidden) throw new Error('retry action stayed hidden after denial');
+      await call('Browser.resetPermissions');
+      await call('Browser.grantPermissions', {
+        permissions: ['audioCapture'],
+        origin,
+      });
+      await clickEnable();
+    }
+    let state = await waitFor(
+      candidate => candidate.selfTest === 'passed' && candidate.driver === 'Running',
+      'browser physical-audio self-test did not finish',
+      30_000,
+    );
+    if (!(state.callbacks > 0 && state.frames >= state.callbacks * 128)) {
+      throw new Error(`worklet callback evidence is invalid: ${JSON.stringify(state)}`);
+    }
+    if (stress && state.callbacks < 1_500) {
+      throw new Error(`stress recording ended too early: ${JSON.stringify(state)}`);
+    }
+    if (!(state.inputPeak > 0 && state.outputPeak > 0)) {
+      throw new Error(`non-zero I/O evidence is missing: ${JSON.stringify(state)}`);
+    }
+    if (!(state.sampleRate > 0 && state.quantum === 128 && state.captureChannels > 0)) {
+      throw new Error(`context rate/quantum diagnostics are invalid: ${JSON.stringify(state)}`);
+    }
+    if (state.budgetOverruns !== 0 || state.overflows !== 0 || state.webMidi !== 'unavailable') {
+      throw new Error(`bounded protocol or Web MIDI diagnostics are invalid: ${JSON.stringify(state)}`);
+    }
+    if (!(state.canvasWidth > 0 && state.canvasHeight > 0)) {
+      throw new Error(`canvas was not sized: ${JSON.stringify(state)}`);
+    }
+    const firstCallbacks = state.callbacks;
+    await delay(250);
+    state = await evaluate(statusExpression);
+    if (!(state.callbacks > firstCallbacks)) {
+      throw new Error(`audio callbacks stopped advancing: ${JSON.stringify(state)}`);
+    }
+    if (lifecycle) {
+      await evaluate("dispatchEvent(new Event('shoop-test-audio-suspend'))");
+      const suspended = await waitFor(candidate => candidate.driver === 'Suspended', 'context suspension was not visible');
+      await evaluate("dispatchEvent(new Event('shoop-test-audio-resume'))");
+      state = await waitFor(
+        candidate => candidate.driver === 'Running' && candidate.callbacks > suspended.callbacks,
+        'context did not resume callback progress',
+      );
+      await evaluate("dispatchEvent(new Event('shoop-test-audio-fail'))");
+      const failed = await waitFor(candidate => candidate.driver === 'Failed', 'worklet failure was not visible');
+      if (failed.enableHidden) throw new Error('retry action stayed hidden after worklet failure');
+      await clickEnable();
+      state = await waitFor(
+        candidate => candidate.driver === 'Running' && candidate.callbacks > 0,
+        'worklet retry did not create one running generation',
+      );
+      await evaluate("dispatchEvent(new Event('shoop-test-audio-shutdown'))");
+      const stopped = await waitFor(candidate => candidate.driver === 'Stopped', 'audio shutdown was not visible');
+      const stoppedCallbacks = stopped.callbacks;
+      await delay(250);
+      state = await evaluate(statusExpression);
+      if (state.callbacks !== stoppedCallbacks || state.enableHidden) {
+        throw new Error(`shutdown did not stop callbacks and expose retry: ${JSON.stringify(state)}`);
+      }
+    }
+    console.log(`browser Web Audio self-test passed at ${browserSize}, callback ${state.callbacks}`);
   }
   if (failures.length > 0) {
     throw new Error(`browser reported runtime errors: ${JSON.stringify(failures)}`);
   }
-
-  console.log(
-    `browser dummy-engine self-test passed for ${selfContained ? 'self-contained HTML' : 'bundle'} at ${browserSize} and revision ${state.revision}`,
-  );
 } finally {
   if (websocket) websocket.close();
   for (const child of children.reverse()) child.kill('SIGTERM');

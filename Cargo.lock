@@ -4286,10 +4286,29 @@ name = "shoop_app_api"
 version = "0.0.0"
 
 [[package]]
+name = "shoop_audio_protocol"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "shoop_audio_worklet"
+version = "0.0.0"
+dependencies = [
+ "assert_no_alloc",
+ "serde_json",
+ "shoop_audio_protocol",
+ "shoop_backend",
+]
+
+[[package]]
 name = "shoop_backend"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "assert_no_alloc",
  "shoop_engine",
 ]
 
@@ -4373,8 +4392,11 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "eframe",
+ "js-sys",
  "log",
+ "serde_json",
  "shoop_app",
+ "shoop_audio_protocol",
  "shoop_backend",
  "shoop_egui",
  "wasm-bindgen",

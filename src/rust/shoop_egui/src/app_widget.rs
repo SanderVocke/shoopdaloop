@@ -285,6 +285,30 @@ impl AppWidget {
                 .text(format!("{:.1}%", state.status.dsp_load_percent)),
         );
         ui.label(format!("xruns: {}", state.status.xruns));
+        ui.label(format!("audio: {:?}", state.status.audio_driver));
+        if state.status.callback_count > 0 {
+            ui.label(format!("callbacks: {}", state.status.callback_count));
+            ui.label(format!(
+                "I/O peak: {:.3} / {:.3}",
+                state.status.input_peak, state.status.output_peak
+            ));
+        }
+        if state.status.callback_budget_overruns > 0
+            || state.status.command_overflows > 0
+            || state.status.storage_low_channels > 0
+            || state.status.storage_exhaustions > 0
+        {
+            ui.colored_label(
+                egui::Color32::YELLOW,
+                format!(
+                    "audio limits: budget {} / queue {} / storage low {} / exhausted {}",
+                    state.status.callback_budget_overruns,
+                    state.status.command_overflows,
+                    state.status.storage_low_channels,
+                    state.status.storage_exhaustions
+                ),
+            );
+        }
         ui.separator();
         ui.label(format!("latency: {} frames", state.status.buffer_size));
         match state.status.latency_ms() {

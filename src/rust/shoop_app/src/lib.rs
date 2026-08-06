@@ -7,9 +7,10 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use shoop_app_api::{
-    AppIntent, AppNotification, AppSnapshot, ChannelId, DirectTrackSpec, GlobalControlAction,
-    LoopAction, LoopDetailsState, LoopId, LoopMode, LoopState, NotificationLevel, StatusState,
-    TrackAction, TrackControlState, TrackId, TrackState, WaveformChannelState,
+    AppIntent, AppNotification, AppSnapshot, AudioDriverState, ChannelId, DirectTrackSpec,
+    GlobalControlAction, LoopAction, LoopDetailsState, LoopId, LoopMode, LoopState,
+    NotificationLevel, StatusState, TrackAction, TrackControlState, TrackId, TrackState,
+    WaveformChannelState,
 };
 use shoop_backend::{
     Backend, BackendLoopId, BackendLoopMode, BackendSnapshot, BackendTrackControl, BackendTrackId,
@@ -73,7 +74,7 @@ pub struct ApplicationRuntime {
 }
 
 impl ApplicationRuntime {
-    pub fn start(mut backend: Box<dyn Backend>) -> Result<Self> {
+    pub fn start(mut backend: Box<dyn Backend + Send>) -> Result<Self> {
         let model = ApplicationModel::initialize(&mut *backend)?;
         let initial = Arc::new(model.snapshot());
         let snapshot = Arc::new(RwLock::new(initial));
@@ -160,7 +161,7 @@ enum ApplicationMessage {
 
 fn run_actor(
     mut model: ApplicationModel,
-    mut backend: Box<dyn Backend>,
+    mut backend: Box<dyn Backend + Send>,
     receiver: Receiver<ApplicationMessage>,
     published: Arc<RwLock<Arc<AppSnapshot>>>,
 ) {
@@ -191,6 +192,9 @@ fn update_application(
     match backend.poll() {
         Ok(snapshot) => model.apply_backend_snapshot(snapshot),
         Err(error) => model.notify_error(format!("backend poll failed: {error}")),
+    }
+    if let Err(error) = model.refresh_selected_audio(backend) {
+        model.notify_error(error);
     }
     model.revision = model.revision.wrapping_add(1);
     publish(Arc::new(model.snapshot()));
@@ -587,13 +591,22 @@ impl ApplicationModel {
             .map(|model| (model.id, model.backend_id))
             .collect();
         for model in self.loops.values_mut() {
-            model.audio_data = None;
+            if !model.state.selected {
+                model.audio_data = None;
+            }
         }
         if let [(id, backend_id)] = selected.as_slice() {
+            if self
+                .loops
+                .get(id)
+                .is_some_and(|model| model.audio_data.is_some())
+            {
+                return Ok(());
+            }
             let data = backend
                 .loop_audio_data(*backend_id)
                 .map_err(|error| format!("could not fetch selected loop audio: {error}"))?;
-            if let Some(model) = self.loops.get_mut(id) {
+            if let (Some(model), Some(data)) = (self.loops.get_mut(id), data) {
                 model.audio_data = Some(data);
             }
         }
@@ -745,6 +758,30 @@ impl ApplicationModel {
         self.status.xruns = self.status.xruns.saturating_add(snapshot.status.xruns);
         self.status.buffer_size = snapshot.status.buffer_size;
         self.status.sample_rate = snapshot.status.sample_rate;
+        self.status.audio_driver = match snapshot.status.driver_state {
+            shoop_backend::BackendDriverState::Dummy => AudioDriverState::Dummy,
+            shoop_backend::BackendDriverState::AwaitingGesture => AudioDriverState::AwaitingGesture,
+            shoop_backend::BackendDriverState::RequestingPermission => {
+                AudioDriverState::RequestingPermission
+            }
+            shoop_backend::BackendDriverState::Starting => AudioDriverState::Starting,
+            shoop_backend::BackendDriverState::Running => AudioDriverState::Running,
+            shoop_backend::BackendDriverState::Suspended => AudioDriverState::Suspended,
+            shoop_backend::BackendDriverState::Denied => AudioDriverState::Denied,
+            shoop_backend::BackendDriverState::Unsupported => AudioDriverState::Unsupported,
+            shoop_backend::BackendDriverState::Failed => AudioDriverState::Failed,
+            shoop_backend::BackendDriverState::Stopped => AudioDriverState::Stopped,
+        };
+        self.status.callback_count = snapshot.status.callback_count;
+        self.status.processed_frames = snapshot.status.processed_frames;
+        self.status.input_peak = snapshot.status.input_peak;
+        self.status.output_peak = snapshot.status.output_peak;
+        self.status.callback_budget_overruns = snapshot.status.callback_budget_overruns;
+        self.status.render_discontinuities = snapshot.status.render_discontinuities;
+        self.status.memory_growths = snapshot.status.memory_growths;
+        self.status.command_overflows = snapshot.status.command_overflows;
+        self.status.storage_low_channels = snapshot.status.storage_low_channels;
+        self.status.storage_exhaustions = snapshot.status.storage_exhaustions;
         for track in &mut self.tracks {
             let Some(backend_state) = snapshot.tracks.get(&track.backend_id) else {
                 continue;

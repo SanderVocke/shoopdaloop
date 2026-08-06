@@ -1,4 +1,4 @@
-name: WebAssembly egui dummy engine
+name: WebAssembly egui Web Audio
 
 on:
   push:
@@ -8,6 +8,8 @@ on:
       - "Cargo.lock"
       - "Cargo.toml"
       - "rust-toolchain.toml"
+      - "src/rust/shoop_audio_protocol/**"
+      - "src/rust/shoop_audio_worklet/**"
       - "src/rust/shoop_app_api/**"
       - "src/rust/shoop_app/**"
       - "src/rust/shoop_backend/**"
@@ -20,6 +22,8 @@ on:
       - "Cargo.lock"
       - "Cargo.toml"
       - "rust-toolchain.toml"
+      - "src/rust/shoop_audio_protocol/**"
+      - "src/rust/shoop_audio_worklet/**"
       - "src/rust/shoop_app_api/**"
       - "src/rust/shoop_app/**"
       - "src/rust/shoop_backend/**"
@@ -46,8 +50,10 @@ jobs:
       - name: Install Trunk
         run: cargo install --locked trunk --version 0.21.14
 
-      - name: Check dummy-only Wasm package
-        run: cargo check -p shoopdaloop_egui --target wasm32-unknown-unknown
+      - name: Check browser UI and worklet packages
+        run: |
+          cargo check -p shoopdaloop_egui --target wasm32-unknown-unknown
+          cargo check -p shoop_audio_worklet --target wasm32-unknown-unknown
 
       - name: Build browser application
         working-directory: src/rust/shoopdaloop_egui
@@ -57,12 +63,40 @@ jobs:
         working-directory: src/rust/shoopdaloop_egui
         run: python3 build_single_file_app.py dist
 
-      - name: Run browser dummy-engine workflow
+      - name: Inspect browser dependency isolation
+        run: |
+          cargo tree -p shoop_audio_worklet --target wasm32-unknown-unknown > /tmp/worklet-tree.txt
+          cargo tree -p shoopdaloop_egui --target wasm32-unknown-unknown > /tmp/browser-tree.txt
+          ! grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|frontend|cxx-qt|egui-cxx-qt|firewheel) v|\(.*src/rust/frontend\))' /tmp/worklet-tree.txt
+          ! grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|frontend|cxx-qt|egui-cxx-qt|firewheel) v|\(.*src/rust/frontend\))' /tmp/browser-tree.txt
+          node -e "const fs=require('fs'); const m=new WebAssembly.Module(fs.readFileSync('src/rust/shoopdaloop_egui/dist/generated/shoop_audio_worklet.wasm')); if (WebAssembly.Module.imports(m).length) throw new Error('worklet Wasm has imports')"
+
+      - name: Run hosted Web Audio fake-media workflows
         working-directory: src/rust/shoopdaloop_egui
         run: |
           BROWSER_SIZE=360,200 node --experimental-websocket browser_smoke.mjs
           BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
+          DENY_FIRST=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
+          LIFECYCLE=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
+          STRESS=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
+
+      - name: Install Firefox browser test tools
+        uses: browser-actions/setup-firefox@v1
+
+      - uses: browser-actions/setup-geckodriver@latest
+
+      - name: Install Selenium
+        run: python3 -m pip install selenium
+
+      - name: Run Firefox Web Audio fake-media workflow
+        working-directory: src/rust/shoopdaloop_egui
+        run: xvfb-run -a python3 browser_firefox_smoke.py
+
+      - name: Run self-contained offline workflow
+        working-directory: src/rust/shoopdaloop_egui
+        run: |
           SELF_CONTAINED=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
+          SELF_CONTAINED=1 SECURE_LIMIT=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
 
       - name: Upload browser bundle
         uses: actions/upload-artifact@v4

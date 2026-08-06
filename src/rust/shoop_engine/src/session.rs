@@ -1058,6 +1058,29 @@ impl Session {
         self.add_audio_channel_with_state_and_snapshots(loop_idx, chunk_size, mode, state, None)
     }
 
+    pub fn add_audio_channel_with_bounded_capacity(
+        &mut self,
+        loop_idx: usize,
+        chunk_size: usize,
+        capacity: usize,
+        mode: ChannelMode,
+    ) -> Result<usize, SessionError> {
+        let loop_ = self
+            .loops
+            .get_mut(loop_idx)
+            .ok_or(SessionError::NoSuchLoop(loop_idx))?;
+        let channel_idx = loop_.add_audio_channel_with_bounded_capacity(chunk_size, capacity, mode);
+        self.channels.push(ChannelMapping {
+            loop_idx,
+            kind: ChannelKind::Audio,
+            channel_idx,
+            input_port: None,
+            output_port: None,
+        });
+        self.note_graph_change();
+        Ok(self.channels.len() - 1)
+    }
+
     pub fn add_audio_channel_with_state_and_snapshots(
         &mut self,
         loop_idx: usize,
@@ -1808,7 +1831,12 @@ impl Session {
             if let Some(audio) = port.audio_mut() {
                 audio.reserve_processing(self.buffer_size as usize);
             }
+            if let Some(external) = port.as_external_mut() {
+                let _ = external.buffer(self.buffer_size as usize);
+            }
         }
+        self.scratch.resize(self.buffer_size as usize, 0.0);
+        self.out_scratch.resize(self.buffer_size as usize, 0.0);
 
         std::mem::swap(&mut self.specs, &mut prepared.specs);
         std::mem::swap(&mut self.node_map, &mut prepared.node_map);

@@ -5,6 +5,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Result};
 use shoop_engine::dummy_midi_port::DummyMidiPort;
 use shoop_engine::dummy_port::{DummyAudioPort, PortId};
+use shoop_engine::external_audio_port::ExternalAudioPort;
 use shoop_engine::session::{Port, Session};
 use shoop_engine::{ChannelMode, LoopMode, PortDirection};
 
@@ -74,12 +75,38 @@ pub struct BackendTrackState {
     pub output_midi_activity: bool,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum BackendDriverState {
+    #[default]
+    Dummy,
+    AwaitingGesture,
+    RequestingPermission,
+    Starting,
+    Running,
+    Suspended,
+    Denied,
+    Unsupported,
+    Failed,
+    Stopped,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct BackendStatus {
     pub dsp_load_percent: f32,
     pub xruns: u32,
     pub buffer_size: u32,
     pub sample_rate: u32,
+    pub driver_state: BackendDriverState,
+    pub callback_count: u64,
+    pub processed_frames: u64,
+    pub input_peak: f32,
+    pub output_peak: f32,
+    pub callback_budget_overruns: u32,
+    pub render_discontinuities: u32,
+    pub memory_growths: u32,
+    pub command_overflows: u32,
+    pub storage_low_channels: u32,
+    pub storage_exhaustions: u32,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -114,7 +141,7 @@ pub struct BackendSnapshot {
     pub loops: BTreeMap<BackendLoopId, BackendLoopState>,
 }
 
-pub trait Backend: Send {
+pub trait Backend {
     fn create_loop(&mut self) -> Result<BackendLoopId>;
     fn create_direct_track(&mut self, request: DirectTrackRequest) -> Result<BackendTrackCreation>;
     fn add_loop_to_track(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId>;
@@ -124,7 +151,7 @@ pub trait Backend: Send {
         control: BackendTrackControl,
     ) -> Result<()>;
     fn set_loop_gain(&mut self, loop_id: BackendLoopId, gain: f32) -> Result<()>;
-    fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Vec<Arc<[f32]>>>;
+    fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Option<Vec<Arc<[f32]>>>>;
     fn set_loop_sync_source(
         &mut self,
         loop_id: BackendLoopId,
@@ -144,6 +171,15 @@ pub trait Backend: Send {
 
 const NANOSECONDS_PER_SECOND: u128 = 1_000_000_000;
 const MAX_CYCLES_PER_ADVANCE: u32 = 8;
+pub const MAX_WEB_AUDIO_QUANTUM: u32 = 2048;
+pub const RECORDING_CAPACITY_SECONDS: u32 = 10;
+const RECORDING_CHUNK_SIZE: usize = 4096;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum EngineBackendMode {
+    Dummy,
+    Physical,
+}
 
 pub struct EngineBackend {
     session: Session,
@@ -158,6 +194,11 @@ pub struct EngineBackend {
     next_loop_id: u64,
     next_track_id: u64,
     next_port_id: u64,
+    mode: EngineBackendMode,
+    callback_count: u64,
+    input_peak: f32,
+    output_peak: f32,
+    last_quantum: u32,
 }
 
 struct EngineLoopChannels {
@@ -202,7 +243,107 @@ impl EngineBackend {
             next_loop_id: 1,
             next_track_id: 1,
             next_port_id: 1,
+            mode: EngineBackendMode::Dummy,
+            callback_count: 0,
+            input_peak: 0.0,
+            output_peak: 0.0,
+            last_quantum: buffer_size,
         })
+    }
+
+    pub fn new_web_audio(sample_rate: u32, max_quantum: u32) -> Result<Self> {
+        if sample_rate == 0 || max_quantum == 0 || max_quantum > MAX_WEB_AUDIO_QUANTUM {
+            return Err(anyhow!(
+                "Web Audio sample rate must be non-zero and quantum must be in 1..={MAX_WEB_AUDIO_QUANTUM}"
+            ));
+        }
+        let mut backend = Self::new_dummy(sample_rate, max_quantum)?;
+        backend.mode = EngineBackendMode::Physical;
+        Ok(backend)
+    }
+
+    pub fn process_audio_quantum(
+        &mut self,
+        input: &[f32],
+        input_channels: usize,
+        output: &mut [f32],
+        output_channels: usize,
+        n_frames: usize,
+    ) -> Result<()> {
+        if self.mode != EngineBackendMode::Physical {
+            return Err(anyhow!("audio quantum supplied to a non-physical backend"));
+        }
+        if n_frames == 0
+            || n_frames > self.buffer_size as usize
+            || input_channels.saturating_mul(n_frames) > input.len()
+            || output_channels.saturating_mul(n_frames) > output.len()
+        {
+            return Err(anyhow!("invalid Web Audio channel or quantum shape"));
+        }
+
+        self.input_peak = 0.0;
+        for track in self.tracks.values() {
+            for (channel, port) in track.audio_inputs.iter().enumerate() {
+                let source_channel = if input_channels == 0 {
+                    None
+                } else {
+                    Some(channel.min(input_channels - 1))
+                };
+                let samples = source_channel
+                    .map(|channel| &input[channel * n_frames..channel.saturating_add(1) * n_frames])
+                    .unwrap_or(&[]);
+                self.input_peak = samples
+                    .iter()
+                    .fold(self.input_peak, |peak, sample| peak.max(sample.abs()));
+                self.session
+                    .port_mut(*port)
+                    .and_then(Port::as_external_mut)
+                    .ok_or_else(|| anyhow!("missing physical audio input port"))?
+                    .stage_input(samples);
+            }
+        }
+
+        self.session.process(n_frames);
+        output[..output_channels * n_frames].fill(0.0);
+        self.output_peak = 0.0;
+        for track in self.tracks.values() {
+            for (channel, port) in track.audio_outputs.iter().enumerate() {
+                let samples = self
+                    .session
+                    .port(*port)
+                    .and_then(Port::as_external)
+                    .ok_or_else(|| anyhow!("missing physical audio output port"))?
+                    .output(n_frames);
+                if track.audio_outputs.len() == 1 {
+                    for destination in 0..output_channels {
+                        for (target, sample) in output
+                            [destination * n_frames..(destination + 1) * n_frames]
+                            .iter_mut()
+                            .zip(samples)
+                        {
+                            *target += *sample;
+                        }
+                    }
+                } else if output_channels > 0 {
+                    let destination = channel.min(output_channels - 1);
+                    for (target, sample) in output
+                        [destination * n_frames..(destination + 1) * n_frames]
+                        .iter_mut()
+                        .zip(samples)
+                    {
+                        *target += *sample;
+                    }
+                }
+            }
+        }
+        for sample in &mut output[..output_channels * n_frames] {
+            self.output_peak = self.output_peak.max(sample.abs());
+            *sample = sample.clamp(-1.0, 1.0);
+        }
+        self.callback_count = self.callback_count.saturating_add(1);
+        self.processed_frames = self.processed_frames.saturating_add(n_frames as u64);
+        self.last_quantum = n_frames as u32;
+        Ok(())
     }
 
     pub fn advance_frames(&mut self, mut frames: u32) {
@@ -248,9 +389,17 @@ impl EngineBackend {
         let engine_loop = self.engine_loop_index(loop_id)?;
         let mut audio = Vec::with_capacity(audio_inputs.len());
         for (input, output) in audio_inputs.iter().zip(&audio_outputs) {
-            let channel = self
-                .session
-                .add_audio_channel(engine_loop, 64, ChannelMode::Direct)?;
+            let channel = if self.mode == EngineBackendMode::Physical {
+                self.session.add_audio_channel_with_bounded_capacity(
+                    engine_loop,
+                    RECORDING_CHUNK_SIZE,
+                    self.sample_rate as usize * RECORDING_CAPACITY_SECONDS as usize,
+                    ChannelMode::Direct,
+                )?
+            } else {
+                self.session
+                    .add_audio_channel(engine_loop, 64, ChannelMode::Direct)?
+            };
             self.session.connect_channel_input(channel, *input)?;
             self.session.connect_channel_output(channel, *output)?;
             audio.push(channel);
@@ -323,21 +472,40 @@ impl Backend for EngineBackend {
             } else {
                 format!("_{}", index + 1)
             };
-            let mut input = DummyAudioPort::new(
-                self.next_port_id(),
-                format!("{}_direct_in{suffix}", request.port_name_base),
-                PortDirection::Input,
-                self.buffer_size as usize,
-            );
-            input.audio_mut().set_passthrough_muted(true);
-            let input = self.session.add_port(Port::Dummy(input));
-            let output_id = self.next_port_id();
-            let output = self.session.add_port(Port::Dummy(DummyAudioPort::new(
-                output_id,
-                format!("{}_direct_out{suffix}", request.port_name_base),
-                PortDirection::Output,
-                1,
-            )));
+            let input_name = format!("{}_direct_in{suffix}", request.port_name_base);
+            let output_name = format!("{}_direct_out{suffix}", request.port_name_base);
+            let (input, output) = if self.mode == EngineBackendMode::Physical {
+                let mut input = ExternalAudioPort::new(
+                    input_name,
+                    PortDirection::Input,
+                    self.buffer_size as usize,
+                );
+                input.audio_mut().set_passthrough_muted(true);
+                let input = self.session.add_port(Port::External(input));
+                let output = self.session.add_port(Port::External(ExternalAudioPort::new(
+                    output_name,
+                    PortDirection::Output,
+                    self.buffer_size as usize,
+                )));
+                (input, output)
+            } else {
+                let mut input = DummyAudioPort::new(
+                    self.next_port_id(),
+                    input_name,
+                    PortDirection::Input,
+                    self.buffer_size as usize,
+                );
+                input.audio_mut().set_passthrough_muted(true);
+                let input = self.session.add_port(Port::Dummy(input));
+                let output_id = self.next_port_id();
+                let output = self.session.add_port(Port::Dummy(DummyAudioPort::new(
+                    output_id,
+                    output_name,
+                    PortDirection::Output,
+                    1,
+                )));
+                (input, output)
+            };
             self.session.connect_ports_internal(input, output)?;
             audio_inputs.push(input);
             audio_outputs.push(output);
@@ -499,7 +667,7 @@ impl Backend for EngineBackend {
         Ok(())
     }
 
-    fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Vec<Arc<[f32]>>> {
+    fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Option<Vec<Arc<[f32]>>>> {
         let channels = self
             .loop_channels
             .get(&loop_id)
@@ -513,7 +681,8 @@ impl Backend for EngineBackend {
                     .map(|channel| Arc::from(channel.data()))
                     .ok_or_else(|| anyhow!("missing audio loop channel"))
             })
-            .collect()
+            .collect::<Result<Vec<_>>>()
+            .map(Some)
     }
 
     fn set_loop_sync_source(
@@ -556,6 +725,9 @@ impl Backend for EngineBackend {
     }
 
     fn advance(&mut self, elapsed: Duration) {
+        if self.mode == EngineBackendMode::Physical {
+            return;
+        }
         self.elapsed_frame_numerator = self
             .elapsed_frame_numerator
             .saturating_add(elapsed.as_nanos().saturating_mul(self.sample_rate as u128));
@@ -665,8 +837,44 @@ impl Backend for EngineBackend {
             status: BackendStatus {
                 dsp_load_percent: 0.0,
                 xruns: self.xruns,
-                buffer_size: self.buffer_size,
+                buffer_size: if self.mode == EngineBackendMode::Physical {
+                    self.last_quantum
+                } else {
+                    self.buffer_size
+                },
                 sample_rate: self.sample_rate,
+                driver_state: if self.mode == EngineBackendMode::Physical {
+                    BackendDriverState::Running
+                } else {
+                    BackendDriverState::Dummy
+                },
+                callback_count: self.callback_count,
+                processed_frames: self.processed_frames,
+                input_peak: self.input_peak,
+                output_peak: self.output_peak,
+                callback_budget_overruns: 0,
+                render_discontinuities: 0,
+                memory_growths: 0,
+                command_overflows: 0,
+                storage_low_channels: self
+                    .loop_channels
+                    .values()
+                    .flat_map(|channels| &channels.audio)
+                    .filter_map(|channel| self.session.audio_channel(*channel))
+                    .filter(|channel| {
+                        channel
+                            .storage_remaining()
+                            .is_some_and(|remaining| remaining <= self.sample_rate as usize)
+                    })
+                    .count()
+                    .min(u32::MAX as usize) as u32,
+                storage_exhaustions: self
+                    .loop_channels
+                    .values()
+                    .flat_map(|channels| &channels.audio)
+                    .filter_map(|channel| self.session.audio_channel(*channel))
+                    .map(|channel| channel.storage_exhaustions())
+                    .sum(),
             },
             tracks,
             loops,
@@ -866,7 +1074,7 @@ impl Backend for FakeBackend {
         Ok(())
     }
 
-    fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Vec<Arc<[f32]>>> {
+    fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Option<Vec<Arc<[f32]>>>> {
         self.require_loop(loop_id)?;
         let n_channels = self
             .tracks
@@ -874,9 +1082,11 @@ impl Backend for FakeBackend {
             .find(|track| track.loops.contains(&loop_id))
             .map(|track| track.state.audio_channels)
             .unwrap_or(0);
-        Ok((0..n_channels)
-            .map(|_| Arc::from(Vec::<f32>::new()))
-            .collect())
+        Ok(Some(
+            (0..n_channels)
+                .map(|_| Arc::from(Vec::<f32>::new()))
+                .collect(),
+        ))
     }
 
     fn set_loop_sync_source(
@@ -985,7 +1195,14 @@ mod tests {
         assert_eq!(track.output_gain_db, -6.0);
         assert!(snapshot.loops[&created.loops[0]].stereo);
         assert!(snapshot.loops.contains_key(&third));
-        assert_eq!(backend.loop_audio_data(created.loops[0]).unwrap().len(), 2);
+        assert_eq!(
+            backend
+                .loop_audio_data(created.loops[0])
+                .unwrap()
+                .unwrap()
+                .len(),
+            2
+        );
     }
 
     #[test]
@@ -1029,7 +1246,60 @@ mod tests {
         let playing = backend.poll().unwrap().loops[&loop_id].clone();
         assert_eq!(playing.mode, BackendLoopMode::Playing);
         assert_eq!(playing.position, 256);
-        assert_eq!(backend.loop_audio_data(loop_id).unwrap()[0].len(), 512);
+        assert_eq!(
+            backend.loop_audio_data(loop_id).unwrap().unwrap()[0].len(),
+            512
+        );
+    }
+
+    #[test]
+    fn web_audio_backend_records_monitors_and_plays_non_zero_full_duplex_audio() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "web".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .set_track_control(track.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        let input = vec![0.25; 128];
+        let mut output = vec![0.0; 256];
+        assert_no_alloc::assert_no_alloc(|| {
+            backend
+                .process_audio_quantum(&input, 1, &mut output, 2, 128)
+                .unwrap();
+        });
+        assert!(output[..128].iter().all(|sample| *sample == 0.25));
+        assert!(output[128..].iter().all(|sample| *sample == 0.25));
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
+        let recorded = backend.loop_audio_data(track.loops[0]).unwrap().unwrap();
+        assert_eq!(recorded[0].len(), 128);
+        assert!(recorded[0].iter().all(|sample| *sample == 0.25));
+        backend
+            .set_track_control(track.track_id, BackendTrackControl::InputMonitoring(false))
+            .unwrap();
+        backend
+            .transition_loop(track.loops[0], BackendLoopMode::Playing, None)
+            .unwrap();
+        output.fill(0.0);
+        backend
+            .process_audio_quantum(&vec![0.0; 128], 1, &mut output, 2, 128)
+            .unwrap();
+        assert!(output.iter().any(|sample| *sample != 0.0));
+        let status = backend.poll().unwrap().status;
+        assert_eq!(status.callback_count, 2);
+        assert_eq!(status.processed_frames, 256);
+        assert!(status.input_peak == 0.0);
+        assert!(status.output_peak > 0.0);
     }
 
     #[test]

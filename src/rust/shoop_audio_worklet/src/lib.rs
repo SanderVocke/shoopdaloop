@@ -1,0 +1,563 @@
+use std::sync::Arc;
+
+use shoop_audio_protocol::{
+    Command, CommandEnvelope, Event, EventEnvelope, WaveformChunk, WireLoopMode, WireLoopState,
+    WireSnapshot, WireTrackControl, WireTrackState, COMMAND_MAX_BYTES, MAX_AUDIO_CHANNELS,
+    PROTOCOL_VERSION, WAVEFORM_CHUNK_SAMPLES,
+};
+use shoop_backend::{
+    Backend, BackendLoopId, BackendLoopMode, BackendSnapshot, BackendTrackControl, BackendTrackId,
+    DirectTrackRequest, EngineBackend, MAX_WEB_AUDIO_QUANTUM,
+};
+
+pub struct WorkletHost {
+    backend: EngineBackend,
+    max_quantum: usize,
+    input: Vec<f32>,
+    output: Vec<f32>,
+    packed_input: Vec<f32>,
+    packed_output: Vec<f32>,
+    command_buffer: Vec<u8>,
+    response: String,
+    next_sequence: u64,
+    stopped: bool,
+    fatal_error: Option<String>,
+}
+
+impl WorkletHost {
+    pub fn new(sample_rate: u32, max_quantum: u32) -> Result<Self, String> {
+        if max_quantum == 0 || max_quantum > MAX_WEB_AUDIO_QUANTUM {
+            return Err(format!(
+                "render quantum ceiling must be in 1..={MAX_WEB_AUDIO_QUANTUM}"
+            ));
+        }
+        let max_quantum = max_quantum as usize;
+        Ok(Self {
+            backend: EngineBackend::new_web_audio(sample_rate, max_quantum as u32)
+                .map_err(|error| error.to_string())?,
+            max_quantum,
+            input: vec![0.0; MAX_AUDIO_CHANNELS * max_quantum],
+            output: vec![0.0; MAX_AUDIO_CHANNELS * max_quantum],
+            packed_input: vec![0.0; MAX_AUDIO_CHANNELS * max_quantum],
+            packed_output: vec![0.0; MAX_AUDIO_CHANNELS * max_quantum],
+            command_buffer: vec![0; COMMAND_MAX_BYTES],
+            response: String::with_capacity(COMMAND_MAX_BYTES * 2),
+            next_sequence: 1,
+            stopped: false,
+            fatal_error: None,
+        })
+    }
+
+    pub fn input(&mut self) -> &mut [f32] {
+        &mut self.input
+    }
+
+    pub fn output(&self) -> &[f32] {
+        &self.output
+    }
+
+    pub fn process(
+        &mut self,
+        input_channels: usize,
+        output_channels: usize,
+        n_frames: usize,
+    ) -> bool {
+        if self.stopped
+            || self.fatal_error.is_some()
+            || input_channels > MAX_AUDIO_CHANNELS
+            || output_channels > MAX_AUDIO_CHANNELS
+            || n_frames == 0
+            || n_frames > self.max_quantum
+        {
+            return false;
+        }
+        for channel in 0..input_channels {
+            self.packed_input[channel * n_frames..(channel + 1) * n_frames].copy_from_slice(
+                &self.input[channel * self.max_quantum..channel * self.max_quantum + n_frames],
+            );
+        }
+        self.packed_output[..output_channels * n_frames].fill(0.0);
+        if let Err(error) = self.backend.process_audio_quantum(
+            &self.packed_input,
+            input_channels,
+            &mut self.packed_output,
+            output_channels,
+            n_frames,
+        ) {
+            self.fatal_error = Some(error.to_string());
+            return false;
+        }
+        for channel in 0..output_channels {
+            self.output[channel * self.max_quantum..channel * self.max_quantum + n_frames]
+                .copy_from_slice(&self.packed_output[channel * n_frames..(channel + 1) * n_frames]);
+        }
+        true
+    }
+
+    pub fn handle_json(&mut self, json: &[u8]) -> &str {
+        let result = self.decode_and_handle(json);
+        let event = match result {
+            Ok(event) => event,
+            Err(message) => Event::Error { message },
+        };
+        let sequence = serde_json::from_slice::<CommandEnvelope>(json)
+            .map(|command| command.sequence)
+            .unwrap_or(0);
+        self.response = serde_json::to_string(&EventEnvelope {
+            version: PROTOCOL_VERSION,
+            sequence,
+            event,
+        })
+        .unwrap_or_else(|_| {
+            r#"{"version":1,"sequence":0,"event":{"kind":"error","message":"response serialization failed"}}"#
+                .to_owned()
+        });
+        &self.response
+    }
+
+    fn decode_and_handle(&mut self, json: &[u8]) -> Result<Event, String> {
+        if json.len() > COMMAND_MAX_BYTES {
+            return Err("command exceeds the protocol byte capacity".to_owned());
+        }
+        let envelope: CommandEnvelope =
+            serde_json::from_slice(json).map_err(|error| format!("malformed command: {error}"))?;
+        if envelope.version != PROTOCOL_VERSION {
+            return Err(format!(
+                "protocol version mismatch: received {}, expected {PROTOCOL_VERSION}",
+                envelope.version
+            ));
+        }
+        if envelope.sequence != self.next_sequence {
+            return Err(format!(
+                "out-of-order command {}, expected {}",
+                envelope.sequence, self.next_sequence
+            ));
+        }
+        self.next_sequence = self.next_sequence.saturating_add(1);
+        self.handle(envelope.command)
+    }
+
+    fn handle(&mut self, command: Command) -> Result<Event, String> {
+        if self.stopped && !matches!(command, Command::Poll | Command::Shutdown) {
+            return Err("worklet host is stopped".to_owned());
+        }
+        match command {
+            Command::CreateTrack {
+                expected_track_id,
+                expected_loop_ids,
+                port_name_base,
+                audio_channels,
+                midi,
+            } => {
+                let created = self
+                    .backend
+                    .create_direct_track(DirectTrackRequest {
+                        port_name_base,
+                        audio_channels,
+                        midi,
+                        initial_loops: expected_loop_ids.len(),
+                    })
+                    .map_err(|error| error.to_string())?;
+                let actual_loops: Vec<_> = created.loops.iter().map(|id| id.raw()).collect();
+                if created.track_id.raw() != expected_track_id || actual_loops != expected_loop_ids
+                {
+                    return Err("stable-ID mismatch while creating a track".to_owned());
+                }
+                Ok(Event::Ack)
+            }
+            Command::AddLoop {
+                track_id,
+                expected_loop_id,
+            } => {
+                let actual = self
+                    .backend
+                    .add_loop_to_track(BackendTrackId::from_raw(track_id))
+                    .map_err(|error| error.to_string())?;
+                if actual.raw() != expected_loop_id {
+                    return Err("stable-ID mismatch while creating a loop".to_owned());
+                }
+                Ok(Event::Ack)
+            }
+            Command::SetTrackControl { track_id, control } => {
+                self.backend
+                    .set_track_control(
+                        BackendTrackId::from_raw(track_id),
+                        from_wire_track_control(control),
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::SetLoopGain { loop_id, gain } => {
+                self.backend
+                    .set_loop_gain(BackendLoopId::from_raw(loop_id), gain)
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::SetLoopSyncSource { loop_id, source } => {
+                self.backend
+                    .set_loop_sync_source(
+                        BackendLoopId::from_raw(loop_id),
+                        source.map(BackendLoopId::from_raw),
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::TransitionLoop {
+                loop_id,
+                mode,
+                cycles_delay,
+            } => {
+                self.backend
+                    .transition_loop(
+                        BackendLoopId::from_raw(loop_id),
+                        from_wire_loop_mode(mode),
+                        cycles_delay,
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::ClearLoop { loop_id } => {
+                self.backend
+                    .clear_loop(BackendLoopId::from_raw(loop_id))
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::RequestWaveform {
+                loop_id,
+                revision,
+                channel,
+                offset,
+                max_samples,
+            } => {
+                let channels = self
+                    .backend
+                    .loop_audio_data(BackendLoopId::from_raw(loop_id))
+                    .map_err(|error| error.to_string())?
+                    .unwrap_or_default();
+                let samples = channels
+                    .get(channel)
+                    .cloned()
+                    .unwrap_or_else(|| Arc::from([]));
+                let max_samples = max_samples.min(WAVEFORM_CHUNK_SAMPLES);
+                let end = offset.saturating_add(max_samples).min(samples.len());
+                let chunk = if offset < end {
+                    samples[offset..end].to_vec()
+                } else {
+                    Vec::new()
+                };
+                Ok(Event::Waveform(WaveformChunk {
+                    loop_id,
+                    revision,
+                    channel,
+                    channel_count: channels.len(),
+                    offset,
+                    total_samples: samples.len(),
+                    final_chunk: end >= samples.len(),
+                    samples: chunk,
+                }))
+            }
+            Command::Poll => {
+                if let Some(message) = self.fatal_error.clone() {
+                    return Err(message);
+                }
+                self.backend
+                    .poll()
+                    .map(to_wire_snapshot)
+                    .map(Event::Snapshot)
+                    .map_err(|error| error.to_string())
+            }
+            Command::Shutdown => {
+                self.stopped = true;
+                Ok(Event::Stopped)
+            }
+        }
+    }
+}
+
+fn from_wire_track_control(control: WireTrackControl) -> BackendTrackControl {
+    match control {
+        WireTrackControl::OutputGainDb(value) => BackendTrackControl::OutputGainDb(value),
+        WireTrackControl::OutputBalance(value) => BackendTrackControl::OutputBalance(value),
+        WireTrackControl::OutputMute(value) => BackendTrackControl::OutputMute(value),
+        WireTrackControl::InputGainDb(value) => BackendTrackControl::InputGainDb(value),
+        WireTrackControl::InputBalance(value) => BackendTrackControl::InputBalance(value),
+        WireTrackControl::InputMonitoring(value) => BackendTrackControl::InputMonitoring(value),
+    }
+}
+
+fn from_wire_loop_mode(mode: WireLoopMode) -> BackendLoopMode {
+    match mode {
+        WireLoopMode::Unknown => BackendLoopMode::Unknown,
+        WireLoopMode::Stopped => BackendLoopMode::Stopped,
+        WireLoopMode::Playing => BackendLoopMode::Playing,
+        WireLoopMode::Recording => BackendLoopMode::Recording,
+        WireLoopMode::Replacing => BackendLoopMode::Replacing,
+        WireLoopMode::PlayingDryThroughWet => BackendLoopMode::PlayingDryThroughWet,
+        WireLoopMode::RecordingDryIntoWet => BackendLoopMode::RecordingDryIntoWet,
+    }
+}
+
+fn to_wire_loop_mode(mode: BackendLoopMode) -> WireLoopMode {
+    match mode {
+        BackendLoopMode::Unknown => WireLoopMode::Unknown,
+        BackendLoopMode::Stopped => WireLoopMode::Stopped,
+        BackendLoopMode::Playing => WireLoopMode::Playing,
+        BackendLoopMode::Recording => WireLoopMode::Recording,
+        BackendLoopMode::Replacing => WireLoopMode::Replacing,
+        BackendLoopMode::PlayingDryThroughWet => WireLoopMode::PlayingDryThroughWet,
+        BackendLoopMode::RecordingDryIntoWet => WireLoopMode::RecordingDryIntoWet,
+    }
+}
+
+fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
+    WireSnapshot {
+        sample_rate: snapshot.status.sample_rate,
+        quantum: snapshot.status.buffer_size,
+        callback_count: snapshot.status.callback_count,
+        processed_frames: snapshot.status.processed_frames,
+        input_peak: snapshot.status.input_peak,
+        output_peak: snapshot.status.output_peak,
+        xruns: snapshot.status.xruns,
+        callback_budget_overruns: snapshot.status.callback_budget_overruns,
+        render_discontinuities: snapshot.status.render_discontinuities,
+        memory_growths: snapshot.status.memory_growths,
+        command_overflows: snapshot.status.command_overflows,
+        storage_low_channels: snapshot.status.storage_low_channels,
+        storage_exhaustions: snapshot.status.storage_exhaustions,
+        tracks: snapshot
+            .tracks
+            .into_iter()
+            .map(|(id, track)| WireTrackState {
+                id: id.raw(),
+                audio_channels: track.audio_channels,
+                midi: track.midi,
+                output_gain_db: track.output_gain_db,
+                output_balance: track.output_balance,
+                output_muted: track.output_muted,
+                input_gain_db: track.input_gain_db,
+                input_balance: track.input_balance,
+                input_monitoring: track.input_monitoring,
+                input_peaks: track.input_peaks,
+                output_peaks: track.output_peaks,
+            })
+            .collect(),
+        loops: snapshot
+            .loops
+            .into_iter()
+            .map(|(id, loop_)| WireLoopState {
+                id: id.raw(),
+                mode: to_wire_loop_mode(loop_.mode),
+                length: loop_.length,
+                position: loop_.position,
+                next_mode: loop_.next_mode.map(to_wire_loop_mode),
+                next_transition_delay: loop_.next_transition_delay,
+                stereo: loop_.stereo,
+                gain: loop_.gain,
+                audio_peaks: loop_.audio_peaks,
+                midi_activity: loop_.midi_activity,
+            })
+            .collect(),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn shoop_worklet_create(sample_rate: u32, max_quantum: u32) -> *mut WorkletHost {
+    WorkletHost::new(sample_rate, max_quantum)
+        .map(Box::new)
+        .map(Box::into_raw)
+        .unwrap_or(std::ptr::null_mut())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shoop_worklet_destroy(host: *mut WorkletHost) {
+    if !host.is_null() {
+        drop(Box::from_raw(host));
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shoop_worklet_input_ptr(host: *mut WorkletHost) -> *mut f32 {
+    host.as_mut()
+        .map(|host| host.input.as_mut_ptr())
+        .unwrap_or(std::ptr::null_mut())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shoop_worklet_output_ptr(host: *const WorkletHost) -> *const f32 {
+    host.as_ref()
+        .map(|host| host.output.as_ptr())
+        .unwrap_or(std::ptr::null())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shoop_worklet_command_ptr(host: *mut WorkletHost) -> *mut u8 {
+    host.as_mut()
+        .map(|host| host.command_buffer.as_mut_ptr())
+        .unwrap_or(std::ptr::null_mut())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shoop_worklet_command(host: *mut WorkletHost, length: usize) -> bool {
+    let Some(host) = host.as_mut() else {
+        return false;
+    };
+    if length > host.command_buffer.len() {
+        return false;
+    }
+    let command = host.command_buffer[..length].to_vec();
+    host.handle_json(&command);
+    true
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shoop_worklet_response_ptr(host: *const WorkletHost) -> *const u8 {
+    host.as_ref()
+        .map(|host| host.response.as_ptr())
+        .unwrap_or(std::ptr::null())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shoop_worklet_response_len(host: *const WorkletHost) -> usize {
+    host.as_ref().map(|host| host.response.len()).unwrap_or(0)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shoop_worklet_process(
+    host: *mut WorkletHost,
+    input_channels: usize,
+    output_channels: usize,
+    n_frames: usize,
+) -> bool {
+    host.as_mut()
+        .is_some_and(|host| host.process(input_channels, output_channels, n_frames))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use shoop_audio_protocol::{Command, CommandEnvelope, Event};
+
+    fn command(host: &mut WorkletHost, sequence: u64, command: Command) -> EventEnvelope {
+        let json = serde_json::to_vec(&CommandEnvelope::new(sequence, command)).unwrap();
+        serde_json::from_str(host.handle_json(&json)).unwrap()
+    }
+
+    #[test]
+    fn protocol_orders_commands_and_runs_non_silent_full_duplex_cycles() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        let created = command(
+            &mut host,
+            1,
+            Command::CreateTrack {
+                expected_track_id: 1,
+                expected_loop_ids: vec![1],
+                port_name_base: "direct".to_owned(),
+                audio_channels: 1,
+                midi: false,
+            },
+        );
+        assert!(matches!(created.event, Event::Ack));
+        assert!(matches!(
+            command(
+                &mut host,
+                2,
+                Command::SetTrackControl {
+                    track_id: 1,
+                    control: WireTrackControl::InputMonitoring(true),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                3,
+                Command::TransitionLoop {
+                    loop_id: 1,
+                    mode: WireLoopMode::Recording,
+                    cycles_delay: None,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        host.input()[..128].fill(0.25);
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(1, 2, 128)));
+        assert!(host.output()[..128].iter().any(|sample| *sample != 0.0));
+        assert!(host.output()[128..256].iter().any(|sample| *sample != 0.0));
+        assert!(matches!(
+            command(
+                &mut host,
+                4,
+                Command::TransitionLoop {
+                    loop_id: 1,
+                    mode: WireLoopMode::Stopped,
+                    cycles_delay: None,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let waveform = command(
+            &mut host,
+            5,
+            Command::RequestWaveform {
+                loop_id: 1,
+                revision: 1,
+                channel: 0,
+                offset: 0,
+                max_samples: 512,
+            },
+        );
+        let Event::Waveform(waveform) = waveform.event else {
+            panic!("expected waveform");
+        };
+        assert_eq!(waveform.total_samples, 128);
+        assert!(waveform.samples.iter().all(|sample| *sample == 0.25));
+        let status = command(&mut host, 6, Command::Poll);
+        let Event::Snapshot(snapshot) = status.event else {
+            panic!("expected snapshot");
+        };
+        assert_eq!(snapshot.callback_count, 1);
+        assert_eq!(snapshot.processed_frames, 128);
+        assert!(snapshot.input_peak > 0.0);
+        assert!(snapshot.output_peak > 0.0);
+    }
+
+    #[test]
+    fn command_capacity_and_shutdown_fail_visibly() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        let oversized = vec![b'x'; COMMAND_MAX_BYTES + 1];
+        let response: EventEnvelope = serde_json::from_str(host.handle_json(&oversized)).unwrap();
+        assert!(matches!(response.event, Event::Error { .. }));
+        assert!(matches!(
+            command(&mut host, 1, Command::Shutdown).event,
+            Event::Stopped
+        ));
+        assert!(!host.process(1, 2, 128));
+        assert!(matches!(
+            command(&mut host, 2, Command::ClearLoop { loop_id: 1 },).event,
+            Event::Error { .. }
+        ));
+    }
+
+    #[test]
+    fn stale_duplicate_and_malformed_commands_are_rejected_observably() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        assert!(matches!(
+            command(&mut host, 2, Command::Poll).event,
+            Event::Error { .. }
+        ));
+        let malformed: EventEnvelope = serde_json::from_str(host.handle_json(b"not json")).unwrap();
+        assert!(matches!(malformed.event, Event::Error { .. }));
+        assert!(matches!(
+            command(&mut host, 1, Command::Poll).event,
+            Event::Snapshot(_)
+        ));
+        assert!(matches!(
+            command(&mut host, 1, Command::Poll).event,
+            Event::Error { .. }
+        ));
+    }
+}

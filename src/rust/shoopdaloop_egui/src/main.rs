@@ -6,11 +6,14 @@ use std::time::Instant;
 use web_time::Instant;
 
 use eframe::egui;
+#[cfg(not(target_arch = "wasm32"))]
 use shoop_backend::EngineBackend;
 use shoop_egui::{AppIntent, AppSnapshot, AppWidget};
 
 #[cfg(target_arch = "wasm32")]
 use shoop_app::CooperativeApplicationRuntime;
+#[cfg(target_arch = "wasm32")]
+mod browser_audio;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_app::{ApplicationHandle, ApplicationRuntime};
 
@@ -100,22 +103,53 @@ impl Runtime {
 }
 
 #[cfg(target_arch = "wasm32")]
+enum BrowserRuntimeMode {
+    WebAudio(browser_audio::BrowserAudioController),
+    OfflineDummy,
+}
+
+#[cfg(target_arch = "wasm32")]
 struct Runtime {
     runtime: CooperativeApplicationRuntime,
+    mode: BrowserRuntimeMode,
 }
 
 #[cfg(target_arch = "wasm32")]
 impl Runtime {
     fn new() -> anyhow::Result<Self> {
-        let backend = EngineBackend::new_dummy(48_000, 256)?;
-        let runtime = CooperativeApplicationRuntime::start(Box::new(backend))?;
-        Ok(Self { runtime })
+        let offline = web_sys::window()
+            .and_then(|window| window.location().search().ok())
+            .is_some_and(|search| search.contains("offline=1"));
+        if offline {
+            let backend = shoop_backend::EngineBackend::new_dummy(48_000, 256)?;
+            return Ok(Self {
+                runtime: CooperativeApplicationRuntime::start(Box::new(backend))?,
+                mode: BrowserRuntimeMode::OfflineDummy,
+            });
+        }
+        let (backend, transport) = browser_audio::WebAudioBackend::new();
+        let controller = browser_audio::BrowserAudioController::new(transport)?;
+        Ok(Self {
+            runtime: CooperativeApplicationRuntime::start(Box::new(backend))?,
+            mode: BrowserRuntimeMode::WebAudio(controller),
+        })
     }
 
     fn tick(&mut self, elapsed: Duration) {
         self.runtime.tick(elapsed);
         let snapshot = self.runtime.snapshot();
-        set_browser_status("Dummy engine running", Some(snapshot.revision));
+        let mut message = match &self.mode {
+            BrowserRuntimeMode::WebAudio(controller) => {
+                controller.update_presentation();
+                format!("Browser audio: {:?}", controller.state())
+            }
+            BrowserRuntimeMode::OfflineDummy => "Explicit offline dummy engine".to_owned(),
+        };
+        if let Some(notification) = snapshot.notifications.first() {
+            message.push_str(": ");
+            message.push_str(&notification.message);
+        }
+        set_browser_status(&message, Some(&snapshot));
     }
 
     fn snapshot(&self) -> std::sync::Arc<AppSnapshot> {
@@ -124,6 +158,15 @@ impl Runtime {
 
     fn dispatch(&mut self, intent: AppIntent) -> Result<(), shoop_app::DispatchError> {
         self.runtime.dispatch(intent)
+    }
+
+    fn audio_running(&self) -> bool {
+        match &self.mode {
+            BrowserRuntimeMode::WebAudio(controller) => {
+                controller.state() == shoop_backend::BackendDriverState::Running
+            }
+            BrowserRuntimeMode::OfflineDummy => true,
+        }
     }
 }
 
@@ -152,6 +195,7 @@ fn main() -> eframe::Result {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum BrowserSelfTest {
     Disabled,
+    WaitForAudio,
     AddTrack,
     WaitForTrack,
     WaitForRecording,
@@ -169,7 +213,8 @@ impl BrowserSelfTest {
             .and_then(|window| window.location().search().ok())
             .is_some_and(|search| search.contains("self-test=1"));
         if enabled {
-            Self::AddTrack
+            set_browser_self_test_status("awaiting-audio");
+            Self::WaitForAudio
         } else {
             Self::Disabled
         }
@@ -178,15 +223,28 @@ impl BrowserSelfTest {
     fn update(&mut self, runtime: &mut Runtime, snapshot: &AppSnapshot) {
         let result = match *self {
             Self::Disabled | Self::Complete | Self::Failed => return,
+            Self::WaitForAudio => {
+                if !runtime.audio_running() {
+                    return;
+                }
+                Ok(Self::AddTrack)
+            }
             Self::AddTrack => runtime
                 .dispatch(AppIntent::Global(shoop_egui::GlobalControlAction::SetSync(
                     false,
                 )))
                 .and_then(|()| {
                     runtime.dispatch(AppIntent::AddTrack(shoop_egui::DirectTrackSpec {
-                        name: "Browser self-test".to_owned(),
+                        name: "Browser self-test stereo".to_owned(),
                         audio_channels: 2,
-                        midi: true,
+                        midi: false,
+                    }))
+                })
+                .and_then(|()| {
+                    runtime.dispatch(AppIntent::AddTrack(shoop_egui::DirectTrackSpec {
+                        name: "Browser self-test mono".to_owned(),
+                        audio_channels: 1,
+                        midi: false,
                     }))
                 })
                 .map(|()| Self::WaitForTrack),
@@ -198,10 +256,16 @@ impl BrowserSelfTest {
                     return;
                 };
                 runtime
-                    .dispatch(AppIntent::Loop {
+                    .dispatch(AppIntent::Track {
                         track_id: track.id,
-                        loop_id: loop_state.id,
-                        action: shoop_egui::LoopAction::IconClicked(Default::default()),
+                        action: shoop_egui::TrackAction::InputMonitoringChanged(true),
+                    })
+                    .and_then(|()| {
+                        runtime.dispatch(AppIntent::Loop {
+                            track_id: track.id,
+                            loop_id: loop_state.id,
+                            action: shoop_egui::LoopAction::IconClicked(Default::default()),
+                        })
                     })
                     .and_then(|()| {
                         runtime.dispatch(AppIntent::Loop {
@@ -216,7 +280,10 @@ impl BrowserSelfTest {
                 let Some((track, loop_state)) = first_main_loop(snapshot) else {
                     return;
                 };
-                if loop_state.mode != shoop_egui::LoopMode::Recording || loop_state.empty {
+                if loop_state.mode != shoop_egui::LoopMode::Recording
+                    || loop_state.empty
+                    || browser_stress_enabled() && snapshot.status.callback_count < 1_500
+                {
                     return;
                 }
                 runtime
@@ -255,10 +322,13 @@ impl BrowserSelfTest {
                 };
                 let waveform_ready = snapshot.details.as_ref().is_some_and(|details| {
                     details.loop_id == loop_state.id
-                        && details
-                            .channels
-                            .first()
-                            .is_some_and(|channel| !channel.samples.is_empty())
+                        && details.channels.first().is_some_and(|channel| {
+                            !channel.samples.is_empty()
+                                && channel
+                                    .samples
+                                    .iter()
+                                    .any(|sample| sample.abs() > 0.000_001)
+                        })
                 });
                 if !waveform_ready {
                     return;
@@ -276,6 +346,8 @@ impl BrowserSelfTest {
                     return;
                 };
                 if loop_state.mode != shoop_egui::LoopMode::Playing
+                    || snapshot.status.output_peak <= 0.000_001
+                    || snapshot.status.callback_count == 0
                     || snapshot
                         .details
                         .as_ref()
@@ -292,6 +364,8 @@ impl BrowserSelfTest {
                 *self = next;
                 if next == Self::Complete {
                     set_browser_self_test_status("passed");
+                } else {
+                    set_browser_self_test_status(&format!("{next:?}"));
                 }
             }
             Err(error) => {
@@ -301,6 +375,13 @@ impl BrowserSelfTest {
             }
         }
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn browser_stress_enabled() -> bool {
+    web_sys::window()
+        .and_then(|window| window.location().search().ok())
+        .is_some_and(|search| search.contains("stress=1"))
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -323,19 +404,66 @@ fn set_browser_self_test_status(status: &str) {
     if let Some(element) = browser_status_element() {
         let _ = element.set_attribute("data-self-test", status);
         if status == "passed" {
-            element.set_text_content(Some("Dummy engine self-test passed"));
+            element.set_text_content(Some("Web Audio non-zero I/O self-test passed"));
         }
     }
 }
 
 #[cfg(target_arch = "wasm32")]
-fn set_browser_status(message: &str, revision: Option<u64>) {
+fn set_browser_status(message: &str, snapshot: Option<&AppSnapshot>) {
     let Some(element) = browser_status_element() else {
         return;
     };
     element.set_text_content(Some(message));
-    if let Some(revision) = revision {
-        let _ = element.set_attribute("data-engine-revision", &revision.to_string());
+    if let Some(snapshot) = snapshot {
+        let status = &snapshot.status;
+        let _ = element.set_attribute("data-engine-revision", &snapshot.revision.to_string());
+        let _ = element.set_attribute("data-driver-state", &format!("{:?}", status.audio_driver));
+        let _ = element.set_attribute("data-callback-count", &status.callback_count.to_string());
+        let _ = element.set_attribute(
+            "data-processed-frames",
+            &status.processed_frames.to_string(),
+        );
+        let _ = element.set_attribute("data-input-peak", &status.input_peak.to_string());
+        let _ = element.set_attribute("data-output-peak", &status.output_peak.to_string());
+        let _ = element.set_attribute("data-sample-rate", &status.sample_rate.to_string());
+        let _ = element.set_attribute("data-render-quantum", &status.buffer_size.to_string());
+        let _ = element.set_attribute("data-xruns", &status.xruns.to_string());
+        let _ = element.set_attribute(
+            "data-callback-budget-overruns",
+            &status.callback_budget_overruns.to_string(),
+        );
+        let _ = element.set_attribute(
+            "data-render-discontinuities",
+            &status.render_discontinuities.to_string(),
+        );
+        let _ = element.set_attribute("data-memory-growths", &status.memory_growths.to_string());
+        let _ = element.set_attribute(
+            "data-command-overflows",
+            &status.command_overflows.to_string(),
+        );
+        let _ = element.set_attribute(
+            "data-storage-low-channels",
+            &status.storage_low_channels.to_string(),
+        );
+        let _ = element.set_attribute(
+            "data-storage-exhaustions",
+            &status.storage_exhaustions.to_string(),
+        );
+        let _ = element.set_attribute("data-web-midi", "unavailable");
+        if let Some(details) = &snapshot.details {
+            let samples = details
+                .channels
+                .first()
+                .map(|channel| channel.samples.as_ref())
+                .unwrap_or(&[]);
+            let peak = samples
+                .iter()
+                .fold(0.0_f32, |peak, sample| peak.max(sample.abs()));
+            let _ = element.set_attribute("data-waveform-samples", &samples.len().to_string());
+            let _ = element.set_attribute("data-waveform-peak", &peak.to_string());
+            let _ = element.set_attribute("data-waveform-loading", &details.loading.to_string());
+        }
     }
 }
 
@@ -357,9 +485,9 @@ fn main() {
             .start(canvas, eframe::WebOptions::default(), Box::new(create_app))
             .await
         {
-            Ok(()) => set_browser_status("Dummy engine running", None),
+            Ok(()) => set_browser_status("Awaiting microphone enable action", None),
             Err(error) => {
-                let message = format!("Dummy engine failed: {error:?}");
+                let message = format!("Browser application failed: {error:?}");
                 set_browser_status(&message, None);
                 log::error!("{message}");
             }
@@ -380,7 +508,8 @@ mod tests {
         let html = include_str!("../index.html");
         assert!(html.contains("data-trunk"));
         assert!(html.contains(&format!("id=\"{WEB_CANVAS_ID}\"")));
-        assert!(html.contains("dummy engine"));
+        assert!(html.contains("Enable microphone audio"));
+        assert!(html.contains("audio_worklet.js"));
     }
 
     #[test]

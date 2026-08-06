@@ -26,8 +26,12 @@ def exactly_one(paths: list[Path], description: str) -> Path:
 def build_single_file(dist: Path, output: Path) -> None:
     index_path = dist / "index.html"
     html = index_path.read_text(encoding="utf-8")
-    js_path = exactly_one(list(dist.glob("*.js")), "wasm-bindgen JavaScript file")
-    wasm_path = exactly_one(list(dist.glob("*.wasm")), "WebAssembly file")
+    js_path = exactly_one(
+        list(dist.glob("shoopdaloop_egui-*.js")), "wasm-bindgen JavaScript file"
+    )
+    wasm_path = exactly_one(
+        list(dist.glob("shoopdaloop_egui-*_bg.wasm")), "WebAssembly file"
+    )
 
     script_matches = [
         match
