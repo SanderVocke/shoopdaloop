@@ -79,7 +79,7 @@ These criteria may not change without explicit user approval.
 | macOS | `macos-15` | `arm64` | debug, release | `shoopdaloop-egui-macos-arm64-{profile}.tar.gz` |
 | Web | `ubuntu-24.04` | `wasm32` | debug, release | `shoopdaloop-egui-web-wasm32-{profile}.zip` and `shoopdaloop-egui-web-wasm32-{profile}.html` |
 
-Native archives have one `shoopdaloop-egui/` root. Linux and Windows contain the profile-built executable, `README.md`, and `LICENSE.txt`. The macOS archive contains `ShoopDaLoop egui.app/Contents/MacOS/shoopdaloop_egui`, a minimal `Info.plist`, the existing icon under `Contents/Resources`, and the same documentation at the archive root. These are unsigned CI application archives, not portable dependency-closure or installer claims.
+Native archives have one `shoopdaloop-egui/` root. Linux and Windows contain the profile-built executable, `README.md`, and `LICENSE`. The macOS archive contains `ShoopDaLoop egui.app/Contents/MacOS/shoopdaloop_egui`, a minimal `Info.plist`, the existing icon under `Contents/Resources`, and the same documentation at the archive root. These are unsigned CI application archives, not portable dependency-closure or installer claims.
 
 The web archive has one `shoopdaloop-egui/` root containing only Trunk's hosted `index.html`, the generated `shoopdaloop_egui-*.js` and `*_bg.wasm`, `audio_worklet.js`, and `generated/shoop_audio_worklet.wasm`. The profile-specific self-contained HTML is generated separately and is excluded from the hosted archive.
 
@@ -128,12 +128,12 @@ Commit the frozen CI/artifact contract before changing build tooling.
 
 Depends on Stage 1.
 
-- [ ] Update `src/rust/shoopdaloop_egui/build_worklet.py` to validate and honor `TRUNK_PROFILE`, select the matching Cargo flags/output directory, and copy the matching worklet Wasm.
-- [ ] Keep `Trunk.toml` and direct local commands compatible with debug `trunk build` and release `trunk build --release`.
-- [ ] Add a small cross-platform egui packaging tool/script that consumes an already-built binary or Trunk directory and produces the frozen native/web artifact layouts and names.
-- [ ] Generate the self-contained HTML with its existing builder and a profile-specific output name; do not label it as a preview.
-- [ ] Add deterministic package validation that lists/extracts each archive, checks required files and executable placement, rejects stale/forbidden files, and verifies the hosted bundle includes both Wasm modules and the worklet shim.
-- [ ] Update package-local build documentation with debug/release commands and resulting files.
+- [x] Update `src/rust/shoopdaloop_egui/build_worklet.py` to validate and honor `TRUNK_PROFILE`, select the matching Cargo flags/output directory, and copy the matching worklet Wasm.
+- [x] Keep `Trunk.toml` and direct local commands compatible with debug `trunk build` and release `trunk build --release`.
+- [x] Add a small cross-platform egui packaging tool/script that consumes an already-built binary or Trunk directory and produces the frozen native/web artifact layouts and names.
+- [x] Generate the self-contained HTML with its existing builder and a profile-specific output name; do not label it as a preview.
+- [x] Add deterministic package validation that lists/extracts each archive, checks required files and executable placement, rejects stale/forbidden files, and verifies the hosted bundle includes both Wasm modules and the worklet shim.
+- [x] Update package-local build documentation with debug/release commands and resulting files.
 
 Verification:
 
@@ -141,6 +141,8 @@ Verification:
 - Run packaging/manifest checks on representative native and web outputs.
 - `cargo check --locked -p shoopdaloop_egui --target wasm32-unknown-unknown` and the dedicated worklet build pass with `RUSTFLAGS="-D warnings"`.
 - Generated output remains ignored by Git.
+
+Stage 2 evidence: warning-denying Trunk 0.21.14 debug and release builds pass and byte comparison confirms each copied worklet came from the matching Cargo target directory. `package_artifacts.py` produced and verified Linux, Windows-layout, macOS-layout, debug web, and release web artifacts; the hosted manifests contain exactly the five required production files, and profile-specific standalone HTML outputs are non-empty. Python compilation, Node syntax checking, and Git ignore checks pass.
 
 Commit profile-aware browser tooling and product packaging before adding CI.
 

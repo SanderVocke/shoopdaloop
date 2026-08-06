@@ -40,17 +40,31 @@ Browser recording storage is prepared per channel for ten seconds at the actual 
 
 ## Builds and artifacts
 
-A release build reproducibly builds both the UI module and dedicated worklet module:
+Trunk builds the UI and dedicated worklet with matching profiles:
 
 ```sh
 cd src/rust/shoopdaloop_egui
-trunk build --release
+trunk build                 # debug UI and worklet
+trunk build --release       # release UI and worklet
 python3 build_single_file_app.py dist
 ```
 
-The hosted `dist/index.html` bundle supports physical browser audio. The self-contained `dist/shoopdaloop_egui.html` cannot claim microphone support when directly opened from `file:`. Open it with `?offline=1` to explicitly select the elapsed-time dummy engine; without that query it presents the secure-context limitation and does not silently substitute dummy processing.
+CI application archives can also be produced locally from already-built outputs:
 
-Generated `dist` and worklet files are not committed.
+```sh
+# From the repository root after a native debug build.
+python3 src/rust/shoopdaloop_egui/package_artifacts.py native \
+  --platform linux --arch x86_64 --profile debug \
+  --binary target/debug/shoopdaloop_egui --output-dir artifacts
+
+# From src/rust/shoopdaloop_egui after a Trunk debug build.
+python3 package_artifacts.py web \
+  --profile debug --dist dist --output-dir ../../../artifacts
+```
+
+Native CI outputs are unsigned application archives rather than installers or portable dependency-closure packages. The hosted web archive supports physical browser audio and contains the complete UI and AudioWorklet assets. The separately generated profile-named HTML cannot claim microphone support when directly opened from `file:`. Open it with `?offline=1` to explicitly select the elapsed-time dummy engine; without that query it presents the secure-context limitation and does not silently substitute dummy processing.
+
+Generated `dist`, worklet, staging, and artifact files are not committed.
 
 ## Browser verification
 

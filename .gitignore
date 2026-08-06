@@ -15,6 +15,8 @@ dist
 py-build-cmake.local.toml
 py-build-cmake.cross.toml
 target
+artifacts/
+.act/
 .aider*
 .env
 .python-version

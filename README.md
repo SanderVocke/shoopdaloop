@@ -102,7 +102,7 @@ Apart from portable folders, I provide a [Nix package](https://github.com/Sander
 # License / Copyright
 
 Other than Git submodules and files which explicitly mention a different copyright owner, copyright owner for all files in this repo is Sander Vocke (2023).
-For copying, see LICENSE.txt.
+For copying, see [LICENSE](LICENSE).
 
 # Credits
 

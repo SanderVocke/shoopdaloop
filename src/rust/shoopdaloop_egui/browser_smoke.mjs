@@ -19,6 +19,8 @@ const denyFirst = process.env.DENY_FIRST === '1';
 const lifecycle = process.env.LIFECYCLE === '1';
 const stress = process.env.STRESS === '1';
 const saturate = process.env.SATURATE === '1';
+const selfContainedPath = process.env.SELF_CONTAINED_PATH
+  || join(process.cwd(), 'dist', 'shoopdaloop_egui.html');
 const profile = await mkdtemp(join(tmpdir(), 'shoopdaloop-egui-chrome-'));
 const fakeAudio = join(profile, 'fake-microphone.wav');
 const children = [];
@@ -163,7 +165,7 @@ try {
     });
   }
   const entryUrl = selfContained
-    ? `${pathToFileURL(join(process.cwd(), 'dist', 'shoopdaloop_egui.html')).href}${secureLimit ? '' : '?offline=1'}`
+    ? `${pathToFileURL(selfContainedPath).href}${secureLimit ? '' : '?offline=1'}`
     : `${origin}/?self-test=1${stress ? '&stress=1' : ''}`;
   await call('Page.navigate', { url: entryUrl });
 
