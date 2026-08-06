@@ -43,9 +43,35 @@ fn production_engine_mutexes_use_the_checked_abstraction() {
         );
     }
     assert_eq!(
-        permission_count, 34,
+        permission_count, 33,
         "the explicit realtime lock permission baseline changed"
     );
+}
+
+#[test]
+fn carla_callback_owns_a_lock_free_endpoint() {
+    let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let session = fs::read_to_string(source_root.join("session.rs")).expect("read session source");
+    let callback = session
+        .split("fn process_carla_fx_chains")
+        .nth(1)
+        .and_then(|tail| tail.split("fn synth_prerecorded_midi_playback").next())
+        .expect("Carla callback body");
+    assert!(!callback.contains(".lock("));
+    assert!(!callback.contains("Arc::clone"));
+    assert!(!callback.contains("format!("));
+    assert!(callback.contains("std::mem::take(&mut self.carla_fx_routes)"));
+
+    let processor = fs::read_to_string(source_root.join("carla_processor.rs"))
+        .expect("read Carla processor source");
+    let realtime = processor
+        .split("impl CarlaProcessor for CarlaRealtimeProcessor")
+        .nth(1)
+        .and_then(|tail| tail.split("fn process_bridge_block").next())
+        .expect("realtime endpoint implementation");
+    assert!(!realtime.contains(".lock("));
+    assert!(!realtime.contains("Tcp"));
+    assert!(!realtime.contains("Command::"));
 }
 
 #[test]

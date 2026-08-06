@@ -617,7 +617,8 @@ Item {
                         Label {
                             text: "FX"
                             font.pixelSize: 10
-                            color: root.maybe_fx_chain.process_lifecycle === 3 ||
+                            color: root.maybe_fx_chain == undefined ? "red" :
+                                   root.maybe_fx_chain.process_lifecycle === 3 ||
                                    root.maybe_fx_chain.process_lifecycle === 5 ? "red" :
                                    root.maybe_fx_chain.process_lifecycle === 1 ||
                                    root.maybe_fx_chain.process_lifecycle === 4 ? "orange" :

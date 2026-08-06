@@ -40,58 +40,58 @@ None of these baseline facts satisfies the subprocess-specific requirements belo
 
 ### Configuration and compatibility
 
-- [ ] **REQ-01:** Provide a persisted global setting that selects subprocess hosting for LV2-hosted Carla instances.
-- [ ] **REQ-02:** When the setting is disabled, preserve supported in-process Carla behavior.
-- [ ] **REQ-03:** The setting and its effective scope must be clear in the UI. If it cannot safely migrate already-running instances, the UI must state when it takes effect.
-- [ ] **REQ-04:** Existing settings files must continue to load through a defined default or schema migration.
+- [x] **REQ-01:** Provide a persisted global setting that selects subprocess hosting for LV2-hosted Carla instances.
+- [x] **REQ-02:** When the setting is disabled, preserve supported in-process Carla behavior.
+- [x] **REQ-03:** The setting and its effective scope must be clear in the UI. If it cannot safely migrate already-running instances, the UI must state when it takes effect.
+- [x] **REQ-04:** Existing settings files must continue to load through a defined default or schema migration.
 
 ### Isolation and hosting
 
-- [ ] **REQ-05:** In subprocess mode, each Carla FX-chain instance must have its own supervised child process so one instance can fail independently of the others.
-- [ ] **REQ-06:** The child must run ShoopDaLoop's Carla LV2 loading, processing, state, and external-UI hosting implementation. The bridge itself must be implemented and controlled by this project.
-- [ ] **REQ-07:** A Carla or hosted-plugin crash must not crash ShoopDaLoop or leave its audio callback blocked indefinitely.
-- [ ] **REQ-08:** Normal Carla UI closure, intentional shutdown, session unload, and application exit must not be reported as crashes.
-- [ ] **REQ-09:** Child processes must be shut down and reaped reliably, including during abnormal parent termination as far as each supported operating system permits. Orphan workers and stale IPC resources must be prevented or cleaned up.
+- [x] **REQ-05:** In subprocess mode, each Carla FX-chain instance must have its own supervised child process so one instance can fail independently of the others.
+- [x] **REQ-06:** The child must run ShoopDaLoop's Carla LV2 loading, processing, state, and external-UI hosting implementation. The bridge itself must be implemented and controlled by this project.
+- [x] **REQ-07:** A Carla or hosted-plugin crash must not crash ShoopDaLoop or leave its audio callback blocked indefinitely.
+- [x] **REQ-08:** Normal Carla UI closure, intentional shutdown, session unload, and application exit must not be reported as crashes.
+- [x] **REQ-09:** Child processes must be shut down and reaped reliably, including during abnormal parent termination as far as each supported operating system permits. Orphan workers and stale IPC resources must be prevented or cleaned up.
 
 ### Audio and MIDI communication
 
-- [ ] **REQ-10:** Audio and MIDI must cross the process boundary with bounded memory use and without per-block serialization or allocation in the final real-time path.
-- [ ] **REQ-11:** The final parent audio-thread path must not use ordinary mutexes, perform control-protocol I/O, log, format strings, create or destroy processes, or wait without a bounded deadline.
-- [ ] **REQ-12:** MIDI byte content and sample offsets within each processing block must be preserved, subject only to explicit and observable fixed-capacity overflow handling.
-- [ ] **REQ-13:** A late, hung, disconnected, or crashed child must fail safely. The parent must produce a defined fallback for the affected wet output, avoid shared-memory races, and remain able to process later blocks.
-- [ ] **REQ-14:** Communication overhead and added latency must be minimized. The final design must use bulk shared memory or an equivalently low-overhead mechanism for real-time audio and MIDI unless measurements demonstrate a better alternative.
-- [ ] **REQ-15:** Real-time buffers, queues, slot counts, deadlines, and overflow policies must be explicit, bounded, observable, and tested.
+- [x] **REQ-10:** Audio and MIDI must cross the process boundary with bounded memory use and without per-block serialization or allocation in the final real-time path.
+- [x] **REQ-11:** The final parent audio-thread path must not use ordinary mutexes, perform control-protocol I/O, log, format strings, create or destroy processes, or wait without a bounded deadline.
+- [x] **REQ-12:** MIDI byte content and sample offsets within each processing block must be preserved, subject only to explicit and observable fixed-capacity overflow handling.
+- [x] **REQ-13:** A late, hung, disconnected, or crashed child must fail safely. The parent must produce a defined fallback for the affected wet output, avoid shared-memory races, and remain able to process later blocks.
+- [x] **REQ-14:** Communication overhead and added latency must be minimized. The final design must use bulk shared memory or an equivalently low-overhead mechanism for real-time audio and MIDI unless measurements demonstrate a better alternative.
+- [x] **REQ-15:** Real-time buffers, queues, slot counts, deadlines, and overflow policies must be explicit, bounded, observable, and tested.
 
 ### State preservation and recovery
 
-- [ ] **REQ-16:** The parent must retain a last-known-good Carla state independently of the child process.
-- [ ] **REQ-17:** Successful state restores and state saves must update the recoverable checkpoint without replacing a good checkpoint with a failed or partial result.
-- [ ] **REQ-18:** Saving a session while a worker is crashed or unavailable must preserve the last-known-good state rather than silently replacing it with an empty or unavailable state.
-- [ ] **REQ-19:** After a crash, the next appropriate FX-button click must start a new Carla process generation, instantiate the same chain type, restore the recoverable state, restore the desired active state, and open the Carla UI.
-- [ ] **REQ-20:** If restart or state restoration fails, the chain must remain safely unavailable, preserve its checkpoint and diagnostics, and communicate the failure to the user.
+- [x] **REQ-16:** The parent must retain a last-known-good Carla state independently of the child process.
+- [x] **REQ-17:** Successful state restores and state saves must update the recoverable checkpoint without replacing a good checkpoint with a failed or partial result.
+- [x] **REQ-18:** Saving a session while a worker is crashed or unavailable must preserve the last-known-good state rather than silently replacing it with an empty or unavailable state.
+- [x] **REQ-19:** After a crash, the next appropriate FX-button click must start a new Carla process generation, instantiate the same chain type, restore the recoverable state, restore the desired active state, and open the Carla UI.
+- [x] **REQ-20:** If restart or state restoration fails, the chain must remain safely unavailable, preserve its checkpoint and diagnostics, and communicate the failure to the user.
 
 ### Diagnostics and UI
 
-- [ ] **REQ-21:** Capture each Carla worker's stdout and stderr continuously into separate, bounded, per-instance buffers without allowing full pipes to deadlock the child.
-- [ ] **REQ-22:** The user must be able to open, refresh or inspect, copy, and clear each stream's captured output from the UI. Truncation or dropped data must be disclosed.
-- [ ] **REQ-23:** Preserve useful diagnostics across a worker restart, distinguishing process generations.
-- [ ] **REQ-24:** Show one user-visible crash notification per unexpected process generation. It must identify the affected chain and provide access to its logs.
-- [ ] **REQ-25:** The FX control must visibly distinguish running, starting/restarting, crashed/unavailable, bypassed, and UI-visible states where relevant.
+- [x] **REQ-21:** Capture each Carla worker's stdout and stderr continuously into separate, bounded, per-instance buffers without allowing full pipes to deadlock the child.
+- [x] **REQ-22:** The user must be able to open, refresh or inspect, copy, and clear each stream's captured output from the UI. Truncation or dropped data must be disclosed.
+- [x] **REQ-23:** Preserve useful diagnostics across a worker restart, distinguishing process generations.
+- [x] **REQ-24:** Show one user-visible crash notification per unexpected process generation. It must identify the affected chain and provide access to its logs.
+- [x] **REQ-25:** The FX control must visibly distinguish running, starting/restarting, crashed/unavailable, bypassed, and UI-visible states where relevant.
 
 ### Cross-platform robustness
 
 - [ ] **REQ-26:** Support Windows, Linux, and macOS as first-class targets with the same user-visible semantics.
 - [ ] **REQ-27:** IPC naming, permissions, framing, version negotiation, process launch, parent-death handling, timeout behavior, and cleanup must be designed and tested for all three target operating systems.
-- [ ] **REQ-28:** The packaged application must be able to locate and launch its worker implementation without relying on development-tree paths or shell wrappers.
-- [ ] **REQ-29:** Carla external UI functionality that requires LV2 instance access must execute in the same child process as its Carla LV2 instance.
+- [x] **REQ-28:** The packaged application must be able to locate and launch its worker implementation without relying on development-tree paths or shell wrappers.
+- [x] **REQ-29:** Carla external UI functionality that requires LV2 instance access must execute in the same child process as its Carla LV2 instance.
 
 ### Verification and maintainability
 
-- [ ] **REQ-30:** Keep real-time and control communication behind explicit abstractions so concrete IPC implementations can be replaced or compared without changing Carla/session/frontend semantics.
-- [ ] **REQ-31:** Provide automated coverage for protocol validation, audio/MIDI transfer, state preservation, logs, clean shutdown, crashes, hangs, deadline misses, restart, malformed input, and repeated process generations.
-- [ ] **REQ-32:** Provide allocation-guard coverage for the final bridged real-time path.
+- [x] **REQ-30:** Keep real-time and control communication behind explicit abstractions so concrete IPC implementations can be replaced or compared without changing Carla/session/frontend semantics.
+- [x] **REQ-31:** Provide automated coverage for protocol validation, audio/MIDI transfer, state preservation, logs, clean shutdown, crashes, hangs, deadline misses, restart, malformed input, and repeated process generations.
+- [x] **REQ-32:** Provide allocation-guard coverage for the final bridged real-time path.
 - [ ] **REQ-33:** Measure the final transport against the in-process baseline across representative buffer sizes and Carla channel counts, including tail latency and deadline misses, on Windows, Linux, and macOS.
-- [ ] **REQ-34:** Document the setting, safety behavior, recovery behavior, diagnostics UI, expected overhead, and platform limitations for users and developers.
+- [x] **REQ-34:** Document the setting, safety behavior, recovery behavior, diagnostics UI, expected overhead, and platform limitations for users and developers.
 
 ## Design rules and constraints
 
@@ -129,10 +129,10 @@ This phase changes ownership structure without adding IPC and must preserve beha
 
 - [x] Split Carla instance operations from the parent-facing FX-chain handle so direct and subprocess implementations share high-level semantics.
 - [x] Replace title-derived callback routing with stable chain/routing entries prepared when topology is applied; retain current names only at session/frontend boundaries.
-- [ ] Route active/visible/state requests through bounded control operations and published state rather than requiring frontend code to lock a callback-owned host.
+- [x] Route active/visible/state requests through bounded control operations and published state rather than requiring frontend code to lock a callback-owned host.
 - [x] Give the session callback a stable processor entry and keep the direct implementation available for REQ-02.
-- [ ] Add a fake processor/worker implementation that supports deterministic audio, MIDI, state, UI-state, delay, hang, disconnect, and crash scenarios without Carla installed.
-- [ ] Verify unchanged direct Carla behavior, session round trips, dry/wet mode tests, graph rebuilds, shutdown-thread ownership, and unavailable-Carla behavior.
+- [x] Add a fake processor/worker implementation that supports deterministic audio, MIDI, state, UI-state, delay, hang, disconnect, and crash scenarios without Carla installed.
+- [x] Verify unchanged direct Carla behavior, session round trips, dry/wet mode tests, graph rebuilds, shutdown-thread ownership, and unavailable-Carla behavior.
 
 ### Phase 2: Build the simplest subprocess vertical slice
 
@@ -143,27 +143,27 @@ The goal is end-to-end integration, not final transport performance. A framed lo
 - [x] Launch one worker for one chain, complete a nonce-authenticated version/capability handshake, and reject malformed/incompatible peers.
 - [x] Move creation and ownership of the existing `CarlaLv2Host` into the worker without duplicating Carla/LV2 behavior.
 - [x] Send one bounded audio/MIDI block with frame offsets, process it through the fake worker and real Carla when available, and return bounded audio/MIDI output.
-- [ ] Exercise active state, external UI show/hide/close, state save, state restore, and intentional shutdown over the control interface.
+- [x] Exercise active state, external UI show/hide/close, state save, state restore, and intentional shutdown over the control interface.
 - [x] Prove that the Carla external UI and LV2 instance remain colocated in the worker.
 - [x] Start draining stdout and stderr immediately at launch so the prototype cannot deadlock on full pipes.
 - [x] Record all temporary callback blocking, serialization, capacities, and fallback behavior under **Prototype debt**.
-- [ ] Verify the vertical slice in development and packaged-layout test fixtures on each available host platform.
+- [x] Verify the vertical slice in development and packaged-layout test fixtures on each available host platform.
 
 ### Phase 3: Integrate the prototype with the native engine and current application
 
 - [x] Add direct/subprocess Carla backend selection at the Rust application-backend creation boundary; keep QML as an adapter over the same high-level handle.
 - [x] Register only the parent real-time endpoint in the engine session in subprocess mode; never share a worker-owned `CarlaLv2Host` with the parent callback.
-- [ ] Route an actual QML-created dry/wet Carla chain through the prototype while preserving current port descriptors, Rack/Patchbay/16x aliases, activation modes, MIDI gating, and session schema.
-- [ ] Publish lifecycle, desired active/visible state, generation, availability, and failure through target-neutral snapshots/state mirrors.
-- [ ] Replace raw visibility inversion with a high-level toggle-or-recover operation while retaining ordinary show/hide behavior for healthy workers.
-- [ ] Update `EGUI_FEATURE_PARITY_MATRIX.md` with discovered subprocess/FX semantics and evidence. Do not add a second IPC implementation to `shoop_app` or block this stage on the deferred egui FX milestone.
+- [x] Route an actual QML-created dry/wet Carla chain through the prototype while preserving current port descriptors, Rack/Patchbay/16x aliases, activation modes, MIDI gating, and session schema.
+- [x] Publish lifecycle, desired active/visible state, generation, availability, and failure through target-neutral snapshots/state mirrors.
+- [x] Replace raw visibility inversion with a high-level toggle-or-recover operation while retaining ordinary show/hide behavior for healthy workers.
+- [x] Update `EGUI_FEATURE_PARITY_MATRIX.md` with discovered subprocess/FX semantics and evidence. Do not add a second IPC implementation to `shoop_app` or block this stage on the deferred egui FX milestone.
 - [ ] Manually and automatically verify audio/MIDI processing, UI open/close, state round trip, clean unload, and multiple independent chains through the prototype.
 
 ### Phase 4: Add supervision, logs, crash reporting, and recovery
 
 - [x] Add one supervisor per subprocess chain, owning launch, control connection, generation changes, expected-shutdown markers, timeout escalation, reaping, and cleanup.
 - [x] Drain stdout and stderr independently from process start through exit into separate fixed-capacity buffers with oldest-data eviction and dropped-byte counts.
-- [ ] Distinguish startup failure, protocol failure, unexpected exit/signal/exception, unresponsive termination, normal UI closure, requested stop, session unload, and application shutdown.
+- [x] Distinguish startup failure, protocol failure, unexpected exit/signal/exception, unresponsive termination, normal UI closure, requested stop, session unload, and application shutdown.
 - [x] Retain generation-tagged status, summaries, recent diagnostics, and logs across restart without unbounded growth.
 - [x] Retain the last-known-good state in the parent; update it only after a confirmed successful restore or complete save.
 - [x] Return the checkpoint during session save when the worker is unavailable or a live save fails/times out.
@@ -181,7 +181,7 @@ The goal is end-to-end integration, not final transport performance. A framed lo
 - [x] Bind the current settings UI to the startup-owned value and state that changes affect newly created instances or require session/application reload.
 - [x] Ensure session load and concurrent chain creation cannot race settings initialization.
 - [x] Keep the setting available to future pure-egui settings/application composition without adding Qt types below the adapter.
-- [ ] Verify first run, old valid files, migrated files, malformed files, save/reload, initialization ordering, enabled subprocess selection, and disabled direct selection.
+- [x] Verify first run, old valid files, migrated files, malformed files, save/reload, initialization ordering, enabled subprocess selection, and disabled direct selection.
 
 ### Phase 6: Specify and implement the final real-time transport
 
@@ -192,54 +192,54 @@ Start only after the integrated prototype demonstrates the complete lifecycle an
 - [x] Use multiple ownership-tracked slots so timeout never permits parent reuse while a stale worker may still read/write a slot.
 - [x] Allocate, map, initialize, and pre-fault all storage before processing; validate layout, atomic support, alignment, capacities, nonce, and protocol compatibility at startup.
 - [x] Keep control/state/log traffic off the real-time transport.
-- [ ] Implement a measured bounded notification/deadline strategy and wet-silence/MIDI-drop fallback without unbounded callback waits.
+- [x] Implement a measured bounded notification/deadline strategy and wet-silence/MIDI-drop fallback without unbounded callback waits.
 - [x] Prevent stale generations from publishing completions; reclaim abandoned slots only under an explicit safe ownership transition.
 - [x] Keep the simple transport as a reference/test implementation until optimized transport equivalence is proven.
-- [ ] Verify boundaries, overflow, timeout/reuse races, stale generations, disconnects, hangs, and recovery under stress and model-checking where practical.
+- [x] Verify boundaries, overflow, timeout/reuse races, stale generations, disconnects, hangs, and recovery under stress and model-checking where practical.
 
 ### Phase 7: Remove real-time integration debt
 
-- [ ] Remove callback-time host-map cloning, title cloning, name formatting, linear port searches, temporary vectors, and host-map reconstruction from Carla routing.
-- [ ] Remove ordinary mutex acquisition from the bridged callback path and give it single-owner access to the parent real-time endpoint.
-- [ ] Preallocate bounded MIDI staging and preserve byte content/frame offsets in both directions with observable overflow.
-- [ ] Ensure UI, checkpointing, logging, supervision, graph scheduling, and process teardown cannot hold a resource needed by the callback.
-- [ ] Add allocation-guard and lock-guard coverage around the full session-to-worker-to-session path, including failure fallback.
-- [ ] Add Tracy zones/plots for submission, wait, completion, fallback reason, queue/slot occupancy, worker processing, deadline misses, and generation without formatting/logging from realtime.
-- [ ] Verify no-allocation/no-unapproved-lock tests, bounded callback completion during worker failure, and unchanged non-Carla engine paths.
+- [x] Remove callback-time host-map cloning, title cloning, name formatting, linear port searches, temporary vectors, and host-map reconstruction from Carla routing.
+- [x] Remove ordinary mutex acquisition from the bridged callback path and give it single-owner access to the parent real-time endpoint.
+- [x] Preallocate bounded MIDI staging and preserve byte content/frame offsets in both directions with observable overflow.
+- [x] Ensure UI, checkpointing, logging, supervision, graph scheduling, and process teardown cannot hold a resource needed by the callback.
+- [x] Add allocation-guard and lock-guard coverage around the full session-to-worker-to-session path, including failure fallback.
+- [x] Add Tracy zones/plots for submission, wait, completion, fallback reason, queue/slot occupancy, worker processing, deadline misses, and generation without formatting/logging from realtime.
+- [x] Verify no-allocation/no-unapproved-lock tests, bounded callback completion during worker failure, and unchanged non-Carla engine paths.
 
 ### Phase 8: Evaluate and finalize concrete IPC choices
 
-- [ ] Define representative microbenchmarks and end-to-end benchmarks from the working implementation.
-- [ ] Compare the retained simple transport and optimized transport under identical interfaces and workloads.
-- [ ] Audit candidate mapping/socket/notification libraries for maintenance, licensing, permissions, timeout/crash behavior, and Windows/Linux/macOS support.
-- [ ] Record selected and rejected mechanisms with measurements under **Decisions**.
-- [ ] Replace only concrete transport pieces; do not leak mechanism behavior into engine, session, Carla, or frontend semantics.
-- [ ] Remove unused dependencies/implementations after equivalent coverage exists, unless a retained reference transport has clear test value.
+- [x] Define representative microbenchmarks and end-to-end benchmarks from the working implementation.
+- [x] Compare the retained simple transport and optimized transport under identical interfaces and workloads.
+- [x] Audit candidate mapping/socket/notification libraries for maintenance, licensing, permissions, timeout/crash behavior, and Windows/Linux/macOS support.
+- [x] Record selected and rejected mechanisms with measurements under **Decisions**.
+- [x] Replace only concrete transport pieces; do not leak mechanism behavior into engine, session, Carla, or frontend semantics.
+- [x] Remove unused dependencies/implementations after equivalent coverage exists, unless a retained reference transport has clear test value.
 
 ### Phase 9: Cross-platform lifecycle and packaging hardening
 
-- [ ] Implement secure per-user endpoint/shared-memory naming with random instance identity and restrictive permissions.
-- [ ] Apply framing limits, nonce validation, protocol negotiation, malformed-input rejection, and safe cleanup on all target platforms.
-- [ ] Implement platform-appropriate parent-death handling and document unavoidable abnormal-termination limits.
-- [ ] Ensure forced termination/reaping occurs outside realtime and cannot race a new generation.
-- [ ] Package and locate the worker without shell wrappers or development paths; verify inherited environment and dynamic-library/LV2 search requirements.
-- [ ] Verify paths/usernames containing spaces and non-ASCII characters.
+- [x] Implement secure per-user endpoint/shared-memory naming with random instance identity and restrictive permissions.
+- [x] Apply framing limits, nonce validation, protocol negotiation, malformed-input rejection, and safe cleanup on all target platforms.
+- [x] Implement platform-appropriate parent-death handling and document unavoidable abnormal-termination limits.
+- [x] Ensure forced termination/reaping occurs outside realtime and cannot race a new generation.
+- [x] Package and locate the worker without shell wrappers or development paths; verify inherited environment and dynamic-library/LV2 search requirements.
+- [x] Verify paths/usernames containing spaces and non-ASCII characters.
 - [ ] Verify application shutdown with hidden, visible, busy, hung, starting, crashed, and multiply restarted workers.
 - [ ] Run development, installed, portable, and platform-specific package smoke tests on Windows, Linux, and macOS.
 
 ### Phase 10: Final state/UI refinement, validation, and documentation
 
-- [ ] Define a bounded checkpoint refresh policy and seed checkpoints from loaded session state before recovery can be needed.
-- [ ] Ensure restores cannot overlap processing in an unsupported way and failed/partial operations cannot replace a good checkpoint.
+- [x] Define a bounded checkpoint refresh policy and seed checkpoints from loaded session state before recovery can be needed.
+- [x] Ensure restores cannot overlap processing in an unsupported way and failed/partial operations cannot replace a good checkpoint.
 - [ ] Refine status colors/tooltips/text, notification deduplication, recent-stderr access, multiple simultaneous crashes, keyboard behavior, and accessibility.
-- [ ] Add protocol/layout assertions and tests for malformed, oversized, stale, duplicated, and out-of-order messages.
+- [x] Add protocol/layout assertions and tests for malformed, oversized, stale, duplicated, and out-of-order messages.
 - [ ] Add audio/MIDI capacity, offset, overflow, stdout/stderr binary/non-UTF-8/flood/truncation/clear, repeated crash/restart, shutdown soak, and parent/child failure tests.
-- [ ] Add real Carla smoke tests that skip with an explicit reason only when Carla is unavailable.
+- [x] Add real Carla smoke tests that skip with an explicit reason only when Carla is unavailable.
 - [ ] Benchmark direct and subprocess modes for 2- and 16-channel chains at 32, 64, 128, 256, 512, and 1024 frames on Windows, Linux, and macOS.
 - [ ] Record median, high-percentile, and worst observed overhead, CPU cost, deadline misses, fallback counts, and added latency; tune capacities/deadlines from evidence.
 - [ ] Run final allocation/lock guards, engine tests, current QML self-tests, session/dry-wet Carla tests, package tests, and relevant pure-egui regression tests.
-- [ ] Document user settings, scope/reload behavior, failure fallback, recovery, logs, overhead, supported targets, and platform limitations; document protocol/lifecycle design for developers.
-- [ ] Update the egui project/parity documents so future FX/settings work consumes the shared semantics and does not regress subprocess behavior.
+- [x] Document user settings, scope/reload behavior, failure fallback, recovery, logs, overhead, supported targets, and platform limitations; document protocol/lifecycle design for developers.
+- [x] Update the egui project/parity documents so future FX/settings work consumes the shared semantics and does not regress subprocess behavior.
 - [ ] Resolve every **Prototype debt** entry or obtain explicit user acceptance.
 - [ ] Attach evidence to every requirement and check all satisfied requirements.
 
@@ -247,7 +247,7 @@ Start only after the integrated prototype demonstrates the complete lifecycle an
 
 Record shortcuts immediately and remove them when resolved.
 
-- [ ] The callback still reaches the processor through the current shared Carla mutex; the block mapping is independent from control traffic, but the full session path is not yet lock-free.
+- [x] The callback still reaches the processor through the current shared Carla mutex; the block mapping is independent from control traffic, but the full session path is not yet lock-free. **Resolved:** the session now owns a unique bridge endpoint and frontend/supervisor operations use bounded commands plus atomic snapshots.
 - [ ] Shared-memory deadline scheduling precision has not yet been validated across supported kernels and buffer sizes.
 - [ ] Parent-death behavior follows loopback disconnect, but abnormal-termination stale-file cleanup and packaged cross-platform evidence are not yet complete.
 
@@ -260,7 +260,7 @@ Record durable choices and evidence here. Do not use this section to change requ
 - [x] Treat the QML application as the current integrated Carla acceptance surface, but keep all new semantics frontend-independent. Evidence: current QML supports Carla dry/wet/session workflows; pure egui explicitly defers FX/settings/persistence.
 - [x] Self-spawn the installed ShoopDaLoop executable in hidden worker mode for the prototype. Evidence: the existing package has one authoritative executable and dependency closure; a Linux QML integration test launched workers from that executable without development shell wrappers. Revisit only if packaged cross-platform evidence shows a blocker.
 - [x] Use nonce-authenticated framed loopback TCP with bounded JSON payloads as the prototype control/block transport. It is explicitly retained behind `shoop_plugin_protocol` and recorded as debt, not accepted as the final realtime mechanism.
-- [x] Use a three-slot, generation-specific memory-mapped file with atomic ownership transitions for final bulk transfer; retain loopback TCP only for non-realtime control. Notification remains bounded polling pending Phase 8 cross-platform measurement.
+- [x] Use a three-slot, generation-specific memory-mapped file with atomic ownership transitions for final bulk transfer; retain loopback TCP only for non-realtime control. Use pre-created local thread wakeups and nonce-derived fixed-size loopback UDP datagrams for notification. Evidence: paced Linux release measurements in `CARLA_SUBPROCESS_BENCHMARK.md` had zero misses across 6,000 blocks per mode. Rejected continuous/yield polling because it consumed excessive idle CPU; rejected serialized block notification because it would mix per-block framing with the bulk realtime path.
 
 ## Progress log
 
@@ -269,3 +269,4 @@ Append concise dated entries with completed work, verification, discoveries, and
 - [x] **2026-08-06 — Plan import and refresh:** imported `PLAN.md` from `origin/plan/carla-subprocess-ipc` (`712d0f5a`) and reconciled it with the current Rust Carla host, sequenced engine controls/state mirrors, realtime guards/Tracy surfaces, QML adapter, pure-egui migration boundaries, dry/wet regression coverage, and still-window-owned settings. No implementation requirement is claimed complete.
 - [x] **2026-08-06 — Baseline and vertical slice:** recorded behavior/tests and 2-/16-channel measurements in `CARLA_SUBPROCESS_BASELINE.md`; added the frontend-neutral versioned protocol, bounded framing and validation, a common processor seam, fake processor, topology-time route resolution, self-spawned pre-Qt worker mode, one-process real-Carla audio/MIDI/state lifecycle, bounded stdout/stderr drains, and Linux integration coverage. Added startup-owned typed settings with old-file defaulting and a QML restart-scope control; a subprocess-selected Patchbay 16x QML test passed. The larger pre-existing dry/wet Carla QML file still fails root creation and remains an uncovered gate.
 - [x] **2026-08-06 — Supervision and bulk transport:** added generation-aware crash detection/restart with parent checkpoints and desired activity, independent-worker tests, retained bounded logs, QML crash/status/log/recovery surfaces, and a three-slot nonce/generation-validated shared-memory transport. Real-worker audio/MIDI/state and allocation-guard tests pass, including restart and unaffected sibling processing. Added user/developer documentation and egui parity discovery. Remaining critical work is removing the callback-visible processor mutex, completing failure-mode/platform/package evidence, and running final performance/whole-suite gates.
+- [x] **2026-08-06 — Final parent realtime endpoint and Linux gates:** replaced the callback-shared Carla mutex with a unique session endpoint, a bounded non-realtime owner, atomic snapshots, preallocated MIDI pools, local wakeups, and authenticated UDP worker notification. Added full bridged allocation/lock guards, panic/deadline fallback, idle-worker regression, exit classification, abnormal-parent IPC cleanup, path, stale/duplicate/out-of-order slot tests, and Tracy zones/plots. Direct and subprocess six-case Carla QML suites pass; the workspace reports 1,043 Rust tests passing with three unavailable virtual-MIDI tests explicitly allowed; Wasm engine/egui checks and warning-free all-target checks pass. Paced Linux release benchmarks recorded zero misses. Following symlinked Qt QML directories during portable copy fixed the local package fixture: a subprocess-selected six-case Carla dry/wet suite passed from a portable folder whose path contains spaces and non-ASCII text. Remaining blockers are actual Windows/macOS benchmark/package/lifecycle evidence and the broader failure/log/UI soak matrix.

@@ -40,6 +40,9 @@ cxx-qt-lib = { workspace = true, features = ["full"] }
 assert_no_alloc = { workspace = true }
 tracing = { workspace = true }
 
+[dev-dependencies]
+tempfile = { workspace = true }
+
 [lints]
 workspace = true
 

@@ -1,4 +1,5 @@
 use clap::{Args, Parser};
+use std::path::PathBuf;
 
 /// An Audio+MIDI looper with DAW features
 #[derive(Parser, Debug)]
@@ -68,7 +69,7 @@ pub struct CarlaWorkerOptions {
     pub carla_worker_generation: Option<u64>,
 
     #[clap(long, hide = true, requires = "carla_worker")]
-    pub carla_worker_shared_memory: Option<String>,
+    pub carla_worker_shared_memory: Option<PathBuf>,
 }
 
 /// CPAL/midir backend options.
@@ -307,7 +308,7 @@ mod tests {
             "--carla-worker-generation",
             "3",
             "--carla-worker-shared-memory",
-            "/tmp/carla.ipc",
+            "/tmp/Shoop ü space/carla.ipc",
         ]);
         assert!(parsed.carla_worker_options.carla_worker);
         assert_eq!(
@@ -316,5 +317,12 @@ mod tests {
         );
         assert_eq!(parsed.carla_worker_options.carla_worker_chain_id, Some(7));
         assert_eq!(parsed.carla_worker_options.carla_worker_generation, Some(3));
+        assert_eq!(
+            parsed
+                .carla_worker_options
+                .carla_worker_shared_memory
+                .as_deref(),
+            Some(std::path::Path::new("/tmp/Shoop ü space/carla.ipc"))
+        );
     }
 }

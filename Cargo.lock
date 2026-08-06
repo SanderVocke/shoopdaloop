@@ -4376,6 +4376,7 @@ dependencies = [
  "shoop_engine",
  "shoop_plugin_protocol",
  "shoop_settings",
+ "tempfile",
  "toml",
  "tracing",
 ]

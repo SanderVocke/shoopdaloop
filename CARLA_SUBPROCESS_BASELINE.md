@@ -50,7 +50,7 @@ QT_QPA_PLATFORM=offscreen target/debug/shoopdaloop_dev.sh \
 
 Result: 2 passed, 0 failed.
 
-The larger `tst_TrackControlAndLoop_drywet_carla.qml` currently fails to create its root QML object and leaves the test runner waiting. The failure reproduces before subprocess changes and is not accepted as passing evidence. This gate must be repaired or replaced by equivalent explicit coverage before a subprocess milestone can claim dry/wet compatibility.
+At baseline capture time, the larger `tst_TrackControlAndLoop_drywet_carla.qml` failed to create its root QML object because the `QtMaterialDesignIcons` submodule was absent. After initializing recursive submodules, all six activation/MIDI-gating cases pass in both direct and subprocess modes. Final bridge measurements are recorded separately in `CARLA_SUBPROCESS_BENCHMARK.md`.
 
 ### In-process microbenchmark
 

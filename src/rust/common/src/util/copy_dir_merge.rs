@@ -10,7 +10,9 @@ pub fn copy_dir_merge(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<()
     let dst = dst.as_ref();
     let mut entries = 0_u64;
 
-    for entry in WalkDir::new(src) {
+    // Qt/Nix trees commonly expose QML module directories through symlinks.
+    // Portable packages need the target contents, not a host-store symlink.
+    for entry in WalkDir::new(src).follow_links(true) {
         entries += 1;
         let entry = entry?;
         let rel_path = entry

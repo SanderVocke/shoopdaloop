@@ -567,6 +567,17 @@ impl CarlaLv2Host {
             .midi_events()
     }
 
+    pub fn fill_midi_output_events(
+        &mut self,
+        idx: usize,
+        destination: &mut crate::carla_processor::CarlaMidiBuffer,
+    ) -> Result<()> {
+        self.midi_outputs
+            .get_mut(idx)
+            .ok_or_else(|| anyhow!("No Carla MIDI output port {idx}"))?
+            .fill_midi_events(destination)
+    }
+
     #[tracing::instrument(name = "engine.plugin.save_state", skip_all)]
     pub fn save_state_string(&mut self) -> Result<String> {
         let state_interface = self
@@ -721,6 +732,14 @@ impl CarlaProcessor for CarlaLv2Host {
         CarlaLv2Host::midi_output_events(self, index)
     }
 
+    fn fill_midi_output_events(
+        &mut self,
+        index: usize,
+        destination: &mut crate::carla_processor::CarlaMidiBuffer,
+    ) -> Result<()> {
+        CarlaLv2Host::fill_midi_output_events(self, index, destination)
+    }
+
     fn process(&mut self, frames: usize) -> Result<()> {
         CarlaLv2Host::process(self, frames)
     }
@@ -783,6 +802,34 @@ impl AtomSequenceBuffer {
             }
         }
         self.as_mut_sequence().atom.size += padded_size as u32;
+        Ok(())
+    }
+
+    fn fill_midi_events(
+        &mut self,
+        destination: &mut crate::carla_processor::CarlaMidiBuffer,
+    ) -> Result<()> {
+        destination.clear();
+        let seq = self.as_mut_sequence();
+        let atom_size = seq.atom.size as usize;
+        let mut offset = std::mem::size_of::<LV2AtomSequence>();
+        let end = std::mem::size_of::<LV2Atom>() + atom_size;
+        while offset + std::mem::size_of::<LV2AtomEvent>() <= end {
+            let event = unsafe { &*(self.bytes.as_ptr().add(offset).cast::<LV2AtomEvent>()) };
+            let data_len = event.body.size as usize;
+            let data_at = offset + std::mem::size_of::<LV2AtomEvent>();
+            if data_at + data_len > self.bytes.len() || data_at + data_len > end {
+                return Err(anyhow!("Invalid Carla MIDI atom sequence event"));
+            }
+            if event.body.mytype == self.midi_event_type {
+                destination.push(
+                    event.time_in_frames.max(0) as u32,
+                    &self.bytes[data_at..data_at + data_len],
+                )?;
+            }
+            offset +=
+                lv2_atom_pad_size((std::mem::size_of::<LV2AtomEvent>() + data_len) as u32) as usize;
+        }
         Ok(())
     }
 

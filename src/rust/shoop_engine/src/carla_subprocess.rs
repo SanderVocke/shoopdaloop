@@ -1,5 +1,6 @@
 use crate::carla_processor::{
-    CarlaGenerationLog, CarlaProcessor, CarlaProcessorInfo, CarlaProcessorLifecycle,
+    CarlaGenerationLog, CarlaMidiBuffer, CarlaProcessor, CarlaProcessorInfo,
+    CarlaProcessorLifecycle,
 };
 use crate::carla_shared_memory::SharedBlockTransport;
 use crate::lv2_carla::CarlaLv2Host;
@@ -10,12 +11,13 @@ use shoop_plugin_protocol::{
     read_frame, write_frame, BlockSequence, CarlaChainType, ChainId, ControlRequest,
     ControlRequestKind, ControlResponse, ControlResponseKind, LifecycleState, MidiEvent,
     ParentToWorker, ProcessGeneration, ProtocolError, ProtocolErrorCode, PrototypeBlockResult,
-    RequestId, WorkerExitKind, WorkerHello, WorkerStatus, WorkerToParent, MAX_BLOCK_FRAMES,
+    RequestId, WorkerExitKind, WorkerHello, WorkerStatus, WorkerToParent, MAX_AUDIO_CHANNELS,
+    MAX_BLOCK_FRAMES, MAX_MIDI_EVENTS_PER_BLOCK,
 };
 use std::collections::VecDeque;
 use std::fmt;
 use std::io::Read;
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -104,6 +106,17 @@ fn protocol_error(error: impl fmt::Display) -> ControlResponseKind {
     })
 }
 
+struct SharedMemoryCleanup(PathBuf);
+
+impl Drop for SharedMemoryCleanup {
+    fn drop(&mut self) {
+        // On Unix the worker may unlink while the parent mapping is still open;
+        // on Windows this succeeds after an abnormal parent exit and otherwise
+        // the parent's NamedTempFile performs the normal cleanup.
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
 struct SharedWorkerGuard {
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
@@ -123,12 +136,35 @@ fn run_shared_worker(
     host: Arc<Mutex<Option<CarlaLv2Host>>>,
     stop: Arc<AtomicBool>,
     processed_blocks: Arc<AtomicU64>,
+    notification: UdpSocket,
+    notification_token: [u8; 16],
 ) {
-    let mut midi_inputs = Vec::with_capacity(shoop_plugin_protocol::MAX_MIDI_EVENTS_PER_BLOCK);
+    let mut midi_inputs = CarlaMidiBuffer::new(
+        MAX_MIDI_EVENTS_PER_BLOCK,
+        crate::midi_storage::MAX_MSG_BYTES,
+    );
+    let mut midi_outputs = CarlaMidiBuffer::new(
+        MAX_MIDI_EVENTS_PER_BLOCK,
+        crate::midi_storage::MAX_MSG_BYTES,
+    );
+    let mut notification_buffer = [0_u8; 16];
     while !stop.load(Ordering::Acquire) {
         let Some(token) = transport.worker_take() else {
-            std::hint::spin_loop();
-            thread::yield_now();
+            match notification.recv(&mut notification_buffer) {
+                Ok(read)
+                    if read == notification_token.len()
+                        && notification_buffer == notification_token => {}
+                Ok(_) => continue,
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                    ) =>
+                {
+                    continue
+                }
+                Err(_) => break,
+            }
             continue;
         };
         let result = (|| -> Result<()> {
@@ -150,31 +186,37 @@ fn run_shared_worker(
                     .ok_or_else(|| anyhow!("Carla audio input {channel} disappeared"))?;
                 transport.worker_copy_audio_input(token, channel, destination)?;
             }
-            transport.worker_read_midi(token, &mut midi_inputs)?;
+            let (midi_pool, midi_count) = midi_inputs.storage_mut();
+            transport.worker_read_midi_reusing(token, midi_pool, midi_count)?;
             if !host.info.ports.midi_inputs.is_empty() {
                 host.set_midi_input_events(
                     0,
                     midi_inputs
+                        .as_slice()
                         .iter()
                         .map(|event| (event.frame_offset, event.data.as_slice())),
                 )?;
             }
             host.process(token.frames)?;
-            let mut midi_outputs = Vec::new();
+            midi_outputs.clear();
             if !host.info.ports.midi_outputs.is_empty() {
-                midi_outputs.extend(
-                    host.midi_output_events(0)?
-                        .into_iter()
-                        .map(|(frame_offset, data)| MidiEvent { frame_offset, data }),
-                );
+                host.fill_midi_output_events(0, &mut midi_outputs)?;
             }
-            let audio_outputs: Vec<_> = (0..host.info.ports.audio_outputs.len())
-                .map(|channel| {
-                    host.audio_output(channel)
-                        .ok_or_else(|| anyhow!("Carla audio output {channel} disappeared"))
-                })
-                .collect::<Result<_>>()?;
-            transport.worker_complete(token, &audio_outputs, &midi_outputs)?;
+            let mut audio_outputs = [&[][..]; MAX_AUDIO_CHANNELS];
+            for (channel, output) in audio_outputs
+                .iter_mut()
+                .enumerate()
+                .take(host.info.ports.audio_outputs.len())
+            {
+                *output = host
+                    .audio_output(channel)
+                    .ok_or_else(|| anyhow!("Carla audio output {channel} disappeared"))?;
+            }
+            transport.worker_complete(
+                token,
+                &audio_outputs[..host.info.ports.audio_outputs.len()],
+                midi_outputs.as_slice(),
+            )?;
             processed_blocks.fetch_add(1, Ordering::Relaxed);
             Ok(())
         })();
@@ -189,9 +231,15 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
     let mut stream = TcpStream::connect_timeout(&options.address, STARTUP_TIMEOUT)
         .context("worker could not connect to parent")?;
     stream.set_nodelay(true)?;
-    stream.set_read_timeout(Some(CONTROL_TIMEOUT))?;
+    // The worker is long-lived and may legitimately receive no control traffic for
+    // minutes. Parent-side request deadlines bound individual exchanges; a worker
+    // read deadline here would incorrectly turn an idle plugin into a crash.
+    stream.set_read_timeout(None)?;
     stream.set_write_timeout(Some(CONTROL_TIMEOUT))?;
-    let hello = WorkerHello::current(options.nonce, options.generation);
+    let notification = UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, 0))?;
+    notification.set_read_timeout(Some(Duration::from_millis(10)))?;
+    let mut hello = WorkerHello::current(options.nonce, options.generation);
+    hello.notification_port = notification.local_addr()?.port();
     write_frame(
         &mut stream,
         &response(
@@ -206,6 +254,7 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
         options.generation,
         &options.nonce,
     )?;
+    let _shared_memory_cleanup = SharedMemoryCleanup(options.shared_memory_path.clone());
     let host: Arc<Mutex<Option<CarlaLv2Host>>> = Arc::new(Mutex::new(None));
     let stop = Arc::new(AtomicBool::new(false));
     let processed_blocks = Arc::new(AtomicU64::new(0));
@@ -215,7 +264,19 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
             let host = Arc::clone(&host);
             let stop = Arc::clone(&stop);
             let processed_blocks = Arc::clone(&processed_blocks);
-            move || run_shared_worker(shared_transport, host, stop, processed_blocks)
+            let notification_token: [u8; 16] = options.nonce[..16]
+                .try_into()
+                .expect("nonce prefix has fixed size");
+            move || {
+                run_shared_worker(
+                    shared_transport,
+                    host,
+                    stop,
+                    processed_blocks,
+                    notification,
+                    notification_token,
+                )
+            }
         })?;
     let _shared_worker = SharedWorkerGuard {
         stop,
@@ -482,6 +543,8 @@ pub struct SubprocessCarlaProcessor {
     request_id: u64,
     block_sequence: u64,
     stream: TcpStream,
+    notification: UdpSocket,
+    notification_token: [u8; 16],
     shared_transport: SharedBlockTransport,
     child: Child,
     stdout: Arc<Mutex<BoundedLog>>,
@@ -490,14 +553,23 @@ pub struct SubprocessCarlaProcessor {
     audio_inputs: Vec<Vec<f32>>,
     audio_outputs: Vec<Vec<f32>>,
     midi_inputs: Vec<Vec<(u32, Vec<u8>)>>,
+    midi_input_counts: Vec<usize>,
     midi_outputs: Vec<Vec<(u32, Vec<u8>)>>,
+    midi_output_counts: Vec<usize>,
     shared_midi_outputs: Vec<MidiEvent>,
+    shared_midi_output_count: usize,
     active: bool,
     visible: bool,
     ready: bool,
     checkpoint: String,
     process_timeout: Duration,
     deadline_misses: u64,
+    midi_input_overflows: u64,
+    midi_output_overflows: u64,
+    stale_completions: u64,
+    serialized_reference_transport: bool,
+    exit_kind: WorkerExitKind,
+    shutdown_complete: bool,
 }
 
 impl fmt::Debug for SubprocessCarlaProcessor {
@@ -532,22 +604,21 @@ impl SubprocessCarlaProcessor {
         let address = listener.local_addr()?;
         let nonce = new_nonce();
         let shared_transport = SharedBlockTransport::create(generation, &nonce)?;
-        let shared_memory_path = shared_transport.path().to_string_lossy().to_string();
-        let mut child = Command::new(executable.as_ref())
-            .args([
-                "--carla-worker",
-                "--carla-worker-address",
-                &address.to_string(),
-                "--carla-worker-nonce",
-                &nonce_hex(&nonce),
-                "--carla-worker-chain-id",
-                &chain_id.0.to_string(),
-                "--carla-worker-generation",
-                &generation.0.to_string(),
-                "--carla-worker-shared-memory",
-                &shared_memory_path,
-                "--no-crash-handling",
-            ])
+        let mut command = Command::new(executable.as_ref());
+        command
+            .arg("--carla-worker")
+            .arg("--carla-worker-address")
+            .arg(address.to_string())
+            .arg("--carla-worker-nonce")
+            .arg(nonce_hex(&nonce))
+            .arg("--carla-worker-chain-id")
+            .arg(chain_id.0.to_string())
+            .arg("--carla-worker-generation")
+            .arg(generation.0.to_string())
+            .arg("--carla-worker-shared-memory")
+            .arg(shared_transport.path())
+            .arg("--no-crash-handling");
+        let mut child = command
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -595,7 +666,7 @@ impl SubprocessCarlaProcessor {
         stream.set_read_timeout(Some(CONTROL_TIMEOUT))?;
         stream.set_write_timeout(Some(CONTROL_TIMEOUT))?;
         let hello: WorkerToParent = read_frame(&mut stream)?;
-        match hello {
+        let notification_port = match hello {
             WorkerToParent::Control(ControlResponse {
                 request_id: RequestId(1),
                 chain_id: response_chain,
@@ -603,12 +674,17 @@ impl SubprocessCarlaProcessor {
                 kind: ControlResponseKind::Handshake(hello),
             }) if response_chain == chain_id && response_generation == generation => {
                 hello.validate(&nonce, generation)?;
+                hello.notification_port
             }
             other => {
                 let _ = child.kill();
                 return Err(anyhow!("invalid worker handshake: {other:?}"));
             }
-        }
+        };
+        let notification = UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, 0))?;
+        notification.connect((std::net::Ipv4Addr::LOCALHOST, notification_port))?;
+        notification.set_nonblocking(true)?;
+        let notification_token = nonce[..16].try_into().expect("nonce prefix has fixed size");
 
         let channels = protocol_type.audio_channels() as usize;
         let mut processor = Self {
@@ -624,6 +700,8 @@ impl SubprocessCarlaProcessor {
             request_id: 1,
             block_sequence: 0,
             stream,
+            notification,
+            notification_token,
             shared_transport,
             child,
             stdout,
@@ -631,13 +709,21 @@ impl SubprocessCarlaProcessor {
             log_threads,
             audio_inputs: vec![vec![0.0; MAX_BLOCK_FRAMES]; channels],
             audio_outputs: vec![vec![0.0; MAX_BLOCK_FRAMES]; channels],
-            midi_inputs: vec![Vec::new()],
-            midi_outputs: vec![Vec::with_capacity(
-                shoop_plugin_protocol::MAX_MIDI_EVENTS_PER_BLOCK,
-            )],
-            shared_midi_outputs: Vec::with_capacity(
-                shoop_plugin_protocol::MAX_MIDI_EVENTS_PER_BLOCK,
-            ),
+            midi_inputs: vec![(0..MAX_MIDI_EVENTS_PER_BLOCK)
+                .map(|_| (0, Vec::with_capacity(crate::midi_storage::MAX_MSG_BYTES)))
+                .collect()],
+            midi_input_counts: vec![0],
+            midi_outputs: vec![(0..MAX_MIDI_EVENTS_PER_BLOCK)
+                .map(|_| (0, Vec::with_capacity(crate::midi_storage::MAX_MSG_BYTES)))
+                .collect()],
+            midi_output_counts: vec![0],
+            shared_midi_outputs: (0..MAX_MIDI_EVENTS_PER_BLOCK)
+                .map(|_| MidiEvent {
+                    frame_offset: 0,
+                    data: Vec::with_capacity(crate::midi_storage::MAX_MSG_BYTES),
+                })
+                .collect(),
+            shared_midi_output_count: 0,
             active: false,
             visible: false,
             ready: false,
@@ -646,6 +732,12 @@ impl SubprocessCarlaProcessor {
                 (nominal_buffer_size.max(1) as f64 / sample_rate.max(1) as f64).max(0.000_5),
             ),
             deadline_misses: 0,
+            midi_input_overflows: 0,
+            midi_output_overflows: 0,
+            stale_completions: 0,
+            serialized_reference_transport: false,
+            exit_kind: WorkerExitKind::None,
+            shutdown_complete: false,
         };
         processor.control(ControlRequestKind::Instantiate {
             chain_type: protocol_type,
@@ -701,6 +793,9 @@ impl SubprocessCarlaProcessor {
         match self.control(ControlRequestKind::Status)? {
             ControlResponseKind::Status(mut status) => {
                 status.deadline_misses = self.deadline_misses;
+                status.midi_input_overflows = self.midi_input_overflows;
+                status.midi_output_overflows = self.midi_output_overflows;
+                status.stale_completions = self.stale_completions;
                 Ok(status)
             }
             other => Err(anyhow!("worker returned {other:?} for status request")),
@@ -723,6 +818,107 @@ impl SubprocessCarlaProcessor {
 
     pub fn worker_id(&self) -> u32 {
         self.child.id()
+    }
+
+    pub fn shared_memory_path(&self) -> &Path {
+        self.shared_transport.path()
+    }
+
+    pub fn use_serialized_reference_transport_for_benchmark(&mut self) {
+        self.serialized_reference_transport = true;
+    }
+
+    fn process_serialized_reference(&mut self, frames: usize) -> Result<()> {
+        if !self.is_active() {
+            self.clear_outputs(frames.min(MAX_BLOCK_FRAMES));
+            return Ok(());
+        }
+        if frames == 0 || frames > MAX_BLOCK_FRAMES {
+            return Err(anyhow!("invalid serialized reference block size {frames}"));
+        }
+        self.block_sequence = self.block_sequence.saturating_add(1);
+        let block = shoop_plugin_protocol::PrototypeBlock {
+            sequence: BlockSequence(self.block_sequence),
+            generation: self.generation,
+            frames: frames as u32,
+            audio_inputs: self
+                .audio_inputs
+                .iter()
+                .map(|input| input[..frames].to_vec())
+                .collect(),
+            midi_inputs: self
+                .midi_inputs
+                .iter()
+                .enumerate()
+                .flat_map(|(channel, events)| {
+                    events[..self.midi_input_counts[channel].min(events.len())]
+                        .iter()
+                        .map(|(frame_offset, data)| MidiEvent {
+                            frame_offset: *frame_offset,
+                            data: data.clone(),
+                        })
+                })
+                .collect(),
+        };
+        block.validate()?;
+        write_frame(&mut self.stream, &ParentToWorker::Process(block))?;
+        let response: WorkerToParent = read_frame(&mut self.stream)?;
+        let WorkerToParent::Process(result) = response else {
+            return Err(anyhow!(
+                "worker returned control traffic for reference block"
+            ));
+        };
+        result.validate()?;
+        if result.sequence != BlockSequence(self.block_sequence)
+            || result.generation != self.generation
+            || result.frames as usize != frames
+            || result.audio_outputs.len() != self.audio_outputs.len()
+        {
+            return Err(anyhow!(
+                "worker returned mismatched serialized reference block"
+            ));
+        }
+        for (destination, source) in self.audio_outputs.iter_mut().zip(result.audio_outputs) {
+            destination[..frames].copy_from_slice(&source);
+        }
+        self.midi_output_counts.fill(0);
+        for (slot, event) in self.midi_outputs[0]
+            .iter_mut()
+            .zip(result.midi_outputs.iter())
+        {
+            if event.data.len() > crate::midi_storage::MAX_MSG_BYTES {
+                continue;
+            }
+            slot.0 = event.frame_offset;
+            slot.1.clear();
+            slot.1.extend_from_slice(&event.data);
+            self.midi_output_counts[0] += 1;
+        }
+        Ok(())
+    }
+
+    pub fn shutdown_requested(&mut self) -> WorkerExitKind {
+        if self.shutdown_complete {
+            return self.exit_kind;
+        }
+        self.exit_kind = WorkerExitKind::Requested;
+        let _ = self.control(ControlRequestKind::Shutdown);
+        let deadline = Instant::now() + SHUTDOWN_TIMEOUT;
+        loop {
+            match self.child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(2)),
+                _ => {
+                    self.exit_kind = WorkerExitKind::Unresponsive;
+                    let _ = self.child.kill();
+                    let _ = self.child.wait();
+                    break;
+                }
+            }
+        }
+        self.ready = false;
+        self.shutdown_complete = true;
+        self.exit_kind
     }
 
     pub fn terminate_worker_for_test(&mut self) -> Result<()> {
@@ -748,9 +944,7 @@ impl SubprocessCarlaProcessor {
             let frames = frames.min(output.len());
             output[..frames].fill(0.0);
         }
-        for output in &mut self.midi_outputs {
-            output.clear();
-        }
+        self.midi_output_counts.fill(0);
     }
 }
 
@@ -773,6 +967,10 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
 
     fn generation(&self) -> u64 {
         self.generation.0
+    }
+
+    fn exit_kind(&self) -> WorkerExitKind {
+        self.exit_kind
     }
 
     fn generation_logs(&self) -> Vec<CarlaGenerationLog> {
@@ -812,6 +1010,9 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
     fn is_visible(&mut self) -> bool {
         match self.status() {
             Ok(status) => {
+                if self.visible && !status.visible {
+                    self.exit_kind = WorkerExitKind::UiClosed;
+                }
                 self.visible = status.visible;
                 self.ready = status.ready;
             }
@@ -854,19 +1055,49 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
             .midi_inputs
             .get_mut(index)
             .ok_or_else(|| anyhow!("no subprocess MIDI input {index}"))?;
-        destination.clear();
-        destination.extend(events.iter().map(|(offset, data)| (*offset, data.to_vec())));
+        let mut count = 0;
+        for (frame_offset, data) in events {
+            if count == destination.len() || data.len() > crate::midi_storage::MAX_MSG_BYTES {
+                self.midi_input_overflows = self.midi_input_overflows.saturating_add(1);
+                continue;
+            }
+            destination[count].0 = *frame_offset;
+            destination[count].1.clear();
+            destination[count].1.extend_from_slice(data);
+            count += 1;
+        }
+        self.midi_input_counts[index] = count;
         Ok(())
     }
 
     fn midi_output_events(&mut self, index: usize) -> Result<Vec<(u32, Vec<u8>)>> {
-        self.midi_outputs
+        let output = self
+            .midi_outputs
             .get(index)
-            .cloned()
-            .ok_or_else(|| anyhow!("no subprocess MIDI output {index}"))
+            .ok_or_else(|| anyhow!("no subprocess MIDI output {index}"))?;
+        Ok(output[..self.midi_output_counts[index]].to_vec())
+    }
+
+    fn fill_midi_output_events(
+        &mut self,
+        index: usize,
+        destination: &mut CarlaMidiBuffer,
+    ) -> Result<()> {
+        destination.clear();
+        let output = self
+            .midi_outputs
+            .get(index)
+            .ok_or_else(|| anyhow!("no subprocess MIDI output {index}"))?;
+        for (frame_offset, data) in &output[..self.midi_output_counts[index]] {
+            destination.push(*frame_offset, data)?;
+        }
+        Ok(())
     }
 
     fn process(&mut self, frames: usize) -> Result<()> {
+        if self.serialized_reference_transport {
+            return self.process_serialized_reference(frames);
+        }
         if !self.is_active() {
             self.clear_outputs(frames);
             return Ok(());
@@ -887,9 +1118,19 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
                 &self.audio_inputs,
                 self.audio_outputs.len(),
                 &self.midi_inputs,
+                &self.midi_input_counts,
             )
         } {
-            Ok(token) => token,
+            Ok(token) => {
+                if self.notification.send(&self.notification_token)?
+                    != self.notification_token.len()
+                {
+                    self.ready = false;
+                    self.clear_outputs(frames);
+                    return Err(anyhow!("short Carla worker notification datagram"));
+                }
+                token
+            }
             Err(
                 crate::carla_shared_memory::SharedBlockError::NoFreeSlot
                 | crate::carla_shared_memory::SharedBlockError::DeadlineMiss,
@@ -909,21 +1150,27 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
                 "engine.rt.fx.subprocess_wait",
                 value = frames
             );
-            self.shared_transport.wait_and_copy(
+            self.shared_midi_output_count = 0;
+            self.shared_transport.wait_and_copy_reusing_midi(
                 token,
                 Instant::now() + self.process_timeout,
                 &mut self.audio_outputs,
                 &mut self.shared_midi_outputs,
+                &mut self.shared_midi_output_count,
             )
         };
         match result {
             Ok(()) => {
-                self.midi_outputs[0].clear();
-                self.midi_outputs[0].extend(
-                    self.shared_midi_outputs
-                        .drain(..)
-                        .map(|event| (event.frame_offset, event.data)),
-                );
+                self.midi_output_counts.fill(0);
+                for (slot, event) in self.midi_outputs[0]
+                    .iter_mut()
+                    .zip(self.shared_midi_outputs[..self.shared_midi_output_count].iter())
+                {
+                    slot.0 = event.frame_offset;
+                    slot.1.clear();
+                    slot.1.extend_from_slice(&event.data);
+                    self.midi_output_counts[0] += 1;
+                }
                 Ok(())
             }
             Err(
@@ -931,6 +1178,16 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
                 | crate::carla_shared_memory::SharedBlockError::DeadlineMiss,
             ) => {
                 self.deadline_misses = self.deadline_misses.saturating_add(1);
+                self.clear_outputs(frames);
+                Ok(())
+            }
+            Err(crate::carla_shared_memory::SharedBlockError::MidiOverflow) => {
+                self.midi_output_overflows = self.midi_output_overflows.saturating_add(1);
+                self.clear_outputs(frames);
+                Ok(())
+            }
+            Err(crate::carla_shared_memory::SharedBlockError::StaleCompletion) => {
+                self.stale_completions = self.stale_completions.saturating_add(1);
                 self.clear_outputs(frames);
                 Ok(())
             }
@@ -957,6 +1214,7 @@ pub struct SupervisedCarlaProcessor {
     desired_active: bool,
     desired_visible: bool,
     lifecycle: CarlaProcessorLifecycle,
+    exit_kind: WorkerExitKind,
     crash_summary: Option<String>,
 }
 
@@ -1004,6 +1262,7 @@ impl SupervisedCarlaProcessor {
             desired_active: false,
             desired_visible: false,
             lifecycle: CarlaProcessorLifecycle::Stopped,
+            exit_kind: WorkerExitKind::None,
             crash_summary: None,
         };
         supervisor.start_generation(false);
@@ -1024,6 +1283,7 @@ impl SupervisedCarlaProcessor {
     }
 
     fn start_generation(&mut self, show_after_restore: bool) {
+        self.exit_kind = WorkerExitKind::None;
         self.lifecycle = if self.generation.0 == 0 {
             CarlaProcessorLifecycle::Starting
         } else {
@@ -1046,13 +1306,15 @@ impl SupervisedCarlaProcessor {
             Ok(current) => current,
             Err(error) => {
                 self.lifecycle = CarlaProcessorLifecycle::Unavailable;
-                self.crash_summary = Some(error.to_string());
+                self.exit_kind = WorkerExitKind::StartupFailure;
+                self.crash_summary = Some(format!("Carla worker startup failed: {error}"));
                 return;
             }
         };
         if self.has_checkpoint {
             if let Err(error) = current.restore_state(&self.checkpoint) {
                 self.lifecycle = CarlaProcessorLifecycle::Unavailable;
+                self.exit_kind = WorkerExitKind::StartupFailure;
                 self.crash_summary = Some(format!("state restore failed: {error}"));
                 self.current = Some(current);
                 return;
@@ -1062,6 +1324,7 @@ impl SupervisedCarlaProcessor {
         if show_after_restore {
             if let Err(error) = current.set_visible(true) {
                 self.lifecycle = CarlaProcessorLifecycle::Unavailable;
+                self.exit_kind = WorkerExitKind::StartupFailure;
                 self.crash_summary = Some(format!("external UI start failed: {error}"));
                 self.current = Some(current);
                 return;
@@ -1070,6 +1333,7 @@ impl SupervisedCarlaProcessor {
         }
         self.current = Some(current);
         self.lifecycle = CarlaProcessorLifecycle::Running;
+        self.exit_kind = WorkerExitKind::None;
         self.crash_summary = None;
     }
 
@@ -1108,7 +1372,12 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
         if let Some(current) = self.current.as_mut() {
             if !current.is_ready() && self.lifecycle == CarlaProcessorLifecycle::Running {
                 self.lifecycle = CarlaProcessorLifecycle::Crashed;
-                self.crash_summary = Some("Carla worker exited unexpectedly".to_owned());
+                self.exit_kind = WorkerExitKind::UnexpectedExit;
+                let status = current.child.try_wait().ok().flatten();
+                self.crash_summary = Some(match status {
+                    Some(status) => format!("Carla worker exited unexpectedly: {status}"),
+                    None => "Carla worker disconnected unexpectedly".to_owned(),
+                });
             }
         }
         self.lifecycle == CarlaProcessorLifecycle::Running
@@ -1122,8 +1391,12 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
         self.generation.0
     }
 
-    fn crash_summary(&self) -> Option<&str> {
-        self.crash_summary.as_deref()
+    fn exit_kind(&self) -> WorkerExitKind {
+        self.exit_kind
+    }
+
+    fn crash_summary(&self) -> Option<String> {
+        self.crash_summary.clone()
     }
 
     fn generation_logs(&self) -> Vec<CarlaGenerationLog> {
@@ -1168,6 +1441,7 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
                 current.set_active(active);
                 if !current.is_ready() {
                     self.lifecycle = CarlaProcessorLifecycle::Crashed;
+                    self.exit_kind = WorkerExitKind::ProtocolFailure;
                     self.crash_summary = Some("Carla worker rejected active state".to_owned());
                 }
             }
@@ -1252,6 +1526,20 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
         }
     }
 
+    fn fill_midi_output_events(
+        &mut self,
+        index: usize,
+        destination: &mut CarlaMidiBuffer,
+    ) -> Result<()> {
+        match self.current.as_mut() {
+            Some(current) => current.fill_midi_output_events(index, destination),
+            None => {
+                destination.clear();
+                Ok(())
+            }
+        }
+    }
+
     fn process(&mut self, frames: usize) -> Result<()> {
         if self.lifecycle != CarlaProcessorLifecycle::Running {
             return Err(anyhow!("Carla worker is not running"));
@@ -1263,6 +1551,15 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
             .process(frames);
         if let Err(error) = &result {
             self.lifecycle = CarlaProcessorLifecycle::Crashed;
+            self.exit_kind = if self
+                .current
+                .as_mut()
+                .is_some_and(|current| !current.is_ready())
+            {
+                WorkerExitKind::UnexpectedExit
+            } else {
+                WorkerExitKind::ProtocolFailure
+            };
             self.crash_summary = Some(error.to_string());
         }
         result
@@ -1271,19 +1568,7 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
 
 impl Drop for SubprocessCarlaProcessor {
     fn drop(&mut self) {
-        let _ = self.control(ControlRequestKind::Shutdown);
-        let deadline = Instant::now() + SHUTDOWN_TIMEOUT;
-        loop {
-            match self.child.try_wait() {
-                Ok(Some(_)) => break,
-                Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(2)),
-                _ => {
-                    let _ = self.child.kill();
-                    let _ = self.child.wait();
-                    break;
-                }
-            }
-        }
+        self.shutdown_requested();
         for thread in self.log_threads.drain(..) {
             let _ = thread.join();
         }
@@ -1304,11 +1589,28 @@ mod tests {
     #[test]
     fn bounded_logs_disclose_and_clear_truncation() {
         let mut log = BoundedLog::default();
+        log.push(&[0xff, 0x00, 0xfe]);
         log.push(&vec![1; LOG_CAPACITY + 100]);
         let snapshot = log.snapshot();
         assert_eq!(snapshot.bytes.len(), LOG_CAPACITY);
-        assert_eq!(snapshot.dropped_bytes, 100);
+        assert_eq!(snapshot.dropped_bytes, 103);
         log.clear();
         assert_eq!(log.snapshot(), LogSnapshot::default());
+    }
+
+    #[test]
+    fn pipe_drain_handles_binary_flood_without_blocking() {
+        let destination = Arc::new(Mutex::new(BoundedLog::default()));
+        let mut flood = Vec::with_capacity(LOG_CAPACITY * 4 + 3);
+        flood.extend_from_slice(&[0xff, 0x00, 0xfe]);
+        flood.resize(LOG_CAPACITY * 4 + 3, 0x5a);
+        let thread = drain_pipe(std::io::Cursor::new(flood), Arc::clone(&destination));
+        thread.join().unwrap();
+        let snapshot = destination
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .snapshot();
+        assert_eq!(snapshot.bytes.len(), LOG_CAPACITY);
+        assert_eq!(snapshot.dropped_bytes, (LOG_CAPACITY * 3 + 3) as u64);
     }
 }

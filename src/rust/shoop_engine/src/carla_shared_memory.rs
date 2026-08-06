@@ -88,10 +88,18 @@ impl std::fmt::Debug for SharedBlockTransport {
 
 impl SharedBlockTransport {
     pub fn create(generation: ProcessGeneration, nonce: &[u8; 32]) -> Result<SharedBlockTransport> {
+        Self::create_in(std::env::temp_dir(), generation, nonce)
+    }
+
+    pub fn create_in(
+        directory: impl AsRef<Path>,
+        generation: ProcessGeneration,
+        nonce: &[u8; 32],
+    ) -> Result<SharedBlockTransport> {
         let file = tempfile::Builder::new()
             .prefix("shoop-carla-")
             .suffix(".ipc")
-            .tempfile()
+            .tempfile_in(directory)
             .context("could not create Carla shared-memory file")?;
         file.as_file().set_len(FILE_SIZE as u64)?;
         let mut mapping = unsafe { MmapOptions::new().len(FILE_SIZE).map_mut(file.as_file())? };
@@ -176,6 +184,16 @@ impl SharedBlockTransport {
         &self.path
     }
 
+    pub fn generation(&self) -> ProcessGeneration {
+        self.generation
+    }
+
+    pub fn occupied_slots(&self) -> usize {
+        (0..SHARED_SLOT_COUNT)
+            .filter(|slot| self.state(*slot).load(Ordering::Relaxed) != STATE_FREE)
+            .count()
+    }
+
     pub fn submit(
         &mut self,
         sequence: BlockSequence,
@@ -183,6 +201,7 @@ impl SharedBlockTransport {
         audio_inputs: &[Vec<f32>],
         audio_output_channels: usize,
         midi_inputs: &[Vec<(u32, Vec<u8>)>],
+        midi_input_counts: &[usize],
     ) -> std::result::Result<SharedBlockToken, SharedBlockError> {
         if sequence.0 == 0
             || frames == 0
@@ -237,7 +256,15 @@ impl SharedBlockTransport {
             &mut self.mapping[base + MIDI_INPUT_OFFSET..base + MIDI_OUTPUT_OFFSET],
             midi_inputs
                 .iter()
-                .flatten()
+                .enumerate()
+                .flat_map(|(channel, events)| {
+                    events[..midi_input_counts
+                        .get(channel)
+                        .copied()
+                        .unwrap_or(events.len())
+                        .min(events.len())]
+                        .iter()
+                })
                 .map(|(offset, data)| (*offset, data.as_slice())),
             frames,
         )?;
@@ -297,13 +324,84 @@ impl SharedBlockTransport {
                 }
                 midi_outputs.clear();
                 let midi_bytes = read_u32(&self.mapping, base + MIDI_OUTPUT_BYTES_OFFSET) as usize;
-                read_midi(
+                let midi_result = read_midi(
                     &self.mapping
                         [base + MIDI_OUTPUT_OFFSET..base + MIDI_OUTPUT_OFFSET + midi_bytes],
                     token.frames,
                     midi_outputs,
-                )?;
+                );
                 self.state(token.slot).store(STATE_FREE, Ordering::Release);
+                midi_result?;
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                if self
+                    .state(token.slot)
+                    .compare_exchange(state, STATE_ABANDONED, Ordering::AcqRel, Ordering::Acquire)
+                    .is_ok()
+                {
+                    return Err(SharedBlockError::DeadlineMiss);
+                }
+                continue;
+            }
+            std::hint::spin_loop();
+        }
+    }
+
+    /// Allocation-free completion copy into a preinitialized MIDI event pool.
+    /// `midi_output_count` identifies the valid prefix; event payloads larger
+    /// than their fixed preallocated capacity are reported as overflow.
+    pub fn wait_and_copy_reusing_midi(
+        &mut self,
+        token: SharedBlockToken,
+        deadline: Instant,
+        audio_outputs: &mut [Vec<f32>],
+        midi_outputs: &mut [MidiEvent],
+        midi_output_count: &mut usize,
+    ) -> std::result::Result<(), SharedBlockError> {
+        loop {
+            let state = self.state(token.slot).load(Ordering::Acquire);
+            if state == STATE_DONE {
+                if self.sequence(token.slot).load(Ordering::Relaxed) != token.sequence.0
+                    || self.slot_generation(token.slot).load(Ordering::Relaxed)
+                        != token.generation.0
+                {
+                    self.state(token.slot)
+                        .store(STATE_ABANDONED, Ordering::Release);
+                    return Err(SharedBlockError::StaleCompletion);
+                }
+                let base = slot_offset(token.slot);
+                let channels = read_u32(&self.mapping, base + AUDIO_OUTPUTS_OFFSET) as usize;
+                if channels != audio_outputs.len()
+                    || audio_outputs
+                        .iter()
+                        .any(|output| output.len() < token.frames)
+                {
+                    self.state(token.slot).store(STATE_FREE, Ordering::Release);
+                    return Err(SharedBlockError::InvalidCapacity);
+                }
+                for (channel, output) in audio_outputs.iter_mut().enumerate() {
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(
+                            self.mapping
+                                .as_ptr()
+                                .add(base + AUDIO_OUTPUT_OFFSET + channel * AUDIO_PLANE_BYTES),
+                            output.as_mut_ptr().cast::<u8>(),
+                            token.frames * std::mem::size_of::<f32>(),
+                        );
+                    }
+                }
+                *midi_output_count = 0;
+                let midi_bytes = read_u32(&self.mapping, base + MIDI_OUTPUT_BYTES_OFFSET) as usize;
+                let midi_result = read_midi_reusing(
+                    &self.mapping
+                        [base + MIDI_OUTPUT_OFFSET..base + MIDI_OUTPUT_OFFSET + midi_bytes],
+                    token.frames,
+                    midi_outputs,
+                    midi_output_count,
+                );
+                self.state(token.slot).store(STATE_FREE, Ordering::Release);
+                midi_result?;
                 return Ok(());
             }
             if Instant::now() >= deadline {
@@ -406,6 +504,23 @@ impl SharedBlockTransport {
             &self.mapping[base + MIDI_INPUT_OFFSET..base + MIDI_INPUT_OFFSET + bytes],
             token.frames,
             destination,
+        )
+    }
+
+    pub fn worker_read_midi_reusing(
+        &self,
+        token: SharedBlockToken,
+        destination: &mut [MidiEvent],
+        count: &mut usize,
+    ) -> std::result::Result<(), SharedBlockError> {
+        let base = slot_offset(token.slot);
+        let bytes = read_u32(&self.mapping, base + MIDI_INPUT_BYTES_OFFSET) as usize;
+        *count = 0;
+        read_midi_reusing(
+            &self.mapping[base + MIDI_INPUT_OFFSET..base + MIDI_INPUT_OFFSET + bytes],
+            token.frames,
+            destination,
+            count,
         )
     }
 
@@ -532,6 +647,46 @@ fn write_midi<'a>(
     Ok(offset)
 }
 
+fn read_midi_reusing(
+    source: &[u8],
+    frames: usize,
+    destination: &mut [MidiEvent],
+    count: &mut usize,
+) -> std::result::Result<(), SharedBlockError> {
+    let mut offset = 0usize;
+    while offset < source.len() {
+        if *count == destination.len() || offset + 8 > source.len() {
+            return Err(SharedBlockError::MidiOverflow);
+        }
+        let frame_offset = u32::from_le_bytes(
+            source[offset..offset + 4]
+                .try_into()
+                .map_err(|_| SharedBlockError::MidiOverflow)?,
+        );
+        let bytes = u32::from_le_bytes(
+            source[offset + 4..offset + 8]
+                .try_into()
+                .map_err(|_| SharedBlockError::MidiOverflow)?,
+        ) as usize;
+        offset += 8;
+        let event = &mut destination[*count];
+        if frame_offset as usize >= frames
+            || offset + bytes > source.len()
+            || bytes > event.data.capacity()
+        {
+            return Err(SharedBlockError::MidiOverflow);
+        }
+        event.frame_offset = frame_offset;
+        event.data.clear();
+        event
+            .data
+            .extend_from_slice(&source[offset..offset + bytes]);
+        *count += 1;
+        offset += bytes;
+    }
+    Ok(())
+}
+
 fn read_midi(
     source: &[u8],
     frames: usize,
@@ -579,7 +734,7 @@ mod tests {
         let inputs = vec![vec![0.25; 64], vec![-0.5; 64]];
         let midi = vec![vec![(7, vec![0x90, 64, 100])]];
         let token = parent
-            .submit(BlockSequence(3), 64, &inputs, 2, &midi)
+            .submit(BlockSequence(3), 64, &inputs, 2, &midi, &[])
             .unwrap();
         let worker_token = worker.worker_take().expect("ready block");
         assert_eq!(worker_token, token);
@@ -617,7 +772,9 @@ mod tests {
         let generation = ProcessGeneration(2);
         let mut parent = SharedBlockTransport::create(generation, &nonce).unwrap();
         let inputs = vec![vec![0.0; 8]];
-        let token = parent.submit(BlockSequence(1), 8, &inputs, 1, &[]).unwrap();
+        let token = parent
+            .submit(BlockSequence(1), 8, &inputs, 1, &[], &[])
+            .unwrap();
         assert_eq!(
             parent.wait_and_copy(token, Instant::now(), &mut [vec![0.0; 8]], &mut Vec::new()),
             Err(SharedBlockError::DeadlineMiss)
@@ -631,6 +788,88 @@ mod tests {
             worker.state(token.slot).load(Ordering::Acquire),
             STATE_ABANDONED
         );
+    }
+
+    #[test]
+    fn slots_support_out_of_order_completion_reject_duplicates_and_recover_after_timeouts() {
+        let nonce = [6; 32];
+        let generation = ProcessGeneration(9);
+        let mut parent = SharedBlockTransport::create(generation, &nonce).unwrap();
+        let mut worker = SharedBlockTransport::open(parent.path(), generation, &nonce).unwrap();
+        let inputs = vec![vec![0.5; 8]];
+        let mut parent_tokens = Vec::new();
+        for sequence in 1..=SHARED_SLOT_COUNT as u64 {
+            parent_tokens.push(
+                parent
+                    .submit(BlockSequence(sequence), 8, &inputs, 1, &[], &[])
+                    .unwrap(),
+            );
+        }
+        assert_eq!(
+            parent.submit(BlockSequence(10), 8, &inputs, 1, &[], &[]),
+            Err(SharedBlockError::NoFreeSlot)
+        );
+        let mut worker_tokens = Vec::new();
+        while let Some(token) = worker.worker_take() {
+            worker_tokens.push(token);
+        }
+        for token in worker_tokens.iter().rev().copied() {
+            worker.worker_complete(token, &[&[0.25; 8]], &[]).unwrap();
+        }
+        for token in parent_tokens.iter().rev().copied() {
+            parent
+                .wait_and_copy(
+                    token,
+                    Instant::now() + Duration::from_millis(10),
+                    &mut [vec![0.0; 8]],
+                    &mut Vec::new(),
+                )
+                .unwrap();
+        }
+        assert_eq!(
+            worker.worker_complete(worker_tokens[0], &[&[0.25; 8]], &[]),
+            Err(SharedBlockError::StaleCompletion)
+        );
+
+        for sequence in 20..20 + SHARED_SLOT_COUNT as u64 {
+            let token = parent
+                .submit(BlockSequence(sequence), 8, &inputs, 1, &[], &[])
+                .unwrap();
+            assert_eq!(
+                parent.wait_and_copy(token, Instant::now(), &mut [vec![0.0; 8]], &mut Vec::new()),
+                Err(SharedBlockError::DeadlineMiss)
+            );
+        }
+        assert!(worker.worker_take().is_none());
+        let recovered = parent
+            .submit(BlockSequence(30), 8, &inputs, 1, &[], &[])
+            .unwrap();
+        let worker_token = worker.worker_take().unwrap();
+        assert_eq!(worker_token, recovered);
+        worker
+            .worker_complete(worker_token, &[&[0.75; 8]], &[])
+            .unwrap();
+        parent
+            .wait_and_copy(
+                recovered,
+                Instant::now() + Duration::from_millis(10),
+                &mut [vec![0.0; 8]],
+                &mut Vec::new(),
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn paths_with_spaces_and_non_ascii_are_supported() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("Shoop IPC ü space");
+        std::fs::create_dir(&directory).unwrap();
+        let nonce = [4; 32];
+        let generation = ProcessGeneration(7);
+        let parent = SharedBlockTransport::create_in(&directory, generation, &nonce).unwrap();
+        assert!(parent.path().starts_with(&directory));
+        let worker = SharedBlockTransport::open(parent.path(), generation, &nonce).unwrap();
+        assert_eq!(worker.generation, generation);
     }
 
     #[test]

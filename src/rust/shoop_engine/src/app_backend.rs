@@ -2680,11 +2680,32 @@ impl BackendSession {
                                 .map(|host| Box::new(host) as Box<_>)
                             }
                         };
-                    match host {
-                        Ok(host) => FXChainBackendKind::Carla(Arc::new(Mutex::new(host))),
-                        Err(error) => FXChainBackendKind::Unavailable {
-                            reason: error.to_string(),
-                        },
+                    match host.and_then(|host| {
+                        engine::carla_processor::spawn_processor_bridge(
+                            host,
+                            sample_rate,
+                            buffer_size,
+                        )
+                    }) {
+                        Ok((control, realtime)) => {
+                            let mut pending = Some((title.to_string(), realtime));
+                            if let Err(error) =
+                                self.shared.send_topology(move |s: &mut engine::Session| {
+                                    if let Some((title, realtime)) = pending.take() {
+                                        s.set_carla_fx_host(title, realtime);
+                                    }
+                                })
+                            {
+                                log::error!("could not queue Carla endpoint insertion: {error}");
+                            }
+                            FXChainBackendKind::Carla(control)
+                        }
+                        Err(error) => {
+                            log::error!("could not initialize Carla FX chain {title:?}: {error:#}");
+                            FXChainBackendKind::Unavailable {
+                                reason: error.to_string(),
+                            }
+                        }
                     }
                 }
                 #[cfg(not(feature = "lv2"))]
@@ -2695,18 +2716,6 @@ impl BackendSession {
                 }
             }
         };
-        #[cfg(feature = "lv2")]
-        if let FXChainBackendKind::Carla(host) = &backend {
-            let (title, host) = (title.to_string(), host.clone());
-            let mut pending = Some((title, host));
-            if let Err(error) = self.shared.send_topology(move |s: &mut engine::Session| {
-                if let Some((title, host)) = pending.take() {
-                    s.set_carla_fx_host(title, host);
-                }
-            }) {
-                log::error!("could not queue Carla host insertion: {error}");
-            }
-        }
         let mut chain = FXChain {
             shared: self.shared.clone(),
             title: title.to_string(),
@@ -5366,7 +5375,7 @@ pub type FXChainState = engine::FXChainState;
 enum FXChainBackendKind {
     Test2x2x1,
     #[cfg(feature = "lv2")]
-    Carla(engine::carla_processor::SharedCarlaProcessor),
+    Carla(engine::carla_processor::CarlaControlHandle),
     Unavailable {
         reason: String,
     },
@@ -5391,11 +5400,7 @@ impl FXChain {
         self.state.lock().unwrap().visible = visible as u32;
         #[cfg(feature = "lv2")]
         if let FXChainBackendKind::Carla(host) = &self.backend {
-            let ok = host
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .set_visible(visible)
-                .is_ok();
+            let ok = host.set_visible(visible).is_ok();
             self.state.lock().unwrap().visible = (visible && ok) as u32;
         }
     }
@@ -5413,10 +5418,7 @@ impl FXChain {
                 }
             }
             #[cfg(feature = "lv2")]
-            FXChainBackendKind::Carla(host) => host
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .set_active(active),
+            FXChainBackendKind::Carla(host) => host.set_active(active),
             FXChainBackendKind::Unavailable { .. } => {}
         }
     }
@@ -5425,7 +5427,6 @@ impl FXChain {
         s.ready = self.available() as u32;
         #[cfg(feature = "lv2")]
         if let FXChainBackendKind::Carla(host) = &self.backend {
-            let mut host = host.lock().unwrap_or_else(|error| error.into_inner());
             s.ready = host.is_ready() as u32;
             s.active = host.is_active() as u32;
             s.visible = host.is_visible() as u32;
@@ -5436,10 +5437,7 @@ impl FXChain {
     pub fn toggle_or_recover(&self) -> Result<()> {
         match &self.backend {
             #[cfg(feature = "lv2")]
-            FXChainBackendKind::Carla(host) => host
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .toggle_or_recover(),
+            FXChainBackendKind::Carla(host) => host.toggle_or_recover(),
             FXChainBackendKind::Test2x2x1 => {
                 self.set_visible(!self.get_state().is_some_and(|state| state.visible != 0));
                 Ok(())
@@ -5451,10 +5449,7 @@ impl FXChain {
     pub fn lifecycle(&self) -> engine::carla_processor::CarlaProcessorLifecycle {
         match &self.backend {
             #[cfg(feature = "lv2")]
-            FXChainBackendKind::Carla(host) => host
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .lifecycle(),
+            FXChainBackendKind::Carla(host) => host.lifecycle(),
             FXChainBackendKind::Test2x2x1 => {
                 engine::carla_processor::CarlaProcessorLifecycle::Running
             }
@@ -5467,10 +5462,7 @@ impl FXChain {
     pub fn generation(&self) -> u64 {
         match &self.backend {
             #[cfg(feature = "lv2")]
-            FXChainBackendKind::Carla(host) => host
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .generation(),
+            FXChainBackendKind::Carla(host) => host.generation(),
             _ => 0,
         }
     }
@@ -5478,11 +5470,7 @@ impl FXChain {
     pub fn crash_summary(&self) -> Option<String> {
         match &self.backend {
             #[cfg(feature = "lv2")]
-            FXChainBackendKind::Carla(host) => host
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .crash_summary()
-                .map(ToOwned::to_owned),
+            FXChainBackendKind::Carla(host) => host.crash_summary(),
             FXChainBackendKind::Unavailable { reason } => Some(reason.clone()),
             _ => None,
         }
@@ -5491,10 +5479,7 @@ impl FXChain {
     pub fn generation_logs(&self) -> Vec<engine::carla_processor::CarlaGenerationLog> {
         match &self.backend {
             #[cfg(feature = "lv2")]
-            FXChainBackendKind::Carla(host) => host
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .generation_logs(),
+            FXChainBackendKind::Carla(host) => host.generation_logs(),
             _ => Vec::new(),
         }
     }
@@ -5502,9 +5487,7 @@ impl FXChain {
     pub fn clear_logs(&self) {
         #[cfg(feature = "lv2")]
         if let FXChainBackendKind::Carla(host) = &self.backend {
-            host.lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .clear_logs();
+            host.clear_logs();
         }
     }
 
@@ -5515,33 +5498,21 @@ impl FXChain {
                 self.chain_type
             )),
             #[cfg(feature = "lv2")]
-            FXChainBackendKind::Carla(host) => host
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .save_state()
-                .ok(),
+            FXChainBackendKind::Carla(host) => host.save_state().ok(),
             _ => Some(String::new()),
         }
     }
     pub fn restore_state(&self, state: &str) {
         #[cfg(feature = "lv2")]
         if let FXChainBackendKind::Carla(host) = &self.backend {
-            let _ = host
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .restore_state(state);
+            let _ = host.restore_state(state);
         }
     }
     fn n_audio_input_ports(&self) -> usize {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 2,
             #[cfg(feature = "lv2")]
-            FXChainBackendKind::Carla(host) => {
-                host.lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .info()
-                    .audio_inputs
-            }
+            FXChainBackendKind::Carla(host) => host.info().audio_inputs,
             FXChainBackendKind::Unavailable { .. } => 0,
         }
     }
@@ -5550,12 +5521,7 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 2,
             #[cfg(feature = "lv2")]
-            FXChainBackendKind::Carla(host) => {
-                host.lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .info()
-                    .audio_outputs
-            }
+            FXChainBackendKind::Carla(host) => host.info().audio_outputs,
             FXChainBackendKind::Unavailable { .. } => 0,
         }
     }
@@ -5563,12 +5529,7 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 1,
             #[cfg(feature = "lv2")]
-            FXChainBackendKind::Carla(host) => {
-                host.lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .info()
-                    .midi_inputs
-            }
+            FXChainBackendKind::Carla(host) => host.info().midi_inputs,
             FXChainBackendKind::Unavailable { .. } => 0,
         }
     }
@@ -5577,12 +5538,7 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 0,
             #[cfg(feature = "lv2")]
-            FXChainBackendKind::Carla(host) => {
-                host.lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .info()
-                    .midi_outputs
-            }
+            FXChainBackendKind::Carla(host) => host.info().midi_outputs,
             FXChainBackendKind::Unavailable { .. } => 0,
         }
     }

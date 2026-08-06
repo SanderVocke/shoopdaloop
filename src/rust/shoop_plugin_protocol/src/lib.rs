@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::io::{Read, Write};
 
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 pub const MAX_AUDIO_CHANNELS: usize = 16;
 pub const MAX_BLOCK_FRAMES: usize = 8192;
 pub const MAX_MIDI_EVENTS_PER_BLOCK: usize = 1024;
@@ -121,6 +121,8 @@ pub struct WorkerHello {
     pub max_block_frames: u32,
     pub max_midi_events: u32,
     pub max_midi_bytes: u32,
+    /// Loopback UDP port used only to wake the shared-memory consumer.
+    pub notification_port: u16,
 }
 
 impl WorkerHello {
@@ -133,6 +135,7 @@ impl WorkerHello {
             max_block_frames: MAX_BLOCK_FRAMES as u32,
             max_midi_events: MAX_MIDI_EVENTS_PER_BLOCK as u32,
             max_midi_bytes: MAX_MIDI_BYTES_PER_BLOCK as u32,
+            notification_port: 1,
         }
     }
 
@@ -149,6 +152,9 @@ impl WorkerHello {
         }
         if self.generation != expected_generation {
             return Err(ValidationError::StaleGeneration);
+        }
+        if self.notification_port == 0 {
+            return Err(ValidationError::InvalidNotificationPort);
         }
         if self.max_audio_channels < MAX_AUDIO_CHANNELS as u16
             || self.max_block_frames < MAX_BLOCK_FRAMES as u32
@@ -348,6 +354,7 @@ pub enum ValidationError {
     StaleGeneration,
     IncompatibleCapacity,
     InvalidIdentity,
+    InvalidNotificationPort,
     InvalidFrameCount,
     InvalidAudioLayout,
     InvalidMidiOffset,
@@ -454,6 +461,12 @@ mod tests {
         assert_eq!(
             hello.validate(&nonce, ProcessGeneration(5)),
             Err(ValidationError::StaleGeneration)
+        );
+        wrong = hello.clone();
+        wrong.notification_port = 0;
+        assert_eq!(
+            wrong.validate(&nonce, generation),
+            Err(ValidationError::InvalidNotificationPort)
         );
         wrong = hello;
         wrong.max_block_frames = 64;

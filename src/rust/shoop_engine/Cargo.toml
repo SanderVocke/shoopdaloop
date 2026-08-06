@@ -8,6 +8,10 @@ edition = "2021"
 name = "carla_inprocess_benchmark"
 required-features = ["lv2"]
 
+[[example]]
+name = "carla_bridge_benchmark"
+required-features = ["lv2"]
+
 [dependencies]
 thiserror = { workspace = true }
 anyhow = { workspace = true }
@@ -33,12 +37,12 @@ assert_no_alloc = { workspace = true }
 shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
 shoop_settings = { path = "../shoop_settings" }
 tracing = { workspace = true }
-uuid = { workspace = true }
 enum-iterator = { workspace = true }
 num_enum = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 shoop_tracing = { workspace = true, features = ["tracy"] }
+uuid = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 shoop_tracing = { workspace = true, default-features = false }
