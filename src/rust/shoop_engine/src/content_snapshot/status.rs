@@ -22,6 +22,7 @@ impl SessionContentEpoch {
             && self.epoch.load(Ordering::Acquire) == captured
     }
 
+    #[allow(deprecated)]
     fn bump_epoch(&self) {
         let previous = self
             .epoch
@@ -88,6 +89,7 @@ impl ContentStatus {
         true
     }
 
+    #[allow(deprecated)]
     pub fn next_revision(&self) -> ContentRevision {
         let revision = self
             .next_revision
