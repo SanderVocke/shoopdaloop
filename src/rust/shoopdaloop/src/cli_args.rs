@@ -66,6 +66,9 @@ pub struct CarlaWorkerOptions {
 
     #[clap(long, hide = true, requires = "carla_worker")]
     pub carla_worker_generation: Option<u64>,
+
+    #[clap(long, hide = true, requires = "carla_worker")]
+    pub carla_worker_shared_memory: Option<String>,
 }
 
 /// CPAL/midir backend options.
@@ -303,6 +306,8 @@ mod tests {
             "7",
             "--carla-worker-generation",
             "3",
+            "--carla-worker-shared-memory",
+            "/tmp/carla.ipc",
         ]);
         assert!(parsed.carla_worker_options.carla_worker);
         assert_eq!(

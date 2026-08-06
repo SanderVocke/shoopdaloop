@@ -16,8 +16,48 @@ pub struct CarlaProcessorInfo {
 
 pub type SharedCarlaProcessor = Arc<Mutex<Box<dyn CarlaProcessor>>>;
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum CarlaProcessorLifecycle {
+    #[default]
+    Stopped,
+    Starting,
+    Running,
+    Crashed,
+    Restarting,
+    Unavailable,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CarlaGenerationLog {
+    pub generation: u64,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+    pub stdout_dropped_bytes: u64,
+    pub stderr_dropped_bytes: u64,
+}
+
 pub trait CarlaProcessor: Send + Debug {
     fn info(&self) -> CarlaProcessorInfo;
+    fn is_ready(&mut self) -> bool {
+        true
+    }
+    fn lifecycle(&self) -> CarlaProcessorLifecycle {
+        CarlaProcessorLifecycle::Running
+    }
+    fn generation(&self) -> u64 {
+        0
+    }
+    fn crash_summary(&self) -> Option<&str> {
+        None
+    }
+    fn generation_logs(&self) -> Vec<CarlaGenerationLog> {
+        Vec::new()
+    }
+    fn clear_logs(&mut self) {}
+    fn toggle_or_recover(&mut self) -> Result<()> {
+        let visible = self.is_visible();
+        self.set_visible(!visible)
+    }
     fn set_active(&mut self, active: bool);
     fn is_active(&self) -> bool;
     fn set_visible(&mut self, visible: bool) -> Result<()>;

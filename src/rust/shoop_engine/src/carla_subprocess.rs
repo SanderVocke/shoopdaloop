@@ -1,13 +1,16 @@
-use crate::carla_processor::{CarlaProcessor, CarlaProcessorInfo};
+use crate::carla_processor::{
+    CarlaGenerationLog, CarlaProcessor, CarlaProcessorInfo, CarlaProcessorLifecycle,
+};
+use crate::carla_shared_memory::SharedBlockTransport;
 use crate::lv2_carla::CarlaLv2Host;
+use crate::realtime_lock_guard::Mutex;
 use crate::FXChainType;
 use anyhow::{anyhow, Context, Result};
 use shoop_plugin_protocol::{
     read_frame, write_frame, BlockSequence, CarlaChainType, ChainId, ControlRequest,
     ControlRequestKind, ControlResponse, ControlResponseKind, LifecycleState, MidiEvent,
-    ParentToWorker, ProcessGeneration, ProtocolError, ProtocolErrorCode, PrototypeBlock,
-    PrototypeBlockResult, RequestId, WorkerExitKind, WorkerHello, WorkerStatus, WorkerToParent,
-    MAX_BLOCK_FRAMES,
+    ParentToWorker, ProcessGeneration, ProtocolError, ProtocolErrorCode, PrototypeBlockResult,
+    RequestId, WorkerExitKind, WorkerHello, WorkerStatus, WorkerToParent, MAX_BLOCK_FRAMES,
 };
 use std::collections::VecDeque;
 use std::fmt;
@@ -15,12 +18,14 @@ use std::io::Read;
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 const LOG_CAPACITY: usize = 64 * 1024;
+const MAX_LOG_GENERATIONS: usize = 8;
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
 const CONTROL_TIMEOUT: Duration = Duration::from_secs(2);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
@@ -76,6 +81,7 @@ pub struct CarlaWorkerOptions {
     pub nonce: [u8; 32],
     pub chain_id: ChainId,
     pub generation: ProcessGeneration,
+    pub shared_memory_path: PathBuf,
 }
 
 fn response(
@@ -98,6 +104,87 @@ fn protocol_error(error: impl fmt::Display) -> ControlResponseKind {
     })
 }
 
+struct SharedWorkerGuard {
+    stop: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl Drop for SharedWorkerGuard {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Release);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+fn run_shared_worker(
+    mut transport: SharedBlockTransport,
+    host: Arc<Mutex<Option<CarlaLv2Host>>>,
+    stop: Arc<AtomicBool>,
+    processed_blocks: Arc<AtomicU64>,
+) {
+    let mut midi_inputs = Vec::with_capacity(shoop_plugin_protocol::MAX_MIDI_EVENTS_PER_BLOCK);
+    while !stop.load(Ordering::Acquire) {
+        let Some(token) = transport.worker_take() else {
+            std::hint::spin_loop();
+            thread::yield_now();
+            continue;
+        };
+        let result = (|| -> Result<()> {
+            let mut host = host.lock().unwrap_or_else(|error| error.into_inner());
+            let host = host
+                .as_mut()
+                .ok_or_else(|| anyhow!("shared block arrived before Carla instantiation"))?;
+            if transport.worker_audio_input_channels(token) != host.info.ports.audio_inputs.len()
+                || transport.worker_audio_output_channels(token)
+                    != host.info.ports.audio_outputs.len()
+            {
+                return Err(anyhow!(
+                    "shared block channel layout does not match Carla host"
+                ));
+            }
+            for channel in 0..host.info.ports.audio_inputs.len() {
+                let destination = host
+                    .audio_input_mut(channel)
+                    .ok_or_else(|| anyhow!("Carla audio input {channel} disappeared"))?;
+                transport.worker_copy_audio_input(token, channel, destination)?;
+            }
+            transport.worker_read_midi(token, &mut midi_inputs)?;
+            if !host.info.ports.midi_inputs.is_empty() {
+                host.set_midi_input_events(
+                    0,
+                    midi_inputs
+                        .iter()
+                        .map(|event| (event.frame_offset, event.data.as_slice())),
+                )?;
+            }
+            host.process(token.frames)?;
+            let mut midi_outputs = Vec::new();
+            if !host.info.ports.midi_outputs.is_empty() {
+                midi_outputs.extend(
+                    host.midi_output_events(0)?
+                        .into_iter()
+                        .map(|(frame_offset, data)| MidiEvent { frame_offset, data }),
+                );
+            }
+            let audio_outputs: Vec<_> = (0..host.info.ports.audio_outputs.len())
+                .map(|channel| {
+                    host.audio_output(channel)
+                        .ok_or_else(|| anyhow!("Carla audio output {channel} disappeared"))
+                })
+                .collect::<Result<_>>()?;
+            transport.worker_complete(token, &audio_outputs, &midi_outputs)?;
+            processed_blocks.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        })();
+        if let Err(error) = result {
+            eprintln!("Carla shared-memory worker failed: {error:#}");
+            stop.store(true, Ordering::Release);
+        }
+    }
+}
+
 pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
     let mut stream = TcpStream::connect_timeout(&options.address, STARTUP_TIMEOUT)
         .context("worker could not connect to parent")?;
@@ -114,7 +201,26 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
         ),
     )?;
 
-    let mut host: Option<CarlaLv2Host> = None;
+    let shared_transport = SharedBlockTransport::open(
+        &options.shared_memory_path,
+        options.generation,
+        &options.nonce,
+    )?;
+    let host: Arc<Mutex<Option<CarlaLv2Host>>> = Arc::new(Mutex::new(None));
+    let stop = Arc::new(AtomicBool::new(false));
+    let processed_blocks = Arc::new(AtomicU64::new(0));
+    let shared_thread = thread::Builder::new()
+        .name("carla-worker-realtime".to_owned())
+        .spawn({
+            let host = Arc::clone(&host);
+            let stop = Arc::clone(&stop);
+            let processed_blocks = Arc::clone(&processed_blocks);
+            move || run_shared_worker(shared_transport, host, stop, processed_blocks)
+        })?;
+    let _shared_worker = SharedWorkerGuard {
+        stop,
+        thread: Some(shared_thread),
+    };
     let mut status = WorkerStatus {
         lifecycle: LifecycleState::Starting,
         generation: options.generation,
@@ -160,6 +266,7 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
                     continue;
                 }
                 let request_id = request.request_id;
+                let mut host = host.lock().unwrap_or_else(|error| error.into_inner());
                 let kind = match request.kind {
                     ControlRequestKind::Instantiate {
                         chain_type,
@@ -171,7 +278,7 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
                         nominal_buffer_size,
                     ) {
                         Ok(created) => {
-                            host = Some(created);
+                            *host = Some(created);
                             status.lifecycle = LifecycleState::Running;
                             status.ready = true;
                             ControlResponseKind::Ack
@@ -219,6 +326,7 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
                             status.active = host.is_active();
                             status.visible = host.is_visible();
                         }
+                        status.processed_blocks = processed_blocks.load(Ordering::Relaxed);
                         ControlResponseKind::Status(status.clone())
                     }
                     ControlRequestKind::Ping => ControlResponseKind::Pong,
@@ -243,6 +351,7 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
                     status.stale_completions = status.stale_completions.saturating_add(1);
                     continue;
                 }
+                let mut host = host.lock().unwrap_or_else(|error| error.into_inner());
                 let host = host
                     .as_mut()
                     .ok_or_else(|| anyhow!("received process block before instantiation"))?;
@@ -283,7 +392,7 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
                             .map(|(frame_offset, data)| MidiEvent { frame_offset, data }),
                     );
                 }
-                status.processed_blocks = status.processed_blocks.saturating_add(1);
+                processed_blocks.fetch_add(1, Ordering::Relaxed);
                 let result = PrototypeBlockResult {
                     sequence: block.sequence,
                     generation: options.generation,
@@ -373,6 +482,7 @@ pub struct SubprocessCarlaProcessor {
     request_id: u64,
     block_sequence: u64,
     stream: TcpStream,
+    shared_transport: SharedBlockTransport,
     child: Child,
     stdout: Arc<Mutex<BoundedLog>>,
     stderr: Arc<Mutex<BoundedLog>>,
@@ -381,11 +491,13 @@ pub struct SubprocessCarlaProcessor {
     audio_outputs: Vec<Vec<f32>>,
     midi_inputs: Vec<Vec<(u32, Vec<u8>)>>,
     midi_outputs: Vec<Vec<(u32, Vec<u8>)>>,
+    shared_midi_outputs: Vec<MidiEvent>,
     active: bool,
     visible: bool,
     ready: bool,
     checkpoint: String,
     process_timeout: Duration,
+    deadline_misses: u64,
 }
 
 impl fmt::Debug for SubprocessCarlaProcessor {
@@ -419,6 +531,8 @@ impl SubprocessCarlaProcessor {
         listener.set_nonblocking(true)?;
         let address = listener.local_addr()?;
         let nonce = new_nonce();
+        let shared_transport = SharedBlockTransport::create(generation, &nonce)?;
+        let shared_memory_path = shared_transport.path().to_string_lossy().to_string();
         let mut child = Command::new(executable.as_ref())
             .args([
                 "--carla-worker",
@@ -430,6 +544,8 @@ impl SubprocessCarlaProcessor {
                 &chain_id.0.to_string(),
                 "--carla-worker-generation",
                 &generation.0.to_string(),
+                "--carla-worker-shared-memory",
+                &shared_memory_path,
                 "--no-crash-handling",
             ])
             .stdin(Stdio::null())
@@ -508,6 +624,7 @@ impl SubprocessCarlaProcessor {
             request_id: 1,
             block_sequence: 0,
             stream,
+            shared_transport,
             child,
             stdout,
             stderr,
@@ -515,7 +632,12 @@ impl SubprocessCarlaProcessor {
             audio_inputs: vec![vec![0.0; MAX_BLOCK_FRAMES]; channels],
             audio_outputs: vec![vec![0.0; MAX_BLOCK_FRAMES]; channels],
             midi_inputs: vec![Vec::new()],
-            midi_outputs: vec![Vec::new()],
+            midi_outputs: vec![Vec::with_capacity(
+                shoop_plugin_protocol::MAX_MIDI_EVENTS_PER_BLOCK,
+            )],
+            shared_midi_outputs: Vec::with_capacity(
+                shoop_plugin_protocol::MAX_MIDI_EVENTS_PER_BLOCK,
+            ),
             active: false,
             visible: false,
             ready: false,
@@ -523,6 +645,7 @@ impl SubprocessCarlaProcessor {
             process_timeout: Duration::from_secs_f64(
                 (nominal_buffer_size.max(1) as f64 / sample_rate.max(1) as f64).max(0.000_5),
             ),
+            deadline_misses: 0,
         };
         processor.control(ControlRequestKind::Instantiate {
             chain_type: protocol_type,
@@ -576,7 +699,10 @@ impl SubprocessCarlaProcessor {
 
     pub fn status(&mut self) -> Result<WorkerStatus> {
         match self.control(ControlRequestKind::Status)? {
-            ControlResponseKind::Status(status) => Ok(status),
+            ControlResponseKind::Status(mut status) => {
+                status.deadline_misses = self.deadline_misses;
+                Ok(status)
+            }
             other => Err(anyhow!("worker returned {other:?} for status request")),
         }
     }
@@ -593,6 +719,17 @@ impl SubprocessCarlaProcessor {
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .snapshot()
+    }
+
+    pub fn worker_id(&self) -> u32 {
+        self.child.id()
+    }
+
+    pub fn terminate_worker_for_test(&mut self) -> Result<()> {
+        self.child.kill()?;
+        self.child.wait()?;
+        self.ready = false;
+        Ok(())
     }
 
     pub fn clear_logs(&self) {
@@ -620,6 +757,38 @@ impl SubprocessCarlaProcessor {
 impl CarlaProcessor for SubprocessCarlaProcessor {
     fn info(&self) -> CarlaProcessorInfo {
         self.info
+    }
+
+    fn is_ready(&mut self) -> bool {
+        self.ready && self.child.try_wait().ok().flatten().is_none()
+    }
+
+    fn lifecycle(&self) -> CarlaProcessorLifecycle {
+        if self.ready {
+            CarlaProcessorLifecycle::Running
+        } else {
+            CarlaProcessorLifecycle::Crashed
+        }
+    }
+
+    fn generation(&self) -> u64 {
+        self.generation.0
+    }
+
+    fn generation_logs(&self) -> Vec<CarlaGenerationLog> {
+        let stdout = self.stdout_snapshot();
+        let stderr = self.stderr_snapshot();
+        vec![CarlaGenerationLog {
+            generation: self.generation.0,
+            stdout: stdout.bytes,
+            stderr: stderr.bytes,
+            stdout_dropped_bytes: stdout.dropped_bytes,
+            stderr_dropped_bytes: stderr.dropped_bytes,
+        }]
+    }
+
+    fn clear_logs(&mut self) {
+        SubprocessCarlaProcessor::clear_logs(self);
     }
 
     fn set_active(&mut self, active: bool) {
@@ -661,7 +830,7 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
                 Ok(state)
             }
             Ok(other) => Err(anyhow!("worker returned {other:?} for state save")),
-            Err(_) => Ok(self.checkpoint.clone()),
+            Err(error) => Err(error),
         }
     }
 
@@ -707,63 +876,396 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
             return Err(anyhow!("invalid subprocess block size {frames}"));
         }
         self.block_sequence = self.block_sequence.saturating_add(1);
-        let block = PrototypeBlock {
-            sequence: BlockSequence(self.block_sequence),
-            generation: self.generation,
-            frames: frames as u32,
-            audio_inputs: self
-                .audio_inputs
-                .iter()
-                .map(|input| input[..frames].to_vec())
-                .collect(),
-            midi_inputs: self
-                .midi_inputs
-                .iter()
-                .flatten()
-                .map(|(frame_offset, data)| MidiEvent {
-                    frame_offset: *frame_offset,
-                    data: data.clone(),
-                })
-                .collect(),
-        };
-        block.validate()?;
-        self.stream.set_read_timeout(Some(self.process_timeout))?;
-        let result = (|| -> Result<PrototypeBlockResult> {
-            write_frame(&mut self.stream, &ParentToWorker::Process(block))?;
-            let response: WorkerToParent = read_frame(&mut self.stream)?;
-            match response {
-                WorkerToParent::Process(result)
-                    if result.sequence == BlockSequence(self.block_sequence)
-                        && result.generation == self.generation =>
-                {
-                    result.validate()?;
-                    Ok(result)
-                }
-                other => Err(anyhow!("unexpected process response: {other:?}")),
+        let token = match {
+            let _span = shoop_tracing::realtime_span_detail!(
+                "engine.rt.fx.subprocess_submit",
+                value = frames
+            );
+            self.shared_transport.submit(
+                BlockSequence(self.block_sequence),
+                frames,
+                &self.audio_inputs,
+                self.audio_outputs.len(),
+                &self.midi_inputs,
+            )
+        } {
+            Ok(token) => token,
+            Err(
+                crate::carla_shared_memory::SharedBlockError::NoFreeSlot
+                | crate::carla_shared_memory::SharedBlockError::DeadlineMiss,
+            ) => {
+                self.deadline_misses = self.deadline_misses.saturating_add(1);
+                self.clear_outputs(frames);
+                return Ok(());
             }
-        })();
-        let result = match result {
-            Ok(result) => result,
             Err(error) => {
                 self.ready = false;
                 self.clear_outputs(frames);
-                return Err(error);
+                return Err(error.into());
             }
         };
-        if result.audio_outputs.len() != self.audio_outputs.len() {
-            self.ready = false;
-            self.clear_outputs(frames);
-            return Err(anyhow!("worker returned wrong audio output channel count"));
+        let result = {
+            let _span = shoop_tracing::realtime_span_detail!(
+                "engine.rt.fx.subprocess_wait",
+                value = frames
+            );
+            self.shared_transport.wait_and_copy(
+                token,
+                Instant::now() + self.process_timeout,
+                &mut self.audio_outputs,
+                &mut self.shared_midi_outputs,
+            )
+        };
+        match result {
+            Ok(()) => {
+                self.midi_outputs[0].clear();
+                self.midi_outputs[0].extend(
+                    self.shared_midi_outputs
+                        .drain(..)
+                        .map(|event| (event.frame_offset, event.data)),
+                );
+                Ok(())
+            }
+            Err(
+                crate::carla_shared_memory::SharedBlockError::NoFreeSlot
+                | crate::carla_shared_memory::SharedBlockError::DeadlineMiss,
+            ) => {
+                self.deadline_misses = self.deadline_misses.saturating_add(1);
+                self.clear_outputs(frames);
+                Ok(())
+            }
+            Err(error) => {
+                self.ready = false;
+                self.clear_outputs(frames);
+                Err(error.into())
+            }
         }
-        for (destination, source) in self.audio_outputs.iter_mut().zip(result.audio_outputs) {
-            destination[..frames].copy_from_slice(&source);
+    }
+}
+
+pub struct SupervisedCarlaProcessor {
+    executable: PathBuf,
+    info: CarlaProcessorInfo,
+    sample_rate: u32,
+    nominal_buffer_size: u32,
+    chain_id: ChainId,
+    generation: ProcessGeneration,
+    current: Option<SubprocessCarlaProcessor>,
+    previous_logs: VecDeque<CarlaGenerationLog>,
+    checkpoint: String,
+    has_checkpoint: bool,
+    desired_active: bool,
+    desired_visible: bool,
+    lifecycle: CarlaProcessorLifecycle,
+    crash_summary: Option<String>,
+}
+
+impl fmt::Debug for SupervisedCarlaProcessor {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SupervisedCarlaProcessor")
+            .field("info", &self.info)
+            .field("chain_id", &self.chain_id)
+            .field("generation", &self.generation)
+            .field("lifecycle", &self.lifecycle)
+            .field("desired_active", &self.desired_active)
+            .field("desired_visible", &self.desired_visible)
+            .field("crash_summary", &self.crash_summary)
+            .finish_non_exhaustive()
+    }
+}
+
+impl SupervisedCarlaProcessor {
+    pub fn launch(
+        executable: impl Into<PathBuf>,
+        chain_type: FXChainType,
+        sample_rate: u32,
+        nominal_buffer_size: u32,
+        chain_id: ChainId,
+    ) -> Result<Self> {
+        let channels = protocol_chain_type(chain_type)?.audio_channels() as usize;
+        let mut supervisor = Self {
+            executable: executable.into(),
+            info: CarlaProcessorInfo {
+                chain_type,
+                audio_inputs: channels,
+                audio_outputs: channels,
+                midi_inputs: 1,
+                midi_outputs: 1,
+            },
+            sample_rate,
+            nominal_buffer_size,
+            chain_id,
+            generation: ProcessGeneration(0),
+            current: None,
+            previous_logs: VecDeque::new(),
+            checkpoint: String::new(),
+            has_checkpoint: false,
+            desired_active: false,
+            desired_visible: false,
+            lifecycle: CarlaProcessorLifecycle::Stopped,
+            crash_summary: None,
+        };
+        supervisor.start_generation(false);
+        Ok(supervisor)
+    }
+
+    fn retain_current_logs(&mut self) {
+        let Some(current) = self.current.as_ref() else {
+            return;
+        };
+        let mut logs = current.generation_logs();
+        if let Some(log) = logs.pop() {
+            if self.previous_logs.len() == MAX_LOG_GENERATIONS {
+                self.previous_logs.pop_front();
+            }
+            self.previous_logs.push_back(log);
         }
-        self.midi_outputs[0] = result
-            .midi_outputs
-            .into_iter()
-            .map(|event| (event.frame_offset, event.data))
-            .collect();
+    }
+
+    fn start_generation(&mut self, show_after_restore: bool) {
+        self.lifecycle = if self.generation.0 == 0 {
+            CarlaProcessorLifecycle::Starting
+        } else {
+            CarlaProcessorLifecycle::Restarting
+        };
+        if self.current.is_some() {
+            self.retain_current_logs();
+            drop(self.current.take());
+        }
+        self.generation = ProcessGeneration(self.generation.0.saturating_add(1));
+        let started = SubprocessCarlaProcessor::spawn(
+            &self.executable,
+            self.info.chain_type,
+            self.sample_rate,
+            self.nominal_buffer_size,
+            self.chain_id,
+            self.generation,
+        );
+        let mut current = match started {
+            Ok(current) => current,
+            Err(error) => {
+                self.lifecycle = CarlaProcessorLifecycle::Unavailable;
+                self.crash_summary = Some(error.to_string());
+                return;
+            }
+        };
+        if self.has_checkpoint {
+            if let Err(error) = current.restore_state(&self.checkpoint) {
+                self.lifecycle = CarlaProcessorLifecycle::Unavailable;
+                self.crash_summary = Some(format!("state restore failed: {error}"));
+                self.current = Some(current);
+                return;
+            }
+        }
+        current.set_active(self.desired_active);
+        if show_after_restore {
+            if let Err(error) = current.set_visible(true) {
+                self.lifecycle = CarlaProcessorLifecycle::Unavailable;
+                self.crash_summary = Some(format!("external UI start failed: {error}"));
+                self.current = Some(current);
+                return;
+            }
+            self.desired_visible = true;
+        }
+        self.current = Some(current);
+        self.lifecycle = CarlaProcessorLifecycle::Running;
+        self.crash_summary = None;
+    }
+
+    pub fn worker_id(&self) -> Option<u32> {
+        self.current
+            .as_ref()
+            .map(SubprocessCarlaProcessor::worker_id)
+    }
+
+    pub fn terminate_worker_for_test(&mut self) -> Result<()> {
+        self.current
+            .as_mut()
+            .ok_or_else(|| anyhow!("no current worker"))?
+            .terminate_worker_for_test()
+    }
+
+    pub fn restart_without_ui_for_test(&mut self) -> Result<()> {
+        self.start_generation(false);
+        if self.lifecycle == CarlaProcessorLifecycle::Running {
+            Ok(())
+        } else {
+            Err(anyhow!(
+                "Carla worker restart failed: {}",
+                self.crash_summary.as_deref().unwrap_or("unknown error")
+            ))
+        }
+    }
+}
+
+impl CarlaProcessor for SupervisedCarlaProcessor {
+    fn info(&self) -> CarlaProcessorInfo {
+        self.info
+    }
+
+    fn is_ready(&mut self) -> bool {
+        if let Some(current) = self.current.as_mut() {
+            if !current.is_ready() && self.lifecycle == CarlaProcessorLifecycle::Running {
+                self.lifecycle = CarlaProcessorLifecycle::Crashed;
+                self.crash_summary = Some("Carla worker exited unexpectedly".to_owned());
+            }
+        }
+        self.lifecycle == CarlaProcessorLifecycle::Running
+    }
+
+    fn lifecycle(&self) -> CarlaProcessorLifecycle {
+        self.lifecycle
+    }
+
+    fn generation(&self) -> u64 {
+        self.generation.0
+    }
+
+    fn crash_summary(&self) -> Option<&str> {
+        self.crash_summary.as_deref()
+    }
+
+    fn generation_logs(&self) -> Vec<CarlaGenerationLog> {
+        let mut logs: Vec<_> = self.previous_logs.iter().cloned().collect();
+        if let Some(current) = self.current.as_ref() {
+            logs.extend(current.generation_logs());
+        }
+        logs
+    }
+
+    fn clear_logs(&mut self) {
+        self.previous_logs.clear();
+        if let Some(current) = self.current.as_mut() {
+            current.clear_logs();
+        }
+    }
+
+    fn toggle_or_recover(&mut self) -> Result<()> {
+        if matches!(
+            self.lifecycle,
+            CarlaProcessorLifecycle::Crashed | CarlaProcessorLifecycle::Unavailable
+        ) {
+            self.start_generation(true);
+            if self.lifecycle == CarlaProcessorLifecycle::Running {
+                Ok(())
+            } else {
+                Err(anyhow!(
+                    "Carla worker recovery failed: {}",
+                    self.crash_summary.as_deref().unwrap_or("unknown error")
+                ))
+            }
+        } else {
+            let visible = self.is_visible();
+            self.set_visible(!visible)
+        }
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.desired_active = active;
+        if self.lifecycle == CarlaProcessorLifecycle::Running {
+            if let Some(current) = self.current.as_mut() {
+                current.set_active(active);
+                if !current.is_ready() {
+                    self.lifecycle = CarlaProcessorLifecycle::Crashed;
+                    self.crash_summary = Some("Carla worker rejected active state".to_owned());
+                }
+            }
+        }
+    }
+
+    fn is_active(&self) -> bool {
+        self.desired_active && self.lifecycle == CarlaProcessorLifecycle::Running
+    }
+
+    fn set_visible(&mut self, visible: bool) -> Result<()> {
+        self.desired_visible = visible;
+        if visible
+            && matches!(
+                self.lifecycle,
+                CarlaProcessorLifecycle::Crashed | CarlaProcessorLifecycle::Unavailable
+            )
+        {
+            return self.toggle_or_recover();
+        }
+        let current = self
+            .current
+            .as_mut()
+            .ok_or_else(|| anyhow!("Carla worker is unavailable"))?;
+        current.set_visible(visible)
+    }
+
+    fn is_visible(&mut self) -> bool {
+        if self.lifecycle != CarlaProcessorLifecycle::Running {
+            return false;
+        }
+        self.current
+            .as_mut()
+            .is_some_and(CarlaProcessor::is_visible)
+    }
+
+    fn save_state(&mut self) -> Result<String> {
+        if self.lifecycle == CarlaProcessorLifecycle::Running {
+            if let Some(current) = self.current.as_mut() {
+                if let Ok(state) = current.save_state() {
+                    self.checkpoint.clone_from(&state);
+                    self.has_checkpoint = true;
+                }
+            }
+        }
+        Ok(self.checkpoint.clone())
+    }
+
+    fn restore_state(&mut self, state: &str) -> Result<()> {
+        if self.lifecycle == CarlaProcessorLifecycle::Running {
+            let current = self
+                .current
+                .as_mut()
+                .ok_or_else(|| anyhow!("Carla worker is unavailable"))?;
+            current.restore_state(state)?;
+        }
+        self.checkpoint.clear();
+        self.checkpoint.push_str(state);
+        self.has_checkpoint = true;
         Ok(())
+    }
+
+    fn audio_input_mut(&mut self, index: usize) -> Option<&mut [f32]> {
+        self.current.as_mut()?.audio_input_mut(index)
+    }
+
+    fn audio_output(&self, index: usize) -> Option<&[f32]> {
+        self.current.as_ref()?.audio_output(index)
+    }
+
+    fn set_midi_input_events(&mut self, index: usize, events: &[(u32, &[u8])]) -> Result<()> {
+        match self.current.as_mut() {
+            Some(current) => current.set_midi_input_events(index, events),
+            None => Ok(()),
+        }
+    }
+
+    fn midi_output_events(&mut self, index: usize) -> Result<Vec<(u32, Vec<u8>)>> {
+        match self.current.as_mut() {
+            Some(current) => current.midi_output_events(index),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    fn process(&mut self, frames: usize) -> Result<()> {
+        if self.lifecycle != CarlaProcessorLifecycle::Running {
+            return Err(anyhow!("Carla worker is not running"));
+        }
+        let result = self
+            .current
+            .as_mut()
+            .ok_or_else(|| anyhow!("Carla worker is unavailable"))?
+            .process(frames);
+        if let Err(error) = &result {
+            self.lifecycle = CarlaProcessorLifecycle::Crashed;
+            self.crash_summary = Some(error.to_string());
+        }
+        result
     }
 }
 

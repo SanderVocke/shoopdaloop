@@ -49,7 +49,7 @@ ShoopTestFile {
 
         function verify_descriptor(descriptor) {
             let component = Qt.createComponent("../FXChain.qml")
-            verify_eq(component.status, Component.Ready)
+            verify_eq(component.status, Component.Ready, component.errorString())
             let chain = component.createObject(root, {
                 "backend": backend,
                 "descriptor": descriptor.fx_chain

@@ -389,12 +389,19 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
                     .carla_worker_generation
                     .ok_or_else(|| anyhow!("missing Carla worker generation"))?,
             );
+            let shared_memory_path = PathBuf::from(
+                worker
+                    .carla_worker_shared_memory
+                    .as_deref()
+                    .ok_or_else(|| anyhow!("missing Carla worker shared-memory path"))?,
+            );
             return shoop_engine::carla_subprocess::run_carla_worker(
                 shoop_engine::carla_subprocess::CarlaWorkerOptions {
                     address,
                     nonce,
                     chain_id,
                     generation,
+                    shared_memory_path,
                 },
             )
             .map(|_| 0);

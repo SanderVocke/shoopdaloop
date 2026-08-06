@@ -27,6 +27,8 @@ lv2_raw = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 libloading = { workspace = true, optional = true }
+memmap2 = { workspace = true }
+tempfile = { workspace = true }
 assert_no_alloc = { workspace = true }
 shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
 shoop_settings = { path = "../shoop_settings" }

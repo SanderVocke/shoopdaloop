@@ -2670,13 +2670,12 @@ impl BackendSession {
                             }
                             CarlaHostingMode::Subprocess => {
                                 let chain_id = NEXT_CARLA_CHAIN_ID.fetch_add(1, Ordering::Relaxed);
-                                engine::carla_subprocess::SubprocessCarlaProcessor::spawn(
+                                engine::carla_subprocess::SupervisedCarlaProcessor::launch(
                                     std::env::current_exe()?,
                                     chain_type,
                                     sample_rate,
                                     buffer_size,
                                     shoop_plugin_protocol::ChainId(chain_id),
-                                    shoop_plugin_protocol::ProcessGeneration(1),
                                 )
                                 .map(|host| Box::new(host) as Box<_>)
                             }
@@ -5426,11 +5425,89 @@ impl FXChain {
         s.ready = self.available() as u32;
         #[cfg(feature = "lv2")]
         if let FXChainBackendKind::Carla(host) = &self.backend {
-            s.visible = host.lock().unwrap_or_else(|e| e.into_inner()).is_visible() as u32;
+            let mut host = host.lock().unwrap_or_else(|error| error.into_inner());
+            s.ready = host.is_ready() as u32;
+            s.active = host.is_active() as u32;
+            s.visible = host.is_visible() as u32;
             self.state.lock().unwrap().visible = s.visible;
         }
         Some(s)
     }
+    pub fn toggle_or_recover(&self) -> Result<()> {
+        match &self.backend {
+            #[cfg(feature = "lv2")]
+            FXChainBackendKind::Carla(host) => host
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .toggle_or_recover(),
+            FXChainBackendKind::Test2x2x1 => {
+                self.set_visible(!self.get_state().is_some_and(|state| state.visible != 0));
+                Ok(())
+            }
+            FXChainBackendKind::Unavailable { reason } => Err(anyhow!(reason.clone())),
+        }
+    }
+
+    pub fn lifecycle(&self) -> engine::carla_processor::CarlaProcessorLifecycle {
+        match &self.backend {
+            #[cfg(feature = "lv2")]
+            FXChainBackendKind::Carla(host) => host
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .lifecycle(),
+            FXChainBackendKind::Test2x2x1 => {
+                engine::carla_processor::CarlaProcessorLifecycle::Running
+            }
+            FXChainBackendKind::Unavailable { .. } => {
+                engine::carla_processor::CarlaProcessorLifecycle::Unavailable
+            }
+        }
+    }
+
+    pub fn generation(&self) -> u64 {
+        match &self.backend {
+            #[cfg(feature = "lv2")]
+            FXChainBackendKind::Carla(host) => host
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .generation(),
+            _ => 0,
+        }
+    }
+
+    pub fn crash_summary(&self) -> Option<String> {
+        match &self.backend {
+            #[cfg(feature = "lv2")]
+            FXChainBackendKind::Carla(host) => host
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .crash_summary()
+                .map(ToOwned::to_owned),
+            FXChainBackendKind::Unavailable { reason } => Some(reason.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn generation_logs(&self) -> Vec<engine::carla_processor::CarlaGenerationLog> {
+        match &self.backend {
+            #[cfg(feature = "lv2")]
+            FXChainBackendKind::Carla(host) => host
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .generation_logs(),
+            _ => Vec::new(),
+        }
+    }
+
+    pub fn clear_logs(&self) {
+        #[cfg(feature = "lv2")]
+        if let FXChainBackendKind::Carla(host) = &self.backend {
+            host.lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .clear_logs();
+        }
+    }
+
     pub fn get_state_str(&self) -> Option<String> {
         match &self.backend {
             FXChainBackendKind::Unavailable { reason } => Some(format!(

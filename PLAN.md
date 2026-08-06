@@ -161,16 +161,16 @@ The goal is end-to-end integration, not final transport performance. A framed lo
 
 ### Phase 4: Add supervision, logs, crash reporting, and recovery
 
-- [ ] Add one supervisor per subprocess chain, owning launch, control connection, generation changes, expected-shutdown markers, timeout escalation, reaping, and cleanup.
-- [ ] Drain stdout and stderr independently from process start through exit into separate fixed-capacity buffers with oldest-data eviction and dropped-byte counts.
+- [x] Add one supervisor per subprocess chain, owning launch, control connection, generation changes, expected-shutdown markers, timeout escalation, reaping, and cleanup.
+- [x] Drain stdout and stderr independently from process start through exit into separate fixed-capacity buffers with oldest-data eviction and dropped-byte counts.
 - [ ] Distinguish startup failure, protocol failure, unexpected exit/signal/exception, unresponsive termination, normal UI closure, requested stop, session unload, and application shutdown.
-- [ ] Retain generation-tagged status, summaries, recent diagnostics, and logs across restart without unbounded growth.
-- [ ] Retain the last-known-good state in the parent; update it only after a confirmed successful restore or complete save.
-- [ ] Return the checkpoint during session save when the worker is unavailable or a live save fails/times out.
-- [ ] Implement toggle-or-recover: launch a new generation, handshake, instantiate the same chain type, restore the checkpoint, restore desired active state, then show the UI.
-- [ ] Preserve the checkpoint/logs/failure details and remain safely unavailable if any recovery step fails.
-- [ ] Publish one queued crash notification per unexpected generation and target-neutral log actions/data.
-- [ ] Add the current QML FX status/log UI with separate streams, generation markers, copy, refresh/inspect, clear, truncation disclosure, and accessible crash/recovery states.
+- [x] Retain generation-tagged status, summaries, recent diagnostics, and logs across restart without unbounded growth.
+- [x] Retain the last-known-good state in the parent; update it only after a confirmed successful restore or complete save.
+- [x] Return the checkpoint during session save when the worker is unavailable or a live save fails/times out.
+- [x] Implement toggle-or-recover: launch a new generation, handshake, instantiate the same chain type, restore the checkpoint, restore desired active state, then show the UI.
+- [x] Preserve the checkpoint/logs/failure details and remain safely unavailable if any recovery step fails.
+- [x] Publish one queued crash notification per unexpected generation and target-neutral log actions/data.
+- [x] Add the current QML FX status/log UI with separate streams, generation markers, copy, refresh/inspect, clear, truncation disclosure, and accessible crash/recovery states.
 - [ ] Verify crash, abort, malformed protocol, pipe flood, hang, timeout escalation, repeated restart, save-while-down, and multi-chain independence with the fake worker.
 
 ### Phase 5: Move settings ownership to startup and persist hosting mode
@@ -179,22 +179,22 @@ The goal is end-to-end integration, not final transport performance. A framed lo
 - [x] Define a typed global Carla hosting mode and load it before any session can create FX chains.
 - [x] Migrate or default `settings.1` data without losing MIDI/script settings; use in-process as the default for old or absent settings.
 - [x] Bind the current settings UI to the startup-owned value and state that changes affect newly created instances or require session/application reload.
-- [ ] Ensure session load and concurrent chain creation cannot race settings initialization.
-- [ ] Keep the setting available to future pure-egui settings/application composition without adding Qt types below the adapter.
+- [x] Ensure session load and concurrent chain creation cannot race settings initialization.
+- [x] Keep the setting available to future pure-egui settings/application composition without adding Qt types below the adapter.
 - [ ] Verify first run, old valid files, migrated files, malformed files, save/reload, initialization ordering, enabled subprocess selection, and disabled direct selection.
 
 ### Phase 6: Specify and implement the final real-time transport
 
 Start only after the integrated prototype demonstrates the complete lifecycle and user flow.
 
-- [ ] Convert prototype measurements into a versioned transport contract covering maximum channels/frames, audio layout, MIDI event/byte capacities, slot count, ownership states, sequence/generation rules, deadlines, fallback, counters, and memory ordering.
-- [ ] Implement fixed-layout shared-memory block transfer, or document measured evidence for an equivalent lower-overhead bounded mechanism.
-- [ ] Use multiple ownership-tracked slots so timeout never permits parent reuse while a stale worker may still read/write a slot.
-- [ ] Allocate, map, initialize, and pre-fault all storage before processing; validate layout, atomic support, alignment, capacities, nonce, and protocol compatibility at startup.
-- [ ] Keep control/state/log traffic off the real-time transport.
+- [x] Convert prototype measurements into a versioned transport contract covering maximum channels/frames, audio layout, MIDI event/byte capacities, slot count, ownership states, sequence/generation rules, deadlines, fallback, counters, and memory ordering.
+- [x] Implement fixed-layout shared-memory block transfer, or document measured evidence for an equivalent lower-overhead bounded mechanism.
+- [x] Use multiple ownership-tracked slots so timeout never permits parent reuse while a stale worker may still read/write a slot.
+- [x] Allocate, map, initialize, and pre-fault all storage before processing; validate layout, atomic support, alignment, capacities, nonce, and protocol compatibility at startup.
+- [x] Keep control/state/log traffic off the real-time transport.
 - [ ] Implement a measured bounded notification/deadline strategy and wet-silence/MIDI-drop fallback without unbounded callback waits.
-- [ ] Prevent stale generations from publishing completions; reclaim abandoned slots only under an explicit safe ownership transition.
-- [ ] Keep the simple transport as a reference/test implementation until optimized transport equivalence is proven.
+- [x] Prevent stale generations from publishing completions; reclaim abandoned slots only under an explicit safe ownership transition.
+- [x] Keep the simple transport as a reference/test implementation until optimized transport equivalence is proven.
 - [ ] Verify boundaries, overflow, timeout/reuse races, stale generations, disconnects, hangs, and recovery under stress and model-checking where practical.
 
 ### Phase 7: Remove real-time integration debt
@@ -247,12 +247,9 @@ Start only after the integrated prototype demonstrates the complete lifecycle an
 
 Record shortcuts immediately and remove them when resolved.
 
-- [ ] The prototype serializes and allocates per-block audio/MIDI JSON over TCP rather than using the final shared-memory transport.
-- [ ] The callback still reaches the processor through the current shared Carla mutex, and control and realtime traffic share one stream.
-- [ ] The prototype has one in-flight block and relies on socket timeouts whose scheduling precision has not been validated as a realtime deadline.
-- [ ] A transport error marks the parent endpoint unavailable but does not yet run the supervised generation-aware recovery sequence.
-- [ ] Logs are bounded and drained, but generation history and frontend inspection/copy/clear actions are not yet exposed.
-- [ ] Parent-death handling, stale resource cleanup, and packaged cross-platform launch evidence are not yet implemented.
+- [ ] The callback still reaches the processor through the current shared Carla mutex; the block mapping is independent from control traffic, but the full session path is not yet lock-free.
+- [ ] Shared-memory deadline scheduling precision has not yet been validated across supported kernels and buffer sizes.
+- [ ] Parent-death behavior follows loopback disconnect, but abnormal-termination stale-file cleanup and packaged cross-platform evidence are not yet complete.
 
 ## Decisions
 
@@ -263,11 +260,12 @@ Record durable choices and evidence here. Do not use this section to change requ
 - [x] Treat the QML application as the current integrated Carla acceptance surface, but keep all new semantics frontend-independent. Evidence: current QML supports Carla dry/wet/session workflows; pure egui explicitly defers FX/settings/persistence.
 - [x] Self-spawn the installed ShoopDaLoop executable in hidden worker mode for the prototype. Evidence: the existing package has one authoritative executable and dependency closure; a Linux QML integration test launched workers from that executable without development shell wrappers. Revisit only if packaged cross-platform evidence shows a blocker.
 - [x] Use nonce-authenticated framed loopback TCP with bounded JSON payloads as the prototype control/block transport. It is explicitly retained behind `shoop_plugin_protocol` and recorded as debt, not accepted as the final realtime mechanism.
-- [ ] Final shared-memory/notification implementation is undecided pending Phases 6 and 8 measurements.
+- [x] Use a three-slot, generation-specific memory-mapped file with atomic ownership transitions for final bulk transfer; retain loopback TCP only for non-realtime control. Notification remains bounded polling pending Phase 8 cross-platform measurement.
 
 ## Progress log
 
 Append concise dated entries with completed work, verification, discoveries, and the next action.
 
 - [x] **2026-08-06 — Plan import and refresh:** imported `PLAN.md` from `origin/plan/carla-subprocess-ipc` (`712d0f5a`) and reconciled it with the current Rust Carla host, sequenced engine controls/state mirrors, realtime guards/Tracy surfaces, QML adapter, pure-egui migration boundaries, dry/wet regression coverage, and still-window-owned settings. No implementation requirement is claimed complete.
-- [x] **2026-08-06 — Baseline and vertical slice:** recorded behavior/tests and 2-/16-channel measurements in `CARLA_SUBPROCESS_BASELINE.md`; added the frontend-neutral versioned protocol, bounded framing and validation, a common processor seam, fake processor, topology-time route resolution, self-spawned pre-Qt worker mode, one-process real-Carla audio/MIDI/state lifecycle, bounded stdout/stderr drains, and Linux integration coverage. Added startup-owned typed settings with old-file defaulting and a QML restart-scope control; a subprocess-selected Patchbay 16x QML test passed. The larger pre-existing dry/wet Carla QML file still fails root creation and remains an uncovered gate. Next: complete supervision/generation publication and replace prototype realtime debt.
+- [x] **2026-08-06 — Baseline and vertical slice:** recorded behavior/tests and 2-/16-channel measurements in `CARLA_SUBPROCESS_BASELINE.md`; added the frontend-neutral versioned protocol, bounded framing and validation, a common processor seam, fake processor, topology-time route resolution, self-spawned pre-Qt worker mode, one-process real-Carla audio/MIDI/state lifecycle, bounded stdout/stderr drains, and Linux integration coverage. Added startup-owned typed settings with old-file defaulting and a QML restart-scope control; a subprocess-selected Patchbay 16x QML test passed. The larger pre-existing dry/wet Carla QML file still fails root creation and remains an uncovered gate.
+- [x] **2026-08-06 — Supervision and bulk transport:** added generation-aware crash detection/restart with parent checkpoints and desired activity, independent-worker tests, retained bounded logs, QML crash/status/log/recovery surfaces, and a three-slot nonce/generation-validated shared-memory transport. Real-worker audio/MIDI/state and allocation-guard tests pass, including restart and unaffected sibling processing. Added user/developer documentation and egui parity discovery. Remaining critical work is removing the callback-visible processor mutex, completing failure-mode/platform/package evidence, and running final performance/whole-suite gates.

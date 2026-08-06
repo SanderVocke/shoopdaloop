@@ -315,6 +315,19 @@ Replacement evidence referenced below consists of:
 | CONN-DEF-003 | Dry/wet send/return topology and FX chains | QML dry/wet tracks supply send/return categories. | Explored for connections | Deferred | Deferred | Role model/preview support is complete; topology creation remains FX milestone work |
 | CONN-DEF-004 | MIDI-control and other non-track ports | Global QML session dialog aggregates track ports, not the control port. | Explored for connections | Deferred | Deferred | Explicitly excluded from authoritative track inventory |
 
+## Carla subprocess hosting discovery
+
+The native QML Carla path now supplies a frontend-independent hosting-mode setting, processor seam, supervised worker lifecycle, bounded generation logs, shared-memory audio/MIDI transport, checkpoint recovery, and status/log adapters. This does not advance pure-egui FX parity: dry/wet topology, FX intents/snapshots, settings presentation, persistence, and native real-driver composition remain deferred there. A future egui FX milestone must reuse these engine/application semantics rather than introduce a second worker protocol.
+
+| ID | Capability or behavior | Current native baseline | Discovery | Current implementation | Evidence |
+|---|---|---|---|---|---|
+| FX-SUBPROC-001 | Global direct/subprocess policy | QML settings were previously window-owned and Carla was always direct. | Partially explored | Partial | Startup-owned typed settings default old files to direct mode; current QML exposes restart-scoped selection |
+| FX-SUBPROC-002 | One worker generation per Carla chain | Direct hosts share the application process. | Partially explored | Partial | Self-spawned pre-Qt workers, independent-process and crash/restart integration tests; cross-platform package evidence remains open |
+| FX-SUBPROC-003 | Bounded realtime block transfer | Direct Carla runs inline under a callback-visible mutex. | Partially explored | Partial | Three-slot generation-tagged shared mapping, bounded deadline fallback, MIDI offsets/bytes tests, and processor allocation guard; full session lock removal remains open |
+| FX-SUBPROC-004 | Checkpoint and click recovery | Session state lives in the live direct host. | Partially explored | Partial | Parent checkpoint retention and supervised generation restart exist; complete QML session/crash interaction evidence remains open |
+| FX-SUBPROC-005 | Worker diagnostics | No per-chain subprocess streams existed. | Partially explored | Partial | Bounded separate stdout/stderr generation buffers and current QML inspect/copy/clear surface; final notification/accessibility tests remain open |
+| FX-SUBPROC-006 | Pure-egui FX integration | FX chains and dry/wet tracks are deferred. | Partially explored | Deferred | Shared core is frontend-independent; no egui FX/settings API or presentation is claimed |
+
 ## Coarsely listed future areas
 
 These areas remain `Unexplored` for whole-feature replacement and must be expanded before their milestones set acceptance criteria:
