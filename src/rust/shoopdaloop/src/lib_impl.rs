@@ -416,11 +416,18 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
             settings_path.display()
         );
     }
-    info!(
-        "Carla hosting mode: {}",
-        user_settings.carla_hosting_mode.as_str()
-    );
-    shoop_engine::app_backend::set_carla_hosting_mode(user_settings.carla_hosting_mode);
+    let carla_hosting_mode = match cli_args.as_ref().and_then(|args| {
+        args.self_test_options
+            .carla_hosting_mode_for_test
+            .as_deref()
+    }) {
+        Some("in_process") => shoop_settings::CarlaHostingMode::InProcess,
+        Some("subprocess") => shoop_settings::CarlaHostingMode::Subprocess,
+        Some(value) => return Err(anyhow!("invalid test Carla hosting mode {value:?}")),
+        None => user_settings.carla_hosting_mode,
+    };
+    info!("Carla hosting mode: {}", carla_hosting_mode.as_str());
+    shoop_engine::app_backend::set_carla_hosting_mode(carla_hosting_mode);
 
     if !cli_args
         .as_ref()

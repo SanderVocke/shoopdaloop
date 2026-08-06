@@ -244,6 +244,15 @@ runs:
       capture_traces: ${{ inputs.capture_traces == 'true' || env.QML_TRACE_CAPTURE_ENABLED == 'true' }}
       tracy_capture_tool: ${{ steps.tracy_capture.outputs.tracy_capture_tool }}
       tracy_capture_output_dir: traces/qml
+  - name: Test packaged Carla subprocess mode
+    if: always() && inputs.do_qml_tests == 'true' && inputs.coverage != 'true' && env.COMMAND_TEST_RUST != ''
+    shell: wrap-shell {0}
+    run: |
+      QT_ASSUME_STDERR_HAS_CONSOLE=1 \
+        ./scripts/run_with_timeout.sh 600 \
+        ${{ env.COMMAND_SHOOPDALOOP }} --self-test \
+        --carla-hosting-mode-for-test subprocess \
+        --test-files-pattern "$PORTABLE_FOLDER_INSTALL/qml/test/tst_TrackControlAndLoop_drywet_carla.qml"
   - name: Write QML trace metadata
     if: always() && (inputs.capture_traces == 'true' || env.QML_TRACE_CAPTURE_ENABLED == 'true')
     shell: bash

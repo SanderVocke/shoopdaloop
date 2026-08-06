@@ -272,6 +272,9 @@ pub struct SelfTestOptions {
     /// Output file path for JUnit XML test report
     #[clap(long = "junit-xml", help_heading = "Self-test options")]
     pub junit_xml: Option<String>,
+
+    #[clap(long, hide = true)]
+    pub carla_hosting_mode_for_test: Option<String>,
 }
 
 // This function will be the entry point for parsing arguments.
