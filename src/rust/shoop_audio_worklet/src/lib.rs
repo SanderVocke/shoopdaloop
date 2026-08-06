@@ -6,8 +6,8 @@ use shoop_audio_protocol::{
     PROTOCOL_VERSION, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
-    Backend, BackendLoopId, BackendLoopMode, BackendSnapshot, BackendTrackControl, BackendTrackId,
-    DirectTrackRequest, EngineBackend, MAX_WEB_AUDIO_QUANTUM,
+    Backend, BackendGrabRequest, BackendLoopId, BackendLoopMode, BackendSnapshot,
+    BackendTrackControl, BackendTrackId, DirectTrackRequest, EngineBackend, MAX_WEB_AUDIO_QUANTUM,
 };
 
 pub struct WorkletHost {
@@ -193,6 +193,28 @@ impl WorkletHost {
                     .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
             }
+            Command::SetLoopBalance { loop_id, balance } => {
+                self.backend
+                    .set_loop_balance(BackendLoopId::from_raw(loop_id), balance)
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
+            Command::GrabLoops { requests } => {
+                let requests = requests
+                    .into_iter()
+                    .map(|request| BackendGrabRequest {
+                        loop_id: BackendLoopId::from_raw(request.loop_id),
+                        reverse_start_cycle: request.reverse_start_cycle,
+                        cycles_length: request.cycles_length,
+                        go_to_cycle: request.go_to_cycle,
+                        go_to_mode: from_wire_loop_mode(request.go_to_mode),
+                    })
+                    .collect::<Vec<_>>();
+                self.backend
+                    .grab_loops(&requests)
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
             Command::SetLoopSyncSource { loop_id, source } => {
                 self.backend
                     .set_loop_sync_source(
@@ -353,6 +375,7 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                 next_transition_delay: loop_.next_transition_delay,
                 stereo: loop_.stereo,
                 gain: loop_.gain,
+                balance: loop_.balance,
                 audio_peaks: loop_.audio_peaks,
                 midi_activity: loop_.midi_activity,
             })
@@ -523,6 +546,22 @@ mod tests {
         assert_eq!(snapshot.processed_frames, 128);
         assert!(snapshot.input_peak > 0.0);
         assert!(snapshot.output_peak > 0.0);
+        assert!(matches!(
+            command(
+                &mut host,
+                7,
+                Command::SetLoopBalance {
+                    loop_id: 1,
+                    balance: 0.5,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let Event::Snapshot(snapshot) = command(&mut host, 8, Command::Poll).event else {
+            panic!("expected snapshot");
+        };
+        assert_eq!(snapshot.loops[0].balance, 0.5);
     }
 
     #[test]

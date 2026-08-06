@@ -14,9 +14,9 @@ use shoop_app_api::{
     TrackAction, TrackControlState, TrackId, TrackState, WaveformChannelState,
 };
 use shoop_backend::{
-    Backend, BackendConnectionSnapshot, BackendLoopId, BackendLoopMode, BackendPortDataType,
-    BackendPortDescriptor, BackendPortDirection, BackendPortId, BackendPortRole, BackendSnapshot,
-    BackendTrackControl, BackendTrackId, DirectTrackRequest,
+    Backend, BackendConnectionSnapshot, BackendGrabRequest, BackendLoopId, BackendLoopMode,
+    BackendPortDataType, BackendPortDescriptor, BackendPortDirection, BackendPortId,
+    BackendPortRole, BackendSnapshot, BackendTrackControl, BackendTrackId, DirectTrackRequest,
 };
 
 const COMMAND_CAPACITY: usize = 1024;
@@ -663,18 +663,43 @@ impl ApplicationModel {
             LoopAction::PlayClicked => {
                 self.transition_targets(backend, loop_id, BackendLoopMode::Playing)
             }
+            LoopAction::PlayDryClicked => {
+                self.transition_targets(backend, loop_id, BackendLoopMode::PlayingDryThroughWet)
+            }
             LoopAction::RecordClicked => {
                 self.transition_targets(backend, loop_id, BackendLoopMode::Recording)
             }
+            LoopAction::GrabClicked => self.grab_targets(backend, loop_id),
+            LoopAction::RerecordClicked => self.rerecord_targets(backend, loop_id),
             LoopAction::StopClicked => {
                 self.transition_targets(backend, loop_id, BackendLoopMode::Stopped)
             }
             LoopAction::GainChanged(value) => {
+                let value = value.clamp(0.0, 1.0);
+                if (loop_model.state.gain - value).abs() <= f32::EPSILON {
+                    return Ok(());
+                }
                 backend
                     .set_loop_gain(loop_model.backend_id, value)
                     .map_err(|error| format!("could not set loop gain: {error}"))?;
                 if let Some(model) = self.loops.get_mut(&loop_id) {
-                    model.state.gain = value.clamp(0.0, 1.0);
+                    model.state.gain = value;
+                }
+                Ok(())
+            }
+            LoopAction::BalanceChanged(value) => {
+                if !loop_model.state.stereo {
+                    return Err(format!("loop {loop_id} has no stereo balance"));
+                }
+                let value = value.clamp(-1.0, 1.0);
+                if (loop_model.state.balance - value).abs() <= f32::EPSILON {
+                    return Ok(());
+                }
+                backend
+                    .set_loop_balance(loop_model.backend_id, value)
+                    .map_err(|error| format!("could not set loop balance: {error}"))?;
+                if let Some(model) = self.loops.get_mut(&loop_id) {
+                    model.state.balance = value;
                 }
                 Ok(())
             }
@@ -711,6 +736,188 @@ impl ApplicationModel {
         Ok(())
     }
 
+    fn action_target_ids(&self, initiating_loop: LoopId) -> Vec<LoopId> {
+        let initiating_selected = self
+            .loops
+            .get(&initiating_loop)
+            .is_some_and(|model| model.state.selected);
+        self.loops
+            .values()
+            .filter(|model| {
+                model.id == initiating_loop || initiating_selected && model.state.selected
+            })
+            .map(|model| model.id)
+            .collect()
+    }
+
+    fn rerecord_targets(
+        &mut self,
+        backend: &mut dyn Backend,
+        initiating_loop: LoopId,
+    ) -> Result<(), String> {
+        let sync_length = self.sync_length();
+        let initiating = self
+            .loops
+            .get(&initiating_loop)
+            .ok_or_else(|| format!("stale or unknown loop {initiating_loop}"))?;
+        let cycles = if sync_length == 0 {
+            1
+        } else {
+            initiating.length.div_ceil(sync_length).max(1)
+        };
+        let current_cycle = if sync_length == 0 {
+            0
+        } else {
+            initiating.position / sync_length
+        };
+        let delay = if self.loops.values().any(|model| model.state.targeted) {
+            self.target_delay()
+        } else {
+            cycles.saturating_sub(current_cycle).saturating_sub(1)
+        };
+        for id in self.action_target_ids(initiating_loop) {
+            let model = self.loops.get(&id).expect("action target exists");
+            let previous = backend_loop_mode(model.state.mode);
+            backend
+                .transition_loop(
+                    model.backend_id,
+                    BackendLoopMode::RecordingDryIntoWet,
+                    Some(delay),
+                )
+                .map_err(|error| format!("could not start loop re-record {id}: {error}"))?;
+            backend
+                .transition_loop(
+                    model.backend_id,
+                    previous,
+                    Some(delay.saturating_add(cycles)),
+                )
+                .map_err(|error| format!("could not finish loop re-record {id}: {error}"))?;
+        }
+        Ok(())
+    }
+
+    fn grab_targets(
+        &mut self,
+        backend: &mut dyn Backend,
+        initiating_loop: LoopId,
+    ) -> Result<(), String> {
+        let sync_length = self.sync_length();
+        if sync_length == 0 {
+            return Err("cannot grab before the sync loop has a length".to_owned());
+        }
+        let target = self
+            .loops
+            .values()
+            .find(|model| model.state.targeted)
+            .map(|model| {
+                let cycles = model.length.div_ceil(sync_length).max(1);
+                let current = model.position / sync_length;
+                (cycles, current)
+            });
+        let n_cycles = self.global.apply_n_cycles.max(1);
+        let ids = if self.global.sync {
+            self.action_target_ids(initiating_loop)
+        } else {
+            vec![initiating_loop]
+        };
+        let post_mode = if self.global.play_after_record {
+            BackendLoopMode::Playing
+        } else {
+            BackendLoopMode::Unknown
+        };
+        let requests = ids
+            .iter()
+            .map(|id| {
+                let model = self.loops.get(id).expect("action target exists");
+                let (reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode) =
+                    if self.global.sync {
+                        if let Some((target_cycles, target_current)) = target {
+                            (
+                                Some((target_current.saturating_add(target_cycles)) as i32),
+                                Some(target_cycles as i32),
+                                Some(target_current as i32),
+                                post_mode,
+                            )
+                        } else {
+                            (
+                                Some(n_cycles as i32),
+                                Some(n_cycles as i32),
+                                Some(0),
+                                post_mode,
+                            )
+                        }
+                    } else if let Some((_, target_current)) = target {
+                        (
+                            None,
+                            Some(target_current.saturating_add(1) as i32),
+                            Some(target_current as i32),
+                            BackendLoopMode::Recording,
+                        )
+                    } else {
+                        (
+                            None,
+                            Some(n_cycles as i32),
+                            Some(n_cycles.saturating_sub(1) as i32),
+                            BackendLoopMode::Recording,
+                        )
+                    };
+                BackendGrabRequest {
+                    loop_id: model.backend_id,
+                    reverse_start_cycle,
+                    cycles_length,
+                    go_to_cycle,
+                    go_to_mode,
+                }
+            })
+            .collect::<Vec<_>>();
+        backend
+            .grab_loops(&requests)
+            .map_err(|error| format!("could not grab loop recording: {error}"))?;
+
+        if !self.global.sync {
+            let delay = target.map(|_| self.target_delay()).unwrap_or(0);
+            let finish = if self.global.play_after_record {
+                BackendLoopMode::Playing
+            } else {
+                BackendLoopMode::Stopped
+            };
+            for id in &ids {
+                let model = self.loops.get(id).expect("action target exists");
+                backend
+                    .transition_loop(model.backend_id, finish, Some(delay))
+                    .map_err(|error| format!("could not finish loop grab {id}: {error}"))?;
+            }
+        }
+        if self.global.solo {
+            let target_tracks: Vec<_> = ids
+                .iter()
+                .filter_map(|id| self.loops.get(id).map(|model| model.track_id))
+                .collect();
+            let others: Vec<_> = self
+                .loops
+                .values()
+                .filter(|model| target_tracks.contains(&model.track_id) && !ids.contains(&model.id))
+                .map(|model| (model.id, model.backend_id))
+                .collect();
+            for (id, backend_id) in others {
+                backend
+                    .transition_loop(backend_id, BackendLoopMode::Stopped, None)
+                    .map_err(|error| format!("could not solo-stop loop {id}: {error}"))?;
+            }
+        }
+        Ok(())
+    }
+
+    fn sync_length(&self) -> u32 {
+        self.tracks
+            .iter()
+            .find(|track| track.is_sync)
+            .and_then(|track| track.loops.first())
+            .and_then(|id| self.loops.get(id))
+            .map(|model| model.length)
+            .unwrap_or(0)
+    }
+
     fn transition_targets(
         &mut self,
         backend: &mut dyn Backend,
@@ -730,7 +937,13 @@ impl ApplicationModel {
             .map(|model| (model.id, model.track_id, model.backend_id))
             .collect();
         let delay = self.global.sync.then_some(self.target_delay());
-        if self.global.solo && matches!(mode, BackendLoopMode::Playing | BackendLoopMode::Recording)
+        if self.global.solo
+            && matches!(
+                mode,
+                BackendLoopMode::Playing
+                    | BackendLoopMode::PlayingDryThroughWet
+                    | BackendLoopMode::Recording
+            )
         {
             let track_ids: Vec<_> = targets.iter().map(|(_, track_id, _)| *track_id).collect();
             let selected_ids: Vec<_> = targets.iter().map(|(id, _, _)| *id).collect();
@@ -1040,6 +1253,8 @@ impl ApplicationModel {
                 backend_state.position as f32 / backend_state.length as f32
             };
             model.state.stereo = backend_state.stereo;
+            model.state.gain = backend_state.gain;
+            model.state.balance = backend_state.balance;
             model.state.peak_left_db = backend_state.audio_peaks.first().copied().unwrap_or(-200.0);
             model.state.peak_right_db = backend_state
                 .audio_peaks
@@ -1318,6 +1533,18 @@ fn register_backend_ports(
     ids.into()
 }
 
+fn backend_loop_mode(mode: LoopMode) -> BackendLoopMode {
+    match mode {
+        LoopMode::Unknown => BackendLoopMode::Unknown,
+        LoopMode::Stopped => BackendLoopMode::Stopped,
+        LoopMode::Playing => BackendLoopMode::Playing,
+        LoopMode::Recording => BackendLoopMode::Recording,
+        LoopMode::Replacing => BackendLoopMode::Replacing,
+        LoopMode::PlayingDryThroughWet => BackendLoopMode::PlayingDryThroughWet,
+        LoopMode::RecordingDryIntoWet => BackendLoopMode::RecordingDryIntoWet,
+    }
+}
+
 fn app_loop_mode(mode: BackendLoopMode) -> LoopMode {
     match mode {
         BackendLoopMode::Unknown => LoopMode::Unknown,
@@ -1574,6 +1801,94 @@ mod tests {
                 BackendLoopMode::Playing,
                 Some(3)
             ) if *id == model.loops[&initiating].backend_id
+        )));
+    }
+
+    #[test]
+    fn expanded_loop_actions_route_qml_equivalent_modes_grab_and_balance() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(&mut backend).unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Stereo".to_owned(),
+                    audio_channels: 2,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let sync = model.tracks[0].loops[0];
+        model.loops.get_mut(&sync).unwrap().length = 100;
+        let loop_id = model.tracks[1].loops[0];
+        let loop_model = model.loops.get_mut(&loop_id).unwrap();
+        loop_model.length = 200;
+        loop_model.position = 50;
+        loop_model.state.mode = LoopMode::Playing;
+        loop_model.state.stereo = true;
+
+        model
+            .handle_loop_action(
+                &mut backend,
+                model.tracks[1].id,
+                loop_id,
+                LoopAction::PlayDryClicked,
+            )
+            .unwrap();
+        model
+            .handle_loop_action(
+                &mut backend,
+                model.tracks[1].id,
+                loop_id,
+                LoopAction::BalanceChanged(0.5),
+            )
+            .unwrap();
+        model
+            .handle_loop_action(
+                &mut backend,
+                model.tracks[1].id,
+                loop_id,
+                LoopAction::RerecordClicked,
+            )
+            .unwrap();
+        model
+            .handle_loop_action(
+                &mut backend,
+                model.tracks[1].id,
+                loop_id,
+                LoopAction::GrabClicked,
+            )
+            .unwrap();
+
+        assert!(backend.operations().iter().any(|operation| matches!(
+            operation,
+            shoop_backend::FakeOperation::Transition(
+                id,
+                BackendLoopMode::PlayingDryThroughWet,
+                Some(0)
+            ) if *id == model.loops[&loop_id].backend_id
+        )));
+        assert!(backend.operations().iter().any(|operation| matches!(
+            operation,
+            shoop_backend::FakeOperation::SetLoopBalance(id, balance)
+                if *id == model.loops[&loop_id].backend_id && *balance == 0.5
+        )));
+        assert!(backend.operations().iter().any(|operation| matches!(
+            operation,
+            shoop_backend::FakeOperation::Transition(
+                id,
+                BackendLoopMode::RecordingDryIntoWet,
+                Some(1)
+            ) if *id == model.loops[&loop_id].backend_id
+        )));
+        assert!(backend.operations().iter().any(|operation| matches!(
+            operation,
+            shoop_backend::FakeOperation::GrabLoops(requests)
+                if requests.len() == 1
+                    && requests[0].loop_id == model.loops[&loop_id].backend_id
+                    && requests[0].reverse_start_cycle == Some(1)
+                    && requests[0].cycles_length == Some(1)
+                    && requests[0].go_to_mode == BackendLoopMode::Playing
         )));
     }
 

@@ -7,15 +7,16 @@ use std::time::Duration;
 use anyhow::{anyhow, Result};
 use js_sys::{Array, Object, Reflect, WebAssembly};
 use shoop_audio_protocol::{
-    Command, CommandEnvelope, Event, EventEnvelope, WaveformChunk, WireLoopMode, WireSnapshot,
-    WireTrackControl, COMMAND_CAPACITY, MAX_AUDIO_CHANNELS, PROTOCOL_VERSION, STATUS_INTERVAL_MS,
-    WAVEFORM_CHUNK_SAMPLES,
+    Command, CommandEnvelope, Event, EventEnvelope, WaveformChunk, WireGrabRequest, WireLoopMode,
+    WireSnapshot, WireTrackControl, COMMAND_CAPACITY, MAX_AUDIO_CHANNELS, PROTOCOL_VERSION,
+    STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
-    Backend, BackendDriverState, BackendLoopId, BackendLoopMode, BackendLoopState,
-    BackendPortConnectionState, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
-    BackendPortId, BackendPortRole, BackendSnapshot, BackendStatus, BackendTrackControl,
-    BackendTrackCreation, BackendTrackId, BackendTrackState, DirectTrackRequest,
+    Backend, BackendDriverState, BackendGrabRequest, BackendLoopId, BackendLoopMode,
+    BackendLoopState, BackendPortConnectionState, BackendPortDataType, BackendPortDescriptor,
+    BackendPortDirection, BackendPortId, BackendPortRole, BackendSnapshot, BackendStatus,
+    BackendTrackControl, BackendTrackCreation, BackendTrackId, BackendTrackState,
+    DirectTrackRequest,
 };
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
@@ -910,6 +911,7 @@ impl WebAudioBackend {
                             next_transition_delay: loop_.next_transition_delay,
                             stereo: loop_.stereo,
                             gain: loop_.gain,
+                            balance: loop_.balance,
                             audio_peaks: loop_.audio_peaks,
                             midi_activity: loop_.midi_activity,
                         },
@@ -1103,6 +1105,49 @@ impl Backend for WebAudioBackend {
             .get_mut(&loop_id)
             .expect("loop checked")
             .gain = gain;
+        Ok(())
+    }
+
+    fn set_loop_balance(&mut self, loop_id: BackendLoopId, balance: f32) -> Result<()> {
+        if !self.snapshot.loops.contains_key(&loop_id) {
+            return Err(anyhow!("unknown browser backend loop {loop_id:?}"));
+        }
+        self.submit(Command::SetLoopBalance {
+            loop_id: loop_id.raw(),
+            balance,
+        })?;
+        self.snapshot
+            .loops
+            .get_mut(&loop_id)
+            .expect("loop checked")
+            .balance = balance.clamp(-1.0, 1.0);
+        Ok(())
+    }
+
+    fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()> {
+        for request in requests {
+            if !self.snapshot.loops.contains_key(&request.loop_id) {
+                return Err(anyhow!(
+                    "unknown browser backend loop {:?}",
+                    request.loop_id
+                ));
+            }
+        }
+        self.submit(Command::GrabLoops {
+            requests: requests
+                .iter()
+                .map(|request| WireGrabRequest {
+                    loop_id: request.loop_id.raw(),
+                    reverse_start_cycle: request.reverse_start_cycle,
+                    cycles_length: request.cycles_length,
+                    go_to_cycle: request.go_to_cycle,
+                    go_to_mode: to_wire_loop_mode(request.go_to_mode),
+                })
+                .collect(),
+        })?;
+        for request in requests {
+            self.waveforms.remove(&request.loop_id);
+        }
         Ok(())
     }
 

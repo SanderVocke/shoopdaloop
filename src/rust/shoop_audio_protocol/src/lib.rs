@@ -46,6 +46,13 @@ pub enum Command {
         loop_id: u64,
         gain: f32,
     },
+    SetLoopBalance {
+        loop_id: u64,
+        balance: f32,
+    },
+    GrabLoops {
+        requests: Vec<WireGrabRequest>,
+    },
     SetLoopSyncSource {
         loop_id: u64,
         source: Option<u64>,
@@ -92,6 +99,16 @@ impl Command {
                     ..
                 },
                 Self::SetLoopGain {
+                    loop_id: replacement_loop,
+                    ..
+                },
+            )
+            | (
+                Self::SetLoopBalance {
+                    loop_id: existing_loop,
+                    ..
+                },
+                Self::SetLoopBalance {
                     loop_id: replacement_loop,
                     ..
                 },
@@ -151,6 +168,15 @@ pub enum WireLoopMode {
     Replacing,
     PlayingDryThroughWet,
     RecordingDryIntoWet,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WireGrabRequest {
+    pub loop_id: u64,
+    pub reverse_start_cycle: Option<i32>,
+    pub cycles_length: Option<i32>,
+    pub go_to_cycle: Option<i32>,
+    pub go_to_mode: WireLoopMode,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -214,6 +240,7 @@ pub struct WireLoopState {
     pub next_transition_delay: Option<u32>,
     pub stereo: bool,
     pub gain: f32,
+    pub balance: f32,
     pub audio_peaks: Vec<f32>,
     pub midi_activity: bool,
 }
@@ -272,5 +299,21 @@ mod tests {
         let encoded = serde_json::to_string(&command).unwrap();
         let decoded: CommandEnvelope = serde_json::from_str(&encoded).unwrap();
         assert_eq!(decoded, command);
+
+        let grab = CommandEnvelope::new(
+            43,
+            Command::GrabLoops {
+                requests: vec![WireGrabRequest {
+                    loop_id: 9,
+                    reverse_start_cycle: Some(2),
+                    cycles_length: Some(1),
+                    go_to_cycle: Some(0),
+                    go_to_mode: WireLoopMode::Playing,
+                }],
+            },
+        );
+        let encoded = serde_json::to_string(&grab).unwrap();
+        let decoded: CommandEnvelope = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, grab);
     }
 }

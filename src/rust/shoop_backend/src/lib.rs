@@ -7,7 +7,9 @@ use shoop_engine::dummy_midi_port::DummyMidiPort;
 use shoop_engine::dummy_port::{DummyAudioPort, DummyExternalConnections, PortId};
 use shoop_engine::external_audio_port::ExternalAudioPort;
 use shoop_engine::session::{Port, Session};
-use shoop_engine::{ChannelMode, LoopMode, PortDataType as EnginePortDataType, PortDirection};
+use shoop_engine::{
+    ChannelMode, LoopMode, MidiStorage, PortDataType as EnginePortDataType, PortDirection,
+};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct BackendLoopId(u64);
@@ -205,8 +207,18 @@ pub struct BackendLoopState {
     pub next_transition_delay: Option<u32>,
     pub stereo: bool,
     pub gain: f32,
+    pub balance: f32,
     pub audio_peaks: Vec<f32>,
     pub midi_activity: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BackendGrabRequest {
+    pub loop_id: BackendLoopId,
+    pub reverse_start_cycle: Option<i32>,
+    pub cycles_length: Option<i32>,
+    pub go_to_cycle: Option<i32>,
+    pub go_to_mode: BackendLoopMode,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -227,6 +239,8 @@ pub trait Backend {
         control: BackendTrackControl,
     ) -> Result<()>;
     fn set_loop_gain(&mut self, loop_id: BackendLoopId, gain: f32) -> Result<()>;
+    fn set_loop_balance(&mut self, loop_id: BackendLoopId, balance: f32) -> Result<()>;
+    fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()>;
     fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Option<Vec<Arc<[f32]>>>>;
     fn set_loop_sync_source(
         &mut self,
@@ -293,6 +307,8 @@ pub struct EngineBackend {
 struct EngineLoopChannels {
     audio: Vec<usize>,
     midi: Vec<usize>,
+    gain: f32,
+    balance: f32,
 }
 
 struct EngineConnectionPort {
@@ -614,8 +630,15 @@ impl EngineBackend {
             self.session.connect_channel_output(channel, output)?;
             midi.push(channel);
         }
-        self.loop_channels
-            .insert(loop_id, EngineLoopChannels { audio, midi });
+        self.loop_channels.insert(
+            loop_id,
+            EngineLoopChannels {
+                audio,
+                midi,
+                gain: 1.0,
+                balance: 0.0,
+            },
+        );
         self.tracks
             .get_mut(&track_id)
             .expect("track was validated before loop construction")
@@ -700,6 +723,69 @@ fn balance_factors(balance: f32) -> (f32, f32) {
     }
 }
 
+fn grab_window(
+    request: &BackendGrabRequest,
+    cycle_len: u32,
+    sync_pos: u32,
+    data_len: usize,
+) -> (usize, usize, usize) {
+    let cycles = request.cycles_length.unwrap_or(1).max(1) as u32;
+    let go_cycle = request.go_to_cycle.unwrap_or(0).max(0) as u32;
+    let wanted = if cycle_len > 0 {
+        if request.reverse_start_cycle == Some(0) {
+            sync_pos
+        } else if request.go_to_mode == BackendLoopMode::Recording {
+            go_cycle.saturating_mul(cycle_len).saturating_add(sync_pos)
+        } else {
+            cycles.saturating_mul(cycle_len)
+        }
+    } else {
+        data_len.min(u32::MAX as usize) as u32
+    } as usize;
+    let end = if cycle_len > 0 {
+        if let Some(reverse) = request.reverse_start_cycle {
+            if reverse == 0 {
+                data_len
+            } else {
+                let before = (reverse.max(0) as u32).saturating_sub(cycles);
+                data_len.saturating_sub(
+                    sync_pos.saturating_add(before.saturating_mul(cycle_len)) as usize
+                )
+            }
+        } else if request.go_to_mode == BackendLoopMode::Recording {
+            data_len
+        } else {
+            data_len.saturating_sub(
+                sync_pos.saturating_add(go_cycle.saturating_mul(cycle_len)) as usize,
+            )
+        }
+    } else {
+        data_len
+    };
+    (wanted, end.saturating_sub(wanted), end)
+}
+
+fn apply_loop_gain_balance(session: &mut Session, channels: &EngineLoopChannels) -> Result<()> {
+    let (left, right) = balance_factors(channels.balance);
+    let stereo = channels.audio.len() == 2;
+    for (index, channel) in channels.audio.iter().enumerate() {
+        let factor = if stereo {
+            if index == 0 {
+                left
+            } else {
+                right
+            }
+        } else {
+            1.0
+        };
+        session
+            .audio_channel_mut(*channel)
+            .ok_or_else(|| anyhow!("missing audio loop channel"))?
+            .set_gain(channels.gain * factor);
+    }
+    Ok(())
+}
+
 fn db_gain(db: f32) -> f32 {
     10.0_f32.powf(db / 20.0)
 }
@@ -728,6 +814,8 @@ impl Backend for EngineBackend {
         let mut audio_inputs = Vec::with_capacity(request.audio_channels as usize);
         let mut audio_outputs = Vec::with_capacity(request.audio_channels as usize);
         let mut ports = Vec::with_capacity(request.audio_channels as usize * 2 + 2);
+        let capture_samples = self.sample_rate as usize * RECORDING_CAPACITY_SECONDS as usize;
+        let capture_block_size = capture_samples.div_ceil(32).max(self.buffer_size as usize);
         for index in 0..request.audio_channels {
             let suffix = if request.audio_channels == 1 {
                 String::new()
@@ -742,9 +830,10 @@ impl Backend for EngineBackend {
                 let mut input = ExternalAudioPort::new(
                     input_name.clone(),
                     PortDirection::Input,
-                    self.buffer_size as usize,
+                    capture_block_size,
                 );
                 input.audio_mut().set_passthrough_muted(true);
+                input.audio_mut().set_ringbuffer_n_samples(capture_samples);
                 let input = self.session.add_port(Port::External(input));
                 let output = self.session.add_port(Port::External(ExternalAudioPort::new(
                     output_name.clone(),
@@ -757,9 +846,10 @@ impl Backend for EngineBackend {
                     input_registry_id,
                     input_name.clone(),
                     PortDirection::Input,
-                    self.buffer_size as usize,
+                    capture_block_size,
                 );
                 input.audio_mut().set_passthrough_muted(true);
+                input.audio_mut().set_ringbuffer_n_samples(capture_samples);
                 let input = self.session.add_port(Port::Dummy(input));
                 let output = self.session.add_port(Port::Dummy(DummyAudioPort::new(
                     output_registry_id,
@@ -795,6 +885,9 @@ impl Backend for EngineBackend {
             let mut input =
                 DummyMidiPort::new(input_registry_id, input_name.clone(), PortDirection::Input);
             input.midi_mut().set_passthrough_muted(true);
+            input
+                .midi_mut()
+                .set_ringbuffer_n_samples(capture_samples.min(u32::MAX as usize) as u32);
             let input = self.session.add_port(Port::DummyMidi(input));
             let output = self.session.add_port(Port::DummyMidi(DummyMidiPort::new(
                 output_registry_id,
@@ -951,13 +1044,81 @@ impl Backend for EngineBackend {
     fn set_loop_gain(&mut self, loop_id: BackendLoopId, gain: f32) -> Result<()> {
         let channels = self
             .loop_channels
-            .get(&loop_id)
+            .get_mut(&loop_id)
             .ok_or_else(|| anyhow!("unknown backend loop channels {loop_id:?}"))?;
-        for channel in &channels.audio {
+        channels.gain = gain.clamp(0.0, 1.0);
+        apply_loop_gain_balance(&mut self.session, channels)
+    }
+
+    fn set_loop_balance(&mut self, loop_id: BackendLoopId, balance: f32) -> Result<()> {
+        let channels = self
+            .loop_channels
+            .get_mut(&loop_id)
+            .ok_or_else(|| anyhow!("unknown backend loop channels {loop_id:?}"))?;
+        channels.balance = balance.clamp(-1.0, 1.0);
+        apply_loop_gain_balance(&mut self.session, channels)
+    }
+
+    fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()> {
+        let mut audio_requests = Vec::with_capacity(requests.len());
+        let mut midi_captures = Vec::new();
+        for request in requests {
+            let engine_loop = self.engine_loop_index(request.loop_id)?;
+            audio_requests.push(shoop_engine::session::AudioRingbufferAdoption {
+                loop_idx: engine_loop,
+                reverse_start_cycle: request.reverse_start_cycle,
+                cycles_length: request.cycles_length,
+                go_to_cycle: request.go_to_cycle,
+                go_to_mode: to_engine_mode(request.go_to_mode),
+            });
+            let Some(channels) = self.loop_channels.get(&request.loop_id) else {
+                return Err(anyhow!(
+                    "unknown backend loop channels {:?}",
+                    request.loop_id
+                ));
+            };
+            if channels.midi.is_empty() {
+                continue;
+            }
+            let input = self
+                .tracks
+                .values()
+                .find(|track| track.loops.contains(&request.loop_id))
+                .and_then(|track| track.midi_input)
+                .ok_or_else(|| anyhow!("missing MIDI input for loop {:?}", request.loop_id))?;
+            let port = self
+                .session
+                .port(input)
+                .and_then(Port::midi)
+                .ok_or_else(|| anyhow!("missing MIDI input port"))?;
+            let mut captured = MidiStorage::with_capacity_elems(1024);
+            port.snapshot_ringbuffer_into(&mut captured);
+            let sync = self
+                .session
+                .loop_(engine_loop)
+                .and_then(|loop_| loop_.sync_source());
+            let cycle_len = sync.map(|state| state.length).unwrap_or(0);
+            let sync_pos = sync.map(|state| state.position).unwrap_or(0);
+            let data_len = port.ringbuffer_n_samples() as usize;
+            let (wanted, start, end) = grab_window(request, cycle_len, sync_pos, data_len);
+            let messages = captured
+                .iter()
+                .filter(|message| {
+                    let time = message.time as usize;
+                    time >= start && time < end
+                })
+                .map(|message| message.at_time(message.time.saturating_sub(start as u32)))
+                .collect::<Vec<_>>();
+            for channel in &channels.midi {
+                midi_captures.push((*channel, messages.clone(), wanted as u32));
+            }
+        }
+        self.session.adopt_audio_ringbuffers(&audio_requests)?;
+        for (channel, messages, length) in midi_captures {
             self.session
-                .audio_channel_mut(*channel)
-                .ok_or_else(|| anyhow!("missing audio loop channel"))?
-                .set_gain(gain.clamp(0.0, 1.0));
+                .midi_channel_mut(channel)
+                .ok_or_else(|| anyhow!("missing MIDI loop channel"))?
+                .set_contents(&messages, length, None);
         }
         Ok(())
     }
@@ -1155,7 +1316,8 @@ impl Backend for EngineBackend {
                         .map(|(mode, _)| from_engine_mode(mode)),
                     next_transition_delay: state.first_planned_transition().map(|(_, delay)| delay),
                     stereo: audio.len() == 2,
-                    gain: audio.first().map(|channel| channel.gain()).unwrap_or(1.0),
+                    gain: channels.map(|channels| channels.gain).unwrap_or(1.0),
+                    balance: channels.map(|channels| channels.balance).unwrap_or(0.0),
                     audio_peaks: audio
                         .iter()
                         .map(|channel| amplitude_db(channel.output_peak()))
@@ -1440,6 +1602,8 @@ pub enum FakeOperation {
     AddTrackLoop(BackendTrackId, BackendLoopId),
     SetTrackControl(BackendTrackId, BackendTrackControl),
     SetLoopGain(BackendLoopId, f32),
+    SetLoopBalance(BackendLoopId, f32),
+    GrabLoops(Vec<BackendGrabRequest>),
     SetSyncSource(BackendLoopId, Option<BackendLoopId>),
     Transition(BackendLoopId, BackendLoopMode, Option<u32>),
     Clear(BackendLoopId),
@@ -1685,6 +1849,33 @@ impl Backend for FakeBackend {
         Ok(())
     }
 
+    fn set_loop_balance(&mut self, loop_id: BackendLoopId, balance: f32) -> Result<()> {
+        let state = self
+            .loops
+            .get_mut(&loop_id)
+            .ok_or_else(|| anyhow!("unknown fake loop {loop_id:?}"))?;
+        state.balance = balance.clamp(-1.0, 1.0);
+        self.operations
+            .push(FakeOperation::SetLoopBalance(loop_id, state.balance));
+        Ok(())
+    }
+
+    fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()> {
+        for request in requests {
+            self.require_loop(request.loop_id)?;
+        }
+        for request in requests {
+            let state = self.loops.get_mut(&request.loop_id).expect("loop checked");
+            state.mode = request.go_to_mode;
+            if let Some(cycles) = request.cycles_length {
+                state.length = cycles.max(0) as u32;
+            }
+        }
+        self.operations
+            .push(FakeOperation::GrabLoops(requests.to_vec()));
+        Ok(())
+    }
+
     fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Option<Vec<Arc<[f32]>>>> {
         self.require_loop(loop_id)?;
         let n_channels = self
@@ -1904,6 +2095,7 @@ mod tests {
             .set_track_control(created.track_id, BackendTrackControl::OutputGainDb(-6.0))
             .unwrap();
         backend.set_loop_gain(created.loops[0], 0.5).unwrap();
+        backend.set_loop_balance(created.loops[0], 0.25).unwrap();
         let third = backend.add_loop_to_track(created.track_id).unwrap();
         backend.wait_idle();
         let snapshot = backend.poll().unwrap();
@@ -1912,6 +2104,8 @@ mod tests {
         assert!(track.midi);
         assert_eq!(track.output_gain_db, -6.0);
         assert!(snapshot.loops[&created.loops[0]].stereo);
+        assert_eq!(snapshot.loops[&created.loops[0]].gain, 0.5);
+        assert_eq!(snapshot.loops[&created.loops[0]].balance, 0.25);
         assert!(snapshot.loops.contains_key(&third));
         assert_eq!(
             backend
@@ -2068,6 +2262,98 @@ mod tests {
         assert_eq!(status.processed_frames, 256);
         assert!(status.input_peak == 0.0);
         assert!(status.output_peak > 0.0);
+    }
+
+    #[test]
+    fn web_audio_grab_adopts_recent_input_without_growing_in_the_callback() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        let sync = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "grab_sync".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "grab_target".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        backend
+            .transition_loop(sync.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        let mut output = vec![0.0; 256];
+        backend
+            .process_audio_quantum(&vec![0.25; 128], 1, &mut output, 2, 128)
+            .unwrap();
+        backend
+            .transition_loop(sync.loops[0], BackendLoopMode::Playing, None)
+            .unwrap();
+        backend
+            .set_loop_sync_source(track.loops[0], Some(sync.loops[0]))
+            .unwrap();
+        backend
+            .process_audio_quantum(&vec![0.5; 128], 1, &mut output, 2, 128)
+            .unwrap();
+        backend
+            .grab_loops(&[BackendGrabRequest {
+                loop_id: track.loops[0],
+                reverse_start_cycle: Some(1),
+                cycles_length: Some(1),
+                go_to_cycle: Some(0),
+                go_to_mode: BackendLoopMode::Playing,
+            }])
+            .unwrap();
+        let snapshot = backend.poll().unwrap();
+        assert_eq!(snapshot.loops[&track.loops[0]].length, 128);
+        assert_eq!(
+            snapshot.loops[&track.loops[0]].mode,
+            BackendLoopMode::Playing
+        );
+        let grabbed = backend.loop_audio_data(track.loops[0]).unwrap().unwrap();
+        assert_eq!(grabbed[0].len(), 128);
+        assert!(grabbed[0].iter().any(|sample| *sample != 0.0));
+    }
+
+    #[test]
+    fn fake_grab_preflights_every_target() {
+        let mut backend = FakeBackend::default();
+        let track = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "grab".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let operations = backend.operations().len();
+        assert!(backend
+            .grab_loops(&[
+                BackendGrabRequest {
+                    loop_id: track.loops[0],
+                    reverse_start_cycle: Some(1),
+                    cycles_length: Some(1),
+                    go_to_cycle: Some(0),
+                    go_to_mode: BackendLoopMode::Playing,
+                },
+                BackendGrabRequest {
+                    loop_id: BackendLoopId::from_raw(999),
+                    reverse_start_cycle: Some(1),
+                    cycles_length: Some(1),
+                    go_to_cycle: Some(0),
+                    go_to_mode: BackendLoopMode::Playing,
+                },
+            ])
+            .is_err());
+        assert_eq!(backend.operations().len(), operations);
+        assert_eq!(
+            backend.poll().unwrap().loops[&track.loops[0]].mode,
+            BackendLoopMode::Stopped
+        );
     }
 
     #[test]

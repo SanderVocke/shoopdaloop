@@ -206,6 +206,7 @@ pub struct LoopState {
     pub selected_composite_kind: CompositeKind,
     pub show_gain: bool,
     pub gain: f32,
+    pub balance: f32,
     pub play_after_record: bool,
     pub stereo: bool,
     pub peak_left_db: f32,
@@ -230,6 +231,7 @@ impl Default for LoopState {
             selected_composite_kind: CompositeKind::None,
             show_gain: false,
             gain: 0.6,
+            balance: 0.0,
             play_after_record: true,
             stereo: false,
             peak_left_db: -200.0,
@@ -436,9 +438,13 @@ pub enum LoopAction {
     IconClicked(SelectionModifiers),
     IconDoubleClicked,
     PlayClicked,
+    PlayDryClicked,
     RecordClicked,
+    GrabClicked,
+    RerecordClicked,
     StopClicked,
     GainChanged(f32),
+    BalanceChanged(f32),
 }
 
 pub type LoopWidgetAction = LoopAction;
