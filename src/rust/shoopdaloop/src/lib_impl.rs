@@ -400,6 +400,7 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
                     chain_id,
                     generation,
                     shared_memory_path,
+                    test_mode: worker.carla_worker_test_mode,
                 },
             )
             .map(|_| 0);

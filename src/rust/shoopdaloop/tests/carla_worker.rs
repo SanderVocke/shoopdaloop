@@ -1,8 +1,263 @@
 use assert_no_alloc::assert_no_alloc;
-use shoop_engine::carla_processor::{CarlaProcessor, CarlaProcessorLifecycle};
-use shoop_engine::carla_subprocess::{SubprocessCarlaProcessor, SupervisedCarlaProcessor};
+use shoop_engine::carla_processor::{
+    spawn_processor_bridge, CarlaProcessor, CarlaProcessorLifecycle, FakeCarlaProcessor,
+};
+use shoop_engine::carla_subprocess::{
+    CarlaWorkerTestMode, SubprocessCarlaProcessor, SupervisedCarlaProcessor,
+};
 use shoop_engine::FXChainType;
 use shoop_plugin_protocol::{ChainId, ProcessGeneration, WorkerExitKind};
+
+fn wait_until_not_ready(processor: &mut impl CarlaProcessor) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while processor.is_ready() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn fake_worker_round_trips_without_carla_installed() {
+    let executable = env!("CARGO_BIN_EXE_shoopdaloop");
+    let mut processor = SubprocessCarlaProcessor::spawn_test_worker(
+        executable,
+        FXChainType::CarlaPatchbay16x,
+        48_000,
+        64,
+        ChainId(101),
+        ProcessGeneration(1),
+        CarlaWorkerTestMode::Fake,
+    )
+    .expect("start fake worker");
+    processor.set_active(true);
+    processor.audio_input_mut(15).unwrap()[..4].copy_from_slice(&[0.25, -0.5, 0.75, 1.0]);
+    processor
+        .set_midi_input_events(0, &[(3, &[0x90, 60, 100])])
+        .unwrap();
+    processor.process(4).unwrap();
+    assert_eq!(
+        processor.audio_output(15).unwrap()[..4],
+        [0.25, -0.5, 0.75, 1.0]
+    );
+    assert_eq!(
+        processor.midi_output_events(0).unwrap(),
+        vec![(3, vec![0x90, 60, 100])]
+    );
+    processor.restore_state("fake checkpoint").unwrap();
+    assert_eq!(processor.save_state().unwrap(), "fake checkpoint");
+    processor.set_visible(true).unwrap();
+    assert!(processor.is_visible());
+    processor.set_visible(false).unwrap();
+    assert!(!processor.is_visible());
+}
+
+#[test]
+fn fake_worker_covers_malformed_peer_log_flood_abort_error_and_hang() {
+    let executable = env!("CARGO_BIN_EXE_shoopdaloop");
+    let malformed = SubprocessCarlaProcessor::spawn_test_worker(
+        executable,
+        FXChainType::CarlaRack,
+        48_000,
+        64,
+        ChainId(102),
+        ProcessGeneration(1),
+        CarlaWorkerTestMode::MalformedHandshake,
+    );
+    assert!(malformed.is_err());
+
+    let flood = SubprocessCarlaProcessor::spawn_test_worker(
+        executable,
+        FXChainType::CarlaRack,
+        48_000,
+        64,
+        ChainId(103),
+        ProcessGeneration(1),
+        CarlaWorkerTestMode::FloodLogs,
+    )
+    .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        let logs = flood.generation_logs();
+        if logs[0].stdout_dropped_bytes > 0 && logs[0].stderr_dropped_bytes > 0 {
+            assert_eq!(logs[0].stdout.len(), 64 * 1024);
+            assert_eq!(logs[0].stderr.len(), 64 * 1024);
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "fake flood logs were not drained"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    drop(flood);
+
+    for (chain_id, mode) in [
+        (104, CarlaWorkerTestMode::Abort),
+        (105, CarlaWorkerTestMode::ProcessError),
+    ] {
+        let mut supervisor = SupervisedCarlaProcessor::launch_test_worker(
+            executable,
+            FXChainType::CarlaRack,
+            48_000,
+            64,
+            ChainId(chain_id),
+            mode,
+        )
+        .unwrap();
+        assert!(supervisor.is_ready());
+        supervisor.set_active(true);
+        supervisor.process(64).unwrap();
+        wait_until_not_ready(&mut supervisor);
+        assert_eq!(supervisor.lifecycle(), CarlaProcessorLifecycle::Crashed);
+        assert_eq!(supervisor.exit_kind(), WorkerExitKind::UnexpectedExit);
+    }
+
+    let mut hung = SubprocessCarlaProcessor::spawn_test_worker(
+        executable,
+        FXChainType::CarlaRack,
+        48_000,
+        32,
+        ChainId(106),
+        ProcessGeneration(1),
+        CarlaWorkerTestMode::Hang,
+    )
+    .unwrap();
+    hung.set_active(true);
+    let started = std::time::Instant::now();
+    hung.process(32).unwrap();
+    assert!(started.elapsed() < std::time::Duration::from_millis(20));
+    assert_eq!(hung.deadline_misses(), 1);
+    assert_eq!(hung.shutdown_requested(), WorkerExitKind::Unresponsive);
+}
+
+#[test]
+fn fake_supervisor_restarts_saves_while_down_and_isolates_chains() {
+    let executable = env!("CARGO_BIN_EXE_shoopdaloop");
+    let mut first = SupervisedCarlaProcessor::launch_test_worker(
+        executable,
+        FXChainType::CarlaRack,
+        48_000,
+        64,
+        ChainId(107),
+        CarlaWorkerTestMode::Fake,
+    )
+    .unwrap();
+    let mut second = SupervisedCarlaProcessor::launch_test_worker(
+        executable,
+        FXChainType::CarlaRack,
+        48_000,
+        64,
+        ChainId(108),
+        CarlaWorkerTestMode::Fake,
+    )
+    .unwrap();
+    assert_ne!(first.worker_id(), second.worker_id());
+    first.restore_state("retained fake checkpoint").unwrap();
+    first.set_active(true);
+    second.set_active(true);
+    for generation in 2..=4 {
+        first.terminate_worker_for_test().unwrap();
+        assert!(!first.is_ready());
+        assert_eq!(first.save_state().unwrap(), "retained fake checkpoint");
+        second.process(64).unwrap();
+        assert!(second.is_ready());
+        first.restart_without_ui_for_test().unwrap();
+        assert_eq!(first.generation(), generation);
+        assert!(first.is_active());
+        assert_eq!(first.save_state().unwrap(), "retained fake checkpoint");
+    }
+}
+
+#[test]
+fn fake_worker_deadline_wait_is_bounded_for_all_supported_buffer_sizes() {
+    let executable = env!("CARGO_BIN_EXE_shoopdaloop");
+    for (index, frames) in [32_u32, 64, 128, 256, 512, 1024].into_iter().enumerate() {
+        let mut processor = SubprocessCarlaProcessor::spawn_test_worker(
+            executable,
+            FXChainType::CarlaRack,
+            48_000,
+            frames,
+            ChainId(120 + index as u64),
+            ProcessGeneration(1),
+            CarlaWorkerTestMode::Hang,
+        )
+        .unwrap();
+        processor.set_active(true);
+        let period = std::time::Duration::from_secs_f64(frames as f64 / 48_000.0);
+        let started = std::time::Instant::now();
+        processor.process(frames as usize).unwrap();
+        let elapsed = started.elapsed();
+        assert_eq!(processor.deadline_misses(), 1);
+        assert!(
+            elapsed <= period.saturating_mul(5) + std::time::Duration::from_millis(20),
+            "{frames}-frame deadline fallback took {elapsed:?} for {period:?} period"
+        );
+        processor.terminate_worker_for_test().unwrap();
+    }
+}
+
+#[test]
+fn fake_direct_and_subprocess_transport_benchmark_matrix() {
+    const ITERATIONS: usize = 40;
+    let executable = env!("CARGO_BIN_EXE_shoopdaloop");
+    println!("mode,channels,frames,p50_us,p99_us,deadline_misses");
+    let mut chain_id = 140_u64;
+    for (chain_type, channels) in [
+        (FXChainType::CarlaRack, 2_usize),
+        (FXChainType::CarlaPatchbay16x, 16_usize),
+    ] {
+        for frames in [32_usize, 64, 128, 256, 512, 1024] {
+            for mode in ["direct", "subprocess"] {
+                let host: Box<dyn CarlaProcessor> = if mode == "direct" {
+                    Box::new(FakeCarlaProcessor::new(chain_type, channels, 1024))
+                } else {
+                    chain_id += 1;
+                    Box::new(
+                        SupervisedCarlaProcessor::launch_test_worker(
+                            executable,
+                            chain_type,
+                            48_000,
+                            frames as u32,
+                            ChainId(chain_id),
+                            CarlaWorkerTestMode::Fake,
+                        )
+                        .unwrap(),
+                    )
+                };
+                let (control, mut endpoint) =
+                    spawn_processor_bridge(host, 48_000, frames as u32).unwrap();
+                control.set_active(true);
+                for _ in 0..5 {
+                    endpoint.process(frames).unwrap();
+                }
+                let misses_before = control.deadline_misses();
+                let period = std::time::Duration::from_secs_f64(frames as f64 / 48_000.0);
+                let mut samples = Vec::with_capacity(ITERATIONS);
+                for _ in 0..ITERATIONS {
+                    let started = std::time::Instant::now();
+                    endpoint.process(frames).unwrap();
+                    let elapsed = started.elapsed();
+                    samples.push(elapsed.as_secs_f64() * 1_000_000.0);
+                    if let Some(idle) = period.checked_sub(elapsed) {
+                        std::thread::sleep(idle);
+                    }
+                }
+                samples.sort_by(f64::total_cmp);
+                let misses = control.deadline_misses() - misses_before;
+                let p50 = samples[samples.len() / 2];
+                let p99 = samples[samples.len() - 1];
+                println!("{mode},{channels},{frames},{p50:.3},{p99:.3},{misses}");
+                assert!(
+                    misses <= (ITERATIONS / 4) as u64,
+                    "{mode} {channels}ch/{frames} missed {misses}/{ITERATIONS} deadlines"
+                );
+                assert!(
+                    p99 <= period.as_secs_f64() * 5_000_000.0 + 20_000.0,
+                    "{mode} {channels}ch/{frames} callback p99 was {p99:.3}us"
+                );
+            }
+        }
+    }
+}
 
 #[test]
 fn self_spawned_carla_worker_processes_and_preserves_state() {
@@ -94,20 +349,16 @@ fn subprocess_external_ui_show_hide_when_opted_in() {
 #[test]
 fn requested_worker_shutdown_reaps_and_removes_shared_memory() {
     let executable = env!("CARGO_BIN_EXE_shoopdaloop");
-    let mut processor = match SubprocessCarlaProcessor::spawn(
+    let mut processor = SubprocessCarlaProcessor::spawn_test_worker(
         executable,
         FXChainType::CarlaRack,
         48_000,
         256,
         ChainId(4),
         ProcessGeneration(1),
-    ) {
-        Ok(processor) => processor,
-        Err(error) => {
-            eprintln!("skipping requested-shutdown test: {error}");
-            return;
-        }
-    };
+        CarlaWorkerTestMode::Fake,
+    )
+    .expect("start fake worker");
     let shared_memory_path = processor.shared_memory_path().to_path_buf();
     let started = std::time::Instant::now();
     assert_eq!(processor.shutdown_requested(), WorkerExitKind::Requested);
@@ -184,20 +435,16 @@ fn abnormal_parent_helper() {
         return;
     };
     let executable = env!("CARGO_BIN_EXE_shoopdaloop");
-    let processor = match SubprocessCarlaProcessor::spawn(
+    let processor = SubprocessCarlaProcessor::spawn_test_worker(
         executable,
         FXChainType::CarlaRack,
         48_000,
         256,
         ChainId(98),
         ProcessGeneration(1),
-    ) {
-        Ok(processor) => processor,
-        Err(error) => {
-            std::fs::write(report_path, format!("skip:{error}")).unwrap();
-            std::process::exit(0);
-        }
-    };
+        CarlaWorkerTestMode::Fake,
+    )
+    .expect("start abnormal-parent fake worker");
     std::fs::write(
         report_path,
         format!(
@@ -224,10 +471,6 @@ fn worker_exits_and_cleans_ipc_after_abnormal_parent_termination() {
         .expect("launch abnormal parent helper");
     assert!(status.success());
     let report = std::fs::read_to_string(&report).unwrap();
-    if report.starts_with("skip:") {
-        eprintln!("skipping abnormal-parent test: {report}");
-        return;
-    }
     let mut lines = report.lines();
     let _worker_pid: u32 = lines.next().unwrap().parse().unwrap();
     let shared_memory_path = std::path::PathBuf::from(lines.next().unwrap());

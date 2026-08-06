@@ -1,6 +1,6 @@
 use crate::carla_processor::{
     CarlaGenerationLog, CarlaMidiBuffer, CarlaProcessor, CarlaProcessorInfo,
-    CarlaProcessorLifecycle,
+    CarlaProcessorLifecycle, FakeCarlaProcessor, FakeProcessorBehavior,
 };
 use crate::carla_shared_memory::SharedBlockTransport;
 use crate::lv2_carla::CarlaLv2Host;
@@ -16,7 +16,7 @@ use shoop_plugin_protocol::{
 };
 use std::collections::VecDeque;
 use std::fmt;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -78,6 +78,48 @@ fn new_nonce() -> [u8; 32] {
     nonce
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CarlaWorkerTestMode {
+    Fake,
+    Abort,
+    ProcessError,
+    Hang,
+    FloodLogs,
+    MalformedHandshake,
+    HangShutdown,
+}
+
+impl std::str::FromStr for CarlaWorkerTestMode {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self> {
+        match value {
+            "fake" => Ok(Self::Fake),
+            "abort" => Ok(Self::Abort),
+            "process-error" => Ok(Self::ProcessError),
+            "hang" => Ok(Self::Hang),
+            "flood-logs" => Ok(Self::FloodLogs),
+            "malformed-handshake" => Ok(Self::MalformedHandshake),
+            "hang-shutdown" => Ok(Self::HangShutdown),
+            _ => Err(anyhow!("unknown Carla worker test mode {value:?}")),
+        }
+    }
+}
+
+impl fmt::Display for CarlaWorkerTestMode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Fake => "fake",
+            Self::Abort => "abort",
+            Self::ProcessError => "process-error",
+            Self::Hang => "hang",
+            Self::FloodLogs => "flood-logs",
+            Self::MalformedHandshake => "malformed-handshake",
+            Self::HangShutdown => "hang-shutdown",
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CarlaWorkerOptions {
     pub address: SocketAddr,
@@ -85,6 +127,7 @@ pub struct CarlaWorkerOptions {
     pub chain_id: ChainId,
     pub generation: ProcessGeneration,
     pub shared_memory_path: PathBuf,
+    pub test_mode: Option<CarlaWorkerTestMode>,
 }
 
 fn response(
@@ -132,9 +175,11 @@ impl Drop for SharedWorkerGuard {
     }
 }
 
+type WorkerHost = Box<dyn CarlaProcessor>;
+
 fn run_shared_worker(
     mut transport: SharedBlockTransport,
-    host: Arc<Mutex<Option<CarlaLv2Host>>>,
+    host: Arc<Mutex<Option<WorkerHost>>>,
     stop: Arc<AtomicBool>,
     processed_blocks: Arc<AtomicU64>,
     notification: UdpSocket,
@@ -168,20 +213,20 @@ fn run_shared_worker(
             }
             continue;
         };
-        let result = (|| -> Result<()> {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<()> {
             let mut host = host.lock().unwrap_or_else(|error| error.into_inner());
             let host = host
                 .as_mut()
                 .ok_or_else(|| anyhow!("shared block arrived before Carla instantiation"))?;
-            if transport.worker_audio_input_channels(token) != host.info.ports.audio_inputs.len()
-                || transport.worker_audio_output_channels(token)
-                    != host.info.ports.audio_outputs.len()
+            let info = host.info();
+            if transport.worker_audio_input_channels(token) != info.audio_inputs
+                || transport.worker_audio_output_channels(token) != info.audio_outputs
             {
                 return Err(anyhow!(
                     "shared block channel layout does not match Carla host"
                 ));
             }
-            for channel in 0..host.info.ports.audio_inputs.len() {
+            for channel in 0..info.audio_inputs {
                 let destination = host
                     .audio_input_mut(channel)
                     .ok_or_else(|| anyhow!("Carla audio input {channel} disappeared"))?;
@@ -189,25 +234,23 @@ fn run_shared_worker(
             }
             let (midi_pool, midi_count) = midi_inputs.storage_mut();
             transport.worker_read_midi_reusing(token, midi_pool, midi_count)?;
-            if !host.info.ports.midi_inputs.is_empty() {
-                host.set_midi_input_events(
-                    0,
-                    midi_inputs
-                        .as_slice()
-                        .iter()
-                        .map(|event| (event.frame_offset, event.data.as_slice())),
-                )?;
+            if info.midi_inputs > 0 {
+                let mut refs = [(0_u32, &[][..]); MAX_MIDI_EVENTS_PER_BLOCK];
+                for (destination, event) in refs.iter_mut().zip(midi_inputs.as_slice()) {
+                    *destination = (event.frame_offset, event.data.as_slice());
+                }
+                host.set_midi_input_events(0, &refs[..midi_inputs.as_slice().len()])?;
             }
             host.process(token.frames)?;
             midi_outputs.clear();
-            if !host.info.ports.midi_outputs.is_empty() {
+            if info.midi_outputs > 0 {
                 host.fill_midi_output_events(0, &mut midi_outputs)?;
             }
             let mut audio_outputs = [&[][..]; MAX_AUDIO_CHANNELS];
             for (channel, output) in audio_outputs
                 .iter_mut()
                 .enumerate()
-                .take(host.info.ports.audio_outputs.len())
+                .take(info.audio_outputs)
             {
                 *output = host
                     .audio_output(channel)
@@ -215,16 +258,62 @@ fn run_shared_worker(
             }
             transport.worker_complete(
                 token,
-                &audio_outputs[..host.info.ports.audio_outputs.len()],
+                &audio_outputs[..info.audio_outputs],
                 midi_outputs.as_slice(),
             )?;
             processed_blocks.fetch_add(1, Ordering::Relaxed);
             Ok(())
-        })();
-        if let Err(error) = result {
-            eprintln!("Carla shared-memory worker failed: {error:#}");
-            stop.store(true, Ordering::Release);
+        }));
+        match result {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                eprintln!("Carla shared-memory worker failed: {error:#}");
+                std::process::exit(70);
+            }
+            Err(_) => {
+                eprintln!("Carla shared-memory worker panicked");
+                std::process::abort();
+            }
         }
+    }
+}
+
+fn instantiate_worker_host(
+    options: &CarlaWorkerOptions,
+    chain_type: CarlaChainType,
+    sample_rate: u32,
+    nominal_buffer_size: u32,
+) -> Result<WorkerHost> {
+    if let Some(mode) = options.test_mode {
+        let mut fake = FakeCarlaProcessor::new(
+            engine_chain_type(chain_type),
+            chain_type.audio_channels() as usize,
+            MAX_BLOCK_FRAMES,
+        );
+        let behavior = match mode {
+            CarlaWorkerTestMode::Abort => FakeProcessorBehavior {
+                panic_processing: true,
+                ..Default::default()
+            },
+            CarlaWorkerTestMode::ProcessError => FakeProcessorBehavior {
+                fail_processing: true,
+                ..Default::default()
+            },
+            CarlaWorkerTestMode::Hang => FakeProcessorBehavior {
+                process_delay: Duration::from_secs(5),
+                ..Default::default()
+            },
+            _ => FakeProcessorBehavior::default(),
+        };
+        fake.set_behavior(behavior);
+        Ok(Box::new(fake))
+    } else {
+        CarlaLv2Host::instantiate(
+            engine_chain_type(chain_type),
+            sample_rate,
+            nominal_buffer_size,
+        )
+        .map(|host| Box::new(host) as WorkerHost)
     }
 }
 
@@ -241,6 +330,14 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
     notification.set_read_timeout(Some(Duration::from_millis(10)))?;
     let mut hello = WorkerHello::current(options.nonce, options.generation);
     hello.notification_port = notification.local_addr()?.port();
+    if options.test_mode == Some(CarlaWorkerTestMode::MalformedHandshake) {
+        hello.protocol_version = hello.protocol_version.saturating_add(1);
+    }
+    if options.test_mode == Some(CarlaWorkerTestMode::FloodLogs) {
+        let flood = vec![b'x'; LOG_CAPACITY * 4];
+        std::io::stdout().write_all(&flood)?;
+        std::io::stderr().write_all(&flood)?;
+    }
     write_frame(
         &mut stream,
         &response(
@@ -256,7 +353,7 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
         &options.nonce,
     )?;
     let _shared_memory_cleanup = SharedMemoryCleanup(options.shared_memory_path.clone());
-    let host: Arc<Mutex<Option<CarlaLv2Host>>> = Arc::new(Mutex::new(None));
+    let host: Arc<Mutex<Option<WorkerHost>>> = Arc::new(Mutex::new(None));
     let stop = Arc::new(AtomicBool::new(false));
     let processed_blocks = Arc::new(AtomicU64::new(0));
     let shared_thread = thread::Builder::new()
@@ -334,8 +431,9 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
                         chain_type,
                         sample_rate,
                         nominal_buffer_size,
-                    } => match CarlaLv2Host::instantiate(
-                        engine_chain_type(chain_type),
+                    } => match instantiate_worker_host(
+                        &options,
+                        chain_type,
                         sample_rate,
                         nominal_buffer_size,
                     ) {
@@ -370,14 +468,14 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
                         None => protocol_error("Carla host is not instantiated"),
                     },
                     ControlRequestKind::SaveState => match host.as_mut() {
-                        Some(host) => match host.save_state_string() {
+                        Some(host) => match host.save_state() {
                             Ok(state) => ControlResponseKind::State(state),
                             Err(error) => protocol_error(error),
                         },
                         None => protocol_error("Carla host is not instantiated"),
                     },
                     ControlRequestKind::RestoreState(state) => match host.as_mut() {
-                        Some(host) => match host.restore_state_string(&state) {
+                        Some(host) => match host.restore_state(&state) {
                             Ok(()) => ControlResponseKind::Ack,
                             Err(error) => protocol_error(error),
                         },
@@ -393,6 +491,9 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
                     }
                     ControlRequestKind::Ping => ControlResponseKind::Pong,
                     ControlRequestKind::Shutdown => {
+                        if options.test_mode == Some(CarlaWorkerTestMode::HangShutdown) {
+                            thread::sleep(SHUTDOWN_TIMEOUT + Duration::from_secs(2));
+                        }
                         write_frame(
                             &mut stream,
                             &response(&options, request_id, ControlResponseKind::Ack),
@@ -417,7 +518,8 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
                 let host = host
                     .as_mut()
                     .ok_or_else(|| anyhow!("received process block before instantiation"))?;
-                if block.audio_inputs.len() != host.info.ports.audio_inputs.len() {
+                let info = host.info();
+                if block.audio_inputs.len() != info.audio_inputs {
                     return Err(anyhow!(
                         "audio input channel count does not match Carla host"
                     ));
@@ -433,12 +535,12 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
                     .iter()
                     .map(|event| (event.frame_offset, event.data.as_slice()))
                     .collect();
-                if !host.info.ports.midi_inputs.is_empty() {
-                    host.set_midi_input_events(0, midi)?;
+                if info.midi_inputs > 0 {
+                    host.set_midi_input_events(0, &midi)?;
                 }
                 host.process(block.frames as usize)?;
-                let mut audio_outputs = Vec::with_capacity(host.info.ports.audio_outputs.len());
-                for index in 0..host.info.ports.audio_outputs.len() {
+                let mut audio_outputs = Vec::with_capacity(info.audio_outputs);
+                for index in 0..info.audio_outputs {
                     audio_outputs.push(
                         host.audio_output(index)
                             .ok_or_else(|| anyhow!("Carla audio output {index} disappeared"))?
@@ -447,7 +549,7 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
                     );
                 }
                 let mut midi_outputs = Vec::new();
-                if !host.info.ports.midi_outputs.is_empty() {
+                if info.midi_outputs > 0 {
                     midi_outputs.extend(
                         host.midi_output_events(0)?
                             .into_iter()
@@ -597,6 +699,46 @@ impl SubprocessCarlaProcessor {
         chain_id: ChainId,
         generation: ProcessGeneration,
     ) -> Result<Self> {
+        Self::spawn_with_test_mode(
+            executable,
+            chain_type,
+            sample_rate,
+            nominal_buffer_size,
+            chain_id,
+            generation,
+            None,
+        )
+    }
+
+    pub fn spawn_test_worker(
+        executable: impl AsRef<Path>,
+        chain_type: FXChainType,
+        sample_rate: u32,
+        nominal_buffer_size: u32,
+        chain_id: ChainId,
+        generation: ProcessGeneration,
+        test_mode: CarlaWorkerTestMode,
+    ) -> Result<Self> {
+        Self::spawn_with_test_mode(
+            executable,
+            chain_type,
+            sample_rate,
+            nominal_buffer_size,
+            chain_id,
+            generation,
+            Some(test_mode),
+        )
+    }
+
+    fn spawn_with_test_mode(
+        executable: impl AsRef<Path>,
+        chain_type: FXChainType,
+        sample_rate: u32,
+        nominal_buffer_size: u32,
+        chain_id: ChainId,
+        generation: ProcessGeneration,
+        test_mode: Option<CarlaWorkerTestMode>,
+    ) -> Result<Self> {
         if chain_id.0 == 0 || generation.0 == 0 {
             return Err(anyhow!("chain identity and generation must be nonzero"));
         }
@@ -620,6 +762,11 @@ impl SubprocessCarlaProcessor {
             .arg("--carla-worker-shared-memory")
             .arg(shared_transport.path())
             .arg("--no-crash-handling");
+        if let Some(test_mode) = test_mode {
+            command
+                .arg("--carla-worker-test-mode")
+                .arg(test_mode.to_string());
+        }
         let mut child = command
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -675,7 +822,11 @@ impl SubprocessCarlaProcessor {
                 generation: response_generation,
                 kind: ControlResponseKind::Handshake(hello),
             }) if response_chain == chain_id && response_generation == generation => {
-                hello.validate(&nonce, generation)?;
+                if let Err(error) = hello.validate(&nonce, generation) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(error.into());
+                }
                 hello.notification_port
             }
             other => {
@@ -828,6 +979,10 @@ impl SubprocessCarlaProcessor {
 
     pub fn worker_id(&self) -> u32 {
         self.child.id()
+    }
+
+    pub fn deadline_misses(&self) -> u64 {
+        self.deadline_misses
     }
 
     pub fn shared_memory_path(&self) -> &Path {
@@ -1216,6 +1371,7 @@ pub struct SupervisedCarlaProcessor {
     sample_rate: u32,
     nominal_buffer_size: u32,
     chain_id: ChainId,
+    test_mode: Option<CarlaWorkerTestMode>,
     generation: ProcessGeneration,
     current: Option<SubprocessCarlaProcessor>,
     previous_logs: VecDeque<CarlaGenerationLog>,
@@ -1251,6 +1407,42 @@ impl SupervisedCarlaProcessor {
         nominal_buffer_size: u32,
         chain_id: ChainId,
     ) -> Result<Self> {
+        Self::launch_with_test_mode(
+            executable,
+            chain_type,
+            sample_rate,
+            nominal_buffer_size,
+            chain_id,
+            None,
+        )
+    }
+
+    pub fn launch_test_worker(
+        executable: impl Into<PathBuf>,
+        chain_type: FXChainType,
+        sample_rate: u32,
+        nominal_buffer_size: u32,
+        chain_id: ChainId,
+        test_mode: CarlaWorkerTestMode,
+    ) -> Result<Self> {
+        Self::launch_with_test_mode(
+            executable,
+            chain_type,
+            sample_rate,
+            nominal_buffer_size,
+            chain_id,
+            Some(test_mode),
+        )
+    }
+
+    fn launch_with_test_mode(
+        executable: impl Into<PathBuf>,
+        chain_type: FXChainType,
+        sample_rate: u32,
+        nominal_buffer_size: u32,
+        chain_id: ChainId,
+        test_mode: Option<CarlaWorkerTestMode>,
+    ) -> Result<Self> {
         let channels = protocol_chain_type(chain_type)?.audio_channels() as usize;
         let mut supervisor = Self {
             executable: executable.into(),
@@ -1264,6 +1456,7 @@ impl SupervisedCarlaProcessor {
             sample_rate,
             nominal_buffer_size,
             chain_id,
+            test_mode,
             generation: ProcessGeneration(0),
             current: None,
             previous_logs: VecDeque::new(),
@@ -1304,13 +1497,14 @@ impl SupervisedCarlaProcessor {
             drop(self.current.take());
         }
         self.generation = ProcessGeneration(self.generation.0.saturating_add(1));
-        let started = SubprocessCarlaProcessor::spawn(
+        let started = SubprocessCarlaProcessor::spawn_with_test_mode(
             &self.executable,
             self.info.chain_type,
             self.sample_rate,
             self.nominal_buffer_size,
             self.chain_id,
             self.generation,
+            self.test_mode,
         );
         let mut current = match started {
             Ok(current) => current,

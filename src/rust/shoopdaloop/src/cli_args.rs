@@ -70,6 +70,9 @@ pub struct CarlaWorkerOptions {
 
     #[clap(long, hide = true, requires = "carla_worker")]
     pub carla_worker_shared_memory: Option<PathBuf>,
+
+    #[clap(long, hide = true, requires = "carla_worker")]
+    pub carla_worker_test_mode: Option<shoop_engine::carla_subprocess::CarlaWorkerTestMode>,
 }
 
 /// CPAL/midir backend options.
