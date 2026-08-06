@@ -242,6 +242,37 @@ mod tests {
     }
 
     #[test]
+    fn loop_widget_presentation_state_follows_stable_ids_across_reordering() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let first = LoopId::from_raw(1);
+        let second = LoopId::from_raw(2);
+        let mut state = TrackState {
+            id: TrackId::from_raw(1),
+            loops: vec![
+                LoopState {
+                    id: first,
+                    ..Default::default()
+                },
+                LoopState {
+                    id: second,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let mut widget = TrackWidget::default();
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let first_widget = &widget.loop_widgets[&first] as *const LoopWidget;
+        state.loops.swap(0, 1);
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        assert_eq!(
+            first_widget,
+            &widget.loop_widgets[&first] as *const LoopWidget
+        );
+    }
+
+    #[test]
     fn loops_stack_vertically_inside_a_horizontal_track_row() {
         let context = egui::Context::default();
         crate::initialize(&context);

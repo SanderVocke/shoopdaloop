@@ -1893,6 +1893,85 @@ mod tests {
     }
 
     #[test]
+    fn grab_policy_covers_targeted_selection_solo_and_immediate_completion() {
+        let mut backend = FakeBackend::default();
+        let mut model = ApplicationModel::initialize(&mut backend).unwrap();
+        model
+            .add_track(
+                &mut backend,
+                DirectTrackSpec {
+                    name: "Track".to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                },
+            )
+            .unwrap();
+        let track_id = model.tracks[1].id;
+        let sync = model.tracks[0].loops[0];
+        model.loops.get_mut(&sync).unwrap().length = 100;
+        let initiating = model.tracks[1].loops[0];
+        let selected = model.tracks[1].loops[1];
+        let target = model.tracks[1].loops[2];
+        model.loops.get_mut(&initiating).unwrap().state.selected = true;
+        model.loops.get_mut(&selected).unwrap().state.selected = true;
+        let target_model = model.loops.get_mut(&target).unwrap();
+        target_model.state.targeted = true;
+        target_model.length = 300;
+        target_model.position = 100;
+        model.global.apply_n_cycles = 2;
+        model.global.play_after_record = false;
+        model.global.solo = true;
+
+        let before = backend.operations().len();
+        model
+            .handle_loop_action(&mut backend, track_id, initiating, LoopAction::GrabClicked)
+            .unwrap();
+        let operations = &backend.operations()[before..];
+        let requests = operations
+            .iter()
+            .find_map(|operation| match operation {
+                shoop_backend::FakeOperation::GrabLoops(requests) => Some(requests),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(requests.len(), 2);
+        assert!(requests.iter().all(|request| {
+            request.reverse_start_cycle == Some(4)
+                && request.cycles_length == Some(3)
+                && request.go_to_cycle == Some(1)
+                && request.go_to_mode == BackendLoopMode::Unknown
+        }));
+        assert!(operations.iter().any(|operation| matches!(
+            operation,
+            shoop_backend::FakeOperation::Transition(_, BackendLoopMode::Stopped, None)
+        )));
+
+        model.global.sync = false;
+        model.global.play_after_record = true;
+        let before = backend.operations().len();
+        model
+            .handle_loop_action(&mut backend, track_id, initiating, LoopAction::GrabClicked)
+            .unwrap();
+        let operations = &backend.operations()[before..];
+        let requests = operations
+            .iter()
+            .find_map(|operation| match operation {
+                shoop_backend::FakeOperation::GrabLoops(requests) => Some(requests),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].reverse_start_cycle, None);
+        assert_eq!(requests[0].cycles_length, Some(2));
+        assert_eq!(requests[0].go_to_cycle, Some(1));
+        assert_eq!(requests[0].go_to_mode, BackendLoopMode::Recording);
+        assert!(operations.iter().any(|operation| matches!(
+            operation,
+            shoop_backend::FakeOperation::Transition(_, BackendLoopMode::Playing, Some(2))
+        )));
+    }
+
+    #[test]
     fn snapshot_reads_are_independent_of_actor_progress() {
         let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
         let handle = runtime.handle();

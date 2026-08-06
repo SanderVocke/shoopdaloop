@@ -781,6 +781,27 @@ mod tests {
     }
 
     #[test]
+    fn script_composites_do_not_open_record_or_dry_variants() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = LoopState {
+            id: LoopId::from_raw(2),
+            composite_kind: CompositeKind::Script,
+            ..Default::default()
+        };
+        let mut widget = LoopWidget::default();
+        let _ = frame(&context, &mut widget, &state, 1.0, Vec::new());
+        let play = widget.test_play_rect.unwrap().center();
+        let record = widget.test_record_rect.unwrap().center();
+        let _ = frame(&context, &mut widget, &state, 1.1, vec![pointer(play)]);
+        let _ = frame(&context, &mut widget, &state, 1.2, vec![pointer(record)]);
+        assert_eq!(widget.play_popup_until, 0.0);
+        assert_eq!(widget.record_popup_until, 0.0);
+        assert!(widget.test_play_popup_button_rect.is_none());
+        assert!(widget.test_gain_rect.is_none());
+    }
+
+    #[test]
     fn stereo_balance_popup_is_outside_gain_and_double_click_resets() {
         let context = egui::Context::default();
         crate::initialize(&context);

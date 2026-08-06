@@ -520,6 +520,10 @@ mod tests {
             let context = egui::Context::default();
             shoop_egui::initialize(&context);
             let mut app = UnifiedApp::new().unwrap();
+            let snapshot = app.runtime.snapshot();
+            assert_eq!(snapshot.tracks.len(), 1);
+            assert!(snapshot.tracks[0].is_sync);
+            assert_eq!(snapshot.tracks[0].loops.len(), 1);
             let output = context.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
@@ -670,6 +674,13 @@ mod tests {
             .dispatch(AppIntent::Loop {
                 track_id,
                 loop_id,
+                action: LoopAction::BalanceChanged(0.25),
+            })
+            .unwrap();
+        app.runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
                 action: LoopAction::RecordClicked,
             })
             .unwrap();
@@ -677,6 +688,7 @@ mod tests {
         loop {
             let snapshot = app.runtime.snapshot();
             if snapshot.tracks[1].controls.output_gain_db == -3.0
+                && snapshot.tracks[1].loops[0].balance == 0.25
                 && snapshot.tracks[1].loops[0].mode == LoopMode::Recording
                 && snapshot.details.is_some()
             {
