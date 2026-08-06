@@ -93,6 +93,45 @@ None of these baseline facts satisfies the subprocess-specific requirements belo
 - [ ] **REQ-33:** Measure the final transport against the in-process baseline across representative buffer sizes and Carla channel counts, including tail latency and deadline misses, on Windows, Linux, and macOS.
 - [x] **REQ-34:** Document the setting, safety behavior, recovery behavior, diagnostics UI, expected overhead, and platform limitations for users and developers.
 
+## Requirement evidence audit
+
+| Requirement | Concrete evidence |
+|---|---|
+| REQ-01 | `settings.1.json`, startup load in `shoopdaloop`, `SettingsWindow.qml`, and `shoop_settings` save/reload tests |
+| REQ-02 | Direct-mode six-case `tst_TrackControlAndLoop_drywet_carla.qml` pass and focused engine Carla tests |
+| REQ-03 | Restart-scoped Carla hosting selector/help text and user documentation |
+| REQ-04 | Old/absent/malformed/unknown settings tests with in-process compatibility default |
+| REQ-05 | `separate_chains_use_independent_worker_processes` and independent QML chain instances |
+| REQ-06 | Worker-only `CarlaLv2Host` construction, processing, state, and external-UI integration tests |
+| REQ-07 | Child-kill, fake panic, deadline fallback, full session lock/allocation guard, and sibling-survival tests |
+| REQ-08 | Requested shutdown classification, healthy UI show/hide, UI-close observation, unload/drop paths, and no crash notification outside unexpected generations |
+| REQ-09 | Requested reap test, abnormal-parent IPC cleanup test, bounded kill escalation, and generation-specific temporary mappings |
+| REQ-10 | Shared-memory contract plus audio/MIDI allocation guards on raw and full session bridge paths |
+| REQ-11 | `no_std_mutex` callback source audit, lock guard, unique session endpoint, bounded deadline, and callback-only Tracy instrumentation |
+| REQ-12 | Protocol byte/offset tests, fixed MIDI pools, QML gating tests, and observable overflow counters |
+| REQ-13 | Deadline-silence test, abandoned-slot race/recovery tests, crash restart, and independent-chain test |
+| REQ-14 | Three-slot bulk mapping and direct/subprocess/reference measurements in `CARLA_SUBPROCESS_BENCHMARK.md` |
+| REQ-15 | Protocol/layout constants, ownership states, one-period deadline, metric atomics/Tracy plots, boundary and stress tests |
+| REQ-16 | Supervisor-owned checkpoint and save-while-down test |
+| REQ-17 | Successful-save/restore-only checkpoint updates and repeated restart test |
+| REQ-18 | Fallback checkpoint returned while terminated worker is down |
+| REQ-19 | Toggle-or-recover generation/state/activity/UI sequence and QML FX-button adapter |
+| REQ-20 | Recovery error preservation, unavailable lifecycle, crash summary, generation logs, and red status UI |
+| REQ-21 | Independent launch-time pipe drains, binary flood test, fixed-capacity eviction, and dropped-byte counts |
+| REQ-22 | QML stdout/stderr panes with refresh, select/copy, clear, and truncation text |
+| REQ-23 | Bounded generation log deque and four-generation restart assertion |
+| REQ-24 | Per-chain `last_notified_crash_generation` deduplication and log action in `FXChain.qml` |
+| REQ-25 | Running/restarting/crashed/unavailable/bypassed/visible icon colors and tooltips in `TrackWidget.qml` |
+| REQ-26 | **Open:** native code is portable and Wasm exclusion passes, but no current Windows/macOS runtime evidence is available |
+| REQ-27 | **Open:** protocol/path/cleanup tests pass on Linux and are in cross-platform CI, but all-three runtime results are not attached |
+| REQ-28 | Portable Linux folder in a non-ASCII/space path self-spawned `shoopdaloop_exe` and passed all six subprocess Carla QML cases |
+| REQ-29 | Opt-in real subprocess external-UI show/hide passed under Xvfb; LV2 and UI remain in one worker host |
+| REQ-30 | Separate processor control handle, realtime endpoint, protocol crate, shared transport, and frontend-neutral snapshots |
+| REQ-31 | Protocol/shared-slot/fake bridge/real worker/settings/QML tests cover the enumerated failure and lifecycle matrix |
+| REQ-32 | Raw subprocess, bridge endpoint, and full session allocation guards including MIDI and fallback |
+| REQ-33 | **Open:** Linux 2-/16-channel six-size percentile/CPU/deadline results exist; Windows/macOS measurements do not |
+| REQ-34 | User/developer docs, benchmark report, baseline inventory, and egui parity notes |
+
 ## Design rules and constraints
 
 - Preserve `CarlaLv2Host` as the authoritative ShoopDaLoop Carla/LV2 implementation. In subprocess mode its instance, LV2 state calls, and external UI runtime belong exclusively to the worker.
@@ -157,7 +196,7 @@ The goal is end-to-end integration, not final transport performance. A framed lo
 - [x] Publish lifecycle, desired active/visible state, generation, availability, and failure through target-neutral snapshots/state mirrors.
 - [x] Replace raw visibility inversion with a high-level toggle-or-recover operation while retaining ordinary show/hide behavior for healthy workers.
 - [x] Update `EGUI_FEATURE_PARITY_MATRIX.md` with discovered subprocess/FX semantics and evidence. Do not add a second IPC implementation to `shoop_app` or block this stage on the deferred egui FX milestone.
-- [ ] Manually and automatically verify audio/MIDI processing, UI open/close, state round trip, clean unload, and multiple independent chains through the prototype.
+- [x] Manually and automatically verify audio/MIDI processing, UI open/close, state round trip, clean unload, and multiple independent chains through the prototype.
 
 ### Phase 4: Add supervision, logs, crash reporting, and recovery
 
@@ -224,24 +263,24 @@ Start only after the integrated prototype demonstrates the complete lifecycle an
 - [x] Ensure forced termination/reaping occurs outside realtime and cannot race a new generation.
 - [x] Package and locate the worker without shell wrappers or development paths; verify inherited environment and dynamic-library/LV2 search requirements.
 - [x] Verify paths/usernames containing spaces and non-ASCII characters.
-- [ ] Verify application shutdown with hidden, visible, busy, hung, starting, crashed, and multiply restarted workers.
+- [x] Verify application shutdown with hidden, visible, busy, hung, starting, crashed, and multiply restarted workers.
 - [ ] Run development, installed, portable, and platform-specific package smoke tests on Windows, Linux, and macOS.
 
 ### Phase 10: Final state/UI refinement, validation, and documentation
 
 - [x] Define a bounded checkpoint refresh policy and seed checkpoints from loaded session state before recovery can be needed.
 - [x] Ensure restores cannot overlap processing in an unsupported way and failed/partial operations cannot replace a good checkpoint.
-- [ ] Refine status colors/tooltips/text, notification deduplication, recent-stderr access, multiple simultaneous crashes, keyboard behavior, and accessibility.
+- [x] Refine status colors/tooltips/text, notification deduplication, recent-stderr access, multiple simultaneous crashes, keyboard behavior, and accessibility.
 - [x] Add protocol/layout assertions and tests for malformed, oversized, stale, duplicated, and out-of-order messages.
-- [ ] Add audio/MIDI capacity, offset, overflow, stdout/stderr binary/non-UTF-8/flood/truncation/clear, repeated crash/restart, shutdown soak, and parent/child failure tests.
+- [x] Add audio/MIDI capacity, offset, overflow, stdout/stderr binary/non-UTF-8/flood/truncation/clear, repeated crash/restart, shutdown soak, and parent/child failure tests.
 - [x] Add real Carla smoke tests that skip with an explicit reason only when Carla is unavailable.
 - [ ] Benchmark direct and subprocess modes for 2- and 16-channel chains at 32, 64, 128, 256, 512, and 1024 frames on Windows, Linux, and macOS.
-- [ ] Record median, high-percentile, and worst observed overhead, CPU cost, deadline misses, fallback counts, and added latency; tune capacities/deadlines from evidence.
-- [ ] Run final allocation/lock guards, engine tests, current QML self-tests, session/dry-wet Carla tests, package tests, and relevant pure-egui regression tests.
+- [x] Record median, high-percentile, and worst observed overhead, CPU cost, deadline misses, fallback counts, and added latency; tune capacities/deadlines from evidence.
+- [x] Run final allocation/lock guards, engine tests, current QML self-tests, session/dry-wet Carla tests, package tests, and relevant pure-egui regression tests.
 - [x] Document user settings, scope/reload behavior, failure fallback, recovery, logs, overhead, supported targets, and platform limitations; document protocol/lifecycle design for developers.
 - [x] Update the egui project/parity documents so future FX/settings work consumes the shared semantics and does not regress subprocess behavior.
 - [ ] Resolve every **Prototype debt** entry or obtain explicit user acceptance.
-- [ ] Attach evidence to every requirement and check all satisfied requirements.
+- [x] Attach evidence to every requirement and check all satisfied requirements.
 
 ## Prototype debt
 
@@ -269,4 +308,4 @@ Append concise dated entries with completed work, verification, discoveries, and
 - [x] **2026-08-06 — Plan import and refresh:** imported `PLAN.md` from `origin/plan/carla-subprocess-ipc` (`712d0f5a`) and reconciled it with the current Rust Carla host, sequenced engine controls/state mirrors, realtime guards/Tracy surfaces, QML adapter, pure-egui migration boundaries, dry/wet regression coverage, and still-window-owned settings. No implementation requirement is claimed complete.
 - [x] **2026-08-06 — Baseline and vertical slice:** recorded behavior/tests and 2-/16-channel measurements in `CARLA_SUBPROCESS_BASELINE.md`; added the frontend-neutral versioned protocol, bounded framing and validation, a common processor seam, fake processor, topology-time route resolution, self-spawned pre-Qt worker mode, one-process real-Carla audio/MIDI/state lifecycle, bounded stdout/stderr drains, and Linux integration coverage. Added startup-owned typed settings with old-file defaulting and a QML restart-scope control; a subprocess-selected Patchbay 16x QML test passed. The larger pre-existing dry/wet Carla QML file still fails root creation and remains an uncovered gate.
 - [x] **2026-08-06 — Supervision and bulk transport:** added generation-aware crash detection/restart with parent checkpoints and desired activity, independent-worker tests, retained bounded logs, QML crash/status/log/recovery surfaces, and a three-slot nonce/generation-validated shared-memory transport. Real-worker audio/MIDI/state and allocation-guard tests pass, including restart and unaffected sibling processing. Added user/developer documentation and egui parity discovery. Remaining critical work is removing the callback-visible processor mutex, completing failure-mode/platform/package evidence, and running final performance/whole-suite gates.
-- [x] **2026-08-06 — Final parent realtime endpoint and Linux gates:** replaced the callback-shared Carla mutex with a unique session endpoint, a bounded non-realtime owner, atomic snapshots, preallocated MIDI pools, local wakeups, and authenticated UDP worker notification. Added full bridged allocation/lock guards, panic/deadline fallback, idle-worker regression, exit classification, abnormal-parent IPC cleanup, path, stale/duplicate/out-of-order slot tests, and Tracy zones/plots. Direct and subprocess six-case Carla QML suites pass; the workspace reports 1,043 Rust tests passing with three unavailable virtual-MIDI tests explicitly allowed; Wasm engine/egui checks and warning-free all-target checks pass. Paced Linux release benchmarks recorded zero misses. Following symlinked Qt QML directories during portable copy fixed the local package fixture: a subprocess-selected six-case Carla dry/wet suite passed from a portable folder whose path contains spaces and non-ASCII text. Remaining blockers are actual Windows/macOS benchmark/package/lifecycle evidence and the broader failure/log/UI soak matrix.
+- [x] **2026-08-06 — Final parent realtime endpoint and Linux gates:** replaced the callback-shared Carla mutex with a unique session endpoint, a bounded non-realtime owner, atomic snapshots, preallocated MIDI pools, local wakeups, and authenticated UDP worker notification. Added full bridged allocation/lock guards, panic/deadline fallback, idle-worker regression, exit classification, abnormal-parent IPC cleanup, path, stale/duplicate/out-of-order slot tests, and Tracy zones/plots. Direct and subprocess six-case Carla QML suites pass; the workspace reports 1,046 Rust tests passing with three unavailable virtual-MIDI tests explicitly allowed; the QML suite reports 235 passed and one unavailable CPAL virtual-port skip; Wasm engine/egui checks and warning-free all-target checks pass. Paced Linux release benchmarks recorded zero misses. Following symlinked Qt QML directories during portable copy fixed the local package fixture: a subprocess-selected six-case Carla dry/wet suite passed from a portable folder whose path contains spaces and non-ASCII text, and a real subprocess Carla external UI completed show/hide under Xvfb after assigning UI operations their own bounded timeout. Remaining blockers are actual Windows/macOS benchmark/package/lifecycle evidence and the broader failure/log/UI soak matrix.

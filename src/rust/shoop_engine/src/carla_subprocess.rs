@@ -30,6 +30,7 @@ const LOG_CAPACITY: usize = 64 * 1024;
 const MAX_LOG_GENERATIONS: usize = 8;
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
 const CONTROL_TIMEOUT: Duration = Duration::from_secs(2);
+const UI_CONTROL_TIMEOUT: Duration = Duration::from_secs(10);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 
 fn protocol_chain_type(chain_type: FXChainType) -> Result<CarlaChainType> {
@@ -476,22 +477,23 @@ struct BoundedLog {
 
 impl BoundedLog {
     fn push(&mut self, data: &[u8]) {
+        if data.len() > LOG_CAPACITY {
+            let dropped = self.bytes.len().saturating_add(data.len() - LOG_CAPACITY);
+            self.dropped = self.dropped.saturating_add(dropped as u64);
+            self.bytes.clear();
+            self.bytes.extend(&data[data.len() - LOG_CAPACITY..]);
+            return;
+        }
         let overflow = self
             .bytes
             .len()
             .saturating_add(data.len())
             .saturating_sub(LOG_CAPACITY);
-        for _ in 0..overflow.min(self.bytes.len()) {
+        for _ in 0..overflow {
             self.bytes.pop_front();
         }
-        if data.len() > LOG_CAPACITY {
-            let dropped_from_data = data.len() - LOG_CAPACITY;
-            self.dropped = self.dropped.saturating_add(dropped_from_data as u64);
-            self.bytes.extend(&data[dropped_from_data..]);
-        } else {
-            self.dropped = self.dropped.saturating_add(overflow as u64);
-            self.bytes.extend(data);
-        }
+        self.dropped = self.dropped.saturating_add(overflow as u64);
+        self.bytes.extend(data);
     }
 
     fn snapshot(&self) -> LogSnapshot {
@@ -758,7 +760,15 @@ impl SubprocessCarlaProcessor {
     }
 
     fn control(&mut self, kind: ControlRequestKind) -> Result<ControlResponseKind> {
-        self.stream.set_read_timeout(Some(CONTROL_TIMEOUT))?;
+        self.control_with_timeout(kind, CONTROL_TIMEOUT)
+    }
+
+    fn control_with_timeout(
+        &mut self,
+        kind: ControlRequestKind,
+        timeout: Duration,
+    ) -> Result<ControlResponseKind> {
+        self.stream.set_read_timeout(Some(timeout))?;
         let request_id = self.next_request_id();
         let request = ControlRequest {
             request_id,
@@ -1002,7 +1012,7 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
     }
 
     fn set_visible(&mut self, visible: bool) -> Result<()> {
-        self.control(ControlRequestKind::SetVisible(visible))?;
+        self.control_with_timeout(ControlRequestKind::SetVisible(visible), UI_CONTROL_TIMEOUT)?;
         self.visible = visible;
         Ok(())
     }

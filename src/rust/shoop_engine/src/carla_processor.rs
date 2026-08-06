@@ -1128,6 +1128,25 @@ mod tests {
             .all(|sample| *sample == 0.0));
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn bridge_shutdown_soak_reclaims_threads_and_mappings() {
+        for iteration in 0..100 {
+            let fake = FakeCarlaProcessor::new(FXChainType::CarlaRack, 2, MAX_BLOCK_FRAMES);
+            let (control, mut endpoint) =
+                spawn_processor_bridge(Box::new(fake), 1_000, 100).unwrap();
+            control.set_active(true);
+            endpoint.process(16).unwrap();
+            if iteration % 2 == 0 {
+                drop(endpoint);
+                drop(control);
+            } else {
+                drop(control);
+                drop(endpoint);
+            }
+        }
+    }
+
     #[test]
     fn fake_processor_exposes_failures_and_delay() {
         let mut processor = FakeCarlaProcessor::new(FXChainType::CarlaRack, 2, 64);
