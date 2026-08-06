@@ -273,6 +273,7 @@ jobs:
         run: |
           BROWSER_SIZE=360,200 node --experimental-websocket browser_smoke.mjs
           BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
+          OUTPUT_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
 
       - name: Run self-contained web workflows
         if: matrix.target == 'web' && env.ACT != 'true'
@@ -281,7 +282,8 @@ jobs:
           SELF_CONTAINED_PATH: ../../../artifacts/${{ matrix.html_artifact }}
         run: |
           SELF_CONTAINED=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
-          SELF_CONTAINED=1 SECURE_LIMIT=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
+          SELF_CONTAINED=1 OUTPUT_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
+          SELF_CONTAINED=1 DIRECT_FILE_MIC=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
 
       - name: Run extended Chrome Web Audio workflows
         if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'

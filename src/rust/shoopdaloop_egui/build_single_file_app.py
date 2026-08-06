@@ -32,6 +32,14 @@ def build_single_file(dist: Path, output: Path) -> None:
     wasm_path = exactly_one(
         list(dist.glob("shoopdaloop_egui-*_bg.wasm")), "WebAssembly file"
     )
+    worklet_script_path = dist / "audio_worklet.js"
+    worklet_wasm_path = dist / "generated" / "shoop_audio_worklet.wasm"
+    for path, description in [
+        (worklet_script_path, "AudioWorklet script"),
+        (worklet_wasm_path, "AudioWorklet WebAssembly file"),
+    ]:
+        if not path.is_file():
+            raise RuntimeError(f"missing {description}: {path}")
 
     script_matches = [
         match
@@ -58,9 +66,24 @@ def build_single_file(dist: Path, output: Path) -> None:
     if count != 1:
         raise RuntimeError("wasm-bindgen export footer has an unexpected shape")
 
+    worklet_source = worklet_script_path.read_bytes()
+    encoded_worklet_source = base64.b64encode(worklet_source).decode("ascii")
+    encoded_worklet_wasm = base64.b64encode(worklet_wasm_path.read_bytes()).decode(
+        "ascii"
+    )
     encoded_wasm = base64.b64encode(wasm_path.read_bytes()).decode("ascii")
     embedded_script = f"""
 <script type="module">
+const shoopAudioWorkletModuleUrl = "data:text/javascript;base64,{encoded_worklet_source}";
+const shoopAudioWorkletBinary = atob("{encoded_worklet_wasm}");
+const shoopAudioWorkletWasmBytes = Uint8Array.from(
+    shoopAudioWorkletBinary,
+    character => character.charCodeAt(0),
+);
+globalThis.shoopEmbeddedAudioWorklet = Object.freeze({{
+    moduleUrl: shoopAudioWorkletModuleUrl,
+    wasmBytes: shoopAudioWorkletWasmBytes,
+}});
 {glue}
 const shoopWasmBinary = atob("{encoded_wasm}");
 const shoopWasmBytes = Uint8Array.from(

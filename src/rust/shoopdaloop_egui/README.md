@@ -3,7 +3,7 @@
 This is the shared native and browser composition root for the egui application.
 
 - Native builds retain the threaded deterministic dummy backend.
-- Hosted browser builds use a repository-owned Web Audio/AudioWorklet backend after an explicit **Enable microphone audio** action.
+- Browser builds use a repository-owned Web Audio/AudioWorklet backend after an explicit microphone or output-only enable action.
 - Browser MIDI is not implemented. Audio tracks work, but MIDI tracks receive no browser device data.
 
 ## Native
@@ -32,7 +32,9 @@ cd src/rust/shoopdaloop_egui
 trunk serve --open
 ```
 
-A hosted deployment must use HTTPS. `localhost` is also treated as a secure context by browsers. Click **Enable microphone audio** to create one `AudioContext`, request the default microphone, and connect microphone → AudioWorklet → default destination. Permission denial and driver failure leave the application responsive and expose a retry action.
+For reliable browser behavior, use HTTPS or `localhost`, which browsers treat as a secure context. Click **Enable microphone audio** to create one `AudioContext`, request the default microphone, and connect microphone → AudioWorklet → default destination. Click **Enable output-only audio** to skip microphone capture and connect an input-free AudioWorklet directly to the default destination. Permission denial and driver failure leave the application responsive and expose retry actions.
+
+The self-contained HTML embeds the application and AudioWorklet Wasm modules plus the worklet script. It may be opened directly through `file:` and attempts both output-only and microphone modes without rejecting the URL. Browser security and media-permission behavior for local files varies, so HTTPS or `localhost` remains the portable option. Both physical-audio modes still require an explicit click because of browser autoplay policies.
 
 The browser requests echo cancellation, noise suppression, and automatic gain control off, but the browser may negotiate different settings. The engine runs at the context's actual sample rate and render quantum. Mono capture is duplicated where a stereo direct track needs two inputs; a mono track uses capture channel one. Mono track output is sent to both destination channels, stereo maps left/right, and all tracks sum with final clipping to `[-1, 1]`. Input monitoring defaults off to reduce feedback risk.
 
@@ -62,7 +64,7 @@ python3 package_artifacts.py web \
   --profile debug --dist dist --output-dir ../../../artifacts
 ```
 
-Native CI outputs are unsigned application archives rather than installers or portable dependency-closure packages. The hosted web archive supports physical browser audio and contains the complete UI and AudioWorklet assets. The separately generated profile-named HTML cannot claim microphone support when directly opened from `file:`. Open it with `?offline=1` to explicitly select the elapsed-time dummy engine; without that query it presents the secure-context limitation and does not silently substitute dummy processing.
+Native CI outputs are unsigned application archives rather than installers or portable dependency-closure packages. The hosted web archive supports physical browser audio and contains the complete UI and AudioWorklet assets. The separately generated profile-named HTML embeds those assets and attempts physical output or microphone audio when directly opened from `file:`. Open it with `?offline=1` to explicitly select the elapsed-time dummy engine instead.
 
 Generated `dist`, worklet, staging, and artifact files are not committed.
 
@@ -95,8 +97,10 @@ DENY_FIRST=1 node --experimental-websocket browser_smoke.mjs
 LIFECYCLE=1 node --experimental-websocket browser_smoke.mjs
 SATURATE=1 node --experimental-websocket browser_smoke.mjs
 STRESS=1 node --experimental-websocket browser_smoke.mjs
+OUTPUT_ONLY=1 node --experimental-websocket browser_smoke.mjs
 SELF_CONTAINED=1 node --experimental-websocket browser_smoke.mjs
-SELF_CONTAINED=1 SECURE_LIMIT=1 node --experimental-websocket browser_smoke.mjs
+SELF_CONTAINED=1 OUTPUT_ONLY=1 node --experimental-websocket browser_smoke.mjs
+SELF_CONTAINED=1 DIRECT_FILE_MIC=1 node --experimental-websocket browser_smoke.mjs
 xvfb-run -a python3 browser_firefox_smoke.py
 ```
 

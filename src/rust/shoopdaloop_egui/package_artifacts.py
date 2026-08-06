@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import plistlib
+import re
 import shutil
 import stat
 import tarfile
@@ -211,6 +213,25 @@ def verify_web(bundle: Path, html: Path) -> None:
     text = html.read_text(encoding="utf-8")
     if "TrunkApplicationStarted" not in text or "shoopWasmBytes" not in text:
         raise RuntimeError("self-contained HTML does not contain the embedded application")
+    if (
+        "shoopEmbeddedAudioWorklet" not in text
+        or "shoopAudioWorkletWasmBytes" not in text
+    ):
+        raise RuntimeError("self-contained HTML does not contain embedded browser audio")
+    for variable in ("shoopWasmBinary", "shoopAudioWorkletBinary"):
+        match = re.search(rf'const {variable} = atob\("([A-Za-z0-9+/=]+)"\);', text)
+        if not match:
+            raise RuntimeError(f"self-contained HTML is missing {variable}")
+        if not base64.b64decode(match.group(1), validate=True).startswith(b"\0asm"):
+            raise RuntimeError(f"self-contained HTML has invalid {variable}")
+    worklet = re.search(
+        r'const shoopAudioWorkletModuleUrl = "data:text/javascript;base64,([A-Za-z0-9+/=]+)";',
+        text,
+    )
+    if not worklet or b"registerProcessor" not in base64.b64decode(
+        worklet.group(1), validate=True
+    ):
+        raise RuntimeError("self-contained HTML has an invalid AudioWorklet script")
     if html.stat().st_size <= 0:
         raise RuntimeError("self-contained HTML is empty")
 

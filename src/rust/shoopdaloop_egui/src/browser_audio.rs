@@ -31,7 +31,14 @@ use web_time::Instant;
 const WORKLET_NAME: &str = "shoop-audio-processor";
 const WORKLET_SCRIPT_URL: &str = "./audio_worklet.js";
 const WORKLET_WASM_URL: &str = "./generated/shoop_audio_worklet.wasm";
+const EMBEDDED_WORKLET_ASSETS: &str = "shoopEmbeddedAudioWorklet";
 const MAX_QUANTUM: u32 = 2048;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AudioInputMode {
+    Microphone,
+    OutputOnly,
+}
 
 #[derive(Default)]
 pub(crate) struct Transport {
@@ -164,11 +171,13 @@ struct BrowserControllerInner {
     processor_error_handler: Option<Closure<dyn FnMut(WebEvent)>>,
     context_state_handler: Option<Closure<dyn FnMut(WebEvent)>>,
     track_ended_handlers: Vec<Closure<dyn FnMut(WebEvent)>>,
+    input_mode: Option<AudioInputMode>,
 }
 
 pub struct BrowserAudioController {
     inner: Rc<RefCell<BrowserControllerInner>>,
-    enable_handler: Closure<dyn FnMut(WebEvent)>,
+    microphone_enable_handler: Closure<dyn FnMut(WebEvent)>,
+    output_enable_handler: Closure<dyn FnMut(WebEvent)>,
     suspend_handler: Closure<dyn FnMut(WebEvent)>,
     resume_handler: Closure<dyn FnMut(WebEvent)>,
     fail_handler: Closure<dyn FnMut(WebEvent)>,
@@ -180,9 +189,6 @@ pub struct BrowserAudioController {
 impl BrowserAudioController {
     pub fn new(transport: Rc<RefCell<Transport>>) -> Result<Self> {
         let window = web_sys::window().ok_or_else(|| anyhow!("browser window is unavailable"))?;
-        if !supports_hosted_audio(&window) {
-            transport.borrow_mut().driver_state = BackendDriverState::Unsupported;
-        }
         let inner = Rc::new(RefCell::new(BrowserControllerInner {
             generation: 0,
             startup_started: None,
@@ -195,15 +201,24 @@ impl BrowserAudioController {
             processor_error_handler: None,
             context_state_handler: None,
             track_ended_handlers: Vec::new(),
+            input_mode: None,
         }));
         let weak = Rc::downgrade(&inner);
-        let enable_handler = Closure::wrap(Box::new(move |_event: WebEvent| {
+        let microphone_enable_handler = Closure::wrap(Box::new(move |_event: WebEvent| {
             if let Some(inner) = weak.upgrade() {
-                begin_enable(inner);
+                begin_enable(inner, AudioInputMode::Microphone);
             }
         }) as Box<dyn FnMut(_)>);
-        let button = enable_button()?;
-        button.set_onclick(Some(enable_handler.as_ref().unchecked_ref()));
+        microphone_enable_button()?
+            .set_onclick(Some(microphone_enable_handler.as_ref().unchecked_ref()));
+
+        let weak = Rc::downgrade(&inner);
+        let output_enable_handler = Closure::wrap(Box::new(move |_event: WebEvent| {
+            if let Some(inner) = weak.upgrade() {
+                begin_enable(inner, AudioInputMode::OutputOnly);
+            }
+        }) as Box<dyn FnMut(_)>);
+        output_enable_button()?.set_onclick(Some(output_enable_handler.as_ref().unchecked_ref()));
 
         let weak = Rc::downgrade(&inner);
         let suspend_handler = Closure::wrap(Box::new(move |_event: WebEvent| {
@@ -273,7 +288,8 @@ impl BrowserAudioController {
         }
         Ok(Self {
             inner,
-            enable_handler,
+            microphone_enable_handler,
+            output_enable_handler,
             suspend_handler,
             resume_handler,
             fail_handler,
@@ -288,7 +304,7 @@ impl BrowserAudioController {
     }
 
     pub fn update_presentation(&self) {
-        let (state, generation, owned_media_tracks) = {
+        let (state, generation, owned_media_tracks, input_mode) = {
             let mut inner = self.inner.borrow_mut();
             let mut state = inner.transport.borrow().driver_state;
             if matches!(
@@ -312,7 +328,12 @@ impl BrowserAudioController {
                 .as_ref()
                 .map(|stream| stream.get_tracks().length())
                 .unwrap_or(0);
-            (state, inner.generation, owned_media_tracks)
+            (
+                state,
+                inner.generation,
+                owned_media_tracks,
+                inner.input_mode,
+            )
         };
         if let Some(element) = web_sys::window()
             .and_then(|window| window.document())
@@ -322,26 +343,44 @@ impl BrowserAudioController {
             let _ =
                 element.set_attribute("data-owned-media-tracks", &owned_media_tracks.to_string());
         }
-        if let Ok(button) = enable_button() {
-            button.set_hidden(matches!(
-                state,
-                BackendDriverState::RequestingPermission
-                    | BackendDriverState::Starting
-                    | BackendDriverState::Running
-                    | BackendDriverState::Suspended
-            ));
-            button.set_text_content(Some(
-                if matches!(
-                    state,
-                    BackendDriverState::Denied
-                        | BackendDriverState::Failed
-                        | BackendDriverState::Stopped
-                ) {
-                    "Retry microphone audio"
-                } else {
-                    "Enable microphone audio"
-                },
-            ));
+        let active = matches!(
+            state,
+            BackendDriverState::RequestingPermission
+                | BackendDriverState::Starting
+                | BackendDriverState::Running
+                | BackendDriverState::Suspended
+        );
+        for (button, mode, enable_text, retry_text) in [
+            (
+                microphone_enable_button(),
+                AudioInputMode::Microphone,
+                "Enable microphone audio",
+                "Retry microphone audio",
+            ),
+            (
+                output_enable_button(),
+                AudioInputMode::OutputOnly,
+                "Enable output-only audio",
+                "Retry output-only audio",
+            ),
+        ] {
+            if let Ok(button) = button {
+                button.set_hidden(active);
+                button.set_text_content(Some(
+                    if input_mode == Some(mode)
+                        && matches!(
+                            state,
+                            BackendDriverState::Denied
+                                | BackendDriverState::Failed
+                                | BackendDriverState::Stopped
+                        )
+                    {
+                        retry_text
+                    } else {
+                        enable_text
+                    },
+                ));
+            }
         }
     }
 
@@ -352,8 +391,11 @@ impl BrowserAudioController {
 
 impl Drop for BrowserAudioController {
     fn drop(&mut self) {
-        let _ = &self.enable_handler;
-        if let Ok(button) = enable_button() {
+        let _ = (&self.microphone_enable_handler, &self.output_enable_handler);
+        if let Ok(button) = microphone_enable_button() {
+            button.set_onclick(None);
+        }
+        if let Ok(button) = output_enable_button() {
             button.set_onclick(None);
         }
         if let Some(window) = web_sys::window() {
@@ -373,16 +415,24 @@ impl Drop for BrowserAudioController {
     }
 }
 
-fn enable_button() -> Result<HtmlButtonElement> {
+fn audio_button(id: &str) -> Result<HtmlButtonElement> {
     web_sys::window()
         .and_then(|window| window.document())
-        .and_then(|document| document.get_element_by_id("enable_audio"))
-        .ok_or_else(|| anyhow!("missing #enable_audio button"))?
+        .and_then(|document| document.get_element_by_id(id))
+        .ok_or_else(|| anyhow!("missing #{id} button"))?
         .dyn_into::<HtmlButtonElement>()
-        .map_err(|_| anyhow!("#enable_audio is not a button"))
+        .map_err(|_| anyhow!("#{id} is not a button"))
 }
 
-fn begin_enable(inner: Rc<RefCell<BrowserControllerInner>>) {
+fn microphone_enable_button() -> Result<HtmlButtonElement> {
+    audio_button("enable_audio")
+}
+
+fn output_enable_button() -> Result<HtmlButtonElement> {
+    audio_button("enable_output_audio")
+}
+
+fn begin_enable(inner: Rc<RefCell<BrowserControllerInner>>, input_mode: AudioInputMode) {
     if matches!(
         inner.borrow().transport.borrow().driver_state,
         BackendDriverState::RequestingPermission
@@ -400,16 +450,7 @@ fn begin_enable(inner: Rc<RefCell<BrowserControllerInner>>) {
             .fail("browser window is unavailable".to_owned());
         return;
     };
-    if !supports_hosted_audio(&window) {
-        let transport = inner.borrow().transport.clone();
-        transport.borrow_mut().driver_state = BackendDriverState::Unsupported;
-        transport.borrow_mut().error = Some(
-            "Microphone audio requires HTTPS or localhost; use ?offline=1 for explicit dummy mode"
-                .to_owned(),
-        );
-        return;
-    }
-
+    inner.borrow_mut().input_mode = Some(input_mode);
     let context = match AudioContext::new() {
         Ok(context) => context,
         Err(error) => {
@@ -424,6 +465,7 @@ fn begin_enable(inner: Rc<RefCell<BrowserControllerInner>>) {
     let resume = match context.resume() {
         Ok(resume) => resume,
         Err(error) => {
+            let _ = context.close();
             inner
                 .borrow()
                 .transport
@@ -432,21 +474,26 @@ fn begin_enable(inner: Rc<RefCell<BrowserControllerInner>>) {
             return;
         }
     };
-    let constraints = microphone_constraints();
-    let media = match window
-        .navigator()
-        .media_devices()
-        .and_then(|devices| devices.get_user_media_with_constraints(&constraints))
-    {
-        Ok(media) => media,
-        Err(error) => {
-            inner
-                .borrow()
-                .transport
-                .borrow_mut()
-                .fail(format!("getUserMedia is unavailable: {error:?}"));
-            return;
+    let media = if input_mode == AudioInputMode::Microphone {
+        let constraints = microphone_constraints();
+        match window
+            .navigator()
+            .media_devices()
+            .and_then(|devices| devices.get_user_media_with_constraints(&constraints))
+        {
+            Ok(media) => Some(media),
+            Err(error) => {
+                let _ = context.close();
+                inner
+                    .borrow()
+                    .transport
+                    .borrow_mut()
+                    .fail(format!("getUserMedia is unavailable: {error:?}"));
+                return;
+            }
         }
+    } else {
+        None
     };
 
     let generation = {
@@ -455,8 +502,13 @@ fn begin_enable(inner: Rc<RefCell<BrowserControllerInner>>) {
         inner.generation = inner.generation.saturating_add(1);
         inner.startup_started = Some(Instant::now());
         inner.context = Some(context.clone());
+        inner.input_mode = Some(input_mode);
         let mut transport = inner.transport.borrow_mut();
-        transport.driver_state = BackendDriverState::RequestingPermission;
+        transport.driver_state = if input_mode == AudioInputMode::Microphone {
+            BackendDriverState::RequestingPermission
+        } else {
+            BackendDriverState::Starting
+        };
         transport.error = None;
         inner.generation
     };
@@ -484,12 +536,20 @@ async fn start_audio_graph(
     generation: u64,
     context: AudioContext,
     resume: js_sys::Promise,
-    media: js_sys::Promise,
+    media: Option<js_sys::Promise>,
 ) -> std::result::Result<(), JsValue> {
-    let stream = JsFuture::from(media).await?.dyn_into::<MediaStream>()?;
-    publish_track_settings(&stream);
+    let stream = match media {
+        Some(media) => {
+            let stream = JsFuture::from(media).await?.dyn_into::<MediaStream>()?;
+            publish_track_settings(&stream);
+            Some(stream)
+        }
+        None => None,
+    };
     if inner.borrow().generation != generation {
-        stop_stream(&stream);
+        if let Some(stream) = &stream {
+            stop_stream(stream);
+        }
         return Ok(());
     }
     {
@@ -498,22 +558,7 @@ async fn start_audio_graph(
         inner.transport.borrow_mut().driver_state = BackendDriverState::Starting;
     }
 
-    JsFuture::from(context.audio_worklet()?.add_module(WORKLET_SCRIPT_URL)?).await?;
-    let response = JsFuture::from(
-        web_sys::window()
-            .ok_or_else(|| JsValue::from_str("browser window disappeared"))?
-            .fetch_with_str(WORKLET_WASM_URL),
-    )
-    .await?
-    .dyn_into::<Response>()?;
-    if !response.ok() {
-        stop_stream(&stream);
-        return Err(JsValue::from_str(
-            "could not fetch the AudioWorklet Wasm module",
-        ));
-    }
-    let bytes = JsFuture::from(response.array_buffer()?).await?;
-    let module = WebAssembly::Module::new(&bytes)?;
+    let module = load_worklet_module(&context).await?;
 
     let processor_options = Object::new();
     Reflect::set(&processor_options, &"wasmModule".into(), module.as_ref())?;
@@ -523,15 +568,20 @@ async fn start_audio_graph(
         &JsValue::from_f64(MAX_QUANTUM as f64),
     )?;
     let options = AudioWorkletNodeOptions::new();
-    options.set_number_of_inputs(1);
+    options.set_number_of_inputs(if stream.is_some() { 1 } else { 0 });
     options.set_number_of_outputs(1);
     let output_channels = Array::new();
     output_channels.push(&JsValue::from_f64(MAX_AUDIO_CHANNELS as f64));
     options.set_output_channel_count(&output_channels.into());
     options.set_processor_options(Some(&processor_options));
     let node = AudioWorkletNode::new_with_options(&context, WORKLET_NAME, &options)?;
-    let source = context.create_media_stream_source(&stream)?;
-    source.connect_with_audio_node(&node)?;
+    let source = if let Some(stream) = &stream {
+        let source = context.create_media_stream_source(stream)?;
+        source.connect_with_audio_node(&node)?;
+        Some(source)
+    } else {
+        None
+    };
     node.connect_with_audio_node(&context.destination())?;
 
     let port = node.port()?;
@@ -585,7 +635,12 @@ async fn start_audio_graph(
     context.set_onstatechange(Some(context_state_handler.as_ref().unchecked_ref()));
 
     let mut track_ended_handlers = Vec::new();
-    for value in stream.get_tracks().iter() {
+    for value in stream
+        .as_ref()
+        .map(MediaStream::get_tracks)
+        .unwrap_or_default()
+        .iter()
+    {
         let track = value.dyn_into::<MediaStreamTrack>()?;
         let weak = Rc::downgrade(&inner);
         let handler = Closure::wrap(Box::new(move |_event: WebEvent| {
@@ -604,13 +659,15 @@ async fn start_audio_graph(
     }
 
     if inner.borrow().generation != generation {
-        stop_stream(&stream);
+        if let Some(stream) = &stream {
+            stop_stream(stream);
+        }
         return Ok(());
     }
     {
         let mut inner = inner.borrow_mut();
-        inner.stream = Some(stream);
-        inner.source = Some(source);
+        inner.stream = stream;
+        inner.source = source;
         inner.node = Some(node);
         inner.message_handler = Some(message_handler);
         inner.processor_error_handler = Some(processor_error_handler);
@@ -645,6 +702,38 @@ async fn start_audio_graph(
     Ok(())
 }
 
+async fn load_worklet_module(
+    context: &AudioContext,
+) -> std::result::Result<WebAssembly::Module, JsValue> {
+    let window =
+        web_sys::window().ok_or_else(|| JsValue::from_str("browser window disappeared"))?;
+    let embedded = Reflect::get(window.as_ref(), &EMBEDDED_WORKLET_ASSETS.into())?;
+    if !embedded.is_null() && !embedded.is_undefined() {
+        let module_url = Reflect::get(&embedded, &"moduleUrl".into())?
+            .as_string()
+            .ok_or_else(|| JsValue::from_str("embedded AudioWorklet module URL is invalid"))?;
+        let wasm_bytes = Reflect::get(&embedded, &"wasmBytes".into())?;
+        JsFuture::from(context.audio_worklet()?.add_module(&module_url)?).await?;
+        return JsFuture::from(WebAssembly::compile(&wasm_bytes))
+            .await?
+            .dyn_into::<WebAssembly::Module>();
+    }
+
+    JsFuture::from(context.audio_worklet()?.add_module(WORKLET_SCRIPT_URL)?).await?;
+    let response = JsFuture::from(window.fetch_with_str(WORKLET_WASM_URL))
+        .await?
+        .dyn_into::<Response>()?;
+    if !response.ok() {
+        return Err(JsValue::from_str(
+            "could not fetch the AudioWorklet Wasm module",
+        ));
+    }
+    let bytes = JsFuture::from(response.array_buffer()?).await?;
+    JsFuture::from(WebAssembly::compile(&bytes))
+        .await?
+        .dyn_into::<WebAssembly::Module>()
+}
+
 fn microphone_constraints() -> MediaStreamConstraints {
     let raw = Object::new();
     let _ = Reflect::set(&raw, &"echoCancellation".into(), &JsValue::FALSE);
@@ -668,14 +757,6 @@ fn js_error_message(error: &JsValue) -> String {
         .and_then(|message| message.as_string())
         .filter(|message| !message.is_empty())
         .unwrap_or_else(|| format!("browser audio startup failed: {error:?}"))
-}
-
-fn supports_hosted_audio(window: &web_sys::Window) -> bool {
-    window.is_secure_context()
-        && window
-            .location()
-            .protocol()
-            .is_ok_and(|protocol| protocol != "file:")
 }
 
 fn publish_track_settings(stream: &MediaStream) {

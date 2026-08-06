@@ -14,8 +14,18 @@ const debugPort = 9222;
 const chrome = process.env.CHROME_BIN || 'google-chrome';
 const browserSize = process.env.BROWSER_SIZE || '900,600';
 const selfContained = process.env.SELF_CONTAINED === '1';
-const secureLimit = process.env.SECURE_LIMIT === '1';
+const outputOnly = process.env.OUTPUT_ONLY === '1';
+const directFileMicrophone = process.env.DIRECT_FILE_MIC === '1';
 const denyFirst = process.env.DENY_FIRST === '1';
+if (outputOnly && directFileMicrophone) {
+  throw new Error('OUTPUT_ONLY and DIRECT_FILE_MIC are mutually exclusive');
+}
+if (outputOnly && denyFirst) {
+  throw new Error('output-only mode does not support DENY_FIRST');
+}
+if (directFileMicrophone && !selfContained) {
+  throw new Error('DIRECT_FILE_MIC requires SELF_CONTAINED=1');
+}
 const lifecycle = process.env.LIFECYCLE === '1';
 const stress = process.env.STRESS === '1';
 const saturate = process.env.SATURATE === '1';
@@ -145,9 +155,9 @@ try {
     throw new Error(`${description}: ${JSON.stringify(state)}`);
   }
 
-  async function clickEnable() {
+  async function clickEnable(id = 'enable_audio') {
     const bounds = await evaluate(`(() => {
-      const rect = document.getElementById('enable_audio').getBoundingClientRect();
+      const rect = document.getElementById('${id}').getBoundingClientRect();
       return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
     })()`);
     await call('Input.dispatchMouseEvent', { type: 'mousePressed', x: bounds.x, y: bounds.y, button: 'left', clickCount: 1 });
@@ -164,9 +174,19 @@ try {
       origin,
     });
   }
-  const entryUrl = selfContained
-    ? `${pathToFileURL(selfContainedPath).href}${secureLimit ? '' : '?offline=1'}`
-    : `${origin}/?self-test=1${stress ? '&stress=1' : ''}`;
+  let entryUrl;
+  if (selfContained) {
+    const query = directFileMicrophone
+      ? '?self-test=1'
+      : outputOnly
+        ? ''
+        : '?offline=1';
+    entryUrl = `${pathToFileURL(selfContainedPath).href}${query}`;
+  } else {
+    entryUrl = outputOnly
+      ? `${origin}/`
+      : `${origin}/?self-test=1${stress ? '&stress=1' : ''}`;
+  }
   await call('Page.navigate', { url: entryUrl });
 
   const statusExpression = `({
@@ -192,32 +212,37 @@ try {
     waveformPeak: Number(document.getElementById('runtime_status')?.getAttribute('data-waveform-peak')),
     waveformLoading: document.getElementById('runtime_status')?.getAttribute('data-waveform-loading'),
     enableHidden: document.getElementById('enable_audio')?.hidden,
+    outputEnableHidden: document.getElementById('enable_output_audio')?.hidden,
     canvasWidth: document.getElementById('shoop_canvas')?.width,
     canvasHeight: document.getElementById('shoop_canvas')?.height,
   })`;
 
-  if (selfContained) {
-    if (secureLimit) {
-      await waitFor(
-        candidate => candidate.driver === 'Unsupported' && candidate.revision > 0,
-        'direct-file secure-context limitation was not visible',
-      );
-      await clickEnable();
-      const state = await waitFor(
-        candidate => candidate.status.includes('requires HTTPS or localhost'),
-        'direct-file microphone limitation was not precise',
-      );
-      console.log(`self-contained secure-context limitation passed at ${browserSize}: ${state.status}`);
-    } else {
-      const state = await waitFor(
-        candidate => candidate.driver === 'Dummy' && candidate.revision > 0,
-        'offline dummy mode did not start',
-      );
-      if (!state.status.includes('Explicit offline dummy')) {
-        throw new Error(`offline artifact was not explicit: ${JSON.stringify(state)}`);
-      }
-      console.log(`explicit self-contained offline dummy passed at ${browserSize}`);
+  if (selfContained && !outputOnly && !directFileMicrophone) {
+    const state = await waitFor(
+      candidate => candidate.driver === 'Dummy' && candidate.revision > 0,
+      'offline dummy mode did not start',
+    );
+    if (!state.status.includes('Explicit offline dummy')) {
+      throw new Error(`offline artifact was not explicit: ${JSON.stringify(state)}`);
     }
+    console.log(`explicit self-contained offline dummy passed at ${browserSize}`);
+  } else if (outputOnly) {
+    await waitFor(
+      candidate => candidate.driver === 'AwaitingGesture' && candidate.revision > 0,
+      'output-only enable action was not presented',
+    );
+    await clickEnable('enable_output_audio');
+    const state = await waitFor(
+      candidate => candidate.driver === 'Running' && candidate.callbacks > 0,
+      'output-only browser audio did not start',
+    );
+    if (!(state.frames >= state.callbacks * 128 && state.quantum === 128)) {
+      throw new Error(`output-only callback evidence is invalid: ${JSON.stringify(state)}`);
+    }
+    if (state.ownedMediaTracks !== 0 || !state.enableHidden || !state.outputEnableHidden) {
+      throw new Error(`output-only mode acquired input or left enable actions visible: ${JSON.stringify(state)}`);
+    }
+    console.log(`${selfContained ? 'direct-file' : 'hosted'} output-only audio passed at ${browserSize}`);
   } else {
     await waitFor(candidate => candidate.selfTest === 'awaiting-audio', 'enable action was not presented');
     await clickEnable();
@@ -318,7 +343,7 @@ try {
         throw new Error(`shutdown did not stop callbacks, release media, and expose retry: ${JSON.stringify(state)}`);
       }
     }
-    console.log(`browser Web Audio self-test passed at ${browserSize}, callback ${state.callbacks}`);
+    console.log(`${selfContained ? 'direct-file' : 'hosted'} browser Web Audio self-test passed at ${browserSize}, callback ${state.callbacks}`);
   }
   if (failures.length > 0) {
     throw new Error(`browser reported runtime errors: ${JSON.stringify(failures)}`);
