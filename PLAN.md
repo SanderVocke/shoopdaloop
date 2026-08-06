@@ -95,6 +95,8 @@ None of these baseline facts satisfies the subprocess-specific requirements belo
 
 ## Requirement evidence audit
 
+`CARLA_SUBPROCESS_EVIDENCE.md` is the command-, artifact-, test-, gate-, and deliverable-level audit. The concise mapping below is kept in the plan for at-a-glance status.
+
 | Requirement | Concrete evidence |
 |---|---|
 | REQ-01 | `settings.1.json`, startup load in `shoopdaloop`, `SettingsWindow.qml`, and `shoop_settings` save/reload tests |
