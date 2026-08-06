@@ -14,8 +14,11 @@ fn record_ci_benchmark(kind: &str, header: &str, row: &str) {
         return;
     }
     use std::io::Write;
-    let directory = std::path::Path::new("carla-subprocess-benchmarks");
-    std::fs::create_dir_all(directory).expect("create benchmark artifact directory");
+    let workspace = std::env::var_os("GITHUB_WORKSPACE")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::env::current_dir().expect("locate benchmark working directory"));
+    let directory = workspace.join("carla-subprocess-benchmarks");
+    std::fs::create_dir_all(&directory).expect("create benchmark artifact directory");
     let path = directory.join(format!(
         "{kind}-{}-{}.csv",
         std::env::consts::OS,
