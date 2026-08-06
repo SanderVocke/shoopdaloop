@@ -152,6 +152,7 @@ impl Transport {
 
 struct BrowserControllerInner {
     generation: u64,
+    startup_started: Option<Instant>,
     transport: Rc<RefCell<Transport>>,
     context: Option<AudioContext>,
     stream: Option<MediaStream>,
@@ -182,6 +183,7 @@ impl BrowserAudioController {
         }
         let inner = Rc::new(RefCell::new(BrowserControllerInner {
             generation: 0,
+            startup_started: None,
             transport,
             context: None,
             stream: None,
@@ -286,7 +288,20 @@ impl BrowserAudioController {
     pub fn update_presentation(&self) {
         let (state, generation, owned_media_tracks) = {
             let mut inner = self.inner.borrow_mut();
-            let state = inner.transport.borrow().driver_state;
+            let mut state = inner.transport.borrow().driver_state;
+            if matches!(
+                state,
+                BackendDriverState::Starting | BackendDriverState::Suspended
+            ) && inner
+                .startup_started
+                .is_some_and(|started| started.elapsed() >= Duration::from_secs(15))
+            {
+                inner
+                    .transport
+                    .borrow_mut()
+                    .fail("browser audio startup timed out".to_owned());
+                state = BackendDriverState::Failed;
+            }
             if state == BackendDriverState::Failed && inner.context.is_some() {
                 shutdown_graph(&mut inner);
             }
@@ -436,6 +451,7 @@ fn begin_enable(inner: Rc<RefCell<BrowserControllerInner>>) {
         let mut inner = inner.borrow_mut();
         shutdown_inner(&mut inner);
         inner.generation = inner.generation.saturating_add(1);
+        inner.startup_started = Some(Instant::now());
         inner.context = Some(context.clone());
         let mut transport = inner.transport.borrow_mut();
         transport.driver_state = BackendDriverState::RequestingPermission;
@@ -474,7 +490,11 @@ async fn start_audio_graph(
         stop_stream(&stream);
         return Ok(());
     }
-    inner.borrow().transport.borrow_mut().driver_state = BackendDriverState::Starting;
+    {
+        let mut inner = inner.borrow_mut();
+        inner.startup_started = Some(Instant::now());
+        inner.transport.borrow_mut().driver_state = BackendDriverState::Starting;
+    }
 
     JsFuture::from(context.audio_worklet()?.add_module(WORKLET_SCRIPT_URL)?).await?;
     let response = JsFuture::from(
@@ -544,7 +564,7 @@ async fn start_audio_graph(
     let context_for_state = context.clone();
     let context_state_handler = Closure::wrap(Box::new(move |_event: WebEvent| {
         if let Some(inner) = weak.upgrade() {
-            let inner = inner.borrow();
+            let mut inner = inner.borrow_mut();
             if inner.generation != generation {
                 return;
             }
@@ -554,6 +574,9 @@ async fn start_audio_graph(
                 AudioContextState::Closed => BackendDriverState::Stopped,
                 _ => BackendDriverState::Failed,
             };
+            if state == BackendDriverState::Running {
+                inner.startup_started = None;
+            }
             inner.transport.borrow_mut().driver_state = state;
         }
     }) as Box<dyn FnMut(_)>);
@@ -578,7 +601,6 @@ async fn start_audio_graph(
         track_ended_handlers.push(handler);
     }
 
-    JsFuture::from(resume).await?;
     if inner.borrow().generation != generation {
         stop_stream(&stream);
         return Ok(());
@@ -599,13 +621,25 @@ async fn start_audio_graph(
             .map_err(|error| {
                 JsValue::from_str(&format!("could not initialize worklet protocol: {error}"))
             })?;
-        inner.transport.borrow_mut().driver_state = if context.state() == AudioContextState::Running
-        {
+        let state = if context.state() == AudioContextState::Running {
+            inner.startup_started = None;
             BackendDriverState::Running
         } else {
             BackendDriverState::Suspended
         };
+        inner.transport.borrow_mut().driver_state = state;
     }
+    let weak = Rc::downgrade(&inner);
+    wasm_bindgen_futures::spawn_local(async move {
+        if let Err(error) = JsFuture::from(resume).await {
+            if let Some(inner) = weak.upgrade() {
+                let inner = inner.borrow();
+                if inner.generation == generation {
+                    inner.transport.borrow_mut().fail(js_error_message(&error));
+                }
+            }
+        }
+    });
     Ok(())
 }
 
@@ -679,6 +713,7 @@ fn stop_stream(stream: &MediaStream) {
 }
 
 fn shutdown_graph(inner: &mut BrowserControllerInner) {
+    inner.startup_started = None;
     if let Some(stream) = inner.stream.take() {
         for value in stream.get_tracks().iter() {
             if let Ok(track) = value.dyn_into::<MediaStreamTrack>() {

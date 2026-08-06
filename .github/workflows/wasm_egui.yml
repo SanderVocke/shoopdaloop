@@ -81,6 +81,15 @@ jobs:
           SATURATE=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
           STRESS=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
 
+      - name: Start virtual Firefox audio output
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes pulseaudio
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=shoop_ci
+          pactl set-default-sink shoop_ci
+          pactl info
+
       - name: Install Firefox browser test tools
         uses: browser-actions/setup-firefox@v1
 
