@@ -5,6 +5,7 @@ use shoop_engine::carla_processor::{
 use shoop_engine::carla_subprocess::{
     CarlaWorkerTestMode, SubprocessCarlaProcessor, SupervisedCarlaProcessor,
 };
+use shoop_engine::lv2_carla::CarlaLv2Host;
 use shoop_engine::FXChainType;
 use shoop_plugin_protocol::{ChainId, ProcessGeneration, WorkerExitKind};
 
@@ -199,7 +200,7 @@ fn fake_worker_deadline_wait_is_bounded_for_all_supported_buffer_sizes() {
 fn fake_direct_and_subprocess_transport_benchmark_matrix() {
     const ITERATIONS: usize = 40;
     let executable = env!("CARGO_BIN_EXE_shoopdaloop");
-    println!("mode,channels,frames,p50_us,p99_us,deadline_misses");
+    println!("mode,channels,frames,p50_us,p95_us,worst_us,deadline_misses");
     let mut chain_id = 140_u64;
     for (chain_type, channels) in [
         (FXChainType::CarlaRack, 2_usize),
@@ -244,15 +245,91 @@ fn fake_direct_and_subprocess_transport_benchmark_matrix() {
                 samples.sort_by(f64::total_cmp);
                 let misses = control.deadline_misses() - misses_before;
                 let p50 = samples[samples.len() / 2];
-                let p99 = samples[samples.len() - 1];
-                println!("{mode},{channels},{frames},{p50:.3},{p99:.3},{misses}");
+                let p95 = samples[samples.len() * 95 / 100];
+                let worst = samples[samples.len() - 1];
+                println!("{mode},{channels},{frames},{p50:.3},{p95:.3},{worst:.3},{misses}");
                 assert!(
                     misses <= (ITERATIONS / 4) as u64,
                     "{mode} {channels}ch/{frames} missed {misses}/{ITERATIONS} deadlines"
                 );
                 assert!(
-                    p99 <= period.as_secs_f64() * 5_000_000.0 + 20_000.0,
-                    "{mode} {channels}ch/{frames} callback p99 was {p99:.3}us"
+                    worst <= period.as_secs_f64() * 5_000_000.0 + 20_000.0,
+                    "{mode} {channels}ch/{frames} worst callback was {worst:.3}us"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn real_carla_direct_and_subprocess_transport_benchmark_matrix_when_available() {
+    const ITERATIONS: usize = 40;
+    let executable = env!("CARGO_BIN_EXE_shoopdaloop");
+    match CarlaLv2Host::instantiate(FXChainType::CarlaRack, 48_000, 32) {
+        Ok(probe) => drop(probe),
+        Err(error) => {
+            eprintln!("skipping real Carla benchmark matrix: {error}");
+            return;
+        }
+    }
+    println!("mode,channels,frames,p50_us,p95_us,worst_us,deadline_misses");
+    let mut chain_id = 180_u64;
+    for (chain_type, channels) in [
+        (FXChainType::CarlaRack, 2_usize),
+        (FXChainType::CarlaPatchbay16x, 16_usize),
+    ] {
+        for frames in [32_usize, 64, 128, 256, 512, 1024] {
+            for mode in ["real_direct", "real_subprocess"] {
+                let host: Box<dyn CarlaProcessor> = if mode == "real_direct" {
+                    Box::new(
+                        CarlaLv2Host::instantiate(chain_type, 48_000, frames as u32)
+                            .expect("instantiate direct Carla benchmark host"),
+                    )
+                } else {
+                    chain_id += 1;
+                    let supervisor = SupervisedCarlaProcessor::launch(
+                        executable,
+                        chain_type,
+                        48_000,
+                        frames as u32,
+                        ChainId(chain_id),
+                    )
+                    .unwrap();
+                    assert_ne!(
+                        supervisor.lifecycle(),
+                        CarlaProcessorLifecycle::Unavailable,
+                        "real subprocess benchmark unavailable: {:?}",
+                        supervisor.crash_summary()
+                    );
+                    Box::new(supervisor)
+                };
+                let (control, mut endpoint) =
+                    spawn_processor_bridge(host, 48_000, frames as u32).unwrap();
+                control.set_active(true);
+                for _ in 0..5 {
+                    endpoint.process(frames).unwrap();
+                }
+                let misses_before = control.deadline_misses();
+                let period = std::time::Duration::from_secs_f64(frames as f64 / 48_000.0);
+                let mut samples = Vec::with_capacity(ITERATIONS);
+                for _ in 0..ITERATIONS {
+                    let started = std::time::Instant::now();
+                    endpoint.process(frames).unwrap();
+                    let elapsed = started.elapsed();
+                    samples.push(elapsed.as_secs_f64() * 1_000_000.0);
+                    if let Some(idle) = period.checked_sub(elapsed) {
+                        std::thread::sleep(idle);
+                    }
+                }
+                samples.sort_by(f64::total_cmp);
+                let misses = control.deadline_misses() - misses_before;
+                let p50 = samples[samples.len() / 2];
+                let p95 = samples[samples.len() * 95 / 100];
+                let worst = samples[samples.len() - 1];
+                println!("{mode},{channels},{frames},{p50:.3},{p95:.3},{worst:.3},{misses}");
+                assert!(
+                    misses <= (ITERATIONS / 4) as u64,
+                    "{mode} {channels}ch/{frames} missed {misses}/{ITERATIONS} deadlines"
                 );
             }
         }
