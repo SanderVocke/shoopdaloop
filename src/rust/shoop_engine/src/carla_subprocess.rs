@@ -811,6 +811,10 @@ impl SubprocessCarlaProcessor {
                 Err(error) => return Err(error.into()),
             }
         };
+        // Accepted sockets can inherit the listener's nonblocking mode on
+        // Windows. All framed control exchanges below use bounded blocking
+        // timeouts, so normalize the accepted stream explicitly.
+        stream.set_nonblocking(false)?;
         stream.set_nodelay(true)?;
         stream.set_read_timeout(Some(CONTROL_TIMEOUT))?;
         stream.set_write_timeout(Some(CONTROL_TIMEOUT))?;
