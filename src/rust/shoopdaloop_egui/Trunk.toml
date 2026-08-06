@@ -1,0 +1,9 @@
+[build]
+target = "index.html"
+dist = "dist"
+public_url = "./"
+
+[[hooks]]
+stage = "pre_build"
+command = "python3"
+command_arguments = ["build_worklet.py"]

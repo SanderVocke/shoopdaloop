@@ -31,6 +31,8 @@ pub enum ChannelError {
     ReplaceOutOfBounds { position: usize, length: usize },
     #[error("playing {n_samples} samples exceeds the {available} available in the output buffer")]
     PlaybackOutOfBounds { n_samples: usize, available: usize },
+    #[error("recording storage is exhausted at its prepared capacity of {capacity} samples")]
+    StorageExhausted { capacity: usize },
 }
 
 /// A copy queued during `process`, applied in `finalize`.
@@ -155,6 +157,8 @@ pub struct AudioChannel {
     state: Arc<AudioChannelStateMirror>,
     content_snapshots: Option<AudioProcessSnapshotWriter>,
     publish_snapshot_updates: bool,
+    storage_capacity: Option<usize>,
+    storage_exhaustions: u32,
 }
 
 impl AudioChannel {
@@ -172,6 +176,14 @@ impl AudioChannel {
         state: Arc<AudioChannelStateMirror>,
     ) -> Self {
         Self::with_chunk_size_state_and_snapshots(chunk_size, mode, state, None)
+    }
+
+    pub fn with_bounded_capacity(chunk_size: usize, capacity: usize, mode: ChannelMode) -> Self {
+        let mut channel = Self::with_chunk_size(chunk_size, mode);
+        channel.buffers = ChunkedSamples::with_bounded_capacity(chunk_size, capacity);
+        channel.prerecord_buffers = ChunkedSamples::with_bounded_capacity(chunk_size, capacity);
+        channel.storage_capacity = Some(capacity.max(1));
+        channel
     }
 
     pub fn with_chunk_size_state_and_snapshots(
@@ -199,6 +211,8 @@ impl AudioChannel {
             state,
             content_snapshots,
             publish_snapshot_updates: true,
+            storage_capacity: None,
+            storage_exhaustions: 0,
         };
         channel.publish_state();
         channel
@@ -296,6 +310,13 @@ impl AudioChannel {
     }
     pub fn data_seq_nr(&self) -> u32 {
         self.data_seq_nr
+    }
+    pub fn storage_exhaustions(&self) -> u32 {
+        self.storage_exhaustions
+    }
+    pub fn storage_remaining(&self) -> Option<usize> {
+        self.storage_capacity
+            .map(|capacity| capacity.saturating_sub(self.data_length))
     }
     /// `None` when nothing was played back last cycle.
     pub fn played_back_sample(&self) -> Option<i32> {
@@ -608,6 +629,17 @@ impl AudioChannel {
             return Err(ChannelError::RecordOutOfBounds {
                 n_samples,
                 available: buf.remaining,
+            });
+        }
+
+        let requested_end = record_from.saturating_add(n_samples);
+        if self
+            .storage_capacity
+            .is_some_and(|capacity| requested_end > capacity)
+        {
+            self.storage_exhaustions = self.storage_exhaustions.saturating_add(1);
+            return Err(ChannelError::StorageExhausted {
+                capacity: self.storage_capacity.unwrap_or(0),
             });
         }
 
@@ -997,6 +1029,17 @@ mod tests {
         let_assert!(Err(ChannelError::ReplaceOutOfBounds { position, length }) = r);
         check!(position == 2);
         check!(length == 2);
+    }
+
+    #[test]
+    fn bounded_recording_exhaustion_is_visible_and_does_not_grow_storage() {
+        let mut channel = AudioChannel::with_bounded_capacity(4, 8, C::Direct);
+        channel.set_recording_buffer_size(9);
+        channel.set_playback_buffer_size(9);
+        let result = channel.process(L::Recording, L::Unknown, None, None, 9, 0, 0);
+        assert_eq!(result, Err(ChannelError::StorageExhausted { capacity: 8 }));
+        assert_eq!(channel.length(), 0);
+        assert_eq!(channel.storage_exhaustions(), 1);
     }
 
     #[test]

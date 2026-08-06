@@ -21,6 +21,7 @@ Item {
     property int backend_update_interval_ms : 30
 
     property alias driver_setting_overrides : session_backend.driver_setting_overrides
+    property alias application_controls: app_controls
 
     ExecuteNextCycle {
         id: auto_session_loader

@@ -24,10 +24,15 @@ base64 = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 libloading = { workspace = true, optional = true }
 assert_no_alloc = { workspace = true }
-shoop_tracing = { workspace = true }
 tracing = { workspace = true }
 enum-iterator = { workspace = true }
 num_enum = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+shoop_tracing = { workspace = true, features = ["tracy"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+shoop_tracing = { workspace = true, default-features = false }
 
 [lints]
 workspace = true

@@ -7,6 +7,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
+#[cfg(feature = "tracy")]
 #[doc(hidden)]
 pub use tracy_client;
 
@@ -46,22 +47,42 @@ pub fn is_engine_detail_enabled() -> bool {
 
 /// A direct Tracy span whose end operation receives the same narrow allocation
 /// exception as its begin operation.
+#[cfg(feature = "tracy")]
 #[must_use]
 pub struct RealtimeSpan {
     inner: Option<tracy_client::Span>,
 }
 
+#[cfg(not(feature = "tracy"))]
+#[must_use]
+pub struct RealtimeSpan;
+
 impl RealtimeSpan {
     fn disabled() -> Self {
-        Self { inner: None }
+        #[cfg(feature = "tracy")]
+        {
+            Self { inner: None }
+        }
+        #[cfg(not(feature = "tracy"))]
+        {
+            Self
+        }
     }
 
     /// Whether this wrapper entered the direct Tracy API.
     pub fn entered_tracy(&self) -> bool {
-        self.inner.is_some()
+        #[cfg(feature = "tracy")]
+        {
+            self.inner.is_some()
+        }
+        #[cfg(not(feature = "tracy"))]
+        {
+            false
+        }
     }
 }
 
+#[cfg(feature = "tracy")]
 impl Drop for RealtimeSpan {
     fn drop(&mut self) {
         let Some(span) = self.inner.take() else {
@@ -71,10 +92,16 @@ impl Drop for RealtimeSpan {
     }
 }
 
+#[doc(hidden)]
+pub fn disabled_realtime_span() -> RealtimeSpan {
+    RealtimeSpan::disabled()
+}
+
 /// Start a direct Tracy span if its gate is active.
 ///
 /// `location` is lazy so even the source-location cache is untouched on the
 /// disabled path. The returned span closes through the same scoped exception.
+#[cfg(feature = "tracy")]
 #[doc(hidden)]
 pub fn begin_realtime_span<F>(detailed: bool, location: F, value: Option<u64>) -> RealtimeSpan
 where
@@ -102,6 +129,7 @@ where
 }
 
 /// Initialize a static source location before driver activation when practical.
+#[cfg(feature = "tracy")]
 pub fn prewarm_realtime_location<F>(location: F)
 where
     F: FnOnce() -> &'static tracy_client::SpanLocation,
@@ -116,6 +144,7 @@ where
 /// This deliberately runs only for explicit tracing sessions. Tracy may allocate while
 /// naming the thread and creating its producer queue, so the operation is kept inside the
 /// same narrow diagnostic allocation exception as direct realtime instrumentation.
+#[cfg(feature = "tracy")]
 pub fn prewarm_realtime_thread(name: &str) {
     if !is_tracing_requested() {
         return;
@@ -128,7 +157,11 @@ pub fn prewarm_realtime_thread(name: &str) {
     });
 }
 
+#[cfg(not(feature = "tracy"))]
+pub fn prewarm_realtime_thread(_name: &str) {}
+
 /// Emit a named callback frame mark when tracing output is active.
+#[cfg(feature = "tracy")]
 #[doc(hidden)]
 pub fn emit_realtime_frame_mark(name: tracy_client::FrameName) {
     if !is_tracing_enabled() {
@@ -142,6 +175,7 @@ pub fn emit_realtime_frame_mark(name: tracy_client::FrameName) {
 }
 
 /// Create a coarse direct Tracy span guarded by the application tracing flags.
+#[cfg(feature = "tracy")]
 #[macro_export]
 macro_rules! realtime_span {
     ($name:literal) => {
@@ -156,7 +190,21 @@ macro_rules! realtime_span {
     };
 }
 
+#[cfg(not(feature = "tracy"))]
+#[macro_export]
+macro_rules! realtime_span {
+    ($name:literal) => {{
+        let _ = $name;
+        $crate::disabled_realtime_span()
+    }};
+    ($name:literal, value = $value:expr) => {{
+        let _ = ($name, $value);
+        $crate::disabled_realtime_span()
+    }};
+}
+
 /// Create a detailed direct Tracy span guarded by the engine-detail flag.
+#[cfg(feature = "tracy")]
 #[macro_export]
 macro_rules! realtime_span_detail {
     ($name:literal) => {
@@ -171,7 +219,21 @@ macro_rules! realtime_span_detail {
     };
 }
 
+#[cfg(not(feature = "tracy"))]
+#[macro_export]
+macro_rules! realtime_span_detail {
+    ($name:literal) => {{
+        let _ = $name;
+        $crate::disabled_realtime_span()
+    }};
+    ($name:literal, value = $value:expr) => {{
+        let _ = ($name, $value);
+        $crate::disabled_realtime_span()
+    }};
+}
+
 /// Emit a secondary frame mark from a realtime callback.
+#[cfg(feature = "tracy")]
 #[macro_export]
 macro_rules! realtime_frame_mark {
     ($name:literal) => {
@@ -179,12 +241,29 @@ macro_rules! realtime_frame_mark {
     };
 }
 
+#[cfg(not(feature = "tracy"))]
+#[macro_export]
+macro_rules! realtime_frame_mark {
+    ($name:literal) => {{
+        let _ = $name;
+    }};
+}
+
 /// Prewarm the source location used by a realtime span macro invocation.
+#[cfg(feature = "tracy")]
 #[macro_export]
 macro_rules! prewarm_realtime_span {
     ($name:literal) => {
         $crate::prewarm_realtime_location(|| $crate::tracy_client::span_location!($name))
     };
+}
+
+#[cfg(not(feature = "tracy"))]
+#[macro_export]
+macro_rules! prewarm_realtime_span {
+    ($name:literal) => {{
+        let _ = $name;
+    }};
 }
 
 #[cfg(test)]
@@ -227,6 +306,7 @@ mod tests {
         assert!(!span.entered_tracy());
     }
 
+    #[cfg(feature = "tracy")]
     #[test]
     fn prewarm_reuses_the_static_location() {
         fn location() -> &'static tracy_client::SpanLocation {

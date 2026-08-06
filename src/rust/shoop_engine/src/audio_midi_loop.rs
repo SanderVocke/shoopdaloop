@@ -62,6 +62,20 @@ impl AudioMidiLoop {
         self.add_audio_channel_with_state_and_snapshots(chunk_size, mode, state, None)
     }
 
+    pub fn add_audio_channel_with_bounded_capacity(
+        &mut self,
+        chunk_size: usize,
+        capacity: usize,
+        mode: ChannelMode,
+    ) -> usize {
+        self.audio_channels
+            .push(AudioChannel::with_bounded_capacity(
+                chunk_size, capacity, mode,
+            ));
+        self.resync_poi();
+        self.audio_channels.len() - 1
+    }
+
     pub fn add_audio_channel_with_state_and_snapshots(
         &mut self,
         chunk_size: usize,
@@ -346,6 +360,21 @@ impl AudioMidiLoop {
                 }
             }
         });
+        if matches!(
+            err,
+            Some(LoopError::Audio(ChannelError::StorageExhausted { .. }))
+        ) {
+            let retained = self
+                .audio_channels
+                .iter()
+                .map(AudioChannel::length)
+                .min()
+                .unwrap_or(0)
+                .min(u32::MAX as usize) as u32;
+            self.loop_.set_length(retained);
+            self.loop_.set_position(0);
+            self.loop_.set_mode(LoopMode::Stopped);
+        }
         self.resync_poi();
         match err {
             Some(e) => Err(e),
@@ -501,6 +530,26 @@ mod tests {
 
     /// channel is the one case where the loop can outrun a channel's input buffer.
     /// The channel reports it rather than overrunning, and the loop still advances.
+    #[test]
+    fn bounded_audio_exhaustion_stops_recording_without_partial_growth() {
+        let mut loop_ = AudioMidiLoop::default();
+        loop_.add_audio_channel_with_bounded_capacity(4, 4, C::Direct);
+        loop_.set_mode(L::Recording);
+        let channel = loop_.audio_channel_mut(0).unwrap();
+        channel.set_recording_buffer_size(8);
+        channel.set_playback_buffer_size(8);
+        loop_.resync_poi();
+        assert_eq!(
+            loop_.process(8, &[] as &[&[MidiStorageElem]], &mut []),
+            Err(LoopError::Audio(ChannelError::StorageExhausted {
+                capacity: 4
+            }))
+        );
+        assert_eq!(loop_.mode(), L::Stopped);
+        assert_eq!(loop_.length(), 0);
+        assert_eq!(loop_.audio_channel(0).unwrap().length(), 0);
+    }
+
     #[test]
     fn process_reports_channel_errors_without_stopping_the_loop() {
         let mut l = loop_with_channel();
