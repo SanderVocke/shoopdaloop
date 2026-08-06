@@ -1,6 +1,6 @@
 use egui_material_icons::icons::{
-    ICON_BORDER_CLEAR, ICON_EDIT_NOTE, ICON_FIBER_MANUAL_RECORD, ICON_HELP, ICON_PLAY_ARROW,
-    ICON_STAR, ICON_STOP, ICON_TIMER, ICON_VIEW_LIST,
+    ICON_ARROW_DOWNWARD, ICON_BORDER_CLEAR, ICON_EDIT_NOTE, ICON_FIBER_MANUAL_RECORD, ICON_HELP,
+    ICON_PLAY_ARROW, ICON_STAR, ICON_STOP, ICON_TIMER, ICON_VIEW_LIST,
 };
 use egui_material_icons::MaterialIcon;
 
@@ -18,6 +18,24 @@ pub struct LoopWidgetResponse {
 #[derive(Debug, Default)]
 pub struct LoopWidget {
     gain_drag_start: Option<f32>,
+    balance_drag_start: Option<f32>,
+    play_popup_until: f64,
+    record_popup_until: f64,
+    balance_popup_until: f64,
+    #[cfg(test)]
+    test_play_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    test_play_popup_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    test_play_popup_button_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    test_record_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    test_record_popup_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    test_gain_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    test_balance_rect: Option<egui::Rect>,
 }
 
 fn paint_icon(
@@ -74,6 +92,68 @@ fn icon_for_state(
         LoopMode::Stopped => (ICON_STOP, egui::Color32::GRAY, false),
         _ => (ICON_HELP, egui::Color32::GRAY, false),
     }
+}
+
+fn dial_indicator(rect: egui::Rect, fraction: f32) -> [egui::Pos2; 2] {
+    let angle = -2.35 + fraction.clamp(0.0, 1.0) * 4.7;
+    let direction = egui::vec2(angle.sin(), -angle.cos());
+    [
+        rect.center() + direction * rect.width() * 0.30,
+        rect.center() + direction * rect.width() * 0.43,
+    ]
+}
+
+fn paint_dial(
+    ui: &egui::Ui,
+    response: &egui::Response,
+    rect: egui::Rect,
+    fraction: f32,
+    label: &str,
+) {
+    let visuals = ui.style().interact(response);
+    ui.painter().circle_filled(
+        rect.center(),
+        rect.width() / 2.0,
+        egui::Color32::from_rgb(34, 34, 34),
+    );
+    ui.painter().circle_stroke(
+        rect.center(),
+        rect.width() / 2.0,
+        egui::Stroke::new(1.0, visuals.fg_stroke.color),
+    );
+    ui.painter().line_segment(
+        dial_indicator(rect, fraction),
+        egui::Stroke::new(1.5, egui::Color32::WHITE),
+    );
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        label,
+        egui::FontId::proportional(7.0),
+        egui::Color32::from_gray(180),
+    );
+}
+
+fn popup_icon_button(
+    ui: &mut egui::Ui,
+    size: egui::Vec2,
+    icon: MaterialIcon,
+    icon_size: f32,
+    color: egui::Color32,
+    tooltip: &str,
+) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    let visuals = ui.style().interact(&response);
+    ui.painter()
+        .rect_filled(rect, egui::CornerRadius::same(2), visuals.bg_fill);
+    ui.painter().rect_stroke(
+        rect,
+        egui::CornerRadius::same(2),
+        visuals.bg_stroke,
+        egui::StrokeKind::Inside,
+    );
+    paint_icon(ui.painter(), rect.center(), icon, icon_size, color);
+    response.on_hover_text(tooltip)
 }
 
 fn peak_fraction(db: f32, minimum_db: f32) -> f32 {
@@ -292,52 +372,83 @@ impl LoopWidget {
                 }));
         }
 
-        let dial_rect = if state.show_gain {
-            Some(egui::Rect::from_center_size(
+        let dial_rect = state.show_gain.then(|| {
+            egui::Rect::from_center_size(
                 egui::pos2(rect.right() - 14.0, rect.center().y),
                 egui::vec2(18.0, 18.0),
-            ))
+            )
+        });
+        let controls_left = rect.left() + 20.0;
+        let controls_right = dial_rect
+            .map(|dial| dial.left() - 2.0)
+            .unwrap_or(rect.right() - 2.0);
+        let gap = 1.0;
+        let button_width = ((controls_right - controls_left - gap * 2.0) / 3.0).clamp(1.0, 18.0);
+        let button_height = (rect.height() - 4.0).min(22.0).max(1.0);
+        let play_rect = egui::Rect::from_min_size(
+            egui::pos2(controls_left, rect.top() + 2.0),
+            egui::vec2(button_width, button_height),
+        );
+        let record_rect = play_rect.translate(egui::vec2(button_width + gap, 0.0));
+        let stop_rect = if state.composite_kind == CompositeKind::Script {
+            record_rect
         } else {
-            None
+            record_rect.translate(egui::vec2(button_width + gap, 0.0))
         };
+        let play_popup_rect = play_rect.translate(egui::vec2(0.0, button_height + gap));
+        let record_popup_rect = egui::Rect::from_min_size(
+            record_rect.min + egui::vec2(0.0, button_height + gap),
+            egui::vec2(button_width, button_height * 2.0),
+        );
+        let balance_rect =
+            dial_rect.map(|dial| dial.translate(egui::vec2(dial.width() + 4.0, 0.0)));
+        #[cfg(test)]
+        {
+            self.test_play_rect = Some(play_rect);
+            self.test_play_popup_rect = Some(play_popup_rect);
+            self.test_record_rect = Some(record_rect);
+            self.test_record_popup_rect = Some(record_popup_rect);
+            self.test_gain_rect = dial_rect;
+            self.test_balance_rect = balance_rect;
+        }
+        let now = ui.input(|input| input.time);
+        let pointer = ui.input(|input| input.pointer.hover_pos());
+        let non_script = state.composite_kind != CompositeKind::Script;
+        let play_hovered = pointer.is_some_and(|pointer| {
+            egui::Rect::from_two_pos(play_rect.min, play_popup_rect.max).contains(pointer)
+        });
+        let record_hovered = pointer.is_some_and(|pointer| {
+            egui::Rect::from_two_pos(record_rect.min, record_popup_rect.max).contains(pointer)
+        });
+        if non_script && play_hovered {
+            self.play_popup_until = now + 0.08;
+        }
+        if non_script && record_hovered {
+            self.record_popup_until = now + 0.08;
+        }
+        let show_play_popup = non_script && (play_hovered || now < self.play_popup_until);
+        let show_record_popup = non_script && (record_hovered || now < self.record_popup_until);
+        let controls_visible = hovered || show_play_popup || show_record_popup;
+        let icon_size = button_width.min(button_height) * 0.9;
 
-        if hovered {
-            let controls_left = rect.left() + 20.0;
-            let controls_right = dial_rect
-                .map(|dial| dial.left() - 2.0)
-                .unwrap_or(rect.right() - 2.0);
-            let gap = 1.0;
-            let button_width =
-                ((controls_right - controls_left - gap * 2.0) / 3.0).clamp(1.0, 18.0);
-            let button_height = (rect.height() - 4.0).min(22.0).max(1.0);
-            let play_rect = egui::Rect::from_min_size(
-                egui::pos2(controls_left, rect.top() + 2.0),
-                egui::vec2(button_width, button_height),
-            );
-            let record_rect = play_rect.translate(egui::vec2(button_width + gap, 0.0));
-            let stop_rect = if state.composite_kind == CompositeKind::Script {
-                record_rect
-            } else {
-                record_rect.translate(egui::vec2(button_width + gap, 0.0))
-            };
-            let icon_size = button_width.min(button_height) * 0.9;
-
+        if controls_visible {
             if ui
                 .put(
                     play_rect,
                     egui::Button::new(ICON_PLAY_ARROW.rich_text().size(icon_size).color(
-                        if state.composite_kind == CompositeKind::Script {
-                            egui::Color32::WHITE
-                        } else {
+                        if non_script {
                             egui::Color32::from_rgb(0, 128, 0)
+                        } else {
+                            egui::Color32::WHITE
                         },
                     )),
                 )
+                .on_hover_text("Play")
                 .clicked()
             {
                 result.actions.push(LoopWidgetAction::PlayClicked);
             }
-            if state.composite_kind != CompositeKind::Script {
+            if non_script {
                 let record_response = ui.put(record_rect, egui::Button::new(""));
                 paint_icon(
                     ui.painter(),
@@ -358,7 +469,7 @@ impl LoopWidget {
                         egui::Color32::from_rgb(0, 128, 0),
                     );
                 }
-                if record_response.clicked() {
+                if record_response.on_hover_text("Record").clicked() {
                     result.actions.push(LoopWidgetAction::RecordClicked);
                 }
             }
@@ -372,6 +483,7 @@ impl LoopWidget {
                             .color(egui::Color32::WHITE),
                     ),
                 )
+                .on_hover_text("Stop")
                 .clicked()
             {
                 result.actions.push(LoopWidgetAction::StopClicked);
@@ -392,6 +504,74 @@ impl LoopWidget {
                     egui::Color32::WHITE
                 },
             );
+        }
+
+        if show_play_popup {
+            egui::Area::new(ui.id().with("play_dry_popup"))
+                .order(egui::Order::Foreground)
+                .fixed_pos(play_popup_rect.min)
+                .constrain(false)
+                .show(ui.ctx(), |ui| {
+                    let response = popup_icon_button(
+                        ui,
+                        play_popup_rect.size(),
+                        ICON_PLAY_ARROW,
+                        icon_size,
+                        egui::Color32::from_rgb(255, 165, 0),
+                        "Play dry through live effects",
+                    );
+                    #[cfg(test)]
+                    {
+                        self.test_play_popup_button_rect = Some(response.rect);
+                    }
+                    if response.clicked() {
+                        result.actions.push(LoopWidgetAction::PlayDryClicked);
+                    }
+                });
+        }
+        if show_record_popup {
+            egui::Area::new(ui.id().with("record_variants_popup"))
+                .order(egui::Order::Foreground)
+                .fixed_pos(record_popup_rect.min)
+                .constrain(false)
+                .show(ui.ctx(), |ui| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    let grab = popup_icon_button(
+                        ui,
+                        egui::vec2(button_width, button_height),
+                        ICON_ARROW_DOWNWARD,
+                        icon_size,
+                        egui::Color32::RED,
+                        "Grab always-on recording",
+                    );
+                    if state.play_after_record {
+                        paint_icon(
+                            &ui.painter().with_clip_rect(egui::Rect::from_min_max(
+                                egui::pos2(grab.rect.left(), grab.rect.center().y),
+                                grab.rect.max,
+                            )),
+                            grab.rect.center(),
+                            ICON_ARROW_DOWNWARD,
+                            icon_size,
+                            egui::Color32::from_rgb(0, 128, 0),
+                        );
+                    }
+                    if grab.clicked() {
+                        result.actions.push(LoopWidgetAction::GrabClicked);
+                    }
+                    if popup_icon_button(
+                        ui,
+                        egui::vec2(button_width, button_height),
+                        ICON_FIBER_MANUAL_RECORD,
+                        icon_size,
+                        egui::Color32::from_rgb(255, 165, 0),
+                        "Re-record dry through live effects",
+                    )
+                    .clicked()
+                    {
+                        result.actions.push(LoopWidgetAction::RerecordClicked);
+                    }
+                });
         }
 
         if let Some(dial_rect) = dial_rect {
@@ -417,37 +597,211 @@ impl LoopWidget {
             if dial_response.drag_stopped() {
                 self.gain_drag_start = None;
             }
+            paint_dial(ui, &dial_response, dial_rect, gain, "V");
 
-            let visuals = ui.style().interact(&dial_response);
-            ui.painter().circle_filled(
-                dial_rect.center(),
-                dial_rect.width() / 2.0,
-                egui::Color32::from_rgb(34, 34, 34),
-            );
-            ui.painter().circle_stroke(
-                dial_rect.center(),
-                dial_rect.width() / 2.0,
-                egui::Stroke::new(1.0, visuals.fg_stroke.color),
-            );
-            let angle = -2.35 + gain * 4.7;
-            let radius = dial_rect.width() * 0.32;
-            let indicator = egui::pos2(
-                dial_rect.center().x + angle.sin() * radius,
-                dial_rect.center().y - angle.cos() * radius,
-            );
-            ui.painter().line_segment(
-                [dial_rect.center(), indicator],
-                egui::Stroke::new(1.5, egui::Color32::WHITE),
-            );
-            ui.painter().text(
-                dial_rect.center(),
-                egui::Align2::CENTER_CENTER,
-                "V",
-                egui::FontId::proportional(7.0),
-                egui::Color32::from_gray(180),
-            );
+            if state.stereo {
+                let balance_rect = balance_rect.expect("stereo gain has a balance rectangle");
+                let balance_hovered = pointer.is_some_and(|pointer| {
+                    egui::Rect::from_two_pos(dial_rect.min, balance_rect.max).contains(pointer)
+                });
+                if balance_hovered
+                    || self.gain_drag_start.is_some()
+                    || self.balance_drag_start.is_some()
+                {
+                    self.balance_popup_until = now + 0.08;
+                }
+                if balance_hovered || now < self.balance_popup_until {
+                    egui::Area::new(ui.id().with("loop_balance_popup"))
+                        .order(egui::Order::Foreground)
+                        .fixed_pos(balance_rect.min)
+                        .constrain(false)
+                        .show(ui.ctx(), |ui| {
+                            let (allocated, response) = ui.allocate_exact_size(
+                                balance_rect.size(),
+                                egui::Sense::click_and_drag(),
+                            );
+                            if response.drag_started() {
+                                self.balance_drag_start = Some(state.balance);
+                            }
+                            let mut balance = state.balance;
+                            if response.dragged() {
+                                let start = self.balance_drag_start.unwrap_or(state.balance);
+                                balance = (start - response.drag_delta().y / 50.0).clamp(-1.0, 1.0);
+                            }
+                            if response.double_clicked() {
+                                balance = 0.0;
+                            }
+                            if (balance - state.balance).abs() > f32::EPSILON {
+                                result
+                                    .actions
+                                    .push(LoopWidgetAction::BalanceChanged(balance));
+                            }
+                            if response.drag_stopped() {
+                                self.balance_drag_start = None;
+                            }
+                            paint_dial(ui, &response, allocated, (balance + 1.0) / 2.0, "B");
+                            response.on_hover_text("Loop stereo balance");
+                        });
+                }
+            }
+        }
+        if show_play_popup || show_record_popup || now < self.balance_popup_until {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(50));
         }
 
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::LoopId;
+
+    fn frame(
+        context: &egui::Context,
+        widget: &mut LoopWidget,
+        state: &LoopState,
+        time: f64,
+        events: Vec<egui::Event>,
+    ) -> LoopWidgetResponse {
+        let mut response = LoopWidgetResponse::default();
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(400.0, 200.0),
+                )),
+                time: Some(time),
+                events,
+                ..Default::default()
+            },
+            |ui| response = widget.show(ui, state, egui::vec2(180.0, 26.0)),
+        );
+        response
+    }
+
+    fn pointer(position: egui::Pos2) -> egui::Event {
+        egui::Event::PointerMoved(position)
+    }
+
+    fn click(
+        context: &egui::Context,
+        widget: &mut LoopWidget,
+        state: &LoopState,
+        position: egui::Pos2,
+        time: f64,
+    ) -> LoopWidgetResponse {
+        let _ = frame(
+            context,
+            widget,
+            state,
+            time,
+            vec![
+                pointer(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        frame(
+            context,
+            widget,
+            state,
+            time + 0.01,
+            vec![
+                pointer(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        )
+    }
+
+    fn state() -> LoopState {
+        LoopState {
+            id: LoopId::from_raw(1),
+            show_gain: true,
+            stereo: true,
+            balance: 0.5,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn dial_indicator_stays_outside_the_label_area() {
+        let rect = egui::Rect::from_center_size(egui::pos2(20.0, 20.0), egui::vec2(18.0, 18.0));
+        for fraction in [0.0, 0.25, 0.5, 0.75, 1.0] {
+            let segment = dial_indicator(rect, fraction);
+            assert!(segment[0].distance(rect.center()) >= rect.width() * 0.29);
+            assert!(segment[1].distance(rect.center()) > segment[0].distance(rect.center()));
+        }
+    }
+
+    #[test]
+    fn hover_overlays_extend_outside_the_row_and_retain_child_hover() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = state();
+        let mut widget = LoopWidget::default();
+        let _ = frame(&context, &mut widget, &state, 1.0, Vec::new());
+        let play = widget.test_play_rect.unwrap().center();
+        let _ = frame(&context, &mut widget, &state, 1.1, vec![pointer(play)]);
+        let play_popup = widget.test_play_popup_rect.unwrap();
+        assert!(play_popup.top() >= widget.test_play_rect.unwrap().bottom());
+        assert!(widget.test_play_popup_button_rect.is_some());
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            1.12,
+            vec![pointer(play_popup.center())],
+        );
+        assert!(widget.play_popup_until > 1.12);
+
+        let record = widget.test_record_rect.unwrap().center();
+        let _ = frame(&context, &mut widget, &state, 2.0, vec![pointer(record)]);
+        let record_popup = widget.test_record_popup_rect.unwrap();
+        assert!(record_popup.top() >= widget.test_record_rect.unwrap().bottom());
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            2.02,
+            vec![pointer(record_popup.center())],
+        );
+        assert!(widget.record_popup_until > 2.02);
+    }
+
+    #[test]
+    fn stereo_balance_popup_is_outside_gain_and_double_click_resets() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = state();
+        let mut widget = LoopWidget::default();
+        let _ = frame(&context, &mut widget, &state, 1.0, Vec::new());
+        let gain = widget.test_gain_rect.unwrap();
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            1.1,
+            vec![pointer(gain.center())],
+        );
+        let balance = widget.test_balance_rect.unwrap();
+        assert!(balance.left() > gain.right());
+        let _ = click(&context, &mut widget, &state, balance.center(), 1.12);
+        let response = click(&context, &mut widget, &state, balance.center(), 1.2);
+        assert!(response
+            .actions
+            .iter()
+            .any(|action| *action == LoopWidgetAction::BalanceChanged(0.0)));
     }
 }

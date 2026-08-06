@@ -11,6 +11,8 @@ pub struct TracksWidgetResponse {
 #[derive(Debug, Default)]
 pub struct TracksWidget {
     track_widgets: Vec<TrackWidget>,
+    #[cfg(test)]
+    test_empty_prompt_shown: bool,
 }
 
 impl TracksWidget {
@@ -18,6 +20,10 @@ impl TracksWidget {
         self.track_widgets
             .resize_with(tracks.len(), TrackWidget::default);
         let mut result = TracksWidgetResponse::default();
+        #[cfg(test)]
+        {
+            self.test_empty_prompt_shown = tracks.is_empty();
+        }
         let control_height = 82.0;
         egui::ScrollArea::horizontal()
             .id_salt("main_tracks_horizontal")
@@ -35,6 +41,14 @@ impl TracksWidget {
                                         let response = widget.show_content(ui, track, true);
                                         collect_response(&mut result, track, response);
                                     });
+                                }
+                                if tracks.is_empty() {
+                                    ui.add_sized(
+                                        [190.0, 40.0],
+                                        egui::Label::new(
+                                            "No tracks yet — use + to add your first track",
+                                        ),
+                                    );
                                 }
                                 let add = ui
                                     .add_sized(
@@ -104,6 +118,38 @@ fn collect_response(
 mod tests {
     use super::*;
     use crate::{LoopId, LoopWidgetAction, SelectionModifiers, TrackId};
+
+    #[test]
+    fn empty_main_tracks_show_first_track_instruction_only() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut widget = TracksWidget::default();
+        for (tracks, expected) in [
+            (Vec::<TrackState>::new(), true),
+            (
+                vec![TrackState {
+                    id: TrackId::from_raw(1),
+                    name: "Track".to_owned(),
+                    ..Default::default()
+                }],
+                false,
+            ),
+        ] {
+            let _ = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(600.0, 400.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    widget.show(ui, &tracks);
+                },
+            );
+            assert_eq!(widget.test_empty_prompt_shown, expected);
+        }
+    }
 
     #[test]
     fn response_routes_loop_and_add_actions_by_stable_id() {

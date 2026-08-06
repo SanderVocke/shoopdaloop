@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::{LoopId, LoopWidget, LoopWidgetAction, TrackControls, TrackState, TrackWidgetAction};
 use egui_material_icons::icons::{ICON_ADD, ICON_MORE_VERT};
 
@@ -13,7 +15,7 @@ pub struct TrackWidgetResponse {
 pub struct TrackWidget {
     name_edit: String,
     source_name: String,
-    loop_widgets: Vec<LoopWidget>,
+    loop_widgets: BTreeMap<LoopId, LoopWidget>,
     controls: TrackControls,
     #[cfg(test)]
     test_loop_rects: Vec<egui::Rect>,
@@ -39,7 +41,7 @@ impl TrackWidget {
         show_add_loop: bool,
     ) -> TrackWidgetResponse {
         self.loop_widgets
-            .resize_with(state.loops.len(), LoopWidget::default);
+            .retain(|id, _| state.loops.iter().any(|loop_state| loop_state.id == *id));
         let mut result = TrackWidgetResponse::default();
         #[cfg(test)]
         self.test_loop_rects.clear();
@@ -51,7 +53,8 @@ impl TrackWidget {
                 ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                     self.show_header(ui, state, &mut result);
                     ui.add_space(2.0);
-                    for (loop_state, widget) in state.loops.iter().zip(&mut self.loop_widgets) {
+                    for loop_state in &state.loops {
+                        let widget = self.loop_widgets.entry(loop_state.id).or_default();
                         let _loop_response = ui.push_id(loop_state.id, |ui| {
                             let size = egui::vec2(ui.available_width(), 26.0);
                             let response = widget.show(ui, loop_state, size);
