@@ -232,7 +232,7 @@ try {
     let state = await waitFor(
       candidate => candidate.selfTest === 'passed' && candidate.driver === 'Running',
       'browser physical-audio self-test did not finish',
-      30_000,
+      stress ? 75_000 : 30_000,
     );
     if (!(state.callbacks > 0 && state.frames >= state.callbacks * 128)) {
       throw new Error(`worklet callback evidence is invalid: ${JSON.stringify(state)}`);
@@ -249,8 +249,14 @@ try {
     if (!(state.generation > 0 && state.ownedMediaTracks > 0)) {
       throw new Error(`audio generation does not own a live media track: ${JSON.stringify(state)}`);
     }
-    if (state.budgetOverruns !== 0 || state.overflows !== 0 || state.webMidi !== 'unavailable') {
-      throw new Error(`bounded protocol or Web MIDI diagnostics are invalid: ${JSON.stringify(state)}`);
+    if (
+      state.budgetOverruns !== 0
+      || state.overflows !== 0
+      || !Number.isFinite(state.memoryGrowths)
+      || state.memoryGrowths > 32
+      || state.webMidi !== 'unavailable'
+    ) {
+      throw new Error(`render, memory-growth, protocol, or Web MIDI diagnostics are invalid: ${JSON.stringify(state)}`);
     }
     if (!(state.canvasWidth > 0 && state.canvasHeight > 0)) {
       throw new Error(`canvas was not sized: ${JSON.stringify(state)}`);
