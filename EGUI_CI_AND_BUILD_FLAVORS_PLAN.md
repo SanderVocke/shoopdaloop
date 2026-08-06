@@ -90,16 +90,16 @@ Initial local workflow commands are:
 ```sh
 act pull_request -W .github/workflows/build_and_test_egui.yml \
   -j build_and_test --matrix target:linux --matrix profile:debug \
-  -P ubuntu-24.04=catthehacker/ubuntu:act-24.04 \
+  -P ubuntu-24.04=-self-hosted \
   --artifact-server-path .act/artifacts
 
 act pull_request -W .github/workflows/build_and_test_egui.yml \
   -j build_and_test --matrix target:web --matrix profile:debug \
-  -P ubuntu-24.04=catthehacker/ubuntu:act-24.04 \
+  -P ubuntu-24.04=-self-hosted \
   --artifact-server-path .act/artifacts
 ```
 
-`act` validates only the Docker-hosted Linux/web paths. Native Windows/macOS evidence must come from GitHub-hosted runners. There is no coverage matrix value or coverage command.
+The self-hosted mapping is useful on development systems where nested containers are unavailable; invoke the web command from an environment that supplies Trunk 0.21.14. Under `act`, toolchain/cache setup and browser/device automation are skipped, and the already-created files are validated in local staging because `act`'s artifact server does not yet implement the `upload-artifact@v7` unwrapped-file protocol. The same hosted workflow performs the real cache, upload, Chrome, and Firefox steps. Native Windows/macOS evidence must come from GitHub-hosted runners. There is no coverage matrix value or coverage command.
 
 ## Staged implementation
 
@@ -150,16 +150,16 @@ Commit profile-aware browser tooling and product packaging before adding CI.
 
 Depends on Stages 1–2.
 
-- [ ] Add `.github/workflows/build_and_test_egui.yml` with the agreed push/PR/tag/schedule/manual triggers, read-only permissions, concurrency cancellation for superseded branch/PR runs, and one `fail-fast: false` matrix job.
-- [ ] Check out the repository and install the required nightly toolchain in every cell; install the Wasm target and pinned Trunk only for web cells.
-- [ ] Add `Swatinem/rust-cache@v2` to every cell with target/profile-aware keys and settings that preserve reusable Cargo data without sharing incompatible binaries.
-- [ ] Install only target-required system packages; do not invoke vcpkg, Qt setup, QML tooling, or the old top-level build composites.
-- [ ] Implement profile-selected native `cargo build --locked -p shoopdaloop_egui` and web Trunk build steps with warning denial.
-- [ ] Package from the selected profile's built outputs.
-- [ ] Upload one native archive per native cell and both the hosted bundle archive and standalone HTML per web cell, all as pre-compressed/unwrapped single-file artifacts.
-- [ ] Place all Cargo, package-manifest, dependency, and browser test steps after the upload step(s).
-- [ ] Use shell-specific commands only behind matrix metadata or portable scripts so Windows does not depend on Bash path semantics.
-- [ ] Run the locally supported Linux/web cells with `nektos/act`, fix workflow expression/step failures there first, and record commands plus known differences from GitHub-hosted execution.
+- [x] Add `.github/workflows/build_and_test_egui.yml` with the agreed push/PR/tag/schedule/manual triggers, read-only permissions, concurrency cancellation for superseded branch/PR runs, and one `fail-fast: false` matrix job.
+- [x] Check out the repository and install the required nightly toolchain in every cell; install the Wasm target and pinned Trunk only for web cells.
+- [x] Add `Swatinem/rust-cache@v2` to every cell with target/profile-aware keys and settings that preserve reusable Cargo data without sharing incompatible binaries.
+- [x] Install only target-required system packages; do not invoke vcpkg, Qt setup, QML tooling, or the old top-level build composites.
+- [x] Implement profile-selected native `cargo build --locked -p shoopdaloop_egui` and web Trunk build steps with warning denial.
+- [x] Package from the selected profile's built outputs.
+- [x] Upload one native archive per native cell and both the hosted bundle archive and standalone HTML per web cell, all as pre-compressed/unwrapped single-file artifacts.
+- [x] Place all Cargo, package-manifest, dependency, and browser test steps after the upload step(s).
+- [x] Use shell-specific commands only behind matrix metadata or portable scripts so Windows does not depend on Bash path semantics.
+- [x] Run the locally supported Linux/web cells with `nektos/act`, fix workflow expression/step failures there first, and record commands plus known differences from GitHub-hosted execution.
 
 Verification:
 
@@ -168,6 +168,8 @@ Verification:
 - A dry command audit proves each cell follows setup → build → package → upload → test.
 - Artifact and cache names are collision-free across runner OS, architecture, profile, and web/native target.
 - Workflow scans contain no preview artifact or Qt build action.
+
+Stage 3 evidence: `actionlint` passes; `act` 0.2.89 expands the selected matrix cells and completes Linux debug build/package/staging/archive verification, the full focused native suite, and formatting. The web debug `act` path completes profile-correct Trunk/worklet build, both artifact builds, staging/verification, protocol/worklet/presentation/composition tests, production and fixture Wasm compiler checks, and dependency/module isolation. Browser/device steps remain correctly reserved for GitHub-hosted runners, and native Windows/macOS are not claimed from local evidence. The workflow contains one eight-entry job, profile-unique filenames, target/profile cache keys, no coverage path, no Qt action, and no preview artifact.
 
 Commit the new workflow before retiring the old one.
 
