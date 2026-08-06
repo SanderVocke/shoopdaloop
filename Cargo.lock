@@ -4312,10 +4312,32 @@ dependencies = [
  "rtrb",
  "rubato",
  "serde_json",
+ "shoop_plugin_protocol",
+ "shoop_settings",
  "shoop_tracing",
  "thiserror 2.0.19",
  "tracing",
  "tracy-client",
+ "uuid",
+]
+
+[[package]]
+name = "shoop_plugin_protocol"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "shoop_settings"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "directories",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -4350,6 +4372,8 @@ dependencies = [
  "serde",
  "serde_json",
  "shoop_engine",
+ "shoop_plugin_protocol",
+ "shoop_settings",
  "toml",
  "tracing",
 ]

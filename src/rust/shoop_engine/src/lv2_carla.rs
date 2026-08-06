@@ -5,6 +5,7 @@
 //! afterwards; realtime processing/state/UI instantiation can build on this without
 //! making frontend code depend on Lilv lifetimes.
 
+use crate::carla_processor::{CarlaProcessor, CarlaProcessorInfo};
 use crate::realtime_lock_guard::Mutex;
 use crate::FXChainType;
 use anyhow::{anyhow, Result};
@@ -662,6 +663,66 @@ impl CarlaLv2Host {
         {
             unsafe { instance.connect_port_mut(port.index, buffer.as_mut_ptr()) };
         }
+    }
+}
+
+impl CarlaProcessor for CarlaLv2Host {
+    fn info(&self) -> CarlaProcessorInfo {
+        CarlaProcessorInfo {
+            chain_type: self.info.chain_type,
+            audio_inputs: self.info.ports.audio_inputs.len(),
+            audio_outputs: self.info.ports.audio_outputs.len(),
+            midi_inputs: self.info.ports.midi_inputs.len(),
+            midi_outputs: self.info.ports.midi_outputs.len(),
+        }
+    }
+
+    fn set_active(&mut self, active: bool) {
+        CarlaLv2Host::set_active(self, active);
+    }
+
+    fn is_active(&self) -> bool {
+        CarlaLv2Host::is_active(self)
+    }
+
+    fn set_visible(&mut self, visible: bool) -> Result<()> {
+        CarlaLv2Host::set_visible(self, visible)
+    }
+
+    fn is_visible(&mut self) -> bool {
+        CarlaLv2Host::is_visible(self)
+    }
+
+    fn save_state(&mut self) -> Result<String> {
+        self.save_state_string()
+    }
+
+    fn restore_state(&mut self, state: &str) -> Result<()> {
+        self.restore_state_string(state)
+    }
+
+    fn audio_input_mut(&mut self, index: usize) -> Option<&mut [f32]> {
+        CarlaLv2Host::audio_input_mut(self, index)
+    }
+
+    fn audio_output(&self, index: usize) -> Option<&[f32]> {
+        CarlaLv2Host::audio_output(self, index)
+    }
+
+    fn set_midi_input_events(&mut self, index: usize, events: &[(u32, &[u8])]) -> Result<()> {
+        CarlaLv2Host::set_midi_input_events(
+            self,
+            index,
+            events.iter().map(|(offset, data)| (*offset, *data)),
+        )
+    }
+
+    fn midi_output_events(&mut self, index: usize) -> Result<Vec<(u32, Vec<u8>)>> {
+        CarlaLv2Host::midi_output_events(self, index)
+    }
+
+    fn process(&mut self, frames: usize) -> Result<()> {
+        CarlaLv2Host::process(self, frames)
     }
 }
 

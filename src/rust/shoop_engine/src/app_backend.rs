@@ -20,9 +20,10 @@ pub use engine::{
     LoopMode, MidiEvent, MultichannelAudio, PortConnectabilityKind, PortDataType, PortDirection,
     ProfilingReport, ProfilingReportItem,
 };
+use shoop_settings::CarlaHostingMode;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::marker::PhantomData;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, Weak};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -39,6 +40,25 @@ pub use engine::{CommandSequence, SendError};
 const COMMAND_QUEUE_CAPACITY: usize = 4096;
 const INVALID_OBJECT_INDEX: usize = usize::MAX;
 static NEXT_BACKEND_SESSION_ID: AtomicU64 = AtomicU64::new(1);
+static NEXT_CARLA_CHAIN_ID: AtomicU64 = AtomicU64::new(1);
+static CARLA_HOSTING_MODE: AtomicU8 = AtomicU8::new(0);
+
+pub fn set_carla_hosting_mode(mode: CarlaHostingMode) {
+    CARLA_HOSTING_MODE.store(
+        match mode {
+            CarlaHostingMode::InProcess => 0,
+            CarlaHostingMode::Subprocess => 1,
+        },
+        Ordering::Release,
+    );
+}
+
+pub fn carla_hosting_mode() -> CarlaHostingMode {
+    match CARLA_HOSTING_MODE.load(Ordering::Acquire) {
+        1 => CarlaHostingMode::Subprocess,
+        _ => CarlaHostingMode::InProcess,
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -2638,14 +2658,33 @@ impl BackendSession {
                 {
                     let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed).max(1);
                     let buffer_size = self.shared.buffer_size.load(Ordering::Relaxed).max(1);
-                    match engine::lv2_carla::CarlaLv2Host::instantiate(
-                        chain_type,
-                        sample_rate,
-                        buffer_size,
-                    ) {
+                    let host: Result<Box<dyn engine::carla_processor::CarlaProcessor>> =
+                        match carla_hosting_mode() {
+                            CarlaHostingMode::InProcess => {
+                                engine::lv2_carla::CarlaLv2Host::instantiate(
+                                    chain_type,
+                                    sample_rate,
+                                    buffer_size,
+                                )
+                                .map(|host| Box::new(host) as Box<_>)
+                            }
+                            CarlaHostingMode::Subprocess => {
+                                let chain_id = NEXT_CARLA_CHAIN_ID.fetch_add(1, Ordering::Relaxed);
+                                engine::carla_subprocess::SubprocessCarlaProcessor::spawn(
+                                    std::env::current_exe()?,
+                                    chain_type,
+                                    sample_rate,
+                                    buffer_size,
+                                    shoop_plugin_protocol::ChainId(chain_id),
+                                    shoop_plugin_protocol::ProcessGeneration(1),
+                                )
+                                .map(|host| Box::new(host) as Box<_>)
+                            }
+                        };
+                    match host {
                         Ok(host) => FXChainBackendKind::Carla(Arc::new(Mutex::new(host))),
-                        Err(e) => FXChainBackendKind::Unavailable {
-                            reason: e.to_string(),
+                        Err(error) => FXChainBackendKind::Unavailable {
+                            reason: error.to_string(),
                         },
                     }
                 }
@@ -5328,7 +5367,7 @@ pub type FXChainState = engine::FXChainState;
 enum FXChainBackendKind {
     Test2x2x1,
     #[cfg(feature = "lv2")]
-    Carla(Arc<Mutex<engine::lv2_carla::CarlaLv2Host>>),
+    Carla(engine::carla_processor::SharedCarlaProcessor),
     Unavailable {
         reason: String,
     },
@@ -5402,7 +5441,7 @@ impl FXChain {
             FXChainBackendKind::Carla(host) => host
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
-                .save_state_string()
+                .save_state()
                 .ok(),
             _ => Some(String::new()),
         }
@@ -5413,20 +5452,19 @@ impl FXChain {
             let _ = host
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
-                .restore_state_string(state);
+                .restore_state(state);
         }
     }
     fn n_audio_input_ports(&self) -> usize {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 2,
             #[cfg(feature = "lv2")]
-            FXChainBackendKind::Carla(host) => host
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .info
-                .ports
-                .audio_inputs
-                .len(),
+            FXChainBackendKind::Carla(host) => {
+                host.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .info()
+                    .audio_inputs
+            }
             FXChainBackendKind::Unavailable { .. } => 0,
         }
     }
@@ -5435,13 +5473,12 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 2,
             #[cfg(feature = "lv2")]
-            FXChainBackendKind::Carla(host) => host
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .info
-                .ports
-                .audio_outputs
-                .len(),
+            FXChainBackendKind::Carla(host) => {
+                host.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .info()
+                    .audio_outputs
+            }
             FXChainBackendKind::Unavailable { .. } => 0,
         }
     }
@@ -5449,13 +5486,12 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 1,
             #[cfg(feature = "lv2")]
-            FXChainBackendKind::Carla(host) => host
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .info
-                .ports
-                .midi_inputs
-                .len(),
+            FXChainBackendKind::Carla(host) => {
+                host.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .info()
+                    .midi_inputs
+            }
             FXChainBackendKind::Unavailable { .. } => 0,
         }
     }
@@ -5464,13 +5500,12 @@ impl FXChain {
         match &self.backend {
             FXChainBackendKind::Test2x2x1 => 0,
             #[cfg(feature = "lv2")]
-            FXChainBackendKind::Carla(host) => host
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .info
-                .ports
-                .midi_outputs
-                .len(),
+            FXChainBackendKind::Carla(host) => {
+                host.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .info()
+                    .midi_outputs
+            }
             FXChainBackendKind::Unavailable { .. } => 0,
         }
     }

@@ -37,6 +37,9 @@ ShoopApplicationWindow {
             TabButton {
                 text: 'LUA scripts'
             }
+            TabButton {
+                text: 'Carla hosting'
+            }
         }
 
         StackLayout {
@@ -52,6 +55,7 @@ ShoopApplicationWindow {
             ScriptSettingsUi {
                 id: lua_settings_being_edited
             }
+            CarlaSettingsUi {}
         }
     }
 
@@ -106,6 +110,7 @@ ShoopApplicationWindow {
         Component.onCompleted: load()
 
         contents: ({
+            'carla_hosting_mode': 'in_process',
             'midi_settings': {
                 'schema': 'midi_settings.1',
                 'configuration': midi_settings.default_contents()
@@ -115,6 +120,41 @@ ShoopApplicationWindow {
                 'configuration': script_settings.default_contents()
             }
         })
+    }
+
+    component CarlaSettingsUi : Item {
+        Column {
+            anchors.fill: parent
+            anchors.margins: 20
+            spacing: 12
+
+            Label {
+                text: 'Carla LV2 hosting mode'
+                font.bold: true
+            }
+            ComboBox {
+                id: carla_hosting_mode
+                model: [
+                    { text: 'In application process', value: 'in_process' },
+                    { text: 'One subprocess per FX chain', value: 'subprocess' }
+                ]
+                textRole: 'text'
+                valueRole: 'value'
+                currentIndex: {
+                    let configured = all_settings.contents.carla_hosting_mode || 'in_process'
+                    return configured === 'subprocess' ? 1 : 0
+                }
+                onActivated: (index) => {
+                    all_settings.contents.carla_hosting_mode = model[index].value
+                    all_settings.contentsChanged()
+                }
+            }
+            Label {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: 'This global setting takes effect the next time ShoopDaLoop starts. Existing FX chains are not migrated while running.'
+            }
+        }
     }
 
     Settings {

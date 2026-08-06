@@ -364,6 +364,58 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
         Some(crate::cli_args::parse_arguments(args.iter()))
     };
 
+    if let Some(args) = cli_args.as_ref() {
+        let worker = &args.carla_worker_options;
+        if worker.carla_worker {
+            let address = worker
+                .carla_worker_address
+                .as_deref()
+                .ok_or_else(|| anyhow!("missing Carla worker address"))?
+                .parse()
+                .map_err(|error| anyhow!("invalid Carla worker address: {error}"))?;
+            let nonce = shoop_engine::carla_subprocess::parse_nonce(
+                worker
+                    .carla_worker_nonce
+                    .as_deref()
+                    .ok_or_else(|| anyhow!("missing Carla worker nonce"))?,
+            )?;
+            let chain_id = shoop_plugin_protocol::ChainId(
+                worker
+                    .carla_worker_chain_id
+                    .ok_or_else(|| anyhow!("missing Carla worker chain ID"))?,
+            );
+            let generation = shoop_plugin_protocol::ProcessGeneration(
+                worker
+                    .carla_worker_generation
+                    .ok_or_else(|| anyhow!("missing Carla worker generation"))?,
+            );
+            return shoop_engine::carla_subprocess::run_carla_worker(
+                shoop_engine::carla_subprocess::CarlaWorkerOptions {
+                    address,
+                    nonce,
+                    chain_id,
+                    generation,
+                },
+            )
+            .map(|_| 0);
+        }
+    }
+
+    let settings_path = shoop_settings::default_settings_path()?;
+    let (user_settings, settings_error) =
+        shoop_settings::UserSettings::load_or_default(&settings_path);
+    if let Some(error) = settings_error {
+        warn!(
+            "Could not load user settings from {}: {error:#}; using defaults",
+            settings_path.display()
+        );
+    }
+    info!(
+        "Carla hosting mode: {}",
+        user_settings.carla_hosting_mode.as_str()
+    );
+    shoop_engine::app_backend::set_carla_hosting_mode(user_settings.carla_hosting_mode);
+
     if !cli_args
         .as_ref()
         .map_or(false, |args| args.developer_options.no_crash_handling)

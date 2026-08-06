@@ -17,6 +17,8 @@ path = "src/bin/print_shoopdaloop_out_dir.rs"
 [dependencies]
 frontend = { path = "../frontend" }
 shoop_engine = { path = "../shoop_engine", features = ["cpal", "midir"] }
+shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
+shoop_settings = { path = "../shoop_settings" }
 common = { path = "../common" }
 config = { path = "../config" }
 crashhandling = { path = "../crashhandling" }

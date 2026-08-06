@@ -4,6 +4,10 @@ edition = "2021"
 
 [lib]
 
+[[example]]
+name = "carla_inprocess_benchmark"
+required-features = ["lv2"]
+
 [dependencies]
 thiserror = { workspace = true }
 anyhow = { workspace = true }
@@ -24,7 +28,10 @@ base64 = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 libloading = { workspace = true, optional = true }
 assert_no_alloc = { workspace = true }
+shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
+shoop_settings = { path = "../shoop_settings" }
 tracing = { workspace = true }
+uuid = { workspace = true }
 enum-iterator = { workspace = true }
 num_enum = { workspace = true }
 

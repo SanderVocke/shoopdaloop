@@ -12,6 +12,8 @@
 //! Audio only for now: MIDI channels are not yet routed through the session.
 
 #[cfg(feature = "lv2")]
+use crate::carla_processor::SharedCarlaProcessor;
+#[cfg(all(feature = "lv2", test))]
 use crate::realtime_lock_guard::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -378,7 +380,9 @@ pub struct Session {
     test_fx_active: HashMap<String, bool>,
     /// Carla LV2 FX-chain processors, keyed by chain title.
     #[cfg(feature = "lv2")]
-    carla_fx_hosts: HashMap<String, Arc<Mutex<crate::lv2_carla::CarlaLv2Host>>>,
+    carla_fx_hosts: HashMap<String, SharedCarlaProcessor>,
+    #[cfg(feature = "lv2")]
+    carla_fx_routes: Vec<CarlaFxRoute>,
     /// Cycles that hit [`MAX_SUB_BLOCKS`] without finishing.
     n_stuck_cycles: u32,
     /// Cycles run against a schedule older than the current topology.
@@ -395,6 +399,15 @@ pub struct Session {
     n_sub_blocks_last_cycle: u32,
     /// Existing deterministic stage profiler, enabled only for explicit tracing sessions.
     profiler: Profiler,
+}
+
+#[cfg(feature = "lv2")]
+#[derive(Debug)]
+struct CarlaFxRoute {
+    host: SharedCarlaProcessor,
+    audio_inputs: Vec<Option<usize>>,
+    audio_outputs: Vec<(Option<usize>, Option<usize>)>,
+    midi_inputs: Vec<Option<usize>>,
 }
 
 /// A topology snapshot: everything [`build_schedule`] needs, borrowing nothing.
@@ -1393,12 +1406,9 @@ impl Session {
     }
 
     #[cfg(feature = "lv2")]
-    pub fn set_carla_fx_host(
-        &mut self,
-        title: impl Into<String>,
-        host: Arc<Mutex<crate::lv2_carla::CarlaLv2Host>>,
-    ) {
+    pub fn set_carla_fx_host(&mut self, title: impl Into<String>, host: SharedCarlaProcessor) {
         self.carla_fx_hosts.insert(title.into(), host);
+        self.note_graph_change();
     }
 
     pub fn describe_audio_ringbuffer_adoption(
@@ -1837,6 +1847,8 @@ impl Session {
         }
         self.scratch.resize(self.buffer_size as usize, 0.0);
         self.out_scratch.resize(self.buffer_size as usize, 0.0);
+        #[cfg(feature = "lv2")]
+        self.rebuild_carla_fx_routes();
 
         std::mem::swap(&mut self.specs, &mut prepared.specs);
         std::mem::swap(&mut self.node_map, &mut prepared.node_map);
@@ -2140,92 +2152,113 @@ impl Session {
     }
 
     #[cfg(feature = "lv2")]
-    fn process_carla_fx_chains(&mut self, n_frames: usize) {
-        let chains: Vec<(String, Arc<Mutex<crate::lv2_carla::CarlaLv2Host>>)> = self
+    fn rebuild_carla_fx_routes(&mut self) {
+        self.carla_fx_routes = self
             .carla_fx_hosts
             .iter()
-            .map(|(title, host)| (title.clone(), host.clone()))
+            .map(|(title, host)| {
+                let info = host
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .info();
+                let find_port = |name: &str| self.ports.iter().position(|port| port.name() == name);
+                CarlaFxRoute {
+                    host: Arc::clone(host),
+                    audio_inputs: (0..info.audio_inputs)
+                        .map(|index| find_port(&format!("{title}:audio_in_{index}")))
+                        .collect(),
+                    audio_outputs: (0..info.audio_outputs)
+                        .map(|index| {
+                            (
+                                find_port(&format!("{title}:audio_out_{index}")),
+                                find_port(&format!("{title}_audio_wet_out_{}", index + 1)),
+                            )
+                        })
+                        .collect(),
+                    midi_inputs: (0..info.midi_inputs)
+                        .map(|index| find_port(&format!("{title}:midi_in_{index}")))
+                        .collect(),
+                }
+            })
             .collect();
-        for (title, host) in chains {
+    }
+
+    #[cfg(feature = "lv2")]
+    fn process_carla_fx_chains(&mut self, n_frames: usize) {
+        let rerecording = self
+            .loops
+            .iter()
+            .any(|loop_| loop_.mode() == LoopMode::RecordingDryIntoWet);
+        for route_index in 0..self.carla_fx_routes.len() {
+            let host = Arc::clone(&self.carla_fx_routes[route_index].host);
             let mut host = crate::realtime_allow_lock!("Carla host processing", host.lock())
-                .unwrap_or_else(|e| e.into_inner());
+                .unwrap_or_else(|error| error.into_inner());
             if !host.is_active() {
                 continue;
             }
-            let n_audio = host.info.ports.audio_inputs.len();
-            for idx in 0..n_audio {
-                let in_name = format!("{title}:audio_in_{idx}");
-                let Some(in_idx) = self.ports.iter().position(|p| p.name() == in_name) else {
+            for index in 0..self.carla_fx_routes[route_index].audio_inputs.len() {
+                let Some(port_index) = self.carla_fx_routes[route_index].audio_inputs[index] else {
                     continue;
                 };
-                let input = self.ports[in_idx].buffer(n_frames);
-                if let Some(dst) = host.audio_input_mut(idx) {
-                    for (d, s) in dst.iter_mut().zip(input.iter().copied()) {
-                        *d = s;
-                    }
+                let input = self.ports[port_index].buffer(n_frames);
+                if let Some(destination) = host.audio_input_mut(index) {
+                    destination[..n_frames].copy_from_slice(input);
                 }
             }
-            let rerecording = self
-                .loops
-                .iter()
-                .any(|l| l.mode() == LoopMode::RecordingDryIntoWet);
-            for midi_idx in 0..host.info.ports.midi_inputs.len() {
-                let fx_midi_name = format!("{title}:midi_in_{midi_idx}");
+            for midi_index in 0..self.carla_fx_routes[route_index].midi_inputs.len() {
+                let port_index = self.carla_fx_routes[route_index].midi_inputs[midi_index];
                 let events = if rerecording {
                     self.recent_loop_midi_events(n_frames)
-                } else if let Some(port_idx) =
-                    self.ports.iter().position(|p| p.name() == fx_midi_name)
-                {
-                    let mut events = self.ports[port_idx].midi_events().to_vec();
-                    if let Some(p) = self.ports[port_idx].as_external_midi() {
-                        events.extend_from_slice(p.outgoing());
+                } else if let Some(port_index) = port_index {
+                    let mut events = self.ports[port_index].midi_events().to_vec();
+                    if let Some(port) = self.ports[port_index].as_external_midi() {
+                        events.extend_from_slice(port.outgoing());
                     }
                     events
                 } else {
                     Vec::new()
                 };
-                let _ = host.set_midi_input_events(
-                    midi_idx,
-                    events
-                        .iter()
-                        .map(|e| (e.time.min(n_frames.saturating_sub(1) as u32), e.data())),
-                );
+                let events: Vec<_> = events
+                    .iter()
+                    .map(|event| {
+                        (
+                            event.time.min(n_frames.saturating_sub(1) as u32),
+                            event.data(),
+                        )
+                    })
+                    .collect();
+                let _ = host.set_midi_input_events(midi_index, &events);
             }
             let _ = host.process(n_frames);
-            for idx in 0..n_audio {
-                let fx_out_name = format!("{title}:audio_out_{idx}");
-                let out_name = format!("{title}_audio_wet_out_{}", idx + 1);
-                let Some(fx_out_idx) = self.ports.iter().position(|p| p.name() == fx_out_name)
+            for index in 0..self.carla_fx_routes[route_index].audio_outputs.len() {
+                let (Some(fx_output_index), Some(wet_output_index)) =
+                    self.carla_fx_routes[route_index].audio_outputs[index]
                 else {
                     continue;
                 };
-                let Some(out_idx) = self.ports.iter().position(|p| p.name() == out_name) else {
-                    continue;
-                };
-                let target = self.ports[out_idx]
+                let target = self.ports[wet_output_index]
                     .audio()
-                    .map(|a| (a.gain(), a.muted()))
+                    .map(|audio| (audio.gain(), audio.muted()))
                     .unwrap_or((1.0, false));
-                let fx_passthrough_muted = self.ports[fx_out_idx]
+                let fx_passthrough_muted = self.ports[fx_output_index]
                     .audio()
-                    .map(|a| a.passthrough_muted())
+                    .map(|audio| audio.passthrough_muted())
                     .unwrap_or(false);
                 let (gain, muted) = (target.0, target.1 || fx_passthrough_muted);
-                let Some(src) = host.audio_output(idx) else {
+                let Some(source) = host.audio_output(index) else {
                     continue;
                 };
-                if self.scratch.len() < n_frames {
-                    self.scratch.resize(n_frames, 0.0);
-                }
                 self.scratch[..n_frames].fill(0.0);
-                for (output, sample) in self.scratch[..n_frames].iter_mut().zip(src.iter().copied())
+                for (output, sample) in self.scratch[..n_frames]
+                    .iter_mut()
+                    .zip(source.iter().copied())
                 {
                     *output = if muted { 0.0 } else { sample * gain };
                 }
-                if let Some(output) = self.ports[out_idx].as_external_mut() {
+                if let Some(output) = self.ports[wet_output_index].as_external_mut() {
                     output.add_late_output(&self.scratch[..n_frames]);
                 } else {
-                    let output = self.ports[out_idx].buffer(n_frames);
+                    let output = self.ports[wet_output_index].buffer(n_frames);
                     for (output, sample) in output.iter_mut().zip(&self.scratch[..n_frames]) {
                         *output += *sample;
                     }
@@ -4177,7 +4210,7 @@ mod tests {
             );
             return;
         };
-        let host = std::sync::Arc::new(Mutex::new(host));
+        let host: SharedCarlaProcessor = std::sync::Arc::new(Mutex::new(Box::new(host)));
         let mut s = Session::default();
         s.set_sample_rate(48_000);
         s.set_buffer_size(64);
@@ -4188,6 +4221,7 @@ mod tests {
         for sample in s.port_mut(audio_in).unwrap().buffer(64).iter_mut() {
             *sample = 1.0;
         }
+        s.apply_graph_changes().unwrap();
 
         s.process_carla_fx_chains(64);
 
@@ -4205,7 +4239,7 @@ mod tests {
             return;
         };
         host.set_active(true);
-        let host = std::sync::Arc::new(Mutex::new(host));
+        let host: SharedCarlaProcessor = std::sync::Arc::new(Mutex::new(Box::new(host)));
         let mut s = Session::default();
         s.set_sample_rate(48_000);
         s.set_buffer_size(64);
@@ -4227,6 +4261,7 @@ mod tests {
         assert!(midi.queue_msg(3, &[0x90, 60, 100]));
         midi.prepare(64);
         midi.process(64);
+        s.apply_graph_changes().unwrap();
 
         s.process_carla_fx_chains(64);
 

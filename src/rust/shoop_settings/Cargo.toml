@@ -1,0 +1,15 @@
+[package]
+name = "shoop_settings"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+directories = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true
