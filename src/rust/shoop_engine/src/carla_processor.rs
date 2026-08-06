@@ -1115,6 +1115,12 @@ mod tests {
         let (control, mut endpoint) = spawn_processor_bridge(Box::new(fake), 48_000, 32).unwrap();
         control.set_active(true);
         endpoint.process(32).unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        while control.lifecycle() != CarlaProcessorLifecycle::Crashed
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::yield_now();
+        }
         assert_eq!(control.lifecycle(), CarlaProcessorLifecycle::Crashed);
         assert_eq!(
             control.exit_kind(),

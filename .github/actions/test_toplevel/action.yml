@@ -247,6 +247,8 @@ runs:
   - name: Test packaged Carla subprocess mode
     if: always() && inputs.do_qml_tests == 'true' && inputs.coverage != 'true' && env.COMMAND_TEST_RUST != ''
     shell: wrap-shell {0}
+    env:
+      GHA_RUN_ALWAYS: 1
     run: |
       QT_ASSUME_STDERR_HAS_CONSOLE=1 \
         ./scripts/run_with_timeout.sh 600 \
