@@ -81,6 +81,13 @@ pub enum TruncateSide {
     Tail,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReplaceRangeError {
+    InvalidRange,
+    OutOfOrder,
+    OutOfCapacity { required: usize, capacity: usize },
+}
+
 /// Outcome of a cursor search.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CursorFindResult {
@@ -237,6 +244,63 @@ impl MidiStorage {
             TruncateSide::Head => self.truncate_fn(|e| e.time > time, side, dropped),
             TruncateSide::Tail => self.truncate_fn(|e| e.time < time, side, dropped),
         }
+    }
+
+    /// Replaces every event in `[start, end)` with an ordered replacement.
+    ///
+    /// The backing allocation is reused. Existing cursors are invalidated because
+    /// a middle splice changes message identities on both sides of the insertion.
+    pub fn replace_range(
+        &mut self,
+        start: u32,
+        end: u32,
+        replacement: &[MidiStorageElem],
+    ) -> Result<(), ReplaceRangeError> {
+        if start >= end
+            || replacement
+                .iter()
+                .any(|event| event.time < start || event.time >= end)
+        {
+            return Err(ReplaceRangeError::InvalidRange);
+        }
+        if replacement
+            .windows(2)
+            .any(|events| events[0].time > events[1].time)
+        {
+            return Err(ReplaceRangeError::OutOfOrder);
+        }
+
+        let live = self.n_events as usize;
+        let mut before = 0;
+        let mut after = live;
+        for (index, event) in self.iter().enumerate() {
+            if event.time < start {
+                before = index + 1;
+            }
+            if event.time >= end {
+                after = after.min(index);
+            }
+        }
+        let required = before + replacement.len() + live.saturating_sub(after);
+        if required > self.data.len() {
+            return Err(ReplaceRangeError::OutOfCapacity {
+                required,
+                capacity: self.data.len(),
+            });
+        }
+
+        let old_end = self.end_index();
+        if !self.data.is_empty() {
+            self.data.rotate_left(self.tail as usize);
+            self.data
+                .copy_within(after..live, before + replacement.len());
+            self.data[before..before + replacement.len()].copy_from_slice(replacement);
+        }
+        self.tail = 0;
+        self.first_index = old_end;
+        self.n_events = required as u32;
+        self.invalidated_below = self.first_index;
+        Ok(())
     }
 
     /// Ring slot holding absolute index `i`, if it is live.
@@ -544,6 +608,62 @@ mod tests {
         check!(s.is_full());
         check!(!s.append(2, &note(3), false, None));
         check!(times(&s) == vec![0, 1]);
+    }
+
+    #[test]
+    fn replaces_a_middle_interval_without_disturbing_outer_events() {
+        let mut s = storage(6);
+        s.append(0, &note(1), false, None);
+        s.append(2, &note(2), false, None);
+        s.append(4, &note(3), false, None);
+        s.append(6, &note(4), false, None);
+        let replacement = [
+            MidiStorageElem::new(2, &note(8)).unwrap(),
+            MidiStorageElem::new(3, &note(9)).unwrap(),
+        ];
+
+        check!(s.replace_range(2, 5, &replacement).is_ok());
+        check!(times(&s) == vec![0, 2, 3, 6]);
+        check!(s.iter().map(|event| event.data()[1]).collect::<Vec<_>>() == vec![1, 8, 9, 4]);
+    }
+
+    #[test]
+    fn replacement_is_atomic_when_capacity_is_insufficient() {
+        let mut s = storage(3);
+        s.append(0, &note(1), false, None);
+        s.append(2, &note(2), false, None);
+        s.append(6, &note(3), false, None);
+        let replacement = [
+            MidiStorageElem::new(2, &note(8)).unwrap(),
+            MidiStorageElem::new(3, &note(9)).unwrap(),
+        ];
+
+        check!(
+            s.replace_range(2, 5, &replacement)
+                == Err(ReplaceRangeError::OutOfCapacity {
+                    required: 4,
+                    capacity: 3
+                })
+        );
+        check!(times(&s) == vec![0, 2, 6]);
+    }
+
+    #[test]
+    fn replacement_linearizes_wrapped_storage_and_invalidates_cursors() {
+        let mut s = storage(4);
+        s.append(0, &note(1), false, None);
+        s.append(1, &note(2), false, None);
+        s.append(2, &note(3), false, None);
+        s.append(3, &note(4), false, None);
+        s.append(4, &note(5), true, None);
+        let mut cursor = s.create_cursor();
+        let replacement = [MidiStorageElem::new(2, &note(8)).unwrap()];
+
+        check!(s.replace_range(2, 4, &replacement).is_ok());
+        cursor.sync(&s);
+        check!(!cursor.valid());
+        check!(s.tail_offset() == 0);
+        check!(times(&s) == vec![1, 2, 4]);
     }
 
     #[test]

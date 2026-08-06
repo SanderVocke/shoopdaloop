@@ -36,6 +36,10 @@ pub enum MidiChannelError {
     NoRecordingBuffer,
     #[error("no playback buffer assigned")]
     NoPlaybackBuffer,
+    #[error("MIDI replacement needs {required} event slots but capacity is {capacity}")]
+    ReplaceCapacity { required: usize, capacity: usize },
+    #[error("invalid MIDI replacement interval or event ordering")]
+    InvalidReplacement,
 }
 
 /// How much of the cycle's input buffer has been consumed.
@@ -149,6 +153,8 @@ pub struct MidiChannel {
     /// Reused for state-restoration messages, sized to the worst case so playback
     /// never grows it.
     restore_scratch: Vec<MidiStorageElem>,
+    /// Incoming replacement events rebased to loop time without allocating.
+    replace_scratch: Vec<MidiStorageElem>,
     state: Arc<MidiChannelStateMirror>,
     content_snapshots: Option<MidiProcessSnapshotWriter>,
 }
@@ -204,6 +210,7 @@ impl MidiChannel {
             rec: None,
             play: None,
             restore_scratch: Vec::with_capacity(MAX_DIFF_MESSAGES),
+            replace_scratch: Vec::with_capacity(capacity),
             state,
             content_snapshots,
         };
@@ -625,6 +632,10 @@ impl MidiChannel {
             let from = (length_before as i64 + self.start_offset as i64).max(0) as u32;
             self.process_record(false, from, n_samples, input)?;
             processed_input = true;
+        } else if flags.contains(ProcessFlags::REPLACE) {
+            self.loaded_contents = false;
+            self.process_replace(params.position, n_samples, length_before, input)?;
+            processed_input = true;
         } else if flags.contains(ProcessFlags::PRE_RECORD) {
             self.loaded_contents = false;
             let from = self.prerecord_data_length;
@@ -675,6 +686,84 @@ impl MidiChannel {
         }
         rec.n_events_processed = idx;
         self.rec = Some(rec);
+    }
+
+    fn process_replace(
+        &mut self,
+        position: i32,
+        n_samples: u32,
+        loop_length: u32,
+        input: &[MidiStorageElem],
+    ) -> Result<(), MidiChannelError> {
+        let Some(mut rec) = self.rec else {
+            return Err(MidiChannelError::NoRecordingBuffer);
+        };
+        if rec.frames_left() < n_samples {
+            return Err(MidiChannelError::RecordOutOfBounds {
+                n_samples,
+                available: rec.frames_left(),
+            });
+        }
+
+        let record_end = rec.n_frames_processed + n_samples;
+        let skip = if position < 0 { (-position) as u32 } else { 0 }.min(n_samples);
+        let start = position.max(0) as u32;
+        let end = start.saturating_add(n_samples - skip).min(loop_length);
+        self.data_length = self.data_length.max(loop_length);
+
+        if start == 0 && start < end {
+            self.recording_start_state
+                .copy_relevant_state(&self.input_state);
+            self.recording_start_valid = true;
+        }
+
+        self.replace_scratch.clear();
+        let mut idx = rec.n_events_processed;
+        while idx < input.len() {
+            let event = input[idx];
+            if event.time >= record_end {
+                break;
+            }
+            if event.time >= rec.n_frames_processed {
+                let relative = event.time - rec.n_frames_processed;
+                let at = position + relative as i32;
+                if at >= start as i32 && at < end as i32 {
+                    if self.replace_scratch.len() == self.replace_scratch.capacity() {
+                        return Err(MidiChannelError::ReplaceCapacity {
+                            required: self.replace_scratch.len() + 1,
+                            capacity: self.replace_scratch.capacity(),
+                        });
+                    }
+                    self.replace_scratch.push(event.at_time(at as u32));
+                }
+                self.input_state.process(event.data());
+            }
+            idx += 1;
+        }
+        rec.n_events_processed = idx;
+        self.rec = Some(rec);
+
+        if start >= end {
+            return Ok(());
+        }
+        self.storage
+            .replace_range(start, end, &self.replace_scratch)
+            .map_err(|error| match error {
+                crate::midi_storage::ReplaceRangeError::OutOfCapacity { required, capacity } => {
+                    MidiChannelError::ReplaceCapacity { required, capacity }
+                }
+                crate::midi_storage::ReplaceRangeError::InvalidRange
+                | crate::midi_storage::ReplaceRangeError::OutOfOrder => {
+                    MidiChannelError::InvalidReplacement
+                }
+            })?;
+        self.playback_cursor.reset(&self.storage);
+        if let Some(snapshots) = self.content_snapshots.as_mut() {
+            snapshots.remove_range(start as i32, end as i32, self.data_length);
+            snapshots.append_storage_events(&self.replace_scratch, self.data_length, false);
+        }
+        self.data_changed();
+        Ok(())
     }
 
     fn process_record(
@@ -1024,6 +1113,275 @@ mod tests {
         // The second message lands at its absolute recorded position.
         check!(times(&ch.contents()) == vec![1, 6]);
         check!(ch.length() == 8);
+    }
+
+    #[test]
+    fn replacing_overwrites_the_processed_interval() {
+        let mut ch = channel();
+        ch.set_contents(
+            &[
+                ev(1, &midi::note_on(0, 60, 100)),
+                ev(6, &midi::note_off(0, 60, 0)),
+            ],
+            8,
+            None,
+        );
+
+        cycle(
+            &mut ch,
+            L::Replacing,
+            8,
+            0,
+            8,
+            &[
+                ev(2, &midi::note_on(0, 64, 100)),
+                ev(5, &midi::note_off(0, 64, 0)),
+            ],
+        );
+
+        check!(times(&ch.contents()) == vec![2, 5]);
+        check!(ch.contents()[0].data() == midi::note_on(0, 64, 100).as_slice());
+    }
+
+    #[test]
+    fn partial_replacement_preserves_events_outside_the_interval() {
+        let mut ch = channel();
+        ch.set_contents(
+            &[
+                ev(1, &midi::note_on(0, 60, 100)),
+                ev(3, &midi::note_off(0, 60, 0)),
+                ev(6, &midi::note_on(0, 61, 100)),
+            ],
+            8,
+            None,
+        );
+
+        cycle(
+            &mut ch,
+            L::Replacing,
+            3,
+            2,
+            8,
+            &[ev(1, &midi::cc(0, 7, 42))],
+        );
+
+        check!(times(&ch.contents()) == vec![1, 3, 6]);
+        check!(ch.contents()[1].data() == midi::cc(0, 7, 42).as_slice());
+    }
+
+    #[test]
+    fn replacement_with_no_input_erases_the_interval() {
+        let mut ch = channel();
+        ch.set_contents(
+            &[
+                ev(1, &midi::note_on(0, 60, 100)),
+                ev(3, &midi::note_off(0, 60, 0)),
+                ev(6, &midi::note_on(0, 61, 100)),
+            ],
+            8,
+            None,
+        );
+
+        cycle(&mut ch, L::Replacing, 3, 2, 8, &[]);
+
+        check!(times(&ch.contents()) == vec![1, 6]);
+    }
+
+    #[test]
+    fn replacement_across_split_calls_uses_loop_relative_times() {
+        let mut ch = channel();
+        ch.set_contents(
+            &[
+                ev(1, &midi::note_on(0, 60, 100)),
+                ev(3, &midi::note_off(0, 60, 0)),
+                ev(5, &midi::note_on(0, 61, 100)),
+                ev(7, &midi::note_off(0, 61, 0)),
+            ],
+            8,
+            None,
+        );
+        let input = [
+            ev(1, &midi::note_on(0, 64, 100)),
+            ev(6, &midi::note_off(0, 64, 0)),
+        ];
+        ch.set_recording_buffer(8);
+        ch.set_playback_buffer(8);
+        let mut out = Vec::new();
+
+        ch.process(
+            L::Replacing,
+            L::Unknown,
+            None,
+            None,
+            4,
+            0,
+            4,
+            8,
+            &input,
+            &mut out,
+        )
+        .unwrap();
+        ch.process(
+            L::Replacing,
+            L::Unknown,
+            None,
+            None,
+            4,
+            4,
+            8,
+            8,
+            &input,
+            &mut out,
+        )
+        .unwrap();
+
+        check!(times(&ch.contents()) == vec![1, 6]);
+        check!(ch.contents()[0].data() == midi::note_on(0, 64, 100).as_slice());
+        check!(ch.contents()[1].data() == midi::note_off(0, 64, 0).as_slice());
+    }
+
+    #[test]
+    fn replacement_split_at_loop_wrap_uses_each_side_of_the_boundary() {
+        let mut ch = channel();
+        ch.set_contents(
+            &[
+                ev(0, &midi::note_on(0, 60, 100)),
+                ev(1, &midi::note_off(0, 60, 0)),
+                ev(6, &midi::note_on(0, 61, 100)),
+                ev(7, &midi::note_off(0, 61, 0)),
+            ],
+            8,
+            None,
+        );
+        let input = [
+            ev(1, &midi::note_on(0, 64, 100)),
+            ev(3, &midi::note_off(0, 64, 0)),
+        ];
+        ch.set_recording_buffer(4);
+        ch.set_playback_buffer(4);
+        let mut out = Vec::new();
+
+        ch.process(
+            L::Replacing,
+            L::Unknown,
+            None,
+            None,
+            2,
+            6,
+            8,
+            8,
+            &input,
+            &mut out,
+        )
+        .unwrap();
+        ch.process(
+            L::Replacing,
+            L::Unknown,
+            None,
+            None,
+            2,
+            0,
+            2,
+            8,
+            &input,
+            &mut out,
+        )
+        .unwrap();
+
+        check!(times(&ch.contents()) == vec![1, 7]);
+        check!(ch.contents()[0].data() == midi::note_off(0, 64, 0).as_slice());
+        check!(ch.contents()[1].data() == midi::note_on(0, 64, 100).as_slice());
+    }
+
+    #[test]
+    fn replacement_skips_input_before_the_channel_start_offset() {
+        let mut ch = channel();
+        ch.set_contents(
+            &[
+                ev(0, &midi::note_on(0, 60, 100)),
+                ev(1, &midi::note_off(0, 60, 0)),
+                ev(3, &midi::note_on(0, 61, 100)),
+            ],
+            4,
+            None,
+        );
+
+        cycle(
+            &mut ch,
+            L::Replacing,
+            4,
+            -2,
+            4,
+            &[
+                ev(0, &midi::note_on(0, 63, 100)),
+                ev(3, &midi::note_on(0, 64, 100)),
+            ],
+        );
+
+        check!(times(&ch.contents()) == vec![1, 3]);
+        check!(ch.contents()[0].data() == midi::note_on(0, 64, 100).as_slice());
+    }
+
+    #[test]
+    fn replacement_at_loop_start_updates_playback_start_state() {
+        let mut ch = channel();
+        ch.set_contents(&[ev(1, &midi::note_on(0, 60, 100))], 4, None);
+        cycle(&mut ch, L::Stopped, 1, 0, 4, &[ev(0, &midi::cc(0, 7, 42))]);
+
+        cycle(
+            &mut ch,
+            L::Replacing,
+            4,
+            0,
+            4,
+            &[
+                ev(1, &midi::note_on(0, 64, 100)),
+                ev(2, &midi::note_off(0, 64, 0)),
+            ],
+        );
+
+        check!(ch
+            .recording_start_state_messages()
+            .contains(&midi::cc(0, 7, 42).to_vec()));
+    }
+
+    #[test]
+    fn replacement_reports_insufficient_storage_without_partial_mutation() {
+        let mut ch = MidiChannel::with_capacity_elems(3, C::Direct);
+        ch.set_contents(
+            &[
+                ev(0, &midi::note_on(0, 60, 100)),
+                ev(2, &midi::note_off(0, 60, 0)),
+                ev(6, &midi::note_on(0, 61, 100)),
+            ],
+            8,
+            None,
+        );
+        ch.set_recording_buffer(3);
+        ch.set_playback_buffer(3);
+        let mut out = Vec::new();
+
+        let result = ch.process(
+            L::Replacing,
+            L::Unknown,
+            None,
+            None,
+            3,
+            1,
+            4,
+            8,
+            &[
+                ev(0, &midi::note_on(0, 64, 100)),
+                ev(1, &midi::note_off(0, 64, 0)),
+            ],
+            &mut out,
+        );
+
+        check!(matches!(
+            result,
+            Err(MidiChannelError::ReplaceCapacity { .. })
+        ));
+        check!(times(&ch.contents()) == vec![0, 2, 6]);
     }
 
     #[test]

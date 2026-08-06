@@ -10,7 +10,7 @@
 
 use crate::midi_ringbuffer::MidiRingbuffer;
 use crate::midi_sorting_buffer::MidiSortingBuffer;
-use crate::midi_state::{MidiStateTracker, TrackWhat};
+use crate::midi_state::{MidiStateTracker, TrackWhat, MAX_DIFF_MESSAGES};
 use crate::midi_storage::{MidiStorage, MidiStorageElem};
 use crate::port::PortDataType;
 use crate::state_mirror::MidiPortStateMirror;
@@ -29,6 +29,10 @@ pub struct MidiPort {
     midi_state: Option<MidiStateTracker>,
     /// State as of the oldest message still in the capture window.
     ringbuffer_tail_state: MidiStateTracker,
+    /// Notes that have actually crossed this port's passthrough connections.
+    passthrough_state: MidiStateTracker,
+    passthrough_cleanup: Vec<MidiStorageElem>,
+    passthrough_cleanup_pending: bool,
     /// Created lazily, only once capture is asked for.
     ringbuffer: Option<MidiRingbuffer>,
     ringbuffer_capacity: usize,
@@ -44,6 +48,9 @@ impl MidiPort {
             passthrough_muted: false,
             midi_state: track.anything().then(|| MidiStateTracker::new(track)),
             ringbuffer_tail_state: MidiStateTracker::new(track),
+            passthrough_state: MidiStateTracker::new(TrackWhat::ALL),
+            passthrough_cleanup: Vec::with_capacity(MAX_DIFF_MESSAGES),
+            passthrough_cleanup_pending: false,
             ringbuffer: None,
             ringbuffer_capacity: DEFAULT_RINGBUFFER_CAPACITY_ELEMS,
             n_input_events: 0,
@@ -89,8 +96,31 @@ impl MidiPort {
         self.passthrough_muted
     }
     pub fn set_passthrough_muted(&mut self, muted: bool) {
+        if muted && !self.passthrough_muted {
+            self.passthrough_state
+                .all_notes_off_into(&mut self.passthrough_cleanup);
+            self.passthrough_cleanup_pending = !self.passthrough_cleanup.is_empty();
+        }
         self.passthrough_muted = muted;
         self.publish_state();
+    }
+
+    pub(crate) fn record_passthrough(&mut self, events: &[MidiStorageElem]) {
+        for event in events {
+            self.passthrough_state.process(event.data());
+        }
+    }
+
+    pub(crate) fn take_passthrough_cleanup(&mut self) -> Option<Vec<MidiStorageElem>> {
+        self.passthrough_cleanup_pending
+            .then(|| std::mem::take(&mut self.passthrough_cleanup))
+    }
+
+    pub(crate) fn finish_passthrough_cleanup(&mut self, mut cleanup: Vec<MidiStorageElem>) {
+        cleanup.clear();
+        self.passthrough_cleanup = cleanup;
+        self.passthrough_cleanup_pending = false;
+        self.passthrough_state.clear();
     }
 
     pub fn n_input_events(&self) -> u32 {
@@ -284,6 +314,55 @@ mod tests {
         // State still follows the input, so unmuting resumes coherently.
         check!(p.n_notes_active() == 1);
         check!(p.n_input_events() == 1);
+    }
+
+    #[test]
+    fn muting_passthrough_queues_cleanup_for_forwarded_notes_once() {
+        let mut p = port();
+        p.record_passthrough(&[
+            ev(0, &midi::note_on(0, 60, 100)),
+            ev(1, &midi::note_on(2, 61, 100)),
+        ]);
+
+        p.set_passthrough_muted(true);
+        let cleanup = p.take_passthrough_cleanup().expect("cleanup");
+        check!(cleanup.len() == 2);
+        check!(cleanup
+            .iter()
+            .any(|event| event.data() == midi::note_off(0, 60, 0).as_slice()));
+        check!(cleanup
+            .iter()
+            .any(|event| event.data() == midi::note_off(2, 61, 0).as_slice()));
+        p.finish_passthrough_cleanup(cleanup);
+        check!(p.take_passthrough_cleanup().is_none());
+
+        p.set_passthrough_muted(true);
+        check!(p.take_passthrough_cleanup().is_none());
+    }
+
+    #[test]
+    fn released_and_never_forwarded_notes_need_no_passthrough_cleanup() {
+        let mut p = port();
+        p.record_passthrough(&[
+            ev(0, &midi::note_on(0, 60, 100)),
+            ev(1, &midi::note_off(0, 60, 0)),
+        ]);
+
+        p.set_passthrough_muted(true);
+        check!(p.take_passthrough_cleanup().is_none());
+    }
+
+    #[test]
+    fn muting_then_unmuting_before_processing_preserves_pending_cleanup() {
+        let mut p = port();
+        p.record_passthrough(&[ev(0, &midi::note_on(0, 60, 100))]);
+
+        p.set_passthrough_muted(true);
+        p.set_passthrough_muted(false);
+
+        let cleanup = p.take_passthrough_cleanup().expect("cleanup");
+        check!(cleanup.len() == 1);
+        p.finish_passthrough_cleanup(cleanup);
     }
 
     #[test]

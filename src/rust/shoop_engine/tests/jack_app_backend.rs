@@ -12,12 +12,12 @@
 
 #![cfg(all(feature = "jack", feature = "app_backend"))]
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use shoop_engine::app_backend::{
-    AudioDriver, AudioDriverSettings, AudioPort, BackendSession, JackAudioDriverSettings,
+    AudioDriver, AudioDriverSettings, AudioPort, BackendSession, JackAudioDriverSettings, MidiPort,
 };
 use shoop_engine::{AudioDriverType, ChannelMode, LoopMode, PortDirection};
 
@@ -90,6 +90,129 @@ impl jack::ProcessHandler for AudioConsumer {
             .extend_from_slice(self.port.as_slice(ps));
         jack::Control::Continue
     }
+}
+
+struct ConstantAudioSource {
+    port: jack::Port<jack::AudioOut>,
+}
+impl jack::ProcessHandler for ConstantAudioSource {
+    fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        self.port.as_mut_slice(ps).fill(1.0);
+        jack::Control::Continue
+    }
+}
+
+struct DryProcessorInput {
+    port: jack::Port<jack::AudioIn>,
+    sample_bits: Arc<AtomicU32>,
+    seen: Arc<AtomicBool>,
+}
+impl jack::ProcessHandler for DryProcessorInput {
+    fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        if let Some(sample) = self
+            .port
+            .as_slice(ps)
+            .iter()
+            .copied()
+            .find(|sample| *sample != 0.0)
+        {
+            self.sample_bits.store(sample.to_bits(), Ordering::Release);
+            self.seen.store(true, Ordering::Release);
+        }
+        jack::Control::Continue
+    }
+}
+
+struct WetProcessorOutput {
+    port: jack::Port<jack::AudioOut>,
+    sample_bits: Arc<AtomicU32>,
+    dry_seen: Arc<AtomicBool>,
+    produced: Arc<AtomicBool>,
+}
+impl jack::ProcessHandler for WetProcessorOutput {
+    fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        let sample = if self.dry_seen.load(Ordering::Acquire) {
+            f32::from_bits(self.sample_bits.load(Ordering::Acquire)) * 2.0
+        } else {
+            0.0
+        };
+        self.port.as_mut_slice(ps).fill(sample);
+        if sample != 0.0 {
+            self.produced.store(true, Ordering::Release);
+        }
+        jack::Control::Continue
+    }
+}
+
+struct AtomicAudioConsumer {
+    port: jack::Port<jack::AudioIn>,
+    max_bits: Arc<AtomicU32>,
+}
+impl jack::ProcessHandler for AtomicAudioConsumer {
+    fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        for sample in self.port.as_slice(ps).iter().copied() {
+            self.max_bits
+                .fetch_max(sample.max(0.0).to_bits(), Ordering::Relaxed);
+        }
+        jack::Control::Continue
+    }
+}
+
+struct MidiSource {
+    port: jack::Port<jack::MidiOut>,
+}
+impl jack::ProcessHandler for MidiSource {
+    fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        let mut writer = self.port.writer(ps);
+        let _ = writer.write(&jack::RawMidi {
+            time: 0,
+            bytes: &[0x90, 72, 100],
+        });
+        let _ = writer.write(&jack::RawMidi {
+            time: 1.min(ps.n_frames().saturating_sub(1)),
+            bytes: &[0x80, 72, 0],
+        });
+        jack::Control::Continue
+    }
+}
+
+struct MidiSinks {
+    monitored: jack::Port<jack::MidiIn>,
+    muted: jack::Port<jack::MidiIn>,
+    monitored_note_on: Arc<AtomicBool>,
+    monitored_note_off: Arc<AtomicBool>,
+    muted_events: Arc<AtomicUsize>,
+}
+impl jack::ProcessHandler for MidiSinks {
+    fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        for event in self.monitored.iter(ps) {
+            if event.bytes == [0x90, 72, 100] {
+                self.monitored_note_on.store(true, Ordering::Release);
+            }
+            if event.bytes == [0x80, 72, 0] {
+                self.monitored_note_off.store(true, Ordering::Release);
+            }
+        }
+        self.muted_events
+            .fetch_add(self.muted.iter(ps).count(), Ordering::Relaxed);
+        jack::Control::Continue
+    }
+}
+
+fn connect_checked(client: &jack::Client, source: &str, destination: &str) {
+    client
+        .connect_ports_by_name(source, destination)
+        .unwrap_or_else(|error| panic!("connect {source} -> {destination}: {error}"));
+    let source_port = client
+        .port_by_name(source)
+        .unwrap_or_else(|| panic!("connected source port disappeared: {source}"));
+    assert!(
+        source_port
+            .get_connections()
+            .iter()
+            .any(|connection| connection == destination),
+        "JACK did not retain connection {source} -> {destination}"
+    );
 }
 
 #[test]
@@ -317,4 +440,296 @@ fn audio_keeps_flowing_across_a_mid_stream_topology_change() {
     );
 
     let _ = consumer.deactivate();
+}
+
+// Purpose: Exercise the complete JACK dry-send to processor to wet-return audio graph.
+// Use case: A user connects an external effects client and hears transformed input at wet out.
+#[test]
+fn external_dry_wet_audio_round_trip_reaches_jack_output() {
+    let suffix = std::process::id();
+    let Some(source_client) = peer_client(&format!("shoop-dry-source-{suffix}")) else {
+        return;
+    };
+    let source = source_client
+        .register_port("source", jack::AudioOut::default())
+        .expect("source port");
+    let source_name = source.name().expect("source name");
+    let Some(dry_client) = peer_client(&format!("shoop-dry-processor-{suffix}")) else {
+        return;
+    };
+    let dry_send = dry_client
+        .register_port("dry_send", jack::AudioIn::default())
+        .expect("dry send port");
+    let dry_send_name = dry_send.name().expect("dry send name");
+    let Some(wet_client) = peer_client(&format!("shoop-wet-processor-{suffix}")) else {
+        return;
+    };
+    let wet_return = wet_client
+        .register_port("wet_return", jack::AudioOut::default())
+        .expect("wet return port");
+    let wet_return_name = wet_return.name().expect("wet return name");
+    let Some(consumer_client) = peer_client(&format!("shoop-wet-consumer-{suffix}")) else {
+        return;
+    };
+    let wet_output = consumer_client
+        .register_port("wet_output", jack::AudioIn::default())
+        .expect("wet output port");
+    let wet_output_name = wet_output.name().expect("wet output name");
+    let dry_sample_bits = Arc::new(AtomicU32::new(0));
+    let dry_seen = Arc::new(AtomicBool::new(false));
+    let wet_produced = Arc::new(AtomicBool::new(false));
+    let output_max_bits = Arc::new(AtomicU32::new(0));
+
+    let Some((driver, session)) = app_jack(&format!("shoop-dry-wet-{suffix}")) else {
+        return;
+    };
+    let app_name = driver.get_state().maybe_instance_name;
+    let ring = driver.get_state().buffer_size.max(1);
+    let app_dry_input = AudioPort::new_driver_port(
+        &session,
+        &driver,
+        "audio_dry_in",
+        &PortDirection::Input,
+        ring,
+    )
+    .expect("app dry input");
+    let app_dry_send = AudioPort::new_driver_port(
+        &session,
+        &driver,
+        "audio_dry_send",
+        &PortDirection::Output,
+        0,
+    )
+    .expect("app dry send");
+    let app_wet_return = AudioPort::new_driver_port(
+        &session,
+        &driver,
+        "audio_wet_return",
+        &PortDirection::Input,
+        ring,
+    )
+    .expect("app wet return");
+    let app_wet_output = AudioPort::new_driver_port(
+        &session,
+        &driver,
+        "audio_wet_out",
+        &PortDirection::Output,
+        0,
+    )
+    .expect("app wet output");
+    app_dry_input
+        .connect_internal(&app_dry_send)
+        .expect("dry internal route");
+    app_wet_return
+        .connect_internal(&app_wet_output)
+        .expect("wet internal route");
+    driver.wait_process();
+    std::thread::sleep(Duration::from_millis(100));
+    driver.wait_process();
+
+    let source_active = source_client
+        .activate_async((), ConstantAudioSource { port: source })
+        .expect("activate source");
+    let dry_active = dry_client
+        .activate_async(
+            (),
+            DryProcessorInput {
+                port: dry_send,
+                sample_bits: dry_sample_bits.clone(),
+                seen: dry_seen.clone(),
+            },
+        )
+        .expect("activate dry processor input");
+    let wet_active = wet_client
+        .activate_async(
+            (),
+            WetProcessorOutput {
+                port: wet_return,
+                sample_bits: dry_sample_bits,
+                dry_seen: dry_seen.clone(),
+                produced: wet_produced.clone(),
+            },
+        )
+        .expect("activate wet processor output");
+    let consumer_active = consumer_client
+        .activate_async(
+            (),
+            AtomicAudioConsumer {
+                port: wet_output,
+                max_bits: output_max_bits.clone(),
+            },
+        )
+        .expect("activate wet consumer");
+
+    let connector = source_active.as_client();
+    connect_checked(connector, &source_name, &format!("{app_name}:audio_dry_in"));
+    connect_checked(
+        connector,
+        &format!("{app_name}:audio_dry_send"),
+        &dry_send_name,
+    );
+    connect_checked(
+        connector,
+        &wet_return_name,
+        &format!("{app_name}:audio_wet_return"),
+    );
+    connect_checked(
+        connector,
+        &format!("{app_name}:audio_wet_out"),
+        &wet_output_name,
+    );
+    driver.wait_process();
+
+    let received_processed =
+        wait_until(|| f32::from_bits(output_max_bits.load(Ordering::Acquire)) >= 2.0);
+    let observed_max = f32::from_bits(output_max_bits.load(Ordering::Acquire));
+    assert!(
+        dry_seen.load(Ordering::Acquire),
+        "dry send never reached processor input"
+    );
+    assert!(
+        wet_produced.load(Ordering::Acquire),
+        "processor never produced a wet return after observing dry input"
+    );
+    let _ = consumer_active.deactivate();
+    let _ = wet_active.deactivate();
+    let _ = dry_active.deactivate();
+    let _ = source_active.deactivate();
+    assert!(
+        received_processed,
+        "expected transformed sample 2.0 at wet output, observed max {observed_max}"
+    );
+}
+
+// Purpose: Verify one JACK MIDI source reaches only the external track with passthrough enabled.
+// Use case: A shared controller feeds several external synth tracks but only the monitored one sounds.
+#[test]
+fn external_midi_fanout_respects_each_tracks_passthrough_mute() {
+    let suffix = std::process::id();
+    let Some(source_client) = peer_client(&format!("shoop-midi-source-{suffix}")) else {
+        return;
+    };
+    let source = source_client
+        .register_port("source", jack::MidiOut::default())
+        .expect("MIDI source port");
+    let source_name = source.name().expect("source name");
+    let Some(sink_client) = peer_client(&format!("shoop-midi-sinks-{suffix}")) else {
+        return;
+    };
+    let monitored = sink_client
+        .register_port("monitored", jack::MidiIn::default())
+        .expect("monitored sink port");
+    let muted = sink_client
+        .register_port("muted", jack::MidiIn::default())
+        .expect("muted sink port");
+    let monitored_name = monitored.name().expect("monitored name");
+    let muted_name = muted.name().expect("muted name");
+    let monitored_note_on = Arc::new(AtomicBool::new(false));
+    let monitored_note_off = Arc::new(AtomicBool::new(false));
+    let muted_events = Arc::new(AtomicUsize::new(0));
+
+    let Some((driver, session)) = app_jack(&format!("shoop-midi-fanout-{suffix}")) else {
+        return;
+    };
+    let app_name = driver.get_state().maybe_instance_name;
+    let ring = driver.get_state().buffer_size.max(1);
+    let monitored_input = MidiPort::new_driver_port(
+        &session,
+        &driver,
+        "monitored_dry_midi_in",
+        &PortDirection::Input,
+        ring,
+    )
+    .expect("monitored input");
+    let monitored_send = MidiPort::new_driver_port(
+        &session,
+        &driver,
+        "monitored_dry_midi_send",
+        &PortDirection::Output,
+        0,
+    )
+    .expect("monitored send");
+    let muted_input = MidiPort::new_driver_port(
+        &session,
+        &driver,
+        "muted_dry_midi_in",
+        &PortDirection::Input,
+        ring,
+    )
+    .expect("muted input");
+    let muted_send = MidiPort::new_driver_port(
+        &session,
+        &driver,
+        "muted_dry_midi_send",
+        &PortDirection::Output,
+        0,
+    )
+    .expect("muted send");
+    monitored_input
+        .connect_internal(&monitored_send)
+        .expect("monitored internal route");
+    muted_input
+        .connect_internal(&muted_send)
+        .expect("muted internal route");
+    muted_input
+        .set_passthrough_muted(true)
+        .expect("mute second track passthrough");
+    driver.wait_process();
+    std::thread::sleep(Duration::from_millis(100));
+    driver.wait_process();
+
+    let source_active = source_client
+        .activate_async((), MidiSource { port: source })
+        .expect("activate MIDI source");
+    let sink_active = sink_client
+        .activate_async(
+            (),
+            MidiSinks {
+                monitored,
+                muted,
+                monitored_note_on: monitored_note_on.clone(),
+                monitored_note_off: monitored_note_off.clone(),
+                muted_events: muted_events.clone(),
+            },
+        )
+        .expect("activate MIDI sinks");
+
+    let connector = source_active.as_client();
+    connect_checked(
+        connector,
+        &source_name,
+        &format!("{app_name}:monitored_dry_midi_in"),
+    );
+    connect_checked(
+        connector,
+        &source_name,
+        &format!("{app_name}:muted_dry_midi_in"),
+    );
+    connect_checked(
+        connector,
+        &format!("{app_name}:monitored_dry_midi_send"),
+        &monitored_name,
+    );
+    connect_checked(
+        connector,
+        &format!("{app_name}:muted_dry_midi_send"),
+        &muted_name,
+    );
+    driver.wait_process();
+
+    let received_monitored = wait_until(|| {
+        monitored_note_on.load(Ordering::Acquire) && monitored_note_off.load(Ordering::Acquire)
+    });
+    std::thread::sleep(Duration::from_millis(100));
+    let muted_count = muted_events.load(Ordering::Acquire);
+    let _ = sink_active.deactivate();
+    let _ = source_active.deactivate();
+    assert!(
+        received_monitored,
+        "monitored JACK sink did not receive both note-on and note-off"
+    );
+    assert_eq!(
+        muted_count, 0,
+        "passthrough-muted JACK track emitted {muted_count} MIDI events"
+    );
 }

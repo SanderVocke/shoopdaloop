@@ -102,6 +102,7 @@ Item {
     }
     readonly property var fx_out_ports : {
         var r = root.fx_ports.filter((p) => p && is_audio(p.descriptor) && p.descriptor.id.match(/_out_/))
+        r = r.concat(root.ports.filter((p) => p && is_audio(p.descriptor) && is_return(p.descriptor)))
         r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
         return r
     }
@@ -220,6 +221,7 @@ Item {
     function is_midi(p)   { return p && p.schema.match(/midiport\.[0-9]+/)  }
     function is_in(p)     { return p && p.id.match(/.*_in(?:_[0-9]*)?$/); }
     function is_out(p)    { return p && p.id.match(/.*_out(?:_[0-9]*)?$/); }
+    function is_return(p) { return p && p.id.match(/.*_return(?:_[0-9]*)?$/); }
     function is_dry(p)    { return p && p.id.match(/.*_dry_.*/); }
     function is_wet(p)    { return p && p.id.match(/.*_wet_.*/); }
     function is_direct(p) { return p && p.id.match(/.*_direct_.*/); }

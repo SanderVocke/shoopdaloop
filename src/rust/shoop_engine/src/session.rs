@@ -19,7 +19,7 @@ use std::sync::Arc;
 use crate::audio_channel::PreparedAudioChannelData;
 use crate::audio_midi_loop::AudioMidiLoop;
 use crate::basic_loop::SyncSourceState;
-use crate::channel_mode::ChannelMode;
+use crate::channel_mode::{loop_mode_to_channel_process_flags, ChannelMode, ProcessFlags};
 use crate::composite_plan::{CompiledCompositePlan, LoopIdentity, LoopTargetKind};
 use crate::composite_timeline::{
     AcceptedTimelineControl, BoundaryIntent, BoundaryIntentOrigin, BoundaryTargetAction,
@@ -2234,6 +2234,11 @@ impl Session {
                 let Some(ch) = l.midi_channel(m.channel_idx) else {
                     continue;
                 };
+                if !loop_mode_to_channel_process_flags(l.mode(), ch.mode())
+                    .contains(ProcessFlags::PLAYBACK)
+                {
+                    continue;
+                }
                 if ch.contents_were_loaded() {
                     continue;
                 }
@@ -2522,32 +2527,64 @@ impl Session {
     fn propagate_port(&mut self, from: usize, n_frames: usize) {
         if self.ports[from]
             .audio()
-            .is_some_and(|a| a.passthrough_muted())
-            || self.ports[from]
-                .midi()
-                .is_some_and(|m| m.passthrough_muted() || m.muted())
+            .is_some_and(|audio| audio.passthrough_muted())
         {
             return;
         }
-        let conns = std::mem::take(&mut self.port_connections);
-        if let Some(targets) = conns.get(&from) {
-            if !targets.is_empty() {
-                if self.ports[from].midi().is_some() {
-                    let events = self.ports[from].midi_events().to_vec();
+
+        if self.ports[from].midi().is_some() {
+            let source_muted = self.ports[from]
+                .midi()
+                .is_some_and(|midi| midi.passthrough_muted() || midi.muted());
+            let cleanup = self.ports[from]
+                .midi_mut()
+                .and_then(|midi| midi.take_passthrough_cleanup());
+            let conns = std::mem::take(&mut self.port_connections);
+            if let Some(targets) = conns.get(&from) {
+                if let Some(messages) = cleanup.as_ref() {
                     for &to in targets {
                         if to == from || to >= self.ports.len() {
                             continue;
                         }
-                        if self.ports[to].midi().is_some_and(|m| m.muted()) {
-                            continue;
-                        }
-                        for msg in events.iter() {
-                            self.ports[to].write_midi(*msg);
+                        for message in messages {
+                            self.ports[to].write_midi(*message);
                         }
                     }
-                    self.port_connections = conns;
-                    return;
                 }
+                if !source_muted && !targets.is_empty() {
+                    let events = self.ports[from].midi_events().to_vec();
+                    let mut delivered = false;
+                    for &to in targets {
+                        if to == from || to >= self.ports.len() {
+                            continue;
+                        }
+                        if self.ports[to].midi().is_some_and(|midi| midi.muted()) {
+                            continue;
+                        }
+                        for message in &events {
+                            self.ports[to].write_midi(*message);
+                        }
+                        delivered = true;
+                    }
+                    if delivered {
+                        if let Some(midi) = self.ports[from].midi_mut() {
+                            midi.record_passthrough(&events);
+                        }
+                    }
+                }
+            }
+            if let Some(messages) = cleanup {
+                if let Some(midi) = self.ports[from].midi_mut() {
+                    midi.finish_passthrough_cleanup(messages);
+                }
+            }
+            self.port_connections = conns;
+            return;
+        }
+
+        let conns = std::mem::take(&mut self.port_connections);
+        if let Some(targets) = conns.get(&from) {
+            if !targets.is_empty() {
                 if self.scratch.len() < n_frames {
                     self.scratch.resize(n_frames, 0.0);
                 }
@@ -2555,8 +2592,8 @@ impl Session {
                     let src = self.ports[from].buffer(n_frames);
                     let n = n_frames.min(src.len());
                     self.scratch[..n].copy_from_slice(&src[..n]);
-                    for s in &mut self.scratch[n..n_frames] {
-                        *s = 0.0;
+                    for sample in &mut self.scratch[n..n_frames] {
+                        *sample = 0.0;
                     }
                 }
                 for &to in targets {
@@ -2565,8 +2602,8 @@ impl Session {
                     }
                     let dst = self.ports[to].buffer(n_frames);
                     let n = n_frames.min(dst.len());
-                    for (d, s) in dst[..n].iter_mut().zip(&self.scratch[..n]) {
-                        *d += *s;
+                    for (destination, sample) in dst[..n].iter_mut().zip(&self.scratch[..n]) {
+                        *destination += *sample;
                     }
                 }
             }
@@ -3568,6 +3605,122 @@ mod tests {
         check!(got.len() == 2);
         check!(got[0].data() == midi::note_on(0, 60, 100).as_slice());
         check!(got[1].data() == midi::note_off(0, 60, 64).as_slice());
+    }
+
+    #[test]
+    fn replacing_midi_through_a_session_overwrites_loaded_events() {
+        use crate::midi;
+        let mut s = Session::default();
+        let input = s.add_port(dummy_midi(1, "min", PortDirection::Input));
+        let l = s.create_loop();
+        let_assert!(Ok(c) = s.add_midi_channel(l, 64, ChannelMode::Direct));
+        let_assert!(Ok(()) = s.connect_channel_input(c, input));
+        let_assert!(Ok(()) = s.apply_graph_changes());
+        s.loop_mut(l)
+            .unwrap()
+            .midi_channel_mut(0)
+            .unwrap()
+            .set_contents(
+                &[
+                    MidiStorageElem::new(1, &midi::note_on(0, 60, 100)).unwrap(),
+                    MidiStorageElem::new(2, &midi::note_off(0, 60, 0)).unwrap(),
+                ],
+                4,
+                None,
+            );
+        s.loop_mut(l).unwrap().set_length(4);
+        s.port_mut(input)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(0, &midi::note_on(0, 64, 100));
+        s.port_mut(input)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(3, &midi::note_off(0, 64, 0));
+
+        let_assert!(Ok(()) = s.set_loop_mode(l, LoopMode::Replacing));
+        s.process(4);
+
+        let contents = s.loop_(l).unwrap().midi_channel(0).unwrap().contents();
+        check!(contents.len() == 2);
+        check!(contents[0].time == 0);
+        check!(contents[0].data() == midi::note_on(0, 64, 100).as_slice());
+        check!(contents[1].time == 3);
+        check!(contents[1].data() == midi::note_off(0, 64, 0).as_slice());
+    }
+
+    #[test]
+    fn muting_midi_passthrough_cleans_forwarded_notes_exactly_once() {
+        use crate::midi;
+        let mut s = Session::default();
+        let source = s.add_port(dummy_midi(1, "source", PortDirection::Input));
+        let target = s.add_port(dummy_midi(2, "target", PortDirection::Output));
+        let_assert!(Ok(()) = s.connect_ports_internal(source, target));
+        let_assert!(Ok(()) = s.apply_graph_changes());
+
+        s.port_mut(source)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(0, &midi::note_on(0, 60, 100));
+        s.port_mut(target)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .request_data(1)
+            .unwrap();
+        s.process(1);
+        let started = s
+            .port_mut(target)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .take_written_requested_msgs();
+        check!(started.len() == 1);
+        check!(started[0].data() == midi::note_on(0, 60, 100).as_slice());
+
+        s.port_mut(source)
+            .unwrap()
+            .midi_mut()
+            .unwrap()
+            .set_passthrough_muted(true);
+        s.port_mut(source)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .queue_msg(0, &midi::note_on(0, 61, 100));
+        s.port_mut(target)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .request_data(1)
+            .unwrap();
+        s.process(1);
+        let cleanup = s
+            .port_mut(target)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .take_written_requested_msgs();
+        check!(cleanup.len() == 1);
+        check!(cleanup[0].data() == midi::note_off(0, 60, 0).as_slice());
+
+        s.port_mut(target)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .request_data(1)
+            .unwrap();
+        s.process(1);
+        check!(s
+            .port_mut(target)
+            .unwrap()
+            .as_dummy_midi_mut()
+            .unwrap()
+            .take_written_requested_msgs()
+            .is_empty());
     }
 
     #[test]
