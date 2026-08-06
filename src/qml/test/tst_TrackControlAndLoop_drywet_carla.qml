@@ -62,6 +62,16 @@ ShoopTestFile {
                 return AppRegistries.objects_registry.get(`${track.obj_id}_${suffix}`)
             }
 
+            function require_carla(track) {
+                let chain = fx(track)
+                if (!chain.ready && session.backend.allow_missing_backends()) {
+                    skip(`Carla FX chain unavailable for ${track.obj_id}`)
+                    return false
+                }
+                verify_true(chain.ready, `Carla FX chain unavailable for ${track.obj_id}`)
+                return chain.ready
+            }
+
             function dry_channel(loop) {
                 return loop.get_audio_channels().find((channel) => channel.obj_id.match(/.*_dry_.*/))
             }
@@ -164,6 +174,9 @@ ShoopTestFile {
             }
 
             function verify_midi_gating(track) {
+                if (!require_carla(track)) {
+                    return
+                }
                 reset_track(track)
                 let external_input = port(track, "dry_midi_in")
                 let fx_input = port(track, "fx_chain_midi_in_1")
