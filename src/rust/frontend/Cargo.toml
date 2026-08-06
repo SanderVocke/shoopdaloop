@@ -13,8 +13,6 @@ shoop_engine = { path = "../shoop_engine", features = ["app_backend"] }
 crashhandling = { path = "../crashhandling" }
 config = { path = "../config" }
 cxx_qt_lib_shoop = { path = "../cxx_qt_lib_shoop" }
-shoop_egui = { path = "../shoop_egui" }
-egui-cxx-qt = { workspace = true }
 midi_processing = { path = "../midi_processing" }
 qt_header_bindings = { path = "../qt_header_bindings"}
 
@@ -53,7 +51,6 @@ workspace = true
 macros = { path = "../macros" }
 
 cxx-qt-build = { workspace = true }
-egui-cxx-qt-build = { workspace = true }
 
 [features]
 # Dummy build to build dependencies only

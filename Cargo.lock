@@ -1332,48 +1332,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "egui-cxx-qt"
-version = "0.1.0"
-source = "git+https://github.com/SanderVocke/egui-cxx-qt.git?rev=6f0de7d570e4b8d3543556d76935a2c76bfbddb7#6f0de7d570e4b8d3543556d76935a2c76bfbddb7"
-dependencies = [
- "cxx",
- "cxx-qt",
- "cxx-qt-build",
- "cxx-qt-lib",
- "egui",
- "egui-cxx-qt-macros",
- "egui_glow",
-]
-
-[[package]]
-name = "egui-cxx-qt-build"
-version = "0.1.0"
-source = "git+https://github.com/SanderVocke/egui-cxx-qt.git?rev=6f0de7d570e4b8d3543556d76935a2c76bfbddb7#6f0de7d570e4b8d3543556d76935a2c76bfbddb7"
-dependencies = [
- "cxx-qt-build",
- "egui-cxx-qt-codegen",
-]
-
-[[package]]
-name = "egui-cxx-qt-codegen"
-version = "0.1.0"
-source = "git+https://github.com/SanderVocke/egui-cxx-qt.git?rev=6f0de7d570e4b8d3543556d76935a2c76bfbddb7#6f0de7d570e4b8d3543556d76935a2c76bfbddb7"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "egui-cxx-qt-macros"
-version = "0.1.0"
-source = "git+https://github.com/SanderVocke/egui-cxx-qt.git?rev=6f0de7d570e4b8d3543556d76935a2c76bfbddb7#6f0de7d570e4b8d3543556d76935a2c76bfbddb7"
-dependencies = [
- "egui-cxx-qt-codegen",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "egui-wgpu"
 version = "0.35.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1711,8 +1669,6 @@ dependencies = [
  "cxx_qt_lib_shoop",
  "directories",
  "dunce",
- "egui-cxx-qt",
- "egui-cxx-qt-build",
  "enum-iterator",
  "glob",
  "itertools 0.14.0",
@@ -1731,7 +1687,6 @@ dependencies = [
  "rodio",
  "serde",
  "serde_json",
- "shoop_egui",
  "shoop_engine",
  "sndfile",
  "tar",

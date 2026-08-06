@@ -160,7 +160,6 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
     let qml = qml.as_ref();
     let qml = qml.map(|p| p.as_path());
 
-    frontend::egui_loop_widget::initialize();
     let mut app = Application::make_unique();
     {
         let mut app = app

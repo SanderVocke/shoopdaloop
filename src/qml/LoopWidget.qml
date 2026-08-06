@@ -700,13 +700,10 @@ Item {
     property bool sync_active : AppRegistries.state_registry.sync_active
     onSync_activeChanged: root.logger.debug(`Sync active: ${sync_active}`)
 
-    readonly property bool use_egui_prototype: AppRegistries.state_registry.egui_prototype_active
-
     // UI
     StatusRect {
         id: statusrect
         loop: root.maybe_loop
-        visible: !root.use_egui_prototype
 
         anchors {
             left: parent.left
@@ -725,20 +722,6 @@ Item {
             sourceComponent: ContextMenu {
                 id: contextmenu
             }
-        }
-    }
-
-    Loader {
-        anchors {
-            left: parent.left
-            right: parent.right
-        }
-        height: statusrect.height
-        active: root.use_egui_prototype
-        visible: active
-
-        sourceComponent: EguiLoopWidget {
-            loopWidget: root
         }
     }
 

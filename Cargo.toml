@@ -35,8 +35,6 @@ dunce = "1.0"
 cxx-qt = "0.9.1"
 cxx-qt-lib = { version = "0.9.1", features = ["full"] }
 cxx-qt-build = { version = "0.9.1", features = ["link_qt_object_files"] }
-egui-cxx-qt = { git = "https://github.com/SanderVocke/egui-cxx-qt.git", rev = "6f0de7d570e4b8d3543556d76935a2c76bfbddb7" }
-egui-cxx-qt-build = { git = "https://github.com/SanderVocke/egui-cxx-qt.git", rev = "6f0de7d570e4b8d3543556d76935a2c76bfbddb7" }
 egui = "0.35"
 eframe = { version = "0.35", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
 egui_material_icons = "0.7"

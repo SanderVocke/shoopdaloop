@@ -32,11 +32,14 @@ Milestone plans must reference both this document and the parity matrix, and mus
 | Backend façade | Usable | Native dummy operations include typed external discovery/mutation and confirmed snapshots; hosted Web Audio explicitly reports arbitrary external connection management unavailable while retaining default physical routing. |
 | Unified egui executable | Usable | `shoopdaloop_egui` selects native dummy or hosted Web Audio by target and passes native construction/workflow/paint, Wasm, two-browser audio, lifecycle, and artifact tests. |
 | Browser egui application | Usable | Hosted secure artifacts request default microphone audio after an explicit gesture and render through AudioWorklet; the self-contained file exposes only explicit offline dummy operation. The backend-free connection preview separately covers all matrix states in regular and self-contained Wasm artifacts. |
-| Qt/frontend removal | Not started | Removal is a final migration result, not part of the first four milestones. |
+| Qt-hosted egui experiment | Complete | The embedded canvas/window experiment, QML state adapters, launch controls, frontend bridge code, and bridge dependencies are removed. The QML and standalone egui products now build and test independently. |
+| Full Qt/frontend removal | Not started | Removing the legacy QML product remains a final migration result, not part of the first four milestones or the completed integration cleanup. |
 
 Milestone 3 completion adds `shoop_audio_protocol`, the dedicated `shoop_audio_worklet` artifact, a direct browser controller in the composition root, bounded physical recording storage, target-specific documentation and CI, and plain API diagnostics without adding backend dependencies to `shoop_egui`. Chrome and Firefox deterministic fake-media workflows prove non-zero record/waveform/playback/output; Chrome additionally covers denial/retry, repeated-start prevention, suspension, media-track loss, processor loss, bounded queue saturation/recovery, zero-owned-track teardown, minimum/common viewports, and sustained recording. Native warning-free build, full workspace, JACK test-backend, real-time guard, and retained QML gates pass. Physical hardware was unavailable on the validation host and Safari remains explicitly untested; neither is claimed as evidence.
 
 The connections milestone adds explicit application/backend port descriptors, deterministic connection snapshots, desired-state actor commands, bounded pending/error handling, live endpoint churn, sync/main ownership, both menu scopes, and a reusable egui matrix. The connection-focused `shoop_egui_preview` is intentionally restored as a fixture-only iteration/artifact surface without changing `shoopdaloop_egui` as the unified authoritative application runner. Current native integration uses the engine dummy connection registry; arbitrary hosted Web Audio and native real-driver patching remain explicitly unavailable/deferred rather than being simulated as successful.
+
+The abandoned path that rendered egui inside the QML application has been deleted. The legacy product continues with its ordinary QML loop presentation and Rust/CXX-Qt frontend, while `shoopdaloop_egui` and `shoop_egui_preview` remain standalone and have no QML/frontend dependency. Formatting, warning-denying all-target builds, focused suites, standalone Wasm checks, the 1,010-test Rust workspace run, and the QML self-test (235 passed, 0 failed, one environment skip) pass. Release-browser and cross-platform gates are accepted as passing under the user's explicit documentation-closure instruction. This cleanup does not advance the whole-application parity roadmap or the final Qt deletion gate.
 
 Use the status terms `Not started`, `Partially explored`, `Planned`, `In progress`, `Usable`, `Complete`, and `Blocked` consistently. Notes should identify the active milestone or the evidence needed for the next status change.
 
@@ -44,7 +47,7 @@ Use the status terms `Not started`, `Partially explored`, `Planned`, `In progres
 
 ShoopDaLoop is a pure Rust desktop application whose primary GUI is egui. The final application:
 
-- Does not contain or depend on the `frontend` crate, QML code, Qt, CXX-Qt, `egui-cxx-qt`, Qt helper crates, or Qt packaging.
+- Does not contain or depend on the `frontend` crate, QML code, Qt, CXX-Qt, Qt-to-egui bridge crates, Qt helper crates, or Qt packaging.
 - Preserves the user-facing capabilities of the old application unless a difference is explicitly reviewed and accepted in the feature-parity matrix.
 - Has clear crate boundaries between presentation, business logic, backend control, real-time processing, persistence, and scripting.
 - Uses a typed, authoritative application model rather than a GUI object tree as session state.
@@ -245,5 +248,5 @@ Qt/frontend removal is complete only when:
 - Session compatibility, relevant Lua behavior, and supported audio backends pass their replacement test suites.
 - Native end-to-end tests cover critical live-looping workflows.
 - The `frontend`, Qt helper crates, QML sources, Qt build steps, Qt tests, and Qt packaging are removed.
-- Workspace dependency and source scans find no unintended Qt, QML, CXX-Qt, or `egui-cxx-qt` dependency.
+- Workspace dependency and source scans find no unintended Qt, QML, CXX-Qt, or Qt-to-egui bridge dependency.
 - Build, test, installation, and developer documentation describe only the replacement architecture.

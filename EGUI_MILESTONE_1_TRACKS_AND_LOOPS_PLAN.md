@@ -41,7 +41,7 @@ Out of scope:
 
 These criteria may not change without explicit user approval.
 
-1. A native egui executable opens and operates the milestone workspace without creating a Qt application or depending on `frontend`, QML, CXX-Qt, `egui-cxx-qt`, or Qt helper crates in its dependency graph.
+1. A native egui executable opens and operates the milestone workspace without creating a Qt application or depending on `frontend`, QML, CXX-Qt, Qt bridge crates, or Qt helper crates in its dependency graph.
 2. `shoop_egui` remains presentation-only and browser-compatible: it receives plain immutable state, owns only presentation state, emits typed intent, creates no native window, and depends on neither the application implementation nor backend/engine implementation.
 3. Framework-independent snapshots and intents use stable IDs rather than track/loop positions as identity. One application actor is authoritative for session topology, selection, targeting, and global-control state.
 4. The workspace presents a distinct sync track and horizontally scrollable main track columns with editable headers, vertically aligned loop slots, usable vertical overflow, and track controls aligned below the loop viewport. The result must be recognizably equivalent to the QML tracks layout, though not pixel-identical.

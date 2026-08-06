@@ -6,6 +6,20 @@ This is the living feature-discovery and implementation ledger for the pure egui
 
 The detailed entries cover the completed tracks/loops, cross-target engine, browser-audio, and track-port connections milestones. Areas outside those slices remain listed coarsely until their milestone discovery begins.
 
+The retired Qt-hosted egui experiment has been removed. The legacy QML application and standalone egui applications now have independent presentation and dependency paths; QML remains only as the behavior baseline for features not yet replaced.
+
+## Integration-removal status and evidence
+
+The cleanup is complete:
+
+- The QML canvas/window components, four state adapters, launch control, runtime state, dedicated QML test, two frontend adapters, registrations, initialization, and integration-only dependencies are deleted.
+- `LoopWidget.qml` always renders the established QML status surface; the QML self-test reports 235 passed, 0 failed, and one environment-only CPAL virtual-port skip.
+- `frontend` and legacy `shoopdaloop` dependency trees contain no egui package. The standalone production runner and fixture preview retain no frontend/QML/CXX-Qt dependency.
+- Focused frontend/API/application/backend/presentation/runner/preview tests pass, as do both standalone Wasm compiler checks.
+- Formatting and the warning-denying all-target workspace build pass. The full workspace run with `shoop_engine/app_backend` reports 1,010 passed and 0 failed across 69 test binaries/doc-test suites.
+- Source, lockfile, deleted-document-reference, and workflow scans contain no stale integration reference outside the retained execution record.
+- Release-browser and cross-platform gates are recorded as passing under the user's explicit instruction to accept those unchanged checks without another run for this documentation closure.
+
 ## Maintenance rules
 
 - Update discovery, implementation, and evidence as part of the stage that changes them.
@@ -30,7 +44,6 @@ Discovery:
 Implementation:
 
 - `Existing widget`: presentation exists in `shoop_egui`, but is not connected to the new application architecture.
-- `Prototype through Qt`: works only through the current Qt/QML host or adapters.
 - `Not started`: no replacement implementation.
 - `Partial`: replacement exists but does not meet the recorded target.
 - `Complete`: target is implemented and has recorded evidence.
@@ -54,8 +67,8 @@ The initial matrix is based on:
 - Track creation: `src/qml/NewTrackDialog.qml` and `src/qml/js/generate_session.js`.
 - Track behavior: `src/qml/TrackControlWidget.qml` and `docs/source/usage.trackcontrols.rst`.
 - Loop behavior: `src/qml/LoopWidget.qml`, `src/qml/AppControls.qml`, and `docs/source/usage.loopcontrols.rst`.
-- Existing egui behavior: the models and widgets in `src/rust/shoop_egui/src` plus the Qt adapter in `src/rust/frontend/src/egui_window.rs`.
-- Existing integration evidence: `src/qml/test/tst_EguiWindow.qml` and the loop/track QML test suites listed by `src/qml/test`.
+- Existing egui behavior: the models and widgets in `src/rust/shoop_egui/src`.
+- QML behavior evidence: the loop/track QML test suites listed by `src/qml/test`.
 - Group transition, target, sync, and solo behavior: `src/qml/test/tst_TwoLoops.qml` and `src/qml/test/tst_ThreeLoops.qml`; grab-only cases remain deferred.
 - Direct track topology and controls: `src/qml/test/tst_TrackControl_direct.qml`, `src/qml/test/tst_TrackControlAndLoop_direct.qml`, and the corresponding dry/wet tests used only to identify deferred behavior.
 
@@ -120,16 +133,16 @@ Evidence referenced below consists of:
 
 | ID | Capability or behavior | Old application baseline | Discovery | M1 target | Current implementation | Replacement evidence |
 |---|---|---|---|---|---|---|
-| ARCH-001 | Pure native egui process | Production startup creates a Qt application and QML engine; the prototype is a Qt-hosted egui canvas. | Explored for M1 | Required | Complete | Native dependency scan and Xvfb runtime smoke |
+| ARCH-001 | Pure native egui process | Production startup creates a Qt application and QML engine. | Explored for M1 | Required | Complete | Native dependency scan and Xvfb runtime smoke |
 | ARCH-002 | Presentation/business/backend separation | QML widgets currently own substantial session and control behavior. | Explored for M1 | Required | Complete | Separate API, presentation, application, backend, preview, and native crates with one-way dependencies |
-| ARCH-003 | Stable entity identity | QML uses object IDs plus coordinates; the egui prototype routes actions by track and loop indices. | Explored for M1 | Required | Complete | API identity tests and stable-ID widget/application routing tests |
-| ARCH-004 | Immutable snapshot and typed intent flow | The prototype has plain state/actions but receives snapshots and emits actions through QObject adapters. | Explored for M1 | Required | Complete | API intent tests, snapshot-independence test, and bounded dispatch errors |
+| ARCH-003 | Stable entity identity | QML uses object IDs plus coordinates; the replacement routes actions by stable track and loop IDs. | Explored for M1 | Required | Complete | API identity tests and stable-ID widget/application routing tests |
+| ARCH-004 | Immutable snapshot and typed intent flow | Replacement presentation receives plain snapshots and emits typed actions through the application contract. | Explored for M1 | Required | Complete | API intent tests, snapshot-independence test, and bounded dispatch errors |
 | ARCH-005 | Backend-free egui preview | No standalone preview executable currently supplies mock application snapshots. | Explored for M1 | Required | Complete | Preview representative-shape test, clean dependency tree, native Xvfb smoke, and deployable browser WebAssembly bundle |
 | SHELL-001 | Existing egui application shell | Current `AppWidget` includes global controls, tracks, details, logo, and backend status. | Explored for M1 | Required | Complete | Native workflow and complete application paint tests |
-| SHELL-002 | Logo, version, DSP, xrun, buffer, and latency display | QML and the prototype show these live values. | Explored for M1 | Required | Complete | Application/backend status contract and complete application paint tests |
+| SHELL-002 | Logo, version, DSP, xrun, buffer, and latency display | QML and the standalone egui application show these live values. | Explored for M1 | Required | Complete | Application/backend status contract and complete application paint tests |
 | LAYOUT-001 | Horizontal track columns with vertical loop stacks | QML places tracks in horizontally scrollable columns and loops in aligned vertical slots. | Explored for M1 | Required | Complete | Refactored tracks widget and minimum/common-size paint tests |
 | LAYOUT-002 | Track controls remain aligned below the loop viewport | QML renders controls in a separate row below the vertically scrollable loop area. | Explored for M1 | Required | Complete | Separate fixed controls row in `TracksWidget`; application paint tests |
-| LAYOUT-003 | Track header and editable title | QML has a title field at the top of each main track; the egui prototype has an editable title. | Explored for M1 | Required | Complete | Track intent routing and native workflow tests |
+| LAYOUT-003 | Track header and editable title | QML has a title field at the top of each main track; the standalone egui application has an editable title. | Explored for M1 | Required | Complete | Track intent routing and native workflow tests |
 | LAYOUT-004 | Sync track has a distinct fixed area and limited presentation | QML renders one non-editable sync track separately from main tracks. | Explored for M1 | Required subset | Complete | Distinct actor model plus non-editable right-side sync presentation |
 | LAYOUT-005 | Horizontal and vertical overflow remain usable | QML separates horizontal track scrolling from vertical loop scrolling. | Explored for M1 | Required | Complete | Independent horizontal and vertical scroll areas; minimum/common-size paint tests |
 | LAYOUT-006 | Add-track and add-loop affordances occupy QML-like positions | QML places add-track after the track columns and add-loop below each main track. | Explored for M1 | Required | Complete | Dialog tests and add-loop stable-ID intent test |
@@ -146,7 +159,7 @@ Evidence referenced below consists of:
 | TRACK-011 | Output mute | Mute affects track outputs and is reflected in the control state. | Explored for M1 | Required | Complete | Typed control tests and backend port mutation/polling implementation |
 | TRACK-012 | Input gain and stereo balance | Applicable audio input controls update track input ports. | Explored for M1 | Required | Complete | Track-control widget tests and backend port mutation/polling implementation |
 | TRACK-013 | Input monitoring/mute | The monitor control changes input passthrough without preventing recording. | Explored for M1 | Required | Complete | Typed control tests and backend passthrough mutation/polling implementation |
-| TRACK-014 | Audio level and MIDI activity display | QML and the prototype aggregate applicable port activity into track controls. | Explored for M1 | Required | Complete | Engine state polling into application snapshots and representative preview test |
+| TRACK-014 | Audio level and MIDI activity display | QML and the standalone egui application aggregate applicable port activity into track controls. | Explored for M1 | Required | Complete | Engine state polling into application snapshots and representative preview test |
 | TRACK-015 | Hide inapplicable controls | Audio gain/balance controls are absent or disabled when a track has no applicable channels. | Explored for M1 | Required | Complete | `inapplicable_track_controls_are_not_rendered` and supported-shape test |
 | TRACK-016 | Track reordering and width resizing | QML supports drag reordering and per-track width adjustment. | Partially explored | Deferred | Deferred | Later layout-management milestone |
 | TRACK-017 | Track options menu | QML track options include connections, deletion, and FX state actions. | Explored for connections | Connections required subset | Partial | **Connections...** is complete for sync/main tracks; deletion and FX actions remain unavailable and deferred |
@@ -184,7 +197,7 @@ Evidence referenced below consists of:
 | DIALOG-002 | Track-port Connections dialog | QML provides track-scoped and global connection windows. | Explored for connections | Connections required | Complete | Reusable connection dialog, scope/matrix/geometry tests, preview, and native dummy workflow |
 | MENU-001 | Deferred context and main-menu actions | QML has track, loop, and global actions beyond connections. | Partially explored | Deferred | Deferred | Connections entries are enabled; deletion, FX, session, settings, and loop-context actions remain unavailable/deferred |
 | BACKEND-001 | Create direct track ports, loops, and channels | QML descriptor generation plus QObject wrappers constructs corresponding engine entities and wiring. | Explored for M1 | Required | Complete | Engine-backed direct-track contract and native workflow |
-| BACKEND-002 | Poll loop, channel, port, and driver state | QObject update code currently converts state mirrors into QML properties and prototype snapshots. | Explored for M1 | Required | Complete | Engine state aggregation, backend contracts, actor publication, and native workflow |
+| BACKEND-002 | Poll loop, channel, port, and driver state | Legacy frontend update code converts state mirrors into QML properties. | Explored for M1 | Required | Complete | Engine state aggregation, backend contracts, actor publication, and native workflow |
 | BACKEND-003 | Dummy-backend deterministic operation | Existing tests use a dummy backend for headless behavior. | Explored for M1 | Required | Complete | Shared contract passes for fake and engine-backed dummy implementations |
 
 ## Milestone-2 planned matrix

@@ -1,4 +1,4 @@
-use egui_cxx_qt_build::{CxxQtBuilder, CxxQtBuilderExt};
+use cxx_qt_build::CxxQtBuilder;
 
 fn main() {
     // If we're pre-building, don't do anything
@@ -8,8 +8,6 @@ fn main() {
 
     unsafe {
         CxxQtBuilder::new()
-            .canvas_file("src/egui_loop_widget.rs")
-            .canvas_file("src/egui_window.rs")
             .qt_module("Quick")
             .qt_module("Gui")
             .qt_module("Network")

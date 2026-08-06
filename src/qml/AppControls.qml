@@ -15,7 +15,6 @@ Item {
     signal processThreadSegfault()
     signal processThreadAbort()
     signal openConnections()
-    signal openEguiWindow()
 
     property alias sync_active : sync_active_button.sync_active
     property alias solo_active : solo_active_button.solo_active
@@ -531,24 +530,6 @@ Item {
 
             ControlTooltip {
                 text: "If set, recording actions will run for the specified fixed amount of cycles."
-            }
-        }
-
-        ToolSeparator {
-            orientation: Qt.Vertical
-            height: 40
-        }
-
-        ExtendedButton {
-            tooltip: "Open the egui prototype window."
-            height: 40
-            width: 48
-            onClicked: root.openEguiWindow()
-
-            Label {
-                anchors.centerIn: parent
-                text: "egui"
-                font.pixelSize: 12
             }
         }
     }
