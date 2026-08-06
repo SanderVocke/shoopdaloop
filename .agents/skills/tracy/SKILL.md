@@ -178,58 +178,58 @@ Several objects may update during one frontend refresh. Correlate object plots w
 Most Rust `log` records appear in Tracy as a `message` whose `text` field has this form:
 
 ```text
-message = <payload>, log.target = <logical target>, log.module_path = <Rust module>, log.file = <source path>, log.line = <line>
+log.level = <TRACE|DEBUG|INFO|WARN|ERROR>, message = <payload>, log.target = <logical target>, log.module_path = <Rust module>, log.file = <source path>, log.line = <line>
 ```
 
 For example:
 
 ```text
-message = Transitioning 1 loops to 2 with delay -1, sync at cycle -1, log.target = Frontend.Loop, log.module_path = frontend::cxx_qt_shoop::rust::qobj_loop_gui, log.file = src/rust/frontend/src/cxx_qt_shoop/rust/qobj_loop_gui.rs, log.line = 477
+log.level = INFO, message = Transitioning 1 loops to 2 with delay -1, sync at cycle -1, log.target = Frontend.Loop, log.module_path = frontend::cxx_qt_shoop::rust::qobj_loop_gui, log.file = src/rust/frontend/src/cxx_qt_shoop/rust/qobj_loop_gui.rs, log.line = 477
 ```
 
 The embedded metadata is not promoted to separate `tracy-query` fields; filter it through `message.text`. Anchor metadata values on their labels and delimiters because the payload may itself contain commas or equals signs:
 
 ```sh
-# Logical logging target/category.
+# One exact severity.
 "$TQ" query --kind message \
+  --filter 'message.text=^log\.level = ERROR(,|$)' "$TRACE"
+
+# Warning or error severity.
+"$TQ" query --kind message \
+  --filter 'message.text=^log\.level = (WARN|ERROR)(,|$)' "$TRACE"
+
+# Severity and logical logging target/category. Repeated filters are ANDed.
+"$TQ" query --kind message \
+  --filter 'message.text=^log\.level = (DEBUG|INFO)(,|$)' \
   --filter 'message.text=(^|, )log\.target = Frontend\.Loop(,|$)' "$TRACE"
 
 # Rust module path.
 "$TQ" query --kind message \
   --filter 'message.text=(^|, )log\.module_path = frontend::cxx_qt_shoop::rust::qobj_loop_gui(,|$)' "$TRACE"
 
-# Source tree or one source file. Repeated filters are ANDed.
+# Source tree or one source file.
 "$TQ" query --kind message \
   --filter 'message.text=(^|, )log\.file = src/rust/frontend/src/' \
   --filter 'message.text=qobj_loop_gui\.rs(,|$)' "$TRACE"
 
-# Exact source line; log.line is normally the final embedded field.
+# Exact source line.
 "$TQ" query --kind message \
-  --filter 'message.text=(^|, )log\.line = 477$' "$TRACE"
+  --filter 'message.text=(^|, )log\.line = 477(,|$)' "$TRACE"
 ```
 
-`log.target` is the stable logical category normally shown as names such as `Frontend.Loop` or `Frontend.BackendWrapper`. `log.module_path` is the Rust module that emitted the record. `log.file` and `log.line` identify the call site. Prefer the logical target for durable investigations; module paths and source lines are more exact but change during refactoring.
+`log.level` is the event severity. `log.target` is the stable logical category normally shown as names such as `Frontend.Loop` or `Frontend.BackendWrapper`. `log.module_path` is the Rust module that emitted the record. `log.file` and `log.line` identify the call site. Prefer the logical target for durable investigations; module paths and source lines are more exact but change during refactoring.
 
-The Tracy message currently does **not** encode the Rust log level. Its `color` field is not a severity mapping: ordinary Shoop records are normally the default color, while red may indicate an instrumentation failure from the Tracy integration. Consequently, none of the following is a valid post-capture level filter:
+Do not treat the Tracy message `color` field as severity. Shoop encodes severity explicitly in `message.text`; ordinary records normally use the default color, while red may indicate an instrumentation failure from the Tracy integration. Searching the payload for words such as `warn`, `error`, or `failed` is likewise not a level filter.
 
-- filtering `message.color` as though it meant `WARN` or `ERROR`;
-- searching payload text for `warn`, `error`, or `failed` and calling the result a level filter;
-- assuming `SHOOP_LOG` removed lower-level records from the Tracy capture.
-
-Use the companion application output when exact levels are required. Its usual line format is:
+The companion application output remains formatted as:
 
 ```text
 [<RFC3339 timestamp>] [<thread name/id>] [<logical target>] [TRACE|DEBUG|INFO|WARN|ERROR] <payload>
 ```
 
-Filter that file by the bracketed level field, optionally combined with its logical target:
+`SHOOP_LOG`, or `RUST_LOG` when `SHOOP_LOG` is unset, controls that shell output. For example, `SHOOP_LOG='info,Frontend.Loop=debug'` enables general info output and debug output for that target. Tracy event capture is filtered independently and does not change the shell format.
 
-```sh
-rg '\[(WARN|ERROR)\]' shoopdaloop.log
-rg '\[Frontend\.Loop\] \[(DEBUG|INFO)\]' shoopdaloop.log
-```
-
-`SHOOP_LOG`, or `RUST_LOG` when `SHOOP_LOG` is unset, controls this formatted application output. For example, `SHOOP_LOG='info,Frontend.Loop=debug'` enables general info output and debug output for that target. The Tracy layer is enabled and filtered independently, so treat this as console/file capture configuration rather than a guarantee about which Tracy messages exist.
+Captures made before severity was added have messages beginning with `message =` instead of `log.level =` and cannot be filtered reliably by level after capture.
 
 Not every Tracy message must follow the Rust-log suffix format. QML, support tools, or instrumentation diagnostics may emit different text. Inspect a small sample before applying suffix-specific filters. Sampling, scheduler, lock, memory, and hardware-counter collections likewise depend on what Tracy recorded; an absent category is not proof that the corresponding behavior did not occur.
 
