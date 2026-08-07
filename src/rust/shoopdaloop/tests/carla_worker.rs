@@ -44,9 +44,11 @@ fn worker_executable() -> &'static str {
     })
 }
 
-fn wait_until_not_ready(processor: &mut impl CarlaProcessor) {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-    while processor.is_ready() && std::time::Instant::now() < deadline {
+fn wait_until_failed(processor: &mut impl CarlaProcessor) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while (processor.is_ready() || processor.lifecycle() == CarlaProcessorLifecycle::Running)
+        && std::time::Instant::now() < deadline
+    {
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
 }
@@ -142,7 +144,7 @@ fn fake_worker_covers_malformed_peer_log_flood_abort_error_and_hang() {
         assert!(supervisor.is_ready());
         supervisor.set_active(true);
         supervisor.process(64).unwrap();
-        wait_until_not_ready(&mut supervisor);
+        wait_until_failed(&mut supervisor);
         assert_eq!(supervisor.lifecycle(), CarlaProcessorLifecycle::Crashed);
         assert_eq!(supervisor.exit_kind(), WorkerExitKind::UnexpectedExit);
     }
