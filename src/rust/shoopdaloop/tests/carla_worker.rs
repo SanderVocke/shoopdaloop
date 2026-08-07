@@ -76,15 +76,21 @@ fn fake_worker_round_trips_without_carla_installed() {
     processor
         .set_midi_input_events(0, &[(3, &[0x90, 60, 100])])
         .unwrap();
-    processor.process(4).unwrap();
-    assert_eq!(
-        processor.audio_output(15).unwrap()[..4],
-        [0.25, -0.5, 0.75, 1.0]
-    );
-    assert_eq!(
-        processor.midi_output_events(0).unwrap(),
-        vec![(3, vec![0x90, 60, 100])]
-    );
+    let expected_audio = [0.25, -0.5, 0.75, 1.0];
+    let expected_midi = vec![(3, vec![0x90, 60, 100])];
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        processor.process(4).unwrap();
+        if processor.audio_output(15).unwrap()[..4] == expected_audio
+            && processor.midi_output_events(0).unwrap() == expected_midi
+        {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "fake worker never completed a block after bounded UDP-wake fallbacks"
+        );
+    }
     processor.restore_state("fake checkpoint").unwrap();
     assert_eq!(processor.save_state().unwrap(), "fake checkpoint");
     processor.set_visible(true).unwrap();
