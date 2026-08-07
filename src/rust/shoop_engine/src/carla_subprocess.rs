@@ -492,7 +492,9 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
                     ControlRequestKind::Ping => ControlResponseKind::Pong,
                     ControlRequestKind::Shutdown => {
                         if options.test_mode == Some(CarlaWorkerTestMode::HangShutdown) {
-                            thread::sleep(SHUTDOWN_TIMEOUT + Duration::from_secs(2));
+                            thread::sleep(
+                                CONTROL_TIMEOUT + SHUTDOWN_TIMEOUT + Duration::from_secs(2),
+                            );
                         }
                         write_frame(
                             &mut stream,

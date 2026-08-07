@@ -168,8 +168,9 @@ impl Drop for CarlaUiRuntime {
 }
 
 pub struct CarlaLv2Host {
-    _world: lilv::World,
     pub info: CarlaPluginInfo,
+    // Fields drop in declaration order: the instance must run its plugin cleanup
+    // before the Lilv world unloads the plugin library (notably on macOS).
     instance: Option<lilv::instance::Instance>,
     state_interface: Option<NonNull<Lv2StateInterface>>,
     audio_inputs: Vec<Vec<f32>>,
@@ -182,6 +183,7 @@ pub struct CarlaLv2Host {
     ui_runtime: Option<CarlaUiRuntime>,
     active: bool,
     visible: bool,
+    _world: lilv::World,
 }
 
 // Carla's LV2 instance is owned by this host object and only accessed through

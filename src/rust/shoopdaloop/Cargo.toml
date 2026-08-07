@@ -42,6 +42,7 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+libc = { workspace = true }
 
 [lints]
 workspace = true

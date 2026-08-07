@@ -162,7 +162,22 @@ fn fake_worker_covers_malformed_peer_log_flood_abort_error_and_hang() {
     hung.process(32).unwrap();
     assert!(started.elapsed() < std::time::Duration::from_millis(20));
     assert_eq!(hung.deadline_misses(), 1);
-    assert_eq!(hung.shutdown_requested(), WorkerExitKind::Unresponsive);
+    hung.terminate_worker_for_test().unwrap();
+
+    let mut hung_shutdown = SubprocessCarlaProcessor::spawn_test_worker(
+        executable,
+        FXChainType::CarlaRack,
+        48_000,
+        32,
+        ChainId(116),
+        ProcessGeneration(1),
+        CarlaWorkerTestMode::HangShutdown,
+    )
+    .unwrap();
+    assert_eq!(
+        hung_shutdown.shutdown_requested(),
+        WorkerExitKind::Unresponsive
+    );
 }
 
 #[test]
@@ -584,6 +599,12 @@ fn abnormal_parent_helper() {
 
 #[test]
 fn worker_exits_and_cleans_ipc_after_abnormal_parent_termination() {
+    #[cfg(target_os = "linux")]
+    // SAFETY: prctl only changes this test process into a child subreaper, so the
+    // deliberately orphaned worker can be reaped in containerized CI.
+    unsafe {
+        assert_eq!(libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1), 0);
+    }
     let directory = tempfile::tempdir().unwrap();
     let report = directory.path().join("worker-report.txt");
     let status = std::process::Command::new(std::env::current_exe().unwrap())
@@ -594,7 +615,7 @@ fn worker_exits_and_cleans_ipc_after_abnormal_parent_termination() {
     assert!(status.success());
     let report = std::fs::read_to_string(&report).unwrap();
     let mut lines = report.lines();
-    let _worker_pid: u32 = lines.next().unwrap().parse().unwrap();
+    let worker_pid: u32 = lines.next().unwrap().parse().unwrap();
     let shared_memory_path = std::path::PathBuf::from(lines.next().unwrap());
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     while shared_memory_path.exists() && std::time::Instant::now() < deadline {
@@ -605,6 +626,25 @@ fn worker_exits_and_cleans_ipc_after_abnormal_parent_termination() {
         "worker left stale IPC after its parent exited: {}",
         shared_memory_path.display()
     );
+    #[cfg(target_os = "linux")]
+    {
+        let reap_deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let mut status = 0;
+            // SAFETY: worker_pid identifies the orphan adopted by this subreaper;
+            // status points to valid storage for the duration of waitpid.
+            let result =
+                unsafe { libc::waitpid(worker_pid as libc::pid_t, &mut status, libc::WNOHANG) };
+            if result == worker_pid as libc::pid_t {
+                break;
+            }
+            assert!(
+                result >= 0 && std::time::Instant::now() < reap_deadline,
+                "orphaned worker {worker_pid} was not reapable (waitpid={result})"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
 }
 
 #[test]

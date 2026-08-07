@@ -163,7 +163,7 @@ runs:
     run: |
       brew install carla
       carla_prefix=$(brew --prefix carla)
-      carla_lv2_bundle=$(find "$carla_prefix" -iname 'carla.lv2' -print -quit)
+      carla_lv2_bundle=$(find -L "$carla_prefix" -iname 'carla.lv2' -print -quit)
       test -n "$carla_lv2_bundle"
       test -f "$carla_lv2_bundle/manifest.ttl"
       carla_lv2_parent=$(dirname "$carla_lv2_bundle")
@@ -299,16 +299,11 @@ runs:
     env:
       GHA_RUN_ALWAYS: 1
     run: |
-      if [[ -n "${PORTABLE_FOLDER_INSTALL:-}" ]]; then
-        carla_qml_test="$PORTABLE_FOLDER_INSTALL/qml/test/tst_TrackControlAndLoop_drywet_carla.qml"
-      else
-        carla_qml_test="$GITHUB_WORKSPACE/src/qml/test/tst_TrackControlAndLoop_drywet_carla.qml"
-      fi
       QT_ASSUME_STDERR_HAS_CONSOLE=1 \
         ./scripts/run_with_timeout.sh 600 \
         ${{ env.COMMAND_SHOOPDALOOP }} --self-test \
         --carla-hosting-mode-for-test subprocess \
-        --test-files-pattern "$carla_qml_test"
+        --test-files-pattern '{qml_dir}/test/tst_TrackControlAndLoop_drywet_carla.qml'
   - name: Write QML trace metadata
     if: always() && (inputs.capture_traces == 'true' || env.QML_TRACE_CAPTURE_ENABLED == 'true')
     shell: bash

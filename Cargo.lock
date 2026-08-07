@@ -4368,6 +4368,7 @@ dependencies = [
  "cxx_qt_lib_shoop",
  "frontend",
  "glob",
+ "libc",
  "log",
  "once_cell",
  "regex",

@@ -294,8 +294,8 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                         let mut testrunner = std::pin::Pin::new_unchecked(&mut **testrunner);
                         let qmldir = &config.qml_dir;
                         let files_pattern = match &cli_args.self_test_options.files_pattern {
-                            Some(pattern) => pattern,
-                            None => &format!("{qmldir}/test/**/tst*.qml"),
+                            Some(pattern) => pattern.replace("{qml_dir}", qmldir),
+                            None => format!("{qmldir}/test/**/tst*.qml"),
                         };
 
                         {
@@ -310,7 +310,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                         }
 
                         testrunner.as_mut().start(
-                            QString::from(files_pattern),
+                            QString::from(&files_pattern),
                             QString::from(
                                 cli_args
                                     .self_test_options
