@@ -3087,17 +3087,49 @@ impl ApplicationModel {
                         .unwrap_or(0)
                 })
                 .sum();
+            #[cfg(not(target_arch = "wasm32"))]
+            let active_section = self
+                .script_composition_playback
+                .get(&target)
+                .map(|playback| playback.section)
+                .unwrap_or(0);
+            #[cfg(target_arch = "wasm32")]
+            let active_section = 0;
+            let section_offset = sections
+                .iter()
+                .take(active_section)
+                .map(|section| {
+                    section
+                        .iter()
+                        .filter_map(|source| self.loops.get(source))
+                        .map(|source| source.length)
+                        .max()
+                        .unwrap_or(0)
+                })
+                .sum::<u32>();
             let source_state = sections
-                .first()
+                .get(active_section)
                 .and_then(|section| section.first())
                 .and_then(|source| self.loops.get(source))
-                .map(|source| (source.state.mode, source.state.next_mode));
+                .map(|source| {
+                    (
+                        source.state.mode,
+                        source.state.next_mode,
+                        section_offset.saturating_add(source.position),
+                    )
+                });
             if let Some(model) = self.loops.get_mut(&target) {
                 model.length = length;
                 model.state.empty = false;
-                if let Some((mode, next_mode)) = source_state {
+                if let Some((mode, next_mode, position)) = source_state {
                     model.state.mode = mode;
                     model.state.next_mode = next_mode;
+                    model.position = position.min(length);
+                    model.state.position = if length == 0 {
+                        0.0
+                    } else {
+                        model.position as f32 / length as f32
+                    };
                 }
             }
         }
@@ -5275,6 +5307,8 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
                 None,
             ),
         ]));
+        update_application(&mut model, &mut backend, Duration::ZERO, |_| {});
+        assert_eq!(model.loops[&target].state.mode, LoopMode::Playing);
         update_application(&mut model, &mut backend, Duration::from_millis(10), |_| {});
         assert!(backend.operations().ends_with(&[
             shoop_backend::FakeOperation::Transition(
@@ -5670,6 +5704,30 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert_eq!(
             composed_sources[1],
             runtime.snapshot().tracks[3].loops[0].id
+        );
+
+        // Re-enter composition mode and release each source before pressing the next one,
+        // proving the production controller's regular serial append path as well.
+        send_note(&mut runtime, &midi_control, 98, true);
+        send_note(&mut runtime, &midi_control, 70, true);
+        send_note(&mut runtime, &midi_control, 59, true);
+        send_note(&mut runtime, &midi_control, 59, false);
+        send_note(&mut runtime, &midi_control, 60, true);
+        send_note(&mut runtime, &midi_control, 60, false);
+        send_note(&mut runtime, &midi_control, 61, true);
+        send_note(&mut runtime, &midi_control, 61, false);
+        send_note(&mut runtime, &midi_control, 70, false);
+        send_note(&mut runtime, &midi_control, 98, false);
+        let serial_target = runtime.snapshot().tracks[4].loops[0].id;
+        let serial_sections = &runtime.model.loops[&serial_target].script_composition;
+        assert_eq!(serial_sections.len(), 2);
+        assert_eq!(
+            serial_sections[0],
+            [runtime.snapshot().tracks[5].loops[0].id]
+        );
+        assert_eq!(
+            serial_sections[1],
+            [runtime.snapshot().tracks[6].loops[0].id]
         );
         assert!(runtime.snapshot().scripting.scripts[0]
             .latest_error

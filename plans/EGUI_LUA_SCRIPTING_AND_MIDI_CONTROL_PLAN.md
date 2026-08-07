@@ -2,7 +2,7 @@
 
 ## Status and relationship to the replacement project
 
-**Status:** In progress (completion audit findings open)
+**Status:** Complete (artifact audit passed)
 
 This milestone implements the `shoop_scripting` boundary described by `EGUI_REPLACEMENT_PROJECT.md` and expands the scripting, keyboard-control, and script-created MIDI-control rows in `EGUI_FEATURE_PARITY_MATRIX.md`. The QML application remains the compatibility oracle until this milestone is complete.
 
@@ -98,14 +98,14 @@ Verification:
 
 - [x] Define framework-independent script query snapshots and ordered control operations for all loop, track, and global API methods; implement selector parsing/conversion once in `shoop_scripting`.
 - [x] Refactor equivalent GUI and script commands onto shared application reducers, including deterministic target/selection ordering, solo/sync/fixed-cycle policy, gain/fader conversion, and read-your-writes shadow updates.
-- [ ] Close backend/engine API gaps for explicit cycle/alignment transitions, parameterized ringbuffer adoption, and repeat-sync; coordinate regular composition append/parallel execution above the primitive backend transition façade so browser backend contracts remain unchanged while browser script invocation remains unavailable.
+- [x] Close backend/engine API gaps for explicit cycle/alignment transitions, parameterized ringbuffer adoption, and repeat-sync; coordinate regular composition append/parallel execution above the primitive backend transition façade so browser backend contracts remain unchanged while browser script invocation remains unavailable.
 - [x] Publish enough authoritative loop/track state for all legacy queries without asking widgets or copying media content.
 
 Verification:
 
-- [ ] The framework-independent port of the complete QML API test table passes against the application model and both Fake/engine backends.
-- [ ] GUI and Lua forms of each shared action produce equivalent model/backend observations, including failure and stale-selector cases.
-- [ ] Engine tests prove explicit transition timing, repeat-sync, ringbuffer adoption, and composition execution without realtime allocation/locking regressions.
+- [x] The framework-independent port of the complete QML API test table passes against the application model and both Fake/engine backends.
+- [x] GUI and Lua forms of each shared action produce equivalent model/backend observations, including failure and stale-selector cases.
+- [x] Engine tests prove explicit transition timing, repeat-sync, ringbuffer adoption, and composition execution without realtime allocation/locking regressions.
 
 ### Stage 4 — Add application events, timers, and keyboard delivery
 
@@ -116,7 +116,7 @@ Verification:
 
 Verification:
 
-- [ ] Tests cover all event kinds and payload fields, no duplicate/reentrant callbacks, timer ordering/cancellation, key constants/modifiers, repeat suppression, text-edit suppression, and focus-loss sampler release.
+- [x] Tests cover all event kinds and payload fields, no duplicate/reentrant callbacks, timer ordering/cancellation, key constants/modifiers, repeat suppression, text-edit suppression, and focus-loss sampler release.
 - [x] `keyboard.lua` passes an automated command-by-command workflow using the real bundled source.
 
 ### Stage 5 — Implement native MIDI control ports, hotplug, and autoconnect
@@ -124,12 +124,12 @@ Verification:
 - [x] Add a target-neutral MIDI-control service contract and deterministic fake covering endpoint identity/name/direction, discovery revisions, logical port open/close, input delivery, output submission, and diagnostics.
 - [x] Add the native adapter using supported platform MIDI facilities, with bounded callback-to-control queues and no dependency on GUI or audio callback timing.
 - [x] Implement script-owned auto-open input/output rules: compile full-name anchored regexes, open the logical port, connect every compatible match in stable order, emit opened/connected callbacks with the existing Lua port table, and reconnect on endpoint reappearance.
-- [ ] Implement exact-byte input callbacks and bounded output broadcast with a monotonic per-rule rate limiter that preserves FIFO order; expose drop/refusal/send/connect diagnostics and cleanly close all connections on script stop/restart.
+- [x] Implement exact-byte input callbacks and bounded output broadcast with a monotonic per-rule rate limiter that preserves FIFO order; expose drop/refusal/send/connect diagnostics and cleanly close all connections on script stop/restart.
 - [x] Add platform-gated virtual-port integration tests where the host supports them, while retaining the fake service as the cross-platform authoritative contract.
 
 Verification:
 
-- [ ] Fake-service tests cover direction/type filtering, empty/invalid/partial/full regexes, multiple matches, hotplug, duplicate discovery, reconnect, failure, cleanup, queue saturation, SysEx/message limits, and exact rate/order behavior.
+- [x] Fake-service tests cover direction/type filtering, empty/invalid/partial/full regexes, multiple matches, hotplug, duplicate discovery, reconnect, failure, cleanup, queue saturation, SysEx/message limits, and exact rate/order behavior.
 - [x] Native virtual MIDI evidence sends real messages into a script and receives script output where CI/platform facilities exist; unavailable host facilities are explicit skips, not fake successes.
 
 ### Stage 6 — Integrate settings, bundled resources, and session scripts
@@ -148,46 +148,46 @@ Verification:
 
 ### Stage 7 — Deliver the egui script-management surface
 
-- [ ] Add a main-menu entry and script manager showing name, bundled/user/session kind, enabled state, lifecycle status, latest error, callback/timer/MIDI listening state, and MIDI diagnostics.
+- [x] Add a main-menu entry and script manager showing name, bundled/user/session kind, enabled state, lifecycle status, latest error, callback/timer/MIDI listening state, and MIDI diagnostics.
 - [x] Add enable/disable, restart, stop, forget-user-script, add-user-script, and bundled-docstring help actions with stable script IDs and stale-result validation.
 - [x] Route raw performance key events from the eframe application through typed intents independently of widget paint, while preserving text-edit and focus rules.
-- [ ] Present native MIDI unavailable/permission/open/connect/regex/overflow/send failures distinctly; on browser builds keep scripting absent or clearly unsupported rather than rendering controls that cannot work.
+- [x] Present native MIDI unavailable/permission/open/connect/regex/overflow/send failures distinctly; on browser builds keep scripting absent or clearly unsupported rather than rendering controls that cannot work.
 
 Verification:
 
-- [ ] Backend-free egui tests cover manager actions, statuses/errors, stale IDs, help, unavailable MIDI, minimum/common viewports, and keyboard routing/focus behavior.
-- [ ] Native composition tests cover first-run keyboard startup, adding/restarting/stopping a user script, settings persistence, and complete resource cleanup at application shutdown.
+- [x] Backend-free egui tests cover manager actions, statuses/errors, stale IDs, help, unavailable MIDI, minimum/common viewports, and keyboard routing/focus behavior.
+- [x] Native composition tests cover first-run keyboard startup, adding/restarting/stopping a user script, settings persistence, and complete resource cleanup at application shutdown.
 
 ### Stage 8 — Prove the unchanged bundled controller script end to end
 
 - [x] Run the unchanged APC script against a deterministic 8×8 fake controller and authoritative application/engine session.
-- [ ] Cover initial connection and delayed LED reset, every loop-button modifier family, sync-loop coordinates, global momentary/permanent toggles, stop/select/clear-all, N-cycle selection, track gain/balance/mutes, loop/global event-driven LED updates, composition append/parallel behavior, output throttling, disconnect/reconnect, and stop cleanup.
+- [x] Cover initial connection and delayed LED reset, every loop-button modifier family, sync-loop coordinates, global momentary/permanent toggles, stop/select/clear-all, N-cycle selection, track gain/balance/mutes, loop/global event-driven LED updates, composition append/parallel behavior, output throttling, disconnect/reconnect, and stop cleanup.
 - [x] Add a smaller platform-gated real virtual-MIDI smoke using the same script and MIDI adapter where host support exists.
 - [x] Compare unchanged-script observations with retained QML behavior and document only well-supported defect fixes, such as correctly enforcing the requested output rate.
 
 Verification:
 
 - [x] Both bundled scripts execute from their production embedded sources with no compatibility shims in copied script files.
-- [ ] Fake-controller expectations prove input actions changed authoritative application/backend state and exact output MIDI bytes were emitted in bounded order.
+- [x] Fake-controller expectations prove input actions changed authoritative application/backend state and exact output MIDI bytes were emitted in bounded order.
 
 ### Stage 9 — Final validation and project-ledger update
 
-- [ ] Run formatting, warning-denying native/all-target builds, focused runtime/API/application/backend/GUI/settings/runner tests, realtime guards, browser compiler/package/workflow checks, and the retained QML self-test.
-- [ ] Inspect native, browser, GUI-preview, and worklet dependency trees and packaged artifacts for boundary/resource violations.
-- [ ] Update `EGUI_FEATURE_PARITY_MATRIX.md` with discovered rows and concrete evidence; update `EGUI_REPLACEMENT_PROJECT.md` architecture/status/roadmap and `shoopdaloop_egui` documentation.
-- [ ] Update Lua developer/API and keyboard/MIDI-controller documentation, including compatibility, lifecycle, trusted-code model, autoconnect matching, rate limiting, diagnostics, settings/session ownership, and browser limitation.
+- [x] Run formatting, warning-denying native/all-target builds, focused runtime/API/application/backend/GUI/settings/runner tests, realtime guards, browser compiler/package/workflow checks, and the retained QML self-test.
+- [x] Inspect native, browser, GUI-preview, and worklet dependency trees and packaged artifacts for boundary/resource violations.
+- [x] Update `EGUI_FEATURE_PARITY_MATRIX.md` with discovered rows and concrete evidence; update `EGUI_REPLACEMENT_PROJECT.md` architecture/status/roadmap and `shoopdaloop_egui` documentation.
+- [x] Update Lua developer/API and keyboard/MIDI-controller documentation, including compatibility, lifecycle, trusted-code model, autoconnect matching, rate limiting, diagnostics, settings/session ownership, and browser limitation.
 
 Final gates:
 
-- [ ] `cargo fmt --all --check`
-- [ ] `RUSTFLAGS="-D warnings" cargo build --workspace --all-targets --features shoop_engine/app_backend`
-- [ ] Focused tests for `shoop_scripting`, `shoop_app_api`, `shoop_app`, `shoop_backend`, `shoop_engine`, `shoop_settings`, `shoop_egui`, and `shoopdaloop_egui`
-- [ ] `cargo test --workspace --features shoop_engine/app_backend` using the documented unavailable-device policy where necessary
-- [ ] Existing `wasm32-unknown-unknown` UI/worklet checks and hosted/self-contained browser workflows
-- [ ] Native packaged-resource startup plus fake-controller end-to-end workflows on supported desktop CI targets
-- [ ] Retained QML self-test and source/dependency scans proving no Qt/frontend dependency entered the egui scripting path
+- [x] `cargo fmt --all --check`
+- [x] `RUSTFLAGS="-D warnings" cargo build --workspace --all-targets --features shoop_engine/app_backend`
+- [x] Focused tests for `shoop_scripting`, `shoop_app_api`, `shoop_app`, `shoop_backend`, `shoop_engine`, `shoop_settings`, `shoop_egui`, and `shoopdaloop_egui`
+- [x] `cargo test --workspace --features shoop_engine/app_backend` using the documented unavailable-device policy where necessary
+- [x] Existing `wasm32-unknown-unknown` UI/worklet checks and hosted/self-contained browser workflows
+- [x] Native packaged-resource startup plus fake-controller end-to-end workflows on supported desktop CI targets
+- [x] Retained QML self-test and source/dependency scans proving no Qt/frontend dependency entered the egui scripting path
 
-Prior gate evidence to be re-run after closing `EGUI_LUA_SCRIPTING_AND_MIDI_CONTROL_COMPLETION_AUDIT.md`: warning-denying workspace all-target build and policy-gated workspace tests passed; all 24 realtime no-allocation tests pass; native/wasm UI and release worklet builds pass; hosted and self-contained Chrome output-only workflows pass; a native debug artifact is packaged; the retained QML `tst_LuaEngine.qml` self-test passes under Xvfb; and dependency/source scans keep `shoop_egui`, browser UI/worklet, and `shoop_scripting` on their documented boundaries. Native virtual-MIDI tests explicitly skip when `/dev/snd/seq` is unavailable, while deterministic fake-service tests remain authoritative.
+Completion evidence is mapped requirement-by-requirement in `EGUI_LUA_SCRIPTING_AND_MIDI_CONTROL_COMPLETION_AUDIT.md`: warning-denying workspace all-target build and policy-gated workspace tests pass; all 24 realtime no-allocation tests pass; native/wasm UI and release worklet builds pass; hosted and self-contained Chrome output-only workflows pass; native/web packages verify; the retained QML session-control table passes 45/45; and dependency/source scans keep `shoop_egui`, browser UI/worklet, and `shoop_scripting` on their documented boundaries. Native virtual-MIDI tests explicitly follow the unavailable-device policy when `/dev/snd/seq` is absent, while deterministic fake-service tests remain authoritative.
 
 ## Execution contract
 

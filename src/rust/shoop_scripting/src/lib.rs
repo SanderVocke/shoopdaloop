@@ -1025,6 +1025,67 @@ c.auto_open_device_specific_midi_control_output('', function() end, function() e
     }
 
     #[test]
+    fn control_queries_follow_track_and_loop_coordinate_reordering() {
+        let bridge = Rc::new(RefCell::new(ControlBridge {
+            snapshot: ControlSnapshot {
+                loops: vec![
+                    ControlLoop {
+                        id: LoopId::from_raw(1),
+                        coords: [0, 0],
+                        mode: LoopMode::Stopped,
+                        next_mode: None,
+                        next_mode_delay: None,
+                        length: 100,
+                        gain: 1.0,
+                        balance: 0.0,
+                        selected: false,
+                        targeted: false,
+                    },
+                    ControlLoop {
+                        id: LoopId::from_raw(2),
+                        coords: [0, 1],
+                        mode: LoopMode::Playing,
+                        next_mode: None,
+                        next_mode_delay: None,
+                        length: 200,
+                        gain: 1.0,
+                        balance: 0.0,
+                        selected: false,
+                        targeted: false,
+                    },
+                ],
+                ..Default::default()
+            },
+            operations: Vec::new(),
+        }));
+        let runtime = LuaRuntime::new_with_control(Rc::clone(&bridge)).unwrap();
+        runtime
+            .execute(
+                "before reorder",
+                "local c=require('shoop_control'); if c.loop_get_mode({0,0})[1] ~= c.constants.LoopMode_Stopped then error('mode before reorder') end",
+            )
+            .unwrap();
+        {
+            let mut bridge = bridge.borrow_mut();
+            bridge.snapshot.loops[0].coords = [1, 0];
+            bridge.snapshot.loops[1].coords = [0, 0];
+        }
+        runtime
+            .execute(
+                "after reorder",
+                r#"
+local c=require('shoop_control')
+if c.loop_get_mode({0,0})[1] ~= c.constants.LoopMode_Playing then error('mode after reorder') end
+local track_zero = c.loop_get_by_track(0)
+if #track_zero ~= 1 or track_zero[1][1] ~= 0 or track_zero[1][2] ~= 0 then error('track zero') end
+local track_one = c.loop_get_by_track(1)
+if #track_one ~= 1 or track_one[1][1] ~= 1 or track_one[1][2] ~= 0 then error('track one') end
+"#,
+            )
+            .unwrap();
+    }
+
+    #[test]
     fn control_argument_validation_is_observable_and_non_mutating() {
         let first_loop = LoopId::from_raw(10);
         let bridge = Rc::new(RefCell::new(ControlBridge {
@@ -1310,7 +1371,7 @@ end)
 
         let event = ScriptLoopEvent {
             coords: [-1, 7],
-            event_type: 5,
+            event_type: 0,
             mode: LoopMode::RecordingDryIntoWet,
             length: 12_345,
             selected: true,
@@ -1318,12 +1379,14 @@ end)
         };
         manager.dispatch_loop_event(&event);
         assert_eq!(manager.logs(id).unwrap().len(), 1);
-        manager.dispatch_loop_event(&ScriptLoopEvent {
-            event_type: 6,
-            selected: false,
-            targeted: true,
-            ..event
-        });
+        for event_type in 1..=4 {
+            manager.dispatch_loop_event(&ScriptLoopEvent {
+                event_type,
+                selected: false,
+                targeted: true,
+                ..event
+            });
+        }
         manager.dispatch_global_event();
         manager.dispatch_key_event(ScriptKeyEvent {
             event_type: 1,
@@ -1338,9 +1401,15 @@ end)
                 .map(|entry| entry.message)
                 .collect::<Vec<_>>(),
             [
-                "loop:5:-1,7:6:12345:true:false",
-                "loop:6:-1,7:6:12345:false:true",
-                "nested:6",
+                "loop:0:-1,7:6:12345:true:false",
+                "loop:1:-1,7:6:12345:false:true",
+                "nested:1",
+                "loop:2:-1,7:6:12345:false:true",
+                "nested:2",
+                "loop:3:-1,7:6:12345:false:true",
+                "nested:3",
+                "loop:4:-1,7:6:12345:false:true",
+                "nested:4",
                 "global:0",
                 "key:1:65:100663296",
             ]
