@@ -698,7 +698,11 @@ impl BrowserSelfTest {
                 {
                     return self.fail("audio callbacks did not advance through session reload");
                 }
-                Ok(Self::PlayLoadedLoop)
+                if snapshot.status.audio_driver == shoop_egui::AudioDriverState::Dummy {
+                    Ok(Self::ExportLoopAudio)
+                } else {
+                    Ok(Self::PlayLoadedLoop)
+                }
             }
             Self::PlayLoadedLoop => {
                 let Some((track, loop_state)) = first_main_loop(snapshot) else {
@@ -717,7 +721,8 @@ impl BrowserSelfTest {
                     return;
                 };
                 if loop_state.mode != shoop_egui::LoopMode::Playing
-                    || snapshot.status.output_peak <= 0.000_001
+                    || snapshot.status.audio_driver != shoop_egui::AudioDriverState::Dummy
+                        && snapshot.status.output_peak <= 0.000_001
                 {
                     return;
                 }

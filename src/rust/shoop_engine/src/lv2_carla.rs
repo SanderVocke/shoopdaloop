@@ -16,16 +16,14 @@ use std::os::raw::{c_char, c_uint, c_void};
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-#[cfg(test)]
-use std::sync::{Mutex as TestMutex, MutexGuard as TestMutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 
 #[cfg(test)]
-static CARLA_TEST_LOCK: TestMutex<()> = TestMutex::new(());
+static CARLA_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 #[cfg(test)]
-pub(crate) fn lock_carla_test() -> TestMutexGuard<'static, ()> {
+pub(crate) fn lock_carla_test() -> impl Drop {
     CARLA_TEST_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
