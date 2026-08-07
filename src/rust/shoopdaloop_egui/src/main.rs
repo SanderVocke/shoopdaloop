@@ -484,6 +484,18 @@ fn persist_script_removed(settings_path: &Path, script_path: &str) -> anyhow::Re
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+fn associate_startup_script_paths(
+    ids: &[Option<shoop_egui::ScriptId>],
+    paths: Vec<String>,
+) -> std::collections::BTreeMap<shoop_egui::ScriptId, String> {
+    ids.iter()
+        .copied()
+        .zip(paths)
+        .filter_map(|(script_id, path)| script_id.map(|script_id| (script_id, path)))
+        .collect()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 struct Runtime {
     _runtime: ApplicationRuntime,
     handle: ApplicationHandle,
@@ -503,14 +515,8 @@ impl Runtime {
         }
         let runtime = ApplicationRuntime::start_with_scripts(Box::new(backend), startup_scripts)?;
         let handle = runtime.handle();
-        let script_paths = handle
-            .snapshot()
-            .scripting
-            .scripts
-            .iter()
-            .map(|script| script.id)
-            .zip(script_paths)
-            .collect();
+        let script_paths =
+            associate_startup_script_paths(runtime.startup_script_ids(), script_paths);
         Ok(Self {
             _runtime: runtime,
             handle,
@@ -1291,6 +1297,23 @@ mod tests {
                 .known_scripts[0]
                 .run
         );
+    }
+
+    #[test]
+    fn startup_path_association_preserves_rejected_slots_and_duplicate_names() {
+        let first = shoop_egui::ScriptId::from_raw(11);
+        let second = shoop_egui::ScriptId::from_raw(12);
+        let paths = associate_startup_script_paths(
+            &[None, Some(first), Some(second)],
+            vec![
+                "invalid.lua".to_owned(),
+                "first.lua".to_owned(),
+                "second.lua".to_owned(),
+            ],
+        );
+        assert_eq!(paths.len(), 2);
+        assert_eq!(paths.get(&first).map(String::as_str), Some("first.lua"));
+        assert_eq!(paths.get(&second).map(String::as_str), Some("second.lua"));
     }
 
     #[test]

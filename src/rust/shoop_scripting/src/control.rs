@@ -255,6 +255,7 @@ pub struct MidiInputRegistration {
     pub callback: Function,
     pub connections: BTreeMap<String, MidiConnectionId>,
     pub retry_remaining: Duration,
+    pub latest_error: Option<String>,
 }
 
 pub struct MidiOutputRegistration {
@@ -267,6 +268,7 @@ pub struct MidiOutputRegistration {
     pub queue: Rc<RefCell<VecDeque<Vec<u8>>>>,
     pub connections: BTreeMap<String, MidiConnectionId>,
     pub retry_remaining: Duration,
+    pub latest_error: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -277,12 +279,28 @@ pub struct ScriptActivityDiagnostics {
     pub timers: u32,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MidiRuleRuntimeDirection {
+    Input,
+    Output,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MidiRuleRuntimeDiagnostics {
+    pub direction: MidiRuleRuntimeDirection,
+    pub pattern: String,
+    pub matched_endpoints: Vec<String>,
+    pub connected_endpoints: Vec<String>,
+    pub latest_error: Option<String>,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct MidiRuntimeDiagnostics {
     pub rules: u32,
     pub connections: u32,
     pub dropped_messages: u32,
     pub errors: u32,
+    pub rule_states: Vec<MidiRuleRuntimeDiagnostics>,
 }
 
 pub struct ScriptCallbacks {
@@ -321,6 +339,7 @@ impl ScriptCallbacks {
                 &registration.callback,
                 &registration.connections,
                 registration.retry_remaining,
+                &registration.latest_error,
             );
         }
         let midi_outputs = self.midi_outputs.borrow();
@@ -335,6 +354,7 @@ impl ScriptCallbacks {
                 &registration.queue,
                 &registration.connections,
                 registration.retry_remaining,
+                &registration.latest_error,
             );
         }
         !self.loop_events.borrow().is_empty()
@@ -446,7 +466,9 @@ impl ScriptCallbacks {
                                 rule.connections.insert(endpoint.id.clone(), id);
                             }
                             Err(error) => {
-                                errors.push(error.to_string());
+                                let error = error.to_string();
+                                rule.latest_error = Some(error.clone());
+                                errors.push(error);
                                 rule.retry_remaining = Duration::from_millis(250);
                             }
                         }
@@ -465,14 +487,24 @@ impl ScriptCallbacks {
                             match lua.create_sequence_from(message) {
                                 Ok(table) => {
                                     if let Err(error) = rule.callback.call::<()>(table) {
-                                        errors.push(error.to_string());
+                                        let error = error.to_string();
+                                        rule.latest_error = Some(error.clone());
+                                        errors.push(error);
                                     }
                                 }
-                                Err(error) => errors.push(error.to_string()),
+                                Err(error) => {
+                                    let error = error.to_string();
+                                    rule.latest_error = Some(error.clone());
+                                    errors.push(error);
+                                }
                             }
                         }
                     }
-                    Err(error) => errors.push(error.to_string()),
+                    Err(error) => {
+                        let error = error.to_string();
+                        rule.latest_error = Some(error.clone());
+                        errors.push(error);
+                    }
                 }
             }
         }
@@ -494,11 +526,15 @@ impl ScriptCallbacks {
                                 if let Err(error) =
                                     rule.connected_callback.call::<()>(rule.port.clone())
                                 {
-                                    errors.push(error.to_string());
+                                    let error = error.to_string();
+                                    rule.latest_error = Some(error.clone());
+                                    errors.push(error);
                                 }
                             }
                             Err(error) => {
-                                errors.push(error.to_string());
+                                let error = error.to_string();
+                                rule.latest_error = Some(error.clone());
+                                errors.push(error);
                                 rule.retry_remaining = Duration::from_millis(250);
                             }
                         }
@@ -514,12 +550,15 @@ impl ScriptCallbacks {
                 rule.queue.borrow().len()
             } else {
                 let interval = Duration::from_secs_f64(1.0 / f64::from(rule.rate_limit_hz));
-                let count = (rule.elapsed_since_send.as_secs_f64() / interval.as_secs_f64()).floor()
-                    as usize;
-                rule.elapsed_since_send = rule
-                    .elapsed_since_send
-                    .saturating_sub(interval.saturating_mul(count.try_into().unwrap_or(u32::MAX)));
-                count
+                if rule.elapsed_since_send >= interval {
+                    // Never catch up by flushing a burst after a delayed control pump. A positive
+                    // limit is a real maximum, so the wall-clock interval starts again when the
+                    // single message is handed to the MIDI service.
+                    rule.elapsed_since_send = Duration::ZERO;
+                    1
+                } else {
+                    0
+                }
             };
             let queued = rule.queue.borrow().len();
             for _ in 0..count.min(queued) {
@@ -528,7 +567,9 @@ impl ScriptCallbacks {
                 };
                 for id in rule.connections.values().copied() {
                     if let Err(error) = service.send(id, &message) {
-                        errors.push(error.to_string());
+                        let error = error.to_string();
+                        rule.latest_error = Some(error.clone());
+                        errors.push(error);
                     }
                 }
             }
@@ -551,6 +592,54 @@ impl ScriptCallbacks {
             .sum::<usize>()
             .try_into()
             .unwrap_or(u32::MAX);
+        let endpoint_label = |endpoint: &MidiEndpoint| {
+            if endpoint.id == endpoint.name {
+                endpoint.name.clone()
+            } else {
+                format!("{} [{}]", endpoint.name, endpoint.id)
+            }
+        };
+        diagnostics.rule_states = self
+            .midi_inputs
+            .borrow()
+            .iter()
+            .map(|rule| {
+                let matches = matching_endpoints(
+                    endpoints,
+                    rule.regex.as_ref(),
+                    MidiEndpointDirection::Output,
+                );
+                MidiRuleRuntimeDiagnostics {
+                    direction: MidiRuleRuntimeDirection::Input,
+                    pattern: rule.regex_source.clone(),
+                    matched_endpoints: matches.iter().map(|entry| endpoint_label(entry)).collect(),
+                    connected_endpoints: matches
+                        .iter()
+                        .filter(|entry| rule.connections.contains_key(&entry.id))
+                        .map(|entry| endpoint_label(entry))
+                        .collect(),
+                    latest_error: rule.latest_error.clone(),
+                }
+            })
+            .chain(self.midi_outputs.borrow().iter().map(|rule| {
+                let matches = matching_endpoints(
+                    endpoints,
+                    rule.regex.as_ref(),
+                    MidiEndpointDirection::Input,
+                );
+                MidiRuleRuntimeDiagnostics {
+                    direction: MidiRuleRuntimeDirection::Output,
+                    pattern: rule.regex_source.clone(),
+                    matched_endpoints: matches.iter().map(|entry| endpoint_label(entry)).collect(),
+                    connected_endpoints: matches
+                        .iter()
+                        .filter(|entry| rule.connections.contains_key(&entry.id))
+                        .map(|entry| endpoint_label(entry))
+                        .collect(),
+                    latest_error: rule.latest_error.clone(),
+                }
+            }))
+            .collect();
         diagnostics.dropped_messages = diagnostics
             .dropped_messages
             .saturating_add(dropped_messages);
@@ -1311,6 +1400,7 @@ fn install_subscriptions(
                 callback,
                 connections: BTreeMap::new(),
                 retry_remaining: Duration::ZERO,
+                latest_error: None,
             });
             input_listening();
             Ok(())
@@ -1374,6 +1464,7 @@ fn install_subscriptions(
                     queue,
                     connections: BTreeMap::new(),
                     retry_remaining: Duration::ZERO,
+                    latest_error: None,
                 });
                 output_listening();
                 Ok(())

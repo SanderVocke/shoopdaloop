@@ -499,12 +499,28 @@ pub struct ScriptActivityDiagnostics {
     pub timers: u32,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ScriptMidiRuleDirection {
+    Input,
+    Output,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScriptMidiRuleDiagnostics {
+    pub direction: ScriptMidiRuleDirection,
+    pub pattern: String,
+    pub matched_endpoints: Arc<[String]>,
+    pub connected_endpoints: Arc<[String]>,
+    pub latest_error: Option<String>,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ScriptMidiDiagnostics {
     pub rules: u32,
     pub connections: u32,
     pub dropped_messages: u32,
     pub errors: u32,
+    pub rule_states: Arc<[ScriptMidiRuleDiagnostics]>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

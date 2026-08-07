@@ -119,7 +119,8 @@ Transitive helper calls add `loop_count`, loop mode/length/next-mode queries, ex
 - All compatible matches connect in stable full-name order. Output sends are broadcast in that order; input messages retain per-endpoint arrival order.
 - Discovery is repeated or subscribed so disappearance closes only that endpoint connection and reappearance reconnects without recreating the script.
 - Queues are bounded. Overflow, refused oversized messages, connection failures, and send failures are counted and exposed.
-- `msg_rate_limit_hz == 0` is unthrottled. A positive value is an actual maximum dispatch frequency. Correct enforcement is an intentional defect fix to the old implementation, not an API-shape change.
+- `msg_rate_limit_hz == 0` is unthrottled. A positive value is an actual maximum dispatch frequency. Delayed control pumps do not catch up by flushing multiple messages in one pump. Correct enforcement is an intentional defect fix to the old implementation, not an API-shape change.
+- Native diagnostics retain aggregate rule/connection/drop/error counts and publish each rule's direction, pattern, matched endpoint names, connected endpoint names, and latest rule-specific failure.
 
 ## Lifecycle, settings, sessions, and targets
 

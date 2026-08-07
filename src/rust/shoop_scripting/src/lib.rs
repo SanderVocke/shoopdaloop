@@ -7,14 +7,14 @@ use mlua::{Function, Lua, Value};
 use shoop_app_api::{
     ScriptActivityDiagnostics as ApiScriptActivityDiagnostics, ScriptId, ScriptKind,
     ScriptLifecycle, ScriptLogLevel as ApiScriptLogLevel, ScriptLogState, ScriptMidiDiagnostics,
-    ScriptState,
+    ScriptMidiRuleDiagnostics, ScriptMidiRuleDirection, ScriptState,
 };
 
 mod control;
 mod legacy_key_constants;
 mod midi;
 
-use control::{install_control_api, ScriptCallbacks};
+use control::{install_control_api, MidiRuleRuntimeDirection, ScriptCallbacks};
 pub use control::{
     ControlBridge, ControlLoop, ControlOperation, ControlSnapshot, ControlTrack,
     MidiRuntimeDiagnostics, ScriptActivityDiagnostics, ScriptKeyEvent, ScriptLoopEvent,
@@ -635,6 +635,25 @@ impl ScriptManager {
                         connections: midi.connections,
                         dropped_messages: midi.dropped_messages,
                         errors: midi.errors,
+                        rule_states: midi
+                            .rule_states
+                            .into_iter()
+                            .map(|rule| ScriptMidiRuleDiagnostics {
+                                direction: match rule.direction {
+                                    MidiRuleRuntimeDirection::Input => {
+                                        ScriptMidiRuleDirection::Input
+                                    }
+                                    MidiRuleRuntimeDirection::Output => {
+                                        ScriptMidiRuleDirection::Output
+                                    }
+                                },
+                                pattern: rule.pattern,
+                                matched_endpoints: rule.matched_endpoints.into(),
+                                connected_endpoints: rule.connected_endpoints.into(),
+                                latest_error: rule.latest_error,
+                            })
+                            .collect::<Vec<_>>()
+                            .into(),
                     },
                     logs: record
                         .runtime
@@ -788,6 +807,290 @@ mod tests {
             67_108_864
         );
         assert_eq!(constants.get::<i64>("LoopMode_Playing").unwrap(), 2);
+        for &(name, expected) in LEGACY_KEY_CONSTANTS
+            .iter()
+            .chain(LEGACY_MODIFIER_CONSTANTS.iter())
+        {
+            assert_eq!(constants.get::<i64>(name).unwrap(), expected, "{name}");
+        }
+        for (name, expected) in [
+            ("LoopMode_Unknown", 0),
+            ("LoopMode_Stopped", 1),
+            ("LoopMode_Playing", 2),
+            ("LoopMode_Recording", 3),
+            ("LoopMode_Replacing", 4),
+            ("LoopMode_PlayingDryThroughWet", 5),
+            ("LoopMode_RecordingDryIntoWet", 6),
+            ("LoopEventType_ModeChanged", 0),
+            ("LoopEventType_LengthChanged", 1),
+            ("LoopEventType_SelectedChanged", 2),
+            ("LoopEventType_TargetedChanged", 3),
+            ("LoopEventType_CoordsChanged", 4),
+            ("GlobalEventType_GlobalControlChanged", 0),
+            ("KeyEventType_Pressed", 0),
+            ("KeyEventType_Released", 1),
+            ("Loop_DontWaitForSync", -1),
+            ("Loop_DontAlignToSyncImmediately", -1),
+        ] {
+            assert_eq!(constants.get::<i64>(name).unwrap(), expected, "{name}");
+        }
+        assert_eq!(
+            constants.clone().pairs::<String, mlua::Value>().count(),
+            LEGACY_KEY_CONSTANTS.len() + LEGACY_MODIFIER_CONSTANTS.len() + 17
+        );
+    }
+
+    #[test]
+    fn every_control_function_is_invoked_with_retained_shapes_and_selectors() {
+        let bridge = Rc::new(RefCell::new(ControlBridge {
+            snapshot: ControlSnapshot {
+                loops: vec![
+                    ControlLoop {
+                        id: LoopId::from_raw(1),
+                        coords: [-1, 0],
+                        mode: LoopMode::Stopped,
+                        next_mode: None,
+                        next_mode_delay: None,
+                        length: 100,
+                        gain: 1.0,
+                        balance: 0.0,
+                        selected: false,
+                        targeted: true,
+                    },
+                    ControlLoop {
+                        id: LoopId::from_raw(2),
+                        coords: [0, 0],
+                        mode: LoopMode::Playing,
+                        next_mode: Some(LoopMode::Recording),
+                        next_mode_delay: Some(2),
+                        length: 200,
+                        gain: 0.5,
+                        balance: -0.25,
+                        selected: true,
+                        targeted: false,
+                    },
+                    ControlLoop {
+                        id: LoopId::from_raw(3),
+                        coords: [1, 0],
+                        mode: LoopMode::Recording,
+                        next_mode: None,
+                        next_mode_delay: None,
+                        length: 300,
+                        gain: 2.0,
+                        balance: 0.5,
+                        selected: false,
+                        targeted: false,
+                    },
+                ],
+                tracks: vec![
+                    ControlTrack {
+                        id: TrackId::from_raw(1),
+                        index: -1,
+                        output_gain_db: 0.0,
+                        output_balance: 0.0,
+                        output_muted: false,
+                        input_gain_db: 0.0,
+                        input_muted: false,
+                    },
+                    ControlTrack {
+                        id: TrackId::from_raw(2),
+                        index: 0,
+                        output_gain_db: -6.0,
+                        output_balance: -0.25,
+                        output_muted: true,
+                        input_gain_db: 6.0,
+                        input_muted: true,
+                    },
+                    ControlTrack {
+                        id: TrackId::from_raw(3),
+                        index: 1,
+                        output_gain_db: 6.0,
+                        output_balance: 0.5,
+                        output_muted: false,
+                        input_gain_db: -6.0,
+                        input_muted: false,
+                    },
+                ],
+                apply_n_cycles: 3,
+                solo: false,
+                sync_active: true,
+                play_after_record: true,
+                default_recording_action: shoop_app_api::DefaultRecordingAction::Record,
+            },
+            operations: Vec::new(),
+        }));
+        let runtime = LuaRuntime::new_with_control(Rc::clone(&bridge)).unwrap();
+        runtime
+            .execute(
+                "complete control table",
+                r#"
+local c = require('shoop_control')
+for name, fn in pairs(c) do
+    if type(fn) == 'function' then
+        c[name] = function(...)
+            print_info('CALL:' .. name)
+            return fn(...)
+        end
+    end
+end
+local function eq(actual, expected, label)
+    if actual ~= expected then error(label .. ': ' .. tostring(actual)) end
+end
+local function coords(actual, track, row, label)
+    eq(actual[1], track, label .. ' track')
+    eq(actual[2], row, label .. ' row')
+end
+
+eq(c.loop_count({{-1,0},{0,0},{1,0}}), 3, 'loop_count')
+local all = c.loop_get_all(); eq(#all, 3, 'loop_get_all size'); coords(all[1], -1, 0, 'all 1')
+local selected = c.loop_get_which_selected(); eq(#selected, 1, 'selected size'); coords(selected[1], 0, 0, 'selected')
+coords(c.loop_get_which_targeted(), -1, 0, 'targeted')
+coords(c.loop_get_by_mode(c.constants.LoopMode_Playing)[1], 0, 0, 'by mode')
+eq(c.loop_get_mode({0,0})[1], c.constants.LoopMode_Playing, 'mode')
+eq(c.loop_get_next_mode({0,0})[1], c.constants.LoopMode_Recording, 'next mode')
+eq(c.loop_get_next_mode_delay({0,0})[1], 2, 'next delay')
+eq(c.loop_get_length({0,0})[1], 200, 'length')
+coords(c.loop_get_by_track(1)[1], 1, 0, 'by track')
+eq(c.loop_get_gain({0,0})[1], 0.5, 'loop gain')
+local loop_fader = c.loop_get_gain_fader({0,0})[1]; if loop_fader <= 0 or loop_fader >= 1 then error('loop fader') end
+eq(c.loop_get_balance({0,0})[1], -0.25, 'loop balance')
+
+c.loop_transition({0,0}, c.constants.LoopMode_Replacing, c.constants.Loop_DontWaitForSync, c.constants.Loop_DontAlignToSyncImmediately)
+c.loop_trigger({1,0}, c.constants.LoopMode_Playing)
+c.loop_trigger_grab({0,0})
+c.loop_record_n({0,0}, 4, 2)
+c.loop_record_with_targeted({0,0})
+c.loop_set_gain({0,0}, -2)
+c.loop_set_gain_fader({0,0}, 0.75)
+c.loop_set_balance({0,0}, 2)
+c.loop_select({1,0}, true)
+c.loop_target({0,0})
+c.loop_untarget_all()
+c.loop_toggle_targeted({1,0})
+c.loop_toggle_selected({1,0})
+c.loop_clear({0,0})
+c.loop_clear_all()
+c.loop_adopt_ringbuffers({0,0}, 1, 2, 3, c.constants.LoopMode_Playing)
+c.loop_compose_add_to_end({0,0}, {{1,0},{-1,0}}, true)
+c.loop_set_repeat_sync({0,0}, true)
+
+local tracks = {-1, 0, 1}
+eq(#c.track_get_gain(tracks), 3, 'track gain shape')
+eq(#c.track_get_balance(tracks), 3, 'track balance shape')
+eq(#c.track_get_gain_fader(tracks), 3, 'track fader shape')
+eq(#c.track_get_input_gain(tracks), 3, 'input gain shape')
+eq(#c.track_get_input_gain_fader(tracks), 3, 'input fader shape')
+eq(c.track_get_muted(0)[1], true, 'track muted')
+eq(c.track_get_input_muted(0)[1], true, 'input muted')
+c.track_set_muted({0,1}, false)
+c.track_set_input_muted({0,1}, false)
+c.track_set_gain({0,1}, 0.5)
+c.track_set_gain_fader({0,1}, 0.75)
+c.track_set_balance({0,1}, 2)
+c.track_set_input_gain({0,1}, 2)
+c.track_set_input_gain_fader({0,1}, 0.25)
+
+eq(c.get_apply_n_cycles(), 3, 'cycles')
+c.set_apply_n_cycles(5)
+eq(c.get_solo(), false, 'solo')
+c.set_solo(true)
+eq(c.get_sync_active(), true, 'sync')
+c.set_sync_active(false)
+eq(c.get_play_after_record(), true, 'play after record')
+c.set_play_after_record(false)
+eq(c.get_default_recording_action(), 'record', 'record action')
+c.set_default_recording_action('grab')
+
+c.register_loop_event_cb(function() end)
+c.register_global_event_cb(function() end)
+c.register_keyboard_event_cb(function() end)
+c.register_one_shot_timer_cb(0, function() end)
+c.auto_open_device_specific_midi_control_input('', function() end)
+c.auto_open_device_specific_midi_control_output('', function() end, function() end, 0)
+"#,
+            )
+            .unwrap();
+
+        let called = runtime
+            .logs()
+            .into_iter()
+            .filter_map(|entry| entry.message.strip_prefix("CALL:").map(str::to_owned))
+            .collect::<std::collections::BTreeSet<_>>();
+        let expected = CONTROL_FUNCTION_NAMES
+            .iter()
+            .map(|name| (*name).to_owned())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(called, expected);
+        assert_eq!(bridge.borrow().operations.len(), 30);
+    }
+
+    #[test]
+    fn control_argument_validation_is_observable_and_non_mutating() {
+        let first_loop = LoopId::from_raw(10);
+        let bridge = Rc::new(RefCell::new(ControlBridge {
+            snapshot: ControlSnapshot {
+                loops: vec![ControlLoop {
+                    id: first_loop,
+                    coords: [0, 0],
+                    mode: LoopMode::Stopped,
+                    next_mode: None,
+                    next_mode_delay: None,
+                    length: 0,
+                    gain: 1.0,
+                    balance: 0.0,
+                    selected: false,
+                    targeted: false,
+                }],
+                tracks: vec![ControlTrack {
+                    id: TrackId::from_raw(2),
+                    index: 0,
+                    output_gain_db: 0.0,
+                    output_balance: 0.0,
+                    output_muted: false,
+                    input_gain_db: 0.0,
+                    input_muted: false,
+                }],
+                ..Default::default()
+            },
+            operations: Vec::new(),
+        }));
+        let runtime = LuaRuntime::new_with_control(Rc::clone(&bridge)).unwrap();
+        runtime
+            .execute(
+                "invalid arguments",
+                r#"
+local c=require('shoop_control')
+local function fails(fragment, fn)
+    local ok, error = pcall(fn)
+    if ok or not tostring(error):find(fragment, 1, true) then
+        error('expected failure containing ' .. fragment .. ': ' .. tostring(error))
+    end
+end
+fails('loop coordinate', function() c.loop_count({{0}}) end)
+fails('invalid loop mode', function() c.loop_trigger({0,0}, 99) end)
+fails('non-negative', function() c.loop_transition({0,0}, c.constants.LoopMode_Playing, -2, -1) end)
+fails('track selector', function() c.track_get_gain('bad') end)
+fails('timer delay', function() c.register_one_shot_timer_cb(-1, function() end) end)
+fails('rate limit', function() c.auto_open_device_specific_midi_control_output('', function() end, function() end, -1) end)
+fails('invalid MIDI autoconnect regex', function() c.auto_open_device_specific_midi_control_input('[', function() end) end)
+c.loop_trigger({99,99}, c.constants.LoopMode_Playing)
+c.track_set_muted(99, true)
+"#,
+            )
+            .unwrap();
+        assert_eq!(
+            bridge.borrow().operations,
+            [
+                ControlOperation::Trigger {
+                    loops: Vec::new(),
+                    mode: LoopMode::Playing,
+                },
+                ControlOperation::SetTrackMuted {
+                    tracks: Vec::new(),
+                    muted: true,
+                },
+            ]
+        );
     }
 
     #[test]
@@ -976,6 +1279,145 @@ c.register_one_shot_timer_cb(10, function() print_info('timer') end)
     }
 
     #[test]
+    fn callbacks_expose_complete_payloads_and_are_non_reentrant() {
+        let mut manager = ScriptManager::new();
+        let id = manager
+            .add(
+                "payloads",
+                r#"
+local c = require('shoop_control')
+local installed_nested = false
+c.register_loop_event_cb(function(event)
+    print_info(string.format('loop:%d:%d,%d:%d:%d:%s:%s', event.type,
+        event.coords[1], event.coords[2], event.mode, event.length,
+        tostring(event.selected), tostring(event.targeted)))
+    if not installed_nested then
+        installed_nested = true
+        c.register_loop_event_cb(function(nested)
+            print_info('nested:' .. nested.type)
+        end)
+    end
+end)
+c.register_global_event_cb(function(event) print_info('global:' .. event.type) end)
+c.register_keyboard_event_cb(function(event)
+    print_info(string.format('key:%d:%d:%d', event.type, event.key, event.modifiers))
+end)
+"#,
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+
+        let event = ScriptLoopEvent {
+            coords: [-1, 7],
+            event_type: 5,
+            mode: LoopMode::RecordingDryIntoWet,
+            length: 12_345,
+            selected: true,
+            targeted: false,
+        };
+        manager.dispatch_loop_event(&event);
+        assert_eq!(manager.logs(id).unwrap().len(), 1);
+        manager.dispatch_loop_event(&ScriptLoopEvent {
+            event_type: 6,
+            selected: false,
+            targeted: true,
+            ..event
+        });
+        manager.dispatch_global_event();
+        manager.dispatch_key_event(ScriptKeyEvent {
+            event_type: 1,
+            key: 65,
+            modifiers: 100_663_296,
+        });
+        assert_eq!(
+            manager
+                .logs(id)
+                .unwrap()
+                .into_iter()
+                .map(|entry| entry.message)
+                .collect::<Vec<_>>(),
+            [
+                "loop:5:-1,7:6:12345:true:false",
+                "loop:6:-1,7:6:12345:false:true",
+                "nested:6",
+                "global:0",
+                "key:1:65:100663296",
+            ]
+        );
+    }
+
+    #[test]
+    fn timers_are_due_ordered_non_reentrant_capped_and_cancelled_on_stop() {
+        let mut manager = ScriptManager::new();
+        let id = manager
+            .add(
+                "timers",
+                r#"
+local c = require('shoop_control')
+c.register_one_shot_timer_cb(10, function() print_info('ten') end)
+c.register_one_shot_timer_cb(5, function()
+    print_info('five-a')
+    c.register_one_shot_timer_cb(0, function() print_info('nested-zero') end)
+end)
+c.register_one_shot_timer_cb(5, function() print_info('five-b') end)
+"#,
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+        manager.advance_timers(std::time::Duration::from_millis(5));
+        assert_eq!(
+            manager
+                .logs(id)
+                .unwrap()
+                .into_iter()
+                .map(|entry| entry.message)
+                .collect::<Vec<_>>(),
+            ["five-a", "five-b"]
+        );
+        assert_eq!(manager.states()[0].activity.timers, 2);
+        manager.advance_timers(std::time::Duration::ZERO);
+        assert_eq!(
+            manager.logs(id).unwrap().last().unwrap().message,
+            "nested-zero"
+        );
+        manager.advance_timers(std::time::Duration::from_millis(5));
+        assert_eq!(manager.logs(id).unwrap().last().unwrap().message, "ten");
+
+        let registrations = (0..=control::MAX_SCRIPT_CALLBACKS_PER_PUMP)
+            .map(|_| "c.register_one_shot_timer_cb(0, function() end)")
+            .collect::<Vec<_>>()
+            .join("\n");
+        let capped = manager
+            .add(
+                "timer cap",
+                format!("local c=require('shoop_control')\n{registrations}"),
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+        manager.advance_timers(std::time::Duration::ZERO);
+        let capped_state = manager
+            .states()
+            .into_iter()
+            .find(|state| state.id == capped)
+            .unwrap();
+        assert_eq!(capped_state.activity.timers, 1);
+        manager.stop(capped).unwrap();
+        assert_eq!(
+            manager
+                .states()
+                .into_iter()
+                .find(|state| state.id == capped)
+                .unwrap()
+                .activity
+                .timers,
+            0
+        );
+    }
+
+    #[test]
     fn callback_failure_is_observable_without_stopping_other_scripts() {
         let mut manager = ScriptManager::new();
         let failing = manager
@@ -1069,6 +1511,24 @@ end, 100)
         let state = manager.states().remove(0);
         assert_eq!(state.midi.rules, 2);
         assert_eq!(state.midi.connections, 3);
+        assert_eq!(state.midi.rule_states.len(), 2);
+        assert_eq!(
+            state.midi.rule_states[0].direction,
+            ScriptMidiRuleDirection::Input
+        );
+        assert_eq!(state.midi.rule_states[0].pattern, "APC Mini");
+        assert_eq!(
+            state.midi.rule_states[0].connected_endpoints.as_ref(),
+            ["APC Mini [source-apc]", "APC Mini [source-apc-2]"]
+        );
+        assert_eq!(
+            state.midi.rule_states[1].direction,
+            ScriptMidiRuleDirection::Output
+        );
+        assert_eq!(
+            state.midi.rule_states[1].connected_endpoints.as_ref(),
+            ["APC Mini [sink-apc]"]
+        );
         assert_eq!(control.active_connections(), 3);
         manager.advance_midi(std::time::Duration::from_millis(500));
         assert_eq!(control.active_connections(), 3);
@@ -1086,6 +1546,72 @@ end, 100)
         manager.stop(id).unwrap();
         assert_eq!(manager.states()[0].midi.connections, 0);
         assert_eq!(control.active_connections(), 0);
+    }
+
+    #[test]
+    fn positive_midi_rate_limit_never_catches_up_with_a_same_pump_burst() {
+        let (midi, control) = FakeMidiService::new();
+        control.set_endpoints(vec![
+            MidiEndpoint {
+                id: "sink-a".to_owned(),
+                name: "device".to_owned(),
+                direction: MidiEndpointDirection::Input,
+            },
+            MidiEndpoint {
+                id: "sink-b".to_owned(),
+                name: "device".to_owned(),
+                direction: MidiEndpointDirection::Input,
+            },
+        ]);
+        let mut manager = ScriptManager::new_with_midi(Box::new(midi));
+        manager
+            .add(
+                "paced broadcast",
+                r#"
+local c=require('shoop_control')
+c.auto_open_device_specific_midi_control_output('device', function(port)
+    port.send({1})
+    port.send({2})
+    port.send({3})
+end, function() end, 10)
+"#,
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+
+        manager.advance_midi(std::time::Duration::from_millis(99));
+        assert!(control.take_sent().is_empty());
+        manager.advance_midi(std::time::Duration::from_millis(1));
+        assert_eq!(
+            control.take_sent(),
+            [
+                ("sink-a".to_owned(), vec![1]),
+                ("sink-b".to_owned(), vec![1]),
+            ]
+        );
+
+        // A late pump may send one message, but must not flush the accumulated backlog.
+        manager.advance_midi(std::time::Duration::from_secs(1));
+        assert_eq!(
+            control.take_sent(),
+            [
+                ("sink-a".to_owned(), vec![2]),
+                ("sink-b".to_owned(), vec![2]),
+            ]
+        );
+        manager.advance_midi(std::time::Duration::ZERO);
+        assert!(control.take_sent().is_empty());
+        manager.advance_midi(std::time::Duration::from_millis(99));
+        assert!(control.take_sent().is_empty());
+        manager.advance_midi(std::time::Duration::from_millis(1));
+        assert_eq!(
+            control.take_sent(),
+            [
+                ("sink-a".to_owned(), vec![3]),
+                ("sink-b".to_owned(), vec![3]),
+            ]
+        );
     }
 
     #[test]
@@ -1108,6 +1634,13 @@ end, 100)
             .unwrap();
         manager.advance_midi(std::time::Duration::from_millis(1));
         assert_eq!(manager.states()[0].midi.errors, 1);
+        let failed_rule = &manager.states()[0].midi.rule_states[0];
+        assert_eq!(failed_rule.pattern, "device");
+        assert!(failed_rule.connected_endpoints.is_empty());
+        assert!(failed_rule
+            .latest_error
+            .as_deref()
+            .is_some_and(|error| error.contains("connection failure")));
         control.set_fail_connections(false);
         manager.advance_midi(std::time::Duration::from_millis(249));
         assert_eq!(manager.states()[0].midi.connections, 0);

@@ -274,6 +274,39 @@ impl AppWidget {
                                     script.midi.dropped_messages,
                                     script.midi.errors
                                 ));
+                                for rule in script.midi.rule_states.iter() {
+                                    let direction = match rule.direction {
+                                        crate::ScriptMidiRuleDirection::Input => "input",
+                                        crate::ScriptMidiRuleDirection::Output => "output",
+                                    };
+                                    ui.collapsing(
+                                        format!("MIDI {direction}: /{}/", rule.pattern),
+                                        |ui| {
+                                            if rule.matched_endpoints.is_empty() {
+                                                ui.weak("No matching endpoints");
+                                            } else {
+                                                ui.label(format!(
+                                                    "Matched: {}",
+                                                    rule.matched_endpoints.join(", ")
+                                                ));
+                                            }
+                                            if rule.connected_endpoints.is_empty() {
+                                                ui.weak("Not connected");
+                                            } else {
+                                                ui.label(format!(
+                                                    "Connected: {}",
+                                                    rule.connected_endpoints.join(", ")
+                                                ));
+                                            }
+                                            if let Some(error) = &rule.latest_error {
+                                                ui.colored_label(
+                                                    egui::Color32::LIGHT_RED,
+                                                    format!("Latest failure: {error}"),
+                                                );
+                                            }
+                                        },
+                                    );
+                                }
                                 ui.horizontal(|ui| {
                                     if ui.button("Restart").clicked() {
                                         actions.push(AppAction::RestartScript {
@@ -836,6 +869,13 @@ mod tests {
                         connections: 1,
                         dropped_messages: 3,
                         errors: 4,
+                        rule_states: Arc::from([crate::ScriptMidiRuleDiagnostics {
+                            direction: crate::ScriptMidiRuleDirection::Output,
+                            pattern: "APC Mini".to_owned(),
+                            matched_endpoints: Arc::from(["APC Mini [sink]".to_owned()]),
+                            connected_endpoints: Arc::from(["APC Mini [sink]".to_owned()]),
+                            latest_error: Some("permission denied".to_owned()),
+                        }]),
                     },
                     logs: Arc::from([crate::ScriptLogState {
                         level: crate::ScriptLogLevel::Warning,
