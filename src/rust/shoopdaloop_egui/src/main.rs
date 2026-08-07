@@ -485,7 +485,7 @@ fn main() {
             .start(canvas, eframe::WebOptions::default(), Box::new(create_app))
             .await
         {
-            Ok(()) => set_browser_status("Awaiting microphone enable action", None),
+            Ok(()) => set_browser_status("Awaiting browser audio enable action", None),
             Err(error) => {
                 let message = format!("Browser application failed: {error:?}");
                 set_browser_status(&message, None);
@@ -511,6 +511,7 @@ mod tests {
         assert!(html.contains("data-trunk"));
         assert!(html.contains(&format!("id=\"{WEB_CANVAS_ID}\"")));
         assert!(html.contains("Enable microphone audio"));
+        assert!(html.contains("Enable output-only audio"));
         assert!(html.contains("audio_worklet.js"));
     }
 
