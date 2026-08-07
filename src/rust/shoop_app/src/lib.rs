@@ -7,15 +7,15 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use shoop_app_api::{
     AppIntent, AppNotification, AppSnapshot, AudioChannelMappingState, AudioChannelSelectionState,
     AudioDriverState, ChannelId, ConnectionErrorKind, ConnectionErrorState, ConnectionViewState,
     DirectTrackSpec, ExternalPortConnectionState, GlobalControlAction, IoTaskKind, IoTaskState,
     IoTaskStatus, LocalPortConnectionState, LoopAction, LoopAudioExportFormat, LoopDetailsState,
     LoopId, LoopMode, LoopState, NotificationLevel, PortDataType, PortDirection, PortId, PortRole,
-    SampleRateWarning, StatusState, TaskId, TrackAction, TrackControlState, TrackId, TrackState,
-    WaveformChannelState,
+    SampleRateWarning, ScriptId, ScriptKind, ScriptingState, StatusState, TaskId, TrackAction,
+    TrackControlState, TrackId, TrackState, WaveformChannelState,
 };
 use shoop_backend::{
     Backend, BackendAudioContent, BackendConnectionSnapshot, BackendGrabRequest,
@@ -25,6 +25,8 @@ use shoop_backend::{
     BackendSessionTrack, BackendSnapshot, BackendTrackControl, BackendTrackId, BackendTrackState,
     DirectTrackRequest,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use shoop_scripting::ScriptManager;
 use shoop_session::{
     decode_exact_midi, decode_loop_audio, decode_session, decode_standard_midi, decode_wav,
     encode_exact_midi, encode_float_wav, encode_loop_audio, encode_session, encode_standard_midi,
@@ -125,24 +127,56 @@ pub struct ApplicationRuntime {
 impl ApplicationRuntime {
     pub fn start(mut backend: Box<dyn Backend + Send>) -> Result<Self> {
         let file_outputs = Arc::new(Mutex::new(VecDeque::new()));
-        let model = ApplicationModel::initialize(&mut *backend, Arc::clone(&file_outputs), true)?;
-        let initial = Arc::new(model.snapshot());
-        let snapshot = Arc::new(RwLock::new(initial));
+        let snapshot = Arc::new(RwLock::new(Arc::new(AppSnapshot::default())));
         let (sender, receiver) = mpsc::sync_channel(COMMAND_CAPACITY);
+        let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
         let saturated_connection = Arc::new(Mutex::new(None));
         let handle = ApplicationHandle {
             sender,
             snapshot: Arc::clone(&snapshot),
             saturated_connection: Arc::clone(&saturated_connection),
-            file_outputs,
+            file_outputs: Arc::clone(&file_outputs),
         };
+        let actor_snapshot = Arc::clone(&snapshot);
+        let actor_saturated_connection = Arc::clone(&saturated_connection);
         let join = thread::Builder::new()
             .name("shoop-application".to_owned())
-            .spawn(move || run_actor(model, backend, receiver, snapshot, saturated_connection))?;
-        Ok(Self {
-            handle,
-            join: Some(join),
-        })
+            .spawn(move || {
+                match ApplicationModel::initialize(&mut *backend, file_outputs, true) {
+                    Ok(model) => {
+                        *actor_snapshot
+                            .write()
+                            .unwrap_or_else(|error| error.into_inner()) =
+                            Arc::new(model.snapshot());
+                        if ready_sender.send(Ok(())).is_ok() {
+                            run_actor(
+                                model,
+                                backend,
+                                receiver,
+                                actor_snapshot,
+                                actor_saturated_connection,
+                            );
+                        }
+                    }
+                    Err(error) => {
+                        let _ = ready_sender.send(Err(error.to_string()));
+                    }
+                }
+            })?;
+        match ready_receiver.recv() {
+            Ok(Ok(())) => Ok(Self {
+                handle,
+                join: Some(join),
+            }),
+            Ok(Err(error)) => {
+                let _ = join.join();
+                Err(anyhow!(error))
+            }
+            Err(error) => {
+                let _ = join.join();
+                Err(anyhow!("application actor failed during startup: {error}"))
+            }
+        }
     }
 
     pub fn handle(&self) -> ApplicationHandle {
@@ -305,6 +339,9 @@ struct ApplicationModel {
     connection_revision: u64,
     connection_backend_available: bool,
     connection_view: Arc<ConnectionViewState>,
+    scripting_view: Arc<ScriptingState>,
+    #[cfg(not(target_arch = "wasm32"))]
+    script_manager: ScriptManager,
     global: shoop_app_api::GlobalControlState,
     status: StatusState,
     notifications: Vec<AppNotification>,
@@ -480,6 +517,12 @@ impl ApplicationModel {
             connection_revision: 1,
             connection_backend_available: false,
             connection_view: Arc::new(ConnectionViewState::default()),
+            scripting_view: Arc::new(ScriptingState {
+                supported: cfg!(not(target_arch = "wasm32")),
+                scripts: Arc::from([]),
+            }),
+            #[cfg(not(target_arch = "wasm32"))]
+            script_manager: ScriptManager::new(),
             global: Default::default(),
             status: Default::default(),
             notifications: Vec::new(),
@@ -506,6 +549,18 @@ impl ApplicationModel {
             }
             AppIntent::AddTrack(spec) => self.add_track(backend, spec),
             AppIntent::AddLoop { track_id } => self.add_aligned_loop_row(backend, track_id),
+            AppIntent::AddScriptSource {
+                name,
+                source,
+                kind,
+                enabled,
+            } => self.add_script_source(name, source, kind, enabled),
+            AppIntent::SetScriptEnabled { script_id, enabled } => {
+                self.set_script_enabled(script_id, enabled)
+            }
+            AppIntent::RestartScript { script_id } => self.restart_script(script_id),
+            AppIntent::StopScript { script_id } => self.stop_script(script_id),
+            AppIntent::ForgetScript { script_id } => self.forget_script(script_id),
             AppIntent::SetPortConnected {
                 port_id,
                 external_port,
@@ -557,6 +612,106 @@ impl ApplicationModel {
         if let Err(error) = result {
             self.notify_error(error);
         }
+    }
+
+    fn add_script_source(
+        &mut self,
+        name: String,
+        source: Arc<str>,
+        kind: ScriptKind,
+        enabled: bool,
+    ) -> Result<(), String> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let result = self
+                .script_manager
+                .add(name, source.to_string(), kind, enabled)
+                .map(|_| ())
+                .map_err(|error| error.to_string());
+            self.refresh_scripting_view();
+            result
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (name, source, kind, enabled);
+            Err("Lua scripting is unavailable in the browser build".to_owned())
+        }
+    }
+
+    fn set_script_enabled(&mut self, id: ScriptId, enabled: bool) -> Result<(), String> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let result = self
+                .script_manager
+                .set_enabled(id, enabled)
+                .map_err(|error| error.to_string());
+            self.refresh_scripting_view();
+            result
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (id, enabled);
+            Err("Lua scripting is unavailable in the browser build".to_owned())
+        }
+    }
+
+    fn restart_script(&mut self, id: ScriptId) -> Result<(), String> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let result = self
+                .script_manager
+                .start(id)
+                .map_err(|error| error.to_string());
+            self.refresh_scripting_view();
+            result
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = id;
+            Err("Lua scripting is unavailable in the browser build".to_owned())
+        }
+    }
+
+    fn stop_script(&mut self, id: ScriptId) -> Result<(), String> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let result = self
+                .script_manager
+                .stop(id)
+                .map_err(|error| error.to_string());
+            self.refresh_scripting_view();
+            result
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = id;
+            Err("Lua scripting is unavailable in the browser build".to_owned())
+        }
+    }
+
+    fn forget_script(&mut self, id: ScriptId) -> Result<(), String> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let result = self
+                .script_manager
+                .forget(id)
+                .map_err(|error| error.to_string());
+            self.refresh_scripting_view();
+            result
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = id;
+            Err("Lua scripting is unavailable in the browser build".to_owned())
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn refresh_scripting_view(&mut self) {
+        self.scripting_view = Arc::new(ScriptingState {
+            supported: true,
+            scripts: self.script_manager.states().into(),
+        });
     }
 
     fn begin_save_session(&mut self) -> Result<(), String> {
@@ -2610,6 +2765,7 @@ impl ApplicationModel {
             status: self.status.clone(),
             details: self.details_snapshot(),
             connections: Arc::clone(&self.connection_view),
+            scripting: Arc::clone(&self.scripting_view),
             io_task: self.io_task.clone(),
             notifications: self.notifications.clone(),
         }
@@ -3602,6 +3758,56 @@ mod tests {
         assert!(snapshot.tracks[0].loops[0].sync);
         assert!(snapshot.tracks[0].id.is_valid());
         assert!(snapshot.tracks[0].loops[0].id.is_valid());
+    }
+
+    #[test]
+    fn actor_owns_script_lifecycle_and_publishes_plain_states() {
+        let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        let handle = runtime.handle();
+        assert!(handle.snapshot().scripting.supported);
+        handle
+            .dispatch(AppIntent::AddScriptSource {
+                name: "user.lua".to_owned(),
+                source: Arc::from("-- User docs\nprint('ready')"),
+                kind: ScriptKind::User,
+                enabled: true,
+            })
+            .unwrap();
+        let added = wait_for(&handle, |snapshot| snapshot.scripting.scripts.len() == 1);
+        let script = &added.scripting.scripts[0];
+        assert_eq!(script.name, "user.lua");
+        assert_eq!(script.kind, ScriptKind::User);
+        assert_eq!(script.documentation.as_deref(), Some("User docs\n"));
+        assert_eq!(script.lifecycle, shoop_app_api::ScriptLifecycle::Finished);
+        let script_id = script.id;
+
+        handle
+            .dispatch(AppIntent::StopScript { script_id })
+            .unwrap();
+        wait_for(&handle, |snapshot| {
+            snapshot.scripting.scripts[0].lifecycle == shoop_app_api::ScriptLifecycle::Inactive
+        });
+        handle
+            .dispatch(AppIntent::RestartScript { script_id })
+            .unwrap();
+        wait_for(&handle, |snapshot| {
+            snapshot.scripting.scripts[0].lifecycle == shoop_app_api::ScriptLifecycle::Finished
+        });
+        handle
+            .dispatch(AppIntent::SetScriptEnabled {
+                script_id,
+                enabled: false,
+            })
+            .unwrap();
+        wait_for(&handle, |snapshot| {
+            !snapshot.scripting.scripts[0].enabled
+                && snapshot.scripting.scripts[0].lifecycle
+                    == shoop_app_api::ScriptLifecycle::Inactive
+        });
+        handle
+            .dispatch(AppIntent::ForgetScript { script_id })
+            .unwrap();
+        wait_for(&handle, |snapshot| snapshot.scripting.scripts.is_empty());
     }
 
     #[test]

@@ -5,6 +5,7 @@ edition = "2021"
 [dependencies]
 anyhow = { workspace = true }
 mlua = { workspace = true }
+shoop_app_api = { path = "../shoop_app_api" }
 
 [lints]
 workspace = true

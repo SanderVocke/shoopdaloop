@@ -8,5 +8,8 @@ shoop_app_api = { path = "../shoop_app_api" }
 shoop_backend = { path = "../shoop_backend" }
 shoop_session = { path = "../shoop_session" }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+shoop_scripting = { path = "../shoop_scripting" }
+
 [lints]
 workspace = true

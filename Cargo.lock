@@ -4688,6 +4688,7 @@ dependencies = [
  "anyhow",
  "shoop_app_api",
  "shoop_backend",
+ "shoop_scripting",
  "shoop_session",
 ]
 
@@ -4793,6 +4794,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "mlua",
+ "shoop_app_api",
 ]
 
 [[package]]
