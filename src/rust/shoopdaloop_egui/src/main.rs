@@ -513,6 +513,8 @@ mod tests {
         assert!(html.contains("Enable microphone audio"));
         assert!(html.contains("Enable output-only audio"));
         assert!(html.contains("audio_worklet.js"));
+        assert!(html.contains("Roboto-Regular.ttf"));
+        assert!(html.contains("Roboto-BoldItalic.ttf"));
     }
 
     #[test]

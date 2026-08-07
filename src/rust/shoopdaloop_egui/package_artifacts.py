@@ -21,10 +21,19 @@ ROOT = PACKAGE.parents[2]
 ARCHIVE_ROOT = "shoopdaloop-egui"
 PROFILES = ("debug", "release")
 NATIVE_PLATFORMS = ("linux", "windows", "macos")
+ROBOTO_FILES = (
+    "LICENSE.txt",
+    "README.md",
+    "Roboto-Regular.ttf",
+    "Roboto-Italic.ttf",
+    "Roboto-Bold.ttf",
+    "Roboto-BoldItalic.ttf",
+)
 WEB_REQUIRED_FILES = (
     "index.html",
     "audio_worklet.js",
     "generated/shoop_audio_worklet.wasm",
+    *(f"roboto/{name}" for name in ROBOTO_FILES),
 )
 
 
@@ -45,6 +54,7 @@ def create_native_stage(platform: str, binary: Path, stage: Path) -> None:
     root = stage / ARCHIVE_ROOT
     root.mkdir()
     copy_metadata(root)
+    shutil.copytree(ROOT / "resources" / "fonts" / "roboto", root / "roboto")
 
     if platform == "macos":
         contents = root / "ShoopDaLoop egui.app" / "Contents"
@@ -179,9 +189,10 @@ def verify_native(path: Path, platform: str) -> None:
     names, modes = archive_names(path)
     root = f"{ARCHIVE_ROOT}/"
     metadata = {f"{root}README.md", f"{root}LICENSE"}
+    fonts = {f"{root}roboto/{name}" for name in ROBOTO_FILES}
     if platform == "macos":
         app = f"{root}ShoopDaLoop egui.app/Contents/"
-        required = metadata | {
+        required = metadata | fonts | {
             f"{app}Info.plist",
             f"{app}MacOS/shoopdaloop_egui",
             f"{app}Resources/icon.icns",
@@ -189,7 +200,7 @@ def verify_native(path: Path, platform: str) -> None:
         executable = f"{app}MacOS/shoopdaloop_egui"
     else:
         executable = f"{root}{executable_name(platform)}"
-        required = metadata | {executable}
+        required = metadata | fonts | {executable}
     if names != required:
         raise RuntimeError(
             f"unexpected {platform} archive manifest; missing={sorted(required - names)}, "
@@ -218,6 +229,15 @@ def verify_web(bundle: Path, html: Path) -> None:
         or "shoopAudioWorkletWasmBytes" not in text
     ):
         raise RuntimeError("self-contained HTML does not contain embedded browser audio")
+    external_fonts = (
+        f'url("./roboto/{name}")'
+        for name in ROBOTO_FILES
+        if name.endswith(".ttf")
+    )
+    if any(url in text for url in external_fonts):
+        raise RuntimeError("self-contained HTML contains an external Roboto font URL")
+    if text.count('url("data:font/ttf;base64,') != 4:
+        raise RuntimeError("self-contained HTML does not contain every embedded Roboto font face")
     for variable in ("shoopWasmBinary", "shoopAudioWorkletBinary"):
         match = re.search(rf'const {variable} = atob\("([A-Za-z0-9+/=]+)"\);', text)
         if not match:

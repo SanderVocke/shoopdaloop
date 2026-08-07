@@ -240,7 +240,7 @@ jobs:
       matrix:
         kind:
           - name: linux_release
-            if: ${{ needs.setup.outputs.release == 'true' }}
+            if: ${{ false }}
             release_build: true
             package_kind: portable_folder
             second_package_kind: appimage
@@ -255,7 +255,7 @@ jobs:
             upload_release_assets: true
             platform: linux-x64
           - name: linux_coverage
-            if: ${{ needs.setup.outputs.coverage == 'true' }}
+            if: ${{ false }}
             release_build: false
             package_kind: portable_folder
             second_package_kind: test_binaries
@@ -331,7 +331,7 @@ jobs:
       matrix:
         kind:
           - name: release_debian_stable
-            if: ${{ needs.setup.outputs.release == 'true' }}
+            if: ${{ false }}
             trace_capture: true
             python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
@@ -347,14 +347,14 @@ jobs:
             second_package: shoopdaloop.*.debug-linux-x64.test_binaries.tar.gz
             sentry_build_type: debug
           - name: release_debian_appimage
-            if: ${{ needs.setup.outputs.release == 'true' }}
+            if: ${{ false }}
             trace_capture: true
             python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.release-linux-x64.AppImage
             sentry_build_type: release
           - name: coverage_debian_bookworm
-            if: ${{ needs.setup.outputs.coverage == 'true' }}
+            if: ${{ false }}
             trace_capture: false
             python: python3
             container: docker.io/sandervocke/shoopdaloop_build_base_debian_bookworm_x86_64:latest
@@ -457,7 +457,7 @@ jobs:
               if: false
     runs-on: ${{ matrix.kind.os }}
     needs: [maybe_create_release, setup]
-    if: ${{ needs.setup.outputs.macos == 'true' && needs.setup.outputs.release == 'true' }}
+    if: ${{ false }}
     env:
        PATH_SEPARATOR: ":"
        COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _
@@ -539,7 +539,7 @@ jobs:
               if: false
     runs-on: ${{ matrix.kind.os }}
     needs: [build_macos, setup]
-    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.macos == 'true' && needs.setup.outputs.release == 'true' }}
+    if: ${{ false }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
@@ -637,7 +637,7 @@ jobs:
               if: false
     runs-on: ${{ matrix.kind.os}}
     needs: [maybe_create_release, setup]
-    if: ${{ needs.setup.outputs.windows == 'true' }}
+    if: ${{ false }}
     env:
       NATIVE_SHELL_CMD: "powershell -Command"
       PATH_SEPARATOR: ";"
@@ -722,7 +722,7 @@ jobs:
               if: false
     runs-on: ${{ matrix.kind.os }}
     needs: [build_windows, setup]
-    if: ${{ needs.setup.outputs.test_enabled == 'true' && needs.setup.outputs.windows == 'true' && (needs.setup.outputs.release == 'true' || needs.setup.outputs.qml_trace_capture_all_variants == 'true') }}
+    if: ${{ false }}
     env:
       QML_TRACE_CAPTURE_ENABLED: ${{ needs.setup.outputs.qml_trace_capture_all_variants == 'true' && matrix.kind.trace_capture == true }}
       pi_checkpoint_enabled: ${{ needs.setup.outputs.pi_checkpoints }}

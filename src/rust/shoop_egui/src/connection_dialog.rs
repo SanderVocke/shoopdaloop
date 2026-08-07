@@ -172,7 +172,7 @@ impl ConnectionDialog {
                     .striped(true)
                     .spacing([4.0, 3.0])
                     .show(ui, |ui| {
-                        ui.strong("External port");
+                        ui.label(crate::fonts::bold_text("External port"));
                         for port in &ports {
                             ui.add_sized(
                                 [84.0, 24.0],
@@ -186,7 +186,7 @@ impl ConnectionDialog {
                         for endpoint in endpoints {
                             let (client, short_name) = external_name_parts(&endpoint);
                             if previous_client.as_deref() != Some(client.as_str()) {
-                                ui.strong(egui::RichText::new(&client).italics().underline());
+                                ui.label(crate::fonts::bold_italic_text(&client).underline());
                                 for _ in &ports {
                                     ui.label("");
                                 }
