@@ -186,7 +186,7 @@ Verification:
 
 Verification:
 
-- [x] `cargo test -p shoop_app_api -p shoop_egui -p shoop_app -p shoop_backend -p shoop_audio_protocol -p shoop_audio_worklet -p shoopdaloop_egui` passes (17 app, 7 API, 10 backend, 2 protocol, 4 worklet, 27 GUI, and 4 runner tests at the recorded focused gate).
+- [x] `cargo test -p shoop_app_api -p shoop_egui -p shoop_app -p shoop_backend -p shoop_audio_protocol -p shoop_audio_worklet -p shoop_session -p shoopdaloop_egui` passes (19 app, 7 API, 11 backend, 2 protocol, 4 worklet, 28 GUI, 15 session, and 4 runner tests at the final focused gate).
 - [x] `cargo check -p shoop_egui --target wasm32-unknown-unknown` and product/preview Wasm checks pass; debug Trunk/worklet packaging succeeds.
 - [x] GUI/API/application tests prove menu/dialog task-scoped routing, ordered selections/mappings, stale task rejection, and stale-loop validation.
 
@@ -224,7 +224,7 @@ Final gates:
 
 ### Recorded validation evidence
 
-- Focused persistence gate: 17 `shoop_app`, 7 `shoop_app_api`, 10 `shoop_backend`, 2 protocol, 4 worklet, 27 `shoop_egui`, and 4 composition-root tests passed; `shoop_session` adds its deterministic/golden/property corpus.
+- Final focused persistence gate: 19 `shoop_app`, 7 `shoop_app_api`, 11 `shoop_backend`, 2 protocol, 4 worklet, 28 `shoop_egui`, 15 `shoop_session`, and 4 composition-root tests passed. The session corpus includes minimal/current/deferred-state fixtures, exact deterministic media, unsupported major versions, malformed paths/duplicates/hashes/limits, and resampling.
 - The warning-denying all-target workspace build, all affected warning-denying Wasm checks, release UI/worklet Trunk packaging, and a 16 MiB release self-contained HTML build passed after rebasing onto the latest `origin/master` CI fixes.
 - The full workspace passed with the repository's documented unavailable-backend opt-out. Without it, this host has no ALSA sequencer and the three Midir availability assertions fail as designed; no persistence test failed.
 - Release hosted Chrome 147 completed session save/load, post-load non-zero playback, and exact loop audio/MIDI export/re-import with 4,879 callbacks, zero overflow/budget/discontinuity diagnostics, and one retained media track. Hosted Firefox completed the same workflow with 1,968 callbacks and non-zero I/O. Release self-contained Chrome completed its direct-file offline real-byte session/audio/MIDI round trip.

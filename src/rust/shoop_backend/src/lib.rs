@@ -2973,6 +2973,42 @@ mod tests {
     }
 
     #[test]
+    fn web_audio_playback_deterministically_mixes_more_loop_channels_than_device_channels() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "wide_web".to_owned(),
+                audio_channels: 4,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let mut session = backend.capture_session().unwrap();
+        let loop_ = &mut session.tracks[0].loops[0];
+        loop_.length = 128;
+        for (channel, value) in loop_.audio.iter_mut().zip([0.1, 0.2, 0.3, 0.4]) {
+            channel.samples = vec![value; 128];
+        }
+        let source_loop_id = loop_.source_id;
+        let replacement = backend.replace_session(&session).unwrap();
+        let loaded_loop_id = replacement.loops[&source_loop_id];
+        backend
+            .transition_loop(loaded_loop_id, BackendLoopMode::Playing, None)
+            .unwrap();
+
+        let mut output = vec![0.0; 256];
+        backend
+            .process_audio_quantum(&[], 0, &mut output, 2, 128)
+            .unwrap();
+        assert!(output[..128]
+            .iter()
+            .all(|sample| (*sample - 0.1).abs() < 1.0e-6));
+        assert!(output[128..]
+            .iter()
+            .all(|sample| (*sample - 0.9).abs() < 1.0e-6));
+    }
+
+    #[test]
     fn web_audio_grab_adopts_recent_input_without_growing_in_the_callback() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
         let sync = backend

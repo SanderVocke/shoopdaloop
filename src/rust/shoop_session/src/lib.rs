@@ -199,6 +199,209 @@ mod tests {
         SessionBundle { document, media }
     }
 
+    fn deferred_feature_bundle() -> SessionBundle {
+        let mut bundle = direct_bundle(2);
+        bundle.document.track_groups[0].tracks.extend([
+            TrackDocument {
+                id: 2,
+                name: "Dry/wet".to_owned(),
+                port_name_base: "dry_wet".to_owned(),
+                is_sync: false,
+                width: Some(144.0),
+                topology: TrackTopologyDocument::DryWetExternal {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: true,
+                },
+                controls: TrackControlsDocument::default(),
+                loops: vec![LoopDocument {
+                    id: 20,
+                    name: "Deferred primitive".to_owned(),
+                    length_frames: 960,
+                    is_sync: false,
+                    gain: 0.8,
+                    balance: -0.25,
+                    channels: vec![
+                        ChannelDocument {
+                            id: 200,
+                            mode: ChannelModeDocument::Dry,
+                            data_type: DataTypeDocument::Audio,
+                            data_length_frames: 0,
+                            start_offset_frames: -24,
+                            preplay_frames: 48,
+                            gain: 0.9,
+                            connected_port_ids: Vec::new(),
+                            media_id: None,
+                            recording_started_at: Some("fixture-take".to_owned()),
+                            recording_fx_state_id: Some(900),
+                        },
+                        ChannelDocument {
+                            id: 201,
+                            mode: ChannelModeDocument::Wet,
+                            data_type: DataTypeDocument::Audio,
+                            data_length_frames: 0,
+                            start_offset_frames: 12,
+                            preplay_frames: 24,
+                            gain: 0.7,
+                            connected_port_ids: Vec::new(),
+                            media_id: None,
+                            recording_started_at: None,
+                            recording_fx_state_id: None,
+                        },
+                    ],
+                    composite: None,
+                }],
+                ports: Vec::new(),
+                fx_chain: None,
+            },
+            TrackDocument {
+                id: 3,
+                name: "Composite".to_owned(),
+                port_name_base: "composite".to_owned(),
+                is_sync: false,
+                width: None,
+                topology: TrackTopologyDocument::Trigger,
+                controls: TrackControlsDocument::default(),
+                loops: vec![LoopDocument {
+                    id: 30,
+                    name: "Script composite".to_owned(),
+                    length_frames: 1_920,
+                    is_sync: false,
+                    gain: 1.0,
+                    balance: 0.0,
+                    channels: Vec::new(),
+                    composite: Some(CompositeDocument {
+                        kind: CompositeKindDocument::Script,
+                        playlists: vec![vec![vec![CompositeEventDocument {
+                            delay_frames: 240,
+                            loop_id: 10,
+                            mode: Some("playing".to_owned()),
+                            n_cycles: Some(2),
+                        }]]],
+                    }),
+                }],
+                ports: Vec::new(),
+                fx_chain: None,
+            },
+            TrackDocument {
+                id: 4,
+                name: "Carla".to_owned(),
+                port_name_base: "carla".to_owned(),
+                is_sync: false,
+                width: Some(180.0),
+                topology: TrackTopologyDocument::Carla {
+                    chain_type: FxChainTypeDocument::CarlaRack,
+                    audio_channels: 16,
+                    midi: true,
+                },
+                controls: TrackControlsDocument::default(),
+                loops: Vec::new(),
+                ports: Vec::new(),
+                fx_chain: Some(FxChainDocument {
+                    id: 801,
+                    title: "Deferred Carla rack".to_owned(),
+                    chain_type: FxChainTypeDocument::CarlaRack,
+                    ports: Vec::new(),
+                    internal_state: "opaque\0carla\nstate".to_owned(),
+                }),
+            },
+        ]);
+        bundle.document.selected_loop_ids = vec![10, 20, 30];
+        bundle.document.targeted_loop_id = Some(30);
+        bundle.document.buses = vec![BusDocument {
+            id: 5_000,
+            name: "Main bus".to_owned(),
+            ports: Vec::new(),
+            fx_chain: Some(FxChainDocument {
+                id: 802,
+                title: "Bus FX".to_owned(),
+                chain_type: FxChainTypeDocument::Test,
+                ports: Vec::new(),
+                internal_state: "bus-state".to_owned(),
+            }),
+        }];
+        bundle.document.global_ports = vec![PortDocument {
+            id: 5_001,
+            name: "global midi".to_owned(),
+            data_type: DataTypeDocument::Midi,
+            direction: PortDirectionDocument::Input,
+            role: PortRoleDocument::MidiInput,
+            input_connectability: vec![ConnectabilityDocument::External],
+            output_connectability: vec![ConnectabilityDocument::Internal],
+            gain: 1.0,
+            muted: false,
+            passthrough_muted: true,
+            internal_connections: Vec::new(),
+            external_connections: vec!["controller:out".to_owned()],
+            ringbuffer_frames: 4_800,
+        }];
+        bundle.document.settings.extend([
+            SessionSettingDocument {
+                key: "bool".to_owned(),
+                value: SettingValueDocument::Bool(true),
+            },
+            SessionSettingDocument {
+                key: "integer".to_owned(),
+                value: SettingValueDocument::Integer(-3),
+            },
+            SessionSettingDocument {
+                key: "number".to_owned(),
+                value: SettingValueDocument::Number(1.25),
+            },
+            SessionSettingDocument {
+                key: "list".to_owned(),
+                value: SettingValueDocument::StringList(vec!["a".to_owned(), "b".to_owned()]),
+            },
+        ]);
+        bundle
+    }
+
+    fn rewrite_manifest_major(bytes: Vec<u8>, major: u16) -> Vec<u8> {
+        let mut input = ZipArchive::new(Cursor::new(bytes)).unwrap();
+        let mut output = ZipWriter::new(Cursor::new(Vec::new()));
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+        for index in 0..input.len() {
+            let mut entry = input.by_index(index).unwrap();
+            let name = entry.name().to_owned();
+            let mut payload = Vec::new();
+            entry.read_to_end(&mut payload).unwrap();
+            if name == "manifest.json" {
+                let mut manifest: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+                manifest["format_version"]["major"] = serde_json::json!(major);
+                payload = serde_json::to_vec(&manifest).unwrap();
+            }
+            output.start_file(name, options).unwrap();
+            output.write_all(&payload).unwrap();
+        }
+        output.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn minimal_session_fixture_round_trips() {
+        let bundle = SessionBundle::new(SessionDocument::empty(48_000));
+        let encoded = encode_session(&bundle, "minimal-fixture").unwrap();
+        assert_eq!(decode_session(&encoded).unwrap(), bundle);
+    }
+
+    #[test]
+    fn unsupported_older_and_future_major_archives_are_rejected() {
+        let encoded = encode_session(
+            &SessionBundle::new(SessionDocument::empty(48_000)),
+            "version-fixture",
+        )
+        .unwrap();
+        for major in [0, FORMAT_MAJOR + 1] {
+            let archive = rewrite_manifest_major(encoded.clone(), major);
+            assert!(matches!(
+                decode_session(&archive),
+                Err(SessionError::UnsupportedVersion {
+                    major: actual,
+                    ..
+                }) if actual == major
+            ));
+        }
+    }
+
     #[test]
     fn session_round_trip_is_exact_and_deterministic() {
         let bundle = direct_bundle(12);
@@ -230,6 +433,32 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn deferred_feature_fixture_round_trips_without_field_loss() {
+        let bundle = deferred_feature_bundle();
+        let encoded = encode_session(&bundle, "deferred-fixture").unwrap();
+        let decoded = decode_session(&encoded).unwrap();
+        assert_eq!(decoded, bundle);
+        assert_eq!(
+            decoded.document.track_groups[0].tracks[3]
+                .fx_chain
+                .as_ref()
+                .unwrap()
+                .internal_state
+                .as_bytes(),
+            b"opaque\0carla\nstate"
+        );
+        assert_eq!(
+            decoded.document.track_groups[0].tracks[2].loops[0]
+                .composite
+                .as_ref()
+                .unwrap()
+                .playlists[0][0][0]
+                .delay_frames,
+            240
+        );
     }
 
     #[test]

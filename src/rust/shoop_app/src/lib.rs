@@ -590,7 +590,14 @@ impl ApplicationModel {
     fn begin_load_session(&mut self, name: String, bytes: &[u8]) -> Result<(), String> {
         self.ensure_io_idle()?;
         let task_id = self.start_io_task(IoTaskKind::LoadSession, "Validating session");
-        let bundle = decode_session(bytes).map_err(|error| error.to_string())?;
+        let bundle = match decode_session(bytes) {
+            Ok(bundle) => bundle,
+            Err(error) => {
+                let message = error.to_string();
+                self.finish_io(IoTaskStatus::Failed, &message);
+                return Err(message);
+            }
+        };
         if bundle.document.sample_rate != self.status.sample_rate {
             let source_rate = bundle.document.sample_rate;
             let target_rate = self.status.sample_rate;
@@ -612,7 +619,13 @@ impl ApplicationModel {
             });
             return Ok(());
         }
-        let backend_data = session_bundle_to_backend(&bundle)?;
+        let backend_data = match session_bundle_to_backend(&bundle) {
+            Ok(backend_data) => backend_data,
+            Err(message) => {
+                self.finish_io(IoTaskStatus::Failed, &message);
+                return Err(message);
+            }
+        };
         self.pending_io = Some(PendingIo::CommitSessionLoad {
             name,
             bundle,
@@ -640,46 +653,52 @@ impl ApplicationModel {
             return Ok(());
         }
         self.set_io_progress(0.35, "Resampling media");
-        match pending {
+        let result = match pending {
             PendingIo::AwaitingSessionLoad { name, bundle } => {
-                let bundle = resample_session(&bundle, self.status.sample_rate)
-                    .map_err(|error| error.to_string())?;
-                let backend_data = session_bundle_to_backend(&bundle)?;
-                self.pending_io = Some(PendingIo::CommitSessionLoad {
-                    name,
-                    bundle,
-                    backend_data,
-                });
-                self.set_io_progress(0.7, "Staging session");
+                resample_session(&bundle, self.status.sample_rate)
+                    .map_err(|error| error.to_string())
+                    .and_then(|bundle| {
+                        let backend_data = session_bundle_to_backend(&bundle)?;
+                        self.pending_io = Some(PendingIo::CommitSessionLoad {
+                            name,
+                            bundle,
+                            backend_data,
+                        });
+                        self.set_io_progress(0.7, "Staging session");
+                        Ok(())
+                    })
             }
             PendingIo::AwaitingLoopAudioImport {
                 loop_id,
                 audio,
                 update_loop_length,
-            } => {
-                let audio = resample_loop_audio(&audio, self.status.sample_rate)
-                    .map_err(|error| error.to_string())?;
-                self.begin_audio_channel_mapping(loop_id, audio, update_loop_length)?;
-            }
+            } => resample_loop_audio(&audio, self.status.sample_rate)
+                .map_err(|error| error.to_string())
+                .and_then(|audio| {
+                    self.begin_audio_channel_mapping(loop_id, audio, update_loop_length)
+                }),
             PendingIo::AwaitingLoopMidiImport {
                 loop_id,
                 midi,
                 update_loop_length,
-            } => {
-                let midi = resample_exact_midi(&midi, self.status.sample_rate)
-                    .map_err(|error| error.to_string())?;
-                self.pending_io = Some(PendingIo::PrepareLoopMidiImport {
-                    loop_id,
-                    midi,
-                    update_loop_length,
-                });
-            }
+            } => resample_exact_midi(&midi, self.status.sample_rate)
+                .map_err(|error| error.to_string())
+                .map(|midi| {
+                    self.pending_io = Some(PendingIo::PrepareLoopMidiImport {
+                        loop_id,
+                        midi,
+                        update_loop_length,
+                    });
+                }),
             other => {
                 self.pending_io = Some(other);
                 return Err("I/O task is not awaiting sample-rate confirmation".to_owned());
             }
+        };
+        if let Err(message) = &result {
+            self.finish_io(IoTaskStatus::Failed, message);
         }
-        Ok(())
+        result
     }
 
     fn begin_audio_channel_mapping(
@@ -2767,12 +2786,18 @@ impl ApplicationModel {
     ) -> Result<(), String> {
         self.ensure_io_idle()?;
         let task_id = self.start_io_task(IoTaskKind::ImportLoopAudio, "Loading loop audio");
-        let audio = if name.to_ascii_lowercase().ends_with(".wav") {
+        let audio = match if name.to_ascii_lowercase().ends_with(".wav") {
             decode_wav(bytes)
         } else {
             decode_loop_audio(bytes)
-        }
-        .map_err(|error| error.to_string())?;
+        } {
+            Ok(audio) => audio,
+            Err(error) => {
+                let message = error.to_string();
+                self.finish_io(IoTaskStatus::Failed, &message);
+                return Err(message);
+            }
+        };
         if audio.sample_rate != self.status.sample_rate {
             self.pending_io = Some(PendingIo::AwaitingLoopAudioImport {
                 loop_id,
@@ -2792,8 +2817,11 @@ impl ApplicationModel {
                     affected_media: "the selected loop audio".to_owned(),
                 });
             }
-        } else {
-            self.begin_audio_channel_mapping(loop_id, audio, update_loop_length)?;
+        } else if let Err(message) =
+            self.begin_audio_channel_mapping(loop_id, audio, update_loop_length)
+        {
+            self.finish_io(IoTaskStatus::Failed, &message);
+            return Err(message);
         }
         debug_assert_eq!(self.io_task.as_ref().map(|task| task.id), Some(task_id));
         Ok(())
@@ -2821,12 +2849,18 @@ impl ApplicationModel {
     ) -> Result<(), String> {
         self.ensure_io_idle()?;
         self.start_io_task(IoTaskKind::ImportLoopMidi, "Loading loop MIDI");
-        let midi = if name.to_ascii_lowercase().ends_with(".mid") {
+        let midi = match if name.to_ascii_lowercase().ends_with(".mid") {
             decode_standard_midi(bytes, self.status.sample_rate)
         } else {
             decode_exact_midi(bytes)
-        }
-        .map_err(|error| error.to_string())?;
+        } {
+            Ok(midi) => midi,
+            Err(error) => {
+                let message = error.to_string();
+                self.finish_io(IoTaskStatus::Failed, &message);
+                return Err(message);
+            }
+        };
         if midi.sample_rate != self.status.sample_rate {
             self.pending_io = Some(PendingIo::AwaitingLoopMidiImport {
                 loop_id,
@@ -4468,11 +4502,145 @@ mod tests {
             .unwrap();
         runtime.tick(Duration::ZERO);
         assert_eq!(runtime.snapshot().tracks.len(), before);
+        assert_eq!(
+            runtime.snapshot().io_task.as_ref().unwrap().status,
+            IoTaskStatus::Failed
+        );
         assert!(runtime
             .snapshot()
             .notifications
             .iter()
             .any(|notification| notification.message.contains("unsupported file format")));
+    }
+
+    #[test]
+    fn unsupported_deferred_topology_is_rejected_without_replacing_the_session() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Retained".to_owned(),
+                audio_channels: 2,
+                midi: false,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let before = runtime.snapshot();
+        let before_ids = before
+            .tracks
+            .iter()
+            .map(|track| track.id)
+            .collect::<Vec<_>>();
+
+        let mut document = SessionDocument::empty(48_000);
+        document.track_groups.push(TrackGroupDocument {
+            name: "main".to_owned(),
+            tracks: vec![TrackDocument {
+                id: 42,
+                name: "Deferred trigger".to_owned(),
+                port_name_base: "deferred_trigger".to_owned(),
+                is_sync: false,
+                width: None,
+                topology: TrackTopologyDocument::Trigger,
+                controls: TrackControlsDocument::default(),
+                loops: Vec::new(),
+                ports: Vec::new(),
+                fx_chain: None,
+            }],
+        });
+        let bytes = encode_session(&SessionBundle::new(document), "capability-test").unwrap();
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "deferred.shoop".to_owned(),
+                bytes: Arc::from(bytes),
+            })
+            .unwrap();
+        for _ in 0..10 {
+            runtime.tick(Duration::ZERO);
+            if runtime
+                .snapshot()
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Failed)
+            {
+                break;
+            }
+        }
+
+        let after = runtime.snapshot();
+        assert_eq!(
+            after
+                .tracks
+                .iter()
+                .map(|track| track.id)
+                .collect::<Vec<_>>(),
+            before_ids
+        );
+        assert_eq!(after.io_task.as_ref().unwrap().status, IoTaskStatus::Failed);
+        assert!(after.notifications.iter().any(|notification| {
+            notification
+                .message
+                .contains("unsupported deferred topology")
+        }));
+    }
+
+    #[test]
+    fn invalid_loop_media_inputs_finish_tasks_as_failed() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Media errors".to_owned(),
+                audio_channels: 2,
+                midi: true,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let loop_id = runtime.snapshot().tracks[1].loops[0].id;
+
+        for (name, bytes) in [
+            ("broken.shoop-audio", Arc::from(&b"not audio"[..])),
+            (
+                "empty.shoop-audio",
+                Arc::from(
+                    encode_loop_audio(&LoopAudio {
+                        sample_rate: 48_000,
+                        channels: Vec::new(),
+                    })
+                    .unwrap(),
+                ),
+            ),
+        ] {
+            runtime
+                .dispatch(AppIntent::ImportLoopAudioBytes {
+                    loop_id,
+                    name: name.to_owned(),
+                    bytes,
+                    update_loop_length: true,
+                })
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+            assert_eq!(
+                runtime.snapshot().io_task.as_ref().unwrap().status,
+                IoTaskStatus::Failed
+            );
+        }
+
+        runtime
+            .dispatch(AppIntent::ImportLoopMidiBytes {
+                loop_id,
+                name: "broken.shoop-midi".to_owned(),
+                bytes: Arc::from(&b"not midi"[..]),
+                update_loop_length: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().io_task.as_ref().unwrap().status,
+            IoTaskStatus::Failed
+        );
     }
 
     #[test]
