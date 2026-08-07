@@ -4225,6 +4225,7 @@ mod tests {
     #[cfg(feature = "lv2")]
     #[test]
     fn inactive_carla_fx_chain_bypasses_processing_and_tails() {
+        let _exclusive = crate::lv2_carla::lock_carla_test();
         let Ok(host) =
             crate::lv2_carla::CarlaLv2Host::instantiate(crate::FXChainType::CarlaRack, 48_000, 64)
         else {
@@ -4287,6 +4288,7 @@ mod tests {
     #[cfg(feature = "lv2")]
     #[test]
     fn carla_fx_chain_audio_route_runs_from_session_ports_to_wet_output() {
+        let _exclusive = crate::lv2_carla::lock_carla_test();
         let Ok(mut host) =
             crate::lv2_carla::CarlaLv2Host::instantiate(crate::FXChainType::CarlaRack, 48_000, 64)
         else {

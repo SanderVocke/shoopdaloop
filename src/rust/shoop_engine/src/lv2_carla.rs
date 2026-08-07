@@ -16,8 +16,20 @@ use std::os::raw::{c_char, c_uint, c_void};
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+#[cfg(test)]
+use std::sync::{Mutex as TestMutex, MutexGuard as TestMutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
+
+#[cfg(test)]
+static CARLA_TEST_LOCK: TestMutex<()> = TestMutex::new(());
+
+#[cfg(test)]
+pub(crate) fn lock_carla_test() -> TestMutexGuard<'static, ()> {
+    CARLA_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 use lv2_raw::atom::{
     LV2Atom, LV2AtomEvent, LV2AtomSequence, LV2AtomSequenceBody, LV2_ATOM__SEQUENCE,
@@ -1266,6 +1278,7 @@ mod tests {
 
     #[test]
     fn discovers_installed_carla_plugin_ports_when_available() {
+        let _exclusive = lock_carla_test();
         let Ok(info) = discover_carla_plugin(FXChainType::CarlaRack) else {
             eprintln!("skipping Carla LV2 discovery test; Carla Rack is not installed in LV2_PATH");
             return;
@@ -1330,6 +1343,7 @@ mod tests {
 
     #[test]
     fn shows_and_hides_carla_external_ui_when_opted_in() {
+        let _exclusive = lock_carla_test();
         if std::env::var_os("SHOOP_TEST_CARLA_UI").is_none() {
             eprintln!(
                 "skipping Carla UI smoke test; set SHOOP_TEST_CARLA_UI=1 to open the real UI"
@@ -1351,6 +1365,7 @@ mod tests {
 
     #[test]
     fn instantiates_and_runs_installed_carla_rack_when_available() {
+        let _exclusive = lock_carla_test();
         let mut host = match CarlaLv2Host::instantiate(FXChainType::CarlaRack, 48_000, 256) {
             Ok(host) => host,
             Err(e) => {

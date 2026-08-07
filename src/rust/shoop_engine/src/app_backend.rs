@@ -6919,6 +6919,7 @@ mod tests {
     #[cfg(feature = "lv2")]
     #[test]
     fn carla_fx_chain_handle_instantiates_when_plugin_is_available() {
+        let _exclusive = engine::lv2_carla::lock_carla_test();
         let sess = BackendSession::new().expect("session");
         let chain = sess
             .create_fx_chain(FXChainType::CarlaRack, "carla")
