@@ -7,3 +7,8 @@ carla-worker = { max-threads = 1 }
 [[profile.default.overrides]]
 filter = 'binary_id(shoopdaloop::carla_worker)'
 test-group = 'carla-worker'
+threads-required = "num-test-threads"
+
+[[profile.default.overrides]]
+filter = 'test(bridge_contains_processor_panics_and_publishes_failure)'
+threads-required = "num-test-threads"
