@@ -1,10 +1,16 @@
-use anyhow::{anyhow, Context, Result};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::path::{Path, PathBuf};
+mod egui_settings;
+#[cfg(all(not(target_arch = "wasm32"), feature = "legacy"))]
+mod legacy_settings;
+#[cfg(all(not(target_arch = "wasm32"), feature = "native-store"))]
+mod native_store;
 
-pub const SETTINGS_FILENAME: &str = "settings.json";
-pub const CARLA_HOSTING_MODE_KEY: &str = "carla_hosting_mode";
+pub use egui_settings::*;
+#[cfg(all(not(target_arch = "wasm32"), feature = "legacy"))]
+pub use legacy_settings::*;
+#[cfg(all(not(target_arch = "wasm32"), feature = "native-store"))]
+pub use native_store::*;
+
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -20,185 +26,5 @@ impl CarlaHostingMode {
             Self::InProcess => "in_process",
             Self::Subprocess => "subprocess",
         }
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct UserSettings {
-    pub carla_hosting_mode: CarlaHostingMode,
-}
-
-impl UserSettings {
-    pub fn from_json(value: &Value) -> Result<Self> {
-        let schema = value
-            .get("schema")
-            .and_then(Value::as_str)
-            .ok_or_else(|| anyhow!("settings are missing a schema"))?;
-        if schema != "settings.1" {
-            return Err(anyhow!("unsupported settings schema {schema}"));
-        }
-        let configuration = value
-            .get("configuration")
-            .and_then(Value::as_object)
-            .ok_or_else(|| anyhow!("settings are missing a configuration object"))?;
-        let carla_hosting_mode = match configuration.get(CARLA_HOSTING_MODE_KEY) {
-            None => CarlaHostingMode::InProcess,
-            Some(value) => serde_json::from_value(value.clone())
-                .context("invalid Carla hosting mode in settings")?,
-        };
-        Ok(Self { carla_hosting_mode })
-    }
-
-    pub fn load(path: &Path) -> Result<Self> {
-        if !path.exists() {
-            return Ok(Self::default());
-        }
-        let bytes = std::fs::read(path)
-            .with_context(|| format!("could not read settings from {}", path.display()))?;
-        let value: Value = serde_json::from_slice(&bytes)
-            .with_context(|| format!("could not parse settings from {}", path.display()))?;
-        Self::from_json(&value)
-    }
-
-    pub fn load_or_default(path: &Path) -> (Self, Option<anyhow::Error>) {
-        match Self::load(path) {
-            Ok(settings) => (settings, None),
-            Err(error) => (Self::default(), Some(error)),
-        }
-    }
-
-    /// Persist only the startup-owned Carla mode while retaining every setting
-    /// owned by the MIDI, script, and frontend services.
-    pub fn save_carla_hosting_mode(path: &Path, mode: CarlaHostingMode) -> Result<()> {
-        let mut document = if path.exists() {
-            let bytes = std::fs::read(path)
-                .with_context(|| format!("could not read settings from {}", path.display()))?;
-            serde_json::from_slice::<Value>(&bytes)
-                .with_context(|| format!("could not parse settings from {}", path.display()))?
-        } else {
-            serde_json::json!({ "schema": "settings.1", "configuration": {} })
-        };
-        // Refuse to rewrite malformed/unknown documents rather than silently
-        // discarding settings that belong to another service or schema version.
-        Self::from_json(&document)?;
-        let configuration = document["configuration"]
-            .as_object_mut()
-            .ok_or_else(|| anyhow!("settings are missing a configuration object"))?;
-        configuration.insert(
-            CARLA_HOSTING_MODE_KEY.to_owned(),
-            serde_json::to_value(mode)?,
-        );
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let parent = path.parent().unwrap_or_else(|| Path::new("."));
-        let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
-        serde_json::to_writer_pretty(&mut temporary, &document)?;
-        use std::io::Write;
-        temporary.write_all(b"\n")?;
-        temporary.as_file().sync_all()?;
-        temporary
-            .persist(path)
-            .map_err(|error| error.error)
-            .with_context(|| format!("could not replace settings at {}", path.display()))?;
-        Ok(())
-    }
-}
-
-pub fn default_settings_path() -> Result<PathBuf> {
-    let project = directories::ProjectDirs::from("com", "ShoopDaLoop", "ShoopDaLoop")
-        .ok_or_else(|| anyhow!("could not determine project directories"))?;
-    Ok(project.config_dir().join(SETTINGS_FILENAME))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn existing_settings(extra: &str) -> Value {
-        serde_json::from_str(&format!(
-            r#"{{
-                "schema":"settings.1",
-                "configuration":{{
-                    "midi_settings":{{"schema":"midi_settings.1"}},
-                    "script_settings":{{"schema":"script_settings.1"}}
-                    {extra}
-                }}
-            }}"#
-        ))
-        .unwrap()
-    }
-
-    #[test]
-    fn old_settings_default_to_in_process_without_losing_compatibility() {
-        let settings = UserSettings::from_json(&existing_settings("")).unwrap();
-        assert_eq!(settings.carla_hosting_mode, CarlaHostingMode::InProcess);
-    }
-
-    #[test]
-    fn subprocess_setting_round_trips_as_typed_value() {
-        let settings =
-            UserSettings::from_json(&existing_settings(r#", "carla_hosting_mode":"subprocess""#))
-                .unwrap();
-        assert_eq!(settings.carla_hosting_mode, CarlaHostingMode::Subprocess);
-        assert_eq!(settings.carla_hosting_mode.as_str(), "subprocess");
-    }
-
-    #[test]
-    fn missing_file_defaults_and_malformed_file_is_observable() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join(SETTINGS_FILENAME);
-        assert_eq!(UserSettings::load(&path).unwrap(), UserSettings::default());
-        std::fs::write(&path, b"not json").unwrap();
-        let (settings, error) = UserSettings::load_or_default(&path);
-        assert_eq!(settings, UserSettings::default());
-        assert!(error.is_some());
-    }
-
-    #[test]
-    fn save_reload_preserves_settings_owned_by_other_services() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("nested").join(SETTINGS_FILENAME);
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, serde_json::to_vec(&existing_settings("")).unwrap()).unwrap();
-        UserSettings::save_carla_hosting_mode(&path, CarlaHostingMode::Subprocess).unwrap();
-        assert_eq!(
-            UserSettings::load(&path).unwrap().carla_hosting_mode,
-            CarlaHostingMode::Subprocess
-        );
-        let document: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-        assert_eq!(
-            document["configuration"]["midi_settings"]["schema"],
-            "midi_settings.1"
-        );
-        assert_eq!(
-            document["configuration"]["script_settings"]["schema"],
-            "script_settings.1"
-        );
-    }
-
-    #[test]
-    fn save_creates_first_run_document_and_refuses_to_clobber_malformed_data() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("first").join(SETTINGS_FILENAME);
-        UserSettings::save_carla_hosting_mode(&path, CarlaHostingMode::Subprocess).unwrap();
-        assert_eq!(
-            UserSettings::load(&path).unwrap().carla_hosting_mode,
-            CarlaHostingMode::Subprocess
-        );
-        std::fs::write(&path, b"malformed").unwrap();
-        assert!(UserSettings::save_carla_hosting_mode(&path, CarlaHostingMode::InProcess).is_err());
-        assert_eq!(std::fs::read(&path).unwrap(), b"malformed");
-    }
-
-    #[test]
-    fn unknown_schema_and_mode_are_rejected() {
-        let mut value = existing_settings("");
-        value["schema"] = Value::String("settings.2".to_owned());
-        assert!(UserSettings::from_json(&value).is_err());
-        assert!(
-            UserSettings::from_json(&existing_settings(r#", "carla_hosting_mode":"remote""#))
-                .is_err()
-        );
     }
 }

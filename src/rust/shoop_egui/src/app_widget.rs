@@ -2,10 +2,53 @@ use std::collections::BTreeMap;
 
 use crate::{
     AppAction, AppState, ConnectionDialog, ConnectionScope, DetailsPane, DirectTrackSpec,
-    GlobalControls, TrackWidget, TracksWidget,
+    GlobalControls, SettingsAction, SettingsDialog, TrackWidget, TracksWidget,
 };
+use shoop_settings::{
+    SettingDefinition, SettingEffect, SettingKey, SettingsRegistry, SettingsRegistryBuilder,
+    SettingsRegistryError, SettingsViewState,
+};
+use std::sync::Arc;
 
 const LOGO_BYTES: &[u8] = include_bytes!("../../../../resources/logo-small.png");
+
+pub const DEFAULT_NEW_TRACK_AUDIO_CHANNELS: SettingKey<u32> =
+    SettingKey::new("tracks.new.default_audio_channels");
+pub const DEFAULT_NEW_TRACK_MIDI: SettingKey<bool> = SettingKey::new("tracks.new.default_midi");
+
+pub fn register_settings(
+    builder: &mut SettingsRegistryBuilder,
+) -> Result<(), SettingsRegistryError> {
+    builder.register(
+        SettingDefinition::new(
+            DEFAULT_NEW_TRACK_AUDIO_CHANNELS,
+            2,
+            "Track defaults",
+            "New track audio channels",
+            "Audio channel count used when a new Add Track dialog is opened.",
+        )
+        .category_order(10)
+        .setting_order(10)
+        .effect(SettingEffect::NextUse),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            DEFAULT_NEW_TRACK_MIDI,
+            false,
+            "Track defaults",
+            "Enable MIDI on new tracks",
+            "MIDI state used when a new Add Track dialog is opened.",
+        )
+        .category_order(10)
+        .setting_order(20)
+        .effect(SettingEffect::NextUse),
+    )
+}
+
+pub struct AppWidgetResponse {
+    pub app_actions: Vec<AppAction>,
+    pub settings_actions: Vec<SettingsAction>,
+}
 
 pub struct AppWidget {
     tracks: TracksWidget,
@@ -13,6 +56,7 @@ pub struct AppWidget {
     details: DetailsPane,
     sync_track: TrackWidget,
     connections: ConnectionDialog,
+    settings: SettingsDialog,
     details_open: bool,
     add_track_open: bool,
     add_track_name: String,
@@ -29,12 +73,21 @@ pub struct AppWidget {
 
 impl Default for AppWidget {
     fn default() -> Self {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).expect("built-in settings must be valid");
+        Self::new(Arc::new(builder.finish()))
+    }
+}
+
+impl AppWidget {
+    pub fn new(settings_registry: Arc<SettingsRegistry>) -> Self {
         Self {
             tracks: TracksWidget::default(),
             global_controls: GlobalControls::default(),
             details: DetailsPane::default(),
             sync_track: TrackWidget::default(),
             connections: ConnectionDialog::default(),
+            settings: SettingsDialog::new(settings_registry),
             details_open: true,
             add_track_open: false,
             add_track_name: String::new(),
@@ -49,9 +102,7 @@ impl Default for AppWidget {
             add_track_cancel_rect: None,
         }
     }
-}
 
-impl AppWidget {
     pub fn open_connections(&mut self, scope: ConnectionScope) {
         self.connections.open(scope);
     }
@@ -60,9 +111,15 @@ impl AppWidget {
         self.connections.is_open().then(|| self.connections.scope())
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui, state: &AppState) -> Vec<AppAction> {
+    pub fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &AppState,
+        settings_state: &SettingsViewState,
+    ) -> AppWidgetResponse {
         self.ensure_logo(ui.ctx());
         let mut actions = Vec::new();
+        let mut settings_actions = Vec::new();
 
         egui::Panel::top("global_controls")
             .frame(
@@ -88,6 +145,9 @@ impl AppWidget {
                         }
                         if self.global_controls.take_load_session_requested() {
                             actions.push(AppAction::RequestLoadSessionPicker);
+                        }
+                        if self.global_controls.take_settings_requested() {
+                            self.settings.open(settings_state);
                         }
                     });
             });
@@ -168,10 +228,7 @@ impl AppWidget {
                     .collect();
                 let response = self.tracks.show(ui, &main_tracks);
                 if response.add_track_requested {
-                    self.add_track_name = format!("Track {}", main_tracks.len() + 1);
-                    self.add_track_audio_channels = 2;
-                    self.add_track_midi = false;
-                    self.add_track_open = true;
+                    self.open_add_track_dialog(main_tracks.len(), settings_state);
                 }
                 if let Some(track_id) = response.connection_track_requested {
                     self.connections.open(ConnectionScope::Track(track_id));
@@ -182,7 +239,38 @@ impl AppWidget {
         self.show_add_track_dialog(ui.ctx(), &mut actions);
         self.show_io_task_dialog(ui.ctx(), state, &mut actions);
         actions.extend(self.connections.show(ui.ctx(), state));
-        actions
+        settings_actions.extend(self.settings.show(ui.ctx(), settings_state));
+        AppWidgetResponse {
+            app_actions: actions,
+            settings_actions,
+        }
+    }
+
+    fn open_add_track_dialog(
+        &mut self,
+        main_track_count: usize,
+        settings_state: &SettingsViewState,
+    ) {
+        self.add_track_name = format!("Track {}", main_track_count + 1);
+        self.add_track_audio_channels = settings_state
+            .active
+            .get(DEFAULT_NEW_TRACK_AUDIO_CHANNELS)
+            .expect("registered audio-channel setting must retain its type");
+        self.add_track_midi = settings_state
+            .active
+            .get(DEFAULT_NEW_TRACK_MIDI)
+            .expect("registered MIDI setting must retain its type");
+        self.add_track_open = true;
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_settings_test_open_add_track(
+        &mut self,
+        settings_state: &SettingsViewState,
+    ) -> (u32, bool) {
+        self.open_add_track_dialog(0, settings_state);
+        (self.add_track_audio_channels, self.add_track_midi)
     }
 
     fn show_io_task_dialog(
@@ -571,6 +659,22 @@ mod tests {
 
     use super::*;
     use crate::{LoopDetailsState, TrackState, WaveformChannelState};
+    use shoop_settings::{
+        SettingsDraft, SettingsPersistenceState, SettingsRegistryBuilder, SettingsViewState,
+    };
+
+    fn settings_state() -> SettingsViewState {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        SettingsViewState {
+            active: Arc::new(registry.defaults(1)),
+            diagnostics: Arc::from([]),
+            storage_location: "fixture".to_owned(),
+            recovery_required: false,
+            persistence: SettingsPersistenceState::Idle,
+        }
+    }
 
     fn frame(
         context: &egui::Context,
@@ -579,6 +683,7 @@ mod tests {
         events: Vec<egui::Event>,
     ) -> Vec<AppAction> {
         let mut actions = Vec::new();
+        let settings = settings_state();
         let _ = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
@@ -588,7 +693,7 @@ mod tests {
                 events,
                 ..Default::default()
             },
-            |ui| actions = widget.show(ui, state),
+            |ui| actions = widget.show(ui, state, &settings).app_actions,
         );
         actions
     }
@@ -652,6 +757,7 @@ mod tests {
             ..Default::default()
         };
         let mut widget = AppWidget::default();
+        let settings = settings_state();
         let output = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
@@ -661,7 +767,7 @@ mod tests {
                 ..Default::default()
             },
             |ui| {
-                widget.show(ui, &state);
+                widget.show(ui, &state, &settings);
             },
         );
         assert!(!output.shapes.is_empty());
@@ -698,6 +804,7 @@ mod tests {
             ..Default::default()
         };
 
+        let settings = settings_state();
         let mut uploaded_logo = false;
         for size in [egui::vec2(360.0, 200.0), egui::vec2(900.0, 600.0)] {
             let output = context.run_ui(
@@ -706,7 +813,7 @@ mod tests {
                     ..Default::default()
                 },
                 |ui| {
-                    widget.show(ui, &state);
+                    widget.show(ui, &state, &settings);
                 },
             );
 
@@ -714,5 +821,43 @@ mod tests {
             uploaded_logo |= !output.textures_delta.set.is_empty();
         }
         assert!(uploaded_logo);
+    }
+
+    #[test]
+    fn add_track_defaults_are_registered_and_read_only_when_a_new_draft_opens() {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let initial = registry.defaults(4);
+        let mut draft = SettingsDraft::from_snapshot(&initial);
+        draft.set(DEFAULT_NEW_TRACK_AUDIO_CHANNELS, 6);
+        draft.set(DEFAULT_NEW_TRACK_MIDI, true);
+        let document = registry
+            .document_from_draft(
+                &shoop_settings::EgSettingsDocument::empty("test"),
+                &draft,
+                "test",
+            )
+            .unwrap();
+        let state = SettingsViewState {
+            active: Arc::new(registry.resolve(&document, 5).snapshot),
+            diagnostics: Arc::from([]),
+            storage_location: "fixture".to_owned(),
+            recovery_required: false,
+            persistence: SettingsPersistenceState::Saved,
+        };
+        let mut widget = AppWidget::default();
+        widget.open_add_track_dialog(2, &state);
+        assert_eq!(widget.add_track_name, "Track 3");
+        assert_eq!(widget.add_track_audio_channels, 6);
+        assert!(widget.add_track_midi);
+
+        let replacement = registry.defaults(6);
+        assert_eq!(
+            replacement.get(DEFAULT_NEW_TRACK_AUDIO_CHANNELS).unwrap(),
+            2
+        );
+        assert_eq!(widget.add_track_audio_channels, 6);
+        assert!(widget.add_track_midi);
     }
 }

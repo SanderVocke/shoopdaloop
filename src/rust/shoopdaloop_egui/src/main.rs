@@ -18,14 +18,18 @@ use std::{
 use web_time::Instant;
 
 use eframe::egui;
+use settings::SettingsManager;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_backend::EngineBackend;
-use shoop_egui::{AppIntent, AppSnapshot, AppWidget};
+use shoop_egui::{
+    register_settings, AppIntent, AppSnapshot, AppWidget, SettingsAction, SettingsRegistryBuilder,
+};
 
 #[cfg(target_arch = "wasm32")]
 use shoop_app::CooperativeApplicationRuntime;
 #[cfg(target_arch = "wasm32")]
 mod browser_audio;
+mod settings;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_app::{ApplicationHandle, ApplicationRuntime};
 
@@ -36,9 +40,12 @@ const UPDATE_INTERVAL: Duration = Duration::from_millis(16);
 struct UnifiedApp {
     runtime: Runtime,
     widget: AppWidget,
+    settings: SettingsManager,
     last_update: Instant,
     #[cfg(target_arch = "wasm32")]
     browser_self_test: BrowserSelfTest,
+    #[cfg(target_arch = "wasm32")]
+    browser_settings_test: BrowserSettingsSelfTest,
     #[cfg(target_arch = "wasm32")]
     pending_file_intents: Rc<RefCell<VecDeque<AppIntent>>>,
     #[cfg(not(target_arch = "wasm32"))]
@@ -47,16 +54,48 @@ struct UnifiedApp {
     pending_file_intent_rx: Receiver<AppIntent>,
 }
 
+#[cfg(all(not(target_arch = "wasm32"), not(test)))]
+fn load_settings_manager(registry: shoop_egui::SettingsRegistry) -> SettingsManager {
+    SettingsManager::load(registry, env!("CARGO_PKG_VERSION"))
+}
+
+#[cfg(all(not(target_arch = "wasm32"), test))]
+fn load_settings_manager(registry: shoop_egui::SettingsRegistry) -> SettingsManager {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT_TEST_SETTINGS: AtomicU64 = AtomicU64::new(1);
+    let id = NEXT_TEST_SETTINGS.fetch_add(1, Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!(
+        "shoopdaloop-egui-test-settings-{}-{id}.json",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&path);
+    SettingsManager::load_from_path(registry, env!("CARGO_PKG_VERSION"), path)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn load_settings_manager(registry: shoop_egui::SettingsRegistry) -> SettingsManager {
+    SettingsManager::load(registry, env!("CARGO_PKG_VERSION"))
+}
+
 impl UnifiedApp {
     fn new() -> anyhow::Result<Self> {
         #[cfg(not(target_arch = "wasm32"))]
         let (pending_file_intent_tx, pending_file_intent_rx) = mpsc::channel();
+        let mut settings_builder = SettingsRegistryBuilder::default();
+        register_settings(&mut settings_builder)?;
+        let settings_registry = settings_builder.finish();
+        let settings = load_settings_manager(settings_registry.clone());
+        let widget = AppWidget::new(std::sync::Arc::new(settings_registry));
+        let runtime = Runtime::new()?;
         Ok(Self {
-            runtime: Runtime::new()?,
-            widget: AppWidget::default(),
+            runtime,
+            widget,
+            settings,
             last_update: Instant::now(),
             #[cfg(target_arch = "wasm32")]
             browser_self_test: BrowserSelfTest::from_location(),
+            #[cfg(target_arch = "wasm32")]
+            browser_settings_test: BrowserSettingsSelfTest::from_location(),
             #[cfg(target_arch = "wasm32")]
             pending_file_intents: Rc::new(RefCell::new(VecDeque::new())),
             #[cfg(not(target_arch = "wasm32"))]
@@ -69,6 +108,7 @@ impl UnifiedApp {
 
 impl UnifiedApp {
     fn show(&mut self, ui: &mut egui::Ui) {
+        self.settings.poll();
         let now = Instant::now();
         let elapsed = now.saturating_duration_since(self.last_update);
         self.last_update = now;
@@ -86,8 +126,22 @@ impl UnifiedApp {
         let snapshot = self.runtime.snapshot();
         #[cfg(target_arch = "wasm32")]
         self.browser_self_test.update(&mut self.runtime, &snapshot);
-        for intent in self.widget.show(ui, &snapshot) {
+        #[cfg(target_arch = "wasm32")]
+        self.browser_settings_test
+            .update(&mut self.settings, &mut self.widget);
+        let settings_state = self.settings.view();
+        let response = self.widget.show(ui, &snapshot, &settings_state);
+        for intent in response.app_actions {
             self.handle_ui_intent(intent);
+        }
+        for action in response.settings_actions {
+            let result = match action {
+                SettingsAction::Save(draft) => self.settings.request_save(draft),
+                SettingsAction::RecoverWithDefaults => self.settings.request_recovery(),
+            };
+            if let Err(error) = result {
+                self.settings.report_action_error(error.to_string());
+            }
         }
         while let Some(output) = self.runtime.take_file_output() {
             #[cfg(not(target_arch = "wasm32"))]
@@ -466,6 +520,174 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
     eframe::run_native("ShoopDaLoop", options, Box::new(create_app))
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BrowserSettingsSelfTest {
+    Disabled,
+    Write,
+    Verify,
+    Rejected,
+    Invalid,
+    SaveFailure,
+    Unavailable,
+    Complete,
+    Failed,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl BrowserSettingsSelfTest {
+    fn from_location() -> Self {
+        let search = web_sys::window()
+            .and_then(|window| window.location().search().ok())
+            .unwrap_or_default();
+        if search.contains("settings-test=write") {
+            Self::Write
+        } else if search.contains("settings-test=verify") {
+            Self::Verify
+        } else if search.contains("settings-test=rejected") {
+            Self::Rejected
+        } else if search.contains("settings-test=invalid") {
+            Self::Invalid
+        } else if search.contains("settings-test=save-failure") {
+            Self::SaveFailure
+        } else if search.contains("settings-test=unavailable") {
+            Self::Unavailable
+        } else {
+            Self::Disabled
+        }
+    }
+
+    fn update(&mut self, settings: &mut SettingsManager, widget: &mut AppWidget) {
+        let result = match *self {
+            Self::Disabled | Self::Complete | Self::Failed => return,
+            Self::Write => {
+                let active = settings.view().active;
+                let mut draft = shoop_egui::SettingsDraft::from_snapshot(&active);
+                draft.set(shoop_egui::DEFAULT_NEW_TRACK_AUDIO_CHANNELS, 6);
+                draft.set(shoop_egui::DEFAULT_NEW_TRACK_MIDI, true);
+                settings.request_save(draft).map(|()| "written")
+            }
+            Self::Verify => verify_browser_settings(settings, widget, 6, true).map(|()| "passed"),
+            Self::Rejected => {
+                let view = settings.view();
+                if !view.recovery_required {
+                    Err(settings::SettingsManagerError::Storage(
+                        "rejected settings did not require recovery".to_owned(),
+                    ))
+                } else {
+                    verify_browser_settings(settings, widget, 2, false).map(|()| "rejected")
+                }
+            }
+            Self::Invalid => {
+                let view = settings.view();
+                if view.recovery_required || view.diagnostics.is_empty() {
+                    Err(settings::SettingsManagerError::Storage(
+                        "invalid known value did not fall back with a diagnostic".to_owned(),
+                    ))
+                } else {
+                    verify_browser_settings(settings, widget, 2, false).map(|()| "invalid")
+                }
+            }
+            Self::SaveFailure => {
+                let active = settings.view().active;
+                let mut draft = shoop_egui::SettingsDraft::from_snapshot(&active);
+                draft.set(shoop_egui::DEFAULT_NEW_TRACK_AUDIO_CHANNELS, 8);
+                match settings.request_save(draft) {
+                    Err(settings::SettingsManagerError::Storage(_)) => {
+                        let view = settings.view();
+                        if view.active.revision() == active.revision()
+                            && view.persistence == shoop_egui::SettingsPersistenceState::Failed
+                        {
+                            Ok("save-failed")
+                        } else {
+                            Err(settings::SettingsManagerError::Storage(
+                                "failed browser save published settings".to_owned(),
+                            ))
+                        }
+                    }
+                    Err(error) => Err(error),
+                    Ok(()) => Err(settings::SettingsManagerError::Storage(
+                        "injected browser save unexpectedly succeeded".to_owned(),
+                    )),
+                }
+            }
+            Self::Unavailable => {
+                let view = settings.view();
+                if !view.recovery_required || view.diagnostics.is_empty() {
+                    Err(settings::SettingsManagerError::Storage(
+                        "unavailable browser storage was not observable".to_owned(),
+                    ))
+                } else {
+                    verify_browser_settings(settings, widget, 2, false).map(|()| "unavailable")
+                }
+            }
+        };
+        match result {
+            Ok(status) => {
+                let view = settings.view();
+                let channels = view
+                    .active
+                    .get(shoop_egui::DEFAULT_NEW_TRACK_AUDIO_CHANNELS)
+                    .unwrap_or_default();
+                let midi = view
+                    .active
+                    .get(shoop_egui::DEFAULT_NEW_TRACK_MIDI)
+                    .unwrap_or_default();
+                set_browser_settings_test_status(status, channels, midi, view.recovery_required);
+                *self = Self::Complete;
+            }
+            Err(error) => {
+                set_browser_settings_test_status("failed", 0, false, false);
+                settings.report_action_error(error.to_string());
+                *self = Self::Failed;
+            }
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn verify_browser_settings(
+    settings: &SettingsManager,
+    widget: &mut AppWidget,
+    expected_channels: u32,
+    expected_midi: bool,
+) -> Result<(), settings::SettingsManagerError> {
+    let view = settings.view();
+    let channels = view
+        .active
+        .get(shoop_egui::DEFAULT_NEW_TRACK_AUDIO_CHANNELS)
+        .map_err(|error| settings::SettingsManagerError::Storage(error.to_string()))?;
+    let midi = view
+        .active
+        .get(shoop_egui::DEFAULT_NEW_TRACK_MIDI)
+        .map_err(|error| settings::SettingsManagerError::Storage(error.to_string()))?;
+    let dialog_defaults = widget.browser_settings_test_open_add_track(&view);
+    if (channels, midi) != (expected_channels, expected_midi)
+        || dialog_defaults != (expected_channels, expected_midi)
+    {
+        return Err(settings::SettingsManagerError::Storage(format!(
+            "settings consumer mismatch: active ({channels}, {midi}), dialog {dialog_defaults:?}"
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn set_browser_settings_test_status(status: &str, channels: u32, midi: bool, recovery: bool) {
+    if let Some(element) = web_sys::window()
+        .and_then(|window| window.document())
+        .and_then(|document| document.get_element_by_id("runtime_status"))
+    {
+        let _ = element.set_attribute("data-settings-self-test", status);
+        let _ = element.set_attribute("data-settings-channels", &channels.to_string());
+        let _ = element.set_attribute("data-settings-midi", if midi { "true" } else { "false" });
+        let _ = element.set_attribute(
+            "data-settings-recovery",
+            if recovery { "true" } else { "false" },
+        );
+    }
 }
 
 #[cfg(target_arch = "wasm32")]

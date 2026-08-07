@@ -29,6 +29,11 @@ if (directFileMicrophone && !selfContained) {
 const lifecycle = process.env.LIFECYCLE === '1';
 const stress = process.env.STRESS === '1';
 const saturate = process.env.SATURATE === '1';
+const settingsOnly = process.env.SETTINGS_ONLY === '1';
+const settingsUnavailable = process.env.SETTINGS_UNAVAILABLE === '1';
+if (settingsUnavailable && !settingsOnly) {
+  throw new Error('SETTINGS_UNAVAILABLE requires SETTINGS_ONLY=1');
+}
 const selfContainedPath = process.env.SELF_CONTAINED_PATH
   || join(process.cwd(), 'dist', 'shoopdaloop_egui.html');
 const profile = await mkdtemp(join(tmpdir(), 'shoopdaloop-egui-chrome-'));
@@ -123,6 +128,7 @@ try {
     'about:blank',
   ];
   if (!denyFirst) chromeArgs.splice(-1, 0, '--use-fake-ui-for-media-stream');
+  if (settingsUnavailable) chromeArgs.splice(-1, 0, '--disable-local-storage');
   start(chrome, chromeArgs);
 
   const targets = await waitForJson(`http://${host}:${debugPort}/json`, 60_000);
@@ -194,16 +200,24 @@ try {
   }
   let entryUrl;
   if (selfContained) {
-    const query = directFileMicrophone
-      ? '?self-test=1'
-      : outputOnly
-        ? ''
-        : '?offline=1&self-test=1';
+    const query = settingsOnly
+      ? settingsUnavailable
+        ? '?offline=1&settings-test=unavailable'
+        : '?offline=1&settings-test=write'
+      : directFileMicrophone
+        ? '?self-test=1'
+        : outputOnly
+          ? ''
+          : '?offline=1&self-test=1';
     entryUrl = `${pathToFileURL(selfContainedPath).href}${query}`;
   } else {
-    entryUrl = outputOnly
-      ? `${origin}/`
-      : `${origin}/?self-test=1${stress ? '&stress=1' : ''}${browserSize === '360,200' ? '&session-only=1' : ''}`;
+    entryUrl = settingsOnly
+      ? settingsUnavailable
+        ? `${origin}/?offline=1&settings-test=unavailable`
+        : `${origin}/?offline=1&settings-test=write`
+      : outputOnly
+        ? `${origin}/`
+        : `${origin}/?self-test=1${stress ? '&stress=1' : ''}${browserSize === '360,200' ? '&session-only=1' : ''}`;
   }
   await call('Page.navigate', { url: entryUrl });
 
@@ -214,6 +228,10 @@ try {
     status: document.getElementById('runtime_status')?.textContent,
     revision: Number(document.getElementById('runtime_status')?.getAttribute('data-engine-revision')),
     selfTest: document.getElementById('runtime_status')?.getAttribute('data-self-test'),
+    settingsTest: document.getElementById('runtime_status')?.getAttribute('data-settings-self-test'),
+    settingsChannels: Number(document.getElementById('runtime_status')?.getAttribute('data-settings-channels')),
+    settingsMidi: document.getElementById('runtime_status')?.getAttribute('data-settings-midi'),
+    settingsRecovery: document.getElementById('runtime_status')?.getAttribute('data-settings-recovery'),
     driver: document.getElementById('runtime_status')?.getAttribute('data-driver-state'),
     generation: Number(document.getElementById('runtime_status')?.getAttribute('data-audio-generation')),
     ownedMediaTracks: Number(document.getElementById('runtime_status')?.getAttribute('data-owned-media-tracks')),
@@ -238,7 +256,92 @@ try {
     canvasHeight: document.getElementById('shoop_canvas')?.height,
   })`;
 
-  if (selfContained && !outputOnly && !directFileMicrophone) {
+  if (settingsOnly && settingsUnavailable) {
+    const state = await waitFor(
+      candidate => candidate.settingsTest === 'unavailable'
+        && candidate.settingsRecovery === 'true'
+        && candidate.settingsChannels === 2
+        && candidate.settingsMidi === 'false',
+      'unavailable browser storage was not reported with defaults',
+    );
+    console.log(`${selfContained ? 'direct-file' : 'hosted'} unavailable browser settings storage passed`);
+  } else if (settingsOnly) {
+    let state = await waitFor(
+      candidate => candidate.settingsTest === 'written'
+        && candidate.settingsChannels === 6
+        && candidate.settingsMidi === 'true',
+      'browser settings write did not finish',
+    );
+    const settingsKey = 'org.shoopdaloop.egui.settings';
+    const stored = await evaluate(`localStorage.getItem('${settingsKey}')`);
+    if (!stored?.includes('shoop-egui-settings')) {
+      throw new Error(`browser settings text was not persisted: ${stored}`);
+    }
+    const baseUrl = entryUrl.split('?')[0];
+    await call('Page.navigate', { url: `${baseUrl}?offline=1&settings-test=verify` });
+    state = await waitFor(
+      candidate => candidate.settingsTest === 'passed'
+        && candidate.settingsChannels === 6
+        && candidate.settingsMidi === 'true',
+      'browser settings reload did not reach the Add Track consumer',
+    );
+
+    const rejectedDocument = JSON.stringify({
+      format: 'shoop-egui-settings',
+      format_version: { major: 99, minor: 0 },
+      document_version: 99,
+      writer_version: 'future',
+      values: { 'tracks.new.default_audio_channels': 9 },
+    });
+    await evaluate(`localStorage.setItem('${settingsKey}', ${JSON.stringify(rejectedDocument)})`);
+    await call('Page.navigate', { url: `${baseUrl}?offline=1&settings-test=rejected` });
+    state = await waitFor(
+      candidate => candidate.settingsTest === 'rejected'
+        && candidate.settingsRecovery === 'true'
+        && candidate.settingsChannels === 2
+        && candidate.settingsMidi === 'false',
+      'future browser settings were not rejected transactionally',
+    );
+    const retained = await evaluate(`localStorage.getItem('${settingsKey}')`);
+    if (retained !== rejectedDocument) {
+      throw new Error(`rejected browser settings were overwritten: ${retained}`);
+    }
+
+    const invalidDocument = JSON.stringify({
+      format: 'shoop-egui-settings',
+      format_version: { major: 1, minor: 0 },
+      document_version: 1,
+      writer_version: 'invalid',
+      values: {
+        'tracks.new.default_audio_channels': 'wrong-type',
+        'tracks.new.default_midi': false,
+      },
+    });
+    await evaluate(`localStorage.setItem('${settingsKey}', ${JSON.stringify(invalidDocument)})`);
+    await call('Page.navigate', { url: `${baseUrl}?offline=1&settings-test=invalid` });
+    state = await waitFor(
+      candidate => candidate.settingsTest === 'invalid'
+        && candidate.settingsRecovery === 'false'
+        && candidate.settingsChannels === 2
+        && candidate.settingsMidi === 'false',
+      'invalid known browser setting did not default with a diagnostic',
+    );
+
+    await evaluate(`localStorage.removeItem('${settingsKey}')`);
+    await call('Page.navigate', {
+      url: `${baseUrl}?offline=1&settings-test=save-failure&settings-save-failure=1`,
+    });
+    state = await waitFor(
+      candidate => candidate.settingsTest === 'save-failed'
+        && candidate.settingsChannels === 2
+        && candidate.settingsMidi === 'false',
+      'failed browser save changed active settings',
+    );
+    if (await evaluate(`localStorage.getItem('${settingsKey}')`) !== null) {
+      throw new Error('failed browser save wrote settings bytes');
+    }
+    console.log(`${selfContained ? 'direct-file' : 'hosted'} browser settings save/reload/rejection passed`);
+  } else if (selfContained && !outputOnly && !directFileMicrophone) {
     const state = await waitFor(
       candidate => candidate.driver === 'Dummy'
         && candidate.revision > 0

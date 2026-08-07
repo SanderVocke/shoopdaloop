@@ -4731,6 +4731,7 @@ dependencies = [
  "egui_material_icons",
  "image 0.25.10",
  "shoop_app_api",
+ "shoop_settings",
 ]
 
 [[package]]
@@ -4866,6 +4867,7 @@ dependencies = [
  "shoop_audio_protocol",
  "shoop_backend",
  "shoop_egui",
+ "shoop_settings",
  "tempfile",
  "wasm-bindgen",
  "wasm-bindgen-futures",

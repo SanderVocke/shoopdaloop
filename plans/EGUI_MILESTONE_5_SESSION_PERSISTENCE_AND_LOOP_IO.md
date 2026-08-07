@@ -28,10 +28,10 @@ Included:
 
 Not included:
 
-- Implementing the UI or runtime behavior of dry/wet track creation, Carla hosting, composites, scripting, MIDI control, buses, or settings that remain assigned to later milestones. Their typed persistent forms must nevertheless be representable, validated, and preserved. A session requiring a runtime feature that is not implemented must fail before replacing the running session; it must never be partially loaded or silently simplified.
+- Implementing the UI or runtime behavior of dry/wet track creation, Carla hosting, composites, scripting, MIDI control, buses, or session-local/feature-specific settings assigned to later milestones. Their typed persistent forms must nevertheless be representable, validated, and preserved. A session requiring a runtime feature that is not implemented must fail before replacing the running session; it must never be partially loaded or silently simplified.
 - Importing or writing QML-era `.shl`, `session.1`, tar/JSON/FLAC archives, or JSON `.smf` files. Selecting one must produce a clear unsupported-format error without changing the current session.
 - Persisting transient engine state such as current play/record mode, playhead position, queued transitions, meters, xruns, task/dialog state, browser permissions, or device handles.
-- Persisting machine-wide device/application preferences in the session. A versioned settings document may later use the same versioning machinery, but session-local overrides and mappings belong in `.shoop`.
+- Persisting machine-wide device/application preferences in the session. The later completed egui settings slice uses its own versioned `shoop-egui-settings` document and storage service; session-local overrides and mappings remain in `.shoop`.
 - Lossy audio export.
 
 ## Immutable acceptance criteria
