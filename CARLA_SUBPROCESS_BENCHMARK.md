@@ -68,6 +68,19 @@ The final bulk mapping uses `memmap2` (MIT/Apache-2.0, maintained, native Window
 
 An anonymous/in-process ring queue was rejected because it does not cross a process boundary. Named platform-specific events were rejected for now because they would add three lifecycle/permission implementations without outperforming the measured portable wake path. Continuous polling was measured and rejected for idle CPU cost. Per-block framed JSON is retained only as a tested reference because the comparison above shows materially worse channel/frame scaling.
 
-## Interpretation and remaining platform evidence
+## Native CI matrix
 
-The selected mechanism is the shared-memory transport plus bounded native notification described above. Framed TCP remains control-only and the old serialized block message remains only as a protocol reference/test surface. Linux measurements support the capacities and one-period deadline. Equivalent release measurements still need to be produced by Windows and macOS package hosts; Linux numbers must not be presented as evidence for those schedulers.
+Release package hosts also ran direct and subprocess matrices for both 2- and 16-channel Carla chains at 32, 64, 128, 256, 512, and 1,024 frames. Each artifact contains all 24 mode/channel/frame rows and records p50, p95, worst, and deadline misses; values below are the ranges across those rows.
+
+| Native host | Artifact / run | p50 µs | p95 µs | Worst µs | Observed misses |
+|---|---|---:|---:|---:|---:|
+| Linux x86_64 | `real-carla-linux-x86_64.csv`, [31142058025](https://github.com/SanderVocke/shoopdaloop/actions/runs/31142058025) | 0.256–204.498 | 0.340–5,168.975 | 0.369–7,407.065 | 148 |
+| Windows x86_64 | `real-carla-windows-x86_64.csv`, [31142058025](https://github.com/SanderVocke/shoopdaloop/actions/runs/31142058025) | 0.900–242.600 | 1.100–10,684.700 | 1.100–10,688.400 | 179 |
+| macOS Intel | `real-carla-macos-x86_64.csv`, [31140685747](https://github.com/SanderVocke/shoopdaloop/actions/runs/31140685747) | 3.323–429.634 | 4.784–21,366.066 | 5.826–21,370.917 | 243 |
+| macOS ARM | `real-carla-macos-aarch64.csv`, [31140685747](https://github.com/SanderVocke/shoopdaloop/actions/runs/31140685747) | 0.625–422.458 | 2.625–10,682.666 | 3.042–15,179.208 | 280 |
+
+These hosted-runner measurements are intentionally observational: unrelated runner preemption can produce both immediate fallback samples and multi-period wall-clock outliers, so miss counts are not a stable release threshold. The hard gates separately verify the one-period deadline check, finite callback return under host scheduling preemption, wet-silence/MIDI-drop fallback, later-slot recovery, and failure isolation for every supported frame size. The native CSVs characterize the schedulers rather than claiming dedicated realtime performance.
+
+## Interpretation
+
+The selected mechanism is the shared-memory transport plus bounded native notification described above. Framed TCP remains control-only and the old serialized block message remains only as a protocol reference/test surface. The paced production-host result demonstrates the transport under a realtime kernel; the native package artifacts complete the required cross-platform comparison without treating shared CI hosts as realtime systems.
