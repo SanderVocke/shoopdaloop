@@ -74,12 +74,12 @@ Release package hosts also ran direct and subprocess matrices for both 2- and 16
 
 | Native host | Artifact / run | p50 µs | p95 µs | Worst µs | Observed misses |
 |---|---|---:|---:|---:|---:|
-| Linux x86_64 | `real-carla-linux-x86_64.csv`, [31142058025](https://github.com/SanderVocke/shoopdaloop/actions/runs/31142058025) | 0.256–204.498 | 0.340–5,168.975 | 0.369–7,407.065 | 148 |
-| Windows x86_64 | `real-carla-windows-x86_64.csv`, [31142058025](https://github.com/SanderVocke/shoopdaloop/actions/runs/31142058025) | 0.900–242.600 | 1.100–10,684.700 | 1.100–10,688.400 | 179 |
-| macOS Intel | `real-carla-macos-x86_64.csv`, [31140685747](https://github.com/SanderVocke/shoopdaloop/actions/runs/31140685747) | 3.323–429.634 | 4.784–21,366.066 | 5.826–21,370.917 | 243 |
-| macOS ARM | `real-carla-macos-aarch64.csv`, [31140685747](https://github.com/SanderVocke/shoopdaloop/actions/runs/31140685747) | 0.625–422.458 | 2.625–10,682.666 | 3.042–15,179.208 | 280 |
+| Linux x86_64 | `real-carla-linux-x86_64.csv`, [31163582887](https://github.com/SanderVocke/shoopdaloop/actions/runs/31163582887) | 0.200–131.088 | 0.291–1,161.505 | 0.321–3,024.478 | 80 |
+| Windows x86_64 | `real-carla-windows-x86_64.csv`, [31163582887](https://github.com/SanderVocke/shoopdaloop/actions/runs/31163582887) | 1.200–225.700 | 1.300–280.000 | 1.400–1,139.100 | 40 |
+| macOS Intel | `real-carla-macos-x86_64.csv`, [31163582887](https://github.com/SanderVocke/shoopdaloop/actions/runs/31163582887) | 3.722–303.680 | 5.052–21,351.171 | 6.637–21,351.225 | 141 |
+| macOS ARM | `real-carla-macos-aarch64.csv`, [31163582887](https://github.com/SanderVocke/shoopdaloop/actions/runs/31163582887) | 1.625–357.167 | 4.291–13,592.000 | 4.417–16,276.084 | 296 |
 
-These hosted-runner measurements are intentionally observational: unrelated runner preemption can produce both immediate fallback samples and multi-period wall-clock outliers, so miss counts are not a stable release threshold. The hard gates separately verify the one-period deadline check, finite callback return under host scheduling preemption, wet-silence/MIDI-drop fallback, later-slot recovery, and failure isolation for every supported frame size. The native CSVs characterize the schedulers rather than claiming dedicated realtime performance.
+Each file contains 24 data rows: direct and subprocess modes for 2 and 16 channels at 32, 64, 128, 256, 512, and 1,024 frames. These hosted-runner measurements are intentionally observational: unrelated runner preemption can produce both immediate fallback samples and multi-period wall-clock outliers, so miss counts are not a stable release threshold. The hard gates separately verify the one-period deadline check, finite callback return under host scheduling preemption, wet-silence/MIDI-drop fallback, later-slot recovery, and failure isolation for every supported frame size. The native CSVs characterize the schedulers rather than claiming dedicated realtime performance. The run was superseded and canceled only after all four release benchmark artifacts had uploaded.
 
 ## Interpretation
 

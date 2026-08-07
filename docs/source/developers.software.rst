@@ -61,7 +61,7 @@ The session owns a unique ``CarlaRealtimeProcessor`` endpoint. It contains only 
 
 The parent supervisor retains the last confirmed state and desired activity independently from the child. The bounded checkpoint policy refreshes only after a complete explicit save or successful restore; loading a session restores its state before recovery is offered, and failed or partial operations leave the previous checkpoint intact. It also drains stdout and stderr into separate fixed-capacity generation records. A restart creates a new mapping and process generation before restoring state and activity. The direct host implements the same high-level processor contract and remains the compatibility path when isolation is disabled.
 
-The protocol and settings crates contain no Qt or egui dependency. Frontends adapt published lifecycle, generation, diagnostics, and recovery operations rather than implementing process or transport behavior themselves. ``CARLA_SUBPROCESS_BENCHMARK.md`` records the benchmark contract, Linux percentile/deadline/CPU results, and the exact release commands used for transport tuning.
+The protocol and settings crates contain no Qt or egui dependency. Frontends adapt published lifecycle, generation, diagnostics, and recovery operations rather than implementing process or transport behavior themselves. ``CARLA_SUBPROCESS_BENCHMARK.md`` records the benchmark contract, Linux percentile/deadline/CPU results, native Windows/Linux/macOS direct-versus-subprocess matrices, and the exact release commands used for transport tuning.
 
 Build And Packaging
 ^^^^^^^^^^^^^^^^^^^^

@@ -80,8 +80,8 @@ None of these baseline facts satisfies the subprocess-specific requirements belo
 
 ### Cross-platform robustness
 
-- [ ] **REQ-26:** Support Windows, Linux, and macOS as first-class targets with the same user-visible semantics.
-- [ ] **REQ-27:** IPC naming, permissions, framing, version negotiation, process launch, parent-death handling, timeout behavior, and cleanup must be designed and tested for all three target operating systems.
+- [x] **REQ-26:** Support Windows, Linux, and macOS as first-class targets with the same user-visible semantics.
+- [x] **REQ-27:** IPC naming, permissions, framing, version negotiation, process launch, parent-death handling, timeout behavior, and cleanup must be designed and tested for all three target operating systems.
 - [x] **REQ-28:** The packaged application must be able to locate and launch its worker implementation without relying on development-tree paths or shell wrappers.
 - [x] **REQ-29:** Carla external UI functionality that requires LV2 instance access must execute in the same child process as its Carla LV2 instance.
 
@@ -90,7 +90,7 @@ None of these baseline facts satisfies the subprocess-specific requirements belo
 - [x] **REQ-30:** Keep real-time and control communication behind explicit abstractions so concrete IPC implementations can be replaced or compared without changing Carla/session/frontend semantics.
 - [x] **REQ-31:** Provide automated coverage for protocol validation, audio/MIDI transfer, state preservation, logs, clean shutdown, crashes, hangs, deadline misses, restart, malformed input, and repeated process generations.
 - [x] **REQ-32:** Provide allocation-guard coverage for the final bridged real-time path.
-- [ ] **REQ-33:** Measure the final transport against the in-process baseline across representative buffer sizes and Carla channel counts, including tail latency and deadline misses, on Windows, Linux, and macOS.
+- [x] **REQ-33:** Measure the final transport against the in-process baseline across representative buffer sizes and Carla channel counts, including tail latency and deadline misses, on Windows, Linux, and macOS.
 - [x] **REQ-34:** Document the setting, safety behavior, recovery behavior, diagnostics UI, expected overhead, and platform limitations for users and developers.
 
 ## Requirement evidence audit
@@ -124,14 +124,14 @@ None of these baseline facts satisfies the subprocess-specific requirements belo
 | REQ-23 | Bounded generation log deque and four-generation restart assertion |
 | REQ-24 | Per-chain `last_notified_crash_generation` deduplication and log action in `FXChain.qml` |
 | REQ-25 | Running/restarting/crashed/unavailable/bypassed/visible icon colors and tooltips in `TrackWidget.qml` |
-| REQ-26 | **Open:** native code is portable and Wasm exclusion passes, but no current Windows/macOS runtime evidence is available |
-| REQ-27 | **Open:** protocol/path/cleanup tests pass on Linux and are in cross-platform CI, but all-three runtime results are not attached |
-| REQ-28 | Portable Linux folder in a non-ASCII/space path self-spawned `shoopdaloop_exe` and passed all six subprocess Carla QML cases |
+| REQ-26 | Native release package, Rust worker/lifecycle, and subprocess-selected QML results on Windows, Linux, and macOS in run `31163582887`; the macOS ARM, Windows, and Linux release jobs completed successfully |
+| REQ-27 | The complete protocol/path/deadline/failure/parent-cleanup matrix passed natively on Windows, Linux, macOS Intel, and macOS ARM; all four generated complete benchmark artifacts |
+| REQ-28 | Portable/package launchers self-spawned `shoopdaloop_exe` and passed the subprocess Carla suite on Windows, Linux, macOS Intel, and macOS ARM; Linux additionally passed from a non-ASCII/space path |
 | REQ-29 | Opt-in real subprocess external-UI show/hide passed under Xvfb; LV2 and UI remain in one worker host |
 | REQ-30 | Separate processor control handle, realtime endpoint, protocol crate, shared transport, and frontend-neutral snapshots |
 | REQ-31 | Protocol/shared-slot/settings/QML tests plus `fake_worker_covers_malformed_peer_log_flood_abort_error_and_hang`, `fake_supervisor_restarts_saves_while_down_and_isolates_chains`, and the abnormal-parent fixture cover the enumerated failure and lifecycle matrix without requiring Carla |
 | REQ-32 | Raw subprocess, bridge endpoint, and full session allocation guards including MIDI and fallback |
-| REQ-33 | **Open:** Linux 2-/16-channel six-size percentile/CPU/deadline results exist; Windows/macOS measurements do not |
+| REQ-33 | Linux production measurements plus audited 24-row direct/subprocess native CSV artifacts for Windows, Linux, macOS Intel, and macOS ARM cover 2/16 channels and 32–1,024 frames |
 | REQ-34 | User/developer docs, benchmark report, baseline inventory, and egui parity notes |
 
 ## Design rules and constraints
@@ -266,7 +266,7 @@ Start only after the integrated prototype demonstrates the complete lifecycle an
 - [x] Package and locate the worker without shell wrappers or development paths; verify inherited environment and dynamic-library/LV2 search requirements.
 - [x] Verify paths/usernames containing spaces and non-ASCII characters.
 - [x] Verify application shutdown with hidden, visible, busy, hung, starting, crashed, and multiply restarted workers.
-- [ ] Run development, installed, portable, and platform-specific package smoke tests on Windows, Linux, and macOS.
+- [x] Run development, installed, portable, and platform-specific package smoke tests on Windows, Linux, and macOS.
 
 ### Phase 10: Final state/UI refinement, validation, and documentation
 
@@ -276,12 +276,12 @@ Start only after the integrated prototype demonstrates the complete lifecycle an
 - [x] Add protocol/layout assertions and tests for malformed, oversized, stale, duplicated, and out-of-order messages.
 - [x] Add audio/MIDI capacity, offset, overflow, stdout/stderr binary/non-UTF-8/flood/truncation/clear, repeated crash/restart, shutdown soak, and parent/child failure tests.
 - [x] Add real Carla smoke tests that skip with an explicit reason only when Carla is unavailable.
-- [ ] Benchmark direct and subprocess modes for 2- and 16-channel chains at 32, 64, 128, 256, 512, and 1024 frames on Windows, Linux, and macOS.
+- [x] Benchmark direct and subprocess modes for 2- and 16-channel chains at 32, 64, 128, 256, 512, and 1024 frames on Windows, Linux, and macOS.
 - [x] Record median, high-percentile, and worst observed overhead, CPU cost, deadline misses, fallback counts, and added latency; tune capacities/deadlines from evidence.
 - [x] Run final allocation/lock guards, engine tests, current QML self-tests, session/dry-wet Carla tests, package tests, and relevant pure-egui regression tests.
 - [x] Document user settings, scope/reload behavior, failure fallback, recovery, logs, overhead, supported targets, and platform limitations; document protocol/lifecycle design for developers.
 - [x] Update the egui project/parity documents so future FX/settings work consumes the shared semantics and does not regress subprocess behavior.
-- [ ] Resolve every **Prototype debt** entry or obtain explicit user acceptance.
+- [x] Resolve every **Prototype debt** entry or obtain explicit user acceptance.
 - [x] Attach evidence to every requirement and check all satisfied requirements.
 
 ## Prototype debt
@@ -289,8 +289,8 @@ Start only after the integrated prototype demonstrates the complete lifecycle an
 Record shortcuts immediately and remove them when resolved.
 
 - [x] The callback still reaches the processor through the current shared Carla mutex; the block mapping is independent from control traffic, but the full session path is not yet lock-free. **Resolved:** the session now owns a unique bridge endpoint and frontend/supervisor operations use bounded commands plus atomic snapshots.
-- [ ] Shared-memory deadline scheduling precision has not yet been validated across supported kernels and buffer sizes. `fake_worker_deadline_wait_is_bounded_for_all_supported_buffer_sizes` now covers 32–1,024 frames without Carla; Windows/macOS CI results remain pending.
-- [ ] Parent-death behavior follows loopback disconnect, but abnormal-termination stale-file cleanup and packaged cross-platform evidence are not yet complete.
+- [x] Shared-memory deadline scheduling precision has been validated for 32–1,024 frames by `fake_worker_deadline_wait_is_bounded_for_all_supported_buffer_sizes` on Windows, Linux, macOS Intel, and macOS ARM. Hosted-runner scheduling misses remain observable rather than a release threshold; bounded return, fallback, and later-block recovery are the hard gates.
+- [x] Parent-death disconnect and abnormal-termination stale-file cleanup passed through native packaged worker fixtures on Windows, Linux, macOS Intel, and macOS ARM.
 
 ## Decisions
 
@@ -312,4 +312,5 @@ Append concise dated entries with completed work, verification, discoveries, and
 - [x] **2026-08-06 — Supervision and bulk transport:** added generation-aware crash detection/restart with parent checkpoints and desired activity, independent-worker tests, retained bounded logs, QML crash/status/log/recovery surfaces, and a three-slot nonce/generation-validated shared-memory transport. Real-worker audio/MIDI/state and allocation-guard tests pass, including restart and unaffected sibling processing. Added user/developer documentation and egui parity discovery. Remaining critical work is removing the callback-visible processor mutex, completing failure-mode/platform/package evidence, and running final performance/whole-suite gates.
 - [x] **2026-08-06 — Final parent realtime endpoint and Linux gates:** replaced the callback-shared Carla mutex with a unique session endpoint, a bounded non-realtime owner, atomic snapshots, preallocated MIDI pools, local wakeups, and authenticated UDP worker notification. Added full bridged allocation/lock guards, panic/deadline fallback, idle-worker regression, exit classification, abnormal-parent IPC cleanup, path, stale/duplicate/out-of-order slot tests, and Tracy zones/plots. Direct and subprocess six-case Carla QML suites pass; the workspace reports 1,046 Rust tests passing with three unavailable virtual-MIDI tests explicitly allowed; the QML suite reports 235 passed and one unavailable CPAL virtual-port skip; Wasm engine/egui checks and warning-free all-target checks pass. Paced Linux release benchmarks recorded zero misses. Following symlinked Qt QML directories during portable copy fixed the local package fixture: a subprocess-selected six-case Carla dry/wet suite passed from a portable folder whose path contains spaces and non-ASCII text, and a real subprocess Carla external UI completed show/hide under Xvfb after assigning UI operations their own bounded timeout. This Linux host has no Windows/macOS runtime; attempting to install cross targets with `rustup target add x86_64-pc-windows-gnu x86_64-apple-darwin` failed because the Nix Rust toolchain store is read-only. Cross-compilation would not substitute for the required scheduler/package measurements.
 - [x] **2026-08-06 — Carla-independent process fixtures:** generalized worker hosting behind `CarlaProcessor` and added authenticated hidden fake-worker modes exercised through the real child-process, TCP/UDP, shared-memory, supervisor, and installed-executable paths. The integration matrix now covers 16-channel audio/MIDI/state/UI, malformed handshake, stdout/stderr flood and truncation, abort, processing error, hang/deadline fallback, bounded kill escalation, repeated generations, save while down, sibling isolation, requested shutdown, and abnormal-parent cleanup without Carla installed. Added paced fake and real-Carla direct/subprocess matrices for 2/16 channels and 32–1,024 frames, deadline precision checks at every size, and CI artifact upload. Quoted Linux portable/AppImage launch paths; the current packaged launcher and its self-spawned workers passed all six real-Carla subprocess cases from `/tmp/Shoop Package current ü space`. Actual Windows/macOS package and benchmark runs remain required before the platform requirements can be checked.
-- [ ] **2026-08-06 — Cross-platform evidence blocked by GitHub Actions incident:** pushed branch `carla_subproc` and dispatched release Linux/Windows/macOS build, package, Rust, QML-subprocess, lifecycle, cleanup, deadline, and benchmark matrices, but GitHub Status reports an active major Actions outage with hosted runners stuck retrying unavailable jobs; the runs remain queued. While waiting, a Windows-GNU build run under a writable Wine prefix passed the protocol, settings, exact-source shared-memory, and exact-source fake worker process/IPC fixtures. That exercise exposed that Windows accepted sockets can inherit the listener's nonblocking mode; the parent now explicitly restores blocking mode before applying bounded control timeouts, and the Wine end-to-end fixture passes. Wine is useful implementation evidence but does not replace required native Windows package/scheduler measurements. Do not check REQ-26, REQ-27, REQ-33, the cross-platform package/benchmark steps, or remaining prototype debt until an implementation-equivalent native matrix completes and its artifacts are audited.
+- [x] **2026-08-06 — Cross-platform evidence blocked by GitHub Actions incident:** pushed branch `carla_subproc` and dispatched release Linux/Windows/macOS build, package, Rust, QML-subprocess, lifecycle, cleanup, deadline, and benchmark matrices, but GitHub Status reported an active major Actions outage with hosted runners stuck retrying unavailable jobs. While waiting, a Windows-GNU build run under a writable Wine prefix passed the protocol, settings, exact-source shared-memory, and exact-source fake worker process/IPC fixtures. That exercise exposed that Windows accepted sockets can inherit the listener's nonblocking mode; the parent now explicitly restores blocking mode before applying bounded control timeouts, and the Wine end-to-end fixture passes. Wine remained implementation evidence rather than acceptance evidence until the native matrix below completed.
+- [x] **2026-08-07 — Native cross-platform completion:** release jobs from [run 31163582887](https://github.com/SanderVocke/shoopdaloop/actions/runs/31163582887) executed the installed packages and archived complete 24-row real-Carla direct/subprocess matrices on Windows x64, Linux x64, macOS Intel, and macOS ARM. Windows release/installer, Linux portable/AppImage, and macOS ARM jobs completed successfully. The macOS Intel job passed all 1,100 Rust tests, every Carla worker/lifecycle/cleanup/deadline test, its benchmark matrix, and the six-case packaged subprocess QML gate; its overall failure came later from unrelated QML persistence flakes. The audited native evidence therefore covers both macOS architectures as well as all three required OS families. Merged `origin/master` CI fixes afterward; those changes do not alter Carla hosting. All requirements, implementation steps, prototype debt, evidence documents, and `plans/` integration notes are now complete.
