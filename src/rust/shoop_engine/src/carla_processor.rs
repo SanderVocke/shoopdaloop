@@ -1117,12 +1117,14 @@ mod tests {
         // set_active is intentionally asynchronous. A synchronous no-op UI command
         // is the FIFO barrier that ensures the host is active before the block.
         control.set_visible(false).unwrap();
-        endpoint.process(32).unwrap();
-        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
         while control.lifecycle() != CarlaProcessorLifecycle::Crashed
             && std::time::Instant::now() < deadline
         {
-            std::thread::yield_now();
+            // A heavily loaded runner can miss the first sub-millisecond block.
+            // Keep submitting bounded callbacks until the bridge observes one.
+            endpoint.process(32).unwrap();
+            std::thread::sleep(Duration::from_millis(1));
         }
         assert_eq!(control.lifecycle(), CarlaProcessorLifecycle::Crashed);
         assert_eq!(

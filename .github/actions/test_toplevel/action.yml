@@ -161,17 +161,11 @@ runs:
     env:
       GHA_RUN_ALWAYS: 1
     run: |
-      carla_version=2.5.10
-      carla_dmg="$RUNNER_TEMP/Carla-$carla_version-macos-universal.dmg"
-      carla_mount="$RUNNER_TEMP/carla-$carla_version-mount"
-      curl -L --fail --retry 3 \
-        -o "$carla_dmg" \
-        "https://github.com/falkTX/Carla/releases/download/v$carla_version/Carla-$carla_version-macos-universal.dmg"
-      echo "a30e98409974493ade18f598566628369fee67f179a84e1c2cc3ae46a71808b1  $carla_dmg" | shasum -a 256 -c -
-      mkdir -p "$carla_mount"
-      hdiutil attach -readonly -nobrowse -mountpoint "$carla_mount" "$carla_dmg"
-      carla_lv2_bundle=$(find "$carla_mount" -maxdepth 8 -iname 'Carla.lv2' -print -quit)
+      brew install carla
+      carla_prefix=$(brew --prefix carla)
+      carla_lv2_bundle=$(find "$carla_prefix" -iname 'carla.lv2' -print -quit)
       test -n "$carla_lv2_bundle"
+      test -f "$carla_lv2_bundle/manifest.ttl"
       carla_lv2_parent=$(dirname "$carla_lv2_bundle")
       echo "Using Carla LV2 fixture at $carla_lv2_bundle"
       echo "LV2_PATH=$carla_lv2_parent${LV2_PATH:+:$LV2_PATH}" | tee -a "$GITHUB_ENV"

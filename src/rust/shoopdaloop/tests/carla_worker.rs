@@ -36,6 +36,14 @@ fn record_ci_benchmark(kind: &str, header: &str, row: &str) {
     writeln!(file, "{row}").expect("write benchmark row");
 }
 
+fn worker_executable() -> &'static str {
+    static PATH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    PATH.get_or_init(|| {
+        std::env::var("NEXTEST_BIN_EXE_shoopdaloop")
+            .unwrap_or_else(|_| env!("CARGO_BIN_EXE_shoopdaloop").to_owned())
+    })
+}
+
 fn wait_until_not_ready(processor: &mut impl CarlaProcessor) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
     while processor.is_ready() && std::time::Instant::now() < deadline {
@@ -45,7 +53,7 @@ fn wait_until_not_ready(processor: &mut impl CarlaProcessor) {
 
 #[test]
 fn fake_worker_round_trips_without_carla_installed() {
-    let executable = env!("CARGO_BIN_EXE_shoopdaloop");
+    let executable = worker_executable();
     let mut processor = SubprocessCarlaProcessor::spawn_test_worker(
         executable,
         FXChainType::CarlaPatchbay16x,
@@ -80,7 +88,7 @@ fn fake_worker_round_trips_without_carla_installed() {
 
 #[test]
 fn fake_worker_covers_malformed_peer_log_flood_abort_error_and_hang() {
-    let executable = env!("CARGO_BIN_EXE_shoopdaloop");
+    let executable = worker_executable();
     let malformed = SubprocessCarlaProcessor::spawn_test_worker(
         executable,
         FXChainType::CarlaRack,
@@ -159,7 +167,7 @@ fn fake_worker_covers_malformed_peer_log_flood_abort_error_and_hang() {
 
 #[test]
 fn fake_supervisor_restarts_saves_while_down_and_isolates_chains() {
-    let executable = env!("CARGO_BIN_EXE_shoopdaloop");
+    let executable = worker_executable();
     let mut first = SupervisedCarlaProcessor::launch_test_worker(
         executable,
         FXChainType::CarlaRack,
@@ -197,7 +205,7 @@ fn fake_supervisor_restarts_saves_while_down_and_isolates_chains() {
 
 #[test]
 fn fake_worker_deadline_wait_is_bounded_for_all_supported_buffer_sizes() {
-    let executable = env!("CARGO_BIN_EXE_shoopdaloop");
+    let executable = worker_executable();
     for (index, frames) in [32_u32, 64, 128, 256, 512, 1024].into_iter().enumerate() {
         let mut processor = SubprocessCarlaProcessor::spawn_test_worker(
             executable,
@@ -226,7 +234,7 @@ fn fake_worker_deadline_wait_is_bounded_for_all_supported_buffer_sizes() {
 #[test]
 fn fake_direct_and_subprocess_transport_benchmark_matrix() {
     const ITERATIONS: usize = 40;
-    let executable = env!("CARGO_BIN_EXE_shoopdaloop");
+    let executable = worker_executable();
     println!("mode,channels,frames,p50_us,p95_us,worst_us,deadline_misses");
     let mut chain_id = 140_u64;
     for (chain_type, channels) in [
@@ -298,7 +306,7 @@ fn fake_direct_and_subprocess_transport_benchmark_matrix() {
 #[test]
 fn real_carla_direct_and_subprocess_transport_benchmark_matrix_when_available() {
     const ITERATIONS: usize = 40;
-    let executable = env!("CARGO_BIN_EXE_shoopdaloop");
+    let executable = worker_executable();
     match CarlaLv2Host::instantiate(FXChainType::CarlaRack, 48_000, 32) {
         Ok(probe) => drop(probe),
         Err(error) => {
@@ -375,7 +383,7 @@ fn real_carla_direct_and_subprocess_transport_benchmark_matrix_when_available() 
 
 #[test]
 fn self_spawned_carla_worker_processes_and_preserves_state() {
-    let executable = env!("CARGO_BIN_EXE_shoopdaloop");
+    let executable = worker_executable();
     let mut processor = match SubprocessCarlaProcessor::spawn(
         executable,
         FXChainType::CarlaRack,
@@ -444,7 +452,7 @@ fn subprocess_external_ui_show_hide_when_opted_in() {
         eprintln!("skipping subprocess external-UI test; set SHOOP_TEST_CARLA_UI=1");
         return;
     }
-    let executable = env!("CARGO_BIN_EXE_shoopdaloop");
+    let executable = worker_executable();
     let mut processor = SubprocessCarlaProcessor::spawn(
         executable,
         FXChainType::CarlaRack,
@@ -462,7 +470,7 @@ fn subprocess_external_ui_show_hide_when_opted_in() {
 
 #[test]
 fn requested_worker_shutdown_reaps_and_removes_shared_memory() {
-    let executable = env!("CARGO_BIN_EXE_shoopdaloop");
+    let executable = worker_executable();
     let mut processor = SubprocessCarlaProcessor::spawn_test_worker(
         executable,
         FXChainType::CarlaRack,
@@ -483,7 +491,7 @@ fn requested_worker_shutdown_reaps_and_removes_shared_memory() {
 
 #[test]
 fn supervisor_detects_crash_preserves_checkpoint_and_starts_new_generation() {
-    let executable = env!("CARGO_BIN_EXE_shoopdaloop");
+    let executable = worker_executable();
     let mut supervisor = SupervisedCarlaProcessor::launch(
         executable,
         FXChainType::CarlaRack,
@@ -548,7 +556,7 @@ fn abnormal_parent_helper() {
     let Some(report_path) = std::env::var_os("SHOOP_TEST_ABNORMAL_PARENT_REPORT") else {
         return;
     };
-    let executable = env!("CARGO_BIN_EXE_shoopdaloop");
+    let executable = worker_executable();
     let processor = SubprocessCarlaProcessor::spawn_test_worker(
         executable,
         FXChainType::CarlaRack,
@@ -619,7 +627,7 @@ fn startup_failure_is_classified_without_losing_the_chain_handle() {
 
 #[test]
 fn separate_chains_use_independent_worker_processes() {
-    let executable = env!("CARGO_BIN_EXE_shoopdaloop");
+    let executable = worker_executable();
     let mut first = SupervisedCarlaProcessor::launch(
         executable,
         FXChainType::CarlaRack,
