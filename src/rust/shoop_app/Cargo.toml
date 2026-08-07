@@ -6,6 +6,7 @@ edition = "2021"
 anyhow = { workspace = true }
 shoop_app_api = { path = "../shoop_app_api" }
 shoop_backend = { path = "../shoop_backend" }
+shoop_session = { path = "../shoop_session" }
 
 [lints]
 workspace = true

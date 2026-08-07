@@ -8,6 +8,8 @@ use crate::{DefaultRecordingAction, GlobalControlAction, GlobalControlState};
 #[derive(Debug, Default)]
 pub struct GlobalControls {
     connections_requested: bool,
+    save_session_requested: bool,
+    load_session_requested: bool,
     #[cfg(test)]
     test_rects: TestGlobalControlRects,
 }
@@ -16,6 +18,8 @@ pub struct GlobalControls {
 enum TestGlobalControl {
     MainMenu,
     Connections,
+    SaveSession,
+    LoadSession,
     StopAll,
     DeselectAll,
     Clear,
@@ -32,6 +36,8 @@ enum TestGlobalControl {
 struct TestGlobalControlRects {
     main_menu: Option<egui::Rect>,
     connections: Option<egui::Rect>,
+    save_session: Option<egui::Rect>,
+    load_session: Option<egui::Rect>,
     stop_all: Option<egui::Rect>,
     deselect_all: Option<egui::Rect>,
     clear: Option<egui::Rect>,
@@ -50,6 +56,8 @@ impl GlobalControls {
         state: &GlobalControlState,
     ) -> Vec<GlobalControlAction> {
         self.connections_requested = false;
+        self.save_session_requested = false;
+        self.load_session_requested = false;
         let mut actions = Vec::new();
         ui.horizontal(|ui| {
             let response = ui
@@ -61,7 +69,18 @@ impl GlobalControls {
                         ui.close();
                     }
                     ui.separator();
-                    ui.add_enabled(false, egui::Button::new("Session I/O"));
+                    let save_session = ui.button("Save session…");
+                    self.record_rect(TestGlobalControl::SaveSession, &save_session);
+                    if save_session.clicked() {
+                        self.save_session_requested = true;
+                        ui.close();
+                    }
+                    let load_session = ui.button("Load session…");
+                    self.record_rect(TestGlobalControl::LoadSession, &load_session);
+                    if load_session.clicked() {
+                        self.load_session_requested = true;
+                        ui.close();
+                    }
                     ui.add_enabled(false, egui::Button::new("Settings"));
                 })
                 .response
@@ -186,11 +205,21 @@ impl GlobalControls {
         std::mem::take(&mut self.connections_requested)
     }
 
+    pub fn take_save_session_requested(&mut self) -> bool {
+        std::mem::take(&mut self.save_session_requested)
+    }
+
+    pub fn take_load_session_requested(&mut self) -> bool {
+        std::mem::take(&mut self.load_session_requested)
+    }
+
     #[cfg(test)]
     fn record_rect(&mut self, control: TestGlobalControl, response: &egui::Response) {
         let target = match control {
             TestGlobalControl::MainMenu => &mut self.test_rects.main_menu,
             TestGlobalControl::Connections => &mut self.test_rects.connections,
+            TestGlobalControl::SaveSession => &mut self.test_rects.save_session,
+            TestGlobalControl::LoadSession => &mut self.test_rects.load_session,
             TestGlobalControl::StopAll => &mut self.test_rects.stop_all,
             TestGlobalControl::DeselectAll => &mut self.test_rects.deselect_all,
             TestGlobalControl::Clear => &mut self.test_rects.clear,
@@ -214,6 +243,8 @@ impl GlobalControls {
         match control {
             TestGlobalControl::MainMenu => self.test_rects.main_menu,
             TestGlobalControl::Connections => self.test_rects.connections,
+            TestGlobalControl::SaveSession => self.test_rects.save_session,
+            TestGlobalControl::LoadSession => self.test_rects.load_session,
             TestGlobalControl::StopAll => self.test_rects.stop_all,
             TestGlobalControl::DeselectAll => self.test_rects.deselect_all,
             TestGlobalControl::Clear => self.test_rects.clear,
@@ -315,6 +346,24 @@ mod tests {
         )
         .is_empty());
         assert!(controls.take_connections_requested());
+        assert!(click(&context, &mut controls, &state, TestGlobalControl::MainMenu).is_empty());
+        assert!(click(
+            &context,
+            &mut controls,
+            &state,
+            TestGlobalControl::SaveSession
+        )
+        .is_empty());
+        assert!(controls.take_save_session_requested());
+        assert!(click(&context, &mut controls, &state, TestGlobalControl::MainMenu).is_empty());
+        assert!(click(
+            &context,
+            &mut controls,
+            &state,
+            TestGlobalControl::LoadSession
+        )
+        .is_empty());
+        assert!(controls.take_load_session_requested());
         assert_eq!(
             click(&context, &mut controls, &state, TestGlobalControl::StopAll),
             vec![GlobalControlAction::StopAll]

@@ -38,8 +38,6 @@ entity_id!(TaskId);
 
 pub const MIN_TRACK_GAIN_DB: f32 = -30.0;
 pub const MAX_TRACK_GAIN_DB: f32 = 20.0;
-pub const MIN_DIRECT_AUDIO_CHANNELS: u8 = 0;
-pub const MAX_DIRECT_AUDIO_CHANNELS: u8 = 10;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum DefaultRecordingAction {
@@ -205,6 +203,8 @@ pub struct LoopState {
     pub selected: bool,
     pub selected_composite_kind: CompositeKind,
     pub show_gain: bool,
+    pub has_audio: bool,
+    pub has_midi: bool,
     pub gain: f32,
     pub balance: f32,
     pub play_after_record: bool,
@@ -230,6 +230,8 @@ impl Default for LoopState {
             selected: false,
             selected_composite_kind: CompositeKind::None,
             show_gain: false,
+            has_audio: false,
+            has_midi: false,
             gain: 0.6,
             balance: 0.0,
             play_after_record: true,
@@ -390,6 +392,51 @@ pub struct LoopDetailsState {
     pub channels: Vec<WaveformChannelState>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum IoTaskKind {
+    SaveSession,
+    LoadSession,
+    ExportLoopAudio,
+    ImportLoopAudio,
+    ExportLoopMidi,
+    ImportLoopMidi,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum IoTaskStatus {
+    Running,
+    AwaitingSampleRateConfirmation,
+    AwaitingChannelMapping,
+    Completed,
+    Cancelled,
+    Failed,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SampleRateWarning {
+    pub source_rate: u32,
+    pub target_rate: u32,
+    pub affected_media: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct AudioChannelMappingState {
+    pub source_channels: Vec<String>,
+    pub destination_channels: Vec<String>,
+    pub default_mapping: Vec<u32>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct IoTaskState {
+    pub id: TaskId,
+    pub kind: IoTaskKind,
+    pub status: IoTaskStatus,
+    pub progress: f32,
+    pub message: String,
+    pub sample_rate_warning: Option<SampleRateWarning>,
+    pub audio_channel_mapping: Option<AudioChannelMappingState>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct AppSnapshot {
     pub revision: u64,
@@ -398,6 +445,7 @@ pub struct AppSnapshot {
     pub status: StatusState,
     pub details: Option<LoopDetailsState>,
     pub connections: Arc<ConnectionViewState>,
+    pub io_task: Option<IoTaskState>,
     pub notifications: Vec<AppNotification>,
 }
 
@@ -406,7 +454,7 @@ pub type AppState = AppSnapshot;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DirectTrackSpec {
     pub name: String,
-    pub audio_channels: u8,
+    pub audio_channels: u32,
     pub midi: bool,
 }
 
@@ -415,9 +463,6 @@ impl DirectTrackSpec {
         if self.name.trim().is_empty() {
             return Err(DirectTrackSpecError::EmptyName);
         }
-        if !(MIN_DIRECT_AUDIO_CHANNELS..=MAX_DIRECT_AUDIO_CHANNELS).contains(&self.audio_channels) {
-            return Err(DirectTrackSpecError::AudioChannelsOutOfRange);
-        }
         Ok(())
     }
 }
@@ -425,12 +470,17 @@ impl DirectTrackSpec {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectTrackSpecError {
     EmptyName,
-    AudioChannelsOutOfRange,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct SelectionModifiers {
     pub additive: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LoopAudioExportFormat {
+    Exact,
+    FloatWav,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -496,6 +546,49 @@ pub enum AppIntent {
         external_port: String,
         connected: bool,
     },
+    RequestSaveSession,
+    RequestLoadSessionPicker,
+    LoadSessionBytes {
+        name: String,
+        bytes: Arc<[u8]>,
+    },
+    ConfirmSampleRateConversion {
+        task_id: TaskId,
+        accept: bool,
+    },
+    ConfirmAudioChannelMapping {
+        task_id: TaskId,
+        source_for_destination: Vec<u32>,
+    },
+    CancelIoTask {
+        task_id: TaskId,
+    },
+    RequestLoopAudioExport {
+        loop_id: LoopId,
+        format: LoopAudioExportFormat,
+    },
+    RequestLoopAudioImportPicker {
+        loop_id: LoopId,
+    },
+    ImportLoopAudioBytes {
+        loop_id: LoopId,
+        name: String,
+        bytes: Arc<[u8]>,
+        update_loop_length: bool,
+    },
+    RequestLoopMidiExport {
+        loop_id: LoopId,
+        standard: bool,
+    },
+    RequestLoopMidiImportPicker {
+        loop_id: LoopId,
+    },
+    ImportLoopMidiBytes {
+        loop_id: LoopId,
+        name: String,
+        bytes: Arc<[u8]>,
+        update_loop_length: bool,
+    },
 }
 
 pub type AppAction = AppIntent;
@@ -538,15 +631,13 @@ mod tests {
             .validate(),
             Err(DirectTrackSpecError::EmptyName)
         );
-        assert_eq!(
-            DirectTrackSpec {
-                name: "Track".to_owned(),
-                audio_channels: 11,
-                midi: false,
-            }
-            .validate(),
-            Err(DirectTrackSpecError::AudioChannelsOutOfRange)
-        );
+        assert!(DirectTrackSpec {
+            name: "Many channels".to_owned(),
+            audio_channels: 1000,
+            midi: false,
+        }
+        .validate()
+        .is_ok());
         assert!(DirectTrackSpec {
             name: "Track".to_owned(),
             audio_channels: 2,

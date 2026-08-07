@@ -1,12 +1,15 @@
 use std::collections::BTreeMap;
 
-use crate::{LoopId, LoopWidget, LoopWidgetAction, TrackControls, TrackState, TrackWidgetAction};
+use crate::{
+    AppIntent, LoopId, LoopWidget, LoopWidgetAction, TrackControls, TrackState, TrackWidgetAction,
+};
 use egui_material_icons::icons::{ICON_ADD, ICON_MORE_VERT};
 
 #[derive(Debug, Default)]
 pub struct TrackWidgetResponse {
     pub actions: Vec<TrackWidgetAction>,
     pub loop_actions: Vec<(LoopId, LoopWidgetAction)>,
+    pub io_intents: Vec<AppIntent>,
     pub add_loop_requested: bool,
     pub connections_requested: bool,
 }
@@ -64,6 +67,7 @@ impl TrackWidget {
                                     .into_iter()
                                     .map(|action| (loop_state.id, action)),
                             );
+                            result.io_intents.extend(response.io_intents);
                         });
                         #[cfg(test)]
                         self.test_loop_rects.push(_loop_response.response.rect);

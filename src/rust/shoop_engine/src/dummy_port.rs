@@ -37,7 +37,7 @@ pub struct ExternalPortDescriptor {
 }
 
 /// Registry of mock external ports and who is connected to them.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct DummyExternalConnections {
     mock_ports: Vec<ExternalPortDescriptor>,
     /// (port, external port name) pairs, in the order they were made.

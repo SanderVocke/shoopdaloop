@@ -9,7 +9,11 @@ shoop_app = { path = "../shoop_app" }
 shoop_backend = { path = "../shoop_backend" }
 shoop_egui = { path = "../shoop_egui" }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rfd = { workspace = true, default-features = false, features = ["xdg-portal", "async-std"] }
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+rfd = { workspace = true, features = ["xdg-portal", "async-std"] }
 js-sys = "0.3"
 log = { workspace = true }
 serde_json = { workspace = true }
@@ -44,6 +48,9 @@ web-sys = { version = "0.3", features = [
     "Response",
     "Window",
 ] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

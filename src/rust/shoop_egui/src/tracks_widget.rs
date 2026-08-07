@@ -86,6 +86,7 @@ fn collect_response(
     track: &TrackState,
     response: crate::TrackWidgetResponse,
 ) {
+    result.intents.extend(response.io_intents.iter().cloned());
     result
         .intents
         .extend(

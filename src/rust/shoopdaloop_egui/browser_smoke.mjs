@@ -181,7 +181,7 @@ try {
       ? '?self-test=1'
       : outputOnly
         ? ''
-        : '?offline=1';
+        : '?offline=1&self-test=1';
     entryUrl = `${pathToFileURL(selfContainedPath).href}${query}`;
   } else {
     entryUrl = outputOnly
@@ -220,8 +220,10 @@ try {
 
   if (selfContained && !outputOnly && !directFileMicrophone) {
     const state = await waitFor(
-      candidate => candidate.driver === 'Dummy' && candidate.revision > 0,
-      'offline dummy mode did not start',
+      candidate => candidate.driver === 'Dummy'
+        && candidate.revision > 0
+        && candidate.selfTest === 'passed',
+      'offline dummy session round trip did not finish',
     );
     if (!state.status.includes('Explicit offline dummy')) {
       throw new Error(`offline artifact was not explicit: ${JSON.stringify(state)}`);

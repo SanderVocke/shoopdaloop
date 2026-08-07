@@ -1,13 +1,13 @@
-use std::sync::Arc;
-
 use shoop_audio_protocol::{
     Command, CommandEnvelope, Event, EventEnvelope, WaveformChunk, WireLoopMode, WireLoopState,
-    WireSnapshot, WireTrackControl, WireTrackState, COMMAND_MAX_BYTES, MAX_AUDIO_CHANNELS,
-    PROTOCOL_VERSION, WAVEFORM_CHUNK_SAMPLES,
+    WireSnapshot, WireTrackControl, WireTrackState, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS,
+    PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
+    WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
-    Backend, BackendGrabRequest, BackendLoopId, BackendLoopMode, BackendSnapshot,
-    BackendTrackControl, BackendTrackId, DirectTrackRequest, EngineBackend, MAX_WEB_AUDIO_QUANTUM,
+    Backend, BackendGrabRequest, BackendLoopId, BackendLoopMode, BackendSessionData,
+    BackendSnapshot, BackendTrackControl, BackendTrackId, DirectTrackRequest, EngineBackend,
+    MAX_WEB_AUDIO_QUANTUM,
 };
 
 pub struct WorkletHost {
@@ -22,6 +22,11 @@ pub struct WorkletHost {
     next_sequence: u64,
     stopped: bool,
     fatal_error: Option<String>,
+    capture_generation: Option<u64>,
+    capture_bytes: Vec<u8>,
+    replace_generation: Option<u64>,
+    replace_expected_bytes: usize,
+    replace_bytes: Vec<u8>,
 }
 
 impl WorkletHost {
@@ -36,15 +41,20 @@ impl WorkletHost {
             backend: EngineBackend::new_web_audio(sample_rate, max_quantum as u32)
                 .map_err(|error| error.to_string())?,
             max_quantum,
-            input: vec![0.0; MAX_AUDIO_CHANNELS * max_quantum],
-            output: vec![0.0; MAX_AUDIO_CHANNELS * max_quantum],
-            packed_input: vec![0.0; MAX_AUDIO_CHANNELS * max_quantum],
-            packed_output: vec![0.0; MAX_AUDIO_CHANNELS * max_quantum],
+            input: vec![0.0; MAX_DEVICE_AUDIO_CHANNELS * max_quantum],
+            output: vec![0.0; MAX_DEVICE_AUDIO_CHANNELS * max_quantum],
+            packed_input: vec![0.0; MAX_DEVICE_AUDIO_CHANNELS * max_quantum],
+            packed_output: vec![0.0; MAX_DEVICE_AUDIO_CHANNELS * max_quantum],
             command_buffer: vec![0; COMMAND_MAX_BYTES],
             response: String::with_capacity(COMMAND_MAX_BYTES * 2),
             next_sequence: 1,
             stopped: false,
             fatal_error: None,
+            capture_generation: None,
+            capture_bytes: Vec::new(),
+            replace_generation: None,
+            replace_expected_bytes: 0,
+            replace_bytes: Vec::new(),
         })
     }
 
@@ -64,8 +74,8 @@ impl WorkletHost {
     ) -> bool {
         if self.stopped
             || self.fatal_error.is_some()
-            || input_channels > MAX_AUDIO_CHANNELS
-            || output_channels > MAX_AUDIO_CHANNELS
+            || input_channels > MAX_DEVICE_AUDIO_CHANNELS
+            || output_channels > MAX_DEVICE_AUDIO_CHANNELS
             || n_frames == 0
             || n_frames > self.max_quantum
         {
@@ -109,7 +119,7 @@ impl WorkletHost {
             event,
         })
         .unwrap_or_else(|_| {
-            r#"{"version":1,"sequence":0,"event":{"kind":"error","message":"response serialization failed"}}"#
+            r#"{"version":2,"sequence":0,"event":{"kind":"error","message":"response serialization failed"}}"#
                 .to_owned()
         });
         &self.response
@@ -251,32 +261,126 @@ impl WorkletHost {
                 offset,
                 max_samples,
             } => {
-                let channels = self
+                let chunk = self
                     .backend
-                    .loop_audio_data(BackendLoopId::from_raw(loop_id))
-                    .map_err(|error| error.to_string())?
-                    .unwrap_or_default();
-                let samples = channels
-                    .get(channel)
-                    .cloned()
-                    .unwrap_or_else(|| Arc::from([]));
-                let max_samples = max_samples.min(WAVEFORM_CHUNK_SAMPLES);
-                let end = offset.saturating_add(max_samples).min(samples.len());
-                let chunk = if offset < end {
-                    samples[offset..end].to_vec()
-                } else {
-                    Vec::new()
-                };
+                    .loop_audio_data_chunk(
+                        BackendLoopId::from_raw(loop_id),
+                        channel,
+                        offset,
+                        max_samples.min(WAVEFORM_CHUNK_SAMPLES),
+                    )
+                    .map_err(|error| error.to_string())?;
                 Ok(Event::Waveform(WaveformChunk {
                     loop_id,
                     revision,
-                    channel,
-                    channel_count: channels.len(),
-                    offset,
-                    total_samples: samples.len(),
-                    final_chunk: end >= samples.len(),
-                    samples: chunk,
+                    channel: chunk.channel,
+                    channel_count: chunk.channel_count,
+                    offset: chunk.offset,
+                    total_samples: chunk.total_samples,
+                    final_chunk: chunk.offset.saturating_add(chunk.samples.len())
+                        >= chunk.total_samples,
+                    samples: chunk.samples,
                 }))
+            }
+            Command::BeginSessionCapture { generation } => {
+                if generation == 0 {
+                    return Err("session capture generation must be non-zero".to_owned());
+                }
+                let capture = self
+                    .backend
+                    .capture_session()
+                    .map_err(|error| error.to_string())?;
+                let bytes = serde_json::to_vec(&capture).map_err(|error| error.to_string())?;
+                if bytes.len() > SESSION_TRANSFER_MAX_BYTES {
+                    return Err("session capture exceeds the transfer limit".to_owned());
+                }
+                self.capture_generation = Some(generation);
+                self.capture_bytes = bytes;
+                Ok(Event::SessionCaptureReady {
+                    generation,
+                    total_bytes: self.capture_bytes.len(),
+                })
+            }
+            Command::ReadSessionCapture {
+                generation,
+                offset,
+                max_bytes,
+            } => {
+                if self.capture_generation != Some(generation) {
+                    return Err("stale session capture generation".to_owned());
+                }
+                if offset > self.capture_bytes.len() {
+                    return Err("session capture offset is out of range".to_owned());
+                }
+                let wanted = max_bytes.min(SESSION_TRANSFER_CHUNK_BYTES);
+                let end = offset.saturating_add(wanted).min(self.capture_bytes.len());
+                Ok(Event::SessionCaptureChunk {
+                    generation,
+                    offset,
+                    total_bytes: self.capture_bytes.len(),
+                    final_chunk: end >= self.capture_bytes.len(),
+                    bytes: self.capture_bytes[offset..end].to_vec(),
+                })
+            }
+            Command::BeginSessionReplace {
+                generation,
+                total_bytes,
+            } => {
+                if generation == 0 || total_bytes > SESSION_TRANSFER_MAX_BYTES {
+                    return Err("invalid session replacement size or generation".to_owned());
+                }
+                self.replace_generation = Some(generation);
+                self.replace_expected_bytes = total_bytes;
+                self.replace_bytes = Vec::with_capacity(total_bytes);
+                Ok(Event::Ack)
+            }
+            Command::WriteSessionReplace {
+                generation,
+                offset,
+                bytes,
+            } => {
+                if self.replace_generation != Some(generation) {
+                    return Err("stale session replacement generation".to_owned());
+                }
+                if bytes.len() > SESSION_TRANSFER_CHUNK_BYTES
+                    || offset != self.replace_bytes.len()
+                    || self.replace_bytes.len().saturating_add(bytes.len())
+                        > self.replace_expected_bytes
+                {
+                    return Err("invalid session replacement chunk".to_owned());
+                }
+                self.replace_bytes.extend_from_slice(&bytes);
+                Ok(Event::Ack)
+            }
+            Command::CommitSessionReplace { generation } => {
+                if self.replace_generation != Some(generation)
+                    || self.replace_bytes.len() != self.replace_expected_bytes
+                {
+                    return Err("session replacement is incomplete or stale".to_owned());
+                }
+                let session: BackendSessionData = serde_json::from_slice(&self.replace_bytes)
+                    .map_err(|error| format!("invalid prepared session: {error}"))?;
+                self.backend
+                    .replace_session(&session)
+                    .map_err(|error| error.to_string())?;
+                self.replace_generation = None;
+                self.replace_expected_bytes = 0;
+                self.replace_bytes.clear();
+                self.capture_generation = None;
+                self.capture_bytes.clear();
+                Ok(Event::SessionReplaceComplete { generation })
+            }
+            Command::AbortSessionTransfer { generation } => {
+                if self.capture_generation == Some(generation) {
+                    self.capture_generation = None;
+                    self.capture_bytes.clear();
+                }
+                if self.replace_generation == Some(generation) {
+                    self.replace_generation = None;
+                    self.replace_expected_bytes = 0;
+                    self.replace_bytes.clear();
+                }
+                Ok(Event::SessionTransferAborted { generation })
             }
             Command::Poll => {
                 if let Some(message) = self.fatal_error.clone() {
@@ -290,6 +394,11 @@ impl WorkletHost {
             }
             Command::Shutdown => {
                 self.stopped = true;
+                self.capture_generation = None;
+                self.capture_bytes.clear();
+                self.replace_generation = None;
+                self.replace_expected_bytes = 0;
+                self.replace_bytes.clear();
                 Ok(Event::Stopped)
             }
         }
@@ -562,6 +671,126 @@ mod tests {
             panic!("expected snapshot");
         };
         assert_eq!(snapshot.loops[0].balance, 0.5);
+    }
+
+    #[test]
+    fn session_capture_and_replacement_use_bounded_chunks_and_keep_processing() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        let mut sequence = 1_u64;
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence,
+                Command::CreateTrack {
+                    expected_track_id: 1,
+                    expected_loop_ids: vec![1],
+                    port_name_base: "session".to_owned(),
+                    audio_channels: 4,
+                    midi: true,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        sequence += 1;
+        let Event::SessionCaptureReady { total_bytes, .. } = command(
+            &mut host,
+            sequence,
+            Command::BeginSessionCapture { generation: 7 },
+        )
+        .event
+        else {
+            panic!("expected session capture metadata")
+        };
+        sequence += 1;
+        let mut captured = Vec::new();
+        while captured.len() < total_bytes {
+            let offset = captured.len();
+            let Event::SessionCaptureChunk {
+                bytes, final_chunk, ..
+            } = command(
+                &mut host,
+                sequence,
+                Command::ReadSessionCapture {
+                    generation: 7,
+                    offset,
+                    max_bytes: SESSION_TRANSFER_CHUNK_BYTES,
+                },
+            )
+            .event
+            else {
+                panic!("expected session capture chunk")
+            };
+            sequence += 1;
+            assert!(bytes.len() <= SESSION_TRANSFER_CHUNK_BYTES);
+            captured.extend_from_slice(&bytes);
+            assert_eq!(final_chunk, captured.len() == total_bytes);
+            assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 2, 128)));
+        }
+        let mut session: BackendSessionData = serde_json::from_slice(&captured).unwrap();
+        session.tracks[0].loops[0].length = 4;
+        session.tracks[0].loops[0].audio[0].samples = vec![0.1, 0.2, 0.3, 0.4];
+        session.tracks[0].loops[0].midi[0] = shoop_backend::BackendMidiContent {
+            length: 4,
+            start_state: vec![vec![0xB0, 7, 100]],
+            events: vec![shoop_backend::BackendMidiEvent {
+                time: 2,
+                data: vec![0x90, 60, 100],
+            }],
+            start_offset: 0,
+            preplay: 0,
+        };
+        let replacement = serde_json::to_vec(&session).unwrap();
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence,
+                Command::BeginSessionReplace {
+                    generation: 8,
+                    total_bytes: replacement.len(),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        sequence += 1;
+        for (index, chunk) in replacement.chunks(SESSION_TRANSFER_CHUNK_BYTES).enumerate() {
+            assert!(matches!(
+                command(
+                    &mut host,
+                    sequence,
+                    Command::WriteSessionReplace {
+                        generation: 8,
+                        offset: index * SESSION_TRANSFER_CHUNK_BYTES,
+                        bytes: chunk.to_vec(),
+                    },
+                )
+                .event,
+                Event::Ack
+            ));
+            sequence += 1;
+            assert_no_alloc::assert_no_alloc(|| assert!(host.process(0, 2, 128)));
+        }
+        let Event::Snapshot(before_commit) = command(&mut host, sequence, Command::Poll).event
+        else {
+            panic!("expected pre-commit snapshot")
+        };
+        assert!(before_commit.callback_count > 1);
+        sequence += 1;
+        assert!(matches!(
+            command(
+                &mut host,
+                sequence,
+                Command::CommitSessionReplace { generation: 8 },
+            )
+            .event,
+            Event::SessionReplaceComplete { generation: 8 }
+        ));
+        sequence += 1;
+        let Event::Snapshot(snapshot) = command(&mut host, sequence, Command::Poll).event else {
+            panic!("expected snapshot")
+        };
+        assert_eq!(snapshot.loops[0].length, 4);
     }
 
     #[test]

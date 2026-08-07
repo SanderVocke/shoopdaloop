@@ -8,15 +8,16 @@ use anyhow::{anyhow, Result};
 use js_sys::{Array, Object, Reflect, WebAssembly};
 use shoop_audio_protocol::{
     Command, CommandEnvelope, Event, EventEnvelope, WaveformChunk, WireGrabRequest, WireLoopMode,
-    WireSnapshot, WireTrackControl, COMMAND_CAPACITY, MAX_AUDIO_CHANNELS, PROTOCOL_VERSION,
-    STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
+    WireSnapshot, WireTrackControl, COMMAND_CAPACITY, MAX_DEVICE_AUDIO_CHANNELS, PROTOCOL_VERSION,
+    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS,
+    WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
     Backend, BackendDriverState, BackendGrabRequest, BackendLoopId, BackendLoopMode,
     BackendLoopState, BackendPortConnectionState, BackendPortDataType, BackendPortDescriptor,
-    BackendPortDirection, BackendPortId, BackendPortRole, BackendSnapshot, BackendStatus,
-    BackendTrackControl, BackendTrackCreation, BackendTrackId, BackendTrackState,
-    DirectTrackRequest,
+    BackendPortDirection, BackendPortId, BackendPortRole, BackendSessionData,
+    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
+    BackendTrackCreation, BackendTrackId, BackendTrackState, DirectTrackRequest,
 };
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
@@ -571,7 +572,7 @@ async fn start_audio_graph(
     options.set_number_of_inputs(if stream.is_some() { 1 } else { 0 });
     options.set_number_of_outputs(1);
     let output_channels = Array::new();
-    output_channels.push(&JsValue::from_f64(MAX_AUDIO_CHANNELS as f64));
+    output_channels.push(&JsValue::from_f64(MAX_DEVICE_AUDIO_CHANNELS as f64));
     options.set_output_channel_count(&output_channels.into());
     options.set_processor_options(Some(&processor_options));
     let node = AudioWorkletNode::new_with_options(&context, WORKLET_NAME, &options)?;
@@ -847,6 +848,22 @@ struct WaveformAssembly {
     in_flight: bool,
 }
 
+struct SessionCaptureAssembly {
+    generation: u64,
+    total_bytes: Option<usize>,
+    bytes: Vec<u8>,
+    in_flight: bool,
+}
+
+struct SessionReplaceAssembly {
+    generation: u64,
+    session: BackendSessionData,
+    bytes: Vec<u8>,
+    next_offset: usize,
+    commit_sent: bool,
+    complete: bool,
+}
+
 pub struct WebAudioBackend {
     transport: Rc<RefCell<Transport>>,
     snapshot: BackendSnapshot,
@@ -856,6 +873,9 @@ pub struct WebAudioBackend {
     last_poll: Instant,
     waveform_revisions: BTreeMap<BackendLoopId, u64>,
     waveforms: BTreeMap<BackendLoopId, WaveformAssembly>,
+    next_session_generation: u64,
+    session_capture: Option<SessionCaptureAssembly>,
+    session_replace: Option<SessionReplaceAssembly>,
 }
 
 impl WebAudioBackend {
@@ -877,6 +897,9 @@ impl WebAudioBackend {
                 last_poll: Instant::now(),
                 waveform_revisions: BTreeMap::new(),
                 waveforms: BTreeMap::new(),
+                next_session_generation: 1,
+                session_capture: None,
+                session_replace: None,
             },
             transport,
         )
@@ -932,6 +955,170 @@ impl WebAudioBackend {
             assembly.next_offset = chunk.offset.saturating_add(chunk.samples.len());
         }
         self.request_waveform_chunk(loop_id)
+    }
+
+    fn request_session_capture_chunk(&mut self) -> Result<()> {
+        let Some(capture) = self.session_capture.as_mut() else {
+            return Ok(());
+        };
+        let Some(total_bytes) = capture.total_bytes else {
+            return Ok(());
+        };
+        if capture.in_flight || capture.bytes.len() >= total_bytes {
+            return Ok(());
+        }
+        self.transport
+            .borrow_mut()
+            .ephemeral(Command::ReadSessionCapture {
+                generation: capture.generation,
+                offset: capture.bytes.len(),
+                max_bytes: SESSION_TRANSFER_CHUNK_BYTES,
+            })?;
+        capture.in_flight = true;
+        Ok(())
+    }
+
+    fn apply_session_capture_ready(&mut self, generation: u64, total_bytes: usize) -> Result<()> {
+        let Some(capture) = self.session_capture.as_mut() else {
+            return Ok(());
+        };
+        if capture.generation != generation || total_bytes > SESSION_TRANSFER_MAX_BYTES {
+            return Err(anyhow!("invalid session capture metadata"));
+        }
+        capture.total_bytes = Some(total_bytes);
+        capture.bytes.reserve(total_bytes);
+        capture.in_flight = false;
+        self.request_session_capture_chunk()
+    }
+
+    fn apply_session_capture_chunk(
+        &mut self,
+        generation: u64,
+        offset: usize,
+        total_bytes: usize,
+        final_chunk: bool,
+        bytes: Vec<u8>,
+    ) -> Result<()> {
+        let Some(capture) = self.session_capture.as_mut() else {
+            return Ok(());
+        };
+        if capture.generation != generation
+            || capture.total_bytes != Some(total_bytes)
+            || capture.bytes.len() != offset
+            || bytes.len() > SESSION_TRANSFER_CHUNK_BYTES
+            || offset.saturating_add(bytes.len()) > total_bytes
+            || final_chunk != (offset.saturating_add(bytes.len()) >= total_bytes)
+        {
+            return Err(anyhow!("invalid session capture chunk"));
+        }
+        capture.bytes.extend_from_slice(&bytes);
+        capture.in_flight = false;
+        self.request_session_capture_chunk()
+    }
+
+    fn pump_session_replace(&mut self) -> Result<()> {
+        let Some(replace) = self.session_replace.as_mut() else {
+            return Ok(());
+        };
+        if replace.complete {
+            return Ok(());
+        }
+        while replace.next_offset < replace.bytes.len()
+            && self.transport.borrow().in_flight < COMMAND_CAPACITY / 2
+        {
+            let end = replace
+                .next_offset
+                .saturating_add(SESSION_TRANSFER_CHUNK_BYTES)
+                .min(replace.bytes.len());
+            self.transport
+                .borrow_mut()
+                .ephemeral(Command::WriteSessionReplace {
+                    generation: replace.generation,
+                    offset: replace.next_offset,
+                    bytes: replace.bytes[replace.next_offset..end].to_vec(),
+                })?;
+            replace.next_offset = end;
+        }
+        if replace.next_offset == replace.bytes.len()
+            && !replace.commit_sent
+            && self.transport.borrow().in_flight < COMMAND_CAPACITY
+        {
+            self.transport
+                .borrow_mut()
+                .ephemeral(Command::CommitSessionReplace {
+                    generation: replace.generation,
+                })?;
+            replace.commit_sent = true;
+        }
+        Ok(())
+    }
+
+    fn apply_replaced_session(
+        &mut self,
+        session: &BackendSessionData,
+        replacement: &BackendSessionReplacement,
+    ) {
+        self.snapshot.tracks.clear();
+        self.snapshot.loops.clear();
+        self.snapshot.connections.ports.clear();
+        self.waveforms.clear();
+        for source_track in &session.tracks {
+            let Some(created) = replacement.tracks.get(&source_track.source_id) else {
+                continue;
+            };
+            self.snapshot
+                .tracks
+                .insert(created.track_id, source_track.state.clone());
+            for (source_loop, loop_id) in source_track.loops.iter().zip(&created.loops) {
+                self.snapshot.loops.insert(
+                    *loop_id,
+                    BackendLoopState {
+                        mode: BackendLoopMode::Stopped,
+                        length: source_loop.length,
+                        stereo: source_track.state.audio_channels == 2,
+                        gain: source_loop.gain,
+                        balance: source_loop.balance,
+                        audio_peaks: vec![-200.0; source_track.state.audio_channels as usize],
+                        ..Default::default()
+                    },
+                );
+            }
+            for (source_port, created_port) in source_track.ports.iter().zip(&created.ports) {
+                self.snapshot.connections.ports.insert(
+                    created_port.id,
+                    BackendPortConnectionState {
+                        port: created_port.clone(),
+                        candidates: Vec::new(),
+                    },
+                );
+                debug_assert_eq!(
+                    replacement.ports.get(&source_port.source_id),
+                    Some(&created_port.id)
+                );
+            }
+        }
+        self.next_track_id = replacement
+            .tracks
+            .values()
+            .map(|created| created.track_id.raw())
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        self.next_loop_id = replacement
+            .loops
+            .values()
+            .map(|id| id.raw())
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        self.next_port_id = replacement
+            .ports
+            .values()
+            .map(|id| id.raw())
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        self.snapshot.connections.revision = self.snapshot.connections.revision.wrapping_add(1);
     }
 
     fn apply_wire_snapshot(&mut self, wire: WireSnapshot) {
@@ -1003,9 +1190,52 @@ impl WebAudioBackend {
     }
 }
 
+fn browser_replacement_mapping(session: &BackendSessionData) -> BackendSessionReplacement {
+    let mut replacement = BackendSessionReplacement::default();
+    let mut next_track_id = 1_u64;
+    let mut next_loop_id = 1_u64;
+    let mut next_port_id = 1_u64;
+    for source_track in &session.tracks {
+        let track_id = BackendTrackId::from_raw(next_track_id);
+        next_track_id = next_track_id.saturating_add(1);
+        let loops = source_track
+            .loops
+            .iter()
+            .map(|source_loop| {
+                let id = BackendLoopId::from_raw(next_loop_id);
+                next_loop_id = next_loop_id.saturating_add(1);
+                replacement.loops.insert(source_loop.source_id, id);
+                id
+            })
+            .collect::<Vec<_>>();
+        let ports = source_track
+            .ports
+            .iter()
+            .map(|source_port| {
+                let mut descriptor = source_port.descriptor.clone();
+                descriptor.id = BackendPortId::from_raw(next_port_id);
+                next_port_id = next_port_id.saturating_add(1);
+                replacement
+                    .ports
+                    .insert(source_port.source_id, descriptor.id);
+                descriptor
+            })
+            .collect::<Vec<_>>();
+        replacement.tracks.insert(
+            source_track.source_id,
+            BackendTrackCreation {
+                track_id,
+                loops,
+                ports,
+            },
+        );
+    }
+    replacement
+}
+
 fn browser_port_descriptors(
     base: &str,
-    audio_channels: u8,
+    audio_channels: u32,
     midi: bool,
     next_port_id: &mut u64,
 ) -> Vec<BackendPortDescriptor> {
@@ -1302,6 +1532,71 @@ impl Backend for WebAudioBackend {
         Ok(())
     }
 
+    fn capture_session(&mut self) -> Result<BackendSessionData> {
+        if let Some(capture) = &self.session_capture {
+            if capture.total_bytes == Some(capture.bytes.len()) && !capture.in_flight {
+                let session = serde_json::from_slice(&capture.bytes)
+                    .map_err(|error| anyhow!("invalid worklet session capture: {error}"))?;
+                self.session_capture = None;
+                return Ok(session);
+            }
+            return Err(anyhow!("session capture pending"));
+        }
+        let generation = self.next_session_generation;
+        self.next_session_generation = self.next_session_generation.saturating_add(1);
+        self.transport
+            .borrow_mut()
+            .ephemeral(Command::BeginSessionCapture { generation })?;
+        self.session_capture = Some(SessionCaptureAssembly {
+            generation,
+            total_bytes: None,
+            bytes: Vec::new(),
+            in_flight: true,
+        });
+        Err(anyhow!("session capture pending"))
+    }
+
+    fn replace_session(
+        &mut self,
+        session: &BackendSessionData,
+    ) -> Result<BackendSessionReplacement> {
+        if let Some(replace) = &self.session_replace {
+            if &replace.session != session {
+                return Err(anyhow!("another session replacement is active"));
+            }
+            if replace.complete {
+                let replacement = browser_replacement_mapping(session);
+                self.apply_replaced_session(session, &replacement);
+                self.session_replace = None;
+                return Ok(replacement);
+            }
+            self.pump_session_replace()?;
+            return Err(anyhow!("session replacement pending"));
+        }
+        let bytes = serde_json::to_vec(session)?;
+        if bytes.len() > SESSION_TRANSFER_MAX_BYTES {
+            return Err(anyhow!("prepared session exceeds browser transfer limit"));
+        }
+        let generation = self.next_session_generation;
+        self.next_session_generation = self.next_session_generation.saturating_add(1);
+        self.transport
+            .borrow_mut()
+            .ephemeral(Command::BeginSessionReplace {
+                generation,
+                total_bytes: bytes.len(),
+            })?;
+        self.session_replace = Some(SessionReplaceAssembly {
+            generation,
+            session: session.clone(),
+            bytes,
+            next_offset: 0,
+            commit_sent: false,
+            complete: false,
+        });
+        self.pump_session_replace()?;
+        Err(anyhow!("session replacement pending"))
+    }
+
     fn advance(&mut self, _elapsed: Duration) {}
 
     fn poll(&mut self) -> Result<BackendSnapshot> {
@@ -1324,8 +1619,49 @@ impl Backend for WebAudioBackend {
                 Event::Error { message } => return Err(anyhow!(message)),
                 Event::Snapshot(snapshot) => self.apply_wire_snapshot(snapshot),
                 Event::Waveform(chunk) => self.apply_waveform_chunk(chunk)?,
+                Event::SessionCaptureReady {
+                    generation,
+                    total_bytes,
+                } => self.apply_session_capture_ready(generation, total_bytes)?,
+                Event::SessionCaptureChunk {
+                    generation,
+                    offset,
+                    total_bytes,
+                    final_chunk,
+                    bytes,
+                } => self.apply_session_capture_chunk(
+                    generation,
+                    offset,
+                    total_bytes,
+                    final_chunk,
+                    bytes,
+                )?,
+                Event::SessionReplaceComplete { generation } => {
+                    if let Some(replace) = self.session_replace.as_mut() {
+                        if replace.generation == generation {
+                            replace.complete = true;
+                        }
+                    }
+                }
+                Event::SessionTransferAborted { generation } => {
+                    if self
+                        .session_capture
+                        .as_ref()
+                        .is_some_and(|capture| capture.generation == generation)
+                    {
+                        self.session_capture = None;
+                    }
+                    if self
+                        .session_replace
+                        .as_ref()
+                        .is_some_and(|replace| replace.generation == generation)
+                    {
+                        self.session_replace = None;
+                    }
+                }
             }
         }
+        self.pump_session_replace()?;
         if let Some(error) = self.transport.borrow_mut().error.take() {
             return Err(anyhow!(error));
         }
