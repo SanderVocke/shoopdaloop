@@ -2,7 +2,7 @@
 
 ## Status and relationship to the replacement project
 
-**Status:** Implementation complete; final retained-QML CI evidence pending
+**Status:** Complete
 
 This is the next major milestone in `EGUI_REPLACEMENT_PROJECT.md`. It expands the persistence and media rows in `EGUI_FEATURE_PARITY_MATRIX.md` and makes the existing tracks/loops slice usable across runs on native and WebAssembly targets.
 
@@ -207,7 +207,7 @@ Verification:
 ### Stage 8 — Final validation and project-ledger update
 
 - [x] Run formatting and warning-denying builds for native and all affected Wasm packages.
-- [ ] Run the full Rust workspace, product browser workflows, native egui workflow/paint tests, realtime guards, and retained QML self-test.
+- [x] Run the full Rust workspace, product browser workflows, native egui workflow/paint tests, realtime guards, and retained QML self-test.
 - [x] Update `EGUI_FEATURE_PARITY_MATRIX.md` with discovered rows, implementation status, intentional format differences, and concrete evidence.
 - [x] Update `EGUI_REPLACEMENT_PROJECT.md` coarse status, target architecture (`shoop_session` now real), roadmap, browser/native persistence notes, and remaining deferred runtime capabilities.
 - [x] Document `.shoop` v1, the intentional lack of QML archive compatibility, MIDI timing choices, supported media formats per target, resampling semantics, browser file behavior, resource limits, and recovery from errors.
@@ -219,7 +219,7 @@ Final gates:
 - [x] `cargo test --workspace --features shoop_engine/app_backend` (green with `SHOOP_ALLOW_MISSING_BACKENDS=1` on this device-less host; the unmodified required-backend run reaches only the explicit `/dev/snd/seq` availability failure).
 - [x] All standalone/product `wasm32-unknown-unknown` checks and production Trunk/worklet packaging checks.
 - [x] Hosted Chrome and Firefox plus self-contained Chrome session/loop-I/O workflows.
-- [ ] `target/debug/shoopdaloop_dev.sh --self-test` after the required build.
+- [x] `target/debug/shoopdaloop_dev.sh --self-test` after the required build (authoritative Linux debug PR CI).
 - [x] Source/dependency scans confirm the documented architecture and no stale disabled Session I/O/loop-I/O menu entries remain.
 
 ### Recorded validation evidence
@@ -229,7 +229,8 @@ Final gates:
 - The full workspace passed with the repository's documented unavailable-backend opt-out. Without it, this host has no ALSA sequencer and the three Midir availability assertions fail as designed; no persistence test failed.
 - Release hosted Chrome 147 completed session save/load, post-load non-zero playback, and exact loop audio/MIDI export/re-import with 4,879 callbacks, zero overflow/budget/discontinuity diagnostics, and one retained media track. Hosted Firefox completed the same workflow with 1,968 callbacks and non-zero I/O. Release self-contained Chrome completed its direct-file offline real-byte session/audio/MIDI round trip.
 - Chrome storage-cap stress completed session save/load and post-load playback with 113,316 callbacks while retaining zero protocol overflow, callback-budget overrun, and render discontinuity diagnostics.
-- The retained QML command is still pending authoritative CI evidence: locally, both this branch and a clean `origin/master` worktree pass the first two files and then identically fail to instantiate `tst_CompositeLoop_running.qml` under this Qt environment. This branch changes no QML/frontend product source.
+- PR #676's authoritative Linux debug test job passed the full Rust/realtime/QML gate. The local Qt harness limitation was baseline-equivalent in a clean `origin/master` worktree and is superseded by this containerized CI result.
+- PR #676 also passed all eight egui build/package/test cells: Linux, Windows, macOS ARM, and WebAssembly in debug and release. Hosted/direct-file browser workflows passed in both Wasm profiles; format, docs, and CodeQL checks are green.
 
 ## Execution contract
 
