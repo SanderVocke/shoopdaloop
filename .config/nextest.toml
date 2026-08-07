@@ -10,5 +10,5 @@ test-group = 'carla-worker'
 threads-required = "num-test-threads"
 
 [[profile.default.overrides]]
-filter = 'test(bridge_contains_processor_panics_and_publishes_failure)'
+filter = 'test(/carla_processor::tests::bridge_/)'
 threads-required = "num-test-threads"

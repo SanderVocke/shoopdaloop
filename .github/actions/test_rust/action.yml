@@ -8,4 +8,4 @@ runs:
     shell: wrap-shell {0}
     if: always() && env.COMMAND_TEST_RUST != ''
     run: |
-      ${{ env.RUN_CMD_PREFIX }} ./scripts/run_with_timeout.sh 300 ${{ env.COMMAND_TEST_RUST }}
+      ${{ env.RUN_CMD_PREFIX }} ./scripts/run_with_timeout.sh 600 ${{ env.COMMAND_TEST_RUST }}

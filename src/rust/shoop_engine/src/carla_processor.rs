@@ -1068,6 +1068,9 @@ mod tests {
         let fake = FakeCarlaProcessor::new(FXChainType::CarlaRack, 2, MAX_BLOCK_FRAMES);
         let (control, mut endpoint) = spawn_processor_bridge(Box::new(fake), 1_000, 100).unwrap();
         control.set_active(true);
+        // set_active is asynchronous; use a synchronous FIFO command before
+        // asserting the first processed block.
+        control.set_visible(false).unwrap();
         endpoint.audio_input_mut(0).unwrap()[..4].copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
         endpoint
             .set_midi_input_events(0, &[(2, &[0x90, 64, 100]), (3, &[0xf0, 1, 2, 3, 0xf7])])
