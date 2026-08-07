@@ -174,6 +174,20 @@ pub fn emit_realtime_frame_mark(name: tracy_client::FrameName) {
     });
 }
 
+/// Emit a numeric plot point from a realtime callback when detailed tracing is active.
+#[cfg(feature = "tracy")]
+#[doc(hidden)]
+pub fn emit_realtime_plot(name: tracy_client::PlotName, value: f64) {
+    if !is_engine_detail_enabled() {
+        return;
+    }
+    assert_no_alloc::permit_alloc(|| {
+        if let Some(client) = tracy_client::Client::running() {
+            client.plot(name, value);
+        }
+    });
+}
+
 /// Create a coarse direct Tracy span guarded by the application tracing flags.
 #[cfg(feature = "tracy")]
 #[macro_export]
@@ -229,6 +243,23 @@ macro_rules! realtime_span_detail {
     ($name:literal, value = $value:expr) => {{
         let _ = ($name, $value);
         $crate::disabled_realtime_span()
+    }};
+}
+
+/// Emit a detailed numeric Tracy plot point from a realtime callback.
+#[cfg(feature = "tracy")]
+#[macro_export]
+macro_rules! realtime_plot_detail {
+    ($name:literal, $value:expr) => {
+        $crate::emit_realtime_plot($crate::tracy_client::plot_name!($name), $value as f64)
+    };
+}
+
+#[cfg(not(feature = "tracy"))]
+#[macro_export]
+macro_rules! realtime_plot_detail {
+    ($name:literal, $value:expr) => {{
+        let _ = ($name, $value);
     }};
 }
 

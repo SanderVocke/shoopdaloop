@@ -13,10 +13,10 @@ The retired Qt-hosted egui experiment has been removed. The legacy QML applicati
 The cleanup is complete:
 
 - The QML canvas/window components, four state adapters, launch control, runtime state, dedicated QML test, two frontend adapters, registrations, initialization, and integration-only dependencies are deleted.
-- `LoopWidget.qml` always renders the established QML status surface; the QML self-test reports 235 passed, 0 failed, and one environment-only CPAL virtual-port skip.
+- `LoopWidget.qml` always renders the established QML status surface; the current native matrix runs 236 QML testcases, including the Carla subprocess status and dry/wet coverage.
 - `frontend` and legacy `shoopdaloop` dependency trees contain no egui package. The standalone production runner and fixture preview retain no frontend/QML/CXX-Qt dependency.
 - Focused frontend/API/application/backend/presentation/runner/preview tests pass, as do both standalone Wasm compiler checks.
-- Formatting and the warning-denying all-target workspace build pass. The full workspace run with `shoop_engine/app_backend` reports 1,010 passed and 0 failed across 69 test binaries/doc-test suites.
+- Formatting and the warning-denying all-target workspace build pass. The native release archive currently reports 1,100 Rust tests passed, including the shared Carla subprocess lifecycle and realtime guards.
 - Source, lockfile, deleted-document-reference, and workflow scans contain no stale integration reference outside the retained execution record.
 - Release-browser and cross-platform gates are recorded as passing under the user's explicit instruction to accept those unchanged checks without another run for this documentation closure.
 
@@ -314,6 +314,19 @@ Replacement evidence referenced below consists of:
 | CONN-DEF-002 | Driver selection/settings and native real-driver composition | Retained frontend owns JACK/CPAL settings and drivers. | Explored for connections | Deferred | Deferred | Typed unavailable state in hosted Web Audio; native egui real-driver composition remains roadmap work |
 | CONN-DEF-003 | Dry/wet send/return topology and FX chains | QML dry/wet tracks supply send/return categories. | Explored for connections | Deferred | Deferred | Role model/preview support is complete; topology creation remains FX milestone work |
 | CONN-DEF-004 | MIDI-control and other non-track ports | Global QML session dialog aggregates track ports, not the control port. | Explored for connections | Deferred | Deferred | Explicitly excluded from authoritative track inventory |
+
+## Carla subprocess hosting discovery
+
+The native QML Carla path now supplies a complete frontend-independent hosting-mode setting, processor seam, supervised worker lifecycle, bounded generation logs, shared-memory audio/MIDI transport, checkpoint recovery, and status/log adapter baseline. Native package, process, deadline, cleanup, QML, and benchmark evidence passes on Windows, Linux, macOS Intel, and macOS ARM. This does not advance pure-egui FX parity: dry/wet topology, FX intents/snapshots, settings presentation, persistence, and native real-driver composition remain deferred there. A future egui FX milestone must reuse these engine/application semantics rather than introduce a second worker protocol. In the rows below, `Partial` describes replacement parity, not the completed shared native baseline.
+
+| ID | Capability or behavior | Current native baseline | Discovery | Current implementation | Evidence |
+|---|---|---|---|---|---|
+| FX-SUBPROC-001 | Global direct/subprocess policy | QML settings were previously window-owned and Carla was always direct. | Partially explored | Partial | Shared native baseline complete: startup-owned typed settings default old files to direct mode and current QML exposes restart-scoped selection; egui settings presentation remains deferred |
+| FX-SUBPROC-002 | One worker generation per Carla chain | Direct hosts share the application process. | Partially explored | Partial | Shared native baseline complete: self-spawned workers, independent-process/crash/restart tests, and installed-package evidence pass on Windows, Linux, macOS Intel, and macOS ARM; egui FX composition remains deferred |
+| FX-SUBPROC-003 | Bounded realtime block transfer | Direct Carla ran inline under a callback-visible mutex. | Partially explored | Partial | Shared native baseline complete: lock-free single-writer endpoint, preallocated audio/MIDI pools, three generation-tagged slots, bounded fallback, authenticated notification, allocation/lock guards, and all-platform 2/16-channel six-size measurements pass |
+| FX-SUBPROC-004 | Checkpoint and click recovery | Session state lives in the live direct host. | Partially explored | Partial | Shared native baseline complete: parent checkpoint retention, classified supervised restart, QML toggle-or-recover, and direct/subprocess dry/wet activation/MIDI suites pass; pure-egui FX remains deferred |
+| FX-SUBPROC-005 | Worker diagnostics | No per-chain subprocess streams existed. | Partially explored | Partial | Shared native baseline complete: bounded generation-tagged stdout/stderr, inspect/copy/clear, truncation, crash notification, status, keyboard, and accessibility tests pass; pure-egui presentation remains deferred |
+| FX-SUBPROC-006 | Pure-egui FX integration | FX chains and dry/wet tracks are deferred. | Partially explored | Deferred | Shared core is frontend-independent; no egui FX/settings API or presentation is claimed |
 
 ## Coarsely listed future areas
 

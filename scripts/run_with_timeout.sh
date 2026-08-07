@@ -795,8 +795,14 @@ while true; do
             fi
         fi
         
-        # Clean up stderr capture file if we created one
+        # Replay captured stderr before cleanup. Most Rust test runners write
+        # their progress and failure details to stderr, including after the
+        # short DLL-diagnostic window above.
         if [[ -n "$STDERR_CAPTURE_FILE" ]] && [[ -f "$STDERR_CAPTURE_FILE" ]]; then
+            if [[ -s "$STDERR_CAPTURE_FILE" ]]; then
+                echo "[run_with_timeout] Captured stderr:"
+                cat "$STDERR_CAPTURE_FILE" 2>/dev/null || true
+            fi
             rm -f "$STDERR_CAPTURE_FILE" 2>/dev/null || true
         fi
         

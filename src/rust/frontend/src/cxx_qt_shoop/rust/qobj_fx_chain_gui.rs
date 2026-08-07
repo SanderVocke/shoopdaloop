@@ -5,6 +5,7 @@ use cxx_qt_lib_shoop::{
     connection_types,
     qobject::{qobject_property_bool, FromQObject},
 };
+use shoop_engine::carla_processor::{CarlaGenerationLog, CarlaProcessorLifecycle};
 use shoop_engine::FXChainType;
 
 pub use crate::cxx_qt_shoop::qobj_fx_chain_gui_bridge::ffi::FXChainGui;
@@ -381,6 +382,17 @@ impl FXChainGui {
         }
     }
 
+    pub fn toggle_or_recover(mut self: Pin<&mut FXChainGui>) {
+        self.as_mut().maybe_initialize_backend();
+        if let Some(chain) = self.backend_chain_wrapper.as_ref() {
+            if let Err(error) = chain.toggle_or_recover() {
+                error!(self, "Could not toggle or recover FX chain: {error}");
+            }
+        } else {
+            debug!(self, "Cannot toggle or recover an uninitialized FX chain");
+        }
+    }
+
     pub fn push_active(mut self: Pin<&mut FXChainGui>, active: bool) {
         self.as_mut().maybe_initialize_backend();
         if let Some(chain) = self.backend_chain_wrapper.as_ref() {
@@ -403,6 +415,62 @@ impl FXChainGui {
         self.prev_state.active != 0
     }
 
+    pub fn get_process_lifecycle(self: Pin<&mut FXChainGui>) -> i32 {
+        self.backend_chain_wrapper
+            .as_ref()
+            .map(|chain| match chain.lifecycle() {
+                CarlaProcessorLifecycle::Stopped => 0,
+                CarlaProcessorLifecycle::Starting => 1,
+                CarlaProcessorLifecycle::Running => 2,
+                CarlaProcessorLifecycle::Crashed => 3,
+                CarlaProcessorLifecycle::Restarting => 4,
+                CarlaProcessorLifecycle::Unavailable => 5,
+            })
+            .unwrap_or(5)
+    }
+
+    pub fn get_process_generation(self: Pin<&mut FXChainGui>) -> u64 {
+        self.backend_chain_wrapper
+            .as_ref()
+            .map(|chain| chain.generation())
+            .unwrap_or(0)
+    }
+
+    pub fn get_crash_summary(self: Pin<&mut FXChainGui>) -> QString {
+        QString::from(
+            self.backend_chain_wrapper
+                .as_ref()
+                .and_then(|chain| chain.crash_summary())
+                .unwrap_or_default(),
+        )
+    }
+
+    pub fn get_stdout_log(self: Pin<&mut FXChainGui>) -> QString {
+        QString::from(format_logs(
+            self.backend_chain_wrapper
+                .as_ref()
+                .map(|chain| chain.generation_logs())
+                .unwrap_or_default(),
+            true,
+        ))
+    }
+
+    pub fn get_stderr_log(self: Pin<&mut FXChainGui>) -> QString {
+        QString::from(format_logs(
+            self.backend_chain_wrapper
+                .as_ref()
+                .map(|chain| chain.generation_logs())
+                .unwrap_or_default(),
+            false,
+        ))
+    }
+
+    pub fn clear_process_logs(self: Pin<&mut FXChainGui>) {
+        if let Some(chain) = self.backend_chain_wrapper.as_ref() {
+            chain.clear_logs();
+        }
+    }
+
     pub fn get_chain_type(self: Pin<&mut FXChainGui>) -> i32 {
         self.chain_type.unwrap_or(FXChainType::CarlaRack) as i32
     }
@@ -420,6 +488,26 @@ impl FXChainGui {
             }
         }
     }
+}
+
+fn format_logs(logs: Vec<CarlaGenerationLog>, stdout: bool) -> String {
+    let mut output = String::new();
+    for log in logs {
+        let (bytes, dropped) = if stdout {
+            (log.stdout, log.stdout_dropped_bytes)
+        } else {
+            (log.stderr, log.stderr_dropped_bytes)
+        };
+        output.push_str(&format!(
+            "===== process generation {} ({} dropped bytes) =====\n",
+            log.generation, dropped
+        ));
+        output.push_str(&String::from_utf8_lossy(&bytes));
+        if !output.ends_with('\n') {
+            output.push('\n');
+        }
+    }
+    output
 }
 
 pub fn register_qml_type(module_name: &str, type_name: &str) {

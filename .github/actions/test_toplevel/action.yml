@@ -120,6 +120,55 @@ runs:
       package: ${{ steps.find_package_2.outputs.package }}
       coverage: ${{ inputs.coverage }}
       sudo: ${{ inputs.install_with_sudo }}
+  - name: Install Carla LV2 runtime fixture (Windows)
+    if: always() && runner.os == 'Windows' && env.COMMAND_SHOOPDALOOP != ''
+    shell: wrap-shell {0}
+    env:
+      GHA_RUN_ALWAYS: 1
+    run: |
+      carla_url="https://github.com/falkTX/Carla/releases/download/v2.5.10/Carla-2.5.10-win64.zip"
+      curl -L --fail --retry 3 "$carla_url" --output carla-win64.zip
+      echo "56264cd860b3e6e7b29221fb1e46d7d8a288fb001500f830bcd739ec7b115650  carla-win64.zip" | sha256sum --check
+      rm -rf carla-runtime
+      unzip -q carla-win64.zip -d carla-runtime
+      carla_lv2_root="$(pwd)/carla-runtime/Carla-2.5.10-win64"
+      test -f "$carla_lv2_root/Carla.lv2/manifest.ttl"
+      carla_lv2_root_windows="$(cygpath -w "$carla_lv2_root")"
+      if [[ -n "${LV2_PATH:-}" ]]; then
+        carla_lv2_root_windows="$carla_lv2_root_windows;$LV2_PATH"
+      fi
+      echo "LV2_PATH=$carla_lv2_root_windows" | tee -a "$GITHUB_ENV"
+  - name: Install Carla LV2 runtime fixture (Linux)
+    if: always() && runner.os == 'Linux' && env.COMMAND_SHOOPDALOOP != ''
+    shell: wrap-shell {0}
+    env:
+      GHA_RUN_ALWAYS: 1
+    run: |
+      carla_archive="$RUNNER_TEMP/Carla_2.2.0-linux64.tar.xz"
+      curl -L --fail --retry 3 \
+        -o "$carla_archive" \
+        "https://github.com/falkTX/Carla/releases/download/v2.2.0/Carla_2.2.0-linux64.tar.xz"
+      echo "f04f8355f7c9f90c668873180c366737cf4214ad77cc1dde4549e5623c726c97  $carla_archive" | sha256sum --check
+      carla_root="$RUNNER_TEMP/carla-linux64"
+      rm -rf "$carla_root"
+      mkdir -p "$carla_root"
+      tar -xJf "$carla_archive" -C "$carla_root" --strip-components=1
+      test -f "$carla_root/carla.lv2/manifest.ttl"
+      echo "LV2_PATH=$carla_root${LV2_PATH:+:$LV2_PATH}" | tee -a "$GITHUB_ENV"
+  - name: Install Carla LV2 runtime fixture (macOS)
+    if: always() && runner.os == 'macOS' && env.COMMAND_SHOOPDALOOP != ''
+    shell: wrap-shell {0}
+    env:
+      GHA_RUN_ALWAYS: 1
+    run: |
+      brew install carla
+      carla_prefix=$(brew --prefix carla)
+      carla_lv2_bundle=$(find -L "$carla_prefix" -iname 'carla.lv2' -print -quit)
+      test -n "$carla_lv2_bundle"
+      test -f "$carla_lv2_bundle/manifest.ttl"
+      carla_lv2_parent=$(dirname "$carla_lv2_bundle")
+      echo "Using Carla LV2 fixture at $carla_lv2_bundle"
+      echo "LV2_PATH=$carla_lv2_parent${LV2_PATH:+:$LV2_PATH}" | tee -a "$GITHUB_ENV"
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
@@ -199,6 +248,14 @@ runs:
     env:
       LLVM_REPORTNAME: rust_lcov
       GHA_RUN_ALWAYS: 1
+  - name: Upload Carla subprocess benchmark evidence
+    if: always() && env.COMMAND_TEST_RUST != ''
+    uses: actions/upload-artifact@v4
+    with:
+      name: carla-subprocess-benchmarks-${{ inputs.name }}-${{ github.run_id }}
+      path: carla-subprocess-benchmarks
+      if-no-files-found: warn
+      retention-days: 30
   - uses: ./.github/actions/checkpoint
     if: always()
   - name: Cleanup Rust test binaries between coverage runs
@@ -236,6 +293,17 @@ runs:
       capture_traces: ${{ inputs.capture_traces == 'true' || env.QML_TRACE_CAPTURE_ENABLED == 'true' }}
       tracy_capture_tool: ${{ steps.tracy_capture.outputs.tracy_capture_tool }}
       tracy_capture_output_dir: traces/qml
+  - name: Test packaged Carla subprocess mode
+    if: always() && inputs.do_qml_tests == 'true' && inputs.coverage != 'true' && env.COMMAND_SHOOPDALOOP != ''
+    shell: wrap-shell {0}
+    env:
+      GHA_RUN_ALWAYS: 1
+    run: |
+      QT_ASSUME_STDERR_HAS_CONSOLE=1 \
+        ./scripts/run_with_timeout.sh 600 \
+        ${{ env.COMMAND_SHOOPDALOOP }} --self-test \
+        --carla-hosting-mode-for-test subprocess \
+        --test-files-pattern '{qml_dir}/test/tst_TrackControlAndLoop_drywet_carla.qml'
   - name: Write QML trace metadata
     if: always() && (inputs.capture_traces == 'true' || env.QML_TRACE_CAPTURE_ENABLED == 'true')
     shell: bash

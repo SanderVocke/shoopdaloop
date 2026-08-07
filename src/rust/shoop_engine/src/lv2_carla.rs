@@ -5,6 +5,7 @@
 //! afterwards; realtime processing/state/UI instantiation can build on this without
 //! making frontend code depend on Lilv lifetimes.
 
+use crate::carla_processor::{CarlaProcessor, CarlaProcessorInfo};
 use crate::realtime_lock_guard::Mutex;
 use crate::FXChainType;
 use anyhow::{anyhow, Result};
@@ -167,8 +168,9 @@ impl Drop for CarlaUiRuntime {
 }
 
 pub struct CarlaLv2Host {
-    _world: lilv::World,
     pub info: CarlaPluginInfo,
+    // Fields drop in declaration order: the instance must run its plugin cleanup
+    // before the Lilv world unloads the plugin library (notably on macOS).
     instance: Option<lilv::instance::Instance>,
     state_interface: Option<NonNull<Lv2StateInterface>>,
     audio_inputs: Vec<Vec<f32>>,
@@ -181,12 +183,23 @@ pub struct CarlaLv2Host {
     ui_runtime: Option<CarlaUiRuntime>,
     active: bool,
     visible: bool,
+    _world: lilv::World,
 }
 
 // Carla's LV2 instance is owned by this host object and only accessed through
 // mutable methods; app/session users wrap it in a Mutex before sharing it with
 // callback threads.
 unsafe impl Send for CarlaLv2Host {}
+
+impl Drop for CarlaLv2Host {
+    fn drop(&mut self) {
+        // The UI may hold LV2 instance-access pointers, and the instance invokes
+        // plugin code during cleanup. Tear both down while the Lilv world still
+        // owns the loaded module instead of relying on incidental field order.
+        self.ui_runtime.take();
+        self.instance.take();
+    }
+}
 
 impl std::fmt::Debug for CarlaLv2Host {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -566,6 +579,17 @@ impl CarlaLv2Host {
             .midi_events()
     }
 
+    pub fn fill_midi_output_events(
+        &mut self,
+        idx: usize,
+        destination: &mut crate::carla_processor::CarlaMidiBuffer,
+    ) -> Result<()> {
+        self.midi_outputs
+            .get_mut(idx)
+            .ok_or_else(|| anyhow!("No Carla MIDI output port {idx}"))?
+            .fill_midi_events(destination)
+    }
+
     #[tracing::instrument(name = "engine.plugin.save_state", skip_all)]
     pub fn save_state_string(&mut self) -> Result<String> {
         let state_interface = self
@@ -665,6 +689,74 @@ impl CarlaLv2Host {
     }
 }
 
+impl CarlaProcessor for CarlaLv2Host {
+    fn info(&self) -> CarlaProcessorInfo {
+        CarlaProcessorInfo {
+            chain_type: self.info.chain_type,
+            audio_inputs: self.info.ports.audio_inputs.len(),
+            audio_outputs: self.info.ports.audio_outputs.len(),
+            midi_inputs: self.info.ports.midi_inputs.len(),
+            midi_outputs: self.info.ports.midi_outputs.len(),
+        }
+    }
+
+    fn set_active(&mut self, active: bool) {
+        CarlaLv2Host::set_active(self, active);
+    }
+
+    fn is_active(&self) -> bool {
+        CarlaLv2Host::is_active(self)
+    }
+
+    fn set_visible(&mut self, visible: bool) -> Result<()> {
+        CarlaLv2Host::set_visible(self, visible)
+    }
+
+    fn is_visible(&mut self) -> bool {
+        CarlaLv2Host::is_visible(self)
+    }
+
+    fn save_state(&mut self) -> Result<String> {
+        self.save_state_string()
+    }
+
+    fn restore_state(&mut self, state: &str) -> Result<()> {
+        self.restore_state_string(state)
+    }
+
+    fn audio_input_mut(&mut self, index: usize) -> Option<&mut [f32]> {
+        CarlaLv2Host::audio_input_mut(self, index)
+    }
+
+    fn audio_output(&self, index: usize) -> Option<&[f32]> {
+        CarlaLv2Host::audio_output(self, index)
+    }
+
+    fn set_midi_input_events(&mut self, index: usize, events: &[(u32, &[u8])]) -> Result<()> {
+        CarlaLv2Host::set_midi_input_events(
+            self,
+            index,
+            events.iter().map(|(offset, data)| (*offset, *data)),
+        )
+    }
+
+    fn midi_output_events(&mut self, index: usize) -> Result<Vec<(u32, Vec<u8>)>> {
+        CarlaLv2Host::midi_output_events(self, index)
+    }
+
+    fn fill_midi_output_events(
+        &mut self,
+        index: usize,
+        destination: &mut crate::carla_processor::CarlaMidiBuffer,
+    ) -> Result<()> {
+        CarlaLv2Host::fill_midi_output_events(self, index, destination)
+    }
+
+    fn process(&mut self, frames: usize) -> Result<()> {
+        CarlaLv2Host::process(self, frames)
+    }
+}
+
 struct AtomSequenceBuffer {
     bytes: Vec<u8>,
     sequence_type: LV2Urid,
@@ -722,6 +814,34 @@ impl AtomSequenceBuffer {
             }
         }
         self.as_mut_sequence().atom.size += padded_size as u32;
+        Ok(())
+    }
+
+    fn fill_midi_events(
+        &mut self,
+        destination: &mut crate::carla_processor::CarlaMidiBuffer,
+    ) -> Result<()> {
+        destination.clear();
+        let seq = self.as_mut_sequence();
+        let atom_size = seq.atom.size as usize;
+        let mut offset = std::mem::size_of::<LV2AtomSequence>();
+        let end = std::mem::size_of::<LV2Atom>() + atom_size;
+        while offset + std::mem::size_of::<LV2AtomEvent>() <= end {
+            let event = unsafe { &*(self.bytes.as_ptr().add(offset).cast::<LV2AtomEvent>()) };
+            let data_len = event.body.size as usize;
+            let data_at = offset + std::mem::size_of::<LV2AtomEvent>();
+            if data_at + data_len > self.bytes.len() || data_at + data_len > end {
+                return Err(anyhow!("Invalid Carla MIDI atom sequence event"));
+            }
+            if event.body.mytype == self.midi_event_type {
+                destination.push(
+                    event.time_in_frames.max(0) as u32,
+                    &self.bytes[data_at..data_at + data_len],
+                )?;
+            }
+            offset +=
+                lv2_atom_pad_size((std::mem::size_of::<LV2AtomEvent>() + data_len) as u32) as usize;
+        }
         Ok(())
     }
 

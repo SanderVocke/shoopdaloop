@@ -45,6 +45,9 @@ pub mod ffi {
         pub fn push_ui_visible(self: Pin<&mut FXChainGui>, ui_visible: bool);
 
         #[qinvokable]
+        pub fn toggle_or_recover(self: Pin<&mut FXChainGui>);
+
+        #[qinvokable]
         pub fn push_active(self: Pin<&mut FXChainGui>, active: bool);
 
         #[qinvokable]
@@ -61,6 +64,24 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn get_active(self: Pin<&mut FXChainGui>) -> bool;
+
+        #[qinvokable]
+        pub fn get_process_lifecycle(self: Pin<&mut FXChainGui>) -> i32;
+
+        #[qinvokable]
+        pub fn get_process_generation(self: Pin<&mut FXChainGui>) -> u64;
+
+        #[qinvokable]
+        pub fn get_crash_summary(self: Pin<&mut FXChainGui>) -> QString;
+
+        #[qinvokable]
+        pub fn get_stdout_log(self: Pin<&mut FXChainGui>) -> QString;
+
+        #[qinvokable]
+        pub fn get_stderr_log(self: Pin<&mut FXChainGui>) -> QString;
+
+        #[qinvokable]
+        pub fn clear_process_logs(self: Pin<&mut FXChainGui>);
 
         #[qinvokable]
         pub fn get_chain_type(self: Pin<&mut FXChainGui>) -> i32;

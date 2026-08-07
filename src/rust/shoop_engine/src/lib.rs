@@ -10,6 +10,11 @@ pub mod audio_channel;
 pub mod audio_midi_loop;
 pub mod basic_loop;
 pub mod buffer_queue;
+pub mod carla_processor;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod carla_shared_memory;
+#[cfg(all(feature = "lv2", not(target_arch = "wasm32")))]
+pub mod carla_subprocess;
 pub mod channel_mode;
 pub mod chunked_samples;
 pub mod composite_plan;

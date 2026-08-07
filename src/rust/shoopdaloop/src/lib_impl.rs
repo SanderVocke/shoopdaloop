@@ -294,8 +294,8 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                         let mut testrunner = std::pin::Pin::new_unchecked(&mut **testrunner);
                         let qmldir = &config.qml_dir;
                         let files_pattern = match &cli_args.self_test_options.files_pattern {
-                            Some(pattern) => pattern,
-                            None => &format!("{qmldir}/test/**/tst*.qml"),
+                            Some(pattern) => pattern.replace("{qml_dir}", qmldir),
+                            None => format!("{qmldir}/test/**/tst*.qml"),
                         };
 
                         {
@@ -310,7 +310,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                         }
 
                         testrunner.as_mut().start(
-                            QString::from(files_pattern),
+                            QString::from(&files_pattern),
                             QString::from(
                                 cli_args
                                     .self_test_options
@@ -363,6 +363,71 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
         let _span = tracing::info_span!("app.parse_arguments").entered();
         Some(crate::cli_args::parse_arguments(args.iter()))
     };
+
+    if let Some(args) = cli_args.as_ref() {
+        let worker = &args.carla_worker_options;
+        if worker.carla_worker {
+            let address = worker
+                .carla_worker_address
+                .as_deref()
+                .ok_or_else(|| anyhow!("missing Carla worker address"))?
+                .parse()
+                .map_err(|error| anyhow!("invalid Carla worker address: {error}"))?;
+            let nonce = shoop_engine::carla_subprocess::parse_nonce(
+                worker
+                    .carla_worker_nonce
+                    .as_deref()
+                    .ok_or_else(|| anyhow!("missing Carla worker nonce"))?,
+            )?;
+            let chain_id = shoop_plugin_protocol::ChainId(
+                worker
+                    .carla_worker_chain_id
+                    .ok_or_else(|| anyhow!("missing Carla worker chain ID"))?,
+            );
+            let generation = shoop_plugin_protocol::ProcessGeneration(
+                worker
+                    .carla_worker_generation
+                    .ok_or_else(|| anyhow!("missing Carla worker generation"))?,
+            );
+            let shared_memory_path = worker
+                .carla_worker_shared_memory
+                .clone()
+                .ok_or_else(|| anyhow!("missing Carla worker shared-memory path"))?;
+            return shoop_engine::carla_subprocess::run_carla_worker(
+                shoop_engine::carla_subprocess::CarlaWorkerOptions {
+                    address,
+                    nonce,
+                    chain_id,
+                    generation,
+                    shared_memory_path,
+                    test_mode: worker.carla_worker_test_mode,
+                },
+            )
+            .map(|_| 0);
+        }
+    }
+
+    let settings_path = shoop_settings::default_settings_path()?;
+    let (user_settings, settings_error) =
+        shoop_settings::UserSettings::load_or_default(&settings_path);
+    if let Some(error) = settings_error {
+        warn!(
+            "Could not load user settings from {}: {error:#}; using defaults",
+            settings_path.display()
+        );
+    }
+    let carla_hosting_mode = match cli_args.as_ref().and_then(|args| {
+        args.self_test_options
+            .carla_hosting_mode_for_test
+            .as_deref()
+    }) {
+        Some("in_process") => shoop_settings::CarlaHostingMode::InProcess,
+        Some("subprocess") => shoop_settings::CarlaHostingMode::Subprocess,
+        Some(value) => return Err(anyhow!("invalid test Carla hosting mode {value:?}")),
+        None => user_settings.carla_hosting_mode,
+    };
+    info!("Carla hosting mode: {}", carla_hosting_mode.as_str());
+    shoop_engine::app_backend::set_carla_hosting_mode(carla_hosting_mode);
 
     if !cli_args
         .as_ref()
