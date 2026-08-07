@@ -336,6 +336,16 @@ impl AudioChannel {
         self.buffers.contiguous_copy(self.data_length)
     }
 
+    pub fn data_range(&self, offset: usize, max_samples: usize) -> Vec<f32> {
+        let end = offset.saturating_add(max_samples).min(self.data_length);
+        if offset >= end {
+            return Vec::new();
+        }
+        (offset..end)
+            .filter_map(|position| self.at(position))
+            .collect()
+    }
+
     pub fn load_data(&mut self, samples: &[f32]) {
         self.buffers.set_contents(samples);
         self.data_length = samples.len();

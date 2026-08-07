@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::mpsc::TryRecvError;
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread::{self, JoinHandle};
@@ -7,16 +9,31 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use shoop_app_api::{
-    AppIntent, AppNotification, AppSnapshot, AudioDriverState, ChannelId, ConnectionErrorKind,
-    ConnectionErrorState, ConnectionViewState, DirectTrackSpec, ExternalPortConnectionState,
-    GlobalControlAction, LocalPortConnectionState, LoopAction, LoopDetailsState, LoopId, LoopMode,
-    LoopState, NotificationLevel, PortDataType, PortDirection, PortId, PortRole, StatusState,
-    TrackAction, TrackControlState, TrackId, TrackState, WaveformChannelState,
+    AppIntent, AppNotification, AppSnapshot, AudioChannelMappingState, AudioChannelSelectionState,
+    AudioDriverState, ChannelId, ConnectionErrorKind, ConnectionErrorState, ConnectionViewState,
+    DirectTrackSpec, ExternalPortConnectionState, GlobalControlAction, IoTaskKind, IoTaskState,
+    IoTaskStatus, LocalPortConnectionState, LoopAction, LoopAudioExportFormat, LoopDetailsState,
+    LoopId, LoopMode, LoopState, NotificationLevel, PortDataType, PortDirection, PortId, PortRole,
+    SampleRateWarning, StatusState, TaskId, TrackAction, TrackControlState, TrackId, TrackState,
+    WaveformChannelState,
 };
 use shoop_backend::{
-    Backend, BackendConnectionSnapshot, BackendGrabRequest, BackendLoopId, BackendLoopMode,
+    Backend, BackendAudioContent, BackendConnectionSnapshot, BackendGrabRequest,
+    BackendLoopContent, BackendLoopId, BackendLoopMode, BackendMidiContent, BackendMidiEvent,
     BackendPortDataType, BackendPortDescriptor, BackendPortDirection, BackendPortId,
-    BackendPortRole, BackendSnapshot, BackendTrackControl, BackendTrackId, DirectTrackRequest,
+    BackendPortRole, BackendSessionData, BackendSessionPort, BackendSessionReplacement,
+    BackendSessionTrack, BackendSnapshot, BackendTrackControl, BackendTrackId, BackendTrackState,
+    DirectTrackRequest,
+};
+use shoop_session::{
+    decode_exact_midi, decode_loop_audio, decode_session, decode_standard_midi, decode_wav,
+    encode_exact_midi, encode_float_wav, encode_loop_audio, encode_session, encode_standard_midi,
+    resample_exact_midi, resample_loop_audio, resample_session, AudioPayload, ChannelDocument,
+    ChannelModeDocument, ConnectabilityDocument, DataTypeDocument, ExactMidi, ExactMidiEvent,
+    GlobalControlsDocument, LoopAudio, LoopAudioChannel, LoopDocument, MediaPayload,
+    MidiControlDocument, PortDirectionDocument, PortDocument, PortRoleDocument,
+    RecordingActionDocument, SessionBundle, SessionDocument, TrackControlsDocument, TrackDocument,
+    TrackGroupDocument, TrackTopologyDocument,
 };
 
 const COMMAND_CAPACITY: usize = 1024;
@@ -24,11 +41,20 @@ const MAX_COOPERATIVE_COMMANDS_PER_TICK: usize = 64;
 const POLL_INTERVAL: Duration = Duration::from_millis(16);
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(2);
 
+#[derive(Clone, Debug)]
+pub struct ApplicationFileOutput {
+    pub task_id: TaskId,
+    pub suggested_name: String,
+    pub mime_type: String,
+    pub bytes: Arc<[u8]>,
+}
+
 #[derive(Clone)]
 pub struct ApplicationHandle {
     sender: SyncSender<ApplicationMessage>,
     snapshot: Arc<RwLock<Arc<AppSnapshot>>>,
     saturated_connection: Arc<Mutex<Option<(PortId, String)>>>,
+    file_outputs: Arc<Mutex<VecDeque<ApplicationFileOutput>>>,
 }
 
 impl ApplicationHandle {
@@ -55,6 +81,13 @@ impl ApplicationHandle {
             .read()
             .unwrap_or_else(|error| error.into_inner())
             .clone()
+    }
+
+    pub fn take_file_output(&self) -> Option<ApplicationFileOutput> {
+        self.file_outputs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .pop_front()
     }
 }
 
@@ -91,7 +124,8 @@ pub struct ApplicationRuntime {
 
 impl ApplicationRuntime {
     pub fn start(mut backend: Box<dyn Backend + Send>) -> Result<Self> {
-        let model = ApplicationModel::initialize(&mut *backend)?;
+        let file_outputs = Arc::new(Mutex::new(VecDeque::new()));
+        let model = ApplicationModel::initialize(&mut *backend, Arc::clone(&file_outputs), true)?;
         let initial = Arc::new(model.snapshot());
         let snapshot = Arc::new(RwLock::new(initial));
         let (sender, receiver) = mpsc::sync_channel(COMMAND_CAPACITY);
@@ -100,6 +134,7 @@ impl ApplicationRuntime {
             sender,
             snapshot: Arc::clone(&snapshot),
             saturated_connection: Arc::clone(&saturated_connection),
+            file_outputs,
         };
         let join = thread::Builder::new()
             .name("shoop-application".to_owned())
@@ -129,17 +164,20 @@ pub struct CooperativeApplicationRuntime {
     backend: Box<dyn Backend>,
     commands: VecDeque<AppIntent>,
     snapshot: Arc<AppSnapshot>,
+    file_outputs: Arc<Mutex<VecDeque<ApplicationFileOutput>>>,
 }
 
 impl CooperativeApplicationRuntime {
     pub fn start(mut backend: Box<dyn Backend>) -> Result<Self> {
-        let model = ApplicationModel::initialize(&mut *backend)?;
+        let file_outputs = Arc::new(Mutex::new(VecDeque::new()));
+        let model = ApplicationModel::initialize(&mut *backend, Arc::clone(&file_outputs), false)?;
         let snapshot = Arc::new(model.snapshot());
         Ok(Self {
             model,
             backend,
             commands: VecDeque::with_capacity(COMMAND_CAPACITY),
             snapshot,
+            file_outputs,
         })
     }
 
@@ -179,6 +217,13 @@ impl CooperativeApplicationRuntime {
 
     pub fn has_pending_commands(&self) -> bool {
         !self.commands.is_empty()
+    }
+
+    pub fn take_file_output(&self) -> Option<ApplicationFileOutput> {
+        self.file_outputs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .pop_front()
     }
 }
 
@@ -242,6 +287,7 @@ fn update_application(
     if let Err(error) = model.refresh_selected_audio(backend) {
         model.notify_error(error);
     }
+    model.advance_io(backend);
     model.revision = model.revision.wrapping_add(1);
     publish(Arc::new(model.snapshot()));
 }
@@ -262,6 +308,13 @@ struct ApplicationModel {
     global: shoop_app_api::GlobalControlState,
     status: StatusState,
     notifications: Vec<AppNotification>,
+    next_task_id: u64,
+    io_task: Option<IoTaskState>,
+    pending_io: Option<PendingIo>,
+    session_encoding: Option<Receiver<Result<Vec<u8>, String>>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    background_session_encoding: bool,
+    file_outputs: Arc<Mutex<VecDeque<ApplicationFileOutput>>>,
 }
 
 struct TrackModel {
@@ -270,7 +323,7 @@ struct TrackModel {
     name: String,
     port_name_base: String,
     is_sync: bool,
-    audio_channels: u8,
+    audio_channels: u32,
     loops: Vec<LoopId>,
     port_ids: Arc<[PortId]>,
     controls: TrackControlState,
@@ -303,8 +356,72 @@ struct LoopModel {
     audio_data: Option<Vec<Arc<[f32]>>>,
 }
 
+enum PendingIo {
+    SaveSession,
+    #[cfg(not(target_arch = "wasm32"))]
+    AwaitingSessionEncoding,
+    AwaitingSessionLoad {
+        name: String,
+        bundle: SessionBundle,
+    },
+    CommitSessionLoad {
+        name: String,
+        bundle: SessionBundle,
+        backend_data: BackendSessionData,
+    },
+    AwaitingLoopAudioExportSelection {
+        loop_id: LoopId,
+        format: LoopAudioExportFormat,
+    },
+    ExportLoopAudio {
+        loop_id: LoopId,
+        format: LoopAudioExportFormat,
+        channels: Vec<u32>,
+    },
+    ExportLoopMidi {
+        loop_id: LoopId,
+        standard: bool,
+    },
+    AwaitingLoopAudioImport {
+        loop_id: LoopId,
+        audio: LoopAudio,
+        update_loop_length: bool,
+    },
+    AwaitingLoopAudioMapping {
+        loop_id: LoopId,
+        audio: LoopAudio,
+        update_loop_length: bool,
+    },
+    AwaitingLoopMidiImport {
+        loop_id: LoopId,
+        midi: ExactMidi,
+        update_loop_length: bool,
+    },
+    PrepareLoopAudioImport {
+        loop_id: LoopId,
+        audio: LoopAudio,
+        update_loop_length: bool,
+    },
+    PrepareLoopMidiImport {
+        loop_id: LoopId,
+        midi: ExactMidi,
+        update_loop_length: bool,
+    },
+    CommitLoopImport {
+        loop_id: LoopId,
+        backend_data: BackendSessionData,
+        message: String,
+    },
+}
+
 impl ApplicationModel {
-    fn initialize(backend: &mut dyn Backend) -> Result<Self> {
+    fn initialize(
+        backend: &mut dyn Backend,
+        file_outputs: Arc<Mutex<VecDeque<ApplicationFileOutput>>>,
+        background_session_encoding: bool,
+    ) -> Result<Self> {
+        #[cfg(target_arch = "wasm32")]
+        let _ = background_session_encoding;
         let created = backend.create_direct_track(DirectTrackRequest {
             port_name_base: "sync_loop".to_owned(),
             audio_channels: 1,
@@ -333,6 +450,7 @@ impl ApplicationModel {
                 name: "sync loop".to_owned(),
                 sync: true,
                 show_gain: true,
+                has_audio: true,
                 ..Default::default()
             },
             length: 0,
@@ -365,6 +483,13 @@ impl ApplicationModel {
             global: Default::default(),
             status: Default::default(),
             notifications: Vec::new(),
+            next_task_id: 1,
+            io_task: None,
+            pending_io: None,
+            session_encoding: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            background_session_encoding,
+            file_outputs,
         })
     }
 
@@ -386,9 +511,640 @@ impl ApplicationModel {
                 external_port,
                 connected,
             } => self.set_port_connected(backend, port_id, external_port, connected),
+            AppIntent::RequestSaveSession => self.begin_save_session(),
+            AppIntent::RequestLoadSessionPicker
+            | AppIntent::RequestLoopAudioImportPicker { .. }
+            | AppIntent::RequestLoopMidiImportPicker { .. } => Ok(()),
+            AppIntent::LoadSessionBytes { name, bytes } => self.begin_load_session(name, &bytes),
+            AppIntent::ConfirmSampleRateConversion { task_id, accept } => {
+                self.confirm_sample_rate_conversion(backend, task_id, accept)
+            }
+            AppIntent::ConfirmAudioChannelMapping {
+                task_id,
+                source_for_destination,
+            } => self.confirm_audio_channel_mapping(task_id, source_for_destination),
+            AppIntent::ConfirmAudioChannelSelection { task_id, channels } => {
+                self.confirm_audio_channel_selection(task_id, channels)
+            }
+            AppIntent::CancelIoTask { task_id } => self.cancel_io_task(task_id),
+            AppIntent::ReportFileIoError { task_id, message } => {
+                if task_id.is_some_and(|id| self.io_task.as_ref().is_some_and(|task| task.id == id))
+                {
+                    self.finish_io(IoTaskStatus::Failed, &message);
+                }
+                self.notify_error(message);
+                Ok(())
+            }
+            AppIntent::RequestLoopAudioExport { loop_id, format } => {
+                self.export_loop_audio(backend, loop_id, format)
+            }
+            AppIntent::ImportLoopAudioBytes {
+                loop_id,
+                name,
+                bytes,
+                update_loop_length,
+            } => self.import_loop_audio(backend, loop_id, name, &bytes, update_loop_length),
+            AppIntent::RequestLoopMidiExport { loop_id, standard } => {
+                self.export_loop_midi(backend, loop_id, standard)
+            }
+            AppIntent::ImportLoopMidiBytes {
+                loop_id,
+                name,
+                bytes,
+                update_loop_length,
+            } => self.import_loop_midi(backend, loop_id, name, &bytes, update_loop_length),
         };
         if let Err(error) = result {
             self.notify_error(error);
+        }
+    }
+
+    fn begin_save_session(&mut self) -> Result<(), String> {
+        self.ensure_io_idle()?;
+        if self.loops.values().any(|loop_| {
+            matches!(
+                loop_.state.mode,
+                LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+            )
+        }) {
+            return Err(
+                "session save is waiting for active recording/replacement content to settle"
+                    .to_owned(),
+            );
+        }
+        let task_id = self.start_io_task(IoTaskKind::SaveSession, "Capturing session");
+        self.pending_io = Some(PendingIo::SaveSession);
+        self.io_task = Some(IoTaskState {
+            id: task_id,
+            kind: IoTaskKind::SaveSession,
+            status: IoTaskStatus::Running,
+            progress: 0.05,
+            message: "Capturing session".to_owned(),
+            sample_rate_warning: None,
+            audio_channel_mapping: None,
+            audio_channel_selection: None,
+        });
+        Ok(())
+    }
+
+    fn begin_load_session(&mut self, name: String, bytes: &[u8]) -> Result<(), String> {
+        self.ensure_io_idle()?;
+        let task_id = self.start_io_task(IoTaskKind::LoadSession, "Validating session");
+        let bundle = match decode_session(bytes) {
+            Ok(bundle) => bundle,
+            Err(error) => {
+                let message = error.to_string();
+                self.finish_io(IoTaskStatus::Failed, &message);
+                return Err(message);
+            }
+        };
+        if bundle.document.sample_rate != self.status.sample_rate {
+            let source_rate = bundle.document.sample_rate;
+            let target_rate = self.status.sample_rate;
+            self.pending_io = Some(PendingIo::AwaitingSessionLoad { name, bundle });
+            self.io_task = Some(IoTaskState {
+                id: task_id,
+                kind: IoTaskKind::LoadSession,
+                status: IoTaskStatus::AwaitingSampleRateConfirmation,
+                progress: 0.2,
+                message: format!("Resample session from {source_rate} Hz to {target_rate} Hz?"),
+                sample_rate_warning: Some(SampleRateWarning {
+                    source_rate,
+                    target_rate,
+                    affected_media: "all session audio, MIDI, loops, offsets, and cycle timing"
+                        .to_owned(),
+                }),
+                audio_channel_mapping: None,
+                audio_channel_selection: None,
+            });
+            return Ok(());
+        }
+        let backend_data = match session_bundle_to_backend(&bundle) {
+            Ok(backend_data) => backend_data,
+            Err(message) => {
+                self.finish_io(IoTaskStatus::Failed, &message);
+                return Err(message);
+            }
+        };
+        self.pending_io = Some(PendingIo::CommitSessionLoad {
+            name,
+            bundle,
+            backend_data,
+        });
+        self.set_io_progress(0.7, "Staging session");
+        Ok(())
+    }
+
+    fn confirm_sample_rate_conversion(
+        &mut self,
+        _backend: &mut dyn Backend,
+        task_id: TaskId,
+        accept: bool,
+    ) -> Result<(), String> {
+        if self.io_task.as_ref().map(|task| task.id) != Some(task_id) {
+            return Err(format!("stale I/O task {task_id}"));
+        }
+        let pending = self
+            .pending_io
+            .take()
+            .ok_or_else(|| "I/O task is not awaiting sample-rate confirmation".to_owned())?;
+        if !accept {
+            self.finish_io(IoTaskStatus::Cancelled, "I/O cancelled");
+            return Ok(());
+        }
+        self.set_io_progress(0.35, "Resampling media");
+        let result = match pending {
+            PendingIo::AwaitingSessionLoad { name, bundle } => {
+                resample_session(&bundle, self.status.sample_rate)
+                    .map_err(|error| error.to_string())
+                    .and_then(|bundle| {
+                        let backend_data = session_bundle_to_backend(&bundle)?;
+                        self.pending_io = Some(PendingIo::CommitSessionLoad {
+                            name,
+                            bundle,
+                            backend_data,
+                        });
+                        self.set_io_progress(0.7, "Staging session");
+                        Ok(())
+                    })
+            }
+            PendingIo::AwaitingLoopAudioImport {
+                loop_id,
+                audio,
+                update_loop_length,
+            } => resample_loop_audio(&audio, self.status.sample_rate)
+                .map_err(|error| error.to_string())
+                .and_then(|audio| {
+                    self.begin_audio_channel_mapping(loop_id, audio, update_loop_length)
+                }),
+            PendingIo::AwaitingLoopMidiImport {
+                loop_id,
+                midi,
+                update_loop_length,
+            } => resample_exact_midi(&midi, self.status.sample_rate)
+                .map_err(|error| error.to_string())
+                .map(|midi| {
+                    self.pending_io = Some(PendingIo::PrepareLoopMidiImport {
+                        loop_id,
+                        midi,
+                        update_loop_length,
+                    });
+                }),
+            other => {
+                self.pending_io = Some(other);
+                return Err("I/O task is not awaiting sample-rate confirmation".to_owned());
+            }
+        };
+        if let Err(message) = &result {
+            self.finish_io(IoTaskStatus::Failed, message);
+        }
+        result
+    }
+
+    fn begin_audio_channel_mapping(
+        &mut self,
+        loop_id: LoopId,
+        audio: LoopAudio,
+        update_loop_length: bool,
+    ) -> Result<(), String> {
+        if audio.channels.is_empty() {
+            return Err("audio file contains no channels".to_owned());
+        }
+        let loop_model = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| format!("stale loop {loop_id}"))?;
+        let destinations = self
+            .tracks
+            .iter()
+            .find(|track| track.id == loop_model.track_id)
+            .ok_or_else(|| "target loop track is unavailable".to_owned())?
+            .audio_channels as usize;
+        let default_mapping = (0..destinations)
+            .map(|index| (index % audio.channels.len()) as u32)
+            .collect::<Vec<_>>();
+        if let Some(task) = &mut self.io_task {
+            task.status = IoTaskStatus::AwaitingChannelMapping;
+            task.progress = 0.45;
+            task.message = "Map source channels to loop channels".to_owned();
+            task.sample_rate_warning = None;
+            task.audio_channel_selection = None;
+            task.audio_channel_mapping = Some(AudioChannelMappingState {
+                source_channels: audio
+                    .channels
+                    .iter()
+                    .map(|channel| channel.label.clone())
+                    .collect(),
+                destination_channels: (0..destinations)
+                    .map(|index| format!("Loop channel {}", index + 1))
+                    .collect(),
+                default_mapping,
+            });
+        }
+        self.pending_io = Some(PendingIo::AwaitingLoopAudioMapping {
+            loop_id,
+            audio,
+            update_loop_length,
+        });
+        Ok(())
+    }
+
+    fn confirm_audio_channel_mapping(
+        &mut self,
+        task_id: TaskId,
+        source_for_destination: Vec<u32>,
+    ) -> Result<(), String> {
+        if self.io_task.as_ref().map(|task| task.id) != Some(task_id) {
+            return Err(format!("stale I/O task {task_id}"));
+        }
+        let Some(PendingIo::AwaitingLoopAudioMapping {
+            loop_id,
+            audio,
+            update_loop_length,
+        }) = self.pending_io.take()
+        else {
+            return Err("I/O task is not awaiting an audio channel mapping".to_owned());
+        };
+        let expected = self
+            .io_task
+            .as_ref()
+            .and_then(|task| task.audio_channel_mapping.as_ref())
+            .map(|mapping| mapping.destination_channels.len())
+            .unwrap_or(0);
+        if source_for_destination.len() != expected
+            || source_for_destination
+                .iter()
+                .any(|source| *source as usize >= audio.channels.len())
+        {
+            self.pending_io = Some(PendingIo::AwaitingLoopAudioMapping {
+                loop_id,
+                audio,
+                update_loop_length,
+            });
+            return Err("invalid audio channel mapping".to_owned());
+        }
+        let mapped = LoopAudio {
+            sample_rate: audio.sample_rate,
+            channels: source_for_destination
+                .into_iter()
+                .map(|source| audio.channels[source as usize].clone())
+                .collect(),
+        };
+        self.pending_io = Some(PendingIo::PrepareLoopAudioImport {
+            loop_id,
+            audio: mapped,
+            update_loop_length,
+        });
+        self.set_io_progress(0.6, "Preparing loop audio");
+        Ok(())
+    }
+
+    fn confirm_audio_channel_selection(
+        &mut self,
+        task_id: TaskId,
+        channels: Vec<u32>,
+    ) -> Result<(), String> {
+        if self.io_task.as_ref().map(|task| task.id) != Some(task_id) {
+            return Err(format!("stale I/O task {task_id}"));
+        }
+        let Some(PendingIo::AwaitingLoopAudioExportSelection { loop_id, format }) =
+            self.pending_io.take()
+        else {
+            return Err("I/O task is not awaiting an audio channel selection".to_owned());
+        };
+        let available = self
+            .io_task
+            .as_ref()
+            .and_then(|task| task.audio_channel_selection.as_ref())
+            .map(|selection| selection.available_channels.len())
+            .unwrap_or(0);
+        let mut unique = channels.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        if channels.is_empty()
+            || unique.len() != channels.len()
+            || channels
+                .iter()
+                .any(|channel| *channel as usize >= available)
+        {
+            self.pending_io = Some(PendingIo::AwaitingLoopAudioExportSelection { loop_id, format });
+            return Err("invalid audio channel selection".to_owned());
+        }
+        self.pending_io = Some(PendingIo::ExportLoopAudio {
+            loop_id,
+            format,
+            channels,
+        });
+        self.set_io_progress(0.5, "Exporting selected audio channels");
+        Ok(())
+    }
+
+    fn cancel_io_task(&mut self, task_id: TaskId) -> Result<(), String> {
+        if self.io_task.as_ref().map(|task| task.id) != Some(task_id) {
+            return Err(format!("stale I/O task {task_id}"));
+        }
+        self.pending_io = None;
+        self.finish_io(IoTaskStatus::Cancelled, "I/O cancelled");
+        Ok(())
+    }
+
+    fn ensure_io_idle(&self) -> Result<(), String> {
+        if self.pending_io.is_some() {
+            Err("another I/O task is active".to_owned())
+        } else {
+            Ok(())
+        }
+    }
+
+    fn start_io_task(&mut self, kind: IoTaskKind, message: &str) -> TaskId {
+        let id = TaskId::from_raw(self.next_task_id);
+        self.next_task_id = self.next_task_id.saturating_add(1);
+        self.io_task = Some(IoTaskState {
+            id,
+            kind,
+            status: IoTaskStatus::Running,
+            progress: 0.0,
+            message: message.to_owned(),
+            sample_rate_warning: None,
+            audio_channel_mapping: None,
+            audio_channel_selection: None,
+        });
+        id
+    }
+
+    fn set_io_progress(&mut self, progress: f32, message: &str) {
+        if let Some(task) = &mut self.io_task {
+            task.status = IoTaskStatus::Running;
+            task.progress = progress.clamp(0.0, 1.0);
+            task.message = message.to_owned();
+            task.sample_rate_warning = None;
+            task.audio_channel_mapping = None;
+            task.audio_channel_selection = None;
+        }
+    }
+
+    fn finish_io(&mut self, status: IoTaskStatus, message: &str) {
+        if let Some(task) = &mut self.io_task {
+            task.status = status;
+            task.progress = if status == IoTaskStatus::Completed {
+                1.0
+            } else {
+                task.progress
+            };
+            task.message = message.to_owned();
+            task.sample_rate_warning = None;
+            task.audio_channel_mapping = None;
+            task.audio_channel_selection = None;
+        }
+        self.pending_io = None;
+        self.session_encoding = None;
+    }
+
+    fn fail_io(&mut self, message: String) {
+        self.finish_io(IoTaskStatus::Failed, &message);
+        self.notify_error(message);
+    }
+
+    fn start_session_encoding(&mut self, bundle: SessionBundle) {
+        self.set_io_progress(0.45, "Compressing session");
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.background_session_encoding {
+            let (sender, receiver) = mpsc::channel();
+            thread::spawn(move || {
+                let result = encode_session(&bundle, env!("CARGO_PKG_VERSION"))
+                    .map_err(|error| error.to_string());
+                let _ = sender.send(result);
+            });
+            self.session_encoding = Some(receiver);
+            self.pending_io = Some(PendingIo::AwaitingSessionEncoding);
+            return;
+        }
+        match encode_session(&bundle, env!("CARGO_PKG_VERSION")) {
+            Ok(bytes) => self.complete_session_encoding(bytes),
+            Err(error) => self.fail_io(error.to_string()),
+        }
+    }
+
+    fn complete_session_encoding(&mut self, bytes: Vec<u8>) {
+        let task_id = self
+            .io_task
+            .as_ref()
+            .map(|task| task.id)
+            .unwrap_or_default();
+        self.file_outputs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push_back(ApplicationFileOutput {
+                task_id,
+                suggested_name: "session.shoop".to_owned(),
+                mime_type: "application/x-shoop-session".to_owned(),
+                bytes: Arc::from(bytes),
+            });
+        self.finish_io(IoTaskStatus::Completed, "Session ready to save");
+    }
+
+    fn advance_io(&mut self, backend: &mut dyn Backend) {
+        let Some(pending) = self.pending_io.take() else {
+            return;
+        };
+        match pending {
+            PendingIo::SaveSession => match backend.capture_session() {
+                Ok(capture) => match self.session_bundle_from_backend(&capture) {
+                    Ok(bundle) => self.start_session_encoding(bundle),
+                    Err(error) => self.fail_io(error),
+                },
+                Err(error) if io_pending_error(&error.to_string()) => {
+                    self.pending_io = Some(PendingIo::SaveSession);
+                }
+                Err(error) => self.fail_io(format!("could not capture session: {error}")),
+            },
+            #[cfg(not(target_arch = "wasm32"))]
+            PendingIo::AwaitingSessionEncoding => {
+                let result = self
+                    .session_encoding
+                    .as_ref()
+                    .map(|receiver| receiver.try_recv())
+                    .unwrap_or(Err(TryRecvError::Disconnected));
+                match result {
+                    Ok(Ok(bytes)) => self.complete_session_encoding(bytes),
+                    Ok(Err(error)) => self.fail_io(error),
+                    Err(TryRecvError::Empty) => {
+                        self.pending_io = Some(PendingIo::AwaitingSessionEncoding);
+                    }
+                    Err(TryRecvError::Disconnected) => {
+                        self.fail_io("session encoding worker stopped unexpectedly".to_owned());
+                    }
+                }
+            }
+            PendingIo::AwaitingSessionLoad { name, bundle } => {
+                self.pending_io = Some(PendingIo::AwaitingSessionLoad { name, bundle });
+            }
+            PendingIo::CommitSessionLoad {
+                name,
+                bundle,
+                backend_data,
+            } => match backend.replace_session(&backend_data) {
+                Ok(replacement) => {
+                    match self.apply_loaded_session(backend, &bundle, &replacement) {
+                        Ok(()) => {
+                            self.finish_io(
+                                IoTaskStatus::Completed,
+                                &format!("Loaded session {name}"),
+                            );
+                        }
+                        Err(error) => self.fail_io(error),
+                    }
+                }
+                Err(error) if io_pending_error(&error.to_string()) => {
+                    self.pending_io = Some(PendingIo::CommitSessionLoad {
+                        name,
+                        bundle,
+                        backend_data,
+                    });
+                }
+                Err(error) => self.fail_io(format!("could not replace session: {error}")),
+            },
+            PendingIo::AwaitingLoopAudioExportSelection { loop_id, format } => {
+                self.pending_io =
+                    Some(PendingIo::AwaitingLoopAudioExportSelection { loop_id, format });
+            }
+            PendingIo::ExportLoopAudio {
+                loop_id,
+                format,
+                channels,
+            } => {
+                if let Err(error) = self.export_loop_audio_now(backend, loop_id, format, &channels)
+                {
+                    if io_pending_error(&error) {
+                        self.pending_io = Some(PendingIo::ExportLoopAudio {
+                            loop_id,
+                            format,
+                            channels,
+                        });
+                    } else {
+                        self.fail_io(error);
+                    }
+                }
+            }
+            PendingIo::ExportLoopMidi { loop_id, standard } => {
+                if let Err(error) = self.export_loop_midi_now(backend, loop_id, standard) {
+                    if io_pending_error(&error) {
+                        self.pending_io = Some(PendingIo::ExportLoopMidi { loop_id, standard });
+                    } else {
+                        self.fail_io(error);
+                    }
+                }
+            }
+            PendingIo::AwaitingLoopAudioImport {
+                loop_id,
+                audio,
+                update_loop_length,
+            } => {
+                self.pending_io = Some(PendingIo::AwaitingLoopAudioImport {
+                    loop_id,
+                    audio,
+                    update_loop_length,
+                });
+            }
+            PendingIo::AwaitingLoopAudioMapping {
+                loop_id,
+                audio,
+                update_loop_length,
+            } => {
+                self.pending_io = Some(PendingIo::AwaitingLoopAudioMapping {
+                    loop_id,
+                    audio,
+                    update_loop_length,
+                });
+            }
+            PendingIo::AwaitingLoopMidiImport {
+                loop_id,
+                midi,
+                update_loop_length,
+            } => {
+                self.pending_io = Some(PendingIo::AwaitingLoopMidiImport {
+                    loop_id,
+                    midi,
+                    update_loop_length,
+                });
+            }
+            PendingIo::PrepareLoopAudioImport {
+                loop_id,
+                audio,
+                update_loop_length,
+            } => match self.prepare_loop_audio_import(backend, loop_id, &audio, update_loop_length)
+            {
+                Ok(backend_data) => {
+                    self.pending_io = Some(PendingIo::CommitLoopImport {
+                        loop_id,
+                        backend_data,
+                        message: "Loop audio imported".to_owned(),
+                    });
+                    self.set_io_progress(0.75, "Committing loop audio");
+                }
+                Err(error) if io_pending_error(&error) => {
+                    self.pending_io = Some(PendingIo::PrepareLoopAudioImport {
+                        loop_id,
+                        audio,
+                        update_loop_length,
+                    });
+                }
+                Err(error) => self.fail_io(error),
+            },
+            PendingIo::PrepareLoopMidiImport {
+                loop_id,
+                midi,
+                update_loop_length,
+            } => match self.prepare_loop_midi_import(backend, loop_id, &midi, update_loop_length) {
+                Ok(backend_data) => {
+                    self.pending_io = Some(PendingIo::CommitLoopImport {
+                        loop_id,
+                        backend_data,
+                        message: "Loop MIDI imported".to_owned(),
+                    });
+                    self.set_io_progress(0.75, "Committing loop MIDI");
+                }
+                Err(error) if io_pending_error(&error) => {
+                    self.pending_io = Some(PendingIo::PrepareLoopMidiImport {
+                        loop_id,
+                        midi,
+                        update_loop_length,
+                    });
+                }
+                Err(error) => self.fail_io(error),
+            },
+            PendingIo::CommitLoopImport {
+                loop_id,
+                backend_data,
+                message,
+            } => match backend.replace_session(&backend_data) {
+                Ok(replacement) => {
+                    let length = self.loops.get(&loop_id).and_then(|model| {
+                        target_length_for_source(&backend_data, model.backend_id.raw())
+                    });
+                    match self.remap_backend_entities(&backend_data, &replacement) {
+                        Ok(()) => {
+                            if let Some(model) = self.loops.get_mut(&loop_id) {
+                                if let Some(length) = length {
+                                    model.length = length;
+                                }
+                                model.state.empty = false;
+                                model.audio_data = None;
+                            }
+                            self.finish_io(IoTaskStatus::Completed, &message);
+                        }
+                        Err(error) => self.fail_io(error),
+                    }
+                }
+                Err(error) if io_pending_error(&error.to_string()) => {
+                    self.pending_io = Some(PendingIo::CommitLoopImport {
+                        loop_id,
+                        backend_data,
+                        message,
+                    });
+                }
+                Err(error) => self.fail_io(format!("could not commit loop import: {error}")),
+            },
         }
     }
 
@@ -544,7 +1300,7 @@ impl ApplicationModel {
         track_id: TrackId,
         backend_id: BackendLoopId,
         name: String,
-        audio_channels: u8,
+        audio_channels: u32,
     ) -> LoopId {
         let id = LoopId::from_raw(self.next_loop_id);
         self.next_loop_id = self.next_loop_id.saturating_add(1);
@@ -559,6 +1315,7 @@ impl ApplicationModel {
                     id,
                     name,
                     show_gain: audio_channels > 0,
+                    has_audio: audio_channels > 0,
                     stereo: audio_channels == 2,
                     ..Default::default()
                 },
@@ -1234,6 +1991,16 @@ impl ApplicationModel {
             controls.input_midi_activity = backend_state.input_midi_activity;
             controls.clamp();
         }
+        let track_capabilities = self
+            .tracks
+            .iter()
+            .filter_map(|track| {
+                snapshot
+                    .tracks
+                    .get(&track.backend_id)
+                    .map(|state| (track.id, (state.audio_channels > 0, state.midi)))
+            })
+            .collect::<BTreeMap<_, _>>();
         for model in self.loops.values_mut() {
             let Some(backend_state) = snapshot.loops.get(&model.backend_id) else {
                 continue;
@@ -1253,6 +2020,11 @@ impl ApplicationModel {
                 backend_state.position as f32 / backend_state.length as f32
             };
             model.state.stereo = backend_state.stereo;
+            if let Some((has_audio, has_midi)) = track_capabilities.get(&model.track_id) {
+                model.state.has_audio = *has_audio;
+                model.state.has_midi = *has_midi;
+                model.state.show_gain = *has_audio;
+            }
             model.state.gain = backend_state.gain;
             model.state.balance = backend_state.balance;
             model.state.peak_left_db = backend_state.audio_peaks.first().copied().unwrap_or(-200.0);
@@ -1412,6 +2184,404 @@ impl ApplicationModel {
         self.rebuild_connection_view();
     }
 
+    fn session_bundle_from_backend(
+        &self,
+        capture: &BackendSessionData,
+    ) -> Result<SessionBundle, String> {
+        let mut media = BTreeMap::new();
+        let mut next_channel_id = 1_u64;
+        let mut sync_tracks = Vec::new();
+        let mut main_tracks = Vec::new();
+        for track in &self.tracks {
+            let captured = capture
+                .tracks
+                .iter()
+                .find(|candidate| candidate.source_id == track.backend_id.raw())
+                .ok_or_else(|| format!("backend omitted track {}", track.id))?;
+            let mut ports = Vec::with_capacity(captured.ports.len());
+            for captured_port in &captured.ports {
+                let app_port = self
+                    .connection_ports
+                    .values()
+                    .find(|port| port.backend_id.raw() == captured_port.source_id)
+                    .ok_or_else(|| "backend omitted application port mapping".to_owned())?;
+                ports.push(PortDocument {
+                    id: app_port.id.raw(),
+                    name: captured_port.descriptor.name.clone(),
+                    data_type: session_data_type(app_port.data_type),
+                    direction: session_port_direction(app_port.direction),
+                    role: session_port_role(app_port.role),
+                    input_connectability: if app_port.direction == PortDirection::Input {
+                        vec![ConnectabilityDocument::External]
+                    } else {
+                        vec![ConnectabilityDocument::Internal]
+                    },
+                    output_connectability: if app_port.direction == PortDirection::Output {
+                        vec![ConnectabilityDocument::External]
+                    } else {
+                        vec![ConnectabilityDocument::Internal]
+                    },
+                    gain: 1.0,
+                    muted: false,
+                    passthrough_muted: false,
+                    internal_connections: Vec::new(),
+                    external_connections: captured_port.external_connections.clone(),
+                    ringbuffer_frames: 0,
+                });
+            }
+            let audio_inputs = ports
+                .iter()
+                .filter(|port| port.role == PortRoleDocument::AudioInput)
+                .map(|port| port.id)
+                .collect::<Vec<_>>();
+            let audio_outputs = ports
+                .iter()
+                .filter(|port| port.role == PortRoleDocument::AudioOutput)
+                .map(|port| port.id)
+                .collect::<Vec<_>>();
+            let midi_ports = ports
+                .iter()
+                .filter(|port| port.data_type == DataTypeDocument::Midi)
+                .map(|port| port.id)
+                .collect::<Vec<_>>();
+            let mut loops = Vec::with_capacity(track.loops.len());
+            for loop_id in &track.loops {
+                let model = self
+                    .loops
+                    .get(loop_id)
+                    .ok_or_else(|| format!("missing loop {loop_id}"))?;
+                let content = captured
+                    .loops
+                    .iter()
+                    .find(|candidate| candidate.source_id == model.backend_id.raw())
+                    .ok_or_else(|| format!("backend omitted loop {loop_id}"))?;
+                let mut channels = Vec::with_capacity(content.audio.len() + content.midi.len());
+                for (index, audio) in content.audio.iter().enumerate() {
+                    let channel_id = next_channel_id;
+                    next_channel_id = next_channel_id.saturating_add(1);
+                    let media_id = format!("audio_t{}_l{}_c{index}", track.id.raw(), loop_id.raw());
+                    let data_length_frames = audio.samples.len() as u64;
+                    if !audio.samples.is_empty() {
+                        media.insert(
+                            media_id.clone(),
+                            MediaPayload::Audio(AudioPayload {
+                                samples: audio.samples.clone(),
+                            }),
+                        );
+                    }
+                    let mut connected_port_ids = Vec::new();
+                    if let Some(port) = audio_inputs.get(index) {
+                        connected_port_ids.push(*port);
+                    }
+                    if let Some(port) = audio_outputs.get(index) {
+                        connected_port_ids.push(*port);
+                    }
+                    channels.push(ChannelDocument {
+                        id: channel_id,
+                        mode: ChannelModeDocument::Direct,
+                        data_type: DataTypeDocument::Audio,
+                        data_length_frames,
+                        start_offset_frames: i64::from(audio.start_offset),
+                        preplay_frames: u64::from(audio.preplay),
+                        gain: audio.gain,
+                        connected_port_ids,
+                        media_id: (data_length_frames > 0).then_some(media_id),
+                        recording_started_at: None,
+                        recording_fx_state_id: None,
+                    });
+                }
+                for (index, midi) in content.midi.iter().enumerate() {
+                    let channel_id = next_channel_id;
+                    next_channel_id = next_channel_id.saturating_add(1);
+                    let media_id = format!("midi_t{}_l{}_c{index}", track.id.raw(), loop_id.raw());
+                    if midi.length > 0 || !midi.events.is_empty() || !midi.start_state.is_empty() {
+                        media.insert(
+                            media_id.clone(),
+                            MediaPayload::Midi(ExactMidi {
+                                sample_rate: capture.sample_rate,
+                                length_frames: u64::from(midi.length),
+                                start_state: midi.start_state.clone(),
+                                events: midi
+                                    .events
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(order, event)| ExactMidiEvent {
+                                        frame: u64::from(event.time),
+                                        order: order as u32,
+                                        data: event.data.clone(),
+                                    })
+                                    .collect(),
+                            }),
+                        );
+                    }
+                    channels.push(ChannelDocument {
+                        id: channel_id,
+                        mode: ChannelModeDocument::Direct,
+                        data_type: DataTypeDocument::Midi,
+                        data_length_frames: u64::from(midi.length),
+                        start_offset_frames: i64::from(midi.start_offset),
+                        preplay_frames: u64::from(midi.preplay),
+                        gain: 1.0,
+                        connected_port_ids: midi_ports.clone(),
+                        media_id: (midi.length > 0
+                            || !midi.events.is_empty()
+                            || !midi.start_state.is_empty())
+                        .then_some(media_id),
+                        recording_started_at: None,
+                        recording_fx_state_id: None,
+                    });
+                }
+                loops.push(LoopDocument {
+                    id: loop_id.raw(),
+                    name: model.name.clone(),
+                    length_frames: u64::from(content.length),
+                    is_sync: model.state.sync,
+                    gain: content.gain,
+                    balance: content.balance,
+                    channels,
+                    composite: None,
+                });
+            }
+            let document = TrackDocument {
+                id: track.id.raw(),
+                name: track.name.clone(),
+                port_name_base: track.port_name_base.clone(),
+                is_sync: track.is_sync,
+                width: None,
+                topology: TrackTopologyDocument::Direct {
+                    audio_channels: track.audio_channels,
+                    midi: captured.state.midi,
+                },
+                controls: TrackControlsDocument {
+                    output_gain_db: captured.state.output_gain_db,
+                    output_balance: captured.state.output_balance,
+                    output_muted: captured.state.output_muted,
+                    input_gain_db: captured.state.input_gain_db,
+                    input_balance: captured.state.input_balance,
+                    input_monitoring: captured.state.input_monitoring,
+                },
+                loops,
+                ports,
+                fx_chain: None,
+            };
+            if track.is_sync {
+                sync_tracks.push(document);
+            } else {
+                main_tracks.push(document);
+            }
+        }
+        let document = SessionDocument {
+            sample_rate: capture.sample_rate,
+            global: GlobalControlsDocument {
+                default_recording_action: match self.global.default_recording_action {
+                    shoop_app_api::DefaultRecordingAction::Record => {
+                        RecordingActionDocument::Record
+                    }
+                    shoop_app_api::DefaultRecordingAction::Grab => RecordingActionDocument::Grab,
+                },
+                play_after_record: self.global.play_after_record,
+                sync: self.global.sync,
+                solo: self.global.solo,
+                apply_n_cycles: self.global.apply_n_cycles,
+            },
+            track_groups: vec![
+                TrackGroupDocument {
+                    name: "sync".to_owned(),
+                    tracks: sync_tracks,
+                },
+                TrackGroupDocument {
+                    name: "main".to_owned(),
+                    tracks: main_tracks,
+                },
+            ],
+            selected_loop_ids: self
+                .loops
+                .values()
+                .filter(|loop_| loop_.state.selected)
+                .map(|loop_| loop_.id.raw())
+                .collect(),
+            targeted_loop_id: self
+                .loops
+                .values()
+                .find(|loop_| loop_.state.targeted)
+                .map(|loop_| loop_.id.raw()),
+            buses: Vec::new(),
+            global_ports: Vec::new(),
+            fx_states: Vec::new(),
+            scripts: Vec::new(),
+            midi_control: MidiControlDocument::default(),
+            settings: Vec::new(),
+        };
+        Ok(SessionBundle { document, media })
+    }
+
+    fn apply_loaded_session(
+        &mut self,
+        backend: &mut dyn Backend,
+        bundle: &SessionBundle,
+        replacement: &BackendSessionReplacement,
+    ) -> Result<(), String> {
+        let mut tracks = Vec::new();
+        let mut loops = BTreeMap::new();
+        let mut connection_ports = BTreeMap::new();
+        let selected = bundle
+            .document
+            .selected_loop_ids
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>();
+        let target = bundle.document.targeted_loop_id;
+        let sync_source = bundle
+            .document
+            .track_groups
+            .iter()
+            .flat_map(|group| &group.tracks)
+            .find(|track| track.is_sync)
+            .and_then(|track| track.loops.first())
+            .and_then(|loop_| replacement.loops.get(&loop_.id))
+            .copied();
+        for track_document in bundle
+            .document
+            .track_groups
+            .iter()
+            .flat_map(|group| &group.tracks)
+        {
+            let created = replacement
+                .tracks
+                .get(&track_document.id)
+                .ok_or_else(|| format!("backend omitted loaded track {}", track_document.id))?;
+            let (audio_channels, _) = direct_topology(track_document)?;
+            if created.ports.len() != track_document.ports.len()
+                || created.loops.len() != track_document.loops.len()
+            {
+                return Err("loaded backend topology shape mismatch".to_owned());
+            }
+            let mut port_ids = Vec::with_capacity(track_document.ports.len());
+            for (document, created_port) in track_document.ports.iter().zip(&created.ports) {
+                let id = PortId::from_raw(document.id);
+                port_ids.push(id);
+                connection_ports.insert(
+                    id,
+                    ConnectionPortModel {
+                        id,
+                        backend_id: created_port.id,
+                        track_id: TrackId::from_raw(track_document.id),
+                        name: document.name.clone(),
+                        data_type: app_data_type(document.data_type),
+                        direction: app_port_direction(document.direction),
+                        role: app_port_role(document.role),
+                        candidates: BTreeMap::new(),
+                    },
+                );
+            }
+            let mut loop_ids = Vec::with_capacity(track_document.loops.len());
+            for (loop_document, backend_loop) in track_document.loops.iter().zip(&created.loops) {
+                let id = LoopId::from_raw(loop_document.id);
+                loop_ids.push(id);
+                if !track_document.is_sync {
+                    backend
+                        .set_loop_sync_source(*backend_loop, sync_source)
+                        .map_err(|error| format!("could not restore loop sync: {error}"))?;
+                }
+                let has_audio = loop_document
+                    .channels
+                    .iter()
+                    .any(|channel| channel.data_type == DataTypeDocument::Audio);
+                let empty = loop_document
+                    .channels
+                    .iter()
+                    .all(|channel| channel.data_length_frames == 0);
+                loops.insert(
+                    id,
+                    LoopModel {
+                        id,
+                        backend_id: *backend_loop,
+                        track_id: TrackId::from_raw(track_document.id),
+                        name: loop_document.name.clone(),
+                        state: LoopState {
+                            id,
+                            name: loop_document.name.clone(),
+                            mode: LoopMode::Stopped,
+                            empty,
+                            sync: loop_document.is_sync,
+                            targeted: target == Some(loop_document.id),
+                            selected: selected.contains(&loop_document.id),
+                            show_gain: has_audio,
+                            has_audio,
+                            has_midi: loop_document
+                                .channels
+                                .iter()
+                                .any(|channel| channel.data_type == DataTypeDocument::Midi),
+                            gain: loop_document.gain,
+                            balance: loop_document.balance,
+                            stereo: audio_channels == 2,
+                            play_after_record: bundle.document.global.play_after_record,
+                            ..Default::default()
+                        },
+                        length: u32::try_from(loop_document.length_frames)
+                            .map_err(|_| "loop length exceeds engine range".to_owned())?,
+                        position: 0,
+                        audio_data: None,
+                    },
+                );
+            }
+            tracks.push(TrackModel {
+                id: TrackId::from_raw(track_document.id),
+                backend_id: created.track_id,
+                name: track_document.name.clone(),
+                port_name_base: track_document.port_name_base.clone(),
+                is_sync: track_document.is_sync,
+                audio_channels,
+                loops: loop_ids,
+                port_ids: Arc::from(port_ids),
+                controls: TrackControlState {
+                    output_gain_db: track_document.controls.output_gain_db,
+                    output_balance: track_document.controls.output_balance,
+                    output_muted: track_document.controls.output_muted,
+                    input_gain_db: track_document.controls.input_gain_db,
+                    input_balance: track_document.controls.input_balance,
+                    input_monitoring: track_document.controls.input_monitoring,
+                    ..Default::default()
+                },
+            });
+        }
+        self.next_track_id = tracks
+            .iter()
+            .map(|track| track.id.raw())
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        self.next_loop_id = loops
+            .keys()
+            .map(|id| id.raw())
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        self.next_port_id = connection_ports
+            .keys()
+            .map(|id| id.raw())
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        self.tracks = tracks;
+        self.loops = loops;
+        self.connection_ports = connection_ports;
+        self.pending_connections.clear();
+        self.connection_errors.clear();
+        self.connection_revision = self.connection_revision.wrapping_add(1);
+        self.connection_view = Arc::new(ConnectionViewState::default());
+        self.global.default_recording_action = match bundle.document.global.default_recording_action
+        {
+            RecordingActionDocument::Record => shoop_app_api::DefaultRecordingAction::Record,
+            RecordingActionDocument::Grab => shoop_app_api::DefaultRecordingAction::Grab,
+        };
+        self.global.play_after_record = bundle.document.global.play_after_record;
+        self.global.sync = bundle.document.global.sync;
+        self.global.solo = bundle.document.global.solo;
+        self.global.apply_n_cycles = bundle.document.global.apply_n_cycles;
+        Ok(())
+    }
+
     fn snapshot(&self) -> AppSnapshot {
         AppSnapshot {
             revision: self.revision,
@@ -1440,6 +2610,7 @@ impl ApplicationModel {
             status: self.status.clone(),
             details: self.details_snapshot(),
             connections: Arc::clone(&self.connection_view),
+            io_task: self.io_task.clone(),
             notifications: self.notifications.clone(),
         }
     }
@@ -1478,6 +2649,577 @@ impl ApplicationModel {
         })
     }
 
+    fn prepare_loop_audio_import(
+        &self,
+        backend: &mut dyn Backend,
+        loop_id: LoopId,
+        audio: &LoopAudio,
+        update_loop_length: bool,
+    ) -> Result<BackendSessionData, String> {
+        if audio.channels.is_empty() {
+            return Err("audio file contains no channels".to_owned());
+        }
+        let model = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| format!("stale loop {loop_id}"))?;
+        let mut capture = backend
+            .capture_session()
+            .map_err(|error| format!("could not capture target loop: {error}"))?;
+        let target = capture
+            .tracks
+            .iter_mut()
+            .flat_map(|track| &mut track.loops)
+            .find(|loop_| loop_.source_id == model.backend_id.raw())
+            .ok_or_else(|| "backend omitted target loop".to_owned())?;
+        if audio.channels.len() != target.audio.len() {
+            return Err(format!(
+                "mapped audio has {} channels but the target loop has {}",
+                audio.channels.len(),
+                target.audio.len()
+            ));
+        }
+        for (channel, source) in target.audio.iter_mut().zip(&audio.channels) {
+            channel.samples = source.samples.clone();
+        }
+        if update_loop_length {
+            target.length = target
+                .audio
+                .iter()
+                .map(|channel| channel.samples.len() as u32)
+                .max()
+                .unwrap_or(0);
+        }
+        Ok(capture)
+    }
+
+    fn prepare_loop_midi_import(
+        &self,
+        backend: &mut dyn Backend,
+        loop_id: LoopId,
+        midi: &ExactMidi,
+        update_loop_length: bool,
+    ) -> Result<BackendSessionData, String> {
+        let model = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| format!("stale loop {loop_id}"))?;
+        let mut capture = backend
+            .capture_session()
+            .map_err(|error| format!("could not capture target loop: {error}"))?;
+        let target = capture
+            .tracks
+            .iter_mut()
+            .flat_map(|track| &mut track.loops)
+            .find(|loop_| loop_.source_id == model.backend_id.raw())
+            .ok_or_else(|| "backend omitted target loop".to_owned())?;
+        let channel = target
+            .midi
+            .first_mut()
+            .ok_or_else(|| "target loop has no MIDI channel".to_owned())?;
+        *channel = BackendMidiContent {
+            length: u32::try_from(midi.length_frames)
+                .map_err(|_| "MIDI duration exceeds engine range".to_owned())?,
+            start_state: midi.start_state.clone(),
+            events: midi
+                .events
+                .iter()
+                .map(|event| {
+                    Ok(BackendMidiEvent {
+                        time: u32::try_from(event.frame)
+                            .map_err(|_| "MIDI event exceeds engine range".to_owned())?,
+                        data: event.data.clone(),
+                    })
+                })
+                .collect::<Result<Vec<_>, String>>()?,
+            start_offset: channel.start_offset,
+            preplay: channel.preplay,
+        };
+        if update_loop_length {
+            target.length = channel.length;
+        }
+        Ok(capture)
+    }
+
+    fn export_loop_audio(
+        &mut self,
+        _backend: &mut dyn Backend,
+        loop_id: LoopId,
+        format: LoopAudioExportFormat,
+    ) -> Result<(), String> {
+        self.ensure_io_idle()?;
+        let loop_model = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| format!("stale loop {loop_id}"))?;
+        let channels = self
+            .tracks
+            .iter()
+            .find(|track| track.id == loop_model.track_id)
+            .ok_or_else(|| "loop track is unavailable".to_owned())?
+            .audio_channels;
+        if channels == 0 {
+            return Err("loop has no audio channels".to_owned());
+        }
+        self.start_io_task(IoTaskKind::ExportLoopAudio, "Select loop audio channels");
+        if let Some(task) = &mut self.io_task {
+            task.status = IoTaskStatus::AwaitingChannelSelection;
+            task.progress = 0.2;
+            task.audio_channel_selection = Some(AudioChannelSelectionState {
+                available_channels: (0..channels)
+                    .map(|index| format!("Direct channel {}", index + 1))
+                    .collect(),
+                default_selection: (0..channels).collect(),
+            });
+        }
+        self.pending_io = Some(PendingIo::AwaitingLoopAudioExportSelection { loop_id, format });
+        Ok(())
+    }
+
+    fn import_loop_audio(
+        &mut self,
+        _backend: &mut dyn Backend,
+        loop_id: LoopId,
+        name: String,
+        bytes: &[u8],
+        update_loop_length: bool,
+    ) -> Result<(), String> {
+        self.ensure_io_idle()?;
+        let task_id = self.start_io_task(IoTaskKind::ImportLoopAudio, "Loading loop audio");
+        let audio = match if name.to_ascii_lowercase().ends_with(".wav") {
+            decode_wav(bytes)
+        } else {
+            decode_loop_audio(bytes)
+        } {
+            Ok(audio) => audio,
+            Err(error) => {
+                let message = error.to_string();
+                self.finish_io(IoTaskStatus::Failed, &message);
+                return Err(message);
+            }
+        };
+        if audio.sample_rate != self.status.sample_rate {
+            self.pending_io = Some(PendingIo::AwaitingLoopAudioImport {
+                loop_id,
+                audio: audio.clone(),
+                update_loop_length,
+            });
+            if let Some(task) = &mut self.io_task {
+                task.status = IoTaskStatus::AwaitingSampleRateConfirmation;
+                task.progress = 0.2;
+                task.message = format!(
+                    "Resample loop audio from {} Hz to {} Hz?",
+                    audio.sample_rate, self.status.sample_rate
+                );
+                task.sample_rate_warning = Some(SampleRateWarning {
+                    source_rate: audio.sample_rate,
+                    target_rate: self.status.sample_rate,
+                    affected_media: "the selected loop audio".to_owned(),
+                });
+            }
+        } else if let Err(message) =
+            self.begin_audio_channel_mapping(loop_id, audio, update_loop_length)
+        {
+            self.finish_io(IoTaskStatus::Failed, &message);
+            return Err(message);
+        }
+        debug_assert_eq!(self.io_task.as_ref().map(|task| task.id), Some(task_id));
+        Ok(())
+    }
+
+    fn export_loop_midi(
+        &mut self,
+        _backend: &mut dyn Backend,
+        loop_id: LoopId,
+        standard: bool,
+    ) -> Result<(), String> {
+        self.ensure_io_idle()?;
+        self.start_io_task(IoTaskKind::ExportLoopMidi, "Exporting loop MIDI");
+        self.pending_io = Some(PendingIo::ExportLoopMidi { loop_id, standard });
+        Ok(())
+    }
+
+    fn import_loop_midi(
+        &mut self,
+        _backend: &mut dyn Backend,
+        loop_id: LoopId,
+        name: String,
+        bytes: &[u8],
+        update_loop_length: bool,
+    ) -> Result<(), String> {
+        self.ensure_io_idle()?;
+        self.start_io_task(IoTaskKind::ImportLoopMidi, "Loading loop MIDI");
+        let midi = match if name.to_ascii_lowercase().ends_with(".mid") {
+            decode_standard_midi(bytes, self.status.sample_rate)
+        } else {
+            decode_exact_midi(bytes)
+        } {
+            Ok(midi) => midi,
+            Err(error) => {
+                let message = error.to_string();
+                self.finish_io(IoTaskStatus::Failed, &message);
+                return Err(message);
+            }
+        };
+        if midi.sample_rate != self.status.sample_rate {
+            self.pending_io = Some(PendingIo::AwaitingLoopMidiImport {
+                loop_id,
+                midi: midi.clone(),
+                update_loop_length,
+            });
+            if let Some(task) = &mut self.io_task {
+                task.status = IoTaskStatus::AwaitingSampleRateConfirmation;
+                task.progress = 0.2;
+                task.message = format!(
+                    "Resample loop MIDI from {} Hz to {} Hz?",
+                    midi.sample_rate, self.status.sample_rate
+                );
+                task.sample_rate_warning = Some(SampleRateWarning {
+                    source_rate: midi.sample_rate,
+                    target_rate: self.status.sample_rate,
+                    affected_media: "the selected loop MIDI and cycle timing".to_owned(),
+                });
+            }
+        } else {
+            self.pending_io = Some(PendingIo::PrepareLoopMidiImport {
+                loop_id,
+                midi,
+                update_loop_length,
+            });
+        }
+        Ok(())
+    }
+
+    fn export_loop_audio_now(
+        &mut self,
+        backend: &mut dyn Backend,
+        loop_id: LoopId,
+        format: LoopAudioExportFormat,
+        selected_channels: &[u32],
+    ) -> Result<(), String> {
+        let task_id = self
+            .io_task
+            .as_ref()
+            .map(|task| task.id)
+            .ok_or_else(|| "loop audio export has no task".to_owned())?;
+        let model = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| format!("stale loop {loop_id}"))?;
+        let capture = backend
+            .capture_session()
+            .map_err(|error| format!("could not capture loop: {error}"))?;
+        let content = capture
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.source_id == model.backend_id.raw())
+            .ok_or_else(|| "backend omitted loop content".to_owned())?;
+        let audio = LoopAudio {
+            sample_rate: capture.sample_rate,
+            channels: selected_channels
+                .iter()
+                .map(|index| {
+                    let channel = content
+                        .audio
+                        .get(*index as usize)
+                        .ok_or_else(|| "selected audio channel is unavailable".to_owned())?;
+                    Ok(LoopAudioChannel {
+                        label: format!("audio {}", index + 1),
+                        role: "direct".to_owned(),
+                        samples: channel.samples.clone(),
+                    })
+                })
+                .collect::<Result<Vec<_>, String>>()?,
+        };
+        let (bytes, extension, mime_type) = match format {
+            LoopAudioExportFormat::Exact => (
+                encode_loop_audio(&audio).map_err(|error| error.to_string())?,
+                "shoop-audio",
+                "application/x-shoop-audio",
+            ),
+            LoopAudioExportFormat::FloatWav => (
+                encode_float_wav(&audio).map_err(|error| error.to_string())?,
+                "wav",
+                "audio/wav",
+            ),
+        };
+        self.file_outputs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push_back(ApplicationFileOutput {
+                task_id,
+                suggested_name: format!("{}.{}", safe_file_stem(&model.name), extension),
+                mime_type: mime_type.to_owned(),
+                bytes: Arc::from(bytes),
+            });
+        self.finish_io(IoTaskStatus::Completed, "Loop audio ready to save");
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    fn import_loop_audio_now(
+        &mut self,
+        backend: &mut dyn Backend,
+        loop_id: LoopId,
+        name: String,
+        bytes: &[u8],
+        update_loop_length: bool,
+    ) -> Result<(), String> {
+        let mut audio = if name.to_ascii_lowercase().ends_with(".wav") {
+            decode_wav(bytes)
+        } else {
+            decode_loop_audio(bytes)
+        }
+        .map_err(|error| error.to_string())?;
+        if audio.sample_rate != self.status.sample_rate {
+            let source = audio.sample_rate;
+            audio = resample_loop_audio(&audio, self.status.sample_rate)
+                .map_err(|error| error.to_string())?;
+            self.notifications.push(AppNotification {
+                level: NotificationLevel::Warning,
+                message: format!(
+                    "Resampled loop audio from {source} Hz to {} Hz",
+                    self.status.sample_rate
+                ),
+            });
+        }
+        if audio.channels.is_empty() {
+            return Err("audio file contains no channels".to_owned());
+        }
+        let model = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| format!("stale loop {loop_id}"))?;
+        let mut capture = backend
+            .capture_session()
+            .map_err(|error| format!("could not capture target loop: {error}"))?;
+        let target = capture
+            .tracks
+            .iter_mut()
+            .flat_map(|track| &mut track.loops)
+            .find(|loop_| loop_.source_id == model.backend_id.raw())
+            .ok_or_else(|| "backend omitted target loop".to_owned())?;
+        for (index, channel) in target.audio.iter_mut().enumerate() {
+            channel.samples = audio.channels[index % audio.channels.len()].samples.clone();
+        }
+        if update_loop_length {
+            target.length = target
+                .audio
+                .iter()
+                .map(|channel| channel.samples.len() as u32)
+                .max()
+                .unwrap_or(0);
+        }
+        let replacement = backend
+            .replace_session(&capture)
+            .map_err(|error| format!("could not commit loop audio: {error}"))?;
+        self.remap_backend_entities(&capture, &replacement)?;
+        if let Some(model) = self.loops.get_mut(&loop_id) {
+            model.length =
+                target_length_for_source(&capture, loop_id.raw()).unwrap_or(model.length);
+            model.state.empty = false;
+            model.audio_data = None;
+        }
+        self.finish_io(IoTaskStatus::Completed, "Loop audio imported");
+        Ok(())
+    }
+
+    fn export_loop_midi_now(
+        &mut self,
+        backend: &mut dyn Backend,
+        loop_id: LoopId,
+        standard: bool,
+    ) -> Result<(), String> {
+        let task_id = self
+            .io_task
+            .as_ref()
+            .map(|task| task.id)
+            .ok_or_else(|| "loop MIDI export has no task".to_owned())?;
+        let model = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| format!("stale loop {loop_id}"))?;
+        let capture = backend
+            .capture_session()
+            .map_err(|error| format!("could not capture loop: {error}"))?;
+        let content = capture
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.source_id == model.backend_id.raw())
+            .and_then(|loop_| loop_.midi.first())
+            .ok_or_else(|| "loop has no MIDI channel".to_owned())?;
+        let midi = ExactMidi {
+            sample_rate: capture.sample_rate,
+            length_frames: u64::from(content.length),
+            start_state: content.start_state.clone(),
+            events: content
+                .events
+                .iter()
+                .enumerate()
+                .map(|(order, event)| ExactMidiEvent {
+                    frame: u64::from(event.time),
+                    order: order as u32,
+                    data: event.data.clone(),
+                })
+                .collect(),
+        };
+        let (bytes, extension, mime) = if standard {
+            let encoded = encode_standard_midi(&midi).map_err(|error| error.to_string())?;
+            self.notifications.push(AppNotification {
+                level: NotificationLevel::Warning,
+                message: format!(
+                    "Standard MIDI export timing error is at most {:.3} samples",
+                    encoded.max_quantization_error_frames
+                ),
+            });
+            (encoded.bytes, "mid", "audio/midi")
+        } else {
+            (
+                encode_exact_midi(&midi).map_err(|error| error.to_string())?,
+                "shoop-midi",
+                "application/x-shoop-midi",
+            )
+        };
+        self.file_outputs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push_back(ApplicationFileOutput {
+                task_id,
+                suggested_name: format!("{}.{}", safe_file_stem(&model.name), extension),
+                mime_type: mime.to_owned(),
+                bytes: Arc::from(bytes),
+            });
+        self.finish_io(IoTaskStatus::Completed, "Loop MIDI ready to save");
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    fn import_loop_midi_now(
+        &mut self,
+        backend: &mut dyn Backend,
+        loop_id: LoopId,
+        name: String,
+        bytes: &[u8],
+        update_loop_length: bool,
+    ) -> Result<(), String> {
+        let mut midi = if name.to_ascii_lowercase().ends_with(".mid") {
+            decode_standard_midi(bytes, self.status.sample_rate)
+        } else {
+            decode_exact_midi(bytes)
+        }
+        .map_err(|error| error.to_string())?;
+        if midi.sample_rate != self.status.sample_rate {
+            let source = midi.sample_rate;
+            midi = resample_exact_midi(&midi, self.status.sample_rate)
+                .map_err(|error| error.to_string())?;
+            self.notifications.push(AppNotification {
+                level: NotificationLevel::Warning,
+                message: format!(
+                    "Resampled loop MIDI from {source} Hz to {} Hz",
+                    self.status.sample_rate
+                ),
+            });
+        }
+        let model = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| format!("stale loop {loop_id}"))?;
+        let mut capture = backend
+            .capture_session()
+            .map_err(|error| format!("could not capture target loop: {error}"))?;
+        let target = capture
+            .tracks
+            .iter_mut()
+            .flat_map(|track| &mut track.loops)
+            .find(|loop_| loop_.source_id == model.backend_id.raw())
+            .ok_or_else(|| "backend omitted target loop".to_owned())?;
+        let channel = target
+            .midi
+            .first_mut()
+            .ok_or_else(|| "target loop has no MIDI channel".to_owned())?;
+        *channel = BackendMidiContent {
+            length: u32::try_from(midi.length_frames)
+                .map_err(|_| "MIDI duration exceeds engine range".to_owned())?,
+            start_state: midi.start_state,
+            events: midi
+                .events
+                .into_iter()
+                .map(|event| {
+                    Ok(BackendMidiEvent {
+                        time: u32::try_from(event.frame)
+                            .map_err(|_| "MIDI event exceeds engine range".to_owned())?,
+                        data: event.data,
+                    })
+                })
+                .collect::<Result<Vec<_>, String>>()?,
+            start_offset: channel.start_offset,
+            preplay: channel.preplay,
+        };
+        if update_loop_length {
+            target.length = channel.length;
+        }
+        let replacement = backend
+            .replace_session(&capture)
+            .map_err(|error| format!("could not commit loop MIDI: {error}"))?;
+        self.remap_backend_entities(&capture, &replacement)?;
+        if let Some(model) = self.loops.get_mut(&loop_id) {
+            model.length =
+                target_length_for_source(&capture, loop_id.raw()).unwrap_or(model.length);
+            model.state.empty = false;
+        }
+        self.finish_io(IoTaskStatus::Completed, "Loop MIDI imported");
+        Ok(())
+    }
+
+    fn remap_backend_entities(
+        &mut self,
+        source: &BackendSessionData,
+        replacement: &BackendSessionReplacement,
+    ) -> Result<(), String> {
+        let old_track_sources = self
+            .tracks
+            .iter()
+            .map(|track| (track.id, track.backend_id.raw()))
+            .collect::<BTreeMap<_, _>>();
+        let old_loop_sources = self
+            .loops
+            .values()
+            .map(|loop_| (loop_.id, loop_.backend_id.raw()))
+            .collect::<BTreeMap<_, _>>();
+        let old_port_sources = self
+            .connection_ports
+            .values()
+            .map(|port| (port.id, port.backend_id.raw()))
+            .collect::<BTreeMap<_, _>>();
+        for track in &mut self.tracks {
+            let source_id = old_track_sources[&track.id];
+            track.backend_id = replacement
+                .tracks
+                .get(&source_id)
+                .ok_or_else(|| "replacement omitted track mapping".to_owned())?
+                .track_id;
+        }
+        for loop_ in self.loops.values_mut() {
+            let source_id = old_loop_sources[&loop_.id];
+            loop_.backend_id = *replacement
+                .loops
+                .get(&source_id)
+                .ok_or_else(|| "replacement omitted loop mapping".to_owned())?;
+        }
+        for port in self.connection_ports.values_mut() {
+            let source_id = old_port_sources[&port.id];
+            port.backend_id = *replacement
+                .ports
+                .get(&source_id)
+                .ok_or_else(|| "replacement omitted port mapping".to_owned())?;
+            port.candidates.clear();
+        }
+        let _ = source;
+        Ok(())
+    }
+
     fn notify_error(&mut self, message: String) {
         self.notifications.push(AppNotification {
             level: NotificationLevel::Error,
@@ -1488,6 +3230,275 @@ impl ApplicationModel {
             self.notifications
                 .drain(..self.notifications.len() - MAX_NOTIFICATIONS);
         }
+    }
+}
+
+fn safe_file_stem(name: &str) -> String {
+    let stem = name
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    if stem.is_empty() {
+        "loop".to_owned()
+    } else {
+        stem
+    }
+}
+
+fn target_length_for_source(source: &BackendSessionData, loop_source_id: u64) -> Option<u32> {
+    source
+        .tracks
+        .iter()
+        .flat_map(|track| &track.loops)
+        .find(|loop_| loop_.source_id == loop_source_id)
+        .map(|loop_| loop_.length)
+}
+
+fn io_pending_error(message: &str) -> bool {
+    message.contains("session capture pending") || message.contains("session replacement pending")
+}
+
+fn direct_topology(track: &TrackDocument) -> Result<(u32, bool), String> {
+    if track.fx_chain.is_some() {
+        return Err(format!(
+            "track {} requires unsupported FX/Carla topology",
+            track.id
+        ));
+    }
+    match track.topology {
+        TrackTopologyDocument::Direct {
+            audio_channels,
+            midi,
+        } => Ok((audio_channels, midi)),
+        _ => Err(format!(
+            "track {} requires an unsupported deferred topology",
+            track.id
+        )),
+    }
+}
+
+fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionData, String> {
+    if !bundle.document.buses.is_empty()
+        || !bundle.document.global_ports.is_empty()
+        || !bundle.document.fx_states.is_empty()
+        || !bundle.document.scripts.is_empty()
+        || !bundle.document.midi_control.bindings.is_empty()
+        || !bundle.document.settings.is_empty()
+    {
+        return Err("session requires a feature not yet available in the egui runtime".to_owned());
+    }
+    let mut tracks = Vec::new();
+    for track in bundle
+        .document
+        .track_groups
+        .iter()
+        .flat_map(|group| &group.tracks)
+    {
+        let (audio_channels, midi) = direct_topology(track)?;
+        let state = BackendTrackState {
+            audio_channels,
+            midi,
+            output_gain_db: track.controls.output_gain_db,
+            output_balance: track.controls.output_balance,
+            output_muted: track.controls.output_muted,
+            input_gain_db: track.controls.input_gain_db,
+            input_balance: track.controls.input_balance,
+            input_monitoring: track.controls.input_monitoring,
+            ..Default::default()
+        };
+        let ports = track
+            .ports
+            .iter()
+            .map(|port| BackendSessionPort {
+                source_id: port.id,
+                descriptor: BackendPortDescriptor {
+                    id: BackendPortId::from_raw(port.id),
+                    name: port.name.clone(),
+                    data_type: backend_data_type(port.data_type),
+                    direction: backend_port_direction(port.direction),
+                    role: backend_port_role(port.role),
+                },
+                external_connections: port.external_connections.clone(),
+            })
+            .collect();
+        let mut loops = Vec::with_capacity(track.loops.len());
+        for loop_ in &track.loops {
+            if loop_.composite.is_some() {
+                return Err(format!(
+                    "loop {} requires unsupported composite topology",
+                    loop_.id
+                ));
+            }
+            let mut audio = Vec::new();
+            let mut midi_channels = Vec::new();
+            for channel in &loop_.channels {
+                match channel.data_type {
+                    DataTypeDocument::Audio => {
+                        let samples = match &channel.media_id {
+                            Some(id) => match bundle.media.get(id) {
+                                Some(MediaPayload::Audio(audio)) => audio.samples.clone(),
+                                _ => return Err(format!("audio media {id} is unavailable")),
+                            },
+                            None => Vec::new(),
+                        };
+                        audio.push(BackendAudioContent {
+                            samples,
+                            gain: channel.gain,
+                            start_offset: i32::try_from(channel.start_offset_frames)
+                                .map_err(|_| "audio offset exceeds engine range".to_owned())?,
+                            preplay: u32::try_from(channel.preplay_frames)
+                                .map_err(|_| "audio preplay exceeds engine range".to_owned())?,
+                        });
+                    }
+                    DataTypeDocument::Midi => {
+                        let exact = match &channel.media_id {
+                            Some(id) => match bundle.media.get(id) {
+                                Some(MediaPayload::Midi(midi)) => Some(midi),
+                                _ => return Err(format!("MIDI media {id} is unavailable")),
+                            },
+                            None => None,
+                        };
+                        midi_channels.push(BackendMidiContent {
+                            length: u32::try_from(channel.data_length_frames)
+                                .map_err(|_| "MIDI duration exceeds engine range".to_owned())?,
+                            start_state: exact
+                                .map(|midi| midi.start_state.clone())
+                                .unwrap_or_default(),
+                            events: exact
+                                .map(|midi| {
+                                    midi.events
+                                        .iter()
+                                        .map(|event| {
+                                            Ok(BackendMidiEvent {
+                                                time: u32::try_from(event.frame).map_err(|_| {
+                                                    "MIDI event exceeds engine range".to_owned()
+                                                })?,
+                                                data: event.data.clone(),
+                                            })
+                                        })
+                                        .collect::<Result<Vec<_>, String>>()
+                                })
+                                .transpose()?
+                                .unwrap_or_default(),
+                            start_offset: i32::try_from(channel.start_offset_frames)
+                                .map_err(|_| "MIDI offset exceeds engine range".to_owned())?,
+                            preplay: u32::try_from(channel.preplay_frames)
+                                .map_err(|_| "MIDI preplay exceeds engine range".to_owned())?,
+                        });
+                    }
+                }
+            }
+            if audio.len() != audio_channels as usize || midi_channels.len() != usize::from(midi) {
+                return Err(format!("loop {} channel shape is invalid", loop_.id));
+            }
+            loops.push(BackendLoopContent {
+                source_id: loop_.id,
+                length: u32::try_from(loop_.length_frames)
+                    .map_err(|_| "loop length exceeds engine range".to_owned())?,
+                gain: loop_.gain,
+                balance: loop_.balance,
+                audio,
+                midi: midi_channels,
+            });
+        }
+        tracks.push(BackendSessionTrack {
+            source_id: track.id,
+            port_name_base: track.port_name_base.clone(),
+            state,
+            loops,
+            ports,
+            carla_state: None,
+        });
+    }
+    Ok(BackendSessionData {
+        sample_rate: bundle.document.sample_rate,
+        tracks,
+    })
+}
+
+fn session_data_type(value: PortDataType) -> DataTypeDocument {
+    match value {
+        PortDataType::Audio => DataTypeDocument::Audio,
+        PortDataType::Midi => DataTypeDocument::Midi,
+    }
+}
+
+fn app_data_type(value: DataTypeDocument) -> PortDataType {
+    match value {
+        DataTypeDocument::Audio => PortDataType::Audio,
+        DataTypeDocument::Midi => PortDataType::Midi,
+    }
+}
+
+fn backend_data_type(value: DataTypeDocument) -> BackendPortDataType {
+    match value {
+        DataTypeDocument::Audio => BackendPortDataType::Audio,
+        DataTypeDocument::Midi => BackendPortDataType::Midi,
+    }
+}
+
+fn session_port_direction(value: PortDirection) -> PortDirectionDocument {
+    match value {
+        PortDirection::Input => PortDirectionDocument::Input,
+        PortDirection::Output => PortDirectionDocument::Output,
+    }
+}
+
+fn app_port_direction(value: PortDirectionDocument) -> PortDirection {
+    match value {
+        PortDirectionDocument::Input => PortDirection::Input,
+        PortDirectionDocument::Output => PortDirection::Output,
+    }
+}
+
+fn backend_port_direction(value: PortDirectionDocument) -> BackendPortDirection {
+    match value {
+        PortDirectionDocument::Input => BackendPortDirection::Input,
+        PortDirectionDocument::Output => BackendPortDirection::Output,
+    }
+}
+
+fn session_port_role(value: PortRole) -> PortRoleDocument {
+    match value {
+        PortRole::AudioInput => PortRoleDocument::AudioInput,
+        PortRole::AudioOutput => PortRoleDocument::AudioOutput,
+        PortRole::AudioSend => PortRoleDocument::AudioSend,
+        PortRole::AudioReturn => PortRoleDocument::AudioReturn,
+        PortRole::MidiInput => PortRoleDocument::MidiInput,
+        PortRole::MidiOutput => PortRoleDocument::MidiOutput,
+        PortRole::MidiSend => PortRoleDocument::MidiSend,
+    }
+}
+
+fn app_port_role(value: PortRoleDocument) -> PortRole {
+    match value {
+        PortRoleDocument::AudioInput => PortRole::AudioInput,
+        PortRoleDocument::AudioOutput => PortRole::AudioOutput,
+        PortRoleDocument::AudioSend => PortRole::AudioSend,
+        PortRoleDocument::AudioReturn => PortRole::AudioReturn,
+        PortRoleDocument::MidiInput => PortRole::MidiInput,
+        PortRoleDocument::MidiOutput => PortRole::MidiOutput,
+        PortRoleDocument::MidiSend => PortRole::MidiSend,
+        PortRoleDocument::Internal => PortRole::AudioInput,
+    }
+}
+
+fn backend_port_role(value: PortRoleDocument) -> BackendPortRole {
+    match value {
+        PortRoleDocument::AudioInput => BackendPortRole::AudioInput,
+        PortRoleDocument::AudioOutput => BackendPortRole::AudioOutput,
+        PortRoleDocument::AudioSend => BackendPortRole::AudioSend,
+        PortRoleDocument::AudioReturn => BackendPortRole::AudioReturn,
+        PortRoleDocument::MidiInput => BackendPortRole::MidiInput,
+        PortRoleDocument::MidiOutput => BackendPortRole::MidiOutput,
+        PortRoleDocument::MidiSend => BackendPortRole::MidiSend,
+        PortRoleDocument::Internal => BackendPortRole::AudioInput,
     }
 }
 
@@ -1772,7 +3783,12 @@ mod tests {
     #[test]
     fn target_delay_is_derived_from_target_and_sync_lengths() {
         let mut backend = FakeBackend::default();
-        let mut model = ApplicationModel::initialize(&mut backend).unwrap();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
         model
             .add_track(
                 &mut backend,
@@ -1807,7 +3823,12 @@ mod tests {
     #[test]
     fn expanded_loop_actions_route_qml_equivalent_modes_grab_and_balance() {
         let mut backend = FakeBackend::default();
-        let mut model = ApplicationModel::initialize(&mut backend).unwrap();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
         model
             .add_track(
                 &mut backend,
@@ -1895,7 +3916,12 @@ mod tests {
     #[test]
     fn grab_policy_covers_targeted_selection_solo_and_immediate_completion() {
         let mut backend = FakeBackend::default();
-        let mut model = ApplicationModel::initialize(&mut backend).unwrap();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
         model
             .add_track(
                 &mut backend,
@@ -2308,6 +4334,525 @@ mod tests {
             runtime.snapshot().tracks[1].loops[0].mode,
             LoopMode::Playing
         );
+    }
+
+    #[test]
+    fn cooperative_session_round_trip_warns_before_resampling_and_rejects_old_files() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Persistent".to_owned(),
+                audio_channels: 12,
+                midi: true,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let persistent_track = runtime
+            .snapshot()
+            .tracks
+            .iter()
+            .find(|track| track.name == "Persistent")
+            .unwrap()
+            .id;
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: persistent_track,
+                action: TrackAction::OutputGainChanged(-6.0),
+            })
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSolo(true)))
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        let loop_id = runtime
+            .snapshot()
+            .tracks
+            .iter()
+            .find(|track| track.id == persistent_track)
+            .unwrap()
+            .loops[0]
+            .id;
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: persistent_track,
+                loop_id,
+                action: LoopAction::RecordClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().notifications.iter().any(|notification| {
+            notification
+                .message
+                .contains("active recording/replacement")
+        }));
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: persistent_track,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        for _ in 0..10 {
+            runtime.tick(Duration::ZERO);
+            if runtime
+                .snapshot()
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Completed)
+            {
+                break;
+            }
+        }
+        let output = runtime
+            .take_file_output()
+            .expect("session output should be available");
+        assert!(output.suggested_name.ends_with(".shoop"));
+        let saved = decode_session(&output.bytes).unwrap();
+        assert_eq!(saved.document.track_groups[1].tracks[0].name, "Persistent");
+        assert_eq!(
+            match saved.document.track_groups[1].tracks[0].topology {
+                TrackTopologyDocument::Direct { audio_channels, .. } => audio_channels,
+                _ => 0,
+            },
+            12
+        );
+
+        let resampled = resample_session(&saved, 32_000).unwrap();
+        let bytes = encode_session(&resampled, "test").unwrap();
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "different-rate.shoop".to_owned(),
+                bytes: Arc::from(bytes),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let warning = runtime.snapshot().io_task.clone().unwrap();
+        assert_eq!(warning.status, IoTaskStatus::AwaitingSampleRateConfirmation);
+        assert_eq!(
+            warning.sample_rate_warning.as_ref().unwrap().source_rate,
+            32_000
+        );
+        runtime
+            .dispatch(AppIntent::ConfirmSampleRateConversion {
+                task_id: TaskId::from_raw(warning.id.raw() + 1),
+                accept: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().io_task.as_ref().unwrap().status,
+            IoTaskStatus::AwaitingSampleRateConfirmation
+        );
+        runtime
+            .dispatch(AppIntent::ConfirmSampleRateConversion {
+                task_id: warning.id,
+                accept: false,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().io_task.as_ref().unwrap().status,
+            IoTaskStatus::Cancelled
+        );
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "different-rate.shoop".to_owned(),
+                bytes: Arc::from(encode_session(&resampled, "test").unwrap()),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let warning = runtime.snapshot().io_task.clone().unwrap();
+        runtime
+            .dispatch(AppIntent::ConfirmSampleRateConversion {
+                task_id: warning.id,
+                accept: true,
+            })
+            .unwrap();
+        for _ in 0..10 {
+            runtime.tick(Duration::ZERO);
+            if runtime
+                .snapshot()
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Completed)
+            {
+                break;
+            }
+        }
+        let loaded = runtime.snapshot();
+        assert!(loaded.global_controls.solo);
+        assert!(loaded.tracks.iter().any(|track| {
+            track.name == "Persistent" && (track.controls.output_gain_db + 6.0).abs() < 0.001
+        }));
+
+        let before = loaded.tracks.len();
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "old.shl".to_owned(),
+                bytes: Arc::from(&b"old qml archive"[..]),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(runtime.snapshot().tracks.len(), before);
+        assert_eq!(
+            runtime.snapshot().io_task.as_ref().unwrap().status,
+            IoTaskStatus::Failed
+        );
+        assert!(runtime
+            .snapshot()
+            .notifications
+            .iter()
+            .any(|notification| notification.message.contains("unsupported file format")));
+    }
+
+    #[test]
+    fn unsupported_deferred_topology_is_rejected_without_replacing_the_session() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Retained".to_owned(),
+                audio_channels: 2,
+                midi: false,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let before = runtime.snapshot();
+        let before_ids = before
+            .tracks
+            .iter()
+            .map(|track| track.id)
+            .collect::<Vec<_>>();
+
+        let mut document = SessionDocument::empty(48_000);
+        document.track_groups.push(TrackGroupDocument {
+            name: "main".to_owned(),
+            tracks: vec![TrackDocument {
+                id: 42,
+                name: "Deferred trigger".to_owned(),
+                port_name_base: "deferred_trigger".to_owned(),
+                is_sync: false,
+                width: None,
+                topology: TrackTopologyDocument::Trigger,
+                controls: TrackControlsDocument::default(),
+                loops: Vec::new(),
+                ports: Vec::new(),
+                fx_chain: None,
+            }],
+        });
+        let bytes = encode_session(&SessionBundle::new(document), "capability-test").unwrap();
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "deferred.shoop".to_owned(),
+                bytes: Arc::from(bytes),
+            })
+            .unwrap();
+        for _ in 0..10 {
+            runtime.tick(Duration::ZERO);
+            if runtime
+                .snapshot()
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Failed)
+            {
+                break;
+            }
+        }
+
+        let after = runtime.snapshot();
+        assert_eq!(
+            after
+                .tracks
+                .iter()
+                .map(|track| track.id)
+                .collect::<Vec<_>>(),
+            before_ids
+        );
+        assert_eq!(after.io_task.as_ref().unwrap().status, IoTaskStatus::Failed);
+        assert!(after.notifications.iter().any(|notification| {
+            notification
+                .message
+                .contains("unsupported deferred topology")
+        }));
+    }
+
+    #[test]
+    fn invalid_loop_media_inputs_finish_tasks_as_failed() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Media errors".to_owned(),
+                audio_channels: 2,
+                midi: true,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let loop_id = runtime.snapshot().tracks[1].loops[0].id;
+
+        for (name, bytes) in [
+            ("broken.shoop-audio", Arc::from(&b"not audio"[..])),
+            (
+                "empty.shoop-audio",
+                Arc::from(
+                    encode_loop_audio(&LoopAudio {
+                        sample_rate: 48_000,
+                        channels: Vec::new(),
+                    })
+                    .unwrap(),
+                ),
+            ),
+        ] {
+            runtime
+                .dispatch(AppIntent::ImportLoopAudioBytes {
+                    loop_id,
+                    name: name.to_owned(),
+                    bytes,
+                    update_loop_length: true,
+                })
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+            assert_eq!(
+                runtime.snapshot().io_task.as_ref().unwrap().status,
+                IoTaskStatus::Failed
+            );
+        }
+
+        runtime
+            .dispatch(AppIntent::ImportLoopMidiBytes {
+                loop_id,
+                name: "broken.shoop-midi".to_owned(),
+                bytes: Arc::from(&b"not midi"[..]),
+                update_loop_length: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().io_task.as_ref().unwrap().status,
+            IoTaskStatus::Failed
+        );
+    }
+
+    #[test]
+    fn loop_audio_and_midi_io_map_channels_and_warn_before_resampling() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Media".to_owned(),
+                audio_channels: 3,
+                midi: true,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let loop_id = runtime.snapshot().tracks[1].loops[0].id;
+        let audio = LoopAudio {
+            sample_rate: 32_000,
+            channels: vec![
+                LoopAudioChannel {
+                    label: "a".to_owned(),
+                    role: "direct".to_owned(),
+                    samples: vec![0.1; 256],
+                },
+                LoopAudioChannel {
+                    label: "b".to_owned(),
+                    role: "direct".to_owned(),
+                    samples: vec![0.5; 256],
+                },
+            ],
+        };
+        runtime
+            .dispatch(AppIntent::ImportLoopAudioBytes {
+                loop_id,
+                name: "input.shoop-audio".to_owned(),
+                bytes: Arc::from(encode_loop_audio(&audio).unwrap()),
+                update_loop_length: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let warning = runtime.snapshot().io_task.clone().unwrap();
+        assert_eq!(warning.status, IoTaskStatus::AwaitingSampleRateConfirmation);
+        runtime
+            .dispatch(AppIntent::ConfirmSampleRateConversion {
+                task_id: warning.id,
+                accept: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let mapping_task = runtime.snapshot().io_task.clone().unwrap();
+        assert_eq!(mapping_task.status, IoTaskStatus::AwaitingChannelMapping);
+        let mut mapping = mapping_task
+            .audio_channel_mapping
+            .as_ref()
+            .unwrap()
+            .default_mapping
+            .clone();
+        mapping.copy_from_slice(&[1, 0, 1]);
+        runtime
+            .dispatch(AppIntent::ConfirmAudioChannelMapping {
+                task_id: mapping_task.id,
+                source_for_destination: mapping,
+            })
+            .unwrap();
+        for _ in 0..10 {
+            runtime.tick(Duration::ZERO);
+        }
+        assert_eq!(
+            runtime.snapshot().io_task.as_ref().unwrap().status,
+            IoTaskStatus::Completed
+        );
+        for (source_channels, mapping) in [(3_u32, vec![2, 1, 0]), (4, vec![3, 1, 0])] {
+            let audio = LoopAudio {
+                sample_rate: 48_000,
+                channels: (0..source_channels)
+                    .map(|index| LoopAudioChannel {
+                        label: format!("source {}", index + 1),
+                        role: "direct".to_owned(),
+                        samples: vec![(index + 1) as f32 / 10.0; 256],
+                    })
+                    .collect(),
+            };
+            runtime
+                .dispatch(AppIntent::ImportLoopAudioBytes {
+                    loop_id,
+                    name: "mapping.shoop-audio".to_owned(),
+                    bytes: Arc::from(encode_loop_audio(&audio).unwrap()),
+                    update_loop_length: true,
+                })
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+            let task = runtime.snapshot().io_task.clone().unwrap();
+            assert_eq!(
+                task.audio_channel_mapping
+                    .as_ref()
+                    .unwrap()
+                    .source_channels
+                    .len(),
+                source_channels as usize
+            );
+            runtime
+                .dispatch(AppIntent::ConfirmAudioChannelMapping {
+                    task_id: task.id,
+                    source_for_destination: mapping,
+                })
+                .unwrap();
+            for _ in 0..10 {
+                runtime.tick(Duration::ZERO);
+            }
+            assert_eq!(
+                runtime.snapshot().io_task.as_ref().unwrap().status,
+                IoTaskStatus::Completed
+            );
+        }
+        runtime
+            .dispatch(AppIntent::RequestLoopAudioExport {
+                loop_id,
+                format: LoopAudioExportFormat::Exact,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let selection_task = runtime.snapshot().io_task.clone().unwrap();
+        assert_eq!(
+            selection_task.status,
+            IoTaskStatus::AwaitingChannelSelection
+        );
+        runtime
+            .dispatch(AppIntent::ConfirmAudioChannelSelection {
+                task_id: selection_task.id,
+                channels: vec![1, 0],
+            })
+            .unwrap();
+        for _ in 0..10 {
+            runtime.tick(Duration::ZERO);
+        }
+        let exported_audio = decode_loop_audio(&runtime.take_file_output().unwrap().bytes).unwrap();
+        assert_eq!(exported_audio.channels.len(), 2);
+        assert_eq!(exported_audio.channels[0].label, "audio 2");
+        assert_eq!(exported_audio.channels[1].label, "audio 1");
+        assert_ne!(
+            exported_audio.channels[0].samples,
+            exported_audio.channels[1].samples
+        );
+        runtime
+            .dispatch(AppIntent::RequestLoopAudioExport {
+                loop_id,
+                format: LoopAudioExportFormat::FloatWav,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let selection_task = runtime.snapshot().io_task.clone().unwrap();
+        runtime
+            .dispatch(AppIntent::ConfirmAudioChannelSelection {
+                task_id: selection_task.id,
+                channels: vec![1, 0],
+            })
+            .unwrap();
+        for _ in 0..10 {
+            runtime.tick(Duration::ZERO);
+        }
+        let output = runtime.take_file_output().unwrap();
+        assert!(output.suggested_name.ends_with(".wav"));
+        let wav_audio = decode_wav(&output.bytes).unwrap();
+        assert_eq!(wav_audio.channels.len(), exported_audio.channels.len());
+        for (wav, exact) in wav_audio.channels.iter().zip(&exported_audio.channels) {
+            assert_eq!(wav.role, exact.role);
+            assert_eq!(wav.samples, exact.samples);
+        }
+
+        let midi = ExactMidi {
+            sample_rate: 32_000,
+            length_frames: 100,
+            start_state: vec![vec![0xB0, 7, 100]],
+            events: vec![ExactMidiEvent {
+                frame: 50,
+                order: 0,
+                data: vec![0x90, 60, 100],
+            }],
+        };
+        runtime
+            .dispatch(AppIntent::ImportLoopMidiBytes {
+                loop_id,
+                name: "input.shoop-midi".to_owned(),
+                bytes: Arc::from(encode_exact_midi(&midi).unwrap()),
+                update_loop_length: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let warning = runtime.snapshot().io_task.clone().unwrap();
+        assert_eq!(warning.status, IoTaskStatus::AwaitingSampleRateConfirmation);
+        runtime
+            .dispatch(AppIntent::ConfirmSampleRateConversion {
+                task_id: warning.id,
+                accept: true,
+            })
+            .unwrap();
+        for _ in 0..10 {
+            runtime.tick(Duration::ZERO);
+        }
+        runtime
+            .dispatch(AppIntent::RequestLoopMidiExport {
+                loop_id,
+                standard: false,
+            })
+            .unwrap();
+        for _ in 0..10 {
+            runtime.tick(Duration::ZERO);
+        }
+        let exported_midi = decode_exact_midi(&runtime.take_file_output().unwrap().bytes).unwrap();
+        assert_eq!(exported_midi.sample_rate, 48_000);
+        assert_eq!(exported_midi.length_frames, 150);
+        assert_eq!(exported_midi.events[0].frame, 75);
     }
 
     #[test]

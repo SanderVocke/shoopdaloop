@@ -4,7 +4,7 @@ This is the shared native and browser composition root for the egui application.
 
 - Native builds retain the threaded deterministic dummy backend.
 - Browser builds use a repository-owned Web Audio/AudioWorklet backend after an explicit microphone or output-only enable action.
-- Browser MIDI is not implemented. Audio tracks work, but MIDI tracks receive no browser device data.
+- Browser MIDI device input/output is not implemented. MIDI loop content and `.shoop`/`.shoop-midi` file workflows are cross-target and remain available.
 
 ## Native
 
@@ -39,6 +39,12 @@ The self-contained HTML embeds the application and AudioWorklet Wasm modules plu
 The browser requests echo cancellation, noise suppression, and automatic gain control off, but the browser may negotiate different settings. The engine runs at the context's actual sample rate and render quantum. Mono capture is duplicated where a stereo direct track needs two inputs; a mono track uses capture channel one. Mono track output is sent to both destination channels, stereo maps left/right, and all tracks sum with final clipping to `[-1, 1]`. Input monitoring defaults off to reduce feedback risk.
 
 Browser recording storage is prepared per channel for ten seconds at the actual sample rate. Exhaustion stops further channel recording work and is reported in diagnostics instead of growing Wasm memory in the render callback.
+
+## Session and loop files
+
+The main menu saves and loads fresh `.shoop` v1 sessions. Loop context menus import/export exact `.shoop-audio` and `.shoop-midi`, float WAV, and standard MIDI. Audio import requires explicit destination mapping; audio export presents an ordered channel selection. Different-rate assets require confirmation before deterministic audio/MIDI/timing conversion. QML-era session/media formats are deliberately unsupported.
+
+Native picker reads and atomic temporary-file replacement run outside the application actor. Browser pickers use asynchronous upload/download file handles; ordinary hosted and direct-file artifacts do not require the File System Access API. Session/media bytes stay outside immutable GUI snapshots. See `../../../docs/session_format_v1.md` for formats, limits, timing, and recovery behavior.
 
 ## Builds and artifacts
 
@@ -102,9 +108,10 @@ SELF_CONTAINED=1 node --experimental-websocket browser_smoke.mjs
 SELF_CONTAINED=1 OUTPUT_ONLY=1 node --experimental-websocket browser_smoke.mjs
 SELF_CONTAINED=1 DIRECT_FILE_MIC=1 node --experimental-websocket browser_smoke.mjs
 xvfb-run -a python3 browser_firefox_smoke.py
+STRESS=1 xvfb-run -a python3 browser_firefox_smoke.py
 ```
 
-The Firefox command also requires Selenium and geckodriver. Set `CHROME_BIN` or `FIREFOX_BIN` when browser executables use non-standard names. The hosted tests click the enable action, create mono and stereo tracks, monitor and record non-zero fake capture, verify non-zero waveform and playback output, and check callback progress. Additional Chrome modes cover denial/retry, suspend/resume, forced worklet loss/retry, cleanup, stress recording, and explicit offline dummy operation.
+The Firefox command also requires Selenium and geckodriver. Set `CHROME_BIN` or `FIREFOX_BIN` when browser executables use non-standard names. The hosted tests click the enable action, create mono and stereo tracks, monitor and record non-zero fake capture, verify non-zero waveform and playback output, save real produced `.shoop` bytes while callbacks advance, and transactionally load those exact bytes. Stress mode fills the bounded recording store and verifies callback continuity throughout the larger transfer/encode/load. Additional Chrome modes cover denial/retry, suspend/resume, forced worklet loss/retry, cleanup, queue saturation, and explicit offline dummy operation. The self-contained offline self-test performs the same real-byte session round trip without relying on a fixture-only success flag.
 
 Compiler-only checks from the repository root:
 

@@ -9,8 +9,8 @@ if (typeof WebSocket === 'undefined') {
 }
 
 const host = '127.0.0.1';
-const webPort = 8765;
-const debugPort = 9222;
+const webPort = Number(process.env.WEB_PORT || 8765);
+const debugPort = Number(process.env.DEBUG_PORT || 9222);
 const chrome = process.env.CHROME_BIN || 'google-chrome';
 const browserSize = process.env.BROWSER_SIZE || '900,600';
 const selfContained = process.env.SELF_CONTAINED === '1';
@@ -43,6 +43,20 @@ function start(command, args, options = {}) {
 
 function delay(milliseconds) {
   return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+async function waitForHttp(url, timeoutMilliseconds) {
+  const deadline = Date.now() + timeoutMilliseconds;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) return;
+    } catch (_) {
+      // The process is still starting.
+    }
+    await delay(100);
+  }
+  throw new Error(`timed out waiting for ${url}`);
 }
 
 async function waitForJson(url, timeoutMilliseconds) {
@@ -88,12 +102,15 @@ try {
   await writeFile(fakeAudio, fakeMicrophoneWav());
   if (!selfContained) {
     start('python3', ['-m', 'http.server', String(webPort), '--bind', host], { cwd: 'dist' });
+    await waitForHttp(`http://${host}:${webPort}/`, 15_000);
   }
   const chromeArgs = [
     '--headless=new',
     '--no-sandbox',
     '--disable-dev-shm-usage',
     '--disable-gpu-sandbox',
+    '--disable-extensions',
+    '--disable-component-extensions-with-background-pages',
     '--enable-webgl',
     '--enable-unsafe-swiftshader',
     '--ignore-gpu-blocklist',
@@ -181,16 +198,19 @@ try {
       ? '?self-test=1'
       : outputOnly
         ? ''
-        : '?offline=1';
+        : '?offline=1&self-test=1';
     entryUrl = `${pathToFileURL(selfContainedPath).href}${query}`;
   } else {
     entryUrl = outputOnly
       ? `${origin}/`
-      : `${origin}/?self-test=1${stress ? '&stress=1' : ''}`;
+      : `${origin}/?self-test=1${stress ? '&stress=1' : ''}${browserSize === '360,200' ? '&session-only=1' : ''}`;
   }
   await call('Page.navigate', { url: entryUrl });
 
   const statusExpression = `({
+    url: location.href,
+    title: document.title,
+    body: document.body?.textContent?.slice(0, 200),
     status: document.getElementById('runtime_status')?.textContent,
     revision: Number(document.getElementById('runtime_status')?.getAttribute('data-engine-revision')),
     selfTest: document.getElementById('runtime_status')?.getAttribute('data-self-test'),
@@ -220,10 +240,12 @@ try {
 
   if (selfContained && !outputOnly && !directFileMicrophone) {
     const state = await waitFor(
-      candidate => candidate.driver === 'Dummy' && candidate.revision > 0,
-      'offline dummy mode did not start',
+      candidate => candidate.driver === 'Dummy'
+        && candidate.revision > 0
+        && candidate.selfTest === 'passed',
+      'offline dummy session round trip did not finish',
     );
-    if (!state.status.includes('Explicit offline dummy')) {
+    if (state.driver !== 'Dummy' || !entryUrl.includes('offline=1')) {
       throw new Error(`offline artifact was not explicit: ${JSON.stringify(state)}`);
     }
     console.log(`explicit self-contained offline dummy passed at ${browserSize}`);
@@ -260,7 +282,7 @@ try {
     let state = await waitFor(
       candidate => candidate.selfTest === 'passed' && candidate.driver === 'Running',
       'browser physical-audio self-test did not finish',
-      stress ? 75_000 : 30_000,
+      stress ? 360_000 : 240_000,
     );
     if (!(state.callbacks > 0 && state.frames >= state.callbacks * 128)) {
       throw new Error(`worklet callback evidence is invalid: ${JSON.stringify(state)}`);

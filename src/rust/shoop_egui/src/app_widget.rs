@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::{
     AppAction, AppState, ConnectionDialog, ConnectionScope, DetailsPane, DirectTrackSpec,
     GlobalControls, TrackWidget, TracksWidget,
@@ -14,9 +16,11 @@ pub struct AppWidget {
     details_open: bool,
     add_track_open: bool,
     add_track_name: String,
-    add_track_audio_channels: u8,
+    add_track_audio_channels: u32,
     add_track_midi: bool,
     logo: Option<egui::TextureHandle>,
+    io_channel_mappings: BTreeMap<crate::TaskId, Vec<u32>>,
+    io_channel_selections: BTreeMap<crate::TaskId, Vec<u32>>,
     #[cfg(test)]
     add_track_accept_rect: Option<egui::Rect>,
     #[cfg(test)]
@@ -37,6 +41,8 @@ impl Default for AppWidget {
             add_track_audio_channels: 2,
             add_track_midi: false,
             logo: None,
+            io_channel_mappings: BTreeMap::new(),
+            io_channel_selections: BTreeMap::new(),
             #[cfg(test)]
             add_track_accept_rect: None,
             #[cfg(test)]
@@ -76,6 +82,12 @@ impl AppWidget {
                         );
                         if self.global_controls.take_connections_requested() {
                             self.connections.open(ConnectionScope::AllTracks);
+                        }
+                        if self.global_controls.take_save_session_requested() {
+                            actions.push(AppAction::RequestSaveSession);
+                        }
+                        if self.global_controls.take_load_session_requested() {
+                            actions.push(AppAction::RequestLoadSessionPicker);
                         }
                     });
             });
@@ -120,6 +132,7 @@ impl AppWidget {
                             ui.add_space(8.0);
                             ui.separator();
                             let response = self.sync_track.show(ui, sync);
+                            actions.extend(response.io_intents.iter().cloned());
                             actions.extend(response.loop_actions.into_iter().map(
                                 |(loop_id, action)| AppAction::Loop {
                                     track_id: sync.id,
@@ -167,8 +180,194 @@ impl AppWidget {
             });
 
         self.show_add_track_dialog(ui.ctx(), &mut actions);
+        self.show_io_task_dialog(ui.ctx(), state, &mut actions);
         actions.extend(self.connections.show(ui.ctx(), state));
         actions
+    }
+
+    fn show_io_task_dialog(
+        &mut self,
+        context: &egui::Context,
+        state: &AppState,
+        actions: &mut Vec<AppAction>,
+    ) {
+        let Some(task) = &state.io_task else {
+            return;
+        };
+        if matches!(
+            task.status,
+            crate::IoTaskStatus::Completed | crate::IoTaskStatus::Cancelled
+        ) {
+            return;
+        }
+        egui::Window::new("Session and loop I/O")
+            .id(egui::Id::new(("io_task", task.id.raw())))
+            .collapsible(false)
+            .resizable(false)
+            .show(context, |ui| {
+                ui.label(&task.message);
+                ui.add(egui::ProgressBar::new(task.progress).show_percentage());
+                if let Some(mapping) = &task.audio_channel_mapping {
+                    let draft = self
+                        .io_channel_mappings
+                        .entry(task.id)
+                        .or_insert_with(|| mapping.default_mapping.clone());
+                    if draft.len() != mapping.destination_channels.len() {
+                        *draft = mapping.default_mapping.clone();
+                    }
+                    egui::Grid::new(("io_channel_mapping", task.id.raw()))
+                        .num_columns(2)
+                        .show(ui, |ui| {
+                            for (index, destination) in
+                                mapping.destination_channels.iter().enumerate()
+                            {
+                                ui.label(destination);
+                                let selected = draft
+                                    .get(index)
+                                    .and_then(|source| {
+                                        mapping.source_channels.get(*source as usize)
+                                    })
+                                    .cloned()
+                                    .unwrap_or_else(|| "Unavailable".to_owned());
+                                egui::ComboBox::from_id_salt((
+                                    "io_channel_source",
+                                    task.id.raw(),
+                                    index,
+                                ))
+                                .selected_text(selected)
+                                .show_ui(ui, |ui| {
+                                    for (source, label) in
+                                        mapping.source_channels.iter().enumerate()
+                                    {
+                                        ui.selectable_value(
+                                            &mut draft[index],
+                                            source as u32,
+                                            label,
+                                        );
+                                    }
+                                });
+                                ui.end_row();
+                            }
+                        });
+                    ui.horizontal(|ui| {
+                        if ui.button("Import with this mapping").clicked() {
+                            actions.push(AppAction::ConfirmAudioChannelMapping {
+                                task_id: task.id,
+                                source_for_destination: draft.clone(),
+                            });
+                        }
+                        if ui.button("Cancel").clicked() {
+                            actions.push(AppAction::CancelIoTask { task_id: task.id });
+                        }
+                    });
+                } else if let Some(selection) = &task.audio_channel_selection {
+                    let draft = self
+                        .io_channel_selections
+                        .entry(task.id)
+                        .or_insert_with(|| selection.default_selection.clone());
+                    draft
+                        .retain(|channel| (*channel as usize) < selection.available_channels.len());
+                    let mut remove = None;
+                    let mut move_up = None;
+                    let mut move_down = None;
+                    for index in 0..draft.len() {
+                        ui.horizontal(|ui| {
+                            ui.label(format!("Output {}", index + 1));
+                            let selected = selection
+                                .available_channels
+                                .get(draft[index] as usize)
+                                .cloned()
+                                .unwrap_or_else(|| "Unavailable".to_owned());
+                            egui::ComboBox::from_id_salt((
+                                "io_export_channel",
+                                task.id.raw(),
+                                index,
+                            ))
+                            .selected_text(selected)
+                            .show_ui(ui, |ui| {
+                                for (channel, label) in
+                                    selection.available_channels.iter().enumerate()
+                                {
+                                    if !draft.iter().enumerate().any(|(other, value)| {
+                                        other != index && *value == channel as u32
+                                    }) {
+                                        ui.selectable_value(
+                                            &mut draft[index],
+                                            channel as u32,
+                                            label,
+                                        );
+                                    }
+                                }
+                            });
+                            if ui.small_button("↑").clicked() && index > 0 {
+                                move_up = Some(index);
+                            }
+                            if ui.small_button("↓").clicked() && index + 1 < draft.len() {
+                                move_down = Some(index);
+                            }
+                            if ui.small_button("Remove").clicked() {
+                                remove = Some(index);
+                            }
+                        });
+                    }
+                    if let Some(index) = remove {
+                        draft.remove(index);
+                    } else if let Some(index) = move_up {
+                        draft.swap(index, index - 1);
+                    } else if let Some(index) = move_down {
+                        draft.swap(index, index + 1);
+                    }
+                    if let Some(channel) = (0..selection.available_channels.len() as u32)
+                        .find(|channel| !draft.contains(channel))
+                    {
+                        if ui.button("Add channel").clicked() {
+                            draft.push(channel);
+                        }
+                    }
+                    ui.horizontal(|ui| {
+                        let confirm =
+                            ui.add_enabled(!draft.is_empty(), egui::Button::new("Export channels"));
+                        if confirm.clicked() {
+                            actions.push(audio_channel_selection_action(task.id, draft));
+                        }
+                        if ui.button("Cancel").clicked() {
+                            actions.push(AppAction::CancelIoTask { task_id: task.id });
+                        }
+                    });
+                } else if let Some(warning) = &task.sample_rate_warning {
+                    ui.colored_label(
+                        egui::Color32::YELLOW,
+                        format!(
+                            "This will resample {} from {} Hz to {} Hz.",
+                            warning.affected_media, warning.source_rate, warning.target_rate
+                        ),
+                    );
+                    ui.horizontal(|ui| {
+                        if ui.button("Resample and load").clicked() {
+                            actions.push(AppAction::ConfirmSampleRateConversion {
+                                task_id: task.id,
+                                accept: true,
+                            });
+                        }
+                        if ui.button("Cancel").clicked() {
+                            actions.push(AppAction::ConfirmSampleRateConversion {
+                                task_id: task.id,
+                                accept: false,
+                            });
+                        }
+                    });
+                } else if task.status == crate::IoTaskStatus::Running
+                    && ui.button("Cancel").clicked()
+                {
+                    actions.push(AppAction::CancelIoTask { task_id: task.id });
+                }
+                if task.status == crate::IoTaskStatus::Failed {
+                    ui.colored_label(
+                        egui::Color32::RED,
+                        "The operation failed; the prior session is unchanged.",
+                    );
+                }
+            });
     }
 
     fn show_add_track_dialog(&mut self, context: &egui::Context, actions: &mut Vec<AppAction>) {
@@ -215,6 +414,13 @@ impl AppWidget {
                                     );
                                 }
                             });
+                        ui.end_row();
+                        ui.label("Custom channels:");
+                        ui.add(
+                            egui::DragValue::new(&mut self.add_track_audio_channels)
+                                .range(0..=u32::MAX)
+                                .speed(1),
+                        );
                         ui.end_row();
                         ui.label("MIDI:");
                         ui.checkbox(&mut self.add_track_midi, "Enabled");
@@ -343,7 +549,14 @@ impl AppWidget {
     }
 }
 
-fn audio_channel_label(channels: u8) -> String {
+fn audio_channel_selection_action(task_id: crate::TaskId, channels: &[u32]) -> AppAction {
+    AppAction::ConfirmAudioChannelSelection {
+        task_id,
+        channels: channels.to_vec(),
+    }
+}
+
+fn audio_channel_label(channels: u32) -> String {
     match channels {
         0 => "Disabled".to_owned(),
         1 => "Mono".to_owned(),
@@ -415,6 +628,50 @@ mod tests {
         assert!(widget.add_track_cancel_rect.is_some());
         widget.cancel_add_track();
         assert!(!widget.add_track_open);
+    }
+
+    #[test]
+    fn ordered_audio_export_selection_emits_the_task_scoped_confirmation() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let task_id = crate::TaskId::from_raw(19);
+        let state = AppState {
+            io_task: Some(crate::IoTaskState {
+                id: task_id,
+                kind: crate::IoTaskKind::ExportLoopAudio,
+                status: crate::IoTaskStatus::AwaitingChannelSelection,
+                progress: 0.2,
+                message: "Select channels".to_owned(),
+                sample_rate_warning: None,
+                audio_channel_mapping: None,
+                audio_channel_selection: Some(crate::AudioChannelSelectionState {
+                    available_channels: vec!["Direct 1".to_owned(), "Direct 2".to_owned()],
+                    default_selection: vec![1, 0],
+                }),
+            }),
+            ..Default::default()
+        };
+        let mut widget = AppWidget::default();
+        let output = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 600.0),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                widget.show(ui, &state);
+            },
+        );
+        assert!(!output.shapes.is_empty());
+        assert_eq!(
+            audio_channel_selection_action(task_id, &[1, 0]),
+            AppAction::ConfirmAudioChannelSelection {
+                task_id,
+                channels: vec![1, 0],
+            }
+        );
     }
 
     #[test]

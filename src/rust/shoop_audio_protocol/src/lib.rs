@@ -1,11 +1,13 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 1;
+pub const PROTOCOL_VERSION: u16 = 2;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 16 * 1024;
+pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
+pub const SESSION_TRANSFER_MAX_BYTES: usize = 256 * 1024 * 1024;
 pub const WAVEFORM_CHUNK_SAMPLES: usize = 512;
 pub const STATUS_INTERVAL_MS: u32 = 50;
-pub const MAX_AUDIO_CHANNELS: usize = 2;
+pub const MAX_DEVICE_AUDIO_CHANNELS: usize = 2;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct CommandEnvelope {
@@ -31,7 +33,7 @@ pub enum Command {
         expected_track_id: u64,
         expected_loop_ids: Vec<u64>,
         port_name_base: String,
-        audio_channels: u8,
+        audio_channels: u32,
         midi: bool,
     },
     AddLoop {
@@ -71,6 +73,29 @@ pub enum Command {
         channel: usize,
         offset: usize,
         max_samples: usize,
+    },
+    BeginSessionCapture {
+        generation: u64,
+    },
+    ReadSessionCapture {
+        generation: u64,
+        offset: usize,
+        max_bytes: usize,
+    },
+    BeginSessionReplace {
+        generation: u64,
+        total_bytes: usize,
+    },
+    WriteSessionReplace {
+        generation: u64,
+        offset: usize,
+        bytes: Vec<u8>,
+    },
+    CommitSessionReplace {
+        generation: u64,
+    },
+    AbortSessionTransfer {
+        generation: u64,
     },
     Poll,
     Shutdown,
@@ -190,9 +215,28 @@ pub struct EventEnvelope {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Event {
     Ack,
-    Error { message: String },
+    Error {
+        message: String,
+    },
     Snapshot(WireSnapshot),
     Waveform(WaveformChunk),
+    SessionCaptureReady {
+        generation: u64,
+        total_bytes: usize,
+    },
+    SessionCaptureChunk {
+        generation: u64,
+        offset: usize,
+        total_bytes: usize,
+        final_chunk: bool,
+        bytes: Vec<u8>,
+    },
+    SessionReplaceComplete {
+        generation: u64,
+    },
+    SessionTransferAborted {
+        generation: u64,
+    },
     Stopped,
 }
 
@@ -218,7 +262,7 @@ pub struct WireSnapshot {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct WireTrackState {
     pub id: u64,
-    pub audio_channels: u8,
+    pub audio_channels: u32,
     pub midi: bool,
     pub output_gain_db: f32,
     pub output_balance: f32,

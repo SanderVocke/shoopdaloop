@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
+use serde::{Deserialize, Serialize};
 use shoop_engine::dummy_midi_port::DummyMidiPort;
 use shoop_engine::dummy_port::{DummyAudioPort, DummyExternalConnections, PortId};
 use shoop_engine::external_audio_port::ExternalAudioPort;
@@ -11,7 +12,7 @@ use shoop_engine::{
     ChannelMode, LoopMode, MidiStorage, PortDataType as EnginePortDataType, PortDirection,
 };
 
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct BackendLoopId(u64);
 
 impl BackendLoopId {
@@ -24,7 +25,7 @@ impl BackendLoopId {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct BackendTrackId(u64);
 
 impl BackendTrackId {
@@ -37,7 +38,7 @@ impl BackendTrackId {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct BackendPortId(u64);
 
 impl BackendPortId {
@@ -50,19 +51,19 @@ impl BackendPortId {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum BackendPortDataType {
     Audio,
     Midi,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum BackendPortDirection {
     Input,
     Output,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum BackendPortRole {
     AudioInput,
     AudioOutput,
@@ -73,7 +74,7 @@ pub enum BackendPortRole {
     MidiSend,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BackendPortDescriptor {
     pub id: BackendPortId,
     pub name: String,
@@ -114,12 +115,12 @@ pub struct BackendConnectionSnapshot {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DirectTrackRequest {
     pub port_name_base: String,
-    pub audio_channels: u8,
+    pub audio_channels: u32,
     pub midi: bool,
     pub initial_loops: usize,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BackendTrackCreation {
     pub track_id: BackendTrackId,
     pub loops: Vec<BackendLoopId>,
@@ -136,9 +137,9 @@ pub enum BackendTrackControl {
     InputMonitoring(bool),
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct BackendTrackState {
-    pub audio_channels: u8,
+    pub audio_channels: u32,
     pub midi: bool,
     pub output_gain_db: f32,
     pub output_balance: f32,
@@ -221,6 +222,79 @@ pub struct BackendGrabRequest {
     pub go_to_mode: BackendLoopMode,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BackendAudioContent {
+    pub samples: Vec<f32>,
+    pub gain: f32,
+    pub start_offset: i32,
+    pub preplay: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BackendMidiEvent {
+    pub time: u32,
+    pub data: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BackendMidiContent {
+    pub length: u32,
+    pub start_state: Vec<Vec<u8>>,
+    pub events: Vec<BackendMidiEvent>,
+    pub start_offset: i32,
+    pub preplay: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BackendLoopContent {
+    pub source_id: u64,
+    pub length: u32,
+    pub gain: f32,
+    pub balance: f32,
+    pub audio: Vec<BackendAudioContent>,
+    pub midi: Vec<BackendMidiContent>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BackendSessionPort {
+    pub source_id: u64,
+    pub descriptor: BackendPortDescriptor,
+    pub external_connections: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BackendSessionTrack {
+    pub source_id: u64,
+    pub port_name_base: String,
+    pub state: BackendTrackState,
+    pub loops: Vec<BackendLoopContent>,
+    pub ports: Vec<BackendSessionPort>,
+    pub carla_state: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BackendSessionData {
+    pub sample_rate: u32,
+    pub tracks: Vec<BackendSessionTrack>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct BackendSessionReplacement {
+    pub tracks: BTreeMap<u64, BackendTrackCreation>,
+    pub loops: BTreeMap<u64, BackendLoopId>,
+    pub ports: BTreeMap<u64, BackendPortId>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct BackendAudioDataChunk {
+    pub content_revision: u64,
+    pub channel: usize,
+    pub channel_count: usize,
+    pub offset: usize,
+    pub total_samples: usize,
+    pub samples: Vec<f32>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendSnapshot {
     pub status: BackendStatus,
@@ -242,6 +316,32 @@ pub trait Backend {
     fn set_loop_balance(&mut self, loop_id: BackendLoopId, balance: f32) -> Result<()>;
     fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()>;
     fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Option<Vec<Arc<[f32]>>>>;
+    fn loop_audio_data_chunk(
+        &mut self,
+        loop_id: BackendLoopId,
+        channel: usize,
+        offset: usize,
+        max_samples: usize,
+    ) -> Result<BackendAudioDataChunk> {
+        let channels = self.loop_audio_data(loop_id)?.unwrap_or_default();
+        let samples = channels
+            .get(channel)
+            .cloned()
+            .unwrap_or_else(|| Arc::from([]));
+        let end = offset.saturating_add(max_samples).min(samples.len());
+        Ok(BackendAudioDataChunk {
+            content_revision: 0,
+            channel,
+            channel_count: channels.len(),
+            offset,
+            total_samples: samples.len(),
+            samples: if offset < end {
+                samples[offset..end].to_vec()
+            } else {
+                Vec::new()
+            },
+        })
+    }
     fn set_loop_sync_source(
         &mut self,
         loop_id: BackendLoopId,
@@ -254,6 +354,16 @@ pub trait Backend {
         cycles_delay: Option<u32>,
     ) -> Result<()>;
     fn clear_loop(&mut self, loop_id: BackendLoopId) -> Result<()>;
+    fn capture_session(&mut self) -> Result<BackendSessionData> {
+        Err(anyhow!("session capture is unavailable"))
+    }
+    fn replace_session(
+        &mut self,
+        session: &BackendSessionData,
+    ) -> Result<BackendSessionReplacement> {
+        let _ = session;
+        Err(anyhow!("session replacement is unavailable"))
+    }
     fn set_port_connected(
         &mut self,
         port_id: BackendPortId,
@@ -317,11 +427,13 @@ struct EngineConnectionPort {
 }
 
 struct EngineTrack {
+    port_name_base: String,
     audio_inputs: Vec<usize>,
     audio_outputs: Vec<usize>,
     midi_input: Option<usize>,
     midi_output: Option<usize>,
     loops: Vec<BackendLoopId>,
+    ports: Vec<BackendPortId>,
     output_gain_db: f32,
     output_balance: f32,
     output_muted: bool,
@@ -647,6 +759,235 @@ impl EngineBackend {
         Ok(loop_id)
     }
 
+    fn capture_session_data(&self) -> Result<BackendSessionData> {
+        let connections = self.connection_snapshot();
+        let mut tracks = Vec::with_capacity(self.tracks.len());
+        for (track_id, track) in &self.tracks {
+            let state = BackendTrackState {
+                audio_channels: track.audio_inputs.len() as u32,
+                midi: track.midi_input.is_some(),
+                output_gain_db: track.output_gain_db,
+                output_balance: track.output_balance,
+                output_muted: track.output_muted,
+                input_gain_db: track.input_gain_db,
+                input_balance: track.input_balance,
+                input_monitoring: track.input_monitoring,
+                ..Default::default()
+            };
+            let mut loops = Vec::with_capacity(track.loops.len());
+            for loop_id in &track.loops {
+                let engine_loop = self.engine_loop_index(*loop_id)?;
+                let loop_state = self
+                    .session
+                    .loop_(engine_loop)
+                    .ok_or_else(|| anyhow!("missing engine loop"))?;
+                if matches!(
+                    loop_state.mode(),
+                    LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+                ) {
+                    return Err(anyhow!("loop content is changing"));
+                }
+                let channels = self
+                    .loop_channels
+                    .get(loop_id)
+                    .ok_or_else(|| anyhow!("missing loop channels"))?;
+                let audio = channels
+                    .audio
+                    .iter()
+                    .map(|channel| {
+                        let channel = self
+                            .session
+                            .audio_channel(*channel)
+                            .ok_or_else(|| anyhow!("missing audio channel"))?;
+                        Ok(BackendAudioContent {
+                            samples: channel.data(),
+                            gain: channel.gain(),
+                            start_offset: channel.start_offset(),
+                            preplay: channel.pre_play_samples(),
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                let midi = channels
+                    .midi
+                    .iter()
+                    .map(|channel| {
+                        let channel = self
+                            .session
+                            .midi_channel(*channel)
+                            .ok_or_else(|| anyhow!("missing MIDI channel"))?;
+                        Ok(BackendMidiContent {
+                            length: channel.length(),
+                            start_state: channel.recording_start_state_messages(),
+                            events: channel
+                                .contents()
+                                .into_iter()
+                                .map(|event| BackendMidiEvent {
+                                    time: event.time,
+                                    data: event.data().to_vec(),
+                                })
+                                .collect(),
+                            start_offset: channel.start_offset(),
+                            preplay: channel.pre_play_samples(),
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                loops.push(BackendLoopContent {
+                    source_id: loop_id.raw(),
+                    length: loop_state.length(),
+                    gain: channels.gain,
+                    balance: channels.balance,
+                    audio,
+                    midi,
+                });
+            }
+            let ports = track
+                .ports
+                .iter()
+                .map(|port_id| {
+                    let state = connections
+                        .ports
+                        .get(port_id)
+                        .ok_or_else(|| anyhow!("missing connection port"))?;
+                    Ok(BackendSessionPort {
+                        source_id: port_id.raw(),
+                        descriptor: state.port.clone(),
+                        external_connections: state
+                            .candidates
+                            .iter()
+                            .filter(|candidate| candidate.connected)
+                            .map(|candidate| candidate.full_name.clone())
+                            .collect(),
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            tracks.push(BackendSessionTrack {
+                source_id: track_id.raw(),
+                port_name_base: track.port_name_base.clone(),
+                state,
+                loops,
+                ports,
+                carla_state: None,
+            });
+        }
+        Ok(BackendSessionData {
+            sample_rate: self.sample_rate,
+            tracks,
+        })
+    }
+
+    fn build_replacement(
+        &self,
+        data: &BackendSessionData,
+    ) -> Result<(Self, BackendSessionReplacement)> {
+        if data.sample_rate != self.sample_rate {
+            return Err(anyhow!(
+                "prepared session sample rate {} does not match backend {}",
+                data.sample_rate,
+                self.sample_rate
+            ));
+        }
+        let mut staged = match self.mode {
+            EngineBackendMode::Dummy => Self::new_dummy(self.sample_rate, self.buffer_size)?,
+            EngineBackendMode::Physical => Self::new_web_audio(self.sample_rate, self.buffer_size)?,
+        };
+        staged.external_connections = DummyExternalConnections::default();
+        for descriptor in self.external_connections.mock_ports() {
+            staged.external_connections.add_mock_port(
+                descriptor.name.clone(),
+                descriptor.direction,
+                descriptor.data_type,
+            );
+        }
+        let mut replacement = BackendSessionReplacement::default();
+        for source_track in &data.tracks {
+            let created = staged.create_direct_track(DirectTrackRequest {
+                port_name_base: source_track.port_name_base.clone(),
+                audio_channels: source_track.state.audio_channels,
+                midi: source_track.state.midi,
+                initial_loops: source_track.loops.len(),
+            })?;
+            for control in [
+                BackendTrackControl::OutputGainDb(source_track.state.output_gain_db),
+                BackendTrackControl::OutputBalance(source_track.state.output_balance),
+                BackendTrackControl::OutputMute(source_track.state.output_muted),
+                BackendTrackControl::InputGainDb(source_track.state.input_gain_db),
+                BackendTrackControl::InputBalance(source_track.state.input_balance),
+                BackendTrackControl::InputMonitoring(source_track.state.input_monitoring),
+            ] {
+                staged.set_track_control(created.track_id, control)?;
+            }
+            if created.loops.len() != source_track.loops.len()
+                || created.ports.len() != source_track.ports.len()
+            {
+                return Err(anyhow!("prepared session topology shape changed"));
+            }
+            for (source_loop, loop_id) in source_track.loops.iter().zip(&created.loops) {
+                let engine_loop = staged.engine_loop_index(*loop_id)?;
+                let channels = staged
+                    .loop_channels
+                    .get(loop_id)
+                    .ok_or_else(|| anyhow!("missing staged loop channels"))?;
+                if channels.audio.len() != source_loop.audio.len()
+                    || channels.midi.len() != source_loop.midi.len()
+                {
+                    return Err(anyhow!("prepared loop channel shape changed"));
+                }
+                let audio_indices = channels.audio.clone();
+                let midi_indices = channels.midi.clone();
+                for (index, content) in audio_indices.iter().zip(&source_loop.audio) {
+                    let channel = staged
+                        .session
+                        .audio_channel_mut(*index)
+                        .ok_or_else(|| anyhow!("missing staged audio channel"))?;
+                    channel.load_data(&content.samples);
+                    channel.set_gain(content.gain);
+                    channel.set_start_offset(content.start_offset);
+                    channel.set_pre_play_samples(content.preplay);
+                }
+                for (index, content) in midi_indices.iter().zip(&source_loop.midi) {
+                    let events = content
+                        .events
+                        .iter()
+                        .map(|event| {
+                            shoop_engine::MidiStorageElem::new(event.time, &event.data)
+                                .ok_or_else(|| anyhow!("invalid MIDI event"))
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    let channel = staged
+                        .session
+                        .midi_channel_mut(*index)
+                        .ok_or_else(|| anyhow!("missing staged MIDI channel"))?;
+                    channel.set_contents(&events, content.length, Some(&content.start_state));
+                    channel.set_start_offset(content.start_offset);
+                    channel.set_pre_play_samples(content.preplay);
+                }
+                staged
+                    .session
+                    .loop_mut(engine_loop)
+                    .ok_or_else(|| anyhow!("missing staged loop"))?
+                    .set_length(source_loop.length);
+                staged.set_loop_gain(*loop_id, source_loop.gain)?;
+                staged.set_loop_balance(*loop_id, source_loop.balance)?;
+                replacement.loops.insert(source_loop.source_id, *loop_id);
+            }
+            for (source_port, created_port) in source_track.ports.iter().zip(&created.ports) {
+                replacement
+                    .ports
+                    .insert(source_port.source_id, created_port.id);
+                if staged.mode == EngineBackendMode::Dummy {
+                    for external in &source_port.external_connections {
+                        staged.set_port_connected(created_port.id, external, true)?;
+                    }
+                }
+            }
+            replacement
+                .tracks
+                .insert(source_track.source_id, created.clone());
+        }
+        staged.apply_graph_changes()?;
+        Ok((staged, replacement))
+    }
+
     fn apply_graph_changes(&mut self) -> Result<()> {
         self.session
             .apply_graph_changes()
@@ -808,12 +1149,15 @@ impl Backend for EngineBackend {
     }
 
     fn create_direct_track(&mut self, request: DirectTrackRequest) -> Result<BackendTrackCreation> {
-        if request.audio_channels > 10 {
-            return Err(anyhow!("direct track audio channel count exceeds 10"));
-        }
-        let mut audio_inputs = Vec::with_capacity(request.audio_channels as usize);
-        let mut audio_outputs = Vec::with_capacity(request.audio_channels as usize);
-        let mut ports = Vec::with_capacity(request.audio_channels as usize * 2 + 2);
+        let audio_channels = usize::try_from(request.audio_channels)
+            .map_err(|_| anyhow!("direct track audio channel count does not fit this target"))?;
+        let port_capacity = audio_channels
+            .checked_mul(2)
+            .and_then(|count| count.checked_add(2))
+            .ok_or_else(|| anyhow!("direct track audio channel count is too large"))?;
+        let mut audio_inputs = Vec::with_capacity(audio_channels);
+        let mut audio_outputs = Vec::with_capacity(audio_channels);
+        let mut ports = Vec::with_capacity(port_capacity);
         let capture_samples = self.sample_rate as usize * RECORDING_CAPACITY_SECONDS as usize;
         let capture_block_size = capture_samples.div_ceil(32).max(self.buffer_size as usize);
         for index in 0..request.audio_channels {
@@ -918,11 +1262,13 @@ impl Backend for EngineBackend {
         self.tracks.insert(
             track_id,
             EngineTrack {
+                port_name_base: request.port_name_base,
                 audio_inputs,
                 audio_outputs,
                 midi_input,
                 midi_output,
                 loops: Vec::new(),
+                ports: ports.iter().map(|port| port.id).collect(),
                 output_gain_db: 0.0,
                 output_balance: 0.0,
                 output_muted: false,
@@ -1141,6 +1487,46 @@ impl Backend for EngineBackend {
             .map(Some)
     }
 
+    fn loop_audio_data_chunk(
+        &mut self,
+        loop_id: BackendLoopId,
+        channel: usize,
+        offset: usize,
+        max_samples: usize,
+    ) -> Result<BackendAudioDataChunk> {
+        let channels = self
+            .loop_channels
+            .get(&loop_id)
+            .ok_or_else(|| anyhow!("unknown backend loop channels {loop_id:?}"))?;
+        let channel_count = channels.audio.len();
+        let Some(index) = channels.audio.get(channel) else {
+            return Ok(BackendAudioDataChunk {
+                channel,
+                channel_count,
+                offset,
+                ..Default::default()
+            });
+        };
+        let channel_ref = self
+            .session
+            .audio_channel(*index)
+            .ok_or_else(|| anyhow!("missing audio loop channel"))?;
+        let revision = u64::from(channel_ref.data_seq_nr());
+        let total_samples = channel_ref.length();
+        let samples = channel_ref.data_range(offset, max_samples);
+        if u64::from(channel_ref.data_seq_nr()) != revision {
+            return Err(anyhow!("audio content changed during chunk capture"));
+        }
+        Ok(BackendAudioDataChunk {
+            content_revision: revision,
+            channel,
+            channel_count,
+            offset,
+            total_samples,
+            samples,
+        })
+    }
+
     fn set_loop_sync_source(
         &mut self,
         loop_id: BackendLoopId,
@@ -1178,6 +1564,26 @@ impl Backend for EngineBackend {
             .ok_or_else(|| anyhow!("missing engine loop"))?
             .clear(0);
         Ok(())
+    }
+
+    fn capture_session(&mut self) -> Result<BackendSessionData> {
+        self.capture_session_data()
+    }
+
+    fn replace_session(
+        &mut self,
+        session: &BackendSessionData,
+    ) -> Result<BackendSessionReplacement> {
+        let (mut replacement, mapping) = self.build_replacement(session)?;
+        replacement.elapsed_frame_numerator = self.elapsed_frame_numerator;
+        replacement.processed_frames = self.processed_frames;
+        replacement.xruns = self.xruns;
+        replacement.callback_count = self.callback_count;
+        replacement.input_peak = self.input_peak;
+        replacement.output_peak = self.output_peak;
+        replacement.last_quantum = self.last_quantum;
+        *self = replacement;
+        Ok(mapping)
     }
 
     fn set_port_connected(
@@ -1274,7 +1680,7 @@ impl Backend for EngineBackend {
             tracks.insert(
                 *id,
                 BackendTrackState {
-                    audio_channels: track.audio_inputs.len() as u8,
+                    audio_channels: track.audio_inputs.len() as u32,
                     midi: track.midi_input.is_some(),
                     output_gain_db: track.output_gain_db,
                     output_balance: track.output_balance,
@@ -1587,12 +1993,15 @@ pub struct FakeBackend {
     fail_track_creation_after: Option<usize>,
     operations: Vec<FakeOperation>,
     connections: FakeConnectionControl,
+    loop_content: BTreeMap<BackendLoopId, BackendLoopContent>,
 }
 
 #[derive(Debug)]
 struct FakeTrack {
+    port_name_base: String,
     state: BackendTrackState,
     loops: Vec<BackendLoopId>,
+    ports: Vec<BackendPortId>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1629,6 +2038,7 @@ impl Default for FakeBackend {
             connections: FakeConnectionControl {
                 state: Arc::new(Mutex::new(FakeConnectionState::default())),
             },
+            loop_content: BTreeMap::new(),
         }
     }
 }
@@ -1725,6 +2135,17 @@ impl Backend for FakeBackend {
             },
         );
         self.sync_sources.insert(id, None);
+        self.loop_content.insert(
+            id,
+            BackendLoopContent {
+                source_id: id.raw(),
+                length: 0,
+                gain: 1.0,
+                balance: 0.0,
+                audio: Vec::new(),
+                midi: Vec::new(),
+            },
+        );
         self.operations.push(FakeOperation::CreateLoop(id));
         Ok(id)
     }
@@ -1737,10 +2158,13 @@ impl Backend for FakeBackend {
             }
             *remaining -= 1;
         }
-        if request.audio_channels > 10 {
-            return Err(anyhow!("direct track audio channel count exceeds 10"));
-        }
-        let mut ports = Vec::with_capacity(request.audio_channels as usize * 2 + 2);
+        let audio_channels = usize::try_from(request.audio_channels)
+            .map_err(|_| anyhow!("direct track audio channel count does not fit this target"))?;
+        let port_capacity = audio_channels
+            .checked_mul(2)
+            .and_then(|count| count.checked_add(2))
+            .ok_or_else(|| anyhow!("direct track audio channel count is too large"))?;
+        let mut ports = Vec::with_capacity(port_capacity);
         for index in 0..request.audio_channels {
             let suffix = if request.audio_channels == 1 {
                 String::new()
@@ -1779,12 +2203,14 @@ impl Backend for FakeBackend {
         self.tracks.insert(
             track_id,
             FakeTrack {
+                port_name_base: request.port_name_base,
                 state: BackendTrackState {
                     audio_channels: request.audio_channels,
                     midi: request.midi,
                     ..Default::default()
                 },
                 loops: Vec::new(),
+                ports: ports.iter().map(|port| port.id).collect(),
             },
         );
         self.operations.push(FakeOperation::CreateTrack(track_id));
@@ -1810,6 +2236,27 @@ impl Backend for FakeBackend {
             state.stereo = track.state.audio_channels == 2;
             state.gain = 1.0;
             state.audio_peaks = vec![-200.0; track.state.audio_channels as usize];
+        }
+        if let Some(content) = self.loop_content.get_mut(&loop_id) {
+            content.audio = (0..track.state.audio_channels)
+                .map(|_| BackendAudioContent {
+                    samples: Vec::new(),
+                    gain: 1.0,
+                    start_offset: 0,
+                    preplay: 0,
+                })
+                .collect();
+            content.midi = if track.state.midi {
+                vec![BackendMidiContent {
+                    length: 0,
+                    start_state: Vec::new(),
+                    events: Vec::new(),
+                    start_offset: 0,
+                    preplay: 0,
+                }]
+            } else {
+                Vec::new()
+            };
         }
         self.operations
             .push(FakeOperation::AddTrackLoop(track_id, loop_id));
@@ -1844,6 +2291,9 @@ impl Backend for FakeBackend {
             .get_mut(&loop_id)
             .ok_or_else(|| anyhow!("unknown fake loop {loop_id:?}"))?;
         state.gain = gain.clamp(0.0, 1.0);
+        if let Some(content) = self.loop_content.get_mut(&loop_id) {
+            content.gain = state.gain;
+        }
         self.operations
             .push(FakeOperation::SetLoopGain(loop_id, state.gain));
         Ok(())
@@ -1855,6 +2305,9 @@ impl Backend for FakeBackend {
             .get_mut(&loop_id)
             .ok_or_else(|| anyhow!("unknown fake loop {loop_id:?}"))?;
         state.balance = balance.clamp(-1.0, 1.0);
+        if let Some(content) = self.loop_content.get_mut(&loop_id) {
+            content.balance = state.balance;
+        }
         self.operations
             .push(FakeOperation::SetLoopBalance(loop_id, state.balance));
         Ok(())
@@ -1869,6 +2322,9 @@ impl Backend for FakeBackend {
             state.mode = request.go_to_mode;
             if let Some(cycles) = request.cycles_length {
                 state.length = cycles.max(0) as u32;
+                if let Some(content) = self.loop_content.get_mut(&request.loop_id) {
+                    content.length = state.length;
+                }
             }
         }
         self.operations
@@ -1878,15 +2334,13 @@ impl Backend for FakeBackend {
 
     fn loop_audio_data(&mut self, loop_id: BackendLoopId) -> Result<Option<Vec<Arc<[f32]>>>> {
         self.require_loop(loop_id)?;
-        let n_channels = self
-            .tracks
-            .values()
-            .find(|track| track.loops.contains(&loop_id))
-            .map(|track| track.state.audio_channels)
-            .unwrap_or(0);
         Ok(Some(
-            (0..n_channels)
-                .map(|_| Arc::from(Vec::<f32>::new()))
+            self.loop_content
+                .get(&loop_id)
+                .ok_or_else(|| anyhow!("missing fake loop content"))?
+                .audio
+                .iter()
+                .map(|channel| Arc::from(channel.samples.clone()))
                 .collect(),
         ))
     }
@@ -1933,8 +2387,163 @@ impl Backend for FakeBackend {
             mode: BackendLoopMode::Stopped,
             ..Default::default()
         };
+        if let Some(content) = self.loop_content.get_mut(&loop_id) {
+            content.length = 0;
+            for channel in &mut content.audio {
+                channel.samples.clear();
+            }
+            for channel in &mut content.midi {
+                channel.length = 0;
+                channel.start_state.clear();
+                channel.events.clear();
+            }
+        }
         self.operations.push(FakeOperation::Clear(loop_id));
         Ok(())
+    }
+
+    fn capture_session(&mut self) -> Result<BackendSessionData> {
+        if self.loops.values().any(|state| {
+            matches!(
+                state.mode,
+                BackendLoopMode::Recording
+                    | BackendLoopMode::Replacing
+                    | BackendLoopMode::RecordingDryIntoWet
+            )
+        }) {
+            return Err(anyhow!("loop content is changing"));
+        }
+        let connections = self.connection_snapshot();
+        let tracks = self
+            .tracks
+            .iter()
+            .map(|(track_id, track)| {
+                let loops = track
+                    .loops
+                    .iter()
+                    .map(|loop_id| {
+                        self.loop_content
+                            .get(loop_id)
+                            .cloned()
+                            .ok_or_else(|| anyhow!("missing fake loop content"))
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                let ports = track
+                    .ports
+                    .iter()
+                    .map(|port_id| {
+                        let state = connections
+                            .ports
+                            .get(port_id)
+                            .ok_or_else(|| anyhow!("missing fake connection port"))?;
+                        Ok(BackendSessionPort {
+                            source_id: port_id.raw(),
+                            descriptor: state.port.clone(),
+                            external_connections: state
+                                .candidates
+                                .iter()
+                                .filter(|candidate| candidate.connected)
+                                .map(|candidate| candidate.full_name.clone())
+                                .collect(),
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(BackendSessionTrack {
+                    source_id: track_id.raw(),
+                    port_name_base: track.port_name_base.clone(),
+                    state: track.state.clone(),
+                    loops,
+                    ports,
+                    carla_state: None,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(BackendSessionData {
+            sample_rate: self.status.sample_rate,
+            tracks,
+        })
+    }
+
+    fn replace_session(
+        &mut self,
+        session: &BackendSessionData,
+    ) -> Result<BackendSessionReplacement> {
+        if session.sample_rate != self.status.sample_rate {
+            return Err(anyhow!(
+                "prepared session sample rate does not match backend"
+            ));
+        }
+        if session
+            .tracks
+            .iter()
+            .any(|track| track.carla_state.is_some())
+        {
+            return Err(anyhow!("Carla topology is unavailable in this backend"));
+        }
+        let external_ports = self
+            .connections
+            .with_state(|state| state.external_ports.clone());
+        let mut staged = FakeBackend::default();
+        staged.status = self.status;
+        staged.connections.with_state(|state| {
+            state.external_ports = external_ports;
+        });
+        let mut replacement = BackendSessionReplacement::default();
+        for source_track in &session.tracks {
+            let created = staged.create_direct_track(DirectTrackRequest {
+                port_name_base: source_track.port_name_base.clone(),
+                audio_channels: source_track.state.audio_channels,
+                midi: source_track.state.midi,
+                initial_loops: source_track.loops.len(),
+            })?;
+            if created.ports.len() != source_track.ports.len() {
+                return Err(anyhow!("prepared session port shape changed"));
+            }
+            for control in [
+                BackendTrackControl::OutputGainDb(source_track.state.output_gain_db),
+                BackendTrackControl::OutputBalance(source_track.state.output_balance),
+                BackendTrackControl::OutputMute(source_track.state.output_muted),
+                BackendTrackControl::InputGainDb(source_track.state.input_gain_db),
+                BackendTrackControl::InputBalance(source_track.state.input_balance),
+                BackendTrackControl::InputMonitoring(source_track.state.input_monitoring),
+            ] {
+                staged.set_track_control(created.track_id, control)?;
+            }
+            for (source_loop, loop_id) in source_track.loops.iter().zip(&created.loops) {
+                if source_loop.audio.len() != source_track.state.audio_channels as usize
+                    || source_loop.midi.len() != usize::from(source_track.state.midi)
+                {
+                    return Err(anyhow!("prepared session channel shape changed"));
+                }
+                staged.loop_content.insert(
+                    *loop_id,
+                    BackendLoopContent {
+                        source_id: loop_id.raw(),
+                        ..source_loop.clone()
+                    },
+                );
+                if let Some(state) = staged.loops.get_mut(loop_id) {
+                    state.length = source_loop.length;
+                    state.gain = source_loop.gain;
+                    state.balance = source_loop.balance;
+                    state.mode = BackendLoopMode::Stopped;
+                }
+                replacement.loops.insert(source_loop.source_id, *loop_id);
+            }
+            for (source_port, created_port) in source_track.ports.iter().zip(&created.ports) {
+                replacement
+                    .ports
+                    .insert(source_port.source_id, created_port.id);
+                for external in &source_port.external_connections {
+                    staged.set_port_connected(created_port.id, external, true)?;
+                }
+            }
+            replacement
+                .tracks
+                .insert(source_track.source_id, created.clone());
+        }
+        *self = staged;
+        Ok(replacement)
     }
 
     fn set_port_connected(
@@ -2023,6 +2632,99 @@ mod tests {
         );
         backend.set_loop_sync_source(follower, Some(sync)).unwrap();
         backend.wait_idle();
+    }
+
+    fn session_io_contract(backend: &mut dyn Backend) {
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "persistence".to_owned(),
+                audio_channels: 3,
+                midi: true,
+                initial_loops: 2,
+            })
+            .unwrap();
+        backend
+            .set_track_control(created.track_id, BackendTrackControl::OutputGainDb(-4.0))
+            .unwrap();
+        backend.set_loop_gain(created.loops[0], 0.75).unwrap();
+        backend.set_loop_balance(created.loops[0], -0.25).unwrap();
+        let input = created
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::AudioInput)
+            .unwrap();
+        backend
+            .set_port_connected(input.id, "system:capture_1", true)
+            .unwrap();
+        let mut prepared = backend.capture_session().unwrap();
+        let track = prepared
+            .tracks
+            .iter_mut()
+            .find(|track| track.source_id == created.track_id.raw())
+            .unwrap();
+        let loop_ = track
+            .loops
+            .iter_mut()
+            .find(|loop_| loop_.source_id == created.loops[0].raw())
+            .unwrap();
+        loop_.length = 4;
+        loop_.audio[0].samples = vec![0.25, -0.5, 0.75, -1.0];
+        loop_.audio[0].gain = 0.5;
+        loop_.audio[0].start_offset = -2;
+        loop_.audio[0].preplay = 3;
+        loop_.midi[0] = BackendMidiContent {
+            length: 4,
+            start_state: vec![vec![0xB0, 7, 99]],
+            events: vec![BackendMidiEvent {
+                time: 2,
+                data: vec![0x90, 60, 100],
+            }],
+            start_offset: -1,
+            preplay: 2,
+        };
+        backend.advance(Duration::from_millis(20));
+        let status_before_replace = backend.poll().unwrap().status;
+        let mapping = backend.replace_session(&prepared).unwrap();
+        let status_after_replace = backend.poll().unwrap().status;
+        assert_eq!(
+            status_after_replace.callback_count,
+            status_before_replace.callback_count
+        );
+        assert_eq!(
+            status_after_replace.processed_frames,
+            status_before_replace.processed_frames
+        );
+        assert_eq!(mapping.tracks.len(), prepared.tracks.len());
+        assert_eq!(mapping.loops.len(), 2);
+        let captured = backend.capture_session().unwrap();
+        let track = captured
+            .tracks
+            .iter()
+            .find(|track| track.source_id == created.track_id.raw())
+            .unwrap();
+        assert_eq!(track.state.output_gain_db, -4.0);
+        let loop_ = &track.loops[0];
+        assert_eq!(loop_.length, 4);
+        assert_eq!(loop_.gain, 0.75);
+        assert_eq!(loop_.balance, -0.25);
+        assert_eq!(loop_.audio[0].samples, vec![0.25, -0.5, 0.75, -1.0]);
+        assert_eq!(loop_.audio[0].start_offset, -2);
+        assert_eq!(loop_.audio[0].preplay, 3);
+        assert_eq!(loop_.midi[0].events[0].time, 2);
+        assert!(loop_.midi[0]
+            .start_state
+            .iter()
+            .any(|message| message == &[0xB0, 7, 99]));
+        assert!(track
+            .ports
+            .iter()
+            .any(|port| port.external_connections == ["system:capture_1"]));
+
+        let before_failure = backend.capture_session().unwrap();
+        let mut invalid = before_failure.clone();
+        invalid.tracks[0].loops[0].audio.pop();
+        assert!(backend.replace_session(&invalid).is_err());
+        assert_eq!(backend.capture_session().unwrap(), before_failure);
     }
 
     fn connection_contract(backend: &mut dyn Backend) {
@@ -2131,6 +2833,12 @@ mod tests {
         backend_contract(&mut backend);
         direct_track_contract(&mut backend);
         connection_contract(&mut backend);
+    }
+
+    #[test]
+    fn fake_and_engine_backends_satisfy_transactional_session_io_contract() {
+        session_io_contract(&mut FakeBackend::default());
+        session_io_contract(&mut EngineBackend::new_dummy(48_000, 256).unwrap());
     }
 
     #[test]
@@ -2262,6 +2970,42 @@ mod tests {
         assert_eq!(status.processed_frames, 256);
         assert!(status.input_peak == 0.0);
         assert!(status.output_peak > 0.0);
+    }
+
+    #[test]
+    fn web_audio_playback_deterministically_mixes_more_loop_channels_than_device_channels() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "wide_web".to_owned(),
+                audio_channels: 4,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let mut session = backend.capture_session().unwrap();
+        let loop_ = &mut session.tracks[0].loops[0];
+        loop_.length = 128;
+        for (channel, value) in loop_.audio.iter_mut().zip([0.1, 0.2, 0.3, 0.4]) {
+            channel.samples = vec![value; 128];
+        }
+        let source_loop_id = loop_.source_id;
+        let replacement = backend.replace_session(&session).unwrap();
+        let loaded_loop_id = replacement.loops[&source_loop_id];
+        backend
+            .transition_loop(loaded_loop_id, BackendLoopMode::Playing, None)
+            .unwrap();
+
+        let mut output = vec![0.0; 256];
+        backend
+            .process_audio_quantum(&[], 0, &mut output, 2, 128)
+            .unwrap();
+        assert!(output[..128]
+            .iter()
+            .all(|sample| (*sample - 0.1).abs() < 1.0e-6));
+        assert!(output[128..]
+            .iter()
+            .all(|sample| (*sample - 0.9).abs() < 1.0e-6));
     }
 
     #[test]

@@ -19,15 +19,23 @@ use shoop_engine::app_backend::{
 };
 use shoop_engine::{AudioDriverType, ChannelMode, LoopMode, PortDirection};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Mutex, MutexGuard};
 
 /// Unique per session, so concurrently running tests cannot collide on a client name.
 static NEXT: AtomicU32 = AtomicU32::new(0);
+
+// Application-backend driver services are process-global. Serialize these integration tests while
+// the rest of the workspace remains free to run in parallel.
+static DRIVER_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 /// A running dummy driver with a session attached.
 ///
 /// The driver is returned and must be kept alive: dropping it stops the thread that cycles
 /// the engine, after which nothing would answer a blocking call.
-fn backend() -> (AudioDriver, BackendSession) {
+fn backend() -> (MutexGuard<'static, ()>, AudioDriver, BackendSession) {
+    let exclusive = DRIVER_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let n = NEXT.fetch_add(1, Ordering::Relaxed);
     let driver = AudioDriver::new(AudioDriverType::Dummy, None).expect("create driver");
     driver
@@ -39,7 +47,7 @@ fn backend() -> (AudioDriver, BackendSession) {
         .expect("start driver");
     let session = BackendSession::new().expect("session");
     session.set_audio_driver(&driver).expect("attach driver");
-    (driver, session)
+    (exclusive, driver, session)
 }
 
 /// Polls until `f` yields a value or the deadline passes.
@@ -59,7 +67,7 @@ fn eventually<T>(mut f: impl FnMut() -> Option<T>) -> Option<T> {
 
 #[test]
 fn a_loop_can_be_created_and_read_back() {
-    let (_driver, b) = backend();
+    let (_exclusive, _driver, b) = backend();
 
     let_assert!(Ok(l) = b.create_loop());
     let_assert!(Ok(state) = l.get_state());
@@ -71,7 +79,7 @@ fn a_loop_can_be_created_and_read_back() {
 /// Exact read-after-write is available through an explicit command fence.
 #[test]
 fn an_explicit_fence_makes_a_mutation_visible() {
-    let (_driver, b) = backend();
+    let (_exclusive, _driver, b) = backend();
     let_assert!(Ok(l) = b.create_loop());
 
     let_assert!(Ok(sequence) = l.set_length(128));
@@ -84,7 +92,7 @@ fn an_explicit_fence_makes_a_mutation_visible() {
 /// The frame-rate path: state the audio thread published, read without blocking.
 #[test]
 fn polled_state_catches_up_with_the_engine() {
-    let (_driver, b) = backend();
+    let (_exclusive, _driver, b) = backend();
     let_assert!(Ok(l) = b.create_loop());
     let_assert!(Ok(_) = l.set_length(4096));
     let_assert!(Ok(_) = l.transition(LoopMode::Playing, -1, -1));
@@ -101,7 +109,7 @@ fn polled_state_catches_up_with_the_engine() {
 
 #[test]
 fn an_audio_channel_round_trips_its_data() {
-    let (_driver, b) = backend();
+    let (_exclusive, _driver, b) = backend();
     let_assert!(Ok(l) = b.create_loop());
     let_assert!(Ok(c) = l.add_audio_channel(ChannelMode::Direct));
 
@@ -119,7 +127,7 @@ fn an_audio_channel_round_trips_its_data() {
 
 #[test]
 fn audio_channel_settings_take_effect() {
-    let (_driver, b) = backend();
+    let (_exclusive, _driver, b) = backend();
     let_assert!(Ok(l) = b.create_loop());
     let_assert!(Ok(c) = l.add_audio_channel(ChannelMode::Direct));
 
@@ -139,7 +147,7 @@ fn audio_channel_settings_take_effect() {
 
 #[test]
 fn a_midi_channel_reports_its_state() {
-    let (_driver, b) = backend();
+    let (_exclusive, _driver, b) = backend();
     let_assert!(Ok(l) = b.create_loop());
     let_assert!(Ok(c) = l.add_midi_channel(ChannelMode::Direct));
 
@@ -157,7 +165,7 @@ fn a_midi_channel_reports_its_state() {
 
 #[test]
 fn clearing_a_loop_empties_its_channels_and_stops_it() {
-    let (_driver, b) = backend();
+    let (_exclusive, _driver, b) = backend();
     let_assert!(Ok(l) = b.create_loop());
     let_assert!(Ok(c) = l.add_audio_channel(ChannelMode::Direct));
 
@@ -181,7 +189,7 @@ fn clearing_a_loop_empties_its_channels_and_stops_it() {
 
 #[test]
 fn a_loop_can_follow_another() {
-    let (_driver, b) = backend();
+    let (_exclusive, _driver, b) = backend();
     let_assert!(Ok(source) = b.create_loop());
     let_assert!(Ok(follower) = b.create_loop());
 
@@ -204,7 +212,7 @@ fn a_loop_can_follow_another() {
 /// the threads are contending for the queue, not for the session.
 #[test]
 fn handles_can_be_shared_across_threads() {
-    let (_driver, b) = backend();
+    let (_exclusive, _driver, b) = backend();
     let_assert!(Ok(l) = b.create_loop());
 
     let threads: Vec<_> = (0..4)
@@ -230,7 +238,7 @@ fn handles_can_be_shared_across_threads() {
 
 #[test]
 fn a_port_reports_its_state() {
-    let (driver, b) = backend();
+    let (_exclusive, driver, b) = backend();
 
     let_assert!(Ok(p) = AudioPort::new_driver_port(&b, &driver, "in", &PortDirection::Input, 4));
 
@@ -248,7 +256,7 @@ fn a_port_reports_its_state() {
 
 #[test]
 fn a_midi_port_reports_its_state() {
-    let (driver, b) = backend();
+    let (_exclusive, driver, b) = backend();
 
     let_assert!(Ok(p) = MidiPort::new_driver_port(&b, &driver, "min", &PortDirection::Input, 0));
     p.set_muted(true).expect("queue mute");
@@ -261,7 +269,7 @@ fn a_midi_port_reports_its_state() {
 
 #[test]
 fn muting_applies_to_whichever_kind_the_port_is() {
-    let (driver, b) = backend();
+    let (_exclusive, driver, b) = backend();
 
     let_assert!(
         Ok(audio) = AudioPort::new_driver_port(&b, &driver, "a", &PortDirection::Output, 4)
@@ -281,7 +289,7 @@ fn muting_applies_to_whichever_kind_the_port_is() {
 /// other call exists to arrange.
 #[test]
 fn a_graph_built_through_the_api_records_and_plays() {
-    let (driver, b) = backend();
+    let (_exclusive, driver, b) = backend();
 
     let_assert!(
         Ok(input) = AudioPort::new_driver_port(&b, &driver, "in", &PortDirection::Input, 4)
@@ -317,7 +325,7 @@ fn a_graph_built_through_the_api_records_and_plays() {
 
 #[test]
 fn ports_can_be_routed_to_each_other() {
-    let (driver, b) = backend();
+    let (_exclusive, driver, b) = backend();
 
     let_assert!(
         Ok(from) = AudioPort::new_driver_port(&b, &driver, "from", &PortDirection::Input, 4)

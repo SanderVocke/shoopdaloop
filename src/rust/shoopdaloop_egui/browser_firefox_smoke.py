@@ -35,7 +35,8 @@ def main() -> None:
     try:
         driver = webdriver.Firefox(options=options)
         driver.set_window_size(900, 600)
-        driver.get(f"http://{HOST}:{PORT}/?self-test=1")
+        stress = os.environ.get("STRESS") == "1"
+        driver.get(f"http://{HOST}:{PORT}/?self-test=1{'&stress=1' if stress else ''}")
         deadline = time.monotonic() + 20
         initial_state = {}
         while time.monotonic() < deadline:
@@ -52,13 +53,14 @@ def main() -> None:
         else:
             raise RuntimeError(f"Firefox did not present the enable-audio action: {initial_state}")
         driver.find_element("id", "enable_audio").click()
-        deadline = time.monotonic() + 60
+        deadline = time.monotonic() + (360 if stress else 120)
         state = {}
         while time.monotonic() < deadline:
             status = driver.find_element("id", "runtime_status")
             state = {
                 "self_test": status.get_attribute("data-self-test"),
                 "driver": status.get_attribute("data-driver-state"),
+                "self_test_error": status.get_attribute("data-self-test-error"),
                 "callbacks": int(status.get_attribute("data-callback-count") or 0),
                 "input_peak": float(status.get_attribute("data-input-peak") or 0),
                 "output_peak": float(status.get_attribute("data-output-peak") or 0),

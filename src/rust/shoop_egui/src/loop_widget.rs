@@ -4,11 +4,15 @@ use egui_material_icons::icons::{
 };
 use egui_material_icons::MaterialIcon;
 
-use crate::{CompositeKind, LoopMode, LoopState, LoopWidgetAction, SelectionModifiers};
+use crate::{
+    AppIntent, CompositeKind, LoopAudioExportFormat, LoopMode, LoopState, LoopWidgetAction,
+    SelectionModifiers,
+};
 
 #[derive(Debug, Default)]
 pub struct LoopWidgetResponse {
     pub actions: Vec<LoopWidgetAction>,
+    pub io_intents: Vec<AppIntent>,
 }
 
 #[derive(Debug, Default)]
@@ -172,7 +176,54 @@ impl LoopWidget {
         size: egui::Vec2,
     ) -> LoopWidgetResponse {
         let mut result = LoopWidgetResponse::default();
-        let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+        let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+        response.context_menu(|ui| {
+            ui.label(&state.name);
+            if state.has_audio {
+                if ui.button("Save exact audio…").clicked() {
+                    result.io_intents.push(AppIntent::RequestLoopAudioExport {
+                        loop_id: state.id,
+                        format: LoopAudioExportFormat::Exact,
+                    });
+                    ui.close();
+                }
+                if ui.button("Save float WAV…").clicked() {
+                    result.io_intents.push(AppIntent::RequestLoopAudioExport {
+                        loop_id: state.id,
+                        format: LoopAudioExportFormat::FloatWav,
+                    });
+                    ui.close();
+                }
+                if ui.button("Load audio…").clicked() {
+                    result
+                        .io_intents
+                        .push(AppIntent::RequestLoopAudioImportPicker { loop_id: state.id });
+                    ui.close();
+                }
+            }
+            if state.has_midi {
+                if ui.button("Save exact MIDI…").clicked() {
+                    result.io_intents.push(AppIntent::RequestLoopMidiExport {
+                        loop_id: state.id,
+                        standard: false,
+                    });
+                    ui.close();
+                }
+                if ui.button("Save standard MIDI…").clicked() {
+                    result.io_intents.push(AppIntent::RequestLoopMidiExport {
+                        loop_id: state.id,
+                        standard: true,
+                    });
+                    ui.close();
+                }
+                if ui.button("Load MIDI…").clicked() {
+                    result
+                        .io_intents
+                        .push(AppIntent::RequestLoopMidiImportPicker { loop_id: state.id });
+                    ui.close();
+                }
+            }
+        });
         let hovered = ui.rect_contains_pointer(rect);
         let rounding = egui::CornerRadius::same(2);
         let background = if state.composite_kind == CompositeKind::Regular {

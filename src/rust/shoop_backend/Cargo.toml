@@ -4,6 +4,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 shoop_engine = { path = "../shoop_engine" }
 
 [dev-dependencies]

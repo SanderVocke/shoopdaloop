@@ -1,7 +1,19 @@
 use std::time::Duration;
 
+#[cfg(target_arch = "wasm32")]
+use std::cell::RefCell;
+#[cfg(target_arch = "wasm32")]
+use std::collections::VecDeque;
+#[cfg(target_arch = "wasm32")]
+use std::rc::Rc;
+
 #[cfg(not(target_arch = "wasm32"))]
-use std::time::Instant;
+use std::{
+    io::Write,
+    path::Path,
+    sync::mpsc::{self, Receiver, Sender},
+    time::Instant,
+};
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
 
@@ -27,16 +39,30 @@ struct UnifiedApp {
     last_update: Instant,
     #[cfg(target_arch = "wasm32")]
     browser_self_test: BrowserSelfTest,
+    #[cfg(target_arch = "wasm32")]
+    pending_file_intents: Rc<RefCell<VecDeque<AppIntent>>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    pending_file_intent_tx: Sender<AppIntent>,
+    #[cfg(not(target_arch = "wasm32"))]
+    pending_file_intent_rx: Receiver<AppIntent>,
 }
 
 impl UnifiedApp {
     fn new() -> anyhow::Result<Self> {
+        #[cfg(not(target_arch = "wasm32"))]
+        let (pending_file_intent_tx, pending_file_intent_rx) = mpsc::channel();
         Ok(Self {
             runtime: Runtime::new()?,
             widget: AppWidget::default(),
             last_update: Instant::now(),
             #[cfg(target_arch = "wasm32")]
             browser_self_test: BrowserSelfTest::from_location(),
+            #[cfg(target_arch = "wasm32")]
+            pending_file_intents: Rc::new(RefCell::new(VecDeque::new())),
+            #[cfg(not(target_arch = "wasm32"))]
+            pending_file_intent_tx,
+            #[cfg(not(target_arch = "wasm32"))]
+            pending_file_intent_rx,
         })
     }
 }
@@ -48,13 +74,26 @@ impl UnifiedApp {
         self.last_update = now;
         self.runtime.tick(elapsed);
 
+        #[cfg(target_arch = "wasm32")]
+        let pending: Vec<_> = self.pending_file_intents.borrow_mut().drain(..).collect();
+        #[cfg(not(target_arch = "wasm32"))]
+        let pending: Vec<_> = self.pending_file_intent_rx.try_iter().collect();
+        for intent in pending {
+            if let Err(error) = self.runtime.dispatch(intent) {
+                eprintln!("could not dispatch file intent: {error}");
+            }
+        }
         let snapshot = self.runtime.snapshot();
         #[cfg(target_arch = "wasm32")]
         self.browser_self_test.update(&mut self.runtime, &snapshot);
         for intent in self.widget.show(ui, &snapshot) {
-            if let Err(error) = self.runtime.dispatch(intent) {
-                eprintln!("could not dispatch GUI intent: {error}");
-            }
+            self.handle_ui_intent(intent);
+        }
+        while let Some(output) = self.runtime.take_file_output() {
+            #[cfg(not(target_arch = "wasm32"))]
+            save_file_output(output, self.pending_file_intent_tx.clone());
+            #[cfg(target_arch = "wasm32")]
+            save_file_output(output, Rc::clone(&self.pending_file_intents));
         }
         if let Some(notification) = snapshot.notifications.last() {
             egui::Area::new(egui::Id::new("latest_notification"))
@@ -65,6 +104,236 @@ impl UnifiedApp {
         }
         ui.ctx().request_repaint_after(UPDATE_INTERVAL);
     }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn handle_ui_intent(&mut self, intent: AppIntent) {
+        let intent = match intent {
+            AppIntent::RequestLoadSessionPicker => {
+                let path = rfd::FileDialog::new()
+                    .add_filter("Shoop session", &["shoop"])
+                    .pick_file();
+                if let Some(path) = path {
+                    let sender = self.pending_file_intent_tx.clone();
+                    std::thread::spawn(move || match std::fs::read(&path) {
+                        Ok(bytes) => {
+                            let _ = sender.send(AppIntent::LoadSessionBytes {
+                                name: file_name(&path),
+                                bytes: std::sync::Arc::from(bytes),
+                            });
+                        }
+                        Err(error) => {
+                            let _ = sender.send(AppIntent::ReportFileIoError {
+                                task_id: None,
+                                message: format!("Could not read {}: {error}", path.display()),
+                            });
+                        }
+                    });
+                }
+                None
+            }
+            AppIntent::RequestLoopAudioImportPicker { loop_id } => {
+                let path = rfd::FileDialog::new()
+                    .add_filter("Loop audio", &["shoop-audio", "wav"])
+                    .pick_file();
+                if let Some(path) = path {
+                    let sender = self.pending_file_intent_tx.clone();
+                    std::thread::spawn(move || match std::fs::read(&path) {
+                        Ok(bytes) => {
+                            let _ = sender.send(AppIntent::ImportLoopAudioBytes {
+                                loop_id,
+                                name: file_name(&path),
+                                bytes: std::sync::Arc::from(bytes),
+                                update_loop_length: true,
+                            });
+                        }
+                        Err(error) => {
+                            let _ = sender.send(AppIntent::ReportFileIoError {
+                                task_id: None,
+                                message: format!("Could not read {}: {error}", path.display()),
+                            });
+                        }
+                    });
+                }
+                None
+            }
+            AppIntent::RequestLoopMidiImportPicker { loop_id } => {
+                let path = rfd::FileDialog::new()
+                    .add_filter("Loop MIDI", &["shoop-midi", "mid"])
+                    .pick_file();
+                if let Some(path) = path {
+                    let sender = self.pending_file_intent_tx.clone();
+                    std::thread::spawn(move || match std::fs::read(&path) {
+                        Ok(bytes) => {
+                            let _ = sender.send(AppIntent::ImportLoopMidiBytes {
+                                loop_id,
+                                name: file_name(&path),
+                                bytes: std::sync::Arc::from(bytes),
+                                update_loop_length: true,
+                            });
+                        }
+                        Err(error) => {
+                            let _ = sender.send(AppIntent::ReportFileIoError {
+                                task_id: None,
+                                message: format!("Could not read {}: {error}", path.display()),
+                            });
+                        }
+                    });
+                }
+                None
+            }
+            other => Some(other),
+        };
+        if let Some(intent) = intent {
+            if let Err(error) = self.runtime.dispatch(intent) {
+                eprintln!("could not dispatch GUI intent: {error}");
+            }
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn handle_ui_intent(&mut self, intent: AppIntent) {
+        match intent {
+            AppIntent::RequestLoadSessionPicker => {
+                let pending = Rc::clone(&self.pending_file_intents);
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Some(file) = rfd::AsyncFileDialog::new()
+                        .add_filter("Shoop session", &["shoop"])
+                        .pick_file()
+                        .await
+                    {
+                        let name = file.file_name();
+                        let bytes = file.read().await;
+                        pending.borrow_mut().push_back(AppIntent::LoadSessionBytes {
+                            name,
+                            bytes: std::sync::Arc::from(bytes),
+                        });
+                    }
+                });
+            }
+            AppIntent::RequestLoopAudioImportPicker { loop_id } => {
+                let pending = Rc::clone(&self.pending_file_intents);
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Some(file) = rfd::AsyncFileDialog::new()
+                        .add_filter("Loop audio", &["shoop-audio", "wav"])
+                        .pick_file()
+                        .await
+                    {
+                        let name = file.file_name();
+                        let bytes = file.read().await;
+                        pending
+                            .borrow_mut()
+                            .push_back(AppIntent::ImportLoopAudioBytes {
+                                loop_id,
+                                name,
+                                bytes: std::sync::Arc::from(bytes),
+                                update_loop_length: true,
+                            });
+                    }
+                });
+            }
+            AppIntent::RequestLoopMidiImportPicker { loop_id } => {
+                let pending = Rc::clone(&self.pending_file_intents);
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Some(file) = rfd::AsyncFileDialog::new()
+                        .add_filter("Loop MIDI", &["shoop-midi", "mid"])
+                        .pick_file()
+                        .await
+                    {
+                        let name = file.file_name();
+                        let bytes = file.read().await;
+                        pending
+                            .borrow_mut()
+                            .push_back(AppIntent::ImportLoopMidiBytes {
+                                loop_id,
+                                name,
+                                bytes: std::sync::Arc::from(bytes),
+                                update_loop_length: true,
+                            });
+                    }
+                });
+            }
+            other => {
+                if let Err(error) = self.runtime.dispatch(other) {
+                    eprintln!("could not dispatch GUI intent: {error}");
+                }
+            }
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn save_file_output(output: shoop_app::ApplicationFileOutput, sender: Sender<AppIntent>) {
+    let Some(path) = rfd::FileDialog::new()
+        .set_file_name(&output.suggested_name)
+        .save_file()
+    else {
+        return;
+    };
+    std::thread::spawn(move || {
+        if let Err(error) = atomic_replace(&path, &output.bytes, output.task_id.raw()) {
+            let _ = sender.send(AppIntent::ReportFileIoError {
+                task_id: Some(output.task_id),
+                message: format!("Could not save {}: {error}", path.display()),
+            });
+        }
+    });
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn file_name(path: &Path) -> String {
+    path.file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn atomic_replace(path: &Path, bytes: &[u8], task_id: u64) -> std::io::Result<()> {
+    let extension = path.extension().unwrap_or_default().to_string_lossy();
+    let temporary = path.with_extension(format!("{extension}.tmp-{task_id}"));
+    let _ = std::fs::remove_file(&temporary);
+    let result = (|| {
+        let mut file = std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&temporary)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&temporary, path)?;
+        #[cfg(unix)]
+        if let Some(parent) = path.parent() {
+            std::fs::File::open(parent)?.sync_all()?;
+        }
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    result
+}
+
+#[cfg(target_arch = "wasm32")]
+fn save_file_output(
+    output: shoop_app::ApplicationFileOutput,
+    pending: Rc<RefCell<VecDeque<AppIntent>>>,
+) {
+    wasm_bindgen_futures::spawn_local(async move {
+        if let Some(file) = rfd::AsyncFileDialog::new()
+            .set_file_name(&output.suggested_name)
+            .save_file()
+            .await
+        {
+            if let Err(error) = file.write(&output.bytes).await {
+                pending
+                    .borrow_mut()
+                    .push_back(AppIntent::ReportFileIoError {
+                        task_id: Some(output.task_id),
+                        message: format!("Could not save browser file: {error}"),
+                    });
+            }
+        }
+    });
 }
 
 impl eframe::App for UnifiedApp {
@@ -99,6 +368,10 @@ impl Runtime {
 
     fn dispatch(&mut self, intent: AppIntent) -> Result<(), shoop_app::DispatchError> {
         self.handle.dispatch(intent)
+    }
+
+    fn take_file_output(&self) -> Option<shoop_app::ApplicationFileOutput> {
+        self.handle.take_file_output()
     }
 }
 
@@ -160,6 +433,10 @@ impl Runtime {
         self.runtime.dispatch(intent)
     }
 
+    fn take_file_output(&self) -> Option<shoop_app::ApplicationFileOutput> {
+        self.runtime.take_file_output()
+    }
+
     fn audio_running(&self) -> bool {
         match &self.mode {
             BrowserRuntimeMode::WebAudio(controller) => {
@@ -202,6 +479,19 @@ enum BrowserSelfTest {
     WaitForStopped,
     WaitForDetails,
     WaitForPlaying,
+    SaveSession { callbacks_before: u64 },
+    WaitForSessionSave { callbacks_before: u64 },
+    WaitForSessionLoad { callbacks_before: u64 },
+    PlayLoadedLoop,
+    WaitForLoadedPlayback,
+    ExportLoopAudio,
+    WaitForLoopAudioSelection,
+    WaitForLoopAudioExport,
+    WaitForLoopAudioMapping,
+    WaitForLoopAudioImport,
+    ExportLoopMidi,
+    WaitForLoopMidiExport,
+    WaitForLoopMidiImport,
     Complete,
     Failed,
 }
@@ -237,7 +527,7 @@ impl BrowserSelfTest {
                     runtime.dispatch(AppIntent::AddTrack(shoop_egui::DirectTrackSpec {
                         name: "Browser self-test stereo".to_owned(),
                         audio_channels: 2,
-                        midi: false,
+                        midi: true,
                     }))
                 })
                 .and_then(|()| {
@@ -255,26 +545,32 @@ impl BrowserSelfTest {
                 let Some(loop_state) = track.loops.first() else {
                     return;
                 };
-                runtime
-                    .dispatch(AppIntent::Track {
-                        track_id: track.id,
-                        action: shoop_egui::TrackAction::InputMonitoringChanged(true),
+                if snapshot.status.audio_driver == shoop_egui::AudioDriverState::Dummy {
+                    Ok(Self::SaveSession {
+                        callbacks_before: snapshot.status.callback_count,
                     })
-                    .and_then(|()| {
-                        runtime.dispatch(AppIntent::Loop {
+                } else {
+                    runtime
+                        .dispatch(AppIntent::Track {
                             track_id: track.id,
-                            loop_id: loop_state.id,
-                            action: shoop_egui::LoopAction::IconClicked(Default::default()),
+                            action: shoop_egui::TrackAction::InputMonitoringChanged(true),
                         })
-                    })
-                    .and_then(|()| {
-                        runtime.dispatch(AppIntent::Loop {
-                            track_id: track.id,
-                            loop_id: loop_state.id,
-                            action: shoop_egui::LoopAction::RecordClicked,
+                        .and_then(|()| {
+                            runtime.dispatch(AppIntent::Loop {
+                                track_id: track.id,
+                                loop_id: loop_state.id,
+                                action: shoop_egui::LoopAction::IconClicked(Default::default()),
+                            })
                         })
-                    })
-                    .map(|()| Self::WaitForRecording)
+                        .and_then(|()| {
+                            runtime.dispatch(AppIntent::Loop {
+                                track_id: track.id,
+                                loop_id: loop_state.id,
+                                action: shoop_egui::LoopAction::RecordClicked,
+                            })
+                        })
+                        .map(|()| Self::WaitForRecording)
+                }
             }
             Self::WaitForRecording => {
                 let Some((track, loop_state)) = first_main_loop(snapshot) else {
@@ -355,6 +651,185 @@ impl BrowserSelfTest {
                 {
                     return;
                 }
+                Ok(Self::SaveSession {
+                    callbacks_before: snapshot.status.callback_count,
+                })
+            }
+            Self::SaveSession { callbacks_before } => runtime
+                .dispatch(AppIntent::RequestSaveSession)
+                .map(|()| Self::WaitForSessionSave { callbacks_before }),
+            Self::WaitForSessionSave { callbacks_before } => {
+                if snapshot.status.audio_driver != shoop_egui::AudioDriverState::Dummy
+                    && snapshot.status.callback_count <= callbacks_before
+                {
+                    return;
+                }
+                let Some(output) = runtime.take_file_output() else {
+                    return;
+                };
+                if !output.suggested_name.ends_with(".shoop") || output.bytes.is_empty() {
+                    return self.fail("browser session output is invalid");
+                }
+                runtime
+                    .dispatch(AppIntent::LoadSessionBytes {
+                        name: output.suggested_name,
+                        bytes: output.bytes,
+                    })
+                    .map(|()| Self::WaitForSessionLoad { callbacks_before })
+            }
+            Self::WaitForSessionLoad { callbacks_before } => {
+                if snapshot.io_task.as_ref().is_none_or(|task| {
+                    task.kind != shoop_egui::IoTaskKind::LoadSession
+                        || task.status != shoop_egui::IoTaskStatus::Completed
+                }) {
+                    return;
+                }
+                if snapshot
+                    .tracks
+                    .iter()
+                    .filter(|track| !track.is_sync)
+                    .count()
+                    != 2
+                {
+                    return self.fail("loaded browser session lost tracks");
+                }
+                if snapshot.status.audio_driver != shoop_egui::AudioDriverState::Dummy
+                    && snapshot.status.callback_count <= callbacks_before
+                {
+                    return self.fail("audio callbacks did not advance through session reload");
+                }
+                if snapshot.status.audio_driver == shoop_egui::AudioDriverState::Dummy {
+                    Ok(Self::ExportLoopAudio)
+                } else {
+                    Ok(Self::PlayLoadedLoop)
+                }
+            }
+            Self::PlayLoadedLoop => {
+                let Some((track, loop_state)) = first_main_loop(snapshot) else {
+                    return;
+                };
+                runtime
+                    .dispatch(AppIntent::Loop {
+                        track_id: track.id,
+                        loop_id: loop_state.id,
+                        action: shoop_egui::LoopAction::PlayClicked,
+                    })
+                    .map(|()| Self::WaitForLoadedPlayback)
+            }
+            Self::WaitForLoadedPlayback => {
+                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                    return;
+                };
+                if loop_state.mode != shoop_egui::LoopMode::Playing
+                    || snapshot.status.audio_driver != shoop_egui::AudioDriverState::Dummy
+                        && snapshot.status.output_peak <= 0.000_001
+                {
+                    return;
+                }
+                if browser_stress_enabled() || browser_session_only_enabled() {
+                    Ok(Self::Complete)
+                } else {
+                    Ok(Self::ExportLoopAudio)
+                }
+            }
+            Self::ExportLoopAudio => {
+                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                    return;
+                };
+                runtime
+                    .dispatch(AppIntent::RequestLoopAudioExport {
+                        loop_id: loop_state.id,
+                        format: shoop_egui::LoopAudioExportFormat::Exact,
+                    })
+                    .map(|()| Self::WaitForLoopAudioSelection)
+            }
+            Self::WaitForLoopAudioSelection => {
+                let Some(task) = &snapshot.io_task else {
+                    return;
+                };
+                let Some(selection) = &task.audio_channel_selection else {
+                    return;
+                };
+                runtime
+                    .dispatch(AppIntent::ConfirmAudioChannelSelection {
+                        task_id: task.id,
+                        channels: selection.default_selection.clone(),
+                    })
+                    .map(|()| Self::WaitForLoopAudioExport)
+            }
+            Self::WaitForLoopAudioExport => {
+                let Some(output) = runtime.take_file_output() else {
+                    return;
+                };
+                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                    return;
+                };
+                runtime
+                    .dispatch(AppIntent::ImportLoopAudioBytes {
+                        loop_id: loop_state.id,
+                        name: output.suggested_name,
+                        bytes: output.bytes,
+                        update_loop_length: true,
+                    })
+                    .map(|()| Self::WaitForLoopAudioMapping)
+            }
+            Self::WaitForLoopAudioMapping => {
+                let Some(task) = &snapshot.io_task else {
+                    return;
+                };
+                let Some(mapping) = &task.audio_channel_mapping else {
+                    return;
+                };
+                runtime
+                    .dispatch(AppIntent::ConfirmAudioChannelMapping {
+                        task_id: task.id,
+                        source_for_destination: mapping.default_mapping.clone(),
+                    })
+                    .map(|()| Self::WaitForLoopAudioImport)
+            }
+            Self::WaitForLoopAudioImport => {
+                if snapshot.io_task.as_ref().is_none_or(|task| {
+                    task.kind != shoop_egui::IoTaskKind::ImportLoopAudio
+                        || task.status != shoop_egui::IoTaskStatus::Completed
+                }) {
+                    return;
+                }
+                Ok(Self::ExportLoopMidi)
+            }
+            Self::ExportLoopMidi => {
+                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                    return;
+                };
+                runtime
+                    .dispatch(AppIntent::RequestLoopMidiExport {
+                        loop_id: loop_state.id,
+                        standard: false,
+                    })
+                    .map(|()| Self::WaitForLoopMidiExport)
+            }
+            Self::WaitForLoopMidiExport => {
+                let Some(output) = runtime.take_file_output() else {
+                    return;
+                };
+                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                    return;
+                };
+                runtime
+                    .dispatch(AppIntent::ImportLoopMidiBytes {
+                        loop_id: loop_state.id,
+                        name: output.suggested_name,
+                        bytes: output.bytes,
+                        update_loop_length: true,
+                    })
+                    .map(|()| Self::WaitForLoopMidiImport)
+            }
+            Self::WaitForLoopMidiImport => {
+                if snapshot.io_task.as_ref().is_none_or(|task| {
+                    task.kind != shoop_egui::IoTaskKind::ImportLoopMidi
+                        || task.status != shoop_egui::IoTaskStatus::Completed
+                }) {
+                    return;
+                }
                 Ok(Self::Complete)
             }
         };
@@ -375,13 +850,32 @@ impl BrowserSelfTest {
             }
         }
     }
+
+    fn fail(&mut self, message: &str) {
+        *self = Self::Failed;
+        set_browser_self_test_status("failed");
+        if let Some(element) = browser_status_element() {
+            let _ = element.set_attribute("data-self-test-error", message);
+        }
+        log::error!("browser self-test failed: {message}");
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
 fn browser_stress_enabled() -> bool {
+    browser_location_has("stress=1")
+}
+
+#[cfg(target_arch = "wasm32")]
+fn browser_session_only_enabled() -> bool {
+    browser_location_has("session-only=1")
+}
+
+#[cfg(target_arch = "wasm32")]
+fn browser_location_has(query: &str) -> bool {
     web_sys::window()
         .and_then(|window| window.location().search().ok())
-        .is_some_and(|search| search.contains("stress=1"))
+        .is_some_and(|search| search.contains(query))
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -515,6 +1009,25 @@ mod tests {
         assert!(html.contains("audio_worklet.js"));
         assert!(html.contains("Roboto-Regular.ttf"));
         assert!(html.contains("Roboto-BoldItalic.ttf"));
+    }
+
+    #[test]
+    fn native_atomic_replace_overwrites_and_cleans_up_failed_temporary_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("session.shoop");
+        std::fs::write(&target, b"old").unwrap();
+        atomic_replace(&target, b"new", 7).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"new");
+        assert!(!directory.path().join("session.shoop.tmp-7").exists());
+
+        let missing_target = directory.path().join("missing").join("session.shoop");
+        assert!(atomic_replace(&missing_target, b"partial", 8).is_err());
+        assert!(!missing_target.exists());
+        assert!(!directory
+            .path()
+            .join("missing")
+            .join("session.shoop.tmp-8")
+            .exists());
     }
 
     #[test]
@@ -696,6 +1209,105 @@ mod tests {
                 && snapshot.details.is_some()
             {
                 break;
+            }
+            assert!(started.elapsed() < Duration::from_secs(3));
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        thread::sleep(Duration::from_millis(50));
+        app.runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        wait_for_loop_mode(&app, track_id, loop_id, LoopMode::Stopped);
+        app.runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        wait_for_loop_mode(&app, track_id, loop_id, LoopMode::Playing);
+        let frames_before_save = app.runtime.snapshot().status.processed_frames;
+        app.runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        let started = Instant::now();
+        let output = loop {
+            if let Some(output) = app.runtime.take_file_output() {
+                break output;
+            }
+            assert!(started.elapsed() < Duration::from_secs(5));
+            thread::sleep(Duration::from_millis(5));
+        };
+        let started = Instant::now();
+        let after_save = loop {
+            let snapshot = app.runtime.snapshot();
+            if snapshot.status.processed_frames > frames_before_save {
+                break snapshot;
+            }
+            assert!(started.elapsed() < Duration::from_secs(3));
+            thread::sleep(Duration::from_millis(5));
+        };
+        let saved_loop = after_save
+            .tracks
+            .iter()
+            .find(|track| track.id == track_id)
+            .and_then(|track| track.loops.iter().find(|loop_| loop_.id == loop_id))
+            .unwrap();
+        assert_eq!(saved_loop.mode, LoopMode::Playing);
+        assert!(output.suggested_name.ends_with(".shoop"));
+
+        app.runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: output.suggested_name,
+                bytes: output.bytes,
+            })
+            .unwrap();
+        let started = Instant::now();
+        loop {
+            let loaded = app.runtime.snapshot();
+            if loaded.io_task.as_ref().is_some_and(|task| {
+                task.kind == shoop_egui::IoTaskKind::LoadSession
+                    && task.status == shoop_egui::IoTaskStatus::Completed
+            }) {
+                assert_eq!(loaded.tracks.len(), track_specs.len() + 1);
+                assert!(loaded
+                    .tracks
+                    .iter()
+                    .flat_map(|track| &track.loops)
+                    .all(|loop_| {
+                        loop_.mode == LoopMode::Stopped || loop_.mode == LoopMode::Unknown
+                    }));
+                assert!(loaded.tracks.iter().any(|track| {
+                    track.name == "Native stereo + MIDI"
+                        && (track.controls.output_gain_db + 3.0).abs() < 0.001
+                }));
+                break;
+            }
+            assert!(started.elapsed() < Duration::from_secs(5));
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn wait_for_loop_mode(
+        app: &UnifiedApp,
+        track_id: shoop_egui::TrackId,
+        loop_id: shoop_egui::LoopId,
+        expected: LoopMode,
+    ) {
+        let started = Instant::now();
+        loop {
+            let snapshot = app.runtime.snapshot();
+            if snapshot
+                .tracks
+                .iter()
+                .find(|track| track.id == track_id)
+                .and_then(|track| track.loops.iter().find(|loop_| loop_.id == loop_id))
+                .is_some_and(|loop_| loop_.mode == expected)
+            {
+                return;
             }
             assert!(started.elapsed() < Duration::from_secs(3));
             thread::sleep(Duration::from_millis(5));
