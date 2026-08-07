@@ -1120,7 +1120,8 @@ mod tests {
         let registry = registry();
         let document = decode_egui_settings(&current_document(serde_json::json!({
             "test.count": 99,
-            "unknown.future": {"opaque": [1, 2, 3]}
+            "unknown.future": {"opaque": [1, 2, 3]},
+            "scripting.user_scripts": [{"value": "/controller.lua", "enabled": true}]
         })))
         .unwrap();
         let resolved = registry.resolve(&document, 4);
@@ -1138,6 +1139,10 @@ mod tests {
         assert_eq!(
             saved.values["unknown.future"],
             serde_json::json!({"opaque": [1, 2, 3]})
+        );
+        assert_eq!(
+            saved.values["scripting.user_scripts"],
+            serde_json::json!([{"value": "/controller.lua", "enabled": true}])
         );
     }
 

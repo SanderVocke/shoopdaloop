@@ -122,16 +122,16 @@ Verification:
 
 ### Stage 2 — Extend the typed settings core for ordered script entries
 
-- [ ] Add the generic ordered string/toggle value type, `SettingType` conversion, deterministic JSON codec handling, validation constraints, metadata/editor variant, draft/reset support, and display plumbing.
-- [ ] Refactor the registry-driven Settings dialog to use category tabs, then add editable/toggleable ordered rows and add/remove/reset behavior at minimum and common viewport sizes.
-- [ ] Add codec/registry/dialog tests for defaults, valid round trip, stable order, duplicate/empty rejection, wrong JSON shapes, unknown-key preservation, stale drafts, cancel, recovery, and failed saves.
-- [ ] Update `docs/settings_format_v1.md` with the registered collection shape and compatibility rationale.
-- [ ] Commit the reusable settings API/editor extension independently of Lua runtime wiring.
+- [x] Add the generic ordered string/toggle value type, `SettingType` conversion, deterministic JSON codec handling, validation constraints, metadata/editor variant, draft/reset support, and display plumbing.
+- [x] Refactor the registry-driven Settings dialog to use category tabs, then add editable/toggleable ordered rows and add/remove/reset behavior at minimum and common viewport sizes.
+- [x] Add codec/registry/dialog tests for defaults, valid round trip, stable order, duplicate/empty rejection, wrong JSON shapes, unknown-key preservation, stale drafts, cancel, recovery, and failed saves.
+- [x] Update `docs/settings_format_v1.md` with the registered collection shape and compatibility rationale.
+- [x] Commit the reusable settings API/editor extension; conflict coupling required its core implementation to enter in the merge milestone, with format/tests closed in the immediately following commit.
 
 Verification:
 
-- [ ] `cargo test -p shoop_settings --features legacy` and `cargo test -p shoop_egui` pass.
-- [ ] Native and `wasm32-unknown-unknown` checks prove the generic extension introduces no egui/filesystem dependency into `shoop_settings` and no native service into browser presentation.
+- [x] `cargo test -p shoop_settings --features legacy` passes 19 tests and `cargo test -p shoop_egui` passes 36 tests.
+- [x] Warning-denying `wasm32-unknown-unknown` checks pass for `shoop_settings` and `shoop_egui`; the manifests and source retain the generic dependency boundaries.
 
 ### Stage 3 — Register and consume Lua startup settings transactionally
 
