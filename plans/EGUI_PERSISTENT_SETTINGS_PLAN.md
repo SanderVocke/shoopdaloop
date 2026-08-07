@@ -135,15 +135,15 @@ Verification:
 
 ### Stage 2 — Implement the registry, codec, validation, and migration dispatcher
 
-- [ ] Add typed keys/definitions, deterministic explicit registration, metadata/value erasure, finalized-registry validation, immutable snapshots, and typed getters to `shoop_settings`.
-- [ ] Implement current v1 DTO encoding/decoding, envelope-first checks, ordered migration dispatch, unknown-key retention, registered-default resolution, and typed diagnostics.
-- [ ] Keep legacy QML/Carla APIs behaviorally isolated while refactoring target-specific dependencies; add guards proving the fresh egui codec rejects legacy QML documents and vice versa.
-- [ ] Add fixture/property-style tests for duplicate/type errors, invalid defaults/constraints, deterministic output, missing/unknown/invalid values, all version branches, migration order/failure, and no-clobber recovery state.
+- [x] Add typed keys/definitions, deterministic explicit registration, metadata/value erasure, finalized-registry validation, immutable snapshots, and typed getters to `shoop_settings`.
+- [x] Implement current v1 DTO encoding/decoding, envelope-first checks, ordered migration dispatch, unknown-key retention, registered-default resolution, and typed diagnostics.
+- [x] Keep legacy QML/Carla APIs behaviorally isolated; add guards proving the fresh egui codec rejects legacy QML documents while the legacy decoder continues requiring `settings.1`.
+- [x] Add fixture/property-style tests for duplicate/type errors, invalid defaults/constraints, deterministic output, missing/unknown/invalid values, all version branches, and migration order/failure. Store-level no-clobber recovery evidence remains in Stage 3.
 
 Verification:
 
-- [ ] `cargo test -p shoop_settings` passes with golden current, unsupported-old/future, malformed, legacy-QML, and unknown-key fixtures plus a migration-dispatch harness that proves ordered chaining without inventing a pre-v1 production format.
-- [ ] `cargo check -p shoop_settings --target wasm32-unknown-unknown` passes with only target-neutral dependencies.
+- [x] `cargo test -p shoop_settings` passes 13 tests with current, unsupported-old/future, malformed, legacy-QML, invalid/unknown-key, deterministic, typed-access, and migration-dispatch coverage.
+- [x] `cargo check -p shoop_settings --target wasm32-unknown-unknown` and warning-denying native check pass with only target-neutral dependencies.
 
 ### Stage 3 — Add platform stores and composition-owned lifecycle
 

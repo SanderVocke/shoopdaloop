@@ -1,3 +1,7 @@
+mod egui_settings;
+
+pub use egui_settings::*;
+
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
