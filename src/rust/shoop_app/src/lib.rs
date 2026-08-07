@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::mpsc::TryRecvError;
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread::{self, JoinHandle};
@@ -7,11 +9,11 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use shoop_app_api::{
-    AppIntent, AppNotification, AppSnapshot, AudioChannelMappingState, AudioDriverState, ChannelId,
-    ConnectionErrorKind, ConnectionErrorState, ConnectionViewState, DirectTrackSpec,
-    ExternalPortConnectionState, GlobalControlAction, IoTaskKind, IoTaskState, IoTaskStatus,
-    LocalPortConnectionState, LoopAction, LoopAudioExportFormat, LoopDetailsState, LoopId,
-    LoopMode, LoopState, NotificationLevel, PortDataType, PortDirection, PortId, PortRole,
+    AppIntent, AppNotification, AppSnapshot, AudioChannelMappingState, AudioChannelSelectionState,
+    AudioDriverState, ChannelId, ConnectionErrorKind, ConnectionErrorState, ConnectionViewState,
+    DirectTrackSpec, ExternalPortConnectionState, GlobalControlAction, IoTaskKind, IoTaskState,
+    IoTaskStatus, LocalPortConnectionState, LoopAction, LoopAudioExportFormat, LoopDetailsState,
+    LoopId, LoopMode, LoopState, NotificationLevel, PortDataType, PortDirection, PortId, PortRole,
     SampleRateWarning, StatusState, TaskId, TrackAction, TrackControlState, TrackId, TrackState,
     WaveformChannelState,
 };
@@ -123,7 +125,7 @@ pub struct ApplicationRuntime {
 impl ApplicationRuntime {
     pub fn start(mut backend: Box<dyn Backend + Send>) -> Result<Self> {
         let file_outputs = Arc::new(Mutex::new(VecDeque::new()));
-        let model = ApplicationModel::initialize(&mut *backend, Arc::clone(&file_outputs))?;
+        let model = ApplicationModel::initialize(&mut *backend, Arc::clone(&file_outputs), true)?;
         let initial = Arc::new(model.snapshot());
         let snapshot = Arc::new(RwLock::new(initial));
         let (sender, receiver) = mpsc::sync_channel(COMMAND_CAPACITY);
@@ -168,7 +170,7 @@ pub struct CooperativeApplicationRuntime {
 impl CooperativeApplicationRuntime {
     pub fn start(mut backend: Box<dyn Backend>) -> Result<Self> {
         let file_outputs = Arc::new(Mutex::new(VecDeque::new()));
-        let model = ApplicationModel::initialize(&mut *backend, Arc::clone(&file_outputs))?;
+        let model = ApplicationModel::initialize(&mut *backend, Arc::clone(&file_outputs), false)?;
         let snapshot = Arc::new(model.snapshot());
         Ok(Self {
             model,
@@ -309,6 +311,9 @@ struct ApplicationModel {
     next_task_id: u64,
     io_task: Option<IoTaskState>,
     pending_io: Option<PendingIo>,
+    session_encoding: Option<Receiver<Result<Vec<u8>, String>>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    background_session_encoding: bool,
     file_outputs: Arc<Mutex<VecDeque<ApplicationFileOutput>>>,
 }
 
@@ -353,6 +358,8 @@ struct LoopModel {
 
 enum PendingIo {
     SaveSession,
+    #[cfg(not(target_arch = "wasm32"))]
+    AwaitingSessionEncoding,
     AwaitingSessionLoad {
         name: String,
         bundle: SessionBundle,
@@ -362,9 +369,14 @@ enum PendingIo {
         bundle: SessionBundle,
         backend_data: BackendSessionData,
     },
+    AwaitingLoopAudioExportSelection {
+        loop_id: LoopId,
+        format: LoopAudioExportFormat,
+    },
     ExportLoopAudio {
         loop_id: LoopId,
         format: LoopAudioExportFormat,
+        channels: Vec<u32>,
     },
     ExportLoopMidi {
         loop_id: LoopId,
@@ -406,7 +418,10 @@ impl ApplicationModel {
     fn initialize(
         backend: &mut dyn Backend,
         file_outputs: Arc<Mutex<VecDeque<ApplicationFileOutput>>>,
+        background_session_encoding: bool,
     ) -> Result<Self> {
+        #[cfg(target_arch = "wasm32")]
+        let _ = background_session_encoding;
         let created = backend.create_direct_track(DirectTrackRequest {
             port_name_base: "sync_loop".to_owned(),
             audio_channels: 1,
@@ -471,6 +486,9 @@ impl ApplicationModel {
             next_task_id: 1,
             io_task: None,
             pending_io: None,
+            session_encoding: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            background_session_encoding,
             file_outputs,
         })
     }
@@ -505,7 +523,18 @@ impl ApplicationModel {
                 task_id,
                 source_for_destination,
             } => self.confirm_audio_channel_mapping(task_id, source_for_destination),
+            AppIntent::ConfirmAudioChannelSelection { task_id, channels } => {
+                self.confirm_audio_channel_selection(task_id, channels)
+            }
             AppIntent::CancelIoTask { task_id } => self.cancel_io_task(task_id),
+            AppIntent::ReportFileIoError { task_id, message } => {
+                if task_id.is_some_and(|id| self.io_task.as_ref().is_some_and(|task| task.id == id))
+                {
+                    self.finish_io(IoTaskStatus::Failed, &message);
+                }
+                self.notify_error(message);
+                Ok(())
+            }
             AppIntent::RequestLoopAudioExport { loop_id, format } => {
                 self.export_loop_audio(backend, loop_id, format)
             }
@@ -542,6 +571,7 @@ impl ApplicationModel {
             message: "Capturing session".to_owned(),
             sample_rate_warning: None,
             audio_channel_mapping: None,
+            audio_channel_selection: None,
         });
         Ok(())
     }
@@ -567,6 +597,7 @@ impl ApplicationModel {
                         .to_owned(),
                 }),
                 audio_channel_mapping: None,
+                audio_channel_selection: None,
             });
             return Ok(());
         }
@@ -667,6 +698,7 @@ impl ApplicationModel {
             task.progress = 0.45;
             task.message = "Map source channels to loop channels".to_owned();
             task.sample_rate_warning = None;
+            task.audio_channel_selection = None;
             task.audio_channel_mapping = Some(AudioChannelMappingState {
                 source_channels: audio
                     .channels
@@ -737,6 +769,46 @@ impl ApplicationModel {
         Ok(())
     }
 
+    fn confirm_audio_channel_selection(
+        &mut self,
+        task_id: TaskId,
+        channels: Vec<u32>,
+    ) -> Result<(), String> {
+        if self.io_task.as_ref().map(|task| task.id) != Some(task_id) {
+            return Err(format!("stale I/O task {task_id}"));
+        }
+        let Some(PendingIo::AwaitingLoopAudioExportSelection { loop_id, format }) =
+            self.pending_io.take()
+        else {
+            return Err("I/O task is not awaiting an audio channel selection".to_owned());
+        };
+        let available = self
+            .io_task
+            .as_ref()
+            .and_then(|task| task.audio_channel_selection.as_ref())
+            .map(|selection| selection.available_channels.len())
+            .unwrap_or(0);
+        let mut unique = channels.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        if channels.is_empty()
+            || unique.len() != channels.len()
+            || channels
+                .iter()
+                .any(|channel| *channel as usize >= available)
+        {
+            self.pending_io = Some(PendingIo::AwaitingLoopAudioExportSelection { loop_id, format });
+            return Err("invalid audio channel selection".to_owned());
+        }
+        self.pending_io = Some(PendingIo::ExportLoopAudio {
+            loop_id,
+            format,
+            channels,
+        });
+        self.set_io_progress(0.5, "Exporting selected audio channels");
+        Ok(())
+    }
+
     fn cancel_io_task(&mut self, task_id: TaskId) -> Result<(), String> {
         if self.io_task.as_ref().map(|task| task.id) != Some(task_id) {
             return Err(format!("stale I/O task {task_id}"));
@@ -765,6 +837,7 @@ impl ApplicationModel {
             message: message.to_owned(),
             sample_rate_warning: None,
             audio_channel_mapping: None,
+            audio_channel_selection: None,
         });
         id
     }
@@ -776,6 +849,7 @@ impl ApplicationModel {
             task.message = message.to_owned();
             task.sample_rate_warning = None;
             task.audio_channel_mapping = None;
+            task.audio_channel_selection = None;
         }
     }
 
@@ -790,13 +864,53 @@ impl ApplicationModel {
             task.message = message.to_owned();
             task.sample_rate_warning = None;
             task.audio_channel_mapping = None;
+            task.audio_channel_selection = None;
         }
         self.pending_io = None;
+        self.session_encoding = None;
     }
 
     fn fail_io(&mut self, message: String) {
         self.finish_io(IoTaskStatus::Failed, &message);
         self.notify_error(message);
+    }
+
+    fn start_session_encoding(&mut self, bundle: SessionBundle) {
+        self.set_io_progress(0.45, "Compressing session");
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.background_session_encoding {
+            let (sender, receiver) = mpsc::channel();
+            thread::spawn(move || {
+                let result = encode_session(&bundle, env!("CARGO_PKG_VERSION"))
+                    .map_err(|error| error.to_string());
+                let _ = sender.send(result);
+            });
+            self.session_encoding = Some(receiver);
+            self.pending_io = Some(PendingIo::AwaitingSessionEncoding);
+            return;
+        }
+        match encode_session(&bundle, env!("CARGO_PKG_VERSION")) {
+            Ok(bytes) => self.complete_session_encoding(bytes),
+            Err(error) => self.fail_io(error.to_string()),
+        }
+    }
+
+    fn complete_session_encoding(&mut self, bytes: Vec<u8>) {
+        let task_id = self
+            .io_task
+            .as_ref()
+            .map(|task| task.id)
+            .unwrap_or_default();
+        self.file_outputs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push_back(ApplicationFileOutput {
+                task_id,
+                suggested_name: "session.shoop".to_owned(),
+                mime_type: "application/x-shoop-session".to_owned(),
+                bytes: Arc::from(bytes),
+            });
+        self.finish_io(IoTaskStatus::Completed, "Session ready to save");
     }
 
     fn advance_io(&mut self, backend: &mut dyn Backend) {
@@ -805,40 +919,33 @@ impl ApplicationModel {
         };
         match pending {
             PendingIo::SaveSession => match backend.capture_session() {
-                Ok(capture) => {
-                    self.set_io_progress(0.45, "Compressing session");
-                    let result = self
-                        .session_bundle_from_backend(&capture)
-                        .and_then(|bundle| {
-                            encode_session(&bundle, env!("CARGO_PKG_VERSION"))
-                                .map_err(|error| error.to_string())
-                        });
-                    match result {
-                        Ok(bytes) => {
-                            let task_id = self
-                                .io_task
-                                .as_ref()
-                                .map(|task| task.id)
-                                .unwrap_or_default();
-                            self.file_outputs
-                                .lock()
-                                .unwrap_or_else(|error| error.into_inner())
-                                .push_back(ApplicationFileOutput {
-                                    task_id,
-                                    suggested_name: "session.shoop".to_owned(),
-                                    mime_type: "application/x-shoop-session".to_owned(),
-                                    bytes: Arc::from(bytes),
-                                });
-                            self.finish_io(IoTaskStatus::Completed, "Session ready to save");
-                        }
-                        Err(error) => self.fail_io(error),
-                    }
-                }
+                Ok(capture) => match self.session_bundle_from_backend(&capture) {
+                    Ok(bundle) => self.start_session_encoding(bundle),
+                    Err(error) => self.fail_io(error),
+                },
                 Err(error) if io_pending_error(&error.to_string()) => {
                     self.pending_io = Some(PendingIo::SaveSession);
                 }
                 Err(error) => self.fail_io(format!("could not capture session: {error}")),
             },
+            #[cfg(not(target_arch = "wasm32"))]
+            PendingIo::AwaitingSessionEncoding => {
+                let result = self
+                    .session_encoding
+                    .as_ref()
+                    .map(|receiver| receiver.try_recv())
+                    .unwrap_or(Err(TryRecvError::Disconnected));
+                match result {
+                    Ok(Ok(bytes)) => self.complete_session_encoding(bytes),
+                    Ok(Err(error)) => self.fail_io(error),
+                    Err(TryRecvError::Empty) => {
+                        self.pending_io = Some(PendingIo::AwaitingSessionEncoding);
+                    }
+                    Err(TryRecvError::Disconnected) => {
+                        self.fail_io("session encoding worker stopped unexpectedly".to_owned());
+                    }
+                }
+            }
             PendingIo::AwaitingSessionLoad { name, bundle } => {
                 self.pending_io = Some(PendingIo::AwaitingSessionLoad { name, bundle });
             }
@@ -867,10 +974,23 @@ impl ApplicationModel {
                 }
                 Err(error) => self.fail_io(format!("could not replace session: {error}")),
             },
-            PendingIo::ExportLoopAudio { loop_id, format } => {
-                if let Err(error) = self.export_loop_audio_now(backend, loop_id, format) {
+            PendingIo::AwaitingLoopAudioExportSelection { loop_id, format } => {
+                self.pending_io =
+                    Some(PendingIo::AwaitingLoopAudioExportSelection { loop_id, format });
+            }
+            PendingIo::ExportLoopAudio {
+                loop_id,
+                format,
+                channels,
+            } => {
+                if let Err(error) = self.export_loop_audio_now(backend, loop_id, format, &channels)
+                {
                     if io_pending_error(&error) {
-                        self.pending_io = Some(PendingIo::ExportLoopAudio { loop_id, format });
+                        self.pending_io = Some(PendingIo::ExportLoopAudio {
+                            loop_id,
+                            format,
+                            channels,
+                        });
                     } else {
                         self.fail_io(error);
                     }
@@ -2598,8 +2718,31 @@ impl ApplicationModel {
         format: LoopAudioExportFormat,
     ) -> Result<(), String> {
         self.ensure_io_idle()?;
-        self.start_io_task(IoTaskKind::ExportLoopAudio, "Exporting loop audio");
-        self.pending_io = Some(PendingIo::ExportLoopAudio { loop_id, format });
+        let loop_model = self
+            .loops
+            .get(&loop_id)
+            .ok_or_else(|| format!("stale loop {loop_id}"))?;
+        let channels = self
+            .tracks
+            .iter()
+            .find(|track| track.id == loop_model.track_id)
+            .ok_or_else(|| "loop track is unavailable".to_owned())?
+            .audio_channels;
+        if channels == 0 {
+            return Err("loop has no audio channels".to_owned());
+        }
+        self.start_io_task(IoTaskKind::ExportLoopAudio, "Select loop audio channels");
+        if let Some(task) = &mut self.io_task {
+            task.status = IoTaskStatus::AwaitingChannelSelection;
+            task.progress = 0.2;
+            task.audio_channel_selection = Some(AudioChannelSelectionState {
+                available_channels: (0..channels)
+                    .map(|index| format!("Direct channel {}", index + 1))
+                    .collect(),
+                default_selection: (0..channels).collect(),
+            });
+        }
+        self.pending_io = Some(PendingIo::AwaitingLoopAudioExportSelection { loop_id, format });
         Ok(())
     }
 
@@ -2707,6 +2850,7 @@ impl ApplicationModel {
         backend: &mut dyn Backend,
         loop_id: LoopId,
         format: LoopAudioExportFormat,
+        selected_channels: &[u32],
     ) -> Result<(), String> {
         let task_id = self
             .io_task
@@ -2728,16 +2872,20 @@ impl ApplicationModel {
             .ok_or_else(|| "backend omitted loop content".to_owned())?;
         let audio = LoopAudio {
             sample_rate: capture.sample_rate,
-            channels: content
-                .audio
+            channels: selected_channels
                 .iter()
-                .enumerate()
-                .map(|(index, channel)| LoopAudioChannel {
-                    label: format!("audio {}", index + 1),
-                    role: "direct".to_owned(),
-                    samples: channel.samples.clone(),
+                .map(|index| {
+                    let channel = content
+                        .audio
+                        .get(*index as usize)
+                        .ok_or_else(|| "selected audio channel is unavailable".to_owned())?;
+                    Ok(LoopAudioChannel {
+                        label: format!("audio {}", index + 1),
+                        role: "direct".to_owned(),
+                        samples: channel.samples.clone(),
+                    })
                 })
-                .collect(),
+                .collect::<Result<Vec<_>, String>>()?,
         };
         let (bytes, extension, mime_type) = match format {
             LoopAudioExportFormat::Exact => (
@@ -3590,9 +3738,12 @@ mod tests {
     #[test]
     fn target_delay_is_derived_from_target_and_sync_lengths() {
         let mut backend = FakeBackend::default();
-        let mut model =
-            ApplicationModel::initialize(&mut backend, Arc::new(Mutex::new(VecDeque::new())))
-                .unwrap();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
         model
             .add_track(
                 &mut backend,
@@ -3627,9 +3778,12 @@ mod tests {
     #[test]
     fn expanded_loop_actions_route_qml_equivalent_modes_grab_and_balance() {
         let mut backend = FakeBackend::default();
-        let mut model =
-            ApplicationModel::initialize(&mut backend, Arc::new(Mutex::new(VecDeque::new())))
-                .unwrap();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
         model
             .add_track(
                 &mut backend,
@@ -3717,9 +3871,12 @@ mod tests {
     #[test]
     fn grab_policy_covers_targeted_selection_solo_and_immediate_completion() {
         let mut backend = FakeBackend::default();
-        let mut model =
-            ApplicationModel::initialize(&mut backend, Arc::new(Mutex::new(VecDeque::new())))
-                .unwrap();
+        let mut model = ApplicationModel::initialize(
+            &mut backend,
+            Arc::new(Mutex::new(VecDeque::new())),
+            false,
+        )
+        .unwrap();
         model
             .add_track(
                 &mut backend,
@@ -4263,12 +4420,12 @@ mod tests {
                 LoopAudioChannel {
                     label: "a".to_owned(),
                     role: "direct".to_owned(),
-                    samples: vec![0.1, 0.2, 0.3],
+                    samples: vec![0.1; 256],
                 },
                 LoopAudioChannel {
                     label: "b".to_owned(),
                     role: "direct".to_owned(),
-                    samples: vec![0.4, 0.5, 0.6],
+                    samples: vec![0.5; 256],
                 },
             ],
         };
@@ -4318,19 +4475,41 @@ mod tests {
                 format: LoopAudioExportFormat::Exact,
             })
             .unwrap();
+        runtime.tick(Duration::ZERO);
+        let selection_task = runtime.snapshot().io_task.clone().unwrap();
+        assert_eq!(
+            selection_task.status,
+            IoTaskStatus::AwaitingChannelSelection
+        );
+        runtime
+            .dispatch(AppIntent::ConfirmAudioChannelSelection {
+                task_id: selection_task.id,
+                channels: vec![1, 0],
+            })
+            .unwrap();
         for _ in 0..10 {
             runtime.tick(Duration::ZERO);
         }
         let exported_audio = decode_loop_audio(&runtime.take_file_output().unwrap().bytes).unwrap();
-        assert_eq!(exported_audio.channels.len(), 3);
-        assert_eq!(
+        assert_eq!(exported_audio.channels.len(), 2);
+        assert_eq!(exported_audio.channels[0].label, "audio 2");
+        assert_eq!(exported_audio.channels[1].label, "audio 1");
+        assert_ne!(
             exported_audio.channels[0].samples,
-            exported_audio.channels[2].samples
+            exported_audio.channels[1].samples
         );
         runtime
             .dispatch(AppIntent::RequestLoopAudioExport {
                 loop_id,
                 format: LoopAudioExportFormat::FloatWav,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let selection_task = runtime.snapshot().io_task.clone().unwrap();
+        runtime
+            .dispatch(AppIntent::ConfirmAudioChannelSelection {
+                task_id: selection_task.id,
+                channels: vec![1, 0],
             })
             .unwrap();
         for _ in 0..10 {

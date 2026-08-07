@@ -407,6 +407,7 @@ pub enum IoTaskStatus {
     Running,
     AwaitingSampleRateConfirmation,
     AwaitingChannelMapping,
+    AwaitingChannelSelection,
     Completed,
     Cancelled,
     Failed,
@@ -426,6 +427,12 @@ pub struct AudioChannelMappingState {
     pub default_mapping: Vec<u32>,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct AudioChannelSelectionState {
+    pub available_channels: Vec<String>,
+    pub default_selection: Vec<u32>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct IoTaskState {
     pub id: TaskId,
@@ -435,6 +442,7 @@ pub struct IoTaskState {
     pub message: String,
     pub sample_rate_warning: Option<SampleRateWarning>,
     pub audio_channel_mapping: Option<AudioChannelMappingState>,
+    pub audio_channel_selection: Option<AudioChannelSelectionState>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -560,8 +568,16 @@ pub enum AppIntent {
         task_id: TaskId,
         source_for_destination: Vec<u32>,
     },
+    ConfirmAudioChannelSelection {
+        task_id: TaskId,
+        channels: Vec<u32>,
+    },
     CancelIoTask {
         task_id: TaskId,
+    },
+    ReportFileIoError {
+        task_id: Option<TaskId>,
+        message: String,
     },
     RequestLoopAudioExport {
         loop_id: LoopId,

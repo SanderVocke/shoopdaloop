@@ -20,6 +20,7 @@ pub struct AppWidget {
     add_track_midi: bool,
     logo: Option<egui::TextureHandle>,
     io_channel_mappings: BTreeMap<crate::TaskId, Vec<u32>>,
+    io_channel_selections: BTreeMap<crate::TaskId, Vec<u32>>,
     #[cfg(test)]
     add_track_accept_rect: Option<egui::Rect>,
     #[cfg(test)]
@@ -41,6 +42,7 @@ impl Default for AppWidget {
             add_track_midi: false,
             logo: None,
             io_channel_mappings: BTreeMap::new(),
+            io_channel_selections: BTreeMap::new(),
             #[cfg(test)]
             add_track_accept_rect: None,
             #[cfg(test)]
@@ -253,6 +255,80 @@ impl AppWidget {
                                 task_id: task.id,
                                 source_for_destination: draft.clone(),
                             });
+                        }
+                        if ui.button("Cancel").clicked() {
+                            actions.push(AppAction::CancelIoTask { task_id: task.id });
+                        }
+                    });
+                } else if let Some(selection) = &task.audio_channel_selection {
+                    let draft = self
+                        .io_channel_selections
+                        .entry(task.id)
+                        .or_insert_with(|| selection.default_selection.clone());
+                    draft
+                        .retain(|channel| (*channel as usize) < selection.available_channels.len());
+                    let mut remove = None;
+                    let mut move_up = None;
+                    let mut move_down = None;
+                    for index in 0..draft.len() {
+                        ui.horizontal(|ui| {
+                            ui.label(format!("Output {}", index + 1));
+                            let selected = selection
+                                .available_channels
+                                .get(draft[index] as usize)
+                                .cloned()
+                                .unwrap_or_else(|| "Unavailable".to_owned());
+                            egui::ComboBox::from_id_salt((
+                                "io_export_channel",
+                                task.id.raw(),
+                                index,
+                            ))
+                            .selected_text(selected)
+                            .show_ui(ui, |ui| {
+                                for (channel, label) in
+                                    selection.available_channels.iter().enumerate()
+                                {
+                                    if !draft.iter().enumerate().any(|(other, value)| {
+                                        other != index && *value == channel as u32
+                                    }) {
+                                        ui.selectable_value(
+                                            &mut draft[index],
+                                            channel as u32,
+                                            label,
+                                        );
+                                    }
+                                }
+                            });
+                            if ui.small_button("↑").clicked() && index > 0 {
+                                move_up = Some(index);
+                            }
+                            if ui.small_button("↓").clicked() && index + 1 < draft.len() {
+                                move_down = Some(index);
+                            }
+                            if ui.small_button("Remove").clicked() {
+                                remove = Some(index);
+                            }
+                        });
+                    }
+                    if let Some(index) = remove {
+                        draft.remove(index);
+                    } else if let Some(index) = move_up {
+                        draft.swap(index, index - 1);
+                    } else if let Some(index) = move_down {
+                        draft.swap(index, index + 1);
+                    }
+                    if let Some(channel) = (0..selection.available_channels.len() as u32)
+                        .find(|channel| !draft.contains(channel))
+                    {
+                        if ui.button("Add channel").clicked() {
+                            draft.push(channel);
+                        }
+                    }
+                    ui.horizontal(|ui| {
+                        let confirm =
+                            ui.add_enabled(!draft.is_empty(), egui::Button::new("Export channels"));
+                        if confirm.clicked() {
+                            actions.push(audio_channel_selection_action(task.id, draft));
                         }
                         if ui.button("Cancel").clicked() {
                             actions.push(AppAction::CancelIoTask { task_id: task.id });
@@ -473,6 +549,13 @@ impl AppWidget {
     }
 }
 
+fn audio_channel_selection_action(task_id: crate::TaskId, channels: &[u32]) -> AppAction {
+    AppAction::ConfirmAudioChannelSelection {
+        task_id,
+        channels: channels.to_vec(),
+    }
+}
+
 fn audio_channel_label(channels: u32) -> String {
     match channels {
         0 => "Disabled".to_owned(),
@@ -545,6 +628,50 @@ mod tests {
         assert!(widget.add_track_cancel_rect.is_some());
         widget.cancel_add_track();
         assert!(!widget.add_track_open);
+    }
+
+    #[test]
+    fn ordered_audio_export_selection_emits_the_task_scoped_confirmation() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let task_id = crate::TaskId::from_raw(19);
+        let state = AppState {
+            io_task: Some(crate::IoTaskState {
+                id: task_id,
+                kind: crate::IoTaskKind::ExportLoopAudio,
+                status: crate::IoTaskStatus::AwaitingChannelSelection,
+                progress: 0.2,
+                message: "Select channels".to_owned(),
+                sample_rate_warning: None,
+                audio_channel_mapping: None,
+                audio_channel_selection: Some(crate::AudioChannelSelectionState {
+                    available_channels: vec!["Direct 1".to_owned(), "Direct 2".to_owned()],
+                    default_selection: vec![1, 0],
+                }),
+            }),
+            ..Default::default()
+        };
+        let mut widget = AppWidget::default();
+        let output = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 600.0),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                widget.show(ui, &state);
+            },
+        );
+        assert!(!output.shapes.is_empty());
+        assert_eq!(
+            audio_channel_selection_action(task_id, &[1, 0]),
+            AppAction::ConfirmAudioChannelSelection {
+                task_id,
+                channels: vec![1, 0],
+            }
+        );
     }
 
     #[test]

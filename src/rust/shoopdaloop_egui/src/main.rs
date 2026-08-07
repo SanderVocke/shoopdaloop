@@ -90,7 +90,10 @@ impl UnifiedApp {
             self.handle_ui_intent(intent);
         }
         while let Some(output) = self.runtime.take_file_output() {
-            save_file_output(output);
+            #[cfg(not(target_arch = "wasm32"))]
+            save_file_output(output, self.pending_file_intent_tx.clone());
+            #[cfg(target_arch = "wasm32")]
+            save_file_output(output, Rc::clone(&self.pending_file_intents));
         }
         if let Some(notification) = snapshot.notifications.last() {
             egui::Area::new(egui::Id::new("latest_notification"))
@@ -118,7 +121,12 @@ impl UnifiedApp {
                                 bytes: std::sync::Arc::from(bytes),
                             });
                         }
-                        Err(error) => eprintln!("could not read {}: {error}", path.display()),
+                        Err(error) => {
+                            let _ = sender.send(AppIntent::ReportFileIoError {
+                                task_id: None,
+                                message: format!("Could not read {}: {error}", path.display()),
+                            });
+                        }
                     });
                 }
                 None
@@ -138,7 +146,12 @@ impl UnifiedApp {
                                 update_loop_length: true,
                             });
                         }
-                        Err(error) => eprintln!("could not read {}: {error}", path.display()),
+                        Err(error) => {
+                            let _ = sender.send(AppIntent::ReportFileIoError {
+                                task_id: None,
+                                message: format!("Could not read {}: {error}", path.display()),
+                            });
+                        }
                     });
                 }
                 None
@@ -158,7 +171,12 @@ impl UnifiedApp {
                                 update_loop_length: true,
                             });
                         }
-                        Err(error) => eprintln!("could not read {}: {error}", path.display()),
+                        Err(error) => {
+                            let _ = sender.send(AppIntent::ReportFileIoError {
+                                task_id: None,
+                                message: format!("Could not read {}: {error}", path.display()),
+                            });
+                        }
                     });
                 }
                 None
@@ -244,7 +262,7 @@ impl UnifiedApp {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn save_file_output(output: shoop_app::ApplicationFileOutput) {
+fn save_file_output(output: shoop_app::ApplicationFileOutput, sender: Sender<AppIntent>) {
     let Some(path) = rfd::FileDialog::new()
         .set_file_name(&output.suggested_name)
         .save_file()
@@ -253,7 +271,10 @@ fn save_file_output(output: shoop_app::ApplicationFileOutput) {
     };
     std::thread::spawn(move || {
         if let Err(error) = atomic_replace(&path, &output.bytes, output.task_id.raw()) {
-            eprintln!("could not save {}: {error}", path.display());
+            let _ = sender.send(AppIntent::ReportFileIoError {
+                task_id: Some(output.task_id),
+                message: format!("Could not save {}: {error}", path.display()),
+            });
         }
     });
 }
@@ -293,7 +314,10 @@ fn atomic_replace(path: &Path, bytes: &[u8], task_id: u64) -> std::io::Result<()
 }
 
 #[cfg(target_arch = "wasm32")]
-fn save_file_output(output: shoop_app::ApplicationFileOutput) {
+fn save_file_output(
+    output: shoop_app::ApplicationFileOutput,
+    pending: Rc<RefCell<VecDeque<AppIntent>>>,
+) {
     wasm_bindgen_futures::spawn_local(async move {
         if let Some(file) = rfd::AsyncFileDialog::new()
             .set_file_name(&output.suggested_name)
@@ -301,7 +325,12 @@ fn save_file_output(output: shoop_app::ApplicationFileOutput) {
             .await
         {
             if let Err(error) = file.write(&output.bytes).await {
-                log::error!("could not save browser file: {error}");
+                pending
+                    .borrow_mut()
+                    .push_back(AppIntent::ReportFileIoError {
+                        task_id: Some(output.task_id),
+                        message: format!("Could not save browser file: {error}"),
+                    });
             }
         }
     });
@@ -1028,6 +1057,105 @@ mod tests {
                 && snapshot.details.is_some()
             {
                 break;
+            }
+            assert!(started.elapsed() < Duration::from_secs(3));
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        thread::sleep(Duration::from_millis(50));
+        app.runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        wait_for_loop_mode(&app, track_id, loop_id, LoopMode::Stopped);
+        app.runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::PlayClicked,
+            })
+            .unwrap();
+        wait_for_loop_mode(&app, track_id, loop_id, LoopMode::Playing);
+        let frames_before_save = app.runtime.snapshot().status.processed_frames;
+        app.runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        let started = Instant::now();
+        let output = loop {
+            if let Some(output) = app.runtime.take_file_output() {
+                break output;
+            }
+            assert!(started.elapsed() < Duration::from_secs(5));
+            thread::sleep(Duration::from_millis(5));
+        };
+        let started = Instant::now();
+        let after_save = loop {
+            let snapshot = app.runtime.snapshot();
+            if snapshot.status.processed_frames > frames_before_save {
+                break snapshot;
+            }
+            assert!(started.elapsed() < Duration::from_secs(3));
+            thread::sleep(Duration::from_millis(5));
+        };
+        let saved_loop = after_save
+            .tracks
+            .iter()
+            .find(|track| track.id == track_id)
+            .and_then(|track| track.loops.iter().find(|loop_| loop_.id == loop_id))
+            .unwrap();
+        assert_eq!(saved_loop.mode, LoopMode::Playing);
+        assert!(output.suggested_name.ends_with(".shoop"));
+
+        app.runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: output.suggested_name,
+                bytes: output.bytes,
+            })
+            .unwrap();
+        let started = Instant::now();
+        loop {
+            let loaded = app.runtime.snapshot();
+            if loaded.io_task.as_ref().is_some_and(|task| {
+                task.kind == shoop_egui::IoTaskKind::LoadSession
+                    && task.status == shoop_egui::IoTaskStatus::Completed
+            }) {
+                assert_eq!(loaded.tracks.len(), track_specs.len() + 1);
+                assert!(loaded
+                    .tracks
+                    .iter()
+                    .flat_map(|track| &track.loops)
+                    .all(|loop_| {
+                        loop_.mode == LoopMode::Stopped || loop_.mode == LoopMode::Unknown
+                    }));
+                assert!(loaded.tracks.iter().any(|track| {
+                    track.name == "Native stereo + MIDI"
+                        && (track.controls.output_gain_db + 3.0).abs() < 0.001
+                }));
+                break;
+            }
+            assert!(started.elapsed() < Duration::from_secs(5));
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn wait_for_loop_mode(
+        app: &UnifiedApp,
+        track_id: shoop_egui::TrackId,
+        loop_id: shoop_egui::LoopId,
+        expected: LoopMode,
+    ) {
+        let started = Instant::now();
+        loop {
+            let snapshot = app.runtime.snapshot();
+            if snapshot
+                .tracks
+                .iter()
+                .find(|track| track.id == track_id)
+                .and_then(|track| track.loops.iter().find(|loop_| loop_.id == loop_id))
+                .is_some_and(|loop_| loop_.mode == expected)
+            {
+                return;
             }
             assert!(started.elapsed() < Duration::from_secs(3));
             thread::sleep(Duration::from_millis(5));
