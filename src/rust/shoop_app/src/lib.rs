@@ -26,7 +26,9 @@ use shoop_backend::{
     DirectTrackRequest,
 };
 #[cfg(not(target_arch = "wasm32"))]
-use shoop_scripting::ScriptManager;
+use shoop_scripting::{
+    ControlLoop, ControlOperation, ControlSnapshot, ControlTrack, ScriptManager,
+};
 use shoop_session::{
     decode_exact_midi, decode_loop_audio, decode_session, decode_standard_midi, decode_wav,
     encode_exact_midi, encode_float_wav, encode_loop_audio, encode_session, encode_standard_midi,
@@ -554,11 +556,11 @@ impl ApplicationModel {
                 source,
                 kind,
                 enabled,
-            } => self.add_script_source(name, source, kind, enabled),
+            } => self.add_script_source(backend, name, source, kind, enabled),
             AppIntent::SetScriptEnabled { script_id, enabled } => {
-                self.set_script_enabled(script_id, enabled)
+                self.set_script_enabled(backend, script_id, enabled)
             }
-            AppIntent::RestartScript { script_id } => self.restart_script(script_id),
+            AppIntent::RestartScript { script_id } => self.restart_script(backend, script_id),
             AppIntent::StopScript { script_id } => self.stop_script(script_id),
             AppIntent::ForgetScript { script_id } => self.forget_script(script_id),
             AppIntent::SetPortConnected {
@@ -616,6 +618,7 @@ impl ApplicationModel {
 
     fn add_script_source(
         &mut self,
+        backend: &mut dyn Backend,
         name: String,
         source: Arc<str>,
         kind: ScriptKind,
@@ -623,51 +626,62 @@ impl ApplicationModel {
     ) -> Result<(), String> {
         #[cfg(not(target_arch = "wasm32"))]
         {
+            self.prepare_script_invocation();
             let result = self
                 .script_manager
                 .add(name, source.to_string(), kind, enabled)
                 .map(|_| ())
-                .map_err(|error| error.to_string());
+                .map_err(|error| error.to_string())
+                .and_then(|()| self.apply_script_operations(backend));
             self.refresh_scripting_view();
             result
         }
         #[cfg(target_arch = "wasm32")]
         {
-            let _ = (name, source, kind, enabled);
+            let _ = (backend, name, source, kind, enabled);
             Err("Lua scripting is unavailable in the browser build".to_owned())
         }
     }
 
-    fn set_script_enabled(&mut self, id: ScriptId, enabled: bool) -> Result<(), String> {
+    fn set_script_enabled(
+        &mut self,
+        backend: &mut dyn Backend,
+        id: ScriptId,
+        enabled: bool,
+    ) -> Result<(), String> {
         #[cfg(not(target_arch = "wasm32"))]
         {
+            self.prepare_script_invocation();
             let result = self
                 .script_manager
                 .set_enabled(id, enabled)
-                .map_err(|error| error.to_string());
+                .map_err(|error| error.to_string())
+                .and_then(|()| self.apply_script_operations(backend));
             self.refresh_scripting_view();
             result
         }
         #[cfg(target_arch = "wasm32")]
         {
-            let _ = (id, enabled);
+            let _ = (backend, id, enabled);
             Err("Lua scripting is unavailable in the browser build".to_owned())
         }
     }
 
-    fn restart_script(&mut self, id: ScriptId) -> Result<(), String> {
+    fn restart_script(&mut self, backend: &mut dyn Backend, id: ScriptId) -> Result<(), String> {
         #[cfg(not(target_arch = "wasm32"))]
         {
+            self.prepare_script_invocation();
             let result = self
                 .script_manager
                 .start(id)
-                .map_err(|error| error.to_string());
+                .map_err(|error| error.to_string())
+                .and_then(|()| self.apply_script_operations(backend));
             self.refresh_scripting_view();
             result
         }
         #[cfg(target_arch = "wasm32")]
         {
-            let _ = id;
+            let _ = (backend, id);
             Err("Lua scripting is unavailable in the browser build".to_owned())
         }
     }
@@ -704,6 +718,389 @@ impl ApplicationModel {
             let _ = id;
             Err("Lua scripting is unavailable in the browser build".to_owned())
         }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn prepare_script_invocation(&mut self) {
+        let snapshot = self.script_control_snapshot();
+        self.script_manager.set_control_snapshot(snapshot);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn script_control_snapshot(&self) -> ControlSnapshot {
+        let mut tracks = Vec::with_capacity(self.tracks.len());
+        let mut loops = Vec::with_capacity(self.loops.len());
+        let mut main_index = 0_i64;
+        for track in &self.tracks {
+            let index = if track.is_sync {
+                -1
+            } else {
+                let index = main_index;
+                main_index += 1;
+                index
+            };
+            tracks.push(ControlTrack {
+                id: track.id,
+                index,
+                output_gain_db: track.controls.output_gain_db,
+                output_balance: track.controls.output_balance,
+                output_muted: track.controls.output_muted,
+                input_gain_db: track.controls.input_gain_db,
+                input_muted: !track.controls.input_monitoring,
+            });
+            for (row, id) in track.loops.iter().enumerate() {
+                let Some(model) = self.loops.get(id) else {
+                    continue;
+                };
+                loops.push(ControlLoop {
+                    id: model.id,
+                    coords: [index, row as i64],
+                    mode: model.state.mode,
+                    next_mode: (model.state.next_mode != LoopMode::Unknown)
+                        .then_some(model.state.next_mode),
+                    next_mode_delay: model.state.next_transition_delay,
+                    length: model.length,
+                    gain: model.state.gain,
+                    balance: model.state.balance,
+                    selected: model.state.selected,
+                    targeted: model.state.targeted,
+                });
+            }
+        }
+        ControlSnapshot {
+            loops,
+            tracks,
+            apply_n_cycles: self.global.apply_n_cycles,
+            solo: self.global.solo,
+            sync_active: self.global.sync,
+            play_after_record: self.global.play_after_record,
+            default_recording_action: self.global.default_recording_action,
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn apply_script_operations(&mut self, backend: &mut dyn Backend) -> Result<(), String> {
+        for operation in self.script_manager.take_control_operations() {
+            self.apply_script_operation(backend, operation)?;
+        }
+        Ok(())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn apply_script_operation(
+        &mut self,
+        backend: &mut dyn Backend,
+        operation: ControlOperation,
+    ) -> Result<(), String> {
+        match operation {
+            ControlOperation::Transition {
+                loops,
+                mode,
+                cycles_delay,
+                align_to_sync_at,
+            } => {
+                for id in loops {
+                    let backend_id = self
+                        .loops
+                        .get(&id)
+                        .ok_or_else(|| format!("stale or unknown loop {id}"))?
+                        .backend_id;
+                    backend
+                        .transition_loop_aligned(
+                            backend_id,
+                            backend_loop_mode(mode),
+                            cycles_delay,
+                            align_to_sync_at,
+                        )
+                        .map_err(|error| format!("could not transition loop {id}: {error}"))?;
+                }
+                Ok(())
+            }
+            ControlOperation::Trigger { loops, mode } => {
+                self.script_trigger_loops(backend, &loops, mode)
+            }
+            ControlOperation::Grab { loops } => {
+                for id in loops {
+                    self.grab_targets(backend, id)?;
+                }
+                Ok(())
+            }
+            ControlOperation::RecordN {
+                loops,
+                n_cycles,
+                cycles_delay,
+            } => {
+                for id in loops {
+                    let backend_id = self
+                        .loops
+                        .get(&id)
+                        .ok_or_else(|| format!("stale or unknown loop {id}"))?
+                        .backend_id;
+                    backend
+                        .transition_loop(backend_id, BackendLoopMode::Recording, Some(cycles_delay))
+                        .map_err(|error| format!("could not record loop {id}: {error}"))?;
+                    let finish = if self.global.play_after_record {
+                        BackendLoopMode::Playing
+                    } else {
+                        BackendLoopMode::Stopped
+                    };
+                    backend
+                        .transition_loop(
+                            backend_id,
+                            finish,
+                            Some(cycles_delay.saturating_add(n_cycles)),
+                        )
+                        .map_err(|error| {
+                            format!("could not schedule recording end for loop {id}: {error}")
+                        })?;
+                }
+                Ok(())
+            }
+            ControlOperation::RecordWithTargeted { loops } => {
+                let target = self
+                    .loops
+                    .values()
+                    .find(|model| model.state.targeted)
+                    .map(|model| model.backend_id)
+                    .ok_or_else(|| "cannot record with targeted: no loop is targeted".to_owned())?;
+                for id in loops {
+                    let backend_id = self
+                        .loops
+                        .get(&id)
+                        .ok_or_else(|| format!("stale or unknown loop {id}"))?
+                        .backend_id;
+                    backend
+                        .set_loop_sync_source(backend_id, Some(target))
+                        .map_err(|error| format!("could not target-sync loop {id}: {error}"))?;
+                    backend
+                        .transition_loop(backend_id, BackendLoopMode::Recording, Some(0))
+                        .map_err(|error| format!("could not record loop {id}: {error}"))?;
+                }
+                Ok(())
+            }
+            ControlOperation::SetLoopGain { loops, gain } => {
+                for id in loops {
+                    let model = self
+                        .loops
+                        .get_mut(&id)
+                        .ok_or_else(|| format!("stale or unknown loop {id}"))?;
+                    backend
+                        .set_loop_gain(model.backend_id, gain)
+                        .map_err(|error| format!("could not set loop gain: {error}"))?;
+                    model.state.gain = gain;
+                }
+                Ok(())
+            }
+            ControlOperation::SetLoopBalance { loops, balance } => {
+                for id in loops {
+                    let model = self
+                        .loops
+                        .get_mut(&id)
+                        .ok_or_else(|| format!("stale or unknown loop {id}"))?;
+                    backend
+                        .set_loop_balance(model.backend_id, balance)
+                        .map_err(|error| format!("could not set loop balance: {error}"))?;
+                    model.state.balance = balance;
+                }
+                Ok(())
+            }
+            ControlOperation::SetLoopSelection {
+                loops,
+                selected,
+                clear_others,
+            } => {
+                if clear_others {
+                    for model in self.loops.values_mut() {
+                        model.state.selected = false;
+                    }
+                }
+                for id in loops {
+                    if let Some(model) = self.loops.get_mut(&id) {
+                        model.state.selected = selected;
+                    }
+                }
+                self.refresh_selected_audio(backend)
+            }
+            ControlOperation::SetTarget { target } => {
+                for model in self.loops.values_mut() {
+                    model.state.targeted = Some(model.id) == target;
+                }
+                Ok(())
+            }
+            ControlOperation::ClearLoops { loops } => {
+                for id in loops {
+                    let model = self
+                        .loops
+                        .get_mut(&id)
+                        .ok_or_else(|| format!("stale or unknown loop {id}"))?;
+                    backend
+                        .clear_loop(model.backend_id)
+                        .map_err(|error| format!("could not clear loop {id}: {error}"))?;
+                    model.length = 0;
+                    model.state.empty = true;
+                }
+                Ok(())
+            }
+            ControlOperation::AdoptRingbuffers {
+                loops,
+                reverse_cycle_start,
+                cycles_length,
+                go_to_cycle,
+                go_to_mode,
+            } => {
+                let requests = loops
+                    .iter()
+                    .map(|id| {
+                        self.loops
+                            .get(id)
+                            .map(|model| BackendGrabRequest {
+                                loop_id: model.backend_id,
+                                reverse_start_cycle: Some(reverse_cycle_start as i32),
+                                cycles_length: Some(cycles_length as i32),
+                                go_to_cycle: Some(go_to_cycle as i32),
+                                go_to_mode: backend_loop_mode(go_to_mode),
+                            })
+                            .ok_or_else(|| format!("stale or unknown loop {id}"))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                backend
+                    .grab_loops(&requests)
+                    .map_err(|error| format!("could not adopt ringbuffers: {error}"))
+            }
+            ControlOperation::ComposeAddToEnd { .. } => {
+                Err("regular composition append is not implemented".to_owned())
+            }
+            ControlOperation::SetRepeatSync { loops, active } => {
+                let sync = active.then(|| self.sync_backend_loop()).flatten();
+                for id in loops {
+                    let backend_id = self
+                        .loops
+                        .get(&id)
+                        .ok_or_else(|| format!("stale or unknown loop {id}"))?
+                        .backend_id;
+                    backend
+                        .set_loop_sync_source(backend_id, sync)
+                        .map_err(|error| {
+                            format!("could not update repeat sync for loop {id}: {error}")
+                        })?;
+                }
+                Ok(())
+            }
+            ControlOperation::SetTrackGain { tracks, gain_db } => self.apply_script_track_action(
+                backend,
+                tracks,
+                TrackAction::OutputGainChanged(gain_db),
+            ),
+            ControlOperation::SetTrackBalance { tracks, balance } => self
+                .apply_script_track_action(
+                    backend,
+                    tracks,
+                    TrackAction::OutputBalanceChanged(balance),
+                ),
+            ControlOperation::SetTrackMuted { tracks, muted } => self.apply_script_track_action(
+                backend,
+                tracks,
+                TrackAction::OutputMuteChanged(muted),
+            ),
+            ControlOperation::SetTrackInputGain { tracks, gain_db } => self
+                .apply_script_track_action(backend, tracks, TrackAction::InputGainChanged(gain_db)),
+            ControlOperation::SetTrackInputMuted { tracks, muted } => self
+                .apply_script_track_action(
+                    backend,
+                    tracks,
+                    TrackAction::InputMonitoringChanged(!muted),
+                ),
+            ControlOperation::SetApplyNCycles(value) => {
+                self.handle_global_action(backend, GlobalControlAction::SetApplyNCycles(value))
+            }
+            ControlOperation::SetSolo(value) => {
+                self.handle_global_action(backend, GlobalControlAction::SetSolo(value))
+            }
+            ControlOperation::SetSyncActive(value) => {
+                self.handle_global_action(backend, GlobalControlAction::SetSync(value))
+            }
+            ControlOperation::SetPlayAfterRecord(value) => {
+                self.handle_global_action(backend, GlobalControlAction::SetPlayAfterRecord(value))
+            }
+            ControlOperation::SetDefaultRecordingAction(value) => self.handle_global_action(
+                backend,
+                GlobalControlAction::SetDefaultRecordingAction(value),
+            ),
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn apply_script_track_action(
+        &mut self,
+        backend: &mut dyn Backend,
+        tracks: Vec<TrackId>,
+        action: TrackAction,
+    ) -> Result<(), String> {
+        for id in tracks {
+            self.handle_track_action(backend, id, action.clone())?;
+        }
+        Ok(())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn script_trigger_loops(
+        &mut self,
+        backend: &mut dyn Backend,
+        loops: &[LoopId],
+        mode: LoopMode,
+    ) -> Result<(), String> {
+        let delay = self.global.sync.then_some(self.target_delay());
+        let backend_mode = backend_loop_mode(mode);
+        for id in loops {
+            let model = self
+                .loops
+                .get(id)
+                .ok_or_else(|| format!("stale or unknown loop {id}"))?;
+            backend
+                .transition_loop(model.backend_id, backend_mode, delay)
+                .map_err(|error| format!("could not trigger loop {id}: {error}"))?;
+            if mode == LoopMode::Recording && self.global.apply_n_cycles > 0 {
+                let finish = if self.global.play_after_record {
+                    BackendLoopMode::Playing
+                } else {
+                    BackendLoopMode::Stopped
+                };
+                backend
+                    .transition_loop(
+                        model.backend_id,
+                        finish,
+                        Some(
+                            delay
+                                .unwrap_or(0)
+                                .saturating_add(self.global.apply_n_cycles),
+                        ),
+                    )
+                    .map_err(|error| {
+                        format!("could not schedule recording end for {id}: {error}")
+                    })?;
+            }
+        }
+        if self.global.solo
+            && matches!(
+                mode,
+                LoopMode::Playing | LoopMode::PlayingDryThroughWet | LoopMode::Recording
+            )
+        {
+            let target_tracks: Vec<_> = loops
+                .iter()
+                .filter_map(|id| self.loops.get(id).map(|model| model.track_id))
+                .collect();
+            for model in self.loops.values() {
+                if target_tracks.contains(&model.track_id) && !loops.contains(&model.id) {
+                    backend
+                        .transition_loop(model.backend_id, BackendLoopMode::Stopped, delay)
+                        .map_err(|error| {
+                            format!("could not solo-stop loop {}: {error}", model.id)
+                        })?;
+                }
+            }
+        }
+        Ok(())
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -3808,6 +4205,37 @@ mod tests {
             .dispatch(AppIntent::ForgetScript { script_id })
             .unwrap();
         wait_for(&handle, |snapshot| snapshot.scripting.scripts.is_empty());
+    }
+
+    #[test]
+    fn lua_control_batches_use_authoritative_application_and_backend_paths() {
+        let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        let handle = runtime.handle();
+        handle
+            .dispatch(AppIntent::AddScriptSource {
+                name: "control.lua".to_owned(),
+                source: Arc::from(
+                    r#"
+local c = require('shoop_control')
+c.set_solo(true)
+c.loop_select({-1, 0}, true)
+c.loop_set_gain({-1, 0}, 0.25)
+"#,
+                ),
+                kind: ScriptKind::User,
+                enabled: true,
+            })
+            .unwrap();
+        let snapshot = wait_for(&handle, |snapshot| {
+            snapshot.global_controls.solo
+                && snapshot.tracks[0].loops[0].selected
+                && (snapshot.tracks[0].loops[0].gain - 0.25).abs() < f32::EPSILON
+        });
+        assert_eq!(snapshot.scripting.scripts.len(), 1);
+        assert_eq!(
+            snapshot.scripting.scripts[0].lifecycle,
+            shoop_app_api::ScriptLifecycle::Finished
+        );
     }
 
     #[test]

@@ -96,10 +96,10 @@ Verification:
 
 ### Stage 3 — Implement the complete script control/query reducer
 
-- [ ] Define framework-independent script query snapshots and ordered control operations for all loop, track, and global API methods; implement selector parsing/conversion once in `shoop_scripting`.
+- [x] Define framework-independent script query snapshots and ordered control operations for all loop, track, and global API methods; implement selector parsing/conversion once in `shoop_scripting`.
 - [ ] Refactor equivalent GUI and script commands onto shared application reducers, including deterministic target/selection ordering, solo/sync/fixed-cycle policy, gain/fader conversion, and read-your-writes shadow updates.
 - [ ] Extend the backend façade and engine mapping for API gaps: explicit cycle/alignment transitions, parameterized ringbuffer adoption, repeat-sync, and regular composition creation/append/parallel updates. Add browser proxy variants only where required to keep shared session/backend contracts coherent; browser script invocation remains unavailable.
-- [ ] Publish enough authoritative loop/track state for all legacy queries without asking widgets or copying media content.
+- [x] Publish enough authoritative loop/track state for all legacy queries without asking widgets or copying media content.
 
 Verification:
 

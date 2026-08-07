@@ -6,6 +6,16 @@ use anyhow::{anyhow, bail};
 use mlua::{Function, Lua, Value};
 use shoop_app_api::{ScriptId, ScriptKind, ScriptLifecycle, ScriptState};
 
+mod control;
+mod legacy_key_constants;
+
+use control::{install_control_api, ScriptCallbacks};
+pub use control::{
+    ControlBridge, ControlLoop, ControlOperation, ControlSnapshot, ControlTrack,
+    SharedControlBridge, CONTROL_FUNCTION_NAMES,
+};
+use legacy_key_constants::{LEGACY_KEY_CONSTANTS, LEGACY_MODIFIER_CONSTANTS};
+
 pub const KEYBOARD_SCRIPT: &str = include_str!("../../../lua/builtins/keyboard.lua");
 pub const AKAI_APC_MINI_MK1_SCRIPT: &str =
     include_str!("../../../lua/builtins/akai_apc_mini_mk1.lua");
@@ -64,10 +74,15 @@ pub struct LuaRuntime {
     run_sandboxed: Function,
     logs: Rc<RefCell<VecDeque<ScriptLogEntry>>>,
     listening: Rc<Cell<bool>>,
+    callbacks: ScriptCallbacks,
 }
 
 impl LuaRuntime {
     pub fn new() -> anyhow::Result<Self> {
+        Self::new_with_control(Rc::new(RefCell::new(ControlBridge::default())))
+    }
+
+    pub fn new_with_control(bridge: SharedControlBridge) -> anyhow::Result<Self> {
         let lua = Lua::new();
         let logs = Rc::new(RefCell::new(VecDeque::with_capacity(MAX_LOG_ENTRIES)));
         let print_logs = Rc::clone(&logs);
@@ -89,12 +104,23 @@ impl LuaRuntime {
             }),
         )?;
         let run_sandboxed = prepare_compatibility_environment(&lua)?;
+        let listening = Rc::new(Cell::new(false));
+        let mark_listening_state = Rc::clone(&listening);
+        let callbacks = ScriptCallbacks::new();
+        install_control_api(
+            &lua,
+            &run_sandboxed,
+            bridge,
+            &callbacks,
+            Rc::new(move || mark_listening_state.set(true)),
+        )?;
         install_require(&lua, &run_sandboxed)?;
         Ok(Self {
             lua,
             run_sandboxed,
             logs,
-            listening: Rc::new(Cell::new(false)),
+            listening,
+            callbacks,
         })
     }
 
@@ -128,7 +154,7 @@ impl LuaRuntime {
     }
 
     pub fn is_listening(&self) -> bool {
-        self.listening.get()
+        self.listening.get() || self.callbacks.has_activity()
     }
 
     pub fn logs(&self) -> Vec<ScriptLogEntry> {
@@ -220,6 +246,7 @@ struct ScriptRecord {
 pub struct ScriptManager {
     next_id: u64,
     scripts: BTreeMap<ScriptId, ScriptRecord>,
+    control: SharedControlBridge,
 }
 
 impl ScriptManager {
@@ -227,7 +254,16 @@ impl ScriptManager {
         Self {
             next_id: 1,
             scripts: BTreeMap::new(),
+            control: Rc::new(RefCell::new(ControlBridge::default())),
         }
+    }
+
+    pub fn set_control_snapshot(&mut self, snapshot: ControlSnapshot) {
+        self.control.borrow_mut().snapshot = snapshot;
+    }
+
+    pub fn take_control_operations(&mut self) -> Vec<ControlOperation> {
+        std::mem::take(&mut self.control.borrow_mut().operations)
     }
 
     pub fn add(
@@ -282,7 +318,7 @@ impl ScriptManager {
         record.runtime = None;
         record.lifecycle = ScriptLifecycle::Running;
         record.latest_error = None;
-        let runtime = LuaRuntime::new()?;
+        let runtime = LuaRuntime::new_with_control(Rc::clone(&self.control))?;
         match runtime.execute(&record.name, &record.source) {
             Ok(()) => {
                 if runtime.is_listening() {
@@ -375,6 +411,8 @@ pub fn extract_documentation(source: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use shoop_app_api::{LoopId, LoopMode, TrackId};
+
     use super::*;
 
     #[test]
@@ -422,6 +460,122 @@ mod tests {
             }]
         );
         assert_eq!(second.logs()[0].message, "second");
+    }
+
+    #[test]
+    fn complete_control_surface_is_installed_with_legacy_constants() {
+        let runtime = LuaRuntime::new().unwrap();
+        let module: mlua::Table = runtime
+            .run_sandboxed
+            .call("return require('shoop_control')")
+            .unwrap();
+        for name in CONTROL_FUNCTION_NAMES {
+            assert!(
+                module.get::<mlua::Function>(*name).is_ok(),
+                "missing {name}"
+            );
+        }
+        let constants: mlua::Table = module.get("constants").unwrap();
+        assert_eq!(constants.get::<i64>("Key_Up").unwrap(), 16_777_235);
+        assert_eq!(
+            constants.get::<i64>("KeyModifier_ControlModifier").unwrap(),
+            67_108_864
+        );
+        assert_eq!(constants.get::<i64>("LoopMode_Playing").unwrap(), 2);
+    }
+
+    #[test]
+    fn control_queries_and_mutations_have_ordered_read_your_writes_behavior() {
+        let first_loop = LoopId::from_raw(10);
+        let second_loop = LoopId::from_raw(11);
+        let bridge = Rc::new(RefCell::new(ControlBridge {
+            snapshot: ControlSnapshot {
+                loops: vec![
+                    ControlLoop {
+                        id: first_loop,
+                        coords: [0, 0],
+                        mode: LoopMode::Stopped,
+                        next_mode: None,
+                        next_mode_delay: None,
+                        length: 0,
+                        gain: 1.0,
+                        balance: 0.0,
+                        selected: false,
+                        targeted: false,
+                    },
+                    ControlLoop {
+                        id: second_loop,
+                        coords: [0, 1],
+                        mode: LoopMode::Playing,
+                        next_mode: None,
+                        next_mode_delay: None,
+                        length: 480,
+                        gain: 1.0,
+                        balance: 0.0,
+                        selected: false,
+                        targeted: false,
+                    },
+                ],
+                tracks: vec![ControlTrack {
+                    id: TrackId::from_raw(2),
+                    index: 0,
+                    output_gain_db: 0.0,
+                    output_balance: 0.0,
+                    output_muted: false,
+                    input_gain_db: 0.0,
+                    input_muted: false,
+                }],
+                ..Default::default()
+            },
+            operations: Vec::new(),
+        }));
+        let runtime = LuaRuntime::new_with_control(Rc::clone(&bridge)).unwrap();
+        runtime
+            .execute(
+                "control",
+                r#"
+local c = require('shoop_control')
+if c.loop_count({{0,0},{0,1}}) ~= 2 then error('count') end
+if c.loop_get_mode({0,1})[1] ~= c.constants.LoopMode_Playing then error('mode') end
+c.loop_select({{0,0},{0,1}}, true)
+if #c.loop_get_which_selected() ~= 2 then error('selection') end
+c.loop_set_gain_fader({0,0}, 0.5)
+c.loop_trigger({0,0}, c.constants.LoopMode_Recording)
+if c.loop_get_mode({0,0})[1] ~= c.constants.LoopMode_Recording then error('trigger') end
+c.track_set_muted(0, true)
+if not c.track_get_muted(0)[1] then error('track mute') end
+c.set_solo(true)
+if not c.get_solo() then error('solo') end
+"#,
+            )
+            .unwrap();
+        let bridge = bridge.borrow();
+        assert_eq!(bridge.snapshot.loops[0].mode, LoopMode::Recording);
+        assert!(bridge.snapshot.tracks[0].output_muted);
+        assert!(bridge.snapshot.solo);
+        assert_eq!(
+            bridge.operations,
+            vec![
+                ControlOperation::SetLoopSelection {
+                    loops: vec![first_loop, second_loop],
+                    selected: true,
+                    clear_others: true,
+                },
+                ControlOperation::SetLoopGain {
+                    loops: vec![first_loop],
+                    gain: control::fader_to_gain(0.5),
+                },
+                ControlOperation::Trigger {
+                    loops: vec![first_loop],
+                    mode: LoopMode::Recording,
+                },
+                ControlOperation::SetTrackMuted {
+                    tracks: vec![TrackId::from_raw(2)],
+                    muted: true,
+                },
+                ControlOperation::SetSolo(true),
+            ]
+        );
     }
 
     #[test]

@@ -353,6 +353,18 @@ pub trait Backend {
         mode: BackendLoopMode,
         cycles_delay: Option<u32>,
     ) -> Result<()>;
+    fn transition_loop_aligned(
+        &mut self,
+        loop_id: BackendLoopId,
+        mode: BackendLoopMode,
+        cycles_delay: Option<u32>,
+        align_to_sync_at: Option<u32>,
+    ) -> Result<()> {
+        if align_to_sync_at.is_some() {
+            return Err(anyhow!("aligned loop transitions are unavailable"));
+        }
+        self.transition_loop(loop_id, mode, cycles_delay)
+    }
     fn clear_loop(&mut self, loop_id: BackendLoopId) -> Result<()>;
     fn capture_session(&mut self) -> Result<BackendSessionData> {
         Err(anyhow!("session capture is unavailable"))
@@ -1557,6 +1569,21 @@ impl Backend for EngineBackend {
         Ok(())
     }
 
+    fn transition_loop_aligned(
+        &mut self,
+        loop_id: BackendLoopId,
+        mode: BackendLoopMode,
+        cycles_delay: Option<u32>,
+        align_to_sync_at: Option<u32>,
+    ) -> Result<()> {
+        let engine_loop = self.engine_loop_index(loop_id)?;
+        self.session
+            .loop_mut(engine_loop)
+            .ok_or_else(|| anyhow!("missing engine loop"))?
+            .plan_transition(to_engine_mode(mode), cycles_delay, align_to_sync_at);
+        Ok(())
+    }
+
     fn clear_loop(&mut self, loop_id: BackendLoopId) -> Result<()> {
         let engine_loop = self.engine_loop_index(loop_id)?;
         self.session
@@ -2376,6 +2403,16 @@ impl Backend for FakeBackend {
         self.operations
             .push(FakeOperation::Transition(loop_id, mode, cycles_delay));
         Ok(())
+    }
+
+    fn transition_loop_aligned(
+        &mut self,
+        loop_id: BackendLoopId,
+        mode: BackendLoopMode,
+        cycles_delay: Option<u32>,
+        _align_to_sync_at: Option<u32>,
+    ) -> Result<()> {
+        self.transition_loop(loop_id, mode, cycles_delay)
     }
 
     fn clear_loop(&mut self, loop_id: BackendLoopId) -> Result<()> {
