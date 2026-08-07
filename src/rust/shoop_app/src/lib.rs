@@ -36,11 +36,12 @@ use shoop_session::{
     decode_exact_midi, decode_loop_audio, decode_session, decode_standard_midi, decode_wav,
     encode_exact_midi, encode_float_wav, encode_loop_audio, encode_session, encode_standard_midi,
     resample_exact_midi, resample_loop_audio, resample_session, AudioPayload, ChannelDocument,
-    ChannelModeDocument, ConnectabilityDocument, DataTypeDocument, ExactMidi, ExactMidiEvent,
-    GlobalControlsDocument, LoopAudio, LoopAudioChannel, LoopDocument, MediaPayload,
-    MidiControlDocument, PortDirectionDocument, PortDocument, PortRoleDocument,
-    RecordingActionDocument, ScriptDocument, SessionBundle, SessionDocument, TrackControlsDocument,
-    TrackDocument, TrackGroupDocument, TrackTopologyDocument,
+    ChannelModeDocument, CompositeDocument, CompositeEventDocument, CompositeKindDocument,
+    ConnectabilityDocument, DataTypeDocument, ExactMidi, ExactMidiEvent, GlobalControlsDocument,
+    LoopAudio, LoopAudioChannel, LoopDocument, MediaPayload, MidiControlDocument,
+    PortDirectionDocument, PortDocument, PortRoleDocument, RecordingActionDocument, ScriptDocument,
+    SessionBundle, SessionDocument, TrackControlsDocument, TrackDocument, TrackGroupDocument,
+    TrackTopologyDocument,
 };
 
 const COMMAND_CAPACITY: usize = 1024;
@@ -226,6 +227,27 @@ impl CooperativeApplicationRuntime {
     pub fn start(mut backend: Box<dyn Backend>) -> Result<Self> {
         let file_outputs = Arc::new(Mutex::new(VecDeque::new()));
         let model = ApplicationModel::initialize(&mut *backend, Arc::clone(&file_outputs), false)?;
+        Self::from_model(model, backend, file_outputs)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn start_with_midi(
+        mut backend: Box<dyn Backend>,
+        midi: Box<dyn shoop_scripting::MidiControlService>,
+    ) -> Result<Self> {
+        let file_outputs = Arc::new(Mutex::new(VecDeque::new()));
+        let mut model =
+            ApplicationModel::initialize(&mut *backend, Arc::clone(&file_outputs), false)?;
+        model.script_manager = ScriptManager::new_with_midi(midi);
+        model.script_last_snapshot = model.script_control_snapshot();
+        Self::from_model(model, backend, file_outputs)
+    }
+
+    fn from_model(
+        model: ApplicationModel,
+        backend: Box<dyn Backend>,
+        file_outputs: Arc<Mutex<VecDeque<ApplicationFileOutput>>>,
+    ) -> Result<Self> {
         let snapshot = Arc::new(model.snapshot());
         Ok(Self {
             model,
@@ -418,6 +440,7 @@ struct LoopModel {
     length: u32,
     position: u32,
     audio_data: Option<Vec<Arc<[f32]>>>,
+    script_composition: Vec<Vec<LoopId>>,
 }
 
 enum PendingIo {
@@ -520,6 +543,7 @@ impl ApplicationModel {
             length: 0,
             position: 0,
             audio_data: None,
+            script_composition: Vec::new(),
         };
         let model = Self {
             revision: 1,
@@ -1116,6 +1140,8 @@ impl ApplicationModel {
                         .map_err(|error| format!("could not clear loop {id}: {error}"))?;
                     model.length = 0;
                     model.state.empty = true;
+                    model.state.composite_kind = shoop_app_api::CompositeKind::None;
+                    model.script_composition.clear();
                 }
                 Ok(())
             }
@@ -1145,8 +1171,56 @@ impl ApplicationModel {
                     .grab_loops(&requests)
                     .map_err(|error| format!("could not adopt ringbuffers: {error}"))
             }
-            ControlOperation::ComposeAddToEnd { .. } => {
-                Err("regular composition append is not implemented".to_owned())
+            ControlOperation::ComposeAddToEnd {
+                target,
+                add,
+                parallel,
+            } => {
+                if add.is_empty() {
+                    return Ok(());
+                }
+                if add.iter().any(|source| *source == target) {
+                    return Err("a loop cannot be composed into itself".to_owned());
+                }
+                for source in &add {
+                    if !self.loops.contains_key(source) {
+                        return Err(format!("stale or unknown composition source {source}"));
+                    }
+                }
+                let target_loop = self
+                    .loops
+                    .get_mut(&target)
+                    .ok_or_else(|| format!("stale or unknown composition target {target}"))?;
+                if parallel && !target_loop.script_composition.is_empty() {
+                    target_loop
+                        .script_composition
+                        .last_mut()
+                        .unwrap()
+                        .extend(add);
+                } else if parallel {
+                    target_loop.script_composition.push(add);
+                } else {
+                    target_loop
+                        .script_composition
+                        .extend(add.into_iter().map(|source| vec![source]));
+                }
+                let sections = target_loop.script_composition.clone();
+                let length = sections
+                    .iter()
+                    .map(|section| {
+                        section
+                            .iter()
+                            .filter_map(|source| self.loops.get(source))
+                            .map(|source| source.length)
+                            .max()
+                            .unwrap_or(0)
+                    })
+                    .sum();
+                let target_loop = self.loops.get_mut(&target).unwrap();
+                target_loop.length = length;
+                target_loop.state.empty = false;
+                target_loop.state.composite_kind = shoop_app_api::CompositeKind::Script;
+                Ok(())
             }
             ControlOperation::SetRepeatSync { loops, active } => {
                 let sync = active.then(|| self.sync_backend_loop()).flatten();
@@ -1229,13 +1303,39 @@ impl ApplicationModel {
     ) -> Result<(), String> {
         let delay = self.global.sync.then_some(self.target_delay());
         let backend_mode = backend_loop_mode(mode);
+        let sync_length = self.sync_length().max(1);
+        let mut expanded = Vec::new();
         for id in loops {
             let model = self
                 .loops
                 .get(id)
                 .ok_or_else(|| format!("stale or unknown loop {id}"))?;
+            if model.script_composition.is_empty() {
+                expanded.push((*id, delay));
+                continue;
+            }
+            let mut section_delay = delay.unwrap_or(0);
+            for section in &model.script_composition {
+                for source in section {
+                    expanded.push((*source, self.global.sync.then_some(section_delay)));
+                }
+                let section_length = section
+                    .iter()
+                    .filter_map(|source| self.loops.get(source))
+                    .map(|source| source.length)
+                    .max()
+                    .unwrap_or(sync_length);
+                section_delay =
+                    section_delay.saturating_add(section_length.max(1).div_ceil(sync_length));
+            }
+        }
+        for (id, loop_delay) in expanded.iter().copied() {
+            let model = self
+                .loops
+                .get(&id)
+                .ok_or_else(|| format!("stale or unknown loop {id}"))?;
             backend
-                .transition_loop(model.backend_id, backend_mode, delay)
+                .transition_loop(model.backend_id, backend_mode, loop_delay)
                 .map_err(|error| format!("could not trigger loop {id}: {error}"))?;
             if mode == LoopMode::Recording && self.global.apply_n_cycles > 0 {
                 let finish = if self.global.play_after_record {
@@ -1248,7 +1348,7 @@ impl ApplicationModel {
                         model.backend_id,
                         finish,
                         Some(
-                            delay
+                            loop_delay
                                 .unwrap_or(0)
                                 .saturating_add(self.global.apply_n_cycles),
                         ),
@@ -1264,12 +1364,13 @@ impl ApplicationModel {
                 LoopMode::Playing | LoopMode::PlayingDryThroughWet | LoopMode::Recording
             )
         {
-            let target_tracks: Vec<_> = loops
+            let expanded_ids = expanded.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+            let target_tracks: Vec<_> = expanded_ids
                 .iter()
                 .filter_map(|id| self.loops.get(id).map(|model| model.track_id))
                 .collect();
             for model in self.loops.values() {
-                if target_tracks.contains(&model.track_id) && !loops.contains(&model.id) {
+                if target_tracks.contains(&model.track_id) && !expanded_ids.contains(&model.id) {
                     backend
                         .transition_loop(model.backend_id, BackendLoopMode::Stopped, delay)
                         .map_err(|error| {
@@ -2060,6 +2161,7 @@ impl ApplicationModel {
                 length: 0,
                 position: 0,
                 audio_data: None,
+                script_composition: Vec::new(),
             },
         );
         id
@@ -2743,19 +2845,21 @@ impl ApplicationModel {
             let Some(backend_state) = snapshot.loops.get(&model.backend_id) else {
                 continue;
             };
-            model.length = backend_state.length;
-            model.position = backend_state.position;
+            if model.script_composition.is_empty() {
+                model.length = backend_state.length;
+                model.position = backend_state.position;
+            }
             model.state.mode = app_loop_mode(backend_state.mode);
             model.state.next_mode = backend_state
                 .next_mode
                 .map(app_loop_mode)
                 .unwrap_or(model.state.mode);
             model.state.next_transition_delay = backend_state.next_transition_delay;
-            model.state.empty = backend_state.length == 0;
-            model.state.position = if backend_state.length == 0 {
+            model.state.empty = model.length == 0;
+            model.state.position = if model.length == 0 {
                 0.0
             } else {
-                backend_state.position as f32 / backend_state.length as f32
+                model.position as f32 / model.length as f32
             };
             model.state.stereo = backend_state.stereo;
             if let Some((has_audio, has_midi)) = track_capabilities.get(&model.track_id) {
@@ -2772,6 +2876,38 @@ impl ApplicationModel {
                 .copied()
                 .unwrap_or(model.state.peak_left_db);
             model.state.midi_activity = backend_state.midi_activity;
+        }
+        let composites = self
+            .loops
+            .values()
+            .filter(|model| !model.script_composition.is_empty())
+            .map(|model| (model.id, model.script_composition.clone()))
+            .collect::<Vec<_>>();
+        for (target, sections) in composites {
+            let length = sections
+                .iter()
+                .map(|section| {
+                    section
+                        .iter()
+                        .filter_map(|source| self.loops.get(source))
+                        .map(|source| source.length)
+                        .max()
+                        .unwrap_or(0)
+                })
+                .sum();
+            let source_state = sections
+                .first()
+                .and_then(|section| section.first())
+                .and_then(|source| self.loops.get(source))
+                .map(|source| (source.state.mode, source.state.next_mode));
+            if let Some(model) = self.loops.get_mut(&target) {
+                model.length = length;
+                model.state.empty = false;
+                if let Some((mode, next_mode)) = source_state {
+                    model.state.mode = mode;
+                    model.state.next_mode = next_mode;
+                }
+            }
         }
         self.apply_connection_snapshot(snapshot.connections);
     }
@@ -3072,12 +3208,33 @@ impl ApplicationModel {
                 loops.push(LoopDocument {
                     id: loop_id.raw(),
                     name: model.name.clone(),
-                    length_frames: u64::from(content.length),
+                    length_frames: u64::from(model.length),
                     is_sync: model.state.sync,
                     gain: content.gain,
                     balance: content.balance,
-                    channels,
-                    composite: None,
+                    channels: if model.script_composition.is_empty() {
+                        channels
+                    } else {
+                        Vec::new()
+                    },
+                    composite: (!model.script_composition.is_empty()).then(|| CompositeDocument {
+                        kind: CompositeKindDocument::Script,
+                        playlists: vec![model
+                            .script_composition
+                            .iter()
+                            .map(|section| {
+                                section
+                                    .iter()
+                                    .map(|source| CompositeEventDocument {
+                                        delay_frames: 0,
+                                        loop_id: source.raw(),
+                                        mode: None,
+                                        n_cycles: None,
+                                    })
+                                    .collect()
+                            })
+                            .collect()],
+                    }),
                 });
             }
             let document = TrackDocument {
@@ -3245,10 +3402,27 @@ impl ApplicationModel {
                     .channels
                     .iter()
                     .any(|channel| channel.data_type == DataTypeDocument::Audio);
-                let empty = loop_document
-                    .channels
-                    .iter()
-                    .all(|channel| channel.data_length_frames == 0);
+                let empty = loop_document.composite.is_none()
+                    && loop_document
+                        .channels
+                        .iter()
+                        .all(|channel| channel.data_length_frames == 0);
+                let script_composition = loop_document
+                    .composite
+                    .as_ref()
+                    .and_then(|composite| composite.playlists.first())
+                    .map(|playlist| {
+                        playlist
+                            .iter()
+                            .map(|section| {
+                                section
+                                    .iter()
+                                    .map(|event| LoopId::from_raw(event.loop_id))
+                                    .collect()
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
                 loops.insert(
                     id,
                     LoopModel {
@@ -3274,12 +3448,26 @@ impl ApplicationModel {
                             balance: loop_document.balance,
                             stereo: audio_channels == 2,
                             play_after_record: bundle.document.global.play_after_record,
+                            composite_kind: match loop_document
+                                .composite
+                                .as_ref()
+                                .map(|composite| composite.kind)
+                            {
+                                Some(CompositeKindDocument::Regular) => {
+                                    shoop_app_api::CompositeKind::Regular
+                                }
+                                Some(CompositeKindDocument::Script) => {
+                                    shoop_app_api::CompositeKind::Script
+                                }
+                                None => shoop_app_api::CompositeKind::None,
+                            },
                             ..Default::default()
                         },
                         length: u32::try_from(loop_document.length_frames)
                             .map_err(|_| "loop length exceeds engine range".to_owned())?,
                         position: 0,
                         audio_data: None,
+                        script_composition,
                     },
                 );
             }
@@ -4110,12 +4298,6 @@ fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionDat
             .collect();
         let mut loops = Vec::with_capacity(track.loops.len());
         for loop_ in &track.loops {
-            if loop_.composite.is_some() {
-                return Err(format!(
-                    "loop {} requires unsupported composite topology",
-                    loop_.id
-                ));
-            }
             let mut audio = Vec::new();
             let mut midi_channels = Vec::new();
             for channel in &loop_.channels {
@@ -4174,6 +4356,21 @@ fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionDat
                         });
                     }
                 }
+            }
+            if loop_.composite.is_some() {
+                audio.resize_with(audio_channels as usize, || BackendAudioContent {
+                    samples: Vec::new(),
+                    gain: 1.0,
+                    start_offset: 0,
+                    preplay: 0,
+                });
+                midi_channels.resize_with(usize::from(midi), || BackendMidiContent {
+                    length: 0,
+                    start_state: Vec::new(),
+                    events: Vec::new(),
+                    start_offset: 0,
+                    preplay: 0,
+                });
             }
             if audio.len() != audio_channels as usize || midi_channels.len() != usize::from(midi) {
                 return Err(format!("loop {} channel shape is invalid", loop_.id));
@@ -4541,6 +4738,708 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         wait_for(&handle, |snapshot| {
             snapshot.tracks[0].loops[0].selected && snapshot.global_controls.apply_n_cycles == 7
         });
+    }
+
+    #[test]
+    fn production_keyboard_script_handles_navigation_modes_numbers_targets_and_releases() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        for name in ["A", "B"] {
+            runtime
+                .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                    name: name.to_owned(),
+                    audio_channels: 2,
+                    midi: false,
+                }))
+                .unwrap();
+        }
+        runtime.tick(Duration::ZERO);
+        let first_track = runtime
+            .snapshot()
+            .tracks
+            .iter()
+            .find(|track| !track.is_sync)
+            .unwrap()
+            .id;
+        for _ in 0..2 {
+            runtime
+                .dispatch(AppIntent::AddLoop {
+                    track_id: first_track,
+                })
+                .unwrap();
+        }
+        runtime.tick(Duration::ZERO);
+        let sync = runtime
+            .snapshot()
+            .tracks
+            .iter()
+            .find(|track| track.is_sync)
+            .unwrap()
+            .clone();
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: sync.id,
+                loop_id: sync.loops[0].id,
+                action: LoopAction::RecordClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(100));
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: sync.id,
+                loop_id: sync.loops[0].id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetApplyNCycles(0)))
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "keyboard.lua".to_owned(),
+                source: Arc::from(shoop_scripting::KEYBOARD_SCRIPT),
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let key = |runtime: &mut CooperativeApplicationRuntime,
+                   key: i64,
+                   modifiers: i64,
+                   event_type: KeyEventType| {
+            runtime
+                .dispatch(AppIntent::KeyEvent(KeyEvent {
+                    event_type,
+                    key,
+                    modifiers,
+                }))
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+            runtime.tick(Duration::ZERO);
+        };
+        let press = |runtime: &mut CooperativeApplicationRuntime, key_value, modifiers| {
+            key(runtime, key_value, modifiers, KeyEventType::Pressed)
+        };
+        press(&mut runtime, 16_777_236, 0);
+        assert!(runtime.snapshot().tracks[1].loops[0].selected);
+        press(&mut runtime, 16_777_236, 0);
+        assert!(runtime.snapshot().tracks[2].loops[0].selected);
+        press(&mut runtime, 16_777_234, 67_108_864);
+        assert!(runtime.snapshot().tracks[1].loops[0].selected);
+        assert!(runtime.snapshot().tracks[2].loops[0].selected);
+        press(&mut runtime, 16_777_236, 134_217_728);
+        assert_eq!(
+            runtime
+                .snapshot()
+                .tracks
+                .iter()
+                .flat_map(|track| &track.loops)
+                .filter(|loop_| loop_.selected)
+                .count(),
+            1
+        );
+
+        press(&mut runtime, 49, 0);
+        press(&mut runtime, 50, 0);
+        assert_eq!(runtime.snapshot().global_controls.apply_n_cycles, 12);
+        key(&mut runtime, 49, 0, KeyEventType::Released);
+        key(&mut runtime, 50, 0, KeyEventType::Released);
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetApplyNCycles(0)))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+
+        press(&mut runtime, 84, 0);
+        assert!(runtime
+            .snapshot()
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .any(|loop_| loop_.targeted));
+        press(&mut runtime, 85, 0);
+        assert!(runtime
+            .snapshot()
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .all(|loop_| !loop_.targeted));
+        press(&mut runtime, 82, 0);
+        assert!(runtime
+            .snapshot()
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .any(|loop_| loop_.mode == LoopMode::Recording));
+        press(&mut runtime, 83, 0);
+        assert!(runtime
+            .snapshot()
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .filter(|loop_| loop_.selected)
+            .all(|loop_| loop_.mode == LoopMode::Stopped));
+        press(&mut runtime, 80, 0);
+        assert!(runtime
+            .snapshot()
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .filter(|loop_| loop_.selected)
+            .all(|loop_| loop_.mode == LoopMode::Playing));
+        press(&mut runtime, 16_777_216, 0);
+        assert!(runtime
+            .snapshot()
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .all(|loop_| !loop_.selected));
+        press(&mut runtime, 83, 0);
+        assert!(runtime
+            .snapshot()
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .all(|loop_| loop_.mode == LoopMode::Stopped));
+
+        press(&mut runtime, 16_777_236, 0);
+        press(&mut runtime, 46, 0);
+        assert_ne!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Stopped
+        );
+        key(&mut runtime, 46, 0, KeyEventType::Released);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Stopped
+        );
+        press(&mut runtime, 67, 0);
+        assert!(runtime.snapshot().tracks[1].loops[0].empty);
+        press(&mut runtime, 32, 0);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Recording
+        );
+        press(&mut runtime, 83, 0);
+        press(&mut runtime, 76, 0);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::PlayingDryThroughWet
+        );
+        press(&mut runtime, 77, 0);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::RecordingDryIntoWet
+        );
+        press(&mut runtime, 83, 0);
+        press(&mut runtime, 71, 0);
+        press(&mut runtime, 80, 0);
+        press(&mut runtime, 78, 0);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[1].mode,
+            LoopMode::Recording
+        );
+        press(&mut runtime, 79, 0);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[1].mode,
+            LoopMode::Playing
+        );
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[2].mode,
+            LoopMode::Recording
+        );
+        press(&mut runtime, 84, 0);
+        press(&mut runtime, 16_777_237, 0);
+        press(&mut runtime, 87, 0);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[1].mode,
+            LoopMode::Recording
+        );
+        assert!(runtime.snapshot().scripting.scripts[0]
+            .latest_error
+            .is_none());
+    }
+
+    #[test]
+    fn script_composition_append_and_parallel_execute_on_engine_backend() {
+        let backend = shoop_backend::EngineBackend::new_dummy(48_000, 128).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        for name in ["Target", "Source A", "Source B"] {
+            runtime
+                .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                    name: name.to_owned(),
+                    audio_channels: 1,
+                    midi: false,
+                }))
+                .unwrap();
+        }
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let tracks = runtime
+            .snapshot()
+            .tracks
+            .iter()
+            .filter(|track| !track.is_sync)
+            .cloned()
+            .collect::<Vec<_>>();
+        for track in &tracks[1..] {
+            runtime
+                .dispatch(AppIntent::Loop {
+                    track_id: track.id,
+                    loop_id: track.loops[0].id,
+                    action: LoopAction::RecordClicked,
+                })
+                .unwrap();
+        }
+        runtime.tick(Duration::from_millis(20));
+        for track in &tracks[1..] {
+            runtime
+                .dispatch(AppIntent::Loop {
+                    track_id: track.id,
+                    loop_id: track.loops[0].id,
+                    action: LoopAction::StopClicked,
+                })
+                .unwrap();
+        }
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "composition.lua".to_owned(),
+                source: Arc::from(
+                    "local c=require('shoop_control'); c.loop_compose_add_to_end({0,0},{1,0},false); c.loop_compose_add_to_end({0,0},{2,0},true); c.loop_trigger({0,0},c.constants.LoopMode_Playing)",
+                ),
+                kind: ScriptKind::User,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime.tick(Duration::from_millis(20));
+        let snapshot = runtime.snapshot();
+        assert_eq!(
+            snapshot.tracks[1].loops[0].composite_kind,
+            shoop_app_api::CompositeKind::Script
+        );
+        assert_eq!(snapshot.tracks[2].loops[0].mode, LoopMode::Playing);
+        assert_eq!(snapshot.tracks[3].loops[0].mode, LoopMode::Playing);
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        for _ in 0..20 {
+            runtime.tick(Duration::from_millis(1));
+            if runtime
+                .snapshot()
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Completed)
+            {
+                break;
+            }
+        }
+        let output = runtime
+            .take_file_output()
+            .unwrap_or_else(|| panic!("save did not complete: {:?}", runtime.snapshot().io_task));
+        let saved = decode_session(&output.bytes).unwrap();
+        let composite = saved.document.track_groups[1].tracks[0].loops[0]
+            .composite
+            .as_ref()
+            .unwrap();
+        assert_eq!(composite.kind, CompositeKindDocument::Script);
+        assert_eq!(composite.playlists[0][0].len(), 2);
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "composition.shoop".to_owned(),
+                bytes: output.bytes,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].composite_kind,
+            shoop_app_api::CompositeKind::Script
+        );
+    }
+
+    #[test]
+    fn unchanged_apc_script_drives_authoritative_state_and_bounded_led_output() {
+        let (midi, midi_control) = shoop_scripting::FakeMidiService::new();
+        midi_control.set_endpoints(vec![
+            shoop_scripting::MidiEndpoint {
+                id: "apc-source".to_owned(),
+                name: "AKAI APC MINI MIDI controller".to_owned(),
+                direction: shoop_scripting::MidiEndpointDirection::Output,
+            },
+            shoop_scripting::MidiEndpoint {
+                id: "apc-sink".to_owned(),
+                name: "AKAI APC MINI MIDI controller".to_owned(),
+                direction: shoop_scripting::MidiEndpointDirection::Input,
+            },
+        ]);
+        let mut runtime = CooperativeApplicationRuntime::start_with_midi(
+            Box::new(FakeBackend::default()),
+            Box::new(midi),
+        )
+        .unwrap();
+        for index in 0..8 {
+            runtime
+                .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                    name: format!("Track {index}"),
+                    audio_channels: 2,
+                    midi: false,
+                }))
+                .unwrap();
+        }
+        runtime.tick(Duration::ZERO);
+        let first_track = runtime
+            .snapshot()
+            .tracks
+            .iter()
+            .find(|track| !track.is_sync)
+            .unwrap()
+            .id;
+        for _ in 1..8 {
+            runtime
+                .dispatch(AppIntent::AddLoop {
+                    track_id: first_track,
+                })
+                .unwrap();
+        }
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetApplyNCycles(0)))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "akai_apc_mini_mk1.lua".to_owned(),
+                source: Arc::from(shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT),
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(1));
+        assert_eq!(
+            runtime.snapshot().scripting.scripts[0].lifecycle,
+            shoop_app_api::ScriptLifecycle::Listening
+        );
+        assert_eq!(runtime.snapshot().scripting.scripts[0].midi.connections, 2);
+        runtime.tick(Duration::from_millis(1_000));
+        let reset = midi_control.take_sent();
+        assert!(reset.len() >= 67);
+        assert!(reset.iter().all(|(_, message)| message.len() == 3));
+
+        let send_note = |runtime: &mut CooperativeApplicationRuntime,
+                         midi: &shoop_scripting::FakeMidiControl,
+                         note: u8,
+                         pressed: bool| {
+            midi.push_input(
+                "apc-source",
+                vec![if pressed { 0x90 } else { 0x80 }, note, 0x7f],
+            );
+            runtime.tick(Duration::from_millis(2));
+            runtime.tick(Duration::ZERO);
+        };
+        let grid_note = 56;
+        send_note(&mut runtime, &midi_control, grid_note, true);
+        let after_default = runtime.snapshot();
+        assert_eq!(
+            after_default.tracks[1].loops[0].mode,
+            LoopMode::Recording,
+            "script={:?} notifications={:?}",
+            after_default.scripting.scripts[0],
+            after_default.notifications
+        );
+        send_note(&mut runtime, &midi_control, 82, true);
+        send_note(&mut runtime, &midi_control, grid_note, true);
+        send_note(&mut runtime, &midi_control, 82, false);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Stopped
+        );
+
+        send_note(&mut runtime, &midi_control, 86, true);
+        send_note(&mut runtime, &midi_control, grid_note, true);
+        send_note(&mut runtime, &midi_control, 86, false);
+        assert!(runtime.snapshot().tracks[1].loops[0].selected);
+        send_note(&mut runtime, &midi_control, 98, true);
+        send_note(&mut runtime, &midi_control, 86, true);
+        send_note(&mut runtime, &midi_control, grid_note, true);
+        send_note(&mut runtime, &midi_control, 86, false);
+        send_note(&mut runtime, &midi_control, 98, false);
+        assert!(runtime.snapshot().tracks[1].loops[0].targeted);
+
+        send_note(&mut runtime, &midi_control, 71, true);
+        send_note(&mut runtime, &midi_control, grid_note, true);
+        send_note(&mut runtime, &midi_control, 71, false);
+        assert_eq!(runtime.snapshot().global_controls.apply_n_cycles, 1);
+
+        send_note(&mut runtime, &midi_control, 68, true);
+        midi_control.push_input("apc-source", vec![0xb0, 48, 127]);
+        runtime.tick(Duration::from_millis(2));
+        send_note(&mut runtime, &midi_control, grid_note, true);
+        send_note(&mut runtime, &midi_control, 68, false);
+        assert_eq!(runtime.snapshot().tracks[1].controls.output_gain_db, 20.0);
+        assert!(runtime.snapshot().tracks[1].controls.output_muted);
+        send_note(&mut runtime, &midi_control, 69, true);
+        midi_control.push_input("apc-source", vec![0xb0, 48, 127]);
+        runtime.tick(Duration::from_millis(2));
+        send_note(&mut runtime, &midi_control, grid_note, true);
+        send_note(&mut runtime, &midi_control, 69, false);
+        assert_eq!(runtime.snapshot().tracks[1].controls.output_balance, 1.0);
+        assert!(runtime.snapshot().tracks[1].controls.input_monitoring);
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetApplyNCycles(0)))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+
+        send_note(&mut runtime, &midi_control, 84, true);
+        send_note(&mut runtime, &midi_control, 57, true);
+        send_note(&mut runtime, &midi_control, 84, false);
+        assert_eq!(
+            runtime.snapshot().tracks[2].loops[0].mode,
+            LoopMode::Recording
+        );
+        assert!(midi_control
+            .take_sent()
+            .iter()
+            .any(|(_, message)| message == &[0x90, 57, 3]));
+        send_note(&mut runtime, &midi_control, 84, true);
+        send_note(&mut runtime, &midi_control, 70, true);
+        send_note(&mut runtime, &midi_control, 59, true);
+        send_note(&mut runtime, &midi_control, 70, false);
+        send_note(&mut runtime, &midi_control, 84, false);
+        assert_eq!(
+            runtime.snapshot().tracks[4].loops[0].mode,
+            LoopMode::RecordingDryIntoWet
+        );
+        send_note(&mut runtime, &midi_control, 89, true);
+        assert!(runtime
+            .snapshot()
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .all(|loop_| loop_.mode == LoopMode::Stopped));
+        send_note(&mut runtime, &midi_control, 86, true);
+        send_note(&mut runtime, &midi_control, 89, true);
+        send_note(&mut runtime, &midi_control, 86, false);
+        assert!(runtime
+            .snapshot()
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .all(|loop_| !loop_.selected));
+        send_note(&mut runtime, &midi_control, 98, true);
+        send_note(&mut runtime, &midi_control, 85, true);
+        send_note(&mut runtime, &midi_control, 58, true);
+        send_note(&mut runtime, &midi_control, 85, false);
+        send_note(&mut runtime, &midi_control, 98, false);
+        assert_eq!(
+            runtime.snapshot().global_controls.default_recording_action,
+            shoop_app_api::DefaultRecordingAction::Grab
+        );
+
+        send_note(&mut runtime, &midi_control, 87, true);
+        assert!(runtime.snapshot().global_controls.sync);
+        send_note(&mut runtime, &midi_control, 87, false);
+        assert!(!runtime.snapshot().global_controls.sync);
+        send_note(&mut runtime, &midi_control, 98, true);
+        send_note(&mut runtime, &midi_control, 87, true);
+        send_note(&mut runtime, &midi_control, 87, false);
+        send_note(&mut runtime, &midi_control, 98, false);
+        assert!(runtime.snapshot().global_controls.sync);
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+
+        send_note(&mut runtime, &midi_control, 83, true);
+        assert!(runtime.snapshot().global_controls.solo);
+        send_note(&mut runtime, &midi_control, 83, false);
+        assert!(!runtime.snapshot().global_controls.solo);
+        send_note(&mut runtime, &midi_control, 98, true);
+        send_note(&mut runtime, &midi_control, 83, true);
+        send_note(&mut runtime, &midi_control, 83, false);
+        send_note(&mut runtime, &midi_control, 98, false);
+        assert!(runtime.snapshot().global_controls.solo);
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSolo(false)))
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Global(
+                GlobalControlAction::SetDefaultRecordingAction(
+                    shoop_app_api::DefaultRecordingAction::Record,
+                ),
+            ))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        send_note(&mut runtime, &midi_control, 88, true);
+        assert_eq!(
+            runtime.snapshot().tracks[0].loops[0].mode,
+            LoopMode::Recording
+        );
+        send_note(&mut runtime, &midi_control, 98, true);
+        send_note(&mut runtime, &midi_control, 89, true);
+        send_note(&mut runtime, &midi_control, 98, false);
+        assert!(runtime
+            .snapshot()
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .all(|loop_| loop_.empty));
+
+        send_note(&mut runtime, &midi_control, 71, true);
+        send_note(&mut runtime, &midi_control, 7, true);
+        send_note(&mut runtime, &midi_control, 71, false);
+        assert_eq!(runtime.snapshot().global_controls.apply_n_cycles, 0);
+        send_note(&mut runtime, &midi_control, 98, true);
+        send_note(&mut runtime, &midi_control, 70, true);
+        send_note(&mut runtime, &midi_control, 56, true);
+        send_note(&mut runtime, &midi_control, 57, true);
+        send_note(&mut runtime, &midi_control, 58, true);
+        send_note(&mut runtime, &midi_control, 58, false);
+        send_note(&mut runtime, &midi_control, 57, false);
+        send_note(&mut runtime, &midi_control, 70, false);
+        send_note(&mut runtime, &midi_control, 98, false);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].composite_kind,
+            shoop_app_api::CompositeKind::Script
+        );
+        let target_id = runtime.snapshot().tracks[1].loops[0].id;
+        let composed_sources = &runtime.model.loops[&target_id].script_composition[0];
+        assert_eq!(composed_sources.len(), 2);
+        assert_eq!(
+            composed_sources[0],
+            runtime.snapshot().tracks[2].loops[0].id
+        );
+        assert_eq!(
+            composed_sources[1],
+            runtime.snapshot().tracks[3].loops[0].id
+        );
+        assert!(runtime.snapshot().scripting.scripts[0]
+            .latest_error
+            .is_none());
+        send_note(&mut runtime, &midi_control, 56, true);
+        let composition_play = runtime.snapshot();
+        assert_eq!(
+            composition_play.tracks[2].loops[0].mode,
+            LoopMode::Recording
+        );
+
+        assert!(!midi_control.take_sent().is_empty());
+        midi_control.set_endpoints(Vec::new());
+        runtime.tick(Duration::from_millis(500));
+        assert_eq!(midi_control.active_connections(), 0);
+        midi_control.set_endpoints(vec![
+            shoop_scripting::MidiEndpoint {
+                id: "apc-source".to_owned(),
+                name: "AKAI APC MINI MIDI controller".to_owned(),
+                direction: shoop_scripting::MidiEndpointDirection::Output,
+            },
+            shoop_scripting::MidiEndpoint {
+                id: "apc-sink".to_owned(),
+                name: "AKAI APC MINI MIDI controller".to_owned(),
+                direction: shoop_scripting::MidiEndpointDirection::Input,
+            },
+        ]);
+        runtime.tick(Duration::from_millis(500));
+        assert_eq!(midi_control.active_connections(), 2);
+        runtime.tick(Duration::from_millis(1_000));
+        assert!(midi_control.take_sent().len() >= 67);
+        let script_id = runtime.snapshot().scripting.scripts[0].id;
+        runtime
+            .dispatch(AppIntent::StopScript { script_id })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(midi_control.active_connections(), 0);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn unchanged_apc_script_uses_native_virtual_midi_when_available() {
+        use midir::os::unix::{VirtualInput, VirtualOutput};
+
+        let input = match midir::MidiInput::new("Shoop APC test sink") {
+            Ok(input) => input,
+            Err(error) => {
+                eprintln!("SKIP native APC MIDI test: {error}");
+                return;
+            }
+        };
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let sink = match input.create_virtual(
+            "APC MINI MIDI shoop test sink",
+            move |_, message, _| {
+                let _ = sender.send(message.to_vec());
+            },
+            (),
+        ) {
+            Ok(sink) => sink,
+            Err(error) => {
+                eprintln!("SKIP native APC MIDI test: {error}");
+                return;
+            }
+        };
+        let output = match midir::MidiOutput::new("Shoop APC test source") {
+            Ok(output) => output,
+            Err(error) => {
+                eprintln!("SKIP native APC MIDI test: {error}");
+                return;
+            }
+        };
+        let mut source = match output.create_virtual("APC MINI MIDI shoop test source") {
+            Ok(source) => source,
+            Err(error) => {
+                eprintln!("SKIP native APC MIDI test: {error}");
+                return;
+            }
+        };
+        let mut runtime = CooperativeApplicationRuntime::start_with_midi(
+            Box::new(FakeBackend::default()),
+            Box::new(NativeMidiService::new()),
+        )
+        .unwrap();
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "akai_apc_mini_mk1.lua".to_owned(),
+                source: Arc::from(shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT),
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(500));
+        if runtime.snapshot().scripting.scripts[0].midi.connections != 2 {
+            eprintln!("SKIP native APC MIDI test: virtual endpoints were not discoverable");
+            return;
+        }
+        source.send(&[0x90, 83, 0x7f]).unwrap();
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(5));
+            runtime.tick(Duration::from_millis(5));
+            if runtime.snapshot().global_controls.solo {
+                break;
+            }
+        }
+        assert!(runtime.snapshot().global_controls.solo);
+        source.send(&[0x80, 83, 0]).unwrap();
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(5));
+            runtime.tick(Duration::from_millis(5));
+            if !runtime.snapshot().global_controls.solo {
+                break;
+            }
+        }
+        assert!(!runtime.snapshot().global_controls.solo);
+        runtime.tick(Duration::from_millis(1_000));
+        assert!(receiver.recv_timeout(Duration::from_secs(1)).is_ok());
+        drop(sink);
     }
 
     #[test]

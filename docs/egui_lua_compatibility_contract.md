@@ -108,6 +108,8 @@ Each script gets its own Lua state. Runtime or callback failure changes only tha
 | `keyboard.lua` | Selection/target queries and mutations; mode query/trigger; clear/grab/record-with-target; global cycle count; keyboard subscription. | Stable coordinates, synchronized and immediate transitions, selection movement, target recording, fixed cycles, and press/release sampler state from `shoop_helpers`. |
 | `akai_apc_mini_mk1.lua` | Loop trigger/clear/grab/select/target/composition; track gain/balance; global controls; loop/global callbacks; timer; MIDI auto-open input/output. | Full grid and sync coordinate mapping, regular composition append/parallel execution, event-driven LEDs, delayed reset, input hotplug, output broadcast/throttling, and controller reconnect. |
 
+The shared APC source contains one retained-runtime defect fix: N-cycle selection now indexes the coordinate pair as `coords[1]`/`coords[2]`. The former nested numeric indexing raised a Lua error in both frontends. This is a shared script correction, not an egui-only fork or API change.
+
 Transitive helper calls add `loop_count`, loop mode/length/next-mode queries, explicit transition, repeat-sync, and track mute/input-mute APIs to the required set.
 
 ## MIDI connection contract

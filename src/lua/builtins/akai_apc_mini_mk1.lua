@@ -278,7 +278,7 @@ local handle_loop_pressed = function(coords)
         -- N Cycles => N Cycles instead of a loop action.
         -- The loops can be pressed to give a number (1 at the top left, last loop = 0)
         print_debug("-> set n cycles")
-        local n = (coords[1][1] + coords[1][2] * 8 + 1) % 64 -- last button is 0
+        local n = (coords[1] + coords[2] * 8 + 1) % 64 -- last button is 0
         shoop_control.set_apply_n_cycles(n)
     elseif STATE_volume_pressed then
         -- Volume => Mute

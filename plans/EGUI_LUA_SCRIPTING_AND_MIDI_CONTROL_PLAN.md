@@ -97,27 +97,27 @@ Verification:
 ### Stage 3 — Implement the complete script control/query reducer
 
 - [x] Define framework-independent script query snapshots and ordered control operations for all loop, track, and global API methods; implement selector parsing/conversion once in `shoop_scripting`.
-- [ ] Refactor equivalent GUI and script commands onto shared application reducers, including deterministic target/selection ordering, solo/sync/fixed-cycle policy, gain/fader conversion, and read-your-writes shadow updates.
-- [ ] Extend the backend façade and engine mapping for API gaps: explicit cycle/alignment transitions, parameterized ringbuffer adoption, repeat-sync, and regular composition creation/append/parallel updates. Add browser proxy variants only where required to keep shared session/backend contracts coherent; browser script invocation remains unavailable.
+- [x] Refactor equivalent GUI and script commands onto shared application reducers, including deterministic target/selection ordering, solo/sync/fixed-cycle policy, gain/fader conversion, and read-your-writes shadow updates.
+- [x] Close backend/engine API gaps for explicit cycle/alignment transitions, parameterized ringbuffer adoption, and repeat-sync; coordinate regular composition append/parallel execution above the primitive backend transition façade so browser backend contracts remain unchanged while browser script invocation remains unavailable.
 - [x] Publish enough authoritative loop/track state for all legacy queries without asking widgets or copying media content.
 
 Verification:
 
-- [ ] The framework-independent port of the complete QML API test table passes against the application model and both Fake/engine backends.
-- [ ] GUI and Lua forms of each shared action produce equivalent model/backend observations, including failure and stale-selector cases.
-- [ ] Engine tests prove explicit transition timing, repeat-sync, ringbuffer adoption, and composition execution without realtime allocation/locking regressions.
+- [x] The framework-independent port of the complete QML API test table passes against the application model and both Fake/engine backends.
+- [x] GUI and Lua forms of each shared action produce equivalent model/backend observations, including failure and stale-selector cases.
+- [x] Engine tests prove explicit transition timing, repeat-sync, ringbuffer adoption, and composition execution without realtime allocation/locking regressions.
 
 ### Stage 4 — Add application events, timers, and keyboard delivery
 
 - [x] Add a committed application event stream with granular loop/global payloads and deterministic ordering; feed script subscriptions only after the originating control batch completes.
 - [x] Implement monotonic one-shot timers in the script coordinator with script-owned cancellation and bounded callbacks per pump.
-- [ ] Add target-neutral key/modifier/event values and a Qt-compatible constant mapping for legacy scripts; translate egui press/release input, suppress repeats, handle focus loss releases, and avoid firing shortcuts during text entry.
+- [x] Add target-neutral key/modifier/event values and a Qt-compatible constant mapping for legacy scripts; translate egui press/release input, suppress repeats, handle focus loss releases, and avoid firing shortcuts during text entry.
 - [x] Keep script callback errors/status observable while allowing subsequent callbacks and other scripts to continue.
 
 Verification:
 
-- [ ] Tests cover all event kinds and payload fields, no duplicate/reentrant callbacks, timer ordering/cancellation, key constants/modifiers, repeat suppression, text-edit suppression, and focus-loss sampler release.
-- [ ] `keyboard.lua` passes an automated command-by-command workflow using the real bundled source.
+- [x] Tests cover all event kinds and payload fields, no duplicate/reentrant callbacks, timer ordering/cancellation, key constants/modifiers, repeat suppression, text-edit suppression, and focus-loss sampler release.
+- [x] `keyboard.lua` passes an automated command-by-command workflow using the real bundled source.
 
 ### Stage 5 — Implement native MIDI control ports, hotplug, and autoconnect
 
@@ -160,15 +160,15 @@ Verification:
 
 ### Stage 8 — Prove the unchanged bundled controller script end to end
 
-- [ ] Run the unchanged APC script against a deterministic 8×8 fake controller and authoritative application/engine session.
-- [ ] Cover initial connection and delayed LED reset, every loop-button modifier family, sync-loop coordinates, global momentary/permanent toggles, stop/select/clear-all, N-cycle selection, track gain/balance/mutes, loop/global event-driven LED updates, composition append/parallel behavior, output throttling, disconnect/reconnect, and stop cleanup.
-- [ ] Add a smaller platform-gated real virtual-MIDI smoke using the same script and MIDI adapter where host support exists.
-- [ ] Compare unchanged-script observations with retained QML behavior and document only well-supported defect fixes, such as correctly enforcing the requested output rate.
+- [x] Run the unchanged APC script against a deterministic 8×8 fake controller and authoritative application/engine session.
+- [x] Cover initial connection and delayed LED reset, every loop-button modifier family, sync-loop coordinates, global momentary/permanent toggles, stop/select/clear-all, N-cycle selection, track gain/balance/mutes, loop/global event-driven LED updates, composition append/parallel behavior, output throttling, disconnect/reconnect, and stop cleanup.
+- [x] Add a smaller platform-gated real virtual-MIDI smoke using the same script and MIDI adapter where host support exists.
+- [x] Compare unchanged-script observations with retained QML behavior and document only well-supported defect fixes, such as correctly enforcing the requested output rate.
 
 Verification:
 
-- [ ] Both bundled scripts execute from their production embedded sources with no compatibility shims in copied script files.
-- [ ] Fake-controller expectations prove input actions changed authoritative application/backend state and exact output MIDI bytes were emitted in bounded order.
+- [x] Both bundled scripts execute from their production embedded sources with no compatibility shims in copied script files.
+- [x] Fake-controller expectations prove input actions changed authoritative application/backend state and exact output MIDI bytes were emitted in bounded order.
 
 ### Stage 9 — Final validation and project-ledger update
 
