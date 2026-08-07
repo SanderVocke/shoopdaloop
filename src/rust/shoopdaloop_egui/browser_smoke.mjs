@@ -245,7 +245,7 @@ try {
         && candidate.selfTest === 'passed',
       'offline dummy session round trip did not finish',
     );
-    if (!state.status.includes('Explicit offline dummy')) {
+    if (state.driver !== 'Dummy' || !entryUrl.includes('offline=1')) {
       throw new Error(`offline artifact was not explicit: ${JSON.stringify(state)}`);
     }
     console.log(`explicit self-contained offline dummy passed at ${browserSize}`);
