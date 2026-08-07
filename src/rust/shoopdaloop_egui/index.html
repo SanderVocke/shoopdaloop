@@ -9,7 +9,36 @@
     <link data-trunk rel="rust" data-bin="shoopdaloop_egui" />
     <link data-trunk rel="copy-file" href="audio_worklet.js" />
     <link data-trunk rel="copy-dir" href="generated" />
+    <link data-trunk rel="copy-dir" href="../../../resources/fonts/roboto" />
     <style>
+      @font-face {
+        font-family: "Roboto";
+        src: url("./roboto/Roboto-Regular.ttf") format("truetype");
+        font-style: normal;
+        font-weight: 400;
+      }
+
+      @font-face {
+        font-family: "Roboto";
+        src: url("./roboto/Roboto-Italic.ttf") format("truetype");
+        font-style: italic;
+        font-weight: 400;
+      }
+
+      @font-face {
+        font-family: "Roboto";
+        src: url("./roboto/Roboto-Bold.ttf") format("truetype");
+        font-style: normal;
+        font-weight: 700;
+      }
+
+      @font-face {
+        font-family: "Roboto";
+        src: url("./roboto/Roboto-BoldItalic.ttf") format("truetype");
+        font-style: italic;
+        font-weight: 700;
+      }
+
       html,
       body {
         width: 100%;
@@ -17,6 +46,7 @@
         margin: 0;
         overflow: hidden;
         background: #181818;
+        font-family: "Roboto", sans-serif;
       }
 
       #shoop_canvas {
@@ -34,7 +64,7 @@
         align-items: center;
         gap: 8px;
         color: #aaa;
-        font: 11px sans-serif;
+        font-size: 11px;
       }
 
       #enable_audio,
@@ -45,6 +75,8 @@
         color: #181818;
         background: #f0b429;
         cursor: pointer;
+        font-family: inherit;
+        font-weight: 700;
       }
 
       #enable_audio[hidden],
