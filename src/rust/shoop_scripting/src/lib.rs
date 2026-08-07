@@ -36,6 +36,15 @@ pub const BUILTIN_LIBRARIES: &[(&str, &str)] = &[
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CompatibilityPrintLevel {
+    Trace,
+    Debug,
+    Info,
+    Warning,
+    Error,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScriptLogLevel {
     Trace,
     Debug,
@@ -61,15 +70,25 @@ impl LuaRuntime {
     pub fn new() -> anyhow::Result<Self> {
         let lua = Lua::new();
         let logs = Rc::new(RefCell::new(VecDeque::with_capacity(MAX_LOG_ENTRIES)));
-        install_print_functions(&lua, Rc::clone(&logs))?;
-        lua.load(SANDBOX_SOURCE)
-            .set_name("sandbox.lua")
-            .exec()
-            .map_err(|error| anyhow!("could not prepare Lua compatibility environment: {error}"))?;
-        let run_sandboxed: Function = lua
-            .globals()
-            .get("__shoop_run_sandboxed")
-            .map_err(|error| anyhow!("could not get Lua compatibility runner: {error}"))?;
+        let print_logs = Rc::clone(&logs);
+        install_print_functions(
+            &lua,
+            Rc::new(move |level, message| {
+                let level = match level {
+                    CompatibilityPrintLevel::Trace => ScriptLogLevel::Trace,
+                    CompatibilityPrintLevel::Debug => ScriptLogLevel::Debug,
+                    CompatibilityPrintLevel::Info => ScriptLogLevel::Info,
+                    CompatibilityPrintLevel::Warning => ScriptLogLevel::Warning,
+                    CompatibilityPrintLevel::Error => ScriptLogLevel::Error,
+                };
+                let mut logs = print_logs.borrow_mut();
+                if logs.len() == MAX_LOG_ENTRIES {
+                    logs.pop_front();
+                }
+                logs.push_back(ScriptLogEntry { level, message });
+            }),
+        )?;
+        let run_sandboxed = prepare_compatibility_environment(&lua)?;
         install_require(&lua, &run_sandboxed)?;
         Ok(Self {
             lua,
@@ -117,26 +136,22 @@ impl LuaRuntime {
     }
 }
 
-fn install_print_functions(
+pub fn install_print_functions(
     lua: &Lua,
-    logs: Rc<RefCell<VecDeque<ScriptLogEntry>>>,
+    handler: Rc<dyn Fn(CompatibilityPrintLevel, String)>,
 ) -> anyhow::Result<()> {
     for (name, level) in [
-        ("__shoop_print", ScriptLogLevel::Info),
-        ("__shoop_print_trace", ScriptLogLevel::Trace),
-        ("__shoop_print_debug", ScriptLogLevel::Debug),
-        ("__shoop_print_info", ScriptLogLevel::Info),
-        ("__shoop_print_warning", ScriptLogLevel::Warning),
-        ("__shoop_print_error", ScriptLogLevel::Error),
+        ("__shoop_print", CompatibilityPrintLevel::Info),
+        ("__shoop_print_trace", CompatibilityPrintLevel::Trace),
+        ("__shoop_print_debug", CompatibilityPrintLevel::Debug),
+        ("__shoop_print_info", CompatibilityPrintLevel::Info),
+        ("__shoop_print_warning", CompatibilityPrintLevel::Warning),
+        ("__shoop_print_error", CompatibilityPrintLevel::Error),
     ] {
-        let logs = Rc::clone(&logs);
+        let handler = Rc::clone(&handler);
         let function = lua
             .create_function(move |_, message: String| {
-                let mut logs = logs.borrow_mut();
-                if logs.len() == MAX_LOG_ENTRIES {
-                    logs.pop_front();
-                }
-                logs.push_back(ScriptLogEntry { level, message });
+                handler(level, message);
                 Ok(())
             })
             .map_err(|error| anyhow!("could not create Lua print function {name}: {error}"))?;
@@ -145,6 +160,29 @@ fn install_print_functions(
             .map_err(|error| anyhow!("could not install Lua print function {name}: {error}"))?;
     }
     Ok(())
+}
+
+pub fn prepare_compatibility_environment(lua: &Lua) -> anyhow::Result<Function> {
+    lua.load(SANDBOX_SOURCE)
+        .set_name("sandbox.lua")
+        .exec()
+        .map_err(|error| anyhow!("could not prepare Lua compatibility environment: {error}"))?;
+    lua.globals()
+        .get("__shoop_run_sandboxed")
+        .map_err(|error| anyhow!("could not get Lua compatibility runner: {error}"))
+}
+
+pub fn install_compatibility_value(
+    run_sandboxed: &Function,
+    name: &str,
+    value: impl mlua::IntoLua,
+) -> anyhow::Result<()> {
+    let registrar: Function = run_sandboxed
+        .call(format!("return function(value) {name} = value end"))
+        .map_err(|error| anyhow!("could not create Lua {name} registrar: {error}"))?;
+    registrar
+        .call::<()>(value)
+        .map_err(|error| anyhow!("could not install Lua value {name}: {error}"))
 }
 
 fn install_require(lua: &Lua, run_sandboxed: &Function) -> anyhow::Result<()> {
@@ -163,12 +201,7 @@ fn install_require(lua: &Lua, run_sandboxed: &Function) -> anyhow::Result<()> {
             runner.call::<Value>(source.as_str())
         })
         .map_err(|error| anyhow!("could not create Lua require function: {error}"))?;
-    let registrar: Function = run_sandboxed
-        .call("return function(value) require = value end")
-        .map_err(|error| anyhow!("could not create Lua require registrar: {error}"))?;
-    registrar
-        .call::<()>(require)
-        .map_err(|error| anyhow!("could not install Lua require function: {error}"))?;
+    install_compatibility_value(run_sandboxed, "require", require)?;
     Ok(())
 }
 

@@ -10,6 +10,7 @@ crate-type = ["lib"]
 macros = { path = "../macros" }
 common = { path = "../common" }
 shoop_engine = { path = "../shoop_engine", features = ["app_backend"] }
+shoop_scripting = { path = "../shoop_scripting" }
 crashhandling = { path = "../crashhandling" }
 config = { path = "../config" }
 cxx_qt_lib_shoop = { path = "../cxx_qt_lib_shoop" }

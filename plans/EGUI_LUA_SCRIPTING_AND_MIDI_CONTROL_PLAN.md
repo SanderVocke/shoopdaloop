@@ -85,7 +85,7 @@ Verification:
 ### Stage 2 — Create the frontend-independent Lua runtime and script lifecycle
 
 - [x] Add `shoop_scripting` with per-script Lua states, bundled-source/module loading, print/log bindings, compatibility execution environment, source naming, syntax compilation, execution, status/error records, and deterministic teardown.
-- [ ] Move or extract the generic `mlua` engine behavior from the frontend so runtime/module semantics have one tested implementation; retain a narrow QML adapter until QML retirement.
+- [x] Move or extract the generic `mlua` engine behavior from the frontend so runtime/module semantics have one tested implementation; retain a narrow QML adapter until QML retirement.
 - [x] Add script IDs and immutable status/error summaries plus typed start/stop/restart/source-loaded commands to `shoop_app_api`, without exposing Lua values or file paths as runtime handles.
 - [x] Refactor native application startup so all non-`Send` Lua state is constructed and destroyed on the application actor thread; retain cooperative/browser startup without scripting.
 

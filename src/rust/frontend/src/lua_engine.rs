@@ -2,11 +2,13 @@ use anyhow::anyhow;
 use std::{
     cell::RefCell,
     collections::HashMap,
+    rc::Rc,
     sync::{Arc, Weak},
 };
 
 use common::logging::macros::*;
 use mlua;
+use shoop_scripting::CompatibilityPrintLevel;
 
 use crate::lua_callback::LuaCallback;
 shoop_log_unit!("Frontend.LuaEngine");
@@ -50,76 +52,16 @@ impl Default for LuaEngine {
 
 impl LuaEngineImpl {
     fn register_print_functions(&mut self) -> Result<(), anyhow::Error> {
-        let globals = self.lua.globals();
-
-        globals
-            .set(
-                "__shoop_print",
-                self.lua
-                    .create_function(|_, (msg,): (String,)| {
-                        info!("{msg}");
-                        Ok(())
-                    })
-                    .map_err(|e| anyhow!("Failed to create print function: {e}"))?,
-            )
-            .map_err(|e| anyhow!("Failed to register print function: {e}"))?;
-        globals
-            .set(
-                "__shoop_print_trace",
-                self.lua
-                    .create_function(|_, (msg,): (String,)| {
-                        trace!("{msg}");
-                        Ok(())
-                    })
-                    .map_err(|e| anyhow!("Failed to create print function: {e}"))?,
-            )
-            .map_err(|e| anyhow!("Failed to register print function: {e}"))?;
-        globals
-            .set(
-                "__shoop_print_debug",
-                self.lua
-                    .create_function(|_, (msg,): (String,)| {
-                        debug!("{msg}");
-                        Ok(())
-                    })
-                    .map_err(|e| anyhow!("Failed to create print function: {e}"))?,
-            )
-            .map_err(|e| anyhow!("Failed to register print function: {e}"))?;
-        globals
-            .set(
-                "__shoop_print_info",
-                self.lua
-                    .create_function(|_, (msg,): (String,)| {
-                        info!("{msg}");
-                        Ok(())
-                    })
-                    .map_err(|e| anyhow!("Failed to create print function: {e}"))?,
-            )
-            .map_err(|e| anyhow!("Failed to register print function: {e}"))?;
-        globals
-            .set(
-                "__shoop_print_warning",
-                self.lua
-                    .create_function(|_, (msg,): (String,)| {
-                        warn!("{msg}");
-                        Ok(())
-                    })
-                    .map_err(|e| anyhow!("Failed to create print function: {e}"))?,
-            )
-            .map_err(|e| anyhow!("Failed to register print function: {e}"))?;
-        globals
-            .set(
-                "__shoop_print_error",
-                self.lua
-                    .create_function(|_, (msg,): (String,)| {
-                        error!("{msg}");
-                        Ok(())
-                    })
-                    .map_err(|e| anyhow!("Failed to create print function: {e}"))?,
-            )
-            .map_err(|e| anyhow!("Failed to register print function: {e}"))?;
-
-        Ok(())
+        shoop_scripting::install_print_functions(
+            &self.lua,
+            Rc::new(|level, msg| match level {
+                CompatibilityPrintLevel::Trace => trace!("{msg}"),
+                CompatibilityPrintLevel::Debug => debug!("{msg}"),
+                CompatibilityPrintLevel::Info => info!("{msg}"),
+                CompatibilityPrintLevel::Warning => warn!("{msg}"),
+                CompatibilityPrintLevel::Error => error!("{msg}"),
+            }),
+        )
     }
 
     pub fn execute_builtin_script(
@@ -137,43 +79,36 @@ impl LuaEngineImpl {
     }
 
     pub fn prepare_sandbox(&mut self) -> Result<(), anyhow::Error> {
-        let sandbox_script: &'static str = include_str!("../../../lua/system/sandbox.lua");
-        self.execute(sandbox_script, Some("sandbox.lua"), false)?;
-        {
-            let globals = self.lua.globals();
-            self.run_sandboxed = Some(
-                globals
-                    .get("__shoop_run_sandboxed")
-                    .map_err(|e| anyhow!("failed to get __shoop_run_sandboxed: {e}"))?,
-            );
+        self.run_sandboxed = Some(shoop_scripting::prepare_compatibility_environment(
+            &self.lua,
+        )?);
 
-            let weak_self = self.weak_self.clone();
-            self.require = Some(
-                self.lua
-                    .create_function(move |_, (name,): (String,)| {
-                        match || -> Result<mlua::Value, anyhow::Error> {
-                            let strong_self = weak_self
-                                .upgrade()
-                                .ok_or(anyhow!("Lua went out of scope"))?;
-                            let strong_self = strong_self.borrow();
-                            let lib_content = strong_self
-                                .preloaded_libs
-                                .get(&name)
-                                .ok_or(anyhow!("Lib not found: {name}"))?;
-                            strong_self
-                                .evaluate(&lib_content, Some(&name), true)
-                                .map_err(|e| anyhow!("Could not import lib {name}: {e}"))
-                        }() {
-                            Ok(result) => Ok(result),
-                            Err(e) => {
-                                error!("Could not require lib '{name}': {e}");
-                                Ok(mlua::Value::default())
-                            }
+        let weak_self = self.weak_self.clone();
+        self.require = Some(
+            self.lua
+                .create_function(move |_, (name,): (String,)| {
+                    match || -> Result<mlua::Value, anyhow::Error> {
+                        let strong_self = weak_self
+                            .upgrade()
+                            .ok_or(anyhow!("Lua went out of scope"))?;
+                        let strong_self = strong_self.borrow();
+                        let lib_content = strong_self
+                            .preloaded_libs
+                            .get(&name)
+                            .ok_or(anyhow!("Lib not found: {name}"))?;
+                        strong_self
+                            .evaluate(lib_content, Some(&name), true)
+                            .map_err(|e| anyhow!("Could not import lib {name}: {e}"))
+                    }() {
+                        Ok(result) => Ok(result),
+                        Err(e) => {
+                            error!("Could not require lib '{name}': {e}");
+                            Ok(mlua::Value::default())
                         }
-                    })
-                    .map_err(|e| anyhow!("Could not create require function: {e}"))?,
-            );
-        }
+                    }
+                })
+                .map_err(|e| anyhow!("Could not create require function: {e}"))?,
+        );
         let require = self.require.clone();
         self.set_toplevel("require", require)?;
         Ok(())
@@ -251,14 +186,13 @@ impl LuaEngineImpl {
         key: &str,
         value: impl mlua::IntoLua,
     ) -> Result<(), anyhow::Error> {
-        self.evaluate::<mlua::Function>(
-            &format!("return function(value) {} = value end", key),
-            Some("registrar"),
-            true,
+        shoop_scripting::install_compatibility_value(
+            self.run_sandboxed
+                .as_ref()
+                .ok_or(anyhow!("no sandbox function set"))?,
+            key,
+            value,
         )
-        .map_err(|e| anyhow!("Could not create registrar: {e}"))?
-        .call((value,))
-        .map_err(|e| anyhow!("Could not set {key}: {e}"))
     }
 
     pub fn initialize(

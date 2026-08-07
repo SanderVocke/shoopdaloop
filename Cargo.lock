@@ -1983,6 +1983,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shoop_engine",
+ "shoop_scripting",
  "sndfile",
  "tar",
  "tempfile",
