@@ -92,6 +92,7 @@ try {
   const chromeArgs = [
     '--headless=new',
     '--no-sandbox',
+    '--disable-dev-shm-usage',
     '--disable-gpu-sandbox',
     '--enable-webgl',
     '--enable-unsafe-swiftshader',
@@ -104,10 +105,10 @@ try {
     `--user-data-dir=${profile}`,
     'about:blank',
   ];
-  if (!denyFirst) chromeArgs.splice(9, 0, '--use-fake-ui-for-media-stream');
+  if (!denyFirst) chromeArgs.splice(-1, 0, '--use-fake-ui-for-media-stream');
   start(chrome, chromeArgs);
 
-  const targets = await waitForJson(`http://${host}:${debugPort}/json`, 15_000);
+  const targets = await waitForJson(`http://${host}:${debugPort}/json`, 60_000);
   const target = targets.find(candidate => candidate.type === 'page');
   if (!target) throw new Error('Chrome exposed no page target');
 
