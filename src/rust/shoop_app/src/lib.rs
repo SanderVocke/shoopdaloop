@@ -1219,7 +1219,7 @@ impl ApplicationModel {
                 let target_loop = self.loops.get_mut(&target).unwrap();
                 target_loop.length = length;
                 target_loop.state.empty = false;
-                target_loop.state.composite_kind = shoop_app_api::CompositeKind::Script;
+                target_loop.state.composite_kind = shoop_app_api::CompositeKind::Regular;
                 Ok(())
             }
             ControlOperation::SetRepeatSync { loops, active } => {
@@ -3218,7 +3218,7 @@ impl ApplicationModel {
                         Vec::new()
                     },
                     composite: (!model.script_composition.is_empty()).then(|| CompositeDocument {
-                        kind: CompositeKindDocument::Script,
+                        kind: CompositeKindDocument::Regular,
                         playlists: vec![model
                             .script_composition
                             .iter()
@@ -5026,7 +5026,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         let snapshot = runtime.snapshot();
         assert_eq!(
             snapshot.tracks[1].loops[0].composite_kind,
-            shoop_app_api::CompositeKind::Script
+            shoop_app_api::CompositeKind::Regular
         );
         assert_eq!(snapshot.tracks[2].loops[0].mode, LoopMode::Playing);
         assert_eq!(snapshot.tracks[3].loops[0].mode, LoopMode::Playing);
@@ -5050,7 +5050,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .composite
             .as_ref()
             .unwrap();
-        assert_eq!(composite.kind, CompositeKindDocument::Script);
+        assert_eq!(composite.kind, CompositeKindDocument::Regular);
         assert_eq!(composite.playlists[0][0].len(), 2);
         runtime
             .dispatch(AppIntent::LoadSessionBytes {
@@ -5061,7 +5061,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         runtime.tick(Duration::ZERO);
         assert_eq!(
             runtime.snapshot().tracks[1].loops[0].composite_kind,
-            shoop_app_api::CompositeKind::Script
+            shoop_app_api::CompositeKind::Regular
         );
     }
 
@@ -5310,7 +5310,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         send_note(&mut runtime, &midi_control, 98, false);
         assert_eq!(
             runtime.snapshot().tracks[1].loops[0].composite_kind,
-            shoop_app_api::CompositeKind::Script
+            shoop_app_api::CompositeKind::Regular
         );
         let target_id = runtime.snapshot().tracks[1].loops[0].id;
         let composed_sources = &runtime.model.loops[&target_id].script_composition[0];

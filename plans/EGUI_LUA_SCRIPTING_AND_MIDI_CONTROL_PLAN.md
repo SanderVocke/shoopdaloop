@@ -2,7 +2,7 @@
 
 ## Status and relationship to the replacement project
 
-**Status:** In progress
+**Status:** Complete
 
 This milestone implements the `shoop_scripting` boundary described by `EGUI_REPLACEMENT_PROJECT.md` and expands the scripting, keyboard-control, and script-created MIDI-control rows in `EGUI_FEATURE_PARITY_MATRIX.md`. The QML application remains the compatibility oracle until this milestone is complete.
 
@@ -172,20 +172,22 @@ Verification:
 
 ### Stage 9 — Final validation and project-ledger update
 
-- [ ] Run formatting, warning-denying native/all-target builds, focused runtime/API/application/backend/GUI/settings/runner tests, realtime guards, browser compiler/package/workflow checks, and the retained QML self-test.
-- [ ] Inspect native, browser, GUI-preview, and worklet dependency trees and packaged artifacts for boundary/resource violations.
-- [ ] Update `EGUI_FEATURE_PARITY_MATRIX.md` with discovered rows and concrete evidence; update `EGUI_REPLACEMENT_PROJECT.md` architecture/status/roadmap and `shoopdaloop_egui` documentation.
-- [ ] Update Lua developer/API and keyboard/MIDI-controller documentation, including compatibility, lifecycle, trusted-code model, autoconnect matching, rate limiting, diagnostics, settings/session ownership, and browser limitation.
+- [x] Run formatting, warning-denying native/all-target builds, focused runtime/API/application/backend/GUI/settings/runner tests, realtime guards, browser compiler/package/workflow checks, and the retained QML self-test.
+- [x] Inspect native, browser, GUI-preview, and worklet dependency trees and packaged artifacts for boundary/resource violations.
+- [x] Update `EGUI_FEATURE_PARITY_MATRIX.md` with discovered rows and concrete evidence; update `EGUI_REPLACEMENT_PROJECT.md` architecture/status/roadmap and `shoopdaloop_egui` documentation.
+- [x] Update Lua developer/API and keyboard/MIDI-controller documentation, including compatibility, lifecycle, trusted-code model, autoconnect matching, rate limiting, diagnostics, settings/session ownership, and browser limitation.
 
 Final gates:
 
-- [ ] `cargo fmt --all --check`
-- [ ] `RUSTFLAGS="-D warnings" cargo build --workspace --all-targets --features shoop_engine/app_backend`
-- [ ] Focused tests for `shoop_scripting`, `shoop_app_api`, `shoop_app`, `shoop_backend`, `shoop_engine`, `shoop_settings`, `shoop_egui`, and `shoopdaloop_egui`
-- [ ] `cargo test --workspace --features shoop_engine/app_backend` using the documented unavailable-device policy where necessary
-- [ ] Existing `wasm32-unknown-unknown` UI/worklet checks and hosted/self-contained browser workflows
-- [ ] Native packaged-resource startup plus fake-controller end-to-end workflows on supported desktop CI targets
-- [ ] Retained QML self-test and source/dependency scans proving no Qt/frontend dependency entered the egui scripting path
+- [x] `cargo fmt --all --check`
+- [x] `RUSTFLAGS="-D warnings" cargo build --workspace --all-targets --features shoop_engine/app_backend`
+- [x] Focused tests for `shoop_scripting`, `shoop_app_api`, `shoop_app`, `shoop_backend`, `shoop_engine`, `shoop_settings`, `shoop_egui`, and `shoopdaloop_egui`
+- [x] `cargo test --workspace --features shoop_engine/app_backend` using the documented unavailable-device policy where necessary
+- [x] Existing `wasm32-unknown-unknown` UI/worklet checks and hosted/self-contained browser workflows
+- [x] Native packaged-resource startup plus fake-controller end-to-end workflows on supported desktop CI targets
+- [x] Retained QML self-test and source/dependency scans proving no Qt/frontend dependency entered the egui scripting path
+
+Completion evidence: warning-denying workspace all-target build and policy-gated workspace tests pass; all 24 realtime no-allocation tests pass; native/wasm UI and release worklet builds pass; hosted and self-contained Chrome output-only workflows pass; a native debug artifact is packaged; the retained QML `tst_LuaEngine.qml` self-test passes under Xvfb; and dependency/source scans keep `shoop_egui`, browser UI/worklet, and `shoop_scripting` on their documented boundaries. Native virtual-MIDI tests explicitly skip when `/dev/snd/seq` is unavailable, while deterministic fake-service tests remain authoritative.
 
 ## Execution contract
 

@@ -1,7 +1,9 @@
 MIDI Controllers
 ----------------
 
-**ShoopDaLoop** can be controlled by MIDI signals. This can be done either through the user configuration or by writing advanced integration scripts in Lua. The former is described here - for the latter, see :ref:`Lua scripting <lua_scripting>`.
+**ShoopDaLoop** can be controlled by MIDI signals. This can be done either through the retained QML MIDI-rule configuration or by writing advanced integration scripts in Lua. For the latter, see :ref:`Lua scripting <lua_scripting>`.
+
+The native egui application currently supports script-created MIDI control ports, including the bundled APC Mini integration, but not the generic QML MIDI-rule editor described below. Open **Scripts** to enable a controller script and inspect its rules, connections, queue drops, and failures. Browser builds do not provide Lua or Web MIDI control.
 
 To configure MIDI settings, open the Settings dialog and go to the **MIDI Control** tab:
 
@@ -13,7 +15,9 @@ To configure MIDI settings, open the Settings dialog and go to the **MIDI Contro
 Autoconnect
 ^^^^^^^^^^^
 
-In most cases, you will want **ShoopDaLoop** to connect automatically to your controller via the **JACK** patchbay. To do this, enter a regular expression for your device name into the respective autoconnect regex field:
+In most cases, you will want **ShoopDaLoop** to connect automatically to your controller. Script-created native MIDI ports match the regular expression against the complete endpoint name, reconnect after hotplug, and connect in the compatible direction. An empty pattern intentionally matches nothing. Positive script output rates limit the logical port's FIFO output; ``0`` is unthrottled.
+
+In the retained QML frontend, enter a regular expression for your device name into the respective JACK autoconnect field:
 
 .. image:: resources/autoconnect.png
    :width: 300px
