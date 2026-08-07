@@ -44,13 +44,18 @@ fn worker_executable() -> &'static str {
     })
 }
 
-fn wait_until_failed(processor: &mut impl CarlaProcessor) {
+fn drive_until_failed(processor: &mut impl CarlaProcessor) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
-    while (processor.is_ready() || processor.lifecycle() == CarlaProcessorLifecycle::Running)
-        && std::time::Instant::now() < deadline
-    {
+    while std::time::Instant::now() < deadline {
+        if !processor.is_ready() {
+            return;
+        }
+        // UDP wakeups are intentionally lossy. Keep submitting independently
+        // bounded blocks until the failure fixture receives one and exits.
+        processor.process(64).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
+    let _ = processor.is_ready();
 }
 
 #[test]
@@ -143,8 +148,7 @@ fn fake_worker_covers_malformed_peer_log_flood_abort_error_and_hang() {
         .unwrap();
         assert!(supervisor.is_ready());
         supervisor.set_active(true);
-        supervisor.process(64).unwrap();
-        wait_until_failed(&mut supervisor);
+        drive_until_failed(&mut supervisor);
         assert_eq!(supervisor.lifecycle(), CarlaProcessorLifecycle::Crashed);
         assert_eq!(supervisor.exit_kind(), WorkerExitKind::UnexpectedExit);
     }
