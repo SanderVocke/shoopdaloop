@@ -191,6 +191,16 @@ pub struct CarlaLv2Host {
 // callback threads.
 unsafe impl Send for CarlaLv2Host {}
 
+impl Drop for CarlaLv2Host {
+    fn drop(&mut self) {
+        // The UI may hold LV2 instance-access pointers, and the instance invokes
+        // plugin code during cleanup. Tear both down while the Lilv world still
+        // owns the loaded module instead of relying on incidental field order.
+        self.ui_runtime.take();
+        self.instance.take();
+    }
+}
+
 impl std::fmt::Debug for CarlaLv2Host {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CarlaLv2Host")

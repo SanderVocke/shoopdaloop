@@ -615,7 +615,7 @@ fn worker_exits_and_cleans_ipc_after_abnormal_parent_termination() {
     assert!(status.success());
     let report = std::fs::read_to_string(&report).unwrap();
     let mut lines = report.lines();
-    let worker_pid: u32 = lines.next().unwrap().parse().unwrap();
+    let _worker_pid: u32 = lines.next().unwrap().parse().unwrap();
     let shared_memory_path = std::path::PathBuf::from(lines.next().unwrap());
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     while shared_memory_path.exists() && std::time::Instant::now() < deadline {
@@ -631,16 +631,16 @@ fn worker_exits_and_cleans_ipc_after_abnormal_parent_termination() {
         let reap_deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         loop {
             let mut status = 0;
-            // SAFETY: worker_pid identifies the orphan adopted by this subreaper;
+            // SAFETY: _worker_pid identifies the orphan adopted by this subreaper;
             // status points to valid storage for the duration of waitpid.
             let result =
-                unsafe { libc::waitpid(worker_pid as libc::pid_t, &mut status, libc::WNOHANG) };
-            if result == worker_pid as libc::pid_t {
+                unsafe { libc::waitpid(_worker_pid as libc::pid_t, &mut status, libc::WNOHANG) };
+            if result == _worker_pid as libc::pid_t {
                 break;
             }
             assert!(
                 result >= 0 && std::time::Instant::now() < reap_deadline,
-                "orphaned worker {worker_pid} was not reapable (waitpid={result})"
+                "orphaned worker {_worker_pid} was not reapable (waitpid={result})"
             );
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
