@@ -47,6 +47,8 @@ fn realtime_lock_guard_is_allocation_free() {
     use shoop_engine::realtime_lock_guard;
 
     let mutex = realtime_lock_guard::Mutex::new(0_u32);
+    // Warm up platform mutex state before measuring the checked guard path.
+    drop(mutex.lock().unwrap());
     realtime_lock_guard::set_enabled(true);
     assert_no_alloc(|| {
         realtime_lock_guard::forbid_locks_if_enabled(|| {
