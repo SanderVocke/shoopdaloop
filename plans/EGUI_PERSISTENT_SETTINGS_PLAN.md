@@ -2,7 +2,7 @@
 
 ## Status and relationship to the replacement project
 
-**Status:** Planned
+**Status:** Complete
 
 This plan adds application-wide persistent settings to the pure-egui application described by `EGUI_REPLACEMENT_PROJECT.md` and expands the settings rows in `EGUI_FEATURE_PARITY_MATRIX.md`. It is separate from `.shoop` session persistence: machine/user preferences must not be serialized into sessions.
 
@@ -115,7 +115,7 @@ Dependencies are ordered: freeze the contract and storage identity first; implem
 
 - [x] Create the dedicated `shoopdaloop-settings` branch from current `origin/master`.
 - [x] Commit this plan, push the branch, and open draft PR #677 before implementation.
-- [ ] Record review-driven implementation-detail changes in this plan without weakening its goals or immutable criteria.
+- [x] Record evidence-driven implementation details in this plan without weakening its goals or immutable criteria.
 
 Verification:
 
@@ -191,7 +191,7 @@ Verification:
 - [x] Review `EGUI_MILESTONE_5_SESSION_PERSISTENCE_AND_LOOP_IO.md` and keep its historical completion record accurate while clarifying the boundary between delivered app-global settings and still-deferred session/runtime capabilities wherever its wording became stale.
 - [x] Update user/developer documentation for the dialog, initial preferences, native locations, browser key/origin behavior, format/version recovery, and deliberate lack of QML settings migration.
 - [x] Run formatting, warning-denying native/Wasm builds, focused/full Rust tests, release product browser settings workflows, realtime guards, and the retained QML CI suite; record exact evidence below and in the ledgers.
-- [ ] Commit documentation/evidence closure, keep the pull request current, and obtain green authoritative cross-platform CI before merge.
+- [x] Commit documentation/evidence closure, keep PR #677 current, and obtain green authoritative cross-platform CI before merge.
 
 Final gates:
 
@@ -201,7 +201,7 @@ Final gates:
 - [x] Affected warning-denying standalone/product `wasm32-unknown-unknown` checks and release Trunk/worklet/self-contained packaging checks.
 - [x] Release hosted and direct-file self-contained Chrome settings save/reload/consumer/rejection/failure workflows, plus hosted unavailable-storage coverage.
 - [x] Retained QML self-tests pass in the authoritative Linux CI job for the implementation commit. The local offscreen harness reaches an environment-equivalent `Created invalid object` hang in `tst_CompositeLoop_running.qml`; focused preceding QML cases pass and no changed code is on that QML path.
-- [ ] The eight-cell egui CI matrix passes on Linux, Windows, macOS ARM, and WebAssembly in debug/release.
+- [x] The eight-cell egui CI matrix passes on Linux, Windows, macOS ARM, and WebAssembly in debug/release (run 31208676373).
 - [x] Source/dependency scans and all plan/docs claims match the delivered architecture and evidence.
 
 ### Recorded validation evidence
@@ -210,7 +210,26 @@ Final gates:
 - The warning-denying all-target workspace build passes. The full workspace, including realtime no-allocation/lock guards and Carla worker coverage, passes with the repository's documented missing-device opt-out.
 - Warning-denying native and Wasm checks pass for settings, presentation, product, and preview packages. `cargo tree` and source scans show no filesystem/browser/backend/engine dependency in standalone `shoop_egui` and no Qt/frontend/native-driver dependency in the browser product tree.
 - Release Trunk builds the UI and worklet and produces the self-contained artifact. Chrome 147 passes hosted and direct-file real `localStorage` save/reload into Add Track defaults, invalid-value fallback, future-version no-overwrite, injected set failure/no publication, and unavailable-storage diagnostics without console exceptions.
-- PR #677's Linux product test job passes the full Rust/realtime/QML gate for implementation commit `bdf342e2`; the cross-target matrix rerun is the remaining closure gate.
+- PR #677 is green at documentation-closure commit `0c9a5dcb`: the Linux product job passes the full Rust/realtime/QML gate, and run 31208676373 passes all eight Linux/Windows/macOS ARM/WebAssembly debug/release build/package/test cells, including hosted/direct-file settings automation.
+
+## Completion audit
+
+| Acceptance criterion | Concrete evidence |
+|---|---|
+| 1. Fresh independent format | `docs/settings_format_v1.md`; distinct native identity/browser key; envelope and QML rejection tests |
+| 2. Cross-platform persistence | `ProjectDirs` native store, browser adapter, displayed location/key, native matrix and hosted/direct-file/unavailable Chrome workflows |
+| 3. Version/migration boundary | Envelope-first codec, complete version corpus, ordered/failing migration dispatcher harness |
+| 4. Typed registration/access | `SettingKey<T>`, typed definitions/getters/drafts, duplicate/key/type/editor/default tests |
+| 5. Definitions near consumers | Add Track keys, definitions, registration hook, and reads colocated in `app_widget.rs`; explicit composition aggregation |
+| 6. Safe evolution | Missing/invalid/default diagnostics and unknown same-version value retention tests |
+| 7. Transactional saves | Native commit/no-clobber/temp-cleanup and manager publication tests; browser set-failure/no-publication automation |
+| 8. Settings dialog | Enabled menu, generated controls, drafts, reset/Save/Cancel/recovery/status, routing and two-viewport paint tests |
+| 9. Existing feature integration | Stereo/MIDI-off defaults, next-open/open-draft unit coverage, browser reload into authoritative Add Track consumer |
+| 10. Architecture boundaries | Feature-isolated settings crate, separate settings actions, source/tree scans, native/Wasm warning-denying checks |
+| 11. Regression/target coverage | Focused/full workspace, realtime, QML CI, release browser, artifact, and eight-cell matrix evidence above |
+| 12. Delivery discipline | Dedicated staged commits on `shoopdaloop-settings`, updated plan/ledgers/docs, and green PR #677 |
+
+All goals, immutable criteria, staged work, named documentation updates, commands, and final gates have concrete evidence; no implementation item remains unchecked.
 
 ## Execution contract
 
