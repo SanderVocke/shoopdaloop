@@ -10,6 +10,7 @@ pub struct GlobalControls {
     connections_requested: bool,
     save_session_requested: bool,
     load_session_requested: bool,
+    settings_requested: bool,
     #[cfg(test)]
     test_rects: TestGlobalControlRects,
 }
@@ -20,6 +21,7 @@ enum TestGlobalControl {
     Connections,
     SaveSession,
     LoadSession,
+    Settings,
     StopAll,
     DeselectAll,
     Clear,
@@ -38,6 +40,7 @@ struct TestGlobalControlRects {
     connections: Option<egui::Rect>,
     save_session: Option<egui::Rect>,
     load_session: Option<egui::Rect>,
+    settings: Option<egui::Rect>,
     stop_all: Option<egui::Rect>,
     deselect_all: Option<egui::Rect>,
     clear: Option<egui::Rect>,
@@ -58,6 +61,7 @@ impl GlobalControls {
         self.connections_requested = false;
         self.save_session_requested = false;
         self.load_session_requested = false;
+        self.settings_requested = false;
         let mut actions = Vec::new();
         ui.horizontal(|ui| {
             let response = ui
@@ -81,7 +85,12 @@ impl GlobalControls {
                         self.load_session_requested = true;
                         ui.close();
                     }
-                    ui.add_enabled(false, egui::Button::new("Settings"));
+                    let settings = ui.button("Settings");
+                    self.record_rect(TestGlobalControl::Settings, &settings);
+                    if settings.clicked() {
+                        self.settings_requested = true;
+                        ui.close();
+                    }
                 })
                 .response
                 .on_hover_text("Main menu");
@@ -213,6 +222,10 @@ impl GlobalControls {
         std::mem::take(&mut self.load_session_requested)
     }
 
+    pub fn take_settings_requested(&mut self) -> bool {
+        std::mem::take(&mut self.settings_requested)
+    }
+
     #[cfg(test)]
     fn record_rect(&mut self, control: TestGlobalControl, response: &egui::Response) {
         let target = match control {
@@ -220,6 +233,7 @@ impl GlobalControls {
             TestGlobalControl::Connections => &mut self.test_rects.connections,
             TestGlobalControl::SaveSession => &mut self.test_rects.save_session,
             TestGlobalControl::LoadSession => &mut self.test_rects.load_session,
+            TestGlobalControl::Settings => &mut self.test_rects.settings,
             TestGlobalControl::StopAll => &mut self.test_rects.stop_all,
             TestGlobalControl::DeselectAll => &mut self.test_rects.deselect_all,
             TestGlobalControl::Clear => &mut self.test_rects.clear,
@@ -245,6 +259,7 @@ impl GlobalControls {
             TestGlobalControl::Connections => self.test_rects.connections,
             TestGlobalControl::SaveSession => self.test_rects.save_session,
             TestGlobalControl::LoadSession => self.test_rects.load_session,
+            TestGlobalControl::Settings => self.test_rects.settings,
             TestGlobalControl::StopAll => self.test_rects.stop_all,
             TestGlobalControl::DeselectAll => self.test_rects.deselect_all,
             TestGlobalControl::Clear => self.test_rects.clear,
@@ -364,6 +379,9 @@ mod tests {
         )
         .is_empty());
         assert!(controls.take_load_session_requested());
+        assert!(click(&context, &mut controls, &state, TestGlobalControl::MainMenu).is_empty());
+        assert!(click(&context, &mut controls, &state, TestGlobalControl::Settings).is_empty());
+        assert!(controls.take_settings_requested());
         assert_eq!(
             click(&context, &mut controls, &state, TestGlobalControl::StopAll),
             vec![GlobalControlAction::StopAll]

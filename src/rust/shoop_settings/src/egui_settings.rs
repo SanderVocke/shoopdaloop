@@ -68,7 +68,6 @@ impl Error for SettingsDocumentError {}
 
 #[derive(Deserialize)]
 struct SettingsEnvelope {
-    format: String,
     format_version: SettingsFormatVersion,
     document_version: u16,
 }
@@ -736,6 +735,23 @@ fn setting_value_from_json(value_type: SettingValueType, raw: &Value) -> Option<
 pub struct SettingsDiagnostic {
     pub key: Option<String>,
     pub message: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsPersistenceState {
+    Idle,
+    Saving,
+    Saved,
+    Failed,
+}
+
+#[derive(Clone, Debug)]
+pub struct SettingsViewState {
+    pub active: Arc<SettingsSnapshot>,
+    pub diagnostics: Arc<[SettingsDiagnostic]>,
+    pub storage_location: String,
+    pub recovery_required: bool,
+    pub persistence: SettingsPersistenceState,
 }
 
 #[derive(Clone, Debug)]

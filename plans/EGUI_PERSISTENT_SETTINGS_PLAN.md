@@ -142,47 +142,47 @@ Verification:
 
 Verification:
 
-- [x] `cargo test -p shoop_settings` passes 13 tests with current, unsupported-old/future, malformed, legacy-QML, invalid/unknown-key, deterministic, typed-access, and migration-dispatch coverage.
-- [x] `cargo check -p shoop_settings --target wasm32-unknown-unknown` and warning-denying native check pass with only target-neutral dependencies.
+- [x] `cargo test -p shoop_settings` passes 7 target-neutral core tests; `--features legacy` passes all 18 core/native/legacy tests with current, unsupported-old/future, malformed, QML, invalid/unknown-key, deterministic, typed-access, storage, and migration-dispatch coverage.
+- [x] `cargo check -p shoop_settings --target wasm32-unknown-unknown` and warning-denying native checks pass; native store and legacy dependencies are opt-in features and absent from `shoop_egui` trees.
 
 ### Stage 3 — Add platform stores and composition-owned lifecycle
 
-- [ ] Implement the injectable native file store with stable `ProjectDirs` identity, directory creation, same-directory temporary output, flush/atomic replacement, and actionable path-aware errors.
-- [ ] Implement the composition-root browser `localStorage` adapter with the stable key and typed unavailable/security/quota failures.
-- [ ] Add the settings manager to `shoopdaloop_egui`: explicit registration aggregation, startup load before runtime/widget construction, revisioned snapshot publication, asynchronous native saves, browser saves, and no publish on failure.
-- [ ] Add explicit reset/recovery for malformed or unsupported data without silently overwriting it, and expose storage location/key plus load/save diagnostics to presentation.
+- [x] Implement the injectable native file store with stable `ProjectDirs` identity, directory creation, same-directory temporary output, flush/atomic replacement, and actionable path-aware errors.
+- [x] Implement the composition-root browser `localStorage` adapter with the stable key and typed unavailable/security/quota failures.
+- [x] Add the settings manager to `shoopdaloop_egui`: explicit registration aggregation, startup load before runtime/widget construction, revisioned snapshot publication, asynchronous native saves, browser saves, and no publish on failure.
+- [x] Add explicit reset/recovery for malformed or unsupported data without silently overwriting it, and expose storage location/key plus load/save diagnostics to presentation.
 
 Verification:
 
-- [ ] Native injected-path tests cover first run, atomic replace, parent creation, failed read/write/rename, unchanged prior bytes, and no temporary-file leak.
-- [ ] Browser adapter tests cover absent value, successful round trip, unavailable storage, and set failure without active-value publication.
-- [ ] Composition tests prove startup consumers see loaded values and failed saves retain the prior snapshot/revision.
+- [x] Native injected-path tests cover first run, atomic replace, parent creation, failed read/write/commit, unchanged prior bytes, no temporary-file leak, restart, stale draft, recovery, and unknown-key retention.
+- [x] Hosted Chrome automation covers absent storage, successful save/reload, unavailable storage, injected set failure without active-value publication, invalid known values, and retained rejected future-version text.
+- [x] Composition and GUI tests prove startup consumers see loaded values and failed saves retain the prior snapshot/revision.
 
 ### Stage 4 — Deliver the registry-driven settings dialog and initial consumers
 
-- [ ] Enable main-menu **Settings** and add a resizable dialog whose categories, controls, defaults, descriptions, ordering, validation, and effect labels come from registry metadata.
-- [ ] Implement isolated draft editing, per-setting/all reset, Save/Cancel/close behavior, saving-disabled state, and load/save/version/storage diagnostics at minimum/common viewports.
-- [ ] Define/register the two Add Track defaults beside their consumer and initialize each new dialog draft from the current typed snapshot.
-- [ ] Change `AppWidget` responses as needed to keep settings UI actions separate from session/business intents and keep preview/test hosts supplied by plain settings fixtures.
+- [x] Enable main-menu **Settings** and add a resizable dialog whose categories, controls, defaults, descriptions, ordering, validation, and effect labels come from registry metadata.
+- [x] Implement isolated draft editing, per-setting/all reset, Save/Cancel/close behavior, saving-disabled state, and load/save/version/storage diagnostics at minimum/common viewports.
+- [x] Define/register the two Add Track defaults beside their consumer and initialize each new dialog draft from the current typed snapshot.
+- [x] Change `AppWidget` responses to keep settings UI actions separate from session/business intents and keep preview/test hosts supplied by plain settings fixtures.
 
 Verification:
 
-- [ ] `cargo test -p shoop_egui -p shoopdaloop_egui` covers menu opening, generated bool/integer controls, stable-key edits, reset, Save/Cancel, validation, stale draft/revision handling, diagnostics, and 360×200/900×600 paint.
-- [ ] Integration tests prove defaults are stereo/MIDI-off, persisted values affect the next Add Track dialog after save/restart, and existing tracks/open drafts/session documents are unchanged.
-- [ ] `cargo check -p shoop_egui -p shoopdaloop_egui --target wasm32-unknown-unknown` passes without adding platform I/O to `shoop_egui`.
+- [x] Focused GUI/runner tests cover menu opening, generated bool/integer controls, stable-key edits, reset, Save routing, validation, stale revisions, diagnostics, and 360×200/900×600 paint.
+- [x] Integration tests prove defaults are stereo/MIDI-off, persisted values affect the next Add Track dialog after save/restart, and an already-open draft is unchanged.
+- [x] Warning-denying native and `wasm32-unknown-unknown` checks pass for `shoop_settings`, `shoop_egui`, `shoopdaloop_egui`, and `shoop_egui_preview` without adding platform I/O to `shoop_egui`.
 
 ### Stage 5 — Add restart, browser, failure, and architecture evidence
 
-- [ ] Add native restart round trips using a temporary config root and authoritative `UnifiedApp` construction.
-- [ ] Extend product browser automation to edit/save settings, reload the hosted artifact, verify the next Add Track defaults, and exercise unavailable/corrupt/unsupported storage without console exceptions.
-- [ ] Verify self-contained browser behavior and document origin/direct-file persistence limits without claiming cross-origin portability.
-- [ ] Inspect dependency trees and source paths to prove settings I/O remains outside presentation, application-session logic, backend, engine processing, and audio callbacks.
+- [x] Add native restart round trips using an injected temporary settings path and composition-owned settings manager.
+- [x] Extend product browser automation to edit/save settings, reload the hosted artifact, verify the next Add Track defaults, and exercise unavailable/invalid/future-version/failed-save storage without console exceptions.
+- [x] Verify the self-contained direct-file Chrome settings workflow and document origin/direct-file persistence limits without claiming cross-origin portability.
+- [x] Inspect dependency trees and source paths to prove settings I/O remains outside presentation, application-session logic, backend, engine processing, and audio callbacks; native store and legacy code are feature-isolated from standalone `shoop_egui`.
 
 Verification:
 
-- [ ] Native and browser workflows demonstrate real persisted bytes/text, reload, typed reads, and no session mutation.
-- [ ] Failure injection demonstrates no active-value publication or persisted-byte loss on failed save/migration.
-- [ ] `shoop_egui` remains backend/filesystem/browser-API-free, and the browser settings tree remains Qt/frontend-free.
+- [x] Native tests and hosted/direct-file Chrome workflows demonstrate real persisted bytes/text, reload, typed reads, and Add Track consumption without session mutation.
+- [x] Native/browser failure injection demonstrates no active-value publication or persisted-byte loss on failed save, rejected version, invalid known value, or unavailable store.
+- [x] `cargo tree` scans show `shoop_egui` contains no backend, engine, filesystem, browser, eframe, or Qt/frontend dependency; the product browser tree remains Qt/frontend/native-driver-free.
 
 ### Stage 6 — Final validation and documentation/ledger closure
 

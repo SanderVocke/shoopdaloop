@@ -16,6 +16,14 @@ cargo run -p shoopdaloop_egui
 
 This starts the native dummy engine; it does not open a physical audio device.
 
+## Application settings
+
+Choose **Settings** from the main menu to edit application-wide preferences. The initial preferences control the audio channel count and MIDI state used the next time the Add Track dialog opens. They do not alter existing tracks, an Add Track draft that is already open, or `.shoop` session data. The dialog keeps edits in a draft until **Save**; **Cancel** or closing it discards the draft, and reset actions restore registered defaults.
+
+Native builds store fresh egui settings in `settings.json` below the OS configuration directory resolved for the `org` / `ShoopDaLoop` / `ShoopDaLoop egui` application identity. The dialog displays the authoritative resolved path. Browser builds use origin-scoped `localStorage` key `org.shoopdaloop.egui.settings`; direct-file persistence is browser-policy-dependent and must not be assumed to carry across URLs or origins.
+
+Missing settings use stereo/MIDI-off defaults. Invalid known values use their defaults with a warning. Malformed, unreadable, or unsupported-version documents are not overwritten automatically; use the explicit replacement action after reviewing the diagnostic. The egui app never imports the retained QML settings format. See `../../../docs/settings_format_v1.md` for the format, locations, migration boundary, and recovery contract.
+
 ## Hosted browser audio
 
 Install the Rust target and [Trunk](https://trunkrs.dev/):
@@ -107,11 +115,14 @@ OUTPUT_ONLY=1 node --experimental-websocket browser_smoke.mjs
 SELF_CONTAINED=1 node --experimental-websocket browser_smoke.mjs
 SELF_CONTAINED=1 OUTPUT_ONLY=1 node --experimental-websocket browser_smoke.mjs
 SELF_CONTAINED=1 DIRECT_FILE_MIC=1 node --experimental-websocket browser_smoke.mjs
+SETTINGS_ONLY=1 node --experimental-websocket browser_smoke.mjs
+SETTINGS_ONLY=1 SETTINGS_UNAVAILABLE=1 node --experimental-websocket browser_smoke.mjs
+SELF_CONTAINED=1 SETTINGS_ONLY=1 node --experimental-websocket browser_smoke.mjs
 xvfb-run -a python3 browser_firefox_smoke.py
 STRESS=1 xvfb-run -a python3 browser_firefox_smoke.py
 ```
 
-The Firefox command also requires Selenium and geckodriver. Set `CHROME_BIN` or `FIREFOX_BIN` when browser executables use non-standard names. The hosted tests click the enable action, create mono and stereo tracks, monitor and record non-zero fake capture, verify non-zero waveform and playback output, save real produced `.shoop` bytes while callbacks advance, and transactionally load those exact bytes. Stress mode fills the bounded recording store and verifies callback continuity throughout the larger transfer/encode/load. Additional Chrome modes cover denial/retry, suspend/resume, forced worklet loss/retry, cleanup, queue saturation, and explicit offline dummy operation. The self-contained offline self-test performs the same real-byte session round trip without relying on a fixture-only success flag.
+The Firefox command also requires Selenium and geckodriver. Set `CHROME_BIN` or `FIREFOX_BIN` when browser executables use non-standard names. The hosted tests click the enable action, create mono and stereo tracks, monitor and record non-zero fake capture, verify non-zero waveform and playback output, save real produced `.shoop` bytes while callbacks advance, and transactionally load those exact bytes. Stress mode fills the bounded recording store and verifies callback continuity throughout the larger transfer/encode/load. Additional Chrome modes cover denial/retry, suspend/resume, forced worklet loss/retry, cleanup, queue saturation, and explicit offline dummy operation. Settings modes cover real save/reload and Add Track consumption, unavailable storage, failed writes, invalid known values, future-version rejection without overwrite, and hosted/direct-file behavior. The self-contained offline self-test performs the same real-byte session round trip without relying on a fixture-only success flag.
 
 Compiler-only checks from the repository root:
 
