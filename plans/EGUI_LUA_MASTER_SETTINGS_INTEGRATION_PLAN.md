@@ -179,22 +179,22 @@ Verification:
 
 ### Stage 6 — Final end-to-end validation and delivery
 
-- [ ] Run focused settings, scripting, application, backend, GUI, and product-runner tests while iterating.
-- [ ] Run formatting, warning-denying all-target workspace build, full workspace tests, and realtime/no-allocation guards.
-- [ ] Run warning-denying native/Wasm checks, release Trunk/worklet/self-contained packaging, hosted/direct-file browser settings workflows, and dependency/import isolation scans.
-- [ ] Run retained QML Lua/settings self-tests and the complete retained frontend self-test suite.
+- [x] Run focused settings, scripting, application, backend, GUI, and product-runner tests while iterating.
+- [x] Run formatting, warning-denying all-target workspace build, full workspace tests, and realtime/no-allocation guards.
+- [x] Run warning-denying native/Wasm checks, release Trunk/worklet/self-contained packaging, hosted/direct-file browser settings workflows, and dependency/import isolation scans.
+- [ ] Run retained QML Lua/settings self-tests and the complete retained frontend self-test suite. Focused Lua passes 45/45; the local full offscreen suite passes 235/236 with only the environment-sensitive CPAL virtual-playback case failing, so authoritative Linux CI is still required.
 - [ ] Push all stage commits, inspect PR #678 with `gh`, and require the complete Linux/Windows/macOS/Wasm egui matrix plus main build/test, docs, and CodeQL checks to pass.
 - [ ] Record final commands, run URLs, commit IDs, and any environment-specific opt-outs in this plan/audit without treating skipped or proxy checks as success.
 
 Final gates:
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `RUSTFLAGS="-D warnings" cargo build --workspace --all-targets --features shoop_engine/app_backend`
-- [ ] `SHOOP_ALLOW_MISSING_BACKENDS=1 RUSTFLAGS="-D warnings" cargo test --workspace --features shoop_engine/app_backend`
-- [ ] Focused `shoop_settings` legacy/native-store, `shoop_scripting`, `shoop_app`, `shoop_egui`, and `shoopdaloop_egui` suites
-- [ ] Warning-denying `shoopdaloop_egui`/preview/worklet `wasm32-unknown-unknown` checks and browser dependency exclusions
-- [ ] Release hosted and self-contained browser settings/audio/session workflows with no Lua/native-MIDI linkage
-- [ ] `target/debug/shoopdaloop_dev.sh --self-test` after the required build, including retained Lua/settings cases
+- [x] `cargo fmt --all -- --check`
+- [x] `RUSTFLAGS="-D warnings" cargo build --workspace --all-targets --features shoop_engine/app_backend`
+- [x] `SHOOP_ALLOW_MISSING_BACKENDS=1 RUSTFLAGS="-D warnings" cargo test --workspace --features shoop_engine/app_backend`
+- [x] Focused `shoop_settings` legacy/native-store, `shoop_scripting`, `shoop_app`, `shoop_egui`, and `shoopdaloop_egui` suites
+- [x] Warning-denying `shoopdaloop_egui`/preview/worklet `wasm32-unknown-unknown` checks and browser dependency exclusions
+- [x] Release hosted and self-contained browser settings/audio/session workflows with no Lua/native-MIDI linkage
+- [ ] `target/debug/shoopdaloop_dev.sh --self-test` after the required build, including retained Lua/settings cases (focused Lua 45/45; full local suite 235/236 pending authoritative CPAL-capable CI)
 - [ ] Green PR #678 checks from the final branch tip and a clean, upstream-tracking worktree
 
 ## Execution contract
