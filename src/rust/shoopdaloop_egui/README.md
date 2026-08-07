@@ -14,7 +14,7 @@ From the repository root:
 cargo run -p shoopdaloop_egui
 ```
 
-This starts the native dummy audio engine; it does not open a physical audio device. Native MIDI controller discovery uses the host MIDI service. Open **Scripts** to manage the embedded keyboard/APC scripts or path-based user scripts. ``keyboard.lua`` is enabled on first run; enablement is preserved in ``script_settings.1``. Script lifecycle, documentation, logs, callbacks/timers, MIDI connections, dropped messages, and failures are visible there.
+This starts the native dummy audio engine; it does not open a physical audio device. Native MIDI controller discovery uses the host MIDI service. Open **Settings** and select **Scripts** to manage the embedded keyboard/APC scripts or path-based user scripts. This is the only script-management dialog. ``keyboard.lua`` is enabled on first run; bundled toggles and ordered user path/enabled entries are preserved in the fresh egui settings document after **Save**. Runtime-only Stop, Restart, and Reload controls plus lifecycle, documentation, logs, callbacks/timers, MIDI connections, dropped messages, and failures are visible in the same tab.
 
 Bundled Lua sources are compiled into the native binary, so packaged startup does not depend on the source checkout. User-file reads and settings writes stay in this composition root. Source-bearing session scripts are staged before transactional session commit and round-trip in ``.shoop`` files without embedding machine-wide paths.
 

@@ -3,7 +3,7 @@ MIDI Controllers
 
 **ShoopDaLoop** can be controlled by MIDI signals. This can be done either through the retained QML MIDI-rule configuration or by writing advanced integration scripts in Lua. For the latter, see :ref:`Lua scripting <lua_scripting>`.
 
-The native egui application currently supports script-created MIDI control ports, including the bundled APC Mini integration, but not the generic QML MIDI-rule editor described below. Open **Scripts** to enable a controller script and inspect its rules, connections, queue drops, and failures. Browser builds do not provide Lua or Web MIDI control.
+The native egui application currently supports script-created MIDI control ports, including the bundled APC Mini integration, but not the generic QML MIDI-rule editor described below. Open **Settings** and select **Scripts** to enable a controller script and inspect its rules, connections, queue drops, and failures. Persistent startup edits take effect after **Save**. Browser builds omit the Scripts tab and do not provide Lua or Web MIDI control.
 
 To configure MIDI settings, open the Settings dialog and go to the **MIDI Control** tab:
 
@@ -17,7 +17,7 @@ Autoconnect
 
 In most cases, you will want **ShoopDaLoop** to connect automatically to your controller. Script-created native MIDI ports match the regular expression against the complete endpoint name, reconnect after hotplug, and connect in the compatible direction. An empty pattern intentionally matches nothing. Positive script output rates limit the logical port's FIFO output; ``0`` is unthrottled. A delayed control pump sends at most one rate-limited message instead of catching up with a burst.
 
-The native script manager expands each logical MIDI rule to show its direction and pattern, every currently matched endpoint, every connected endpoint, and the latest rule-specific failure. Aggregate connection, dropped-message, and error counters remain visible above those details.
+The native Settings **Scripts** tab expands each logical MIDI rule to show its direction and pattern, every currently matched endpoint, every connected endpoint, and the latest rule-specific failure. Aggregate connection, dropped-message, and error counters remain visible above those details.
 
 In the retained QML frontend, enter a regular expression for your device name into the respective JACK autoconnect field:
 

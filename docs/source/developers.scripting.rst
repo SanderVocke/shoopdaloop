@@ -13,11 +13,11 @@ Lua scripts can be provided by the user and don't require a re-installation of t
 Native egui script management
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Open **Scripts** in the main controls to inspect lifecycle state, errors, help text, callback/timer activity, logs, and MIDI diagnostics. The manager can enable, stop, restart, add, reload, and remove user scripts. Machine-wide bundled and path-based enablement is stored in ``script_settings.1``. Only ``keyboard.lua`` is enabled on first run. Source-bearing scripts inside a ``.shoop`` session are syntax-checked before session commit and are saved back with that session; machine paths are never embedded implicitly.
+Open **Settings** and select the **Scripts** tab to inspect lifecycle state, errors, help text, callback/timer activity, logs, and MIDI diagnostics. This is the only script-management surface: it can enable, stop, restart, add, reload, and remove user scripts. Bundled startup toggles and the ordered user path/enabled list are stored in the native ``shoop-egui-settings`` document. Persistent edits apply only after **Save**; **Stop**, **Restart**, and **Reload** affect the runtime without changing the draft. Only ``keyboard.lua`` is enabled on first run. The egui app does not import retained QML ``script_settings.1``. Source-bearing scripts inside a ``.shoop`` session are syntax-checked before session commit and are saved back with that session; machine paths are never embedded implicitly.
 
 Native MIDI autoconnect uses an anchored full-name regular expression. Logical inputs connect to matching external outputs, and logical outputs connect to matching external inputs. Discovery is hotplug-aware, queues are bounded, and positive output-rate limits are enforced per logical output without delayed-pump catch-up bursts. Per-rule patterns, matched and connected endpoint names, and latest failures are published alongside aggregate connection, error, and drop counters. Connection, send, regex, queue-drop, and callback failures remain visible in script status. Stopping a script closes everything it owns.
 
-Browser builds target ``wasm32-unknown-unknown`` and intentionally do not link ``mlua``, native MIDI, or ``shoop_scripting``. The script manager reports scripting as unavailable, and script-bearing sessions are capability-rejected rather than partially executed.
+Browser builds target ``wasm32-unknown-unknown`` and intentionally do not link ``mlua``, native MIDI, or ``shoop_scripting``. Their Settings dialog omits the **Scripts** tab, and script-bearing sessions are capability-rejected rather than partially executed.
 
 API and Libraries
 ^^^^^^^^^^^^^^^^^

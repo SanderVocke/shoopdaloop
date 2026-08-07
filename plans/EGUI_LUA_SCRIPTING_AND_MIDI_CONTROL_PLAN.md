@@ -2,7 +2,9 @@
 
 ## Status and relationship to the replacement project
 
-**Status:** Complete (artifact audit passed)
+**Status:** Complete (artifact audit passed; persistent-settings integration refreshed)
+
+A post-completion integration with the application settings milestone supersedes the original temporary egui use of QML `script_settings.1`. Native startup configuration now uses typed `shoop-egui-settings` keys and all script management appears in the **Scripts** tab of the one category-tabbed Settings dialog. Retained QML behavior and `.shoop` session scripts are unchanged.
 
 This milestone implements the `shoop_scripting` boundary described by `EGUI_REPLACEMENT_PROJECT.md` and expands the scripting, keyboard-control, and script-created MIDI-control rows in `EGUI_FEATURE_PARITY_MATRIX.md`. The QML application remains the compatibility oracle until this milestone is complete.
 
@@ -25,7 +27,7 @@ Included:
 - The missing application/backend behaviors required by that API and the bundled scripts, including explicit transitions, ringbuffer adoption parameters, repeat-sync, and composition append/create behavior.
 - One isolated Lua state per script; start, stop, restart, enabled-at-startup, status, documentation extraction, and cleanup of callbacks, timers, and MIDI rules.
 - Native physical MIDI endpoint discovery and connections through a non-Qt adapter, including endpoint hotplug/reconnect, anchored regular-expression matching, independent logical input/output ports, received-message delivery, bounded output queues, and actual output-rate limiting.
-- Existing machine-wide `script_settings.1` compatibility, default-enabled `keyboard.lua`, user-script file selection, and activation of enabled source-bearing `ScriptDocument` entries in `.shoop` sessions after transactional load.
+- Fresh machine-wide `shoop-egui-settings` scripting keys, default-enabled `keyboard.lua`, user-script file selection in the Settings **Scripts** tab, and activation of enabled source-bearing `ScriptDocument` entries in `.shoop` sessions after transactional load.
 - Native egui script management and keyboard event forwarding.
 - Shared use of the current files under `src/lua`; no fork of the bundled scripts is planned because this plan makes no breaking Lua API change.
 
@@ -45,12 +47,12 @@ Not included:
 4. **Complete bundled scripts.** The unchanged `keyboard.lua` and `akai_apc_mini_mk1.lua` files run successfully. Automated workflows cover every documented keyboard command and release-sensitive sampler behavior, plus APC grid actions, selection/targeting, record/grab/stop/dry/composition modes, global controls, faders/mutes, LED reset/update, timer use, and reconnect.
 5. **MIDI control ports and autoconnect.** A script can create logical control inputs and outputs, discover compatible native endpoints, match full endpoint names with anchored regexes, connect all matches, reconnect after hotplug, receive exact MIDI bytes in order, and send to connected outputs. Output `msg_rate_limit_hz` is enforced as a real maximum rather than merely enabling a timer. Invalid regexes, endpoint failures, queue overflow, oversized messages, and send failures are visible without crashing the script host.
 6. **Events and timers.** Loop events contain coordinates, type, mode, length, selected, and targeted state; global events and non-repeat keyboard press/release events retain their existing payloads/constants. One-shot timers use a monotonic clock, callbacks execute only on the control side, callback order is deterministic, and stopping a script cancels all of its subscriptions, timers, ports, and queued output.
-7. **Lifecycle and settings.** On first run, both bundled scripts are discoverable and only `keyboard.lua` is enabled by default. Users can add, enable/disable, restart, stop, forget, and inspect documentation/status for scripts. Existing valid `script_settings.1` data is read without losing unrelated settings; malformed or unsupported settings are reported and not overwritten.
+7. **Lifecycle and settings.** On first run, both bundled scripts are discoverable and only `keyboard.lua` is enabled by default. The one tabbed Settings dialog contains a **Scripts** tab where users add, enable/disable, restart, stop, forget, and inspect documentation/status. Machine-wide paths and startup state use typed `shoop-egui-settings` keys; retained QML `script_settings.1` is neither imported nor rewritten. Malformed or unsupported egui settings are reported and not overwritten.
 8. **Session behavior.** Enabled embedded session scripts round-trip source/name/identity through `.shoop`, are syntax-checked before session replacement, and start only after backend commit. A failed/cancelled load starts no staged script and leaves prior scripts/session active. Runtime failures after commit are isolated and reported as script errors.
 9. **Realtime and boundedness.** Lua evaluation, callbacks, MIDI discovery, regex matching, logging, and output throttling never execute in an audio callback or AudioWorklet `process()`. Cross-thread/worklet messages and MIDI queues remain bounded with observable drops/backpressure; a slow or failing script cannot corrupt the application or stop other scripts, though trusted scripts may block their own control-side execution.
 10. **Presentation and keyboard safety.** `shoop_egui` remains backend/Lua/filesystem-free and only emits typed script-management and key-event intents. Normal controls retain focus behavior; performance shortcuts are not fired while editing text, auto-repeat is ignored as in QML, and key releases needed to end sampler mode are not lost on focus changes.
 11. **Browser preservation.** All existing `wasm32-unknown-unknown` application, worklet, packaging, and browser workflows continue to pass without linking `mlua` or native MIDI. Script-bearing sessions remain explicitly capability-rejected in the browser rather than silently dropping or pretending to run scripts.
-12. **Regression and documentation.** Existing native/browser tracks, loops, connections, persistence, realtime guards, and retained QML tests remain green. User/developer documentation describes the egui script manager, compatibility API, trusted-code model, MIDI matching/rate behavior, diagnostics, session versus machine-wide scripts, and browser limitation.
+12. **Regression and documentation.** Existing native/browser tracks, loops, connections, persistence, realtime guards, and retained QML tests remain green. User/developer documentation describes the Settings **Scripts** tab, compatibility API, trusted-code model, MIDI matching/rate behavior, diagnostics, session versus machine-wide scripts, and browser limitation.
 
 ## Design rules and constraints
 
@@ -64,7 +66,7 @@ Not included:
 - Abstract MIDI device access behind a fakeable control-port service. The native adapter may use `midir` directly and may create platform-visible virtual ports where supported; script-facing input/output direction and callback semantics must remain independent of host naming details.
 - Poll or subscribe for endpoint changes off the realtime path. Compile each non-empty anchored regex once per rule revision. Output to multiple matches in deterministic endpoint order and retain bounded FIFO ordering through throttling.
 - Treat scripts as trusted local extensions. Preserve the compatibility environment and restricted Shoop `require` behavior where practical, but do not delay the milestone for adversarial sandbox hardening. Syntax/runtime errors and panics at Rust boundaries must still be contained and observable.
-- Preserve `script_settings.1` and `.shoop` v1 compatibility. Machine-wide path-based scripts and source-bearing session scripts are distinct; never write absolute machine paths into a session archive.
+- Preserve retained QML `script_settings.1` behavior without importing it into egui, and preserve `.shoop` v1 compatibility. Machine-wide path-based scripts in `shoop-egui-settings` and source-bearing session scripts are distinct; never write absolute machine paths into a session archive.
 
 ## Staged implementation plan
 
@@ -134,7 +136,7 @@ Verification:
 
 ### Stage 6 — Integrate settings, bundled resources, and session scripts
 
-- [x] Extend `shoop_settings` with typed preservation-aware access to existing `script_settings.1`; discover embedded bundled scripts, default only `keyboard.lua` to enabled, and preserve unrelated/unknown service-owned settings fields.
+- [x] Register typed preservation-aware `shoop-egui-settings` keys for bundled startup toggles and ordered user path/enabled entries; discover embedded bundled scripts, default only `keyboard.lua` to enabled, and preserve unknown same-version values.
 - [x] Add composition-root file adapters for adding/reloading user scripts and atomically persisting enablement, following the existing bytes/intent boundary rather than putting filesystem access in `shoop_egui`.
 - [x] Map source-bearing `.shoop` `ScriptDocument` entries into staged syntax-checked runtimes and activate them after successful session commit; stop replaced session scripts only at commit and preserve machine-wide scripts.
 - [x] Ensure save captures session-script source/identity/enabled state but never embeds path-based machine-wide scripts implicitly.
@@ -148,7 +150,7 @@ Verification:
 
 ### Stage 7 — Deliver the egui script-management surface
 
-- [x] Add a main-menu entry and script manager showing name, bundled/user/session kind, enabled state, lifecycle status, latest error, callback/timer/MIDI listening state, and MIDI diagnostics.
+- [x] Add one main-menu Settings entry and a native-only **Scripts** category tab showing name, bundled/user/session kind, enabled state, lifecycle status, latest error, callback/timer/MIDI listening state, and MIDI diagnostics; remove the separate Scripts dialog.
 - [x] Add enable/disable, restart, stop, forget-user-script, add-user-script, and bundled-docstring help actions with stable script IDs and stale-result validation.
 - [x] Route raw performance key events from the eframe application through typed intents independently of widget paint, while preserving text-edit and focus rules.
 - [x] Present native MIDI unavailable/permission/open/connect/regex/overflow/send failures distinctly; on browser builds keep scripting absent or clearly unsupported rather than rendering controls that cannot work.

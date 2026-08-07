@@ -124,6 +124,6 @@ Transitive helper calls add `loop_count`, loop mode/length/next-mode queries, ex
 
 ## Lifecycle, settings, sessions, and targets
 
-Machine-wide `script_settings.1` stores path/bundled-name plus enabled state. Both bundled scripts are discoverable on first run and only `keyboard.lua` is enabled by default. Source-bearing session scripts use `.shoop` `ScriptDocument` entries and never persist machine paths.
+The native application's fresh `shoop-egui-settings` document stores typed bundled enablement toggles and an ordered user path/enabled list. Both bundled scripts are discoverable on first run and only `keyboard.lua` is enabled by default. The one Settings dialog exposes all script configuration, lifecycle, documentation, logs, and MIDI diagnostics in its **Scripts** tab. Persistent edits apply after Save; Stop, Restart, and Reload are runtime-only. Retained QML `script_settings.1` is not imported or rewritten. Source-bearing session scripts use `.shoop` `ScriptDocument` entries and never persist machine paths.
 
 Native desktop is the parity target. Browser packages continue to use `wasm32-unknown-unknown`, do not link `mlua` or native MIDI, and explicitly reject enabled script-bearing sessions until a separately approved browser scripting design exists.

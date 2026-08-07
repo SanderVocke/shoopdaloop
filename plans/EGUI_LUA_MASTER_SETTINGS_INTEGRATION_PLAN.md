@@ -167,15 +167,15 @@ Verification:
 
 ### Stage 5 — Reconcile plans, audits, and user/developer documentation
 
-- [ ] Update `EGUI_FEATURE_PARITY_MATRIX.md` and `EGUI_REPLACEMENT_PROJECT.md` by combining master settings completion with Lua/MIDI completion and replacing deferred/stale script-settings claims.
-- [ ] Amend `EGUI_LUA_SCRIPTING_AND_MIDI_CONTROL_PLAN.md` and its completion audit with an explicit post-completion integration note that supersedes the old egui `script_settings.1` evidence with fresh settings keys/dialog evidence.
-- [ ] Update `docs/egui_lua_compatibility_contract.md`, scripting/keyboard/MIDI-control user docs, `docs/settings_format_v1.md`, and `src/rust/shoopdaloop_egui/README.md` for paths, defaults, the single tabbed Settings dialog and Scripts tab, draft-vs-runtime actions, error behavior, target support, and deliberate lack of QML import.
-- [ ] Audit every remaining reference to deleted plans and old egui `settings.1`/`script_settings.1` ownership; retain references only when they explicitly describe the QML frontend.
-- [ ] Commit documentation and evidence closure.
+- [x] Update `EGUI_FEATURE_PARITY_MATRIX.md` and `EGUI_REPLACEMENT_PROJECT.md` by combining master settings completion with Lua/MIDI completion and replacing deferred/stale script-settings claims.
+- [x] Amend `EGUI_LUA_SCRIPTING_AND_MIDI_CONTROL_PLAN.md` and its completion audit with an explicit post-completion integration note that supersedes the old egui `script_settings.1` evidence with fresh settings keys/dialog evidence.
+- [x] Update `docs/egui_lua_compatibility_contract.md`, scripting/keyboard/MIDI-control user docs, `docs/settings_format_v1.md`, and `src/rust/shoopdaloop_egui/README.md` for paths, defaults, the single tabbed Settings dialog and Scripts tab, draft-vs-runtime actions, error behavior, target support, and deliberate lack of QML import.
+- [x] Audit every remaining reference to deleted plans and old egui `settings.1`/`script_settings.1` ownership; retained references now explicitly describe QML isolation or the historical superseded design.
+- [x] Commit documentation and evidence closure.
 
 Verification:
 
-- [ ] Repository searches show no claim that egui persists Lua startup state in QML settings or has a separate Scripts dialog/button, and all plan statuses/evidence agree with delivered artifacts.
+- [x] Repository searches show no current claim that egui persists Lua startup state in QML settings or has a separate Scripts dialog/button; all five surviving plan artifacts and affected user/developer documents agree with the delivered architecture.
 
 ### Stage 6 — Final end-to-end validation and delivery
 
