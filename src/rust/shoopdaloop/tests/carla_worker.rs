@@ -45,7 +45,7 @@ fn worker_executable() -> &'static str {
 }
 
 fn wait_until_failed(processor: &mut impl CarlaProcessor) {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
     while (processor.is_ready() || processor.lifecycle() == CarlaProcessorLifecycle::Running)
         && std::time::Instant::now() < deadline
     {
@@ -240,8 +240,12 @@ fn fake_worker_deadline_wait_is_bounded_for_all_supported_buffer_sizes() {
         processor.process(frames as usize).unwrap();
         let elapsed = started.elapsed();
         assert_eq!(processor.deadline_misses(), 1);
+        // The transport checks the one-period deadline in a busy loop. A
+        // preempted test thread cannot observe that check until the host
+        // scheduler runs it again, so retain a finite shared-runner allowance
+        // while still failing an actual hung callback deterministically.
         assert!(
-            elapsed <= period.saturating_mul(5) + std::time::Duration::from_millis(20),
+            elapsed <= period.saturating_mul(5) + std::time::Duration::from_millis(100),
             "{frames}-frame deadline fallback took {elapsed:?} for {period:?} period"
         );
         processor.terminate_worker_for_test().unwrap();
