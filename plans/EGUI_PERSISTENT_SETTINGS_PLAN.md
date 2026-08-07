@@ -186,23 +186,31 @@ Verification:
 
 ### Stage 6 — Final validation and documentation/ledger closure
 
-- [ ] Update `EGUI_FEATURE_PARITY_MATRIX.md` with discovered settings rows, implementation status, intentional QML-format difference, and concrete evidence.
-- [ ] Update `EGUI_REPLACEMENT_PROJECT.md` coarse status, architecture, settings ownership, roadmap, and remaining driver/FX/MIDI/script settings scope.
-- [ ] Review `EGUI_MILESTONE_5_SESSION_PERSISTENCE_AND_LOOP_IO.md` and keep its historical completion record accurate while clarifying the boundary between delivered app-global settings and still-deferred session/runtime capabilities wherever its wording became stale.
-- [ ] Update user/developer documentation for the dialog, initial preferences, native locations, browser key/origin behavior, format/version recovery, and deliberate lack of QML settings migration.
-- [ ] Run formatting, warning-denying native/Wasm builds, focused/full Rust tests, product browser workflows, realtime guards, and retained QML self-tests; record exact evidence in this plan and the ledgers.
-- [ ] Commit each completed stage or meaningful milestone, keep the pull request current, and obtain green authoritative cross-platform CI before merge.
+- [x] Update `EGUI_FEATURE_PARITY_MATRIX.md` with discovered settings rows, implementation status, intentional QML-format difference, and concrete evidence.
+- [x] Update `EGUI_REPLACEMENT_PROJECT.md` coarse status, architecture, settings ownership, roadmap, and remaining driver/FX/MIDI/script settings scope.
+- [x] Review `EGUI_MILESTONE_5_SESSION_PERSISTENCE_AND_LOOP_IO.md` and keep its historical completion record accurate while clarifying the boundary between delivered app-global settings and still-deferred session/runtime capabilities wherever its wording became stale.
+- [x] Update user/developer documentation for the dialog, initial preferences, native locations, browser key/origin behavior, format/version recovery, and deliberate lack of QML settings migration.
+- [x] Run formatting, warning-denying native/Wasm builds, focused/full Rust tests, release product browser settings workflows, realtime guards, and the retained QML CI suite; record exact evidence below and in the ledgers.
+- [ ] Commit documentation/evidence closure, keep the pull request current, and obtain green authoritative cross-platform CI before merge.
 
 Final gates:
 
-- [ ] `cargo fmt --all --check`
-- [ ] `RUSTFLAGS="-D warnings" cargo build --workspace --all-targets --features shoop_engine/app_backend`
-- [ ] `cargo test --workspace --features shoop_engine/app_backend`
-- [ ] Affected standalone/product `wasm32-unknown-unknown` checks and production Trunk/worklet packaging checks.
-- [ ] Hosted browser settings save/reload workflow plus the applicable self-contained browser check.
-- [ ] `target/debug/shoopdaloop_dev.sh --self-test` after the required build.
+- [x] `cargo fmt --all --check`
+- [x] `RUSTFLAGS="-D warnings" cargo build --workspace --all-targets --features shoop_engine/app_backend`
+- [x] `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend` (the documented device-less-host opt-out; ALSA reports `/dev/snd/seq` unavailable while the full suite passes).
+- [x] Affected warning-denying standalone/product `wasm32-unknown-unknown` checks and release Trunk/worklet/self-contained packaging checks.
+- [x] Release hosted and direct-file self-contained Chrome settings save/reload/consumer/rejection/failure workflows, plus hosted unavailable-storage coverage.
+- [x] Retained QML self-tests pass in the authoritative Linux CI job for the implementation commit. The local offscreen harness reaches an environment-equivalent `Created invalid object` hang in `tst_CompositeLoop_running.qml`; focused preceding QML cases pass and no changed code is on that QML path.
 - [ ] The eight-cell egui CI matrix passes on Linux, Windows, macOS ARM, and WebAssembly in debug/release.
-- [ ] Source/dependency scans and all plan/docs claims match the delivered architecture and evidence.
+- [x] Source/dependency scans and all plan/docs claims match the delivered architecture and evidence.
+
+### Recorded validation evidence
+
+- The settings core passes 7 target-neutral tests and 18 tests with native/legacy features. Focused presentation and composition gates pass 32 `shoop_egui`, 9 `shoopdaloop_egui`, and 3 fixture-preview tests.
+- The warning-denying all-target workspace build passes. The full workspace, including realtime no-allocation/lock guards and Carla worker coverage, passes with the repository's documented missing-device opt-out.
+- Warning-denying native and Wasm checks pass for settings, presentation, product, and preview packages. `cargo tree` and source scans show no filesystem/browser/backend/engine dependency in standalone `shoop_egui` and no Qt/frontend/native-driver dependency in the browser product tree.
+- Release Trunk builds the UI and worklet and produces the self-contained artifact. Chrome 147 passes hosted and direct-file real `localStorage` save/reload into Add Track defaults, invalid-value fallback, future-version no-overwrite, injected set failure/no publication, and unavailable-storage diagnostics without console exceptions.
+- PR #677's Linux product test job passes the full Rust/realtime/QML gate for implementation commit `bdf342e2`; the cross-target matrix rerun is the remaining closure gate.
 
 ## Execution contract
 

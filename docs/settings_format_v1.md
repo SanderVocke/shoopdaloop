@@ -16,8 +16,8 @@ ProjectDirs::from("org", "ShoopDaLoop", "ShoopDaLoop egui").config_dir()
 
 The settings file is `settings.json` below that directory. Typical locations are:
 
-- Linux: `$XDG_CONFIG_HOME/shoopdaloop-egui/settings.json`, falling back to `$HOME/.config/shoopdaloop-egui/settings.json`.
-- macOS: `$HOME/Library/Application Support/org.ShoopDaLoop.ShoopDaLoop egui/settings.json`.
+- Linux: `$XDG_CONFIG_HOME/shoopdaloopegui/settings.json`, falling back to `$HOME/.config/shoopdaloopegui/settings.json`.
+- macOS: `$HOME/Library/Application Support/org.ShoopDaLoop.ShoopDaLoop-egui/settings.json`.
 - Windows: `%APPDATA%\ShoopDaLoop\ShoopDaLoop egui\config\settings.json`.
 
 The resolved path shown by the application is authoritative; environment variables and platform APIs may change the examples.
