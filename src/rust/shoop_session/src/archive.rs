@@ -158,6 +158,7 @@ pub fn decode_session_with_limits(
     if !bytes.starts_with(b"PK") {
         return Err(SessionError::UnsupportedFormat);
     }
+    inspect_central_directory(bytes, limits)?;
     let mut archive = ZipArchive::new(Cursor::new(bytes))?;
     inspect_archive(&mut archive, limits)?;
     let manifest_bytes = read_entry(&mut archive, MANIFEST_PATH, limits.max_uncompressed_bytes)?;
@@ -241,6 +242,102 @@ fn encode_zip<T: Serialize>(
         writer.write_all(&payload)?;
     }
     Ok(writer.finish()?.into_inner())
+}
+
+fn inspect_central_directory(bytes: &[u8], limits: DecodeLimits) -> Result<(), SessionError> {
+    const EOCD: &[u8; 4] = b"PK\x05\x06";
+    const ZIP64_LOCATOR: &[u8; 4] = b"PK\x06\x07";
+    const ZIP64_EOCD: &[u8; 4] = b"PK\x06\x06";
+    const CENTRAL_FILE: &[u8; 4] = b"PK\x01\x02";
+
+    let eocd = bytes
+        .windows(EOCD.len())
+        .rposition(|window| window == EOCD)
+        .ok_or_else(|| {
+            SessionError::Archive("end-of-central-directory record is missing".to_owned())
+        })?;
+    if eocd + 22 > bytes.len() {
+        return Err(SessionError::Archive(
+            "end-of-central-directory record is truncated".to_owned(),
+        ));
+    }
+    let read_u16 = |offset: usize| u16::from_le_bytes([bytes[offset], bytes[offset + 1]]);
+    let read_u32 = |offset: usize| {
+        u32::from_le_bytes([
+            bytes[offset],
+            bytes[offset + 1],
+            bytes[offset + 2],
+            bytes[offset + 3],
+        ])
+    };
+    let read_u64 = |offset: usize| {
+        u64::from_le_bytes([
+            bytes[offset],
+            bytes[offset + 1],
+            bytes[offset + 2],
+            bytes[offset + 3],
+            bytes[offset + 4],
+            bytes[offset + 5],
+            bytes[offset + 6],
+            bytes[offset + 7],
+        ])
+    };
+    let mut entries = read_u16(eocd + 10) as u64;
+    let mut central_offset = read_u32(eocd + 16) as u64;
+    if entries == u16::MAX as u64 || central_offset == u32::MAX as u64 {
+        if eocd < 20 || &bytes[eocd - 20..eocd - 16] != ZIP64_LOCATOR {
+            return Err(SessionError::Archive(
+                "ZIP64 central-directory locator is missing".to_owned(),
+            ));
+        }
+        let zip64_offset = read_u64(eocd - 12) as usize;
+        if zip64_offset + 56 > bytes.len() || &bytes[zip64_offset..zip64_offset + 4] != ZIP64_EOCD {
+            return Err(SessionError::Archive(
+                "ZIP64 end-of-central-directory record is invalid".to_owned(),
+            ));
+        }
+        entries = read_u64(zip64_offset + 32);
+        central_offset = read_u64(zip64_offset + 48);
+    }
+    if entries > limits.max_entries as u64 {
+        return Err(SessionError::ResourceLimit(format!(
+            "{entries} entries exceeds {}",
+            limits.max_entries
+        )));
+    }
+    let mut cursor = usize::try_from(central_offset)
+        .map_err(|_| SessionError::Archive("central-directory offset is invalid".to_owned()))?;
+    let mut names = BTreeSet::new();
+    for _ in 0..entries {
+        if cursor + 46 > bytes.len() || &bytes[cursor..cursor + 4] != CENTRAL_FILE {
+            return Err(SessionError::Archive(
+                "central-directory entry is invalid".to_owned(),
+            ));
+        }
+        let name_len = read_u16(cursor + 28) as usize;
+        let extra_len = read_u16(cursor + 30) as usize;
+        let comment_len = read_u16(cursor + 32) as usize;
+        let name_start = cursor + 46;
+        let name_end = name_start
+            .checked_add(name_len)
+            .filter(|end| *end <= bytes.len())
+            .ok_or_else(|| {
+                SessionError::Archive("central-directory filename is truncated".to_owned())
+            })?;
+        if !names.insert(bytes[name_start..name_end].to_vec()) {
+            return Err(SessionError::Archive(
+                "duplicate archive path in central directory".to_owned(),
+            ));
+        }
+        cursor = name_end
+            .checked_add(extra_len)
+            .and_then(|next| next.checked_add(comment_len))
+            .filter(|next| *next <= bytes.len())
+            .ok_or_else(|| {
+                SessionError::Archive("central-directory entry is truncated".to_owned())
+            })?;
+    }
+    Ok(())
 }
 
 fn inspect_archive(
@@ -567,12 +664,13 @@ pub(crate) fn check_standalone_version(
     check_version(format, version, document_version)
 }
 
-pub(crate) fn inspect_standalone_archive<'a>(
-    bytes: &'a [u8],
-) -> Result<ZipArchive<Cursor<&'a [u8]>>, SessionError> {
+pub(crate) fn inspect_standalone_archive(
+    bytes: &[u8],
+) -> Result<ZipArchive<Cursor<&[u8]>>, SessionError> {
     if !bytes.starts_with(b"PK") {
         return Err(SessionError::UnsupportedFormat);
     }
+    inspect_central_directory(bytes, DecodeLimits::default())?;
     let mut archive = ZipArchive::new(Cursor::new(bytes))?;
     inspect_archive(&mut archive, DecodeLimits::default())?;
     Ok(archive)
@@ -648,6 +746,33 @@ mod tests {
         assert!(matches!(
             inspect_archive(&mut archive, DecodeLimits::default()),
             Err(SessionError::Archive(_))
+        ));
+    }
+
+    #[test]
+    fn duplicate_archive_paths_are_rejected() {
+        let cursor = Cursor::new(Vec::new());
+        let mut writer = ZipWriter::new(cursor);
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+        writer.start_file("manifest1.json", options).unwrap();
+        writer.write_all(b"first").unwrap();
+        writer.start_file("manifest2.json", options).unwrap();
+        writer.write_all(b"second").unwrap();
+        let mut bytes = writer.finish().unwrap().into_inner();
+        for source in [b"manifest1.json", b"manifest2.json"] {
+            let mut offset = 0;
+            while let Some(index) = bytes[offset..]
+                .windows(source.len())
+                .position(|window| window == source)
+            {
+                let start = offset + index;
+                bytes[start..start + source.len()].copy_from_slice(b"manifest0.json");
+                offset = start + source.len();
+            }
+        }
+        assert!(matches!(
+            decode_session(&bytes),
+            Err(SessionError::Archive(message)) if message.contains("duplicate archive path")
         ));
     }
 }

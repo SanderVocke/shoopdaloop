@@ -21,6 +21,9 @@ pub use resample::{
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+    use std::io::{Cursor, Read, Write};
+    use zip::write::SimpleFileOptions;
+    use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
     fn direct_bundle(channels: usize) -> SessionBundle {
         let sample_rate = 48_000;
@@ -277,6 +280,85 @@ mod tests {
     }
 
     #[test]
+    fn standard_midi_import_honors_tempo_maps_stable_tracks_and_sysex() {
+        use midly::num::{u15, u24, u28, u4, u7};
+        use midly::{
+            Format, Header, MetaMessage, MidiMessage, Smf, Timing, TrackEvent, TrackEventKind,
+        };
+
+        let tempo_track = vec![
+            TrackEvent {
+                delta: u28::new(0),
+                kind: TrackEventKind::Meta(MetaMessage::Tempo(u24::new(500_000))),
+            },
+            TrackEvent {
+                delta: u28::new(480),
+                kind: TrackEventKind::Meta(MetaMessage::Tempo(u24::new(1_000_000))),
+            },
+            TrackEvent {
+                delta: u28::new(480),
+                kind: TrackEventKind::Meta(MetaMessage::EndOfTrack),
+            },
+        ];
+        let first_data_track = vec![
+            TrackEvent {
+                delta: u28::new(0),
+                kind: TrackEventKind::Midi {
+                    channel: u4::new(0),
+                    message: MidiMessage::NoteOn {
+                        key: u7::new(60),
+                        vel: u7::new(100),
+                    },
+                },
+            },
+            TrackEvent {
+                delta: u28::new(240),
+                kind: TrackEventKind::SysEx(&[0x7d, 0x01, 0xf7]),
+            },
+            TrackEvent {
+                delta: u28::new(720),
+                kind: TrackEventKind::Midi {
+                    channel: u4::new(0),
+                    message: MidiMessage::NoteOff {
+                        key: u7::new(60),
+                        vel: u7::new(0),
+                    },
+                },
+            },
+        ];
+        let second_data_track = vec![TrackEvent {
+            delta: u28::new(0),
+            kind: TrackEventKind::Midi {
+                channel: u4::new(1),
+                message: MidiMessage::NoteOn {
+                    key: u7::new(62),
+                    vel: u7::new(90),
+                },
+            },
+        }];
+        let smf = Smf {
+            header: Header {
+                format: Format::Parallel,
+                timing: Timing::Metrical(u15::new(480)),
+            },
+            tracks: vec![tempo_track, first_data_track, second_data_track],
+        };
+        let mut bytes = Vec::new();
+        smf.write_std(&mut bytes).unwrap();
+
+        let imported = decode_standard_midi(&bytes, 48_000).unwrap();
+        assert_eq!(imported.events.len(), 4);
+        assert_eq!(imported.events[0].frame, 0);
+        assert_eq!(imported.events[0].data[0], 0x90);
+        assert_eq!(imported.events[1].frame, 0);
+        assert_eq!(imported.events[1].data[0], 0x91);
+        assert_eq!(imported.events[2].frame, 12_000);
+        assert_eq!(imported.events[2].data, vec![0xf0, 0x7d, 0x01, 0xf7]);
+        assert_eq!(imported.events[3].frame, 72_000);
+        assert!(imported.length_frames >= 72_001);
+    }
+
+    #[test]
     fn float_wav_round_trip_is_exact() {
         let audio = LoopAudio {
             sample_rate: 44_100,
@@ -341,6 +423,33 @@ mod tests {
         assert_eq!(midi.events[0].frame, 67);
         assert_eq!(midi.events[1].frame, 134);
         assert_eq!(midi.start_state, vec![vec![0xB0, 7, 100]]);
+    }
+
+    #[test]
+    fn payload_hash_mismatch_is_rejected() {
+        let encoded = encode_session(&direct_bundle(2), "hash-test").unwrap();
+        let mut input = ZipArchive::new(Cursor::new(encoded)).unwrap();
+        let mut output = ZipWriter::new(Cursor::new(Vec::new()));
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+        let mut corrupted = false;
+        for index in 0..input.len() {
+            let mut entry = input.by_index(index).unwrap();
+            let name = entry.name().to_owned();
+            let mut payload = Vec::new();
+            entry.read_to_end(&mut payload).unwrap();
+            if !corrupted && name.starts_with("media/audio/") {
+                payload[0] ^= 1;
+                corrupted = true;
+            }
+            output.start_file(name, options).unwrap();
+            output.write_all(&payload).unwrap();
+        }
+        assert!(corrupted);
+        let bytes = output.finish().unwrap().into_inner();
+        assert!(matches!(
+            decode_session(&bytes),
+            Err(SessionError::HashMismatch { .. })
+        ));
     }
 
     #[test]
