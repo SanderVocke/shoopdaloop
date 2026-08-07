@@ -2,10 +2,99 @@ use std::collections::BTreeMap;
 
 use crate::{
     AppAction, AppState, ConnectionDialog, ConnectionScope, DetailsPane, DirectTrackSpec,
-    GlobalControls, TrackWidget, TracksWidget,
+    GlobalControls, SettingsAction, SettingsDialog, TrackWidget, TracksWidget,
 };
+use shoop_settings::{
+    SettingDefinition, SettingEffect, SettingKey, SettingsRegistry, SettingsRegistryBuilder,
+    SettingsRegistryError, SettingsViewState, StringToggleList,
+};
+use std::sync::Arc;
 
 const LOGO_BYTES: &[u8] = include_bytes!("../../../../resources/logo-small.png");
+
+pub const DEFAULT_NEW_TRACK_AUDIO_CHANNELS: SettingKey<u32> =
+    SettingKey::new("tracks.new.default_audio_channels");
+pub const DEFAULT_NEW_TRACK_MIDI: SettingKey<bool> = SettingKey::new("tracks.new.default_midi");
+pub const KEYBOARD_SCRIPT_ENABLED: SettingKey<bool> =
+    SettingKey::new("scripting.bundled.keyboard.enabled");
+pub const APC_MINI_SCRIPT_ENABLED: SettingKey<bool> =
+    SettingKey::new("scripting.bundled.akai_apc_mini_mk1.enabled");
+pub const USER_SCRIPTS: SettingKey<StringToggleList> = SettingKey::new("scripting.user_scripts");
+
+pub fn register_settings(
+    builder: &mut SettingsRegistryBuilder,
+) -> Result<(), SettingsRegistryError> {
+    builder.register(
+        SettingDefinition::new(
+            DEFAULT_NEW_TRACK_AUDIO_CHANNELS,
+            2,
+            "Track defaults",
+            "New track audio channels",
+            "Audio channel count used when a new Add Track dialog is opened.",
+        )
+        .category_order(10)
+        .setting_order(10)
+        .effect(SettingEffect::NextUse),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            DEFAULT_NEW_TRACK_MIDI,
+            false,
+            "Track defaults",
+            "Enable MIDI on new tracks",
+            "MIDI state used when a new Add Track dialog is opened.",
+        )
+        .category_order(10)
+        .setting_order(20)
+        .effect(SettingEffect::NextUse),
+    )
+}
+
+pub fn register_script_settings(
+    builder: &mut SettingsRegistryBuilder,
+) -> Result<(), SettingsRegistryError> {
+    builder.register(
+        SettingDefinition::new(
+            KEYBOARD_SCRIPT_ENABLED,
+            true,
+            "Scripts",
+            "Enable keyboard controls",
+            "Run the bundled keyboard.lua script at startup.",
+        )
+        .category_order(20)
+        .setting_order(10)
+        .effect(SettingEffect::Immediate),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            APC_MINI_SCRIPT_ENABLED,
+            false,
+            "Scripts",
+            "Enable Akai APC Mini MK1 controls",
+            "Run the bundled akai_apc_mini_mk1.lua script at startup.",
+        )
+        .category_order(20)
+        .setting_order(20)
+        .effect(SettingEffect::Immediate),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            USER_SCRIPTS,
+            StringToggleList::default(),
+            "Scripts",
+            "User Lua scripts",
+            "Lua source files known to this machine and whether they run at startup.",
+        )
+        .category_order(20)
+        .setting_order(30)
+        .effect(SettingEffect::Immediate),
+    )
+}
+
+pub struct AppWidgetResponse {
+    pub app_actions: Vec<AppAction>,
+    pub settings_actions: Vec<SettingsAction>,
+}
 
 pub struct AppWidget {
     tracks: TracksWidget,
@@ -13,12 +102,12 @@ pub struct AppWidget {
     details: DetailsPane,
     sync_track: TrackWidget,
     connections: ConnectionDialog,
+    settings: SettingsDialog,
     details_open: bool,
     add_track_open: bool,
     add_track_name: String,
     add_track_audio_channels: u32,
     add_track_midi: bool,
-    scripts_open: bool,
     logo: Option<egui::TextureHandle>,
     io_channel_mappings: BTreeMap<crate::TaskId, Vec<u32>>,
     io_channel_selections: BTreeMap<crate::TaskId, Vec<u32>>,
@@ -27,24 +116,30 @@ pub struct AppWidget {
     add_track_accept_rect: Option<egui::Rect>,
     #[cfg(test)]
     add_track_cancel_rect: Option<egui::Rect>,
-    #[cfg(test)]
-    script_enable_rects: BTreeMap<crate::ScriptId, egui::Rect>,
 }
 
 impl Default for AppWidget {
     fn default() -> Self {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).expect("built-in settings must be valid");
+        Self::new(Arc::new(builder.finish()))
+    }
+}
+
+impl AppWidget {
+    pub fn new(settings_registry: Arc<SettingsRegistry>) -> Self {
         Self {
             tracks: TracksWidget::default(),
             global_controls: GlobalControls::default(),
             details: DetailsPane::default(),
             sync_track: TrackWidget::default(),
             connections: ConnectionDialog::default(),
+            settings: SettingsDialog::new(settings_registry),
             details_open: true,
             add_track_open: false,
             add_track_name: String::new(),
             add_track_audio_channels: 2,
             add_track_midi: false,
-            scripts_open: false,
             logo: None,
             io_channel_mappings: BTreeMap::new(),
             io_channel_selections: BTreeMap::new(),
@@ -53,22 +148,28 @@ impl Default for AppWidget {
             add_track_accept_rect: None,
             #[cfg(test)]
             add_track_cancel_rect: None,
-            #[cfg(test)]
-            script_enable_rects: BTreeMap::new(),
         }
     }
-}
 
-impl AppWidget {
     pub fn open_connections(&mut self, scope: ConnectionScope) {
         self.connections.open(scope);
+    }
+
+    pub fn add_user_script_path(&mut self, path: String) -> Result<(), &'static str> {
+        self.settings.add_user_script_path(path)
     }
 
     pub fn open_connection_scope(&self) -> Option<ConnectionScope> {
         self.connections.is_open().then(|| self.connections.scope())
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui, state: &AppState) -> Vec<AppAction> {
+    pub fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &AppState,
+        settings_state: &SettingsViewState,
+        script_paths: Option<&BTreeMap<crate::ScriptId, String>>,
+    ) -> AppWidgetResponse {
         self.ensure_logo(ui.ctx());
         let events = ui.ctx().input(|input| input.events.clone());
         let text_entry_active = ui.ctx().egui_wants_keyboard_input();
@@ -80,6 +181,7 @@ impl AppWidget {
         .into_iter()
         .map(AppAction::KeyEvent)
         .collect::<Vec<_>>();
+        let mut settings_actions = Vec::new();
 
         egui::Panel::top("global_controls")
             .frame(
@@ -106,8 +208,8 @@ impl AppWidget {
                         if self.global_controls.take_load_session_requested() {
                             actions.push(AppAction::RequestLoadSessionPicker);
                         }
-                        if ui.button("Scripts").clicked() {
-                            self.scripts_open = true;
+                        if self.global_controls.take_settings_requested() {
+                            self.settings.open(settings_state);
                         }
                     });
             });
@@ -188,10 +290,7 @@ impl AppWidget {
                     .collect();
                 let response = self.tracks.show(ui, &main_tracks);
                 if response.add_track_requested {
-                    self.add_track_name = format!("Track {}", main_tracks.len() + 1);
-                    self.add_track_audio_channels = 2;
-                    self.add_track_midi = false;
-                    self.add_track_open = true;
+                    self.open_add_track_dialog(main_tracks.len(), settings_state);
                 }
                 if let Some(track_id) = response.connection_track_requested {
                     self.connections.open(ConnectionScope::Track(track_id));
@@ -199,157 +298,45 @@ impl AppWidget {
                 actions.extend(response.intents);
             });
 
-        self.show_scripts_window(ui.ctx(), state, &mut actions);
         self.show_add_track_dialog(ui.ctx(), &mut actions);
         self.show_io_task_dialog(ui.ctx(), state, &mut actions);
         actions.extend(self.connections.show(ui.ctx(), state));
-        actions
+        let settings_response =
+            self.settings
+                .show(ui.ctx(), settings_state, &state.scripting, script_paths);
+        actions.extend(settings_response.app_actions);
+        settings_actions.extend(settings_response.settings_actions);
+        AppWidgetResponse {
+            app_actions: actions,
+            settings_actions,
+        }
     }
 
-    fn show_scripts_window(
+    fn open_add_track_dialog(
         &mut self,
-        context: &egui::Context,
-        state: &AppState,
-        actions: &mut Vec<AppAction>,
+        main_track_count: usize,
+        settings_state: &SettingsViewState,
     ) {
-        if !self.scripts_open {
-            return;
-        }
-        egui::Window::new("Lua scripts")
-            .id(egui::Id::new("lua_scripts"))
-            .open(&mut self.scripts_open)
-            .default_width(620.0)
-            .show(context, |ui| {
-                if !state.scripting.supported {
-                    ui.colored_label(
-                        egui::Color32::YELLOW,
-                        "Lua scripting and MIDI control are unavailable in browser builds.",
-                    );
-                    return;
-                }
-                if ui.button("Add Lua file…").clicked() {
-                    actions.push(AppAction::RequestAddScriptFilePicker);
-                }
-                ui.separator();
-                egui::ScrollArea::vertical()
-                    .id_salt("lua_script_list")
-                    .max_height(520.0)
-                    .show(ui, |ui| {
-                        for script in state.scripting.scripts.iter() {
-                            ui.group(|ui| {
-                                ui.horizontal(|ui| {
-                                    let mut enabled = script.enabled;
-                                    let enable_response = ui.checkbox(&mut enabled, "enabled");
-                                    #[cfg(test)]
-                                    self.script_enable_rects
-                                        .insert(script.id, enable_response.rect);
-                                    if enable_response.changed() {
-                                        actions.push(AppAction::SetScriptEnabled {
-                                            script_id: script.id,
-                                            enabled,
-                                        });
-                                    }
-                                    ui.strong(&script.name);
-                                    ui.label(format!("{:?} · {:?}", script.kind, script.lifecycle));
-                                });
-                                if let Some(error) = &script.latest_error {
-                                    ui.colored_label(egui::Color32::LIGHT_RED, error);
-                                }
-                                if let Some(documentation) = &script.documentation {
-                                    ui.collapsing("Documentation", |ui| {
-                                        ui.label(documentation);
-                                    });
-                                }
-                                ui.label(format!(
-                                    "Callbacks: {} loop, {} global, {} keyboard; {} timers",
-                                    script.activity.loop_callbacks,
-                                    script.activity.global_callbacks,
-                                    script.activity.keyboard_callbacks,
-                                    script.activity.timers
-                                ));
-                                ui.label(format!(
-                                    "MIDI: {} rules, {} connections, {} dropped, {} errors",
-                                    script.midi.rules,
-                                    script.midi.connections,
-                                    script.midi.dropped_messages,
-                                    script.midi.errors
-                                ));
-                                for rule in script.midi.rule_states.iter() {
-                                    let direction = match rule.direction {
-                                        crate::ScriptMidiRuleDirection::Input => "input",
-                                        crate::ScriptMidiRuleDirection::Output => "output",
-                                    };
-                                    ui.collapsing(
-                                        format!("MIDI {direction}: /{}/", rule.pattern),
-                                        |ui| {
-                                            if rule.matched_endpoints.is_empty() {
-                                                ui.weak("No matching endpoints");
-                                            } else {
-                                                ui.label(format!(
-                                                    "Matched: {}",
-                                                    rule.matched_endpoints.join(", ")
-                                                ));
-                                            }
-                                            if rule.connected_endpoints.is_empty() {
-                                                ui.weak("Not connected");
-                                            } else {
-                                                ui.label(format!(
-                                                    "Connected: {}",
-                                                    rule.connected_endpoints.join(", ")
-                                                ));
-                                            }
-                                            if let Some(error) = &rule.latest_error {
-                                                ui.colored_label(
-                                                    egui::Color32::LIGHT_RED,
-                                                    format!("Latest failure: {error}"),
-                                                );
-                                            }
-                                        },
-                                    );
-                                }
-                                ui.horizontal(|ui| {
-                                    if ui.button("Restart").clicked() {
-                                        actions.push(AppAction::RestartScript {
-                                            script_id: script.id,
-                                        });
-                                    }
-                                    if ui.button("Stop").clicked() {
-                                        actions.push(AppAction::StopScript {
-                                            script_id: script.id,
-                                        });
-                                    }
-                                    if script.kind == crate::ScriptKind::User {
-                                        if ui.button("Reload file").clicked() {
-                                            actions.push(AppAction::RequestReloadScriptFile {
-                                                script_id: script.id,
-                                            });
-                                        }
-                                        if ui.button("Remove").clicked() {
-                                            actions.push(AppAction::ForgetScript {
-                                                script_id: script.id,
-                                            });
-                                        }
-                                    }
-                                });
-                                ui.collapsing(format!("Log ({})", script.logs.len()), |ui| {
-                                    if script.logs.is_empty() {
-                                        ui.weak("No messages");
-                                    }
-                                    for entry in script.logs.iter() {
-                                        let color = match entry.level {
-                                            crate::ScriptLogLevel::Warning => egui::Color32::YELLOW,
-                                            crate::ScriptLogLevel::Error => {
-                                                egui::Color32::LIGHT_RED
-                                            }
-                                            _ => ui.visuals().text_color(),
-                                        };
-                                        ui.colored_label(color, &entry.message);
-                                    }
-                                });
-                            });
-                        }
-                    });
-            });
+        self.add_track_name = format!("Track {}", main_track_count + 1);
+        self.add_track_audio_channels = settings_state
+            .active
+            .get(DEFAULT_NEW_TRACK_AUDIO_CHANNELS)
+            .expect("registered audio-channel setting must retain its type");
+        self.add_track_midi = settings_state
+            .active
+            .get(DEFAULT_NEW_TRACK_MIDI)
+            .expect("registered MIDI setting must retain its type");
+        self.add_track_open = true;
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_settings_test_open_add_track(
+        &mut self,
+        settings_state: &SettingsViewState,
+    ) -> (u32, bool) {
+        self.open_add_track_dialog(0, settings_state);
+        (self.add_track_audio_channels, self.add_track_midi)
     }
 
     fn show_io_task_dialog(
@@ -738,6 +725,22 @@ mod tests {
 
     use super::*;
     use crate::{LoopDetailsState, TrackState, WaveformChannelState};
+    use shoop_settings::{
+        SettingsDraft, SettingsPersistenceState, SettingsRegistryBuilder, SettingsViewState,
+    };
+
+    fn settings_state() -> SettingsViewState {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        SettingsViewState {
+            active: Arc::new(registry.defaults(1)),
+            diagnostics: Arc::from([]),
+            storage_location: "fixture".to_owned(),
+            recovery_required: false,
+            persistence: SettingsPersistenceState::Idle,
+        }
+    }
 
     fn frame(
         context: &egui::Context,
@@ -746,6 +749,7 @@ mod tests {
         events: Vec<egui::Event>,
     ) -> Vec<AppAction> {
         let mut actions = Vec::new();
+        let settings = settings_state();
         let _ = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
@@ -755,7 +759,7 @@ mod tests {
                 events,
                 ..Default::default()
             },
-            |ui| actions = widget.show(ui, state),
+            |ui| actions = widget.show(ui, state, &settings, None).app_actions,
         );
         actions
     }
@@ -819,6 +823,7 @@ mod tests {
             ..Default::default()
         };
         let mut widget = AppWidget::default();
+        let settings = settings_state();
         let output = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
@@ -828,7 +833,7 @@ mod tests {
                 ..Default::default()
             },
             |ui| {
-                widget.show(ui, &state);
+                widget.show(ui, &state, &settings, None);
             },
         );
         assert!(!output.shapes.is_empty());
@@ -842,16 +847,29 @@ mod tests {
     }
 
     #[test]
-    fn scripting_window_renders_lifecycle_errors_logs_and_midi_diagnostics() {
+    fn scripts_tab_renders_lifecycle_errors_logs_and_midi_diagnostics() {
         let context = egui::Context::default();
         crate::initialize(&context);
-        let mut widget = AppWidget::default();
-        widget.scripts_open = true;
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        register_script_settings(&mut builder).unwrap();
+        let registry = Arc::new(builder.finish());
+        let settings = SettingsViewState {
+            active: Arc::new(registry.defaults(1)),
+            diagnostics: Arc::from([]),
+            storage_location: "fixture".to_owned(),
+            recovery_required: false,
+            persistence: SettingsPersistenceState::Idle,
+        };
+        let mut widget = AppWidget::new(registry);
+        widget.settings.open(&settings);
+        widget.settings.select_category("Scripts");
+        let script_id = crate::ScriptId::from_raw(1);
         let state = AppState {
             scripting: crate::ScriptingState {
                 supported: true,
                 scripts: Arc::from([crate::ScriptState {
-                    id: crate::ScriptId::from_raw(1),
+                    id: script_id,
                     name: "controller.lua".to_owned(),
                     kind: crate::ScriptKind::User,
                     enabled: true,
@@ -886,6 +904,7 @@ mod tests {
             .into(),
             ..Default::default()
         };
+        let paths = BTreeMap::from([(script_id, "/tmp/controller.lua".to_owned())]);
         let output = context.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
@@ -895,45 +914,11 @@ mod tests {
                 ..Default::default()
             },
             |ui| {
-                widget.show(ui, &state);
+                widget.show(ui, &state, &settings, Some(&paths));
             },
         );
         assert!(!output.shapes.is_empty());
-        assert!(widget.scripts_open);
-        frame(&context, &mut widget, &state, Vec::new());
-        let center = widget.script_enable_rects[&crate::ScriptId::from_raw(1)].center();
-        frame(
-            &context,
-            &mut widget,
-            &state,
-            vec![
-                egui::Event::PointerMoved(center),
-                egui::Event::PointerButton {
-                    pos: center,
-                    button: egui::PointerButton::Primary,
-                    pressed: true,
-                    modifiers: egui::Modifiers::NONE,
-                },
-            ],
-        );
-        let actions = frame(
-            &context,
-            &mut widget,
-            &state,
-            vec![
-                egui::Event::PointerMoved(center),
-                egui::Event::PointerButton {
-                    pos: center,
-                    button: egui::PointerButton::Primary,
-                    pressed: false,
-                    modifiers: egui::Modifiers::NONE,
-                },
-            ],
-        );
-        assert!(actions.contains(&AppAction::SetScriptEnabled {
-            script_id: crate::ScriptId::from_raw(1),
-            enabled: false,
-        }));
+        assert!(widget.settings.is_open());
     }
 
     #[test]
@@ -960,6 +945,7 @@ mod tests {
             ..Default::default()
         };
 
+        let settings = settings_state();
         let mut uploaded_logo = false;
         for size in [egui::vec2(360.0, 200.0), egui::vec2(900.0, 600.0)] {
             let output = context.run_ui(
@@ -968,7 +954,7 @@ mod tests {
                     ..Default::default()
                 },
                 |ui| {
-                    widget.show(ui, &state);
+                    widget.show(ui, &state, &settings, None);
                 },
             );
 
@@ -976,5 +962,43 @@ mod tests {
             uploaded_logo |= !output.textures_delta.set.is_empty();
         }
         assert!(uploaded_logo);
+    }
+
+    #[test]
+    fn add_track_defaults_are_registered_and_read_only_when_a_new_draft_opens() {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let initial = registry.defaults(4);
+        let mut draft = SettingsDraft::from_snapshot(&initial);
+        draft.set(DEFAULT_NEW_TRACK_AUDIO_CHANNELS, 6);
+        draft.set(DEFAULT_NEW_TRACK_MIDI, true);
+        let document = registry
+            .document_from_draft(
+                &shoop_settings::EgSettingsDocument::empty("test"),
+                &draft,
+                "test",
+            )
+            .unwrap();
+        let state = SettingsViewState {
+            active: Arc::new(registry.resolve(&document, 5).snapshot),
+            diagnostics: Arc::from([]),
+            storage_location: "fixture".to_owned(),
+            recovery_required: false,
+            persistence: SettingsPersistenceState::Saved,
+        };
+        let mut widget = AppWidget::default();
+        widget.open_add_track_dialog(2, &state);
+        assert_eq!(widget.add_track_name, "Track 3");
+        assert_eq!(widget.add_track_audio_channels, 6);
+        assert!(widget.add_track_midi);
+
+        let replacement = registry.defaults(6);
+        assert_eq!(
+            replacement.get(DEFAULT_NEW_TRACK_AUDIO_CHANNELS).unwrap(),
+            2
+        );
+        assert_eq!(widget.add_track_audio_channels, 6);
+        assert!(widget.add_track_midi);
     }
 }

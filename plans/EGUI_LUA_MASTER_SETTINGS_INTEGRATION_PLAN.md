@@ -95,30 +95,30 @@ Dependencies are ordered: safeguard and merge first, make the shared settings ty
 
 ### Stage 0 — Safeguard and freeze merge evidence
 
-- [ ] Fetch `origin/master` and the feature tip, require a clean worktree, and create a named backup ref at `dc16dc5d`.
-- [ ] Record the actual merge base, divergence, changed-file overlap, trial-merge conflict list, and pre-merge green PR #678 checks in this plan if they differ from the baseline above.
-- [ ] Confirm the fresh egui settings contract and retained QML isolation before resolving any settings conflict.
+- [x] Fetch `origin/master` and the feature tip, require a clean worktree, and create named backup ref `backup/lua-before-master-settings-merge-20260807` at `dc16dc5d`.
+- [x] Record the actual merge base, divergence, changed-file overlap, trial-merge conflict list, and pre-merge green PR #678 checks in this plan; they match the baseline above.
+- [x] Confirm the fresh egui settings contract and retained QML isolation before resolving any settings conflict.
 
 Verification:
 
-- [ ] The backup ref resolves to the original feature tip, `git status` is clean, and the recorded conflict inventory is reproducible with `git merge-tree --write-tree`.
+- [x] The backup ref resolves to the original feature tip, the pre-merge worktree was clean, and `git merge-tree --write-tree dc16dc5d origin/master` reproduces all six recorded conflicts.
 
 ### Stage 1 — Merge master and resolve structural conflicts
 
-- [ ] Merge `origin/master` without committing, then resolve each conflict by composing both features:
+- [x] Merge `origin/master` without committing, then resolve each conflict by composing both features:
   - keep master's modular `shoop_settings` layout and settings manager/dialog, not the branch's monolithic legacy file;
   - combine `AppWidgetResponse`, Add Track settings, the single tabbed Settings dialog, Lua keyboard routing, and the complete Scripts-tab diagnostics/actions while deleting the separate Scripts window;
   - combine settings-before-runtime startup with actor-local Lua startup;
   - merge both parity/replacement ledger updates without dropping completed rows;
   - regenerate, rather than hand-edit, `Cargo.lock`.
-- [ ] Audit clean auto-merges and deletion decisions, especially `.github/workflows/build_and_test_egui.yml`, `shoop_egui/src/lib.rs`, both egui manifests, `global_controls.rs`, preview construction, browser smoke code, and README.
-- [ ] Remove only obsolete direct legacy-script persistence code; do not remove Lua runtime/session/MIDI behavior while settling compilation.
-- [ ] Commit the mechanically and semantically resolved master merge as one integration milestone.
+- [x] Audit clean auto-merges and deletion decisions, especially `.github/workflows/build_and_test_egui.yml`, `shoop_egui/src/lib.rs`, both egui manifests, `global_controls.rs`, preview construction, browser smoke code, and README.
+- [x] Remove only obsolete direct legacy-script persistence code; Lua runtime/session/MIDI behavior remains present and focused suites compile.
+- [x] Commit the mechanically and semantically resolved master merge as one integration milestone.
 
 Verification:
 
-- [ ] `git merge-base --is-ancestor origin/master HEAD` succeeds; `git diff --check` and conflict-marker scans are clean.
-- [ ] `cargo fmt --all -- --check` and warning-denying checks for `shoop_settings`, `shoop_egui`, and `shoopdaloop_egui` identify no unresolved API composition gaps.
+- [x] The merge index has no unmerged entries; `git diff --check` and conflict-marker scans are clean. `git merge-base --is-ancestor origin/master HEAD` is rechecked immediately after creating the merge commit.
+- [x] `cargo fmt --all -- --check` and warning-denying checks for `shoop_settings --features legacy`, `shoop_egui --all-targets`, and `shoopdaloop_egui --all-targets` pass.
 
 ### Stage 2 — Extend the typed settings core for ordered script entries
 

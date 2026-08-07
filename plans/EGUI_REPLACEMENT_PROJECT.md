@@ -20,8 +20,8 @@ Milestone plans must reference both this document and the parity matrix, and mus
 
 | Area | Status | Notes |
 |---|---|---|
-| Project architecture | Usable | The cross-target production composition selects native threaded dummy or hosted direct Web Audio/AudioWorklet ownership; `shoop_session`, application-owned transactional persistence, the native Carla subprocess baseline, and frontend-independent `shoop_scripting` are real boundaries. Native Lua states remain actor-local, while the browser dependency graph excludes Lua and native MIDI. Native real-driver audio composition remains future work. |
-| Feature-parity discovery | Partially explored | Tracks/loops, cross-target engine/browser audio, connections, session persistence, individual-loop media I/O, the native Carla subprocess baseline, and native Lua/script-created MIDI control are explored. Runnable egui FX/settings composition, generic MIDI rule editing, and advanced editing remain deferred or largely unexplored. |
+| Project architecture | Usable | The cross-target production composition selects native threaded dummy or hosted direct Web Audio/AudioWorklet ownership; `shoop_session`, the feature-isolated `shoop_settings` core/stores, application-owned transactional persistence, the native Carla subprocess baseline, and frontend-independent `shoop_scripting` are real boundaries. Native Lua states remain actor-local, the connection preview remains backend-free, and the browser dependency graph excludes Lua and native MIDI. Native real-driver audio composition remains future work. |
+| Feature-parity discovery | Partially explored | Tracks/loops, cross-target engine/browser audio, connections, session/media persistence, application settings, the native Carla subprocess baseline, and native Lua/script-created MIDI control are explored and built. Runnable egui FX/Carla settings, driver/device settings, generic MIDI rule editing, and advanced editing remain deferred or largely unexplored. |
 | First major milestone | Complete | The pure-egui tracks/loops vertical slice met all acceptance criteria at its completion boundary. |
 | Second major milestone | Complete | `EGUI_MILESTONE_2_ENGINE.md` consolidates the runners in `shoopdaloop_egui`; native and browser targets run the authoritative app/backend/dummy-engine path with cross-target tests and browser artifacts. |
 | Third major milestone | Complete | `EGUI_MILESTONE_3_BROWSER_AUDIO.md` delivers direct `web-sys`/AudioWorklet microphone/output in hosted secure runs with bounded protocol/storage, explicit permission, lifecycle recovery, offline dummy selection, and native regression evidence. |
@@ -29,13 +29,14 @@ Milestone plans must reference both this document and the parity matrix, and mus
 | Fifth major milestone | Complete | `EGUI_MILESTONE_5_SESSION_PERSISTENCE_AND_LOOP_IO.md` delivers playback-safe `.shoop` session save/load, exact arbitrary-channel loop audio/MIDI I/O, deterministic resampling, transactional native/worklet replacement, and native/browser file services. All PR #676 platform/browser and retained Linux Rust/realtime/QML gates pass. |
 | Lua scripting and MIDI-controller milestone | Complete | The artifact audit in `EGUI_LUA_SCRIPTING_AND_MIDI_CONTROL_COMPLETION_AUDIT.md` maps all acceptance criteria. It includes exhaustive retained-API/constants evidence and 45/45 retained QML cases, actor-owned lifecycle, keyboard/APC serial+parallel workflows, strict native MIDI pacing and per-rule diagnostics, exact startup/settings/session behavior, egui presentation, browser rejection/isolation, packages, and realtime/workspace gates. Generic MIDI-rule editing remains separate. |
 | Loop-control refinement | Complete | `EGUI_LOOP_HOVER_CONTROLS_AND_EMPTY_TRACKS_PLAN.md` delivers legible edge indicators, QML-style foreground hover families, play-dry/re-record/grab behavior, stereo loop balance, and first-track onboarding across native and browser boundaries. |
-| egui presentation | Usable | `shoop_egui` renders plain snapshots and emits typed intents while remaining independently browser-compatible and backend-free; loop popups retain stable-ID state, the connection dialog supports typed roles, and the script manager/key translator expose only plain application data. |
-| Framework-independent application API | Complete | `shoop_app_api` owns stable IDs, immutable connection/task/script/MIDI-diagnostic views, desired-state, key, script, and file-workflow intents, capabilities, and notifications without framework/backend dependencies. |
-| Rust business-logic application core | Usable | `shoop_app` runs tracks/loops, connections, persistence, media mapping, script/session lifecycle, committed callbacks, and shared GUI/Lua/MIDI reducers through a native actor or bounded cooperative browser runtime. Native session compression is worker-owned; browser audio continues independently in the worklet. |
+| Persistent application settings | Complete | The fresh versioned egui document, typed explicit registration, native atomic config storage, browser `localStorage`, generated settings dialog, and persisted Add Track audio/MIDI defaults are complete without importing QML settings. |
+| egui presentation | Usable | `shoop_egui` renders plain snapshots and emits typed intents while remaining independently browser-compatible and backend/filesystem-free; loop popups retain stable-ID state, the connection dialog supports typed roles, the settings dialog emits settings-specific drafts, and scripting/key presentation uses only plain application data. |
+| Framework-independent application API | Complete | `shoop_app_api` owns stable IDs, immutable connection/task/warning/mapping/script/MIDI-diagnostic views, desired-state, key, script, and file-workflow intents, capabilities, and notifications without framework/backend dependencies. |
+| Rust business-logic application core | Usable | `shoop_app` runs tracks/loops, connections, persistence, explicit media mapping, transactional model publication, script/session lifecycle, committed callbacks, and shared GUI/Lua/MIDI reducers through a native actor or bounded cooperative browser runtime. Native session compression is worker-owned; browser audio continues independently in the worklet. |
 | Backend façade | Usable | Fake, native dummy, and browser-worklet backends expose coherent arbitrary-channel audio/MIDI session capture and transactional stopped-state replacement with rollback, bounded generation-tagged transfer, and stable ID remapping. Native dummy also provides typed external discovery/mutation. |
-| Unified egui executable | Usable | `shoopdaloop_egui` selects native dummy or hosted Web Audio and supplies target file adapters. Native and hosted/direct-file browser workflows exercise produced session/audio/MIDI bytes in addition to audio/lifecycle/artifact tests. |
+| Unified egui executable | Usable | `shoopdaloop_egui` selects native dummy or hosted Web Audio, supplies target file/settings adapters, loads settings before consumers, and publishes new values only after durable save. Native and hosted/direct-file browser workflows exercise settings and produced session/audio/MIDI bytes in addition to audio/lifecycle/artifact tests. |
 | Cross-target egui CI | Usable | One eight-cell workflow builds, packages, uploads, then tests Linux x86_64, Windows x86_64, macOS arm64, and production WebAssembly in debug/release. PR #676 passes every cell, including hosted/direct-file browser persistence workflows. Coverage remains intentionally absent. |
-| Browser egui application | Usable | Hosted secure artifacts request microphone or output-only audio after an explicit gesture and render through AudioWorklet. Hosted and self-contained artifacts provide async session/media upload/download; direct-file physical audio remains browser-policy-dependent and explicit offline dummy mode is available. |
+| Browser egui application | Usable | Hosted secure artifacts request microphone or output-only audio after an explicit gesture and render through AudioWorklet. Hosted and self-contained artifacts provide async session/media upload/download and origin-scoped versioned settings; direct-file physical audio and storage remain browser-policy-dependent, and explicit offline dummy mode is available. |
 | Qt-hosted egui experiment | Complete | The embedded canvas/window experiment, QML state adapters, launch controls, frontend bridge code, and bridge dependencies are removed. The QML and standalone egui products now build and test independently. |
 | Full Qt/frontend removal | Not started | Removing the legacy QML product remains a final migration result, not part of the first four milestones or the completed integration cleanup. |
 
@@ -45,9 +46,11 @@ The connections milestone adds explicit application/backend port descriptors, de
 
 Milestone 5 establishes the real `shoop_session` boundary and fresh `.shoop` v1 contract in `docs/session_format_v1.md`. Exact per-channel floating-point payloads, integer-frame MIDI, independent versions/hashes, deterministic resampling, transactional backend/worklet replacement, target file adapters, and application-owned task state now serve native and browser composition. Hosted Firefox normal/stress and self-contained direct-file automation round-trip real produced session/audio/MIDI bytes while worklet callbacks continue. QML-era `.shl`, `session.1`, tar archives, and JSON `.smf` remain intentional unsupported-format inputs; QML is only a behavior-discovery and regression source.
 
+The persistent-settings slice establishes a fresh `shoop-egui-settings` JSON contract rather than importing QML `settings.1`. `shoop_settings` now separates its target-neutral typed registry/codec from opt-in native store and legacy features. Consumers explicitly register stable typed definitions during composition; `shoopdaloop_egui` loads them before runtime/widget construction, owns atomic native or browser-origin storage, and publishes immutable revisions only after save. `shoop_egui` renders registry metadata and returns settings-specific drafts without gaining filesystem/browser/backend dependencies. The initial next-use preferences configure Add Track audio channels and MIDI. Driver/device, Carla/FX, MIDI-control, script, and session-local settings remain with their owning milestones.
+
 The loop-control refinement keeps temporary controls in presentation state while moving their policies through typed intents and the application owner. Foreground overlays reproduce the QML source/child hover lifetime without changing track geometry; engine and worklet contracts carry balance and atomic grab requests, with ten-second bounded always-on input capture. Fresh production state remains one sync track/loop, and the empty main pane now points to Add Track. Dry/wet track construction and FX routing remain assigned to their later topology milestone.
 
-The completed native Carla subprocess work establishes reusable frontend-independent semantics for global direct/subprocess policy, one supervised generation per chain, fixed shared-memory audio/MIDI transfer, bounded wet fallback, parent-owned checkpoints, click recovery, generation logs, crash notification, and lifecycle status. Native release evidence covers Windows, Linux, macOS Intel, and macOS ARM. The future egui FX/settings milestone must compose these existing processor/control/realtime boundaries and snapshots through `shoop_backend`/`shoop_app`; it must not duplicate the worker protocol, serialize hosting mode into sessions, or move supervision into presentation code.
+The completed native Carla subprocess work establishes reusable frontend-independent semantics for global direct/subprocess policy, one supervised generation per chain, fixed shared-memory audio/MIDI transfer, bounded wet fallback, parent-owned checkpoints, click recovery, generation logs, crash notification, and lifecycle status. Native release evidence covers Windows, Linux, macOS Intel, and macOS ARM. The future egui FX milestone must compose these existing processor/control/realtime boundaries and snapshots through `shoop_backend`/`shoop_app` and register Carla-specific preferences through the delivered settings service; it must not duplicate the worker protocol, serialize hosting mode into sessions, or move supervision into presentation code.
 
 The abandoned path that rendered egui inside the QML application has been deleted. The legacy product continues with its ordinary QML loop presentation and Rust/CXX-Qt frontend, while `shoopdaloop_egui` and `shoop_egui_preview` remain standalone and have no QML/frontend dependency. Formatting, warning-denying all-target builds, focused suites, standalone Wasm checks, the current 1,100-test native Rust archive, and 236-case QML matrix pass on the recorded native release surfaces. Release-browser and cross-platform gates are accepted as passing under the user's explicit documentation-closure instruction. This cleanup does not advance the whole-application parity roadmap or the final Qt deletion gate.
 
@@ -74,14 +77,15 @@ Pixel-identical rendering is not required. Behavioral parity, recognizable layou
 
 ```text
 shoopdaloop_egui (native + browser)
-├── shoop_egui ──────────────> shoop_app_api
+├── shoop_egui ──────────────> shoop_app_api + shoop_settings core
+├── shoop_settings ──────────> native config store / browser adapter
 └── shoop_app ───────────────> shoop_app_api
     ├── shoop_backend ───────> shoop_engine
     ├── shoop_session
     └── shoop_scripting
 
 shoop_egui_preview (connection fixtures, native + browser)
-└── shoop_egui ──────────────> shoop_app_api
+└── shoop_egui ──────────────> shoop_app_api + shoop_settings core
 ```
 
 Milestone 2 uses only the engine-backed dummy driver in this composition root. Its façade owns the target-neutral engine `Session` directly: the native application actor and browser event loop drive the same bounded elapsed-time processing, while topology and content operations complete synchronously at stable control points.
@@ -139,6 +143,12 @@ Typed persistence and media services, including:
 - Sample-rate conversion and generated content such as click tracks.
 
 Persistence serializes the authoritative application model. It must not reconstruct session truth by traversing GUI widgets.
+
+### `shoop_settings`
+
+A Qt- and egui-independent application-preference boundary containing stable typed keys, explicit definition registration, registry metadata, versioned DTO decoding/encoding, ordered migration dispatch, immutable snapshots, drafts, validation, and diagnostics. Native config-directory/atomic-file support and retained QML compatibility helpers are opt-in features so presentation-only builds do not acquire filesystem dependencies.
+
+The composition root aggregates registrations, loads settings before constructing consumers, owns platform storage and save scheduling, and publishes a new revision only after persistence succeeds. Browser adapters use origin-scoped `localStorage`. Settings UI actions remain separate from session/business `AppIntent`; machine preferences are not `.shoop` state.
 
 ### `shoop_scripting`
 
@@ -246,7 +256,7 @@ This roadmap gives ordering, not fixed future milestone scope:
 4. Track-port connections dialog and authoritative discovery/mutation workflow. Complete.
 4a. QML-style loop hover families, grab, stereo balance, and empty-tracks onboarding. Complete.
 5. Session persistence and media workflows required to use the tracks/loops slice across runs. Complete with fresh `.shoop` v1, exact loop media, resampling, and native/browser adapters.
-6. Remaining track topology, settings, and native real driver-management workflows.
+6. Persistent application-settings foundation and initial Add Track preferences. Complete. Remaining track topology, native real-driver/device management, and feature-specific settings stay in later milestones.
 7. Dry/wet tracks, FX chains, and advanced loop details/editing.
 8. Composite-loop creation and editing.
 9. Native Lua scripting, keyboard control, and script-created MIDI control. Complete under `EGUI_LUA_SCRIPTING_AND_MIDI_CONTROL_PLAN.md` and its artifact audit; generic MIDI rule editing remains separate.

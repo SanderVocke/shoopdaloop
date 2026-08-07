@@ -7,18 +7,25 @@ mod fonts;
 mod global_controls;
 mod key_input;
 mod loop_widget;
+mod settings_dialog;
 mod track_controls;
 mod track_widget;
 mod tracks_widget;
 mod waveform;
 mod waveform_widget;
 
-pub use app_widget::AppWidget;
+pub use app_widget::{
+    register_script_settings, register_settings, AppWidget, AppWidgetResponse,
+    APC_MINI_SCRIPT_ENABLED, DEFAULT_NEW_TRACK_AUDIO_CHANNELS, DEFAULT_NEW_TRACK_MIDI,
+    KEYBOARD_SCRIPT_ENABLED, USER_SCRIPTS,
+};
 pub use connection_dialog::{ConnectionDialog, ConnectionScope};
 pub use details_pane::DetailsPane;
 pub use global_controls::GlobalControls;
 pub use loop_widget::{LoopWidget, LoopWidgetResponse};
+pub use settings_dialog::{SettingsAction, SettingsDialog, SettingsDialogResponse};
 pub use shoop_app_api::*;
+pub use shoop_settings::*;
 pub use track_controls::TrackControls;
 pub use track_widget::{TrackWidget, TrackWidgetResponse};
 pub use tracks_widget::{TracksWidget, TracksWidgetResponse};

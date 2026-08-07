@@ -18,16 +18,22 @@ use std::{
 use web_time::Instant;
 
 use eframe::egui;
+use settings::SettingsManager;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_backend::EngineBackend;
 #[cfg(not(target_arch = "wasm32"))]
+use shoop_egui::register_script_settings;
+#[cfg(not(target_arch = "wasm32"))]
 use shoop_egui::ScriptKind;
-use shoop_egui::{AppIntent, AppSnapshot, AppWidget};
+use shoop_egui::{
+    register_settings, AppIntent, AppSnapshot, AppWidget, SettingsAction, SettingsRegistryBuilder,
+};
 
 #[cfg(target_arch = "wasm32")]
 use shoop_app::CooperativeApplicationRuntime;
 #[cfg(target_arch = "wasm32")]
 mod browser_audio;
+mod settings;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_app::{ApplicationHandle, ApplicationRuntime, StartupScript};
 
@@ -38,9 +44,12 @@ const UPDATE_INTERVAL: Duration = Duration::from_millis(16);
 struct UnifiedApp {
     runtime: Runtime,
     widget: AppWidget,
+    settings: SettingsManager,
     last_update: Instant,
     #[cfg(target_arch = "wasm32")]
     browser_self_test: BrowserSelfTest,
+    #[cfg(target_arch = "wasm32")]
+    browser_settings_test: BrowserSettingsSelfTest,
     #[cfg(target_arch = "wasm32")]
     pending_file_intents: Rc<RefCell<VecDeque<AppIntent>>>,
     #[cfg(not(target_arch = "wasm32"))]
@@ -49,16 +58,53 @@ struct UnifiedApp {
     pending_file_intent_rx: Receiver<AppIntent>,
 }
 
+#[cfg(all(not(target_arch = "wasm32"), not(test)))]
+fn load_settings_manager(registry: shoop_egui::SettingsRegistry) -> SettingsManager {
+    SettingsManager::load(registry, env!("CARGO_PKG_VERSION"))
+}
+
+#[cfg(all(not(target_arch = "wasm32"), test))]
+fn load_settings_manager(registry: shoop_egui::SettingsRegistry) -> SettingsManager {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT_TEST_SETTINGS: AtomicU64 = AtomicU64::new(1);
+    let id = NEXT_TEST_SETTINGS.fetch_add(1, Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!(
+        "shoopdaloop-egui-test-settings-{}-{id}.json",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&path);
+    SettingsManager::load_from_path(registry, env!("CARGO_PKG_VERSION"), path)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn load_settings_manager(registry: shoop_egui::SettingsRegistry) -> SettingsManager {
+    SettingsManager::load(registry, env!("CARGO_PKG_VERSION"))
+}
+
 impl UnifiedApp {
     fn new() -> anyhow::Result<Self> {
         #[cfg(not(target_arch = "wasm32"))]
         let (pending_file_intent_tx, pending_file_intent_rx) = mpsc::channel();
+        let mut settings_builder = SettingsRegistryBuilder::default();
+        register_settings(&mut settings_builder)?;
+        #[cfg(not(target_arch = "wasm32"))]
+        register_script_settings(&mut settings_builder)?;
+        let settings_registry = settings_builder.finish();
+        let settings = load_settings_manager(settings_registry.clone());
+        let widget = AppWidget::new(std::sync::Arc::new(settings_registry));
+        #[cfg(not(target_arch = "wasm32"))]
+        let runtime = Runtime::new(&settings.active())?;
+        #[cfg(target_arch = "wasm32")]
+        let runtime = Runtime::new()?;
         Ok(Self {
-            runtime: Runtime::new()?,
-            widget: AppWidget::default(),
+            runtime,
+            widget,
+            settings,
             last_update: Instant::now(),
             #[cfg(target_arch = "wasm32")]
             browser_self_test: BrowserSelfTest::from_location(),
+            #[cfg(target_arch = "wasm32")]
+            browser_settings_test: BrowserSettingsSelfTest::from_location(),
             #[cfg(target_arch = "wasm32")]
             pending_file_intents: Rc::new(RefCell::new(VecDeque::new())),
             #[cfg(not(target_arch = "wasm32"))]
@@ -70,7 +116,63 @@ impl UnifiedApp {
 }
 
 impl UnifiedApp {
+    #[cfg(not(target_arch = "wasm32"))]
+    fn handle_settings_action(&mut self, action: SettingsAction) {
+        let result = match action {
+            SettingsAction::Save(draft) => validate_script_draft(&draft)
+                .and_then(|()| self.settings.request_save(draft).map_err(Into::into)),
+            SettingsAction::RecoverWithDefaults => {
+                self.settings.request_recovery().map_err(Into::into)
+            }
+            SettingsAction::RequestAddUserScript => {
+                let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Lua script", &["lua"])
+                    .pick_file()
+                else {
+                    return;
+                };
+                let path = path.to_string_lossy().into_owned();
+                read_user_script(&path).and_then(|_| {
+                    self.widget
+                        .add_user_script_path(path)
+                        .map_err(anyhow::Error::msg)
+                })
+            }
+            SettingsAction::RequestReloadUserScript { script_id } => {
+                self.runtime.reload_user_script(script_id)
+            }
+        };
+        if let Err(error) = result {
+            self.settings.report_action_error(error.to_string());
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn handle_settings_action(&mut self, action: SettingsAction) {
+        let result = match action {
+            SettingsAction::Save(draft) => self.settings.request_save(draft),
+            SettingsAction::RecoverWithDefaults => self.settings.request_recovery(),
+            SettingsAction::RequestAddUserScript
+            | SettingsAction::RequestReloadUserScript { .. } => {
+                self.settings
+                    .report_action_error("Lua scripting is unavailable in browser builds");
+                return;
+            }
+        };
+        if let Err(error) = result {
+            self.settings.report_action_error(error.to_string());
+        }
+    }
+
     fn show(&mut self, ui: &mut egui::Ui) {
+        self.settings.poll();
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Err(error) = self
+            .runtime
+            .reconcile_script_settings(&self.settings.active())
+        {
+            self.settings.report_action_error(error.to_string());
+        }
         let now = Instant::now();
         let elapsed = now.saturating_duration_since(self.last_update);
         self.last_update = now;
@@ -88,8 +190,22 @@ impl UnifiedApp {
         let snapshot = self.runtime.snapshot();
         #[cfg(target_arch = "wasm32")]
         self.browser_self_test.update(&mut self.runtime, &snapshot);
-        for intent in self.widget.show(ui, &snapshot) {
+        #[cfg(target_arch = "wasm32")]
+        self.browser_settings_test
+            .update(&mut self.settings, &mut self.widget);
+        let settings_state = self.settings.view();
+        #[cfg(not(target_arch = "wasm32"))]
+        let script_paths = Some(self.runtime.script_paths());
+        #[cfg(target_arch = "wasm32")]
+        let script_paths = None;
+        let response = self
+            .widget
+            .show(ui, &snapshot, &settings_state, script_paths);
+        for intent in response.app_actions {
             self.handle_ui_intent(intent);
+        }
+        for action in response.settings_actions {
+            self.handle_settings_action(action);
         }
         while let Some(output) = self.runtime.take_file_output() {
             #[cfg(not(target_arch = "wasm32"))]
@@ -110,26 +226,6 @@ impl UnifiedApp {
     #[cfg(not(target_arch = "wasm32"))]
     fn handle_ui_intent(&mut self, intent: AppIntent) {
         let intent = match intent {
-            AppIntent::RequestAddScriptFilePicker => {
-                let path = rfd::FileDialog::new()
-                    .add_filter("Lua script", &["lua"])
-                    .pick_file();
-                if let Some(path) = path {
-                    let sender = self.pending_file_intent_tx.clone();
-                    std::thread::spawn(move || match user_script_file_intent(&path, None) {
-                        Ok(intent) => {
-                            let _ = sender.send(intent);
-                        }
-                        Err(error) => {
-                            let _ = sender.send(AppIntent::ReportFileIoError {
-                                task_id: None,
-                                message: error.to_string(),
-                            });
-                        }
-                    });
-                }
-                None
-            }
             AppIntent::RequestLoadSessionPicker => {
                 let path = rfd::FileDialog::new()
                     .add_filter("Shoop session", &["shoop"])
@@ -215,13 +311,6 @@ impl UnifiedApp {
     #[cfg(target_arch = "wasm32")]
     fn handle_ui_intent(&mut self, intent: AppIntent) {
         match intent {
-            AppIntent::RequestAddScriptFilePicker | AppIntent::RequestReloadScriptFile { .. } => {
-                let _ = self.runtime.dispatch(AppIntent::AddUserScriptFile {
-                    path: String::new(),
-                    name: String::new(),
-                    source: "".into(),
-                });
-            }
             AppIntent::RequestLoadSessionPicker => {
                 let pending = Rc::clone(&self.pending_file_intents);
                 wasm_bindgen_futures::spawn_local(async move {
@@ -372,115 +461,76 @@ impl eframe::App for UnifiedApp {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn load_startup_scripts(path: &Path) -> (Vec<StartupScript>, Vec<String>, Vec<String>) {
-    let (settings, error) = shoop_settings::ScriptSettings::load_or_default(path);
-    let mut warnings = error
-        .into_iter()
-        .map(|error| error.to_string())
-        .collect::<Vec<_>>();
-    let mut scripts = Vec::new();
-    let mut paths = Vec::new();
-    for known in settings.known_scripts {
-        let (source, kind) = match known.path_or_filename.as_str() {
-            shoop_settings::KEYBOARD_SCRIPT_FILENAME => (
-                shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
-                ScriptKind::Bundled,
-            ),
-            shoop_settings::AKAI_APC_MINI_MK1_SCRIPT_FILENAME => (
-                shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT.to_owned(),
-                ScriptKind::Bundled,
-            ),
-            filename => match std::fs::read_to_string(filename) {
-                Ok(source) => (source, ScriptKind::User),
-                Err(error) => {
-                    warnings.push(format!("could not load script {filename}: {error}"));
-                    continue;
-                }
-            },
-        };
-        let name = Path::new(&known.path_or_filename)
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned();
-        paths.push(known.path_or_filename.clone());
-        scripts.push(StartupScript {
-            name,
-            source,
-            kind,
-            enabled: known.run,
-        });
+const KEYBOARD_SCRIPT_FILENAME: &str = "keyboard.lua";
+#[cfg(not(target_arch = "wasm32"))]
+const APC_MINI_SCRIPT_FILENAME: &str = "akai_apc_mini_mk1.lua";
+
+#[cfg(not(target_arch = "wasm32"))]
+fn configured_startup_scripts(
+    settings: &shoop_settings::SettingsSnapshot,
+) -> anyhow::Result<(Vec<StartupScript>, Vec<String>, Vec<String>)> {
+    let mut scripts = vec![
+        StartupScript {
+            name: KEYBOARD_SCRIPT_FILENAME.to_owned(),
+            source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+            kind: ScriptKind::Bundled,
+            enabled: settings.get(shoop_egui::KEYBOARD_SCRIPT_ENABLED)?,
+        },
+        StartupScript {
+            name: APC_MINI_SCRIPT_FILENAME.to_owned(),
+            source: shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT.to_owned(),
+            kind: ScriptKind::Bundled,
+            enabled: settings.get(shoop_egui::APC_MINI_SCRIPT_ENABLED)?,
+        },
+    ];
+    let mut identities = vec![
+        KEYBOARD_SCRIPT_FILENAME.to_owned(),
+        APC_MINI_SCRIPT_FILENAME.to_owned(),
+    ];
+    let mut warnings = Vec::new();
+    for configured in settings.get(shoop_egui::USER_SCRIPTS)?.0 {
+        match read_user_script(&configured.value) {
+            Ok((name, source)) => {
+                identities.push(configured.value);
+                scripts.push(StartupScript {
+                    name,
+                    source,
+                    kind: ScriptKind::User,
+                    enabled: configured.enabled,
+                });
+            }
+            Err(error) => warnings.push(error.to_string()),
+        }
     }
-    (scripts, paths, warnings)
+    Ok((scripts, identities, warnings))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn user_script_file_intent(
-    path: &Path,
-    existing: Option<shoop_egui::ScriptId>,
-) -> anyhow::Result<AppIntent> {
+fn read_user_script(path: &str) -> anyhow::Result<(String, String)> {
     let source = std::fs::read_to_string(path)
-        .map_err(|error| anyhow::anyhow!("could not read {}: {error}", path.display()))?;
-    if let Some(script_id) = existing {
-        Ok(AppIntent::ReplaceScriptSource {
-            script_id,
-            source: source.into(),
-        })
-    } else {
-        Ok(AppIntent::AddUserScriptFile {
-            path: path.to_string_lossy().into_owned(),
-            name: path
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .into_owned(),
-            source: source.into(),
-        })
+        .map_err(|error| anyhow::anyhow!("could not read {path}: {error}"))?;
+    let name = Path::new(path)
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+    shoop_scripting::LuaRuntime::new()?.check_syntax(&name, &source)?;
+    Ok((name, source))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn validate_script_draft(draft: &shoop_settings::SettingsDraft) -> anyhow::Result<()> {
+    let mut paths = std::collections::BTreeSet::new();
+    for configured in draft.get(shoop_egui::USER_SCRIPTS)?.0 {
+        if configured.value.trim().is_empty() {
+            anyhow::bail!("user script paths may not be empty");
+        }
+        if !paths.insert(configured.value.clone()) {
+            anyhow::bail!("duplicate user script path {}", configured.value);
+        }
+        read_user_script(&configured.value)?;
     }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn persist_script_enabled(
-    settings_path: &Path,
-    script_path: &str,
-    enabled: bool,
-) -> anyhow::Result<()> {
-    let settings = shoop_settings::ScriptSettings::load(settings_path)?;
-    let mut settings = settings;
-    let script = settings
-        .known_scripts
-        .iter_mut()
-        .find(|script| script.path_or_filename == script_path)
-        .ok_or_else(|| anyhow::anyhow!("script is absent from settings: {script_path}"))?;
-    script.run = enabled;
-    shoop_settings::ScriptSettings::save(settings_path, &settings)
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn persist_script_added(settings_path: &Path, script_path: &str) -> anyhow::Result<()> {
-    let mut settings = shoop_settings::ScriptSettings::load(settings_path)?;
-    if let Some(script) = settings
-        .known_scripts
-        .iter_mut()
-        .find(|script| script.path_or_filename == script_path)
-    {
-        script.run = true;
-    } else {
-        settings.known_scripts.push(shoop_settings::KnownScript {
-            path_or_filename: script_path.to_owned(),
-            run: true,
-        });
-    }
-    shoop_settings::ScriptSettings::save(settings_path, &settings)
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn persist_script_removed(settings_path: &Path, script_path: &str) -> anyhow::Result<()> {
-    let mut settings = shoop_settings::ScriptSettings::load(settings_path)?;
-    settings
-        .known_scripts
-        .retain(|script| script.path_or_filename != script_path);
-    shoop_settings::ScriptSettings::save(settings_path, &settings)
+    Ok(())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -499,17 +549,16 @@ fn associate_startup_script_paths(
 struct Runtime {
     _runtime: ApplicationRuntime,
     handle: ApplicationHandle,
-    settings_path: std::path::PathBuf,
     script_paths: std::collections::BTreeMap<shoop_egui::ScriptId, String>,
-    pending_script_paths: std::collections::VecDeque<(String, String)>,
+    pending_script_paths: std::collections::VecDeque<(String, ScriptKind, String)>,
+    applied_settings_revision: u64,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 impl Runtime {
-    fn new() -> anyhow::Result<Self> {
+    fn new(settings: &shoop_settings::SettingsSnapshot) -> anyhow::Result<Self> {
         let backend = EngineBackend::new_dummy(48_000, 256)?;
-        let settings_path = shoop_settings::default_settings_path()?;
-        let (startup_scripts, script_paths, warnings) = load_startup_scripts(&settings_path);
+        let (startup_scripts, script_paths, warnings) = configured_startup_scripts(settings)?;
         for warning in warnings {
             eprintln!("ShoopDaLoop script settings: {warning}");
         }
@@ -520,9 +569,9 @@ impl Runtime {
         Ok(Self {
             _runtime: runtime,
             handle,
-            settings_path,
             script_paths,
             pending_script_paths: std::collections::VecDeque::new(),
+            applied_settings_revision: settings.revision(),
         })
     }
 
@@ -534,19 +583,94 @@ impl Runtime {
             .copied()
             .collect::<std::collections::BTreeSet<_>>();
         let mut retained = std::collections::VecDeque::new();
-        while let Some((name, path)) = self.pending_script_paths.pop_front() {
+        while let Some((name, kind, path)) = self.pending_script_paths.pop_front() {
             if let Some(script) = snapshot.scripting.scripts.iter().find(|script| {
-                script.kind == ScriptKind::User
-                    && script.name == name
-                    && !mapped.contains(&script.id)
+                script.kind == kind && script.name == name && !mapped.contains(&script.id)
             }) {
                 self.script_paths.insert(script.id, path);
                 mapped.insert(script.id);
             } else {
-                retained.push_back((name, path));
+                retained.push_back((name, kind, path));
             }
         }
         self.pending_script_paths = retained;
+    }
+
+    fn reconcile_script_settings(
+        &mut self,
+        settings: &shoop_settings::SettingsSnapshot,
+    ) -> anyhow::Result<()> {
+        if settings.revision() == self.applied_settings_revision {
+            return Ok(());
+        }
+        let (scripts, identities, warnings) = configured_startup_scripts(settings)?;
+        for warning in warnings {
+            self.handle.dispatch(AppIntent::ReportFileIoError {
+                task_id: None,
+                message: warning,
+            })?;
+        }
+        let desired = identities
+            .into_iter()
+            .zip(scripts)
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let current = self.script_paths.clone();
+        for (script_id, identity) in current {
+            if !desired.contains_key(&identity) {
+                self.handle
+                    .dispatch(AppIntent::ForgetScript { script_id })?;
+                self.script_paths.remove(&script_id);
+            }
+        }
+        let snapshot = self.handle.snapshot();
+        for (identity, script) in desired {
+            if let Some(script_id) = self
+                .script_paths
+                .iter()
+                .find_map(|(id, path)| (path == &identity).then_some(*id))
+            {
+                if snapshot
+                    .scripting
+                    .scripts
+                    .iter()
+                    .find(|current| current.id == script_id)
+                    .is_some_and(|current| current.enabled != script.enabled)
+                {
+                    self.handle.dispatch(AppIntent::SetScriptEnabled {
+                        script_id,
+                        enabled: script.enabled,
+                    })?;
+                }
+            } else {
+                self.handle.dispatch(AppIntent::AddScriptSource {
+                    name: script.name.clone(),
+                    source: script.source.into(),
+                    kind: script.kind,
+                    enabled: script.enabled,
+                })?;
+                self.pending_script_paths
+                    .push_back((script.name, script.kind, identity));
+            }
+        }
+        self.applied_settings_revision = settings.revision();
+        Ok(())
+    }
+
+    fn reload_user_script(&mut self, script_id: shoop_egui::ScriptId) -> anyhow::Result<()> {
+        let path = self
+            .script_paths
+            .get(&script_id)
+            .ok_or_else(|| anyhow::anyhow!("no file path for script {script_id}"))?;
+        let (_, source) = read_user_script(path)?;
+        self.handle.dispatch(AppIntent::ReplaceScriptSource {
+            script_id,
+            source: source.into(),
+        })?;
+        Ok(())
+    }
+
+    fn script_paths(&self) -> &std::collections::BTreeMap<shoop_egui::ScriptId, String> {
+        &self.script_paths
     }
 
     fn snapshot(&self) -> std::sync::Arc<AppSnapshot> {
@@ -554,55 +678,7 @@ impl Runtime {
     }
 
     fn dispatch(&mut self, intent: AppIntent) -> Result<(), shoop_app::DispatchError> {
-        match intent {
-            AppIntent::RequestReloadScriptFile { script_id } => {
-                let Some(path) = self.script_paths.get(&script_id) else {
-                    eprintln!("ShoopDaLoop script settings: no file path for script {script_id}");
-                    return Ok(());
-                };
-                match user_script_file_intent(Path::new(path), Some(script_id)) {
-                    Ok(intent) => self.handle.dispatch(intent),
-                    Err(error) => {
-                        eprintln!("ShoopDaLoop script settings: {error}");
-                        Ok(())
-                    }
-                }
-            }
-            AppIntent::AddUserScriptFile { path, name, source } => {
-                self.handle.dispatch(AppIntent::AddScriptSource {
-                    name: name.clone(),
-                    source,
-                    kind: ScriptKind::User,
-                    enabled: true,
-                })?;
-                if let Err(error) = persist_script_added(&self.settings_path, &path) {
-                    eprintln!("ShoopDaLoop script settings: {error}");
-                }
-                self.pending_script_paths.push_back((name, path));
-                Ok(())
-            }
-            AppIntent::SetScriptEnabled { script_id, enabled } => {
-                self.handle
-                    .dispatch(AppIntent::SetScriptEnabled { script_id, enabled })?;
-                if let Some(path) = self.script_paths.get(&script_id) {
-                    if let Err(error) = persist_script_enabled(&self.settings_path, path, enabled) {
-                        eprintln!("ShoopDaLoop script settings: {error}");
-                    }
-                }
-                Ok(())
-            }
-            AppIntent::ForgetScript { script_id } => {
-                self.handle
-                    .dispatch(AppIntent::ForgetScript { script_id })?;
-                if let Some(path) = self.script_paths.remove(&script_id) {
-                    if let Err(error) = persist_script_removed(&self.settings_path, &path) {
-                        eprintln!("ShoopDaLoop script settings: {error}");
-                    }
-                }
-                Ok(())
-            }
-            other => self.handle.dispatch(other),
-        }
+        self.handle.dispatch(intent)
     }
 
     fn take_file_output(&self) -> Option<shoop_app::ApplicationFileOutput> {
@@ -701,6 +777,174 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
     eframe::run_native("ShoopDaLoop", options, Box::new(create_app))
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BrowserSettingsSelfTest {
+    Disabled,
+    Write,
+    Verify,
+    Rejected,
+    Invalid,
+    SaveFailure,
+    Unavailable,
+    Complete,
+    Failed,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl BrowserSettingsSelfTest {
+    fn from_location() -> Self {
+        let search = web_sys::window()
+            .and_then(|window| window.location().search().ok())
+            .unwrap_or_default();
+        if search.contains("settings-test=write") {
+            Self::Write
+        } else if search.contains("settings-test=verify") {
+            Self::Verify
+        } else if search.contains("settings-test=rejected") {
+            Self::Rejected
+        } else if search.contains("settings-test=invalid") {
+            Self::Invalid
+        } else if search.contains("settings-test=save-failure") {
+            Self::SaveFailure
+        } else if search.contains("settings-test=unavailable") {
+            Self::Unavailable
+        } else {
+            Self::Disabled
+        }
+    }
+
+    fn update(&mut self, settings: &mut SettingsManager, widget: &mut AppWidget) {
+        let result = match *self {
+            Self::Disabled | Self::Complete | Self::Failed => return,
+            Self::Write => {
+                let active = settings.view().active;
+                let mut draft = shoop_egui::SettingsDraft::from_snapshot(&active);
+                draft.set(shoop_egui::DEFAULT_NEW_TRACK_AUDIO_CHANNELS, 6);
+                draft.set(shoop_egui::DEFAULT_NEW_TRACK_MIDI, true);
+                settings.request_save(draft).map(|()| "written")
+            }
+            Self::Verify => verify_browser_settings(settings, widget, 6, true).map(|()| "passed"),
+            Self::Rejected => {
+                let view = settings.view();
+                if !view.recovery_required {
+                    Err(settings::SettingsManagerError::Storage(
+                        "rejected settings did not require recovery".to_owned(),
+                    ))
+                } else {
+                    verify_browser_settings(settings, widget, 2, false).map(|()| "rejected")
+                }
+            }
+            Self::Invalid => {
+                let view = settings.view();
+                if view.recovery_required || view.diagnostics.is_empty() {
+                    Err(settings::SettingsManagerError::Storage(
+                        "invalid known value did not fall back with a diagnostic".to_owned(),
+                    ))
+                } else {
+                    verify_browser_settings(settings, widget, 2, false).map(|()| "invalid")
+                }
+            }
+            Self::SaveFailure => {
+                let active = settings.view().active;
+                let mut draft = shoop_egui::SettingsDraft::from_snapshot(&active);
+                draft.set(shoop_egui::DEFAULT_NEW_TRACK_AUDIO_CHANNELS, 8);
+                match settings.request_save(draft) {
+                    Err(settings::SettingsManagerError::Storage(_)) => {
+                        let view = settings.view();
+                        if view.active.revision() == active.revision()
+                            && view.persistence == shoop_egui::SettingsPersistenceState::Failed
+                        {
+                            Ok("save-failed")
+                        } else {
+                            Err(settings::SettingsManagerError::Storage(
+                                "failed browser save published settings".to_owned(),
+                            ))
+                        }
+                    }
+                    Err(error) => Err(error),
+                    Ok(()) => Err(settings::SettingsManagerError::Storage(
+                        "injected browser save unexpectedly succeeded".to_owned(),
+                    )),
+                }
+            }
+            Self::Unavailable => {
+                let view = settings.view();
+                if !view.recovery_required || view.diagnostics.is_empty() {
+                    Err(settings::SettingsManagerError::Storage(
+                        "unavailable browser storage was not observable".to_owned(),
+                    ))
+                } else {
+                    verify_browser_settings(settings, widget, 2, false).map(|()| "unavailable")
+                }
+            }
+        };
+        match result {
+            Ok(status) => {
+                let view = settings.view();
+                let channels = view
+                    .active
+                    .get(shoop_egui::DEFAULT_NEW_TRACK_AUDIO_CHANNELS)
+                    .unwrap_or_default();
+                let midi = view
+                    .active
+                    .get(shoop_egui::DEFAULT_NEW_TRACK_MIDI)
+                    .unwrap_or_default();
+                set_browser_settings_test_status(status, channels, midi, view.recovery_required);
+                *self = Self::Complete;
+            }
+            Err(error) => {
+                set_browser_settings_test_status("failed", 0, false, false);
+                settings.report_action_error(error.to_string());
+                *self = Self::Failed;
+            }
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn verify_browser_settings(
+    settings: &SettingsManager,
+    widget: &mut AppWidget,
+    expected_channels: u32,
+    expected_midi: bool,
+) -> Result<(), settings::SettingsManagerError> {
+    let view = settings.view();
+    let channels = view
+        .active
+        .get(shoop_egui::DEFAULT_NEW_TRACK_AUDIO_CHANNELS)
+        .map_err(|error| settings::SettingsManagerError::Storage(error.to_string()))?;
+    let midi = view
+        .active
+        .get(shoop_egui::DEFAULT_NEW_TRACK_MIDI)
+        .map_err(|error| settings::SettingsManagerError::Storage(error.to_string()))?;
+    let dialog_defaults = widget.browser_settings_test_open_add_track(&view);
+    if (channels, midi) != (expected_channels, expected_midi)
+        || dialog_defaults != (expected_channels, expected_midi)
+    {
+        return Err(settings::SettingsManagerError::Storage(format!(
+            "settings consumer mismatch: active ({channels}, {midi}), dialog {dialog_defaults:?}"
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn set_browser_settings_test_status(status: &str, channels: u32, midi: bool, recovery: bool) {
+    if let Some(element) = web_sys::window()
+        .and_then(|window| window.document())
+        .and_then(|document| document.get_element_by_id("runtime_status"))
+    {
+        let _ = element.set_attribute("data-settings-self-test", status);
+        let _ = element.set_attribute("data-settings-channels", &channels.to_string());
+        let _ = element.set_attribute("data-settings-midi", if midi { "true" } else { "false" });
+        let _ = element.set_attribute(
+            "data-settings-recovery",
+            if recovery { "true" } else { "false" },
+        );
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -1247,56 +1491,150 @@ mod tests {
     }
 
     #[test]
-    fn startup_script_adapter_resolves_bundles_files_and_missing_paths() {
+    fn startup_script_adapter_resolves_typed_bundles_files_and_missing_paths() {
         let directory = tempfile::tempdir().unwrap();
         let user_script = directory.path().join("user.lua");
         std::fs::write(&user_script, "print('user')").unwrap();
         let missing = directory.path().join("missing.lua");
-        let settings_path = directory.path().join("settings.json");
-        shoop_settings::ScriptSettings::save(
-            &settings_path,
-            &shoop_settings::ScriptSettings {
-                known_scripts: vec![
-                    shoop_settings::KnownScript {
-                        path_or_filename: "keyboard.lua".to_owned(),
-                        run: true,
-                    },
-                    shoop_settings::KnownScript {
-                        path_or_filename: user_script.to_string_lossy().into_owned(),
-                        run: false,
-                    },
-                    shoop_settings::KnownScript {
-                        path_or_filename: missing.to_string_lossy().into_owned(),
-                        run: true,
-                    },
-                ],
-            },
-        )
-        .unwrap();
-        let (scripts, paths, warnings) = load_startup_scripts(&settings_path);
-        assert_eq!(scripts.len(), 2);
-        assert_eq!(paths.len(), 2);
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        register_script_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
+        draft.set(
+            shoop_egui::USER_SCRIPTS,
+            shoop_settings::StringToggleList(vec![
+                shoop_settings::StringToggle {
+                    value: user_script.to_string_lossy().into_owned(),
+                    enabled: false,
+                },
+                shoop_settings::StringToggle {
+                    value: missing.to_string_lossy().into_owned(),
+                    enabled: true,
+                },
+            ]),
+        );
+        let document = registry
+            .document_from_draft(
+                &shoop_settings::EgSettingsDocument::empty("test"),
+                &draft,
+                "test",
+            )
+            .unwrap();
+        let settings = registry.resolve(&document, 2).snapshot;
+        let (scripts, paths, warnings) = configured_startup_scripts(&settings).unwrap();
+        assert_eq!(scripts.len(), 3);
+        assert_eq!(paths.len(), 3);
         assert_eq!(scripts[0].kind, ScriptKind::Bundled);
         assert_eq!(scripts[0].source, shoop_scripting::KEYBOARD_SCRIPT);
-        assert_eq!(scripts[1].kind, ScriptKind::User);
+        assert!(scripts[0].enabled);
+        assert_eq!(scripts[1].kind, ScriptKind::Bundled);
         assert!(!scripts[1].enabled);
-        assert!(matches!(
-            user_script_file_intent(&user_script, None).unwrap(),
-            AppIntent::AddUserScriptFile { .. }
-        ));
-        assert!(matches!(
-            user_script_file_intent(&user_script, Some(shoop_egui::ScriptId::from_raw(9))).unwrap(),
-            AppIntent::ReplaceScriptSource { .. }
-        ));
+        assert_eq!(scripts[2].kind, ScriptKind::User);
+        assert!(!scripts[2].enabled);
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("missing.lua"));
-        persist_script_enabled(&settings_path, "keyboard.lua", false).unwrap();
-        assert!(
-            !shoop_settings::ScriptSettings::load(&settings_path)
-                .unwrap()
-                .known_scripts[0]
-                .run
+        assert!(validate_script_draft(&draft).is_err());
+    }
+
+    #[test]
+    fn committed_settings_reconcile_scripts_and_failed_save_leaves_runtime_unchanged() {
+        let directory = tempfile::tempdir().unwrap();
+        let script_path = directory.path().join("controller.lua");
+        std::fs::write(&script_path, "print('controller')").unwrap();
+        let settings_directory = directory.path().join("configuration");
+        let settings_path = settings_directory.join("settings.json");
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        register_script_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let mut manager = SettingsManager::load_from_path(registry, "test", settings_path.clone());
+        let mut runtime = Runtime::new(&manager.active()).unwrap();
+
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&manager.active());
+        draft.set(shoop_egui::KEYBOARD_SCRIPT_ENABLED, false);
+        draft.set(shoop_egui::APC_MINI_SCRIPT_ENABLED, true);
+        draft.set(
+            shoop_egui::USER_SCRIPTS,
+            shoop_settings::StringToggleList(vec![shoop_settings::StringToggle {
+                value: script_path.to_string_lossy().into_owned(),
+                enabled: true,
+            }]),
         );
+        validate_script_draft(&draft).unwrap();
+        manager.request_save(draft).unwrap();
+        wait_for_settings_save(&mut manager);
+        runtime
+            .reconcile_script_settings(&manager.active())
+            .unwrap();
+        let snapshot = wait_for_script_configuration(&mut runtime);
+        assert_eq!(snapshot.scripting.scripts.len(), 3);
+
+        let committed_revision = manager.active().revision();
+        std::fs::remove_file(&settings_path).unwrap();
+        std::fs::remove_dir(&settings_directory).unwrap();
+        std::fs::write(&settings_directory, b"not a directory").unwrap();
+        let mut failing = shoop_settings::SettingsDraft::from_snapshot(&manager.active());
+        failing.set(shoop_egui::KEYBOARD_SCRIPT_ENABLED, true);
+        manager.request_save(failing).unwrap();
+        wait_for_settings_save(&mut manager);
+        assert_eq!(manager.active().revision(), committed_revision);
+        runtime
+            .reconcile_script_settings(&manager.active())
+            .unwrap();
+        assert!(
+            !runtime
+                .snapshot()
+                .scripting
+                .scripts
+                .iter()
+                .find(|script| script.name == KEYBOARD_SCRIPT_FILENAME)
+                .unwrap()
+                .enabled
+        );
+    }
+
+    fn wait_for_settings_save(manager: &mut SettingsManager) {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while manager.view().persistence == shoop_settings::SettingsPersistenceState::Saving {
+            manager.poll();
+            assert!(Instant::now() < deadline, "settings save timed out");
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn wait_for_script_configuration(runtime: &mut Runtime) -> std::sync::Arc<AppSnapshot> {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            runtime.tick(Duration::from_millis(5));
+            let snapshot = runtime.snapshot();
+            let keyboard_disabled = snapshot
+                .scripting
+                .scripts
+                .iter()
+                .find(|script| script.name == KEYBOARD_SCRIPT_FILENAME)
+                .is_some_and(|script| !script.enabled);
+            let apc_enabled = snapshot
+                .scripting
+                .scripts
+                .iter()
+                .find(|script| script.name == APC_MINI_SCRIPT_FILENAME)
+                .is_some_and(|script| script.enabled);
+            let user_enabled = snapshot
+                .scripting
+                .scripts
+                .iter()
+                .any(|script| script.name == "controller.lua" && script.enabled);
+            if snapshot.scripting.scripts.len() == 3
+                && keyboard_disabled
+                && apc_enabled
+                && user_enabled
+            {
+                return snapshot;
+            }
+            assert!(Instant::now() < deadline, "script reconciliation timed out");
+            thread::sleep(Duration::from_millis(5));
+        }
     }
 
     #[test]

@@ -658,15 +658,6 @@ pub enum AppIntent {
         track_id: TrackId,
     },
     KeyEvent(KeyEvent),
-    RequestAddScriptFilePicker,
-    RequestReloadScriptFile {
-        script_id: ScriptId,
-    },
-    AddUserScriptFile {
-        path: String,
-        name: String,
-        source: Arc<str>,
-    },
     AddScriptSource {
         name: String,
         source: Arc<str>,

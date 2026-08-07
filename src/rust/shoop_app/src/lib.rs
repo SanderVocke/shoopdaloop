@@ -666,11 +666,6 @@ impl ApplicationModel {
             AppIntent::AddTrack(spec) => self.add_track(backend, spec),
             AppIntent::AddLoop { track_id } => self.add_aligned_loop_row(backend, track_id),
             AppIntent::KeyEvent(event) => self.handle_script_key_event(backend, event),
-            AppIntent::AddUserScriptFile {
-                path: _,
-                name,
-                source,
-            } => self.add_script_source(backend, name, source, ScriptKind::User, true),
             AppIntent::AddScriptSource {
                 name,
                 source,
@@ -693,8 +688,6 @@ impl ApplicationModel {
             } => self.set_port_connected(backend, port_id, external_port, connected),
             AppIntent::RequestSaveSession => self.begin_save_session(),
             AppIntent::RequestLoadSessionPicker
-            | AppIntent::RequestAddScriptFilePicker
-            | AppIntent::RequestReloadScriptFile { .. }
             | AppIntent::RequestLoopAudioImportPicker { .. }
             | AppIntent::RequestLoopMidiImportPicker { .. } => Ok(()),
             AppIntent::LoadSessionBytes { name, bytes } => self.begin_load_session(name, &bytes),

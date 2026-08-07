@@ -6,7 +6,10 @@ use shoop_app_api::{
     ExternalPortConnectionState, LocalPortConnectionState, LoopId, LoopState, PortDataType,
     PortDirection, PortId, PortRole, StatusState, TrackControlState, TrackId, TrackState,
 };
-use shoop_egui::{AppWidget, ConnectionScope};
+use shoop_egui::{
+    register_settings, AppWidget, ConnectionScope, SettingsPersistenceState,
+    SettingsRegistryBuilder, SettingsViewState,
+};
 
 #[cfg(any(target_arch = "wasm32", test))]
 const WEB_CANVAS_ID: &str = "shoop_canvas";
@@ -14,13 +17,17 @@ const WEB_CANVAS_ID: &str = "shoop_canvas";
 struct PreviewApp {
     widget: AppWidget,
     snapshot: AppSnapshot,
+    settings: SettingsViewState,
     last_intent: String,
     churn_endpoint_visible: bool,
 }
 
 impl Default for PreviewApp {
     fn default() -> Self {
-        let widget = AppWidget::default();
+        let mut settings_builder = SettingsRegistryBuilder::default();
+        register_settings(&mut settings_builder).expect("preview settings must be valid");
+        let settings_registry = Arc::new(settings_builder.finish());
+        let widget = AppWidget::new(Arc::clone(&settings_registry));
         #[cfg(target_arch = "wasm32")]
         let widget = {
             let mut widget = widget;
@@ -38,6 +45,13 @@ impl Default for PreviewApp {
         Self {
             widget,
             snapshot: representative_snapshot(),
+            settings: SettingsViewState {
+                active: Arc::new(settings_registry.defaults(1)),
+                diagnostics: Arc::from([]),
+                storage_location: "preview fixture (not persisted)".to_owned(),
+                recovery_required: false,
+                persistence: SettingsPersistenceState::Idle,
+            },
             last_intent: "Open Connections from the main or track menu".to_owned(),
             churn_endpoint_visible: true,
         }
@@ -46,9 +60,13 @@ impl Default for PreviewApp {
 
 impl eframe::App for PreviewApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        for intent in self.widget.show(ui, &self.snapshot) {
+        let response = self.widget.show(ui, &self.snapshot, &self.settings, None);
+        for intent in response.app_actions {
             self.last_intent = format!("{intent:?}");
             self.apply(intent);
+        }
+        for action in response.settings_actions {
+            self.last_intent = format!("{action:?}");
         }
         egui::Area::new(egui::Id::new("connection_preview_controls"))
             .anchor(egui::Align2::RIGHT_TOP, [-8.0, 8.0])

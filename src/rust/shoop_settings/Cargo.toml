@@ -2,12 +2,17 @@
 name = "shoop_settings"
 edition = "2021"
 
+[features]
+default = []
+legacy = ["native-store"]
+native-store = ["dep:anyhow", "dep:directories", "dep:tempfile"]
+
 [dependencies]
-anyhow = { workspace = true }
-directories = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-tempfile = { workspace = true }
+anyhow = { workspace = true, optional = true }
+directories = { workspace = true, optional = true }
+tempfile = { workspace = true, optional = true }
 
 [lints]
 workspace = true
