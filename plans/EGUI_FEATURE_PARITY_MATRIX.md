@@ -358,9 +358,38 @@ Milestone 5 is implemented by `EGUI_MILESTONE_5_SESSION_PERSISTENCE_AND_LOOP_IO.
 | IO-OLD-001 | QML-era archive handling | Old archive/media formats are deliberately unsupported | Explored for M5 | M5 required | Complete | Codec rejection and application no-mutation/error evidence |
 | IO-E2E-001 | Authoritative native/browser round trip | Save/load/play and loop export/import under real runtimes | Explored for M5 | M5 required | Complete | Native dummy save/load/play workflow; Firefox Web Audio session/audio/MIDI exact-byte workflow; self-contained direct-file session/media workflow |
 
+## Lua scripting and script-created MIDI-control milestone discovery
+
+The native parity contract is frozen in `docs/egui_lua_compatibility_contract.md`. Discovery covers every function and constant installed by the retained session control handler, the shared Lua libraries, the unchanged keyboard and APC Mini scripts, QML script lifecycle/settings, callback payloads, MIDI control ports, autoconnect behavior, and the current native/browser composition boundaries. Implementation is tracked by `EGUI_LUA_SCRIPTING_AND_MIDI_CONTROL_PLAN.md`; no row is complete merely because its contract is documented.
+
+| ID | Capability or behavior | Retained baseline / milestone contract | Discovery | Milestone target | Current implementation | Planned evidence |
+|---|---|---|---|---|---|---|
+| LUA-ARCH-001 | Frontend-independent Lua ownership | QML wraps one `mlua` state per script; egui target is `shoop_scripting` on the application owner | Explored for Lua milestone | Required | Not started | Native dependency and lifecycle tests; no Qt/frontend edge |
+| LUA-RUN-001 | Lua 5.4 execution and bundled `require` | Sandboxed execution exposes Shoop print functions and only preloaded Shoop modules | Explored for Lua milestone | Required | Not started | Runtime compatibility tests using production sources |
+| LUA-LIFE-001 | Isolated start/stop/restart/status | Each script can finish or remain listening; destruction removes its callbacks and MIDI rules | Explored for Lua milestone | Required | Not started | Per-script teardown/error-isolation tests |
+| LUA-API-001 | Loop selector/query surface | Coordinates are `{track,row}`, sync is `{-1,0}`, and getters preserve list shapes/order | Explored for Lua milestone | Required | Not started | Framework-independent port of retained API tests |
+| LUA-API-002 | Loop mutation/transition surface | Trigger, explicit transition, grab/adopt, gain/balance, selection/target, clear, and repeat-sync | Explored for Lua milestone | Required | Not started | Shared reducer plus Fake/engine contracts |
+| LUA-API-003 | Track query/mutation surface | Integer/list selectors include sync `-1`; linear gain, fader, balance, mute, and input controls | Explored for Lua milestone | Required | Not started | Compatibility and GUI/Lua equivalence tests |
+| LUA-API-004 | Global control surface | Fixed cycles, solo, sync, play-after-record, and default record/grab are synchronous queries/mutations | Explored for Lua milestone | Required | Not started | Read-your-writes reducer tests |
+| LUA-COMP-001 | Composition API required by APC | APC creates and extends regular compositions serially or in parallel | Explored for Lua milestone | Required | Deferred | Application/backend composition execution tests |
+| LUA-EVENT-001 | Loop/global subscriptions | Committed changes produce typed non-reentrant callbacks with retained payloads | Explored for Lua milestone | Required | Not started | Ordering/payload/error-isolation tests |
+| LUA-TIMER-001 | One-shot timers | Script-owned callback fires once after a non-negative delay | Explored for Lua milestone | Required | Not started | Monotonic ordering/cancellation tests |
+| LUA-KEY-001 | Keyboard press/release bridge | Qt key/modifier constants, no repeat, and release-sensitive sampler behavior | Explored for Lua milestone | Required | Not started | Production `keyboard.lua` command workflow |
+| LUA-MIDI-001 | Script-created logical MIDI inputs | Auto-open input connects matching external outputs and forwards exact bytes | Explored for Lua milestone | Required | Not started | Fake and platform virtual-MIDI tests |
+| LUA-MIDI-002 | Script-created logical MIDI outputs | Open/connected callbacks receive `send`; output broadcasts to matching external inputs | Explored for Lua milestone | Required | Not started | Fake controller output/reconnect tests |
+| LUA-MIDI-003 | Full-name regex autoconnect and hotplug | Non-empty patterns are anchored; direction/type filter, all matches, disconnect, and reconnect are explicit | Explored for Lua milestone | Required | Not started | Endpoint churn/invalid-pattern tests |
+| LUA-MIDI-004 | Bounded and rate-limited MIDI | Input/output queues are bounded; requested positive Hz is enforced and failures are observable | Explored for Lua milestone | Required | Not started | Saturation/order/rate/diagnostic tests |
+| LUA-SET-001 | Machine-wide script settings | `script_settings.1` lists bundled/user scripts; keyboard defaults enabled | Explored for Lua milestone | Required | Not started | Preservation-aware settings tests |
+| LUA-SESSION-001 | Source-bearing session scripts | `.shoop` already types scripts but runtime currently capability-rejects them | Explored for Lua milestone | Required | Deferred | Syntax-stage/commit/rollback/round-trip tests |
+| LUA-PRES-001 | Native egui script manager | Add, enable, stop, restart, forget, help, status, errors, listening, and MIDI diagnostics | Explored for Lua milestone | Required | Not started | Backend-free interaction/paint tests |
+| LUA-BUILTIN-001 | Unchanged keyboard script | Every documented key command and release behavior uses the compatibility API | Explored for Lua milestone | Required | Not started | End-to-end production-source workflow |
+| LUA-BUILTIN-002 | Unchanged APC Mini MK1 script | Grid/modifiers, globals, faders, LEDs, timer, composition, MIDI I/O, and reconnect all work | Explored for Lua milestone | Required | Not started | Deterministic 8x8 fake-controller workflow |
+| LUA-WASM-001 | Browser preservation and explicit limitation | Current `wasm32-unknown-unknown` product has neither supported `mlua` target nor Web MIDI | Explored for Lua milestone | Required preservation | Not started | Browser checks and forbidden-dependency scan |
+| LUA-SEC-001 | Trusted local extension model | Error containment is required; hostile-code sandbox hardening is not a milestone gate | Explored for Lua milestone | Required subset | Not started | Syntax/runtime/panic-boundary isolation tests |
+
 ## Coarsely listed future areas
 
-These areas remain `Unexplored` for whole-feature replacement and must be expanded before their milestones set acceptance criteria:
+These broader future areas remain outside the currently explored milestone contracts and must be expanded before their own milestones set acceptance criteria:
 
 | Area | Discovery | Implementation |
 |---|---|---|
@@ -368,9 +397,7 @@ These areas remain `Unexplored` for whole-feature replacement and must be expand
 | Runtime reconnect policy and runnable bus topology | Partially explored | Deferred |
 | Driver and application settings, device selection, and native real-driver composition | Partially explored | Deferred |
 | Dry/wet topology and FX-chain hosting/state management | Partially explored | Deferred |
-| Composite-loop creation, scheduling, editing, and nesting | Partially explored | Deferred |
-| Lua scripting API and built-in scripts | Unexplored | Deferred |
-| MIDI control configuration, learning, filtering, and control ports | Unexplored | Deferred |
-| Keyboard control parity | Unexplored | Deferred |
+| Composite-loop creation, scheduling, editing, and nesting beyond the Lua-required append path | Partially explored | Deferred |
+| Generic MIDI control configuration, learning, filtering, and non-script rule editor | Unexplored | Deferred |
 | Monitoring, profiling, logging, crash/developer tools, and first-run UX | Unexplored | Deferred |
 | Packaging, installation, and platform integration after Qt removal | Unexplored | Deferred |

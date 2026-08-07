@@ -20,13 +20,14 @@ Milestone plans must reference both this document and the parity matrix, and mus
 
 | Area | Status | Notes |
 |---|---|---|
-| Project architecture | Usable | The cross-target production composition selects native threaded dummy or hosted direct Web Audio/AudioWorklet ownership; `shoop_session`, application-owned transactional persistence, and the native Carla subprocess baseline are real boundaries. A connection-focused fixture preview preserves backend-free GUI iteration. Scripting and native real-driver composition remain future work. |
-| Feature-parity discovery | Partially explored | Tracks/loops, cross-target engine/browser audio, connections, session persistence, individual-loop media I/O, and the native Carla subprocess baseline are explored and built. Runnable egui FX/settings composition, scripting, MIDI control, and advanced editing remain deferred or largely unexplored. |
+| Project architecture | Usable | The cross-target production composition selects native threaded dummy or hosted direct Web Audio/AudioWorklet ownership; `shoop_session`, application-owned transactional persistence, and the native Carla subprocess baseline are real boundaries. A connection-focused fixture preview preserves backend-free GUI iteration. The frontend-independent `shoop_scripting` boundary is now established for the active native Lua milestone; application integration and native real-driver composition remain in progress/future work. |
+| Feature-parity discovery | Partially explored | Tracks/loops, cross-target engine/browser audio, connections, session persistence, individual-loop media I/O, the native Carla subprocess baseline, and native Lua/script-created MIDI control are explored. Runnable egui FX/settings composition, generic MIDI rule editing, and advanced editing remain deferred or largely unexplored. |
 | First major milestone | Complete | The pure-egui tracks/loops vertical slice met all acceptance criteria at its completion boundary. |
 | Second major milestone | Complete | `EGUI_MILESTONE_2_ENGINE.md` consolidates the runners in `shoopdaloop_egui`; native and browser targets run the authoritative app/backend/dummy-engine path with cross-target tests and browser artifacts. |
 | Third major milestone | Complete | `EGUI_MILESTONE_3_BROWSER_AUDIO.md` delivers direct `web-sys`/AudioWorklet microphone/output in hosted secure runs with bounded protocol/storage, explicit permission, lifecycle recovery, offline dummy selection, and native regression evidence. |
 | Fourth major milestone | Complete | `EGUI_MILESTONE_X_CONNECTIONS_DIALOG.md` delivers typed track-port inventory, authoritative connection state/mutation, sync/main and global scopes, the tabbed matrix, dynamic/error behavior, and backend-free preview evidence. |
 | Fifth major milestone | Complete | `EGUI_MILESTONE_5_SESSION_PERSISTENCE_AND_LOOP_IO.md` delivers playback-safe `.shoop` session save/load, exact arbitrary-channel loop audio/MIDI I/O, deterministic resampling, transactional native/worklet replacement, and native/browser file services. All PR #676 platform/browser and retained Linux Rust/realtime/QML gates pass. |
+| Lua scripting and MIDI-controller milestone | In progress | The compatibility contract and detailed matrix are frozen, production Lua sources are embedded by the new `shoop_scripting` crate, and native actor-thread/non-browser dependency probes pass. Application API, events, MIDI services, settings, presentation, and bundled-script end-to-end work remain open in `EGUI_LUA_SCRIPTING_AND_MIDI_CONTROL_PLAN.md`. |
 | Loop-control refinement | Complete | `EGUI_LOOP_HOVER_CONTROLS_AND_EMPTY_TRACKS_PLAN.md` delivers legible edge indicators, QML-style foreground hover families, play-dry/re-record/grab behavior, stereo loop balance, and first-track onboarding across native and browser boundaries. |
 | egui presentation | Usable | `shoop_egui` renders plain snapshots and emits typed intents while remaining independently browser-compatible and backend-free; loop popups retain stable-ID hover/drag state outside row layout, and the reusable connection dialog supports all typed roles. |
 | Framework-independent application API | Complete | `shoop_app_api` owns stable IDs, immutable connection/task/warning/mapping views, desired-state and file-workflow intents, capabilities, and notifications without framework/backend dependencies. |
@@ -248,7 +249,7 @@ This roadmap gives ordering, not fixed future milestone scope:
 6. Remaining track topology, settings, and native real driver-management workflows.
 7. Dry/wet tracks, FX chains, and advanced loop details/editing.
 8. Composite-loop creation and editing.
-9. Lua scripting, MIDI control, monitoring, profiling, and remaining utility/developer surfaces.
+9. Native Lua scripting, keyboard control, and script-created MIDI control. In progress under `EGUI_LUA_SCRIPTING_AND_MIDI_CONTROL_PLAN.md`; generic MIDI rule editing remains separate.
 10. Whole-matrix validation, production entry-point switch, packaging migration, and Qt deletion.
 
 Future discovery may reorder or split these areas. Any such change must update this document and the parity matrix.

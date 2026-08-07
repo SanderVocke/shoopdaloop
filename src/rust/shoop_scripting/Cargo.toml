@@ -1,0 +1,10 @@
+[package]
+name = "shoop_scripting"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+mlua = { workspace = true }
+
+[lints]
+workspace = true

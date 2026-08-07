@@ -4788,6 +4788,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_scripting"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "mlua",
+]
+
+[[package]]
 name = "shoop_session"
 version = "0.0.0"
 dependencies = [
