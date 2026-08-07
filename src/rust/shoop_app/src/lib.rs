@@ -29,8 +29,8 @@ use shoop_backend::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_scripting::{
-    ControlLoop, ControlOperation, ControlSnapshot, ControlTrack, ScriptKeyEvent, ScriptLoopEvent,
-    ScriptManager,
+    ControlLoop, ControlOperation, ControlSnapshot, ControlTrack, NativeMidiService,
+    ScriptKeyEvent, ScriptLoopEvent, ScriptManager,
 };
 use shoop_session::{
     decode_exact_midi, decode_loop_audio, decode_session, decode_standard_midi, decode_wav,
@@ -533,7 +533,7 @@ impl ApplicationModel {
                 scripts: Arc::from([]),
             }),
             #[cfg(not(target_arch = "wasm32"))]
-            script_manager: ScriptManager::new(),
+            script_manager: ScriptManager::new_with_midi(Box::new(NativeMidiService::new())),
             #[cfg(not(target_arch = "wasm32"))]
             script_last_snapshot: ControlSnapshot::default(),
             global: Default::default(),
@@ -822,6 +822,7 @@ impl ApplicationModel {
             self.script_manager.dispatch_global_event();
         }
         self.script_manager.advance_timers(elapsed);
+        self.script_manager.advance_midi(elapsed);
         self.script_last_snapshot = current;
         let result = self.apply_script_operations(backend);
         self.refresh_scripting_view();

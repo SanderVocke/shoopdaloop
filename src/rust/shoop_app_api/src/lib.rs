@@ -476,6 +476,14 @@ pub enum ScriptLifecycle {
     Error,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ScriptMidiDiagnostics {
+    pub rules: u32,
+    pub connections: u32,
+    pub dropped_messages: u32,
+    pub errors: u32,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ScriptState {
     pub id: ScriptId,
@@ -485,6 +493,7 @@ pub struct ScriptState {
     pub lifecycle: ScriptLifecycle,
     pub documentation: Option<String>,
     pub latest_error: Option<String>,
+    pub midi: ScriptMidiDiagnostics,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -771,6 +780,7 @@ mod tests {
             lifecycle: ScriptLifecycle::Listening,
             documentation: Some("Controller help\n".to_owned()),
             latest_error: None,
+            midi: ScriptMidiDiagnostics::default(),
         };
         assert_eq!(state.id, script_id);
         assert_eq!(state.kind, ScriptKind::User);

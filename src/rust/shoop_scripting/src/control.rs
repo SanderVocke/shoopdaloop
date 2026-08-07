@@ -1,15 +1,22 @@
 use std::cell::RefCell;
+use std::collections::{BTreeMap, VecDeque};
 use std::rc::Rc;
 use std::time::Duration;
 
 use anyhow::anyhow;
 use mlua::{Function, Lua, Table, Value};
+use regex::Regex;
 use shoop_app_api::{
     DefaultRecordingAction, LoopId, LoopMode, TrackId, MAX_TRACK_GAIN_DB, MIN_TRACK_GAIN_DB,
 };
 
+use crate::midi::{
+    MidiConnectionId, MidiControlService, MidiEndpoint, MidiEndpointDirection,
+    MAX_MIDI_MESSAGE_BYTES, MIDI_QUEUE_CAPACITY,
+};
 use crate::{install_compatibility_value, LEGACY_KEY_CONSTANTS, LEGACY_MODIFIER_CONSTANTS};
 
+pub const MAX_SCRIPT_CALLBACKS_PER_PUMP: usize = 256;
 pub const LOOP_DONT_WAIT_FOR_SYNC: i64 = -1;
 pub const LOOP_DONT_ALIGN_TO_SYNC_IMMEDIATELY: i64 = -1;
 
@@ -243,15 +250,31 @@ pub struct TimerRegistration {
 }
 
 pub struct MidiInputRegistration {
-    pub regex: String,
+    pub regex_source: String,
+    pub regex: Option<Regex>,
     pub callback: Function,
+    pub connections: BTreeMap<String, MidiConnectionId>,
+    pub retry_remaining: Duration,
 }
 
 pub struct MidiOutputRegistration {
-    pub regex: String,
-    pub opened_callback: Function,
+    pub regex_source: String,
+    pub regex: Option<Regex>,
     pub connected_callback: Function,
+    pub port: Table,
     pub rate_limit_hz: u32,
+    pub elapsed_since_send: Duration,
+    pub queue: Rc<RefCell<VecDeque<Vec<u8>>>>,
+    pub connections: BTreeMap<String, MidiConnectionId>,
+    pub retry_remaining: Duration,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct MidiRuntimeDiagnostics {
+    pub rules: u32,
+    pub connections: u32,
+    pub dropped_messages: u32,
+    pub errors: u32,
 }
 
 pub struct ScriptCallbacks {
@@ -261,6 +284,7 @@ pub struct ScriptCallbacks {
     pub timers: Rc<RefCell<Vec<TimerRegistration>>>,
     pub midi_inputs: Rc<RefCell<Vec<MidiInputRegistration>>>,
     pub midi_outputs: Rc<RefCell<Vec<MidiOutputRegistration>>>,
+    pub midi_diagnostics: Rc<RefCell<MidiRuntimeDiagnostics>>,
 }
 
 impl ScriptCallbacks {
@@ -272,6 +296,7 @@ impl ScriptCallbacks {
             timers: Rc::new(RefCell::new(Vec::new())),
             midi_inputs: Rc::new(RefCell::new(Vec::new())),
             midi_outputs: Rc::new(RefCell::new(Vec::new())),
+            midi_diagnostics: Rc::new(RefCell::new(MidiRuntimeDiagnostics::default())),
         }
     }
 
@@ -282,15 +307,26 @@ impl ScriptCallbacks {
         }
         let midi_inputs = self.midi_inputs.borrow();
         for registration in midi_inputs.iter() {
-            let _ = (&registration.regex, &registration.callback);
+            let _ = (
+                &registration.regex_source,
+                &registration.regex,
+                &registration.callback,
+                &registration.connections,
+                registration.retry_remaining,
+            );
         }
         let midi_outputs = self.midi_outputs.borrow();
         for registration in midi_outputs.iter() {
             let _ = (
+                &registration.regex_source,
                 &registration.regex,
-                &registration.opened_callback,
                 &registration.connected_callback,
+                &registration.port,
                 registration.rate_limit_hz,
+                registration.elapsed_since_send,
+                &registration.queue,
+                &registration.connections,
+                registration.retry_remaining,
             );
         }
         !self.loop_events.borrow().is_empty()
@@ -361,7 +397,7 @@ impl ScriptCallbacks {
             }
             let mut callbacks = Vec::new();
             let mut index = 0;
-            while index < timers.len() {
+            while index < timers.len() && callbacks.len() < MAX_SCRIPT_CALLBACKS_PER_PUMP {
                 if timers[index].remaining.is_zero() {
                     callbacks.push(timers.remove(index).callback);
                 } else {
@@ -375,6 +411,208 @@ impl ScriptCallbacks {
             .filter_map(|callback| callback.call::<()>(()).err().map(|error| error.to_string()))
             .collect()
     }
+
+    pub fn advance_midi(
+        &self,
+        lua: &Lua,
+        service: &mut dyn MidiControlService,
+        endpoints: &[MidiEndpoint],
+        elapsed: Duration,
+    ) -> Vec<String> {
+        let mut errors = Vec::new();
+        let mut dropped_messages = 0_u32;
+        let mut remaining_callbacks = MAX_SCRIPT_CALLBACKS_PER_PUMP;
+        for rule in self.midi_inputs.borrow_mut().iter_mut() {
+            let matches = matching_endpoints(
+                endpoints,
+                rule.regex.as_ref(),
+                MidiEndpointDirection::Output,
+            );
+            disconnect_stale(service, &mut rule.connections, &matches);
+            rule.retry_remaining = rule.retry_remaining.saturating_sub(elapsed);
+            if rule.retry_remaining.is_zero() {
+                for endpoint in &matches {
+                    if !rule.connections.contains_key(&endpoint.id) {
+                        match service.connect_input(&endpoint.id) {
+                            Ok(id) => {
+                                rule.connections.insert(endpoint.id.clone(), id);
+                            }
+                            Err(error) => {
+                                errors.push(error.to_string());
+                                rule.retry_remaining = Duration::from_millis(250);
+                            }
+                        }
+                    }
+                }
+            }
+            for id in rule.connections.values().copied().collect::<Vec<_>>() {
+                if remaining_callbacks == 0 {
+                    break;
+                }
+                dropped_messages = dropped_messages.saturating_add(service.take_dropped_input(id));
+                match service.drain_input(id, remaining_callbacks) {
+                    Ok(messages) => {
+                        for message in messages {
+                            remaining_callbacks = remaining_callbacks.saturating_sub(1);
+                            match lua.create_sequence_from(message) {
+                                Ok(table) => {
+                                    if let Err(error) = rule.callback.call::<()>(table) {
+                                        errors.push(error.to_string());
+                                    }
+                                }
+                                Err(error) => errors.push(error.to_string()),
+                            }
+                        }
+                    }
+                    Err(error) => errors.push(error.to_string()),
+                }
+            }
+        }
+        for rule in self.midi_outputs.borrow_mut().iter_mut() {
+            let matches =
+                matching_endpoints(endpoints, rule.regex.as_ref(), MidiEndpointDirection::Input);
+            disconnect_stale(service, &mut rule.connections, &matches);
+            rule.retry_remaining = rule.retry_remaining.saturating_sub(elapsed);
+            if rule.retry_remaining.is_zero() {
+                for endpoint in &matches {
+                    if remaining_callbacks == 0 {
+                        break;
+                    }
+                    if !rule.connections.contains_key(&endpoint.id) {
+                        match service.connect_output(&endpoint.id) {
+                            Ok(id) => {
+                                rule.connections.insert(endpoint.id.clone(), id);
+                                remaining_callbacks = remaining_callbacks.saturating_sub(1);
+                                if let Err(error) =
+                                    rule.connected_callback.call::<()>(rule.port.clone())
+                                {
+                                    errors.push(error.to_string());
+                                }
+                            }
+                            Err(error) => {
+                                errors.push(error.to_string());
+                                rule.retry_remaining = Duration::from_millis(250);
+                            }
+                        }
+                    }
+                }
+            }
+            if rule.connections.is_empty() {
+                rule.elapsed_since_send = Duration::ZERO;
+                continue;
+            }
+            rule.elapsed_since_send = rule.elapsed_since_send.saturating_add(elapsed);
+            let count = if rule.rate_limit_hz == 0 {
+                rule.queue.borrow().len()
+            } else {
+                let interval = Duration::from_secs_f64(1.0 / f64::from(rule.rate_limit_hz));
+                let count = (rule.elapsed_since_send.as_secs_f64() / interval.as_secs_f64()).floor()
+                    as usize;
+                rule.elapsed_since_send = rule
+                    .elapsed_since_send
+                    .saturating_sub(interval.saturating_mul(count.try_into().unwrap_or(u32::MAX)));
+                count
+            };
+            let queued = rule.queue.borrow().len();
+            for _ in 0..count.min(queued) {
+                let Some(message) = rule.queue.borrow_mut().pop_front() else {
+                    break;
+                };
+                for id in rule.connections.values().copied() {
+                    if let Err(error) = service.send(id, &message) {
+                        errors.push(error.to_string());
+                    }
+                }
+            }
+        }
+        let mut diagnostics = self.midi_diagnostics.borrow_mut();
+        diagnostics.rules = (self.midi_inputs.borrow().len() + self.midi_outputs.borrow().len())
+            .try_into()
+            .unwrap_or(u32::MAX);
+        diagnostics.connections = self
+            .midi_inputs
+            .borrow()
+            .iter()
+            .map(|rule| rule.connections.len())
+            .chain(
+                self.midi_outputs
+                    .borrow()
+                    .iter()
+                    .map(|rule| rule.connections.len()),
+            )
+            .sum::<usize>()
+            .try_into()
+            .unwrap_or(u32::MAX);
+        diagnostics.dropped_messages = diagnostics
+            .dropped_messages
+            .saturating_add(dropped_messages);
+        diagnostics.errors = diagnostics
+            .errors
+            .saturating_add(errors.len().try_into().unwrap_or(u32::MAX));
+        errors
+    }
+
+    pub fn disconnect_midi(&self, service: &mut dyn MidiControlService) {
+        for rule in self.midi_inputs.borrow_mut().iter_mut() {
+            for id in std::mem::take(&mut rule.connections).into_values() {
+                service.disconnect(id);
+            }
+        }
+        for rule in self.midi_outputs.borrow_mut().iter_mut() {
+            for id in std::mem::take(&mut rule.connections).into_values() {
+                service.disconnect(id);
+            }
+            rule.queue.borrow_mut().clear();
+        }
+    }
+
+    pub fn has_midi_rules(&self) -> bool {
+        !self.midi_inputs.borrow().is_empty() || !self.midi_outputs.borrow().is_empty()
+    }
+
+    pub fn midi_diagnostics(&self) -> MidiRuntimeDiagnostics {
+        self.midi_diagnostics.borrow().clone()
+    }
+}
+
+fn matching_endpoints<'a>(
+    endpoints: &'a [MidiEndpoint],
+    regex: Option<&Regex>,
+    direction: MidiEndpointDirection,
+) -> Vec<&'a MidiEndpoint> {
+    let Some(regex) = regex else {
+        return Vec::new();
+    };
+    endpoints
+        .iter()
+        .filter(|endpoint| endpoint.direction == direction && regex.is_match(&endpoint.name))
+        .collect()
+}
+
+fn disconnect_stale(
+    service: &mut dyn MidiControlService,
+    connections: &mut BTreeMap<String, MidiConnectionId>,
+    matches: &[&MidiEndpoint],
+) {
+    let stale = connections
+        .keys()
+        .filter(|id| !matches.iter().any(|endpoint| endpoint.id == **id))
+        .cloned()
+        .collect::<Vec<_>>();
+    for id in stale {
+        if let Some(connection) = connections.remove(&id) {
+            service.disconnect(connection);
+        }
+    }
+}
+
+fn compile_endpoint_regex(source: &str) -> mlua::Result<Option<Regex>> {
+    if source.is_empty() {
+        return Ok(None);
+    }
+    Regex::new(&format!("^(?:{source})$"))
+        .map(Some)
+        .map_err(|error| mlua::Error::runtime(format!("invalid MIDI autoconnect regex: {error}")))
 }
 
 pub fn install_control_api(
@@ -1033,22 +1271,28 @@ fn install_subscriptions(
     let input_listening = Rc::clone(&mark_listening);
     module.set(
         "auto_open_device_specific_midi_control_input",
-        lua.create_function(move |_, (regex, callback): (String, Function)| {
-            midi_inputs
-                .borrow_mut()
-                .push(MidiInputRegistration { regex, callback });
+        lua.create_function(move |_, (regex_source, callback): (String, Function)| {
+            let regex = compile_endpoint_regex(&regex_source)?;
+            midi_inputs.borrow_mut().push(MidiInputRegistration {
+                regex_source,
+                regex,
+                callback,
+                connections: BTreeMap::new(),
+                retry_remaining: Duration::ZERO,
+            });
             input_listening();
             Ok(())
         })?,
     )?;
 
     let midi_outputs = Rc::clone(&callbacks.midi_outputs);
+    let midi_diagnostics = Rc::clone(&callbacks.midi_diagnostics);
     let output_listening = Rc::clone(&mark_listening);
     module.set(
         "auto_open_device_specific_midi_control_output",
         lua.create_function(
-            move |_,
-                  (regex, opened_callback, connected_callback, rate_limit_hz): (
+            move |lua,
+                  (regex_source, opened_callback, connected_callback, rate_limit_hz): (
                 String,
                 Function,
                 Function,
@@ -1057,11 +1301,47 @@ fn install_subscriptions(
                 let rate_limit_hz = u32::try_from(rate_limit_hz).map_err(|_| {
                     mlua::Error::runtime("MIDI output rate limit may not be negative")
                 })?;
+                let regex = compile_endpoint_regex(&regex_source)?;
+                let queue = Rc::new(RefCell::new(VecDeque::new()));
+                let send_queue = Rc::clone(&queue);
+                let diagnostics = Rc::clone(&midi_diagnostics);
+                let port = lua.create_table()?;
+                port.set(
+                    "send",
+                    lua.create_function(move |_, message: Vec<i64>| {
+                        if message.is_empty() || message.len() > MAX_MIDI_MESSAGE_BYTES {
+                            return Err(mlua::Error::runtime("invalid MIDI message length"));
+                        }
+                        let message = message
+                            .into_iter()
+                            .map(|byte| {
+                                u8::try_from(byte).map_err(|_| {
+                                    mlua::Error::runtime("MIDI bytes must be between 0 and 255")
+                                })
+                            })
+                            .collect::<mlua::Result<Vec<_>>>()?;
+                        let mut queue = send_queue.borrow_mut();
+                        if queue.len() == MIDI_QUEUE_CAPACITY {
+                            let mut diagnostics = diagnostics.borrow_mut();
+                            diagnostics.dropped_messages =
+                                diagnostics.dropped_messages.saturating_add(1);
+                        } else {
+                            queue.push_back(message);
+                        }
+                        Ok(())
+                    })?,
+                )?;
+                opened_callback.call::<()>(port.clone())?;
                 midi_outputs.borrow_mut().push(MidiOutputRegistration {
+                    regex_source,
                     regex,
-                    opened_callback,
                     connected_callback,
+                    port,
                     rate_limit_hz,
+                    elapsed_since_send: Duration::ZERO,
+                    queue,
+                    connections: BTreeMap::new(),
+                    retry_remaining: Duration::ZERO,
                 });
                 output_listening();
                 Ok(())

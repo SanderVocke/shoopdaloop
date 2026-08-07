@@ -4,7 +4,9 @@ edition = "2021"
 
 [dependencies]
 anyhow = { workspace = true }
+midir = { workspace = true }
 mlua = { workspace = true }
+regex = { workspace = true }
 shoop_app_api = { path = "../shoop_app_api" }
 
 [lints]

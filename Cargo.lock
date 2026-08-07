@@ -4794,7 +4794,9 @@ name = "shoop_scripting"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "midir",
  "mlua",
+ "regex",
  "shoop_app_api",
 ]
 

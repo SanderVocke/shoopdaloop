@@ -4,17 +4,24 @@ use std::rc::Rc;
 
 use anyhow::{anyhow, bail};
 use mlua::{Function, Lua, Value};
-use shoop_app_api::{ScriptId, ScriptKind, ScriptLifecycle, ScriptState};
+use shoop_app_api::{ScriptId, ScriptKind, ScriptLifecycle, ScriptMidiDiagnostics, ScriptState};
 
 mod control;
 mod legacy_key_constants;
+mod midi;
 
 use control::{install_control_api, ScriptCallbacks};
 pub use control::{
-    ControlBridge, ControlLoop, ControlOperation, ControlSnapshot, ControlTrack, ScriptKeyEvent,
-    ScriptLoopEvent, SharedControlBridge, CONTROL_FUNCTION_NAMES,
+    ControlBridge, ControlLoop, ControlOperation, ControlSnapshot, ControlTrack,
+    MidiRuntimeDiagnostics, ScriptKeyEvent, ScriptLoopEvent, SharedControlBridge,
+    CONTROL_FUNCTION_NAMES,
 };
 use legacy_key_constants::{LEGACY_KEY_CONSTANTS, LEGACY_MODIFIER_CONSTANTS};
+pub use midi::{
+    FakeMidiControl, FakeMidiService, MidiConnectionId, MidiControlService, MidiEndpoint,
+    MidiEndpointDirection, MidiEndpointSnapshot, NativeMidiService, NullMidiService,
+    MAX_MIDI_MESSAGE_BYTES, MIDI_QUEUE_CAPACITY,
+};
 
 pub const KEYBOARD_SCRIPT: &str = include_str!("../../../lua/builtins/keyboard.lua");
 pub const AKAI_APC_MINI_MK1_SCRIPT: &str =
@@ -178,6 +185,28 @@ impl LuaRuntime {
         self.listening.set(false);
         errors
     }
+
+    fn has_midi_rules(&self) -> bool {
+        self.callbacks.has_midi_rules()
+    }
+
+    fn advance_midi(
+        &self,
+        service: &mut dyn MidiControlService,
+        endpoints: &[MidiEndpoint],
+        elapsed: std::time::Duration,
+    ) -> Vec<String> {
+        self.callbacks
+            .advance_midi(&self.lua, service, endpoints, elapsed)
+    }
+
+    fn disconnect_midi(&self, service: &mut dyn MidiControlService) {
+        self.callbacks.disconnect_midi(service);
+    }
+
+    fn midi_diagnostics(&self) -> MidiRuntimeDiagnostics {
+        self.callbacks.midi_diagnostics()
+    }
 }
 
 pub fn install_print_functions(
@@ -265,14 +294,26 @@ pub struct ScriptManager {
     next_id: u64,
     scripts: BTreeMap<ScriptId, ScriptRecord>,
     control: SharedControlBridge,
+    midi: Box<dyn MidiControlService>,
+    midi_endpoints: Vec<MidiEndpoint>,
+    midi_refresh_remaining: std::time::Duration,
+    midi_initialized: bool,
 }
 
 impl ScriptManager {
     pub fn new() -> Self {
+        Self::new_with_midi(Box::<NullMidiService>::default())
+    }
+
+    pub fn new_with_midi(midi: Box<dyn MidiControlService>) -> Self {
         Self {
             next_id: 1,
             scripts: BTreeMap::new(),
             control: Rc::new(RefCell::new(ControlBridge::default())),
+            midi,
+            midi_endpoints: Vec::new(),
+            midi_refresh_remaining: std::time::Duration::ZERO,
+            midi_initialized: false,
         }
     }
 
@@ -336,6 +377,46 @@ impl ScriptManager {
         }
     }
 
+    pub fn advance_midi(&mut self, elapsed: std::time::Duration) {
+        if !self.scripts.values().any(|record| {
+            record
+                .runtime
+                .as_ref()
+                .is_some_and(LuaRuntime::has_midi_rules)
+        }) {
+            return;
+        }
+        self.midi_refresh_remaining = self.midi_refresh_remaining.saturating_sub(elapsed);
+        if !self.midi_initialized || self.midi_refresh_remaining.is_zero() {
+            match self.midi.endpoints() {
+                Ok(snapshot) => {
+                    self.midi_endpoints = snapshot.endpoints;
+                    self.midi_initialized = true;
+                    self.midi_refresh_remaining = std::time::Duration::from_millis(500);
+                }
+                Err(error) => {
+                    for record in self.scripts.values_mut() {
+                        if record.runtime.is_some() {
+                            record.latest_error = Some(error.to_string());
+                        }
+                    }
+                    self.midi_refresh_remaining = std::time::Duration::from_secs(1);
+                    return;
+                }
+            }
+        }
+        let endpoints = self.midi_endpoints.clone();
+        let (scripts, midi) = (&mut self.scripts, &mut self.midi);
+        for record in scripts.values_mut() {
+            let errors = record
+                .runtime
+                .as_ref()
+                .map(|runtime| runtime.advance_midi(midi.as_mut(), &endpoints, elapsed))
+                .unwrap_or_default();
+            record_callback_errors(record, errors);
+        }
+    }
+
     pub fn add(
         &mut self,
         name: impl Into<String>,
@@ -374,18 +455,17 @@ impl ScriptManager {
             self.scripts.get_mut(&id).unwrap().enabled = true;
             self.start(id)
         } else {
-            let record = self.scripts.get_mut(&id).unwrap();
-            record.enabled = false;
-            record.runtime = None;
-            record.lifecycle = ScriptLifecycle::Inactive;
-            record.latest_error = None;
+            self.stop(id)?;
+            self.scripts.get_mut(&id).unwrap().enabled = false;
             Ok(())
         }
     }
 
     pub fn start(&mut self, id: ScriptId) -> anyhow::Result<()> {
         let record = self.scripts.get_mut(&id).ok_or_else(|| stale_script(id))?;
-        record.runtime = None;
+        if let Some(runtime) = record.runtime.take() {
+            runtime.disconnect_midi(self.midi.as_mut());
+        }
         record.lifecycle = ScriptLifecycle::Running;
         record.latest_error = None;
         let runtime = LuaRuntime::new_with_control(Rc::clone(&self.control))?;
@@ -410,7 +490,9 @@ impl ScriptManager {
 
     pub fn stop(&mut self, id: ScriptId) -> anyhow::Result<()> {
         let record = self.scripts.get_mut(&id).ok_or_else(|| stale_script(id))?;
-        record.runtime = None;
+        if let Some(runtime) = record.runtime.take() {
+            runtime.disconnect_midi(self.midi.as_mut());
+        }
         record.lifecycle = ScriptLifecycle::Inactive;
         record.latest_error = None;
         Ok(())
@@ -421,6 +503,7 @@ impl ScriptManager {
         if record.kind != ScriptKind::User {
             bail!("only user scripts can be forgotten")
         }
+        self.stop(id)?;
         self.scripts.remove(&id);
         Ok(())
     }
@@ -428,14 +511,27 @@ impl ScriptManager {
     pub fn states(&self) -> Vec<ScriptState> {
         self.scripts
             .values()
-            .map(|record| ScriptState {
-                id: record.id,
-                name: record.name.clone(),
-                kind: record.kind,
-                enabled: record.enabled,
-                lifecycle: record.lifecycle,
-                documentation: record.documentation.clone(),
-                latest_error: record.latest_error.clone(),
+            .map(|record| {
+                let midi = record
+                    .runtime
+                    .as_ref()
+                    .map(LuaRuntime::midi_diagnostics)
+                    .unwrap_or_default();
+                ScriptState {
+                    id: record.id,
+                    name: record.name.clone(),
+                    kind: record.kind,
+                    enabled: record.enabled,
+                    lifecycle: record.lifecycle,
+                    documentation: record.documentation.clone(),
+                    latest_error: record.latest_error.clone(),
+                    midi: ScriptMidiDiagnostics {
+                        rules: midi.rules,
+                        connections: midi.connections,
+                        dropped_messages: midi.dropped_messages,
+                        errors: midi.errors,
+                    },
+                }
             })
             .collect()
     }
@@ -451,6 +547,17 @@ impl ScriptManager {
 
     fn require(&self, id: ScriptId) -> anyhow::Result<&ScriptRecord> {
         self.scripts.get(&id).ok_or_else(|| stale_script(id))
+    }
+}
+
+impl Drop for ScriptManager {
+    fn drop(&mut self) {
+        let (scripts, midi) = (&mut self.scripts, &mut self.midi);
+        for record in scripts.values_mut() {
+            if let Some(runtime) = record.runtime.take() {
+                runtime.disconnect_midi(midi.as_mut());
+            }
+        }
     }
 }
 
@@ -772,6 +879,248 @@ c.register_one_shot_timer_cb(10, function() print_info('timer') end)
             .unwrap();
         assert!(failing.latest_error.unwrap().contains("callback failed"));
         assert_eq!(manager.logs(healthy).unwrap()[0].message, "healthy");
+    }
+
+    #[test]
+    fn midi_service_autoconnects_hotplugs_delivers_exact_bytes_and_throttles_output() {
+        let (midi, control) = FakeMidiService::new();
+        control.set_endpoints(vec![
+            MidiEndpoint {
+                id: "source-apc".to_owned(),
+                name: "APC Mini".to_owned(),
+                direction: MidiEndpointDirection::Output,
+            },
+            MidiEndpoint {
+                id: "source-apc-2".to_owned(),
+                name: "APC Mini".to_owned(),
+                direction: MidiEndpointDirection::Output,
+            },
+            MidiEndpoint {
+                id: "sink-apc".to_owned(),
+                name: "APC Mini".to_owned(),
+                direction: MidiEndpointDirection::Input,
+            },
+            MidiEndpoint {
+                id: "wrong-anchor".to_owned(),
+                name: "prefix APC Mini suffix".to_owned(),
+                direction: MidiEndpointDirection::Input,
+            },
+        ]);
+        let mut manager = ScriptManager::new_with_midi(Box::new(midi));
+        let id = manager
+            .add(
+                "midi",
+                r#"
+local c=require('shoop_control')
+c.auto_open_device_specific_midi_control_input('APC Mini', function(message)
+    print_info('in:' .. message[1] .. ',' .. message[2] .. ',' .. message[3])
+end)
+c.auto_open_device_specific_midi_control_output('APC Mini', function(port)
+    port.send({1, 2, 255})
+end, function(port)
+    port.send({3, 4})
+end, 100)
+"#,
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+        manager.advance_midi(std::time::Duration::from_millis(10));
+        assert_eq!(
+            control.take_sent(),
+            [("sink-apc".to_owned(), vec![1, 2, 255])]
+        );
+        control.push_input("source-apc", vec![0x90, 0x01, 0x7f]);
+        control.push_input("source-apc-2", vec![0x80, 0x02, 0x00]);
+        manager.advance_midi(std::time::Duration::from_millis(10));
+        assert_eq!(control.take_sent(), [("sink-apc".to_owned(), vec![3, 4])]);
+        let logs = manager.logs(id).unwrap();
+        assert_eq!(
+            logs.iter()
+                .map(|entry| entry.message.as_str())
+                .collect::<Vec<_>>(),
+            ["in:144,1,127", "in:128,2,0"],
+            "state: {:?}",
+            manager.states()
+        );
+        let state = manager.states().remove(0);
+        assert_eq!(state.midi.rules, 2);
+        assert_eq!(state.midi.connections, 3);
+        assert_eq!(control.active_connections(), 3);
+        manager.advance_midi(std::time::Duration::from_millis(500));
+        assert_eq!(control.active_connections(), 3);
+
+        control.set_endpoints(Vec::new());
+        manager.advance_midi(std::time::Duration::from_millis(500));
+        assert_eq!(manager.states()[0].midi.connections, 0);
+        control.set_endpoints(vec![MidiEndpoint {
+            id: "sink-apc".to_owned(),
+            name: "APC Mini".to_owned(),
+            direction: MidiEndpointDirection::Input,
+        }]);
+        manager.advance_midi(std::time::Duration::from_millis(500));
+        assert_eq!(control.take_sent(), [("sink-apc".to_owned(), vec![3, 4])]);
+        manager.stop(id).unwrap();
+        assert_eq!(manager.states()[0].midi.connections, 0);
+        assert_eq!(control.active_connections(), 0);
+    }
+
+    #[test]
+    fn midi_connection_failures_back_off_and_recover() {
+        let (midi, control) = FakeMidiService::new();
+        control.set_endpoints(vec![MidiEndpoint {
+            id: "source".to_owned(),
+            name: "device".to_owned(),
+            direction: MidiEndpointDirection::Output,
+        }]);
+        control.set_fail_connections(true);
+        let mut manager = ScriptManager::new_with_midi(Box::new(midi));
+        manager
+            .add(
+                "retry",
+                "require('shoop_control').auto_open_device_specific_midi_control_input('device', function() end)",
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+        manager.advance_midi(std::time::Duration::from_millis(1));
+        assert_eq!(manager.states()[0].midi.errors, 1);
+        control.set_fail_connections(false);
+        manager.advance_midi(std::time::Duration::from_millis(249));
+        assert_eq!(manager.states()[0].midi.connections, 0);
+        manager.advance_midi(std::time::Duration::from_millis(1));
+        assert_eq!(manager.states()[0].midi.connections, 1);
+    }
+
+    #[test]
+    fn invalid_midi_rules_and_messages_are_observable() {
+        let (midi, control) = FakeMidiService::new();
+        control.set_endpoints(vec![MidiEndpoint {
+            id: "sink".to_owned(),
+            name: "device".to_owned(),
+            direction: MidiEndpointDirection::Input,
+        }]);
+        let mut manager = ScriptManager::new_with_midi(Box::new(midi));
+        assert!(manager
+            .add(
+                "bad regex",
+                "require('shoop_control').auto_open_device_specific_midi_control_input('[', function() end)",
+                ScriptKind::User,
+                true,
+            )
+            .is_ok());
+        assert_eq!(manager.states()[0].lifecycle, ScriptLifecycle::Error);
+        let id = manager
+            .add(
+                "bad byte",
+                "local c=require('shoop_control'); c.auto_open_device_specific_midi_control_output('device', function(port) port.send({256}) end, function() end, 0)",
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+        assert_eq!(
+            manager
+                .states()
+                .into_iter()
+                .find(|state| state.id == id)
+                .unwrap()
+                .lifecycle,
+            ScriptLifecycle::Error
+        );
+        let overflow = manager
+            .add(
+                "overflow",
+                "local c=require('shoop_control'); c.auto_open_device_specific_midi_control_output('', function(port) for i=1,1025 do port.send({1}) end end, function() end, 0)",
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+        manager.advance_midi(std::time::Duration::ZERO);
+        assert_eq!(
+            manager
+                .states()
+                .into_iter()
+                .find(|state| state.id == overflow)
+                .unwrap()
+                .midi
+                .dropped_messages,
+            1
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn native_virtual_midi_round_trip_when_host_facilities_are_available() {
+        use midir::os::unix::{VirtualInput, VirtualOutput};
+
+        let token = format!("shoop-script-test-{}", std::process::id());
+        let (received_sender, received_receiver) = std::sync::mpsc::channel();
+        let input = match midir::MidiInput::new("Shoop test sink") {
+            Ok(input) => input,
+            Err(error) => {
+                eprintln!("SKIP native virtual MIDI test: {error}");
+                return;
+            }
+        };
+        let sink = match input.create_virtual(
+            &format!("{token}-sink"),
+            move |_, message, _| {
+                let _ = received_sender.send(message.to_vec());
+            },
+            (),
+        ) {
+            Ok(connection) => connection,
+            Err(error) => {
+                eprintln!("SKIP native virtual MIDI test: {error}");
+                return;
+            }
+        };
+        let output = match midir::MidiOutput::new("Shoop test source") {
+            Ok(output) => output,
+            Err(error) => {
+                eprintln!("SKIP native virtual MIDI test: {error}");
+                return;
+            }
+        };
+        let mut source = match output.create_virtual(&format!("{token}-source")) {
+            Ok(connection) => connection,
+            Err(error) => {
+                eprintln!("SKIP native virtual MIDI test: {error}");
+                return;
+            }
+        };
+        let mut manager = ScriptManager::new_with_midi(Box::new(NativeMidiService::new()));
+        let id = manager
+            .add(
+                "native midi",
+                format!(
+                    "local c=require('shoop_control'); c.auto_open_device_specific_midi_control_input('.*{token}-source.*', function(message) print_info(message[1]) end); c.auto_open_device_specific_midi_control_output('.*{token}-sink.*', function(port) port.send({{9,8,7}}) end, function() end, 0)"
+                ),
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+        manager.advance_midi(std::time::Duration::from_millis(500));
+        if manager.states()[0].midi.connections != 2 {
+            eprintln!("SKIP native virtual MIDI test: host did not expose virtual endpoints");
+            return;
+        }
+        assert_eq!(
+            received_receiver
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .unwrap(),
+            [9, 8, 7]
+        );
+        source.send(&[6, 5, 4]).unwrap();
+        for _ in 0..20 {
+            manager.advance_midi(std::time::Duration::from_millis(10));
+            if !manager.logs(id).unwrap().is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(manager.logs(id).unwrap()[0].message, "6");
+        drop(sink);
     }
 
     #[test]

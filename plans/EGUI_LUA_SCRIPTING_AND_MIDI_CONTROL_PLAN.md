@@ -121,16 +121,16 @@ Verification:
 
 ### Stage 5 — Implement native MIDI control ports, hotplug, and autoconnect
 
-- [ ] Add a target-neutral MIDI-control service contract and deterministic fake covering endpoint identity/name/direction, discovery revisions, logical port open/close, input delivery, output submission, and diagnostics.
-- [ ] Add the native adapter using supported platform MIDI facilities, with bounded callback-to-control queues and no dependency on GUI or audio callback timing.
-- [ ] Implement script-owned auto-open input/output rules: compile full-name anchored regexes, open the logical port, connect every compatible match in stable order, emit opened/connected callbacks with the existing Lua port table, and reconnect on endpoint reappearance.
-- [ ] Implement exact-byte input callbacks and bounded output broadcast with a monotonic per-rule rate limiter that preserves FIFO order; expose drop/refusal/send/connect diagnostics and cleanly close all connections on script stop/restart.
-- [ ] Add platform-gated virtual-port integration tests where the host supports them, while retaining the fake service as the cross-platform authoritative contract.
+- [x] Add a target-neutral MIDI-control service contract and deterministic fake covering endpoint identity/name/direction, discovery revisions, logical port open/close, input delivery, output submission, and diagnostics.
+- [x] Add the native adapter using supported platform MIDI facilities, with bounded callback-to-control queues and no dependency on GUI or audio callback timing.
+- [x] Implement script-owned auto-open input/output rules: compile full-name anchored regexes, open the logical port, connect every compatible match in stable order, emit opened/connected callbacks with the existing Lua port table, and reconnect on endpoint reappearance.
+- [x] Implement exact-byte input callbacks and bounded output broadcast with a monotonic per-rule rate limiter that preserves FIFO order; expose drop/refusal/send/connect diagnostics and cleanly close all connections on script stop/restart.
+- [x] Add platform-gated virtual-port integration tests where the host supports them, while retaining the fake service as the cross-platform authoritative contract.
 
 Verification:
 
-- [ ] Fake-service tests cover direction/type filtering, empty/invalid/partial/full regexes, multiple matches, hotplug, duplicate discovery, reconnect, failure, cleanup, queue saturation, SysEx/message limits, and exact rate/order behavior.
-- [ ] Native virtual MIDI evidence sends real messages into a script and receives script output where CI/platform facilities exist; unavailable host facilities are explicit skips, not fake successes.
+- [x] Fake-service tests cover direction/type filtering, empty/invalid/partial/full regexes, multiple matches, hotplug, duplicate discovery, reconnect, failure, cleanup, queue saturation, SysEx/message limits, and exact rate/order behavior.
+- [x] Native virtual MIDI evidence sends real messages into a script and receives script output where CI/platform facilities exist; unavailable host facilities are explicit skips, not fake successes.
 
 ### Stage 6 — Integrate settings, bundled resources, and session scripts
 
