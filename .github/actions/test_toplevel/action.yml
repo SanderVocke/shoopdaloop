@@ -138,6 +138,23 @@ runs:
         carla_lv2_root_windows="$carla_lv2_root_windows;$LV2_PATH"
       fi
       echo "LV2_PATH=$carla_lv2_root_windows" | tee -a "$GITHUB_ENV"
+  - name: Install Carla LV2 runtime fixture (Linux)
+    if: always() && runner.os == 'Linux' && env.COMMAND_SHOOPDALOOP != ''
+    shell: wrap-shell {0}
+    env:
+      GHA_RUN_ALWAYS: 1
+    run: |
+      carla_archive="$RUNNER_TEMP/Carla_2.2.0-linux64.tar.xz"
+      curl -L --fail --retry 3 \
+        -o "$carla_archive" \
+        "https://github.com/falkTX/Carla/releases/download/v2.2.0/Carla_2.2.0-linux64.tar.xz"
+      echo "f04f8355f7c9f90c668873180c366737cf4214ad77cc1dde4549e5623c726c97  $carla_archive" | sha256sum --check
+      carla_root="$RUNNER_TEMP/carla-linux64"
+      rm -rf "$carla_root"
+      mkdir -p "$carla_root"
+      tar -xJf "$carla_archive" -C "$carla_root" --strip-components=1
+      test -f "$carla_root/carla.lv2/manifest.ttl"
+      echo "LV2_PATH=$carla_root${LV2_PATH:+:$LV2_PATH}" | tee -a "$GITHUB_ENV"
   - name: Install Carla LV2 runtime fixture (macOS)
     if: always() && runner.os == 'macOS' && env.COMMAND_SHOOPDALOOP != ''
     shell: wrap-shell {0}

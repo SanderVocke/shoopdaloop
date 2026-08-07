@@ -105,6 +105,15 @@ runs:
     shell: wrap-shell {0}
     run: |
       chmod a+x ${{ inputs.package }}
+      rm -rf appimage-portable
+      mkdir appimage-portable
+      (
+        cd appimage-portable
+        "${{ inputs.package }}" --appimage-extract >/dev/null
+      )
+      APPIMAGE_CONTENTS=$(pwd)/appimage-portable/squashfs-root
+      test -f "$APPIMAGE_CONTENTS/qml/test/tst_TrackControlAndLoop_drywet_carla.qml"
+      echo "PORTABLE_FOLDER_INSTALL=$APPIMAGE_CONTENTS" | tee -a $GITHUB_ENV
       echo "COMMAND_SHOOPDALOOP=${{ inputs.package }} --appimage-extract-and-run" | tee -a $GITHUB_ENV
       echo "COMMAND_TEST_PYTHON=SHOOPDALOOP_APPIMAGE_EXECUTE=python_tests ${{ inputs.package }} --appimage-extract-and-run" | tee -a $GITHUB_ENV
 
