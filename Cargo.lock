@@ -4788,17 +4788,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "shoop_settings"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "directories",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
 name = "shoop_session"
 version = "0.0.0"
 dependencies = [
@@ -4810,6 +4799,17 @@ dependencies = [
  "sha2",
  "thiserror 2.0.19",
  "zip",
+]
+
+[[package]]
+name = "shoop_settings"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "directories",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

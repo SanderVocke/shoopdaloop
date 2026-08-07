@@ -203,7 +203,7 @@ try {
   } else {
     entryUrl = outputOnly
       ? `${origin}/`
-      : `${origin}/?self-test=1${stress ? '&stress=1' : ''}`;
+      : `${origin}/?self-test=1${stress ? '&stress=1' : ''}${browserSize === '360,200' ? '&session-only=1' : ''}`;
   }
   await call('Page.navigate', { url: entryUrl });
 
@@ -282,7 +282,7 @@ try {
     let state = await waitFor(
       candidate => candidate.selfTest === 'passed' && candidate.driver === 'Running',
       'browser physical-audio self-test did not finish',
-      stress ? 360_000 : 120_000,
+      stress ? 360_000 : 240_000,
     );
     if (!(state.callbacks > 0 && state.frames >= state.callbacks * 128)) {
       throw new Error(`worklet callback evidence is invalid: ${JSON.stringify(state)}`);

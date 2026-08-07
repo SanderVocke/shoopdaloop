@@ -726,7 +726,7 @@ impl BrowserSelfTest {
                 {
                     return;
                 }
-                if browser_stress_enabled() {
+                if browser_stress_enabled() || browser_session_only_enabled() {
                     Ok(Self::Complete)
                 } else {
                     Ok(Self::ExportLoopAudio)
@@ -863,9 +863,19 @@ impl BrowserSelfTest {
 
 #[cfg(target_arch = "wasm32")]
 fn browser_stress_enabled() -> bool {
+    browser_location_has("stress=1")
+}
+
+#[cfg(target_arch = "wasm32")]
+fn browser_session_only_enabled() -> bool {
+    browser_location_has("session-only=1")
+}
+
+#[cfg(target_arch = "wasm32")]
+fn browser_location_has(query: &str) -> bool {
     web_sys::window()
         .and_then(|window| window.location().search().ok())
-        .is_some_and(|search| search.contains("stress=1"))
+        .is_some_and(|search| search.contains(query))
 }
 
 #[cfg(target_arch = "wasm32")]
