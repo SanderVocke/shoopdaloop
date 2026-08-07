@@ -8,7 +8,7 @@ This plan adds application-wide persistent settings to the pure-egui application
 
 The repository already has a small `shoop_settings` crate that reads the legacy QML `settings.1` document for Carla startup policy. The egui application will use a fresh document identity, namespace, and storage key. Importing, rewriting, or otherwise supporting the QML settings format is not part of this work; the retained QML path must continue to pass its existing regression tests.
 
-Implementation and review will remain on the dedicated `shoopdaloop-settings` branch and pull request.
+Implementation and review will remain on the dedicated `shoopdaloop-settings` branch and draft PR #677.
 
 ## Goal
 
@@ -114,12 +114,12 @@ Dependencies are ordered: freeze the contract and storage identity first; implem
 ### Stage 0 — Plan delivery and review setup
 
 - [x] Create the dedicated `shoopdaloop-settings` branch from current `origin/master`.
-- [ ] Commit this plan, push the branch, and open the dedicated pull request before implementation.
+- [x] Commit this plan, push the branch, and open draft PR #677 before implementation.
 - [ ] Record review-driven implementation-detail changes in this plan without weakening its goals or immutable criteria.
 
 Verification:
 
-- [ ] The pull request contains only planning/documentation changes before implementation starts and targets `master`.
+- [x] Draft PR #677 contains only planning/documentation changes before implementation starts and targets `master`.
 
 ### Stage 1 — Freeze the settings contract and dependency boundary
 
