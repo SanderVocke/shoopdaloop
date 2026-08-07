@@ -476,6 +476,29 @@ pub enum ScriptLifecycle {
     Error,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ScriptLogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warning,
+    Error,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScriptLogState {
+    pub level: ScriptLogLevel,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ScriptActivityDiagnostics {
+    pub loop_callbacks: u32,
+    pub global_callbacks: u32,
+    pub keyboard_callbacks: u32,
+    pub timers: u32,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ScriptMidiDiagnostics {
     pub rules: u32,
@@ -493,7 +516,9 @@ pub struct ScriptState {
     pub lifecycle: ScriptLifecycle,
     pub documentation: Option<String>,
     pub latest_error: Option<String>,
+    pub activity: ScriptActivityDiagnostics,
     pub midi: ScriptMidiDiagnostics,
+    pub logs: Arc<[ScriptLogState]>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -617,6 +642,15 @@ pub enum AppIntent {
         track_id: TrackId,
     },
     KeyEvent(KeyEvent),
+    RequestAddScriptFilePicker,
+    RequestReloadScriptFile {
+        script_id: ScriptId,
+    },
+    AddUserScriptFile {
+        path: String,
+        name: String,
+        source: Arc<str>,
+    },
     AddScriptSource {
         name: String,
         source: Arc<str>,
@@ -784,7 +818,9 @@ mod tests {
             lifecycle: ScriptLifecycle::Listening,
             documentation: Some("Controller help\n".to_owned()),
             latest_error: None,
+            activity: ScriptActivityDiagnostics::default(),
             midi: ScriptMidiDiagnostics::default(),
+            logs: Arc::from([]),
         };
         assert_eq!(state.id, script_id);
         assert_eq!(state.kind, ScriptKind::User);

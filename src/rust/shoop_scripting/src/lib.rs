@@ -4,7 +4,11 @@ use std::rc::Rc;
 
 use anyhow::{anyhow, bail};
 use mlua::{Function, Lua, Value};
-use shoop_app_api::{ScriptId, ScriptKind, ScriptLifecycle, ScriptMidiDiagnostics, ScriptState};
+use shoop_app_api::{
+    ScriptActivityDiagnostics as ApiScriptActivityDiagnostics, ScriptId, ScriptKind,
+    ScriptLifecycle, ScriptLogLevel as ApiScriptLogLevel, ScriptLogState, ScriptMidiDiagnostics,
+    ScriptState,
+};
 
 mod control;
 mod legacy_key_constants;
@@ -13,8 +17,8 @@ mod midi;
 use control::{install_control_api, ScriptCallbacks};
 pub use control::{
     ControlBridge, ControlLoop, ControlOperation, ControlSnapshot, ControlTrack,
-    MidiRuntimeDiagnostics, ScriptKeyEvent, ScriptLoopEvent, SharedControlBridge,
-    CONTROL_FUNCTION_NAMES,
+    MidiRuntimeDiagnostics, ScriptActivityDiagnostics, ScriptKeyEvent, ScriptLoopEvent,
+    SharedControlBridge, CONTROL_FUNCTION_NAMES,
 };
 use legacy_key_constants::{LEGACY_KEY_CONSTANTS, LEGACY_MODIFIER_CONSTANTS};
 pub use midi::{
@@ -212,6 +216,10 @@ impl LuaRuntime {
         self.callbacks.disconnect_midi(service);
     }
 
+    fn activity_diagnostics(&self) -> ScriptActivityDiagnostics {
+        self.callbacks.activity_diagnostics()
+    }
+
     fn midi_diagnostics(&self) -> MidiRuntimeDiagnostics {
         self.callbacks.midi_diagnostics()
     }
@@ -296,6 +304,7 @@ struct ScriptRecord {
     documentation: Option<String>,
     latest_error: Option<String>,
     session_document_id: Option<u64>,
+    archived_logs: Vec<ScriptLogEntry>,
     runtime: Option<LuaRuntime>,
 }
 
@@ -380,7 +389,9 @@ impl ScriptManager {
                 .as_ref()
                 .is_some_and(|runtime| !runtime.is_listening());
             if finished {
-                record.runtime = None;
+                if let Some(runtime) = record.runtime.take() {
+                    record.archived_logs = runtime.logs();
+                }
                 record.lifecycle = ScriptLifecycle::Finished;
             }
         }
@@ -450,6 +461,7 @@ impl ScriptManager {
                 lifecycle: ScriptLifecycle::Inactive,
                 latest_error: None,
                 session_document_id: None,
+                archived_logs: Vec::new(),
                 runtime: None,
             },
         );
@@ -547,6 +559,7 @@ impl ScriptManager {
         }
         record.lifecycle = ScriptLifecycle::Running;
         record.latest_error = None;
+        record.archived_logs.clear();
         let runtime = LuaRuntime::new_with_control(Rc::clone(&self.control))?;
         match runtime.execute(&record.name, &record.source) {
             Ok(()) => {
@@ -554,6 +567,7 @@ impl ScriptManager {
                     record.lifecycle = ScriptLifecycle::Listening;
                     record.runtime = Some(runtime);
                 } else {
+                    record.archived_logs = runtime.logs();
                     record.lifecycle = ScriptLifecycle::Finished;
                 }
                 Ok(())
@@ -571,6 +585,7 @@ impl ScriptManager {
         let record = self.scripts.get_mut(&id).ok_or_else(|| stale_script(id))?;
         if let Some(runtime) = record.runtime.take() {
             runtime.disconnect_midi(self.midi.as_mut());
+            record.archived_logs = runtime.logs();
         }
         record.lifecycle = ScriptLifecycle::Inactive;
         record.latest_error = None;
@@ -591,6 +606,11 @@ impl ScriptManager {
         self.scripts
             .values()
             .map(|record| {
+                let activity = record
+                    .runtime
+                    .as_ref()
+                    .map(LuaRuntime::activity_diagnostics)
+                    .unwrap_or_default();
                 let midi = record
                     .runtime
                     .as_ref()
@@ -604,12 +624,36 @@ impl ScriptManager {
                     lifecycle: record.lifecycle,
                     documentation: record.documentation.clone(),
                     latest_error: record.latest_error.clone(),
+                    activity: ApiScriptActivityDiagnostics {
+                        loop_callbacks: activity.loop_callbacks,
+                        global_callbacks: activity.global_callbacks,
+                        keyboard_callbacks: activity.keyboard_callbacks,
+                        timers: activity.timers,
+                    },
                     midi: ScriptMidiDiagnostics {
                         rules: midi.rules,
                         connections: midi.connections,
                         dropped_messages: midi.dropped_messages,
                         errors: midi.errors,
                     },
+                    logs: record
+                        .runtime
+                        .as_ref()
+                        .map(LuaRuntime::logs)
+                        .unwrap_or_else(|| record.archived_logs.clone())
+                        .into_iter()
+                        .map(|entry| ScriptLogState {
+                            level: match entry.level {
+                                ScriptLogLevel::Trace => ApiScriptLogLevel::Trace,
+                                ScriptLogLevel::Debug => ApiScriptLogLevel::Debug,
+                                ScriptLogLevel::Info => ApiScriptLogLevel::Info,
+                                ScriptLogLevel::Warning => ApiScriptLogLevel::Warning,
+                                ScriptLogLevel::Error => ApiScriptLogLevel::Error,
+                            },
+                            message: entry.message,
+                        })
+                        .collect::<Vec<_>>()
+                        .into(),
                 }
             })
             .collect()
@@ -621,7 +665,7 @@ impl ScriptManager {
             .runtime
             .as_ref()
             .map(LuaRuntime::logs)
-            .unwrap_or_default())
+            .unwrap_or_else(|| record.archived_logs.clone()))
     }
 
     fn require(&self, id: ScriptId) -> anyhow::Result<&ScriptRecord> {
@@ -928,7 +972,7 @@ c.register_one_shot_timer_cb(10, function() print_info('timer') end)
         );
         manager.stop(id).unwrap();
         manager.dispatch_global_event();
-        assert!(manager.logs(id).unwrap().is_empty());
+        assert_eq!(manager.logs(id).unwrap().len(), 4);
     }
 
     #[test]

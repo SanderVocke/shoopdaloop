@@ -5,6 +5,7 @@ mod connection_dialog;
 mod details_pane;
 mod fonts;
 mod global_controls;
+mod key_input;
 mod loop_widget;
 mod track_controls;
 mod track_widget;

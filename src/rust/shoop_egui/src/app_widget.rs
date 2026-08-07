@@ -18,13 +18,17 @@ pub struct AppWidget {
     add_track_name: String,
     add_track_audio_channels: u32,
     add_track_midi: bool,
+    scripts_open: bool,
     logo: Option<egui::TextureHandle>,
     io_channel_mappings: BTreeMap<crate::TaskId, Vec<u32>>,
     io_channel_selections: BTreeMap<crate::TaskId, Vec<u32>>,
+    pressed_script_keys: BTreeMap<egui::Key, (i64, i64)>,
     #[cfg(test)]
     add_track_accept_rect: Option<egui::Rect>,
     #[cfg(test)]
     add_track_cancel_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    script_enable_rects: BTreeMap<crate::ScriptId, egui::Rect>,
 }
 
 impl Default for AppWidget {
@@ -40,13 +44,17 @@ impl Default for AppWidget {
             add_track_name: String::new(),
             add_track_audio_channels: 2,
             add_track_midi: false,
+            scripts_open: false,
             logo: None,
             io_channel_mappings: BTreeMap::new(),
             io_channel_selections: BTreeMap::new(),
+            pressed_script_keys: BTreeMap::new(),
             #[cfg(test)]
             add_track_accept_rect: None,
             #[cfg(test)]
             add_track_cancel_rect: None,
+            #[cfg(test)]
+            script_enable_rects: BTreeMap::new(),
         }
     }
 }
@@ -62,7 +70,16 @@ impl AppWidget {
 
     pub fn show(&mut self, ui: &mut egui::Ui, state: &AppState) -> Vec<AppAction> {
         self.ensure_logo(ui.ctx());
-        let mut actions = Vec::new();
+        let events = ui.ctx().input(|input| input.events.clone());
+        let text_entry_active = ui.ctx().egui_wants_keyboard_input();
+        let mut actions = crate::key_input::translate_events(
+            &events,
+            text_entry_active,
+            &mut self.pressed_script_keys,
+        )
+        .into_iter()
+        .map(AppAction::KeyEvent)
+        .collect::<Vec<_>>();
 
         egui::Panel::top("global_controls")
             .frame(
@@ -88,6 +105,9 @@ impl AppWidget {
                         }
                         if self.global_controls.take_load_session_requested() {
                             actions.push(AppAction::RequestLoadSessionPicker);
+                        }
+                        if ui.button("Scripts").clicked() {
+                            self.scripts_open = true;
                         }
                     });
             });
@@ -179,10 +199,124 @@ impl AppWidget {
                 actions.extend(response.intents);
             });
 
+        self.show_scripts_window(ui.ctx(), state, &mut actions);
         self.show_add_track_dialog(ui.ctx(), &mut actions);
         self.show_io_task_dialog(ui.ctx(), state, &mut actions);
         actions.extend(self.connections.show(ui.ctx(), state));
         actions
+    }
+
+    fn show_scripts_window(
+        &mut self,
+        context: &egui::Context,
+        state: &AppState,
+        actions: &mut Vec<AppAction>,
+    ) {
+        if !self.scripts_open {
+            return;
+        }
+        egui::Window::new("Lua scripts")
+            .id(egui::Id::new("lua_scripts"))
+            .open(&mut self.scripts_open)
+            .default_width(620.0)
+            .show(context, |ui| {
+                if !state.scripting.supported {
+                    ui.colored_label(
+                        egui::Color32::YELLOW,
+                        "Lua scripting and MIDI control are unavailable in browser builds.",
+                    );
+                    return;
+                }
+                if ui.button("Add Lua file…").clicked() {
+                    actions.push(AppAction::RequestAddScriptFilePicker);
+                }
+                ui.separator();
+                egui::ScrollArea::vertical()
+                    .id_salt("lua_script_list")
+                    .max_height(520.0)
+                    .show(ui, |ui| {
+                        for script in state.scripting.scripts.iter() {
+                            ui.group(|ui| {
+                                ui.horizontal(|ui| {
+                                    let mut enabled = script.enabled;
+                                    let enable_response = ui.checkbox(&mut enabled, "enabled");
+                                    #[cfg(test)]
+                                    self.script_enable_rects
+                                        .insert(script.id, enable_response.rect);
+                                    if enable_response.changed() {
+                                        actions.push(AppAction::SetScriptEnabled {
+                                            script_id: script.id,
+                                            enabled,
+                                        });
+                                    }
+                                    ui.strong(&script.name);
+                                    ui.label(format!("{:?} · {:?}", script.kind, script.lifecycle));
+                                });
+                                if let Some(error) = &script.latest_error {
+                                    ui.colored_label(egui::Color32::LIGHT_RED, error);
+                                }
+                                if let Some(documentation) = &script.documentation {
+                                    ui.collapsing("Documentation", |ui| {
+                                        ui.label(documentation);
+                                    });
+                                }
+                                ui.label(format!(
+                                    "Callbacks: {} loop, {} global, {} keyboard; {} timers",
+                                    script.activity.loop_callbacks,
+                                    script.activity.global_callbacks,
+                                    script.activity.keyboard_callbacks,
+                                    script.activity.timers
+                                ));
+                                ui.label(format!(
+                                    "MIDI: {} rules, {} connections, {} dropped, {} errors",
+                                    script.midi.rules,
+                                    script.midi.connections,
+                                    script.midi.dropped_messages,
+                                    script.midi.errors
+                                ));
+                                ui.horizontal(|ui| {
+                                    if ui.button("Restart").clicked() {
+                                        actions.push(AppAction::RestartScript {
+                                            script_id: script.id,
+                                        });
+                                    }
+                                    if ui.button("Stop").clicked() {
+                                        actions.push(AppAction::StopScript {
+                                            script_id: script.id,
+                                        });
+                                    }
+                                    if script.kind == crate::ScriptKind::User {
+                                        if ui.button("Reload file").clicked() {
+                                            actions.push(AppAction::RequestReloadScriptFile {
+                                                script_id: script.id,
+                                            });
+                                        }
+                                        if ui.button("Remove").clicked() {
+                                            actions.push(AppAction::ForgetScript {
+                                                script_id: script.id,
+                                            });
+                                        }
+                                    }
+                                });
+                                ui.collapsing(format!("Log ({})", script.logs.len()), |ui| {
+                                    if script.logs.is_empty() {
+                                        ui.weak("No messages");
+                                    }
+                                    for entry in script.logs.iter() {
+                                        let color = match entry.level {
+                                            crate::ScriptLogLevel::Warning => egui::Color32::YELLOW,
+                                            crate::ScriptLogLevel::Error => {
+                                                egui::Color32::LIGHT_RED
+                                            }
+                                            _ => ui.visuals().text_color(),
+                                        };
+                                        ui.colored_label(color, &entry.message);
+                                    }
+                                });
+                            });
+                        }
+                    });
+            });
     }
 
     fn show_io_task_dialog(
@@ -672,6 +806,94 @@ mod tests {
                 channels: vec![1, 0],
             }
         );
+    }
+
+    #[test]
+    fn scripting_window_renders_lifecycle_errors_logs_and_midi_diagnostics() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut widget = AppWidget::default();
+        widget.scripts_open = true;
+        let state = AppState {
+            scripting: crate::ScriptingState {
+                supported: true,
+                scripts: Arc::from([crate::ScriptState {
+                    id: crate::ScriptId::from_raw(1),
+                    name: "controller.lua".to_owned(),
+                    kind: crate::ScriptKind::User,
+                    enabled: true,
+                    lifecycle: crate::ScriptLifecycle::Error,
+                    documentation: Some("Controller help".to_owned()),
+                    latest_error: Some("bad callback".to_owned()),
+                    activity: crate::ScriptActivityDiagnostics {
+                        loop_callbacks: 1,
+                        global_callbacks: 2,
+                        keyboard_callbacks: 3,
+                        timers: 4,
+                    },
+                    midi: crate::ScriptMidiDiagnostics {
+                        rules: 2,
+                        connections: 1,
+                        dropped_messages: 3,
+                        errors: 4,
+                    },
+                    logs: Arc::from([crate::ScriptLogState {
+                        level: crate::ScriptLogLevel::Warning,
+                        message: "warning log".to_owned(),
+                    }]),
+                }]),
+            }
+            .into(),
+            ..Default::default()
+        };
+        let output = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 600.0),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                widget.show(ui, &state);
+            },
+        );
+        assert!(!output.shapes.is_empty());
+        assert!(widget.scripts_open);
+        frame(&context, &mut widget, &state, Vec::new());
+        let center = widget.script_enable_rects[&crate::ScriptId::from_raw(1)].center();
+        frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![
+                egui::Event::PointerMoved(center),
+                egui::Event::PointerButton {
+                    pos: center,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let actions = frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![
+                egui::Event::PointerMoved(center),
+                egui::Event::PointerButton {
+                    pos: center,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert!(actions.contains(&AppAction::SetScriptEnabled {
+            script_id: crate::ScriptId::from_raw(1),
+            enabled: false,
+        }));
     }
 
     #[test]

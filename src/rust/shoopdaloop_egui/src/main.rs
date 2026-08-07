@@ -110,6 +110,26 @@ impl UnifiedApp {
     #[cfg(not(target_arch = "wasm32"))]
     fn handle_ui_intent(&mut self, intent: AppIntent) {
         let intent = match intent {
+            AppIntent::RequestAddScriptFilePicker => {
+                let path = rfd::FileDialog::new()
+                    .add_filter("Lua script", &["lua"])
+                    .pick_file();
+                if let Some(path) = path {
+                    let sender = self.pending_file_intent_tx.clone();
+                    std::thread::spawn(move || match user_script_file_intent(&path, None) {
+                        Ok(intent) => {
+                            let _ = sender.send(intent);
+                        }
+                        Err(error) => {
+                            let _ = sender.send(AppIntent::ReportFileIoError {
+                                task_id: None,
+                                message: error.to_string(),
+                            });
+                        }
+                    });
+                }
+                None
+            }
             AppIntent::RequestLoadSessionPicker => {
                 let path = rfd::FileDialog::new()
                     .add_filter("Shoop session", &["shoop"])
@@ -195,6 +215,13 @@ impl UnifiedApp {
     #[cfg(target_arch = "wasm32")]
     fn handle_ui_intent(&mut self, intent: AppIntent) {
         match intent {
+            AppIntent::RequestAddScriptFilePicker | AppIntent::RequestReloadScriptFile { .. } => {
+                let _ = self.runtime.dispatch(AppIntent::AddUserScriptFile {
+                    path: String::new(),
+                    name: String::new(),
+                    source: "".into(),
+                });
+            }
             AppIntent::RequestLoadSessionPicker => {
                 let pending = Rc::clone(&self.pending_file_intents);
                 wasm_bindgen_futures::spawn_local(async move {
@@ -400,15 +427,14 @@ fn user_script_file_intent(
             source: source.into(),
         })
     } else {
-        Ok(AppIntent::AddScriptSource {
+        Ok(AppIntent::AddUserScriptFile {
+            path: path.to_string_lossy().into_owned(),
             name: path
                 .file_name()
                 .unwrap_or_default()
                 .to_string_lossy()
                 .into_owned(),
             source: source.into(),
-            kind: ScriptKind::User,
-            enabled: true,
         })
     }
 }
@@ -431,11 +457,39 @@ fn persist_script_enabled(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+fn persist_script_added(settings_path: &Path, script_path: &str) -> anyhow::Result<()> {
+    let mut settings = shoop_settings::ScriptSettings::load(settings_path)?;
+    if let Some(script) = settings
+        .known_scripts
+        .iter_mut()
+        .find(|script| script.path_or_filename == script_path)
+    {
+        script.run = true;
+    } else {
+        settings.known_scripts.push(shoop_settings::KnownScript {
+            path_or_filename: script_path.to_owned(),
+            run: true,
+        });
+    }
+    shoop_settings::ScriptSettings::save(settings_path, &settings)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn persist_script_removed(settings_path: &Path, script_path: &str) -> anyhow::Result<()> {
+    let mut settings = shoop_settings::ScriptSettings::load(settings_path)?;
+    settings
+        .known_scripts
+        .retain(|script| script.path_or_filename != script_path);
+    shoop_settings::ScriptSettings::save(settings_path, &settings)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 struct Runtime {
     _runtime: ApplicationRuntime,
     handle: ApplicationHandle,
     settings_path: std::path::PathBuf,
     script_paths: std::collections::BTreeMap<shoop_egui::ScriptId, String>,
+    pending_script_paths: std::collections::VecDeque<(String, String)>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -462,30 +516,87 @@ impl Runtime {
             handle,
             settings_path,
             script_paths,
+            pending_script_paths: std::collections::VecDeque::new(),
         })
     }
 
-    fn tick(&mut self, _elapsed: Duration) {}
+    fn tick(&mut self, _elapsed: Duration) {
+        let snapshot = self.handle.snapshot();
+        let mut mapped = self
+            .script_paths
+            .keys()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>();
+        let mut retained = std::collections::VecDeque::new();
+        while let Some((name, path)) = self.pending_script_paths.pop_front() {
+            if let Some(script) = snapshot.scripting.scripts.iter().find(|script| {
+                script.kind == ScriptKind::User
+                    && script.name == name
+                    && !mapped.contains(&script.id)
+            }) {
+                self.script_paths.insert(script.id, path);
+                mapped.insert(script.id);
+            } else {
+                retained.push_back((name, path));
+            }
+        }
+        self.pending_script_paths = retained;
+    }
 
     fn snapshot(&self) -> std::sync::Arc<AppSnapshot> {
         self.handle.snapshot()
     }
 
     fn dispatch(&mut self, intent: AppIntent) -> Result<(), shoop_app::DispatchError> {
-        let persisted_enablement = match &intent {
-            AppIntent::SetScriptEnabled { script_id, enabled } => self
-                .script_paths
-                .get(script_id)
-                .map(|path| (path.clone(), *enabled)),
-            _ => None,
-        };
-        self.handle.dispatch(intent)?;
-        if let Some((path, enabled)) = persisted_enablement {
-            if let Err(error) = persist_script_enabled(&self.settings_path, &path, enabled) {
-                eprintln!("ShoopDaLoop script settings: {error}");
+        match intent {
+            AppIntent::RequestReloadScriptFile { script_id } => {
+                let Some(path) = self.script_paths.get(&script_id) else {
+                    eprintln!("ShoopDaLoop script settings: no file path for script {script_id}");
+                    return Ok(());
+                };
+                match user_script_file_intent(Path::new(path), Some(script_id)) {
+                    Ok(intent) => self.handle.dispatch(intent),
+                    Err(error) => {
+                        eprintln!("ShoopDaLoop script settings: {error}");
+                        Ok(())
+                    }
+                }
             }
+            AppIntent::AddUserScriptFile { path, name, source } => {
+                self.handle.dispatch(AppIntent::AddScriptSource {
+                    name: name.clone(),
+                    source,
+                    kind: ScriptKind::User,
+                    enabled: true,
+                })?;
+                if let Err(error) = persist_script_added(&self.settings_path, &path) {
+                    eprintln!("ShoopDaLoop script settings: {error}");
+                }
+                self.pending_script_paths.push_back((name, path));
+                Ok(())
+            }
+            AppIntent::SetScriptEnabled { script_id, enabled } => {
+                self.handle
+                    .dispatch(AppIntent::SetScriptEnabled { script_id, enabled })?;
+                if let Some(path) = self.script_paths.get(&script_id) {
+                    if let Err(error) = persist_script_enabled(&self.settings_path, path, enabled) {
+                        eprintln!("ShoopDaLoop script settings: {error}");
+                    }
+                }
+                Ok(())
+            }
+            AppIntent::ForgetScript { script_id } => {
+                self.handle
+                    .dispatch(AppIntent::ForgetScript { script_id })?;
+                if let Some(path) = self.script_paths.remove(&script_id) {
+                    if let Err(error) = persist_script_removed(&self.settings_path, &path) {
+                        eprintln!("ShoopDaLoop script settings: {error}");
+                    }
+                }
+                Ok(())
+            }
+            other => self.handle.dispatch(other),
         }
-        Ok(())
     }
 
     fn take_file_output(&self) -> Option<shoop_app::ApplicationFileOutput> {
@@ -1165,7 +1276,7 @@ mod tests {
         assert!(!scripts[1].enabled);
         assert!(matches!(
             user_script_file_intent(&user_script, None).unwrap(),
-            AppIntent::AddScriptSource { .. }
+            AppIntent::AddUserScriptFile { .. }
         ));
         assert!(matches!(
             user_script_file_intent(&user_script, Some(shoop_egui::ScriptId::from_raw(9))).unwrap(),

@@ -270,6 +270,14 @@ pub struct MidiOutputRegistration {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ScriptActivityDiagnostics {
+    pub loop_callbacks: u32,
+    pub global_callbacks: u32,
+    pub keyboard_callbacks: u32,
+    pub timers: u32,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct MidiRuntimeDiagnostics {
     pub rules: u32,
     pub connections: u32,
@@ -563,6 +571,30 @@ impl ScriptCallbacks {
                 service.disconnect(id);
             }
             rule.queue.borrow_mut().clear();
+        }
+    }
+
+    pub fn activity_diagnostics(&self) -> ScriptActivityDiagnostics {
+        ScriptActivityDiagnostics {
+            loop_callbacks: self
+                .loop_events
+                .borrow()
+                .len()
+                .try_into()
+                .unwrap_or(u32::MAX),
+            global_callbacks: self
+                .global_events
+                .borrow()
+                .len()
+                .try_into()
+                .unwrap_or(u32::MAX),
+            keyboard_callbacks: self
+                .keyboard_events
+                .borrow()
+                .len()
+                .try_into()
+                .unwrap_or(u32::MAX),
+            timers: self.timers.borrow().len().try_into().unwrap_or(u32::MAX),
         }
     }
 

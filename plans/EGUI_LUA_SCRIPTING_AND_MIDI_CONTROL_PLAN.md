@@ -148,15 +148,15 @@ Verification:
 
 ### Stage 7 — Deliver the egui script-management surface
 
-- [ ] Add a main-menu entry and script manager showing name, bundled/user/session kind, enabled state, lifecycle status, latest error, callback/timer/MIDI listening state, and MIDI diagnostics.
-- [ ] Add enable/disable, restart, stop, forget-user-script, add-user-script, and bundled-docstring help actions with stable script IDs and stale-result validation.
-- [ ] Route raw performance key events from the eframe application through typed intents independently of widget paint, while preserving text-edit and focus rules.
-- [ ] Present native MIDI unavailable/permission/open/connect/regex/overflow/send failures distinctly; on browser builds keep scripting absent or clearly unsupported rather than rendering controls that cannot work.
+- [x] Add a main-menu entry and script manager showing name, bundled/user/session kind, enabled state, lifecycle status, latest error, callback/timer/MIDI listening state, and MIDI diagnostics.
+- [x] Add enable/disable, restart, stop, forget-user-script, add-user-script, and bundled-docstring help actions with stable script IDs and stale-result validation.
+- [x] Route raw performance key events from the eframe application through typed intents independently of widget paint, while preserving text-edit and focus rules.
+- [x] Present native MIDI unavailable/permission/open/connect/regex/overflow/send failures distinctly; on browser builds keep scripting absent or clearly unsupported rather than rendering controls that cannot work.
 
 Verification:
 
-- [ ] Backend-free egui tests cover manager actions, statuses/errors, stale IDs, help, unavailable MIDI, minimum/common viewports, and keyboard routing/focus behavior.
-- [ ] Native composition tests cover first-run keyboard startup, adding/restarting/stopping a user script, settings persistence, and complete resource cleanup at application shutdown.
+- [x] Backend-free egui tests cover manager actions, statuses/errors, stale IDs, help, unavailable MIDI, minimum/common viewports, and keyboard routing/focus behavior.
+- [x] Native composition tests cover first-run keyboard startup, adding/restarting/stopping a user script, settings persistence, and complete resource cleanup at application shutdown.
 
 ### Stage 8 — Prove the unchanged bundled controller script end to end
 
