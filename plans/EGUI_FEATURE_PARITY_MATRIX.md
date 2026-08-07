@@ -358,6 +358,30 @@ Milestone 5 is implemented by `EGUI_MILESTONE_5_SESSION_PERSISTENCE_AND_LOOP_IO.
 | IO-OLD-001 | QML-era archive handling | Old archive/media formats are deliberately unsupported | Explored for M5 | M5 required | Complete | Codec rejection and application no-mutation/error evidence |
 | IO-E2E-001 | Authoritative native/browser round trip | Save/load/play and loop export/import under real runtimes | Explored for M5 | M5 required | Complete | Native dummy save/load/play workflow; Firefox Web Audio session/audio/MIDI exact-byte workflow; self-contained direct-file session/media workflow |
 
+## Persistent egui settings discovery
+
+`EGUI_PERSISTENT_SETTINGS_PLAN.md` defines the fresh application-preference slice. Discovery covers the existing `shoop_settings`/QML settings separation, egui composition and menu/widget boundaries, Add Track defaults, the cross-target product runner, `directories` platform paths, browser origin storage, and the versioning pattern established by `shoop_session`. The replacement deliberately does not import the QML `settings.1` format. Machine/user preferences remain separate from `.shoop` session state.
+
+| ID | Capability or behavior | Retained/new contract | Discovery | Milestone target | Current implementation | Planned evidence |
+|---|---|---|---|---|---|---|
+| SET-ARCH-001 | Explicit settings registration near consumers | QML settings are window-owned; new consumers register typed definitions during composition | Explored for settings | Settings required | Not started | Registry composition and duplicate/type tests |
+| SET-ARCH-002 | Presentation/persistence separation | `shoop_egui` remains free of filesystem and browser APIs | Explored for settings | Settings required | Not started | Dependency/source scans and Wasm checks |
+| SET-FMT-001 | Fresh egui settings identity | No QML-format compatibility is required | Explored for settings | Settings required | Planned | `docs/settings_format_v1.md`, rejection fixtures, path/key scans |
+| SET-FMT-002 | Version checks and migration dispatch | Envelope-first format/major/minor/document checks and ordered pure migrations | Explored for settings | Settings required | Not started | Version corpus and migration-chain harness |
+| SET-FMT-003 | Missing, invalid, and unknown values | Registered defaults, typed warnings, and unknown same-version key retention | Explored for settings | Settings required | Not started | Deterministic codec/registry tests |
+| SET-API-001 | Typed immutable access | Stable `SettingKey<T>` reads from revisioned snapshots | Explored for settings | Settings required | Not started | Typed getter/default/revision tests |
+| SET-NATIVE-001 | Standard native config location | One `ProjectDirs` identity across Linux, Windows, and macOS | Explored for settings | Settings required | Not started | Injected-path tests and cross-platform CI |
+| SET-NATIVE-002 | Transactional native write | Same-directory temporary file, flush, atomic replace, no publish on failure | Explored for settings | Settings required | Not started | Failure injection and restart round trip |
+| SET-WEB-001 | Browser-origin persistence | Stable `localStorage` key for hosted/self-contained Wasm | Explored for settings | Settings required | Not started | Adapter tests and browser save/reload workflow |
+| SET-ERR-001 | Observable load/save/recovery state | Defaults keep the app usable; rejected input is not silently overwritten | Explored for settings | Settings required | Not started | Malformed/future/storage-failure UI and manager tests |
+| SET-PRES-001 | Main-menu settings dialog | Registry-generated, resizable dialog with Save/Cancel/reset/help/effect state | Explored for settings | Settings required | Not started | Typed routing and 360×200/900×600 paint tests |
+| SET-USE-001 | Default new-track audio channels | Existing Add Track draft starts at stereo | Explored for settings | Settings required | Not started | Save/restart/next-open integration tests |
+| SET-USE-002 | Default new-track MIDI state | Existing Add Track draft starts with MIDI disabled | Explored for settings | Settings required | Not started | Save/restart/next-open integration tests |
+| SET-E2E-001 | Cross-target persistence | Native and browser reload use real persisted text and authoritative consumers | Explored for settings | Settings required | Not started | Native temporary-config restart and product browser automation |
+| SET-OLD-001 | Retained QML isolation | Existing QML settings/Carla path remains independently regression-tested | Explored for settings | Settings required | Not started | Mutual rejection tests and retained QML suite |
+
+Driver/device selection, MIDI-control and script settings, runnable Carla/FX settings, and session-local overrides remain assigned to their owning milestones; this slice establishes the service and two currently usable application preferences only.
+
 ## Coarsely listed future areas
 
 These areas remain `Unexplored` for whole-feature replacement and must be expanded before their milestones set acceptance criteria:
@@ -366,7 +390,7 @@ These areas remain `Unexplored` for whole-feature replacement and must be expand
 |---|---|---|
 | Click-track generation beyond loop media I/O | Partially explored | Deferred |
 | Runtime reconnect policy and runnable bus topology | Partially explored | Deferred |
-| Driver and application settings, device selection, and native real-driver composition | Partially explored | Deferred |
+| Driver/device settings and native real-driver composition beyond the persistent-settings foundation | Partially explored | Deferred |
 | Dry/wet topology and FX-chain hosting/state management | Partially explored | Deferred |
 | Composite-loop creation, scheduling, editing, and nesting | Partially explored | Deferred |
 | Lua scripting API and built-in scripts | Unexplored | Deferred |

@@ -123,15 +123,15 @@ Verification:
 
 ### Stage 1 — Freeze the settings contract and dependency boundary
 
-- [ ] Add a checked-in egui settings v1 specification covering the envelope, key/value rules, version decisions, migration dispatch, unknown/invalid values, recovery, storage identities/locations, and non-compatibility with QML settings.
-- [ ] Inventory settings/session boundaries and expand the parity matrix into independently testable format, registry, storage, dialog, and Add Track integration rows.
-- [ ] Define target-neutral registry, snapshot, diagnostic, draft, and storage-result contracts; document which pieces remain in `shoop_settings`, `shoop_egui`, and `shoopdaloop_egui`.
-- [ ] Confirm the selected existing dependency stack under `wasm32-unknown-unknown`; target-gate native filesystem dependencies in `shoop_settings` as needed.
+- [x] Add a checked-in egui settings v1 specification covering the envelope, key/value rules, version decisions, migration dispatch, unknown/invalid values, recovery, storage identities/locations, and non-compatibility with QML settings.
+- [x] Inventory settings/session boundaries and expand the parity matrix into independently testable format, registry, storage, dialog, and Add Track integration rows.
+- [x] Define target-neutral registry, snapshot, diagnostic, draft, and storage-result contracts; document which pieces remain in `shoop_settings`, `shoop_egui`, and `shoopdaloop_egui`.
+- [x] Confirm the selected existing dependency stack under `wasm32-unknown-unknown`; no additional target-gating is needed before the core implementation.
 
 Verification:
 
-- [ ] Format review maps every acceptance rule to a document rule or typed API behavior.
-- [ ] A Wasm compiler probe proves the settings core has no filesystem, Qt, egui, backend, engine, or native-window dependency.
+- [x] Format review maps every acceptance rule to a document rule or typed API behavior.
+- [x] `cargo check -p shoop_settings --target wasm32-unknown-unknown` proves the existing settings dependency boundary compiles without Qt, egui, backend, engine, or native-window dependencies.
 
 ### Stage 2 — Implement the registry, codec, validation, and migration dispatcher
 
