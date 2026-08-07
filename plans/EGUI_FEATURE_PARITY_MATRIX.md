@@ -328,14 +328,43 @@ The native QML Carla path now supplies a complete frontend-independent hosting-m
 | FX-SUBPROC-005 | Worker diagnostics | No per-chain subprocess streams existed. | Partially explored | Partial | Shared native baseline complete: bounded generation-tagged stdout/stderr, inspect/copy/clear, truncation, crash notification, status, keyboard, and accessibility tests pass; pure-egui presentation remains deferred |
 | FX-SUBPROC-006 | Pure-egui FX integration | FX chains and dry/wet tracks are deferred. | Partially explored | Deferred | Shared core is frontend-independent; no egui FX/settings API or presentation is claimed |
 
+## Milestone-5 persistence and loop-I/O planned matrix
+
+Milestone 5 is defined by `EGUI_MILESTONE_5_SESSION_PERSISTENCE_AND_LOOP_IO.md` and the frozen fresh-format contract in `docs/session_format_v1.md`. QML descriptors and tests are behavior-discovery evidence only: QML-era `.shl`, `session.1`, tar archives, and JSON `.smf` are intentional non-requirements and must be rejected without changing the running session.
+
+| ID | Capability or behavior | Retained behavior / new contract | Discovery | M5 target | Current implementation | Planned evidence |
+|---|---|---|---|---|---|---|
+| IO-ARCH-001 | Target-neutral persistence boundary | Persistence serializes the authoritative model, never widgets | Explored for M5 | M5 required | Partial | `shoop_session` native/Wasm tests pass; application wiring remains |
+| IO-FMT-001 | Fresh versioned session container | `.shoop` v1 ZIP64, deterministic JSON manifest, Deflate, hashes | Explored for M5 | M5 required | Complete | Deterministic bit-exact archive round trips and Wasm check |
+| IO-FMT-002 | Version/schema rejection and future migration boundary | Unsupported older/future major versions fail before mutation | Explored for M5 | M5 required | Partial | Version/path/resource tests pass; application rollback remains |
+| IO-FMT-003 | Complete session-scoped state document | Controls, topology, routes, buses, composites, scripts, MIDI control, settings, FX | Explored for M5 | M5 required | Partial | Typed current/deferred codec fixture passes; authoritative model mapping remains |
+| IO-FMT-004 | Exact Carla and recorded FX state | Opaque Carla strings and channel FX-state references are byte-exact | Explored for M5 | M5 required | Partial | Byte-exact codec fixture passes; backend hooks remain |
+| IO-AUD-001 | Exact compressed session audio | Per-channel little-endian `f32` payloads avoid aggregate codec limits | Explored for M5 | M5 required | Complete | Bit-exact deterministic archive and 300-channel tests |
+| IO-AUD-002 | Individual loop audio export | Ordered selected channels; float WAV and `.shoop-audio` on all targets | Explored for M5 | M5 required | Partial | Cross-target codecs pass; workflow/UI remains |
+| IO-AUD-003 | Individual loop audio import | Explicit source-to-destination mapping and optional length adoption | Explored for M5 | M5 required | Not started | Fewer/equal/more/duplicate/direct-dry-wet mapping tests |
+| IO-MIDI-001 | Exact loop/session MIDI | Integer source frames, duration, start state, equal-frame order, exact bytes | Explored for M5 | M5 required | Complete | Exact archive/order/start-state and resampling tests |
+| IO-MIDI-002 | Standard MIDI interoperability | Tempo-map import and disclosed high-resolution export quantization | Explored for M5 | M5 required | Partial | Standard encode/decode and quantization tests pass; broader tempo/SysEx workflow remains |
+| IO-CHAN-001 | Arbitrary channels per loop | `u32` format/API counts; no old 10-channel persistence ceiling | Explored for M5 | M5 required | Partial | Format and 300-channel media pass; application/backend/protocol/UI remain |
+| IO-RATE-001 | Session sample-rate warning/conversion | Confirm before deterministic audio and sample-domain conversion | Explored for M5 | M5 required | Partial | 48↔44.1/32/96 kHz codec conversion passes; warning/workflow remains |
+| IO-RATE-002 | Loop media sample-rate warning/conversion | The same warning and conversion policy applies to loop imports | Explored for M5 | M5 required | Partial | Exact MIDI/audio conversion implemented; warning/workflow remains |
+| IO-SAVE-001 | Coherent playback-safe save | One settled content epoch; playing continues through compression/output | Explored for M5 | M5 required | Not started | Native/worklet callback and generation tests |
+| IO-LOAD-001 | Transactional session replacement | Validate/stage/finalize then one commit; abort retains old session | Explored for M5 | M5 required | Not started | Fake/engine/worklet injected-failure contracts |
+| IO-TASK-001 | Progress, cancellation, and typed errors | Bounded immutable task state; no large bytes in snapshots | Explored for M5 | M5 required | Not started | Actor/cooperative saturation/stale-ID/cancel tests |
+| IO-FILE-001 | Native file service | Async read/write, temporary sibling, atomic replacement | Explored for M5 | M5 required | Not started | Filesystem failure/cleanup tests |
+| IO-FILE-002 | Hosted and self-contained browser files | Upload/download fallback plus transactional handles where available | Explored for M5 | M5 required | Not started | Chrome/Firefox/self-contained byte round trips |
+| IO-PRES-001 | Main session I/O controls | Enabled Save/Load actions, warnings, progress, actionable failures | Explored for M5 | M5 required | Not started | Typed egui interaction and viewport paint tests |
+| IO-PRES-002 | Loop context media controls | Audio/exact MIDI/standard MIDI load/save and mapping surfaces | Explored for M5 | M5 required | Not started | Stable-ID dialog and stale-entity tests |
+| IO-SEC-001 | Untrusted archive/resource safety | Reject traversal, duplicates, bombs, overflows, and hash mismatches | Explored for M5 | M5 required | Partial | Path/resource/hash/schema checks implemented; broader adversarial corpus remains |
+| IO-OLD-001 | QML-era archive handling | Old archive/media formats are deliberately unsupported | Explored for M5 | M5 required | Partial | Codec unsupported-format test passes; application no-mutation evidence remains |
+| IO-E2E-001 | Authoritative native/browser round trip | Save/clear/load/play and loop export/import under real runtimes | Explored for M5 | M5 required | Not started | Native dummy and browser Web Audio workflows |
+
 ## Coarsely listed future areas
 
 These areas remain `Unexplored` for whole-feature replacement and must be expanded before their milestones set acceptance criteria:
 
 | Area | Discovery | Implementation |
 |---|---|---|
-| Session save/load, archive compatibility, schema migration, and resampling | Unexplored | Deferred |
-| Audio and MIDI import/export and click-track generation | Unexplored | Deferred |
+| Click-track generation beyond loop media I/O | Partially explored | Deferred |
 | Persisted connections, autoconnect rules, buses, and reconnect policy | Partially explored | Deferred |
 | Driver and application settings, device selection, and native real-driver composition | Partially explored | Deferred |
 | Dry/wet topology and FX-chain hosting/state management | Partially explored | Deferred |

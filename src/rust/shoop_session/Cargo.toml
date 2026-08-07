@@ -1,0 +1,16 @@
+[package]
+name = "shoop_session"
+edition = "2021"
+
+[dependencies]
+hound = { workspace = true }
+midly = { workspace = true }
+rubato = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+zip = { workspace = true }
+
+[lints]
+workspace = true
