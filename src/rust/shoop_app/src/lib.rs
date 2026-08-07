@@ -561,6 +561,17 @@ impl ApplicationModel {
 
     fn begin_save_session(&mut self) -> Result<(), String> {
         self.ensure_io_idle()?;
+        if self.loops.values().any(|loop_| {
+            matches!(
+                loop_.state.mode,
+                LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+            )
+        }) {
+            return Err(
+                "session save is waiting for active recording/replacement content to settle"
+                    .to_owned(),
+            );
+        }
         let task_id = self.start_io_task(IoTaskKind::SaveSession, "Capturing session");
         self.pending_io = Some(PendingIo::SaveSession);
         self.io_task = Some(IoTaskState {
@@ -4320,6 +4331,40 @@ mod tests {
         runtime
             .dispatch(AppIntent::Global(GlobalControlAction::SetSolo(true)))
             .unwrap();
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        let loop_id = runtime
+            .snapshot()
+            .tracks
+            .iter()
+            .find(|track| track.id == persistent_track)
+            .unwrap()
+            .loops[0]
+            .id;
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: persistent_track,
+                loop_id,
+                action: LoopAction::RecordClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().notifications.iter().any(|notification| {
+            notification
+                .message
+                .contains("active recording/replacement")
+        }));
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: persistent_track,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
         runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
         for _ in 0..10 {
             runtime.tick(Duration::ZERO);
@@ -4361,6 +4406,36 @@ mod tests {
             warning.sample_rate_warning.as_ref().unwrap().source_rate,
             32_000
         );
+        runtime
+            .dispatch(AppIntent::ConfirmSampleRateConversion {
+                task_id: TaskId::from_raw(warning.id.raw() + 1),
+                accept: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().io_task.as_ref().unwrap().status,
+            IoTaskStatus::AwaitingSampleRateConfirmation
+        );
+        runtime
+            .dispatch(AppIntent::ConfirmSampleRateConversion {
+                task_id: warning.id,
+                accept: false,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().io_task.as_ref().unwrap().status,
+            IoTaskStatus::Cancelled
+        );
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "different-rate.shoop".to_owned(),
+                bytes: Arc::from(encode_session(&resampled, "test").unwrap()),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let warning = runtime.snapshot().io_task.clone().unwrap();
         runtime
             .dispatch(AppIntent::ConfirmSampleRateConversion {
                 task_id: warning.id,
@@ -4469,6 +4544,49 @@ mod tests {
             runtime.snapshot().io_task.as_ref().unwrap().status,
             IoTaskStatus::Completed
         );
+        for (source_channels, mapping) in [(3_u32, vec![2, 1, 0]), (4, vec![3, 1, 0])] {
+            let audio = LoopAudio {
+                sample_rate: 48_000,
+                channels: (0..source_channels)
+                    .map(|index| LoopAudioChannel {
+                        label: format!("source {}", index + 1),
+                        role: "direct".to_owned(),
+                        samples: vec![(index + 1) as f32 / 10.0; 256],
+                    })
+                    .collect(),
+            };
+            runtime
+                .dispatch(AppIntent::ImportLoopAudioBytes {
+                    loop_id,
+                    name: "mapping.shoop-audio".to_owned(),
+                    bytes: Arc::from(encode_loop_audio(&audio).unwrap()),
+                    update_loop_length: true,
+                })
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+            let task = runtime.snapshot().io_task.clone().unwrap();
+            assert_eq!(
+                task.audio_channel_mapping
+                    .as_ref()
+                    .unwrap()
+                    .source_channels
+                    .len(),
+                source_channels as usize
+            );
+            runtime
+                .dispatch(AppIntent::ConfirmAudioChannelMapping {
+                    task_id: task.id,
+                    source_for_destination: mapping,
+                })
+                .unwrap();
+            for _ in 0..10 {
+                runtime.tick(Duration::ZERO);
+            }
+            assert_eq!(
+                runtime.snapshot().io_task.as_ref().unwrap().status,
+                IoTaskStatus::Completed
+            );
+        }
         runtime
             .dispatch(AppIntent::RequestLoopAudioExport {
                 loop_id,

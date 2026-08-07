@@ -6,7 +6,7 @@ This document freezes the first persistence format for the pure-egui application
 
 ## Common rules
 
-- All files begin as ZIP64 containers and use Deflate lossless compression.
+- All Shoop-native files (`.shoop`, `.shoop-audio`, and `.shoop-midi`) are ZIP64 containers and use Deflate lossless compression. Standard `.wav` and `.mid` exports retain their standard container formats.
 - The root entry is `manifest.json`, UTF-8 JSON with deterministic object fields and sorted collections.
 - Every manifest has `format`, `format_version: { major, minor }`, and `document_version`.
 - Version 1 readers accept major 1 and known/defaultable minor additions. Unsupported older or newer majors are rejected before session mutation.
@@ -51,13 +51,13 @@ The exact format is also a ZIP64 container. Its manifest uses `format: "shoop-mi
 
 Events are relative to loop/channel time. Equal-frame event ordering is determined by `order`. Negative engine sentinel timestamps are never serialized. At the same sample rate, timestamps, duration, start state, ordering, and bytes are exact.
 
-Standard `.mid` is an interoperability format, not canonical session storage. Import resolves tempo maps to absolute time and preserves stable event ordering. Export uses the highest practical standard timebase and reports the resulting maximum timing quantization.
+Standard `.mid` is an interoperability format, not canonical session storage. Import resolves tempo maps to absolute time, merges tracks in stable source order, and preserves MIDI and SysEx bytes. Export uses SMPTE 30 fps with 255 subframes (7,650 ticks/second), includes duration/end-of-track information, and reports the measured maximum frame quantization. Select exact `.shoop-midi` when integer-frame identity is required.
 
 ## Exact loop audio (`.shoop-audio`)
 
 The exact audio format is a ZIP64 container with `format: "shoop-audio"`, version `{ major: 1, minor: 0 }`, sample rate, ordered channel labels/roles, and one exact `f32le` payload per channel. It supports any channel count representable by `u32` and available resources.
 
-Float WAV is the baseline standard cross-target audio format. Standard formats may impose their own channel/sample representation limits; the UI must advertise those limits and recommend `.shoop-audio` when exact arbitrary-channel output is required.
+Float WAV is the baseline standard cross-target audio format. The current native and browser adapter reads/writes float WAV and the exact Shoop format; no additional native sound-file adapter is selected in v1. Export presents an ordered channel selection, and import requires an explicit source-to-destination mapping (duplication is permitted). Current runnable tracks expose direct channels; dry/wet roles remain representable but are rejected as unsupported topology until the FX-track milestone. Use `.shoop-audio` when exact arbitrary-channel output is required.
 
 ## Sample-rate conversion
 
@@ -76,4 +76,16 @@ Decode, decompression, hashes, versions, schema/references, capabilities, and op
 
 Saving captures scalar state and all settled channel content from one validated generation. Playing is not a content mutation and must continue. Recording, replacement, loading, clearing, or grab adoption yields an explicit wait/retry/cancel or rejection rather than a mixed-generation save.
 
-Native output uses a temporary sibling and atomic replacement. Browser output is fully validated before download publication, or closes a transactional writable handle. Archive/codec/resampling/filesystem work never runs in the realtime callback.
+Native output uses a temporary sibling, flushes it, and atomically renames it; reads and writes run outside the GUI/application actor after picker selection. Browser upload/download uses asynchronous `rfd` file handles and Blob/download fallback according to browser capability. Picker handles, paths, and browser objects never enter `AppSnapshot` or a session document. Platform failures are reported back as typed task errors.
+
+Archive/codec/resampling/filesystem work never runs in `process()`. Native session compression runs on a worker thread. Browser codec work runs on the UI/control side while the AudioWorklet independently continues bounded render callbacks; session transfer uses 2 KiB generation-tagged chunks and a 256 MiB transfer ceiling.
+
+## Limits, recovery, and compatibility
+
+Default archive limits are 1,000,000 entries and 16 GiB total declared uncompressed payload. Each declared size is checked before allocation; actual practical memory and browser transfer limits may be lower and fail explicitly. AudioWorklet recording storage remains hard-bounded to the documented ten seconds per channel. The format itself uses `u32` channel counts and has no ten-channel persistence limit; the physical Web Audio device boundary remains negotiated separately and the engine deterministically mixes all loop channels to its stereo destination.
+
+Malformed paths, duplicate entries, unknown/undeclared payloads, count/size overflow, CRC/SHA mismatch, unsupported version/capability, and interrupted staged replacement fail without publishing a partial session. Retry by correcting/selecting another file. Cancellation before commit leaves the prior model/backend mapping intact. A save request made during recording/replacement is explicitly rejected until content settles; playing does not block saving and is not transitioned.
+
+The current application can instantiate direct sync/main track topology. Deferred buses, dry/wet tracks, composites, scripts, MIDI control, settings, and Carla state are preserved and validated by the codec but cause a capability error if runtime instantiation would be required. Carla `internal_state` and captured FX-state strings are opaque and byte-for-byte significant.
+
+QML-era `.shl`, `session.1`, tar/JSON/FLAC archives, and JSON `.smf` are not sniffed or migrated. They produce an unsupported-format error and leave the running session unchanged.

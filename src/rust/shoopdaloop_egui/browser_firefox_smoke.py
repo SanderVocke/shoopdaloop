@@ -53,7 +53,7 @@ def main() -> None:
         else:
             raise RuntimeError(f"Firefox did not present the enable-audio action: {initial_state}")
         driver.find_element("id", "enable_audio").click()
-        deadline = time.monotonic() + (300 if stress else 60)
+        deadline = time.monotonic() + (360 if stress else 120)
         state = {}
         while time.monotonic() < deadline:
             status = driver.find_element("id", "runtime_status")

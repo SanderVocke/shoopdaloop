@@ -482,6 +482,16 @@ enum BrowserSelfTest {
     SaveSession { callbacks_before: u64 },
     WaitForSessionSave { callbacks_before: u64 },
     WaitForSessionLoad { callbacks_before: u64 },
+    PlayLoadedLoop,
+    WaitForLoadedPlayback,
+    ExportLoopAudio,
+    WaitForLoopAudioSelection,
+    WaitForLoopAudioExport,
+    WaitForLoopAudioMapping,
+    WaitForLoopAudioImport,
+    ExportLoopMidi,
+    WaitForLoopMidiExport,
+    WaitForLoopMidiImport,
     Complete,
     Failed,
 }
@@ -517,7 +527,7 @@ impl BrowserSelfTest {
                     runtime.dispatch(AppIntent::AddTrack(shoop_egui::DirectTrackSpec {
                         name: "Browser self-test stereo".to_owned(),
                         audio_channels: 2,
-                        midi: false,
+                        midi: true,
                     }))
                 })
                 .and_then(|()| {
@@ -687,6 +697,133 @@ impl BrowserSelfTest {
                     && snapshot.status.callback_count <= callbacks_before
                 {
                     return self.fail("audio callbacks did not advance through session reload");
+                }
+                Ok(Self::PlayLoadedLoop)
+            }
+            Self::PlayLoadedLoop => {
+                let Some((track, loop_state)) = first_main_loop(snapshot) else {
+                    return;
+                };
+                runtime
+                    .dispatch(AppIntent::Loop {
+                        track_id: track.id,
+                        loop_id: loop_state.id,
+                        action: shoop_egui::LoopAction::PlayClicked,
+                    })
+                    .map(|()| Self::WaitForLoadedPlayback)
+            }
+            Self::WaitForLoadedPlayback => {
+                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                    return;
+                };
+                if loop_state.mode != shoop_egui::LoopMode::Playing
+                    || snapshot.status.output_peak <= 0.000_001
+                {
+                    return;
+                }
+                if browser_stress_enabled() {
+                    Ok(Self::Complete)
+                } else {
+                    Ok(Self::ExportLoopAudio)
+                }
+            }
+            Self::ExportLoopAudio => {
+                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                    return;
+                };
+                runtime
+                    .dispatch(AppIntent::RequestLoopAudioExport {
+                        loop_id: loop_state.id,
+                        format: shoop_egui::LoopAudioExportFormat::Exact,
+                    })
+                    .map(|()| Self::WaitForLoopAudioSelection)
+            }
+            Self::WaitForLoopAudioSelection => {
+                let Some(task) = &snapshot.io_task else {
+                    return;
+                };
+                let Some(selection) = &task.audio_channel_selection else {
+                    return;
+                };
+                runtime
+                    .dispatch(AppIntent::ConfirmAudioChannelSelection {
+                        task_id: task.id,
+                        channels: selection.default_selection.clone(),
+                    })
+                    .map(|()| Self::WaitForLoopAudioExport)
+            }
+            Self::WaitForLoopAudioExport => {
+                let Some(output) = runtime.take_file_output() else {
+                    return;
+                };
+                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                    return;
+                };
+                runtime
+                    .dispatch(AppIntent::ImportLoopAudioBytes {
+                        loop_id: loop_state.id,
+                        name: output.suggested_name,
+                        bytes: output.bytes,
+                        update_loop_length: true,
+                    })
+                    .map(|()| Self::WaitForLoopAudioMapping)
+            }
+            Self::WaitForLoopAudioMapping => {
+                let Some(task) = &snapshot.io_task else {
+                    return;
+                };
+                let Some(mapping) = &task.audio_channel_mapping else {
+                    return;
+                };
+                runtime
+                    .dispatch(AppIntent::ConfirmAudioChannelMapping {
+                        task_id: task.id,
+                        source_for_destination: mapping.default_mapping.clone(),
+                    })
+                    .map(|()| Self::WaitForLoopAudioImport)
+            }
+            Self::WaitForLoopAudioImport => {
+                if snapshot.io_task.as_ref().is_none_or(|task| {
+                    task.kind != shoop_egui::IoTaskKind::ImportLoopAudio
+                        || task.status != shoop_egui::IoTaskStatus::Completed
+                }) {
+                    return;
+                }
+                Ok(Self::ExportLoopMidi)
+            }
+            Self::ExportLoopMidi => {
+                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                    return;
+                };
+                runtime
+                    .dispatch(AppIntent::RequestLoopMidiExport {
+                        loop_id: loop_state.id,
+                        standard: false,
+                    })
+                    .map(|()| Self::WaitForLoopMidiExport)
+            }
+            Self::WaitForLoopMidiExport => {
+                let Some(output) = runtime.take_file_output() else {
+                    return;
+                };
+                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                    return;
+                };
+                runtime
+                    .dispatch(AppIntent::ImportLoopMidiBytes {
+                        loop_id: loop_state.id,
+                        name: output.suggested_name,
+                        bytes: output.bytes,
+                        update_loop_length: true,
+                    })
+                    .map(|()| Self::WaitForLoopMidiImport)
+            }
+            Self::WaitForLoopMidiImport => {
+                if snapshot.io_task.as_ref().is_none_or(|task| {
+                    task.kind != shoop_egui::IoTaskKind::ImportLoopMidi
+                        || task.status != shoop_egui::IoTaskStatus::Completed
+                }) {
+                    return;
                 }
                 Ok(Self::Complete)
             }

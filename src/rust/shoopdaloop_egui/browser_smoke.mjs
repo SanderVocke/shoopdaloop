@@ -9,8 +9,8 @@ if (typeof WebSocket === 'undefined') {
 }
 
 const host = '127.0.0.1';
-const webPort = 8765;
-const debugPort = 9222;
+const webPort = Number(process.env.WEB_PORT || 8765);
+const debugPort = Number(process.env.DEBUG_PORT || 9222);
 const chrome = process.env.CHROME_BIN || 'google-chrome';
 const browserSize = process.env.BROWSER_SIZE || '900,600';
 const selfContained = process.env.SELF_CONTAINED === '1';
@@ -43,6 +43,20 @@ function start(command, args, options = {}) {
 
 function delay(milliseconds) {
   return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+async function waitForHttp(url, timeoutMilliseconds) {
+  const deadline = Date.now() + timeoutMilliseconds;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) return;
+    } catch (_) {
+      // The process is still starting.
+    }
+    await delay(100);
+  }
+  throw new Error(`timed out waiting for ${url}`);
 }
 
 async function waitForJson(url, timeoutMilliseconds) {
@@ -88,12 +102,15 @@ try {
   await writeFile(fakeAudio, fakeMicrophoneWav());
   if (!selfContained) {
     start('python3', ['-m', 'http.server', String(webPort), '--bind', host], { cwd: 'dist' });
+    await waitForHttp(`http://${host}:${webPort}/`, 15_000);
   }
   const chromeArgs = [
     '--headless=new',
     '--no-sandbox',
     '--disable-dev-shm-usage',
     '--disable-gpu-sandbox',
+    '--disable-extensions',
+    '--disable-component-extensions-with-background-pages',
     '--enable-webgl',
     '--enable-unsafe-swiftshader',
     '--ignore-gpu-blocklist',
@@ -191,6 +208,9 @@ try {
   await call('Page.navigate', { url: entryUrl });
 
   const statusExpression = `({
+    url: location.href,
+    title: document.title,
+    body: document.body?.textContent?.slice(0, 200),
     status: document.getElementById('runtime_status')?.textContent,
     revision: Number(document.getElementById('runtime_status')?.getAttribute('data-engine-revision')),
     selfTest: document.getElementById('runtime_status')?.getAttribute('data-self-test'),
@@ -262,7 +282,7 @@ try {
     let state = await waitFor(
       candidate => candidate.selfTest === 'passed' && candidate.driver === 'Running',
       'browser physical-audio self-test did not finish',
-      stress ? 75_000 : 30_000,
+      stress ? 360_000 : 120_000,
     );
     if (!(state.callbacks > 0 && state.frames >= state.callbacks * 128)) {
       throw new Error(`worklet callback evidence is invalid: ${JSON.stringify(state)}`);

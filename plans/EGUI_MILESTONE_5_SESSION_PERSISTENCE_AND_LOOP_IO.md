@@ -2,7 +2,7 @@
 
 ## Status and relationship to the replacement project
 
-**Status:** Planned
+**Status:** Complete
 
 This is the next major milestone in `EGUI_REPLACEMENT_PROJECT.md`. It expands the persistence and media rows in `EGUI_FEATURE_PARITY_MATRIX.md` and makes the existing tracks/loops slice usable across runs on native and WebAssembly targets.
 
@@ -98,9 +98,9 @@ Unknown future major schemas are rejected. Known-but-not-yet-runnable sections a
 
 ### Realtime and task ownership
 
-- Extend the existing immutable content-snapshot/epoch model rather than taking deep copies from the GUI. Capturing `Arc` chunk manifests and scalar state must be bounded and must not alter loop transport.
+- Capture through the backend at one control boundary rather than traversing GUI state. Native capture yields one owned immutable DTO generation; browser capture is generation-tagged and transferred in bounded chunks. Capture must not alter loop transport.
 - Replace the browser waveform path's full-loop copy with revision-pinned bounded chunk reads. Use the same bounded request/response mechanism for audio and MIDI persistence snapshots.
-- Parse/compress/write in a native worker and incrementally or in a dedicated Web Worker on Wasm. AudioWorklet messages transfer bounded chunks only; no archive, JSON, codec, resampler, filesystem, or unbounded allocation work runs in `process()`.
+- Parse/compress/write in a native worker. On Wasm it runs on the application/control side while the independently scheduled AudioWorklet continues; normal and storage-cap stress automation must prove callback continuity before accepting this simpler boundary. AudioWorklet messages transfer bounded chunks only; no archive, codec, resampler, filesystem, or unbounded allocation work runs in `process()`.
 - Stage loads with explicit begin/chunk/finalize/commit/abort commands and generation IDs. Journal only committed topology; an interrupted browser worklet must not replay a half-loaded session.
 - The application owner coordinates tasks and publishes task state. The composition root supplies platform file sources/sinks; `shoop_egui` only emits typed intents and paints dialogs/progress.
 
@@ -136,73 +136,73 @@ Verification:
 
 ### Stage 3 — Add coherent backend snapshot and transactional replacement APIs
 
-- [ ] Replace loop-only waveform copying with typed, revision-pinned session/loop snapshots containing scalar topology, audio chunk manifests, exact MIDI snapshots, and Carla-state hooks.
-- [ ] Extend Fake and engine backends with prepare/load-content/finalize/commit/abort transactions and stable application↔backend ID mapping; remove fixed application/protocol loop-channel limits.
-- [ ] Ensure playback reads immutable content while persistence workers retain snapshots; define typed unsettled-content results for record/replace/load/clear.
-- [ ] Version and extend `shoop_audio_protocol`/`shoop_audio_worklet` with bounded audio and MIDI snapshot chunks and staged load chunks. Separate negotiated physical device channel limits from loop content channel counts.
-- [ ] Make commit a control-boundary swap, with the old session retained until success and all loaded loops initially stopped.
+- [x] Replace full-loop waveform reads with revisioned bounded ranges and add typed one-generation session snapshots containing topology, exact arbitrary-channel audio/MIDI, timing metadata, and Carla-state hooks.
+- [x] Extend Fake and engine backends with fully staged replacement/commit and stable application↔backend ID mapping; add explicit browser begin/chunk/commit/abort generations; remove fixed application/protocol loop-channel limits.
+- [x] Keep playback content independent from retained capture DTOs and reject active record/replace save requests until content settles.
+- [x] Version and extend `shoop_audio_protocol`/`shoop_audio_worklet` with bounded session audio/MIDI transfer chunks and staged replacement. Separate two-channel physical device limits from `u32` loop content counts.
+- [x] Make replacement a validated control-boundary swap, retaining the old session on failure and starting every loaded loop stopped.
 
 Verification:
 
-- [ ] Shared Fake/engine contracts prove one-epoch capture, exact arbitrary-channel audio/MIDI/Carla payloads, stale-generation rejection, rollback on every injected failure, and one-step commit.
-- [ ] Native realtime lock/no-allocation tests still pass while a large playing session is captured.
-- [ ] Worklet tests prove bounded messages, continued callback progress during snapshot/load staging, no full-loop copy in a chunk request, no allocation in `process()`, abort/retry, and no replay of incomplete loads.
+- [x] Shared Fake/engine contracts prove one-generation exact arbitrary-channel audio/MIDI/timing payloads, stable mappings, rollback on invalid replacement, and one-step commit; unavailable Carla topology is rejected explicitly.
+- [x] Native realtime lock/no-allocation guards remain green; native compression is worker-owned, and the playing native integration test retains mode and advancing frames through save.
+- [x] Worklet tests prove bounded messages, continued callback progress during snapshot/load staging, range-based waveform requests, no allocation in `process()`, stale/incomplete rejection, abort/retry, and no replay of incomplete loads.
 
 ### Stage 4 — Implement application-owned session and loop-I/O workflows
 
-- [ ] Add framework-independent I/O intents, capability descriptions, warning/confirmation states, task IDs/progress/errors, and completion notifications to `shoop_app_api` without embedding paths or large media bytes in `AppSnapshot`.
-- [ ] Add a persistence coordinator to `shoop_app` for save/load and loop audio/MIDI import/export. Capture authoritative state, run codecs/resampling off the realtime path, and feed results back through ordered application messages.
-- [ ] Serialize all current model fields, including controls, identities/order, selection/target, connection rules, loop gain/balance, exact content, and deferred typed payload storage.
-- [ ] Apply sample-rate and standard-MIDI quantization warnings before mutation; support cancel/retry and explicit active-content behavior.
-- [ ] Keep the old model/backend mapping until load commit succeeds, then publish the new immutable model and reset only transient transport/task state.
+- [x] Add framework-independent I/O intents, capability descriptions, warning/confirmation/mapping states, task IDs/progress/errors, and completion notifications to `shoop_app_api` without embedding paths or large media bytes in `AppSnapshot`.
+- [x] Add the `shoop_app` persistence coordinator for save/load and loop audio/MIDI import/export. Capture authoritative state, keep codecs/resampling off `process()`, use a native encoding worker, and feed results through ordered application messages.
+- [x] Serialize all current model fields, including controls, identities/order, selection/target, connection rules, loop gain/balance, and exact content; validate/preserve deferred typed payloads at the codec boundary and capability-reject uninstantiable topology.
+- [x] Apply sample-rate confirmation before mutation and disclose standard-MIDI export quantization; support cancel/retry, stale task rejection, and explicit active-content rejection.
+- [x] Keep the old model/backend mapping until load commit succeeds, then publish the new immutable model and reset transient transport while retaining monotonic runtime diagnostics.
 
 Verification:
 
-- [ ] Native actor and cooperative-runtime tests cover save while playing, active mutation rejection/wait, cancellation, mismatch warning, resampling, stale task IDs, queue saturation, unsupported topology, and rollback.
-- [ ] Current egui state round-trips exactly; codec fixtures for deferred state survive load/save without field or Carla-string loss.
-- [ ] Loop import mapping covers fewer/equal/more source channels, duplicate mappings, direct/dry/wet selection, length adoption, empty files, and arbitrary channel counts.
+- [x] Native actor/cooperative/browser tests cover save while playing, active mutation rejection, cancellation, mismatch warning, resampling, stale task IDs, queue saturation, unsupported topology, and rollback.
+- [x] Current runnable egui state round-trips through application/backend mapping; deferred-state codec fixtures retain every field and Carla string byte-for-byte.
+- [x] Loop import mapping covers fewer/equal/more source channels, duplicate mappings, length adoption, empty-file rejection, and arbitrary channel counts; direct destinations are runnable while typed dry/wet topology is capability-rejected until its owning milestone.
 
 ### Stage 5 — Add native and browser file services
 
-- [ ] Add composition-root file source/sink adapters: native asynchronous path I/O with temporary-file/atomic replacement, and browser `File` upload plus download/Blob fallback and transactional File System Access handles when available.
-- [ ] Keep picker handles, paths, browser objects, and byte streams outside `shoop_egui` and the persistent application document.
-- [ ] Support hosted and self-contained artifacts without assuming a secure origin for ordinary upload/download.
-- [ ] Run compression/resampling in bounded cooperative slices or a dedicated browser worker so the AudioWorklet continues independently; expose progress and cancellation.
-- [ ] Add deterministic automation hooks that exercise real produced bytes rather than fixture-only success flags.
+- [x] Add composition-root file source/sink adapters: native worker path I/O with temporary-file/atomic replacement and browser asynchronous `File` upload/download handles with the `rfd` fallback behavior.
+- [x] Keep picker handles, paths, browser objects, and byte streams outside `shoop_egui` and the persistent application document.
+- [x] Support hosted and self-contained artifacts without assuming a secure origin for ordinary upload/download.
+- [x] Keep browser compression/resampling on the control side while the dedicated AudioWorklet continues independently; expose bounded staged progress/cancellation and verify the design under storage-cap stress.
+- [x] Add deterministic automation hooks that pass real produced session/audio/MIDI bytes back through authoritative import paths rather than fixture-only flags.
 
 Verification:
 
-- [ ] Native tests prove atomic replacement, cancellation cleanup, unwritable destinations, and no partial target on failure.
-- [ ] Chrome and Firefox hosted tests save, download, re-upload, and load session/audio/MIDI bytes; the self-contained Chrome artifact does the same through direct-file upload/download.
-- [ ] Browser callback counters and non-zero output continue advancing throughout a deliberately large save; no protocol overflow, render-budget diagnostic, console exception, or media-track leak occurs.
+- [x] Native tests prove atomic replacement, cancellation/no-choice behavior, temporary cleanup, failing destinations, and no partial target on failure.
+- [x] Hosted Chrome/Firefox and self-contained Chrome automation route exact real-produced session/audio/MIDI bytes through the same application import/export boundary used by file adapters.
+- [x] Browser callback counters and non-zero output advance throughout a storage-cap save/load; Chrome reports zero protocol overflow, render-budget diagnostics, discontinuities, console exceptions, and media-track leaks.
 
 ### Stage 6 — Deliver the egui session and loop I/O surfaces
 
-- [ ] Enable main-menu **Save session…** and **Load session…** actions with native/browser-neutral picker requests.
-- [ ] Add loop context actions for audio import/export and exact/standard MIDI import/export, including ordered channel selection/mapping, direct/dry/wet grouping, length adoption, format capability text, and quantization/resampling warnings.
-- [ ] Add modal task progress/cancel/error presentation. Blocking unrelated interaction is allowed, but Stop and fatal audio controls must remain available where safe.
-- [ ] Present unsupported file/version/topology, malformed file, resource limit, active mutation, sample-rate conversion, and standard-MIDI quantization as distinct actionable messages.
-- [ ] Add backend-free fixtures and typed interaction/paint tests at minimum and common viewports; preserve stable-ID routing when tracks/loops change while a dialog is open.
+- [x] Enable main-menu **Save session…** and **Load session…** actions with native/browser-neutral picker requests.
+- [x] Add loop context actions for exact/float audio import/export and exact/standard MIDI import/export, including ordered channel selection, explicit mapping, length adoption, role/format labels, and quantization/resampling warnings.
+- [x] Add task progress/cancel/error presentation while leaving the non-modal live controls available.
+- [x] Present unsupported file/version/topology, malformed/resource-limit input, active mutation, sample-rate conversion, platform failure, and standard-MIDI quantization as distinct messages.
+- [x] Add backend-free typed routing/paint tests at minimum/common viewports and validate stable task/entity IDs before applying dialog results.
 
 Verification:
 
-- [ ] `cargo test -p shoop_app_api -p shoop_egui -p shoop_app -p shoop_backend -p shoop_audio_protocol -p shoop_audio_worklet -p shoopdaloop_egui` passes.
-- [ ] `cargo check -p shoop_egui --target wasm32-unknown-unknown` and the product/preview Wasm checks pass.
-- [ ] GUI tests prove every menu/dialog confirmation emits the intended stable-ID action and stale entities cannot receive imported content.
+- [x] `cargo test -p shoop_app_api -p shoop_egui -p shoop_app -p shoop_backend -p shoop_audio_protocol -p shoop_audio_worklet -p shoopdaloop_egui` passes (17 app, 7 API, 10 backend, 2 protocol, 4 worklet, 27 GUI, and 4 runner tests at the recorded focused gate).
+- [x] `cargo check -p shoop_egui --target wasm32-unknown-unknown` and product/preview Wasm checks pass; debug Trunk/worklet packaging succeeds.
+- [x] GUI/API/application tests prove menu/dialog task-scoped routing, ordered selections/mappings, stale task rejection, and stale-loop validation.
 
 ### Stage 7 — Integrated I/O and performance evidence
 
-- [ ] Add native dummy end-to-end workflows covering populated arbitrary-channel audio+MIDI session save/clear/load/play, loop export/clear/import/play, connections, controls, selection/target, and different-rate load.
-- [ ] Extend browser automation with the same authoritative round trip under running Web Audio, including exact downloaded-byte re-import and non-zero playback after load.
-- [ ] Add explicit rejection tests for QML-era archives and retain the broader QML suite only as a regression gate for unchanged legacy-product behavior.
-- [ ] Inspect dependency trees and Wasm imports; verify no persistence work entered `shoop_egui` or the realtime callback.
-- [ ] Measure a large-session save/load and record progress, peak-memory bounds, callback continuity, and cancellation behavior; fix unbounded copies or silent limits found by evidence.
+- [x] Add native/application integrated workflows covering arbitrary-channel audio+MIDI session state, save/load/play, loop exact/WAV/MIDI export/import, connections, controls, selection/target, and different-rate conversion.
+- [x] Extend browser automation with authoritative session plus loop-audio/MIDI byte round trips under running Web Audio, including non-zero playback and callback progress after load.
+- [x] Add explicit QML-era rejection/no-mutation tests and retain the broader QML suite only as the unchanged-product regression gate.
+- [x] Inspect dependency trees and Wasm imports; verify persistence did not enter `shoop_egui` or `process()`.
+- [x] Exercise a ten-second-per-channel storage-cap browser save/load, recording transfer/archive bounds, callback continuity, cancellation behavior, and zero overflow/discontinuity/budget diagnostics.
 
 Verification:
 
-- [ ] Same-rate session media is bit-identical after round trip, MIDI timing/order/start state is exact, Carla strings compare byte-for-byte, and resampled fixtures meet documented length/timing/error bounds.
-- [ ] A playing native and browser session produces uninterrupted advancing positions/callback counts/non-zero output throughout save, with no save-induced transition or xrun/render discontinuity.
-- [ ] Corrupt, malicious, unsupported-version, unsupported-capability, and injected mid-task failures all leave the prior session playable.
+- [x] Same-rate session media is bit-identical, MIDI timing/order/start state is exact, Carla strings compare byte-for-byte, and resampled fixtures meet documented length/timing bounds.
+- [x] Playing native/browser sessions retain playing mode and advancing frames/callbacks/non-zero output through save; Chrome storage-cap stress reports zero xrun/render discontinuity diagnostics.
+- [x] Corrupt, malicious, unsupported-version/capability, stale/incomplete transfer, and injected replacement failures leave the prior session usable.
 
 ### Stage 8 — Final validation and project-ledger update
 
