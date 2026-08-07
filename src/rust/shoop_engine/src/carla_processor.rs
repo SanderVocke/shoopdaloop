@@ -1114,6 +1114,9 @@ mod tests {
         });
         let (control, mut endpoint) = spawn_processor_bridge(Box::new(fake), 48_000, 32).unwrap();
         control.set_active(true);
+        // set_active is intentionally asynchronous. A synchronous no-op UI command
+        // is the FIFO barrier that ensures the host is active before the block.
+        control.set_visible(false).unwrap();
         endpoint.process(32).unwrap();
         let deadline = std::time::Instant::now() + Duration::from_secs(1);
         while control.lifecycle() != CarlaProcessorLifecycle::Crashed
