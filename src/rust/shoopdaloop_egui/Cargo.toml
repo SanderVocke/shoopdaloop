@@ -11,6 +11,8 @@ shoop_egui = { path = "../shoop_egui" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = { workspace = true, default-features = false, features = ["xdg-portal", "async-std"] }
+shoop_scripting = { path = "../shoop_scripting" }
+shoop_settings = { path = "../shoop_settings" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 rfd = { workspace = true, features = ["xdg-portal", "async-std"] }

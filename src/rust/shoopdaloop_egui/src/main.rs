@@ -20,6 +20,8 @@ use web_time::Instant;
 use eframe::egui;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_backend::EngineBackend;
+#[cfg(not(target_arch = "wasm32"))]
+use shoop_egui::ScriptKind;
 use shoop_egui::{AppIntent, AppSnapshot, AppWidget};
 
 #[cfg(target_arch = "wasm32")]
@@ -27,7 +29,7 @@ use shoop_app::CooperativeApplicationRuntime;
 #[cfg(target_arch = "wasm32")]
 mod browser_audio;
 #[cfg(not(target_arch = "wasm32"))]
-use shoop_app::{ApplicationHandle, ApplicationRuntime};
+use shoop_app::{ApplicationHandle, ApplicationRuntime, StartupScript};
 
 #[cfg(any(target_arch = "wasm32", test))]
 const WEB_CANVAS_ID: &str = "shoop_canvas";
@@ -343,20 +345,123 @@ impl eframe::App for UnifiedApp {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+fn load_startup_scripts(path: &Path) -> (Vec<StartupScript>, Vec<String>, Vec<String>) {
+    let (settings, error) = shoop_settings::ScriptSettings::load_or_default(path);
+    let mut warnings = error
+        .into_iter()
+        .map(|error| error.to_string())
+        .collect::<Vec<_>>();
+    let mut scripts = Vec::new();
+    let mut paths = Vec::new();
+    for known in settings.known_scripts {
+        let (source, kind) = match known.path_or_filename.as_str() {
+            shoop_settings::KEYBOARD_SCRIPT_FILENAME => (
+                shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                ScriptKind::Bundled,
+            ),
+            shoop_settings::AKAI_APC_MINI_MK1_SCRIPT_FILENAME => (
+                shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT.to_owned(),
+                ScriptKind::Bundled,
+            ),
+            filename => match std::fs::read_to_string(filename) {
+                Ok(source) => (source, ScriptKind::User),
+                Err(error) => {
+                    warnings.push(format!("could not load script {filename}: {error}"));
+                    continue;
+                }
+            },
+        };
+        let name = Path::new(&known.path_or_filename)
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        paths.push(known.path_or_filename.clone());
+        scripts.push(StartupScript {
+            name,
+            source,
+            kind,
+            enabled: known.run,
+        });
+    }
+    (scripts, paths, warnings)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn user_script_file_intent(
+    path: &Path,
+    existing: Option<shoop_egui::ScriptId>,
+) -> anyhow::Result<AppIntent> {
+    let source = std::fs::read_to_string(path)
+        .map_err(|error| anyhow::anyhow!("could not read {}: {error}", path.display()))?;
+    if let Some(script_id) = existing {
+        Ok(AppIntent::ReplaceScriptSource {
+            script_id,
+            source: source.into(),
+        })
+    } else {
+        Ok(AppIntent::AddScriptSource {
+            name: path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+            source: source.into(),
+            kind: ScriptKind::User,
+            enabled: true,
+        })
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn persist_script_enabled(
+    settings_path: &Path,
+    script_path: &str,
+    enabled: bool,
+) -> anyhow::Result<()> {
+    let settings = shoop_settings::ScriptSettings::load(settings_path)?;
+    let mut settings = settings;
+    let script = settings
+        .known_scripts
+        .iter_mut()
+        .find(|script| script.path_or_filename == script_path)
+        .ok_or_else(|| anyhow::anyhow!("script is absent from settings: {script_path}"))?;
+    script.run = enabled;
+    shoop_settings::ScriptSettings::save(settings_path, &settings)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 struct Runtime {
     _runtime: ApplicationRuntime,
     handle: ApplicationHandle,
+    settings_path: std::path::PathBuf,
+    script_paths: std::collections::BTreeMap<shoop_egui::ScriptId, String>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 impl Runtime {
     fn new() -> anyhow::Result<Self> {
         let backend = EngineBackend::new_dummy(48_000, 256)?;
-        let runtime = ApplicationRuntime::start(Box::new(backend))?;
+        let settings_path = shoop_settings::default_settings_path()?;
+        let (startup_scripts, script_paths, warnings) = load_startup_scripts(&settings_path);
+        for warning in warnings {
+            eprintln!("ShoopDaLoop script settings: {warning}");
+        }
+        let runtime = ApplicationRuntime::start_with_scripts(Box::new(backend), startup_scripts)?;
         let handle = runtime.handle();
+        let script_paths = handle
+            .snapshot()
+            .scripting
+            .scripts
+            .iter()
+            .map(|script| script.id)
+            .zip(script_paths)
+            .collect();
         Ok(Self {
             _runtime: runtime,
             handle,
+            settings_path,
+            script_paths,
         })
     }
 
@@ -367,7 +472,20 @@ impl Runtime {
     }
 
     fn dispatch(&mut self, intent: AppIntent) -> Result<(), shoop_app::DispatchError> {
-        self.handle.dispatch(intent)
+        let persisted_enablement = match &intent {
+            AppIntent::SetScriptEnabled { script_id, enabled } => self
+                .script_paths
+                .get(script_id)
+                .map(|path| (path.clone(), *enabled)),
+            _ => None,
+        };
+        self.handle.dispatch(intent)?;
+        if let Some((path, enabled)) = persisted_enablement {
+            if let Err(error) = persist_script_enabled(&self.settings_path, &path, enabled) {
+                eprintln!("ShoopDaLoop script settings: {error}");
+            }
+        }
+        Ok(())
     }
 
     fn take_file_output(&self) -> Option<shoop_app::ApplicationFileOutput> {
@@ -1009,6 +1127,59 @@ mod tests {
         assert!(html.contains("audio_worklet.js"));
         assert!(html.contains("Roboto-Regular.ttf"));
         assert!(html.contains("Roboto-BoldItalic.ttf"));
+    }
+
+    #[test]
+    fn startup_script_adapter_resolves_bundles_files_and_missing_paths() {
+        let directory = tempfile::tempdir().unwrap();
+        let user_script = directory.path().join("user.lua");
+        std::fs::write(&user_script, "print('user')").unwrap();
+        let missing = directory.path().join("missing.lua");
+        let settings_path = directory.path().join("settings.json");
+        shoop_settings::ScriptSettings::save(
+            &settings_path,
+            &shoop_settings::ScriptSettings {
+                known_scripts: vec![
+                    shoop_settings::KnownScript {
+                        path_or_filename: "keyboard.lua".to_owned(),
+                        run: true,
+                    },
+                    shoop_settings::KnownScript {
+                        path_or_filename: user_script.to_string_lossy().into_owned(),
+                        run: false,
+                    },
+                    shoop_settings::KnownScript {
+                        path_or_filename: missing.to_string_lossy().into_owned(),
+                        run: true,
+                    },
+                ],
+            },
+        )
+        .unwrap();
+        let (scripts, paths, warnings) = load_startup_scripts(&settings_path);
+        assert_eq!(scripts.len(), 2);
+        assert_eq!(paths.len(), 2);
+        assert_eq!(scripts[0].kind, ScriptKind::Bundled);
+        assert_eq!(scripts[0].source, shoop_scripting::KEYBOARD_SCRIPT);
+        assert_eq!(scripts[1].kind, ScriptKind::User);
+        assert!(!scripts[1].enabled);
+        assert!(matches!(
+            user_script_file_intent(&user_script, None).unwrap(),
+            AppIntent::AddScriptSource { .. }
+        ));
+        assert!(matches!(
+            user_script_file_intent(&user_script, Some(shoop_egui::ScriptId::from_raw(9))).unwrap(),
+            AppIntent::ReplaceScriptSource { .. }
+        ));
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("missing.lua"));
+        persist_script_enabled(&settings_path, "keyboard.lua", false).unwrap();
+        assert!(
+            !shoop_settings::ScriptSettings::load(&settings_path)
+                .unwrap()
+                .known_scripts[0]
+                .run
+        );
     }
 
     #[test]

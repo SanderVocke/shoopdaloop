@@ -630,6 +630,10 @@ pub enum AppIntent {
     RestartScript {
         script_id: ScriptId,
     },
+    ReplaceScriptSource {
+        script_id: ScriptId,
+        source: Arc<str>,
+    },
     StopScript {
         script_id: ScriptId,
     },

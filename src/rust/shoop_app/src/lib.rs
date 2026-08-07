@@ -30,7 +30,7 @@ use shoop_backend::{
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_scripting::{
     ControlLoop, ControlOperation, ControlSnapshot, ControlTrack, NativeMidiService,
-    ScriptKeyEvent, ScriptLoopEvent, ScriptManager,
+    ScriptKeyEvent, ScriptLoopEvent, ScriptManager, SessionScriptSource,
 };
 use shoop_session::{
     decode_exact_midi, decode_loop_audio, decode_session, decode_standard_midi, decode_wav,
@@ -39,8 +39,8 @@ use shoop_session::{
     ChannelModeDocument, ConnectabilityDocument, DataTypeDocument, ExactMidi, ExactMidiEvent,
     GlobalControlsDocument, LoopAudio, LoopAudioChannel, LoopDocument, MediaPayload,
     MidiControlDocument, PortDirectionDocument, PortDocument, PortRoleDocument,
-    RecordingActionDocument, SessionBundle, SessionDocument, TrackControlsDocument, TrackDocument,
-    TrackGroupDocument, TrackTopologyDocument,
+    RecordingActionDocument, ScriptDocument, SessionBundle, SessionDocument, TrackControlsDocument,
+    TrackDocument, TrackGroupDocument, TrackTopologyDocument,
 };
 
 const COMMAND_CAPACITY: usize = 1024;
@@ -124,13 +124,28 @@ impl From<TrySendError<ApplicationMessage>> for DispatchError {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StartupScript {
+    pub name: String,
+    pub source: String,
+    pub kind: ScriptKind,
+    pub enabled: bool,
+}
+
 pub struct ApplicationRuntime {
     handle: ApplicationHandle,
     join: Option<JoinHandle<()>>,
 }
 
 impl ApplicationRuntime {
-    pub fn start(mut backend: Box<dyn Backend + Send>) -> Result<Self> {
+    pub fn start(backend: Box<dyn Backend + Send>) -> Result<Self> {
+        Self::start_with_scripts(backend, Vec::new())
+    }
+
+    pub fn start_with_scripts(
+        mut backend: Box<dyn Backend + Send>,
+        startup_scripts: Vec<StartupScript>,
+    ) -> Result<Self> {
         let file_outputs = Arc::new(Mutex::new(VecDeque::new()));
         let snapshot = Arc::new(RwLock::new(Arc::new(AppSnapshot::default())));
         let (sender, receiver) = mpsc::sync_channel(COMMAND_CAPACITY);
@@ -148,7 +163,8 @@ impl ApplicationRuntime {
             .name("shoop-application".to_owned())
             .spawn(move || {
                 match ApplicationModel::initialize(&mut *backend, file_outputs, true) {
-                    Ok(model) => {
+                    Ok(mut model) => {
+                        model.install_startup_scripts(startup_scripts);
                         *actor_snapshot
                             .write()
                             .unwrap_or_else(|error| error.into_inner()) =
@@ -556,6 +572,25 @@ impl ApplicationModel {
         Ok(model)
     }
 
+    fn install_startup_scripts(&mut self, scripts: Vec<StartupScript>) {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            for script in scripts {
+                if let Err(error) =
+                    self.script_manager
+                        .add(script.name, script.source, script.kind, script.enabled)
+                {
+                    self.notify_error(error.to_string());
+                }
+            }
+            self.refresh_scripting_view();
+        }
+        #[cfg(target_arch = "wasm32")]
+        if !scripts.is_empty() {
+            self.notify_error("Lua scripting is unavailable in browser builds".to_owned());
+        }
+    }
+
     fn handle_intent(&mut self, backend: &mut dyn Backend, intent: AppIntent) {
         let result = match intent {
             AppIntent::Loop {
@@ -580,6 +615,9 @@ impl ApplicationModel {
                 self.set_script_enabled(backend, script_id, enabled)
             }
             AppIntent::RestartScript { script_id } => self.restart_script(backend, script_id),
+            AppIntent::ReplaceScriptSource { script_id, source } => {
+                self.replace_script_source(backend, script_id, source)
+            }
             AppIntent::StopScript { script_id } => self.stop_script(script_id),
             AppIntent::ForgetScript { script_id } => self.forget_script(script_id),
             AppIntent::SetPortConnected {
@@ -701,6 +739,30 @@ impl ApplicationModel {
         #[cfg(target_arch = "wasm32")]
         {
             let _ = (backend, id);
+            Err("Lua scripting is unavailable in the browser build".to_owned())
+        }
+    }
+
+    fn replace_script_source(
+        &mut self,
+        backend: &mut dyn Backend,
+        id: ScriptId,
+        source: Arc<str>,
+    ) -> Result<(), String> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.prepare_script_invocation();
+            let result = self
+                .script_manager
+                .replace_user_source(id, source.to_string())
+                .map_err(|error| error.to_string())
+                .and_then(|()| self.apply_script_operations(backend));
+            self.refresh_scripting_view();
+            result
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (backend, id, source);
             Err("Lua scripting is unavailable in the browser build".to_owned())
         }
     }
@@ -1259,6 +1321,14 @@ impl ApplicationModel {
                 return Err(message);
             }
         };
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Err(error) =
+            ScriptManager::validate_session_scripts(&session_script_sources(&bundle))
+        {
+            let message = error.to_string();
+            self.finish_io(IoTaskStatus::Failed, &message);
+            return Err(message);
+        }
         if bundle.document.sample_rate != self.status.sample_rate {
             let source_rate = bundle.document.sample_rate;
             let target_rate = self.status.sample_rate;
@@ -3069,11 +3139,31 @@ impl ApplicationModel {
             buses: Vec::new(),
             global_ports: Vec::new(),
             fx_states: Vec::new(),
-            scripts: Vec::new(),
+            scripts: self.session_script_documents(),
             midi_control: MidiControlDocument::default(),
             settings: Vec::new(),
         };
         Ok(SessionBundle { document, media })
+    }
+
+    fn session_script_documents(&self) -> Vec<ScriptDocument> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.script_manager
+                .session_scripts()
+                .into_iter()
+                .map(|script| ScriptDocument {
+                    id: script.document_id,
+                    name: script.name,
+                    source: script.source,
+                    enabled: script.enabled,
+                })
+                .collect()
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            Vec::new()
+        }
     }
 
     fn apply_loaded_session(
@@ -3240,6 +3330,13 @@ impl ApplicationModel {
         self.global.sync = bundle.document.global.sync;
         self.global.solo = bundle.document.global.solo;
         self.global.apply_n_cycles = bundle.document.global.apply_n_cycles;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.script_manager
+                .replace_session_scripts(&session_script_sources(bundle))
+                .map_err(|error| error.to_string())?;
+            self.refresh_scripting_view();
+        }
         Ok(())
     }
 
@@ -3945,11 +4042,26 @@ fn direct_topology(track: &TrackDocument) -> Result<(u32, bool), String> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn session_script_sources(bundle: &SessionBundle) -> Vec<SessionScriptSource> {
+    bundle
+        .document
+        .scripts
+        .iter()
+        .map(|script| SessionScriptSource {
+            document_id: script.id,
+            name: script.name.clone(),
+            source: script.source.clone(),
+            enabled: script.enabled,
+        })
+        .collect()
+}
+
 fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionData, String> {
     if !bundle.document.buses.is_empty()
         || !bundle.document.global_ports.is_empty()
         || !bundle.document.fx_states.is_empty()
-        || !bundle.document.scripts.is_empty()
+        || (cfg!(target_arch = "wasm32") && !bundle.document.scripts.is_empty())
         || !bundle.document.midi_control.bindings.is_empty()
         || !bundle.document.settings.is_empty()
     {
@@ -4264,6 +4376,27 @@ mod tests {
         assert!(snapshot.tracks[0].loops[0].sync);
         assert!(snapshot.tracks[0].id.is_valid());
         assert!(snapshot.tracks[0].loops[0].id.is_valid());
+    }
+
+    #[test]
+    fn actor_starts_embedded_production_keyboard_script_without_checkout_files() {
+        let runtime = ApplicationRuntime::start_with_scripts(
+            Box::new(FakeBackend::default()),
+            vec![StartupScript {
+                name: "keyboard.lua".to_owned(),
+                source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            }],
+        )
+        .unwrap();
+        let snapshot = runtime.handle().snapshot();
+        assert_eq!(snapshot.scripting.scripts.len(), 1);
+        assert_eq!(
+            snapshot.scripting.scripts[0].lifecycle,
+            shoop_app_api::ScriptLifecycle::Listening
+        );
+        assert!(snapshot.scripting.scripts[0].latest_error.is_none());
     }
 
     #[test]
@@ -5133,6 +5266,113 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             runtime.snapshot().tracks[1].loops[0].mode,
             LoopMode::Playing
         );
+    }
+
+    #[test]
+    fn session_scripts_stage_before_commit_round_trip_and_preserve_machine_scripts() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "machine.lua".to_owned(),
+                source: Arc::from("print('machine')"),
+                kind: ScriptKind::User,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let mut document = SessionDocument::empty(48_000);
+        document.scripts.push(ScriptDocument {
+            id: 77,
+            name: "session.lua".to_owned(),
+            source: "require('shoop_control').set_solo(true)".to_owned(),
+            enabled: true,
+        });
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "scripts.shoop".to_owned(),
+                bytes: Arc::from(
+                    encode_session(&SessionBundle::new(document.clone()), "test").unwrap(),
+                ),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let loaded = runtime.snapshot();
+        assert_eq!(loaded.scripting.scripts.len(), 2);
+        assert!(loaded
+            .scripting
+            .scripts
+            .iter()
+            .any(|script| { script.name == "machine.lua" && script.kind == ScriptKind::User }));
+        assert!(loaded
+            .scripting
+            .scripts
+            .iter()
+            .any(|script| { script.name == "session.lua" && script.kind == ScriptKind::Session }));
+        assert!(loaded.global_controls.solo);
+
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        runtime.tick(Duration::ZERO);
+        let output = runtime.take_file_output().unwrap();
+        let saved = decode_session(&output.bytes).unwrap();
+        assert_eq!(saved.document.scripts, document.scripts);
+
+        let before = runtime.snapshot().scripting.clone();
+        let mut cancelled = document.clone();
+        cancelled.sample_rate = 32_000;
+        cancelled.scripts[0].source = "require('shoop_control').set_solo(false)".to_owned();
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "cancelled.shoop".to_owned(),
+                bytes: Arc::from(encode_session(&SessionBundle::new(cancelled), "test").unwrap()),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let task = runtime.snapshot().io_task.clone().unwrap();
+        assert_eq!(task.status, IoTaskStatus::AwaitingSampleRateConfirmation);
+        runtime
+            .dispatch(AppIntent::ConfirmSampleRateConversion {
+                task_id: task.id,
+                accept: false,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(runtime.snapshot().scripting, before);
+        assert!(runtime.snapshot().global_controls.solo);
+
+        let mut invalid = SessionDocument::empty(48_000);
+        invalid.scripts.push(ScriptDocument {
+            id: 88,
+            name: "invalid.lua".to_owned(),
+            source: "function(".to_owned(),
+            enabled: true,
+        });
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "invalid.shoop".to_owned(),
+                bytes: Arc::from(encode_session(&SessionBundle::new(invalid), "test").unwrap()),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().io_task.as_ref().unwrap().status,
+            IoTaskStatus::Failed
+        );
+        assert_eq!(runtime.snapshot().scripting, before);
+
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "empty.shoop".to_owned(),
+                bytes: Arc::from(
+                    encode_session(&SessionBundle::new(SessionDocument::empty(48_000)), "test")
+                        .unwrap(),
+                ),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let scripts = &runtime.snapshot().scripting.scripts;
+        assert_eq!(scripts.len(), 1);
+        assert_eq!(scripts[0].name, "machine.lua");
     }
 
     #[test]

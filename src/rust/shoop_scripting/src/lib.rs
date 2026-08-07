@@ -71,6 +71,14 @@ pub enum ScriptLogLevel {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SessionScriptSource {
+    pub document_id: u64,
+    pub name: String,
+    pub source: String,
+    pub enabled: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ScriptLogEntry {
     pub level: ScriptLogLevel,
     pub message: String,
@@ -287,6 +295,7 @@ struct ScriptRecord {
     lifecycle: ScriptLifecycle,
     documentation: Option<String>,
     latest_error: Option<String>,
+    session_document_id: Option<u64>,
     runtime: Option<LuaRuntime>,
 }
 
@@ -440,6 +449,7 @@ impl ScriptManager {
                 enabled,
                 lifecycle: ScriptLifecycle::Inactive,
                 latest_error: None,
+                session_document_id: None,
                 runtime: None,
             },
         );
@@ -447,6 +457,75 @@ impl ScriptManager {
             let _ = self.start(id);
         }
         Ok(id)
+    }
+
+    pub fn validate_session_scripts(scripts: &[SessionScriptSource]) -> anyhow::Result<()> {
+        let runtime = LuaRuntime::new()?;
+        let mut ids = std::collections::BTreeSet::new();
+        for script in scripts {
+            if !ids.insert(script.document_id) {
+                bail!("duplicate session script id {}", script.document_id);
+            }
+            runtime.check_syntax(&script.name, &script.source)?;
+        }
+        Ok(())
+    }
+
+    pub fn replace_session_scripts(
+        &mut self,
+        scripts: &[SessionScriptSource],
+    ) -> anyhow::Result<()> {
+        Self::validate_session_scripts(scripts)?;
+        let old_ids = self
+            .scripts
+            .values()
+            .filter(|record| record.kind == ScriptKind::Session)
+            .map(|record| record.id)
+            .collect::<Vec<_>>();
+        for id in old_ids {
+            self.stop(id)?;
+            self.scripts.remove(&id);
+        }
+        for script in scripts {
+            let id = self.add(
+                script.name.clone(),
+                script.source.clone(),
+                ScriptKind::Session,
+                script.enabled,
+            )?;
+            self.scripts.get_mut(&id).unwrap().session_document_id = Some(script.document_id);
+        }
+        Ok(())
+    }
+
+    pub fn session_scripts(&self) -> Vec<SessionScriptSource> {
+        self.scripts
+            .values()
+            .filter(|record| record.kind == ScriptKind::Session)
+            .map(|record| SessionScriptSource {
+                document_id: record.session_document_id.unwrap_or(record.id.raw()),
+                name: record.name.clone(),
+                source: record.source.clone(),
+                enabled: record.enabled,
+            })
+            .collect()
+    }
+
+    pub fn replace_user_source(&mut self, id: ScriptId, source: String) -> anyhow::Result<()> {
+        let record = self.scripts.get(&id).ok_or_else(|| stale_script(id))?;
+        if record.kind != ScriptKind::User {
+            bail!("only user script source can be reloaded")
+        }
+        LuaRuntime::new()?.check_syntax(&record.name, &source)?;
+        let enabled = record.enabled;
+        let record = self.scripts.get_mut(&id).unwrap();
+        record.documentation = extract_documentation(&source);
+        record.source = source;
+        if enabled {
+            self.start(id)
+        } else {
+            Ok(())
+        }
     }
 
     pub fn set_enabled(&mut self, id: ScriptId, enabled: bool) -> anyhow::Result<()> {
@@ -1121,6 +1200,34 @@ end, 100)
         }
         assert_eq!(manager.logs(id).unwrap()[0].message, "6");
         drop(sink);
+    }
+
+    #[test]
+    fn user_source_reload_is_syntax_checked_and_preserves_identity() {
+        let mut manager = ScriptManager::new();
+        let id = manager
+            .add(
+                "user.lua",
+                "local c=require('shoop_control'); c.register_global_event_cb(function() print('old') end)",
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+        assert!(manager
+            .replace_user_source(id, "function(".to_owned())
+            .is_err());
+        manager.dispatch_global_event();
+        assert_eq!(manager.logs(id).unwrap()[0].message, "old");
+        manager
+            .replace_user_source(
+                id,
+                "local c=require('shoop_control'); c.register_global_event_cb(function() print('new') end)"
+                    .to_owned(),
+            )
+            .unwrap();
+        manager.dispatch_global_event();
+        assert_eq!(manager.logs(id).unwrap()[0].message, "new");
+        assert_eq!(manager.states()[0].id, id);
     }
 
     #[test]

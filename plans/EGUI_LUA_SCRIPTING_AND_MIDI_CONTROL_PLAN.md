@@ -134,17 +134,17 @@ Verification:
 
 ### Stage 6 — Integrate settings, bundled resources, and session scripts
 
-- [ ] Extend `shoop_settings` with typed preservation-aware access to existing `script_settings.1`; discover embedded bundled scripts, default only `keyboard.lua` to enabled, and preserve unrelated/unknown service-owned settings fields.
-- [ ] Add composition-root file adapters for adding/reloading user scripts and atomically persisting enablement, following the existing bytes/intent boundary rather than putting filesystem access in `shoop_egui`.
-- [ ] Map source-bearing `.shoop` `ScriptDocument` entries into staged syntax-checked runtimes and activate them after successful session commit; stop replaced session scripts only at commit and preserve machine-wide scripts.
-- [ ] Ensure save captures session-script source/identity/enabled state but never embeds path-based machine-wide scripts implicitly.
-- [ ] Package the shared Lua sources in native debug/release artifacts and keep development overrides deterministic.
+- [x] Extend `shoop_settings` with typed preservation-aware access to existing `script_settings.1`; discover embedded bundled scripts, default only `keyboard.lua` to enabled, and preserve unrelated/unknown service-owned settings fields.
+- [x] Add composition-root file adapters for adding/reloading user scripts and atomically persisting enablement, following the existing bytes/intent boundary rather than putting filesystem access in `shoop_egui`.
+- [x] Map source-bearing `.shoop` `ScriptDocument` entries into staged syntax-checked runtimes and activate them after successful session commit; stop replaced session scripts only at commit and preserve machine-wide scripts.
+- [x] Ensure save captures session-script source/identity/enabled state but never embeds path-based machine-wide scripts implicitly.
+- [x] Package the shared Lua sources in native debug/release artifacts and keep development overrides deterministic.
 
 Verification:
 
-- [ ] Settings tests cover first run, old valid files, malformed/unknown schema, atomic update, missing user files, relative bundled names, and preservation of MIDI/Carla/unknown fields.
-- [ ] Session tests cover exact source round-trip, syntax rejection before mutation, post-commit activation, cancellation/rollback, machine/session lifecycle separation, and browser capability rejection.
-- [ ] Packaged native artifacts start `keyboard.lua` without relying on the source checkout.
+- [x] Settings tests cover first run, old valid files, malformed/unknown schema, atomic update, missing user files, relative bundled names, and preservation of MIDI/Carla/unknown fields.
+- [x] Session tests cover exact source round-trip, syntax rejection before mutation, post-commit activation, cancellation/rollback, machine/session lifecycle separation, and browser capability rejection.
+- [x] Packaged native artifacts start `keyboard.lua` without relying on the source checkout.
 
 ### Stage 7 — Deliver the egui script-management surface
 

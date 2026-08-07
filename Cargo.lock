@@ -4879,6 +4879,8 @@ dependencies = [
  "shoop_audio_protocol",
  "shoop_backend",
  "shoop_egui",
+ "shoop_scripting",
+ "shoop_settings",
  "tempfile",
  "wasm-bindgen",
  "wasm-bindgen-futures",
