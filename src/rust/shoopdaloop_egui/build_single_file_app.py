@@ -14,6 +14,12 @@ TRUNK_SCRIPT = re.compile(
 WASM_BINDGEN_EXPORT = re.compile(
     r"\nexport \{ initSync, __wbg_init as default \};\s*\Z"
 )
+ROBOTO_FONT_FILES = (
+    "Roboto-Regular.ttf",
+    "Roboto-Italic.ttf",
+    "Roboto-Bold.ttf",
+    "Roboto-BoldItalic.ttf",
+)
 
 
 def exactly_one(paths: list[Path], description: str) -> Path:
@@ -58,6 +64,16 @@ def build_single_file(dist: Path, output: Path) -> None:
         html, count = preload.subn("", html)
         if count != 1:
             raise RuntimeError(f"could not remove preload for {asset}")
+
+    for name in ROBOTO_FONT_FILES:
+        font_path = dist / "roboto" / name
+        if not font_path.is_file():
+            raise RuntimeError(f"missing Roboto font: {font_path}")
+        font_url = f'url("./roboto/{name}")'
+        if html.count(font_url) != 1:
+            raise RuntimeError(f"could not identify Roboto font URL for {name}")
+        encoded_font = base64.b64encode(font_path.read_bytes()).decode("ascii")
+        html = html.replace(font_url, f'url("data:font/ttf;base64,{encoded_font}")')
 
     glue = js_path.read_text(encoding="utf-8")
     if "</script>" in glue.lower():

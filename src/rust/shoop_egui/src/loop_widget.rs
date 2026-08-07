@@ -6,10 +6,6 @@ use egui_material_icons::MaterialIcon;
 
 use crate::{CompositeKind, LoopMode, LoopState, LoopWidgetAction, SelectionModifiers};
 
-pub fn initialize(context: &egui::Context) {
-    egui_material_icons::initialize(context);
-}
-
 #[derive(Debug, Default)]
 pub struct LoopWidgetResponse {
     pub actions: Vec<LoopWidgetAction>,
