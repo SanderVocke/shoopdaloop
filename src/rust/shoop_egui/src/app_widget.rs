@@ -764,6 +764,29 @@ mod tests {
         actions
     }
 
+    fn settings_frame(
+        context: &egui::Context,
+        widget: &mut AppWidget,
+        state: &AppState,
+        settings: &SettingsViewState,
+        paths: &BTreeMap<crate::ScriptId, String>,
+        events: Vec<egui::Event>,
+    ) -> AppWidgetResponse {
+        let mut response = None;
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 600.0),
+                )),
+                events,
+                ..Default::default()
+            },
+            |ui| response = Some(widget.show(ui, state, settings, Some(paths))),
+        );
+        response.unwrap()
+    }
+
     #[test]
     fn add_track_accept_emits_validated_spec() {
         let context = egui::Context::default();
@@ -905,20 +928,11 @@ mod tests {
             ..Default::default()
         };
         let paths = BTreeMap::from([(script_id, "/tmp/controller.lua".to_owned())]);
-        let output = context.run_ui(
-            egui::RawInput {
-                screen_rect: Some(egui::Rect::from_min_size(
-                    egui::Pos2::ZERO,
-                    egui::vec2(900.0, 600.0),
-                )),
-                ..Default::default()
-            },
-            |ui| {
-                widget.show(ui, &state, &settings, Some(&paths));
-            },
-        );
-        assert!(!output.shapes.is_empty());
+        settings_frame(&context, &mut widget, &state, &settings, &paths, Vec::new());
         assert!(widget.settings.is_open());
+
+        assert!(widget.settings.restart_rect(script_id).is_some());
+        assert!(widget.settings.reload_rect(script_id).is_some());
     }
 
     #[test]

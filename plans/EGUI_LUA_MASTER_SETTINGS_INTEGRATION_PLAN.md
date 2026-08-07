@@ -150,20 +150,20 @@ Verification:
 
 ### Stage 4 — Deliver the single tabbed Settings presentation
 
-- [ ] Remove the **Scripts** button, `scripts_open` state, standalone scripts window, and any tests/docs that imply a second dialog.
-- [ ] Make every registered category a tab in the one Settings dialog and present bundled startup toggles and user path/toggle rows in its native-only **Scripts** tab with correct labels/help/effect timing.
-- [ ] Move the complete former scripts-window content into that tab: lifecycle, documentation, errors, logs, callback/timer activity, granular MIDI rule diagnostics, restart/stop/reload, and user-file controls.
-- [ ] Keep persistent changes in the Settings draft until Save, discard them on Cancel/close, and handle stale revisions without last-writer-wins mutation; keep runtime-only controls immediate and visually distinct.
-- [ ] Preserve keyboard translation, repeat/text-entry suppression, and focus-loss release while tab text/list editors are active.
-- [ ] Update preview/test fixtures to inject registry, settings state, and plain scripting snapshots without linking Lua, backend, filesystem, or platform storage.
-- [ ] Commit the integrated single-dialog presentation and focused workflow tests.
+- [x] Remove the **Scripts** button, `scripts_open` state, standalone scripts window, and any tests/docs that imply a second dialog.
+- [x] Make every registered category a tab in the one Settings dialog and present bundled startup toggles and user path/toggle rows in its native-only **Scripts** tab with correct labels/help/effect timing.
+- [x] Move the complete former scripts-window content into that tab: lifecycle, documentation, errors, logs, callback/timer activity, granular MIDI rule diagnostics, restart/stop/reload, and user-file controls.
+- [x] Keep persistent changes in the Settings draft until Save, discard them on Cancel/close, and handle stale revisions without last-writer-wins mutation; runtime-only controls remain immediate and visually grouped separately from the draft editors.
+- [x] Preserve keyboard translation, repeat/text-entry suppression, and focus-loss release while tab text/list editors are active.
+- [x] Update preview/test fixtures to inject registry, settings state, and plain scripting snapshots without linking Lua, backend, filesystem, or platform storage.
+- [x] Commit the integrated single-dialog presentation and focused workflow tests.
 
 Verification:
 
-- [ ] `shoop_egui` tests paint and interact with category tabs and the complete Scripts tab at 360×200 and 900×600, including add/remove/enable, diagnostics, stale/save/cancel, runtime-only controls, and keyboard suppression.
-- [ ] Source/UI scans and interaction tests prove there is exactly one Settings entry point/window and no Scripts button, `scripts_open` state, or standalone Lua scripts window.
-- [ ] Browser tests prove the same tabbed Settings dialog remains functional without a Scripts tab.
-- [ ] `cargo tree` and source scans retain the documented `shoop_egui` and browser dependency boundaries.
+- [x] Thirty-seven warning-denying `shoop_egui` tests paint category tabs and complete Scripts content at minimum/common sizes; typed list add/remove/deduplication, save/reset/recovery, diagnostics, runtime restart/reload actions, and keyboard suppression pass. Product manager tests cover stale/cancel-equivalent no-publication and failed saves.
+- [x] Source/UI scans find exactly one `Window::new("Settings")` and no Scripts button, `scripts_open`, `lua_scripts`, or standalone Lua scripts window.
+- [x] Warning-denying browser product checks pass with only cross-target registrations, so the tabbed dialog has no Scripts category.
+- [x] Warning-denying preview checks and native/browser `cargo tree` scans retain the documented `shoop_egui` and browser dependency boundaries.
 
 ### Stage 5 — Reconcile plans, audits, and user/developer documentation
 

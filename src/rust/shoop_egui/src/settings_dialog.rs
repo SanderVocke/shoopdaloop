@@ -26,6 +26,12 @@ pub struct SettingsDialog {
     open: bool,
     draft: Option<SettingsDraft>,
     active_category: Option<String>,
+    #[cfg(test)]
+    restart_rects: BTreeMap<ScriptId, egui::Rect>,
+    #[cfg(test)]
+    reload_rects: BTreeMap<ScriptId, egui::Rect>,
+    #[cfg(test)]
+    remove_rects: BTreeMap<ScriptId, egui::Rect>,
 }
 
 impl SettingsDialog {
@@ -35,6 +41,12 @@ impl SettingsDialog {
             open: false,
             draft: None,
             active_category: None,
+            #[cfg(test)]
+            restart_rects: BTreeMap::new(),
+            #[cfg(test)]
+            reload_rects: BTreeMap::new(),
+            #[cfg(test)]
+            remove_rects: BTreeMap::new(),
         }
     }
 
@@ -64,6 +76,17 @@ impl SettingsDialog {
         draft.set(USER_SCRIPTS, scripts);
         self.active_category = Some("Scripts".to_owned());
         Ok(())
+    }
+
+    fn remove_user_script_path(&mut self, path: &str) {
+        let Some(draft) = self.draft.as_mut() else {
+            return;
+        };
+        let Ok(mut scripts) = draft.get(USER_SCRIPTS) else {
+            return;
+        };
+        scripts.0.retain(|entry| entry.value != path);
+        draft.set(USER_SCRIPTS, scripts);
     }
 
     pub fn show(
@@ -346,6 +369,10 @@ impl SettingsDialog {
                 .push(SettingsAction::RequestAddUserScript);
         }
         for script in scripting.scripts.iter() {
+            let user_path = script_paths
+                .and_then(|paths| paths.get(&script.id))
+                .filter(|_| script.kind == ScriptKind::User)
+                .cloned();
             ui.group(|ui| {
                 ui.horizontal(|ui| {
                     if script.kind == ScriptKind::Session {
@@ -363,6 +390,41 @@ impl SettingsDialog {
                 if let Some(path) = script_paths.and_then(|paths| paths.get(&script.id)) {
                     ui.weak(path);
                 }
+                ui.horizontal(|ui| {
+                    let restart = ui.button("Restart");
+                    #[cfg(test)]
+                    self.restart_rects.insert(script.id, restart.rect);
+                    if restart.clicked() {
+                        response.app_actions.push(AppAction::RestartScript {
+                            script_id: script.id,
+                        });
+                    }
+                    if ui.button("Stop").clicked() {
+                        response.app_actions.push(AppAction::StopScript {
+                            script_id: script.id,
+                        });
+                    }
+                    if user_path.is_some() {
+                        let reload = ui.button("Reload file");
+                        #[cfg(test)]
+                        self.reload_rects.insert(script.id, reload.rect);
+                        if reload.clicked() {
+                            response.settings_actions.push(
+                                SettingsAction::RequestReloadUserScript {
+                                    script_id: script.id,
+                                },
+                            );
+                        }
+                    }
+                    if let Some(path) = &user_path {
+                        let remove = ui.button("Remove");
+                        #[cfg(test)]
+                        self.remove_rects.insert(script.id, remove.rect);
+                        if remove.clicked() {
+                            self.remove_user_script_path(path);
+                        }
+                    }
+                });
                 if let Some(error) = &script.latest_error {
                     ui.colored_label(egui::Color32::LIGHT_RED, error);
                 }
@@ -412,28 +474,6 @@ impl SettingsDialog {
                         }
                     });
                 }
-                ui.horizontal(|ui| {
-                    if ui.button("Restart").clicked() {
-                        response.app_actions.push(AppAction::RestartScript {
-                            script_id: script.id,
-                        });
-                    }
-                    if ui.button("Stop").clicked() {
-                        response.app_actions.push(AppAction::StopScript {
-                            script_id: script.id,
-                        });
-                    }
-                    if script.kind == ScriptKind::User
-                        && script_paths.is_some_and(|paths| paths.contains_key(&script.id))
-                        && ui.button("Reload file").clicked()
-                    {
-                        response
-                            .settings_actions
-                            .push(SettingsAction::RequestReloadUserScript {
-                                script_id: script.id,
-                            });
-                    }
-                });
                 ui.collapsing(format!("Log ({})", script.logs.len()), |ui| {
                     if script.logs.is_empty() {
                         ui.weak("No messages");
@@ -459,6 +499,16 @@ impl SettingsDialog {
     #[cfg(test)]
     pub(crate) fn select_category(&mut self, category: &str) {
         self.active_category = Some(category.to_owned());
+    }
+
+    #[cfg(test)]
+    pub(crate) fn restart_rect(&self, script_id: ScriptId) -> Option<egui::Rect> {
+        self.restart_rects.get(&script_id).copied()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reload_rect(&self, script_id: ScriptId) -> Option<egui::Rect> {
+        self.reload_rects.get(&script_id).copied()
     }
 }
 
@@ -578,6 +628,120 @@ mod tests {
             }])
         );
         assert_eq!(dialog.active_category.as_deref(), Some("Scripts"));
+        dialog.remove_user_script_path("/tmp/controller.lua");
+        assert_eq!(
+            dialog.draft_mut().unwrap().get(USER_SCRIPTS).unwrap(),
+            StringToggleList::default()
+        );
+    }
+
+    #[test]
+    fn runtime_script_controls_emit_typed_actions_inside_the_settings_content() {
+        let mut builder = SettingsRegistryBuilder::default();
+        crate::register_settings(&mut builder).unwrap();
+        crate::register_script_settings(&mut builder).unwrap();
+        let registry = Arc::new(builder.finish());
+        let state = SettingsViewState {
+            active: Arc::new(registry.defaults(1)),
+            diagnostics: Arc::from([]),
+            storage_location: "fixture".to_owned(),
+            recovery_required: false,
+            persistence: SettingsPersistenceState::Idle,
+        };
+        let mut dialog = SettingsDialog::new(registry);
+        dialog.open(&state);
+        let script_id = ScriptId::from_raw(7);
+        let scripting = ScriptingState {
+            supported: true,
+            scripts: Arc::from([crate::ScriptState {
+                id: script_id,
+                name: "controller.lua".to_owned(),
+                kind: ScriptKind::User,
+                enabled: true,
+                lifecycle: crate::ScriptLifecycle::Listening,
+                documentation: None,
+                latest_error: None,
+                activity: Default::default(),
+                midi: Default::default(),
+                logs: Arc::from([]),
+            }]),
+        };
+        let paths = BTreeMap::from([(script_id, "/tmp/controller.lua".to_owned())]);
+        let context = egui::Context::default();
+        let frame = |dialog: &mut SettingsDialog, events: Vec<egui::Event>| {
+            let mut response = SettingsDialogResponse::default();
+            let _ = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(900.0, 600.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| dialog.show_script_runtime(ui, &scripting, Some(&paths), &mut response),
+            );
+            response
+        };
+        frame(&mut dialog, Vec::new());
+        let restart = dialog.restart_rect(script_id).unwrap().center();
+        frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(restart),
+                egui::Event::PointerButton {
+                    pos: restart,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let response = frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(restart),
+                egui::Event::PointerButton {
+                    pos: restart,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert!(response
+            .app_actions
+            .contains(&AppAction::RestartScript { script_id }));
+
+        let reload = dialog.reload_rect(script_id).unwrap().center();
+        frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(reload),
+                egui::Event::PointerButton {
+                    pos: reload,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let response = frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(reload),
+                egui::Event::PointerButton {
+                    pos: reload,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert!(response.settings_actions.iter().any(|action| matches!(
+            action,
+            SettingsAction::RequestReloadUserScript { script_id: id } if *id == script_id
+        )));
     }
 
     #[test]
