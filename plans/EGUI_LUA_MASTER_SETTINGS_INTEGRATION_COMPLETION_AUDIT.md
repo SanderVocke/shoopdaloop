@@ -10,7 +10,7 @@ This audit does not treat plan checkboxes or a green proxy suite as completion. 
 
 | # | Required result | Concrete implementation evidence | Direct verification evidence | Status |
 |---|---|---|---|---|
-| 1 | Current master integrated without dropped Lua/settings behavior | Merge commit `14e0a263`; both parents retained; conflict resolutions in settings, widget, runner, manifests, ledgers, workflow | `git merge-base --is-ancestor origin/master HEAD`; clean conflict-marker/unmerged-entry scans; warning-denying workspace build and full tests | Covered locally |
+| 1 | Current master integrated without dropped Lua/settings behavior | Merge commit `14e0a263`; both parents retained; conflict resolutions in settings, widget, runner, manifests, ledgers, workflow | `git merge-base --is-ancestor origin/master HEAD`; clean conflict-marker/unmerged-entry scans; warning-denying workspace build/full tests locally and in final main CI | Covered |
 | 2 | One egui settings system; no egui legacy script persistence | Modular `shoop_settings`; `SettingsManager`; no `ScriptSettings`, `KnownScript`, old picker intents, or direct runtime settings path | source scans find no removed types/intents; legacy `default_settings_path` remains only in retained QML/Carla module and product | Covered |
 | 3 | Typed native scripting registrations and defaults | `KEYBOARD_SCRIPT_ENABLED`, `APC_MINI_SCRIPT_ENABLED`, `USER_SCRIPTS`; `register_script_settings`; native-only composition registration | 19 settings tests; typed startup adapter product test proves keyboard on/APC off and ordered user entries | Covered |
 | 4 | Exactly one category-tabbed Settings dialog | `SettingsDialog` category tabs; one global Settings action; removed `scripts_open`/Lua window | source scan finds exactly one `Window::new("Settings")` and no Scripts button/window/state; GUI tab tests at 360×200 and 900×600 | Covered |
@@ -19,7 +19,7 @@ This audit does not treat plan checkboxes or a green proxy suite as completion. 
 | 7 | Transactional runtime application | settings loaded before `Runtime`; source preflight; manager publication; revision-driven add/remove/enable reconciliation | 12 product tests include committed add/toggle/remove and failed-save no-revision/no-runtime-change; manager stale/recovery/no-clobber tests | Covered |
 | 8 | Lua lifecycle parity and exact path/ID ownership | existing actor intents/runtime; composition path map and pending ordered association; runtime-only actions separate from drafts | 30 app + 21 scripting tests; duplicate-name/rejected-slot tests; bundled keyboard/APC and reload/cleanup tests | Covered |
 | 9 | Settings/session/filesystem architecture boundaries | filesystem and picker in product composition; generic settings core; machine paths excluded from session source documents | session machine/source separation test; `cargo tree`/source scans; warning-denying core/preview/native/Wasm checks | Covered |
-| 10 | Browser and retained frontend safety | native-only registrations/dependencies; browser Settings omits Scripts; retained legacy settings module unchanged | release Wasm checks; trees exclude `mlua`, `midir`, `shoop_scripting`, frontend/Qt; hosted/direct-file settings workflows; retained Lua QML 45/45 | Covered locally |
+| 10 | Browser and retained frontend safety | native-only registrations/dependencies; browser Settings omits Scripts; retained legacy settings module unchanged | release Wasm checks; trees exclude `mlua`, `midir`, `shoop_scripting`, frontend/Qt; hosted/direct-file settings workflows; retained Lua QML 45/45 locally and complete retained suite in final main CI | Covered |
 | 11 | Truthful docs and ledgers | all surviving `plans/`; settings format; Lua contract; scripting/keyboard/MIDI docs; egui README | repository searches find no current separate-dialog or egui-QML-persistence claim; deleted-plan references removed | Covered |
 | 12 | Cross-target final validation and delivery | commits `14e0a263`, `8a89e3bf`, `5aeea71b`, `78b22552`, `f15078b4`, `39a28166` | all local gates below; eight-cell egui run `31224951182`; main retained-suite run `31224951223`; CodeQL `31224951208`; docs `31224951121` | Covered |
 
@@ -34,9 +34,9 @@ This audit does not treat plan checkboxes or a green proxy suite as completion. 
 | Stage 4 one complete dialog | only Settings entry/window; complete Scripts tab; interaction/paint/source/dependency tests |
 | Stage 5 docs/ledgers | `EGUI_FEATURE_PARITY_MATRIX.md`, `EGUI_REPLACEMENT_PROJECT.md`, Lua plan/audit, four Lua docs, settings format, README updated |
 | `Cargo.toml` / `Cargo.lock` | locked metadata succeeds; vendored Lua/native MIDI plus settings dependencies retained; target gates compile |
-| `.github/workflows/build_and_test_egui.yml` | merged settings workflow and Lua/ALSA dependency fixes retained; final hosted run pending |
+| `.github/workflows/build_and_test_egui.yml` | merged settings workflow and Lua/ALSA dependency fixes retained; final-tip hosted run `31226634065` passes all eight matrix cells |
 | Browser artifacts | release Trunk bundle, release zip, and self-contained HTML build/verify; worklet has zero imports |
-| Retained frontend | full offscreen suite reaches 235/236 with only environment-sensitive `CpalPorts::test_virtual_playback_ports_are_app_connectable`; focused retained Lua is 45/45 |
+| Retained frontend | focused retained Lua is 45/45 locally; the only locally unavailable CPAL case passes as part of final-tip authoritative main run `31226634045` |
 
 ## Recorded local commands and results
 
@@ -53,7 +53,7 @@ This audit does not treat plan checkboxes or a green proxy suite as completion. 
 - Browser dependency scans exclude Lua/scripting/native MIDI/frontend/Qt; worklet Wasm has zero imports.
 - Chromium 147 hosted settings save/reload/rejection, unavailable storage, direct-file settings, hosted 360×200/900×600 Web Audio, output-only, self-contained offline, and direct-file output-only workflows — pass.
 - `QT_QPA_PLATFORM=offscreen ... tst_LuaEngine_SessionControlHandler.qml` — 45/45 pass.
-- Full offscreen retained suite — 235/236; only the CPAL virtual-playback host case fails, while all 235 other cases pass. Authoritative Linux CI remains the acceptance surface for that environment-sensitive case.
+- Full offscreen retained suite — 235/236 locally; only the unavailable CPAL virtual-playback host case fails, while all 235 other cases pass. The complete suite, including that case, passes on authoritative Linux CI.
 
 ## Authoritative CI evidence
 
@@ -61,4 +61,4 @@ This audit does not treat plan checkboxes or a green proxy suite as completion. 
 - Main run `31224951223` passes formatting, Linux build, full Rust/realtime suites, and the authoritative retained QML test job, including the CPAL case unavailable locally.
 - CodeQL run `31224951208` passes Python and JavaScript/TypeScript analysis.
 - Docs run `31224951121` passes the Sphinx build.
-- All runs target implementation/audit commit `39a281668bec8aac55452f596fcace3c6c65540c`. The subsequent evidence-only closure commit changes only these two Markdown audit files and is checked again after push.
+- Those implementation runs target `39a281668bec8aac55452f596fcace3c6c65540c`. Evidence-closure commit `b5b8bcccd1420488e2bd3fc1c4b00124f4e5be38` was then rechecked successfully by egui run `31226634065`, main run `31226634045`, CodeQL run `31226634059`, and docs run `31226634056`. `gh pr checks 678` reports every required final-tip job successful; intentionally inapplicable main-workflow macOS/Windows jobs are skipped because the dedicated egui matrix supplies those target gates.
