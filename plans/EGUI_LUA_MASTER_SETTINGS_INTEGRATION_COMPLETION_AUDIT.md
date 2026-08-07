@@ -4,7 +4,7 @@
 
 The objective is complete only when the branch contains current `origin/master`, the Lua milestone still works, and native script configuration/runtime management uses the fresh egui settings service through exactly one category-tabbed Settings dialog. The separate Scripts button/window and direct QML-format persistence must be absent. Native, browser, retained QML, package, dependency, documentation, and final PR CI evidence must cover the resulting artifacts.
 
-This audit does not treat plan checkboxes or a green proxy suite as completion. Each requirement below maps to implementation and direct verification. **Current status: local artifact audit passed; authoritative post-push CI pending.**
+This audit does not treat plan checkboxes or a green proxy suite as completion. Each requirement below maps to implementation and direct verification. **Status: Complete — local artifact audit and authoritative post-push CI passed.**
 
 ## Prompt-to-artifact acceptance checklist
 
@@ -21,7 +21,7 @@ This audit does not treat plan checkboxes or a green proxy suite as completion. 
 | 9 | Settings/session/filesystem architecture boundaries | filesystem and picker in product composition; generic settings core; machine paths excluded from session source documents | session machine/source separation test; `cargo tree`/source scans; warning-denying core/preview/native/Wasm checks | Covered |
 | 10 | Browser and retained frontend safety | native-only registrations/dependencies; browser Settings omits Scripts; retained legacy settings module unchanged | release Wasm checks; trees exclude `mlua`, `midir`, `shoop_scripting`, frontend/Qt; hosted/direct-file settings workflows; retained Lua QML 45/45 | Covered locally |
 | 11 | Truthful docs and ledgers | all surviving `plans/`; settings format; Lua contract; scripting/keyboard/MIDI docs; egui README | repository searches find no current separate-dialog or egui-QML-persistence claim; deleted-plan references removed | Covered |
-| 12 | Cross-target final validation and delivery | commits `14e0a263`, `8a89e3bf`, `5aeea71b`, `78b22552`, `f15078b4` | local gates below pass except one unrelated CPAL QML host case; authoritative PR CI not yet run for final tip | Pending CI |
+| 12 | Cross-target final validation and delivery | commits `14e0a263`, `8a89e3bf`, `5aeea71b`, `78b22552`, `f15078b4`, `39a28166` | all local gates below; eight-cell egui run `31224951182`; main retained-suite run `31224951223`; CodeQL `31224951208`; docs `31224951121` | Covered |
 
 ## Staged-plan and named-artifact checklist
 
@@ -55,9 +55,10 @@ This audit does not treat plan checkboxes or a green proxy suite as completion. 
 - `QT_QPA_PLATFORM=offscreen ... tst_LuaEngine_SessionControlHandler.qml` — 45/45 pass.
 - Full offscreen retained suite — 235/236; only the CPAL virtual-playback host case fails, while all 235 other cases pass. Authoritative Linux CI remains the acceptance surface for that environment-sensitive case.
 
-## Remaining authoritative evidence
+## Authoritative CI evidence
 
-- Commit this audit and updated final plan status.
-- Push the final branch.
-- Require PR #678 Linux/Windows/macOS/Wasm egui matrix, main Linux build/test/QML job, docs, and CodeQL to pass.
-- Record final run IDs and commit in this audit/plan, then verify a clean upstream-tracking worktree.
+- EgUI run `31224951182` passes all eight Linux/Windows/macOS ARM/WebAssembly debug/release cells. Native archives and tests, release hosted/self-contained artifacts, Chrome settings/audio workflows, browser dependency isolation, and release Firefox Web Audio all pass.
+- Main run `31224951223` passes formatting, Linux build, full Rust/realtime suites, and the authoritative retained QML test job, including the CPAL case unavailable locally.
+- CodeQL run `31224951208` passes Python and JavaScript/TypeScript analysis.
+- Docs run `31224951121` passes the Sphinx build.
+- All runs target implementation/audit commit `39a281668bec8aac55452f596fcace3c6c65540c`. The subsequent evidence-only closure commit changes only these two Markdown audit files and is checked again after push.

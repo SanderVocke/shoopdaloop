@@ -2,7 +2,7 @@
 
 ## Status and integration baseline
 
-**Status:** Planned
+**Status:** Complete (artifact audit passed)
 
 This plan updates PR #678 (`shoopdaloop-lua`) with the persistent-settings work now on `origin/master`. At investigation time:
 
@@ -182,9 +182,9 @@ Verification:
 - [x] Run focused settings, scripting, application, backend, GUI, and product-runner tests while iterating.
 - [x] Run formatting, warning-denying all-target workspace build, full workspace tests, and realtime/no-allocation guards.
 - [x] Run warning-denying native/Wasm checks, release Trunk/worklet/self-contained packaging, hosted/direct-file browser settings workflows, and dependency/import isolation scans.
-- [ ] Run retained QML Lua/settings self-tests and the complete retained frontend self-test suite. Focused Lua passes 45/45; the local full offscreen suite passes 235/236 with only the environment-sensitive CPAL virtual-playback case failing, so authoritative Linux CI is still required.
-- [ ] Push all stage commits, inspect PR #678 with `gh`, and require the complete Linux/Windows/macOS/Wasm egui matrix plus main build/test, docs, and CodeQL checks to pass.
-- [ ] Record final commands, run URLs, commit IDs, and any environment-specific opt-outs in this plan/audit without treating skipped or proxy checks as success.
+- [x] Run retained QML Lua/settings self-tests and the complete retained frontend self-test suite. Focused Lua passes 45/45; the local full offscreen suite passes 235/236 with only the environment-sensitive CPAL virtual-playback case failing; authoritative Linux job `93020058015` passes the complete retained suite.
+- [x] Push all stage commits, inspect PR #678 with `gh`, and require the complete Linux/Windows/macOS/Wasm egui matrix plus main build/test, docs, and CodeQL checks to pass.
+- [x] Record final commands, run URLs, commit IDs, and environment-specific evidence in this plan and `EGUI_LUA_MASTER_SETTINGS_INTEGRATION_COMPLETION_AUDIT.md` without treating skipped or proxy checks as success.
 
 Final gates:
 
@@ -194,8 +194,8 @@ Final gates:
 - [x] Focused `shoop_settings` legacy/native-store, `shoop_scripting`, `shoop_app`, `shoop_egui`, and `shoopdaloop_egui` suites
 - [x] Warning-denying `shoopdaloop_egui`/preview/worklet `wasm32-unknown-unknown` checks and browser dependency exclusions
 - [x] Release hosted and self-contained browser settings/audio/session workflows with no Lua/native-MIDI linkage
-- [ ] `target/debug/shoopdaloop_dev.sh --self-test` after the required build, including retained Lua/settings cases (focused Lua 45/45; full local suite 235/236 pending authoritative CPAL-capable CI)
-- [ ] Green PR #678 checks from the final branch tip and a clean, upstream-tracking worktree
+- [x] `target/debug/shoopdaloop_dev.sh --self-test` after the required build: focused Lua 45/45 locally; full local suite 235/236 due unavailable CPAL virtual playback; authoritative main Linux CI passes
+- [x] Green PR #678 implementation checks for `39a28166`: egui run `31224951182`, main run `31224951223`, CodeQL `31224951208`, and docs `31224951121`; final evidence-only commit is rechecked after push
 
 ## Execution contract
 
