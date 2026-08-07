@@ -447,6 +447,19 @@ pub struct IoTaskState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum KeyEventType {
+    Pressed,
+    Released,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct KeyEvent {
+    pub event_type: KeyEventType,
+    pub key: i64,
+    pub modifiers: i64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScriptKind {
     Bundled,
     User,
@@ -594,6 +607,7 @@ pub enum AppIntent {
     AddLoop {
         track_id: TrackId,
     },
+    KeyEvent(KeyEvent),
     AddScriptSource {
         name: String,
         source: Arc<str>,

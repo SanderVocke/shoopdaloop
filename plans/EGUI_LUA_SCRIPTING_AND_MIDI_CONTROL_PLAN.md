@@ -109,10 +109,10 @@ Verification:
 
 ### Stage 4 — Add application events, timers, and keyboard delivery
 
-- [ ] Add a committed application event stream with granular loop/global payloads and deterministic ordering; feed script subscriptions only after the originating control batch completes.
-- [ ] Implement monotonic one-shot timers in the script coordinator with script-owned cancellation and bounded callbacks per pump.
+- [x] Add a committed application event stream with granular loop/global payloads and deterministic ordering; feed script subscriptions only after the originating control batch completes.
+- [x] Implement monotonic one-shot timers in the script coordinator with script-owned cancellation and bounded callbacks per pump.
 - [ ] Add target-neutral key/modifier/event values and a Qt-compatible constant mapping for legacy scripts; translate egui press/release input, suppress repeats, handle focus loss releases, and avoid firing shortcuts during text entry.
-- [ ] Keep script callback errors/status observable while allowing subsequent callbacks and other scripts to continue.
+- [x] Keep script callback errors/status observable while allowing subsequent callbacks and other scripts to continue.
 
 Verification:
 

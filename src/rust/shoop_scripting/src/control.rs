@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Duration;
 
 use anyhow::anyhow;
 use mlua::{Function, Lua, Table, Value};
@@ -219,8 +220,25 @@ pub struct ControlBridge {
 
 pub type SharedControlBridge = Rc<RefCell<ControlBridge>>;
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScriptLoopEvent {
+    pub coords: [i64; 2],
+    pub event_type: i64,
+    pub mode: LoopMode,
+    pub length: u32,
+    pub selected: bool,
+    pub targeted: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ScriptKeyEvent {
+    pub event_type: i64,
+    pub key: i64,
+    pub modifiers: i64,
+}
+
 pub struct TimerRegistration {
-    pub delay_ms: u64,
+    pub remaining: Duration,
     pub callback: Function,
 }
 
@@ -260,7 +278,7 @@ impl ScriptCallbacks {
     pub fn has_activity(&self) -> bool {
         let timers = self.timers.borrow();
         for registration in timers.iter() {
-            let _ = (registration.delay_ms, &registration.callback);
+            let _ = (registration.remaining, &registration.callback);
         }
         let midi_inputs = self.midi_inputs.borrow();
         for registration in midi_inputs.iter() {
@@ -281,6 +299,81 @@ impl ScriptCallbacks {
             || !timers.is_empty()
             || !midi_inputs.is_empty()
             || !midi_outputs.is_empty()
+    }
+
+    pub fn dispatch_loop_event(&self, lua: &Lua, event: &ScriptLoopEvent) -> Vec<String> {
+        let callbacks = self.loop_events.borrow().clone();
+        callbacks
+            .into_iter()
+            .filter_map(|callback| {
+                let result = (|| -> mlua::Result<()> {
+                    let table = lua.create_table()?;
+                    table.set("coords", lua.create_sequence_from(event.coords)?)?;
+                    table.set("type", event.event_type)?;
+                    table.set("mode", mode_value(event.mode))?;
+                    table.set("length", event.length)?;
+                    table.set("selected", event.selected)?;
+                    table.set("targeted", event.targeted)?;
+                    callback.call::<()>(table)
+                })();
+                result.err().map(|error| error.to_string())
+            })
+            .collect()
+    }
+
+    pub fn dispatch_global_event(&self, lua: &Lua) -> Vec<String> {
+        let callbacks = self.global_events.borrow().clone();
+        callbacks
+            .into_iter()
+            .filter_map(|callback| {
+                let result = (|| -> mlua::Result<()> {
+                    let table = lua.create_table()?;
+                    table.set("type", 0)?;
+                    callback.call::<()>(table)
+                })();
+                result.err().map(|error| error.to_string())
+            })
+            .collect()
+    }
+
+    pub fn dispatch_key_event(&self, lua: &Lua, event: ScriptKeyEvent) -> Vec<String> {
+        let callbacks = self.keyboard_events.borrow().clone();
+        callbacks
+            .into_iter()
+            .filter_map(|callback| {
+                let result = (|| -> mlua::Result<()> {
+                    let table = lua.create_table()?;
+                    table.set("type", event.event_type)?;
+                    table.set("key", event.key)?;
+                    table.set("modifiers", event.modifiers)?;
+                    callback.call::<()>(table)
+                })();
+                result.err().map(|error| error.to_string())
+            })
+            .collect()
+    }
+
+    pub fn advance_timers(&self, elapsed: Duration) -> Vec<String> {
+        let callbacks = {
+            let mut timers = self.timers.borrow_mut();
+            for timer in timers.iter_mut() {
+                timer.remaining = timer.remaining.saturating_sub(elapsed);
+            }
+            let mut callbacks = Vec::new();
+            let mut index = 0;
+            while index < timers.len() {
+                if timers[index].remaining.is_zero() {
+                    callbacks.push(timers.remove(index).callback);
+                } else {
+                    index += 1;
+                }
+            }
+            callbacks
+        };
+        callbacks
+            .into_iter()
+            .filter_map(|callback| callback.call::<()>(()).err().map(|error| error.to_string()))
+            .collect()
     }
 }
 
@@ -927,9 +1020,10 @@ fn install_subscriptions(
         lua.create_function(move |_, (delay_ms, callback): (i64, Function)| {
             let delay_ms = u64::try_from(delay_ms)
                 .map_err(|_| mlua::Error::runtime("timer delay may not be negative"))?;
-            timers
-                .borrow_mut()
-                .push(TimerRegistration { delay_ms, callback });
+            timers.borrow_mut().push(TimerRegistration {
+                remaining: Duration::from_millis(delay_ms),
+                callback,
+            });
             timer_listening();
             Ok(())
         })?,

@@ -8,14 +8,16 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
+#[cfg(not(target_arch = "wasm32"))]
+use shoop_app_api::KeyEventType;
 use shoop_app_api::{
     AppIntent, AppNotification, AppSnapshot, AudioChannelMappingState, AudioChannelSelectionState,
     AudioDriverState, ChannelId, ConnectionErrorKind, ConnectionErrorState, ConnectionViewState,
     DirectTrackSpec, ExternalPortConnectionState, GlobalControlAction, IoTaskKind, IoTaskState,
-    IoTaskStatus, LocalPortConnectionState, LoopAction, LoopAudioExportFormat, LoopDetailsState,
-    LoopId, LoopMode, LoopState, NotificationLevel, PortDataType, PortDirection, PortId, PortRole,
-    SampleRateWarning, ScriptId, ScriptKind, ScriptingState, StatusState, TaskId, TrackAction,
-    TrackControlState, TrackId, TrackState, WaveformChannelState,
+    IoTaskStatus, KeyEvent, LocalPortConnectionState, LoopAction, LoopAudioExportFormat,
+    LoopDetailsState, LoopId, LoopMode, LoopState, NotificationLevel, PortDataType, PortDirection,
+    PortId, PortRole, SampleRateWarning, ScriptId, ScriptKind, ScriptingState, StatusState, TaskId,
+    TrackAction, TrackControlState, TrackId, TrackState, WaveformChannelState,
 };
 use shoop_backend::{
     Backend, BackendAudioContent, BackendConnectionSnapshot, BackendGrabRequest,
@@ -27,7 +29,8 @@ use shoop_backend::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_scripting::{
-    ControlLoop, ControlOperation, ControlSnapshot, ControlTrack, ScriptManager,
+    ControlLoop, ControlOperation, ControlSnapshot, ControlTrack, ScriptKeyEvent, ScriptLoopEvent,
+    ScriptManager,
 };
 use shoop_session::{
     decode_exact_midi, decode_loop_audio, decode_session, decode_standard_midi, decode_wav,
@@ -324,6 +327,10 @@ fn update_application(
         model.notify_error(error);
     }
     model.advance_io(backend);
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Err(error) = model.advance_scripting(backend, elapsed) {
+        model.notify_error(error);
+    }
     model.revision = model.revision.wrapping_add(1);
     publish(Arc::new(model.snapshot()));
 }
@@ -344,6 +351,8 @@ struct ApplicationModel {
     scripting_view: Arc<ScriptingState>,
     #[cfg(not(target_arch = "wasm32"))]
     script_manager: ScriptManager,
+    #[cfg(not(target_arch = "wasm32"))]
+    script_last_snapshot: ControlSnapshot,
     global: shoop_app_api::GlobalControlState,
     status: StatusState,
     notifications: Vec<AppNotification>,
@@ -496,7 +505,7 @@ impl ApplicationModel {
             position: 0,
             audio_data: None,
         };
-        Ok(Self {
+        let model = Self {
             revision: 1,
             next_track_id: 2,
             next_loop_id: 2,
@@ -525,6 +534,8 @@ impl ApplicationModel {
             }),
             #[cfg(not(target_arch = "wasm32"))]
             script_manager: ScriptManager::new(),
+            #[cfg(not(target_arch = "wasm32"))]
+            script_last_snapshot: ControlSnapshot::default(),
             global: Default::default(),
             status: Default::default(),
             notifications: Vec::new(),
@@ -535,7 +546,14 @@ impl ApplicationModel {
             #[cfg(not(target_arch = "wasm32"))]
             background_session_encoding,
             file_outputs,
-        })
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        let model = {
+            let mut model = model;
+            model.script_last_snapshot = model.script_control_snapshot();
+            model
+        };
+        Ok(model)
     }
 
     fn handle_intent(&mut self, backend: &mut dyn Backend, intent: AppIntent) {
@@ -551,6 +569,7 @@ impl ApplicationModel {
             }
             AppIntent::AddTrack(spec) => self.add_track(backend, spec),
             AppIntent::AddLoop { track_id } => self.add_aligned_loop_row(backend, track_id),
+            AppIntent::KeyEvent(event) => self.handle_script_key_event(backend, event),
             AppIntent::AddScriptSource {
                 name,
                 source,
@@ -718,6 +737,95 @@ impl ApplicationModel {
             let _ = id;
             Err("Lua scripting is unavailable in the browser build".to_owned())
         }
+    }
+
+    fn handle_script_key_event(
+        &mut self,
+        backend: &mut dyn Backend,
+        event: KeyEvent,
+    ) -> Result<(), String> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.prepare_script_invocation();
+            self.script_manager.dispatch_key_event(ScriptKeyEvent {
+                event_type: match event.event_type {
+                    KeyEventType::Pressed => 0,
+                    KeyEventType::Released => 1,
+                },
+                key: event.key,
+                modifiers: event.modifiers,
+            });
+            let result = self.apply_script_operations(backend);
+            self.refresh_scripting_view();
+            result
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (backend, event);
+            Ok(())
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn advance_scripting(
+        &mut self,
+        backend: &mut dyn Backend,
+        elapsed: Duration,
+    ) -> Result<(), String> {
+        let current = self.script_control_snapshot();
+        self.script_manager.set_control_snapshot(current.clone());
+        for loop_ in &current.loops {
+            let previous = self
+                .script_last_snapshot
+                .loops
+                .iter()
+                .find(|candidate| candidate.id == loop_.id);
+            let mut event_types = Vec::new();
+            match previous {
+                Some(previous) => {
+                    if previous.mode != loop_.mode {
+                        event_types.push(0);
+                    }
+                    if previous.length != loop_.length {
+                        event_types.push(1);
+                    }
+                    if previous.selected != loop_.selected {
+                        event_types.push(2);
+                    }
+                    if previous.targeted != loop_.targeted {
+                        event_types.push(3);
+                    }
+                    if previous.coords != loop_.coords {
+                        event_types.push(4);
+                    }
+                }
+                None => event_types.extend([0, 1, 2, 3, 4]),
+            }
+            for event_type in event_types {
+                self.script_manager.dispatch_loop_event(&ScriptLoopEvent {
+                    coords: loop_.coords,
+                    event_type,
+                    mode: loop_.mode,
+                    length: loop_.length,
+                    selected: loop_.selected,
+                    targeted: loop_.targeted,
+                });
+            }
+        }
+        if current.apply_n_cycles != self.script_last_snapshot.apply_n_cycles
+            || current.solo != self.script_last_snapshot.solo
+            || current.sync_active != self.script_last_snapshot.sync_active
+            || current.play_after_record != self.script_last_snapshot.play_after_record
+            || current.default_recording_action
+                != self.script_last_snapshot.default_recording_action
+        {
+            self.script_manager.dispatch_global_event();
+        }
+        self.script_manager.advance_timers(elapsed);
+        self.script_last_snapshot = current;
+        let result = self.apply_script_operations(backend);
+        self.refresh_scripting_view();
+        result
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -4236,6 +4344,62 @@ c.loop_set_gain({-1, 0}, 0.25)
             snapshot.scripting.scripts[0].lifecycle,
             shoop_app_api::ScriptLifecycle::Finished
         );
+    }
+
+    #[test]
+    fn script_keyboard_events_timers_and_committed_loop_events_are_dispatched() {
+        let runtime = ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        let handle = runtime.handle();
+        handle
+            .dispatch(AppIntent::AddScriptSource {
+                name: "events.lua".to_owned(),
+                source: Arc::from(
+                    r#"
+local c = require('shoop_control')
+c.register_keyboard_event_cb(function(event)
+    if event.type == c.constants.KeyEventType_Pressed and event.key == c.constants.Key_Space then
+        c.set_solo(true)
+    end
+end)
+c.register_loop_event_cb(function(event)
+    if event.type == c.constants.LoopEventType_SelectedChanged and event.selected then
+        c.set_apply_n_cycles(7)
+    end
+end)
+c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
+"#,
+                ),
+                kind: ScriptKind::User,
+                enabled: true,
+            })
+            .unwrap();
+        wait_for(&handle, |snapshot| {
+            snapshot
+                .scripting
+                .scripts
+                .first()
+                .is_some_and(|script| script.lifecycle == shoop_app_api::ScriptLifecycle::Listening)
+                && !snapshot.global_controls.sync
+        });
+        handle
+            .dispatch(AppIntent::KeyEvent(KeyEvent {
+                event_type: KeyEventType::Pressed,
+                key: 32,
+                modifiers: 0,
+            }))
+            .unwrap();
+        wait_for(&handle, |snapshot| snapshot.global_controls.solo);
+        let snapshot = handle.snapshot();
+        handle
+            .dispatch(AppIntent::Loop {
+                track_id: snapshot.tracks[0].id,
+                loop_id: snapshot.tracks[0].loops[0].id,
+                action: LoopAction::IconClicked(SelectionModifiers::default()),
+            })
+            .unwrap();
+        wait_for(&handle, |snapshot| {
+            snapshot.tracks[0].loops[0].selected && snapshot.global_controls.apply_n_cycles == 7
+        });
     }
 
     #[test]

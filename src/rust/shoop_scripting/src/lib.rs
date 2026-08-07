@@ -11,8 +11,8 @@ mod legacy_key_constants;
 
 use control::{install_control_api, ScriptCallbacks};
 pub use control::{
-    ControlBridge, ControlLoop, ControlOperation, ControlSnapshot, ControlTrack,
-    SharedControlBridge, CONTROL_FUNCTION_NAMES,
+    ControlBridge, ControlLoop, ControlOperation, ControlSnapshot, ControlTrack, ScriptKeyEvent,
+    ScriptLoopEvent, SharedControlBridge, CONTROL_FUNCTION_NAMES,
 };
 use legacy_key_constants::{LEGACY_KEY_CONSTANTS, LEGACY_MODIFIER_CONSTANTS};
 
@@ -160,6 +160,24 @@ impl LuaRuntime {
     pub fn logs(&self) -> Vec<ScriptLogEntry> {
         self.logs.borrow().iter().cloned().collect()
     }
+
+    fn dispatch_loop_event(&self, event: &ScriptLoopEvent) -> Vec<String> {
+        self.callbacks.dispatch_loop_event(&self.lua, event)
+    }
+
+    fn dispatch_global_event(&self) -> Vec<String> {
+        self.callbacks.dispatch_global_event(&self.lua)
+    }
+
+    fn dispatch_key_event(&self, event: ScriptKeyEvent) -> Vec<String> {
+        self.callbacks.dispatch_key_event(&self.lua, event)
+    }
+
+    fn advance_timers(&self, elapsed: std::time::Duration) -> Vec<String> {
+        let errors = self.callbacks.advance_timers(elapsed);
+        self.listening.set(false);
+        errors
+    }
 }
 
 pub fn install_print_functions(
@@ -264,6 +282,58 @@ impl ScriptManager {
 
     pub fn take_control_operations(&mut self) -> Vec<ControlOperation> {
         std::mem::take(&mut self.control.borrow_mut().operations)
+    }
+
+    pub fn dispatch_loop_event(&mut self, event: &ScriptLoopEvent) {
+        for record in self.scripts.values_mut() {
+            let errors = record
+                .runtime
+                .as_ref()
+                .map(|runtime| runtime.dispatch_loop_event(event))
+                .unwrap_or_default();
+            record_callback_errors(record, errors);
+        }
+    }
+
+    pub fn dispatch_global_event(&mut self) {
+        for record in self.scripts.values_mut() {
+            let errors = record
+                .runtime
+                .as_ref()
+                .map(LuaRuntime::dispatch_global_event)
+                .unwrap_or_default();
+            record_callback_errors(record, errors);
+        }
+    }
+
+    pub fn dispatch_key_event(&mut self, event: ScriptKeyEvent) {
+        for record in self.scripts.values_mut() {
+            let errors = record
+                .runtime
+                .as_ref()
+                .map(|runtime| runtime.dispatch_key_event(event))
+                .unwrap_or_default();
+            record_callback_errors(record, errors);
+        }
+    }
+
+    pub fn advance_timers(&mut self, elapsed: std::time::Duration) {
+        for record in self.scripts.values_mut() {
+            let errors = record
+                .runtime
+                .as_ref()
+                .map(|runtime| runtime.advance_timers(elapsed))
+                .unwrap_or_default();
+            record_callback_errors(record, errors);
+            let finished = record
+                .runtime
+                .as_ref()
+                .is_some_and(|runtime| !runtime.is_listening());
+            if finished {
+                record.runtime = None;
+                record.lifecycle = ScriptLifecycle::Finished;
+            }
+        }
     }
 
     pub fn add(
@@ -387,6 +457,12 @@ impl ScriptManager {
 impl Default for ScriptManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn record_callback_errors(record: &mut ScriptRecord, errors: Vec<String>) {
+    if let Some(error) = errors.last() {
+        record.latest_error = Some(error.clone());
     }
 }
 
@@ -616,6 +692,86 @@ if not c.get_solo() then error('solo') end
         );
         manager.forget(failed).unwrap();
         assert_eq!(manager.states().len(), 2);
+    }
+
+    #[test]
+    fn callbacks_and_monotonic_timers_are_ordered_and_script_owned() {
+        let mut manager = ScriptManager::new();
+        let id = manager
+            .add(
+                "listener",
+                r#"
+local c = require('shoop_control')
+c.register_loop_event_cb(function(event)
+    print_info('loop:' .. event.type .. ':' .. event.coords[1] .. ':' .. event.length)
+end)
+c.register_global_event_cb(function(event) print_info('global:' .. event.type) end)
+c.register_keyboard_event_cb(function(event) print_info('key:' .. event.type .. ':' .. event.key) end)
+c.register_one_shot_timer_cb(10, function() print_info('timer') end)
+"#,
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+        assert_eq!(manager.states()[0].lifecycle, ScriptLifecycle::Listening);
+        manager.dispatch_loop_event(&ScriptLoopEvent {
+            coords: [2, 3],
+            event_type: 1,
+            mode: LoopMode::Playing,
+            length: 480,
+            selected: true,
+            targeted: false,
+        });
+        manager.dispatch_global_event();
+        manager.dispatch_key_event(ScriptKeyEvent {
+            event_type: 0,
+            key: 32,
+            modifiers: 0,
+        });
+        manager.advance_timers(std::time::Duration::from_millis(9));
+        assert_eq!(manager.logs(id).unwrap().len(), 3);
+        manager.advance_timers(std::time::Duration::from_millis(1));
+        assert_eq!(
+            manager
+                .logs(id)
+                .unwrap()
+                .into_iter()
+                .map(|entry| entry.message)
+                .collect::<Vec<_>>(),
+            ["loop:1:2:480", "global:0", "key:0:32", "timer"]
+        );
+        manager.stop(id).unwrap();
+        manager.dispatch_global_event();
+        assert!(manager.logs(id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn callback_failure_is_observable_without_stopping_other_scripts() {
+        let mut manager = ScriptManager::new();
+        let failing = manager
+            .add(
+                "failing",
+                "local c=require('shoop_control'); c.register_global_event_cb(function() error('callback failed') end)",
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+        let healthy = manager
+            .add(
+                "healthy",
+                "local c=require('shoop_control'); c.register_global_event_cb(function() print('healthy') end)",
+                ScriptKind::User,
+                true,
+            )
+            .unwrap();
+        manager.dispatch_global_event();
+        let failing = manager
+            .states()
+            .into_iter()
+            .find(|state| state.id == failing)
+            .unwrap();
+        assert!(failing.latest_error.unwrap().contains("callback failed"));
+        assert_eq!(manager.logs(healthy).unwrap()[0].message, "healthy");
     }
 
     #[test]
