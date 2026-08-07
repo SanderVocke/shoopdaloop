@@ -559,11 +559,15 @@ impl Runtime {
     fn new(settings: &shoop_settings::SettingsSnapshot) -> anyhow::Result<Self> {
         let backend = EngineBackend::new_dummy(48_000, 256)?;
         let (startup_scripts, script_paths, warnings) = configured_startup_scripts(settings)?;
-        for warning in warnings {
-            eprintln!("ShoopDaLoop script settings: {warning}");
-        }
         let runtime = ApplicationRuntime::start_with_scripts(Box::new(backend), startup_scripts)?;
         let handle = runtime.handle();
+        for warning in warnings {
+            eprintln!("ShoopDaLoop script settings: {warning}");
+            handle.dispatch(AppIntent::ReportFileIoError {
+                task_id: None,
+                message: warning,
+            })?;
+        }
         let script_paths =
             associate_startup_script_paths(runtime.startup_script_ids(), script_paths);
         Ok(Self {
@@ -1570,6 +1574,23 @@ mod tests {
         let snapshot = wait_for_script_configuration(&mut runtime);
         assert_eq!(snapshot.scripting.scripts.len(), 3);
 
+        let mut removal = shoop_settings::SettingsDraft::from_snapshot(&manager.active());
+        removal.set(
+            shoop_egui::USER_SCRIPTS,
+            shoop_settings::StringToggleList::default(),
+        );
+        manager.request_save(removal).unwrap();
+        wait_for_settings_save(&mut manager);
+        runtime
+            .reconcile_script_settings(&manager.active())
+            .unwrap();
+        let after_removal = wait_for_script_count(&mut runtime, 2);
+        assert!(!after_removal
+            .scripting
+            .scripts
+            .iter()
+            .any(|script| script.name == "controller.lua"));
+
         let committed_revision = manager.active().revision();
         std::fs::remove_file(&settings_path).unwrap();
         std::fs::remove_dir(&settings_directory).unwrap();
@@ -1599,6 +1620,22 @@ mod tests {
         while manager.view().persistence == shoop_settings::SettingsPersistenceState::Saving {
             manager.poll();
             assert!(Instant::now() < deadline, "settings save timed out");
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn wait_for_script_count(
+        runtime: &mut Runtime,
+        expected: usize,
+    ) -> std::sync::Arc<AppSnapshot> {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            runtime.tick(Duration::from_millis(5));
+            let snapshot = runtime.snapshot();
+            if snapshot.scripting.scripts.len() == expected {
+                return snapshot;
+            }
+            assert!(Instant::now() < deadline, "script reconciliation timed out");
             thread::sleep(Duration::from_millis(5));
         }
     }

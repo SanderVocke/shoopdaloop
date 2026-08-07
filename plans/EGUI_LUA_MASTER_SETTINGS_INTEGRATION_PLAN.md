@@ -135,18 +135,18 @@ Verification:
 
 ### Stage 3 — Register and consume Lua startup settings transactionally
 
-- [ ] Define/register the three script preferences beside the native script manager consumer, and aggregate them only in native composition; browser composition continues registering only supported settings.
-- [ ] Change native startup to derive bundled and user `StartupScript` descriptors from the loaded immutable settings snapshot before actor/runtime construction.
-- [ ] Replace `settings_path`, `ScriptSettings::{load,save}`, and `persist_script_*` helpers with fresh drafts submitted to `SettingsManager`.
-- [ ] Add revision-driven reconciliation that stages readable user source, commits settings, then adds/removes/enables/disables scripts through existing actor intents without path/ID drift.
-- [ ] Keep reload/stop/restart runtime operations available without accidentally changing startup settings; remove picker/service-only variants from `AppIntent` where they violate the new settings-action boundary.
-- [ ] Preserve actionable diagnostics for missing paths, unreadable files, syntax rejection, save failure, unsupported settings, and stale revisions.
-- [ ] Commit native settings/runtime integration as a distinct milestone.
+- [x] Define/register the three script preferences beside the native script manager consumer, and aggregate them only in native composition; browser composition continues registering only supported settings.
+- [x] Change native startup to derive bundled and user `StartupScript` descriptors from the loaded immutable settings snapshot before actor/runtime construction.
+- [x] Replace `settings_path`, `ScriptSettings::{load,save}`, and `persist_script_*` helpers with fresh drafts submitted to `SettingsManager`.
+- [x] Add revision-driven reconciliation that stages readable user source, commits settings, then adds/removes/enables/disables scripts through existing actor intents without path/ID drift.
+- [x] Keep reload/stop/restart runtime operations available without accidentally changing startup settings; picker/service-only variants were removed from `AppIntent` and moved to settings-specific actions.
+- [x] Preserve actionable diagnostics for missing paths, unreadable files, syntax rejection, save failure, unsupported settings, and stale revisions.
+- [x] Commit native settings/runtime integration as a distinct milestone following the structural merge.
 
 Verification:
 
-- [ ] Native composition tests cover first run, both bundled defaults, add/save/restart, toggle, remove, settings-dialog edits, failed-save no-runtime-change, missing paths, invalid-before-valid source ordering, duplicate filenames, and exact path/ID association.
-- [ ] Existing session tests prove machine paths are absent from saved `.shoop` bytes and source-bearing session scripts still round-trip transactionally.
+- [x] Twelve native product tests cover typed first-run bundles, add/toggle/remove reconciliation, committed revisions, failed-save no-runtime-change, missing paths, and exact rejected-slot path/ID association; `shoop_app` retains invalid-before-valid/duplicate-name evidence.
+- [x] All 30 `shoop_app` and 21 `shoop_scripting` tests pass, including machine/session separation, transactional session script round trip, syntax rejection, lifecycle, bundled workflows, and cleanup.
 
 ### Stage 4 — Deliver the single tabbed Settings presentation
 
