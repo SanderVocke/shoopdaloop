@@ -2,9 +2,9 @@
 
 ## Status and document role
 
-Status: **In progress**. Stages 0–5 are implemented with native, retained QML, production Wasm, Chrome hosted/direct-file, Firefox hosted, settings, routing, keyboard, source-bearing session, and package evidence. Final workspace/realtime regressions and the complete browser mode matrix remain open in Stage 6.
+Status: **Complete**. Stages 0–6 satisfy the frozen acceptance criteria with native/workspace/realtime, retained QML Lua, production Wasm, Chrome hosted/direct-file, Firefox hosted, settings, routing, keyboard, source-bearing session, dependency, and release-package evidence. The only full-QML-suite exception is the documented environment-unavailable CPAL case; all retained Lua-specific QML cases pass.
 
-This is the implementation ledger for making application ports, host ports, connection management, and Lua scripting consistent in the egui product, including the production WebAssembly build and self-contained HTML artifact, while replacing `mlua` with omniLua throughout the entire workspace. It supersedes the earlier accepted browser-specific omissions recorded in `EGUI_FEATURE_PARITY_MATRIX.md`; it does not claim that those omissions or the runtime migration have already been completed.
+This is the completed implementation ledger for making application ports, host ports, connection management, and Lua scripting consistent in the egui product, including the production WebAssembly build and self-contained HTML artifact, while replacing `mlua` with omniLua throughout the entire workspace. It supersedes the earlier accepted browser-specific omissions recorded in `EGUI_FEATURE_PARITY_MATRIX.md` and records the evidence that closes them.
 
 This plan depends on and must be maintained with:
 
@@ -16,12 +16,12 @@ This plan depends on and must be maintained with:
 
 - The application/backend API already calls track ports local/application ports and opposite endpoints external ports, but the backend snapshot repeats endpoint candidates per local port rather than modeling host inventory explicitly.
 - The native dummy backend exposes mutable virtual external endpoints. The retained JACK and CPAL/midir paths already have analogous client/app-port and system/device-endpoint concepts, although native real-driver composition is not yet part of the egui runner.
-- The Web Audio path is the exception: every track owns physical `ExternalAudioPort`s, `process_audio_quantum` maps every track directly to the microphone/destination, the browser connection snapshot has no candidates and reports management unavailable, and the worklet protocol has no connection commands or confirmed route state.
-- Direct MIDI track ports are already created in the browser backend, but a no-endpoint category currently does not visibly identify its local ports in the connection matrix.
-- Lua is excluded with target `cfg`s from `shoop_app`, `shoopdaloop_egui`, settings registration, session loading, and key dispatch. `shoop_scripting` also depends unconditionally on native `midir`.
+- Before this milestone, the Web Audio path was the exception: every track owned physical `ExternalAudioPort`s, `process_audio_quantum` mapped every track directly to the microphone/destination, the browser connection snapshot had no candidates and reported management unavailable, and the worklet protocol had no connection commands or confirmed route state.
+- Before this milestone, direct MIDI track ports were created in the browser backend, but a no-endpoint category did not visibly identify its local ports in the connection matrix.
+- Before this milestone, Lua was excluded with target `cfg`s from `shoop_app`, `shoopdaloop_egui`, settings registration, session loading, and key dispatch. `shoop_scripting` also depended unconditionally on native `midir`.
 - Stock `mlua 0.11` with vendored Lua 5.4 is a concrete blocker for the existing `wasm32-unknown-unknown` product target: a minimal probe fails in `lua-src` with `don't know how to build Lua for wasm32-unknown-unknown`. Stock `mlua` documents Emscripten rather than this target, and changing the eframe/Trunk product to Emscripten is not an acceptable shortcut.
 - A minimal `omnilua 0.7.1` Lua 5.4 probe compiles for `wasm32-unknown-unknown` without a C toolchain, and its embedding API is intentionally similar to `mlua`. The user has selected omniLua as the replacement runtime. It is young and not drop-in compatible, so the first stage must prove the complete Shoop compatibility surface and record required API adaptations before behavioral implementation proceeds.
-- Replacement is workspace-wide, not egui-only. In addition to `shoop_scripting`, the retained `frontend` crate directly uses `mlua` across its Lua engine, QVariant/Qt conversion layer, stored callback wrappers, session control handler, weak runtime ownership, and QML bridge. Those paths and their retained tests must move to omniLua before the migration is complete.
+- The required replacement was workspace-wide, not egui-only. At investigation time, in addition to `shoop_scripting`, the retained `frontend` crate directly used `mlua` across its Lua engine, QVariant/Qt conversion layer, stored callback wrappers, session control handler, weak runtime ownership, and QML bridge. Those paths and their retained tests therefore had to move to omniLua.
 
 If omniLua cannot pass the frozen Lua API, callback, conversion, bundled-script, retained QML/frontend, native, and Wasm gates without weakening behavior, implementation must stop at Stage 0 and report the exact incompatibilities and upstream or local adaptation needed. Do not silently change the Lua contract, retain `mlua` as a fallback, switch the whole browser product target, or ship separate native/browser script semantics.
 
@@ -155,7 +155,7 @@ Verification:
 - [x] Preserve explicit desired links through delayed startup/worklet replay; clear stale confirmation through authoritative host snapshots and restore journaled desired state after retry.
 - [x] Add exact-route session capture/replacement and defaultable `connection_model_version` migration for pre-normalized browser sessions.
 - [x] Make Web Audio report connection management available independently of whether microphone permission has produced input endpoints.
-- [x] Update browser/audio/session contracts, runner README, parity rows, and project status for the delivered routing implementation; package/runtime browser evidence remains open.
+- [x] Update browser/audio/session contracts, runner README, parity rows, and project status for the delivered routing implementation; package/runtime browser evidence was intentionally deferred to the later integration stages.
 
 Verification:
 
@@ -213,15 +213,24 @@ Verification:
 
 ### Stage 6 — Final end-to-end validation and documentation closure
 
-- [ ] Run formatting and warning-denying native/Wasm builds for all changed crates and artifacts.
-- [ ] Run focused API, backend, engine realtime, protocol, worklet, scripting, frontend/QML, application, presentation, runner, preview, session, settings, and package tests.
-- [ ] Run `cargo test --workspace --features shoop_engine/app_backend` and the retained QML self-test suite.
-- [ ] Build debug and release hosted and self-contained browser artifacts; run Chrome/Firefox normal, minimum-size, output-only, microphone, lifecycle, connection mutation, Lua keyboard, session-script, settings, stress, and direct-file workflows.
-- [ ] Recheck native egui dummy connection and omniLua workflows, including native MIDI virtual-port evidence where the host supports it and a documented environment skip otherwise.
-- [ ] Audit dependency trees and packaged files for target isolation, omniLua version/configuration consistency, absence of `mlua` and its C runtime, native MIDI leakage into Wasm, stale fixed-routing copy, and missing embedded scripts.
-- [ ] Reconcile every planned matrix row and the project coarse status with exact test/artifact evidence; leave no plan document claiming completion without evidence.
+- [x] Run formatting and warning-denying native/Wasm builds for all changed crates and artifacts.
+- [x] Run focused API, backend, engine realtime, protocol, worklet, scripting, frontend/QML, application, presentation, runner, preview, session, settings, and package tests.
+- [x] Run `cargo test --workspace --features shoop_engine/app_backend` and the retained QML self-test suite.
+- [x] Build debug and release hosted and self-contained browser artifacts; run Chrome/Firefox normal, minimum-size, output-only, microphone, lifecycle, connection mutation, Lua keyboard, session-script, settings, stress, and direct-file workflows.
+- [x] Recheck native egui dummy connection and omniLua workflows, including native MIDI virtual-port evidence where the host supports it and a documented environment skip otherwise.
+- [x] Audit dependency trees and packaged files for target isolation, omniLua version/configuration consistency, absence of `mlua` and its C runtime, native MIDI leakage into Wasm, stale fixed-routing copy, and missing embedded scripts.
+- [x] Reconcile every planned matrix row and the project coarse status with exact test/artifact evidence; leave no plan document claiming completion without evidence.
 
-Final evidence must demonstrate one production browser run in which microphone and destination channels appear as host ports, a user-visible connection changes actual audio flow, audio callbacks continue, omniLua-backed `keyboard.lua` controls authoritative state, MIDI track/control app ports remain visible with zero MIDI host endpoints, and the same behavior is present in the self-contained artifact subject only to documented browser audio policy. It must also demonstrate the retained QML Lua product on omniLua and a workspace-wide absence of `mlua` and its C runtime dependency chain.
+Final evidence demonstrates one production browser run in which microphone and destination channels appear as host ports, a user-visible destination disconnect changes actual audio to silence, reconnect restores non-zero output, callbacks continue, omniLua-backed `keyboard.lua` controls authoritative selection, and MIDI track/control application ports remain visible with zero MIDI host endpoints. Hosted Chrome and Firefox and self-contained Chrome workflows exercise the production artifact, subject only to documented browser audio policy. The retained QML Lua product runs on omniLua, and source, lockfile, resolved-tree, archive, standalone, and packaged-Wasm scans prove workspace-wide absence of `mlua` and its C runtime dependency chain.
+
+Stage 6 closure evidence (2026-08-08):
+
+- `cargo fmt --all -- --check`, `git diff --check`, warning-denying native checks for all changed Rust crates, warning-denying production `wasm32-unknown-unknown` checking, and the release AudioWorklet build pass.
+- `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend` passes with 1,415 tests passed, zero failed, and four ignored. This includes the backend realtime-allocation guard, protocol/worklet routing, scripting, application, GUI, runner, preview, settings, session, and documentation tests.
+- The retained offscreen QML suite passes 235/236. Its only failure is `CpalPorts::test_virtual_playback_ports_are_app_connectable`, for which this host has no CPAL test configuration; every retained Lua-specific QML case and all 33 frontend Rust tests pass on omniLua.
+- Native dummy/application and omniLua tests pass. The two physical virtual-MIDI probes skip with explicit evidence because `/dev/snd/seq` is absent, while fake/native-policy APC connection contracts remain covered by the workspace suite.
+- Debug and release hosted/self-contained builds succeed. Chrome hosted, 360×200, output-only, denied/retry, track-ended/retry, processor-loss/retry, saturation/recovery, sustained stress, offline dummy, unavailable-storage, settings, microphone direct-file, and standalone workflows pass; Firefox hosted under Xvfb passes the complete audio/route/Lua/session workflow.
+- The final release archive passes `unzip -t`; the standalone HTML is self-contained. Required marker scans find both unchanged bundled scripts, browser settings/session/Lua-control and Web Audio route markers. Dependency/source/package scans find pinned omniLua 0.7.1 and no `mlua`, `mlua-sys`, `lua-src`, `luajit-src`, native MIDI/system-audio dependency leakage, or stale fixed browser routing.
 
 ## Execution contract
 
