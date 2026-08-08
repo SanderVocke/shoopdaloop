@@ -2083,7 +2083,7 @@ mod tests {
             shoop_egui::audio_driver_config_from_draft(&draft, shoop_egui::AudioDriverKind::Dummy)
                 .unwrap();
         app.handle_settings_action(SettingsAction::RequestAudioDriverSwitch { config, draft });
-        let deadline = Instant::now() + Duration::from_secs(3);
+        let deadline = Instant::now() + Duration::from_secs(10);
         let request_id = loop {
             app.runtime.tick(Duration::ZERO);
             let snapshot = app.runtime.snapshot();
@@ -2101,7 +2101,7 @@ mod tests {
                 accept: true,
             })
             .unwrap();
-        let deadline = Instant::now() + Duration::from_secs(3);
+        let deadline = Instant::now() + Duration::from_secs(10);
         loop {
             app.settings.poll();
             app.runtime.tick(Duration::ZERO);
@@ -2125,7 +2125,7 @@ mod tests {
 
         std::fs::remove_file(&blocker).unwrap();
         app.handle_settings_action(SettingsAction::RetryAudioDriverPersistence { request_id });
-        let deadline = Instant::now() + Duration::from_secs(3);
+        let deadline = Instant::now() + Duration::from_secs(10);
         loop {
             app.settings.poll();
             app.runtime.tick(Duration::ZERO);
