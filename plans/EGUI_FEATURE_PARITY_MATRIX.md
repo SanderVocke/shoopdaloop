@@ -362,7 +362,7 @@ The completed session/media milestone is specified by the fresh-format contract 
 
 The native parity contract is frozen in `docs/egui_lua_compatibility_contract.md`. Discovery covers every function and constant installed by the retained session control handler, the shared Lua libraries, the unchanged keyboard and APC Mini scripts, QML script lifecycle/settings, callback payloads, MIDI control ports, autoconnect behavior, and the current native/browser composition boundaries. The completed native milestone remains historical evidence. Its accepted browser omission is superseded by the completed `EGUI_WEB_PORTS_AND_WASM_LUA_PLAN.md` implementation.
 
-| ID | Capability or behavior | Retained baseline / milestone contract | Discovery | Milestone target | Current implementation | Planned evidence |
+| ID | Capability or behavior | Retained baseline / milestone contract | Discovery | Milestone target | Current implementation | Replacement evidence |
 |---|---|---|---|---|---|---|
 | LUA-ARCH-001 | Frontend-independent Lua ownership | QML wraps one `mlua` state per script; egui target is `shoop_scripting` on the application owner | Explored for Lua milestone | Required | Complete | Native actor owns non-`Send` managers; retained frontend shares environment/print setup; application reducers, settings/session composition, and target-gated GUI/browser dependency scans pass |
 | LUA-RUN-001 | Lua 5.4 execution and bundled `require` | Sandboxed execution exposes Shoop print functions and only preloaded Shoop modules | Explored for Lua milestone | Required | Complete | Production sources are embedded/syntax-checked; isolated environment/require/print/control/callback/lifecycle/error tests and bundled end-to-end workflows pass |

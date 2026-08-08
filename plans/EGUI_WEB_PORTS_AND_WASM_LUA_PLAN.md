@@ -232,6 +232,38 @@ Stage 6 closure evidence (2026-08-08):
 - Debug and release hosted/self-contained builds succeed. Chrome hosted, 360×200, output-only, denied/retry, track-ended/retry, processor-loss/retry, saturation/recovery, sustained stress, offline dummy, unavailable-storage, settings, microphone direct-file, and standalone workflows pass; Firefox hosted under Xvfb passes the complete audio/route/Lua/session workflow.
 - The final release archive passes `unzip -t`; the standalone HTML is self-contained. Required marker scans find both unchanged bundled scripts, browser settings/session/Lua-control and Web Audio route markers. Dependency/source/package scans find pinned omniLua 0.7.1 and no `mlua`, `mlua-sys`, `lua-src`, `luajit-src`, native MIDI/system-audio dependency leakage, or stale fixed browser routing.
 
+## Completion audit: acceptance criterion to artifact
+
+This checklist maps every immutable acceptance criterion to implementation and direct verification surfaces. Stage checkboxes above describe the work sequence; this table is the final prompt-to-artifact audit.
+
+| Criteria | Concrete implementation artifacts | Direct verification evidence |
+|---|---|---|
+| 1 | `shoop_app_api::{ApplicationPortState, HostPortState, ConfirmedConnectionState, PendingConnectionState, HostPortId}` and normalized backend/application snapshots | API identity/structural-sharing tests plus fake/dummy normalized inventory contracts |
+| 2 | `ApplicationPortOwner::{Track, LuaControl}` and track/global scope filtering in `shoop_app`/`shoop_egui` | Owned-port application tests, global/track scope GUI tests, and Lua-control lifecycle coverage |
+| 3 | `ConnectionPolicy`, typed compatibility validation, pending/confirmed/error publication, and stable host IDs | `actor_publishes_owned_ports_and_serializes_connection_churn_and_failure`; timeout/churn/failure tests; backend connection contracts |
+| 4 | `shoop_egui/src/connection_dialog.rs` derives categories from application inventory independently of host rows | `empty_host_inventory_keeps_application_ports_visible_and_safe`; 360×200 and 900×600 paint/interaction coverage |
+| 5 | `shoop_backend` normalized FakeBackend and EngineBackend dummy discovery/mutation | `connection_contract`; `fake_connection_control_covers_churn_external_change_and_deferred_failure`; workspace backend suite |
+| 6 | `browser_port_descriptors`, `ConfigureDeviceChannels`, and lifecycle-driven capture/destination inventory in `shoopdaloop_egui`/AudioWorklet | Chrome output-only, denied/retry, ended/retry, hosted/direct-file microphone, and Firefox topology diagnostics |
+| 7 | Protocol-v3 `SetPortConnected`, browser journal, worklet route application, and worklet-confirmed snapshots | `normalized_routes_mutate_authoritatively_without_stopping_audio`; production disconnect-to-silence/reconnect-to-non-zero browser workflow |
+| 8 | Explicit default route construction and exact desired/confirmed route publication | Backend/worklet mono/stereo route tests and fresh production browser confirmed-link evidence |
+| 9 | `connection_model_version`, exact route capture/replacement, and legacy browser migration in `shoop_session`/`shoop_app` | `web_audio_session_replacement_preserves_user_route_changes_over_defaults`; session migration/round-trip tests; production browser save/load workflow |
+| 10 | Browser `NullMidiService`; MIDI application ports remain in normalized inventory | Global-dialog browser diagnostics and `empty_host_inventory_keeps_application_ports_visible_and_safe` |
+| 11 | Workspace pin `omnilua = 0.7.1`; migrated manifests/sources and pure-Rust dependency graph | Cargo metadata, lockfile, native/Wasm trees, Rust-source, archive, standalone-payload, and packaged-Wasm forbidden-runtime scans |
+| 12 | Shared `shoop_scripting` omniLua control/sandbox/module implementation and unchanged embedded sources | 21 scripting tests covering all 61 functions, callbacks, timers, errors, keyboard/APC; native and production-browser execution |
+| 13 | Retained `frontend` Lua engine, conversions, callback wrappers, session control, and MIDI bridges import omniLua directly | 33 frontend Rust tests and all retained Lua-specific QML testcases; source scan contains no former runtime imports |
+| 14 | Cooperative browser `shoop_app` scripting owner and `NullMidiService`; browser snapshot publishes scripting support | Production Wasm check plus Chrome/Firefox hosted and Chrome direct-file source-bearing/bundled script workflows |
+| 15 | `KEYBOARD_SCRIPT` embeds `src/lua/builtins/keyboard.lua` with `include_str!`; browser startup/settings enable it by default | Package markers and real focused Chrome key press/release driving authoritative selection |
+| 16 | Unchanged embedded APC source, empty browser MIDI service, and published registration-owned logical ports | APC-on browser settings workflow reports a healthy script, two logical ports, and zero MIDI hosts |
+| 17 | `script_connection_port_id`, `ApplicationPortOwner::LuaControl`, and owner-managed policy | `lua_control_ports_are_owner_managed_stable_and_visible_without_midi_hosts`; native APC confirmed-link policy tests |
+| 18 | Cross-target bundled settings keys; target-gated native user paths/actions; browser `localStorage` adapter | Settings registry/UI tests and hosted/direct-file save/reload/failure/reconciliation workflows |
+| 19 | `validate_session_scripts`, staged `replace_session_scripts`, exact source capture, and application transactional load | `session_scripts_stage_before_commit_round_trip_and_preserve_machine_scripts`; production browser active/exact-resave workflow |
+| 20 | Lua is owned by the native actor/cooperative application runtime; render paths contain only bounded route processing | `assert_no_alloc` backend/worklet render tests, workspace realtime guards, and source ownership audit |
+| 21 | Protocol capacities, bounded command/event journals, preallocated route/channel storage, generation checks, and visible rejection | Protocol saturation/supersession tests, worklet no-allocation tests, Chrome saturation/recovery and sustained-stress workflows |
+| 22 | Trunk hosted bundle, `build_single_file_app.py`, and `package_artifacts.py` include UI/worklet Wasm, worklet JS, omniLua, libraries, and scripts | Debug/release builds; `unzip -t`; decoded standalone payload scans; direct-file keyboard/microphone/settings/session workflows |
+| 23 | This plan, `EGUI_REPLACEMENT_PROJECT.md`, `EGUI_FEATURE_PARITY_MATRIX.md`, durable port/Lua/session/settings docs, and runner README | Final cross-document status/row scan, stale-limitation scan, formatting, and `git diff --check` |
+
+Gate-level command evidence is the Stage 6 closure list immediately above: formatting/static checks; warning-denying native, Wasm UI, and Wasm worklet builds; the 1,415-test workspace command; retained QML self-tests with the isolated CPAL environment exception; production browser mode matrix; native MIDI environment probes; and final dependency/package scans. No acceptance criterion depends solely on a checkbox or aggregate green status.
+
 ## Execution contract
 
 - Keep the plan updated as work progresses and check off completed items.
