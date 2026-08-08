@@ -3,6 +3,7 @@
 mod app_widget;
 mod connection_dialog;
 mod details_pane;
+mod dial;
 mod fonts;
 mod global_controls;
 mod key_input;
