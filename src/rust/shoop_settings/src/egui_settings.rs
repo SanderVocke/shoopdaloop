@@ -173,6 +173,7 @@ pub enum SettingValueType {
     I32,
     F64,
     String,
+    StringToggleList,
 }
 
 impl fmt::Display for SettingValueType {
@@ -183,9 +184,19 @@ impl fmt::Display for SettingValueType {
             Self::I32 => formatter.write_str("signed integer"),
             Self::F64 => formatter.write_str("number"),
             Self::String => formatter.write_str("string"),
+            Self::StringToggleList => formatter.write_str("ordered string/toggle list"),
         }
     }
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StringToggle {
+    pub value: String,
+    pub enabled: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct StringToggleList(pub Vec<StringToggle>);
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum SettingValue {
@@ -194,6 +205,7 @@ pub enum SettingValue {
     I32(i32),
     F64(f64),
     String(String),
+    StringToggleList(StringToggleList),
 }
 
 impl SettingValue {
@@ -204,6 +216,7 @@ impl SettingValue {
             Self::I32(_) => SettingValueType::I32,
             Self::F64(_) => SettingValueType::F64,
             Self::String(_) => SettingValueType::String,
+            Self::StringToggleList(_) => SettingValueType::StringToggleList,
         }
     }
 
@@ -214,6 +227,18 @@ impl SettingValue {
             Self::I32(value) => Value::from(*value),
             Self::F64(value) => Value::from(*value),
             Self::String(value) => Value::String(value.clone()),
+            Self::StringToggleList(value) => Value::Array(
+                value
+                    .0
+                    .iter()
+                    .map(|entry| {
+                        serde_json::json!({
+                            "value": entry.value,
+                            "enabled": entry.enabled,
+                        })
+                    })
+                    .collect(),
+            ),
         }
     }
 }
@@ -225,6 +250,7 @@ mod private {
     impl Sealed for i32 {}
     impl Sealed for f64 {}
     impl Sealed for String {}
+    impl Sealed for super::StringToggleList {}
 }
 
 pub trait SettingType:
@@ -289,6 +315,12 @@ setting_type!(
     }
 );
 setting_type!(String, String, String, SettingEditor::Text);
+setting_type!(
+    StringToggleList,
+    StringToggleList,
+    StringToggleList,
+    SettingEditor::StringToggleList
+);
 
 #[derive(Debug)]
 pub struct SettingKey<T> {
@@ -349,6 +381,7 @@ pub enum SettingEditor {
     SignedInteger { min: i32, max: i32 },
     Number { min: f64, max: f64 },
     Text,
+    StringToggleList,
 }
 
 impl SettingEditor {
@@ -359,12 +392,20 @@ impl SettingEditor {
             Self::SignedInteger { .. } => SettingValueType::I32,
             Self::Number { .. } => SettingValueType::F64,
             Self::Text => SettingValueType::String,
+            Self::StringToggleList => SettingValueType::StringToggleList,
         }
     }
 
     fn validate(&self, value: &SettingValue) -> bool {
         match (self, value) {
             (Self::Checkbox, SettingValue::Bool(_)) | (Self::Text, SettingValue::String(_)) => true,
+            (Self::StringToggleList, SettingValue::StringToggleList(value)) => {
+                let mut seen = BTreeSet::new();
+                value
+                    .0
+                    .iter()
+                    .all(|entry| !entry.value.trim().is_empty() && seen.insert(&entry.value))
+            }
             (Self::UnsignedInteger { min, max }, SettingValue::U32(value)) => {
                 value >= min && value <= max
             }
@@ -728,6 +769,21 @@ fn setting_value_from_json(value_type: SettingValueType, raw: &Value) -> Option<
         SettingValueType::String => raw
             .as_str()
             .map(|value| SettingValue::String(value.to_owned())),
+        SettingValueType::StringToggleList => {
+            let values = raw.as_array()?;
+            let mut result = Vec::with_capacity(values.len());
+            for value in values {
+                let object = value.as_object()?;
+                if object.len() != 2 {
+                    return None;
+                }
+                result.push(StringToggle {
+                    value: object.get("value")?.as_str()?.to_owned(),
+                    enabled: object.get("enabled")?.as_bool()?,
+                });
+            }
+            Some(SettingValue::StringToggleList(StringToggleList(result)))
+        }
     }
 }
 
@@ -910,6 +966,7 @@ mod tests {
 
     const COUNT: SettingKey<u32> = SettingKey::new("test.count");
     const ENABLED: SettingKey<bool> = SettingKey::new("test.enabled");
+    const SCRIPTS: SettingKey<StringToggleList> = SettingKey::new("test.scripts");
 
     fn registry() -> SettingsRegistry {
         let mut builder = SettingsRegistryBuilder::default();
@@ -1063,7 +1120,8 @@ mod tests {
         let registry = registry();
         let document = decode_egui_settings(&current_document(serde_json::json!({
             "test.count": 99,
-            "unknown.future": {"opaque": [1, 2, 3]}
+            "unknown.future": {"opaque": [1, 2, 3]},
+            "scripting.user_scripts": [{"value": "/controller.lua", "enabled": true}]
         })))
         .unwrap();
         let resolved = registry.resolve(&document, 4);
@@ -1081,6 +1139,10 @@ mod tests {
         assert_eq!(
             saved.values["unknown.future"],
             serde_json::json!({"opaque": [1, 2, 3]})
+        );
+        assert_eq!(
+            saved.values["scripting.user_scripts"],
+            serde_json::json!([{"value": "/controller.lua", "enabled": true}])
         );
     }
 
@@ -1106,6 +1168,86 @@ mod tests {
             registry.validate_draft(&draft),
             Err(SettingsDraftError::UnknownKey("unknown".to_owned()))
         );
+    }
+
+    #[test]
+    fn ordered_string_toggle_lists_round_trip_and_reject_invalid_entries() {
+        let mut builder = SettingsRegistryBuilder::default();
+        builder
+            .register(SettingDefinition::new(
+                SCRIPTS,
+                StringToggleList::default(),
+                "Test",
+                "Scripts",
+                "paths",
+            ))
+            .unwrap();
+        let registry = builder.finish();
+        let document = decode_egui_settings(&current_document(serde_json::json!({
+            "test.scripts": [
+                {"value": "/first.lua", "enabled": true},
+                {"value": "/second.lua", "enabled": false}
+            ]
+        })))
+        .unwrap();
+        let resolved = registry.resolve(&document, 3);
+        let expected = StringToggleList(vec![
+            StringToggle {
+                value: "/first.lua".to_owned(),
+                enabled: true,
+            },
+            StringToggle {
+                value: "/second.lua".to_owned(),
+                enabled: false,
+            },
+        ]);
+        assert_eq!(resolved.snapshot.get(SCRIPTS).unwrap(), expected);
+        let draft = SettingsDraft::from_snapshot(&resolved.snapshot);
+        let saved = registry
+            .document_from_draft(&document, &draft, "new")
+            .unwrap();
+        assert_eq!(
+            saved.values["test.scripts"],
+            serde_json::json!([
+                {"value": "/first.lua", "enabled": true},
+                {"value": "/second.lua", "enabled": false}
+            ])
+        );
+
+        for invalid in [
+            StringToggleList(vec![StringToggle {
+                value: String::new(),
+                enabled: true,
+            }]),
+            StringToggleList(vec![
+                StringToggle {
+                    value: "/same.lua".to_owned(),
+                    enabled: true,
+                },
+                StringToggle {
+                    value: "/same.lua".to_owned(),
+                    enabled: false,
+                },
+            ]),
+        ] {
+            let mut draft = SettingsDraft::from_snapshot(&registry.defaults(4));
+            draft.set(SCRIPTS, invalid);
+            assert_eq!(
+                registry.validate_draft(&draft),
+                Err(SettingsDraftError::InvalidValue(SCRIPTS.id().to_owned()))
+            );
+        }
+
+        let malformed = decode_egui_settings(&current_document(serde_json::json!({
+            "test.scripts": [{"value": "/bad.lua", "enabled": "yes"}]
+        })))
+        .unwrap();
+        let resolved = registry.resolve(&malformed, 5);
+        assert_eq!(
+            resolved.snapshot.get(SCRIPTS).unwrap(),
+            StringToggleList::default()
+        );
+        assert_eq!(resolved.diagnostics.len(), 1);
     }
 
     #[test]

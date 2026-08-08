@@ -1,20 +1,37 @@
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use shoop_settings::{
     SettingEditor, SettingValue, SettingsDraft, SettingsPersistenceState, SettingsRegistry,
-    SettingsViewState,
+    SettingsViewState, StringToggle, StringToggleList,
 };
+
+use crate::{AppAction, ScriptId, ScriptKind, ScriptLogLevel, ScriptingState, USER_SCRIPTS};
 
 #[derive(Clone, Debug)]
 pub enum SettingsAction {
     Save(SettingsDraft),
     RecoverWithDefaults,
+    RequestAddUserScript,
+    RequestReloadUserScript { script_id: ScriptId },
+}
+
+#[derive(Default)]
+pub struct SettingsDialogResponse {
+    pub settings_actions: Vec<SettingsAction>,
+    pub app_actions: Vec<AppAction>,
 }
 
 pub struct SettingsDialog {
     registry: Arc<SettingsRegistry>,
     open: bool,
     draft: Option<SettingsDraft>,
+    active_category: Option<String>,
+    #[cfg(test)]
+    restart_rects: BTreeMap<ScriptId, egui::Rect>,
+    #[cfg(test)]
+    reload_rects: BTreeMap<ScriptId, egui::Rect>,
+    #[cfg(test)]
+    remove_rects: BTreeMap<ScriptId, egui::Rect>,
 }
 
 impl SettingsDialog {
@@ -23,40 +40,80 @@ impl SettingsDialog {
             registry,
             open: false,
             draft: None,
+            active_category: None,
+            #[cfg(test)]
+            restart_rects: BTreeMap::new(),
+            #[cfg(test)]
+            reload_rects: BTreeMap::new(),
+            #[cfg(test)]
+            remove_rects: BTreeMap::new(),
         }
     }
 
     pub fn open(&mut self, state: &SettingsViewState) {
         self.open = true;
         self.draft = Some(SettingsDraft::from_snapshot(&state.active));
+        self.ensure_active_category();
     }
 
     pub const fn is_open(&self) -> bool {
         self.open
     }
 
+    pub fn add_user_script_path(&mut self, path: String) -> Result<(), &'static str> {
+        let draft = self.draft.as_mut().ok_or("settings are not open")?;
+        let mut scripts = draft
+            .get(USER_SCRIPTS)
+            .map_err(|_| "user script settings are unavailable")?;
+        if let Some(existing) = scripts.0.iter_mut().find(|entry| entry.value == path) {
+            existing.enabled = true;
+        } else {
+            scripts.0.push(StringToggle {
+                value: path,
+                enabled: true,
+            });
+        }
+        draft.set(USER_SCRIPTS, scripts);
+        self.active_category = Some("Scripts".to_owned());
+        Ok(())
+    }
+
+    fn remove_user_script_path(&mut self, path: &str) {
+        let Some(draft) = self.draft.as_mut() else {
+            return;
+        };
+        let Ok(mut scripts) = draft.get(USER_SCRIPTS) else {
+            return;
+        };
+        scripts.0.retain(|entry| entry.value != path);
+        draft.set(USER_SCRIPTS, scripts);
+    }
+
     pub fn show(
         &mut self,
         context: &egui::Context,
         state: &SettingsViewState,
-    ) -> Vec<SettingsAction> {
+        scripting: &ScriptingState,
+        script_paths: Option<&BTreeMap<ScriptId, String>>,
+    ) -> SettingsDialogResponse {
         if !self.open {
-            return Vec::new();
+            return SettingsDialogResponse::default();
         }
         if self.draft.is_none() {
             self.draft = Some(SettingsDraft::from_snapshot(&state.active));
         }
-        let mut actions = Vec::new();
+        self.ensure_active_category();
+        let mut response = SettingsDialogResponse::default();
         let mut open = self.open;
         let mut close_without_save = false;
         egui::Window::new("Settings")
             .id(egui::Id::new("settings_dialog"))
             .open(&mut open)
             .resizable(true)
-            .default_size([560.0, 430.0])
+            .default_size([660.0, 560.0])
             .min_size([320.0, 180.0])
             .show(context, |ui| {
-                self.show_status(ui, state, &mut actions);
+                self.show_status(ui, state);
                 ui.separator();
                 if state.recovery_required {
                     ui.label(
@@ -69,14 +126,30 @@ impl SettingsDialog {
                         )
                         .clicked()
                     {
-                        actions.push(SettingsAction::RecoverWithDefaults);
+                        response
+                            .settings_actions
+                            .push(SettingsAction::RecoverWithDefaults);
                     }
                     return;
                 }
 
+                self.show_category_tabs(ui);
+                ui.separator();
+                let active_category = self.active_category.clone().unwrap_or_default();
                 egui::ScrollArea::vertical()
                     .id_salt("settings_values")
-                    .show(ui, |ui| self.show_definitions(ui));
+                    .show(ui, |ui| {
+                        self.show_definitions(ui, &active_category);
+                        if active_category == "Scripts" {
+                            ui.add_space(8.0);
+                            self.show_script_runtime(
+                                ui,
+                                scripting,
+                                script_paths,
+                                &mut response,
+                            );
+                        }
+                    });
                 ui.separator();
                 ui.horizontal(|ui| {
                     if ui.button("Reset all").clicked() {
@@ -98,7 +171,7 @@ impl SettingsDialog {
                         );
                         if save.clicked() {
                             if let Some(action) = self.save_action() {
-                                actions.push(action);
+                                response.settings_actions.push(action);
                             }
                         }
                         if stale {
@@ -116,19 +189,55 @@ impl SettingsDialog {
         } else {
             self.open = open;
         }
-        actions
+        response
+    }
+
+    fn categories(&self) -> Vec<String> {
+        let mut categories = Vec::new();
+        for definition in self.registry.definitions() {
+            if categories.last().map(String::as_str) != Some(definition.category()) {
+                categories.push(definition.category().to_owned());
+            }
+        }
+        categories
+    }
+
+    fn ensure_active_category(&mut self) {
+        let categories = self.categories();
+        if !self
+            .active_category
+            .as_ref()
+            .is_some_and(|active| categories.contains(active))
+        {
+            self.active_category = categories.into_iter().next();
+        }
+    }
+
+    fn show_category_tabs(&mut self, ui: &mut egui::Ui) {
+        egui::ScrollArea::horizontal()
+            .id_salt("settings_category_tabs")
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    for category in self.categories() {
+                        if ui
+                            .selectable_label(
+                                self.active_category.as_deref() == Some(category.as_str()),
+                                &category,
+                            )
+                            .clicked()
+                        {
+                            self.active_category = Some(category);
+                        }
+                    }
+                });
+            });
     }
 
     fn save_action(&self) -> Option<SettingsAction> {
         self.draft.clone().map(SettingsAction::Save)
     }
 
-    fn show_status(
-        &self,
-        ui: &mut egui::Ui,
-        state: &SettingsViewState,
-        _actions: &mut Vec<SettingsAction>,
-    ) {
+    fn show_status(&self, ui: &mut egui::Ui, state: &SettingsViewState) {
         ui.label(format!("Storage: {}", state.storage_location));
         match state.persistence {
             SettingsPersistenceState::Idle => {}
@@ -148,17 +257,15 @@ impl SettingsDialog {
         }
     }
 
-    fn show_definitions(&mut self, ui: &mut egui::Ui) {
-        let definitions = self.registry.definitions().to_vec();
-        let mut category = None::<String>;
+    fn show_definitions(&mut self, ui: &mut egui::Ui, category: &str) {
+        let definitions = self
+            .registry
+            .definitions()
+            .iter()
+            .filter(|definition| definition.category() == category)
+            .cloned()
+            .collect::<Vec<_>>();
         for definition in definitions {
-            if category.as_deref() != Some(definition.category()) {
-                if category.is_some() {
-                    ui.add_space(8.0);
-                }
-                ui.heading(definition.category());
-                category = Some(definition.category().to_owned());
-            }
             egui::Frame::group(ui.style())
                 .inner_margin(egui::Margin::same(8))
                 .show(ui, |ui| {
@@ -200,6 +307,10 @@ impl SettingsDialog {
                             (SettingEditor::Text, SettingValue::String(value)) => {
                                 ui.text_edit_singleline(value);
                             }
+                            (
+                                SettingEditor::StringToggleList,
+                                SettingValue::StringToggleList(value),
+                            ) => Self::show_string_toggle_list(ui, value),
                             _ => {
                                 ui.colored_label(
                                     egui::Color32::LIGHT_RED,
@@ -215,9 +326,189 @@ impl SettingsDialog {
         }
     }
 
+    fn show_string_toggle_list(ui: &mut egui::Ui, value: &mut StringToggleList) {
+        let mut remove = None;
+        for (index, entry) in value.0.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut entry.enabled, "startup");
+                ui.text_edit_singleline(&mut entry.value);
+                if ui.small_button("Remove").clicked() {
+                    remove = Some(index);
+                }
+            });
+        }
+        if let Some(index) = remove {
+            value.0.remove(index);
+        }
+        if ui.small_button("Add entry").clicked() {
+            value.0.push(StringToggle {
+                value: String::new(),
+                enabled: true,
+            });
+        }
+    }
+
+    fn show_script_runtime(
+        &mut self,
+        ui: &mut egui::Ui,
+        scripting: &ScriptingState,
+        script_paths: Option<&BTreeMap<ScriptId, String>>,
+        response: &mut SettingsDialogResponse,
+    ) {
+        ui.heading("Runtime status");
+        if !scripting.supported {
+            ui.colored_label(
+                egui::Color32::YELLOW,
+                "Lua scripting and MIDI control are unavailable in this build.",
+            );
+            return;
+        }
+        if ui.button("Add Lua file…").clicked() {
+            response
+                .settings_actions
+                .push(SettingsAction::RequestAddUserScript);
+        }
+        for script in scripting.scripts.iter() {
+            let user_path = script_paths
+                .and_then(|paths| paths.get(&script.id))
+                .filter(|_| script.kind == ScriptKind::User)
+                .cloned();
+            ui.group(|ui| {
+                ui.horizontal(|ui| {
+                    if script.kind == ScriptKind::Session {
+                        let mut enabled = script.enabled;
+                        if ui.checkbox(&mut enabled, "enabled").changed() {
+                            response.app_actions.push(AppAction::SetScriptEnabled {
+                                script_id: script.id,
+                                enabled,
+                            });
+                        }
+                    }
+                    ui.strong(&script.name);
+                    ui.label(format!("{:?} · {:?}", script.kind, script.lifecycle));
+                });
+                if let Some(path) = script_paths.and_then(|paths| paths.get(&script.id)) {
+                    ui.weak(path);
+                }
+                ui.horizontal(|ui| {
+                    let restart = ui.button("Restart");
+                    #[cfg(test)]
+                    self.restart_rects.insert(script.id, restart.rect);
+                    if restart.clicked() {
+                        response.app_actions.push(AppAction::RestartScript {
+                            script_id: script.id,
+                        });
+                    }
+                    if ui.button("Stop").clicked() {
+                        response.app_actions.push(AppAction::StopScript {
+                            script_id: script.id,
+                        });
+                    }
+                    if user_path.is_some() {
+                        let reload = ui.button("Reload file");
+                        #[cfg(test)]
+                        self.reload_rects.insert(script.id, reload.rect);
+                        if reload.clicked() {
+                            response.settings_actions.push(
+                                SettingsAction::RequestReloadUserScript {
+                                    script_id: script.id,
+                                },
+                            );
+                        }
+                    }
+                    if let Some(path) = &user_path {
+                        let remove = ui.button("Remove");
+                        #[cfg(test)]
+                        self.remove_rects.insert(script.id, remove.rect);
+                        if remove.clicked() {
+                            self.remove_user_script_path(path);
+                        }
+                    }
+                });
+                if let Some(error) = &script.latest_error {
+                    ui.colored_label(egui::Color32::LIGHT_RED, error);
+                }
+                if let Some(documentation) = &script.documentation {
+                    ui.collapsing("Documentation", |ui| {
+                        ui.label(documentation);
+                    });
+                }
+                ui.label(format!(
+                    "Callbacks: {} loop, {} global, {} keyboard; {} timers",
+                    script.activity.loop_callbacks,
+                    script.activity.global_callbacks,
+                    script.activity.keyboard_callbacks,
+                    script.activity.timers
+                ));
+                ui.label(format!(
+                    "MIDI: {} rules, {} connections, {} dropped, {} errors",
+                    script.midi.rules,
+                    script.midi.connections,
+                    script.midi.dropped_messages,
+                    script.midi.errors
+                ));
+                for rule in script.midi.rule_states.iter() {
+                    let direction = match rule.direction {
+                        crate::ScriptMidiRuleDirection::Input => "input",
+                        crate::ScriptMidiRuleDirection::Output => "output",
+                    };
+                    ui.collapsing(format!("MIDI {direction}: /{}/", rule.pattern), |ui| {
+                        if rule.matched_endpoints.is_empty() {
+                            ui.weak("No matching endpoints");
+                        } else {
+                            ui.label(format!("Matched: {}", rule.matched_endpoints.join(", ")));
+                        }
+                        if rule.connected_endpoints.is_empty() {
+                            ui.weak("Not connected");
+                        } else {
+                            ui.label(format!(
+                                "Connected: {}",
+                                rule.connected_endpoints.join(", ")
+                            ));
+                        }
+                        if let Some(error) = &rule.latest_error {
+                            ui.colored_label(
+                                egui::Color32::LIGHT_RED,
+                                format!("Latest failure: {error}"),
+                            );
+                        }
+                    });
+                }
+                ui.collapsing(format!("Log ({})", script.logs.len()), |ui| {
+                    if script.logs.is_empty() {
+                        ui.weak("No messages");
+                    }
+                    for entry in script.logs.iter() {
+                        let color = match entry.level {
+                            ScriptLogLevel::Warning => egui::Color32::YELLOW,
+                            ScriptLogLevel::Error => egui::Color32::LIGHT_RED,
+                            _ => ui.visuals().text_color(),
+                        };
+                        ui.colored_label(color, &entry.message);
+                    }
+                });
+            });
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn draft_mut(&mut self) -> Option<&mut SettingsDraft> {
         self.draft.as_mut()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn select_category(&mut self, category: &str) {
+        self.active_category = Some(category.to_owned());
+    }
+
+    #[cfg(test)]
+    pub(crate) fn restart_rect(&self, script_id: ScriptId) -> Option<egui::Rect> {
+        self.restart_rects.get(&script_id).copied()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reload_rect(&self, script_id: ScriptId) -> Option<egui::Rect> {
+        self.reload_rects.get(&script_id).copied()
     }
 }
 
@@ -229,7 +520,7 @@ mod tests {
     };
 
     const COUNT: SettingKey<u32> = SettingKey::new("test.count");
-    const FLAG: SettingKey<bool> = SettingKey::new("test.flag");
+    const FLAG: SettingKey<bool> = SettingKey::new("other.flag");
 
     fn fixture() -> (Arc<SettingsRegistry>, SettingsViewState) {
         let mut builder = SettingsRegistryBuilder::default();
@@ -246,9 +537,9 @@ mod tests {
             .register(SettingDefinition::new(
                 FLAG,
                 false,
-                "Track defaults",
+                "Other",
                 "Flag",
-                "Default flag",
+                "Another category",
             ))
             .unwrap();
         let registry = Arc::new(builder.finish());
@@ -266,7 +557,7 @@ mod tests {
     }
 
     #[test]
-    fn dialog_paints_all_types_at_minimum_and_common_sizes() {
+    fn dialog_paints_category_tabs_at_minimum_and_common_sizes() {
         let (registry, state) = fixture();
         let context = egui::Context::default();
         let mut dialog = SettingsDialog::new(registry);
@@ -278,12 +569,13 @@ mod tests {
                     ..Default::default()
                 },
                 |ui| {
-                    dialog.show(ui.ctx(), &state);
+                    dialog.show(ui.ctx(), &state, &ScriptingState::default(), None);
                 },
             );
             assert!(!output.shapes.is_empty());
             assert!(dialog.is_open());
         }
+        assert_eq!(dialog.categories(), ["Other", "Track defaults"]);
     }
 
     #[test]
@@ -308,6 +600,151 @@ mod tests {
     }
 
     #[test]
+    fn user_script_paths_are_typed_deduplicated_draft_values() {
+        let mut builder = SettingsRegistryBuilder::default();
+        crate::register_settings(&mut builder).unwrap();
+        crate::register_script_settings(&mut builder).unwrap();
+        let registry = Arc::new(builder.finish());
+        let state = SettingsViewState {
+            active: Arc::new(registry.defaults(1)),
+            diagnostics: Arc::from([]),
+            storage_location: "fixture".to_owned(),
+            recovery_required: false,
+            persistence: SettingsPersistenceState::Idle,
+        };
+        let mut dialog = SettingsDialog::new(registry);
+        dialog.open(&state);
+        dialog
+            .add_user_script_path("/tmp/controller.lua".to_owned())
+            .unwrap();
+        dialog
+            .add_user_script_path("/tmp/controller.lua".to_owned())
+            .unwrap();
+        assert_eq!(
+            dialog.draft_mut().unwrap().get(USER_SCRIPTS).unwrap(),
+            StringToggleList(vec![StringToggle {
+                value: "/tmp/controller.lua".to_owned(),
+                enabled: true,
+            }])
+        );
+        assert_eq!(dialog.active_category.as_deref(), Some("Scripts"));
+        dialog.remove_user_script_path("/tmp/controller.lua");
+        assert_eq!(
+            dialog.draft_mut().unwrap().get(USER_SCRIPTS).unwrap(),
+            StringToggleList::default()
+        );
+    }
+
+    #[test]
+    fn runtime_script_controls_emit_typed_actions_inside_the_settings_content() {
+        let mut builder = SettingsRegistryBuilder::default();
+        crate::register_settings(&mut builder).unwrap();
+        crate::register_script_settings(&mut builder).unwrap();
+        let registry = Arc::new(builder.finish());
+        let state = SettingsViewState {
+            active: Arc::new(registry.defaults(1)),
+            diagnostics: Arc::from([]),
+            storage_location: "fixture".to_owned(),
+            recovery_required: false,
+            persistence: SettingsPersistenceState::Idle,
+        };
+        let mut dialog = SettingsDialog::new(registry);
+        dialog.open(&state);
+        let script_id = ScriptId::from_raw(7);
+        let scripting = ScriptingState {
+            supported: true,
+            scripts: Arc::from([crate::ScriptState {
+                id: script_id,
+                name: "controller.lua".to_owned(),
+                kind: ScriptKind::User,
+                enabled: true,
+                lifecycle: crate::ScriptLifecycle::Listening,
+                documentation: None,
+                latest_error: None,
+                activity: Default::default(),
+                midi: Default::default(),
+                logs: Arc::from([]),
+            }]),
+        };
+        let paths = BTreeMap::from([(script_id, "/tmp/controller.lua".to_owned())]);
+        let context = egui::Context::default();
+        let frame = |dialog: &mut SettingsDialog, events: Vec<egui::Event>| {
+            let mut response = SettingsDialogResponse::default();
+            let _ = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(900.0, 600.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| dialog.show_script_runtime(ui, &scripting, Some(&paths), &mut response),
+            );
+            response
+        };
+        frame(&mut dialog, Vec::new());
+        let restart = dialog.restart_rect(script_id).unwrap().center();
+        frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(restart),
+                egui::Event::PointerButton {
+                    pos: restart,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let response = frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(restart),
+                egui::Event::PointerButton {
+                    pos: restart,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert!(response
+            .app_actions
+            .contains(&AppAction::RestartScript { script_id }));
+
+        let reload = dialog.reload_rect(script_id).unwrap().center();
+        frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(reload),
+                egui::Event::PointerButton {
+                    pos: reload,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let response = frame(
+            &mut dialog,
+            vec![
+                egui::Event::PointerMoved(reload),
+                egui::Event::PointerButton {
+                    pos: reload,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        assert!(response.settings_actions.iter().any(|action| matches!(
+            action,
+            SettingsAction::RequestReloadUserScript { script_id: id } if *id == script_id
+        )));
+    }
+
+    #[test]
     fn recovery_and_diagnostics_paint_without_editing_rejected_values() {
         let (registry, mut state) = fixture();
         state.recovery_required = true;
@@ -320,7 +757,7 @@ mod tests {
         let mut dialog = SettingsDialog::new(registry);
         dialog.open(&state);
         let output = context.run_ui(Default::default(), |ui| {
-            dialog.show(ui.ctx(), &state);
+            dialog.show(ui.ctx(), &state, &ScriptingState::default(), None);
         });
         assert!(!output.shapes.is_empty());
     }

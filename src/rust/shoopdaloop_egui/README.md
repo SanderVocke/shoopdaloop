@@ -2,9 +2,9 @@
 
 This is the shared native and browser composition root for the egui application.
 
-- Native builds retain the threaded deterministic dummy backend.
+- Native builds retain the threaded deterministic dummy backend and provide actor-owned Lua scripting, keyboard control, and script-created native MIDI control ports.
 - Browser builds use a repository-owned Web Audio/AudioWorklet backend after an explicit microphone or output-only enable action.
-- Browser MIDI device input/output is not implemented. MIDI loop content and `.shoop`/`.shoop-midi` file workflows are cross-target and remain available.
+- Browser Lua and MIDI device input/output are intentionally unavailable. MIDI loop content and `.shoop`/`.shoop-midi` file workflows remain cross-target.
 
 ## Native
 
@@ -14,7 +14,9 @@ From the repository root:
 cargo run -p shoopdaloop_egui
 ```
 
-This starts the native dummy engine; it does not open a physical audio device.
+This starts the native dummy audio engine; it does not open a physical audio device. Native MIDI controller discovery uses the host MIDI service. Open **Settings** and select **Scripts** to manage the embedded keyboard/APC scripts or path-based user scripts. This is the only script-management dialog. ``keyboard.lua`` is enabled on first run; bundled toggles and ordered user path/enabled entries are preserved in the fresh egui settings document after **Save**. Runtime-only Stop, Restart, and Reload controls plus lifecycle, documentation, logs, callbacks/timers, MIDI connections, dropped messages, and failures are visible in the same tab.
+
+Bundled Lua sources are compiled into the native binary, so packaged startup does not depend on the source checkout. User-file reads and settings writes stay in this composition root. Source-bearing session scripts are staged before transactional session commit and round-trip in ``.shoop`` files without embedding machine-wide paths.
 
 ## Application settings
 

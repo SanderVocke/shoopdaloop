@@ -6,7 +6,7 @@ use crate::{
 };
 use shoop_settings::{
     SettingDefinition, SettingEffect, SettingKey, SettingsRegistry, SettingsRegistryBuilder,
-    SettingsRegistryError, SettingsViewState,
+    SettingsRegistryError, SettingsViewState, StringToggleList,
 };
 use std::sync::Arc;
 
@@ -15,6 +15,11 @@ const LOGO_BYTES: &[u8] = include_bytes!("../../../../resources/logo-small.png")
 pub const DEFAULT_NEW_TRACK_AUDIO_CHANNELS: SettingKey<u32> =
     SettingKey::new("tracks.new.default_audio_channels");
 pub const DEFAULT_NEW_TRACK_MIDI: SettingKey<bool> = SettingKey::new("tracks.new.default_midi");
+pub const KEYBOARD_SCRIPT_ENABLED: SettingKey<bool> =
+    SettingKey::new("scripting.bundled.keyboard.enabled");
+pub const APC_MINI_SCRIPT_ENABLED: SettingKey<bool> =
+    SettingKey::new("scripting.bundled.akai_apc_mini_mk1.enabled");
+pub const USER_SCRIPTS: SettingKey<StringToggleList> = SettingKey::new("scripting.user_scripts");
 
 pub fn register_settings(
     builder: &mut SettingsRegistryBuilder,
@@ -45,6 +50,47 @@ pub fn register_settings(
     )
 }
 
+pub fn register_script_settings(
+    builder: &mut SettingsRegistryBuilder,
+) -> Result<(), SettingsRegistryError> {
+    builder.register(
+        SettingDefinition::new(
+            KEYBOARD_SCRIPT_ENABLED,
+            true,
+            "Scripts",
+            "Enable keyboard controls",
+            "Run the bundled keyboard.lua script at startup.",
+        )
+        .category_order(20)
+        .setting_order(10)
+        .effect(SettingEffect::Immediate),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            APC_MINI_SCRIPT_ENABLED,
+            false,
+            "Scripts",
+            "Enable Akai APC Mini MK1 controls",
+            "Run the bundled akai_apc_mini_mk1.lua script at startup.",
+        )
+        .category_order(20)
+        .setting_order(20)
+        .effect(SettingEffect::Immediate),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            USER_SCRIPTS,
+            StringToggleList::default(),
+            "Scripts",
+            "User Lua scripts",
+            "Lua source files known to this machine and whether they run at startup.",
+        )
+        .category_order(20)
+        .setting_order(30)
+        .effect(SettingEffect::Immediate),
+    )
+}
+
 pub struct AppWidgetResponse {
     pub app_actions: Vec<AppAction>,
     pub settings_actions: Vec<SettingsAction>,
@@ -65,6 +111,7 @@ pub struct AppWidget {
     logo: Option<egui::TextureHandle>,
     io_channel_mappings: BTreeMap<crate::TaskId, Vec<u32>>,
     io_channel_selections: BTreeMap<crate::TaskId, Vec<u32>>,
+    pressed_script_keys: BTreeMap<egui::Key, (i64, i64)>,
     #[cfg(test)]
     add_track_accept_rect: Option<egui::Rect>,
     #[cfg(test)]
@@ -96,6 +143,7 @@ impl AppWidget {
             logo: None,
             io_channel_mappings: BTreeMap::new(),
             io_channel_selections: BTreeMap::new(),
+            pressed_script_keys: BTreeMap::new(),
             #[cfg(test)]
             add_track_accept_rect: None,
             #[cfg(test)]
@@ -107,6 +155,10 @@ impl AppWidget {
         self.connections.open(scope);
     }
 
+    pub fn add_user_script_path(&mut self, path: String) -> Result<(), &'static str> {
+        self.settings.add_user_script_path(path)
+    }
+
     pub fn open_connection_scope(&self) -> Option<ConnectionScope> {
         self.connections.is_open().then(|| self.connections.scope())
     }
@@ -116,9 +168,19 @@ impl AppWidget {
         ui: &mut egui::Ui,
         state: &AppState,
         settings_state: &SettingsViewState,
+        script_paths: Option<&BTreeMap<crate::ScriptId, String>>,
     ) -> AppWidgetResponse {
         self.ensure_logo(ui.ctx());
-        let mut actions = Vec::new();
+        let events = ui.ctx().input(|input| input.events.clone());
+        let text_entry_active = ui.ctx().egui_wants_keyboard_input();
+        let mut actions = crate::key_input::translate_events(
+            &events,
+            text_entry_active,
+            &mut self.pressed_script_keys,
+        )
+        .into_iter()
+        .map(AppAction::KeyEvent)
+        .collect::<Vec<_>>();
         let mut settings_actions = Vec::new();
 
         egui::Panel::top("global_controls")
@@ -239,7 +301,11 @@ impl AppWidget {
         self.show_add_track_dialog(ui.ctx(), &mut actions);
         self.show_io_task_dialog(ui.ctx(), state, &mut actions);
         actions.extend(self.connections.show(ui.ctx(), state));
-        settings_actions.extend(self.settings.show(ui.ctx(), settings_state));
+        let settings_response =
+            self.settings
+                .show(ui.ctx(), settings_state, &state.scripting, script_paths);
+        actions.extend(settings_response.app_actions);
+        settings_actions.extend(settings_response.settings_actions);
         AppWidgetResponse {
             app_actions: actions,
             settings_actions,
@@ -693,9 +759,32 @@ mod tests {
                 events,
                 ..Default::default()
             },
-            |ui| actions = widget.show(ui, state, &settings).app_actions,
+            |ui| actions = widget.show(ui, state, &settings, None).app_actions,
         );
         actions
+    }
+
+    fn settings_frame(
+        context: &egui::Context,
+        widget: &mut AppWidget,
+        state: &AppState,
+        settings: &SettingsViewState,
+        paths: &BTreeMap<crate::ScriptId, String>,
+        events: Vec<egui::Event>,
+    ) -> AppWidgetResponse {
+        let mut response = None;
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 600.0),
+                )),
+                events,
+                ..Default::default()
+            },
+            |ui| response = Some(widget.show(ui, state, settings, Some(paths))),
+        );
+        response.unwrap()
     }
 
     #[test]
@@ -767,7 +856,7 @@ mod tests {
                 ..Default::default()
             },
             |ui| {
-                widget.show(ui, &state, &settings);
+                widget.show(ui, &state, &settings, None);
             },
         );
         assert!(!output.shapes.is_empty());
@@ -778,6 +867,72 @@ mod tests {
                 channels: vec![1, 0],
             }
         );
+    }
+
+    #[test]
+    fn scripts_tab_renders_lifecycle_errors_logs_and_midi_diagnostics() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        register_script_settings(&mut builder).unwrap();
+        let registry = Arc::new(builder.finish());
+        let settings = SettingsViewState {
+            active: Arc::new(registry.defaults(1)),
+            diagnostics: Arc::from([]),
+            storage_location: "fixture".to_owned(),
+            recovery_required: false,
+            persistence: SettingsPersistenceState::Idle,
+        };
+        let mut widget = AppWidget::new(registry);
+        widget.settings.open(&settings);
+        widget.settings.select_category("Scripts");
+        let script_id = crate::ScriptId::from_raw(1);
+        let state = AppState {
+            scripting: crate::ScriptingState {
+                supported: true,
+                scripts: Arc::from([crate::ScriptState {
+                    id: script_id,
+                    name: "controller.lua".to_owned(),
+                    kind: crate::ScriptKind::User,
+                    enabled: true,
+                    lifecycle: crate::ScriptLifecycle::Error,
+                    documentation: Some("Controller help".to_owned()),
+                    latest_error: Some("bad callback".to_owned()),
+                    activity: crate::ScriptActivityDiagnostics {
+                        loop_callbacks: 1,
+                        global_callbacks: 2,
+                        keyboard_callbacks: 3,
+                        timers: 4,
+                    },
+                    midi: crate::ScriptMidiDiagnostics {
+                        rules: 2,
+                        connections: 1,
+                        dropped_messages: 3,
+                        errors: 4,
+                        rule_states: Arc::from([crate::ScriptMidiRuleDiagnostics {
+                            direction: crate::ScriptMidiRuleDirection::Output,
+                            pattern: "APC Mini".to_owned(),
+                            matched_endpoints: Arc::from(["APC Mini [sink]".to_owned()]),
+                            connected_endpoints: Arc::from(["APC Mini [sink]".to_owned()]),
+                            latest_error: Some("permission denied".to_owned()),
+                        }]),
+                    },
+                    logs: Arc::from([crate::ScriptLogState {
+                        level: crate::ScriptLogLevel::Warning,
+                        message: "warning log".to_owned(),
+                    }]),
+                }]),
+            }
+            .into(),
+            ..Default::default()
+        };
+        let paths = BTreeMap::from([(script_id, "/tmp/controller.lua".to_owned())]);
+        settings_frame(&context, &mut widget, &state, &settings, &paths, Vec::new());
+        assert!(widget.settings.is_open());
+
+        assert!(widget.settings.restart_rect(script_id).is_some());
+        assert!(widget.settings.reload_rect(script_id).is_some());
     }
 
     #[test]
@@ -813,7 +968,7 @@ mod tests {
                     ..Default::default()
                 },
                 |ui| {
-                    widget.show(ui, &state, &settings);
+                    widget.show(ui, &state, &settings, None);
                 },
             );
 

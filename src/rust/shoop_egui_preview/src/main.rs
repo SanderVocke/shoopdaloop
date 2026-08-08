@@ -60,7 +60,7 @@ impl Default for PreviewApp {
 
 impl eframe::App for PreviewApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let response = self.widget.show(ui, &self.snapshot, &self.settings);
+        let response = self.widget.show(ui, &self.snapshot, &self.settings, None);
         for intent in response.app_actions {
             self.last_intent = format!("{intent:?}");
             self.apply(intent);

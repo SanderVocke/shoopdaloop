@@ -21,6 +21,10 @@ use eframe::egui;
 use settings::SettingsManager;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_backend::EngineBackend;
+#[cfg(not(target_arch = "wasm32"))]
+use shoop_egui::register_script_settings;
+#[cfg(not(target_arch = "wasm32"))]
+use shoop_egui::ScriptKind;
 use shoop_egui::{
     register_settings, AppIntent, AppSnapshot, AppWidget, SettingsAction, SettingsRegistryBuilder,
 };
@@ -31,7 +35,7 @@ use shoop_app::CooperativeApplicationRuntime;
 mod browser_audio;
 mod settings;
 #[cfg(not(target_arch = "wasm32"))]
-use shoop_app::{ApplicationHandle, ApplicationRuntime};
+use shoop_app::{ApplicationHandle, ApplicationRuntime, StartupScript};
 
 #[cfg(any(target_arch = "wasm32", test))]
 const WEB_CANVAS_ID: &str = "shoop_canvas";
@@ -83,9 +87,14 @@ impl UnifiedApp {
         let (pending_file_intent_tx, pending_file_intent_rx) = mpsc::channel();
         let mut settings_builder = SettingsRegistryBuilder::default();
         register_settings(&mut settings_builder)?;
+        #[cfg(not(target_arch = "wasm32"))]
+        register_script_settings(&mut settings_builder)?;
         let settings_registry = settings_builder.finish();
         let settings = load_settings_manager(settings_registry.clone());
         let widget = AppWidget::new(std::sync::Arc::new(settings_registry));
+        #[cfg(not(target_arch = "wasm32"))]
+        let runtime = Runtime::new(&settings.active())?;
+        #[cfg(target_arch = "wasm32")]
         let runtime = Runtime::new()?;
         Ok(Self {
             runtime,
@@ -107,8 +116,63 @@ impl UnifiedApp {
 }
 
 impl UnifiedApp {
+    #[cfg(not(target_arch = "wasm32"))]
+    fn handle_settings_action(&mut self, action: SettingsAction) {
+        let result = match action {
+            SettingsAction::Save(draft) => validate_script_draft(&draft)
+                .and_then(|()| self.settings.request_save(draft).map_err(Into::into)),
+            SettingsAction::RecoverWithDefaults => {
+                self.settings.request_recovery().map_err(Into::into)
+            }
+            SettingsAction::RequestAddUserScript => {
+                let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Lua script", &["lua"])
+                    .pick_file()
+                else {
+                    return;
+                };
+                let path = path.to_string_lossy().into_owned();
+                read_user_script(&path).and_then(|_| {
+                    self.widget
+                        .add_user_script_path(path)
+                        .map_err(anyhow::Error::msg)
+                })
+            }
+            SettingsAction::RequestReloadUserScript { script_id } => {
+                self.runtime.reload_user_script(script_id)
+            }
+        };
+        if let Err(error) = result {
+            self.settings.report_action_error(error.to_string());
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn handle_settings_action(&mut self, action: SettingsAction) {
+        let result = match action {
+            SettingsAction::Save(draft) => self.settings.request_save(draft),
+            SettingsAction::RecoverWithDefaults => self.settings.request_recovery(),
+            SettingsAction::RequestAddUserScript
+            | SettingsAction::RequestReloadUserScript { .. } => {
+                self.settings
+                    .report_action_error("Lua scripting is unavailable in browser builds");
+                return;
+            }
+        };
+        if let Err(error) = result {
+            self.settings.report_action_error(error.to_string());
+        }
+    }
+
     fn show(&mut self, ui: &mut egui::Ui) {
         self.settings.poll();
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Err(error) = self
+            .runtime
+            .reconcile_script_settings(&self.settings.active())
+        {
+            self.settings.report_action_error(error.to_string());
+        }
         let now = Instant::now();
         let elapsed = now.saturating_duration_since(self.last_update);
         self.last_update = now;
@@ -130,18 +194,18 @@ impl UnifiedApp {
         self.browser_settings_test
             .update(&mut self.settings, &mut self.widget);
         let settings_state = self.settings.view();
-        let response = self.widget.show(ui, &snapshot, &settings_state);
+        #[cfg(not(target_arch = "wasm32"))]
+        let script_paths = Some(self.runtime.script_paths());
+        #[cfg(target_arch = "wasm32")]
+        let script_paths = None;
+        let response = self
+            .widget
+            .show(ui, &snapshot, &settings_state, script_paths);
         for intent in response.app_actions {
             self.handle_ui_intent(intent);
         }
         for action in response.settings_actions {
-            let result = match action {
-                SettingsAction::Save(draft) => self.settings.request_save(draft),
-                SettingsAction::RecoverWithDefaults => self.settings.request_recovery(),
-            };
-            if let Err(error) = result {
-                self.settings.report_action_error(error.to_string());
-            }
+            self.handle_settings_action(action);
         }
         while let Some(output) = self.runtime.take_file_output() {
             #[cfg(not(target_arch = "wasm32"))]
@@ -397,24 +461,221 @@ impl eframe::App for UnifiedApp {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+const KEYBOARD_SCRIPT_FILENAME: &str = "keyboard.lua";
+#[cfg(not(target_arch = "wasm32"))]
+const APC_MINI_SCRIPT_FILENAME: &str = "akai_apc_mini_mk1.lua";
+
+#[cfg(not(target_arch = "wasm32"))]
+fn configured_startup_scripts(
+    settings: &shoop_settings::SettingsSnapshot,
+) -> anyhow::Result<(Vec<StartupScript>, Vec<String>, Vec<String>)> {
+    let mut scripts = vec![
+        StartupScript {
+            name: KEYBOARD_SCRIPT_FILENAME.to_owned(),
+            source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+            kind: ScriptKind::Bundled,
+            enabled: settings.get(shoop_egui::KEYBOARD_SCRIPT_ENABLED)?,
+        },
+        StartupScript {
+            name: APC_MINI_SCRIPT_FILENAME.to_owned(),
+            source: shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT.to_owned(),
+            kind: ScriptKind::Bundled,
+            enabled: settings.get(shoop_egui::APC_MINI_SCRIPT_ENABLED)?,
+        },
+    ];
+    let mut identities = vec![
+        KEYBOARD_SCRIPT_FILENAME.to_owned(),
+        APC_MINI_SCRIPT_FILENAME.to_owned(),
+    ];
+    let mut warnings = Vec::new();
+    for configured in settings.get(shoop_egui::USER_SCRIPTS)?.0 {
+        match read_user_script(&configured.value) {
+            Ok((name, source)) => {
+                identities.push(configured.value);
+                scripts.push(StartupScript {
+                    name,
+                    source,
+                    kind: ScriptKind::User,
+                    enabled: configured.enabled,
+                });
+            }
+            Err(error) => warnings.push(error.to_string()),
+        }
+    }
+    Ok((scripts, identities, warnings))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn read_user_script(path: &str) -> anyhow::Result<(String, String)> {
+    let source = std::fs::read_to_string(path)
+        .map_err(|error| anyhow::anyhow!("could not read {path}: {error}"))?;
+    let name = Path::new(path)
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+    shoop_scripting::LuaRuntime::new()?.check_syntax(&name, &source)?;
+    Ok((name, source))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn validate_script_draft(draft: &shoop_settings::SettingsDraft) -> anyhow::Result<()> {
+    let mut paths = std::collections::BTreeSet::new();
+    for configured in draft.get(shoop_egui::USER_SCRIPTS)?.0 {
+        if configured.value.trim().is_empty() {
+            anyhow::bail!("user script paths may not be empty");
+        }
+        if !paths.insert(configured.value.clone()) {
+            anyhow::bail!("duplicate user script path {}", configured.value);
+        }
+        read_user_script(&configured.value)?;
+    }
+    Ok(())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn associate_startup_script_paths(
+    ids: &[Option<shoop_egui::ScriptId>],
+    paths: Vec<String>,
+) -> std::collections::BTreeMap<shoop_egui::ScriptId, String> {
+    ids.iter()
+        .copied()
+        .zip(paths)
+        .filter_map(|(script_id, path)| script_id.map(|script_id| (script_id, path)))
+        .collect()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 struct Runtime {
     _runtime: ApplicationRuntime,
     handle: ApplicationHandle,
+    script_paths: std::collections::BTreeMap<shoop_egui::ScriptId, String>,
+    pending_script_paths: std::collections::VecDeque<(String, ScriptKind, String)>,
+    applied_settings_revision: u64,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 impl Runtime {
-    fn new() -> anyhow::Result<Self> {
+    fn new(settings: &shoop_settings::SettingsSnapshot) -> anyhow::Result<Self> {
         let backend = EngineBackend::new_dummy(48_000, 256)?;
-        let runtime = ApplicationRuntime::start(Box::new(backend))?;
+        let (startup_scripts, script_paths, warnings) = configured_startup_scripts(settings)?;
+        let runtime = ApplicationRuntime::start_with_scripts(Box::new(backend), startup_scripts)?;
         let handle = runtime.handle();
+        for warning in warnings {
+            eprintln!("ShoopDaLoop script settings: {warning}");
+            handle.dispatch(AppIntent::ReportFileIoError {
+                task_id: None,
+                message: warning,
+            })?;
+        }
+        let script_paths =
+            associate_startup_script_paths(runtime.startup_script_ids(), script_paths);
         Ok(Self {
             _runtime: runtime,
             handle,
+            script_paths,
+            pending_script_paths: std::collections::VecDeque::new(),
+            applied_settings_revision: settings.revision(),
         })
     }
 
-    fn tick(&mut self, _elapsed: Duration) {}
+    fn tick(&mut self, _elapsed: Duration) {
+        let snapshot = self.handle.snapshot();
+        let mut mapped = self
+            .script_paths
+            .keys()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>();
+        let mut retained = std::collections::VecDeque::new();
+        while let Some((name, kind, path)) = self.pending_script_paths.pop_front() {
+            if let Some(script) = snapshot.scripting.scripts.iter().find(|script| {
+                script.kind == kind && script.name == name && !mapped.contains(&script.id)
+            }) {
+                self.script_paths.insert(script.id, path);
+                mapped.insert(script.id);
+            } else {
+                retained.push_back((name, kind, path));
+            }
+        }
+        self.pending_script_paths = retained;
+    }
+
+    fn reconcile_script_settings(
+        &mut self,
+        settings: &shoop_settings::SettingsSnapshot,
+    ) -> anyhow::Result<()> {
+        if settings.revision() == self.applied_settings_revision {
+            return Ok(());
+        }
+        let (scripts, identities, warnings) = configured_startup_scripts(settings)?;
+        for warning in warnings {
+            self.handle.dispatch(AppIntent::ReportFileIoError {
+                task_id: None,
+                message: warning,
+            })?;
+        }
+        let desired = identities
+            .into_iter()
+            .zip(scripts)
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let current = self.script_paths.clone();
+        for (script_id, identity) in current {
+            if !desired.contains_key(&identity) {
+                self.handle
+                    .dispatch(AppIntent::ForgetScript { script_id })?;
+                self.script_paths.remove(&script_id);
+            }
+        }
+        let snapshot = self.handle.snapshot();
+        for (identity, script) in desired {
+            if let Some(script_id) = self
+                .script_paths
+                .iter()
+                .find_map(|(id, path)| (path == &identity).then_some(*id))
+            {
+                if snapshot
+                    .scripting
+                    .scripts
+                    .iter()
+                    .find(|current| current.id == script_id)
+                    .is_some_and(|current| current.enabled != script.enabled)
+                {
+                    self.handle.dispatch(AppIntent::SetScriptEnabled {
+                        script_id,
+                        enabled: script.enabled,
+                    })?;
+                }
+            } else {
+                self.handle.dispatch(AppIntent::AddScriptSource {
+                    name: script.name.clone(),
+                    source: script.source.into(),
+                    kind: script.kind,
+                    enabled: script.enabled,
+                })?;
+                self.pending_script_paths
+                    .push_back((script.name, script.kind, identity));
+            }
+        }
+        self.applied_settings_revision = settings.revision();
+        Ok(())
+    }
+
+    fn reload_user_script(&mut self, script_id: shoop_egui::ScriptId) -> anyhow::Result<()> {
+        let path = self
+            .script_paths
+            .get(&script_id)
+            .ok_or_else(|| anyhow::anyhow!("no file path for script {script_id}"))?;
+        let (_, source) = read_user_script(path)?;
+        self.handle.dispatch(AppIntent::ReplaceScriptSource {
+            script_id,
+            source: source.into(),
+        })?;
+        Ok(())
+    }
+
+    fn script_paths(&self) -> &std::collections::BTreeMap<shoop_egui::ScriptId, String> {
+        &self.script_paths
+    }
 
     fn snapshot(&self) -> std::sync::Arc<AppSnapshot> {
         self.handle.snapshot()
@@ -1231,6 +1492,203 @@ mod tests {
         assert!(html.contains("audio_worklet.js"));
         assert!(html.contains("Roboto-Regular.ttf"));
         assert!(html.contains("Roboto-BoldItalic.ttf"));
+    }
+
+    #[test]
+    fn startup_script_adapter_resolves_typed_bundles_files_and_missing_paths() {
+        let directory = tempfile::tempdir().unwrap();
+        let user_script = directory.path().join("user.lua");
+        std::fs::write(&user_script, "print('user')").unwrap();
+        let missing = directory.path().join("missing.lua");
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        register_script_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
+        draft.set(
+            shoop_egui::USER_SCRIPTS,
+            shoop_settings::StringToggleList(vec![
+                shoop_settings::StringToggle {
+                    value: user_script.to_string_lossy().into_owned(),
+                    enabled: false,
+                },
+                shoop_settings::StringToggle {
+                    value: missing.to_string_lossy().into_owned(),
+                    enabled: true,
+                },
+            ]),
+        );
+        let document = registry
+            .document_from_draft(
+                &shoop_settings::EgSettingsDocument::empty("test"),
+                &draft,
+                "test",
+            )
+            .unwrap();
+        let settings = registry.resolve(&document, 2).snapshot;
+        let (scripts, paths, warnings) = configured_startup_scripts(&settings).unwrap();
+        assert_eq!(scripts.len(), 3);
+        assert_eq!(paths.len(), 3);
+        assert_eq!(scripts[0].kind, ScriptKind::Bundled);
+        assert_eq!(scripts[0].source, shoop_scripting::KEYBOARD_SCRIPT);
+        assert!(scripts[0].enabled);
+        assert_eq!(scripts[1].kind, ScriptKind::Bundled);
+        assert!(!scripts[1].enabled);
+        assert_eq!(scripts[2].kind, ScriptKind::User);
+        assert!(!scripts[2].enabled);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("missing.lua"));
+        assert!(validate_script_draft(&draft).is_err());
+    }
+
+    #[test]
+    fn committed_settings_reconcile_scripts_and_failed_save_leaves_runtime_unchanged() {
+        let directory = tempfile::tempdir().unwrap();
+        let script_path = directory.path().join("controller.lua");
+        std::fs::write(&script_path, "print('controller')").unwrap();
+        let settings_directory = directory.path().join("configuration");
+        let settings_path = settings_directory.join("settings.json");
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        register_script_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let mut manager = SettingsManager::load_from_path(registry, "test", settings_path.clone());
+        let mut runtime = Runtime::new(&manager.active()).unwrap();
+
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&manager.active());
+        draft.set(shoop_egui::KEYBOARD_SCRIPT_ENABLED, false);
+        draft.set(shoop_egui::APC_MINI_SCRIPT_ENABLED, true);
+        draft.set(
+            shoop_egui::USER_SCRIPTS,
+            shoop_settings::StringToggleList(vec![shoop_settings::StringToggle {
+                value: script_path.to_string_lossy().into_owned(),
+                enabled: true,
+            }]),
+        );
+        validate_script_draft(&draft).unwrap();
+        manager.request_save(draft).unwrap();
+        wait_for_settings_save(&mut manager);
+        runtime
+            .reconcile_script_settings(&manager.active())
+            .unwrap();
+        let snapshot = wait_for_script_configuration(&mut runtime);
+        assert_eq!(snapshot.scripting.scripts.len(), 3);
+
+        let mut removal = shoop_settings::SettingsDraft::from_snapshot(&manager.active());
+        removal.set(
+            shoop_egui::USER_SCRIPTS,
+            shoop_settings::StringToggleList::default(),
+        );
+        manager.request_save(removal).unwrap();
+        wait_for_settings_save(&mut manager);
+        runtime
+            .reconcile_script_settings(&manager.active())
+            .unwrap();
+        let after_removal = wait_for_script_count(&mut runtime, 2);
+        assert!(!after_removal
+            .scripting
+            .scripts
+            .iter()
+            .any(|script| script.name == "controller.lua"));
+
+        let committed_revision = manager.active().revision();
+        std::fs::remove_file(&settings_path).unwrap();
+        std::fs::remove_dir(&settings_directory).unwrap();
+        std::fs::write(&settings_directory, b"not a directory").unwrap();
+        let mut failing = shoop_settings::SettingsDraft::from_snapshot(&manager.active());
+        failing.set(shoop_egui::KEYBOARD_SCRIPT_ENABLED, true);
+        manager.request_save(failing).unwrap();
+        wait_for_settings_save(&mut manager);
+        assert_eq!(manager.active().revision(), committed_revision);
+        runtime
+            .reconcile_script_settings(&manager.active())
+            .unwrap();
+        assert!(
+            !runtime
+                .snapshot()
+                .scripting
+                .scripts
+                .iter()
+                .find(|script| script.name == KEYBOARD_SCRIPT_FILENAME)
+                .unwrap()
+                .enabled
+        );
+    }
+
+    fn wait_for_settings_save(manager: &mut SettingsManager) {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while manager.view().persistence == shoop_settings::SettingsPersistenceState::Saving {
+            manager.poll();
+            assert!(Instant::now() < deadline, "settings save timed out");
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn wait_for_script_count(
+        runtime: &mut Runtime,
+        expected: usize,
+    ) -> std::sync::Arc<AppSnapshot> {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            runtime.tick(Duration::from_millis(5));
+            let snapshot = runtime.snapshot();
+            if snapshot.scripting.scripts.len() == expected {
+                return snapshot;
+            }
+            assert!(Instant::now() < deadline, "script reconciliation timed out");
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn wait_for_script_configuration(runtime: &mut Runtime) -> std::sync::Arc<AppSnapshot> {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            runtime.tick(Duration::from_millis(5));
+            let snapshot = runtime.snapshot();
+            let keyboard_disabled = snapshot
+                .scripting
+                .scripts
+                .iter()
+                .find(|script| script.name == KEYBOARD_SCRIPT_FILENAME)
+                .is_some_and(|script| !script.enabled);
+            let apc_enabled = snapshot
+                .scripting
+                .scripts
+                .iter()
+                .find(|script| script.name == APC_MINI_SCRIPT_FILENAME)
+                .is_some_and(|script| script.enabled);
+            let user_enabled = snapshot
+                .scripting
+                .scripts
+                .iter()
+                .any(|script| script.name == "controller.lua" && script.enabled);
+            if snapshot.scripting.scripts.len() == 3
+                && keyboard_disabled
+                && apc_enabled
+                && user_enabled
+            {
+                return snapshot;
+            }
+            assert!(Instant::now() < deadline, "script reconciliation timed out");
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn startup_path_association_preserves_rejected_slots_and_duplicate_names() {
+        let first = shoop_egui::ScriptId::from_raw(11);
+        let second = shoop_egui::ScriptId::from_raw(12);
+        let paths = associate_startup_script_paths(
+            &[None, Some(first), Some(second)],
+            vec![
+                "invalid.lua".to_owned(),
+                "first.lua".to_owned(),
+                "second.lua".to_owned(),
+            ],
+        );
+        assert_eq!(paths.len(), 2);
+        assert_eq!(paths.get(&first).map(String::as_str), Some("first.lua"));
+        assert_eq!(paths.get(&second).map(String::as_str), Some("second.lua"));
     }
 
     #[test]

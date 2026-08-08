@@ -40,6 +40,14 @@ The file is canonical UTF-8 JSON with a trailing newline:
   "document_version": 1,
   "writer_version": "0.0.0",
   "values": {
+    "scripting.bundled.akai_apc_mini_mk1.enabled": false,
+    "scripting.bundled.keyboard.enabled": true,
+    "scripting.user_scripts": [
+      {
+        "value": "/home/user/controller.lua",
+        "enabled": true
+      }
+    ],
     "tracks.new.default_audio_channels": 2,
     "tracks.new.default_midi": false
   }
@@ -52,7 +60,7 @@ Rules:
 - `format_version.major` and `format_version.minor` are unsigned 16-bit integers. Version 1 readers require major 1 and reject a minor newer than they support.
 - `document_version` is an unsigned 16-bit schema version. Version 1 readers dispatch it before decoding a version-specific DTO.
 - `writer_version` records the writing application version for diagnostics. It does not control compatibility.
-- `values` is an object keyed by stable dotted ASCII setting IDs. Values are JSON booleans, unsigned/signed integers, finite numbers, or strings according to the registered definition.
+- `values` is an object keyed by stable dotted ASCII setting IDs. Registered values are JSON booleans, unsigned/signed integers, finite numbers, strings, or ordered string/toggle lists according to the definition.
 - Object output is deterministic: fixed envelope field order and lexicographically sorted setting IDs. Pretty-printing is two-space indented and ends with one newline.
 - Definitions, labels, descriptions, constraints, categories, and defaults live in application code and are not serialized.
 
@@ -67,14 +75,19 @@ On load:
 - Unknown keys remain opaque JSON values and are preserved byte-semantically as JSON values across a same-version save. They are not exposed to consumers or the settings dialog.
 - Duplicate registrations, invalid defaults, incompatible editor/type combinations, and typed reads using the wrong key type are programming errors rejected while composing/testing the registry.
 
-Version 1 initially registers:
+Version 1 registers the cross-target track defaults below. Native composition additionally registers the scripting values; browser composition omits them because browser Lua is unsupported and preserves them as unknown values if encountered.
 
 | Key | Type | Default | Effect |
 |---|---|---:|---|
 | `tracks.new.default_audio_channels` | `u32` | `2` | Next Add Track dialog opened |
 | `tracks.new.default_midi` | boolean | `false` | Next Add Track dialog opened |
+| `scripting.bundled.keyboard.enabled` | boolean | `true` | After a successful Save |
+| `scripting.bundled.akai_apc_mini_mk1.enabled` | boolean | `false` | After a successful Save |
+| `scripting.user_scripts` | ordered string/toggle list | `[]` | After a successful Save |
 
-Neither value changes an existing track, an already-open Add Track draft, or session data.
+An ordered string/toggle list is a JSON array. Each entry is exactly an object with a non-empty unique `value` string and an `enabled` boolean. Array order is retained. The generic editor supports editing, toggling, adding, removing, and resetting entries. Invalid or duplicate entries reject a draft; malformed stored values produce a diagnostic and use the registered default.
+
+The track defaults do not change an existing track, an already-open Add Track draft, or session data. Native scripting settings contain machine paths only and never enter `.shoop` session state. Both bundled scripts remain discoverable; only `keyboard.lua` runs by default.
 
 ## Version checks and migration
 
@@ -95,7 +108,9 @@ A missing document is a normal first run and publishes registered defaults.
 
 Malformed, unsupported, unreadable, or storage-unavailable input publishes defaults plus an actionable diagnostic. The source is not automatically rewritten. An unsupported future document must never be normalized by an older application. The settings dialog requires an explicit recovery/reset action before replacing rejected source data.
 
-Dialog edits are drafts. Cancel or close discards them. Save validates the complete draft, merges known values into the retained current-version document, and preserves unknown keys.
+The application has one Settings dialog. Registered categories are tabs; native builds include a **Scripts** tab with startup preferences plus script lifecycle, documentation, logs, and MIDI diagnostics. Browser builds omit that tab.
+
+Dialog edits are drafts. Cancel or close discards them. Save validates the complete draft, merges known values into the retained current-version document, and preserves unknown keys. Native script files are read and syntax-checked before a script-settings draft is accepted. Running scripts are reconciled only after persistence publishes the committed revision; runtime-only Stop, Restart, and Reload actions do not mutate the draft.
 
 Native save:
 

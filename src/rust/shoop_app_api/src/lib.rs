@@ -35,6 +35,7 @@ entity_id!(LoopId);
 entity_id!(PortId);
 entity_id!(ChannelId);
 entity_id!(TaskId);
+entity_id!(ScriptId);
 
 pub const MIN_TRACK_GAIN_DB: f32 = -30.0;
 pub const MAX_TRACK_GAIN_DB: f32 = 20.0;
@@ -445,6 +446,112 @@ pub struct IoTaskState {
     pub audio_channel_selection: Option<AudioChannelSelectionState>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum KeyEventType {
+    Pressed,
+    Released,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct KeyEvent {
+    pub event_type: KeyEventType,
+    pub key: i64,
+    pub modifiers: i64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ScriptKind {
+    Bundled,
+    User,
+    Session,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ScriptLifecycle {
+    #[default]
+    Inactive,
+    Running,
+    Listening,
+    Finished,
+    Error,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ScriptLogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warning,
+    Error,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScriptLogState {
+    pub level: ScriptLogLevel,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ScriptActivityDiagnostics {
+    pub loop_callbacks: u32,
+    pub global_callbacks: u32,
+    pub keyboard_callbacks: u32,
+    pub timers: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ScriptMidiRuleDirection {
+    Input,
+    Output,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScriptMidiRuleDiagnostics {
+    pub direction: ScriptMidiRuleDirection,
+    pub pattern: String,
+    pub matched_endpoints: Arc<[String]>,
+    pub connected_endpoints: Arc<[String]>,
+    pub latest_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ScriptMidiDiagnostics {
+    pub rules: u32,
+    pub connections: u32,
+    pub dropped_messages: u32,
+    pub errors: u32,
+    pub rule_states: Arc<[ScriptMidiRuleDiagnostics]>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScriptState {
+    pub id: ScriptId,
+    pub name: String,
+    pub kind: ScriptKind,
+    pub enabled: bool,
+    pub lifecycle: ScriptLifecycle,
+    pub documentation: Option<String>,
+    pub latest_error: Option<String>,
+    pub activity: ScriptActivityDiagnostics,
+    pub midi: ScriptMidiDiagnostics,
+    pub logs: Arc<[ScriptLogState]>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScriptingState {
+    pub supported: bool,
+    pub scripts: Arc<[ScriptState]>,
+}
+
+impl Default for ScriptingState {
+    fn default() -> Self {
+        Self {
+            supported: false,
+            scripts: Arc::from([]),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct AppSnapshot {
     pub revision: u64,
@@ -453,6 +560,7 @@ pub struct AppSnapshot {
     pub status: StatusState,
     pub details: Option<LoopDetailsState>,
     pub connections: Arc<ConnectionViewState>,
+    pub scripting: Arc<ScriptingState>,
     pub io_task: Option<IoTaskState>,
     pub notifications: Vec<AppNotification>,
 }
@@ -548,6 +656,30 @@ pub enum AppIntent {
     AddTrack(DirectTrackSpec),
     AddLoop {
         track_id: TrackId,
+    },
+    KeyEvent(KeyEvent),
+    AddScriptSource {
+        name: String,
+        source: Arc<str>,
+        kind: ScriptKind,
+        enabled: bool,
+    },
+    SetScriptEnabled {
+        script_id: ScriptId,
+        enabled: bool,
+    },
+    RestartScript {
+        script_id: ScriptId,
+    },
+    ReplaceScriptSource {
+        script_id: ScriptId,
+        source: Arc<str>,
+    },
+    StopScript {
+        script_id: ScriptId,
+    },
+    ForgetScript {
+        script_id: ScriptId,
     },
     SetPortConnected {
         port_id: PortId,
@@ -680,6 +812,36 @@ mod tests {
                 action: LoopAction::IconClicked(SelectionModifiers { additive: true }),
             }
         );
+    }
+
+    #[test]
+    fn script_contract_preserves_plain_state_and_stable_intents() {
+        let script_id = ScriptId::from_raw(8);
+        let state = ScriptState {
+            id: script_id,
+            name: "controller.lua".to_owned(),
+            kind: ScriptKind::User,
+            enabled: true,
+            lifecycle: ScriptLifecycle::Listening,
+            documentation: Some("Controller help\n".to_owned()),
+            latest_error: None,
+            activity: ScriptActivityDiagnostics::default(),
+            midi: ScriptMidiDiagnostics::default(),
+            logs: Arc::from([]),
+        };
+        assert_eq!(state.id, script_id);
+        assert_eq!(state.kind, ScriptKind::User);
+        assert_eq!(
+            AppIntent::SetScriptEnabled {
+                script_id,
+                enabled: false,
+            },
+            AppIntent::SetScriptEnabled {
+                script_id,
+                enabled: false,
+            }
+        );
+        assert!(!AppSnapshot::default().scripting.supported);
     }
 
     #[test]
