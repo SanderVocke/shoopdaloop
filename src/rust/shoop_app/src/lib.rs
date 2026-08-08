@@ -8,16 +8,15 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
-#[cfg(not(target_arch = "wasm32"))]
-use shoop_app_api::KeyEventType;
 use shoop_app_api::{
     AppIntent, AppNotification, AppSnapshot, AudioChannelMappingState, AudioChannelSelectionState,
     AudioDriverState, ChannelId, ConnectionErrorKind, ConnectionErrorState, ConnectionViewState,
     DirectTrackSpec, ExternalPortConnectionState, GlobalControlAction, IoTaskKind, IoTaskState,
-    IoTaskStatus, KeyEvent, LocalPortConnectionState, LoopAction, LoopAudioExportFormat,
-    LoopDetailsState, LoopId, LoopMode, LoopState, NotificationLevel, PortDataType, PortDirection,
-    PortId, PortRole, SampleRateWarning, ScriptId, ScriptKind, ScriptingState, StatusState, TaskId,
-    TrackAction, TrackControlState, TrackId, TrackState, WaveformChannelState,
+    IoTaskStatus, KeyEvent, KeyEventType, LocalPortConnectionState, LoopAction,
+    LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, NotificationLevel,
+    PortDataType, PortDirection, PortId, PortRole, SampleRateWarning, ScriptId, ScriptKind,
+    ScriptingState, StatusState, TaskId, TrackAction, TrackControlState, TrackId, TrackState,
+    WaveformChannelState,
 };
 use shoop_backend::{
     Backend, BackendAudioContent, BackendConnectionSnapshot, BackendGrabRequest,
@@ -28,9 +27,12 @@ use shoop_backend::{
     DirectTrackRequest,
 };
 #[cfg(not(target_arch = "wasm32"))]
+use shoop_scripting::NativeMidiService;
+#[cfg(target_arch = "wasm32")]
+use shoop_scripting::NullMidiService;
 use shoop_scripting::{
-    ControlLoop, ControlOperation, ControlSnapshot, ControlTrack, NativeMidiService,
-    ScriptKeyEvent, ScriptLoopEvent, ScriptManager, SessionScriptSource,
+    ControlLoop, ControlOperation, ControlSnapshot, ControlTrack, ScriptKeyEvent, ScriptLoopEvent,
+    ScriptManager, SessionScriptSource,
 };
 use shoop_session::{
     decode_exact_midi, decode_loop_audio, decode_session, decode_standard_midi, decode_wav,
@@ -230,9 +232,18 @@ pub struct CooperativeApplicationRuntime {
 }
 
 impl CooperativeApplicationRuntime {
-    pub fn start(mut backend: Box<dyn Backend>) -> Result<Self> {
+    pub fn start(backend: Box<dyn Backend>) -> Result<Self> {
+        Self::start_with_scripts(backend, Vec::new())
+    }
+
+    pub fn start_with_scripts(
+        mut backend: Box<dyn Backend>,
+        startup_scripts: Vec<StartupScript>,
+    ) -> Result<Self> {
         let file_outputs = Arc::new(Mutex::new(VecDeque::new()));
-        let model = ApplicationModel::initialize(&mut *backend, Arc::clone(&file_outputs), false)?;
+        let mut model =
+            ApplicationModel::initialize(&mut *backend, Arc::clone(&file_outputs), false)?;
+        model.install_startup_scripts(startup_scripts);
         Self::from_model(model, backend, file_outputs)
     }
 
@@ -367,7 +378,6 @@ fn update_application(
             model.notify_error(format!("backend poll failed: {error}"));
         }
     }
-    #[cfg(not(target_arch = "wasm32"))]
     if let Err(error) = model.advance_script_compositions(backend, elapsed) {
         model.notify_error(error);
     }
@@ -375,7 +385,6 @@ fn update_application(
         model.notify_error(error);
     }
     model.advance_io(backend);
-    #[cfg(not(target_arch = "wasm32"))]
     if let Err(error) = model.advance_scripting(backend, elapsed) {
         model.notify_error(error);
     }
@@ -397,13 +406,9 @@ struct ApplicationModel {
     connection_backend_available: bool,
     connection_view: Arc<ConnectionViewState>,
     scripting_view: Arc<ScriptingState>,
-    #[cfg(not(target_arch = "wasm32"))]
     script_manager: ScriptManager,
-    #[cfg(not(target_arch = "wasm32"))]
     script_last_snapshot: ControlSnapshot,
-    #[cfg(not(target_arch = "wasm32"))]
     script_composition_playback: BTreeMap<LoopId, ScriptCompositionPlayback>,
-    #[cfg(not(target_arch = "wasm32"))]
     script_composition_frame_remainder: u128,
     global: shoop_app_api::GlobalControlState,
     status: StatusState,
@@ -457,7 +462,6 @@ struct LoopModel {
     script_composition: Vec<Vec<LoopId>>,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 struct ScriptCompositionPlayback {
     section: usize,
     remaining_frames: u64,
@@ -566,6 +570,10 @@ impl ApplicationModel {
             audio_data: None,
             script_composition: Vec::new(),
         };
+        #[cfg(not(target_arch = "wasm32"))]
+        let script_manager = ScriptManager::new_with_midi(Box::new(NativeMidiService::new()));
+        #[cfg(target_arch = "wasm32")]
+        let script_manager = ScriptManager::new_with_midi(Box::new(NullMidiService));
         let model = Self {
             revision: 1,
             next_track_id: 2,
@@ -590,16 +598,12 @@ impl ApplicationModel {
             connection_backend_available: false,
             connection_view: Arc::new(ConnectionViewState::default()),
             scripting_view: Arc::new(ScriptingState {
-                supported: cfg!(not(target_arch = "wasm32")),
+                supported: true,
                 scripts: Arc::from([]),
             }),
-            #[cfg(not(target_arch = "wasm32"))]
-            script_manager: ScriptManager::new_with_midi(Box::new(NativeMidiService::new())),
-            #[cfg(not(target_arch = "wasm32"))]
+            script_manager,
             script_last_snapshot: ControlSnapshot::default(),
-            #[cfg(not(target_arch = "wasm32"))]
             script_composition_playback: BTreeMap::new(),
-            #[cfg(not(target_arch = "wasm32"))]
             script_composition_frame_remainder: 0,
             global: Default::default(),
             status: Default::default(),
@@ -612,44 +616,27 @@ impl ApplicationModel {
             background_session_encoding,
             file_outputs,
         };
-        #[cfg(not(target_arch = "wasm32"))]
-        let model = {
-            let mut model = model;
-            model.script_last_snapshot = model.script_control_snapshot();
-            model
-        };
+        let mut model = model;
+        model.script_last_snapshot = model.script_control_snapshot();
         Ok(model)
     }
 
     fn install_startup_scripts(&mut self, scripts: Vec<StartupScript>) -> Vec<Option<ScriptId>> {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let mut ids = Vec::with_capacity(scripts.len());
-            for script in scripts {
-                match self.script_manager.add(
-                    script.name,
-                    script.source,
-                    script.kind,
-                    script.enabled,
-                ) {
-                    Ok(id) => ids.push(Some(id)),
-                    Err(error) => {
-                        ids.push(None);
-                        self.notify_error(error.to_string());
-                    }
+        let mut ids = Vec::with_capacity(scripts.len());
+        for script in scripts {
+            match self
+                .script_manager
+                .add(script.name, script.source, script.kind, script.enabled)
+            {
+                Ok(id) => ids.push(Some(id)),
+                Err(error) => {
+                    ids.push(None);
+                    self.notify_error(error.to_string());
                 }
             }
-            self.refresh_scripting_view();
-            ids
         }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let count = scripts.len();
-            if count != 0 {
-                self.notify_error("Lua scripting is unavailable in browser builds".to_owned());
-            }
-            vec![None; count]
-        }
+        self.refresh_scripting_view();
+        ids
     }
 
     fn handle_intent(&mut self, backend: &mut dyn Backend, intent: AppIntent) {
@@ -742,23 +729,15 @@ impl ApplicationModel {
         kind: ScriptKind,
         enabled: bool,
     ) -> Result<(), String> {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.prepare_script_invocation();
-            let result = self
-                .script_manager
-                .add(name, source.to_string(), kind, enabled)
-                .map(|_| ())
-                .map_err(|error| error.to_string())
-                .and_then(|()| self.apply_script_operations(backend));
-            self.refresh_scripting_view();
-            result
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let _ = (backend, name, source, kind, enabled);
-            Err("Lua scripting is unavailable in the browser build".to_owned())
-        }
+        self.prepare_script_invocation();
+        let result = self
+            .script_manager
+            .add(name, source.to_string(), kind, enabled)
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+            .and_then(|()| self.apply_script_operations(backend));
+        self.refresh_scripting_view();
+        result
     }
 
     fn set_script_enabled(
@@ -767,41 +746,25 @@ impl ApplicationModel {
         id: ScriptId,
         enabled: bool,
     ) -> Result<(), String> {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.prepare_script_invocation();
-            let result = self
-                .script_manager
-                .set_enabled(id, enabled)
-                .map_err(|error| error.to_string())
-                .and_then(|()| self.apply_script_operations(backend));
-            self.refresh_scripting_view();
-            result
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let _ = (backend, id, enabled);
-            Err("Lua scripting is unavailable in the browser build".to_owned())
-        }
+        self.prepare_script_invocation();
+        let result = self
+            .script_manager
+            .set_enabled(id, enabled)
+            .map_err(|error| error.to_string())
+            .and_then(|()| self.apply_script_operations(backend));
+        self.refresh_scripting_view();
+        result
     }
 
     fn restart_script(&mut self, backend: &mut dyn Backend, id: ScriptId) -> Result<(), String> {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.prepare_script_invocation();
-            let result = self
-                .script_manager
-                .start(id)
-                .map_err(|error| error.to_string())
-                .and_then(|()| self.apply_script_operations(backend));
-            self.refresh_scripting_view();
-            result
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let _ = (backend, id);
-            Err("Lua scripting is unavailable in the browser build".to_owned())
-        }
+        self.prepare_script_invocation();
+        let result = self
+            .script_manager
+            .start(id)
+            .map_err(|error| error.to_string())
+            .and_then(|()| self.apply_script_operations(backend));
+        self.refresh_scripting_view();
+        result
     }
 
     fn replace_script_source(
@@ -810,56 +773,32 @@ impl ApplicationModel {
         id: ScriptId,
         source: Arc<str>,
     ) -> Result<(), String> {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.prepare_script_invocation();
-            let result = self
-                .script_manager
-                .replace_user_source(id, source.to_string())
-                .map_err(|error| error.to_string())
-                .and_then(|()| self.apply_script_operations(backend));
-            self.refresh_scripting_view();
-            result
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let _ = (backend, id, source);
-            Err("Lua scripting is unavailable in the browser build".to_owned())
-        }
+        self.prepare_script_invocation();
+        let result = self
+            .script_manager
+            .replace_user_source(id, source.to_string())
+            .map_err(|error| error.to_string())
+            .and_then(|()| self.apply_script_operations(backend));
+        self.refresh_scripting_view();
+        result
     }
 
     fn stop_script(&mut self, id: ScriptId) -> Result<(), String> {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let result = self
-                .script_manager
-                .stop(id)
-                .map_err(|error| error.to_string());
-            self.refresh_scripting_view();
-            result
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let _ = id;
-            Err("Lua scripting is unavailable in the browser build".to_owned())
-        }
+        let result = self
+            .script_manager
+            .stop(id)
+            .map_err(|error| error.to_string());
+        self.refresh_scripting_view();
+        result
     }
 
     fn forget_script(&mut self, id: ScriptId) -> Result<(), String> {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let result = self
-                .script_manager
-                .forget(id)
-                .map_err(|error| error.to_string());
-            self.refresh_scripting_view();
-            result
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let _ = id;
-            Err("Lua scripting is unavailable in the browser build".to_owned())
-        }
+        let result = self
+            .script_manager
+            .forget(id)
+            .map_err(|error| error.to_string());
+        self.refresh_scripting_view();
+        result
     }
 
     fn handle_script_key_event(
@@ -867,29 +806,20 @@ impl ApplicationModel {
         backend: &mut dyn Backend,
         event: KeyEvent,
     ) -> Result<(), String> {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.prepare_script_invocation();
-            self.script_manager.dispatch_key_event(ScriptKeyEvent {
-                event_type: match event.event_type {
-                    KeyEventType::Pressed => 0,
-                    KeyEventType::Released => 1,
-                },
-                key: event.key,
-                modifiers: event.modifiers,
-            });
-            let result = self.apply_script_operations(backend);
-            self.refresh_scripting_view();
-            result
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let _ = (backend, event);
-            Ok(())
-        }
+        self.prepare_script_invocation();
+        self.script_manager.dispatch_key_event(ScriptKeyEvent {
+            event_type: match event.event_type {
+                KeyEventType::Pressed => 0,
+                KeyEventType::Released => 1,
+            },
+            key: event.key,
+            modifiers: event.modifiers,
+        });
+        let result = self.apply_script_operations(backend);
+        self.refresh_scripting_view();
+        result
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn advance_scripting(
         &mut self,
         backend: &mut dyn Backend,
@@ -952,13 +882,11 @@ impl ApplicationModel {
         result
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn prepare_script_invocation(&mut self) {
         let snapshot = self.script_control_snapshot();
         self.script_manager.set_control_snapshot(snapshot);
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn script_control_snapshot(&self) -> ControlSnapshot {
         let mut tracks = Vec::with_capacity(self.tracks.len());
         let mut loops = Vec::with_capacity(self.loops.len());
@@ -1010,7 +938,6 @@ impl ApplicationModel {
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn apply_script_operations(&mut self, backend: &mut dyn Backend) -> Result<(), String> {
         for operation in self.script_manager.take_control_operations() {
             self.apply_script_operation(backend, operation)?;
@@ -1018,7 +945,6 @@ impl ApplicationModel {
         Ok(())
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn apply_script_operation(
         &mut self,
         backend: &mut dyn Backend,
@@ -1312,7 +1238,6 @@ impl ApplicationModel {
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn apply_script_track_action(
         &mut self,
         backend: &mut dyn Backend,
@@ -1325,7 +1250,6 @@ impl ApplicationModel {
         Ok(())
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn script_trigger_loops(
         &mut self,
         backend: &mut dyn Backend,
@@ -1462,7 +1386,6 @@ impl ApplicationModel {
         Ok(())
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn script_composition_section_length(&self, section: &[LoopId]) -> u64 {
         section
             .iter()
@@ -1472,7 +1395,6 @@ impl ApplicationModel {
             .unwrap_or(0)
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn advance_script_compositions(
         &mut self,
         backend: &mut dyn Backend,
@@ -1567,7 +1489,6 @@ impl ApplicationModel {
         Ok(())
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn refresh_scripting_view(&mut self) {
         self.scripting_view = Arc::new(ScriptingState {
             supported: true,
@@ -1614,7 +1535,6 @@ impl ApplicationModel {
                 return Err(message);
             }
         };
-        #[cfg(not(target_arch = "wasm32"))]
         if let Err(error) =
             ScriptManager::validate_session_scripts(&session_script_sources(&bundle))
         {
@@ -3080,14 +3000,11 @@ impl ApplicationModel {
                         .unwrap_or(0)
                 })
                 .sum();
-            #[cfg(not(target_arch = "wasm32"))]
             let active_section = self
                 .script_composition_playback
                 .get(&target)
                 .map(|playback| playback.section)
                 .unwrap_or(0);
-            #[cfg(target_arch = "wasm32")]
-            let active_section = 0;
             let section_offset = sections
                 .iter()
                 .take(active_section)
@@ -3528,23 +3445,16 @@ impl ApplicationModel {
     }
 
     fn session_script_documents(&self) -> Vec<ScriptDocument> {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.script_manager
-                .session_scripts()
-                .into_iter()
-                .map(|script| ScriptDocument {
-                    id: script.document_id,
-                    name: script.name,
-                    source: script.source,
-                    enabled: script.enabled,
-                })
-                .collect()
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            Vec::new()
-        }
+        self.script_manager
+            .session_scripts()
+            .into_iter()
+            .map(|script| ScriptDocument {
+                id: script.document_id,
+                name: script.name,
+                source: script.source,
+                enabled: script.enabled,
+            })
+            .collect()
     }
 
     fn apply_loaded_session(
@@ -3728,11 +3638,8 @@ impl ApplicationModel {
             .saturating_add(1);
         self.tracks = tracks;
         self.loops = loops;
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.script_composition_playback.clear();
-            self.script_composition_frame_remainder = 0;
-        }
+        self.script_composition_playback.clear();
+        self.script_composition_frame_remainder = 0;
         self.connection_ports = connection_ports;
         self.pending_connections.clear();
         self.connection_errors.clear();
@@ -3747,13 +3654,10 @@ impl ApplicationModel {
         self.global.sync = bundle.document.global.sync;
         self.global.solo = bundle.document.global.solo;
         self.global.apply_n_cycles = bundle.document.global.apply_n_cycles;
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.script_manager
-                .replace_session_scripts(&session_script_sources(bundle))
-                .map_err(|error| error.to_string())?;
-            self.refresh_scripting_view();
-        }
+        self.script_manager
+            .replace_session_scripts(&session_script_sources(bundle))
+            .map_err(|error| error.to_string())?;
+        self.refresh_scripting_view();
         Ok(())
     }
 
@@ -4459,7 +4363,6 @@ fn direct_topology(track: &TrackDocument) -> Result<(u32, bool), String> {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 fn session_script_sources(bundle: &SessionBundle) -> Vec<SessionScriptSource> {
     bundle
         .document
@@ -4478,7 +4381,6 @@ fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionDat
     if !bundle.document.buses.is_empty()
         || !bundle.document.global_ports.is_empty()
         || !bundle.document.fx_states.is_empty()
-        || (cfg!(target_arch = "wasm32") && !bundle.document.scripts.is_empty())
         || !bundle.document.midi_control.bindings.is_empty()
         || !bundle.document.settings.is_empty()
     {
@@ -4861,6 +4763,43 @@ mod tests {
         assert_eq!(snapshot.scripting.scripts.len(), 2);
         assert_eq!(snapshot.scripting.scripts[0].id, ids[1].unwrap());
         assert_eq!(snapshot.scripting.scripts[1].id, ids[2].unwrap());
+    }
+
+    #[test]
+    fn cooperative_startup_runs_embedded_keyboard_on_the_application_owner() {
+        let mut runtime = CooperativeApplicationRuntime::start_with_scripts(
+            Box::new(FakeBackend::default()),
+            vec![StartupScript {
+                name: "keyboard.lua".to_owned(),
+                source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            }],
+        )
+        .unwrap();
+        assert!(runtime.snapshot().scripting.supported);
+        assert_eq!(
+            runtime.snapshot().scripting.scripts[0].lifecycle,
+            shoop_app_api::ScriptLifecycle::Listening
+        );
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Browser track".to_owned(),
+                audio_channels: 2,
+                midi: true,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::KeyEvent(KeyEvent {
+                event_type: KeyEventType::Pressed,
+                key: 16_777_236,
+                modifiers: 0,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().tracks[1].loops[0].selected);
     }
 
     #[test]

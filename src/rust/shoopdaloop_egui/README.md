@@ -3,8 +3,8 @@
 This is the shared native and browser composition root for the egui application.
 
 - Native builds retain the threaded deterministic dummy backend and provide actor-owned Lua scripting, keyboard control, and script-created native MIDI control ports.
-- Browser builds use a repository-owned Web Audio/AudioWorklet backend after an explicit microphone or output-only enable action.
-- Browser Lua and MIDI device input/output are intentionally unavailable. MIDI loop content and `.shoop`/`.shoop-midi` file workflows remain cross-target.
+- Browser builds use a repository-owned Web Audio/AudioWorklet backend after an explicit microphone or output-only enable action and run the same omniLua-backed scripting manager cooperatively on the application owner.
+- Browser MIDI device input/output remains intentionally unavailable. Logical script MIDI ports use an empty host service, while MIDI loop content and `.shoop`/`.shoop-midi` file workflows remain cross-target.
 
 ## Native
 
@@ -49,6 +49,8 @@ The self-contained HTML embeds the application and AudioWorklet Wasm modules plu
 The browser requests echo cancellation, noise suppression, and automatic gain control off, but the browser may negotiate different settings. The engine runs at the context's actual sample rate and render quantum. Mono capture is duplicated where a stereo direct track needs two inputs; a mono track uses capture channel one. Mono track output is sent to both destination channels, stereo maps left/right, and all tracks sum with final clipping to `[-1, 1]`. Input monitoring defaults off to reduce feedback risk.
 
 Browser recording storage is prepared per channel for ten seconds at the actual sample rate. Exhaustion stops further channel recording work and is reported in diagnostics instead of growing Wasm memory in the render callback.
+
+The browser application embeds omniLua, Shoop's Lua modules, `keyboard.lua`, and the APC Mini script. Keyboard control is enabled by default and receives egui press/release events independently of audio permission. The APC script is embedded but disabled by default and can run healthily against the empty browser MIDI host inventory. Source-bearing `.shoop` scripts use the same syntax-check/transaction/save path as native egui. Browser script settings UI and persistence are completed separately from this runtime integration.
 
 ## Session and loop files
 

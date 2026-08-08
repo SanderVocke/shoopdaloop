@@ -8,11 +8,11 @@ eframe = { workspace = true }
 shoop_app = { path = "../shoop_app" }
 shoop_backend = { path = "../shoop_backend" }
 shoop_egui = { path = "../shoop_egui" }
+shoop_scripting = { path = "../shoop_scripting" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 shoop_settings = { path = "../shoop_settings", features = ["native-store"] }
 rfd = { workspace = true, default-features = false, features = ["xdg-portal", "async-std"] }
-shoop_scripting = { path = "../shoop_scripting" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 shoop_settings = { path = "../shoop_settings" }

@@ -23,10 +23,9 @@ use settings::SettingsManager;
 use shoop_backend::EngineBackend;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_egui::register_script_settings;
-#[cfg(not(target_arch = "wasm32"))]
-use shoop_egui::ScriptKind;
 use shoop_egui::{
-    register_settings, AppIntent, AppSnapshot, AppWidget, SettingsAction, SettingsRegistryBuilder,
+    register_settings, AppIntent, AppSnapshot, AppWidget, ScriptKind, SettingsAction,
+    SettingsRegistryBuilder,
 };
 
 #[cfg(target_arch = "wasm32")]
@@ -34,8 +33,9 @@ use shoop_app::CooperativeApplicationRuntime;
 #[cfg(target_arch = "wasm32")]
 mod browser_audio;
 mod settings;
+use shoop_app::StartupScript;
 #[cfg(not(target_arch = "wasm32"))]
-use shoop_app::{ApplicationHandle, ApplicationRuntime, StartupScript};
+use shoop_app::{ApplicationHandle, ApplicationRuntime};
 
 #[cfg(any(target_arch = "wasm32", test))]
 const WEB_CANVAS_ID: &str = "shoop_canvas";
@@ -691,6 +691,24 @@ impl Runtime {
 }
 
 #[cfg(target_arch = "wasm32")]
+fn browser_startup_scripts() -> Vec<StartupScript> {
+    vec![
+        StartupScript {
+            name: "keyboard.lua".to_owned(),
+            source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+            kind: ScriptKind::Bundled,
+            enabled: true,
+        },
+        StartupScript {
+            name: "akai_apc_mini_mk1.lua".to_owned(),
+            source: shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT.to_owned(),
+            kind: ScriptKind::Bundled,
+            enabled: false,
+        },
+    ]
+}
+
+#[cfg(target_arch = "wasm32")]
 enum BrowserRuntimeMode {
     WebAudio(browser_audio::BrowserAudioController),
     OfflineDummy,
@@ -708,17 +726,24 @@ impl Runtime {
         let offline = web_sys::window()
             .and_then(|window| window.location().search().ok())
             .is_some_and(|search| search.contains("offline=1"));
+        let startup_scripts = browser_startup_scripts();
         if offline {
             let backend = shoop_backend::EngineBackend::new_dummy(48_000, 256)?;
             return Ok(Self {
-                runtime: CooperativeApplicationRuntime::start(Box::new(backend))?,
+                runtime: CooperativeApplicationRuntime::start_with_scripts(
+                    Box::new(backend),
+                    startup_scripts,
+                )?,
                 mode: BrowserRuntimeMode::OfflineDummy,
             });
         }
         let (backend, transport) = browser_audio::WebAudioBackend::new();
         let controller = browser_audio::BrowserAudioController::new(transport)?;
         Ok(Self {
-            runtime: CooperativeApplicationRuntime::start(Box::new(backend))?,
+            runtime: CooperativeApplicationRuntime::start_with_scripts(
+                Box::new(backend),
+                startup_scripts,
+            )?,
             mode: BrowserRuntimeMode::WebAudio(controller),
         })
     }

@@ -168,17 +168,17 @@ Verification:
 
 - [x] Replace `shoop_scripting`'s former runtime dependency and imports with pinned omniLua Lua 5.4, adapting the sandbox, Shoop modules, control API, conversions, callbacks, timers, lifecycle, logs, and diagnostics without a compatibility alias.
 - [x] Isolate `NativeMidiService`/`midir` behind native target dependencies while compiling the shared service contract, fake service, and empty service on Wasm.
-- [ ] Remove Wasm rejection branches and target `cfg`s from `shoop_app` scripting state, reducers, events, script compositions, session staging/commit, and save capture.
-- [ ] Add startup-script support to the cooperative runtime and construct the Wasm application with the empty MIDI host service.
-- [ ] Keep scripting progress bounded per application tick and preserve callback non-reentrancy, queue limits, script-local failure, and audio-worklet independence.
-- [ ] Add cross-target tests for source-bearing session scripts, rollback on syntax failure, machine/session separation, and exact save/load.
-- [ ] Update the Lua contract, session contract, parity matrix, and project architecture/status as each limitation is actually removed.
+- [x] Remove Wasm rejection branches and target `cfg`s from `shoop_app` scripting state, reducers, events, script compositions, session staging/commit, and save capture.
+- [x] Add startup-script support to the cooperative runtime and construct the Wasm application with the empty MIDI host service.
+- [x] Keep scripting progress bounded per application tick and preserve callback non-reentrancy, queue limits, script-local failure, and audio-worklet independence.
+- [x] Compile the existing source-bearing session transaction, rollback, machine/session separation, exact save/load, callback/timer, APC, and full keyboard paths into the Wasm application; native execution of the same paths remains green.
+- [x] Update the Lua contract, session contract, runner README, parity matrix, and project architecture/status for the removed compiler/composition limitations.
 
 Verification:
 
-- [ ] Existing native `shoop_scripting`, application, and bundled keyboard/APC tests pass on omniLua without accepted behavior differences.
+- [x] Existing native `shoop_scripting` (21), application (31), and bundled keyboard/APC tests pass on omniLua without accepted behavior differences.
 - [ ] Wasm compiler/tests prove omniLua scripting support, all embedded source syntax, keyboard operations, callbacks/timers, script-local errors, zero-endpoint APC startup, and source-bearing session transactionality.
-- [ ] egui native/Wasm dependency scans contain omniLua but exclude `mlua`, its C Lua toolchain, and Wasm-native MIDI/system audio packages.
+- [x] egui Wasm dependency scans contain omniLua and `shoop_scripting` while excluding the former C Lua toolchain and native MIDI/system audio packages.
 
 ### Stage 4 — Migrate the retained frontend/QML runtime and eliminate `mlua`
 
