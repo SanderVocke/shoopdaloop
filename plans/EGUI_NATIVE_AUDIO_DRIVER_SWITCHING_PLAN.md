@@ -162,15 +162,23 @@ Verification:
 
 ### Stage 6 — Final end-to-end validation
 
-- [ ] Run `cargo fmt --all -- --check` and `git diff --check`.
-- [ ] Run focused native settings/backend/application/egui/runner tests with warning denial.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace --features shoop_engine/app_backend`.
-- [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend`.
-- [ ] Build first, then run the retained frontend/QML self-test suite with `target/debug/shoopdaloop_dev.sh --self-test`.
-- [ ] Run the locked production Wasm check for `shoopdaloop_egui`, the preview Wasm check, the AudioWorklet build, and dependency-tree forbidden-package scans used by `.github/workflows/build_and_test_egui.yml`.
-- [ ] Exercise end to end: create audio and MIDI loop content; switch same rate; switch a same-driver variant; cancel a changed-rate switch; confirm a changed-rate switch; verify scaled content/timing and stopped transport; save/restart; verify preferred startup configuration and links/diagnostics.
-- [ ] Record exact driver/device environment evidence, skipped real-driver checks, test counts, and any residual limitations in the plan and parity matrix.
+- [x] Run `cargo fmt --all -- --check` and `git diff --check`.
+- [x] Run focused native settings/backend/application/egui/runner tests with warning denial.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace --features shoop_engine/app_backend`.
+- [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend`.
+- [x] Build first, then run the retained frontend/QML self-test suite with `target/debug/shoopdaloop_dev.sh --self-test`.
+- [x] Run the locked production Wasm check for `shoopdaloop_egui`, the preview Wasm check, the AudioWorklet build, and dependency-tree forbidden-package scans used by `.github/workflows/build_and_test_egui.yml`.
+- [x] Exercise end to end: create audio and MIDI loop content; switch same rate; switch a same-driver variant; cancel a changed-rate switch; confirm a changed-rate switch; verify scaled content/timing and stopped transport; save/restart; verify preferred startup configuration and links/diagnostics.
+- [x] Record exact driver/device environment evidence, skipped real-driver checks, test counts, and any residual limitations in the plan and parity matrix.
 - [ ] Commit the completed validation/documentation milestone.
+
+Validation evidence recorded on 2026-08-08:
+
+- The warning-denying focused command passed 141 tests: `shoop_app` 42, `shoop_backend` 26, `shoop_egui` 44, `shoop_settings` 13, and `shoopdaloop_egui` 16. The complete workspace command and doc tests passed after the final CPAL mock-port fix.
+- The retained offscreen QML run passed all 236 testcases with 0 failures and 0 skips. Its initially failing `CpalPorts` case exposed a missing CPAL-test virtual-port registration; the fix is guarded by `cpal_test_backend_publishes_mock_virtual_audio_ports` and the entire QML suite was rerun.
+- Locked debug and release Wasm checks passed for the production runner and preview; debug and release AudioWorklet builds passed, module inspection found zero imports, and both browser dependency trees contained none of the workflow-forbidden native packages.
+- Deterministic application/backend/runner workflows jointly cover audio and MIDI content, same-rate cross-driver and same-family changes, cancel and confirm at 48→24 kHz, exact resampling/timing, stopped transport, stable IDs, links/diagnostics, durable save, persistence retry, restart selection, and unavailable-preference fallback.
+- Host evidence: CPAL discovery exposed `default` and `pipewire`; optional real smoke started CPAL, a software-backed JACK server, and dummy/offline, all at 48 kHz. The host had no `/dev/snd`, no `/dev/snd/seq`, and no display server. Therefore physical audio/MIDI I/O, a hardware-negotiated rate change, and an OS-window click-through are precise environment skips, not claimed validations; deterministic test adapters, headless paint tests, and the retained QML suite cover those code paths.
 
 ## Execution contract
 

@@ -1158,8 +1158,8 @@ impl CpalBackend {
     /// OS audio device, so the CPAL virtual port routing can be exercised on
     /// headless CI where ALSA / CoreAudio / WASAPI has no usable device.
     fn start_with_mock(
-        _settings: &CpalMidiAudioDriverSettings,
-        _external: Arc<Mutex<engine::DummyExternalConnections>>,
+        settings: &CpalMidiAudioDriverSettings,
+        external: Arc<Mutex<engine::DummyExternalConnections>>,
         decoupled_midi_ports: Arc<Mutex<Vec<CpalDecoupledMidiPort>>>,
         _maybe_process_callback: Option<ProcessCallback>,
     ) -> Result<Self> {
@@ -1178,15 +1178,38 @@ impl CpalBackend {
             .map(|c| format!("cpal:{output_device_name}:playback_{}", c + 1))
             .collect();
 
-        let input_device = host.default_input_device().expect("mock input device");
-        let input_config = input_device.default_input_config()?;
-        let input_channels = input_config.channels() as usize;
-        let input_device_name = input_device
-            .name()
-            .unwrap_or_else(|_| "mock-input".to_string());
-        let capture_names: Vec<String> = (0..input_channels)
-            .map(|c| format!("cpal:{input_device_name}:capture_{}", c + 1))
-            .collect();
+        let (input_channels, capture_names) = if settings.input_device == "none" {
+            (0, Vec::new())
+        } else {
+            let input_device = host.default_input_device().expect("mock input device");
+            let input_config = input_device.default_input_config()?;
+            let input_channels = input_config.channels() as usize;
+            let input_device_name = input_device
+                .name()
+                .unwrap_or_else(|_| "mock-input".to_string());
+            let capture_names = (0..input_channels)
+                .map(|c| format!("cpal:{input_device_name}:capture_{}", c + 1))
+                .collect();
+            (input_channels, capture_names)
+        };
+
+        {
+            let mut ext = external.lock().unwrap_or_else(|e| e.into_inner());
+            for name in &capture_names {
+                ext.add_mock_port(
+                    name.clone(),
+                    engine::PortDirection::Output,
+                    engine::PortDataType::Audio,
+                );
+            }
+            for name in &playback_names {
+                ext.add_mock_port(
+                    name.clone(),
+                    engine::PortDirection::Input,
+                    engine::PortDataType::Audio,
+                );
+            }
+        }
 
         let last_processed = Arc::new(AtomicU32::new(0));
         let xruns = Arc::new(AtomicU32::new(0));
@@ -6795,6 +6818,40 @@ mod tests {
         assert_eq!(events[0].data(), &[0x90, 64, 127]);
         assert_eq!(events[1].data(), &[0x80, 64, 0]);
         assert!(queue.lock().unwrap_or_else(|e| e.into_inner()).is_empty());
+    }
+
+    #[test]
+    fn cpal_test_backend_publishes_mock_virtual_audio_ports() {
+        let driver = AudioDriver::new(AudioDriverType::CpalTest, None).expect("driver");
+        let settings = AudioDriverSettings::Cpal(CpalMidiAudioDriverSettings {
+            client_name: "shoop-cpal-test".to_string(),
+            host: "default".to_string(),
+            output_device: "default".to_string(),
+            input_device: "none".to_string(),
+            sample_rate: 0,
+            buffer_size: 0,
+            input_channels: "all".to_string(),
+            output_channels: "all".to_string(),
+            capture_ring_frames: 256,
+            midi_inputs: vec!["none".to_string()],
+            midi_outputs: vec!["none".to_string()],
+        });
+        driver.start(&settings).expect("settings accepted");
+        let sess = BackendSession::new().expect("session");
+        sess.set_audio_driver(&driver)
+            .expect("mock driver activation");
+
+        let playback_ports = driver.find_external_ports(
+            None,
+            PortDirection::Input as u32,
+            PortDataType::Audio as u32,
+        );
+        assert!(
+            playback_ports
+                .iter()
+                .any(|p| p.name.starts_with("cpal:") && p.name.contains(":playback_")),
+            "no virtual CPAL playback ports: {playback_ports:?}"
+        );
     }
 
     #[test]
