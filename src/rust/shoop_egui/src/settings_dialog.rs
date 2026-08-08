@@ -60,6 +60,25 @@ impl SettingsDialog {
         self.open
     }
 
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_open_category(
+        &mut self,
+        state: &SettingsViewState,
+        category: &str,
+    ) -> bool {
+        let available = self
+            .registry
+            .definitions()
+            .iter()
+            .any(|definition| definition.category() == category);
+        if available {
+            self.open(state);
+            self.active_category = Some(category.to_owned());
+        }
+        available
+    }
+
     pub fn add_user_script_path(&mut self, path: String) -> Result<(), &'static str> {
         let draft = self.draft.as_mut().ok_or("settings are not open")?;
         let mut scripts = draft

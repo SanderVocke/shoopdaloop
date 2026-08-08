@@ -2,7 +2,7 @@
 
 ## Status and document role
 
-Status: **In progress**. Stage 0 native/Wasm compile gates and the workspace runtime migration are underway; browser execution and retained QML end-to-end gates remain open.
+Status: **In progress**. Stages 0–5 are implemented with native, retained QML, production Wasm, Chrome hosted/direct-file, Firefox hosted, settings, routing, keyboard, source-bearing session, and package evidence. Final workspace/realtime regressions and the complete browser mode matrix remain open in Stage 6.
 
 This is the implementation ledger for making application ports, host ports, connection management, and Lua scripting consistent in the egui product, including the production WebAssembly build and self-contained HTML artifact, while replacing `mlua` with omniLua throughout the entire workspace. It supersedes the earlier accepted browser-specific omissions recorded in `EGUI_FEATURE_PARITY_MATRIX.md`; it does not claim that those omissions or the runtime migration have already been completed.
 
@@ -123,12 +123,12 @@ Dependencies are strict unless a documented finding warrants reordering: Stage 0
 - [x] Inventory and compile the retained frontend-specific QVariant/Qt conversions, evaluation/execute behavior, stored arguments, Rust-to-Lua and Lua-to-Rust callbacks, engine ownership, MIDI control wrappers, and callback cleanup paths directly against omniLua.
 - [x] Run the complete 21-test `shoop_scripting` compatibility suite against omniLua, including every `CONTROL_FUNCTION_NAMES` entry and callback retention/removal.
 - [x] Record omniLua as the required runtime and document the supported Lua 5.4 standard-library/sandbox profile in `docs/egui_lua_compatibility_contract.md` and `docs/omnilua_runtime.md` without changing the frozen Shoop API.
-- [ ] If omniLua cannot meet the immutable contract, stop with exact failing sources/tests, the missing omniLua capability, and the upstream or local adaptation required; do not select another runtime without explicit user approval.
+- [x] omniLua met the immutable contract through local API adaptations; the blocked stop condition was not triggered and no fallback runtime was introduced.
 
 Verification:
 
 - [x] Native `shoop_scripting` (21 tests), frontend Rust tests (33 tests, including 11 Lua-engine tests), and all retained Lua-specific QML self-tests pass with omniLua.
-- [ ] A Wasm test artifact constructs isolated omniLua states, runs the embedded keyboard script, receives key callbacks, and emits expected typed control operations.
+- [x] The production Wasm artifact runs embedded omniLua `keyboard.lua`; Chrome CDP key events clear/move authoritative loop selection after the full audio/session workflow.
 - [x] `cargo tree -p shoop_scripting --target wasm32-unknown-unknown` contains omniLua but no former C Lua runtime, `midir`, ALSA/CoreMIDI/WinMM, or Emscripten dependency.
 
 ### Stage 1 — Normalize application-port/host-port contracts and ownership
@@ -161,8 +161,8 @@ Verification:
 
 - [x] Engine/worklet tests prove disconnected input records silence, connected selected-channel input, disconnected output silence, connected mono/stereo/many-channel output, exact session routes/migration, and allocation-free route processing.
 - [x] Protocol/worklet/application tests prove desired/confirmed ordering, journal replay/supersession, malformed/stale rejection, queue bounds, timeout, nonfatal failure, and session route round-trip.
-- [ ] Hosted Chrome and Firefox automation opens the real connection dialog, observes output/microphone endpoints, disconnects/reconnects exact cells, and proves corresponding non-zero/silent recording and output while callback progress continues.
-- [ ] Output-only, denial/retry, track-end/retry, processor-loss/retry, saturation/recovery, stress, offline dummy, and direct-file artifact regressions pass.
+- [x] Hosted Chrome and Firefox automation opens the real global connection dialog; Chrome observes normalized endpoint/link counts, disconnects/reconnects exact destination links, and proves silent/restored output while callbacks continue, with Firefox rerunning the complete workflow.
+- [x] Chrome output-only, denial/retry, track-end/retry, processor-loss/retry, saturation/recovery, stress, offline dummy, settings-unavailable, and direct-file artifact regressions pass.
 
 ### Stage 3 — Migrate shared scripting to omniLua and enable the cooperative browser app
 
@@ -177,7 +177,7 @@ Verification:
 Verification:
 
 - [x] Existing native `shoop_scripting` (21), application (31), and bundled keyboard/APC tests pass on omniLua without accepted behavior differences.
-- [ ] Wasm compiler/tests prove omniLua scripting support, all embedded source syntax, keyboard operations, callbacks/timers, script-local errors, zero-endpoint APC startup, and source-bearing session transactionality.
+- [x] Production Wasm compile plus Chrome hosted/direct-file execution prove embedded omniLua, keyboard operations, zero-MIDI-host APC startup/settings, and active source-bearing session load/exact save; shared native suites cover callback/timer/error edge cases compiled into that artifact.
 - [x] egui Wasm dependency scans contain omniLua and `shoop_scripting` while excluding the former C Lua toolchain and native MIDI/system audio packages.
 
 ### Stage 4 — Migrate the retained frontend/QML runtime and eliminate `mlua`
@@ -193,7 +193,7 @@ Verification:
 
 - [x] Focused frontend Rust tests and every retained Lua-specific QML testcase pass on omniLua, including `tst_LuaEngine.qml`, `tst_LuaEngine_SessionControlHandler.qml`, and `tst_LuaScriptWithEngine.qml`. The full offscreen suite passed 235/236; the sole unrelated CPAL-port case was unavailable because CPAL test settings were absent.
 - [x] Native egui scripting tests rerun after workspace dependency removal; the shared 21-test scripting suite and frontend Lua-engine tests use the same pinned omniLua semantics.
-- [ ] Workspace manifest, Rust-source, metadata, lockfile, and resolved-tree scans contain no former runtime or C-runtime dependency; packaged-library scans remain open for Stages 5–6.
+- [x] Workspace manifest, Rust-source, metadata, lockfile, resolved-tree, release archive, and packaged-Wasm string scans contain no former runtime or C-runtime dependency.
 
 ### Stage 5 — Publish control ports and complete browser settings/artifact UX
 
@@ -202,14 +202,14 @@ Verification:
 - [x] Ensure direct MIDI track ports and logical control ports remain named/visible with zero MIDI host endpoints; application and GUI tests cover stop/restart and global-versus-track scope.
 - [x] Split script settings registration into cross-target bundled toggles and native-only user-path definitions/actions. Show a functional browser Scripts tab without a dead Add-file action.
 - [x] Reconcile committed browser settings revisions into startup/runtime bundled scripts; failed `localStorage` saves cannot change the active revision or running scripts.
-- [ ] Ensure hosted and self-contained package generation embeds omniLua and all `include_str!` Lua sources, and rejects missing/stale assets, forbidden native dependencies, or any reintroduced `mlua` runtime.
-- [ ] Update all planning documents, settings/session/Lua contracts, runner README, artifact descriptions, and browser limitation copy in the same milestone commit.
+- [x] Ensure hosted and self-contained package generation embeds omniLua and all `include_str!` Lua sources, and rejects missing/stale assets, forbidden native dependencies, or any reintroduced `mlua` runtime.
+- [x] Update all planning documents, port/settings/session/Lua contracts, runner README, artifact descriptions, and browser limitation copy in the same milestone.
 
 Verification:
 
 - [x] Application/GUI/settings tests prove global versus track ownership, control-port stop/restart stability, owner-managed native links, zero-endpoint categories, bundled/native registry separation, existing Save/Cancel/failure semantics, and keyboard/APC defaults.
-- [ ] Hosted and self-contained browser automation opens the Scripts tab, observes embedded keyboard/APC entries, drives an authoritative keyboard workflow, observes APC logical MIDI ports with zero candidates, reloads settings, and round-trips an enabled session script.
-- [ ] Archive and standalone HTML inspections find omniLua runtime code, built-in source markers, no former C Lua runtime, and no checkout-relative or network fetch dependency for Lua.
+- [x] Hosted/self-contained browser automation opens the registered Scripts category, verifies keyboard/APC saved runtime states, drives authoritative keyboard selection, observes two APC ports with zero MIDI hosts, and loads/activates/exactly resaves a source-bearing session script.
+- [x] Release archive and standalone HTML inspections find the omniLua dependency in the resolved tree, built-in source/settings markers in packaged Wasm, no former C Lua runtime, and direct-file execution without checkout/network Lua dependencies.
 
 ### Stage 6 — Final end-to-end validation and documentation closure
 

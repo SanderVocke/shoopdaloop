@@ -346,6 +346,22 @@ impl AppWidget {
         (self.add_track_audio_channels, self.add_track_midi)
     }
 
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_settings_test_open_scripts(
+        &mut self,
+        settings_state: &SettingsViewState,
+    ) -> bool {
+        self.settings
+            .browser_test_open_category(settings_state, "Scripts")
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_open_global_connections(&mut self) {
+        self.connections.open(ConnectionScope::AllTracks);
+    }
+
     fn show_io_task_dialog(
         &mut self,
         context: &egui::Context,

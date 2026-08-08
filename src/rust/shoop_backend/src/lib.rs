@@ -714,6 +714,11 @@ impl EngineBackend {
         self.connection_revision = self.connection_revision.wrapping_add(1);
     }
 
+    pub fn remove_all_external_mock_ports(&mut self) {
+        self.external_connections.remove_all_mock_ports();
+        self.connection_revision = self.connection_revision.wrapping_add(1);
+    }
+
     pub fn externally_set_port_connected(
         &mut self,
         port_id: BackendPortId,

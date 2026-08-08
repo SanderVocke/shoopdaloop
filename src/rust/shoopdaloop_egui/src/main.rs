@@ -193,7 +193,8 @@ impl UnifiedApp {
         }
         let snapshot = self.runtime.snapshot();
         #[cfg(target_arch = "wasm32")]
-        self.browser_self_test.update(&mut self.runtime, &snapshot);
+        self.browser_self_test
+            .update(&mut self.runtime, &snapshot, &mut self.widget);
         #[cfg(target_arch = "wasm32")]
         self.browser_settings_test
             .update(&mut self.settings, &mut self.widget, &self.runtime);
@@ -733,7 +734,8 @@ impl Runtime {
             .is_some_and(|search| search.contains("offline=1"));
         let startup_scripts = browser_startup_scripts(settings)?;
         if offline {
-            let backend = shoop_backend::EngineBackend::new_dummy(48_000, 256)?;
+            let mut backend = shoop_backend::EngineBackend::new_dummy(48_000, 256)?;
+            backend.remove_all_external_mock_ports();
             return Ok(Self {
                 runtime: CooperativeApplicationRuntime::start_with_scripts(
                     Box::new(backend),
@@ -1032,7 +1034,9 @@ fn verify_browser_settings(
         .find(|script| script.name == APC_MINI_SCRIPT_FILENAME)
         .is_some_and(|script| script.enabled);
     let dialog_defaults = widget.browser_settings_test_open_add_track(&view);
-    if (channels, midi) != (expected_channels, expected_midi)
+    let scripts_tab_opened = widget.browser_settings_test_open_scripts(&view);
+    if !scripts_tab_opened
+        || (channels, midi) != (expected_channels, expected_midi)
         || (keyboard, apc) != (expected_keyboard, expected_apc)
         || (runtime_keyboard, runtime_apc) != (expected_keyboard, expected_apc)
         || dialog_defaults != (expected_channels, expected_midi)
@@ -1061,6 +1065,12 @@ fn set_browser_settings_test_status(status: &str, channels: u32, midi: bool, rec
 }
 
 #[cfg(target_arch = "wasm32")]
+const BROWSER_SESSION_SCRIPT_NAME: &str = "browser-self-test-session.lua";
+#[cfg(target_arch = "wasm32")]
+const BROWSER_SESSION_SCRIPT_SOURCE: &str =
+    "local shoop_control = require('shoop_control'); shoop_control.register_keyboard_event_cb(function(_) end)";
+
+#[cfg(target_arch = "wasm32")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum BrowserSelfTest {
     Disabled,
@@ -1071,9 +1081,31 @@ enum BrowserSelfTest {
     WaitForStopped,
     WaitForDetails,
     WaitForPlaying,
-    SaveSession { callbacks_before: u64 },
-    WaitForSessionSave { callbacks_before: u64 },
-    WaitForSessionLoad { callbacks_before: u64 },
+    WaitForDisconnectedOutput {
+        left: shoop_egui::PortId,
+        right: shoop_egui::PortId,
+        callbacks_before: u64,
+    },
+    WaitForReconnectedOutput {
+        left: shoop_egui::PortId,
+        right: shoop_egui::PortId,
+        callbacks_before: u64,
+    },
+    SaveSession {
+        callbacks_before: u64,
+    },
+    WaitForSessionSave {
+        callbacks_before: u64,
+    },
+    WaitForSessionLoad {
+        callbacks_before: u64,
+    },
+    SaveLoadedScriptSession {
+        callbacks_before: u64,
+    },
+    WaitForLoadedScriptSave {
+        callbacks_before: u64,
+    },
     PlayLoadedLoop,
     WaitForLoadedPlayback,
     ExportLoopAudio,
@@ -1102,13 +1134,14 @@ impl BrowserSelfTest {
         }
     }
 
-    fn update(&mut self, runtime: &mut Runtime, snapshot: &AppSnapshot) {
+    fn update(&mut self, runtime: &mut Runtime, snapshot: &AppSnapshot, widget: &mut AppWidget) {
         let result = match *self {
             Self::Disabled | Self::Complete | Self::Failed => return,
             Self::WaitForAudio => {
                 if !runtime.audio_running() {
                     return;
                 }
+                widget.browser_test_open_global_connections();
                 Ok(Self::AddTrack)
             }
             Self::AddTrack => runtime
@@ -1230,7 +1263,7 @@ impl BrowserSelfTest {
                     .map(|()| Self::WaitForPlaying)
             }
             Self::WaitForPlaying => {
-                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                let Some((track, loop_state)) = first_main_loop(snapshot) else {
                     return;
                 };
                 if loop_state.mode != shoop_egui::LoopMode::Playing
@@ -1240,6 +1273,98 @@ impl BrowserSelfTest {
                         .details
                         .as_ref()
                         .is_none_or(|details| details.loop_id != loop_state.id)
+                {
+                    return;
+                }
+                let mut outputs: Vec<_> = snapshot
+                    .connections
+                    .application_ports
+                    .iter()
+                    .filter(|port| {
+                        matches!(
+                            port.owner,
+                            shoop_egui::ApplicationPortOwner::Track { track_id, .. }
+                                if track_id == track.id
+                        ) && port.role == shoop_egui::PortRole::AudioOutput
+                    })
+                    .map(|port| port.id)
+                    .collect();
+                outputs.sort();
+                if outputs.len() < 2 {
+                    return self.fail("browser stereo route ports are missing");
+                }
+                runtime
+                    .dispatch(AppIntent::SetPortConnected {
+                        port_id: outputs[0],
+                        host_port_id: shoop_egui::HostPortId::new("webaudio:destination_1"),
+                        connected: false,
+                    })
+                    .and_then(|()| {
+                        runtime.dispatch(AppIntent::SetPortConnected {
+                            port_id: outputs[1],
+                            host_port_id: shoop_egui::HostPortId::new("webaudio:destination_2"),
+                            connected: false,
+                        })
+                    })
+                    .map(|()| Self::WaitForDisconnectedOutput {
+                        left: outputs[0],
+                        right: outputs[1],
+                        callbacks_before: snapshot.status.callback_count,
+                    })
+            }
+            Self::WaitForDisconnectedOutput {
+                left,
+                right,
+                callbacks_before,
+            } => {
+                let disconnected = !snapshot.connections.confirmed_links.iter().any(|link| {
+                    (link.application_port_id == left
+                        && link.host_port_id.as_str() == "webaudio:destination_1")
+                        || (link.application_port_id == right
+                            && link.host_port_id.as_str() == "webaudio:destination_2")
+                });
+                if !disconnected
+                    || snapshot.status.callback_count <= callbacks_before.saturating_add(5)
+                    || snapshot.status.output_peak > 0.000_001
+                {
+                    return;
+                }
+                runtime
+                    .dispatch(AppIntent::SetPortConnected {
+                        port_id: left,
+                        host_port_id: shoop_egui::HostPortId::new("webaudio:destination_1"),
+                        connected: true,
+                    })
+                    .and_then(|()| {
+                        runtime.dispatch(AppIntent::SetPortConnected {
+                            port_id: right,
+                            host_port_id: shoop_egui::HostPortId::new("webaudio:destination_2"),
+                            connected: true,
+                        })
+                    })
+                    .map(|()| Self::WaitForReconnectedOutput {
+                        left,
+                        right,
+                        callbacks_before: snapshot.status.callback_count,
+                    })
+            }
+            Self::WaitForReconnectedOutput {
+                left,
+                right,
+                callbacks_before,
+            } => {
+                let left_connected = snapshot.connections.confirmed_links.iter().any(|link| {
+                    link.application_port_id == left
+                        && link.host_port_id.as_str() == "webaudio:destination_1"
+                });
+                let right_connected = snapshot.connections.confirmed_links.iter().any(|link| {
+                    link.application_port_id == right
+                        && link.host_port_id.as_str() == "webaudio:destination_2"
+                });
+                if !left_connected
+                    || !right_connected
+                    || snapshot.status.callback_count <= callbacks_before
+                    || snapshot.status.output_peak <= 0.000_001
                 {
                     return;
                 }
@@ -1262,10 +1387,29 @@ impl BrowserSelfTest {
                 if !output.suggested_name.ends_with(".shoop") || output.bytes.is_empty() {
                     return self.fail("browser session output is invalid");
                 }
+                let mut bundle = match shoop_session::decode_session(&output.bytes) {
+                    Ok(bundle) => bundle,
+                    Err(error) => {
+                        return self.fail(&format!("could not decode browser session: {error}"));
+                    }
+                };
+                bundle.document.scripts.push(shoop_session::ScriptDocument {
+                    id: 9_000_001,
+                    name: BROWSER_SESSION_SCRIPT_NAME.to_owned(),
+                    source: BROWSER_SESSION_SCRIPT_SOURCE.to_owned(),
+                    enabled: true,
+                });
+                let bytes = match shoop_session::encode_session(&bundle, env!("CARGO_PKG_VERSION"))
+                {
+                    Ok(bytes) => bytes,
+                    Err(error) => {
+                        return self.fail(&format!("could not encode browser session: {error}"));
+                    }
+                };
                 runtime
                     .dispatch(AppIntent::LoadSessionBytes {
                         name: output.suggested_name,
-                        bytes: output.bytes,
+                        bytes: bytes.into(),
                     })
                     .map(|()| Self::WaitForSessionLoad { callbacks_before })
             }
@@ -1285,10 +1429,52 @@ impl BrowserSelfTest {
                 {
                     return self.fail("loaded browser session lost tracks");
                 }
+                if !snapshot.scripting.scripts.iter().any(|script| {
+                    script.kind == ScriptKind::Session
+                        && script.name == BROWSER_SESSION_SCRIPT_NAME
+                        && script.enabled
+                        && script.lifecycle == shoop_egui::ScriptLifecycle::Listening
+                }) {
+                    return self.fail(&format!(
+                        "loaded browser session lost its active Lua script: {:?}",
+                        snapshot.scripting.scripts
+                    ));
+                }
                 if snapshot.status.audio_driver != shoop_egui::AudioDriverState::Dummy
                     && snapshot.status.callback_count <= callbacks_before
                 {
                     return self.fail("audio callbacks did not advance through session reload");
+                }
+                Ok(Self::SaveLoadedScriptSession {
+                    callbacks_before: snapshot.status.callback_count,
+                })
+            }
+            Self::SaveLoadedScriptSession { callbacks_before } => runtime
+                .dispatch(AppIntent::RequestSaveSession)
+                .map(|()| Self::WaitForLoadedScriptSave { callbacks_before }),
+            Self::WaitForLoadedScriptSave { callbacks_before } => {
+                if snapshot.status.audio_driver != shoop_egui::AudioDriverState::Dummy
+                    && snapshot.status.callback_count <= callbacks_before
+                {
+                    return;
+                }
+                let Some(output) = runtime.take_file_output() else {
+                    return;
+                };
+                let bundle = match shoop_session::decode_session(&output.bytes) {
+                    Ok(bundle) => bundle,
+                    Err(error) => {
+                        return self.fail(&format!(
+                            "could not decode browser script round trip: {error}"
+                        ));
+                    }
+                };
+                if !bundle.document.scripts.iter().any(|script| {
+                    script.name == BROWSER_SESSION_SCRIPT_NAME
+                        && script.source == BROWSER_SESSION_SCRIPT_SOURCE
+                        && script.enabled
+                }) {
+                    return self.fail("browser session Lua source did not round trip exactly");
                 }
                 if snapshot.status.audio_driver == shoop_egui::AudioDriverState::Dummy {
                     Ok(Self::ExportLoopAudio)
@@ -1537,6 +1723,53 @@ fn set_browser_status(message: &str, snapshot: Option<&AppSnapshot>) {
             &status.storage_exhaustions.to_string(),
         );
         let _ = element.set_attribute("data-web-midi", "unavailable");
+        let _ = element.set_attribute(
+            "data-application-ports",
+            &snapshot.connections.application_ports.len().to_string(),
+        );
+        let _ = element.set_attribute(
+            "data-host-ports",
+            &snapshot.connections.host_ports.len().to_string(),
+        );
+        let _ = element.set_attribute(
+            "data-confirmed-links",
+            &snapshot.connections.confirmed_links.len().to_string(),
+        );
+        let _ = element.set_attribute(
+            "data-selected-loops",
+            &snapshot
+                .tracks
+                .iter()
+                .flat_map(|track| &track.loops)
+                .filter(|loop_| loop_.selected)
+                .count()
+                .to_string(),
+        );
+        let _ = element.set_attribute(
+            "data-lua-control-ports",
+            &snapshot
+                .connections
+                .application_ports
+                .iter()
+                .filter(|port| {
+                    matches!(
+                        port.owner,
+                        shoop_egui::ApplicationPortOwner::LuaControl { .. }
+                    )
+                })
+                .count()
+                .to_string(),
+        );
+        let _ = element.set_attribute(
+            "data-midi-host-ports",
+            &snapshot
+                .connections
+                .host_ports
+                .iter()
+                .filter(|port| port.data_type == shoop_egui::PortDataType::Midi)
+                .count()
+                .to_string(),
+        );
         if let Some(details) = &snapshot.details {
             let samples = details
                 .channels
