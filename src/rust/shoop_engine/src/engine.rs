@@ -553,7 +553,7 @@ impl EngineHandle {
         self.alive.load(Ordering::Acquire)
     }
 
-    #[cfg(feature = "app_backend")]
+    #[cfg(any(feature = "app_backend", feature = "native_audio_backend"))]
     pub(crate) fn connected_flag(&self) -> Arc<AtomicBool> {
         Arc::clone(&self.alive)
     }

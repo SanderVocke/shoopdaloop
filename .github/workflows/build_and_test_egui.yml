@@ -129,7 +129,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes \
-            libasound2-dev libgl1-mesa-dev libx11-dev libxcb-render0-dev \
+            libasound2-dev libjack-jackd2-dev libgl1-mesa-dev libx11-dev libxcb-render0-dev \
             libxcb-shape0-dev libxcb-xfixes0-dev libxcursor-dev libxi-dev \
             libxkbcommon-dev libxrandr-dev libwayland-dev
 
@@ -137,7 +137,7 @@ jobs:
         if: matrix.target == 'web' && env.ACT != 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libasound2-dev pulseaudio xvfb
+          sudo apt-get install --yes libasound2-dev libjack-jackd2-dev pulseaudio xvfb
           if ! command -v trunk >/dev/null 2>&1; then
             cargo install --locked trunk --version 0.21.14
           fi

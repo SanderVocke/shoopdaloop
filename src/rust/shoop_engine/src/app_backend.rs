@@ -5652,6 +5652,8 @@ impl FXChain {
         if let FXChainBackendKind::Carla(host) = &self.backend {
             let _ = host.restore_state(state);
         }
+        #[cfg(not(feature = "lv2"))]
+        let _ = state;
     }
     fn n_audio_input_ports(&self) -> usize {
         match &self.backend {

@@ -80,7 +80,7 @@ fn snapshot_mutation(flags: ProcessFlags) -> Option<crate::content_snapshot::Con
     }
 }
 
-#[cfg(feature = "app_backend")]
+#[cfg(any(feature = "app_backend", feature = "native_audio_backend"))]
 #[derive(Debug)]
 pub struct PreparedMidiChannelData {
     storage: MidiStorage,
@@ -90,7 +90,7 @@ pub struct PreparedMidiChannelData {
     start_state_valid: bool,
 }
 
-#[cfg(feature = "app_backend")]
+#[cfg(any(feature = "app_backend", feature = "native_audio_backend"))]
 impl PreparedMidiChannelData {
     pub fn new(messages: &[MidiStorageElem], length: u32, start_state: Option<&[Vec<u8>]>) -> Self {
         let capacity = messages.len().max(1);
@@ -381,7 +381,7 @@ impl MidiChannel {
         self.data_changed();
     }
 
-    #[cfg(feature = "app_backend")]
+    #[cfg(any(feature = "app_backend", feature = "native_audio_backend"))]
     pub(crate) fn commit_prepared_data_and_snapshot(
         &mut self,
         prepared: &mut PreparedMidiChannelData,
