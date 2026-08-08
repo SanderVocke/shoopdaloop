@@ -114,7 +114,7 @@ impl PreparedAudioChannelData {
         }
     }
 
-    #[cfg(feature = "app_backend")]
+    #[cfg(any(feature = "app_backend", feature = "native_audio_backend"))]
     pub(crate) fn contiguous_copy(&self) -> Vec<f32> {
         self.buffers.contiguous_copy(self.length)
     }

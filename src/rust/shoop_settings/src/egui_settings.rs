@@ -361,6 +361,7 @@ impl<T> Eq for SettingKey<T> {}
 pub enum SettingEffect {
     Immediate,
     NextUse,
+    ExplicitApply,
     RestartRequired,
 }
 
@@ -369,6 +370,7 @@ impl SettingEffect {
         match self {
             Self::Immediate => "Applies immediately",
             Self::NextUse => "Applies the next time this feature is opened",
+            Self::ExplicitApply => "Applies after explicit confirmation",
             Self::RestartRequired => "Requires an application restart",
         }
     }

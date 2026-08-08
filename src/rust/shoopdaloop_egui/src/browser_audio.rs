@@ -20,6 +20,10 @@ use shoop_backend::{
     BackendStatus, BackendTrackControl, BackendTrackCreation, BackendTrackId, BackendTrackState,
     DirectTrackRequest,
 };
+use shoop_egui::{
+    AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
+    ResolvedAudioDriverConfig,
+};
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
@@ -919,6 +923,21 @@ impl WebAudioBackend {
                         driver_state: BackendDriverState::AwaitingGesture,
                         ..Default::default()
                     },
+                    audio_drivers: AudioDriverRuntimeState {
+                        supported: false,
+                        catalog: Arc::from([AudioDriverDescriptor {
+                            kind: AudioDriverKind::WebAudio,
+                            available: true,
+                            ..Default::default()
+                        }]),
+                        active: Some(ResolvedAudioDriverConfig {
+                            configured: AudioDriverConfig::WebAudio,
+                            sample_rate: 0,
+                            buffer_size: 0,
+                            instance_name: "Web Audio".to_owned(),
+                        }),
+                        ..Default::default()
+                    },
                     ..Default::default()
                 },
                 next_track_id: 1,
@@ -1170,6 +1189,10 @@ impl WebAudioBackend {
             driver_state: state,
             ..Default::default()
         };
+        if let Some(active) = self.snapshot.audio_drivers.active.as_mut() {
+            active.sample_rate = wire.sample_rate;
+            active.buffer_size = wire.quantum;
+        }
         self.snapshot.connections.available = true;
         self.snapshot.connections.application_ports = wire
             .application_ports

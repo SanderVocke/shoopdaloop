@@ -4,7 +4,7 @@
 //!
 //! Pure logic plus the application-facing backend driver interface used by the frontend.
 
-#[cfg(feature = "app_backend")]
+#[cfg(any(feature = "app_backend", feature = "native_audio_backend"))]
 pub mod app_backend;
 pub mod audio_channel;
 pub mod audio_midi_loop;
@@ -124,7 +124,7 @@ pub use graph_build::{ChannelDesc, GraphDesc, LoopDesc, PortDesc};
 pub use internal_audio_port::InternalAudioPort;
 pub use loop_mode::LoopMode;
 pub use midi_buffering_input_port::MidiBufferingInputPort;
-#[cfg(feature = "app_backend")]
+#[cfg(any(feature = "app_backend", feature = "native_audio_backend"))]
 pub use midi_channel::PreparedMidiChannelData;
 pub use midi_channel::{MidiChannel, MidiChannelError};
 pub use midi_event::MidiEvent;

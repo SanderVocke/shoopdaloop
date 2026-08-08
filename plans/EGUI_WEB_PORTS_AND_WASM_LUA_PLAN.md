@@ -2,7 +2,7 @@
 
 ## Status and document role
 
-Status: **Complete**. Stages 0–6 satisfy the frozen acceptance criteria with native/workspace/realtime, retained QML Lua, production Wasm, Chrome hosted/direct-file, Firefox hosted, settings, routing, keyboard, source-bearing session, dependency, and release-package evidence. The only full-QML-suite exception is the documented environment-unavailable CPAL case; all retained Lua-specific QML cases pass.
+Status: **Complete**. Stages 0–6 satisfy the frozen acceptance criteria with native/workspace/realtime, retained QML Lua, production Wasm, Chrome hosted/direct-file, Firefox hosted, settings, routing, keyboard, source-bearing session, dependency, and release-package evidence. At this historical milestone's closure, the only full-QML-suite exception was the documented environment-unavailable CPAL case and all retained Lua-specific QML cases passed. The later native-driver milestone corrected CPAL test virtual-port registration, so the current retained suite passes all 236 testcases with no skips. Native real-driver selection was intentionally outside this plan's frozen scope and is now completed separately by `EGUI_NATIVE_AUDIO_DRIVER_SWITCHING_PLAN.md`.
 
 This is the completed implementation ledger for making application ports, host ports, connection management, and Lua scripting consistent in the egui product, including the production WebAssembly build and self-contained HTML artifact, while replacing `mlua` with omniLua throughout the entire workspace. It supersedes the earlier accepted browser-specific omissions recorded in `EGUI_FEATURE_PARITY_MATRIX.md` and records the evidence that closes them.
 
@@ -15,7 +15,7 @@ This plan depends on and must be maintained with:
 ## Investigation findings and known technical risk
 
 - The application/backend API already calls track ports local/application ports and opposite endpoints external ports, but the backend snapshot repeats endpoint candidates per local port rather than modeling host inventory explicitly.
-- The native dummy backend exposes mutable virtual external endpoints. The retained JACK and CPAL/midir paths already have analogous client/app-port and system/device-endpoint concepts, although native real-driver composition is not yet part of the egui runner.
+- At this milestone's investigation boundary, the native dummy backend exposed mutable virtual external endpoints and native real-driver composition was absent. The later native-driver milestone now adapts retained JACK and CPAL/midir client/system endpoints into the same normalized model.
 - Before this milestone, the Web Audio path was the exception: every track owned physical `ExternalAudioPort`s, `process_audio_quantum` mapped every track directly to the microphone/destination, the browser connection snapshot had no candidates and reported management unavailable, and the worklet protocol had no connection commands or confirmed route state.
 - Before this milestone, direct MIDI track ports were created in the browser backend, but a no-endpoint category did not visibly identify its local ports in the connection matrix.
 - Before this milestone, Lua was excluded with target `cfg`s from `shoop_app`, `shoopdaloop_egui`, settings registration, session loading, and key dispatch. `shoop_scripting` also depended unconditionally on native `midir`.

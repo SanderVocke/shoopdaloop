@@ -122,6 +122,173 @@ pub enum AudioDriverState {
     Stopped,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum AudioDriverKind {
+    #[default]
+    Dummy,
+    Jack,
+    Cpal,
+    WebAudio,
+}
+
+impl AudioDriverKind {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Dummy => "dummy",
+            Self::Jack => "jack",
+            Self::Cpal => "cpal",
+            Self::WebAudio => "webaudio",
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Dummy => "Dummy / offline",
+            Self::Jack => "JACK",
+            Self::Cpal => "CPAL",
+            Self::WebAudio => "Web Audio",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DummyAudioDriverConfig {
+    pub sample_rate: u32,
+    pub buffer_size: u32,
+}
+
+impl Default for DummyAudioDriverConfig {
+    fn default() -> Self {
+        Self {
+            sample_rate: 48_000,
+            buffer_size: 256,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JackAudioDriverConfig {
+    pub client_name: String,
+}
+
+impl Default for JackAudioDriverConfig {
+    fn default() -> Self {
+        Self {
+            client_name: "ShoopDaLoop".to_owned(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CpalAudioDriverConfig {
+    pub client_name: String,
+    pub host: String,
+    pub output_device: String,
+    pub input_device: String,
+    pub sample_rate: u32,
+    pub buffer_size: u32,
+    pub output_channels: String,
+    pub input_channels: String,
+    pub capture_ring_frames: u32,
+    pub midi_inputs: Vec<String>,
+    pub midi_outputs: Vec<String>,
+}
+
+impl Default for CpalAudioDriverConfig {
+    fn default() -> Self {
+        Self {
+            client_name: "ShoopDaLoop".to_owned(),
+            host: "default".to_owned(),
+            output_device: "default".to_owned(),
+            input_device: "default".to_owned(),
+            sample_rate: 0,
+            buffer_size: 0,
+            output_channels: "all".to_owned(),
+            input_channels: "all".to_owned(),
+            capture_ring_frames: 4096,
+            midi_inputs: vec!["all".to_owned()],
+            midi_outputs: vec!["all".to_owned()],
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AudioDriverConfig {
+    Dummy(DummyAudioDriverConfig),
+    Jack(JackAudioDriverConfig),
+    Cpal(CpalAudioDriverConfig),
+    WebAudio,
+}
+
+impl AudioDriverConfig {
+    pub const fn kind(&self) -> AudioDriverKind {
+        match self {
+            Self::Dummy(_) => AudioDriverKind::Dummy,
+            Self::Jack(_) => AudioDriverKind::Jack,
+            Self::Cpal(_) => AudioDriverKind::Cpal,
+            Self::WebAudio => AudioDriverKind::WebAudio,
+        }
+    }
+}
+
+impl Default for AudioDriverConfig {
+    fn default() -> Self {
+        Self::Dummy(DummyAudioDriverConfig::default())
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct AudioDriverDescriptor {
+    pub kind: AudioDriverKind,
+    pub available: bool,
+    pub unavailable_reason: Option<String>,
+    pub hosts: Vec<String>,
+    pub input_devices: Vec<String>,
+    pub output_devices: Vec<String>,
+    pub midi_inputs: Vec<String>,
+    pub midi_outputs: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedAudioDriverConfig {
+    pub configured: AudioDriverConfig,
+    pub sample_rate: u32,
+    pub buffer_size: u32,
+    pub instance_name: String,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum AudioDriverSwitchStatus {
+    #[default]
+    Idle,
+    AwaitingConfirmation,
+    Switching,
+    Resampling,
+    Restoring,
+    Persisting,
+    Completed,
+    Failed,
+    Fatal,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct AudioDriverSwitchState {
+    pub request_id: u64,
+    pub status: AudioDriverSwitchStatus,
+    pub source: Option<ResolvedAudioDriverConfig>,
+    pub target: Option<ResolvedAudioDriverConfig>,
+    pub message: String,
+    pub persistence_retry_available: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct AudioDriverRuntimeState {
+    pub supported: bool,
+    pub catalog: Arc<[AudioDriverDescriptor]>,
+    pub active: Option<ResolvedAudioDriverConfig>,
+    pub switch: AudioDriverSwitchState,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct StatusState {
     pub version: String,
@@ -627,6 +794,7 @@ pub struct AppSnapshot {
     pub tracks: Vec<TrackState>,
     pub global_controls: GlobalControlState,
     pub status: StatusState,
+    pub audio_drivers: AudioDriverRuntimeState,
     pub details: Option<LoopDetailsState>,
     pub connections: Arc<ConnectionViewState>,
     pub scripting: Arc<ScriptingState>,
@@ -754,6 +922,21 @@ pub enum AppIntent {
         port_id: PortId,
         host_port_id: HostPortId,
         connected: bool,
+    },
+    RefreshAudioDriverDiscovery {
+        config: AudioDriverConfig,
+    },
+    RequestAudioDriverSwitch {
+        config: AudioDriverConfig,
+    },
+    ConfirmAudioDriverSwitch {
+        request_id: u64,
+        accept: bool,
+    },
+    CompleteAudioDriverSwitchPersistence {
+        request_id: u64,
+        success: bool,
+        message: String,
     },
     RequestSaveSession,
     RequestLoadSessionPicker,
@@ -1017,6 +1200,19 @@ mod tests {
         assert_eq!(state.input_gain_db, MIN_TRACK_GAIN_DB);
         assert_eq!(state.output_balance, -1.0);
         assert_eq!(state.input_balance, 1.0);
+    }
+
+    #[test]
+    fn audio_driver_configs_have_stable_kinds_and_independent_defaults() {
+        let dummy = AudioDriverConfig::default();
+        let jack = AudioDriverConfig::Jack(JackAudioDriverConfig::default());
+        let cpal = AudioDriverConfig::Cpal(CpalAudioDriverConfig::default());
+        assert_eq!(dummy.kind(), AudioDriverKind::Dummy);
+        assert_eq!(jack.kind(), AudioDriverKind::Jack);
+        assert_eq!(cpal.kind(), AudioDriverKind::Cpal);
+        assert_eq!(AudioDriverKind::Cpal.id(), "cpal");
+        assert_eq!(AudioDriverKind::Jack.label(), "JACK");
+        assert_ne!(dummy, jack);
     }
 
     #[test]

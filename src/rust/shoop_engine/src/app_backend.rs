@@ -1158,8 +1158,8 @@ impl CpalBackend {
     /// OS audio device, so the CPAL virtual port routing can be exercised on
     /// headless CI where ALSA / CoreAudio / WASAPI has no usable device.
     fn start_with_mock(
-        _settings: &CpalMidiAudioDriverSettings,
-        _external: Arc<Mutex<engine::DummyExternalConnections>>,
+        settings: &CpalMidiAudioDriverSettings,
+        external: Arc<Mutex<engine::DummyExternalConnections>>,
         decoupled_midi_ports: Arc<Mutex<Vec<CpalDecoupledMidiPort>>>,
         _maybe_process_callback: Option<ProcessCallback>,
     ) -> Result<Self> {
@@ -1178,15 +1178,38 @@ impl CpalBackend {
             .map(|c| format!("cpal:{output_device_name}:playback_{}", c + 1))
             .collect();
 
-        let input_device = host.default_input_device().expect("mock input device");
-        let input_config = input_device.default_input_config()?;
-        let input_channels = input_config.channels() as usize;
-        let input_device_name = input_device
-            .name()
-            .unwrap_or_else(|_| "mock-input".to_string());
-        let capture_names: Vec<String> = (0..input_channels)
-            .map(|c| format!("cpal:{input_device_name}:capture_{}", c + 1))
-            .collect();
+        let (input_channels, capture_names) = if settings.input_device == "none" {
+            (0, Vec::new())
+        } else {
+            let input_device = host.default_input_device().expect("mock input device");
+            let input_config = input_device.default_input_config()?;
+            let input_channels = input_config.channels() as usize;
+            let input_device_name = input_device
+                .name()
+                .unwrap_or_else(|_| "mock-input".to_string());
+            let capture_names = (0..input_channels)
+                .map(|c| format!("cpal:{input_device_name}:capture_{}", c + 1))
+                .collect();
+            (input_channels, capture_names)
+        };
+
+        {
+            let mut ext = external.lock().unwrap_or_else(|e| e.into_inner());
+            for name in &capture_names {
+                ext.add_mock_port(
+                    name.clone(),
+                    engine::PortDirection::Output,
+                    engine::PortDataType::Audio,
+                );
+            }
+            for name in &playback_names {
+                ext.add_mock_port(
+                    name.clone(),
+                    engine::PortDirection::Input,
+                    engine::PortDataType::Audio,
+                );
+            }
+        }
 
         let last_processed = Arc::new(AtomicU32::new(0));
         let xruns = Arc::new(AtomicU32::new(0));
@@ -3044,7 +3067,8 @@ impl AudioDriver {
         };
         // What the device actually opened at, which is only known now.
         i.dummy.settings_mut().sample_rate = backend.sample_rate;
-        i.dummy.settings_mut().buffer_size = backend.configured_buffer_size;
+        i.dummy.settings_mut().buffer_size =
+            backend.configured_buffer_size.max(settings.buffer_size);
         i.cpal = Some(Arc::new(Mutex::new(backend)));
         Ok(())
     }
@@ -3088,7 +3112,10 @@ impl AudioDriver {
         } else {
             i.jack = None;
         }
-        if i.driver_type == AudioDriverType::Cpal {
+        if matches!(
+            i.driver_type,
+            AudioDriverType::Cpal | AudioDriverType::CpalTest
+        ) {
             let cpal_settings = match settings {
                 AudioDriverSettings::Cpal(s) => s.clone(),
                 _ => return Err(anyhow!("CPAL driver requires CPAL settings")),
@@ -4308,6 +4335,51 @@ impl AudioChannel {
     }
 }
 
+fn midi_grab_window(
+    reverse_start_cycle: Option<i32>,
+    cycles_length: Option<i32>,
+    go_to_cycle: Option<i32>,
+    go_to_mode: LoopMode,
+    cycle_len: u32,
+    sync_pos: u32,
+    data_len: usize,
+) -> (usize, usize, usize) {
+    let cycles = cycles_length.unwrap_or(1).max(1) as u32;
+    let go_cycle = go_to_cycle.unwrap_or(0).max(0) as u32;
+    let wanted = if cycle_len > 0 {
+        if reverse_start_cycle == Some(0) {
+            sync_pos
+        } else if go_to_mode == LoopMode::Recording {
+            go_cycle.saturating_mul(cycle_len).saturating_add(sync_pos)
+        } else {
+            cycles.saturating_mul(cycle_len)
+        }
+    } else {
+        data_len.min(u32::MAX as usize) as u32
+    } as usize;
+    let end = if cycle_len > 0 {
+        if let Some(reverse) = reverse_start_cycle {
+            if reverse == 0 {
+                data_len
+            } else {
+                let before = (reverse.max(0) as u32).saturating_sub(cycles);
+                data_len.saturating_sub(
+                    sync_pos.saturating_add(before.saturating_mul(cycle_len)) as usize
+                )
+            }
+        } else if go_to_mode == LoopMode::Recording {
+            data_len
+        } else {
+            data_len.saturating_sub(
+                sync_pos.saturating_add(go_cycle.saturating_mul(cycle_len)) as usize,
+            )
+        }
+    } else {
+        data_len
+    };
+    (wanted, end.saturating_sub(wanted), end)
+}
+
 #[derive(Clone)]
 pub struct MidiChannel {
     shared: Arc<SharedSession>,
@@ -4416,6 +4488,20 @@ impl MidiChannel {
         &self,
         msgs: &[MidiEvent],
     ) -> std::result::Result<CommandSequence, SendError> {
+        let length = msgs
+            .iter()
+            .filter(|message| message.time >= 0)
+            .map(|message| message.time as u32)
+            .max()
+            .unwrap_or(0);
+        self.load_midi_data(msgs, length)
+    }
+
+    pub fn load_midi_data(
+        &self,
+        msgs: &[MidiEvent],
+        length: u32,
+    ) -> std::result::Result<CommandSequence, SendError> {
         let state: Vec<Vec<u8>> = msgs
             .iter()
             .filter(|message| message.time < 0)
@@ -4428,11 +4514,6 @@ impl MidiChannel {
                 engine::midi_storage::MidiStorageElem::new(message.time as u32, &message.data)
             })
             .collect();
-        let length = elements
-            .iter()
-            .map(|element| element.time)
-            .max()
-            .unwrap_or(0);
         let mut state_tracker = engine::MidiStateTracker::new(engine::TrackWhat::ALL);
         for message in &state {
             state_tracker.process(message);
@@ -4475,6 +4556,70 @@ impl MidiChannel {
             self.snapshot_control.cancel();
         }
         result
+    }
+
+    pub fn adopt_ringbuffer_contents(
+        &self,
+        port: &MidiPort,
+        loop_: &Loop,
+        reverse_start_cycle: Option<i32>,
+        cycles_length: Option<i32>,
+        go_to_cycle: Option<i32>,
+        go_to_mode: LoopMode,
+    ) -> std::result::Result<CommandSequence, SendError> {
+        if self.control.session_id != port.control.session_id
+            || self.control.session_id != loop_.control.session_id
+        {
+            return Err(SendError::Disconnected);
+        }
+        let channel_control = Arc::clone(&self.control);
+        let port_control = Arc::clone(&port.control);
+        let loop_control = Arc::clone(&loop_.control);
+        self.shared
+            .send_control(move |session: &mut engine::Session| {
+                let (Some(channel_id), Some(port_id), Some(loop_id)) = (
+                    channel_control.ready_id(),
+                    port_control.ready_id(),
+                    loop_control.ready_id(),
+                ) else {
+                    return;
+                };
+                let Some(port) = session
+                    .port(port_id.index())
+                    .and_then(engine::session::Port::midi)
+                else {
+                    return;
+                };
+                let mut captured = engine::MidiStorage::with_capacity_elems(1024);
+                port.snapshot_ringbuffer_into(&mut captured);
+                let data_len = port.ringbuffer_n_samples() as usize;
+                let Some(loop_state) = session.loop_(loop_id.index()) else {
+                    return;
+                };
+                let sync = loop_state.sync_source();
+                let cycle_len = sync.map(|state| state.length).unwrap_or(0);
+                let sync_pos = sync.map(|state| state.position).unwrap_or(0);
+                let (wanted, start, end) = midi_grab_window(
+                    reverse_start_cycle,
+                    cycles_length,
+                    go_to_cycle,
+                    go_to_mode,
+                    cycle_len,
+                    sync_pos,
+                    data_len,
+                );
+                let messages = captured
+                    .iter()
+                    .filter(|message| {
+                        let time = message.time as usize;
+                        time >= start && time < end
+                    })
+                    .map(|message| message.at_time(message.time.saturating_sub(start as u32)))
+                    .collect::<Vec<_>>();
+                if let Some(channel) = session.midi_channel_mut(channel_id.index()) {
+                    channel.set_contents(&messages, wanted as u32, None);
+                }
+            })
     }
 
     pub fn connect_input(
@@ -5507,6 +5652,8 @@ impl FXChain {
         if let FXChainBackendKind::Carla(host) = &self.backend {
             let _ = host.restore_state(state);
         }
+        #[cfg(not(feature = "lv2"))]
+        let _ = state;
     }
     fn n_audio_input_ports(&self) -> usize {
         match &self.backend {
@@ -6676,7 +6823,45 @@ mod tests {
     }
 
     #[test]
+    fn cpal_test_backend_publishes_mock_virtual_audio_ports() {
+        let driver = AudioDriver::new(AudioDriverType::CpalTest, None).expect("driver");
+        let settings = AudioDriverSettings::Cpal(CpalMidiAudioDriverSettings {
+            client_name: "shoop-cpal-test".to_string(),
+            host: "default".to_string(),
+            output_device: "default".to_string(),
+            input_device: "none".to_string(),
+            sample_rate: 0,
+            buffer_size: 0,
+            input_channels: "all".to_string(),
+            output_channels: "all".to_string(),
+            capture_ring_frames: 256,
+            midi_inputs: vec!["none".to_string()],
+            midi_outputs: vec!["none".to_string()],
+        });
+        driver.start(&settings).expect("settings accepted");
+        let sess = BackendSession::new().expect("session");
+        sess.set_audio_driver(&driver)
+            .expect("mock driver activation");
+
+        let playback_ports = driver.find_external_ports(
+            None,
+            PortDirection::Input as u32,
+            PortDataType::Audio as u32,
+        );
+        assert!(
+            playback_ports
+                .iter()
+                .any(|p| p.name.starts_with("cpal:") && p.name.contains(":playback_")),
+            "no virtual CPAL playback ports: {playback_ports:?}"
+        );
+    }
+
+    #[test]
     fn cpal_backend_exposes_virtual_audio_ports_through_app_api_when_device_available() {
+        if std::env::var_os("SHOOP_RUN_REAL_AUDIO_SMOKE").is_none() {
+            eprintln!("skipping optional real CPAL smoke; set SHOOP_RUN_REAL_AUDIO_SMOKE=1");
+            return;
+        }
         let driver = AudioDriver::new(AudioDriverType::Cpal, None).expect("driver");
         let settings = AudioDriverSettings::Cpal(CpalMidiAudioDriverSettings {
             client_name: "shoop-cpal-test".to_string(),
@@ -6694,9 +6879,8 @@ mod tests {
         driver.start(&settings).expect("settings accepted");
         let sess = BackendSession::new().expect("session");
         if let Err(e) = sess.set_audio_driver(&driver) {
-            // Fails rather than passes when there is no audio device, unless skipping was
-            // opted into -- mirrors `tests/backend_availability`, which an inline test in
-            // the library crate cannot reach.
+            // Once this optional real smoke is requested, failure is explicit unless the
+            // caller also opts into environment-aware backend skips.
             assert!(
                 std::env::var_os("SHOOP_ALLOW_MISSING_BACKENDS").is_some(),
                 "a CPAL output device is required by this test but unavailable: {e}.\n\

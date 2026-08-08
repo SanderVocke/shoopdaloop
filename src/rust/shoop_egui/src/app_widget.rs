@@ -1,12 +1,14 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    AppAction, AppState, ConnectionDialog, ConnectionScope, DetailsPane, DirectTrackSpec,
-    GlobalControls, SettingsAction, SettingsDialog, TrackWidget, TracksWidget,
+    AppAction, AppState, AudioDriverConfig, AudioDriverKind, ConnectionDialog, ConnectionScope,
+    CpalAudioDriverConfig, DetailsPane, DirectTrackSpec, DummyAudioDriverConfig, GlobalControls,
+    JackAudioDriverConfig, SettingsAction, SettingsDialog, TrackWidget, TracksWidget,
 };
 use shoop_settings::{
-    SettingDefinition, SettingEffect, SettingKey, SettingsRegistry, SettingsRegistryBuilder,
-    SettingsRegistryError, SettingsViewState, StringToggleList,
+    SettingDefinition, SettingEffect, SettingKey, SettingsDraft, SettingsRegistry,
+    SettingsRegistryBuilder, SettingsRegistryError, SettingsSnapshot, SettingsViewState,
+    StringToggleList,
 };
 use std::sync::Arc;
 
@@ -20,6 +22,23 @@ pub const KEYBOARD_SCRIPT_ENABLED: SettingKey<bool> =
 pub const APC_MINI_SCRIPT_ENABLED: SettingKey<bool> =
     SettingKey::new("scripting.bundled.akai_apc_mini_mk1.enabled");
 pub const USER_SCRIPTS: SettingKey<StringToggleList> = SettingKey::new("scripting.user_scripts");
+
+pub const SELECTED_AUDIO_DRIVER: SettingKey<String> = SettingKey::new("audio.selected_driver");
+pub const DUMMY_SAMPLE_RATE: SettingKey<u32> = SettingKey::new("audio.dummy.sample_rate");
+pub const DUMMY_BUFFER_SIZE: SettingKey<u32> = SettingKey::new("audio.dummy.buffer_size");
+pub const JACK_CLIENT_NAME: SettingKey<String> = SettingKey::new("audio.jack.client_name");
+pub const CPAL_CLIENT_NAME: SettingKey<String> = SettingKey::new("audio.cpal.client_name");
+pub const CPAL_HOST: SettingKey<String> = SettingKey::new("audio.cpal.host");
+pub const CPAL_OUTPUT_DEVICE: SettingKey<String> = SettingKey::new("audio.cpal.output_device");
+pub const CPAL_INPUT_DEVICE: SettingKey<String> = SettingKey::new("audio.cpal.input_device");
+pub const CPAL_SAMPLE_RATE: SettingKey<u32> = SettingKey::new("audio.cpal.sample_rate");
+pub const CPAL_BUFFER_SIZE: SettingKey<u32> = SettingKey::new("audio.cpal.buffer_size");
+pub const CPAL_OUTPUT_CHANNELS: SettingKey<String> = SettingKey::new("audio.cpal.output_channels");
+pub const CPAL_INPUT_CHANNELS: SettingKey<String> = SettingKey::new("audio.cpal.input_channels");
+pub const CPAL_CAPTURE_RING_FRAMES: SettingKey<u32> =
+    SettingKey::new("audio.cpal.capture_ring_frames");
+pub const CPAL_MIDI_INPUTS: SettingKey<String> = SettingKey::new("audio.cpal.midi_inputs");
+pub const CPAL_MIDI_OUTPUTS: SettingKey<String> = SettingKey::new("audio.cpal.midi_outputs");
 
 pub fn register_settings(
     builder: &mut SettingsRegistryBuilder,
@@ -48,6 +67,301 @@ pub fn register_settings(
         .setting_order(20)
         .effect(SettingEffect::NextUse),
     )
+}
+
+pub fn register_audio_settings(
+    builder: &mut SettingsRegistryBuilder,
+) -> Result<(), SettingsRegistryError> {
+    let effect = SettingEffect::ExplicitApply;
+    builder.register(
+        SettingDefinition::new(
+            SELECTED_AUDIO_DRIVER,
+            "dummy".to_owned(),
+            "Audio",
+            "Preferred audio driver",
+            "Driver attempted first on the next native launch. Runtime changes require Switch confirmation.",
+        )
+        .category_order(5)
+        .setting_order(1)
+        .effect(effect),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            DUMMY_SAMPLE_RATE,
+            48_000,
+            "Audio",
+            "Dummy sample rate",
+            "Offline driver sample rate in Hz.",
+        )
+        .category_order(5)
+        .setting_order(10)
+        .effect(effect)
+        .editor(shoop_settings::SettingEditor::UnsignedInteger {
+            min: 8_000,
+            max: 384_000,
+        }),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            DUMMY_BUFFER_SIZE,
+            256,
+            "Audio",
+            "Dummy buffer size",
+            "Offline driver processing buffer in frames.",
+        )
+        .category_order(5)
+        .setting_order(11)
+        .effect(effect)
+        .editor(shoop_settings::SettingEditor::UnsignedInteger {
+            min: 1,
+            max: 65_536,
+        }),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            JACK_CLIENT_NAME,
+            "ShoopDaLoop".to_owned(),
+            "Audio",
+            "JACK client name",
+            "Client-name hint used when connecting to JACK.",
+        )
+        .category_order(5)
+        .setting_order(20)
+        .effect(effect),
+    )?;
+    for definition in [
+        SettingDefinition::new(
+            CPAL_CLIENT_NAME,
+            "ShoopDaLoop".to_owned(),
+            "Audio",
+            "CPAL client name",
+            "Name used for CPAL and MIDI clients.",
+        )
+        .category_order(5)
+        .setting_order(30)
+        .effect(effect),
+        SettingDefinition::new(
+            CPAL_HOST,
+            "default".to_owned(),
+            "Audio",
+            "CPAL host",
+            "Host/API selector; available values are shown from current discovery.",
+        )
+        .category_order(5)
+        .setting_order(31)
+        .effect(effect),
+        SettingDefinition::new(
+            CPAL_OUTPUT_DEVICE,
+            "default".to_owned(),
+            "Audio",
+            "CPAL output device",
+            "Output device name, default, or none.",
+        )
+        .category_order(5)
+        .setting_order(32)
+        .effect(effect),
+        SettingDefinition::new(
+            CPAL_INPUT_DEVICE,
+            "default".to_owned(),
+            "Audio",
+            "CPAL input device",
+            "Input device name, default, or none.",
+        )
+        .category_order(5)
+        .setting_order(33)
+        .effect(effect),
+        SettingDefinition::new(
+            CPAL_OUTPUT_CHANNELS,
+            "all".to_owned(),
+            "Audio",
+            "CPAL output channels",
+            "Number of output channels to use, or all.",
+        )
+        .category_order(5)
+        .setting_order(36)
+        .effect(effect),
+        SettingDefinition::new(
+            CPAL_INPUT_CHANNELS,
+            "all".to_owned(),
+            "Audio",
+            "CPAL input channels",
+            "Number of input channels to use, or all.",
+        )
+        .category_order(5)
+        .setting_order(37)
+        .effect(effect),
+        SettingDefinition::new(
+            CPAL_MIDI_INPUTS,
+            "all".to_owned(),
+            "Audio",
+            "MIDI inputs",
+            "Comma-separated midir input names/selectors.",
+        )
+        .category_order(5)
+        .setting_order(39)
+        .effect(effect),
+        SettingDefinition::new(
+            CPAL_MIDI_OUTPUTS,
+            "all".to_owned(),
+            "Audio",
+            "MIDI outputs",
+            "Comma-separated midir output names/selectors.",
+        )
+        .category_order(5)
+        .setting_order(40)
+        .effect(effect),
+    ] {
+        builder.register(definition)?;
+    }
+    for definition in [
+        SettingDefinition::new(
+            CPAL_SAMPLE_RATE,
+            0,
+            "Audio",
+            "CPAL sample rate",
+            "Requested sample rate in Hz, or 0 for the device default.",
+        )
+        .category_order(5)
+        .setting_order(34)
+        .effect(effect)
+        .editor(shoop_settings::SettingEditor::UnsignedInteger {
+            min: 0,
+            max: 384_000,
+        }),
+        SettingDefinition::new(
+            CPAL_BUFFER_SIZE,
+            0,
+            "Audio",
+            "CPAL buffer size",
+            "Requested buffer size in frames, or 0 for the device default.",
+        )
+        .category_order(5)
+        .setting_order(35)
+        .effect(effect)
+        .editor(shoop_settings::SettingEditor::UnsignedInteger {
+            min: 0,
+            max: 65_536,
+        }),
+        SettingDefinition::new(
+            CPAL_CAPTURE_RING_FRAMES,
+            4096,
+            "Audio",
+            "CPAL capture ring",
+            "Always-on capture ring size in frames.",
+        )
+        .category_order(5)
+        .setting_order(38)
+        .effect(effect)
+        .editor(shoop_settings::SettingEditor::UnsignedInteger {
+            min: 1,
+            max: 16_777_216,
+        }),
+    ] {
+        builder.register(definition)?;
+    }
+    Ok(())
+}
+
+pub fn selected_audio_driver(snapshot: &SettingsSnapshot) -> Result<AudioDriverKind, String> {
+    parse_audio_driver_kind(
+        snapshot
+            .get(SELECTED_AUDIO_DRIVER)
+            .map_err(|error| error.to_string())?,
+    )
+}
+
+pub fn audio_driver_config_from_snapshot(
+    snapshot: &SettingsSnapshot,
+    kind: AudioDriverKind,
+) -> Result<AudioDriverConfig, String> {
+    audio_driver_config(
+        kind,
+        |key| snapshot.get(key).map_err(|error| error.to_string()),
+        |key| snapshot.get(key).map_err(|error| error.to_string()),
+    )
+}
+
+pub fn audio_driver_config_from_draft(
+    draft: &SettingsDraft,
+    kind: AudioDriverKind,
+) -> Result<AudioDriverConfig, String> {
+    audio_driver_config(
+        kind,
+        |key| draft.get(key).map_err(|error| error.to_string()),
+        |key| draft.get(key).map_err(|error| error.to_string()),
+    )
+}
+
+pub fn set_selected_audio_driver(draft: &mut SettingsDraft, kind: AudioDriverKind) {
+    draft.set(SELECTED_AUDIO_DRIVER, kind.id().to_owned());
+}
+
+fn audio_driver_config(
+    kind: AudioDriverKind,
+    mut string: impl FnMut(SettingKey<String>) -> Result<String, String>,
+    mut unsigned: impl FnMut(SettingKey<u32>) -> Result<u32, String>,
+) -> Result<AudioDriverConfig, String> {
+    match kind {
+        AudioDriverKind::Dummy => Ok(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: unsigned(DUMMY_SAMPLE_RATE)?,
+            buffer_size: unsigned(DUMMY_BUFFER_SIZE)?,
+        })),
+        AudioDriverKind::Jack => {
+            let client_name = string(JACK_CLIENT_NAME)?;
+            if client_name.trim().is_empty() {
+                return Err("JACK client name must not be empty".to_owned());
+            }
+            Ok(AudioDriverConfig::Jack(JackAudioDriverConfig {
+                client_name,
+            }))
+        }
+        AudioDriverKind::Cpal => {
+            let config = CpalAudioDriverConfig {
+                client_name: string(CPAL_CLIENT_NAME)?,
+                host: string(CPAL_HOST)?,
+                output_device: string(CPAL_OUTPUT_DEVICE)?,
+                input_device: string(CPAL_INPUT_DEVICE)?,
+                sample_rate: unsigned(CPAL_SAMPLE_RATE)?,
+                buffer_size: unsigned(CPAL_BUFFER_SIZE)?,
+                output_channels: string(CPAL_OUTPUT_CHANNELS)?,
+                input_channels: string(CPAL_INPUT_CHANNELS)?,
+                capture_ring_frames: unsigned(CPAL_CAPTURE_RING_FRAMES)?,
+                midi_inputs: split_selectors(&string(CPAL_MIDI_INPUTS)?),
+                midi_outputs: split_selectors(&string(CPAL_MIDI_OUTPUTS)?),
+            };
+            if config.client_name.trim().is_empty()
+                || config.host.trim().is_empty()
+                || config.output_device.trim().is_empty()
+                || config.input_device.trim().is_empty()
+                || config.output_channels.trim().is_empty()
+                || config.input_channels.trim().is_empty()
+                || config.capture_ring_frames == 0
+            {
+                return Err("CPAL selectors and capture ring must be non-empty".to_owned());
+            }
+            Ok(AudioDriverConfig::Cpal(config))
+        }
+        AudioDriverKind::WebAudio => Ok(AudioDriverConfig::WebAudio),
+    }
+}
+
+fn parse_audio_driver_kind(value: String) -> Result<AudioDriverKind, String> {
+    match value.as_str() {
+        "dummy" => Ok(AudioDriverKind::Dummy),
+        "jack" => Ok(AudioDriverKind::Jack),
+        "cpal" => Ok(AudioDriverKind::Cpal),
+        "webaudio" => Ok(AudioDriverKind::WebAudio),
+        _ => Err(format!("unknown audio driver {value:?}")),
+    }
+}
+
+fn split_selectors(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
 }
 
 pub fn register_bundled_script_settings(
@@ -308,9 +622,13 @@ impl AppWidget {
         self.show_add_track_dialog(ui.ctx(), &mut actions);
         self.show_io_task_dialog(ui.ctx(), state, &mut actions);
         actions.extend(self.connections.show(ui.ctx(), state));
-        let settings_response =
-            self.settings
-                .show(ui.ctx(), settings_state, &state.scripting, script_paths);
+        let settings_response = self.settings.show(
+            ui.ctx(),
+            settings_state,
+            &state.scripting,
+            &state.audio_drivers,
+            script_paths,
+        );
         actions.extend(settings_response.app_actions);
         settings_actions.extend(settings_response.settings_actions);
         AppWidgetResponse {
@@ -808,6 +1126,41 @@ mod tests {
             |ui| response = Some(widget.show(ui, state, settings, Some(paths))),
         );
         response.unwrap()
+    }
+
+    #[test]
+    fn audio_settings_keep_independent_driver_configs_and_validate_mapping() {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_audio_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let snapshot = registry.defaults(7);
+        assert_eq!(
+            selected_audio_driver(&snapshot).unwrap(),
+            AudioDriverKind::Dummy
+        );
+        let dummy = audio_driver_config_from_snapshot(&snapshot, AudioDriverKind::Dummy).unwrap();
+        assert_eq!(
+            dummy,
+            AudioDriverConfig::Dummy(DummyAudioDriverConfig::default())
+        );
+
+        let mut draft = SettingsDraft::from_snapshot(&snapshot);
+        draft.set(CPAL_HOST, "test-host".to_owned());
+        draft.set(CPAL_OUTPUT_DEVICE, "speakers".to_owned());
+        draft.set(CPAL_INPUT_DEVICE, "microphone".to_owned());
+        draft.set(CPAL_SAMPLE_RATE, 44_100);
+        set_selected_audio_driver(&mut draft, AudioDriverKind::Cpal);
+        let cpal = audio_driver_config_from_draft(&draft, AudioDriverKind::Cpal).unwrap();
+        assert_eq!(cpal.kind(), AudioDriverKind::Cpal);
+        let AudioDriverConfig::Cpal(cpal) = cpal else {
+            unreachable!();
+        };
+        assert_eq!(cpal.host, "test-host");
+        assert_eq!(cpal.sample_rate, 44_100);
+        assert_eq!(
+            audio_driver_config_from_draft(&draft, AudioDriverKind::Dummy).unwrap(),
+            dummy
+        );
     }
 
     #[test]

@@ -75,7 +75,7 @@ On load:
 - Unknown keys remain opaque JSON values and are preserved byte-semantically as JSON values across a same-version save. They are not exposed to consumers or the settings dialog.
 - Duplicate registrations, invalid defaults, incompatible editor/type combinations, and typed reads using the wrong key type are programming errors rejected while composing/testing the registry.
 
-Version 1 registers the cross-target track defaults and bundled-script toggles below. Native composition additionally registers the ordered user-script path list. Browser composition omits that machine-path setting and preserves it as an unknown value if encountered.
+Version 1 registers the cross-target track defaults and bundled-script toggles below. Native composition additionally registers the ordered user-script path list and audio-driver preferences. Browser composition omits machine-path and native-audio definitions and preserves them as unknown values if encountered.
 
 | Key | Type | Default | Effect |
 |---|---|---:|---|
@@ -84,6 +84,23 @@ Version 1 registers the cross-target track defaults and bundled-script toggles b
 | `scripting.bundled.keyboard.enabled` | boolean | `true` | After a successful Save |
 | `scripting.bundled.akai_apc_mini_mk1.enabled` | boolean | `false` | After a successful Save |
 | `scripting.user_scripts` | ordered string/toggle list | `[]` | After a successful Save |
+| `audio.selected_driver` | string | `"dummy"` | Next native startup; changed by a successful confirmed Switch |
+| `audio.dummy.sample_rate` | `u32` | `48000` | Confirmed dummy Switch |
+| `audio.dummy.buffer_size` | `u32` | `256` | Confirmed dummy Switch |
+| `audio.jack.client_name` | string | `"ShoopDaLoop"` | Confirmed JACK Switch |
+| `audio.cpal.client_name` | string | `"ShoopDaLoop"` | Confirmed CPAL Switch |
+| `audio.cpal.host` | string | `"default"` | Confirmed CPAL Switch |
+| `audio.cpal.output_device` | string | `"default"` | Confirmed CPAL Switch |
+| `audio.cpal.input_device` | string | `"default"` | Confirmed CPAL Switch |
+| `audio.cpal.sample_rate` | `u32` | `0` | Confirmed CPAL Switch; zero requests device default |
+| `audio.cpal.buffer_size` | `u32` | `0` | Confirmed CPAL Switch; zero requests device default |
+| `audio.cpal.output_channels` | string | `"all"` | Confirmed CPAL Switch |
+| `audio.cpal.input_channels` | string | `"all"` | Confirmed CPAL Switch |
+| `audio.cpal.capture_ring_frames` | `u32` | `4096` | Confirmed CPAL Switch |
+| `audio.cpal.midi_inputs` | string | `"all"` | Confirmed CPAL Switch; comma-separated selectors |
+| `audio.cpal.midi_outputs` | string | `"all"` | Confirmed CPAL Switch; comma-separated selectors |
+
+These optional keys do not change document version 1. Each driver keeps an independent configured profile. Saving a profile does not change the running backend. A confirmed runtime Switch updates `audio.selected_driver` only after backend commit and persists the complete draft before reporting full success. Native startup attempts the saved driver/configuration first and falls back to dummy/offline with a diagnostic if it is unavailable; fallback does not overwrite the preference.
 
 An ordered string/toggle list is a JSON array. Each entry is exactly an object with a non-empty unique `value` string and an `enabled` boolean. Array order is retained. The generic editor supports editing, toggling, adding, removing, and resetting entries. Invalid or duplicate entries reject a draft; malformed stored values produce a diagnostic and use the registered default.
 
@@ -124,4 +141,4 @@ Native writing runs outside application and audio actors. A failed write leaves 
 
 Browser save serializes first, calls `localStorage.setItem` once, and publishes only after it succeeds. Security, availability, and quota exceptions are typed failures and leave active values unchanged.
 
-Settings contain ordinary user preferences only. Secrets, credentials, session topology/content, transient transport/UI task state, device handles, and backend runtime state do not belong in this document.
+Settings contain ordinary user preferences only. Audio values are configured selectors, not resolved device handles or negotiated runtime state. Secrets, credentials, session topology/content, transient transport/UI task state, device handles, and backend runtime state do not belong in this document.
