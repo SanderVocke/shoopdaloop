@@ -6,7 +6,7 @@ use cxx_qt_lib_shoop::{
     qobject::QObject,
     qpointer::{qpointer_to_qobject, QPointerQObject},
 };
-use mlua;
+use omnilua;
 
 use crate::{
     lua_callback::LuaCallback,
@@ -46,9 +46,9 @@ where
 {
     fn call(
         &self,
-        lua: &Arc<mlua::Lua>,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &Arc<omnilua::Lua>,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         let args: Args =
             Args::from_lua_multi(args, lua).map_err(|e| anyhow!("Could not map args: {e}"))?;
 

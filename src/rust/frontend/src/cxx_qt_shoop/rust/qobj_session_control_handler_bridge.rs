@@ -189,13 +189,13 @@ pub enum RustToLuaCallbackType {
 pub struct BridgedMidiControlPortRule {
     pub port: Arc<RefCell<cxx::UniquePtr<MidiControlPort>>>,
     pub listening_callbacks: Vec<cxx::UniquePtr<WrappedLuaCallback>>,
-    pub weak_lua: Weak<mlua::Lua>,
+    pub weak_lua: Weak<omnilua::Lua>,
 }
 
 pub struct SessionControlHandlerLuaTarget {
     pub structured_loop_widget_references: BTreeMap<(i64, i64), cxx::UniquePtr<QPointerQObject>>,
     pub structured_track_control_widget_references: BTreeMap<i64, cxx::UniquePtr<QPointerQObject>>,
-    pub installed_on: RefCell<Vec<Weak<mlua::Lua>>>,
+    pub installed_on: RefCell<Vec<Weak<omnilua::Lua>>>,
     pub weak_self: Weak<RefCell<SessionControlHandlerLuaTarget>>,
     pub callbacks_lua_to_rust: Vec<Arc<Box<dyn LuaCallback>>>,
     pub callbacks_rust_to_lua:

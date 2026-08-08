@@ -7,7 +7,7 @@ use std::{
 };
 
 use common::logging::macros::*;
-use mlua;
+use omnilua;
 use shoop_scripting::CompatibilityPrintLevel;
 
 use crate::lua_callback::LuaCallback;
@@ -21,10 +21,10 @@ pub enum LuaScope {
 
 pub struct LuaEngineImpl {
     weak_self: Weak<RefCell<LuaEngineImpl>>,
-    pub lua: Arc<mlua::Lua>,
+    pub lua: Arc<omnilua::Lua>,
     preloaded_libs: HashMap<String, String>,
-    run_sandboxed: Option<mlua::Function>,
-    require: Option<mlua::Function>,
+    run_sandboxed: Option<omnilua::Function>,
+    require: Option<omnilua::Function>,
     get_builtin_script_fn: Option<Box<dyn Fn(&str) -> Result<String, anyhow::Error>>>,
 }
 
@@ -37,7 +37,7 @@ impl Default for LuaEngine {
         let rval = Self {
             lua: Arc::new(RefCell::new(LuaEngineImpl {
                 weak_self: Weak::new(),
-                lua: Arc::new(mlua::Lua::new()),
+                lua: Arc::new(omnilua::Lua::new()),
                 preloaded_libs: HashMap::default(),
                 run_sandboxed: None,
                 require: None,
@@ -86,8 +86,8 @@ impl LuaEngineImpl {
         let weak_self = self.weak_self.clone();
         self.require = Some(
             self.lua
-                .create_function(move |_, (name,): (String,)| {
-                    match || -> Result<mlua::Value, anyhow::Error> {
+                .create_function(move |_, name: String| {
+                    match || -> Result<omnilua::Value, anyhow::Error> {
                         let strong_self = weak_self
                             .upgrade()
                             .ok_or(anyhow!("Lua went out of scope"))?;
@@ -103,7 +103,7 @@ impl LuaEngineImpl {
                         Ok(result) => Ok(result),
                         Err(e) => {
                             error!("Could not require lib '{name}': {e}");
-                            Ok(mlua::Value::default())
+                            Ok(omnilua::Value::Nil)
                         }
                     }
                 })
@@ -114,14 +114,14 @@ impl LuaEngineImpl {
         Ok(())
     }
 
-    pub fn require(&self, name: &str) -> Result<mlua::Value, anyhow::Error> {
+    pub fn require(&self, name: &str) -> Result<omnilua::Value, anyhow::Error> {
         if name == "shoop_control" {
             // Special built-in library which is always loaded
             return self
                 .lua
                 .load("__shoop_control_interface")
                 .set_name("get control interface")
-                .eval::<mlua::Value>()
+                .eval::<omnilua::Value>()
                 .map_err(|e| anyhow!("could not get control interface: {e}"));
         }
         if !self.preloaded_libs.contains_key(name) {
@@ -133,7 +133,7 @@ impl LuaEngineImpl {
                     .get(name)
                     .ok_or(anyhow!("No such builtin script: {name}"))?,
             )
-            .eval::<mlua::Value>()
+            .eval::<omnilua::Value>()
             .map_err(|e| anyhow!("could not evaluate required builtin script {name}: {e}"))
     }
 
@@ -144,7 +144,7 @@ impl LuaEngineImpl {
         sandboxed: bool,
     ) -> Result<R, anyhow::Error>
     where
-        R: mlua::FromLuaMulti,
+        R: omnilua::FromLuaMulti,
     {
         let _span = tracing::info_span!(
             "frontend.lua.evaluate",
@@ -162,13 +162,18 @@ impl LuaEngineImpl {
                 .run_sandboxed
                 .as_ref()
                 .ok_or(anyhow!("no sandbox function set"))?
-                .call::<R>((code,))
+                .call::<_, R>(code)
                 .map_err(|e| anyhow!("Could not evaluate sandboxed: {e}")),
-            false => self
-                .lua
-                .load(code)
-                .eval::<R>()
-                .map_err(|e| anyhow!("Could not evaluate unsandboxed: {e}")),
+            false => match self.lua.load(code).into_function() {
+                Ok(function) => function
+                    .call::<_, R>(())
+                    .map_err(|error| anyhow!("Could not evaluate unsandboxed: {error}")),
+                Err(_) => self
+                    .lua
+                    .load(format!("return {code}"))
+                    .eval::<R>()
+                    .map_err(|error| anyhow!("Could not evaluate unsandboxed: {error}")),
+            },
         }
     }
 
@@ -184,7 +189,7 @@ impl LuaEngineImpl {
     pub fn set_toplevel(
         &mut self,
         key: &str,
-        value: impl mlua::IntoLua,
+        value: impl omnilua::IntoLua,
     ) -> Result<(), anyhow::Error> {
         shoop_scripting::install_compatibility_value(
             self.run_sandboxed
@@ -220,17 +225,19 @@ impl LuaEngineImpl {
         &mut self,
         name: &str,
         callback: &Arc<Box<dyn LuaCallback>>,
-    ) -> Result<mlua::Function, anyhow::Error> {
+    ) -> Result<omnilua::Function, anyhow::Error> {
         let weak = Arc::downgrade(callback);
         let name = name.to_string();
         let weak_self = self.weak_self.clone();
         self.lua
             .create_function(
-                move |_, (multi,): (mlua::MultiValue,)| -> Result<mlua::Value, mlua::Error> {
+                move |_,
+                      multi: omnilua::Variadic<omnilua::Value>|
+                      -> Result<omnilua::Value, omnilua::Error> {
                     let _span =
                         tracing::debug_span!("frontend.lua.callback", arguments = multi.len())
                             .entered();
-                    match || -> Result<mlua::Value, anyhow::Error> {
+                    match || -> Result<omnilua::Value, anyhow::Error> {
                         let strong_cb = weak
                             .upgrade()
                             .ok_or(anyhow!("callback went out of scope"))?;
@@ -243,7 +250,7 @@ impl LuaEngineImpl {
                         Ok(result) => Ok(result),
                         Err(e) => {
                             error!("Could not call callback '{}': {e}", name);
-                            Ok(mlua::Value::default())
+                            Ok(omnilua::Value::Nil)
                         }
                     }
                 },
@@ -316,7 +323,7 @@ impl LuaEngine {
             .execute_builtin_script(script_subpath, sandboxed)
     }
 
-    pub fn require(&self, name: &str) -> Result<mlua::Value, anyhow::Error> {
+    pub fn require(&self, name: &str) -> Result<omnilua::Value, anyhow::Error> {
         self.lua.borrow().require(name)
     }
 
@@ -327,7 +334,7 @@ impl LuaEngine {
         sandboxed: bool,
     ) -> Result<R, anyhow::Error>
     where
-        R: mlua::FromLuaMulti,
+        R: omnilua::FromLuaMulti,
     {
         self.lua.borrow().evaluate(code, script_name, sandboxed)
     }
@@ -344,7 +351,7 @@ impl LuaEngine {
     pub fn set_toplevel(
         &mut self,
         key: &str,
-        value: impl mlua::IntoLua,
+        value: impl omnilua::IntoLua,
     ) -> Result<(), anyhow::Error> {
         self.lua.borrow_mut().set_toplevel(key, value)
     }
@@ -385,7 +392,7 @@ impl LuaEngine {
         &mut self,
         name: &str,
         callback: &Arc<Box<dyn LuaCallback>>,
-    ) -> Result<mlua::Function, anyhow::Error> {
+    ) -> Result<omnilua::Function, anyhow::Error> {
         self.lua.borrow_mut().create_callback_fn(name, callback)
     }
 }
@@ -393,6 +400,20 @@ impl LuaEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    trait ValueTestExt {
+        fn as_i64(&self) -> Option<i64>;
+    }
+
+    impl ValueTestExt for omnilua::Value {
+        fn as_i64(&self) -> Option<i64> {
+            match self {
+                omnilua::Value::Integer(value) => Some(*value),
+                omnilua::Value::Number(value) if value.fract() == 0.0 => Some(*value as i64),
+                _ => None,
+            }
+        }
+    }
 
     const HELLO_WORLD_IMPL: &'static str = r#"
 function test_hello_world()
@@ -471,23 +492,23 @@ return test_hello_world()
         impl LuaCallback for TestCallback {
             fn call(
                 &self,
-                _: &Arc<mlua::Lua>,
-                args: mlua::MultiValue,
-            ) -> Result<mlua::Value, anyhow::Error> {
+                _: &Arc<omnilua::Lua>,
+                args: omnilua::Variadic<omnilua::Value>,
+            ) -> Result<omnilua::Value, anyhow::Error> {
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
                 let a = args
-                    .front()
+                    .first()
                     .ok_or(anyhow!("missing arg 1"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 1 not i64"))?;
                 let b = args
-                    .back()
+                    .last()
                     .ok_or(anyhow!("missing arg 2"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 2 not i64"))?;
-                Ok(mlua::Value::Integer(a + b))
+                Ok(omnilua::Value::Integer(a + b))
             }
         }
 
@@ -510,23 +531,23 @@ return test_hello_world()
         impl LuaCallback for TestCallback {
             fn call(
                 &self,
-                _: &Arc<mlua::Lua>,
-                args: mlua::MultiValue,
-            ) -> Result<mlua::Value, anyhow::Error> {
+                _: &Arc<omnilua::Lua>,
+                args: omnilua::Variadic<omnilua::Value>,
+            ) -> Result<omnilua::Value, anyhow::Error> {
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
                 let a = args
-                    .front()
+                    .first()
                     .ok_or(anyhow!("missing arg 1"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 1 not i64"))?;
                 let b = args
-                    .back()
+                    .last()
                     .ok_or(anyhow!("missing arg 2"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 2 not i64"))?;
-                Ok(mlua::Value::Integer(a + b))
+                Ok(omnilua::Value::Integer(a + b))
             }
         }
 
@@ -549,46 +570,46 @@ return test_hello_world()
         impl LuaCallback for TestAddCallback {
             fn call(
                 &self,
-                _: &Arc<mlua::Lua>,
-                args: mlua::MultiValue,
-            ) -> Result<mlua::Value, anyhow::Error> {
+                _: &Arc<omnilua::Lua>,
+                args: omnilua::Variadic<omnilua::Value>,
+            ) -> Result<omnilua::Value, anyhow::Error> {
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
                 let a = args
-                    .front()
+                    .first()
                     .ok_or(anyhow!("missing arg 1"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 1 not i64"))?;
                 let b = args
-                    .back()
+                    .last()
                     .ok_or(anyhow!("missing arg 2"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 2 not i64"))?;
-                Ok(mlua::Value::Integer(a + b))
+                Ok(omnilua::Value::Integer(a + b))
             }
         }
         struct TestSubtractCallback {}
         impl LuaCallback for TestSubtractCallback {
             fn call(
                 &self,
-                _: &Arc<mlua::Lua>,
-                args: mlua::MultiValue,
-            ) -> Result<mlua::Value, anyhow::Error> {
+                _: &Arc<omnilua::Lua>,
+                args: omnilua::Variadic<omnilua::Value>,
+            ) -> Result<omnilua::Value, anyhow::Error> {
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
                 let a = args
-                    .front()
+                    .first()
                     .ok_or(anyhow!("missing arg 1"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 1 not i64"))?;
                 let b = args
-                    .back()
+                    .last()
                     .ok_or(anyhow!("missing arg 2"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 2 not i64"))?;
-                Ok(mlua::Value::Integer(a - b))
+                Ok(omnilua::Value::Integer(a - b))
             }
         }
 
@@ -624,46 +645,46 @@ return test_hello_world()
         impl LuaCallback for TestAddCallback {
             fn call(
                 &self,
-                _: &Arc<mlua::Lua>,
-                args: mlua::MultiValue,
-            ) -> Result<mlua::Value, anyhow::Error> {
+                _: &Arc<omnilua::Lua>,
+                args: omnilua::Variadic<omnilua::Value>,
+            ) -> Result<omnilua::Value, anyhow::Error> {
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
                 let a = args
-                    .front()
+                    .first()
                     .ok_or(anyhow!("missing arg 1"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 1 not i64"))?;
                 let b = args
-                    .back()
+                    .last()
                     .ok_or(anyhow!("missing arg 2"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 2 not i64"))?;
-                Ok(mlua::Value::Integer(a + b))
+                Ok(omnilua::Value::Integer(a + b))
             }
         }
         struct TestSubtractCallback {}
         impl LuaCallback for TestSubtractCallback {
             fn call(
                 &self,
-                _: &Arc<mlua::Lua>,
-                args: mlua::MultiValue,
-            ) -> Result<mlua::Value, anyhow::Error> {
+                _: &Arc<omnilua::Lua>,
+                args: omnilua::Variadic<omnilua::Value>,
+            ) -> Result<omnilua::Value, anyhow::Error> {
                 if args.len() != 2 {
                     return Err(anyhow!("Incorrect amount of args"));
                 }
                 let a = args
-                    .front()
+                    .first()
                     .ok_or(anyhow!("missing arg 1"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 1 not i64"))?;
                 let b = args
-                    .back()
+                    .last()
                     .ok_or(anyhow!("missing arg 2"))?
                     .as_i64()
                     .ok_or(anyhow!("arg 2 not i64"))?;
-                Ok(mlua::Value::Integer(a - b))
+                Ok(omnilua::Value::Integer(a - b))
             }
         }
 

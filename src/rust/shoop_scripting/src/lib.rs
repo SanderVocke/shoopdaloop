@@ -1,9 +1,10 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::fmt::Display;
 use std::rc::Rc;
 
 use anyhow::{anyhow, bail};
-use mlua::{Function, Lua, Value};
+use omnilua::{Function, Lua, Value};
 use shoop_app_api::{
     ScriptActivityDiagnostics as ApiScriptActivityDiagnostics, ScriptId, ScriptKind,
     ScriptLifecycle, ScriptLogLevel as ApiScriptLogLevel, ScriptLogState, ScriptMidiDiagnostics,
@@ -21,10 +22,12 @@ pub use control::{
     SharedControlBridge, CONTROL_FUNCTION_NAMES,
 };
 use legacy_key_constants::{LEGACY_KEY_CONSTANTS, LEGACY_MODIFIER_CONSTANTS};
+#[cfg(not(target_arch = "wasm32"))]
+pub use midi::NativeMidiService;
 pub use midi::{
     FakeMidiControl, FakeMidiService, MidiConnectionId, MidiControlService, MidiEndpoint,
-    MidiEndpointDirection, MidiEndpointSnapshot, NativeMidiService, NullMidiService,
-    MAX_MIDI_MESSAGE_BYTES, MIDI_QUEUE_CAPACITY,
+    MidiEndpointDirection, MidiEndpointSnapshot, NullMidiService, MAX_MIDI_MESSAGE_BYTES,
+    MIDI_QUEUE_CAPACITY,
 };
 
 pub const KEYBOARD_SCRIPT: &str = include_str!("../../../lua/builtins/keyboard.lua");
@@ -149,7 +152,7 @@ impl LuaRuntime {
 
     pub fn execute(&self, name: &str, source: &str) -> anyhow::Result<()> {
         self.run_sandboxed
-            .call::<()>(source)
+            .call::<_, ()>(source)
             .map_err(|error| anyhow!("could not execute Lua source {name}: {error}"))
     }
 
@@ -264,14 +267,18 @@ pub fn prepare_compatibility_environment(lua: &Lua) -> anyhow::Result<Function> 
 pub fn install_compatibility_value(
     run_sandboxed: &Function,
     name: &str,
-    value: impl mlua::IntoLua,
+    value: impl omnilua::IntoLua,
 ) -> anyhow::Result<()> {
     let registrar: Function = run_sandboxed
         .call(format!("return function(value) {name} = value end"))
         .map_err(|error| anyhow!("could not create Lua {name} registrar: {error}"))?;
     registrar
-        .call::<()>(value)
+        .call::<_, ()>(value)
         .map_err(|error| anyhow!("could not install Lua value {name}: {error}"))
+}
+
+fn runtime_error(message: impl Display) -> omnilua::Error {
+    omnilua::LuaError::runtime(format_args!("{message}")).into()
 }
 
 fn install_require(lua: &Lua, run_sandboxed: &Function) -> anyhow::Result<()> {
@@ -283,11 +290,11 @@ fn install_require(lua: &Lua, run_sandboxed: &Function) -> anyhow::Result<()> {
     let require = lua
         .create_function(move |_, name: String| {
             let Some(source) = libraries.get(&name) else {
-                return Err(mlua::Error::runtime(format!(
+                return Err(runtime_error(format!(
                     "cannot require unloaded library: {name}"
                 )));
             };
-            runner.call::<Value>(source.as_str())
+            runner.call::<_, Value>(source.as_str())
         })
         .map_err(|error| anyhow!("could not create Lua require function: {error}"))?;
     install_compatibility_value(run_sandboxed, "require", require)?;
@@ -790,28 +797,30 @@ mod tests {
     #[test]
     fn complete_control_surface_is_installed_with_legacy_constants() {
         let runtime = LuaRuntime::new().unwrap();
-        let module: mlua::Table = runtime
+        let module: omnilua::Table = runtime
             .run_sandboxed
             .call("return require('shoop_control')")
             .unwrap();
         for name in CONTROL_FUNCTION_NAMES {
             assert!(
-                module.get::<mlua::Function>(*name).is_ok(),
+                module.get::<_, omnilua::Function>(*name).is_ok(),
                 "missing {name}"
             );
         }
-        let constants: mlua::Table = module.get("constants").unwrap();
-        assert_eq!(constants.get::<i64>("Key_Up").unwrap(), 16_777_235);
+        let constants: omnilua::Table = module.get("constants").unwrap();
+        assert_eq!(constants.get::<_, i64>("Key_Up").unwrap(), 16_777_235);
         assert_eq!(
-            constants.get::<i64>("KeyModifier_ControlModifier").unwrap(),
+            constants
+                .get::<_, i64>("KeyModifier_ControlModifier")
+                .unwrap(),
             67_108_864
         );
-        assert_eq!(constants.get::<i64>("LoopMode_Playing").unwrap(), 2);
+        assert_eq!(constants.get::<_, i64>("LoopMode_Playing").unwrap(), 2);
         for &(name, expected) in LEGACY_KEY_CONSTANTS
             .iter()
             .chain(LEGACY_MODIFIER_CONSTANTS.iter())
         {
-            assert_eq!(constants.get::<i64>(name).unwrap(), expected, "{name}");
+            assert_eq!(constants.get::<_, i64>(name).unwrap(), expected, "{name}");
         }
         for (name, expected) in [
             ("LoopMode_Unknown", 0),
@@ -832,10 +841,10 @@ mod tests {
             ("Loop_DontWaitForSync", -1),
             ("Loop_DontAlignToSyncImmediately", -1),
         ] {
-            assert_eq!(constants.get::<i64>(name).unwrap(), expected, "{name}");
+            assert_eq!(constants.get::<_, i64>(name).unwrap(), expected, "{name}");
         }
         assert_eq!(
-            constants.clone().pairs::<String, mlua::Value>().count(),
+            constants.clone().pairs().unwrap().count(),
             LEGACY_KEY_CONSTANTS.len() + LEGACY_MODIFIER_CONSTANTS.len() + 17
         );
     }

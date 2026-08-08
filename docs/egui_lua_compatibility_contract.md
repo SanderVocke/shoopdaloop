@@ -1,6 +1,6 @@
 # egui Lua compatibility contract
 
-This document freezes the native egui scripting milestone's compatibility target. The retained QML implementation and its tests remain the behavior oracle until the replacement test named for each row exists.
+This document freezes the Shoop Lua compatibility target. Native egui and the retained QML frontend now share the pinned omniLua 0.7.1 Lua 5.4 runtime described in `omnilua_runtime.md`; retained QML behavior and its tests remain an oracle until each cross-target replacement test exists.
 
 ## Value and selector rules
 
@@ -99,7 +99,7 @@ The egui key translator must emit the retained numeric values. Unsupported platf
 
 The single sources under `src/lua/lib` provide `shoop_control`, `shoop_coords`, `shoop_helpers`, `shoop_format`, and `shoop_midi`. Only these preloaded Shoop modules are required through the compatibility `require`. The runtime provides `print`, `print_trace`, `print_debug`, `print_info`, `print_warning`, and `print_error`.
 
-Each script gets its own Lua state. Runtime or callback failure changes only that script's status and does not remove other scripts.
+Each script gets its own Lua 5.4 state. Runtime or callback failure changes only that script's status and does not remove other scripts. The sandbox's exact standard-library profile, rooting/error rules, and reviewed omniLua embedding adaptations are specified in `omnilua_runtime.md`.
 
 ## Bundled-script capability map
 
@@ -126,4 +126,4 @@ Transitive helper calls add `loop_count`, loop mode/length/next-mode queries, ex
 
 The native application's fresh `shoop-egui-settings` document stores typed bundled enablement toggles and an ordered user path/enabled list. Both bundled scripts are discoverable on first run and only `keyboard.lua` is enabled by default. The one Settings dialog exposes all script configuration, lifecycle, documentation, logs, and MIDI diagnostics in its **Scripts** tab. Persistent edits apply after Save; Stop, Restart, and Reload are runtime-only. Retained QML `script_settings.1` is not imported or rewritten. Source-bearing session scripts use `.shoop` `ScriptDocument` entries and never persist machine paths.
 
-Native desktop is the parity target. Browser packages continue to use `wasm32-unknown-unknown`, do not link `mlua` or native MIDI, and explicitly reject enabled script-bearing sessions until a separately approved browser scripting design exists.
+Native desktop remains the currently delivered parity target. Browser packages continue to use `wasm32-unknown-unknown` and exclude native MIDI. Shared omniLua scripting now compiles for that target, but the current browser composition still rejects enabled script-bearing sessions until the application-owner integration tracked by `plans/EGUI_WEB_PORTS_AND_WASM_LUA_PLAN.md` is completed.

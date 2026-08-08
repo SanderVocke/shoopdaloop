@@ -27,7 +27,7 @@ use cxx_qt_lib_shoop::qvariant_helpers::{
 };
 use cxx_qt_lib_shoop::{qobject::FromQObject, qpointer::qpointer_to_qobject};
 use itertools::Either;
-use mlua::{FromLua, IntoLua};
+use omnilua::{FromLua, IntoLua};
 use shoop_engine::{LoopMode, PortDirection};
 use std::boxed::Box;
 use std::cell::RefCell;
@@ -61,85 +61,37 @@ pub enum GlobalEventType {
     GlobalControlChanged,
 }
 
-fn as_coords(val: &mlua::Value) -> Option<(i64, i64)> {
-    if let mlua::Value::Table(table) = val {
-        let len = table.len().unwrap_or(0);
-        if len == 2
-            && table
-                .sequence_values::<mlua::Value>()
-                .filter(|v| v.is_ok())
-                .count()
-                == 2
-            && table
-                .sequence_values::<mlua::Value>()
-                .filter(|v| v.is_ok())
-                .fold(true, |acc, v| {
-                    acc && v.unwrap_or(mlua::Value::Nil).is_integer()
-                })
-        {
-            let mut iter = table.sequence_values::<mlua::Value>();
-            let first = iter
-                .next()
-                .unwrap_or(Ok(mlua::Value::Nil))
-                .unwrap_or(mlua::Value::Nil);
-            let second = iter
-                .next()
-                .unwrap_or(Ok(mlua::Value::Nil))
-                .unwrap_or(mlua::Value::Nil);
-            return Some((
-                first.as_integer().unwrap_or(0),
-                second.as_integer().unwrap_or(0),
-            ));
-        }
+fn as_coords(value: &omnilua::Value) -> Option<(i64, i64)> {
+    let omnilua::Value::Table(table) = value else {
+        return None;
+    };
+    if table.len().ok()? != 2 {
+        return None;
     }
-    None
+    Some((table.get(1).ok()?, table.get(2).ok()?))
 }
 
-fn as_multi_coords(val: &mlua::Value) -> Option<Vec<(i64, i64)>> {
-    if let mlua::Value::Table(table) = val {
-        let len = table.len().unwrap_or(0);
-        if len
-            == table
-                .sequence_values::<mlua::Value>()
-                .filter(|v| v.is_ok())
-                .count() as i64
-        {
-            let as_coords: Vec<Option<(i64, i64)>> = table
-                .sequence_values::<mlua::Value>()
-                .map(|v| match v {
-                    Ok(v) => as_coords(&v),
-                    Err(_) => None,
-                })
-                .collect();
-            return Some(as_coords.iter().map(|v| v.unwrap_or((0, 0))).collect());
-        }
-    }
-    None
+fn as_multi_coords(value: &omnilua::Value) -> Option<Vec<(i64, i64)>> {
+    let omnilua::Value::Table(table) = value else {
+        return None;
+    };
+    (1..=table.len().ok()?)
+        .map(|index| {
+            table
+                .get::<_, omnilua::Value>(index)
+                .ok()
+                .and_then(|value| as_coords(&value))
+        })
+        .collect()
 }
 
-fn as_track_indices(val: &mlua::Value) -> Option<Vec<i64>> {
-    if let mlua::Value::Table(table) = val {
-        let len = table.len().unwrap_or(0);
-        if len
-            == table
-                .sequence_values::<mlua::Value>()
-                .filter(|v| v.is_ok())
-                .count() as i64
-        {
-            let as_indices: Vec<Option<i64>> = table
-                .sequence_values::<mlua::Value>()
-                .map(|v| match v {
-                    Ok(v) => match v {
-                        mlua::Value::Integer(i) => Some(i as i64),
-                        _ => None,
-                    },
-                    Err(_) => None,
-                })
-                .collect();
-            return Some(as_indices.iter().map(|v| v.unwrap_or(0)).collect());
-        }
-    }
-    None
+fn as_track_indices(value: &omnilua::Value) -> Option<Vec<i64>> {
+    let omnilua::Value::Table(table) = value else {
+        return None;
+    };
+    (1..=table.len().ok()?)
+        .map(|index| table.get(index).ok())
+        .collect()
 }
 
 fn loop_coords(l: *mut QObject) -> Result<(i64, i64), anyhow::Error> {
@@ -209,18 +161,18 @@ impl SessionControlHandlerLuaTarget {
             callable: Box<
                 dyn Fn(
                     &SessionControlHandlerLuaTarget,
-                    &Arc<mlua::Lua>,
-                    mlua::MultiValue,
-                ) -> Result<mlua::Value, anyhow::Error>,
+                    &Arc<omnilua::Lua>,
+                    omnilua::Variadic<omnilua::Value>,
+                ) -> Result<omnilua::Value, anyhow::Error>,
             >,
         }
 
         impl LuaCallback for SessionControlCallback {
             fn call(
                 &self,
-                lua: &Arc<mlua::Lua>,
-                args: mlua::MultiValue,
-            ) -> Result<mlua::Value, anyhow::Error> {
+                lua: &Arc<omnilua::Lua>,
+                args: omnilua::Variadic<omnilua::Value>,
+            ) -> Result<omnilua::Value, anyhow::Error> {
                 let strong_self = self
                     .weak_target
                     .upgrade()
@@ -238,22 +190,23 @@ impl SessionControlHandlerLuaTarget {
                 .as_mut()
                 .ok_or(anyhow!("Wrapped engine not initialized"))?;
 
-            let lua_module: mlua::Table = wrapped_engine
+            let lua_module: omnilua::Table = wrapped_engine
                 .lua
                 .borrow()
                 .lua
                 .create_table()
                 .map_err(|e| anyhow!("Could not create table: {e}"))?;
 
-            let lua_constants: mlua::Table = wrapped_engine
+            let lua_constants: omnilua::Table = wrapped_engine
                 .lua
                 .borrow()
                 .lua
                 .create_table()
                 .map_err(|e| anyhow!("Could not create table: {e}"))?;
 
-            let map_const_err =
-                |r: Result<(), mlua::Error>| r.map_err(|e| anyhow!("Could not set constant: {e}"));
+            let map_const_err = |r: Result<(), omnilua::Error>| {
+                r.map_err(|e| anyhow!("Could not set constant: {e}"))
+            };
 
             macro_rules! map_iterable_enum {
                 ($maybe_basename:expr, $ty:ty) => {
@@ -402,15 +355,15 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_count(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
 
-        let rval = mlua::Value::Integer(
-            self.select_loops(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
+        let rval = omnilua::Value::Integer(
+            self.select_loops(lua, args.get(0).unwrap_or(&omnilua::Value::Nil))?
                 .filter(|p| !p.is_null())
                 .count() as i64,
         );
@@ -420,7 +373,7 @@ impl SessionControlHandlerLuaTarget {
                 b.push(format!(
                     "loop_count_{:?}",
                     loops_coords_vec(
-                        self.select_loops(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
+                        self.select_loops(lua, args.get(0).unwrap_or(&omnilua::Value::Nil))?
                     )
                     .collect::<Vec<Vec<i64>>>()
                 ));
@@ -438,9 +391,9 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_get_all(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 0 {
             return Err(anyhow!("Expected 0 arguments, got {}", args.len()));
         }
@@ -458,9 +411,9 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_get_which_selected(
         &self,
-        lua: &mlua::Lua,
-        _args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        _args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         loops_coords_vec(self.selected_loops.iter().map(|p| p.clone()))
             .collect::<Vec<Vec<i64>>>()
             .into_lua(lua)
@@ -475,14 +428,14 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_get_which_targeted(
         &self,
-        lua: &mlua::Lua,
-        _args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        _args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         match self.maybe_targeted_loop {
             Some(l) => loop_coords_vec(l)?
                 .into_lua(lua)
                 .map_err(|e| anyhow!("Could not convert loop coords to lua: {e}")),
-            None => Ok(mlua::Nil),
+            None => Ok(omnilua::Value::Nil),
         }
     }
 
@@ -494,9 +447,9 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_get_by_mode(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
@@ -520,13 +473,13 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_get_mode(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        self.select_loops(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
+        self.select_loops(lua, args.get(0).unwrap_or(&omnilua::Value::Nil))?
             .map(|l| loop_int_prop(&l, "mode").unwrap_or(LoopMode::Unknown as i32))
             .collect::<Vec<i32>>()
             .into_lua(lua)
@@ -541,13 +494,13 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_get_next_mode(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        self.select_loops(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
+        self.select_loops(lua, args.get(0).unwrap_or(&omnilua::Value::Nil))?
             .map(|l| loop_opt_int_prop(&l, "next_mode").unwrap_or(None))
             .collect::<Vec<Option<i32>>>()
             .into_lua(lua)
@@ -562,13 +515,13 @@ impl SessionControlHandlerLuaTarget {
      */
     fn loop_get_next_mode_delay(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        self.select_loops(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
+        self.select_loops(lua, args.get(0).unwrap_or(&omnilua::Value::Nil))?
             .map(|l| loop_opt_int_prop(&l, "next_transition_delay").unwrap_or(None))
             .collect::<Vec<Option<i32>>>()
             .into_lua(lua)
@@ -583,13 +536,13 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_get_length(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        self.select_loops(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
+        self.select_loops(lua, args.get(0).unwrap_or(&omnilua::Value::Nil))?
             .map(|l| loop_int_prop(&l, "length").unwrap_or(0))
             .collect::<Vec<i32>>()
             .into_lua(lua)
@@ -604,14 +557,14 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_get_by_track(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
         let track_idx = match args.get(0).ok_or(anyhow!("Missing argument"))? {
-            mlua::Value::Integer(track_idx) => *track_idx,
+            omnilua::Value::Integer(track_idx) => *track_idx,
             _ => {
                 return Err(anyhow!("arg is not an integer"));
             }
@@ -637,27 +590,27 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_transition(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 4 {
             return Err(anyhow!("Expected 4 arguments, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
-        let mode = match args.get(1).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Integer(mode) => *mode as i32,
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
+        let mode = match args.get(1).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Integer(mode) => *mode as i32,
             _ => {
                 return Err(anyhow!("arg 2 is not a mode"));
             }
         };
-        let maybe_cycles_delay = match args.get(2).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Integer(maybe_cycles_delay) => *maybe_cycles_delay as i32,
+        let maybe_cycles_delay = match args.get(2).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Integer(maybe_cycles_delay) => *maybe_cycles_delay as i32,
             _ => {
                 return Err(anyhow!("arg 3 is not a cycles delay"));
             }
         };
-        let maybe_align_to_sync_at = match args.get(3).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Integer(maybe_align_to_sync_at) => *maybe_align_to_sync_at as i32,
+        let maybe_align_to_sync_at = match args.get(3).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Integer(maybe_align_to_sync_at) => *maybe_align_to_sync_at as i32,
             _ => {
                 return Err(anyhow!("arg 3 is not a sync at point"));
             }
@@ -668,7 +621,7 @@ impl SessionControlHandlerLuaTarget {
                 b.push(format!(
                     "loop_transition_{:?}_mode{}_d{}_s{}",
                     loops_coords_vec(
-                        self.select_loops(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
+                        self.select_loops(lua, args.get(0).unwrap_or(&omnilua::Value::Nil))?
                     )
                     .collect::<Vec<Vec<i64>>>(),
                     mode,
@@ -695,7 +648,7 @@ impl SessionControlHandlerLuaTarget {
                 ),
             )
         })?;
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -707,15 +660,15 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_trigger(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 2 {
             return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
-        let mode = match args.get(1).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Integer(mode) => *mode as i32,
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
+        let mode = match args.get(1).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Integer(mode) => *mode as i32,
             _ => {
                 return Err(anyhow!("arg 2 is not a mode"));
             }
@@ -732,7 +685,7 @@ impl SessionControlHandlerLuaTarget {
                 &(QVariant::from(&mode)),
             )
         })?;
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -743,13 +696,13 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_trigger_grab(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
         self.select_loops(lua, selector)?.try_for_each(|l| unsafe {
             if l.is_null() {
                 warn!("loop_trigger_grab: loop is null");
@@ -762,7 +715,7 @@ impl SessionControlHandlerLuaTarget {
                 &(),
             )
         })?;
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -773,15 +726,16 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_get_gain(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        self.select_loops(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
+        self.select_loops(lua, args.get(0).unwrap_or(&omnilua::Value::Nil))?
             .map(|l| loop_float_prop(&l, "last_pushed_gain").unwrap_or(0.0))
-            .collect::<Vec<f32>>()
+            .map(f64::from)
+            .collect::<Vec<f64>>()
             .into_lua(lua)
             .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
@@ -794,15 +748,16 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_get_gain_fader(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        self.select_loops(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
+        self.select_loops(lua, args.get(0).unwrap_or(&omnilua::Value::Nil))?
             .map(|l| loop_float_prop(&l, "gain_fader").unwrap_or(0.0))
-            .collect::<Vec<f32>>()
+            .map(f64::from)
+            .collect::<Vec<f64>>()
             .into_lua(lua)
             .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
@@ -815,15 +770,16 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_get_balance(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        self.select_loops(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
+        self.select_loops(lua, args.get(0).unwrap_or(&omnilua::Value::Nil))?
             .map(|l| loop_float_prop(&l, "last_pushed_stereo_balance").unwrap_or(0.0))
-            .collect::<Vec<f32>>()
+            .map(f64::from)
+            .collect::<Vec<f64>>()
             .into_lua(lua)
             .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
@@ -836,21 +792,21 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_record_n(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 3 {
             return Err(anyhow!("Expected 3 arguments, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
-        let n = match args.get(1).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Integer(n) => *n as i32,
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
+        let n = match args.get(1).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Integer(n) => *n as i32,
             _ => {
                 return Err(anyhow!("arg 2 is not an integer"));
             }
         };
-        let cycles_delay = match args.get(2).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Integer(cycles_delay) => *cycles_delay as i32,
+        let cycles_delay = match args.get(2).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Integer(cycles_delay) => *cycles_delay as i32,
             _ => {
                 return Err(anyhow!("arg 3 is not an integer"));
             }
@@ -867,7 +823,7 @@ impl SessionControlHandlerLuaTarget {
                 &(QVariant::from(&cycles_delay), QVariant::from(&n)),
             )
         })?;
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -878,13 +834,13 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_record_with_targeted(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
         self.select_loops(lua, selector)?.try_for_each(|l| unsafe {
             if l.is_null() {
                 warn!("loop_record_with_targeted: loop is null");
@@ -897,7 +853,7 @@ impl SessionControlHandlerLuaTarget {
                 &(),
             )
         })?;
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -908,15 +864,15 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_set_gain(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 2 {
             return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
-        let gain = match args.get(1).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Number(gain) => *gain as f32,
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
+        let gain = match args.get(1).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Number(gain) => *gain as f32,
             _ => {
                 return Err(anyhow!("arg 2 is not a gain number"));
             }
@@ -933,7 +889,7 @@ impl SessionControlHandlerLuaTarget {
                 &(QVariant::from(&gain)),
             )
         })?;
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -944,15 +900,15 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_set_gain_fader(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 2 {
             return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
-        let gain = match args.get(1).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Number(gain) => *gain as f32,
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
+        let gain = match args.get(1).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Number(gain) => *gain as f32,
             _ => {
                 return Err(anyhow!("arg 2 is not a gain number"));
             }
@@ -969,7 +925,7 @@ impl SessionControlHandlerLuaTarget {
                 &(QVariant::from(&gain)),
             )
         })?;
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -980,15 +936,15 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_set_balance(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 2 {
             return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
-        let balance = match args.get(1).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Number(gain) => *gain as f32,
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
+        let balance = match args.get(1).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Number(gain) => *gain as f32,
             _ => {
                 return Err(anyhow!("arg 2 is not a gain number"));
             }
@@ -1005,7 +961,7 @@ impl SessionControlHandlerLuaTarget {
                 &(QVariant::from(&balance)),
             )
         })?;
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1016,15 +972,15 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_select(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 2 {
             return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
-        let clear = match args.get(1).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Boolean(clear) => *clear,
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
+        let clear = match args.get(1).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Boolean(clear) => *clear,
             _ => {
                 return Err(anyhow!("arg 2 is not a boolean"));
             }
@@ -1042,7 +998,7 @@ impl SessionControlHandlerLuaTarget {
         unsafe {
             if self.session.is_null() {
                 warn!("loop_select: session is null");
-                return Ok(mlua::Value::Nil);
+                return Ok(omnilua::Value::Nil);
             }
             invoke::<_, (), _>(
                 &mut *self.session,
@@ -1052,7 +1008,7 @@ impl SessionControlHandlerLuaTarget {
             )?;
         }
 
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1064,13 +1020,13 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_target(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
         let l = self
             .select_loops(lua, selector)?
             .nth(0)
@@ -1079,7 +1035,7 @@ impl SessionControlHandlerLuaTarget {
         unsafe {
             if self.session.is_null() {
                 warn!("loop_target: session is null");
-                return Ok(mlua::Value::Nil);
+                return Ok(omnilua::Value::Nil);
             }
             invoke::<_, (), _>(
                 &mut *self.session,
@@ -1088,7 +1044,7 @@ impl SessionControlHandlerLuaTarget {
                 &(qobject_ptr_to_qvariant(&l).unwrap_or(QVariant::default())),
             )?;
         }
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1099,13 +1055,13 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_clear(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
         self.select_loops(lua, selector)?.try_for_each(|l| unsafe {
             if l.is_null() {
                 warn!("loop_clear: loop is null");
@@ -1118,7 +1074,7 @@ impl SessionControlHandlerLuaTarget {
                 &(QVariant::from(&0), QVariant::from(&false)),
             )
         })?;
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1129,9 +1085,9 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_clear_all(
         &self,
-        _lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        _lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 0 {
             return Err(anyhow!("Expected 0 arguments, got {}", args.len()));
         }
@@ -1147,7 +1103,7 @@ impl SessionControlHandlerLuaTarget {
                 &(QVariant::from(&0), QVariant::from(&false)),
             )
         })?;
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1158,9 +1114,9 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_untarget_all(
         &self,
-        _lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        _lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 0 {
             return Err(anyhow!("Expected 0 argument, got {}", args.len()));
         }
@@ -1171,7 +1127,7 @@ impl SessionControlHandlerLuaTarget {
         unsafe {
             if l.is_null() {
                 warn!("loop_untarget_all: loop is null");
-                return Ok(mlua::Value::Nil);
+                return Ok(omnilua::Value::Nil);
             }
             invoke::<_, (), _>(
                 &mut *l,
@@ -1180,7 +1136,7 @@ impl SessionControlHandlerLuaTarget {
                 &(),
             )?;
         }
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1191,13 +1147,13 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_toggle_selected(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
         self.select_loops(lua, selector)?.try_for_each(|l| unsafe {
             if l.is_null() {
                 warn!("loop_toggle_selected: loop is null");
@@ -1210,7 +1166,7 @@ impl SessionControlHandlerLuaTarget {
                 &(QVariant::from(&false)),
             )
         })?;
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1222,13 +1178,13 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_toggle_targeted(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
         let l = self
             .select_loops(lua, selector)?
             .nth(0)
@@ -1236,7 +1192,7 @@ impl SessionControlHandlerLuaTarget {
         unsafe {
             if l.is_null() {
                 warn!("loop_toggle_targeted: loop is null");
-                return Ok(mlua::Value::Nil);
+                return Ok(omnilua::Value::Nil);
             }
             invoke::<_, (), _>(
                 &mut *l,
@@ -1245,7 +1201,7 @@ impl SessionControlHandlerLuaTarget {
                 &(),
             )?;
         }
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1261,33 +1217,33 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_adopt_ringbuffers(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 5 {
             return Err(anyhow!("Expected 5 arguments, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
-        let reverse_start_cycle = match args.get(1).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Integer(reverse_start_cycle) => *reverse_start_cycle as i32,
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
+        let reverse_start_cycle = match args.get(1).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Integer(reverse_start_cycle) => *reverse_start_cycle as i32,
             _ => {
                 return Err(anyhow!("arg 2 is not an integer"));
             }
         };
-        let cycles_length = match args.get(2).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Integer(cycles_length) => *cycles_length as i32,
+        let cycles_length = match args.get(2).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Integer(cycles_length) => *cycles_length as i32,
             _ => {
                 return Err(anyhow!("arg 3 is not an integer"));
             }
         };
-        let go_to_cycle = match args.get(3).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Integer(go_to_cycle) => *go_to_cycle as i32,
+        let go_to_cycle = match args.get(3).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Integer(go_to_cycle) => *go_to_cycle as i32,
             _ => {
                 return Err(anyhow!("arg 4 is not an integer"));
             }
         };
-        let go_to_mode = match args.get(4).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Integer(go_to_mode) => *go_to_mode as i32,
+        let go_to_mode = match args.get(4).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Integer(go_to_mode) => *go_to_mode as i32,
             _ => {
                 return Err(anyhow!("arg 5 is not an integer"));
             }
@@ -1309,7 +1265,7 @@ impl SessionControlHandlerLuaTarget {
                 ),
             )
         })?;
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1324,16 +1280,16 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_compose_add_to_end(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 3 {
             return Err(anyhow!("Expected 3 arguments, got {}", args.len()));
         }
-        let target_selector = args.get(0).unwrap_or(&mlua::Value::Nil);
-        let add_selector = args.get(1).unwrap_or(&mlua::Value::Nil);
-        let parallel = match args.get(2).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Boolean(parallel) => *parallel,
+        let target_selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
+        let add_selector = args.get(1).unwrap_or(&omnilua::Value::Nil);
+        let parallel = match args.get(2).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Boolean(parallel) => *parallel,
             _ => {
                 return Err(anyhow!("arg 3 is not a boolean"));
             }
@@ -1350,7 +1306,7 @@ impl SessionControlHandlerLuaTarget {
         unsafe {
             if target_loop.is_null() {
                 warn!("loop_compose_add_to_end: target loop is null");
-                return Ok(mlua::Value::Nil);
+                return Ok(omnilua::Value::Nil);
             }
             invoke::<_, (), _>(
                 &mut *target_loop,
@@ -1362,7 +1318,7 @@ impl SessionControlHandlerLuaTarget {
                 ),
             )?;
         }
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1375,16 +1331,16 @@ impl SessionControlHandlerLuaTarget {
     */
     fn loop_set_repeat_sync(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 2 {
             return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
-        let active = args.get(1).unwrap_or(&mlua::Value::Nil);
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
+        let active = args.get(1).unwrap_or(&omnilua::Value::Nil);
         let active = match active {
-            mlua::Value::Boolean(active) => *active,
+            omnilua::Value::Boolean(active) => *active,
             _ => {
                 return Err(anyhow!("arg 2 is not a boolean"));
             }
@@ -1401,7 +1357,7 @@ impl SessionControlHandlerLuaTarget {
                 &(QVariant::from(&active)),
             )
         })?;
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1412,15 +1368,16 @@ impl SessionControlHandlerLuaTarget {
     */
     fn track_get_gain(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        self.select_tracks(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
+        self.select_tracks(lua, args.get(0).unwrap_or(&omnilua::Value::Nil))?
             .map(|l| loop_float_prop(&l, "last_pushed_gain").unwrap_or(0.0))
-            .collect::<Vec<f32>>()
+            .map(f64::from)
+            .collect::<Vec<f64>>()
             .into_lua(lua)
             .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
@@ -1433,15 +1390,16 @@ impl SessionControlHandlerLuaTarget {
     */
     fn track_get_balance(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        self.select_tracks(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
+        self.select_tracks(lua, args.get(0).unwrap_or(&omnilua::Value::Nil))?
             .map(|l| loop_float_prop(&l, "last_pushed_out_stereo_balance").unwrap_or(0.0))
-            .collect::<Vec<f32>>()
+            .map(f64::from)
+            .collect::<Vec<f64>>()
             .into_lua(lua)
             .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
@@ -1454,15 +1412,16 @@ impl SessionControlHandlerLuaTarget {
     */
     fn track_get_gain_fader(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        self.select_tracks(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
+        self.select_tracks(lua, args.get(0).unwrap_or(&omnilua::Value::Nil))?
             .map(|l| loop_float_prop(&l, "gain_fader_position").unwrap_or(0.0))
-            .collect::<Vec<f32>>()
+            .map(f64::from)
+            .collect::<Vec<f64>>()
             .into_lua(lua)
             .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
@@ -1475,15 +1434,16 @@ impl SessionControlHandlerLuaTarget {
     */
     fn track_get_input_gain(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        self.select_tracks(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
+        self.select_tracks(lua, args.get(0).unwrap_or(&omnilua::Value::Nil))?
             .map(|l| loop_float_prop(&l, "last_pushed_in_gain").unwrap_or(0.0))
-            .collect::<Vec<f32>>()
+            .map(f64::from)
+            .collect::<Vec<f64>>()
             .into_lua(lua)
             .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
@@ -1496,15 +1456,16 @@ impl SessionControlHandlerLuaTarget {
     */
     fn track_get_input_gain_fader(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        self.select_tracks(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
+        self.select_tracks(lua, args.get(0).unwrap_or(&omnilua::Value::Nil))?
             .map(|l| loop_float_prop(&l, "input_fader_position").unwrap_or(0.0))
-            .collect::<Vec<f32>>()
+            .map(f64::from)
+            .collect::<Vec<f64>>()
             .into_lua(lua)
             .map_err(|e| anyhow!("could not convert to lua: {e}"))
     }
@@ -1517,13 +1478,13 @@ impl SessionControlHandlerLuaTarget {
     */
     fn track_get_muted(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        self.select_tracks(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
+        self.select_tracks(lua, args.get(0).unwrap_or(&omnilua::Value::Nil))?
             .map(|l| loop_bool_prop(&l, "mute").unwrap_or(false))
             .collect::<Vec<bool>>()
             .into_lua(lua)
@@ -1538,15 +1499,15 @@ impl SessionControlHandlerLuaTarget {
     */
     fn track_set_muted(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 2 {
             return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
-        let muted = match args.get(1).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Boolean(muted) => *muted,
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
+        let muted = match args.get(1).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Boolean(muted) => *muted,
             _ => {
                 return Err(anyhow!("arg 2 is not a boolean"));
             }
@@ -1564,7 +1525,7 @@ impl SessionControlHandlerLuaTarget {
                     &(QVariant::from(&muted)),
                 )
             })?;
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1575,13 +1536,13 @@ impl SessionControlHandlerLuaTarget {
     */
     fn track_get_input_muted(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        self.select_tracks(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
+        self.select_tracks(lua, args.get(0).unwrap_or(&omnilua::Value::Nil))?
             .map(|l| !loop_bool_prop(&l, "monitor").unwrap_or(true))
             .collect::<Vec<bool>>()
             .into_lua(lua)
@@ -1596,15 +1557,15 @@ impl SessionControlHandlerLuaTarget {
     */
     fn track_set_input_muted(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 2 {
             return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
-        let muted = match args.get(1).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Boolean(muted) => *muted,
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
+        let muted = match args.get(1).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Boolean(muted) => *muted,
             _ => {
                 return Err(anyhow!("arg 2 is not a boolean"));
             }
@@ -1623,7 +1584,7 @@ impl SessionControlHandlerLuaTarget {
                     &(QVariant::from(&monitor)),
                 )
             })?;
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1634,15 +1595,15 @@ impl SessionControlHandlerLuaTarget {
     */
     fn track_set_gain(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 2 {
             return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
-        let gain = match args.get(1).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Number(gain) => *gain as f32,
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
+        let gain = match args.get(1).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Number(gain) => *gain as f32,
             _ => {
                 return Err(anyhow!("arg 2 is not a float"));
             }
@@ -1660,7 +1621,7 @@ impl SessionControlHandlerLuaTarget {
                     &(QVariant::from(&gain)),
                 )
             })?;
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1671,15 +1632,15 @@ impl SessionControlHandlerLuaTarget {
     */
     fn track_set_balance(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 2 {
             return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
-        let balance = match args.get(1).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Number(balance) => *balance as f32,
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
+        let balance = match args.get(1).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Number(balance) => *balance as f32,
             _ => {
                 return Err(anyhow!("arg 2 is not a float"));
             }
@@ -1697,7 +1658,7 @@ impl SessionControlHandlerLuaTarget {
                     &(QVariant::from(&balance)),
                 )
             })?;
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1708,15 +1669,15 @@ impl SessionControlHandlerLuaTarget {
     */
     fn track_set_gain_fader(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 2 {
             return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
-        let gain = match args.get(1).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Number(gain) => *gain as f32,
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
+        let gain = match args.get(1).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Number(gain) => *gain as f32,
             _ => {
                 return Err(anyhow!("arg 2 is not a float"));
             }
@@ -1734,7 +1695,7 @@ impl SessionControlHandlerLuaTarget {
                     &(QVariant::from(&gain)),
                 )
             })?;
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1745,15 +1706,15 @@ impl SessionControlHandlerLuaTarget {
     */
     fn track_set_input_gain(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 2 {
             return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
-        let gain = match args.get(1).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Number(gain) => *gain as f32,
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
+        let gain = match args.get(1).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Number(gain) => *gain as f32,
             _ => {
                 return Err(anyhow!("arg 2 is not a float"));
             }
@@ -1771,7 +1732,7 @@ impl SessionControlHandlerLuaTarget {
                     &(QVariant::from(&gain)),
                 )
             })?;
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1782,15 +1743,15 @@ impl SessionControlHandlerLuaTarget {
     */
     fn track_set_input_gain_fader(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 2 {
             return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
-        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
-        let gain = match args.get(1).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Number(gain) => *gain as f32,
+        let selector = args.get(0).unwrap_or(&omnilua::Value::Nil);
+        let gain = match args.get(1).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Number(gain) => *gain as f32,
             _ => {
                 return Err(anyhow!("arg 2 is not a float"));
             }
@@ -1808,7 +1769,7 @@ impl SessionControlHandlerLuaTarget {
                     &(QVariant::from(&gain)),
                 )
             })?;
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1820,21 +1781,21 @@ impl SessionControlHandlerLuaTarget {
     */
     fn set_apply_n_cycles(
         &self,
-        _lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        _lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        let n = match args.get(0).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Integer(n) => *n,
+        let n = match args.get(0).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Integer(n) => *n,
             _ => {
                 return Err(anyhow!("arg 1 is not an integer"));
             }
         };
         if self.global_state_registry.is_null() {
             warn!("set_apply_n_cycles: state registry is null");
-            return Ok(mlua::Value::Nil);
+            return Ok(omnilua::Value::Nil);
         }
         debug!("set apply n cycles -> {n}");
 
@@ -1846,7 +1807,7 @@ impl SessionControlHandlerLuaTarget {
                 &(QVariant::from(&n)),
             )?;
         };
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1858,19 +1819,19 @@ impl SessionControlHandlerLuaTarget {
     */
     fn get_apply_n_cycles(
         &self,
-        _lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        _lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 0 {
             return Err(anyhow!("Expected 0 arguments, got {}", args.len()));
         }
         if self.global_state_registry.is_null() {
             warn!("get_apply_n_cycles: state registry is null");
-            return Ok(mlua::Value::Nil);
+            return Ok(omnilua::Value::Nil);
         }
         unsafe {
             qobject_property_int(&mut *self.global_state_registry, "apply_n_cycles")
-                .map(|v| mlua::Value::Integer(v as i64))
+                .map(|v| omnilua::Value::Integer(v as i64))
                 .map_err(|e| anyhow!("could not get state registry property: {e}"))
         }
     }
@@ -1883,21 +1844,21 @@ impl SessionControlHandlerLuaTarget {
     */
     fn set_solo(
         &self,
-        _lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        _lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        let v = match args.get(0).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Boolean(v) => *v,
+        let v = match args.get(0).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Boolean(v) => *v,
             _ => {
                 return Err(anyhow!("arg 1 is not a bool"));
             }
         };
         if self.global_state_registry.is_null() {
             warn!("set_solo: state registry is null");
-            return Ok(mlua::Value::Nil);
+            return Ok(omnilua::Value::Nil);
         }
 
         debug!("set solo -> {v}");
@@ -1910,7 +1871,7 @@ impl SessionControlHandlerLuaTarget {
                 &(QVariant::from(&v)),
             )?;
         };
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1921,19 +1882,19 @@ impl SessionControlHandlerLuaTarget {
     */
     fn get_solo(
         &self,
-        _lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        _lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 0 {
             return Err(anyhow!("Expected 0 arguments, got {}", args.len()));
         }
         if self.global_state_registry.is_null() {
             warn!("get_solo: state registry is null");
-            return Ok(mlua::Value::Nil);
+            return Ok(omnilua::Value::Nil);
         }
         unsafe {
             qobject_property_bool(&mut *self.global_state_registry, "solo_active")
-                .map(|v| mlua::Value::Boolean(v))
+                .map(|v| omnilua::Value::Boolean(v))
                 .map_err(|e| anyhow!("could not get state registry property: {e}"))
         }
     }
@@ -1946,21 +1907,21 @@ impl SessionControlHandlerLuaTarget {
     */
     fn set_sync_active(
         &self,
-        _lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        _lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        let v = match args.get(0).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Boolean(v) => *v,
+        let v = match args.get(0).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Boolean(v) => *v,
             _ => {
                 return Err(anyhow!("arg 1 is not a bool"));
             }
         };
         if self.global_state_registry.is_null() {
             warn!("set_sync_active: state registry is null");
-            return Ok(mlua::Value::Nil);
+            return Ok(omnilua::Value::Nil);
         }
 
         debug!("set sync active -> {v}");
@@ -1973,7 +1934,7 @@ impl SessionControlHandlerLuaTarget {
                 &(QVariant::from(&v)),
             )?;
         };
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -1984,19 +1945,19 @@ impl SessionControlHandlerLuaTarget {
     */
     fn get_sync_active(
         &self,
-        _lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        _lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 0 {
             return Err(anyhow!("Expected 0 arguments, got {}", args.len()));
         }
         if self.global_state_registry.is_null() {
             warn!("get_sync_active: state registry is null");
-            return Ok(mlua::Value::Nil);
+            return Ok(omnilua::Value::Nil);
         }
         unsafe {
             qobject_property_bool(&mut *self.global_state_registry, "sync_active")
-                .map(|v| mlua::Value::Boolean(v))
+                .map(|v| omnilua::Value::Boolean(v))
                 .map_err(|e| anyhow!("could not get state registry property: {e}"))
         }
     }
@@ -2009,21 +1970,21 @@ impl SessionControlHandlerLuaTarget {
     */
     fn set_play_after_record(
         &self,
-        _lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        _lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        let v = match args.get(0).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::Boolean(v) => *v,
+        let v = match args.get(0).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::Boolean(v) => *v,
             _ => {
                 return Err(anyhow!("arg 1 is not a bool"));
             }
         };
         if self.global_state_registry.is_null() {
             warn!("set_play_after_record: state registry is null");
-            return Ok(mlua::Value::Nil);
+            return Ok(omnilua::Value::Nil);
         }
 
         debug!("set play after record -> {v}");
@@ -2036,7 +1997,7 @@ impl SessionControlHandlerLuaTarget {
                 &(QVariant::from(&v)),
             )?;
         };
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -2047,19 +2008,19 @@ impl SessionControlHandlerLuaTarget {
     */
     fn get_play_after_record(
         &self,
-        _lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        _lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 0 {
             return Err(anyhow!("Expected 0 arguments, got {}", args.len()));
         }
         if self.global_state_registry.is_null() {
             warn!("get_play_after_record: state registry is null");
-            return Ok(mlua::Value::Nil);
+            return Ok(omnilua::Value::Nil);
         }
         unsafe {
             qobject_property_bool(&mut *self.global_state_registry, "play_after_record_active")
-                .map(|v| mlua::Value::Boolean(v))
+                .map(|v| omnilua::Value::Boolean(v))
                 .map_err(|e| anyhow!("could not get state registry property: {e}"))
         }
     }
@@ -2072,21 +2033,21 @@ impl SessionControlHandlerLuaTarget {
     */
     fn set_default_recording_action(
         &self,
-        _lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        _lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        let action = match args.get(0).unwrap_or(&mlua::Value::Nil) {
-            mlua::Value::String(v) => v.to_string_lossy(),
+        let action = match args.get(0).unwrap_or(&omnilua::Value::Nil) {
+            omnilua::Value::String(v) => v.to_str().map_err(|error| anyhow!("{error}"))?,
             _ => {
                 return Err(anyhow!("arg 1 is not a string"));
             }
         };
         if self.global_state_registry.is_null() {
             warn!("set_default_recording_action: state registry is null");
-            return Ok(mlua::Value::Nil);
+            return Ok(omnilua::Value::Nil);
         }
 
         unsafe {
@@ -2097,7 +2058,7 @@ impl SessionControlHandlerLuaTarget {
                 &(QVariant::from(&QString::from(action))),
             )?;
         };
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -2108,19 +2069,19 @@ impl SessionControlHandlerLuaTarget {
     */
     fn get_default_recording_action(
         &self,
-        lua: &mlua::Lua,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &omnilua::Lua,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 0 {
             return Err(anyhow!("Expected 0 arguments, got {}", args.len()));
         }
         if self.global_state_registry.is_null() {
             warn!("get_play_after_record: state registry is null");
-            return Ok(mlua::Value::Nil);
+            return Ok(omnilua::Value::Nil);
         }
         unsafe {
             qobject_property_string(&mut *self.global_state_registry, "default_recording_action")
-                .map(|v| IntoLua::into_lua(v.to_string(), lua).unwrap_or(mlua::Value::Nil))
+                .map(|v| IntoLua::into_lua(v.to_string(), lua).unwrap_or(omnilua::Value::Nil))
                 .map_err(|e| anyhow!("could not get state registry property: {e}"))
         }
     }
@@ -2133,14 +2094,14 @@ impl SessionControlHandlerLuaTarget {
     */
     fn register_loop_event_cb(
         &self,
-        lua: &Arc<mlua::Lua>,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &Arc<omnilua::Lua>,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 arguments, got {}", args.len()));
         }
-        let lua_fn = args.get(0).unwrap_or(&mlua::Value::Nil);
-        if let mlua::Value::Function(function) = lua_fn {
+        let lua_fn = args.get(0).unwrap_or(&omnilua::Value::Nil);
+        if let omnilua::Value::Function(function) = lua_fn {
             if let Some(vec) = self
                 .callbacks_rust_to_lua
                 .borrow_mut()
@@ -2150,7 +2111,7 @@ impl SessionControlHandlerLuaTarget {
                     callback: function.clone(),
                     weak_lua: Arc::downgrade(lua),
                 });
-                Ok(mlua::Value::Nil)
+                Ok(omnilua::Value::Nil)
             } else {
                 return Err(anyhow!("Could not get callbacks for loop event"));
             }
@@ -2167,14 +2128,14 @@ impl SessionControlHandlerLuaTarget {
     */
     fn register_global_event_cb(
         &self,
-        lua: &Arc<mlua::Lua>,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &Arc<omnilua::Lua>,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 arguments, got {}", args.len()));
         }
-        let lua_fn = args.get(0).unwrap_or(&mlua::Value::Nil);
-        if let mlua::Value::Function(function) = lua_fn {
+        let lua_fn = args.get(0).unwrap_or(&omnilua::Value::Nil);
+        if let omnilua::Value::Function(function) = lua_fn {
             if let Some(vec) = self
                 .callbacks_rust_to_lua
                 .borrow_mut()
@@ -2184,7 +2145,7 @@ impl SessionControlHandlerLuaTarget {
                     callback: function.clone(),
                     weak_lua: Arc::downgrade(lua),
                 });
-                Ok(mlua::Value::Nil)
+                Ok(omnilua::Value::Nil)
             } else {
                 return Err(anyhow!("Could not get callbacks for global event"));
             }
@@ -2201,14 +2162,14 @@ impl SessionControlHandlerLuaTarget {
     */
     fn register_keyboard_event_cb(
         &self,
-        lua: &Arc<mlua::Lua>,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &Arc<omnilua::Lua>,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 1 {
             return Err(anyhow!("Expected 1 arguments, got {}", args.len()));
         }
-        let lua_fn = args.get(0).unwrap_or(&mlua::Value::Nil);
-        if let mlua::Value::Function(function) = lua_fn {
+        let lua_fn = args.get(0).unwrap_or(&omnilua::Value::Nil);
+        if let omnilua::Value::Function(function) = lua_fn {
             if let Some(vec) = self
                 .callbacks_rust_to_lua
                 .borrow_mut()
@@ -2218,7 +2179,7 @@ impl SessionControlHandlerLuaTarget {
                     callback: function.clone(),
                     weak_lua: Arc::downgrade(lua),
                 });
-                Ok(mlua::Value::Nil)
+                Ok(omnilua::Value::Nil)
             } else {
                 return Err(anyhow!("Could not get callbacks for keyboard event"));
             }
@@ -2235,22 +2196,20 @@ impl SessionControlHandlerLuaTarget {
     */
     fn register_one_shot_timer_cb(
         &self,
-        lua: &Arc<mlua::Lua>,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &Arc<omnilua::Lua>,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         if args.len() != 2 {
             return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
-        let time_ms = args
-            .get(0)
-            .unwrap_or(&mlua::Value::Nil)
-            .as_integer()
-            .ok_or(anyhow!("1st arg is not an integer"))?;
-        let lua_fn = args
-            .get(1)
-            .unwrap_or(&mlua::Value::Nil)
-            .as_function()
-            .ok_or(anyhow!("2nd arg is not a function"))?;
+        let time_ms = match args.get(0) {
+            Some(omnilua::Value::Integer(value)) => *value,
+            _ => return Err(anyhow!("1st arg is not an integer")),
+        };
+        let lua_fn = match args.get(1) {
+            Some(omnilua::Value::Function(value)) => value,
+            _ => return Err(anyhow!("2nd arg is not a function")),
+        };
         if time_ms < 0 {
             return Err(anyhow!("time may not be negative"));
         }
@@ -2261,7 +2220,7 @@ impl SessionControlHandlerLuaTarget {
                 weak_lua: Arc::downgrade(lua),
             },
         );
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -2275,33 +2234,29 @@ impl SessionControlHandlerLuaTarget {
     */
     fn auto_open_device_specific_midi_control_output(
         &self,
-        lua: &Arc<mlua::Lua>,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &Arc<omnilua::Lua>,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         // Parse arguments
         if args.len() != 4 {
             return Err(anyhow!("Expected 4 arguments, got {}", args.len()));
         }
-        let regex = args
-            .get(0)
-            .map(|v| v.as_string())
-            .flatten()
-            .ok_or(anyhow!("1st arg is not a string"))?;
-        let opened_callback = args
-            .get(1)
-            .map(|v| v.as_function())
-            .flatten()
-            .ok_or(anyhow!("2nd arg is not a function"))?;
-        let connected_callback = args
-            .get(2)
-            .map(|v| v.as_function())
-            .flatten()
-            .ok_or(anyhow!("3rd arg is not a function"))?;
-        let msg_rate_limit_hz = args
-            .get(3)
-            .map(|v| v.as_integer())
-            .flatten()
-            .ok_or(anyhow!("4th arg is not an integer"))?;
+        let regex = match args.get(0) {
+            Some(omnilua::Value::String(value)) => value,
+            _ => return Err(anyhow!("1st arg is not a string")),
+        };
+        let opened_callback = match args.get(1) {
+            Some(omnilua::Value::Function(value)) => value,
+            _ => return Err(anyhow!("2nd arg is not a function")),
+        };
+        let connected_callback = match args.get(2) {
+            Some(omnilua::Value::Function(value)) => value,
+            _ => return Err(anyhow!("3rd arg is not a function")),
+        };
+        let msg_rate_limit_hz = match args.get(3) {
+            Some(omnilua::Value::Integer(value)) => *value,
+            _ => return Err(anyhow!("4th arg is not an integer")),
+        };
 
         // Determine port names and regexes
         let port_idx = self.created_port_idx.borrow().clone();
@@ -2309,7 +2264,9 @@ impl SessionControlHandlerLuaTarget {
         let name = format!("auto_control_{port_idx}");
 
         let mut regexes = QList::<QString>::default();
-        regexes.append(QString::from(regex.to_string_lossy()));
+        regexes.append(QString::from(
+            regex.to_str().map_err(|error| anyhow!("{error}"))?,
+        ));
 
         // Create a port object and configure it
         let port = Arc::new(RefCell::new(make_unique_midi_control_port()));
@@ -2334,7 +2291,7 @@ impl SessionControlHandlerLuaTarget {
         // Create the lua representation of the port object:
         // a table with a "send" function to send messages with
         let send_fn = lua
-            .create_function(move |_lua, args: Vec<i64>| -> Result<(), mlua::Error> {
+            .create_function(move |_lua, args: Vec<i64>| -> Result<(), omnilua::Error> {
                 if let Err(e) = || -> Result<(), anyhow::Error> {
                     let mut error_msg: Option<String> = None;
                     let bytes: Vec<u8> = args
@@ -2384,7 +2341,9 @@ impl SessionControlHandlerLuaTarget {
         let mut wrapped_connected = WrappedLuaCallback::create_unique_ptr(connected_callback)?;
         let mut wrapped_connected_pin = wrapped_connected.pin_mut();
         wrapped_connected_pin.as_mut().rust_mut().stored_arg =
-            mlua::MultiValue::from_vec(vec![mlua::Value::Table(lua_module.clone())]);
+            omnilua::Variadic::<omnilua::Value>::from(vec![omnilua::Value::Table(
+                lua_module.clone(),
+            )]);
         let opened_callback = RustToLuaCallback {
             callback: opened_callback.clone(),
             weak_lua: Arc::downgrade(lua),
@@ -2392,7 +2351,7 @@ impl SessionControlHandlerLuaTarget {
         let mut wrapped_opened = WrappedLuaCallback::create_unique_ptr(opened_callback)?;
         let mut wrapped_opened_pin = wrapped_opened.pin_mut();
         wrapped_opened_pin.as_mut().rust_mut().stored_arg =
-            mlua::MultiValue::from_vec(vec![mlua::Value::Table(lua_module)]);
+            omnilua::Variadic::<omnilua::Value>::from(vec![omnilua::Value::Table(lua_module)]);
 
         // Connect the signals to the callbacks
         unsafe {
@@ -2428,7 +2387,7 @@ impl SessionControlHandlerLuaTarget {
         // only now, allow the port to open
         port_pin.as_mut().set_may_open(true);
 
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     /*
@@ -2440,23 +2399,21 @@ impl SessionControlHandlerLuaTarget {
     */
     fn auto_open_device_specific_midi_control_input(
         &self,
-        lua: &Arc<mlua::Lua>,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error> {
+        lua: &Arc<omnilua::Lua>,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error> {
         // Parse arguments
         if args.len() != 2 {
             return Err(anyhow!("Expected 2 arguments, got {}", args.len()));
         }
-        let regex = args
-            .get(0)
-            .map(|v| v.as_string())
-            .flatten()
-            .ok_or(anyhow!("1st arg is not a string"))?;
-        let msg_callback = args
-            .get(1)
-            .map(|v| v.as_function())
-            .flatten()
-            .ok_or(anyhow!("2nd arg is not a function"))?;
+        let regex = match args.get(0) {
+            Some(omnilua::Value::String(value)) => value,
+            _ => return Err(anyhow!("1st arg is not a string")),
+        };
+        let msg_callback = match args.get(1) {
+            Some(omnilua::Value::Function(value)) => value,
+            _ => return Err(anyhow!("2nd arg is not a function")),
+        };
 
         // Determine port names and regexes
         let port_idx = self.created_port_idx.borrow().clone();
@@ -2464,7 +2421,9 @@ impl SessionControlHandlerLuaTarget {
         let name = format!("auto_control_{port_idx}");
 
         let mut regexes = QList::<QString>::default();
-        regexes.append(QString::from(regex.to_string_lossy()));
+        regexes.append(QString::from(
+            regex.to_str().map_err(|error| anyhow!("{error}"))?,
+        ));
 
         // Create a port object and configure it
         let port = Arc::new(RefCell::new(make_unique_midi_control_port()));
@@ -2515,7 +2474,7 @@ impl SessionControlHandlerLuaTarget {
         // only now, allow the port to open
         port_pin.as_mut().set_may_open(true);
 
-        Ok(mlua::Value::Nil)
+        Ok(omnilua::Value::Nil)
     }
 
     fn select_loop_by_coords(&self, x: i64, y: i64) -> Option<*mut QObject> {
@@ -2557,11 +2516,11 @@ impl SessionControlHandlerLuaTarget {
 
     fn select_loops<'a>(
         &'a self,
-        _lua: &mlua::Lua,
-        selector: &mlua::Value,
+        _lua: &omnilua::Lua,
+        selector: &omnilua::Value,
     ) -> Result<impl Iterator<Item = *mut QObject> + 'a, anyhow::Error> {
         match selector {
-            mlua::Value::Table(_) => {
+            omnilua::Value::Table(_) => {
                 if let Some(coords) = as_coords(selector) {
                     Ok(Either::Left(Either::Left(
                         self.select_loops_by_coords(std::iter::once(coords)),
@@ -2574,7 +2533,7 @@ impl SessionControlHandlerLuaTarget {
                     Err(anyhow!("Unsupported loop selector: table cannot be interpreted as (list of) coordinates"))
                 }
             }
-            mlua::Value::Nil => Ok(Either::Right(std::iter::empty())),
+            omnilua::Value::Nil => Ok(Either::Right(std::iter::empty())),
             others => Err(anyhow!("Unsupported loop selector type: {others:?}")),
         }
     }
@@ -2608,14 +2567,14 @@ impl SessionControlHandlerLuaTarget {
 
     fn select_tracks<'a>(
         &'a self,
-        _lua: &mlua::Lua,
-        selector: &mlua::Value,
+        _lua: &omnilua::Lua,
+        selector: &omnilua::Value,
     ) -> Result<impl Iterator<Item = *mut QObject> + 'a, anyhow::Error> {
         match selector {
-            mlua::Value::Integer(idx) => Ok(Either::Left(Either::Left(
+            omnilua::Value::Integer(idx) => Ok(Either::Left(Either::Left(
                 self.select_tracks_by_indices(std::iter::once(*idx)),
             ))),
-            mlua::Value::Table(_) => {
+            omnilua::Value::Table(_) => {
                 if let Some(indices) = as_track_indices(selector) {
                     Ok(Either::Left(Either::Right(
                         self.select_tracks_by_indices(indices.into_iter()),
@@ -2624,12 +2583,12 @@ impl SessionControlHandlerLuaTarget {
                     Err(anyhow!("Unsupported track selector: table cannot be interpreted as list of indices"))
                 }
             }
-            mlua::Value::Nil => Ok(Either::Right(std::iter::empty())),
+            omnilua::Value::Nil => Ok(Either::Right(std::iter::empty())),
             others => Err(anyhow!("Unsupported track selector type: {others:?}")),
         }
     }
 
-    fn engine_is_installed(&self, engine: &Arc<mlua::Lua>) -> bool {
+    fn engine_is_installed(&self, engine: &Arc<omnilua::Lua>) -> bool {
         for weak_engine in self.installed_on.borrow().iter() {
             if let Some(installed) = weak_engine.upgrade() {
                 if Arc::ptr_eq(&installed, engine) {
@@ -2640,7 +2599,7 @@ impl SessionControlHandlerLuaTarget {
         return false;
     }
 
-    fn uninstall_lua_engine(&mut self, engine: &Arc<mlua::Lua>) {
+    fn uninstall_lua_engine(&mut self, engine: &Arc<omnilua::Lua>) {
         self.installed_on.borrow_mut().retain(|weak_engine| {
             if let Some(installed) = weak_engine.upgrade() {
                 if Arc::ptr_eq(&installed, engine) {
@@ -2656,7 +2615,7 @@ impl SessionControlHandlerLuaTarget {
         self.garbage_collect();
     }
 
-    fn uninstall_lua_engine_if_no_callbacks(&mut self, engine: &Arc<mlua::Lua>) {
+    fn uninstall_lua_engine_if_no_callbacks(&mut self, engine: &Arc<omnilua::Lua>) {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             let mut found = false;
             for cbs in self.callbacks_rust_to_lua.try_borrow()?.values() {
@@ -2996,7 +2955,7 @@ impl SessionControlHandler {
                         .clone()
                         .into_lua(&lock)
                         .map_err(|e| anyhow!("Could not convert loop event: {e}"))?;
-                    if let Err(e) = registered_cb.callback.call::<()>(event) {
+                    if let Err(e) = registered_cb.callback.call::<_, ()>(event) {
                         error!("Could not call loop event callback: {e}");
                     }
                 } else {
@@ -3040,7 +2999,7 @@ impl SessionControlHandler {
                         .clone()
                         .into_lua(&lock)
                         .map_err(|e| anyhow!("Could not convert global event: {e}"))?;
-                    if let Err(e) = registered_cb.callback.call::<()>(event) {
+                    if let Err(e) = registered_cb.callback.call::<_, ()>(event) {
                         error!("Could not call global event callback: {e}");
                     }
                 } else {
@@ -3079,7 +3038,7 @@ impl SessionControlHandler {
                         .clone()
                         .into_lua(&lock)
                         .map_err(|e| anyhow!("Could not convert keyboard event: {e}"))?;
-                    if let Err(e) = registered_cb.callback.call::<()>(event) {
+                    if let Err(e) = registered_cb.callback.call::<_, ()>(event) {
                         error!("Could not call keyboard event callback: {e}");
                     }
                 } else {

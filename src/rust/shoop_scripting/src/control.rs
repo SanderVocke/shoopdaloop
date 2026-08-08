@@ -1,10 +1,11 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};
+use std::fmt::Display;
 use std::rc::Rc;
 use std::time::Duration;
 
 use anyhow::anyhow;
-use mlua::{Function, Lua, Table, Value};
+use omnilua::{FromLua, Function, IntoLua, Lua, Table, Value, Variadic};
 use regex::Regex;
 use shoop_app_api::{
     DefaultRecordingAction, LoopId, LoopMode, TrackId, MAX_TRACK_GAIN_DB, MIN_TRACK_GAIN_DB,
@@ -370,15 +371,15 @@ impl ScriptCallbacks {
         callbacks
             .into_iter()
             .filter_map(|callback| {
-                let result = (|| -> mlua::Result<()> {
+                let result = (|| -> omnilua::Result<()> {
                     let table = lua.create_table()?;
-                    table.set("coords", lua.create_sequence_from(event.coords)?)?;
+                    table.set("coords", create_sequence_from(lua, event.coords)?)?;
                     table.set("type", event.event_type)?;
                     table.set("mode", mode_value(event.mode))?;
                     table.set("length", event.length)?;
                     table.set("selected", event.selected)?;
                     table.set("targeted", event.targeted)?;
-                    callback.call::<()>(table)
+                    callback.call::<_, ()>(table)
                 })();
                 result.err().map(|error| error.to_string())
             })
@@ -390,10 +391,10 @@ impl ScriptCallbacks {
         callbacks
             .into_iter()
             .filter_map(|callback| {
-                let result = (|| -> mlua::Result<()> {
+                let result = (|| -> omnilua::Result<()> {
                     let table = lua.create_table()?;
                     table.set("type", 0)?;
-                    callback.call::<()>(table)
+                    callback.call::<_, ()>(table)
                 })();
                 result.err().map(|error| error.to_string())
             })
@@ -405,12 +406,12 @@ impl ScriptCallbacks {
         callbacks
             .into_iter()
             .filter_map(|callback| {
-                let result = (|| -> mlua::Result<()> {
+                let result = (|| -> omnilua::Result<()> {
                     let table = lua.create_table()?;
                     table.set("type", event.event_type)?;
                     table.set("key", event.key)?;
                     table.set("modifiers", event.modifiers)?;
-                    callback.call::<()>(table)
+                    callback.call::<_, ()>(table)
                 })();
                 result.err().map(|error| error.to_string())
             })
@@ -436,7 +437,12 @@ impl ScriptCallbacks {
         };
         callbacks
             .into_iter()
-            .filter_map(|callback| callback.call::<()>(()).err().map(|error| error.to_string()))
+            .filter_map(|callback| {
+                callback
+                    .call::<_, ()>(())
+                    .err()
+                    .map(|error| error.to_string())
+            })
             .collect()
     }
 
@@ -484,9 +490,9 @@ impl ScriptCallbacks {
                     Ok(messages) => {
                         for message in messages {
                             remaining_callbacks = remaining_callbacks.saturating_sub(1);
-                            match lua.create_sequence_from(message) {
+                            match create_sequence_from(lua, message.into_iter().map(i64::from)) {
                                 Ok(table) => {
-                                    if let Err(error) = rule.callback.call::<()>(table) {
+                                    if let Err(error) = rule.callback.call::<_, ()>(table) {
                                         let error = error.to_string();
                                         rule.latest_error = Some(error.clone());
                                         errors.push(error);
@@ -524,7 +530,7 @@ impl ScriptCallbacks {
                                 rule.connections.insert(endpoint.id.clone(), id);
                                 remaining_callbacks = remaining_callbacks.saturating_sub(1);
                                 if let Err(error) =
-                                    rule.connected_callback.call::<()>(rule.port.clone())
+                                    rule.connected_callback.call::<_, ()>(rule.port.clone())
                                 {
                                     let error = error.to_string();
                                     rule.latest_error = Some(error.clone());
@@ -727,13 +733,13 @@ fn disconnect_stale(
     }
 }
 
-fn compile_endpoint_regex(source: &str) -> mlua::Result<Option<Regex>> {
+fn compile_endpoint_regex(source: &str) -> omnilua::Result<Option<Regex>> {
     if source.is_empty() {
         return Ok(None);
     }
     Regex::new(&format!("^(?:{source})$"))
         .map(Some)
-        .map_err(|error| mlua::Error::runtime(format!("invalid MIDI autoconnect regex: {error}")))
+        .map_err(|error| runtime_error(format!("invalid MIDI autoconnect regex: {error}")))
 }
 
 pub fn install_control_api(
@@ -743,7 +749,7 @@ pub fn install_control_api(
     callbacks: &ScriptCallbacks,
     mark_listening: Rc<dyn Fn()>,
 ) -> anyhow::Result<()> {
-    let module = (|| -> mlua::Result<Table> {
+    let module = (|| -> omnilua::Result<Table> {
         let module = lua.create_table()?;
         let constants = lua.create_table()?;
         install_constants(&constants)?;
@@ -759,7 +765,7 @@ pub fn install_control_api(
     install_compatibility_value(run_sandboxed, "__shoop_control", module)
 }
 
-fn install_constants(constants: &Table) -> mlua::Result<()> {
+fn install_constants(constants: &Table) -> omnilua::Result<()> {
     for (name, value) in [
         ("LoopMode_Unknown", 0),
         ("LoopMode_Stopped", 1),
@@ -797,7 +803,7 @@ fn install_loop_queries(
     lua: &Lua,
     module: &Table,
     bridge: &SharedControlBridge,
-) -> mlua::Result<()> {
+) -> omnilua::Result<()> {
     set_fn(
         lua,
         module,
@@ -911,12 +917,15 @@ fn install_loop_mutations(
     lua: &Lua,
     module: &Table,
     bridge: &SharedControlBridge,
-) -> mlua::Result<()> {
+) -> omnilua::Result<()> {
     let bridge_ = Rc::clone(bridge);
     module.set(
         "loop_transition",
         lua.create_function(
-            move |_, (selector, mode, delay, align): (Value, i64, i64, i64)| {
+            move |lua, (selector, mode, rest): (Value, i64, Variadic<Value>)| {
+                let [delay, align] = exact_arguments::<2>(rest, "loop_transition")?;
+                let delay = i64::from_lua(delay, lua)?;
+                let align = i64::from_lua(align, lua)?;
                 let mut bridge = bridge_.borrow_mut();
                 let ids = selected_loop_ids(&bridge.snapshot, &selector)?;
                 let mode = parse_mode(mode)?;
@@ -1053,7 +1062,12 @@ fn install_loop_mutations(
     module.set(
         "loop_adopt_ringbuffers",
         lua.create_function(
-            move |_, (selector, reverse, length, go_cycle, go_mode): (Value, u32, u32, u32, i64)| {
+            move |lua, (selector, reverse, rest): (Value, u32, Variadic<Value>)| {
+                let [length, go_cycle, go_mode] =
+                    exact_arguments::<3>(rest, "loop_adopt_ringbuffers")?;
+                let length = u32::from_lua(length, lua)?;
+                let go_cycle = u32::from_lua(go_cycle, lua)?;
+                let go_mode = i64::from_lua(go_mode, lua)?;
                 let mut bridge = bridge_.borrow_mut();
                 let loops = selected_loop_ids(&bridge.snapshot, &selector)?;
                 bridge.operations.push(ControlOperation::AdoptRingbuffers {
@@ -1075,7 +1089,7 @@ fn install_loop_mutations(
             let target = selected_loop_ids(&bridge.snapshot, &target)?
                 .into_iter()
                 .next()
-                .ok_or_else(|| mlua::Error::runtime("composition target is empty"))?;
+                .ok_or_else(|| runtime_error("composition target is empty"))?;
             let add = selected_loop_ids(&bridge.snapshot, &add)?;
             bridge.operations.push(ControlOperation::ComposeAddToEnd {
                 target,
@@ -1104,7 +1118,7 @@ fn install_target_functions(
     lua: &Lua,
     module: &Table,
     bridge: &SharedControlBridge,
-) -> mlua::Result<()> {
+) -> omnilua::Result<()> {
     for name in ["loop_target", "loop_toggle_targeted"] {
         let bridge_ = Rc::clone(bridge);
         let toggle = name == "loop_toggle_targeted";
@@ -1184,7 +1198,11 @@ fn install_target_functions(
     Ok(())
 }
 
-fn install_track_api(lua: &Lua, module: &Table, bridge: &SharedControlBridge) -> mlua::Result<()> {
+fn install_track_api(
+    lua: &Lua,
+    module: &Table,
+    bridge: &SharedControlBridge,
+) -> omnilua::Result<()> {
     set_track_list_getter(lua, module, "track_get_gain", bridge, |track| {
         Value::Number(f64::from(db_to_gain(track.output_gain_db)))
     })?;
@@ -1265,7 +1283,11 @@ fn install_track_api(lua: &Lua, module: &Table, bridge: &SharedControlBridge) ->
     Ok(())
 }
 
-fn install_global_api(lua: &Lua, module: &Table, bridge: &SharedControlBridge) -> mlua::Result<()> {
+fn install_global_api(
+    lua: &Lua,
+    module: &Table,
+    bridge: &SharedControlBridge,
+) -> omnilua::Result<()> {
     set_global_pair_u32(
         lua,
         module,
@@ -1349,7 +1371,7 @@ fn install_subscriptions(
     module: &Table,
     callbacks: &ScriptCallbacks,
     mark_listening: Rc<dyn Fn()>,
-) -> mlua::Result<()> {
+) -> omnilua::Result<()> {
     for (name, storage) in [
         ("register_loop_event_cb", Rc::clone(&callbacks.loop_events)),
         (
@@ -1378,7 +1400,7 @@ fn install_subscriptions(
         "register_one_shot_timer_cb",
         lua.create_function(move |_, (delay_ms, callback): (i64, Function)| {
             let delay_ms = u64::try_from(delay_ms)
-                .map_err(|_| mlua::Error::runtime("timer delay may not be negative"))?;
+                .map_err(|_| runtime_error("timer delay may not be negative"))?;
             timers.borrow_mut().push(TimerRegistration {
                 remaining: Duration::from_millis(delay_ms),
                 callback,
@@ -1413,15 +1435,15 @@ fn install_subscriptions(
     module.set(
         "auto_open_device_specific_midi_control_output",
         lua.create_function(
-            move |lua,
-                  (regex_source, opened_callback, connected_callback, rate_limit_hz): (
-                String,
-                Function,
-                Function,
-                i64,
-            )| {
+            move |lua, (regex_source, opened_callback, rest): (String, Function, Variadic<Value>)| {
+                let [connected_callback, rate_limit_hz] = exact_arguments::<2>(
+                    rest,
+                    "auto_open_device_specific_midi_control_output",
+                )?;
+                let connected_callback = Function::from_lua(connected_callback, lua)?;
+                let rate_limit_hz = i64::from_lua(rate_limit_hz, lua)?;
                 let rate_limit_hz = u32::try_from(rate_limit_hz).map_err(|_| {
-                    mlua::Error::runtime("MIDI output rate limit may not be negative")
+                    runtime_error("MIDI output rate limit may not be negative")
                 })?;
                 let regex = compile_endpoint_regex(&regex_source)?;
                 let queue = Rc::new(RefCell::new(VecDeque::new()));
@@ -1432,16 +1454,16 @@ fn install_subscriptions(
                     "send",
                     lua.create_function(move |_, message: Vec<i64>| {
                         if message.is_empty() || message.len() > MAX_MIDI_MESSAGE_BYTES {
-                            return Err(mlua::Error::runtime("invalid MIDI message length"));
+                            return Err(runtime_error("invalid MIDI message length"));
                         }
                         let message = message
                             .into_iter()
                             .map(|byte| {
                                 u8::try_from(byte).map_err(|_| {
-                                    mlua::Error::runtime("MIDI bytes must be between 0 and 255")
+                                    runtime_error("MIDI bytes must be between 0 and 255")
                                 })
                             })
-                            .collect::<mlua::Result<Vec<_>>>()?;
+                            .collect::<omnilua::Result<Vec<_>>>()?;
                         let mut queue = send_queue.borrow_mut();
                         if queue.len() == MIDI_QUEUE_CAPACITY {
                             let mut diagnostics = diagnostics.borrow_mut();
@@ -1453,7 +1475,7 @@ fn install_subscriptions(
                         Ok(())
                     })?,
                 )?;
-                opened_callback.call::<()>(port.clone())?;
+                opened_callback.call::<_, ()>(port.clone())?;
                 midi_outputs.borrow_mut().push(MidiOutputRegistration {
                     regex_source,
                     regex,
@@ -1479,8 +1501,8 @@ fn set_fn(
     module: &Table,
     name: &str,
     bridge: &SharedControlBridge,
-    callback: impl Fn(&Lua, &ControlBridge, Value) -> mlua::Result<Value> + 'static,
-) -> mlua::Result<()> {
+    callback: impl Fn(&Lua, &ControlBridge, Value) -> omnilua::Result<Value> + 'static,
+) -> omnilua::Result<()> {
     let bridge = Rc::clone(bridge);
     module.set(
         name,
@@ -1495,7 +1517,7 @@ fn set_loop_list_getter(
     name: &str,
     bridge: &SharedControlBridge,
     getter: impl Fn(&ControlLoop) -> Value + 'static,
-) -> mlua::Result<()> {
+) -> omnilua::Result<()> {
     let bridge = Rc::clone(bridge);
     module.set(
         name,
@@ -1520,7 +1542,7 @@ fn set_track_list_getter(
     name: &str,
     bridge: &SharedControlBridge,
     getter: impl Fn(&ControlTrack) -> Value + 'static,
-) -> mlua::Result<()> {
+) -> omnilua::Result<()> {
     let bridge = Rc::clone(bridge);
     module.set(
         name,
@@ -1545,7 +1567,7 @@ fn set_loop_ids_op(
     name: &str,
     bridge: &SharedControlBridge,
     make: impl Fn(Vec<LoopId>) -> ControlOperation + 'static,
-) -> mlua::Result<()> {
+) -> omnilua::Result<()> {
     let bridge = Rc::clone(bridge);
     module.set(
         name,
@@ -1565,14 +1587,14 @@ fn set_loop_scalar(
     name: &str,
     bridge: &SharedControlBridge,
     make: impl Fn(&mut ControlBridge, Vec<LoopId>, f32) -> ControlOperation + 'static,
-) -> mlua::Result<()> {
+) -> omnilua::Result<()> {
     let bridge = Rc::clone(bridge);
     module.set(
         name,
-        lua.create_function(move |_, (selector, value): (Value, f32)| {
+        lua.create_function(move |_, (selector, value): (Value, f64)| {
             let mut bridge = bridge.borrow_mut();
             let ids = selected_loop_ids(&bridge.snapshot, &selector)?;
-            let operation = make(&mut bridge, ids, value);
+            let operation = make(&mut bridge, ids, value as f32);
             bridge.operations.push(operation);
             Ok(())
         })?,
@@ -1586,7 +1608,7 @@ fn set_track_bool(
     name: &str,
     bridge: &SharedControlBridge,
     make: impl Fn(Vec<TrackId>, bool) -> ControlOperation + 'static,
-) -> mlua::Result<()> {
+) -> omnilua::Result<()> {
     let bridge = Rc::clone(bridge);
     let operation_name = name.to_owned();
     module.set(
@@ -1608,14 +1630,14 @@ fn set_track_number(
     name: &str,
     bridge: &SharedControlBridge,
     make: impl Fn(Vec<TrackId>, f32) -> ControlOperation + 'static,
-) -> mlua::Result<()> {
+) -> omnilua::Result<()> {
     let bridge = Rc::clone(bridge);
     module.set(
         name,
-        lua.create_function(move |_, (selector, value): (Value, f32)| {
+        lua.create_function(move |_, (selector, value): (Value, f64)| {
             let mut bridge = bridge.borrow_mut();
             let ids = selected_track_ids(&bridge.snapshot, &selector)?;
-            let operation = make(ids.clone(), value);
+            let operation = make(ids.clone(), value as f32);
             shadow_track_operation(&mut bridge.snapshot, &operation);
             bridge.operations.push(operation);
             Ok(())
@@ -1632,7 +1654,7 @@ fn set_global_pair_bool(
     getter: &str,
     get: impl Fn(&ControlSnapshot) -> bool + 'static,
     set: impl Fn(&mut ControlBridge, bool) -> ControlOperation + 'static,
-) -> mlua::Result<()> {
+) -> omnilua::Result<()> {
     let bridge_ = Rc::clone(bridge);
     module.set(
         getter,
@@ -1659,7 +1681,7 @@ fn set_global_pair_u32(
     getter: &str,
     get: impl Fn(&ControlSnapshot) -> u32 + 'static,
     set: impl Fn(&mut ControlBridge, u32) -> ControlOperation + 'static,
-) -> mlua::Result<()> {
+) -> omnilua::Result<()> {
     let bridge_ = Rc::clone(bridge);
     module.set(
         getter,
@@ -1681,7 +1703,7 @@ fn set_global_pair_u32(
 fn select_loops<'a>(
     snapshot: &'a ControlSnapshot,
     selector: &Value,
-) -> mlua::Result<Vec<&'a ControlLoop>> {
+) -> omnilua::Result<Vec<&'a ControlLoop>> {
     let coords = parse_loop_selector(selector)?;
     Ok(coords
         .iter()
@@ -1689,7 +1711,7 @@ fn select_loops<'a>(
         .collect())
 }
 
-fn selected_loop_ids(snapshot: &ControlSnapshot, selector: &Value) -> mlua::Result<Vec<LoopId>> {
+fn selected_loop_ids(snapshot: &ControlSnapshot, selector: &Value) -> omnilua::Result<Vec<LoopId>> {
     Ok(select_loops(snapshot, selector)?
         .into_iter()
         .map(|loop_| loop_.id)
@@ -1699,7 +1721,7 @@ fn selected_loop_ids(snapshot: &ControlSnapshot, selector: &Value) -> mlua::Resu
 fn select_tracks<'a>(
     snapshot: &'a ControlSnapshot,
     selector: &Value,
-) -> mlua::Result<Vec<&'a ControlTrack>> {
+) -> omnilua::Result<Vec<&'a ControlTrack>> {
     let indices = parse_track_selector(selector)?;
     Ok(indices
         .iter()
@@ -1707,57 +1729,59 @@ fn select_tracks<'a>(
         .collect())
 }
 
-fn selected_track_ids(snapshot: &ControlSnapshot, selector: &Value) -> mlua::Result<Vec<TrackId>> {
+fn selected_track_ids(
+    snapshot: &ControlSnapshot,
+    selector: &Value,
+) -> omnilua::Result<Vec<TrackId>> {
     Ok(select_tracks(snapshot, selector)?
         .into_iter()
         .map(|track| track.id)
         .collect())
 }
 
-fn parse_loop_selector(selector: &Value) -> mlua::Result<Vec<[i64; 2]>> {
+fn parse_loop_selector(selector: &Value) -> omnilua::Result<Vec<[i64; 2]>> {
     match selector {
         Value::Nil => Ok(Vec::new()),
         Value::Table(table) if table.len()? == 2 => {
-            if let (Ok(x), Ok(y)) = (table.get::<i64>(1), table.get::<i64>(2)) {
+            if let (Ok(x), Ok(y)) = (table.get::<_, i64>(1), table.get::<_, i64>(2)) {
                 Ok(vec![[x, y]])
             } else {
                 parse_multi_coords(table)
             }
         }
         Value::Table(table) => parse_multi_coords(table),
-        other => Err(mlua::Error::runtime(format!(
+        other => Err(runtime_error(format!(
             "unsupported loop selector: {}",
-            other.type_name()
+            value_type_name(other)
         ))),
     }
 }
 
-fn parse_multi_coords(table: &Table) -> mlua::Result<Vec<[i64; 2]>> {
-    table
-        .sequence_values::<Table>()
-        .map(|value| {
-            let value = value?;
-            if value.len()? != 2 {
-                return Err(mlua::Error::runtime("loop coordinate must have two values"));
-            }
-            Ok([value.get(1)?, value.get(2)?])
-        })
-        .collect()
+fn parse_multi_coords(table: &Table) -> omnilua::Result<Vec<[i64; 2]>> {
+    let mut result = Vec::with_capacity(table.len()? as usize);
+    for index in 1..=table.len()? {
+        let value: Table = table.get(index)?;
+        if value.len()? != 2 {
+            return Err(runtime_error("loop coordinate must have two values"));
+        }
+        result.push([value.get(1)?, value.get(2)?]);
+    }
+    Ok(result)
 }
 
-fn parse_track_selector(selector: &Value) -> mlua::Result<Vec<i64>> {
+fn parse_track_selector(selector: &Value) -> omnilua::Result<Vec<i64>> {
     match selector {
         Value::Nil => Ok(Vec::new()),
         Value::Integer(index) => Ok(vec![*index]),
-        Value::Table(table) => table.sequence_values().collect(),
-        other => Err(mlua::Error::runtime(format!(
+        Value::Table(table) => (1..=table.len()?).map(|index| table.get(index)).collect(),
+        other => Err(runtime_error(format!(
             "unsupported track selector: {}",
-            other.type_name()
+            value_type_name(other)
         ))),
     }
 }
 
-fn coords_table(lua: &Lua, loops: &[ControlLoop]) -> mlua::Result<Table> {
+fn coords_table(lua: &Lua, loops: &[ControlLoop]) -> omnilua::Result<Table> {
     let table = lua.create_table()?;
     for (index, loop_) in loops.iter().enumerate() {
         table.set(index + 1, single_coords(lua, loop_.coords)?)?;
@@ -1765,8 +1789,8 @@ fn coords_table(lua: &Lua, loops: &[ControlLoop]) -> mlua::Result<Table> {
     Ok(table)
 }
 
-fn single_coords(lua: &Lua, coords: [i64; 2]) -> mlua::Result<Table> {
-    lua.create_sequence_from(coords)
+fn single_coords(lua: &Lua, coords: [i64; 2]) -> omnilua::Result<Table> {
+    create_sequence_from(lua, coords)
 }
 
 fn loops_mut<'a>(
@@ -1827,7 +1851,7 @@ fn shadow_track_operation(snapshot: &mut ControlSnapshot, operation: &ControlOpe
     }
 }
 
-fn parse_mode(value: i64) -> mlua::Result<LoopMode> {
+fn parse_mode(value: i64) -> omnilua::Result<LoopMode> {
     match value {
         0 => Ok(LoopMode::Unknown),
         1 => Ok(LoopMode::Stopped),
@@ -1836,7 +1860,7 @@ fn parse_mode(value: i64) -> mlua::Result<LoopMode> {
         4 => Ok(LoopMode::Replacing),
         5 => Ok(LoopMode::PlayingDryThroughWet),
         6 => Ok(LoopMode::RecordingDryIntoWet),
-        _ => Err(mlua::Error::runtime(format!("invalid loop mode {value}"))),
+        _ => Err(runtime_error(format!("invalid loop mode {value}"))),
     }
 }
 
@@ -1852,13 +1876,64 @@ fn mode_value(mode: LoopMode) -> i64 {
     }
 }
 
-fn optional_u32(value: i64, sentinel: i64) -> mlua::Result<Option<u32>> {
+fn optional_u32(value: i64, sentinel: i64) -> omnilua::Result<Option<u32>> {
     if value == sentinel {
         Ok(None)
     } else {
         u32::try_from(value)
             .map(Some)
-            .map_err(|_| mlua::Error::runtime("cycle value must be non-negative or sentinel"))
+            .map_err(|_| runtime_error("cycle value must be non-negative or sentinel"))
+    }
+}
+
+fn exact_arguments<const N: usize>(
+    values: Variadic<Value>,
+    function: &str,
+) -> omnilua::Result<[Value; N]> {
+    if values.len() != N {
+        return Err(runtime_error(format!(
+            "{function} expects {} arguments, got {}",
+            N + 2,
+            values.len() + 2
+        )));
+    }
+    values
+        .into_iter()
+        .collect::<Vec<_>>()
+        .try_into()
+        .map_err(|_| {
+            runtime_error(format!(
+                "{function} argument conversion produced the wrong length"
+            ))
+        })
+}
+
+fn create_sequence_from<T>(lua: &Lua, values: impl IntoIterator<Item = T>) -> omnilua::Result<Table>
+where
+    T: IntoLua,
+{
+    let table = lua.create_table()?;
+    for (index, value) in values.into_iter().enumerate() {
+        table.set(index + 1, value)?;
+    }
+    Ok(table)
+}
+
+fn runtime_error(message: impl Display) -> omnilua::Error {
+    omnilua::LuaError::runtime(format_args!("{message}")).into()
+}
+
+fn value_type_name(value: &Value) -> &'static str {
+    match value {
+        Value::Nil => "nil",
+        Value::Boolean(_) => "boolean",
+        Value::Integer(_) | Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Table(_) => "table",
+        Value::Function(_) => "function",
+        Value::UserData(_) => "userdata",
+        Value::LightUserData(_) => "light userdata",
+        Value::Thread(_) => "thread",
     }
 }
 

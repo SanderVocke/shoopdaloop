@@ -1,9 +1,15 @@
 use std::collections::{BTreeMap, VecDeque};
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::atomic::{AtomicU32, Ordering};
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::{self, Receiver, TryRecvError, TrySendError};
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
+#[cfg(not(target_arch = "wasm32"))]
+use anyhow::Context;
+#[cfg(not(target_arch = "wasm32"))]
 use midir::{MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 
 pub const MIDI_QUEUE_CAPACITY: usize = 1024;
@@ -80,6 +86,7 @@ impl MidiControlService for NullMidiService {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 enum NativeConnection {
     Input {
         _connection: MidiInputConnection<()>,
@@ -89,6 +96,7 @@ enum NativeConnection {
     Output(MidiOutputConnection),
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub struct NativeMidiService {
     next_connection: u64,
     connections: BTreeMap<MidiConnectionId, NativeConnection>,
@@ -96,6 +104,7 @@ pub struct NativeMidiService {
     last_endpoints: Vec<MidiEndpoint>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl NativeMidiService {
     pub fn new() -> Self {
         Self {
@@ -113,12 +122,14 @@ impl NativeMidiService {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Default for NativeMidiService {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl MidiControlService for NativeMidiService {
     fn endpoints(&mut self) -> anyhow::Result<MidiEndpointSnapshot> {
         let input = MidiInput::new("ShoopDaLoop control discovery")
@@ -289,6 +300,7 @@ impl MidiControlService for NativeMidiService {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl MidiEndpoint {
     fn direction_as_u8(&self) -> u8 {
         match self.direction {

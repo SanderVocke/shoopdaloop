@@ -36,7 +36,7 @@ serde = { workspace = true }
 sndfile = { workspace = true }
 json = { workspace = true }
 midly = { workspace = true }
-mlua = { workspace = true }
+omnilua = { workspace = true }
 itertools = { workspace = true }
 enum-iterator = { workspace = true }
 num_enum = { workspace = true }

@@ -60,7 +60,9 @@ sndfile = { version = "0.1" }
 json = "0.12"
 midly = "0.5"
 directories = "6.0"
-mlua = { version = "0.11", features = ["lua54", "vendored"] }
+# omniLua 0.7.1's `os` implementation references its `io` helper module, so
+# both features are required even though Shoop's sandbox exposes no `io` table.
+omnilua = { version = "=0.7.1", default-features = false, features = ["coroutine", "io", "os"] }
 itertools = "0.14"
 num_enum = "0.7"
 enum-iterator = "2.1"
