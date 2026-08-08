@@ -229,6 +229,7 @@ try {
     revision: Number(document.getElementById('runtime_status')?.getAttribute('data-engine-revision')),
     selfTest: document.getElementById('runtime_status')?.getAttribute('data-self-test'),
     selfTestError: document.getElementById('runtime_status')?.getAttribute('data-self-test-error'),
+    selfTestNonzeroIo: document.getElementById('runtime_status')?.getAttribute('data-self-test-nonzero-io'),
     settingsTest: document.getElementById('runtime_status')?.getAttribute('data-settings-self-test'),
     settingsChannels: Number(document.getElementById('runtime_status')?.getAttribute('data-settings-channels')),
     settingsMidi: document.getElementById('runtime_status')?.getAttribute('data-settings-midi'),
@@ -410,7 +411,7 @@ try {
     if (stress && state.callbacks < 1_500) {
       throw new Error(`stress recording ended too early: ${JSON.stringify(state)}`);
     }
-    if (!(state.inputPeak > 0 && state.outputPeak > 0)) {
+    if (state.selfTestNonzeroIo !== 'true') {
       throw new Error(`non-zero I/O evidence is missing: ${JSON.stringify(state)}`);
     }
     if (!(state.sampleRate > 0 && state.quantum === 128 && state.captureChannels > 0)) {

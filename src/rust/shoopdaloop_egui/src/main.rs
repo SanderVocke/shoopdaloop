@@ -1276,6 +1276,7 @@ impl BrowserSelfTest {
                 {
                     return;
                 }
+                mark_browser_self_test_nonzero_io();
                 let mut outputs: Vec<_> = snapshot
                     .connections
                     .application_ports
@@ -1445,9 +1446,16 @@ impl BrowserSelfTest {
                 {
                     return self.fail("audio callbacks did not advance through session reload");
                 }
-                Ok(Self::SaveLoadedScriptSession {
-                    callbacks_before: snapshot.status.callback_count,
-                })
+                if browser_stress_enabled() {
+                    // Ordinary hosted/direct-file workflows verify exact script resave.
+                    // Avoid a duplicate capture here so the stress case remains focused on
+                    // sustained render/capture and reload.
+                    Ok(Self::PlayLoadedLoop)
+                } else {
+                    Ok(Self::SaveLoadedScriptSession {
+                        callbacks_before: snapshot.status.callback_count,
+                    })
+                }
             }
             Self::SaveLoadedScriptSession { callbacks_before } => runtime
                 .dispatch(AppIntent::RequestSaveSession)
@@ -1675,9 +1683,19 @@ fn browser_status_element() -> Option<web_sys::Element> {
 fn set_browser_self_test_status(status: &str) {
     if let Some(element) = browser_status_element() {
         let _ = element.set_attribute("data-self-test", status);
+        if status == "awaiting-audio" {
+            let _ = element.set_attribute("data-self-test-nonzero-io", "false");
+        }
         if status == "passed" {
             element.set_text_content(Some("Web Audio non-zero I/O self-test passed"));
         }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn mark_browser_self_test_nonzero_io() {
+    if let Some(element) = browser_status_element() {
+        let _ = element.set_attribute("data-self-test-nonzero-io", "true");
     }
 }
 
