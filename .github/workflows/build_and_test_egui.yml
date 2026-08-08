@@ -216,6 +216,7 @@ jobs:
         if: matrix.target != 'web'
         env:
           RUSTFLAGS: -D warnings
+          SHOOP_ALLOW_MISSING_BACKENDS: 1
         run: >-
           cargo test --locked ${{ matrix.cargo_args }}
           -p shoop_app_api

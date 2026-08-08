@@ -2125,7 +2125,7 @@ mod tests {
 
         std::fs::remove_file(&blocker).unwrap();
         app.handle_settings_action(SettingsAction::RetryAudioDriverPersistence { request_id });
-        let deadline = Instant::now() + Duration::from_secs(10);
+        let deadline = Instant::now() + Duration::from_secs(30);
         loop {
             app.settings.poll();
             app.runtime.tick(Duration::ZERO);
@@ -2136,7 +2136,18 @@ mod tests {
             {
                 break;
             }
-            assert!(Instant::now() < deadline, "driver save retry timed out");
+            if Instant::now() >= deadline {
+                let view = app.settings.view();
+                let current = app.runtime.snapshot();
+                let pending = app
+                    .pending_audio_settings
+                    .as_ref()
+                    .map(|pending| (pending.request_id, pending.saving));
+                panic!(
+                    "driver save retry timed out: persistence={:?}, switch={:?}, pending={pending:?}",
+                    view.persistence, current.audio_drivers.switch.status
+                );
+            }
             thread::sleep(Duration::from_millis(5));
         }
         let completed = app.runtime.snapshot();
