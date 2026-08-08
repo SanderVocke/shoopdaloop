@@ -19,6 +19,7 @@ pub struct TrackWidget {
     name_edit: String,
     source_name: String,
     loop_widgets: BTreeMap<LoopId, LoopWidget>,
+    hovered_loop: Option<LoopId>,
     controls: TrackControls,
     #[cfg(test)]
     test_loop_rects: Vec<egui::Rect>,
@@ -45,6 +46,12 @@ impl TrackWidget {
     ) -> TrackWidgetResponse {
         self.loop_widgets
             .retain(|id, _| state.loops.iter().any(|loop_state| loop_state.id == *id));
+        if self
+            .hovered_loop
+            .is_some_and(|id| !self.loop_widgets.contains_key(&id))
+        {
+            self.hovered_loop = None;
+        }
         let mut result = TrackWidgetResponse::default();
         #[cfg(test)]
         self.test_loop_rects.clear();
@@ -57,20 +64,29 @@ impl TrackWidget {
                     self.show_header(ui, state, &mut result);
                     ui.add_space(2.0);
                     for loop_state in &state.loops {
+                        let hover_allowed = self
+                            .hovered_loop
+                            .is_none_or(|hovered| hovered == loop_state.id);
                         let widget = self.loop_widgets.entry(loop_state.id).or_default();
-                        let _loop_response = ui.push_id(loop_state.id, |ui| {
+                        let loop_response = ui.push_id(loop_state.id, |ui| {
                             let size = egui::vec2(ui.available_width(), 26.0);
-                            let response = widget.show(ui, loop_state, size);
-                            result.loop_actions.extend(
-                                response
-                                    .actions
-                                    .into_iter()
-                                    .map(|action| (loop_state.id, action)),
-                            );
-                            result.io_intents.extend(response.io_intents);
+                            widget.show_with_hover(ui, loop_state, size, hover_allowed)
                         });
+                        if loop_response.inner.hover_active {
+                            self.hovered_loop = Some(loop_state.id);
+                        } else if self.hovered_loop == Some(loop_state.id) {
+                            self.hovered_loop = None;
+                        }
+                        result.loop_actions.extend(
+                            loop_response
+                                .inner
+                                .actions
+                                .into_iter()
+                                .map(|action| (loop_state.id, action)),
+                        );
+                        result.io_intents.extend(loop_response.inner.io_intents);
                         #[cfg(test)]
-                        self.test_loop_rects.push(_loop_response.response.rect);
+                        self.test_loop_rects.push(loop_response.response.rect);
                         ui.add_space(2.0);
                     }
                     if show_add_loop {
@@ -274,6 +290,54 @@ mod tests {
             first_widget,
             &widget.loop_widgets[&first] as *const LoopWidget
         );
+    }
+
+    #[test]
+    fn popup_hover_keeps_the_source_loop_as_the_only_hover_owner() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let first = LoopId::from_raw(1);
+        let state = TrackState {
+            id: TrackId::from_raw(1),
+            loops: vec![
+                LoopState {
+                    id: first,
+                    ..Default::default()
+                },
+                LoopState {
+                    id: LoopId::from_raw(2),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let mut widget = TrackWidget::default();
+        let _ = frame(&context, &mut widget, &state, Vec::new());
+        let second_rect = widget.test_loop_rects[1];
+        let record = widget.loop_widgets[&first]
+            .test_record_rect()
+            .unwrap()
+            .center();
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![egui::Event::PointerMoved(record)],
+        );
+        assert_eq!(widget.hovered_loop, Some(first));
+
+        let popup_over_second = widget.loop_widgets[&first]
+            .test_record_popup_rect()
+            .unwrap()
+            .center();
+        assert!(second_rect.contains(popup_over_second));
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            vec![egui::Event::PointerMoved(popup_over_second)],
+        );
+        assert_eq!(widget.hovered_loop, Some(first));
     }
 
     #[test]

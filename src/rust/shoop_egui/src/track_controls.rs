@@ -1,10 +1,14 @@
-use crate::{TrackControlState, TrackWidgetAction, MAX_TRACK_GAIN_DB, MIN_TRACK_GAIN_DB};
+use crate::{
+    dial::paint_dial, TrackControlState, TrackWidgetAction, MAX_TRACK_GAIN_DB, MIN_TRACK_GAIN_DB,
+};
 use egui_material_icons::icons::{ICON_HEARING, ICON_VOLUME_MUTE, ICON_VOLUME_UP};
 
 const METER_MIN_DB: f32 = -50.0;
 
 #[derive(Debug, Default)]
 pub struct TrackControls {
+    output_balance_drag_start: Option<f32>,
+    input_balance_drag_start: Option<f32>,
     #[cfg(test)]
     test_rects: TestTrackControlRects,
 }
@@ -74,6 +78,7 @@ impl TrackControls {
                     let response = balance_control(
                         ui,
                         state.output_balance,
+                        &mut self.output_balance_drag_start,
                         TrackWidgetAction::OutputBalanceChanged,
                         &mut actions,
                     );
@@ -127,6 +132,7 @@ impl TrackControls {
                     let response = balance_control(
                         ui,
                         state.input_balance,
+                        &mut self.input_balance_drag_start,
                         TrackWidgetAction::InputBalanceChanged,
                         &mut actions,
                     );
@@ -170,23 +176,30 @@ impl TrackControls {
 fn balance_control(
     ui: &mut egui::Ui,
     value: f32,
+    drag_start: &mut Option<f32>,
     action: impl FnOnce(f32) -> TrackWidgetAction,
     actions: &mut Vec<TrackWidgetAction>,
 ) -> egui::Response {
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click_and_drag());
+    if response.drag_started() {
+        *drag_start = Some(value);
+    }
     let mut balance = value;
-    let response = ui
-        .add(
-            egui::DragValue::new(&mut balance)
-                .range(-1.0..=1.0)
-                .speed(0.01)
-                .prefix("B ")
-                .max_decimals(2),
-        )
-        .on_hover_text(format!("Stereo balance: {balance:.2}"));
-    if response.changed() {
+    if response.dragged() {
+        balance = (drag_start.unwrap_or(value) - response.drag_delta().y / 50.0).clamp(-1.0, 1.0);
+    }
+    if response.double_clicked() {
+        balance = 0.0;
+    }
+    if (balance - value).abs() > f32::EPSILON {
         actions.push(action(balance));
     }
-    response
+    if response.drag_stopped() {
+        *drag_start = None;
+    }
+    paint_dial(ui, &response, rect, (balance + 1.0) / 2.0, "B");
+    response.on_hover_text(format!("Stereo balance: {balance:.2}"))
 }
 
 fn meter(ui: &mut egui::Ui, stereo: bool, left_db: f32, right_db: f32, midi_activity: bool) {
@@ -342,9 +355,8 @@ mod tests {
         frame(&context, &mut controls, &state, Vec::new());
 
         assert!(controls.test_rect(TestTrackControl::OutputGain).is_some());
-        assert!(controls
-            .test_rect(TestTrackControl::OutputBalance)
-            .is_some());
+        let output_balance = controls.test_rect(TestTrackControl::OutputBalance).unwrap();
+        assert!((output_balance.width() - output_balance.height()).abs() < f32::EPSILON);
         assert!(controls.test_rect(TestTrackControl::InputGain).is_some());
         assert!(controls.test_rect(TestTrackControl::InputBalance).is_some());
         assert_eq!(
@@ -364,6 +376,35 @@ mod tests {
                 TestTrackControl::InputMonitoring
             ),
             vec![TrackWidgetAction::InputMonitoringChanged(true)]
+        );
+    }
+
+    #[test]
+    fn balance_dial_double_click_resets_to_center() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = TrackControlState {
+            has_output: true,
+            has_output_audio: true,
+            output_stereo: true,
+            output_balance: 0.5,
+            ..Default::default()
+        };
+        let mut controls = TrackControls::default();
+        let _ = click(
+            &context,
+            &mut controls,
+            &state,
+            TestTrackControl::OutputBalance,
+        );
+        assert_eq!(
+            click(
+                &context,
+                &mut controls,
+                &state,
+                TestTrackControl::OutputBalance,
+            ),
+            vec![TrackWidgetAction::OutputBalanceChanged(0.0)]
         );
     }
 }
