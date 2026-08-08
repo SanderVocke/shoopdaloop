@@ -4,6 +4,10 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
+use shoop_app_api::{
+    AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
+    DummyAudioDriverConfig, ResolvedAudioDriverConfig,
+};
 use shoop_engine::dummy_midi_port::DummyMidiPort;
 use shoop_engine::dummy_port::{DummyAudioPort, DummyExternalConnections, PortId};
 use shoop_engine::external_audio_port::ExternalAudioPort;
@@ -306,12 +310,30 @@ pub struct BackendAudioDataChunk {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendSnapshot {
     pub status: BackendStatus,
+    pub audio_drivers: AudioDriverRuntimeState,
     pub tracks: BTreeMap<BackendTrackId, BackendTrackState>,
     pub loops: BTreeMap<BackendLoopId, BackendLoopState>,
     pub connections: BackendConnectionSnapshot,
 }
 
 pub trait Backend {
+    fn audio_driver_state(&mut self) -> Result<AudioDriverRuntimeState> {
+        Ok(AudioDriverRuntimeState::default())
+    }
+    fn preflight_audio_driver(
+        &mut self,
+        _config: &AudioDriverConfig,
+    ) -> Result<ResolvedAudioDriverConfig> {
+        Err(anyhow!("audio-driver switching is unavailable"))
+    }
+    fn switch_audio_driver(
+        &mut self,
+        _config: &AudioDriverConfig,
+        _confirmed_sample_rate: u32,
+        _session: &BackendSessionData,
+    ) -> Result<BackendSessionReplacement> {
+        Err(anyhow!("audio-driver switching is unavailable"))
+    }
     fn create_loop(&mut self) -> Result<BackendLoopId>;
     fn create_direct_track(&mut self, request: DirectTrackRequest) -> Result<BackendTrackCreation>;
     fn add_loop_to_track(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId>;
@@ -652,6 +674,41 @@ impl EngineBackend {
 
     pub fn processed_frames(&self) -> u64 {
         self.processed_frames
+    }
+
+    fn audio_driver_runtime_state(&self) -> AudioDriverRuntimeState {
+        let (supported, configured, kind, instance_name) = match self.mode {
+            EngineBackendMode::Dummy => (
+                true,
+                AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                    sample_rate: self.sample_rate,
+                    buffer_size: self.buffer_size,
+                }),
+                AudioDriverKind::Dummy,
+                "dummy".to_owned(),
+            ),
+            EngineBackendMode::Physical => (
+                false,
+                AudioDriverConfig::WebAudio,
+                AudioDriverKind::WebAudio,
+                "Web Audio".to_owned(),
+            ),
+        };
+        AudioDriverRuntimeState {
+            supported,
+            catalog: Arc::from([AudioDriverDescriptor {
+                kind,
+                available: true,
+                ..Default::default()
+            }]),
+            active: Some(ResolvedAudioDriverConfig {
+                configured,
+                sample_rate: self.sample_rate,
+                buffer_size: self.buffer_size,
+                instance_name,
+            }),
+            ..Default::default()
+        }
     }
 
     fn next_port_id(&mut self) -> PortId {
@@ -1250,6 +1307,63 @@ fn amplitude_db(amplitude: f32) -> f32 {
 }
 
 impl Backend for EngineBackend {
+    fn audio_driver_state(&mut self) -> Result<AudioDriverRuntimeState> {
+        Ok(self.audio_driver_runtime_state())
+    }
+
+    fn preflight_audio_driver(
+        &mut self,
+        config: &AudioDriverConfig,
+    ) -> Result<ResolvedAudioDriverConfig> {
+        let AudioDriverConfig::Dummy(config) = config else {
+            return Err(anyhow!("this backend supports only dummy-driver switching"));
+        };
+        if self.mode != EngineBackendMode::Dummy {
+            return Err(anyhow!("Web Audio is selected automatically"));
+        }
+        if config.sample_rate == 0 || config.buffer_size == 0 {
+            return Err(anyhow!(
+                "dummy sample rate and buffer size must be non-zero"
+            ));
+        }
+        Ok(ResolvedAudioDriverConfig {
+            configured: AudioDriverConfig::Dummy(config.clone()),
+            sample_rate: config.sample_rate,
+            buffer_size: config.buffer_size,
+            instance_name: "dummy".to_owned(),
+        })
+    }
+
+    fn switch_audio_driver(
+        &mut self,
+        config: &AudioDriverConfig,
+        confirmed_sample_rate: u32,
+        session: &BackendSessionData,
+    ) -> Result<BackendSessionReplacement> {
+        let resolved = self.preflight_audio_driver(config)?;
+        if resolved.sample_rate != confirmed_sample_rate {
+            return Err(anyhow!(
+                "resolved target sample rate changed from {confirmed_sample_rate} to {}",
+                resolved.sample_rate
+            ));
+        }
+        if session.sample_rate != resolved.sample_rate {
+            return Err(anyhow!(
+                "prepared session sample rate {} does not match target {}",
+                session.sample_rate,
+                resolved.sample_rate
+            ));
+        }
+        let mut target = EngineBackend::new_dummy(resolved.sample_rate, resolved.buffer_size)?;
+        target.external_connections = self.external_connections.clone();
+        let (mut replacement, mapping) = target.build_replacement(session)?;
+        replacement.elapsed_frame_numerator = self.elapsed_frame_numerator;
+        replacement.processed_frames = self.processed_frames;
+        replacement.xruns = self.xruns;
+        *self = replacement;
+        Ok(mapping)
+    }
+
     fn create_loop(&mut self) -> Result<BackendLoopId> {
         let engine_loop = self.session.create_loop();
         let id = BackendLoopId::from_raw(self.next_loop_id);
@@ -1938,6 +2052,7 @@ impl Backend for EngineBackend {
                     .map(|channel| channel.storage_exhaustions())
                     .sum(),
             },
+            audio_drivers: self.audio_driver_runtime_state(),
             tracks,
             loops,
             connections: self.connection_snapshot(),
@@ -2147,6 +2262,7 @@ fn apply_fake_connection(
 #[derive(Debug)]
 pub struct FakeBackend {
     status: BackendStatus,
+    active_audio_driver: ResolvedAudioDriverConfig,
     tracks: BTreeMap<BackendTrackId, FakeTrack>,
     loops: BTreeMap<BackendLoopId, BackendLoopState>,
     sync_sources: BTreeMap<BackendLoopId, Option<BackendLoopId>>,
@@ -2154,6 +2270,8 @@ pub struct FakeBackend {
     next_track_id: u64,
     next_port_id: u64,
     fail_track_creation_after: Option<usize>,
+    fail_next_driver_switch: Option<String>,
+    preflight_sample_rate_override: Option<u32>,
     operations: Vec<FakeOperation>,
     connections: FakeConnectionControl,
     loop_content: BTreeMap<BackendLoopId, BackendLoopContent>,
@@ -2190,6 +2308,12 @@ impl Default for FakeBackend {
                 sample_rate: 48_000,
                 ..Default::default()
             },
+            active_audio_driver: ResolvedAudioDriverConfig {
+                configured: AudioDriverConfig::default(),
+                sample_rate: 48_000,
+                buffer_size: 256,
+                instance_name: "fake dummy".to_owned(),
+            },
             tracks: BTreeMap::new(),
             loops: BTreeMap::new(),
             sync_sources: BTreeMap::new(),
@@ -2197,6 +2321,8 @@ impl Default for FakeBackend {
             next_track_id: 1,
             next_port_id: 1,
             fail_track_creation_after: None,
+            fail_next_driver_switch: None,
+            preflight_sample_rate_override: None,
             operations: Vec::new(),
             connections: FakeConnectionControl {
                 state: Arc::new(Mutex::new(FakeConnectionState::default())),
@@ -2213,6 +2339,14 @@ impl FakeBackend {
 
     pub fn fail_track_creation_after(&mut self, successful_creations: usize) {
         self.fail_track_creation_after = Some(successful_creations);
+    }
+
+    pub fn fail_next_driver_switch(&mut self, message: impl Into<String>) {
+        self.fail_next_driver_switch = Some(message.into());
+    }
+
+    pub fn set_preflight_sample_rate_override(&mut self, sample_rate: Option<u32>) {
+        self.preflight_sample_rate_override = sample_rate;
     }
 
     pub fn connection_control(&self) -> FakeConnectionControl {
@@ -2287,6 +2421,119 @@ impl FakeBackend {
 }
 
 impl Backend for FakeBackend {
+    fn audio_driver_state(&mut self) -> Result<AudioDriverRuntimeState> {
+        Ok(AudioDriverRuntimeState {
+            supported: true,
+            catalog: Arc::from([
+                AudioDriverDescriptor {
+                    kind: AudioDriverKind::Dummy,
+                    available: true,
+                    ..Default::default()
+                },
+                AudioDriverDescriptor {
+                    kind: AudioDriverKind::Jack,
+                    available: true,
+                    ..Default::default()
+                },
+                AudioDriverDescriptor {
+                    kind: AudioDriverKind::Cpal,
+                    available: true,
+                    hosts: vec!["default".to_owned(), "test".to_owned()],
+                    input_devices: vec!["default".to_owned(), "input".to_owned()],
+                    output_devices: vec!["default".to_owned(), "output".to_owned()],
+                    midi_inputs: vec!["midi in".to_owned()],
+                    midi_outputs: vec!["midi out".to_owned()],
+                    ..Default::default()
+                },
+            ]),
+            active: Some(self.active_audio_driver.clone()),
+            ..Default::default()
+        })
+    }
+
+    fn preflight_audio_driver(
+        &mut self,
+        config: &AudioDriverConfig,
+    ) -> Result<ResolvedAudioDriverConfig> {
+        let (sample_rate, buffer_size, instance_name) = match config {
+            AudioDriverConfig::Dummy(config) => {
+                if config.sample_rate == 0 || config.buffer_size == 0 {
+                    return Err(anyhow!(
+                        "dummy sample rate and buffer size must be non-zero"
+                    ));
+                }
+                (
+                    config.sample_rate,
+                    config.buffer_size,
+                    "fake dummy".to_owned(),
+                )
+            }
+            AudioDriverConfig::Jack(config) => (
+                self.status.sample_rate,
+                self.status.buffer_size,
+                config.client_name.clone(),
+            ),
+            AudioDriverConfig::Cpal(config) => (
+                if config.sample_rate == 0 {
+                    self.status.sample_rate
+                } else {
+                    config.sample_rate
+                },
+                if config.buffer_size == 0 {
+                    self.status.buffer_size
+                } else {
+                    config.buffer_size
+                },
+                config.output_device.clone(),
+            ),
+            AudioDriverConfig::WebAudio => {
+                return Err(anyhow!("Web Audio is selected automatically"));
+            }
+        };
+        Ok(ResolvedAudioDriverConfig {
+            configured: config.clone(),
+            sample_rate: self.preflight_sample_rate_override.unwrap_or(sample_rate),
+            buffer_size,
+            instance_name,
+        })
+    }
+
+    fn switch_audio_driver(
+        &mut self,
+        config: &AudioDriverConfig,
+        confirmed_sample_rate: u32,
+        session: &BackendSessionData,
+    ) -> Result<BackendSessionReplacement> {
+        let resolved = self.preflight_audio_driver(config)?;
+        if let Some(message) = self.fail_next_driver_switch.take() {
+            return Err(anyhow!(message));
+        }
+        if resolved.sample_rate != confirmed_sample_rate {
+            return Err(anyhow!(
+                "resolved target sample rate changed from {confirmed_sample_rate} to {}",
+                resolved.sample_rate
+            ));
+        }
+        if session.sample_rate != resolved.sample_rate {
+            return Err(anyhow!(
+                "prepared session sample rate does not match target"
+            ));
+        }
+        let previous = self.active_audio_driver.clone();
+        self.status.sample_rate = resolved.sample_rate;
+        self.status.buffer_size = resolved.buffer_size;
+        self.active_audio_driver = resolved;
+        match self.replace_session(session) {
+            Ok(replacement) => Ok(replacement),
+            Err(error) => {
+                self.status.sample_rate = previous.sample_rate;
+                self.status.buffer_size = previous.buffer_size;
+                self.active_audio_driver = previous;
+                Err(error)
+            }
+        }
+    }
+
     fn create_loop(&mut self) -> Result<BackendLoopId> {
         let id = BackendLoopId::from_raw(self.next_loop_id);
         self.next_loop_id = self.next_loop_id.saturating_add(1);
@@ -2659,6 +2906,7 @@ impl Backend for FakeBackend {
             .with_state(|state| state.external_ports.clone());
         let mut staged = FakeBackend::default();
         staged.status = self.status;
+        staged.active_audio_driver = self.active_audio_driver.clone();
         staged.connections.with_state(|state| {
             state.external_ports = external_ports;
         });
@@ -2774,6 +3022,7 @@ impl Backend for FakeBackend {
     fn poll(&mut self) -> Result<BackendSnapshot> {
         Ok(BackendSnapshot {
             status: self.status,
+            audio_drivers: self.audio_driver_state()?,
             tracks: self
                 .tracks
                 .iter()
@@ -3009,6 +3258,75 @@ mod tests {
     }
 
     #[test]
+    fn driver_catalog_and_switch_contracts_are_typed_and_transactional() {
+        let mut backend = FakeBackend::default();
+        let catalog = backend.audio_driver_state().unwrap();
+        assert!(catalog.supported);
+        assert_eq!(catalog.catalog.len(), 3);
+        assert!(catalog
+            .catalog
+            .iter()
+            .all(|driver| driver.kind != AudioDriverKind::WebAudio));
+
+        backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "switch".to_owned(),
+                audio_channels: 1,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let before = backend.capture_session().unwrap();
+        let target = AudioDriverConfig::Cpal(shoop_app_api::CpalAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 128,
+            ..Default::default()
+        });
+        let resolved = backend.preflight_audio_driver(&target).unwrap();
+        assert_eq!(resolved.sample_rate, 48_000);
+        backend.fail_next_driver_switch("injected switch failure");
+        assert!(backend
+            .switch_audio_driver(&target, resolved.sample_rate, &before)
+            .is_err());
+        assert_eq!(backend.capture_session().unwrap(), before);
+        assert_eq!(
+            backend
+                .audio_driver_state()
+                .unwrap()
+                .active
+                .unwrap()
+                .configured
+                .kind(),
+            AudioDriverKind::Dummy
+        );
+
+        backend
+            .switch_audio_driver(&target, resolved.sample_rate, &before)
+            .unwrap();
+        let active = backend.audio_driver_state().unwrap().active.unwrap();
+        assert_eq!(active.configured, target);
+        assert_eq!(active.buffer_size, 128);
+    }
+
+    #[test]
+    fn engine_dummy_preflight_rejects_unconfirmed_rate_changes() {
+        let mut backend = EngineBackend::new_dummy(48_000, 256).unwrap();
+        let target = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 44_100,
+            buffer_size: 128,
+        });
+        assert_eq!(
+            backend.preflight_audio_driver(&target).unwrap().sample_rate,
+            44_100
+        );
+        let before = backend.capture_session().unwrap();
+        assert!(backend
+            .switch_audio_driver(&target, 48_000, &before)
+            .is_err());
+        assert_eq!(backend.poll().unwrap().status.sample_rate, 48_000);
+    }
+
+    #[test]
     fn fake_connection_control_covers_churn_external_change_and_deferred_failure() {
         let mut backend = FakeBackend::default();
         let control = backend.connection_control();
@@ -3101,7 +3419,17 @@ mod tests {
                 initial_loops: 1,
             })
             .unwrap();
-        let connections = backend.poll().unwrap().connections;
+        let snapshot = backend.poll().unwrap();
+        assert!(!snapshot.audio_drivers.supported);
+        assert_eq!(
+            snapshot
+                .audio_drivers
+                .active
+                .as_ref()
+                .map(|active| active.configured.kind()),
+            Some(AudioDriverKind::WebAudio)
+        );
+        let connections = snapshot.connections;
         assert!(connections.available);
         assert!(connections.host_ports.is_empty());
         assert!(connections.confirmed_links.is_empty());

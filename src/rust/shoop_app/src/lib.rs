@@ -10,14 +10,15 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, Result};
 use shoop_app_api::{
     AppIntent, AppNotification, AppSnapshot, ApplicationPortOwner, ApplicationPortState,
-    AudioChannelMappingState, AudioChannelSelectionState, AudioDriverState, ChannelId,
-    ConfirmedConnectionState, ConnectionErrorKind, ConnectionErrorState, ConnectionPolicy,
-    ConnectionViewState, DirectTrackSpec, GlobalControlAction, HostPortId, HostPortState,
-    IoTaskKind, IoTaskState, IoTaskStatus, KeyEvent, KeyEventType, LoopAction,
-    LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, NotificationLevel,
-    PendingConnectionState, PortDataType, PortDirection, PortId, PortRole, SampleRateWarning,
-    ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState, TaskId,
-    TrackAction, TrackControlState, TrackId, TrackPortOwnerKind, TrackState, WaveformChannelState,
+    AudioChannelMappingState, AudioChannelSelectionState, AudioDriverRuntimeState,
+    AudioDriverState, ChannelId, ConfirmedConnectionState, ConnectionErrorKind,
+    ConnectionErrorState, ConnectionPolicy, ConnectionViewState, DirectTrackSpec,
+    GlobalControlAction, HostPortId, HostPortState, IoTaskKind, IoTaskState, IoTaskStatus,
+    KeyEvent, KeyEventType, LoopAction, LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode,
+    LoopState, NotificationLevel, PendingConnectionState, PortDataType, PortDirection, PortId,
+    PortRole, SampleRateWarning, ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState,
+    StatusState, TaskId, TrackAction, TrackControlState, TrackId, TrackPortOwnerKind, TrackState,
+    WaveformChannelState,
 };
 use shoop_backend::{
     Backend, BackendAudioContent, BackendConnectionSnapshot, BackendGrabRequest,
@@ -416,6 +417,7 @@ struct ApplicationModel {
     script_composition_frame_remainder: u128,
     global: shoop_app_api::GlobalControlState,
     status: StatusState,
+    audio_drivers: AudioDriverRuntimeState,
     notifications: Vec<AppNotification>,
     next_task_id: u64,
     io_task: Option<IoTaskState>,
@@ -613,6 +615,7 @@ impl ApplicationModel {
             script_composition_frame_remainder: 0,
             global: Default::default(),
             status: Default::default(),
+            audio_drivers: backend.audio_driver_state().unwrap_or_default(),
             notifications: Vec::new(),
             next_task_id: 1,
             io_task: None,
@@ -679,6 +682,10 @@ impl ApplicationModel {
                 host_port_id,
                 connected,
             } => self.set_port_connected(backend, port_id, host_port_id.to_string(), connected),
+            AppIntent::RequestAudioDriverSwitch { .. }
+            | AppIntent::ConfirmAudioDriverSwitch { .. } => {
+                Err("audio-driver switching is not initialized".to_owned())
+            }
             AppIntent::RequestSaveSession => self.begin_save_session(),
             AppIntent::RequestLoadSessionPicker
             | AppIntent::RequestLoopAudioImportPicker { .. }
@@ -2891,6 +2898,7 @@ impl ApplicationModel {
     }
 
     fn apply_backend_snapshot(&mut self, snapshot: BackendSnapshot) {
+        self.audio_drivers = snapshot.audio_drivers.clone();
         self.status.dsp_load_percent = snapshot.status.dsp_load_percent;
         self.status.xruns = self.status.xruns.saturating_add(snapshot.status.xruns);
         self.status.buffer_size = snapshot.status.buffer_size;
@@ -3811,6 +3819,7 @@ impl ApplicationModel {
                 .collect(),
             global_controls: self.global.clone(),
             status: self.status.clone(),
+            audio_drivers: self.audio_drivers.clone(),
             details: self.details_snapshot(),
             connections: Arc::clone(&self.connection_view),
             scripting: Arc::clone(&self.scripting_view),
