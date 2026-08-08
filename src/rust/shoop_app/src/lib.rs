@@ -7032,8 +7032,34 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
 
     #[test]
     fn audio_driver_switch_requires_confirmation_and_resamples_transactionally() {
-        let mut runtime =
-            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start_with_scripts(
+            Box::new(FakeBackend::default()),
+            vec![StartupScript {
+                name: "keyboard.lua".to_owned(),
+                source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            }],
+        )
+        .unwrap();
+        runtime.tick(Duration::ZERO);
+        let initial = runtime.snapshot();
+        let track_id = initial.tracks[0].id;
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id,
+                action: TrackAction::NameChanged("preserved sync track".to_owned()),
+            })
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id,
+                action: TrackAction::OutputGainChanged(-7.5),
+            })
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSolo(true)))
+            .unwrap();
         runtime.tick(Duration::ZERO);
         let before = runtime.snapshot();
         let track_ids = before
@@ -7041,6 +7067,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             .iter()
             .map(|track| track.id)
             .collect::<Vec<_>>();
+        let script = before.scripting.scripts[0].clone();
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
@@ -7091,6 +7118,12 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
                 .collect::<Vec<_>>(),
             track_ids
         );
+        assert_eq!(switched.tracks[0].name, "preserved sync track");
+        assert_eq!(switched.tracks[0].controls.output_gain_db, -7.5);
+        assert!(switched.global_controls.solo);
+        assert_eq!(switched.scripting.scripts[0].id, script.id);
+        assert_eq!(switched.scripting.scripts[0].name, script.name);
+        assert_eq!(switched.scripting.scripts[0].lifecycle, script.lifecycle);
         assert!(switched
             .tracks
             .iter()

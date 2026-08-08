@@ -25,6 +25,7 @@ struct NativeRuntime {
     next_loop_id: u64,
     next_port_id: u64,
     connection_revision: u64,
+    connection_failures: Vec<BackendConnectionFailure>,
     configured: AudioDriverConfig,
     resolved: ResolvedAudioDriverConfig,
     driver: AudioDriver,
@@ -194,6 +195,7 @@ impl NativeRuntime {
             next_loop_id: 1,
             next_port_id: 1,
             connection_revision: 1,
+            connection_failures: Vec::new(),
             configured,
             resolved,
             driver,
@@ -341,8 +343,14 @@ impl NativeRuntime {
                 .collect(),
             host_ports,
             confirmed_links,
-            failures: Vec::new(),
+            failures: self.connection_failures.clone(),
         }
+    }
+
+    fn take_connection_snapshot(&mut self) -> BackendConnectionSnapshot {
+        let mut snapshot = self.connection_snapshot();
+        snapshot.failures = std::mem::take(&mut self.connection_failures);
+        snapshot
     }
 
     fn capture_session(&self) -> Result<BackendSessionData> {
@@ -525,8 +533,28 @@ impl NativeRuntime {
                     .ports
                     .insert(source_port.source_id, created_port.id);
                 for external in &source_port.external_connections {
-                    if current_connections.host_ports.contains_key(external) {
-                        let _ = self.set_port_connected(created_port.id, external, true);
+                    if !current_connections.host_ports.contains_key(external) {
+                        self.connection_failures.push(BackendConnectionFailure {
+                            port_id: created_port.id,
+                            external_port: external.clone(),
+                            desired_connected: true,
+                            message: format!(
+                                "external endpoint {external} is unavailable after the audio-driver switch"
+                            ),
+                        });
+                        self.connection_revision = self.connection_revision.wrapping_add(1);
+                        continue;
+                    }
+                    if let Err(error) = self.set_port_connected(created_port.id, external, true) {
+                        self.connection_failures.push(BackendConnectionFailure {
+                            port_id: created_port.id,
+                            external_port: external.clone(),
+                            desired_connected: true,
+                            message: format!(
+                                "could not restore external endpoint {external} after the audio-driver switch: {error}"
+                            ),
+                        });
+                        self.connection_revision = self.connection_revision.wrapping_add(1);
                     }
                 }
             }
@@ -1083,7 +1111,7 @@ impl Backend for NativeBackend {
 
     fn poll(&mut self) -> Result<BackendSnapshot> {
         let audio_drivers = self.audio_driver_state()?;
-        let runtime = self.runtime()?;
+        let runtime = self.runtime_mut()?;
         runtime.wait();
         let driver = runtime.driver.get_state();
         let session = runtime.session.get_state();
@@ -1173,7 +1201,7 @@ impl Backend for NativeBackend {
             audio_drivers,
             tracks,
             loops,
-            connections: runtime.connection_snapshot(),
+            connections: runtime.take_connection_snapshot(),
         })
     }
 
@@ -1436,6 +1464,13 @@ mod tests {
             start_offset: -4,
             preplay: 8,
         };
+        captured.tracks[0]
+            .ports
+            .iter_mut()
+            .find(|port| port.source_id == input.id.raw())
+            .unwrap()
+            .external_connections
+            .push("removed:stale_capture".to_owned());
         let mapping = backend
             .switch_audio_driver(&config, 48_000, &captured)
             .unwrap();
@@ -1457,6 +1492,12 @@ mod tests {
             .ports
             .iter()
             .any(|port| port.external_connections == ["system:capture_1"]));
+        let failures = backend.poll().unwrap().connections.failures;
+        assert_eq!(failures.len(), 1);
+        assert_eq!(failures[0].external_port, "removed:stale_capture");
+        assert!(failures[0].desired_connected);
+        assert!(failures[0].message.contains("unavailable after"));
+        assert!(backend.poll().unwrap().connections.failures.is_empty());
     }
 
     #[test]
