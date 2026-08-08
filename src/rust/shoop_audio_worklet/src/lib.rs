@@ -1,13 +1,14 @@
 use shoop_audio_protocol::{
-    Command, CommandEnvelope, Event, EventEnvelope, WaveformChunk, WireLoopMode, WireLoopState,
-    WireSnapshot, WireTrackControl, WireTrackState, COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS,
-    PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES,
-    WAVEFORM_CHUNK_SAMPLES,
+    Command, CommandEnvelope, Event, EventEnvelope, WaveformChunk, WireApplicationPort,
+    WireConfirmedLink, WireHostPort, WireLoopMode, WireLoopState, WirePortDataType,
+    WirePortDirection, WirePortRole, WireSnapshot, WireTrackControl, WireTrackState,
+    COMMAND_MAX_BYTES, MAX_DEVICE_AUDIO_CHANNELS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
+    SESSION_TRANSFER_MAX_BYTES, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
-    Backend, BackendGrabRequest, BackendLoopId, BackendLoopMode, BackendSessionData,
-    BackendSnapshot, BackendTrackControl, BackendTrackId, DirectTrackRequest, EngineBackend,
-    MAX_WEB_AUDIO_QUANTUM,
+    Backend, BackendGrabRequest, BackendLoopId, BackendLoopMode, BackendPortDataType,
+    BackendPortDirection, BackendPortId, BackendPortRole, BackendSessionData, BackendSnapshot,
+    BackendTrackControl, BackendTrackId, DirectTrackRequest, EngineBackend, MAX_WEB_AUDIO_QUANTUM,
 };
 
 pub struct WorkletHost {
@@ -152,6 +153,15 @@ impl WorkletHost {
             return Err("worklet host is stopped".to_owned());
         }
         match command {
+            Command::ConfigureDeviceChannels {
+                input_channels,
+                output_channels,
+            } => {
+                self.backend
+                    .configure_web_audio_channels(input_channels, output_channels)
+                    .map_err(|error| error.to_string())?;
+                Ok(Event::Ack)
+            }
             Command::CreateTrack {
                 expected_track_id,
                 expected_loop_ids,
@@ -253,6 +263,25 @@ impl WorkletHost {
                     .clear_loop(BackendLoopId::from_raw(loop_id))
                     .map_err(|error| error.to_string())?;
                 Ok(Event::Ack)
+            }
+            Command::SetPortConnected {
+                application_port_id,
+                host_port_id,
+                connected,
+            } => {
+                match self.backend.set_port_connected(
+                    BackendPortId::from_raw(application_port_id),
+                    &host_port_id,
+                    connected,
+                ) {
+                    Ok(()) => Ok(Event::Ack),
+                    Err(error) => Ok(Event::ConnectionMutationFailed {
+                        application_port_id,
+                        host_port_id,
+                        desired_connected: connected,
+                        message: error.to_string(),
+                    }),
+                }
             }
             Command::RequestWaveform {
                 loop_id,
@@ -440,7 +469,65 @@ fn to_wire_loop_mode(mode: BackendLoopMode) -> WireLoopMode {
     }
 }
 
+fn to_wire_data_type(value: BackendPortDataType) -> WirePortDataType {
+    match value {
+        BackendPortDataType::Audio => WirePortDataType::Audio,
+        BackendPortDataType::Midi => WirePortDataType::Midi,
+    }
+}
+
+fn to_wire_direction(value: BackendPortDirection) -> WirePortDirection {
+    match value {
+        BackendPortDirection::Input => WirePortDirection::Input,
+        BackendPortDirection::Output => WirePortDirection::Output,
+    }
+}
+
+fn to_wire_role(value: BackendPortRole) -> WirePortRole {
+    match value {
+        BackendPortRole::AudioInput => WirePortRole::AudioInput,
+        BackendPortRole::AudioOutput => WirePortRole::AudioOutput,
+        BackendPortRole::AudioSend => WirePortRole::AudioSend,
+        BackendPortRole::AudioReturn => WirePortRole::AudioReturn,
+        BackendPortRole::MidiInput => WirePortRole::MidiInput,
+        BackendPortRole::MidiOutput => WirePortRole::MidiOutput,
+        BackendPortRole::MidiSend => WirePortRole::MidiSend,
+    }
+}
+
 fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
+    let application_ports = snapshot
+        .connections
+        .application_ports
+        .into_values()
+        .map(|port| WireApplicationPort {
+            id: port.id.raw(),
+            name: port.name,
+            data_type: to_wire_data_type(port.data_type),
+            direction: to_wire_direction(port.direction),
+            role: to_wire_role(port.role),
+        })
+        .collect();
+    let host_ports = snapshot
+        .connections
+        .host_ports
+        .into_values()
+        .map(|port| WireHostPort {
+            id: port.id,
+            name: port.name,
+            data_type: to_wire_data_type(port.data_type),
+            direction: to_wire_direction(port.direction),
+        })
+        .collect();
+    let confirmed_links = snapshot
+        .connections
+        .confirmed_links
+        .into_iter()
+        .map(|link| WireConfirmedLink {
+            application_port_id: link.application_port_id.raw(),
+            host_port_id: link.host_port_id,
+        })
+        .collect();
     WireSnapshot {
         sample_rate: snapshot.status.sample_rate,
         quantum: snapshot.status.buffer_size,
@@ -489,6 +576,9 @@ fn to_wire_snapshot(snapshot: BackendSnapshot) -> WireSnapshot {
                 midi_activity: loop_.midi_activity,
             })
             .collect(),
+        application_ports,
+        host_ports,
+        confirmed_links,
     }
 }
 
@@ -577,9 +667,21 @@ mod tests {
     #[test]
     fn protocol_orders_commands_and_runs_non_silent_full_duplex_cycles() {
         let mut host = WorkletHost::new(48_000, 128).unwrap();
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::ConfigureDeviceChannels {
+                    input_channels: 1,
+                    output_channels: 2,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
         let created = command(
             &mut host,
-            1,
+            2,
             Command::CreateTrack {
                 expected_track_id: 1,
                 expected_loop_ids: vec![1],
@@ -592,7 +694,7 @@ mod tests {
         assert!(matches!(
             command(
                 &mut host,
-                2,
+                3,
                 Command::SetTrackControl {
                     track_id: 1,
                     control: WireTrackControl::InputMonitoring(true),
@@ -604,7 +706,7 @@ mod tests {
         assert!(matches!(
             command(
                 &mut host,
-                3,
+                4,
                 Command::TransitionLoop {
                     loop_id: 1,
                     mode: WireLoopMode::Recording,
@@ -621,7 +723,7 @@ mod tests {
         assert!(matches!(
             command(
                 &mut host,
-                4,
+                5,
                 Command::TransitionLoop {
                     loop_id: 1,
                     mode: WireLoopMode::Stopped,
@@ -633,7 +735,7 @@ mod tests {
         ));
         let waveform = command(
             &mut host,
-            5,
+            6,
             Command::RequestWaveform {
                 loop_id: 1,
                 revision: 1,
@@ -647,7 +749,7 @@ mod tests {
         };
         assert_eq!(waveform.total_samples, 128);
         assert!(waveform.samples.iter().all(|sample| *sample == 0.25));
-        let status = command(&mut host, 6, Command::Poll);
+        let status = command(&mut host, 7, Command::Poll);
         let Event::Snapshot(snapshot) = status.event else {
             panic!("expected snapshot");
         };
@@ -658,7 +760,7 @@ mod tests {
         assert!(matches!(
             command(
                 &mut host,
-                7,
+                8,
                 Command::SetLoopBalance {
                     loop_id: 1,
                     balance: 0.5,
@@ -667,10 +769,113 @@ mod tests {
             .event,
             Event::Ack
         ));
-        let Event::Snapshot(snapshot) = command(&mut host, 8, Command::Poll).event else {
+        let Event::Snapshot(snapshot) = command(&mut host, 9, Command::Poll).event else {
             panic!("expected snapshot");
         };
         assert_eq!(snapshot.loops[0].balance, 0.5);
+    }
+
+    #[test]
+    fn normalized_routes_mutate_authoritatively_without_stopping_audio() {
+        let mut host = WorkletHost::new(48_000, 128).unwrap();
+        assert!(matches!(
+            command(
+                &mut host,
+                1,
+                Command::ConfigureDeviceChannels {
+                    input_channels: 2,
+                    output_channels: 2,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                2,
+                Command::CreateTrack {
+                    expected_track_id: 1,
+                    expected_loop_ids: vec![1],
+                    port_name_base: "stereo".to_owned(),
+                    audio_channels: 2,
+                    midi: false,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert!(matches!(
+            command(
+                &mut host,
+                3,
+                Command::SetTrackControl {
+                    track_id: 1,
+                    control: WireTrackControl::InputMonitoring(true),
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        let Event::Snapshot(snapshot) = command(&mut host, 4, Command::Poll).event else {
+            panic!("expected snapshot");
+        };
+        assert_eq!(snapshot.application_ports.len(), 4);
+        assert_eq!(snapshot.host_ports.len(), 4);
+        assert_eq!(snapshot.confirmed_links.len(), 4);
+
+        host.input()[..128].fill(0.2);
+        host.input()[128..256].fill(0.4);
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(2, 2, 128)));
+        assert!(host.output()[..128]
+            .iter()
+            .all(|sample| (*sample - 0.2).abs() < 1.0e-6));
+        assert!(host.output()[128..256]
+            .iter()
+            .all(|sample| (*sample - 0.4).abs() < 1.0e-6));
+
+        assert!(matches!(
+            command(
+                &mut host,
+                5,
+                Command::SetPortConnected {
+                    application_port_id: 2,
+                    host_port_id: "webaudio:destination_1".to_owned(),
+                    connected: false,
+                },
+            )
+            .event,
+            Event::Ack
+        ));
+        assert_no_alloc::assert_no_alloc(|| assert!(host.process(2, 2, 128)));
+        assert!(host.output()[..128].iter().all(|sample| *sample == 0.0));
+        assert!(host.output()[128..256]
+            .iter()
+            .all(|sample| (*sample - 0.4).abs() < 1.0e-6));
+        let Event::Snapshot(snapshot) = command(&mut host, 6, Command::Poll).event else {
+            panic!("expected snapshot");
+        };
+        assert!(!snapshot.confirmed_links.iter().any(|link| {
+            link.application_port_id == 2 && link.host_port_id == "webaudio:destination_1"
+        }));
+
+        assert!(matches!(
+            command(
+                &mut host,
+                7,
+                Command::SetPortConnected {
+                    application_port_id: 2,
+                    host_port_id: "webaudio:capture_1".to_owned(),
+                    connected: true,
+                },
+            )
+            .event,
+            Event::ConnectionMutationFailed { .. }
+        ));
+        assert!(matches!(
+            command(&mut host, 8, Command::Poll).event,
+            Event::Snapshot(_)
+        ));
     }
 
     #[test]

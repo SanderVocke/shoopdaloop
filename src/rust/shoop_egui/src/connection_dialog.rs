@@ -1,7 +1,6 @@
-use std::collections::BTreeSet;
-
 use crate::{
-    AppIntent, AppState, ConnectionViewState, LocalPortConnectionState, PortRole, TrackId,
+    AppIntent, AppState, ApplicationPortOwner, ApplicationPortState, ConnectionPolicy,
+    ConnectionViewState, HostPortState, PortRole, TrackId,
 };
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -102,20 +101,26 @@ impl ConnectionDialog {
         if !state.backend_available {
             ui.colored_label(
                 egui::Color32::YELLOW,
-                "External connection management is unavailable for this audio backend.",
+                "Host connection management is unavailable for this audio backend.",
             );
         }
 
         let scoped_ports: Vec<_> = state
-            .ports
+            .application_ports
             .iter()
-            .filter(|port| match self.scope {
-                ConnectionScope::AllTracks => true,
-                ConnectionScope::Track(track_id) => port.track_id == track_id,
+            .filter(|port| match (&self.scope, &port.owner) {
+                (ConnectionScope::AllTracks, _) => true,
+                (
+                    ConnectionScope::Track(track_id),
+                    ApplicationPortOwner::Track {
+                        track_id: owner_id, ..
+                    },
+                ) => track_id == owner_id,
+                (ConnectionScope::Track(_), ApplicationPortOwner::LuaControl { .. }) => false,
             })
             .collect();
         if scoped_ports.is_empty() {
-            ui.label("No externally connectable ports in this scope.");
+            ui.label("No application ports in this scope.");
             return;
         }
 
@@ -149,18 +154,19 @@ impl ConnectionDialog {
             .filter(|port| port.role == selected)
             .collect();
         ports.sort_by(|left, right| {
-            (left.track_id, &left.name, left.id).cmp(&(right.track_id, &right.name, right.id))
+            (&left.owner, &left.name, left.id).cmp(&(&right.owner, &right.name, right.id))
         });
-        let endpoints: BTreeSet<_> = ports
+        let endpoints: Vec<_> = state
+            .host_ports
             .iter()
-            .flat_map(|port| {
-                port.candidates
-                    .iter()
-                    .map(|candidate| candidate.full_name.clone())
+            .filter(|host| {
+                ports.iter().any(|port| {
+                    port.data_type == host.data_type && port.direction != host.direction
+                })
             })
             .collect();
         if endpoints.is_empty() {
-            ui.label("No compatible external ports are currently available.");
+            ui.label("No compatible host ports are currently available.");
             return;
         }
 
@@ -172,19 +178,23 @@ impl ConnectionDialog {
                     .striped(true)
                     .spacing([4.0, 3.0])
                     .show(ui, |ui| {
-                        ui.label(crate::fonts::bold_text("External port"));
+                        ui.label(crate::fonts::bold_text("Host port"));
                         for port in &ports {
                             ui.add_sized(
                                 [84.0, 24.0],
                                 egui::Label::new(short_port_name(&port.name)).truncate(),
                             )
-                            .on_hover_text(format!("{} (track {})", port.name, port.track_id));
+                            .on_hover_text(format!(
+                                "{} ({})",
+                                port.name,
+                                owner_label(&port.owner)
+                            ));
                         }
                         ui.end_row();
 
                         let mut previous_client: Option<String> = None;
                         for endpoint in endpoints {
-                            let (client, short_name) = external_name_parts(&endpoint);
+                            let (client, short_name) = external_name_parts(&endpoint.name);
                             if previous_client.as_deref() != Some(client.as_str()) {
                                 ui.label(crate::fonts::bold_italic_text(&client).underline());
                                 for _ in &ports {
@@ -194,9 +204,9 @@ impl ConnectionDialog {
                                 previous_client = Some(client);
                             }
                             ui.add_sized([180.0, 24.0], egui::Label::new(short_name))
-                                .on_hover_text(&endpoint);
+                                .on_hover_text(&endpoint.name);
                             for port in &ports {
-                                self.show_cell(ui, port, &endpoint, intents);
+                                self.show_cell(ui, state, port, endpoint, intents);
                             }
                             ui.end_row();
                         }
@@ -212,35 +222,53 @@ impl ConnectionDialog {
     fn show_cell(
         &mut self,
         ui: &mut egui::Ui,
-        port: &LocalPortConnectionState,
-        endpoint: &str,
+        state: &ConnectionViewState,
+        port: &ApplicationPortState,
+        endpoint: &HostPortState,
         intents: &mut Vec<AppIntent>,
     ) {
-        let candidate = port
-            .candidates
+        let compatible =
+            port.data_type == endpoint.data_type && port.direction != endpoint.direction;
+        let connected = state
+            .confirmed_links
             .iter()
-            .find(|candidate| candidate.full_name == endpoint);
-        let (text, enabled, hover) = match candidate {
-            None => ("×", false, "Unavailable for this local port".to_owned()),
-            Some(candidate) if !candidate.eligible => {
-                ("×", false, "Incompatible with this local port".to_owned())
-            }
-            Some(candidate) if candidate.pending.is_some() => (
+            .any(|link| link.application_port_id == port.id && link.host_port_id == endpoint.id);
+        let pending = state
+            .pending_links
+            .iter()
+            .find(|link| link.application_port_id == port.id && link.host_port_id == endpoint.id);
+        let error = state.errors.iter().rev().find(|error| {
+            error.port_id == Some(port.id)
+                && error.external_port.as_deref() == Some(endpoint.id.as_str())
+        });
+        let (text, enabled, hover) = if !compatible {
+            (
+                "×",
+                false,
+                "Incompatible with this application port".to_owned(),
+            )
+        } else if port.connection_policy == ConnectionPolicy::OwnerManaged {
+            (
+                "◆",
+                false,
+                "Connection is managed by the port owner".to_owned(),
+            )
+        } else if let Some(pending) = pending {
+            (
                 "…",
                 false,
-                if candidate.pending == Some(true) {
+                if pending.desired_connected {
                     "Connecting…".to_owned()
                 } else {
                     "Disconnecting…".to_owned()
                 },
-            ),
-            Some(candidate) if candidate.error.is_some() => {
-                ("!", true, candidate.error.clone().unwrap_or_default())
-            }
-            Some(candidate) if candidate.connected => {
-                ("●", true, "Connected; click to disconnect".to_owned())
-            }
-            Some(_) => ("○", true, "Disconnected; click to connect".to_owned()),
+            )
+        } else if let Some(error) = error {
+            ("!", true, error.message.clone())
+        } else if connected {
+            ("●", true, "Connected; click to disconnect".to_owned())
+        } else {
+            ("○", true, "Disconnected; click to connect".to_owned())
         };
         let response = ui
             .add_enabled(
@@ -250,22 +278,34 @@ impl ConnectionDialog {
             .on_hover_text(hover);
         #[cfg(test)]
         self.cell_rects
-            .push((port.id, endpoint.to_owned(), response.rect));
+            .push((port.id, endpoint.id.to_string(), response.rect));
         if response.clicked() {
-            let candidate = candidate.expect("only eligible candidate cells are enabled");
-            intents.push(connection_intent(port, candidate));
+            intents.push(connection_intent(port, endpoint, connected));
         }
     }
 }
 
 fn connection_intent(
-    port: &LocalPortConnectionState,
-    candidate: &crate::ExternalPortConnectionState,
+    port: &ApplicationPortState,
+    endpoint: &HostPortState,
+    connected: bool,
 ) -> AppIntent {
     AppIntent::SetPortConnected {
         port_id: port.id,
-        external_port: candidate.full_name.clone(),
-        connected: !candidate.connected,
+        host_port_id: endpoint.id.clone(),
+        connected: !connected,
+    }
+}
+
+fn owner_label(owner: &ApplicationPortOwner) -> String {
+    match owner {
+        ApplicationPortOwner::Track { track_id, kind } => {
+            format!("{kind:?} track {track_id}")
+        }
+        ApplicationPortOwner::LuaControl {
+            script_id,
+            registration,
+        } => format!("Lua script {script_id}, control port {registration}"),
     }
 }
 
@@ -289,8 +329,9 @@ mod tests {
 
     use super::*;
     use crate::{
-        ConnectionErrorState, ExternalPortConnectionState, LocalPortConnectionState, PortDataType,
-        PortDirection, PortId, TrackState,
+        ApplicationPortOwner, ApplicationPortState, ConfirmedConnectionState, ConnectionErrorState,
+        HostPortId, HostPortState, PendingConnectionState, PortDataType, PortDirection, PortId,
+        TrackPortOwnerKind, TrackState,
     };
 
     fn state() -> AppState {
@@ -313,47 +354,57 @@ mod tests {
                 revision: 2,
                 loading: false,
                 backend_available: true,
-                ports: Arc::from([
-                    LocalPortConnectionState {
+                application_ports: Arc::from([
+                    ApplicationPortState {
                         id: PortId::from_raw(11),
-                        track_id: track_one,
+                        owner: ApplicationPortOwner::Track {
+                            track_id: track_one,
+                            kind: TrackPortOwnerKind::Main,
+                        },
                         name: "one:in".to_owned(),
                         data_type: PortDataType::Audio,
                         direction: PortDirection::Input,
                         role: PortRole::AudioInput,
-                        candidates: Arc::from([
-                            ExternalPortConnectionState {
-                                full_name: "client:out".to_owned(),
-                                eligible: true,
-                                connected: false,
-                                pending: None,
-                                error: None,
-                            },
-                            ExternalPortConnectionState {
-                                full_name: "missing-colon".to_owned(),
-                                eligible: false,
-                                connected: false,
-                                pending: None,
-                                error: None,
-                            },
-                        ]),
+                        connection_policy: ConnectionPolicy::UserManaged,
                     },
-                    LocalPortConnectionState {
+                    ApplicationPortState {
                         id: PortId::from_raw(12),
-                        track_id: track_two,
+                        owner: ApplicationPortOwner::Track {
+                            track_id: track_two,
+                            kind: TrackPortOwnerKind::Main,
+                        },
                         name: "two:out".to_owned(),
                         data_type: PortDataType::Audio,
                         direction: PortDirection::Output,
                         role: PortRole::AudioOutput,
-                        candidates: Arc::from([ExternalPortConnectionState {
-                            full_name: "client:in".to_owned(),
-                            eligible: true,
-                            connected: true,
-                            pending: None,
-                            error: None,
-                        }]),
+                        connection_policy: ConnectionPolicy::UserManaged,
                     },
                 ]),
+                host_ports: Arc::from([
+                    HostPortState {
+                        id: HostPortId::new("client:out"),
+                        name: "client:out".to_owned(),
+                        data_type: PortDataType::Audio,
+                        direction: PortDirection::Output,
+                    },
+                    HostPortState {
+                        id: HostPortId::new("missing-colon"),
+                        name: "missing-colon".to_owned(),
+                        data_type: PortDataType::Audio,
+                        direction: PortDirection::Input,
+                    },
+                    HostPortState {
+                        id: HostPortId::new("client:in"),
+                        name: "client:in".to_owned(),
+                        data_type: PortDataType::Audio,
+                        direction: PortDirection::Input,
+                    },
+                ]),
+                confirmed_links: Arc::from([ConfirmedConnectionState {
+                    application_port_id: PortId::from_raw(12),
+                    host_port_id: HostPortId::new("client:in"),
+                }]),
+                pending_links: Arc::from([]),
                 errors: Arc::<[ConnectionErrorState]>::from([]),
             }),
             ..Default::default()
@@ -367,8 +418,8 @@ mod tests {
         let state = state();
         let mut dialog = ConnectionDialog::default();
         for (scope, expected_cells) in [
-            (ConnectionScope::Track(TrackId::from_raw(1)), 2),
-            (ConnectionScope::AllTracks, 2),
+            (ConnectionScope::Track(TrackId::from_raw(1)), 1),
+            (ConnectionScope::AllTracks, 1),
         ] {
             dialog.open(scope);
             for size in [egui::vec2(360.0, 200.0), egui::vec2(900.0, 600.0)] {
@@ -391,19 +442,19 @@ mod tests {
     #[test]
     fn eligible_cells_emit_exact_desired_state_and_disabled_cells_do_not() {
         let state = state();
-        let port = &state.connections.ports[0];
-        let eligible = &port.candidates[0];
-        let disabled = &port.candidates[1];
+        let port = &state.connections.application_ports[0];
+        let eligible = &state.connections.host_ports[0];
+        let disabled = &state.connections.host_ports[1];
         assert_eq!(
-            connection_intent(port, eligible),
+            connection_intent(port, eligible, false),
             AppIntent::SetPortConnected {
                 port_id: PortId::from_raw(11),
-                external_port: "client:out".to_owned(),
+                host_port_id: HostPortId::new("client:out"),
                 connected: true,
             }
         );
-        assert!(eligible.eligible && eligible.pending.is_none());
-        assert!(!disabled.eligible);
+        assert_ne!(port.direction, eligible.direction);
+        assert_eq!(port.direction, disabled.direction);
     }
 
     #[test]
@@ -435,25 +486,35 @@ mod tests {
         let context = egui::Context::default();
         crate::initialize(&context);
         let track_id = TrackId::from_raw(1);
-        let candidates: Arc<[ExternalPortConnectionState]> = (0..50)
-            .map(|index| ExternalPortConnectionState {
-                full_name: format!("client_{}:output_{index}", index / 5),
-                eligible: true,
-                connected: index % 7 == 0,
-                pending: (index == 3).then_some(true),
-                error: (index == 4).then(|| "failure".to_owned()),
-            })
-            .collect::<Vec<_>>()
-            .into();
-        let ports: Arc<[LocalPortConnectionState]> = (0..16)
-            .map(|index| LocalPortConnectionState {
+        let application_ports: Arc<[ApplicationPortState]> = (0..16)
+            .map(|index| ApplicationPortState {
                 id: PortId::from_raw(index + 1),
-                track_id,
+                owner: ApplicationPortOwner::Track {
+                    track_id,
+                    kind: TrackPortOwnerKind::Main,
+                },
                 name: format!("local:input_{index}"),
                 data_type: PortDataType::Audio,
                 direction: PortDirection::Input,
                 role: PortRole::AudioInput,
-                candidates: Arc::clone(&candidates),
+                connection_policy: ConnectionPolicy::UserManaged,
+            })
+            .collect::<Vec<_>>()
+            .into();
+        let host_ports: Arc<[HostPortState]> = (0..50)
+            .map(|index| HostPortState {
+                id: HostPortId::new(format!("client_{}:output_{index}", index / 5)),
+                name: format!("client_{}:output_{index}", index / 5),
+                data_type: PortDataType::Audio,
+                direction: PortDirection::Output,
+            })
+            .collect::<Vec<_>>()
+            .into();
+        let confirmed_links: Arc<[ConfirmedConnectionState]> = (0..50)
+            .filter(|index| index % 7 == 0)
+            .map(|index| ConfirmedConnectionState {
+                application_port_id: PortId::from_raw(1),
+                host_port_id: HostPortId::new(format!("client_{}:output_{index}", index / 5)),
             })
             .collect::<Vec<_>>()
             .into();
@@ -467,7 +528,14 @@ mod tests {
                 revision: 3,
                 loading: false,
                 backend_available: true,
-                ports,
+                application_ports,
+                host_ports,
+                confirmed_links,
+                pending_links: Arc::from([PendingConnectionState {
+                    application_port_id: PortId::from_raw(1),
+                    host_port_id: HostPortId::new("client_0:output_3"),
+                    desired_connected: true,
+                }]),
                 errors: Arc::from([]),
             }),
             ..Default::default()
@@ -488,6 +556,57 @@ mod tests {
         );
         assert!(output.shapes.len() > 10);
         assert_eq!(dialog.cell_rects.len(), 16 * 50);
+    }
+
+    #[test]
+    fn empty_host_inventory_keeps_application_ports_visible_and_safe() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut state = state();
+        Arc::make_mut(&mut state.connections).host_ports = Arc::from([]);
+        let mut dialog = ConnectionDialog::default();
+        dialog.open(ConnectionScope::AllTracks);
+        let output = context.run_ui(Default::default(), |ui| {
+            assert!(dialog.show(ui.ctx(), &state).is_empty());
+        });
+        assert!(output.shapes.len() > 2);
+        assert_eq!(state.connections.application_ports.len(), 2);
+        assert!(dialog.cell_rects.is_empty());
+    }
+
+    #[test]
+    fn lua_control_ports_are_global_owner_managed_and_safe_without_hosts() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut state = state();
+        Arc::make_mut(&mut state.connections).application_ports =
+            Arc::from([ApplicationPortState {
+                id: PortId::from_raw(99),
+                owner: ApplicationPortOwner::LuaControl {
+                    script_id: crate::ScriptId::from_raw(7),
+                    registration: 0,
+                },
+                name: "APC: MIDI source 1".to_owned(),
+                data_type: PortDataType::Midi,
+                direction: PortDirection::Input,
+                role: PortRole::MidiInput,
+                connection_policy: ConnectionPolicy::OwnerManaged,
+            }]);
+        Arc::make_mut(&mut state.connections).host_ports = Arc::from([]);
+        let mut dialog = ConnectionDialog::default();
+        dialog.open(ConnectionScope::AllTracks);
+        let global = context.run_ui(Default::default(), |ui| {
+            assert!(dialog.show(ui.ctx(), &state).is_empty());
+        });
+        assert!(global.shapes.len() > 2);
+        assert!(dialog.cell_rects.is_empty());
+
+        dialog.open(ConnectionScope::Track(TrackId::from_raw(1)));
+        let scoped = context.run_ui(Default::default(), |ui| {
+            assert!(dialog.show(ui.ctx(), &state).is_empty());
+        });
+        assert!(scoped.shapes.len() > 2);
+        assert!(dialog.cell_rects.is_empty());
     }
 
     #[test]

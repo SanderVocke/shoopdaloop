@@ -1,4 +1,4 @@
-use std::{collections::HashMap, i64};
+use std::{collections::HashMap, fmt::Display, i64};
 
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 use cxx_qt_lib_shoop::{
@@ -9,46 +9,49 @@ use cxx_qt_lib_shoop::{
         qvariant_to_qvariantmap, qvariant_type_id, qvariant_type_name, qvariantmap_to_qvariant,
     },
 };
-use mlua::{self, FromLua};
+use omnilua::{self, FromLua};
+
+pub type LuaMultiValue = omnilua::Variadic<omnilua::Value>;
 
 pub trait IntoLuaExtended {
-    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value>;
+    fn into_lua(self, lua: &omnilua::Lua) -> omnilua::Result<omnilua::Value>;
 }
 
 pub trait IntoLuaMultiExtended {
-    fn into_lua_multi(self, lua: &mlua::Lua) -> mlua::Result<mlua::MultiValue>;
+    fn into_lua_multi(self, lua: &omnilua::Lua) -> omnilua::Result<LuaMultiValue>;
 }
 
-impl<T: mlua::IntoLuaMulti> IntoLuaMultiExtended for T {
-    fn into_lua_multi(self, lua: &mlua::Lua) -> mlua::Result<mlua::MultiValue> {
-        T::into_lua_multi(self, lua)
+impl<T: omnilua::IntoLuaMulti> IntoLuaMultiExtended for T {
+    fn into_lua_multi(self, lua: &omnilua::Lua) -> omnilua::Result<LuaMultiValue> {
+        Ok(T::into_lua_multi(self, lua)?.into())
     }
 }
 
 pub trait FromLuaMultiExtended: Sized {
-    fn from_lua_multi(value: mlua::MultiValue, lua: &mlua::Lua) -> mlua::Result<Self>;
+    fn from_lua_multi(value: LuaMultiValue, lua: &omnilua::Lua) -> omnilua::Result<Self>;
 }
 
-impl<T: mlua::FromLuaMulti> FromLuaMultiExtended for T {
-    fn from_lua_multi(value: mlua::MultiValue, lua: &mlua::Lua) -> mlua::Result<Self> {
-        T::from_lua_multi(value, lua)
+impl<T: omnilua::FromLuaMulti> FromLuaMultiExtended for T {
+    fn from_lua_multi(value: LuaMultiValue, lua: &omnilua::Lua) -> omnilua::Result<Self> {
+        T::from_lua_multi(value.into_vec(), lua)
     }
 }
+
 pub trait FromLuaExtended: Sized {
-    fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self>;
+    fn from_lua(value: omnilua::Value, lua: &omnilua::Lua) -> omnilua::Result<Self>;
 }
 
 macro_rules! specific_builtin_impl {
     ($T:ty) => {
         impl FromLuaExtended for $T {
-            fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self> {
-                <$T as mlua::FromLua>::from_lua(value, lua)
+            fn from_lua(value: omnilua::Value, lua: &omnilua::Lua) -> omnilua::Result<Self> {
+                <$T as omnilua::FromLua>::from_lua(value, lua)
             }
         }
 
         impl IntoLuaExtended for $T {
-            fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
-                <$T as mlua::IntoLua>::into_lua(self, lua)
+            fn into_lua(self, lua: &omnilua::Lua) -> omnilua::Result<omnilua::Value> {
+                <$T as omnilua::IntoLua>::into_lua(self, lua)
             }
         }
     };
@@ -56,282 +59,264 @@ macro_rules! specific_builtin_impl {
 
 specific_builtin_impl!(i32);
 specific_builtin_impl!(i64);
-specific_builtin_impl!(u8);
 specific_builtin_impl!(String);
-specific_builtin_impl!(f32);
 specific_builtin_impl!(f64);
 specific_builtin_impl!(bool);
 
+impl FromLuaExtended for u8 {
+    fn from_lua(value: omnilua::Value, lua: &omnilua::Lua) -> omnilua::Result<Self> {
+        let value = <i64 as omnilua::FromLua>::from_lua(value, lua)?;
+        u8::try_from(value).map_err(|_| conversion_error("Lua integer is outside u8 range"))
+    }
+}
+
+impl IntoLuaExtended for u8 {
+    fn into_lua(self, lua: &omnilua::Lua) -> omnilua::Result<omnilua::Value> {
+        IntoLuaExtended::into_lua(i64::from(self), lua)
+    }
+}
+
+impl FromLuaExtended for f32 {
+    fn from_lua(value: omnilua::Value, lua: &omnilua::Lua) -> omnilua::Result<Self> {
+        Ok(<f64 as omnilua::FromLua>::from_lua(value, lua)? as f32)
+    }
+}
+
+impl IntoLuaExtended for f32 {
+    fn into_lua(self, lua: &omnilua::Lua) -> omnilua::Result<omnilua::Value> {
+        IntoLuaExtended::into_lua(f64::from(self), lua)
+    }
+}
+
 impl FromLuaExtended for QString {
-    fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self> {
-        <String as mlua::FromLua>::from_lua(value, lua).map(|s| QString::from(s))
+    fn from_lua(value: omnilua::Value, lua: &omnilua::Lua) -> omnilua::Result<Self> {
+        <String as omnilua::FromLua>::from_lua(value, lua).map(QString::from)
     }
 }
 
 impl IntoLuaExtended for QString {
-    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
+    fn into_lua(self, lua: &omnilua::Lua) -> omnilua::Result<omnilua::Value> {
         self.to_string().into_lua(lua)
     }
 }
 
 impl FromLuaExtended for QVariant {
-    fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self> {
-        let type_name = value.type_name();
-
-        if value.is_table() {
-            return Ok(
-                qvariantmap_to_qvariant(&QMap::<QMapPair_QString_QVariant>::from_lua(value, lua)?)
-                    .map_err(|e| mlua::Error::FromLuaConversionError {
-                        from: type_name,
-                        to: "QVariant".to_string(),
-                        message: Some(format!("Failed to convert to QVariantMap: {e}")),
-                    })?,
-            );
+    fn from_lua(value: omnilua::Value, lua: &omnilua::Lua) -> omnilua::Result<Self> {
+        if matches!(value, omnilua::Value::Table(_)) {
+            let map = QMap::<QMapPair_QString_QVariant>::from_lua(value, lua)?;
+            return qvariantmap_to_qvariant(&map).map_err(|error| {
+                conversion_error(format!("failed to convert QVariantMap: {error}"))
+            });
         }
 
         match value {
-            mlua::Value::Nil => Ok(QVariant::default()),
-            mlua::Value::Boolean(v) => Ok(QVariant::from(&v)),
-            mlua::Value::Integer(v) => Ok(QVariant::from(&v)),
-            mlua::Value::Number(v) => Ok(QVariant::from(&v)),
-            mlua::Value::String(v) => Ok(QVariant::from(&QString::from(&v.to_string_lossy()))),
-            _ => Err(mlua::Error::FromLuaConversionError {
-                from: type_name,
-                to: "QVariant".to_string(),
-                message: Some("Unsupported".to_string()),
-            }),
+            omnilua::Value::Nil => Ok(QVariant::default()),
+            omnilua::Value::Boolean(value) => Ok(QVariant::from(&value)),
+            omnilua::Value::Integer(value) => Ok(QVariant::from(&value)),
+            omnilua::Value::Number(value) => Ok(QVariant::from(&value)),
+            omnilua::Value::String(value) => Ok(QVariant::from(&QString::from(value.to_str()?))),
+            other => Err(conversion_error(format!(
+                "unsupported {} to QVariant conversion",
+                value_type_name(&other)
+            ))),
         }
     }
 }
 
 impl IntoLuaExtended for QVariant {
-    fn into_lua(mut self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
+    fn into_lua(mut self, lua: &omnilua::Lua) -> omnilua::Result<omnilua::Value> {
         if self.is_null() {
-            return Ok(mlua::Value::Nil);
+            return Ok(omnilua::Value::Nil);
         }
 
-        let type_id = qvariant_type_id(&self).map_err(|_| mlua::Error::ToLuaConversionError {
-            from: "QVariant".to_string(),
-            to: "type_id",
-            message: Some("Failed to get type ID".to_string()),
-        })?;
+        let type_id = qvariant_type_id(&self)
+            .map_err(|_| conversion_error("failed to get QVariant type ID"))?;
 
         macro_rules! convert {
             ($T:ty) => {
-                self.value::<$T>()
-                    .ok_or(mlua::Error::ToLuaConversionError {
-                        from: qvariant_type_name(&self).unwrap_or("unknown").to_string(),
-                        to: "val",
-                        message: Some("failed to get qvariant value".to_string()),
-                    })?
-                    .into_lua(lua)
+                IntoLuaExtended::into_lua(
+                    self.value::<$T>().ok_or_else(|| {
+                        conversion_error(format!(
+                            "failed to get {} QVariant value",
+                            qvariant_type_name(&self).unwrap_or("unknown")
+                        ))
+                    })?,
+                    lua,
+                )
             };
         }
 
         match type_id {
-            _v if _v == qmetatype_id_int() => convert!(i64),
-            _v if _v == qmetatype_id_int64()
-                || qvariant_type_name(&self).unwrap_or("unknown") == "qlonglong" =>
+            value if value == qmetatype_id_int() => convert!(i64),
+            value
+                if value == qmetatype_id_int64()
+                    || qvariant_type_name(&self).unwrap_or("unknown") == "qlonglong" =>
             {
                 convert!(i64)
             }
-            _v if _v == qmetatype_id_uint() => convert!(i64),
-            _v if _v == qmetatype_id_uchar()
-                || qvariant_type_name(&self).unwrap_or("unknown") == "uchar" =>
+            value if value == qmetatype_id_uint() => convert!(i64),
+            value
+                if value == qmetatype_id_uchar()
+                    || qvariant_type_name(&self).unwrap_or("unknown") == "uchar" =>
             {
                 convert!(u8)
             }
-            _v if _v == qmetatype_id_uint64() => convert!(i64),
-            _v if _v == qmetatype_id_bool() => convert!(bool),
-            _v if _v == qmetatype_id_float() => convert!(f32),
-            _v if _v == qmetatype_id_double() => convert!(f64),
-            _v if _v == qmetatype_id_qstring() => {
-                let str = self
-                    .value::<QString>()
-                    .ok_or(mlua::Error::ToLuaConversionError {
-                        from: "QVariant".to_string(),
-                        to: "QString",
-                        message: Some("Value is not QString".to_string()),
-                    })?
-                    .to_string();
-                str.into_lua(lua)
-            }
-            _v if _v == qmetatype_id_qvariantmap() => {
-                let map = qvariant_to_qvariantmap(&self).map_err(|e| {
-                    mlua::Error::ToLuaConversionError {
-                        from: "QVariantMap".to_string(),
-                        to: "val",
-                        message: Some(format!("Failed to extract QVariantMap: {e}")),
-                    }
-                })?;
-                map.into_lua(lua)
-            }
-            _v if _v == qmetatype_id_qvariantlist() => {
-                let l = qvariant_to_qvariantlist(&self).map_err(|e| {
-                    mlua::Error::ToLuaConversionError {
-                        from: "QVariantList".to_string(),
-                        to: "val",
-                        message: Some(format!("Failed to extract QVariantList: {e}")),
-                    }
-                })?;
-                l.into_lua(lua)
-            }
-            _v if _v == qmetatype_id_qstringlist() => {
-                let l = qvariant_to_qstringlist(&self).map_err(|e| {
-                    mlua::Error::ToLuaConversionError {
-                        from: "QStringList".to_string(),
-                        to: "val",
-                        message: Some(format!("Failed to extract QStringList: {e}")),
-                    }
-                })?;
-                l.into_lua(lua)
-            }
-            _v if _v == qmetatype_id_qlist_u8() => {
-                let l =
-                    qvariant_to_qlist_u8(&self).map_err(|e| mlua::Error::ToLuaConversionError {
-                        from: "QList<u8>".to_string(),
-                        to: "val",
-                        message: Some(format!("Failed to extract QStringList: {e}")),
+            value if value == qmetatype_id_uint64() => convert!(i64),
+            value if value == qmetatype_id_bool() => convert!(bool),
+            value if value == qmetatype_id_float() => convert!(f32),
+            value if value == qmetatype_id_double() => convert!(f64),
+            value if value == qmetatype_id_qstring() => IntoLuaExtended::into_lua(
+                self.value::<QString>()
+                    .ok_or_else(|| conversion_error("QVariant value is not a QString"))?
+                    .to_string(),
+                lua,
+            ),
+            value if value == qmetatype_id_qvariantmap() => qvariant_to_qvariantmap(&self)
+                .map_err(|error| {
+                    conversion_error(format!("failed to extract QVariantMap: {error}"))
+                })?
+                .into_lua(lua),
+            value if value == qmetatype_id_qvariantlist() => qvariant_to_qvariantlist(&self)
+                .map_err(|error| {
+                    conversion_error(format!("failed to extract QVariantList: {error}"))
+                })?
+                .into_lua(lua),
+            value if value == qmetatype_id_qstringlist() => qvariant_to_qstringlist(&self)
+                .map_err(|error| {
+                    conversion_error(format!("failed to extract QStringList: {error}"))
+                })?
+                .into_lua(lua),
+            value if value == qmetatype_id_qlist_u8() => qvariant_to_qlist_u8(&self)
+                .map_err(|error| conversion_error(format!("failed to extract QList<u8>: {error}")))?
+                .into_lua(lua),
+            value if value == qmetatype_id_qjsvalue() => {
+                let pin_self = std::pin::Pin::new(&mut self);
+                let converted =
+                    qvariant_qjsvalue_convert_js_objects(pin_self).map_err(|error| {
+                        conversion_error(format!(
+                            "failed to convert JS objects in QVariant: {error}"
+                        ))
                     })?;
-                l.into_lua(lua)
-            }
-            _v if _v == qmetatype_id_qjsvalue() => {
-                {
-                    let pin_self = std::pin::Pin::new(&mut self);
-                    if !qvariant_qjsvalue_convert_js_objects(pin_self).map_err(|e| {
-                        mlua::Error::ToLuaConversionError {
-                            from: "QJSValue in QVariant".to_string(),
-                            to: "val",
-                            message: Some(format!("Failed to convert JS objects in QVariant: {e}")),
-                        }
-                    })? {
-                        return Err(mlua::Error::ToLuaConversionError {
-                            from: "QJSValue".to_string(),
-                            to: "val",
-                            message: Some(format!(
-                            "Failed to convert JS objects in QVariant: post-conversion is still JS"
-                        )),
-                        });
-                    }
+                if !converted {
+                    return Err(conversion_error(
+                        "failed to convert QJSValue: post-conversion value is still JS",
+                    ));
                 }
                 self.into_lua(lua)
             }
-            _ => Err(mlua::Error::ToLuaConversionError {
-                from: "QVariant".to_string(),
-                to: "val",
-                message: Some("unsupported".to_string()),
-            }),
+            _ => Err(conversion_error("unsupported QVariant to Lua conversion")),
         }
     }
 }
 
 impl FromLuaExtended for QList<QVariant> {
-    fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self> {
-        let mut rval: QList<QVariant> = QList::default();
-        let mut minval: i64 = i64::MAX;
-        if !value.is_table() {
-            return Err(mlua::Error::FromLuaConversionError {
-                from: "non-table",
-                to: "QList<QVariant>".to_string(),
-                message: Some("value is not a table".to_string()),
-            });
+    fn from_lua(value: omnilua::Value, lua: &omnilua::Lua) -> omnilua::Result<Self> {
+        if !matches!(value, omnilua::Value::Table(_)) {
+            return Err(conversion_error("value is not a table for QList<QVariant>"));
         }
-        let mut hashmap: HashMap<i64, mlua::Value> = HashMap::from_lua(value, lua)?;
-
-        for (key, _) in hashmap.iter() {
-            minval = std::cmp::min(minval, *key);
+        let mut hashmap: HashMap<i64, omnilua::Value> = HashMap::from_lua(value, lua)?;
+        let mut result = QList::default();
+        if hashmap.is_empty() {
+            return Ok(result);
         }
-
-        for i in minval..minval + (hashmap.len() as i64) {
-            let value = hashmap
-                .remove(&i)
-                .ok_or(mlua::Error::FromLuaConversionError {
-                    from: "table",
-                    to: "QList<QVariant>".to_string(),
-                    message: Some(format!(
-                        "Missing list index {i} in table starting at {minval}"
-                    )),
-                })?;
-            let variant = QVariant::from_lua(value, lua)?;
-            rval.append(variant);
+        let min_value = *hashmap.keys().min().expect("non-empty map has a minimum");
+        for index in min_value..min_value + hashmap.len() as i64 {
+            let value = hashmap.remove(&index).ok_or_else(|| {
+                conversion_error(format!(
+                    "missing list index {index} in table starting at {min_value}"
+                ))
+            })?;
+            result.append(QVariant::from_lua(value, lua)?);
         }
-
-        Ok(rval)
+        Ok(result)
     }
 }
 
 impl IntoLuaExtended for QList<QVariant> {
-    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
-        Ok(mlua::Value::Table(
-            lua.create_sequence_from(
-                self.iter()
-                    .map(|v| IntoLuaExtended::into_lua(v.clone(), lua).unwrap_or(mlua::Value::Nil)),
-            )?,
-        ))
+    fn into_lua(self, lua: &omnilua::Lua) -> omnilua::Result<omnilua::Value> {
+        sequence_value(
+            lua,
+            self.iter().map(|value| {
+                IntoLuaExtended::into_lua(value.clone(), lua).unwrap_or(omnilua::Value::Nil)
+            }),
+        )
     }
 }
 
 impl IntoLuaExtended for QList<u8> {
-    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
-        Ok(mlua::Value::Table(
-            lua.create_sequence_from(
-                self.iter()
-                    .map(|v| IntoLuaExtended::into_lua(v.clone(), lua).unwrap_or(mlua::Value::Nil)),
-            )?,
-        ))
+    fn into_lua(self, lua: &omnilua::Lua) -> omnilua::Result<omnilua::Value> {
+        sequence_value(
+            lua,
+            self.iter()
+                .map(|value| IntoLuaExtended::into_lua(*value, lua).unwrap_or(omnilua::Value::Nil)),
+        )
     }
 }
 
 impl IntoLuaExtended for QList<QString> {
-    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
-        Ok(mlua::Value::Table(
-            lua.create_sequence_from(
-                self.iter()
-                    .map(|v| IntoLuaExtended::into_lua(v.clone(), lua).unwrap_or(mlua::Value::Nil)),
-            )?,
-        ))
+    fn into_lua(self, lua: &omnilua::Lua) -> omnilua::Result<omnilua::Value> {
+        sequence_value(
+            lua,
+            self.iter().map(|value| {
+                IntoLuaExtended::into_lua(value.clone(), lua).unwrap_or(omnilua::Value::Nil)
+            }),
+        )
     }
 }
 
 impl FromLuaExtended for QMap<QMapPair_QString_QVariant> {
-    fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self> {
-        let mut rval: QMap<QMapPair_QString_QVariant> = QMap::default();
-        if !value.is_table() {
-            return Err(mlua::Error::FromLuaConversionError {
-                from: "non-table",
-                to: "QMap<QString,QVariant>".to_string(),
-                message: Some("value is not a table".to_string()),
-            });
+    fn from_lua(value: omnilua::Value, lua: &omnilua::Lua) -> omnilua::Result<Self> {
+        let omnilua::Value::Table(table) = value else {
+            return Err(conversion_error(
+                "value is not a table for QMap<QString, QVariant>",
+            ));
+        };
+        let mut result = QMap::default();
+        for (key, value) in table.raw_pairs()? {
+            let key = QString::from(<String as omnilua::FromLua>::from_lua(key, lua)?);
+            result.insert(key, QVariant::from_lua(value, lua)?);
         }
-
-        if let Some(table) = value.as_table() {
-            table.for_each(|key, value| -> mlua::Result<()> {
-                let key: QString = QString::from(<String as mlua::FromLua>::from_lua(key, lua)?);
-                let variant = QVariant::from_lua(value, lua)?;
-                rval.insert(key, variant);
-                Ok(())
-            })?;
-        } else {
-            // Should be unreachable because we check !value.is_table() above
-            return Err(mlua::Error::FromLuaConversionError {
-                from: "non-table",
-                to: "QMap<QString,QVariant>".to_string(),
-                message: Some("value is not a table".to_string()),
-            });
-        }
-
-        Ok(rval)
+        Ok(result)
     }
 }
 
 impl IntoLuaExtended for QMap<QMapPair_QString_QVariant> {
-    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
-        Ok(mlua::Value::Table(lua.create_table_from(
-            self.iter().map(|(k, v)| {
-                let key = IntoLuaExtended::into_lua(k.clone(), lua).unwrap_or(mlua::Value::Nil);
-                let value = IntoLuaExtended::into_lua(v.clone(), lua).unwrap_or(mlua::Value::Nil);
-                (key, value)
-            }),
-        )?))
+    fn into_lua(self, lua: &omnilua::Lua) -> omnilua::Result<omnilua::Value> {
+        let table = lua.create_table()?;
+        for (key, value) in self.iter() {
+            let key = IntoLuaExtended::into_lua(key.clone(), lua)?;
+            let value = IntoLuaExtended::into_lua(value.clone(), lua)?;
+            table.set(key, value)?;
+        }
+        Ok(omnilua::Value::Table(table))
+    }
+}
+
+fn sequence_value(
+    lua: &omnilua::Lua,
+    values: impl IntoIterator<Item = omnilua::Value>,
+) -> omnilua::Result<omnilua::Value> {
+    let table = lua.create_table()?;
+    for (index, value) in values.into_iter().enumerate() {
+        table.set(index + 1, value)?;
+    }
+    Ok(omnilua::Value::Table(table))
+}
+
+fn conversion_error(message: impl Display) -> omnilua::Error {
+    omnilua::LuaError::runtime(format_args!("{message}")).into()
+}
+
+fn value_type_name(value: &omnilua::Value) -> &'static str {
+    match value {
+        omnilua::Value::Nil => "nil",
+        omnilua::Value::Boolean(_) => "boolean",
+        omnilua::Value::Integer(_) | omnilua::Value::Number(_) => "number",
+        omnilua::Value::String(_) => "string",
+        omnilua::Value::Table(_) => "table",
+        omnilua::Value::Function(_) => "function",
+        omnilua::Value::UserData(_) => "userdata",
+        omnilua::Value::LightUserData(_) => "light userdata",
+        omnilua::Value::Thread(_) => "thread",
     }
 }

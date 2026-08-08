@@ -3,8 +3,8 @@
 This is the shared native and browser composition root for the egui application.
 
 - Native builds retain the threaded deterministic dummy backend and provide actor-owned Lua scripting, keyboard control, and script-created native MIDI control ports.
-- Browser builds use a repository-owned Web Audio/AudioWorklet backend after an explicit microphone or output-only enable action.
-- Browser Lua and MIDI device input/output are intentionally unavailable. MIDI loop content and `.shoop`/`.shoop-midi` file workflows remain cross-target.
+- Browser builds use a repository-owned Web Audio/AudioWorklet backend after an explicit microphone or output-only enable action and run the same omniLua-backed scripting manager cooperatively on the application owner.
+- Browser MIDI device input/output remains intentionally unavailable. Logical script MIDI ports use an empty host service, while MIDI loop content and `.shoop`/`.shoop-midi` file workflows remain cross-target.
 
 ## Native
 
@@ -42,13 +42,15 @@ cd src/rust/shoopdaloop_egui
 trunk serve --open
 ```
 
-For reliable browser behavior, use HTTPS or `localhost`, which browsers treat as a secure context. Click **Enable microphone audio** to create one `AudioContext`, request the default microphone, and connect microphone → AudioWorklet → default destination. Click **Enable output-only audio** to skip microphone capture and connect an input-free AudioWorklet directly to the default destination. Permission denial and driver failure leave the application responsive and expose retry actions.
+For reliable browser behavior, use HTTPS or `localhost`, which browsers treat as a secure context. Click **Enable microphone audio** to create one `AudioContext`, request the default microphone, and configure microphone and destination channels as visible host ports around the AudioWorklet. Click **Enable output-only audio** to skip microphone capture; destination host ports remain available while capture inventory is empty. Permission denial and driver failure leave the application responsive and expose retry actions.
 
 The self-contained HTML embeds the application and AudioWorklet Wasm modules plus the worklet script. It may be opened directly through `file:` and attempts both output-only and microphone modes without rejecting the URL. Browser security and media-permission behavior for local files varies, so HTTPS or `localhost` remains the portable option. Both physical-audio modes still require an explicit click because of browser autoplay policies.
 
-The browser requests echo cancellation, noise suppression, and automatic gain control off, but the browser may negotiate different settings. The engine runs at the context's actual sample rate and render quantum. Mono capture is duplicated where a stereo direct track needs two inputs; a mono track uses capture channel one. Mono track output is sent to both destination channels, stereo maps left/right, and all tracks sum with final clipping to `[-1, 1]`. Input monitoring defaults off to reduce feedback risk.
+The browser requests echo cancellation, noise suppression, and automatic gain control off, but the browser may negotiate different settings. The engine runs at the context's actual sample rate and render quantum. The Connections dialog shows normalized application ports separately from negotiated `webaudio:capture_N` and `webaudio:destination_N` host ports. Initial confirmed links preserve mono fan-out and channel mapping, but connect/disconnect commands now mutate authoritative worklet routing and actual audio flow. MIDI application ports remain visible with an empty browser MIDI host inventory. All routed tracks sum with final clipping to `[-1, 1]`; input monitoring defaults off to reduce feedback risk. See `../../../docs/egui_port_model.md`.
 
 Browser recording storage is prepared per channel for ten seconds at the actual sample rate. Exhaustion stops further channel recording work and is reported in diagnostics instead of growing Wasm memory in the render callback.
+
+The browser application embeds omniLua, Shoop's Lua modules, `keyboard.lua`, and the APC Mini script. Keyboard control is enabled by default and receives egui press/release events independently of audio permission. The APC script is embedded but disabled by default and can run healthily against the empty browser MIDI host inventory. The Scripts settings tab persists those bundled toggles in `localStorage` and reconciles runtime state only after a successful save; native user-file paths and the Add-file action are omitted. Source-bearing `.shoop` scripts use the same syntax-check/transaction/save path as native egui.
 
 ## Session and loop files
 
@@ -124,7 +126,7 @@ xvfb-run -a python3 browser_firefox_smoke.py
 STRESS=1 xvfb-run -a python3 browser_firefox_smoke.py
 ```
 
-The Firefox command also requires Selenium and geckodriver. Set `CHROME_BIN` or `FIREFOX_BIN` when browser executables use non-standard names. The hosted tests click the enable action, create mono and stereo tracks, monitor and record non-zero fake capture, verify non-zero waveform and playback output, save real produced `.shoop` bytes while callbacks advance, and transactionally load those exact bytes. Stress mode fills the bounded recording store and verifies callback continuity throughout the larger transfer/encode/load. Additional Chrome modes cover denial/retry, suspend/resume, forced worklet loss/retry, cleanup, queue saturation, and explicit offline dummy operation. Settings modes cover real save/reload and Add Track consumption, unavailable storage, failed writes, invalid known values, future-version rejection without overwrite, and hosted/direct-file behavior. The self-contained offline self-test performs the same real-byte session round trip without relying on a fixture-only success flag.
+The Firefox command also requires Selenium and geckodriver. Set `CHROME_BIN` or `FIREFOX_BIN` when browser executables use non-standard names. The hosted tests open the global connection surface, create mono/stereo/MIDI tracks, prove real output silence/restoration through disconnect/reconnect, monitor and record non-zero fake capture, verify waveform/playback, and preserve callback progress through session replacement. They inject, activate, and exactly resave a source-bearing Lua session script, then focus the canvas and drive authoritative selection through a real browser key and embedded `keyboard.lua`. Stress mode fills bounded recording storage. Additional Chrome modes cover denial/retry, suspend/resume, worklet loss/retry, cleanup, saturation, output-only, and offline dummy operation. Settings modes cover hosted/direct-file save/reload, keyboard-off/APC-on runtime reconciliation, two APC logical ports with zero MIDI hosts, the Scripts category without user paths, unavailable/failed storage, invalid values, and future-version rejection without overwrite. The self-contained workflows execute the same production assets without fixture-only success flags.
 
 Compiler-only checks from the repository root:
 

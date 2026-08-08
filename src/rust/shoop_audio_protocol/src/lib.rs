@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 2;
+pub const PROTOCOL_VERSION: u16 = 3;
 pub const COMMAND_CAPACITY: usize = 256;
 pub const COMMAND_MAX_BYTES: usize = 16 * 1024;
 pub const SESSION_TRANSFER_CHUNK_BYTES: usize = 2 * 1024;
@@ -29,6 +29,10 @@ impl CommandEnvelope {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Command {
+    ConfigureDeviceChannels {
+        input_channels: u32,
+        output_channels: u32,
+    },
     CreateTrack {
         expected_track_id: u64,
         expected_loop_ids: Vec<u64>,
@@ -66,6 +70,11 @@ pub enum Command {
     },
     ClearLoop {
         loop_id: u64,
+    },
+    SetPortConnected {
+        application_port_id: u64,
+        host_port_id: String,
+        connected: bool,
     },
     RequestWaveform {
         loop_id: u64,
@@ -166,6 +175,19 @@ impl Command {
                     loop_id: replacement_loop,
                 },
             ) => existing_loop == replacement_loop,
+            (Self::ConfigureDeviceChannels { .. }, Self::ConfigureDeviceChannels { .. }) => true,
+            (
+                Self::SetPortConnected {
+                    application_port_id: existing_port,
+                    host_port_id: existing_host,
+                    ..
+                },
+                Self::SetPortConnected {
+                    application_port_id: replacement_port,
+                    host_port_id: replacement_host,
+                    ..
+                },
+            ) => existing_port == replacement_port && existing_host == replacement_host,
             _ => false,
         }
     }
@@ -218,6 +240,12 @@ pub enum Event {
     Error {
         message: String,
     },
+    ConnectionMutationFailed {
+        application_port_id: u64,
+        host_port_id: String,
+        desired_connected: bool,
+        message: String,
+    },
     Snapshot(WireSnapshot),
     Waveform(WaveformChunk),
     SessionCaptureReady {
@@ -257,6 +285,58 @@ pub struct WireSnapshot {
     pub storage_exhaustions: u32,
     pub tracks: Vec<WireTrackState>,
     pub loops: Vec<WireLoopState>,
+    pub application_ports: Vec<WireApplicationPort>,
+    pub host_ports: Vec<WireHostPort>,
+    pub confirmed_links: Vec<WireConfirmedLink>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WirePortDataType {
+    Audio,
+    Midi,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WirePortDirection {
+    Input,
+    Output,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WirePortRole {
+    AudioInput,
+    AudioOutput,
+    AudioSend,
+    AudioReturn,
+    MidiInput,
+    MidiOutput,
+    MidiSend,
+}
+
+#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireApplicationPort {
+    pub id: u64,
+    pub name: String,
+    pub data_type: WirePortDataType,
+    pub direction: WirePortDirection,
+    pub role: WirePortRole,
+}
+
+#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireHostPort {
+    pub id: String,
+    pub name: String,
+    pub data_type: WirePortDataType,
+    pub direction: WirePortDirection,
+}
+
+#[derive(Clone, Debug, Eq, Serialize, Deserialize, PartialEq)]
+pub struct WireConfirmedLink {
+    pub application_port_id: u64,
+    pub host_port_id: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -326,6 +406,32 @@ mod tests {
         assert!(replacement.supersedes_in_journal(&first));
         assert!(!other_control.supersedes_in_journal(&first));
         assert!(!other_track.supersedes_in_journal(&first));
+
+        let route = Command::SetPortConnected {
+            application_port_id: 9,
+            host_port_id: "webaudio:destination_1".to_owned(),
+            connected: false,
+        };
+        let same_route = Command::SetPortConnected {
+            application_port_id: 9,
+            host_port_id: "webaudio:destination_1".to_owned(),
+            connected: true,
+        };
+        let other_route = Command::SetPortConnected {
+            application_port_id: 9,
+            host_port_id: "webaudio:destination_2".to_owned(),
+            connected: true,
+        };
+        assert!(same_route.supersedes_in_journal(&route));
+        assert!(!other_route.supersedes_in_journal(&route));
+        assert!(Command::ConfigureDeviceChannels {
+            input_channels: 1,
+            output_channels: 2,
+        }
+        .supersedes_in_journal(&Command::ConfigureDeviceChannels {
+            input_channels: 0,
+            output_channels: 1,
+        }));
     }
 
     #[test]

@@ -2,9 +2,10 @@ use std::sync::Arc;
 
 use eframe::egui;
 use shoop_app_api::{
-    AppIntent, AppSnapshot, ConnectionErrorKind, ConnectionErrorState, ConnectionViewState,
-    ExternalPortConnectionState, LocalPortConnectionState, LoopId, LoopState, PortDataType,
-    PortDirection, PortId, PortRole, StatusState, TrackControlState, TrackId, TrackState,
+    AppIntent, AppSnapshot, ApplicationPortOwner, ApplicationPortState, ConfirmedConnectionState,
+    ConnectionErrorKind, ConnectionErrorState, ConnectionPolicy, ConnectionViewState, HostPortId,
+    HostPortState, LoopId, LoopState, PendingConnectionState, PortDataType, PortDirection, PortId,
+    PortRole, StatusState, TrackControlState, TrackId, TrackPortOwnerKind, TrackState,
 };
 use shoop_egui::{
     register_settings, AppWidget, ConnectionScope, SettingsPersistenceState,
@@ -121,25 +122,22 @@ impl PreviewApp {
     fn apply(&mut self, intent: AppIntent) {
         if let AppIntent::SetPortConnected {
             port_id,
-            external_port,
+            host_port_id,
             connected,
         } = intent
         {
             let mut view = (*self.snapshot.connections).clone();
-            let mut ports = view.ports.to_vec();
-            if let Some(port) = ports.iter_mut().find(|port| port.id == port_id) {
-                let mut candidates = port.candidates.to_vec();
-                if let Some(candidate) = candidates
-                    .iter_mut()
-                    .find(|candidate| candidate.full_name == external_port)
-                {
-                    candidate.pending = Some(connected);
-                    candidate.error = None;
-                }
-                port.candidates = candidates.into();
-            }
+            let mut pending = view.pending_links.to_vec();
+            pending.retain(|link| {
+                link.application_port_id != port_id || link.host_port_id != host_port_id
+            });
+            pending.push(PendingConnectionState {
+                application_port_id: port_id,
+                host_port_id,
+                desired_connected: connected,
+            });
             view.revision = view.revision.wrapping_add(1);
-            view.ports = ports.into();
+            view.pending_links = pending.into();
             self.snapshot.connections = Arc::new(view);
         }
         self.snapshot.revision = self.snapshot.revision.wrapping_add(1);
@@ -147,33 +145,35 @@ impl PreviewApp {
 
     fn resolve_pending(&mut self, succeed: bool) {
         let mut view = (*self.snapshot.connections).clone();
-        let mut ports = view.ports.to_vec();
+        let pending = view.pending_links.to_vec();
+        let mut confirmed = view.confirmed_links.to_vec();
         let mut errors = view.errors.to_vec();
-        for port in &mut ports {
-            let mut candidates = port.candidates.to_vec();
-            for candidate in &mut candidates {
-                let Some(desired) = candidate.pending.take() else {
-                    continue;
-                };
-                if succeed {
-                    candidate.connected = desired;
-                    candidate.error = None;
-                } else {
-                    candidate.error = Some("Injected preview failure".to_owned());
-                    errors.push(ConnectionErrorState {
-                        port_id: Some(port.id),
-                        external_port: Some(candidate.full_name.clone()),
-                        kind: ConnectionErrorKind::BackendRejected,
-                        message: "Injected preview connection failure".to_owned(),
+        for link in pending {
+            if succeed {
+                confirmed.retain(|existing| {
+                    existing.application_port_id != link.application_port_id
+                        || existing.host_port_id != link.host_port_id
+                });
+                if link.desired_connected {
+                    confirmed.push(ConfirmedConnectionState {
+                        application_port_id: link.application_port_id,
+                        host_port_id: link.host_port_id,
                     });
                 }
+            } else {
+                errors.push(ConnectionErrorState {
+                    port_id: Some(link.application_port_id),
+                    external_port: Some(link.host_port_id.to_string()),
+                    kind: ConnectionErrorKind::BackendRejected,
+                    message: "Injected preview connection failure".to_owned(),
+                });
             }
-            port.candidates = candidates.into();
         }
         view.revision = view.revision.wrapping_add(1);
         view.loading = false;
         view.backend_available = true;
-        view.ports = ports.into();
+        view.confirmed_links = confirmed.into();
+        view.pending_links = Arc::from([]);
         view.errors = errors.into();
         self.snapshot.connections = Arc::new(view);
     }
@@ -181,38 +181,37 @@ impl PreviewApp {
     fn toggle_churn_endpoint(&mut self) {
         self.churn_endpoint_visible = !self.churn_endpoint_visible;
         let mut view = (*self.snapshot.connections).clone();
-        let mut ports = view.ports.to_vec();
-        for port in &mut ports {
-            if port.data_type != PortDataType::Audio || port.direction != PortDirection::Input {
-                continue;
-            }
-            let mut candidates = port.candidates.to_vec();
-            candidates.retain(|candidate| candidate.full_name != "hotplug:output");
-            if self.churn_endpoint_visible {
-                candidates.push(candidate("hotplug:output", true, false, None, None));
-                candidates.sort_by(|left, right| left.full_name.cmp(&right.full_name));
-            }
-            port.candidates = candidates.into();
+        let mut hosts = view.host_ports.to_vec();
+        hosts.retain(|host| host.id.as_str() != "hotplug:output");
+        if self.churn_endpoint_visible {
+            hosts.push(host_port(
+                "hotplug:output",
+                PortDataType::Audio,
+                PortDirection::Output,
+            ));
+            hosts.sort_by(|left, right| left.id.cmp(&right.id));
         }
         view.revision = view.revision.wrapping_add(1);
-        view.ports = ports.into();
+        view.host_ports = hosts.into();
         self.snapshot.connections = Arc::new(view);
     }
 }
 
 fn candidate(
-    full_name: &str,
-    eligible: bool,
-    connected: bool,
-    pending: Option<bool>,
-    error: Option<&str>,
-) -> ExternalPortConnectionState {
-    ExternalPortConnectionState {
-        full_name: full_name.to_owned(),
-        eligible,
-        connected,
-        pending,
-        error: error.map(str::to_owned),
+    _full_name: &str,
+    _eligible: bool,
+    _connected: bool,
+    _pending: Option<bool>,
+    _error: Option<&str>,
+) {
+}
+
+fn host_port(id: &str, data_type: PortDataType, direction: PortDirection) -> HostPortState {
+    HostPortState {
+        id: HostPortId::new(id),
+        name: id.to_owned(),
+        data_type,
+        direction,
     }
 }
 
@@ -223,16 +222,23 @@ fn port(
     data_type: PortDataType,
     direction: PortDirection,
     role: PortRole,
-    candidates: Vec<ExternalPortConnectionState>,
-) -> LocalPortConnectionState {
-    LocalPortConnectionState {
+    _candidate_markers: Vec<()>,
+) -> ApplicationPortState {
+    ApplicationPortState {
         id: PortId::from_raw(id),
-        track_id: TrackId::from_raw(track_id),
+        owner: ApplicationPortOwner::Track {
+            track_id: TrackId::from_raw(track_id),
+            kind: if track_id == 1 {
+                TrackPortOwnerKind::Sync
+            } else {
+                TrackPortOwnerKind::Main
+            },
+        },
         name: name.to_owned(),
         data_type,
         direction,
         role,
-        candidates: candidates.into(),
+        connection_policy: ConnectionPolicy::UserManaged,
     }
 }
 
@@ -241,7 +247,7 @@ fn representative_connections() -> Arc<ConnectionViewState> {
         revision: 1,
         loading: false,
         backend_available: true,
-        ports: vec![
+        application_ports: vec![
             port(
                 1,
                 1,
@@ -342,6 +348,66 @@ fn representative_connections() -> Arc<ConnectionViewState> {
             ),
         ]
         .into(),
+        host_ports: vec![
+            host_port(
+                "system:capture_1",
+                PortDataType::Audio,
+                PortDirection::Output,
+            ),
+            host_port(
+                "system:capture_2",
+                PortDataType::Audio,
+                PortDirection::Output,
+            ),
+            host_port("plain-endpoint", PortDataType::Audio, PortDirection::Output),
+            host_port("hotplug:output", PortDataType::Audio, PortDirection::Output),
+            host_port(
+                "studio-interface:output_1",
+                PortDataType::Audio,
+                PortDirection::Output,
+            ),
+            host_port(
+                "system:playback_1",
+                PortDataType::Audio,
+                PortDirection::Input,
+            ),
+            host_port("recorder:input", PortDataType::Audio, PortDirection::Input),
+            host_port("fx:input", PortDataType::Audio, PortDirection::Input),
+            host_port("fx:output", PortDataType::Audio, PortDirection::Output),
+            host_port(
+                "controller:midi_out",
+                PortDataType::Midi,
+                PortDirection::Output,
+            ),
+            host_port("synth:midi_in", PortDataType::Midi, PortDirection::Input),
+            host_port("lighting:midi_in", PortDataType::Midi, PortDirection::Input),
+        ]
+        .into(),
+        confirmed_links: vec![
+            ConfirmedConnectionState {
+                application_port_id: PortId::from_raw(1),
+                host_port_id: HostPortId::new("system:capture_1"),
+            },
+            ConfirmedConnectionState {
+                application_port_id: PortId::from_raw(3),
+                host_port_id: HostPortId::new("recorder:input"),
+            },
+            ConfirmedConnectionState {
+                application_port_id: PortId::from_raw(5),
+                host_port_id: HostPortId::new("fx:output"),
+            },
+            ConfirmedConnectionState {
+                application_port_id: PortId::from_raw(7),
+                host_port_id: HostPortId::new("synth:midi_in"),
+            },
+        ]
+        .into(),
+        pending_links: vec![PendingConnectionState {
+            application_port_id: PortId::from_raw(2),
+            host_port_id: HostPortId::new("system:capture_1"),
+            desired_connected: true,
+        }]
+        .into(),
         errors: vec![ConnectionErrorState {
             port_id: Some(PortId::from_raw(2)),
             external_port: Some("studio-interface:output_1".to_owned()),
@@ -440,7 +506,7 @@ fn set_preview_status(widget: &AppWidget, snapshot: &AppSnapshot) {
     let _ = element.set_attribute("data-connection-scope", scope);
     let _ = element.set_attribute(
         "data-connection-port-count",
-        &snapshot.connections.ports.len().to_string(),
+        &snapshot.connections.application_ports.len().to_string(),
     );
     let _ = element.set_attribute(
         "data-connection-revision",
@@ -505,23 +571,23 @@ mod tests {
         for role in PortRole::ORDERED {
             assert!(snapshot
                 .connections
-                .ports
+                .application_ports
                 .iter()
                 .any(|port| port.role == role));
         }
-        let candidates: Vec<_> = snapshot
-            .connections
-            .ports
-            .iter()
-            .flat_map(|port| port.candidates.iter())
-            .collect();
-        assert!(candidates.iter().any(|candidate| candidate.connected));
-        assert!(candidates.iter().any(|candidate| !candidate.connected));
-        assert!(candidates
-            .iter()
-            .any(|candidate| candidate.pending.is_some()));
-        assert!(candidates.iter().any(|candidate| candidate.error.is_some()));
+        assert!(!snapshot.connections.host_ports.is_empty());
+        assert!(!snapshot.connections.confirmed_links.is_empty());
+        assert!(!snapshot.connections.pending_links.is_empty());
         assert!(!snapshot.connections.errors.is_empty());
+        assert!(snapshot.connections.application_ports.iter().any(|port| {
+            snapshot.connections.host_ports.iter().any(|host| {
+                port.data_type == host.data_type
+                    && port.direction != host.direction
+                    && !snapshot.connections.confirmed_links.iter().any(|link| {
+                        link.application_port_id == port.id && link.host_port_id == host.id
+                    })
+            })
+        }));
     }
 
     #[test]
@@ -529,36 +595,30 @@ mod tests {
         let mut preview = PreviewApp::default();
         preview.apply(AppIntent::SetPortConnected {
             port_id: PortId::from_raw(3),
-            external_port: "system:playback_1".to_owned(),
+            host_port_id: HostPortId::new("system:playback_1"),
             connected: true,
         });
-        let pending = preview
+        assert!(preview
             .snapshot
             .connections
-            .ports
+            .pending_links
             .iter()
-            .find(|port| port.id == PortId::from_raw(3))
-            .unwrap()
-            .candidates
-            .iter()
-            .find(|candidate| candidate.full_name == "system:playback_1")
-            .unwrap()
-            .pending;
-        assert_eq!(pending, Some(true));
+            .any(|link| {
+                link.application_port_id == PortId::from_raw(3)
+                    && link.host_port_id.as_str() == "system:playback_1"
+                    && link.desired_connected
+            }));
         preview.resolve_pending(true);
-        let candidate = preview
+        assert!(preview.snapshot.connections.pending_links.is_empty());
+        assert!(preview
             .snapshot
             .connections
-            .ports
+            .confirmed_links
             .iter()
-            .find(|port| port.id == PortId::from_raw(3))
-            .unwrap()
-            .candidates
-            .iter()
-            .find(|candidate| candidate.full_name == "system:playback_1")
-            .unwrap();
-        assert!(candidate.connected);
-        assert_eq!(candidate.pending, None);
+            .any(|link| {
+                link.application_port_id == PortId::from_raw(3)
+                    && link.host_port_id.as_str() == "system:playback_1"
+            }));
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::TryRecvError;
@@ -8,16 +8,16 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
-#[cfg(not(target_arch = "wasm32"))]
-use shoop_app_api::KeyEventType;
 use shoop_app_api::{
-    AppIntent, AppNotification, AppSnapshot, AudioChannelMappingState, AudioChannelSelectionState,
-    AudioDriverState, ChannelId, ConnectionErrorKind, ConnectionErrorState, ConnectionViewState,
-    DirectTrackSpec, ExternalPortConnectionState, GlobalControlAction, IoTaskKind, IoTaskState,
-    IoTaskStatus, KeyEvent, LocalPortConnectionState, LoopAction, LoopAudioExportFormat,
-    LoopDetailsState, LoopId, LoopMode, LoopState, NotificationLevel, PortDataType, PortDirection,
-    PortId, PortRole, SampleRateWarning, ScriptId, ScriptKind, ScriptingState, StatusState, TaskId,
-    TrackAction, TrackControlState, TrackId, TrackState, WaveformChannelState,
+    AppIntent, AppNotification, AppSnapshot, ApplicationPortOwner, ApplicationPortState,
+    AudioChannelMappingState, AudioChannelSelectionState, AudioDriverState, ChannelId,
+    ConfirmedConnectionState, ConnectionErrorKind, ConnectionErrorState, ConnectionPolicy,
+    ConnectionViewState, DirectTrackSpec, GlobalControlAction, HostPortId, HostPortState,
+    IoTaskKind, IoTaskState, IoTaskStatus, KeyEvent, KeyEventType, LoopAction,
+    LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, NotificationLevel,
+    PendingConnectionState, PortDataType, PortDirection, PortId, PortRole, SampleRateWarning,
+    ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState, TaskId,
+    TrackAction, TrackControlState, TrackId, TrackPortOwnerKind, TrackState, WaveformChannelState,
 };
 use shoop_backend::{
     Backend, BackendAudioContent, BackendConnectionSnapshot, BackendGrabRequest,
@@ -28,9 +28,12 @@ use shoop_backend::{
     DirectTrackRequest,
 };
 #[cfg(not(target_arch = "wasm32"))]
+use shoop_scripting::NativeMidiService;
+#[cfg(target_arch = "wasm32")]
+use shoop_scripting::NullMidiService;
 use shoop_scripting::{
-    ControlLoop, ControlOperation, ControlSnapshot, ControlTrack, NativeMidiService,
-    ScriptKeyEvent, ScriptLoopEvent, ScriptManager, SessionScriptSource,
+    ControlLoop, ControlOperation, ControlSnapshot, ControlTrack, ScriptKeyEvent, ScriptLoopEvent,
+    ScriptManager, SessionScriptSource,
 };
 use shoop_session::{
     decode_exact_midi, decode_loop_audio, decode_session, decode_standard_midi, decode_wav,
@@ -71,13 +74,14 @@ impl ApplicationHandle {
             Ok(()) => Ok(()),
             Err(TrySendError::Full(ApplicationMessage::Intent(AppIntent::SetPortConnected {
                 port_id,
-                external_port,
+                host_port_id,
                 ..
             }))) => {
                 *self
                     .saturated_connection
                     .lock()
-                    .unwrap_or_else(|error| error.into_inner()) = Some((port_id, external_port));
+                    .unwrap_or_else(|error| error.into_inner()) =
+                    Some((port_id, host_port_id.to_string()));
                 Err(DispatchError::Full)
             }
             Err(error) => Err(DispatchError::from(error)),
@@ -230,9 +234,18 @@ pub struct CooperativeApplicationRuntime {
 }
 
 impl CooperativeApplicationRuntime {
-    pub fn start(mut backend: Box<dyn Backend>) -> Result<Self> {
+    pub fn start(backend: Box<dyn Backend>) -> Result<Self> {
+        Self::start_with_scripts(backend, Vec::new())
+    }
+
+    pub fn start_with_scripts(
+        mut backend: Box<dyn Backend>,
+        startup_scripts: Vec<StartupScript>,
+    ) -> Result<Self> {
         let file_outputs = Arc::new(Mutex::new(VecDeque::new()));
-        let model = ApplicationModel::initialize(&mut *backend, Arc::clone(&file_outputs), false)?;
+        let mut model =
+            ApplicationModel::initialize(&mut *backend, Arc::clone(&file_outputs), false)?;
+        model.install_startup_scripts(startup_scripts);
         Self::from_model(model, backend, file_outputs)
     }
 
@@ -268,12 +281,12 @@ impl CooperativeApplicationRuntime {
         if self.commands.len() >= COMMAND_CAPACITY {
             if let AppIntent::SetPortConnected {
                 port_id,
-                external_port,
+                host_port_id,
                 ..
             } = intent
             {
                 self.model
-                    .report_connection_saturation(port_id, external_port);
+                    .report_connection_saturation(port_id, host_port_id.to_string());
                 self.snapshot = Arc::new(self.model.snapshot());
             }
             return Err(DispatchError::Full);
@@ -367,7 +380,6 @@ fn update_application(
             model.notify_error(format!("backend poll failed: {error}"));
         }
     }
-    #[cfg(not(target_arch = "wasm32"))]
     if let Err(error) = model.advance_script_compositions(backend, elapsed) {
         model.notify_error(error);
     }
@@ -375,7 +387,6 @@ fn update_application(
         model.notify_error(error);
     }
     model.advance_io(backend);
-    #[cfg(not(target_arch = "wasm32"))]
     if let Err(error) = model.advance_scripting(backend, elapsed) {
         model.notify_error(error);
     }
@@ -391,19 +402,17 @@ struct ApplicationModel {
     tracks: Vec<TrackModel>,
     loops: BTreeMap<LoopId, LoopModel>,
     connection_ports: BTreeMap<PortId, ConnectionPortModel>,
+    host_ports: BTreeMap<String, HostPortState>,
+    confirmed_connections: BTreeSet<(PortId, String)>,
     pending_connections: BTreeMap<(PortId, String), PendingConnection>,
     connection_errors: Vec<ConnectionErrorState>,
     connection_revision: u64,
     connection_backend_available: bool,
     connection_view: Arc<ConnectionViewState>,
     scripting_view: Arc<ScriptingState>,
-    #[cfg(not(target_arch = "wasm32"))]
     script_manager: ScriptManager,
-    #[cfg(not(target_arch = "wasm32"))]
     script_last_snapshot: ControlSnapshot,
-    #[cfg(not(target_arch = "wasm32"))]
     script_composition_playback: BTreeMap<LoopId, ScriptCompositionPlayback>,
-    #[cfg(not(target_arch = "wasm32"))]
     script_composition_frame_remainder: u128,
     global: shoop_app_api::GlobalControlState,
     status: StatusState,
@@ -457,7 +466,6 @@ struct LoopModel {
     script_composition: Vec<Vec<LoopId>>,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 struct ScriptCompositionPlayback {
     section: usize,
     remaining_frames: u64,
@@ -566,6 +574,10 @@ impl ApplicationModel {
             audio_data: None,
             script_composition: Vec::new(),
         };
+        #[cfg(not(target_arch = "wasm32"))]
+        let script_manager = ScriptManager::new_with_midi(Box::new(NativeMidiService::new()));
+        #[cfg(target_arch = "wasm32")]
+        let script_manager = ScriptManager::new_with_midi(Box::new(NullMidiService));
         let model = Self {
             revision: 1,
             next_track_id: 2,
@@ -584,22 +596,20 @@ impl ApplicationModel {
             }],
             loops: BTreeMap::from([(loop_id, loop_model)]),
             connection_ports,
+            host_ports: BTreeMap::new(),
+            confirmed_connections: BTreeSet::new(),
             pending_connections: BTreeMap::new(),
             connection_errors: Vec::new(),
             connection_revision: 1,
             connection_backend_available: false,
             connection_view: Arc::new(ConnectionViewState::default()),
             scripting_view: Arc::new(ScriptingState {
-                supported: cfg!(not(target_arch = "wasm32")),
+                supported: true,
                 scripts: Arc::from([]),
             }),
-            #[cfg(not(target_arch = "wasm32"))]
-            script_manager: ScriptManager::new_with_midi(Box::new(NativeMidiService::new())),
-            #[cfg(not(target_arch = "wasm32"))]
+            script_manager,
             script_last_snapshot: ControlSnapshot::default(),
-            #[cfg(not(target_arch = "wasm32"))]
             script_composition_playback: BTreeMap::new(),
-            #[cfg(not(target_arch = "wasm32"))]
             script_composition_frame_remainder: 0,
             global: Default::default(),
             status: Default::default(),
@@ -612,44 +622,27 @@ impl ApplicationModel {
             background_session_encoding,
             file_outputs,
         };
-        #[cfg(not(target_arch = "wasm32"))]
-        let model = {
-            let mut model = model;
-            model.script_last_snapshot = model.script_control_snapshot();
-            model
-        };
+        let mut model = model;
+        model.script_last_snapshot = model.script_control_snapshot();
         Ok(model)
     }
 
     fn install_startup_scripts(&mut self, scripts: Vec<StartupScript>) -> Vec<Option<ScriptId>> {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let mut ids = Vec::with_capacity(scripts.len());
-            for script in scripts {
-                match self.script_manager.add(
-                    script.name,
-                    script.source,
-                    script.kind,
-                    script.enabled,
-                ) {
-                    Ok(id) => ids.push(Some(id)),
-                    Err(error) => {
-                        ids.push(None);
-                        self.notify_error(error.to_string());
-                    }
+        let mut ids = Vec::with_capacity(scripts.len());
+        for script in scripts {
+            match self
+                .script_manager
+                .add(script.name, script.source, script.kind, script.enabled)
+            {
+                Ok(id) => ids.push(Some(id)),
+                Err(error) => {
+                    ids.push(None);
+                    self.notify_error(error.to_string());
                 }
             }
-            self.refresh_scripting_view();
-            ids
         }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let count = scripts.len();
-            if count != 0 {
-                self.notify_error("Lua scripting is unavailable in browser builds".to_owned());
-            }
-            vec![None; count]
-        }
+        self.refresh_scripting_view();
+        ids
     }
 
     fn handle_intent(&mut self, backend: &mut dyn Backend, intent: AppIntent) {
@@ -683,9 +676,9 @@ impl ApplicationModel {
             AppIntent::ForgetScript { script_id } => self.forget_script(script_id),
             AppIntent::SetPortConnected {
                 port_id,
-                external_port,
+                host_port_id,
                 connected,
-            } => self.set_port_connected(backend, port_id, external_port, connected),
+            } => self.set_port_connected(backend, port_id, host_port_id.to_string(), connected),
             AppIntent::RequestSaveSession => self.begin_save_session(),
             AppIntent::RequestLoadSessionPicker
             | AppIntent::RequestLoopAudioImportPicker { .. }
@@ -742,23 +735,15 @@ impl ApplicationModel {
         kind: ScriptKind,
         enabled: bool,
     ) -> Result<(), String> {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.prepare_script_invocation();
-            let result = self
-                .script_manager
-                .add(name, source.to_string(), kind, enabled)
-                .map(|_| ())
-                .map_err(|error| error.to_string())
-                .and_then(|()| self.apply_script_operations(backend));
-            self.refresh_scripting_view();
-            result
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let _ = (backend, name, source, kind, enabled);
-            Err("Lua scripting is unavailable in the browser build".to_owned())
-        }
+        self.prepare_script_invocation();
+        let result = self
+            .script_manager
+            .add(name, source.to_string(), kind, enabled)
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+            .and_then(|()| self.apply_script_operations(backend));
+        self.refresh_scripting_view();
+        result
     }
 
     fn set_script_enabled(
@@ -767,41 +752,25 @@ impl ApplicationModel {
         id: ScriptId,
         enabled: bool,
     ) -> Result<(), String> {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.prepare_script_invocation();
-            let result = self
-                .script_manager
-                .set_enabled(id, enabled)
-                .map_err(|error| error.to_string())
-                .and_then(|()| self.apply_script_operations(backend));
-            self.refresh_scripting_view();
-            result
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let _ = (backend, id, enabled);
-            Err("Lua scripting is unavailable in the browser build".to_owned())
-        }
+        self.prepare_script_invocation();
+        let result = self
+            .script_manager
+            .set_enabled(id, enabled)
+            .map_err(|error| error.to_string())
+            .and_then(|()| self.apply_script_operations(backend));
+        self.refresh_scripting_view();
+        result
     }
 
     fn restart_script(&mut self, backend: &mut dyn Backend, id: ScriptId) -> Result<(), String> {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.prepare_script_invocation();
-            let result = self
-                .script_manager
-                .start(id)
-                .map_err(|error| error.to_string())
-                .and_then(|()| self.apply_script_operations(backend));
-            self.refresh_scripting_view();
-            result
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let _ = (backend, id);
-            Err("Lua scripting is unavailable in the browser build".to_owned())
-        }
+        self.prepare_script_invocation();
+        let result = self
+            .script_manager
+            .start(id)
+            .map_err(|error| error.to_string())
+            .and_then(|()| self.apply_script_operations(backend));
+        self.refresh_scripting_view();
+        result
     }
 
     fn replace_script_source(
@@ -810,56 +779,32 @@ impl ApplicationModel {
         id: ScriptId,
         source: Arc<str>,
     ) -> Result<(), String> {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.prepare_script_invocation();
-            let result = self
-                .script_manager
-                .replace_user_source(id, source.to_string())
-                .map_err(|error| error.to_string())
-                .and_then(|()| self.apply_script_operations(backend));
-            self.refresh_scripting_view();
-            result
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let _ = (backend, id, source);
-            Err("Lua scripting is unavailable in the browser build".to_owned())
-        }
+        self.prepare_script_invocation();
+        let result = self
+            .script_manager
+            .replace_user_source(id, source.to_string())
+            .map_err(|error| error.to_string())
+            .and_then(|()| self.apply_script_operations(backend));
+        self.refresh_scripting_view();
+        result
     }
 
     fn stop_script(&mut self, id: ScriptId) -> Result<(), String> {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let result = self
-                .script_manager
-                .stop(id)
-                .map_err(|error| error.to_string());
-            self.refresh_scripting_view();
-            result
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let _ = id;
-            Err("Lua scripting is unavailable in the browser build".to_owned())
-        }
+        let result = self
+            .script_manager
+            .stop(id)
+            .map_err(|error| error.to_string());
+        self.refresh_scripting_view();
+        result
     }
 
     fn forget_script(&mut self, id: ScriptId) -> Result<(), String> {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let result = self
-                .script_manager
-                .forget(id)
-                .map_err(|error| error.to_string());
-            self.refresh_scripting_view();
-            result
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let _ = id;
-            Err("Lua scripting is unavailable in the browser build".to_owned())
-        }
+        let result = self
+            .script_manager
+            .forget(id)
+            .map_err(|error| error.to_string());
+        self.refresh_scripting_view();
+        result
     }
 
     fn handle_script_key_event(
@@ -867,29 +812,20 @@ impl ApplicationModel {
         backend: &mut dyn Backend,
         event: KeyEvent,
     ) -> Result<(), String> {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.prepare_script_invocation();
-            self.script_manager.dispatch_key_event(ScriptKeyEvent {
-                event_type: match event.event_type {
-                    KeyEventType::Pressed => 0,
-                    KeyEventType::Released => 1,
-                },
-                key: event.key,
-                modifiers: event.modifiers,
-            });
-            let result = self.apply_script_operations(backend);
-            self.refresh_scripting_view();
-            result
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let _ = (backend, event);
-            Ok(())
-        }
+        self.prepare_script_invocation();
+        self.script_manager.dispatch_key_event(ScriptKeyEvent {
+            event_type: match event.event_type {
+                KeyEventType::Pressed => 0,
+                KeyEventType::Released => 1,
+            },
+            key: event.key,
+            modifiers: event.modifiers,
+        });
+        let result = self.apply_script_operations(backend);
+        self.refresh_scripting_view();
+        result
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn advance_scripting(
         &mut self,
         backend: &mut dyn Backend,
@@ -952,13 +888,11 @@ impl ApplicationModel {
         result
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn prepare_script_invocation(&mut self) {
         let snapshot = self.script_control_snapshot();
         self.script_manager.set_control_snapshot(snapshot);
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn script_control_snapshot(&self) -> ControlSnapshot {
         let mut tracks = Vec::with_capacity(self.tracks.len());
         let mut loops = Vec::with_capacity(self.loops.len());
@@ -1010,7 +944,6 @@ impl ApplicationModel {
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn apply_script_operations(&mut self, backend: &mut dyn Backend) -> Result<(), String> {
         for operation in self.script_manager.take_control_operations() {
             self.apply_script_operation(backend, operation)?;
@@ -1018,7 +951,6 @@ impl ApplicationModel {
         Ok(())
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn apply_script_operation(
         &mut self,
         backend: &mut dyn Backend,
@@ -1312,7 +1244,6 @@ impl ApplicationModel {
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn apply_script_track_action(
         &mut self,
         backend: &mut dyn Backend,
@@ -1325,7 +1256,6 @@ impl ApplicationModel {
         Ok(())
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn script_trigger_loops(
         &mut self,
         backend: &mut dyn Backend,
@@ -1462,7 +1392,6 @@ impl ApplicationModel {
         Ok(())
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn script_composition_section_length(&self, section: &[LoopId]) -> u64 {
         section
             .iter()
@@ -1472,7 +1401,6 @@ impl ApplicationModel {
             .unwrap_or(0)
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn advance_script_compositions(
         &mut self,
         backend: &mut dyn Backend,
@@ -1567,12 +1495,14 @@ impl ApplicationModel {
         Ok(())
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn refresh_scripting_view(&mut self) {
         self.scripting_view = Arc::new(ScriptingState {
             supported: true,
             scripts: self.script_manager.states().into(),
         });
+        if !self.connection_view.loading {
+            self.rebuild_connection_view();
+        }
     }
 
     fn begin_save_session(&mut self) -> Result<(), String> {
@@ -1614,7 +1544,6 @@ impl ApplicationModel {
                 return Err(message);
             }
         };
-        #[cfg(not(target_arch = "wasm32"))]
         if let Err(error) =
             ScriptManager::validate_session_scripts(&session_script_sources(&bundle))
         {
@@ -2805,8 +2734,20 @@ impl ApplicationModel {
             });
             return Err(message);
         }
+        if self.connection_view.application_ports.iter().any(|port| {
+            port.id == port_id && port.connection_policy == ConnectionPolicy::OwnerManaged
+        }) {
+            let message = format!("connection policy is managed by the port owner: {port_id}");
+            self.push_connection_error(ConnectionErrorState {
+                port_id: Some(port_id),
+                external_port: Some(external_port),
+                kind: ConnectionErrorKind::Incompatible,
+                message: message.clone(),
+            });
+            return Err(message);
+        }
         let Some(port) = self.connection_ports.get(&port_id) else {
-            let message = format!("stale or unknown local port {port_id}");
+            let message = format!("stale or unknown application port {port_id}");
             self.push_connection_error(ConnectionErrorState {
                 port_id: Some(port_id),
                 external_port: Some(external_port),
@@ -3080,14 +3021,11 @@ impl ApplicationModel {
                         .unwrap_or(0)
                 })
                 .sum();
-            #[cfg(not(target_arch = "wasm32"))]
             let active_section = self
                 .script_composition_playback
                 .get(&target)
                 .map(|playback| playback.section)
                 .unwrap_or(0);
-            #[cfg(target_arch = "wasm32")]
-            let active_section = 0;
             let section_offset = sections
                 .iter()
                 .take(active_section)
@@ -3149,98 +3087,197 @@ impl ApplicationModel {
                 message: failure.message,
             });
         }
+        self.host_ports = snapshot
+            .host_ports
+            .values()
+            .map(|host| {
+                (
+                    host.id.clone(),
+                    HostPortState {
+                        id: HostPortId::new(host.id.clone()),
+                        name: host.name.clone(),
+                        data_type: map_port_data_type(host.data_type),
+                        direction: map_port_direction(host.direction),
+                    },
+                )
+            })
+            .collect();
+        self.confirmed_connections = snapshot
+            .confirmed_links
+            .iter()
+            .filter_map(|link| {
+                self.connection_ports
+                    .values()
+                    .find(|port| port.backend_id == link.application_port_id)
+                    .map(|port| (port.id, link.host_port_id.clone()))
+            })
+            .collect();
         for port in self.connection_ports.values_mut() {
-            let Some(observed) = snapshot.ports.get(&port.backend_id) else {
-                port.candidates.clear();
-                continue;
+            let backend_present = snapshot.application_ports.contains_key(&port.backend_id);
+            port.candidates = if backend_present {
+                self.host_ports
+                    .iter()
+                    .filter(|(_, host)| {
+                        host.data_type == port.data_type && host.direction != port.direction
+                    })
+                    .map(|(host_id, _)| {
+                        (
+                            host_id.clone(),
+                            (
+                                true,
+                                self.confirmed_connections
+                                    .contains(&(port.id, host_id.clone())),
+                            ),
+                        )
+                    })
+                    .collect()
+            } else {
+                BTreeMap::new()
             };
-            port.candidates = observed
-                .candidates
-                .iter()
-                .map(|candidate| {
-                    (
-                        candidate.full_name.clone(),
-                        (candidate.eligible, candidate.connected),
-                    )
-                })
-                .collect();
         }
         let pending_keys: Vec<_> = self.pending_connections.keys().cloned().collect();
-        for (port_id, external_port) in pending_keys {
-            let key = (port_id, external_port.clone());
-            let observed = self
-                .connection_ports
-                .get(&port_id)
-                .and_then(|port| port.candidates.get(&external_port))
-                .copied();
+        for (port_id, host_port_id) in pending_keys {
+            let key = (port_id, host_port_id.clone());
+            let host_present = self.host_ports.contains_key(&host_port_id);
+            let connected = self
+                .confirmed_connections
+                .contains(&(port_id, host_port_id.clone()));
             let desired = self.pending_connections[&key].desired_connected;
-            match observed {
-                Some((true, connected)) if connected == desired => {
-                    self.pending_connections.remove(&key);
-                }
-                None => {
-                    self.pending_connections.remove(&key);
-                    self.push_connection_error(ConnectionErrorState {
-                        port_id: Some(port_id),
-                        external_port: Some(external_port.clone()),
-                        kind: ConnectionErrorKind::EndpointUnavailable,
-                        message: format!("external endpoint disappeared: {external_port}"),
-                    });
-                }
-                _ => {}
+            if host_present && connected == desired {
+                self.pending_connections.remove(&key);
+            } else if !host_present {
+                self.pending_connections.remove(&key);
+                self.push_connection_error(ConnectionErrorState {
+                    port_id: Some(port_id),
+                    external_port: Some(host_port_id.clone()),
+                    kind: ConnectionErrorKind::EndpointUnavailable,
+                    message: format!("host endpoint disappeared: {host_port_id}"),
+                });
             }
         }
         self.rebuild_connection_view();
     }
 
     fn rebuild_connection_view(&mut self) {
-        let ports: Arc<[LocalPortConnectionState]> = self
+        let mut application_ports: Vec<ApplicationPortState> = self
             .connection_ports
             .values()
             .map(|port| {
-                let candidates = port
-                    .candidates
+                let is_sync = self
+                    .tracks
                     .iter()
-                    .map(|(full_name, (eligible, connected))| {
-                        let pending = self
-                            .pending_connections
-                            .get(&(port.id, full_name.clone()))
-                            .map(|pending| pending.desired_connected);
-                        let error = self
-                            .connection_errors
-                            .iter()
-                            .rev()
-                            .find(|error| {
-                                error.port_id == Some(port.id)
-                                    && error.external_port.as_deref() == Some(full_name.as_str())
-                            })
-                            .map(|error| error.message.clone());
-                        ExternalPortConnectionState {
-                            full_name: full_name.clone(),
-                            eligible: *eligible,
-                            connected: *connected,
-                            pending,
-                            error,
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .into();
-                LocalPortConnectionState {
+                    .find(|track| track.id == port.track_id)
+                    .is_some_and(|track| track.is_sync);
+                ApplicationPortState {
                     id: port.id,
-                    track_id: port.track_id,
+                    owner: ApplicationPortOwner::Track {
+                        track_id: port.track_id,
+                        kind: if is_sync {
+                            TrackPortOwnerKind::Sync
+                        } else {
+                            TrackPortOwnerKind::Main
+                        },
+                    },
                     name: port.name.clone(),
                     data_type: port.data_type,
                     direction: port.direction,
                     role: port.role,
-                    candidates,
+                    connection_policy: ConnectionPolicy::UserManaged,
                 }
             })
+            .collect();
+        let mut normalized_hosts = self.host_ports.clone();
+        let mut normalized_links: BTreeSet<(PortId, HostPortId)> = self
+            .confirmed_connections
+            .iter()
+            .map(|(port_id, host_id)| (*port_id, HostPortId::new(host_id.clone())))
+            .collect();
+        for script in self.scripting_view.scripts.iter() {
+            for (registration, rule) in script.midi.rule_states.iter().enumerate() {
+                let registration = u32::try_from(registration).unwrap_or(u32::MAX);
+                let (direction, role, host_direction, host_kind) = match rule.direction {
+                    ScriptMidiRuleDirection::Input => (
+                        PortDirection::Input,
+                        PortRole::MidiInput,
+                        PortDirection::Output,
+                        "source",
+                    ),
+                    ScriptMidiRuleDirection::Output => (
+                        PortDirection::Output,
+                        PortRole::MidiOutput,
+                        PortDirection::Input,
+                        "sink",
+                    ),
+                };
+                let port_id = script_connection_port_id(script.id, registration);
+                application_ports.push(ApplicationPortState {
+                    id: port_id,
+                    owner: ApplicationPortOwner::LuaControl {
+                        script_id: script.id,
+                        registration,
+                    },
+                    name: format!(
+                        "{}: MIDI {} {}",
+                        script.name,
+                        host_kind,
+                        registration.saturating_add(1)
+                    ),
+                    data_type: PortDataType::Midi,
+                    direction,
+                    role,
+                    connection_policy: ConnectionPolicy::OwnerManaged,
+                });
+                for endpoint in rule.endpoints.iter() {
+                    let host_id = script_midi_host_id(host_direction, &endpoint.id);
+                    normalized_hosts
+                        .entry(host_id.to_string())
+                        .or_insert_with(|| HostPortState {
+                            id: host_id.clone(),
+                            name: endpoint.name.clone(),
+                            data_type: PortDataType::Midi,
+                            direction: host_direction,
+                        });
+                    if endpoint.connected {
+                        normalized_links.insert((port_id, host_id));
+                    }
+                }
+            }
+        }
+        application_ports.sort_by(|left, right| {
+            (&left.owner, &left.name, left.id).cmp(&(&right.owner, &right.name, right.id))
+        });
+        let application_ports: Arc<[ApplicationPortState]> = application_ports.into();
+        let host_ports: Arc<[HostPortState]> =
+            normalized_hosts.into_values().collect::<Vec<_>>().into();
+        let confirmed_links: Arc<[ConfirmedConnectionState]> = normalized_links
+            .into_iter()
+            .map(
+                |(application_port_id, host_port_id)| ConfirmedConnectionState {
+                    application_port_id,
+                    host_port_id,
+                },
+            )
+            .collect::<Vec<_>>()
+            .into();
+        let pending_links: Arc<[PendingConnectionState]> = self
+            .pending_connections
+            .iter()
+            .map(
+                |((application_port_id, host_port_id), pending)| PendingConnectionState {
+                    application_port_id: *application_port_id,
+                    host_port_id: HostPortId::new(host_port_id.clone()),
+                    desired_connected: pending.desired_connected,
+                },
+            )
             .collect::<Vec<_>>()
             .into();
         let errors: Arc<[ConnectionErrorState]> = self.connection_errors.clone().into();
         let changed = self.connection_view.loading
             || self.connection_view.backend_available != self.connection_backend_available
-            || self.connection_view.ports.as_ref() != ports.as_ref()
+            || self.connection_view.application_ports.as_ref() != application_ports.as_ref()
+            || self.connection_view.host_ports.as_ref() != host_ports.as_ref()
+            || self.connection_view.confirmed_links.as_ref() != confirmed_links.as_ref()
+            || self.connection_view.pending_links.as_ref() != pending_links.as_ref()
             || self.connection_view.errors.as_ref() != errors.as_ref();
         if changed {
             self.connection_revision = self.connection_revision.wrapping_add(1);
@@ -3248,7 +3285,10 @@ impl ApplicationModel {
                 revision: self.connection_revision,
                 loading: false,
                 backend_available: self.connection_backend_available,
-                ports,
+                application_ports,
+                host_ports,
+                confirmed_links,
+                pending_links,
                 errors,
             });
         }
@@ -3484,6 +3524,7 @@ impl ApplicationModel {
         }
         let document = SessionDocument {
             sample_rate: capture.sample_rate,
+            connection_model_version: shoop_session::CONNECTION_MODEL_VERSION,
             global: GlobalControlsDocument {
                 default_recording_action: match self.global.default_recording_action {
                     shoop_app_api::DefaultRecordingAction::Record => {
@@ -3528,23 +3569,16 @@ impl ApplicationModel {
     }
 
     fn session_script_documents(&self) -> Vec<ScriptDocument> {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.script_manager
-                .session_scripts()
-                .into_iter()
-                .map(|script| ScriptDocument {
-                    id: script.document_id,
-                    name: script.name,
-                    source: script.source,
-                    enabled: script.enabled,
-                })
-                .collect()
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            Vec::new()
-        }
+        self.script_manager
+            .session_scripts()
+            .into_iter()
+            .map(|script| ScriptDocument {
+                id: script.document_id,
+                name: script.name,
+                source: script.source,
+                enabled: script.enabled,
+            })
+            .collect()
     }
 
     fn apply_loaded_session(
@@ -3728,11 +3762,8 @@ impl ApplicationModel {
             .saturating_add(1);
         self.tracks = tracks;
         self.loops = loops;
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.script_composition_playback.clear();
-            self.script_composition_frame_remainder = 0;
-        }
+        self.script_composition_playback.clear();
+        self.script_composition_frame_remainder = 0;
         self.connection_ports = connection_ports;
         self.pending_connections.clear();
         self.connection_errors.clear();
@@ -3747,13 +3778,10 @@ impl ApplicationModel {
         self.global.sync = bundle.document.global.sync;
         self.global.solo = bundle.document.global.solo;
         self.global.apply_n_cycles = bundle.document.global.apply_n_cycles;
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.script_manager
-                .replace_session_scripts(&session_script_sources(bundle))
-                .map_err(|error| error.to_string())?;
-            self.refresh_scripting_view();
-        }
+        self.script_manager
+            .replace_session_scripts(&session_script_sources(bundle))
+            .map_err(|error| error.to_string())?;
+        self.refresh_scripting_view();
         Ok(())
     }
 
@@ -4459,7 +4487,6 @@ fn direct_topology(track: &TrackDocument) -> Result<(u32, bool), String> {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 fn session_script_sources(bundle: &SessionBundle) -> Vec<SessionScriptSource> {
     bundle
         .document
@@ -4478,7 +4505,6 @@ fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionDat
     if !bundle.document.buses.is_empty()
         || !bundle.document.global_ports.is_empty()
         || !bundle.document.fx_states.is_empty()
-        || (cfg!(target_arch = "wasm32") && !bundle.document.scripts.is_empty())
         || !bundle.document.midi_control.bindings.is_empty()
         || !bundle.document.settings.is_empty()
     {
@@ -4619,6 +4645,8 @@ fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionDat
     Ok(BackendSessionData {
         sample_rate: bundle.document.sample_rate,
         tracks,
+        use_legacy_browser_default_routes: cfg!(target_arch = "wasm32")
+            && bundle.document.connection_model_version == 0,
     })
 }
 
@@ -4699,6 +4727,38 @@ fn backend_port_role(value: PortRoleDocument) -> BackendPortRole {
         PortRoleDocument::MidiOutput => BackendPortRole::MidiOutput,
         PortRoleDocument::MidiSend => BackendPortRole::MidiSend,
         PortRoleDocument::Internal => BackendPortRole::AudioInput,
+    }
+}
+
+fn script_connection_port_id(script_id: ScriptId, registration: u32) -> PortId {
+    const SCRIPT_PORT_NAMESPACE: u64 = 1 << 63;
+    const SCRIPT_ID_MASK: u64 = 0x7fff_ffff;
+    PortId::from_raw(
+        SCRIPT_PORT_NAMESPACE
+            | ((script_id.raw() & SCRIPT_ID_MASK) << 32)
+            | u64::from(registration.saturating_add(1)),
+    )
+}
+
+fn script_midi_host_id(direction: PortDirection, endpoint: &str) -> HostPortId {
+    let kind = match direction {
+        PortDirection::Input => "sink",
+        PortDirection::Output => "source",
+    };
+    HostPortId::new(format!("script-midi:{kind}:{endpoint}"))
+}
+
+fn map_port_data_type(value: BackendPortDataType) -> PortDataType {
+    match value {
+        BackendPortDataType::Audio => PortDataType::Audio,
+        BackendPortDataType::Midi => PortDataType::Midi,
+    }
+}
+
+fn map_port_direction(value: BackendPortDirection) -> PortDirection {
+    match value {
+        BackendPortDirection::Input => PortDirection::Input,
+        BackendPortDirection::Output => PortDirection::Output,
     }
 }
 
@@ -4861,6 +4921,134 @@ mod tests {
         assert_eq!(snapshot.scripting.scripts.len(), 2);
         assert_eq!(snapshot.scripting.scripts[0].id, ids[1].unwrap());
         assert_eq!(snapshot.scripting.scripts[1].id, ids[2].unwrap());
+    }
+
+    #[test]
+    fn cooperative_startup_runs_embedded_keyboard_on_the_application_owner() {
+        let mut runtime = CooperativeApplicationRuntime::start_with_scripts(
+            Box::new(FakeBackend::default()),
+            vec![StartupScript {
+                name: "keyboard.lua".to_owned(),
+                source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            }],
+        )
+        .unwrap();
+        assert!(runtime.snapshot().scripting.supported);
+        assert_eq!(
+            runtime.snapshot().scripting.scripts[0].lifecycle,
+            shoop_app_api::ScriptLifecycle::Listening
+        );
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Browser track".to_owned(),
+                audio_channels: 2,
+                midi: true,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::KeyEvent(KeyEvent {
+                event_type: KeyEventType::Pressed,
+                key: 16_777_236,
+                modifiers: 0,
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().tracks[1].loops[0].selected);
+    }
+
+    #[test]
+    fn lua_control_ports_are_owner_managed_stable_and_visible_without_midi_hosts() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(0, 2).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start_with_midi(
+            Box::new(backend),
+            Box::new(shoop_scripting::NullMidiService),
+        )
+        .unwrap();
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "akai_apc_mini_mk1.lua".to_owned(),
+                source: Arc::from(shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT),
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(1));
+        let snapshot = runtime.snapshot();
+        let script_id = snapshot.scripting.scripts[0].id;
+        let control_ports: Vec<_> = snapshot
+            .connections
+            .application_ports
+            .iter()
+            .filter(|port| {
+                matches!(
+                    port.owner,
+                    ApplicationPortOwner::LuaControl {
+                        script_id: owner, ..
+                    } if owner == script_id
+                )
+            })
+            .collect();
+        assert_eq!(control_ports.len(), 2);
+        assert!(control_ports.iter().all(|port| {
+            port.data_type == PortDataType::Midi
+                && port.connection_policy == ConnectionPolicy::OwnerManaged
+        }));
+        assert!(!snapshot
+            .connections
+            .host_ports
+            .iter()
+            .any(|host| host.data_type == PortDataType::Midi));
+        let stable_ids: Vec<_> = control_ports.iter().map(|port| port.id).collect();
+
+        runtime
+            .dispatch(AppIntent::SetPortConnected {
+                port_id: stable_ids[0],
+                host_port_id: HostPortId::new("invented:midi"),
+                connected: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().connections.errors.iter().any(|error| {
+            error.port_id == Some(stable_ids[0]) && error.kind == ConnectionErrorKind::Incompatible
+        }));
+
+        runtime
+            .dispatch(AppIntent::StopScript { script_id })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(!runtime
+            .snapshot()
+            .connections
+            .application_ports
+            .iter()
+            .any(|port| matches!(
+                port.owner,
+                ApplicationPortOwner::LuaControl {
+                    script_id: owner, ..
+                } if owner == script_id
+            )));
+        runtime
+            .dispatch(AppIntent::RestartScript { script_id })
+            .unwrap();
+        runtime.tick(Duration::from_millis(1));
+        let restarted_ids: Vec<_> = runtime
+            .snapshot()
+            .connections
+            .application_ports
+            .iter()
+            .filter_map(|port| match port.owner {
+                ApplicationPortOwner::LuaControl {
+                    script_id: owner, ..
+                } if owner == script_id => Some(port.id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(restarted_ids, stable_ids);
     }
 
     #[test]
@@ -5489,6 +5677,41 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             shoop_app_api::ScriptLifecycle::Listening
         );
         assert_eq!(runtime.snapshot().scripting.scripts[0].midi.connections, 2);
+        let connected_snapshot = runtime.snapshot();
+        let script_id = connected_snapshot.scripting.scripts[0].id;
+        let control_ports: Vec<_> = connected_snapshot
+            .connections
+            .application_ports
+            .iter()
+            .filter(|port| {
+                matches!(
+                    port.owner,
+                    ApplicationPortOwner::LuaControl {
+                        script_id: owner, ..
+                    } if owner == script_id
+                )
+            })
+            .collect();
+        assert_eq!(control_ports.len(), 2);
+        assert!(control_ports
+            .iter()
+            .all(|port| port.connection_policy == ConnectionPolicy::OwnerManaged));
+        assert_eq!(
+            connected_snapshot
+                .connections
+                .confirmed_links
+                .iter()
+                .filter(|link| control_ports
+                    .iter()
+                    .any(|port| port.id == link.application_port_id))
+                .count(),
+            2
+        );
+        assert!(connected_snapshot
+            .connections
+            .host_ports
+            .iter()
+            .any(|host| host.name == "AKAI APC MINI MIDI controller"));
         runtime.tick(Duration::from_millis(1_000));
         let mut reset = midi_control.take_sent();
         assert!(reset.len() <= 1, "positive MIDI rate limit emitted a burst");
@@ -5920,9 +6143,13 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert_eq!(snapshot.tracks.len(), 1);
         assert!(snapshot
             .connections
-            .ports
+            .application_ports
             .iter()
-            .all(|port| port.track_id == snapshot.tracks[0].id));
+            .all(|port| matches!(
+                port.owner,
+                ApplicationPortOwner::Track { track_id, .. }
+                    if track_id == snapshot.tracks[0].id
+            )));
         assert!(snapshot.notifications[0]
             .message
             .contains("injected track creation failure"));
@@ -6268,11 +6495,15 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         let runtime = ApplicationRuntime::start(Box::new(backend)).unwrap();
         let handle = runtime.handle();
         let initial = wait_for(&handle, |snapshot| {
-            !snapshot.connections.loading && !snapshot.connections.ports.is_empty()
+            !snapshot.connections.loading && !snapshot.connections.application_ports.is_empty()
         });
         assert!(initial.connections.backend_available);
-        assert!(initial.connections.ports.iter().all(|port| {
-            port.track_id == initial.tracks[0].id && initial.tracks[0].port_ids.contains(&port.id)
+        assert!(initial.connections.application_ports.iter().all(|port| {
+            matches!(
+                port.owner,
+                ApplicationPortOwner::Track { track_id, .. }
+                    if track_id == initial.tracks[0].id
+            ) && initial.tracks[0].port_ids.contains(&port.id)
         }));
 
         handle
@@ -6286,9 +6517,15 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             snapshot.tracks.len() == 2
                 && snapshot
                     .connections
-                    .ports
+                    .application_ports
                     .iter()
-                    .filter(|port| port.track_id == snapshot.tracks[1].id)
+                    .filter(|port| {
+                        matches!(
+                            port.owner,
+                            ApplicationPortOwner::Track { track_id, .. }
+                                if track_id == snapshot.tracks[1].id
+                        )
+                    })
                     .count()
                     == 6
         });
@@ -6296,47 +6533,58 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert_eq!(track.port_ids.len(), 6);
         let input = snapshot
             .connections
-            .ports
+            .application_ports
             .iter()
-            .find(|port| port.track_id == track.id && port.role == PortRole::AudioInput)
+            .find(|port| {
+                matches!(
+                    port.owner,
+                    ApplicationPortOwner::Track { track_id, .. } if track_id == track.id
+                ) && port.role == PortRole::AudioInput
+            })
             .unwrap();
         let input_id = input.id;
         let input_name = input.name.clone();
-        assert!(input
-            .candidates
+        assert!(snapshot
+            .connections
+            .host_ports
             .iter()
-            .any(|candidate| candidate.full_name == "system:capture_1"));
-        assert!(!input
-            .candidates
+            .any(|host| host.id.as_str() == "system:capture_1"));
+        assert!(snapshot
+            .connections
+            .host_ports
             .iter()
-            .any(|candidate| candidate.full_name == "system:playback_1"));
+            .any(|host| host.id.as_str() == "system:playback_1"));
+        assert_ne!(
+            input.direction,
+            snapshot
+                .connections
+                .host_ports
+                .iter()
+                .find(|host| host.id.as_str() == "system:capture_1")
+                .unwrap()
+                .direction
+        );
 
         control.defer_mutations(true);
         handle
             .dispatch(AppIntent::SetPortConnected {
                 port_id: input_id,
-                external_port: "system:capture_1".to_owned(),
+                host_port_id: HostPortId::new("system:capture_1"),
                 connected: true,
             })
             .unwrap();
         let pending = wait_for(&handle, |snapshot| {
-            snapshot
-                .connections
-                .ports
-                .iter()
-                .find(|port| port.id == input_id)
-                .and_then(|port| {
-                    port.candidates
-                        .iter()
-                        .find(|candidate| candidate.full_name == "system:capture_1")
-                })
-                .is_some_and(|candidate| candidate.pending == Some(true))
+            snapshot.connections.pending_links.iter().any(|link| {
+                link.application_port_id == input_id
+                    && link.host_port_id.as_str() == "system:capture_1"
+                    && link.desired_connected
+            })
         });
         let held_revision = pending.connections.revision;
         handle
             .dispatch(AppIntent::SetPortConnected {
                 port_id: input_id,
-                external_port: "system:capture_1".to_owned(),
+                host_port_id: HostPortId::new("system:capture_1"),
                 connected: true,
             })
             .unwrap();
@@ -6350,19 +6598,9 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
                         && error.kind == ConnectionErrorKind::BackendRejected
                 })
         });
-        assert!(
-            !failed
-                .connections
-                .ports
-                .iter()
-                .find(|port| port.id == input_id)
-                .unwrap()
-                .candidates
-                .iter()
-                .find(|candidate| candidate.full_name == "system:capture_1")
-                .unwrap()
-                .connected
-        );
+        assert!(!failed.connections.confirmed_links.iter().any(|link| {
+            link.application_port_id == input_id && link.host_port_id.as_str() == "system:capture_1"
+        }));
 
         control.defer_mutations(false);
         control.add_external_port(
@@ -6373,49 +6611,31 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         wait_for(&handle, |snapshot| {
             snapshot
                 .connections
-                .ports
+                .host_ports
                 .iter()
-                .find(|port| port.id == input_id)
-                .is_some_and(|port| {
-                    port.candidates
-                        .iter()
-                        .any(|candidate| candidate.full_name == "new-client:audio_source")
-                })
+                .any(|host| host.id.as_str() == "new-client:audio_source")
         });
         let backend_port = control.port_id_by_name(&input_name).unwrap();
         control.externally_set_connected(backend_port, "new-client:audio_source", true);
         wait_for(&handle, |snapshot| {
-            snapshot
-                .connections
-                .ports
-                .iter()
-                .find(|port| port.id == input_id)
-                .and_then(|port| {
-                    port.candidates
-                        .iter()
-                        .find(|candidate| candidate.full_name == "new-client:audio_source")
-                })
-                .is_some_and(|candidate| candidate.connected)
+            snapshot.connections.confirmed_links.iter().any(|link| {
+                link.application_port_id == input_id
+                    && link.host_port_id.as_str() == "new-client:audio_source"
+            })
         });
         control.remove_external_port("new-client:audio_source");
         wait_for(&handle, |snapshot| {
-            snapshot
+            !snapshot
                 .connections
-                .ports
+                .host_ports
                 .iter()
-                .find(|port| port.id == input_id)
-                .is_some_and(|port| {
-                    !port
-                        .candidates
-                        .iter()
-                        .any(|candidate| candidate.full_name == "new-client:audio_source")
-                })
+                .any(|host| host.id.as_str() == "new-client:audio_source")
         });
 
         handle
             .dispatch(AppIntent::SetPortConnected {
                 port_id: PortId::from_raw(999_999),
-                external_port: "system:capture_1".to_owned(),
+                host_port_id: HostPortId::new("system:capture_1"),
                 connected: true,
             })
             .unwrap();
@@ -6437,7 +6657,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         let snapshot = runtime.snapshot();
         let port = snapshot
             .connections
-            .ports
+            .application_ports
             .iter()
             .find(|port| port.role == PortRole::AudioInput)
             .unwrap();
@@ -6445,43 +6665,32 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         runtime
             .dispatch(AppIntent::SetPortConnected {
                 port_id,
-                external_port: "system:capture_1".to_owned(),
+                host_port_id: HostPortId::new("system:capture_1"),
                 connected: true,
             })
             .unwrap();
         runtime.tick(Duration::ZERO);
-        assert_eq!(
-            runtime
-                .snapshot()
-                .connections
-                .ports
-                .iter()
-                .find(|port| port.id == port_id)
-                .unwrap()
-                .candidates
-                .iter()
-                .find(|candidate| candidate.full_name == "system:capture_1")
-                .unwrap()
-                .pending,
-            Some(true)
-        );
+        assert!(runtime
+            .snapshot()
+            .connections
+            .pending_links
+            .iter()
+            .any(|link| {
+                link.application_port_id == port_id
+                    && link.host_port_id.as_str() == "system:capture_1"
+                    && link.desired_connected
+            }));
         runtime.tick(CONNECTION_TIMEOUT);
         let timed_out = runtime.snapshot();
         assert!(timed_out.connections.errors.iter().any(|error| {
             error.port_id == Some(port_id) && error.kind == ConnectionErrorKind::TimedOut
         }));
-        let candidate = timed_out
-            .connections
-            .ports
-            .iter()
-            .find(|port| port.id == port_id)
-            .unwrap()
-            .candidates
-            .iter()
-            .find(|candidate| candidate.full_name == "system:capture_1")
-            .unwrap();
-        assert!(!candidate.connected);
-        assert_eq!(candidate.pending, None);
+        assert!(!timed_out.connections.confirmed_links.iter().any(|link| {
+            link.application_port_id == port_id && link.host_port_id.as_str() == "system:capture_1"
+        }));
+        assert!(!timed_out.connections.pending_links.iter().any(|link| {
+            link.application_port_id == port_id && link.host_port_id.as_str() == "system:capture_1"
+        }));
     }
 
     #[test]
@@ -6494,8 +6703,8 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         let second = runtime.snapshot();
         assert!(Arc::ptr_eq(&first.connections, &second.connections));
         assert!(Arc::ptr_eq(
-            &first.connections.ports,
-            &second.connections.ports
+            &first.connections.application_ports,
+            &second.connections.application_ports
         ));
     }
 
@@ -7229,7 +7438,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert_eq!(
             runtime.dispatch(AppIntent::SetPortConnected {
                 port_id: PortId::from_raw(77),
-                external_port: "device:port".to_owned(),
+                host_port_id: HostPortId::new("device:port"),
                 connected: true,
             }),
             Err(DispatchError::Full)

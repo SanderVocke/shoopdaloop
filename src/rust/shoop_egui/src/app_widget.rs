@@ -50,7 +50,7 @@ pub fn register_settings(
     )
 }
 
-pub fn register_script_settings(
+pub fn register_bundled_script_settings(
     builder: &mut SettingsRegistryBuilder,
 ) -> Result<(), SettingsRegistryError> {
     builder.register(
@@ -77,6 +77,13 @@ pub fn register_script_settings(
         .setting_order(20)
         .effect(SettingEffect::Immediate),
     )?;
+    Ok(())
+}
+
+pub fn register_script_settings(
+    builder: &mut SettingsRegistryBuilder,
+) -> Result<(), SettingsRegistryError> {
+    register_bundled_script_settings(builder)?;
     builder.register(
         SettingDefinition::new(
             USER_SCRIPTS,
@@ -337,6 +344,22 @@ impl AppWidget {
     ) -> (u32, bool) {
         self.open_add_track_dialog(0, settings_state);
         (self.add_track_audio_channels, self.add_track_midi)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_settings_test_open_scripts(
+        &mut self,
+        settings_state: &SettingsViewState,
+    ) -> bool {
+        self.settings
+            .browser_test_open_category(settings_state, "Scripts")
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_open_global_connections(&mut self) {
+        self.connections.open(ConnectionScope::AllTracks);
     }
 
     fn show_io_task_dialog(
@@ -915,6 +938,11 @@ mod tests {
                             pattern: "APC Mini".to_owned(),
                             matched_endpoints: Arc::from(["APC Mini [sink]".to_owned()]),
                             connected_endpoints: Arc::from(["APC Mini [sink]".to_owned()]),
+                            endpoints: Arc::from([crate::ScriptMidiEndpointDiagnostics {
+                                id: "sink".to_owned(),
+                                name: "APC Mini".to_owned(),
+                                connected: true,
+                            }]),
                             latest_error: Some("permission denied".to_owned()),
                         }]),
                     },
@@ -976,6 +1004,20 @@ mod tests {
             uploaded_logo |= !output.textures_delta.set.is_empty();
         }
         assert!(uploaded_logo);
+    }
+
+    #[test]
+    fn bundled_script_registry_excludes_native_user_path_workflow() {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        register_bundled_script_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        assert!(registry.definition(KEYBOARD_SCRIPT_ENABLED.id()).is_some());
+        assert!(registry.definition(APC_MINI_SCRIPT_ENABLED.id()).is_some());
+        assert!(registry.definition(USER_SCRIPTS.id()).is_none());
+        let defaults = registry.defaults(1);
+        assert!(defaults.get(KEYBOARD_SCRIPT_ENABLED).unwrap());
+        assert!(!defaults.get(APC_MINI_SCRIPT_ENABLED).unwrap());
     }
 
     #[test]

@@ -1,10 +1,10 @@
-use mlua;
+use omnilua;
 use std::sync::Arc;
 
 pub trait LuaCallback {
     fn call(
         &self,
-        lua: &Arc<mlua::Lua>,
-        args: mlua::MultiValue,
-    ) -> Result<mlua::Value, anyhow::Error>;
+        lua: &Arc<omnilua::Lua>,
+        args: omnilua::Variadic<omnilua::Value>,
+    ) -> Result<omnilua::Value, anyhow::Error>;
 }

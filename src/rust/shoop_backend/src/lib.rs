@@ -84,16 +84,17 @@ pub struct BackendPortDescriptor {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BackendExternalPortState {
-    pub full_name: String,
-    pub eligible: bool,
-    pub connected: bool,
+pub struct BackendHostPortDescriptor {
+    pub id: String,
+    pub name: String,
+    pub data_type: BackendPortDataType,
+    pub direction: BackendPortDirection,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BackendPortConnectionState {
-    pub port: BackendPortDescriptor,
-    pub candidates: Vec<BackendExternalPortState>,
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct BackendConfirmedLink {
+    pub application_port_id: BackendPortId,
+    pub host_port_id: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -108,7 +109,12 @@ pub struct BackendConnectionFailure {
 pub struct BackendConnectionSnapshot {
     pub revision: u64,
     pub available: bool,
-    pub ports: BTreeMap<BackendPortId, BackendPortConnectionState>,
+    /// Normalized application-owned ports, keyed by stable backend identity.
+    pub application_ports: BTreeMap<BackendPortId, BackendPortDescriptor>,
+    /// One normalized host inventory. An empty inventory is valid.
+    pub host_ports: BTreeMap<String, BackendHostPortDescriptor>,
+    /// Backend-confirmed links only; requested state is tracked by the application.
+    pub confirmed_links: BTreeSet<BackendConfirmedLink>,
     pub failures: Vec<BackendConnectionFailure>,
 }
 
@@ -276,6 +282,8 @@ pub struct BackendSessionTrack {
 pub struct BackendSessionData {
     pub sample_rate: u32,
     pub tracks: Vec<BackendSessionTrack>,
+    #[serde(default)]
+    pub use_legacy_browser_default_routes: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -395,6 +403,8 @@ const MAX_CYCLES_PER_ADVANCE: u32 = 8;
 pub const MAX_WEB_AUDIO_QUANTUM: u32 = 2048;
 pub const RECORDING_CAPACITY_SECONDS: u32 = 10;
 const RECORDING_CHUNK_SIZE: usize = 4096;
+const WEB_AUDIO_CAPTURE_PORTS: [&str; 2] = ["webaudio:capture_1", "webaudio:capture_2"];
+const WEB_AUDIO_DESTINATION_PORTS: [&str; 2] = ["webaudio:destination_1", "webaudio:destination_2"];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum EngineBackendMode {
@@ -424,6 +434,7 @@ pub struct EngineBackend {
     input_peak: f32,
     output_peak: f32,
     last_quantum: u32,
+    route_scratch: Vec<f32>,
 }
 
 struct EngineLoopChannels {
@@ -486,6 +497,7 @@ impl EngineBackend {
             input_peak: 0.0,
             output_peak: 0.0,
             last_quantum: buffer_size,
+            route_scratch: vec![0.0; buffer_size as usize],
         })
     }
 
@@ -497,7 +509,45 @@ impl EngineBackend {
         }
         let mut backend = Self::new_dummy(sample_rate, max_quantum)?;
         backend.mode = EngineBackendMode::Physical;
+        backend.external_connections.remove_all_mock_ports();
         Ok(backend)
+    }
+
+    pub fn configure_web_audio_channels(
+        &mut self,
+        input_channels: u32,
+        output_channels: u32,
+    ) -> Result<()> {
+        if self.mode != EngineBackendMode::Physical {
+            return Err(anyhow!(
+                "device channels supplied to a non-physical backend"
+            ));
+        }
+        if input_channels > 2 || output_channels > 2 {
+            return Err(anyhow!(
+                "Web Audio channel count exceeds the protocol limit"
+            ));
+        }
+        self.external_connections.remove_all_mock_ports();
+        for host in WEB_AUDIO_CAPTURE_PORTS.iter().take(input_channels as usize) {
+            self.external_connections.add_mock_port(
+                *host,
+                PortDirection::Output,
+                EnginePortDataType::Audio,
+            );
+        }
+        for host in WEB_AUDIO_DESTINATION_PORTS
+            .iter()
+            .take(output_channels as usize)
+        {
+            self.external_connections.add_mock_port(
+                *host,
+                PortDirection::Input,
+                EnginePortDataType::Audio,
+            );
+        }
+        self.connection_revision = self.connection_revision.wrapping_add(1);
+        Ok(())
     }
 
     pub fn process_audio_quantum(
@@ -521,20 +571,33 @@ impl EngineBackend {
 
         self.input_peak = 0.0;
         for track in self.tracks.values() {
-            for (channel, port) in track.audio_inputs.iter().enumerate() {
-                let source_channel = if input_channels == 0 {
-                    None
+            for (channel, session_port) in track.audio_inputs.iter().enumerate() {
+                let backend_port_id = track.ports[channel * 2];
+                let registry_id = self.connection_ports[&backend_port_id].registry_id;
+                let mut source_count = 0;
+                self.route_scratch[..n_frames].fill(0.0);
+                for source in 0..input_channels {
+                    let host = WEB_AUDIO_CAPTURE_PORTS[source];
+                    if self.external_connections.is_connected(registry_id, host) {
+                        source_count += 1;
+                        for (mixed, sample) in self.route_scratch[..n_frames]
+                            .iter_mut()
+                            .zip(&input[source * n_frames..(source + 1) * n_frames])
+                        {
+                            *mixed += *sample;
+                        }
+                    }
+                }
+                let samples = if source_count == 0 {
+                    &[][..]
                 } else {
-                    Some(channel.min(input_channels - 1))
+                    &self.route_scratch[..n_frames]
                 };
-                let samples = source_channel
-                    .map(|channel| &input[channel * n_frames..channel.saturating_add(1) * n_frames])
-                    .unwrap_or(&[]);
                 self.input_peak = samples
                     .iter()
                     .fold(self.input_peak, |peak, sample| peak.max(sample.abs()));
                 self.session
-                    .port_mut(*port)
+                    .port_mut(*session_port)
                     .and_then(Port::as_external_mut)
                     .ok_or_else(|| anyhow!("missing physical audio input port"))?
                     .stage_input(samples);
@@ -545,15 +608,18 @@ impl EngineBackend {
         output[..output_channels * n_frames].fill(0.0);
         self.output_peak = 0.0;
         for track in self.tracks.values() {
-            for (channel, port) in track.audio_outputs.iter().enumerate() {
+            for (channel, session_port) in track.audio_outputs.iter().enumerate() {
+                let backend_port_id = track.ports[channel * 2 + 1];
+                let registry_id = self.connection_ports[&backend_port_id].registry_id;
                 let samples = self
                     .session
-                    .port(*port)
+                    .port(*session_port)
                     .and_then(Port::as_external)
                     .ok_or_else(|| anyhow!("missing physical audio output port"))?
                     .output(n_frames);
-                if track.audio_outputs.len() == 1 {
-                    for destination in 0..output_channels {
+                for destination in 0..output_channels {
+                    let host = WEB_AUDIO_DESTINATION_PORTS[destination];
+                    if self.external_connections.is_connected(registry_id, host) {
                         for (target, sample) in output
                             [destination * n_frames..(destination + 1) * n_frames]
                             .iter_mut()
@@ -561,15 +627,6 @@ impl EngineBackend {
                         {
                             *target += *sample;
                         }
-                    }
-                } else if output_channels > 0 {
-                    let destination = channel.min(output_channels - 1);
-                    for (target, sample) in output
-                        [destination * n_frames..(destination + 1) * n_frames]
-                        .iter_mut()
-                        .zip(samples)
-                    {
-                        *target += *sample;
                     }
                 }
             }
@@ -627,11 +684,13 @@ impl EngineBackend {
                 registry_id,
             },
         );
-        self.external_connections.add_mock_port(
-            format!("shoop:{name}"),
-            engine_direction(direction),
-            engine_data_type(data_type),
-        );
+        if self.mode == EngineBackendMode::Dummy {
+            self.external_connections.add_mock_port(
+                format!("shoop:{name}"),
+                engine_direction(direction),
+                engine_data_type(data_type),
+            );
+        }
         self.connection_revision = self.connection_revision.wrapping_add(1);
         descriptor
     }
@@ -655,6 +714,11 @@ impl EngineBackend {
         self.connection_revision = self.connection_revision.wrapping_add(1);
     }
 
+    pub fn remove_all_external_mock_ports(&mut self) {
+        self.external_connections.remove_all_mock_ports();
+        self.connection_revision = self.connection_revision.wrapping_add(1);
+    }
+
     pub fn externally_set_port_connected(
         &mut self,
         port_id: BackendPortId,
@@ -665,43 +729,48 @@ impl EngineBackend {
     }
 
     fn connection_snapshot(&self) -> BackendConnectionSnapshot {
-        let ports = self
+        let application_ports = self
             .connection_ports
             .iter()
-            .map(|(id, local)| {
-                let external_direction = opposite_backend_direction(local.descriptor.direction);
-                let candidates = self
-                    .external_connections
-                    .find_external_ports(
-                        None,
-                        engine_direction(external_direction),
-                        engine_data_type(local.descriptor.data_type),
-                    )
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|candidate| BackendExternalPortState {
-                        connected: self
-                            .external_connections
-                            .connections_for(local.registry_id)
-                            .iter()
-                            .any(|name| name == &candidate.name),
-                        full_name: candidate.name,
-                        eligible: true,
-                    })
-                    .collect();
+            .map(|(id, local)| (*id, local.descriptor.clone()))
+            .collect();
+        let host_ports = self
+            .external_connections
+            .mock_ports()
+            .iter()
+            .filter(|port| !port.name.starts_with("shoop:"))
+            .map(|port| {
                 (
-                    *id,
-                    BackendPortConnectionState {
-                        port: local.descriptor.clone(),
-                        candidates,
+                    port.name.clone(),
+                    BackendHostPortDescriptor {
+                        id: port.name.clone(),
+                        name: port.name.clone(),
+                        data_type: backend_data_type(port.data_type),
+                        direction: backend_direction(port.direction),
                     },
                 )
             })
             .collect();
+        let confirmed_links = self
+            .connection_ports
+            .iter()
+            .flat_map(|(id, local)| {
+                self.external_connections
+                    .connections_for(local.registry_id)
+                    .into_iter()
+                    .filter(|host_port_id| !host_port_id.starts_with("shoop:"))
+                    .map(|host_port_id| BackendConfirmedLink {
+                        application_port_id: *id,
+                        host_port_id,
+                    })
+            })
+            .collect();
         BackendConnectionSnapshot {
             revision: self.connection_revision,
-            available: self.mode == EngineBackendMode::Dummy,
-            ports,
+            available: true,
+            application_ports,
+            host_ports,
+            confirmed_links,
             failures: Vec::new(),
         }
     }
@@ -856,18 +925,18 @@ impl EngineBackend {
                 .ports
                 .iter()
                 .map(|port_id| {
-                    let state = connections
-                        .ports
+                    let descriptor = connections
+                        .application_ports
                         .get(port_id)
-                        .ok_or_else(|| anyhow!("missing connection port"))?;
+                        .ok_or_else(|| anyhow!("missing application connection port"))?;
                     Ok(BackendSessionPort {
                         source_id: port_id.raw(),
-                        descriptor: state.port.clone(),
-                        external_connections: state
-                            .candidates
+                        descriptor: descriptor.clone(),
+                        external_connections: connections
+                            .confirmed_links
                             .iter()
-                            .filter(|candidate| candidate.connected)
-                            .map(|candidate| candidate.full_name.clone())
+                            .filter(|link| link.application_port_id == *port_id)
+                            .map(|link| link.host_port_id.clone())
                             .collect(),
                     })
                 })
@@ -884,6 +953,7 @@ impl EngineBackend {
         Ok(BackendSessionData {
             sample_rate: self.sample_rate,
             tracks,
+            use_legacy_browser_default_routes: false,
         })
     }
 
@@ -986,7 +1056,19 @@ impl EngineBackend {
                 replacement
                     .ports
                     .insert(source_port.source_id, created_port.id);
-                if staged.mode == EngineBackendMode::Dummy {
+                if !(staged.mode == EngineBackendMode::Physical
+                    && data.use_legacy_browser_default_routes)
+                {
+                    let registry_id = staged
+                        .connection_ports
+                        .get(&created_port.id)
+                        .ok_or_else(|| anyhow!("missing staged connection port"))?
+                        .registry_id;
+                    for default_connection in
+                        staged.external_connections.connections_for(registry_id)
+                    {
+                        staged.set_port_connected(created_port.id, &default_connection, false)?;
+                    }
                     for external in &source_port.external_connections {
                         staged.set_port_connected(created_port.id, external, true)?;
                     }
@@ -1064,6 +1146,22 @@ fn engine_data_type(data_type: BackendPortDataType) -> EnginePortDataType {
     match data_type {
         BackendPortDataType::Audio => EnginePortDataType::Audio,
         BackendPortDataType::Midi => EnginePortDataType::Midi,
+    }
+}
+
+fn backend_direction(direction: PortDirection) -> BackendPortDirection {
+    match direction {
+        PortDirection::Input => BackendPortDirection::Input,
+        PortDirection::Output => BackendPortDirection::Output,
+        PortDirection::Any => unreachable!("host descriptors have a concrete direction"),
+    }
+}
+
+fn backend_data_type(data_type: EnginePortDataType) -> BackendPortDataType {
+    match data_type {
+        EnginePortDataType::Audio => BackendPortDataType::Audio,
+        EnginePortDataType::Midi => BackendPortDataType::Midi,
+        EnginePortDataType::Any => unreachable!("host descriptors have a concrete data type"),
     }
 }
 
@@ -1269,6 +1367,47 @@ impl Backend for EngineBackend {
         } else {
             (None, None)
         };
+        if self.mode == EngineBackendMode::Physical {
+            let input_channels = WEB_AUDIO_CAPTURE_PORTS
+                .iter()
+                .take_while(|host| {
+                    self.external_connections
+                        .mock_ports()
+                        .iter()
+                        .any(|p| p.name == **host)
+                })
+                .count();
+            let output_channels = WEB_AUDIO_DESTINATION_PORTS
+                .iter()
+                .take_while(|host| {
+                    self.external_connections
+                        .mock_ports()
+                        .iter()
+                        .any(|p| p.name == **host)
+                })
+                .count();
+            for channel in 0..audio_channels {
+                let input_registry = self.connection_ports[&ports[channel * 2].id].registry_id;
+                if input_channels > 0 {
+                    self.external_connections.connect(
+                        input_registry,
+                        WEB_AUDIO_CAPTURE_PORTS[channel.min(input_channels - 1)],
+                    )?;
+                }
+                let output_registry = self.connection_ports[&ports[channel * 2 + 1].id].registry_id;
+                if audio_channels == 1 {
+                    for host in WEB_AUDIO_DESTINATION_PORTS.iter().take(output_channels) {
+                        self.external_connections.connect(output_registry, host)?;
+                    }
+                } else if output_channels > 0 {
+                    self.external_connections.connect(
+                        output_registry,
+                        WEB_AUDIO_DESTINATION_PORTS[channel.min(output_channels - 1)],
+                    )?;
+                }
+            }
+            self.connection_revision = self.connection_revision.wrapping_add(1);
+        }
         let track_id = BackendTrackId::from_raw(self.next_track_id);
         self.next_track_id = self.next_track_id.saturating_add(1);
         self.tracks.insert(
@@ -1619,9 +1758,6 @@ impl Backend for EngineBackend {
         external_port: &str,
         connected: bool,
     ) -> Result<()> {
-        if self.mode != EngineBackendMode::Dummy {
-            return Err(anyhow!("external connection management is unavailable"));
-        }
         let local = self
             .connection_ports
             .get(&port_id)
@@ -2107,36 +2243,36 @@ impl FakeBackend {
 
     fn connection_snapshot(&self) -> BackendConnectionSnapshot {
         self.connections.with_state(|state| {
-            let ports = state
-                .ports
+            let application_ports = state.ports.clone();
+            let host_ports = state
+                .external_ports
                 .iter()
-                .map(|(port_id, port)| {
-                    let candidates = state
-                        .external_ports
-                        .iter()
-                        .filter(|(_, (direction, data_type))| {
-                            *direction == opposite_backend_direction(port.direction)
-                                && *data_type == port.data_type
-                        })
-                        .map(|(full_name, _)| BackendExternalPortState {
-                            full_name: full_name.clone(),
-                            eligible: true,
-                            connected: state.connected.contains(&(*port_id, full_name.clone())),
-                        })
-                        .collect();
+                .map(|(id, (direction, data_type))| {
                     (
-                        *port_id,
-                        BackendPortConnectionState {
-                            port: port.clone(),
-                            candidates,
+                        id.clone(),
+                        BackendHostPortDescriptor {
+                            id: id.clone(),
+                            name: id.clone(),
+                            data_type: *data_type,
+                            direction: *direction,
                         },
                     )
+                })
+                .collect();
+            let confirmed_links = state
+                .connected
+                .iter()
+                .map(|(application_port_id, host_port_id)| BackendConfirmedLink {
+                    application_port_id: *application_port_id,
+                    host_port_id: host_port_id.clone(),
                 })
                 .collect();
             BackendConnectionSnapshot {
                 revision: state.revision,
                 available: state.available,
-                ports,
+                application_ports,
+                host_ports,
+                confirmed_links,
                 failures: std::mem::take(&mut state.failures),
             }
         })
@@ -2469,18 +2605,18 @@ impl Backend for FakeBackend {
                     .ports
                     .iter()
                     .map(|port_id| {
-                        let state = connections
-                            .ports
+                        let descriptor = connections
+                            .application_ports
                             .get(port_id)
-                            .ok_or_else(|| anyhow!("missing fake connection port"))?;
+                            .ok_or_else(|| anyhow!("missing fake application port"))?;
                         Ok(BackendSessionPort {
                             source_id: port_id.raw(),
-                            descriptor: state.port.clone(),
-                            external_connections: state
-                                .candidates
+                            descriptor: descriptor.clone(),
+                            external_connections: connections
+                                .confirmed_links
                                 .iter()
-                                .filter(|candidate| candidate.connected)
-                                .map(|candidate| candidate.full_name.clone())
+                                .filter(|link| link.application_port_id == *port_id)
+                                .map(|link| link.host_port_id.clone())
                                 .collect(),
                         })
                     })
@@ -2498,6 +2634,7 @@ impl Backend for FakeBackend {
         Ok(BackendSessionData {
             sample_rate: self.status.sample_rate,
             tracks,
+            use_legacy_browser_default_routes: false,
         })
     }
 
@@ -2783,24 +2920,17 @@ mod tests {
         assert_eq!(audio_input.data_type, BackendPortDataType::Audio);
         let snapshot = backend.poll().unwrap().connections;
         assert!(snapshot.available);
-        let candidates = &snapshot.ports[&audio_input.id].candidates;
-        assert!(candidates
-            .iter()
-            .any(|candidate| candidate.full_name == "system:capture_1"));
-        assert!(!candidates
-            .iter()
-            .any(|candidate| candidate.full_name == "system:playback_1"));
-        assert!(!candidates
-            .iter()
-            .any(|candidate| candidate.full_name == "controller:midi_out"));
-        if candidates
-            .iter()
-            .any(|candidate| candidate.full_name.starts_with("shoop:"))
-        {
-            assert!(candidates
-                .iter()
-                .any(|candidate| candidate.full_name == "shoop:connections_direct_out"));
-        }
+        assert_eq!(
+            snapshot.application_ports.get(&audio_input.id),
+            Some(audio_input)
+        );
+        assert!(snapshot.host_ports.contains_key("system:capture_1"));
+        assert!(snapshot.host_ports.contains_key("system:playback_1"));
+        assert!(snapshot.host_ports.contains_key("controller:midi_out"));
+        assert!(!snapshot
+            .host_ports
+            .keys()
+            .any(|id| id.starts_with("shoop:")));
 
         backend
             .set_port_connected(audio_input.id, "system:capture_1", true)
@@ -2809,10 +2939,10 @@ mod tests {
             .set_port_connected(audio_input.id, "system:capture_1", true)
             .unwrap();
         let snapshot = backend.poll().unwrap().connections;
-        assert!(snapshot.ports[&audio_input.id]
-            .candidates
-            .iter()
-            .any(|candidate| candidate.full_name == "system:capture_1" && candidate.connected));
+        assert!(snapshot.confirmed_links.contains(&BackendConfirmedLink {
+            application_port_id: audio_input.id,
+            host_port_id: "system:capture_1".to_owned(),
+        }));
         backend
             .set_port_connected(audio_input.id, "system:capture_1", false)
             .unwrap();
@@ -2902,15 +3032,18 @@ mod tests {
             BackendPortDataType::Audio,
         );
         control.externally_set_connected(input, "device:new_output", true);
-        assert!(backend.poll().unwrap().connections.ports[&input]
-            .candidates
-            .iter()
-            .any(|candidate| candidate.full_name == "device:new_output" && candidate.connected));
+        let snapshot = backend.poll().unwrap().connections;
+        assert!(snapshot.host_ports.contains_key("device:new_output"));
+        assert!(snapshot.confirmed_links.contains(&BackendConfirmedLink {
+            application_port_id: input,
+            host_port_id: "device:new_output".to_owned(),
+        }));
         control.remove_external_port("device:new_output");
-        assert!(!backend.poll().unwrap().connections.ports[&input]
-            .candidates
-            .iter()
-            .any(|candidate| candidate.full_name == "device:new_output"));
+        let snapshot = backend.poll().unwrap().connections;
+        assert!(!snapshot.host_ports.contains_key("device:new_output"));
+        assert!(!snapshot.confirmed_links.iter().any(|link| {
+            link.application_port_id == input && link.host_port_id == "device:new_output"
+        }));
 
         control.defer_mutations(true);
         backend
@@ -2957,8 +3090,66 @@ mod tests {
     }
 
     #[test]
+    fn empty_web_audio_host_inventory_preserves_application_ports() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(0, 0).unwrap();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "offline_device".to_owned(),
+                audio_channels: 1,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let connections = backend.poll().unwrap().connections;
+        assert!(connections.available);
+        assert!(connections.host_ports.is_empty());
+        assert!(connections.confirmed_links.is_empty());
+        assert_eq!(connections.application_ports.len(), created.ports.len());
+    }
+
+    #[test]
+    fn disconnected_web_audio_input_records_silence() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(1, 1).unwrap();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "disconnected_input".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let input_port = created
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::AudioInput)
+            .unwrap();
+        backend
+            .set_port_connected(input_port.id, "webaudio:capture_1", false)
+            .unwrap();
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Recording, None)
+            .unwrap();
+        let input = vec![0.75; 128];
+        let mut output = vec![0.0; 128];
+        assert_no_alloc::assert_no_alloc(|| {
+            backend
+                .process_audio_quantum(&input, 1, &mut output, 1, 128)
+                .unwrap();
+        });
+        backend
+            .transition_loop(created.loops[0], BackendLoopMode::Stopped, None)
+            .unwrap();
+        let recorded = backend.loop_audio_data(created.loops[0]).unwrap().unwrap();
+        assert_eq!(recorded[0].len(), 128);
+        assert!(recorded[0].iter().all(|sample| *sample == 0.0));
+    }
+
+    #[test]
     fn web_audio_backend_records_monitors_and_plays_non_zero_full_duplex_audio() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(1, 2).unwrap();
         let track = backend
             .create_direct_track(DirectTrackRequest {
                 port_name_base: "web".to_owned(),
@@ -3000,8 +3191,8 @@ mod tests {
             .unwrap();
         assert!(output.iter().any(|sample| *sample != 0.0));
         let snapshot = backend.poll().unwrap();
-        assert!(!snapshot.connections.available);
-        assert_eq!(snapshot.connections.ports.len(), 2);
+        assert!(snapshot.connections.available);
+        assert_eq!(snapshot.connections.application_ports.len(), 2);
         let status = snapshot.status;
         assert_eq!(status.callback_count, 2);
         assert_eq!(status.processed_frames, 256);
@@ -3010,8 +3201,60 @@ mod tests {
     }
 
     #[test]
+    fn web_audio_session_replacement_preserves_user_route_changes_over_defaults() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(1, 2).unwrap();
+        let created = backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "route_session".to_owned(),
+                audio_channels: 1,
+                midi: false,
+                initial_loops: 1,
+            })
+            .unwrap();
+        let output = created
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::AudioOutput)
+            .unwrap();
+        backend
+            .set_port_connected(output.id, "webaudio:destination_1", false)
+            .unwrap();
+        let captured = backend.capture_session().unwrap();
+        let replacement = backend.replace_session(&captured).unwrap();
+        let replaced_output = replacement.ports[&output.id.raw()];
+        let links = backend.poll().unwrap().connections.confirmed_links;
+        assert!(!links.contains(&BackendConfirmedLink {
+            application_port_id: replaced_output,
+            host_port_id: "webaudio:destination_1".to_owned(),
+        }));
+        assert!(links.contains(&BackendConfirmedLink {
+            application_port_id: replaced_output,
+            host_port_id: "webaudio:destination_2".to_owned(),
+        }));
+
+        let mut legacy = captured;
+        legacy.use_legacy_browser_default_routes = true;
+        for track in &mut legacy.tracks {
+            for port in &mut track.ports {
+                port.external_connections.clear();
+            }
+        }
+        let migrated = backend.replace_session(&legacy).unwrap();
+        let migrated_output = migrated.ports[&output.id.raw()];
+        let links = backend.poll().unwrap().connections.confirmed_links;
+        assert!(WEB_AUDIO_DESTINATION_PORTS.iter().all(|host| {
+            links.contains(&BackendConfirmedLink {
+                application_port_id: migrated_output,
+                host_port_id: (*host).to_owned(),
+            })
+        }));
+    }
+
+    #[test]
     fn web_audio_playback_deterministically_mixes_more_loop_channels_than_device_channels() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(0, 2).unwrap();
         backend
             .create_direct_track(DirectTrackRequest {
                 port_name_base: "wide_web".to_owned(),
@@ -3048,6 +3291,7 @@ mod tests {
     #[test]
     fn web_audio_grab_adopts_recent_input_without_growing_in_the_callback() {
         let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(1, 2).unwrap();
         let sync = backend
             .create_direct_track(DirectTrackRequest {
                 port_name_base: "grab_sync".to_owned(),

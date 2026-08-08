@@ -228,6 +228,8 @@ try {
     status: document.getElementById('runtime_status')?.textContent,
     revision: Number(document.getElementById('runtime_status')?.getAttribute('data-engine-revision')),
     selfTest: document.getElementById('runtime_status')?.getAttribute('data-self-test'),
+    selfTestError: document.getElementById('runtime_status')?.getAttribute('data-self-test-error'),
+    selfTestNonzeroIo: document.getElementById('runtime_status')?.getAttribute('data-self-test-nonzero-io'),
     settingsTest: document.getElementById('runtime_status')?.getAttribute('data-settings-self-test'),
     settingsChannels: Number(document.getElementById('runtime_status')?.getAttribute('data-settings-channels')),
     settingsMidi: document.getElementById('runtime_status')?.getAttribute('data-settings-midi'),
@@ -247,6 +249,12 @@ try {
     memoryGrowths: Number(document.getElementById('runtime_status')?.getAttribute('data-memory-growths')),
     overflows: Number(document.getElementById('runtime_status')?.getAttribute('data-command-overflows')),
     webMidi: document.getElementById('runtime_status')?.getAttribute('data-web-midi'),
+    applicationPorts: Number(document.getElementById('runtime_status')?.getAttribute('data-application-ports')),
+    hostPorts: Number(document.getElementById('runtime_status')?.getAttribute('data-host-ports')),
+    confirmedLinks: Number(document.getElementById('runtime_status')?.getAttribute('data-confirmed-links')),
+    selectedLoops: Number(document.getElementById('runtime_status')?.getAttribute('data-selected-loops')),
+    luaControlPorts: Number(document.getElementById('runtime_status')?.getAttribute('data-lua-control-ports')),
+    midiHostPorts: Number(document.getElementById('runtime_status')?.getAttribute('data-midi-host-ports')),
     waveformSamples: Number(document.getElementById('runtime_status')?.getAttribute('data-waveform-samples')),
     waveformPeak: Number(document.getElementById('runtime_status')?.getAttribute('data-waveform-peak')),
     waveformLoading: document.getElementById('runtime_status')?.getAttribute('data-waveform-loading'),
@@ -261,7 +269,9 @@ try {
       candidate => candidate.settingsTest === 'unavailable'
         && candidate.settingsRecovery === 'true'
         && candidate.settingsChannels === 2
-        && candidate.settingsMidi === 'false',
+        && candidate.settingsMidi === 'false'
+        && candidate.luaControlPorts === 0
+        && candidate.midiHostPorts === 0,
       'unavailable browser storage was not reported with defaults',
     );
     console.log(`${selfContained ? 'direct-file' : 'hosted'} unavailable browser settings storage passed`);
@@ -282,7 +292,9 @@ try {
     state = await waitFor(
       candidate => candidate.settingsTest === 'passed'
         && candidate.settingsChannels === 6
-        && candidate.settingsMidi === 'true',
+        && candidate.settingsMidi === 'true'
+        && candidate.luaControlPorts === 2
+        && candidate.midiHostPorts === 0,
       'browser settings reload did not reach the Add Track consumer',
     );
 
@@ -299,7 +311,9 @@ try {
       candidate => candidate.settingsTest === 'rejected'
         && candidate.settingsRecovery === 'true'
         && candidate.settingsChannels === 2
-        && candidate.settingsMidi === 'false',
+        && candidate.settingsMidi === 'false'
+        && candidate.luaControlPorts === 0
+        && candidate.midiHostPorts === 0,
       'future browser settings were not rejected transactionally',
     );
     const retained = await evaluate(`localStorage.getItem('${settingsKey}')`);
@@ -323,7 +337,9 @@ try {
       candidate => candidate.settingsTest === 'invalid'
         && candidate.settingsRecovery === 'false'
         && candidate.settingsChannels === 2
-        && candidate.settingsMidi === 'false',
+        && candidate.settingsMidi === 'false'
+        && candidate.luaControlPorts === 0
+        && candidate.midiHostPorts === 0,
       'invalid known browser setting did not default with a diagnostic',
     );
 
@@ -334,7 +350,9 @@ try {
     state = await waitFor(
       candidate => candidate.settingsTest === 'save-failed'
         && candidate.settingsChannels === 2
-        && candidate.settingsMidi === 'false',
+        && candidate.settingsMidi === 'false'
+        && candidate.luaControlPorts === 0
+        && candidate.midiHostPorts === 0,
       'failed browser save changed active settings',
     );
     if (await evaluate(`localStorage.getItem('${settingsKey}')`) !== null) {
@@ -393,7 +411,7 @@ try {
     if (stress && state.callbacks < 1_500) {
       throw new Error(`stress recording ended too early: ${JSON.stringify(state)}`);
     }
-    if (!(state.inputPeak > 0 && state.outputPeak > 0)) {
+    if (state.selfTestNonzeroIo !== 'true') {
       throw new Error(`non-zero I/O evidence is missing: ${JSON.stringify(state)}`);
     }
     if (!(state.sampleRate > 0 && state.quantum === 128 && state.captureChannels > 0)) {
@@ -414,6 +432,27 @@ try {
     if (!(state.canvasWidth > 0 && state.canvasHeight > 0)) {
       throw new Error(`canvas was not sized: ${JSON.stringify(state)}`);
     }
+    if (!(state.applicationPorts > 0 && state.hostPorts >= 4 && state.confirmedLinks > 0)) {
+      throw new Error(`normalized browser port truth is missing: ${JSON.stringify(state)}`);
+    }
+    await evaluate("document.getElementById('shoop_canvas').focus()");
+    await call('Input.dispatchKeyEvent', {
+      type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27,
+    });
+    await call('Input.dispatchKeyEvent', {
+      type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27,
+    });
+    await waitFor(candidate => candidate.selectedLoops === 0, 'keyboard script did not clear selection');
+    await call('Input.dispatchKeyEvent', {
+      type: 'keyDown', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40,
+    });
+    await call('Input.dispatchKeyEvent', {
+      type: 'keyUp', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40,
+    });
+    state = await waitFor(
+      candidate => candidate.selectedLoops > 0,
+      'browser key event did not drive authoritative keyboard.lua selection',
+    );
     const firstCallbacks = state.callbacks;
     const firstGeneration = state.generation;
     await evaluate("document.getElementById('enable_audio').click()");

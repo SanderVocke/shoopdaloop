@@ -157,7 +157,6 @@ impl SettingsManager {
         self.record_failure(message.into());
     }
 
-    #[cfg(any(not(target_arch = "wasm32"), test))]
     pub fn active(&self) -> Arc<SettingsSnapshot> {
         Arc::clone(&self.active)
     }

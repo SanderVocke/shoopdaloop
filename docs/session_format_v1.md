@@ -19,7 +19,7 @@ This document freezes the first persistence format for the pure-egui application
 
 `manifest.json` uses `format: "shoop-session"` and version `{ major: 1, minor: 0 }`. It contains:
 
-- writer application version and source sample rate;
+- writer application version, source sample rate, and defaultable `connection_model_version`;
 - global performance controls;
 - ordered sync/main track groups;
 - tracks, loops, channels, ports, buses, global ports, internal links, and external autoconnect names;
@@ -86,6 +86,6 @@ Default archive limits are 1,000,000 entries and 16 GiB total declared uncompres
 
 Malformed paths, duplicate entries, unknown/undeclared payloads, count/size overflow, CRC/SHA mismatch, unsupported version/capability, and interrupted staged replacement fail without publishing a partial session. Retry by correcting/selecting another file. Cancellation before commit leaves the prior model/backend mapping intact. A save request made during recording/replacement is explicitly rejected until content settles; playing does not block saving and is not transitioned.
 
-The current application can instantiate direct sync/main track topology. Deferred buses, dry/wet tracks, composites, scripts, MIDI control, settings, and Carla state are preserved and validated by the codec but cause a capability error if runtime instantiation would be required. Carla `internal_state` and captured FX-state strings are opaque and byte-for-byte significant.
+The current egui application can instantiate direct sync/main track topology and source-bearing session scripts on native and browser targets. Script source is syntax-checked before commit, activated only after the shared session replacement commits, and captured exactly on save. Version-1 documents now write `connection_model_version: 1`; a missing/zero value identifies a pre-normalized document. On browser load only, that marker migrates the former implicit Web Audio mapping to explicit default routes. New documents persist exact confirmed host IDs, including intentional disconnections, so session replacement removes startup defaults before restoring saved links. Deferred buses, dry/wet tracks, generic MIDI-control configuration, session-local settings, and Carla state are preserved and validated by the codec but cause a capability error if runtime instantiation would be required. Carla `internal_state` and captured FX-state strings are opaque and byte-for-byte significant.
 
 QML-era `.shl`, `session.1`, tar/JSON/FLAC archives, and JSON `.smf` are not sniffed or migrated. They produce an unsupported-format error and leave the running session unchanged.
