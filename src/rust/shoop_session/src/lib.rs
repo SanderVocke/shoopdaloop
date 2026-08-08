@@ -121,6 +121,7 @@ mod tests {
         });
         let document = SessionDocument {
             sample_rate,
+            connection_model_version: CONNECTION_MODEL_VERSION,
             global: GlobalControlsDocument {
                 default_recording_action: RecordingActionDocument::Grab,
                 play_after_record: true,

@@ -89,6 +89,12 @@ impl DummyExternalConnections {
         self.connections.len()
     }
 
+    pub fn is_connected(&self, port: PortId, external: &str) -> bool {
+        self.connections
+            .iter()
+            .any(|candidate| candidate.0 == port && candidate.1 == external)
+    }
+
     /// All external port names currently connected to `port`.
     pub fn connections_for(&self, port: PortId) -> Vec<String> {
         self.connections

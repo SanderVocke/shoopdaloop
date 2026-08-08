@@ -37,6 +37,25 @@ entity_id!(ChannelId);
 entity_id!(TaskId);
 entity_id!(ScriptId);
 
+#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct HostPortId(String);
+
+impl HostPortId {
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for HostPortId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
 pub const MIN_TRACK_GAIN_DB: f32 = -30.0;
 pub const MAX_TRACK_GAIN_DB: f32 = 20.0;
 
@@ -291,24 +310,53 @@ impl PortRole {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ExternalPortConnectionState {
-    pub full_name: String,
-    pub eligible: bool,
-    pub connected: bool,
-    pub pending: Option<bool>,
-    pub error: Option<String>,
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum TrackPortOwnerKind {
+    Sync,
+    Main,
+}
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum ApplicationPortOwner {
+    Track {
+        track_id: TrackId,
+        kind: TrackPortOwnerKind,
+    },
+    LuaControl {
+        script_id: ScriptId,
+        registration: u32,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct LocalPortConnectionState {
+pub struct ApplicationPortState {
     pub id: PortId,
-    pub track_id: TrackId,
+    pub owner: ApplicationPortOwner,
     pub name: String,
     pub data_type: PortDataType,
     pub direction: PortDirection,
     pub role: PortRole,
-    pub candidates: Arc<[ExternalPortConnectionState]>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HostPortState {
+    pub id: HostPortId,
+    pub name: String,
+    pub data_type: PortDataType,
+    pub direction: PortDirection,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConfirmedConnectionState {
+    pub application_port_id: PortId,
+    pub host_port_id: HostPortId,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PendingConnectionState {
+    pub application_port_id: PortId,
+    pub host_port_id: HostPortId,
+    pub desired_connected: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -335,7 +383,10 @@ pub struct ConnectionViewState {
     pub revision: u64,
     pub loading: bool,
     pub backend_available: bool,
-    pub ports: Arc<[LocalPortConnectionState]>,
+    pub application_ports: Arc<[ApplicationPortState]>,
+    pub host_ports: Arc<[HostPortState]>,
+    pub confirmed_links: Arc<[ConfirmedConnectionState]>,
+    pub pending_links: Arc<[PendingConnectionState]>,
     pub errors: Arc<[ConnectionErrorState]>,
 }
 
@@ -345,7 +396,10 @@ impl Default for ConnectionViewState {
             revision: 0,
             loading: true,
             backend_available: false,
-            ports: Arc::from([]),
+            application_ports: Arc::from([]),
+            host_ports: Arc::from([]),
+            confirmed_links: Arc::from([]),
+            pending_links: Arc::from([]),
             errors: Arc::from([]),
         }
     }
@@ -683,7 +737,7 @@ pub enum AppIntent {
     },
     SetPortConnected {
         port_id: PortId,
-        external_port: String,
+        host_port_id: HostPortId,
         connected: bool,
     },
     RequestSaveSession,
@@ -849,33 +903,46 @@ mod tests {
         let port_id = PortId::from_raw(17);
         let track_id = TrackId::from_raw(3);
         let endpoint = "client:name:with:colons".to_owned();
-        let port = LocalPortConnectionState {
+        let port = ApplicationPortState {
             id: port_id,
-            track_id,
+            owner: ApplicationPortOwner::Track {
+                track_id,
+                kind: TrackPortOwnerKind::Main,
+            },
             name: "Track direct in".to_owned(),
             data_type: PortDataType::Audio,
             direction: PortDirection::Input,
             role: PortRole::AudioInput,
-            candidates: Arc::from([ExternalPortConnectionState {
-                full_name: endpoint.clone(),
-                eligible: true,
-                connected: false,
-                pending: Some(true),
-                error: None,
-            }]),
         };
-        assert_eq!(port.track_id, track_id);
+        let host = HostPortState {
+            id: HostPortId::new(endpoint.clone()),
+            name: endpoint.clone(),
+            data_type: PortDataType::Audio,
+            direction: PortDirection::Output,
+        };
+        let pending = PendingConnectionState {
+            application_port_id: port_id,
+            host_port_id: host.id.clone(),
+            desired_connected: true,
+        };
+        assert_eq!(
+            port.owner,
+            ApplicationPortOwner::Track {
+                track_id,
+                kind: TrackPortOwnerKind::Main,
+            }
+        );
         assert_eq!(port.role, PortRole::AudioInput);
-        assert_eq!(port.candidates[0].full_name, endpoint);
+        assert_eq!(pending.host_port_id.as_str(), endpoint);
         assert_eq!(
             AppIntent::SetPortConnected {
                 port_id,
-                external_port: endpoint.clone(),
+                host_port_id: HostPortId::new(endpoint.clone()),
                 connected: true,
             },
             AppIntent::SetPortConnected {
                 port_id,
-                external_port: endpoint,
+                host_port_id: HostPortId::new(endpoint),
                 connected: true,
             }
         );
@@ -895,13 +962,16 @@ mod tests {
 
     #[test]
     fn connection_snapshots_are_structurally_shared_and_independent() {
-        let ports: Arc<[LocalPortConnectionState]> = Arc::from([]);
+        let ports: Arc<[ApplicationPortState]> = Arc::from([]);
         let first = AppSnapshot {
             connections: Arc::new(ConnectionViewState {
                 revision: 4,
                 loading: false,
                 backend_available: true,
-                ports: Arc::clone(&ports),
+                application_ports: Arc::clone(&ports),
+                host_ports: Arc::from([]),
+                confirmed_links: Arc::from([]),
+                pending_links: Arc::from([]),
                 errors: Arc::from([]),
             }),
             ..Default::default()
@@ -910,8 +980,8 @@ mod tests {
         second.revision = 9;
         assert!(Arc::ptr_eq(&first.connections, &second.connections));
         assert!(Arc::ptr_eq(
-            &first.connections.ports,
-            &second.connections.ports
+            &first.connections.application_ports,
+            &second.connections.application_ports
         ));
         assert_eq!(first.revision, 0);
         assert_eq!(first.connections.revision, 4);

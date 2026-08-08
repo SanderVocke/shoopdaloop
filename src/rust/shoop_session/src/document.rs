@@ -7,6 +7,7 @@ pub const AUDIO_FORMAT: &str = "shoop-audio";
 pub const FORMAT_MAJOR: u16 = 1;
 pub const FORMAT_MINOR: u16 = 0;
 pub const DOCUMENT_VERSION: u16 = 1;
+pub const CONNECTION_MODEL_VERSION: u16 = 1;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct FormatVersion {
@@ -42,6 +43,9 @@ impl SessionBundle {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SessionDocument {
     pub sample_rate: u32,
+    /// Zero identifies pre-normalized documents and enables target-specific migration.
+    #[serde(default)]
+    pub connection_model_version: u16,
     pub global: GlobalControlsDocument,
     pub track_groups: Vec<TrackGroupDocument>,
     pub selected_loop_ids: Vec<u64>,
@@ -58,6 +62,7 @@ impl SessionDocument {
     pub fn empty(sample_rate: u32) -> Self {
         Self {
             sample_rate,
+            connection_model_version: CONNECTION_MODEL_VERSION,
             global: GlobalControlsDocument::default(),
             track_groups: Vec::new(),
             selected_loop_ids: Vec::new(),

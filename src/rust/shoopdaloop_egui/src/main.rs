@@ -1502,7 +1502,8 @@ mod tests {
     use std::thread;
 
     use shoop_egui::{
-        DirectTrackSpec, LoopAction, LoopMode, PortRole, SelectionModifiers, TrackAction,
+        ApplicationPortOwner, DirectTrackSpec, HostPortId, LoopAction, LoopMode, PortRole,
+        SelectionModifiers, TrackAction,
     };
 
     use super::*;
@@ -1793,10 +1794,15 @@ mod tests {
 
         let snapshot = loop {
             let snapshot = app.runtime.snapshot();
-            if snapshot.connections.ports.iter().any(|port| {
-                port.track_id == snapshot.tracks[1].id
-                    && port.role == PortRole::MidiInput
-                    && !port.candidates.is_empty()
+            if snapshot.connections.application_ports.iter().any(|port| {
+                matches!(
+                    port.owner,
+                    ApplicationPortOwner::Track { track_id, .. }
+                        if track_id == snapshot.tracks[1].id
+                ) && port.role == PortRole::MidiInput
+                    && snapshot.connections.host_ports.iter().any(|host| {
+                        host.data_type == port.data_type && host.direction != port.direction
+                    })
             }) {
                 break snapshot;
             }
@@ -1824,9 +1830,15 @@ mod tests {
         .map(|(track_id, role, endpoint)| {
             let port_id = snapshot
                 .connections
-                .ports
+                .application_ports
                 .iter()
-                .find(|port| port.track_id == track_id && port.role == role)
+                .find(|port| {
+                    matches!(
+                        port.owner,
+                        ApplicationPortOwner::Track { track_id: owner, .. }
+                            if owner == track_id
+                    ) && port.role == role
+                })
                 .unwrap()
                 .id;
             (port_id, endpoint)
@@ -1836,7 +1848,7 @@ mod tests {
             app.runtime
                 .dispatch(AppIntent::SetPortConnected {
                     port_id: *port_id,
-                    external_port: (*endpoint).to_owned(),
+                    host_port_id: HostPortId::new(*endpoint),
                     connected: true,
                 })
                 .unwrap();
@@ -1845,17 +1857,11 @@ mod tests {
         loop {
             let snapshot = app.runtime.snapshot();
             let all_connected = connection_targets.iter().all(|(port_id, endpoint)| {
-                snapshot
-                    .connections
-                    .ports
-                    .iter()
-                    .find(|port| port.id == *port_id)
-                    .and_then(|port| {
-                        port.candidates
-                            .iter()
-                            .find(|candidate| candidate.full_name == *endpoint)
-                    })
-                    .is_some_and(|candidate| candidate.connected && candidate.pending.is_none())
+                snapshot.connections.confirmed_links.iter().any(|link| {
+                    link.application_port_id == *port_id && link.host_port_id.as_str() == *endpoint
+                }) && !snapshot.connections.pending_links.iter().any(|link| {
+                    link.application_port_id == *port_id && link.host_port_id.as_str() == *endpoint
+                })
             });
             if all_connected {
                 break;
@@ -1866,7 +1872,7 @@ mod tests {
         app.runtime
             .dispatch(AppIntent::SetPortConnected {
                 port_id: connection_targets[1].0,
-                external_port: connection_targets[1].1.to_owned(),
+                host_port_id: HostPortId::new(connection_targets[1].1),
                 connected: false,
             })
             .unwrap();

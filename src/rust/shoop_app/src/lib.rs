@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::TryRecvError;
@@ -9,13 +9,14 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
 use shoop_app_api::{
-    AppIntent, AppNotification, AppSnapshot, AudioChannelMappingState, AudioChannelSelectionState,
-    AudioDriverState, ChannelId, ConnectionErrorKind, ConnectionErrorState, ConnectionViewState,
-    DirectTrackSpec, ExternalPortConnectionState, GlobalControlAction, IoTaskKind, IoTaskState,
-    IoTaskStatus, KeyEvent, KeyEventType, LocalPortConnectionState, LoopAction,
-    LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, NotificationLevel,
-    PortDataType, PortDirection, PortId, PortRole, SampleRateWarning, ScriptId, ScriptKind,
-    ScriptingState, StatusState, TaskId, TrackAction, TrackControlState, TrackId, TrackState,
+    AppIntent, AppNotification, AppSnapshot, ApplicationPortOwner, ApplicationPortState,
+    AudioChannelMappingState, AudioChannelSelectionState, AudioDriverState, ChannelId,
+    ConfirmedConnectionState, ConnectionErrorKind, ConnectionErrorState, ConnectionViewState,
+    DirectTrackSpec, GlobalControlAction, HostPortId, HostPortState, IoTaskKind, IoTaskState,
+    IoTaskStatus, KeyEvent, KeyEventType, LoopAction, LoopAudioExportFormat, LoopDetailsState,
+    LoopId, LoopMode, LoopState, NotificationLevel, PendingConnectionState, PortDataType,
+    PortDirection, PortId, PortRole, SampleRateWarning, ScriptId, ScriptKind, ScriptingState,
+    StatusState, TaskId, TrackAction, TrackControlState, TrackId, TrackPortOwnerKind, TrackState,
     WaveformChannelState,
 };
 use shoop_backend::{
@@ -73,13 +74,14 @@ impl ApplicationHandle {
             Ok(()) => Ok(()),
             Err(TrySendError::Full(ApplicationMessage::Intent(AppIntent::SetPortConnected {
                 port_id,
-                external_port,
+                host_port_id,
                 ..
             }))) => {
                 *self
                     .saturated_connection
                     .lock()
-                    .unwrap_or_else(|error| error.into_inner()) = Some((port_id, external_port));
+                    .unwrap_or_else(|error| error.into_inner()) =
+                    Some((port_id, host_port_id.to_string()));
                 Err(DispatchError::Full)
             }
             Err(error) => Err(DispatchError::from(error)),
@@ -279,12 +281,12 @@ impl CooperativeApplicationRuntime {
         if self.commands.len() >= COMMAND_CAPACITY {
             if let AppIntent::SetPortConnected {
                 port_id,
-                external_port,
+                host_port_id,
                 ..
             } = intent
             {
                 self.model
-                    .report_connection_saturation(port_id, external_port);
+                    .report_connection_saturation(port_id, host_port_id.to_string());
                 self.snapshot = Arc::new(self.model.snapshot());
             }
             return Err(DispatchError::Full);
@@ -400,6 +402,8 @@ struct ApplicationModel {
     tracks: Vec<TrackModel>,
     loops: BTreeMap<LoopId, LoopModel>,
     connection_ports: BTreeMap<PortId, ConnectionPortModel>,
+    host_ports: BTreeMap<String, HostPortState>,
+    confirmed_connections: BTreeSet<(PortId, String)>,
     pending_connections: BTreeMap<(PortId, String), PendingConnection>,
     connection_errors: Vec<ConnectionErrorState>,
     connection_revision: u64,
@@ -592,6 +596,8 @@ impl ApplicationModel {
             }],
             loops: BTreeMap::from([(loop_id, loop_model)]),
             connection_ports,
+            host_ports: BTreeMap::new(),
+            confirmed_connections: BTreeSet::new(),
             pending_connections: BTreeMap::new(),
             connection_errors: Vec::new(),
             connection_revision: 1,
@@ -670,9 +676,9 @@ impl ApplicationModel {
             AppIntent::ForgetScript { script_id } => self.forget_script(script_id),
             AppIntent::SetPortConnected {
                 port_id,
-                external_port,
+                host_port_id,
                 connected,
-            } => self.set_port_connected(backend, port_id, external_port, connected),
+            } => self.set_port_connected(backend, port_id, host_port_id.to_string(), connected),
             AppIntent::RequestSaveSession => self.begin_save_session(),
             AppIntent::RequestLoadSessionPicker
             | AppIntent::RequestLoopAudioImportPicker { .. }
@@ -3066,98 +3072,137 @@ impl ApplicationModel {
                 message: failure.message,
             });
         }
+        self.host_ports = snapshot
+            .host_ports
+            .values()
+            .map(|host| {
+                (
+                    host.id.clone(),
+                    HostPortState {
+                        id: HostPortId::new(host.id.clone()),
+                        name: host.name.clone(),
+                        data_type: map_port_data_type(host.data_type),
+                        direction: map_port_direction(host.direction),
+                    },
+                )
+            })
+            .collect();
+        self.confirmed_connections = snapshot
+            .confirmed_links
+            .iter()
+            .filter_map(|link| {
+                self.connection_ports
+                    .values()
+                    .find(|port| port.backend_id == link.application_port_id)
+                    .map(|port| (port.id, link.host_port_id.clone()))
+            })
+            .collect();
         for port in self.connection_ports.values_mut() {
-            let Some(observed) = snapshot.ports.get(&port.backend_id) else {
-                port.candidates.clear();
-                continue;
+            let backend_present = snapshot.application_ports.contains_key(&port.backend_id);
+            port.candidates = if backend_present {
+                self.host_ports
+                    .iter()
+                    .filter(|(_, host)| {
+                        host.data_type == port.data_type && host.direction != port.direction
+                    })
+                    .map(|(host_id, _)| {
+                        (
+                            host_id.clone(),
+                            (
+                                true,
+                                self.confirmed_connections
+                                    .contains(&(port.id, host_id.clone())),
+                            ),
+                        )
+                    })
+                    .collect()
+            } else {
+                BTreeMap::new()
             };
-            port.candidates = observed
-                .candidates
-                .iter()
-                .map(|candidate| {
-                    (
-                        candidate.full_name.clone(),
-                        (candidate.eligible, candidate.connected),
-                    )
-                })
-                .collect();
         }
         let pending_keys: Vec<_> = self.pending_connections.keys().cloned().collect();
-        for (port_id, external_port) in pending_keys {
-            let key = (port_id, external_port.clone());
-            let observed = self
-                .connection_ports
-                .get(&port_id)
-                .and_then(|port| port.candidates.get(&external_port))
-                .copied();
+        for (port_id, host_port_id) in pending_keys {
+            let key = (port_id, host_port_id.clone());
+            let host_present = self.host_ports.contains_key(&host_port_id);
+            let connected = self
+                .confirmed_connections
+                .contains(&(port_id, host_port_id.clone()));
             let desired = self.pending_connections[&key].desired_connected;
-            match observed {
-                Some((true, connected)) if connected == desired => {
-                    self.pending_connections.remove(&key);
-                }
-                None => {
-                    self.pending_connections.remove(&key);
-                    self.push_connection_error(ConnectionErrorState {
-                        port_id: Some(port_id),
-                        external_port: Some(external_port.clone()),
-                        kind: ConnectionErrorKind::EndpointUnavailable,
-                        message: format!("external endpoint disappeared: {external_port}"),
-                    });
-                }
-                _ => {}
+            if host_present && connected == desired {
+                self.pending_connections.remove(&key);
+            } else if !host_present {
+                self.pending_connections.remove(&key);
+                self.push_connection_error(ConnectionErrorState {
+                    port_id: Some(port_id),
+                    external_port: Some(host_port_id.clone()),
+                    kind: ConnectionErrorKind::EndpointUnavailable,
+                    message: format!("host endpoint disappeared: {host_port_id}"),
+                });
             }
         }
         self.rebuild_connection_view();
     }
 
     fn rebuild_connection_view(&mut self) {
-        let ports: Arc<[LocalPortConnectionState]> = self
+        let application_ports: Arc<[ApplicationPortState]> = self
             .connection_ports
             .values()
             .map(|port| {
-                let candidates = port
-                    .candidates
+                let is_sync = self
+                    .tracks
                     .iter()
-                    .map(|(full_name, (eligible, connected))| {
-                        let pending = self
-                            .pending_connections
-                            .get(&(port.id, full_name.clone()))
-                            .map(|pending| pending.desired_connected);
-                        let error = self
-                            .connection_errors
-                            .iter()
-                            .rev()
-                            .find(|error| {
-                                error.port_id == Some(port.id)
-                                    && error.external_port.as_deref() == Some(full_name.as_str())
-                            })
-                            .map(|error| error.message.clone());
-                        ExternalPortConnectionState {
-                            full_name: full_name.clone(),
-                            eligible: *eligible,
-                            connected: *connected,
-                            pending,
-                            error,
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .into();
-                LocalPortConnectionState {
+                    .find(|track| track.id == port.track_id)
+                    .is_some_and(|track| track.is_sync);
+                ApplicationPortState {
                     id: port.id,
-                    track_id: port.track_id,
+                    owner: ApplicationPortOwner::Track {
+                        track_id: port.track_id,
+                        kind: if is_sync {
+                            TrackPortOwnerKind::Sync
+                        } else {
+                            TrackPortOwnerKind::Main
+                        },
+                    },
                     name: port.name.clone(),
                     data_type: port.data_type,
                     direction: port.direction,
                     role: port.role,
-                    candidates,
                 }
             })
+            .collect::<Vec<_>>()
+            .into();
+        let host_ports: Arc<[HostPortState]> =
+            self.host_ports.values().cloned().collect::<Vec<_>>().into();
+        let confirmed_links: Arc<[ConfirmedConnectionState]> = self
+            .confirmed_connections
+            .iter()
+            .map(
+                |(application_port_id, host_port_id)| ConfirmedConnectionState {
+                    application_port_id: *application_port_id,
+                    host_port_id: HostPortId::new(host_port_id.clone()),
+                },
+            )
+            .collect::<Vec<_>>()
+            .into();
+        let pending_links: Arc<[PendingConnectionState]> = self
+            .pending_connections
+            .iter()
+            .map(
+                |((application_port_id, host_port_id), pending)| PendingConnectionState {
+                    application_port_id: *application_port_id,
+                    host_port_id: HostPortId::new(host_port_id.clone()),
+                    desired_connected: pending.desired_connected,
+                },
+            )
             .collect::<Vec<_>>()
             .into();
         let errors: Arc<[ConnectionErrorState]> = self.connection_errors.clone().into();
         let changed = self.connection_view.loading
             || self.connection_view.backend_available != self.connection_backend_available
-            || self.connection_view.ports.as_ref() != ports.as_ref()
+            || self.connection_view.application_ports.as_ref() != application_ports.as_ref()
+            || self.connection_view.host_ports.as_ref() != host_ports.as_ref()
+            || self.connection_view.confirmed_links.as_ref() != confirmed_links.as_ref()
+            || self.connection_view.pending_links.as_ref() != pending_links.as_ref()
             || self.connection_view.errors.as_ref() != errors.as_ref();
         if changed {
             self.connection_revision = self.connection_revision.wrapping_add(1);
@@ -3165,7 +3210,10 @@ impl ApplicationModel {
                 revision: self.connection_revision,
                 loading: false,
                 backend_available: self.connection_backend_available,
-                ports,
+                application_ports,
+                host_ports,
+                confirmed_links,
+                pending_links,
                 errors,
             });
         }
@@ -3401,6 +3449,7 @@ impl ApplicationModel {
         }
         let document = SessionDocument {
             sample_rate: capture.sample_rate,
+            connection_model_version: shoop_session::CONNECTION_MODEL_VERSION,
             global: GlobalControlsDocument {
                 default_recording_action: match self.global.default_recording_action {
                     shoop_app_api::DefaultRecordingAction::Record => {
@@ -4521,6 +4570,8 @@ fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionDat
     Ok(BackendSessionData {
         sample_rate: bundle.document.sample_rate,
         tracks,
+        use_legacy_browser_default_routes: cfg!(target_arch = "wasm32")
+            && bundle.document.connection_model_version == 0,
     })
 }
 
@@ -4601,6 +4652,20 @@ fn backend_port_role(value: PortRoleDocument) -> BackendPortRole {
         PortRoleDocument::MidiOutput => BackendPortRole::MidiOutput,
         PortRoleDocument::MidiSend => BackendPortRole::MidiSend,
         PortRoleDocument::Internal => BackendPortRole::AudioInput,
+    }
+}
+
+fn map_port_data_type(value: BackendPortDataType) -> PortDataType {
+    match value {
+        BackendPortDataType::Audio => PortDataType::Audio,
+        BackendPortDataType::Midi => PortDataType::Midi,
+    }
+}
+
+fn map_port_direction(value: BackendPortDirection) -> PortDirection {
+    match value {
+        BackendPortDirection::Input => PortDirection::Input,
+        BackendPortDirection::Output => PortDirection::Output,
     }
 }
 
@@ -5859,9 +5924,13 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert_eq!(snapshot.tracks.len(), 1);
         assert!(snapshot
             .connections
-            .ports
+            .application_ports
             .iter()
-            .all(|port| port.track_id == snapshot.tracks[0].id));
+            .all(|port| matches!(
+                port.owner,
+                ApplicationPortOwner::Track { track_id, .. }
+                    if track_id == snapshot.tracks[0].id
+            )));
         assert!(snapshot.notifications[0]
             .message
             .contains("injected track creation failure"));
@@ -6207,11 +6276,15 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         let runtime = ApplicationRuntime::start(Box::new(backend)).unwrap();
         let handle = runtime.handle();
         let initial = wait_for(&handle, |snapshot| {
-            !snapshot.connections.loading && !snapshot.connections.ports.is_empty()
+            !snapshot.connections.loading && !snapshot.connections.application_ports.is_empty()
         });
         assert!(initial.connections.backend_available);
-        assert!(initial.connections.ports.iter().all(|port| {
-            port.track_id == initial.tracks[0].id && initial.tracks[0].port_ids.contains(&port.id)
+        assert!(initial.connections.application_ports.iter().all(|port| {
+            matches!(
+                port.owner,
+                ApplicationPortOwner::Track { track_id, .. }
+                    if track_id == initial.tracks[0].id
+            ) && initial.tracks[0].port_ids.contains(&port.id)
         }));
 
         handle
@@ -6225,9 +6298,15 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             snapshot.tracks.len() == 2
                 && snapshot
                     .connections
-                    .ports
+                    .application_ports
                     .iter()
-                    .filter(|port| port.track_id == snapshot.tracks[1].id)
+                    .filter(|port| {
+                        matches!(
+                            port.owner,
+                            ApplicationPortOwner::Track { track_id, .. }
+                                if track_id == snapshot.tracks[1].id
+                        )
+                    })
                     .count()
                     == 6
         });
@@ -6235,47 +6314,58 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert_eq!(track.port_ids.len(), 6);
         let input = snapshot
             .connections
-            .ports
+            .application_ports
             .iter()
-            .find(|port| port.track_id == track.id && port.role == PortRole::AudioInput)
+            .find(|port| {
+                matches!(
+                    port.owner,
+                    ApplicationPortOwner::Track { track_id, .. } if track_id == track.id
+                ) && port.role == PortRole::AudioInput
+            })
             .unwrap();
         let input_id = input.id;
         let input_name = input.name.clone();
-        assert!(input
-            .candidates
+        assert!(snapshot
+            .connections
+            .host_ports
             .iter()
-            .any(|candidate| candidate.full_name == "system:capture_1"));
-        assert!(!input
-            .candidates
+            .any(|host| host.id.as_str() == "system:capture_1"));
+        assert!(snapshot
+            .connections
+            .host_ports
             .iter()
-            .any(|candidate| candidate.full_name == "system:playback_1"));
+            .any(|host| host.id.as_str() == "system:playback_1"));
+        assert_ne!(
+            input.direction,
+            snapshot
+                .connections
+                .host_ports
+                .iter()
+                .find(|host| host.id.as_str() == "system:capture_1")
+                .unwrap()
+                .direction
+        );
 
         control.defer_mutations(true);
         handle
             .dispatch(AppIntent::SetPortConnected {
                 port_id: input_id,
-                external_port: "system:capture_1".to_owned(),
+                host_port_id: HostPortId::new("system:capture_1"),
                 connected: true,
             })
             .unwrap();
         let pending = wait_for(&handle, |snapshot| {
-            snapshot
-                .connections
-                .ports
-                .iter()
-                .find(|port| port.id == input_id)
-                .and_then(|port| {
-                    port.candidates
-                        .iter()
-                        .find(|candidate| candidate.full_name == "system:capture_1")
-                })
-                .is_some_and(|candidate| candidate.pending == Some(true))
+            snapshot.connections.pending_links.iter().any(|link| {
+                link.application_port_id == input_id
+                    && link.host_port_id.as_str() == "system:capture_1"
+                    && link.desired_connected
+            })
         });
         let held_revision = pending.connections.revision;
         handle
             .dispatch(AppIntent::SetPortConnected {
                 port_id: input_id,
-                external_port: "system:capture_1".to_owned(),
+                host_port_id: HostPortId::new("system:capture_1"),
                 connected: true,
             })
             .unwrap();
@@ -6289,19 +6379,9 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
                         && error.kind == ConnectionErrorKind::BackendRejected
                 })
         });
-        assert!(
-            !failed
-                .connections
-                .ports
-                .iter()
-                .find(|port| port.id == input_id)
-                .unwrap()
-                .candidates
-                .iter()
-                .find(|candidate| candidate.full_name == "system:capture_1")
-                .unwrap()
-                .connected
-        );
+        assert!(!failed.connections.confirmed_links.iter().any(|link| {
+            link.application_port_id == input_id && link.host_port_id.as_str() == "system:capture_1"
+        }));
 
         control.defer_mutations(false);
         control.add_external_port(
@@ -6312,49 +6392,31 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         wait_for(&handle, |snapshot| {
             snapshot
                 .connections
-                .ports
+                .host_ports
                 .iter()
-                .find(|port| port.id == input_id)
-                .is_some_and(|port| {
-                    port.candidates
-                        .iter()
-                        .any(|candidate| candidate.full_name == "new-client:audio_source")
-                })
+                .any(|host| host.id.as_str() == "new-client:audio_source")
         });
         let backend_port = control.port_id_by_name(&input_name).unwrap();
         control.externally_set_connected(backend_port, "new-client:audio_source", true);
         wait_for(&handle, |snapshot| {
-            snapshot
-                .connections
-                .ports
-                .iter()
-                .find(|port| port.id == input_id)
-                .and_then(|port| {
-                    port.candidates
-                        .iter()
-                        .find(|candidate| candidate.full_name == "new-client:audio_source")
-                })
-                .is_some_and(|candidate| candidate.connected)
+            snapshot.connections.confirmed_links.iter().any(|link| {
+                link.application_port_id == input_id
+                    && link.host_port_id.as_str() == "new-client:audio_source"
+            })
         });
         control.remove_external_port("new-client:audio_source");
         wait_for(&handle, |snapshot| {
-            snapshot
+            !snapshot
                 .connections
-                .ports
+                .host_ports
                 .iter()
-                .find(|port| port.id == input_id)
-                .is_some_and(|port| {
-                    !port
-                        .candidates
-                        .iter()
-                        .any(|candidate| candidate.full_name == "new-client:audio_source")
-                })
+                .any(|host| host.id.as_str() == "new-client:audio_source")
         });
 
         handle
             .dispatch(AppIntent::SetPortConnected {
                 port_id: PortId::from_raw(999_999),
-                external_port: "system:capture_1".to_owned(),
+                host_port_id: HostPortId::new("system:capture_1"),
                 connected: true,
             })
             .unwrap();
@@ -6376,7 +6438,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         let snapshot = runtime.snapshot();
         let port = snapshot
             .connections
-            .ports
+            .application_ports
             .iter()
             .find(|port| port.role == PortRole::AudioInput)
             .unwrap();
@@ -6384,43 +6446,32 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         runtime
             .dispatch(AppIntent::SetPortConnected {
                 port_id,
-                external_port: "system:capture_1".to_owned(),
+                host_port_id: HostPortId::new("system:capture_1"),
                 connected: true,
             })
             .unwrap();
         runtime.tick(Duration::ZERO);
-        assert_eq!(
-            runtime
-                .snapshot()
-                .connections
-                .ports
-                .iter()
-                .find(|port| port.id == port_id)
-                .unwrap()
-                .candidates
-                .iter()
-                .find(|candidate| candidate.full_name == "system:capture_1")
-                .unwrap()
-                .pending,
-            Some(true)
-        );
+        assert!(runtime
+            .snapshot()
+            .connections
+            .pending_links
+            .iter()
+            .any(|link| {
+                link.application_port_id == port_id
+                    && link.host_port_id.as_str() == "system:capture_1"
+                    && link.desired_connected
+            }));
         runtime.tick(CONNECTION_TIMEOUT);
         let timed_out = runtime.snapshot();
         assert!(timed_out.connections.errors.iter().any(|error| {
             error.port_id == Some(port_id) && error.kind == ConnectionErrorKind::TimedOut
         }));
-        let candidate = timed_out
-            .connections
-            .ports
-            .iter()
-            .find(|port| port.id == port_id)
-            .unwrap()
-            .candidates
-            .iter()
-            .find(|candidate| candidate.full_name == "system:capture_1")
-            .unwrap();
-        assert!(!candidate.connected);
-        assert_eq!(candidate.pending, None);
+        assert!(!timed_out.connections.confirmed_links.iter().any(|link| {
+            link.application_port_id == port_id && link.host_port_id.as_str() == "system:capture_1"
+        }));
+        assert!(!timed_out.connections.pending_links.iter().any(|link| {
+            link.application_port_id == port_id && link.host_port_id.as_str() == "system:capture_1"
+        }));
     }
 
     #[test]
@@ -6433,8 +6484,8 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         let second = runtime.snapshot();
         assert!(Arc::ptr_eq(&first.connections, &second.connections));
         assert!(Arc::ptr_eq(
-            &first.connections.ports,
-            &second.connections.ports
+            &first.connections.application_ports,
+            &second.connections.application_ports
         ));
     }
 
@@ -7168,7 +7219,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert_eq!(
             runtime.dispatch(AppIntent::SetPortConnected {
                 port_id: PortId::from_raw(77),
-                external_port: "device:port".to_owned(),
+                host_port_id: HostPortId::new("device:port"),
                 connected: true,
             }),
             Err(DispatchError::Full)

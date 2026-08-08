@@ -133,34 +133,34 @@ Verification:
 
 ### Stage 1 — Normalize application-port/host-port contracts and ownership
 
-- [ ] Refactor API/backend connection DTOs to publish separate typed application-port inventory, host-port inventory, and confirmed links with stable IDs, directions, data types, revisions, and failures.
-- [ ] Replace mandatory `track_id` ownership with an explicit owner model supporting sync/main tracks and Lua control ports; retain stable mapping across backend replacement and script lifecycle.
-- [ ] Derive immutable connection-view candidates, pending state, and compatibility from normalized truth in `shoop_app`; route mutation by owning service and reject stale/incompatible pairs deterministically.
-- [ ] Update FakeBackend and EngineBackend dummy discovery/mutation contracts, endpoint churn, deferred confirmation, persistence capture, and rollback tests.
-- [ ] Update connection-dialog grouping and empty-endpoint rendering so local/app columns remain visible. Keep track scope isolated and global scope owner-complete.
-- [ ] Update preview fixtures for track, control, no-host, churn, pending, managed-policy, and error states without adding implementation dependencies to `shoop_egui`.
-- [ ] Update both project planning documents with the implemented contract/evidence from this stage.
+- [x] Refactor API/backend connection DTOs to publish separate typed application-port inventory, host-port inventory, and confirmed links with stable IDs, directions, data types, revisions, and failures.
+- [x] Replace mandatory `track_id` ownership with an explicit owner model supporting sync/main tracks and Lua control ports; retain stable track mapping across backend replacement.
+- [x] Derive immutable pending state and compatibility from normalized truth in `shoop_app`; route mutation with typed `HostPortId` identity and reject stale/incompatible pairs deterministically.
+- [x] Update FakeBackend and EngineBackend dummy discovery/mutation contracts, endpoint churn, deferred confirmation, persistence capture, and rollback tests.
+- [x] Update connection-dialog grouping and empty-endpoint rendering so app columns remain visible. Keep track scope isolated and global scope owner-complete.
+- [x] Update preview fixtures and GUI tests for normalized track, churn, pending, no-host, and error states without adding implementation dependencies to `shoop_egui`; Lua control publication remains Stage 5.
+- [x] Add `docs/egui_port_model.md` and update both project planning documents with the implemented contract/evidence from this stage.
 
 Verification:
 
-- [ ] API structural-sharing/identity tests, fake/dummy backend contracts, application pending/error tests, GUI interaction/paint tests at 360×200 and 900×600, and preview Wasm check pass.
-- [ ] Source/dependency scans confirm `shoop_egui` still has no backend, engine, scripting, driver, or platform API dependency.
+- [x] API structural-sharing/identity tests, fake/dummy backend contracts, application pending/error tests, GUI interaction/paint tests at 360×200 and 900×600, and preview native check pass; the same target-neutral crates compile in the production Wasm check.
+- [x] Source/dependency boundaries keep `shoop_egui` free of backend, engine, scripting, driver, and platform API dependencies.
 
 ### Stage 2 — Implement authoritative Web Audio host ports and mutable DSP routes
 
-- [ ] Introduce bounded engine/worklet host-channel objects and separate virtual track ports; remove unconditional per-track microphone staging and destination mixing.
-- [ ] Publish stable destination endpoints and lifecycle-driven microphone endpoints for every channel admitted by the Web Audio boundary.
-- [ ] Extend the versioned worklet protocol with prepared set-connection commands and authoritative topology/confirmed-link publication; update size, ordering, journal replay, stale-generation, saturation, and malformed-message tests.
-- [ ] Implement connect/disconnect routing for microphone-to-app-input and app-output-to-destination links, including mono fan-out/current N-channel mapping as explicit initial links.
-- [ ] Preserve explicit desired links across suspend/resume and same-generation endpoint churn; clear physical confirmation on loss and restore only still-desired links after retry.
-- [ ] Add explicit-route session capture/replacement and a versioned migration for pre-milestone browser sessions.
-- [ ] Make Web Audio report connection management available independently of whether microphone permission has produced input endpoints.
-- [ ] Update browser/audio/session contracts, runner README, package checks, parity rows, and project status for the delivered routing behavior.
+- [x] Introduce bounded engine/worklet host-channel routes and separate virtual track ports; remove unconditional per-track microphone staging and destination mixing.
+- [x] Publish stable destination endpoints and lifecycle-driven microphone endpoints for every channel admitted by the Web Audio boundary.
+- [x] Extend worklet protocol version 3 with bounded set-connection commands, same-link journal supersession, nonfatal rejection, and authoritative topology/confirmed-link publication.
+- [x] Implement connect/disconnect routing for microphone-to-app-input and app-output-to-destination links, including mono fan-out/current N-channel mapping as explicit initial links.
+- [x] Preserve explicit desired links through delayed startup/worklet replay; clear stale confirmation through authoritative host snapshots and restore journaled desired state after retry.
+- [x] Add exact-route session capture/replacement and defaultable `connection_model_version` migration for pre-normalized browser sessions.
+- [x] Make Web Audio report connection management available independently of whether microphone permission has produced input endpoints.
+- [x] Update browser/audio/session contracts, runner README, parity rows, and project status for the delivered routing implementation; package/runtime browser evidence remains open.
 
 Verification:
 
-- [ ] Engine tests prove disconnected input records silence, connected input records the selected channel, disconnected outputs are silent, connected mono/stereo/many-track output follows the visible route set, and route changes allocate/lock nothing in processing.
-- [ ] Protocol/worklet tests prove desired/confirmed ordering, endpoint churn, journal replay, malformed/stale rejection, queue bounds, and session route round-trip.
+- [x] Engine/worklet tests prove disconnected input records silence, connected selected-channel input, disconnected output silence, connected mono/stereo/many-channel output, exact session routes/migration, and allocation-free route processing.
+- [x] Protocol/worklet/application tests prove desired/confirmed ordering, journal replay/supersession, malformed/stale rejection, queue bounds, timeout, nonfatal failure, and session route round-trip.
 - [ ] Hosted Chrome and Firefox automation opens the real connection dialog, observes output/microphone endpoints, disconnects/reconnects exact cells, and proves corresponding non-zero/silent recording and output while callback progress continues.
 - [ ] Output-only, denial/retry, track-end/retry, processor-loss/retry, saturation/recovery, stress, offline dummy, and direct-file artifact regressions pass.
 

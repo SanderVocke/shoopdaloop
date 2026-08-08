@@ -8,16 +8,17 @@ use anyhow::{anyhow, Result};
 use js_sys::{Array, Object, Reflect, WebAssembly};
 use shoop_audio_protocol::{
     Command, CommandEnvelope, Event, EventEnvelope, WaveformChunk, WireGrabRequest, WireLoopMode,
-    WireSnapshot, WireTrackControl, COMMAND_CAPACITY, MAX_DEVICE_AUDIO_CHANNELS, PROTOCOL_VERSION,
-    SESSION_TRANSFER_CHUNK_BYTES, SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS,
-    WAVEFORM_CHUNK_SAMPLES,
+    WirePortDataType, WirePortDirection, WirePortRole, WireSnapshot, WireTrackControl,
+    COMMAND_CAPACITY, MAX_DEVICE_AUDIO_CHANNELS, PROTOCOL_VERSION, SESSION_TRANSFER_CHUNK_BYTES,
+    SESSION_TRANSFER_MAX_BYTES, STATUS_INTERVAL_MS, WAVEFORM_CHUNK_SAMPLES,
 };
 use shoop_backend::{
-    Backend, BackendDriverState, BackendGrabRequest, BackendLoopId, BackendLoopMode,
-    BackendLoopState, BackendPortConnectionState, BackendPortDataType, BackendPortDescriptor,
-    BackendPortDirection, BackendPortId, BackendPortRole, BackendSessionData,
-    BackendSessionReplacement, BackendSnapshot, BackendStatus, BackendTrackControl,
-    BackendTrackCreation, BackendTrackId, BackendTrackState, DirectTrackRequest,
+    Backend, BackendConfirmedLink, BackendConnectionFailure, BackendDriverState,
+    BackendGrabRequest, BackendHostPortDescriptor, BackendLoopId, BackendLoopMode,
+    BackendLoopState, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
+    BackendPortId, BackendPortRole, BackendSessionData, BackendSessionReplacement, BackendSnapshot,
+    BackendStatus, BackendTrackControl, BackendTrackCreation, BackendTrackId, BackendTrackState,
+    DirectTrackRequest,
 };
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
@@ -108,12 +109,22 @@ impl Transport {
         Ok(())
     }
 
-    fn attach(&mut self, port: MessagePort, generation: u64) -> Result<()> {
+    fn attach(
+        &mut self,
+        port: MessagePort,
+        generation: u64,
+        input_channels: u32,
+        output_channels: u32,
+    ) -> Result<()> {
         self.generation = generation;
         self.port = Some(port);
         self.inbound.clear();
         self.in_flight = 0;
         self.next_sequence = 1;
+        self.send(Command::ConfigureDeviceChannels {
+            input_channels,
+            output_channels,
+        })?;
         let journal = self.journal.clone();
         for command in journal {
             self.send(command)?;
@@ -666,6 +677,15 @@ async fn start_audio_graph(
         return Ok(());
     }
     {
+        let input_channels = stream
+            .as_ref()
+            .and_then(capture_channel_count)
+            .unwrap_or(u32::from(stream.is_some()))
+            .min(MAX_DEVICE_AUDIO_CHANNELS as u32);
+        let output_channels = context
+            .destination()
+            .channel_count()
+            .min(MAX_DEVICE_AUDIO_CHANNELS as u32);
         let mut inner = inner.borrow_mut();
         inner.stream = stream;
         inner.source = source;
@@ -677,7 +697,7 @@ async fn start_audio_graph(
         inner
             .transport
             .borrow_mut()
-            .attach(port, generation)
+            .attach(port, generation, input_channels, output_channels)
             .map_err(|error| {
                 JsValue::from_str(&format!("could not initialize worklet protocol: {error}"))
             })?;
@@ -758,6 +778,16 @@ fn js_error_message(error: &JsValue) -> String {
         .and_then(|message| message.as_string())
         .filter(|message| !message.is_empty())
         .unwrap_or_else(|| format!("browser audio startup failed: {error:?}"))
+}
+
+fn capture_channel_count(stream: &MediaStream) -> Option<u32> {
+    stream
+        .get_audio_tracks()
+        .iter()
+        .next()
+        .and_then(|value| value.dyn_into::<MediaStreamTrack>().ok())
+        .and_then(|track| track.get_settings().get_channel_count())
+        .and_then(|channels| u32::try_from(channels).ok())
 }
 
 fn publish_track_settings(stream: &MediaStream) {
@@ -1060,7 +1090,8 @@ impl WebAudioBackend {
     ) {
         self.snapshot.tracks.clear();
         self.snapshot.loops.clear();
-        self.snapshot.connections.ports.clear();
+        self.snapshot.connections.application_ports.clear();
+        self.snapshot.connections.confirmed_links.clear();
         self.waveforms.clear();
         for source_track in &session.tracks {
             let Some(created) = replacement.tracks.get(&source_track.source_id) else {
@@ -1084,13 +1115,10 @@ impl WebAudioBackend {
                 );
             }
             for (source_port, created_port) in source_track.ports.iter().zip(&created.ports) {
-                self.snapshot.connections.ports.insert(
-                    created_port.id,
-                    BackendPortConnectionState {
-                        port: created_port.clone(),
-                        candidates: Vec::new(),
-                    },
-                );
+                self.snapshot
+                    .connections
+                    .application_ports
+                    .insert(created_port.id, created_port.clone());
                 debug_assert_eq!(
                     replacement.ports.get(&source_port.source_id),
                     Some(&created_port.id)
@@ -1142,6 +1170,48 @@ impl WebAudioBackend {
             driver_state: state,
             ..Default::default()
         };
+        self.snapshot.connections.available = true;
+        self.snapshot.connections.application_ports = wire
+            .application_ports
+            .into_iter()
+            .map(|port| {
+                let id = BackendPortId::from_raw(port.id);
+                (
+                    id,
+                    BackendPortDescriptor {
+                        id,
+                        name: port.name,
+                        data_type: from_wire_data_type(port.data_type),
+                        direction: from_wire_direction(port.direction),
+                        role: from_wire_role(port.role),
+                    },
+                )
+            })
+            .collect();
+        self.snapshot.connections.host_ports = wire
+            .host_ports
+            .into_iter()
+            .map(|port| {
+                (
+                    port.id.clone(),
+                    BackendHostPortDescriptor {
+                        id: port.id,
+                        name: port.name,
+                        data_type: from_wire_data_type(port.data_type),
+                        direction: from_wire_direction(port.direction),
+                    },
+                )
+            })
+            .collect();
+        self.snapshot.connections.confirmed_links = wire
+            .confirmed_links
+            .into_iter()
+            .map(|link| BackendConfirmedLink {
+                application_port_id: BackendPortId::from_raw(link.application_port_id),
+                host_port_id: link.host_port_id,
+            })
+            .collect();
+        self.snapshot.connections.revision = self.snapshot.connections.revision.wrapping_add(1);
         self.snapshot.tracks.extend(
             wire.tracks
                 .into_iter()
@@ -1323,13 +1393,10 @@ impl Backend for WebAudioBackend {
             },
         );
         for port in &ports {
-            self.snapshot.connections.ports.insert(
-                port.id,
-                BackendPortConnectionState {
-                    port: port.clone(),
-                    candidates: Vec::new(),
-                },
-            );
+            self.snapshot
+                .connections
+                .application_ports
+                .insert(port.id, port.clone());
         }
         self.snapshot.connections.revision = self.snapshot.connections.revision.wrapping_add(1);
         for loop_id in &loops {
@@ -1597,6 +1664,36 @@ impl Backend for WebAudioBackend {
         Err(anyhow!("session replacement pending"))
     }
 
+    fn set_port_connected(
+        &mut self,
+        port_id: BackendPortId,
+        external_port: &str,
+        connected: bool,
+    ) -> Result<()> {
+        let port = self
+            .snapshot
+            .connections
+            .application_ports
+            .get(&port_id)
+            .ok_or_else(|| anyhow!("unknown browser application port {port_id:?}"))?;
+        let host = self
+            .snapshot
+            .connections
+            .host_ports
+            .get(external_port)
+            .ok_or_else(|| anyhow!("browser host port disappeared: {external_port}"))?;
+        if port.data_type != host.data_type || port.direction == host.direction {
+            return Err(anyhow!(
+                "browser host port is incompatible: {external_port}"
+            ));
+        }
+        self.submit(Command::SetPortConnected {
+            application_port_id: port_id.raw(),
+            host_port_id: external_port.to_owned(),
+            connected,
+        })
+    }
+
     fn advance(&mut self, _elapsed: Duration) {}
 
     fn poll(&mut self) -> Result<BackendSnapshot> {
@@ -1617,6 +1714,21 @@ impl Backend for WebAudioBackend {
             match envelope.event {
                 Event::Ack | Event::Stopped => {}
                 Event::Error { message } => return Err(anyhow!(message)),
+                Event::ConnectionMutationFailed {
+                    application_port_id,
+                    host_port_id,
+                    desired_connected,
+                    message,
+                } => self
+                    .snapshot
+                    .connections
+                    .failures
+                    .push(BackendConnectionFailure {
+                        port_id: BackendPortId::from_raw(application_port_id),
+                        external_port: host_port_id,
+                        desired_connected,
+                        message,
+                    }),
                 Event::Snapshot(snapshot) => self.apply_wire_snapshot(snapshot),
                 Event::Waveform(chunk) => self.apply_waveform_chunk(chunk)?,
                 Event::SessionCaptureReady {
@@ -1669,6 +1781,32 @@ impl Backend for WebAudioBackend {
     }
 
     fn wait_idle(&mut self) {}
+}
+
+fn from_wire_data_type(value: WirePortDataType) -> BackendPortDataType {
+    match value {
+        WirePortDataType::Audio => BackendPortDataType::Audio,
+        WirePortDataType::Midi => BackendPortDataType::Midi,
+    }
+}
+
+fn from_wire_direction(value: WirePortDirection) -> BackendPortDirection {
+    match value {
+        WirePortDirection::Input => BackendPortDirection::Input,
+        WirePortDirection::Output => BackendPortDirection::Output,
+    }
+}
+
+fn from_wire_role(value: WirePortRole) -> BackendPortRole {
+    match value {
+        WirePortRole::AudioInput => BackendPortRole::AudioInput,
+        WirePortRole::AudioOutput => BackendPortRole::AudioOutput,
+        WirePortRole::AudioSend => BackendPortRole::AudioSend,
+        WirePortRole::AudioReturn => BackendPortRole::AudioReturn,
+        WirePortRole::MidiInput => BackendPortRole::MidiInput,
+        WirePortRole::MidiOutput => BackendPortRole::MidiOutput,
+        WirePortRole::MidiSend => BackendPortRole::MidiSend,
+    }
 }
 
 fn to_wire_track_control(control: BackendTrackControl) -> WireTrackControl {
