@@ -170,7 +170,7 @@ Verification:
 - [x] Run the locked production Wasm check for `shoopdaloop_egui`, the preview Wasm check, the AudioWorklet build, and dependency-tree forbidden-package scans used by `.github/workflows/build_and_test_egui.yml`.
 - [x] Exercise end to end: create audio and MIDI loop content; switch same rate; switch a same-driver variant; cancel a changed-rate switch; confirm a changed-rate switch; verify scaled content/timing and stopped transport; save/restart; verify preferred startup configuration and links/diagnostics.
 - [x] Record exact driver/device environment evidence, skipped real-driver checks, test counts, and any residual limitations in the plan and parity matrix.
-- [ ] Commit the completed validation/documentation milestone.
+- [x] Commit the completed validation/documentation milestone (`15f76608`).
 
 Validation evidence recorded on 2026-08-08:
 
