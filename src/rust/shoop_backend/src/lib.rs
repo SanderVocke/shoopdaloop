@@ -2278,6 +2278,7 @@ pub struct FakeAudioDriverControl {
 #[derive(Debug, Default)]
 struct FakeAudioDriverControlState {
     fail_next_switch: Option<String>,
+    fail_switch_after: Option<(usize, String)>,
     corrupt_next_replacement_mapping: bool,
     preflight_sample_rate_override: Option<u32>,
 }
@@ -2288,6 +2289,13 @@ impl FakeAudioDriverControl {
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .fail_next_switch = Some(message.into());
+    }
+
+    pub fn fail_switch_after(&self, successful_switches: usize, message: impl Into<String>) {
+        self.state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .fail_switch_after = Some((successful_switches, message.into()));
     }
 
     pub fn corrupt_next_replacement_mapping(&self) {
@@ -2560,14 +2568,26 @@ impl Backend for FakeBackend {
         session: &BackendSessionData,
     ) -> Result<BackendSessionReplacement> {
         let resolved = self.preflight_audio_driver(config)?;
-        if let Some(message) = self
-            .audio_driver_control
-            .state
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .fail_next_switch
-            .take()
-        {
+        let failure = {
+            let mut control = self
+                .audio_driver_control
+                .state
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            if let Some(message) = control.fail_next_switch.take() {
+                Some(message)
+            } else if let Some((remaining, _)) = control.fail_switch_after.as_mut() {
+                if *remaining == 0 {
+                    control.fail_switch_after.take().map(|(_, message)| message)
+                } else {
+                    *remaining -= 1;
+                    None
+                }
+            } else {
+                None
+            }
+        };
+        if let Some(message) = failure {
             return Err(anyhow!(message));
         }
         if resolved.sample_rate != confirmed_sample_rate {

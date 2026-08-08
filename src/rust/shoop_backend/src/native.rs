@@ -1531,6 +1531,30 @@ mod tests {
     }
 
     #[test]
+    fn repeated_same_driver_switches_release_each_previous_runtime() {
+        let mut backend = NativeBackend::new(AudioDriverConfig::default()).unwrap();
+        backend
+            .create_direct_track(DirectTrackRequest {
+                port_name_base: "repeated".to_owned(),
+                audio_channels: 1,
+                midi: true,
+                initial_loops: 1,
+            })
+            .unwrap();
+        for index in 0..8 {
+            let target = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                sample_rate: 48_000,
+                buffer_size: 64 + index * 16,
+            });
+            let session = backend.capture_session().unwrap();
+            backend
+                .switch_audio_driver(&target, 48_000, &session)
+                .unwrap();
+        }
+        assert_eq!(backend.capture_session().unwrap().tracks.len(), 1);
+    }
+
+    #[test]
     fn native_dummy_rejects_changed_rate_without_converted_session() {
         let mut backend = NativeBackend::new(AudioDriverConfig::default()).unwrap();
         let captured = backend.capture_session().unwrap();

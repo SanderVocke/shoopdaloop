@@ -4,7 +4,7 @@
 
 This is the living feature-discovery and implementation ledger for the pure egui replacement described in `EGUI_REPLACEMENT_PROJECT.md`. It is intentionally incomplete. Entries are discovered and refined as milestone work reaches each part of the old application.
 
-The detailed entries cover the completed tracks/loops, cross-target engine, browser-audio, track-port connections, session-persistence/loop-I/O, settings, native Lua, and cross-target ports/browser-Lua/omniLua-migration milestones. Areas outside those slices remain listed coarsely until their milestone discovery begins.
+The detailed entries cover the completed tracks/loops, cross-target engine, browser-audio, native JACK/CPAL+midir/dummy driver management, track-port connections, session-persistence/loop-I/O, settings, native Lua, and cross-target ports/browser-Lua/omniLua-migration milestones. Areas outside those slices remain listed coarsely until their milestone discovery begins.
 
 The retired Qt-hosted egui experiment has been removed. The legacy QML application and standalone egui applications now have independent presentation and dependency paths; QML remains only as the behavior baseline for features not yet replaced.
 
@@ -311,13 +311,25 @@ Replacement evidence referenced below consists of:
 | CONN-WASM-001 | Browser-compatible presentation | QML path is native; pure egui presentation must compile for Wasm. | Explored for connections | Connections required | Complete | GUI/preview Wasm checks and production hosted/direct-file normalized mutable Web Audio route workflows pass |
 | CONN-E2E-001 | Native fake/dummy integrated workflow | Retained tests exercise JACK/CPAL through QML. | Explored for connections | Connections required | Complete | Shared contracts, actor tests, and native sync/audio/MIDI connection workflow |
 | CONN-DEF-001 | Persisted external connections and autoconnect | Sessions can hold external connection names; the connections milestone excluded persistence/rules. | Explored for connections | Deferred | Complete | Milestone 5 `.shoop` documents and authoritative app/backend round trips preserve ordered external connection/autoconnect names; runtime reconnect policy remains deferred |
-| CONN-DEF-002 | Driver selection/settings and native real-driver composition | Retained frontend owns JACK/CPAL settings and drivers. | Explored for connections | Deferred | Deferred | Native egui remains dummy-only and real-driver composition remains roadmap work; hosted Web Audio routing is complete separately |
+| CONN-DEF-002 | Driver selection/settings and native real-driver composition | Retained frontend owns JACK/CPAL settings and drivers. | Explored for native drivers | Native drivers required | Complete | Native-only `NativeBackend` adapts application-backend JACK/CPAL+midir/dummy; typed catalogs/configs, exact-rate confirmation, `resample_session`, rollback/fatal state, persistent profiles/startup fallback, egui Audio UI, deterministic JACK/CPAL test adapters, optional real-driver switches, Wasm exclusion, and full regression gates |
 | CONN-DEF-003 | Dry/wet send/return topology and FX chains | QML dry/wet tracks supply send/return categories. | Explored for connections | Deferred | Deferred | Role model/preview support is complete; topology creation remains FX milestone work |
 | CONN-DEF-004 | MIDI-control and other non-track ports | Global QML session dialog aggregates track ports, not the control port. | Re-explored for cross-target ports/Lua | Superseded target | Complete | Explicit script/registration ownership publishes stable Lua-created logical control ports in global scope, including zero-host browser state |
 
+## Native audio-driver switching discovery and evidence
+
+`EGUI_NATIVE_AUDIO_DRIVER_SWITCHING_PLAN.md` is the implementation and validation ledger for native driver management. The delivered slice adds:
+
+- target-gated `shoop_backend::NativeBackend` composition over the existing application-backend `AudioDriver`/`BackendSession`, with production JACK, CPAL+midir, and dummy/offline discovery while test drivers remain hidden;
+- plain API catalogs, configured/resolved profiles, exact target rate/buffer reporting, generation-scoped confirmation and persistence state, dynamic host/device/MIDI refresh, and explicit unsupported Web Audio defaults;
+- application-owned capture, `shoop_session::resample_session`, stopped-session replacement, stable application-ID remapping, compatible-link restoration, reconfirmation if negotiation changes, rollback, and fatal double-failure publication;
+- native Audio settings with independent profiles, unavailable-selector retention, interruption and exact-rate warning popup, save-after-commit, save retry without a second switch, and persisted-first startup with diagnostic dummy fallback;
+- native dummy, JACK-test, CPAL-test, repeated-lifecycle, actor failure/reconfirmation/recording/I/O/remap/rollback/resampling, settings restart/failure/retry, backend-free egui paint, optional real JACK/CPAL/cross-driver, warning-denying native/Wasm, dependency-exclusion, workspace, QML, and package evidence.
+
+Hosted browser Web Audio remains automatic and its dependency tree remains free of native driver and MIDI packages.
+
 ## Carla subprocess hosting discovery
 
-The native QML Carla path now supplies a complete frontend-independent hosting-mode setting, processor seam, supervised worker lifecycle, bounded generation logs, shared-memory audio/MIDI transport, checkpoint recovery, and status/log adapter baseline. Native package, process, deadline, cleanup, QML, and benchmark evidence passes on Windows, Linux, macOS Intel, and macOS ARM. Milestone 5 adds byte-exact typed persistence for deferred FX/Carla state but intentionally capability-rejects runtime instantiation; dry/wet topology, FX intents/snapshots, Carla-specific settings presentation, runnable FX session loading, and native real-driver composition remain deferred. A future egui FX milestone must reuse these engine/application semantics rather than introduce a second worker protocol. In the rows below, `Partial` describes replacement parity, not the completed shared native baseline.
+The native QML Carla path now supplies a complete frontend-independent hosting-mode setting, processor seam, supervised worker lifecycle, bounded generation logs, shared-memory audio/MIDI transport, checkpoint recovery, and status/log adapter baseline. Native package, process, deadline, cleanup, QML, and benchmark evidence passes on Windows, Linux, macOS Intel, and macOS ARM. Milestone 5 adds byte-exact typed persistence for deferred FX/Carla state but intentionally capability-rejects runtime instantiation; dry/wet topology, FX intents/snapshots, Carla-specific settings presentation, and runnable FX session loading remain deferred. Native real-driver composition is complete independently and must be reused by the future FX milestone. A future egui FX milestone must reuse these engine/application semantics rather than introduce a second worker protocol. In the rows below, `Partial` describes replacement parity, not the completed shared native baseline.
 
 | ID | Capability or behavior | Current native baseline | Discovery | Current implementation | Evidence |
 |---|---|---|---|---|---|
@@ -434,7 +446,7 @@ The completed persistent-settings implementation and `docs/settings_format_v1.md
 | SET-E2E-001 | Cross-target persistence | Native and browser reload use real persisted text and authoritative consumers | Explored for settings | Settings required | Complete | Temporary-path native restart and hosted/direct-file product artifact workflows |
 | SET-OLD-001 | Retained QML isolation | Existing QML settings/Carla path remains independently regression-tested | Explored for settings | Settings required | Complete | Legacy feature tests, fresh-format rejection, and retained QML final gate |
 
-Driver/device selection, generic MIDI-rule editing, runnable Carla/FX settings, and session-local overrides remain assigned to their owning milestones. Bundled Lua startup toggles are cross-target; native alone registers user-script paths, which browser preserves as unknown values.
+Generic MIDI-rule editing, runnable Carla/FX settings, and session-local overrides remain assigned to their owning milestones. Native driver/device selection is complete under `EGUI_NATIVE_AUDIO_DRIVER_SWITCHING_PLAN.md`. Bundled Lua startup toggles are cross-target; native alone registers user-script paths, which browser preserves as unknown values.
 
 ## Coarsely listed future areas
 
@@ -444,7 +456,6 @@ These broader future areas remain outside the currently explored milestone contr
 |---|---|---|
 | Click-track generation beyond loop media I/O | Partially explored | Deferred |
 | Runtime reconnect policy and runnable bus topology | Partially explored | Deferred |
-| Driver/device settings and native real-driver composition beyond the persistent-settings foundation | Partially explored | Deferred |
 | Dry/wet topology and FX-chain hosting/state management | Partially explored | Deferred |
 | Composite-loop creation, scheduling, editing, and nesting beyond the Lua-required append path | Partially explored | Deferred |
 | Generic MIDI control configuration, learning, filtering, and non-script rule editor | Unexplored | Deferred |

@@ -7386,6 +7386,49 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
     }
 
     #[test]
+    fn rollback_failure_publishes_fatal_backend_state_with_both_errors() {
+        let backend = FakeBackend::default();
+        let control = backend.audio_driver_control();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Cpal(shoop_app_api::CpalAudioDriverConfig {
+                    sample_rate: 48_000,
+                    buffer_size: 128,
+                    ..Default::default()
+                }),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let request_id = runtime.snapshot().audio_drivers.switch.request_id;
+        control.corrupt_next_replacement_mapping();
+        control.fail_switch_after(1, "injected rollback failure");
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let fatal = runtime.snapshot();
+        assert_eq!(
+            fatal.audio_drivers.switch.status,
+            AudioDriverSwitchStatus::Fatal
+        );
+        assert!(fatal
+            .audio_drivers
+            .switch
+            .message
+            .contains("injected rollback failure"));
+        assert!(fatal
+            .audio_drivers
+            .switch
+            .message
+            .contains("could not remap switched session"));
+    }
+
+    #[test]
     fn changed_commit_time_rate_requires_a_second_confirmation() {
         let backend = FakeBackend::default();
         let control = backend.audio_driver_control();

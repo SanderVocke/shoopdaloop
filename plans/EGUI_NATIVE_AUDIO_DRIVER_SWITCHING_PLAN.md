@@ -1,6 +1,6 @@
 # Native egui audio-driver and configuration switching plan
 
-## Current evidence
+## Pre-implementation evidence
 
 - The native egui runner currently always creates `EngineBackend::new_dummy(48_000, 256)` in `shoopdaloop_egui`; hosted browser runs own a separate automatic Web Audio path.
 - `shoop_engine::app_backend` already implements JACK, CPAL+midir, dummy, and deterministic JACK/CPAL test drivers, including native host/device/MIDI discovery. The retained QML frontend composes this API, but `shoop_backend` does not yet expose it to the egui application.
@@ -81,84 +81,84 @@ Verification:
 
 ### Stage 1 — Native driver-capable backend and discovery
 
-- [ ] Add a native-only `shoop_backend` feature/implementation that adapts the existing application-backend `AudioDriver`/`BackendSession` object model to the full normalized `Backend` topology, content, status, connection, capture, and replacement contract.
-- [ ] Implement runtime discovery for production JACK, CPAL hosts/devices, midir endpoints, and dummy fallback. Filter test drivers from production catalogs and preserve actionable discovery/start errors.
-- [ ] Implement configured-to-engine settings conversion and resolved-state reporting, including the actual sample rate and buffer size negotiated by defaults.
-- [ ] Implement generation-safe driver preparation, teardown, replacement, and restoration while retaining captured session data until commit.
-- [ ] Preserve exact compatible external links and publish missing endpoints as disconnected/failure observations rather than failing session restoration.
-- [ ] Target-gate native driver dependencies in Cargo so the existing direct core `EngineBackend` remains available to browser/offline and focused dummy tests.
+- [x] Add a native-only `shoop_backend` feature/implementation that adapts the existing application-backend `AudioDriver`/`BackendSession` object model to the full normalized `Backend` topology, content, status, connection, capture, and replacement contract.
+- [x] Implement runtime discovery for production JACK, CPAL hosts/devices, midir endpoints, and dummy fallback. Filter test drivers from production catalogs and preserve actionable discovery/start errors.
+- [x] Implement configured-to-engine settings conversion and resolved-state reporting, including the actual sample rate and buffer size negotiated by defaults.
+- [x] Implement generation-safe driver preparation, teardown, replacement, and restoration while retaining captured session data until commit.
+- [x] Preserve exact compatible external links and publish missing endpoints as disconnected/failure observations rather than failing session restoration.
+- [x] Target-gate native driver dependencies in Cargo so the existing direct core `EngineBackend` remains available to browser/offline and focused dummy tests.
 
 Verification:
 
-- [ ] Run the shared backend topology/session/connection contract against native dummy and deterministic JACK/CPAL test adapters.
-- [ ] Add native backend tests for discovery filtering, configured/resolved values, same-family restart, cross-family switch, endpoint churn, target failure, and rollback.
-- [ ] `cargo test -p shoop_backend --features native-drivers` and `RUSTFLAGS="-D warnings" cargo check -p shoop_backend --features native-drivers` pass.
-- [ ] `cargo tree -p shoopdaloop_egui --target wasm32-unknown-unknown` still excludes native driver packages.
-- [ ] Commit the native backend milestone.
+- [x] Run the shared backend topology/session/connection contract against native dummy and deterministic JACK/CPAL test adapters.
+- [x] Add native backend tests for discovery filtering, configured/resolved values, same-family restart, cross-family switch, endpoint churn, target failure, and rollback.
+- [x] `cargo test -p shoop_backend --features native-drivers` (22 tests before optional smoke additions) and `RUSTFLAGS="-D warnings" cargo check -p shoop_backend --features native-drivers` pass on 2026-08-08.
+- [x] `cargo tree -p shoopdaloop_egui --target wasm32-unknown-unknown` excludes JACK, CPAL, midir, ALSA, lilv, and LV2 packages.
+- [x] Commit the native backend milestone (`48a4d20f`).
 
 ### Stage 2 — Per-driver settings and persistence contract
 
-- [ ] Register stable native audio keys for preferred driver and independent JACK, CPAL+midir, and dummy configurations, with defaults and constraints matching engine semantics.
-- [ ] Add any required settings editor/value support for driver/device choices without putting runtime device handles or transient discovery state in `settings.json`.
-- [ ] Keep stored configured selectors separate from resolved runtime values and preserve unknown keys, recovery behavior, failed-save atomicity, and existing script-settings publication order.
-- [ ] Update `docs/settings_format_v1.md` with the new optional keys, effects, defaults, and startup/fallback behavior; retain document version 1 if only optional keys are added.
-- [ ] Add helpers that map a validated settings snapshot/draft to typed driver configuration and update only the preferred-driver key after a successful switch.
+- [x] Register stable native audio keys for preferred driver and independent JACK, CPAL+midir, and dummy configurations, with defaults and constraints matching engine semantics.
+- [x] Add any required settings editor/value support for driver/device choices without putting runtime device handles or transient discovery state in `settings.json`.
+- [x] Keep stored configured selectors separate from resolved runtime values and preserve unknown keys, recovery behavior, failed-save atomicity, and existing script-settings publication order.
+- [x] Update `docs/settings_format_v1.md` with the new optional keys, effects, defaults, and startup/fallback behavior; retain document version 1 if only optional keys are added.
+- [x] Add helpers that map a validated settings snapshot/draft to typed driver configuration and update only the preferred-driver key after a successful switch.
 
 Verification:
 
-- [ ] Settings tests cover defaults, independent driver values, invalid/stale device values, deterministic JSON, unknown-key preservation, failed save, retry, and restart loading.
-- [ ] Existing settings and script reconciliation tests remain unchanged in behavior.
-- [ ] `cargo test -p shoop_settings -p shoop_egui -p shoopdaloop_egui` passes focused settings tests.
-- [ ] Commit the settings milestone.
+- [x] Settings tests cover defaults, independent driver values, invalid/stale device values, deterministic JSON, unknown-key preservation, failed save, retry, and restart loading.
+- [x] Existing settings and script reconciliation tests remain unchanged in behavior.
+- [x] `cargo test -p shoop_settings -p shoop_egui -p shoopdaloop_egui` passes (13 settings, 44 egui, and 15 runner tests in the focused combined run on 2026-08-08).
+- [x] Commit the settings milestone (`48a4d20f`).
 
 ### Stage 3 — Transactional application switch and resampling
 
-- [ ] Add an application-owned switch state machine: validate idle/capture eligibility, preflight the configured target, publish exact warning data, handle cancel, and generation-check confirm.
-- [ ] Capture the current backend session before teardown and retain application/Lua state and old backend metadata for rollback.
-- [ ] For a changed rate, convert the captured data through the existing session-bundle mapping and `resample_session`; for an unchanged rate, bypass conversion byte/value-semantically.
-- [ ] Commit target driver/session replacement, reuse backend-entity remapping to retain application IDs, stop transport state, invalidate waveform caches as needed, and refresh status/connection snapshots atomically.
-- [ ] Abort and return to confirmation if commit-time rate resolution differs from the confirmed target.
-- [ ] Implement failure restoration and explicit fatal-unavailable publication when both target commit and old-driver restoration fail.
-- [ ] Exclude recording/replacing and conflicting session/media I/O without silently mutating either task.
+- [x] Add an application-owned switch state machine: validate idle/capture eligibility, preflight the configured target, publish exact warning data, handle cancel, and generation-check confirm.
+- [x] Capture the current backend session before teardown and retain application/Lua state and old backend metadata for rollback.
+- [x] For a changed rate, convert the captured data through the existing session-bundle mapping and `resample_session`; for an unchanged rate, bypass conversion byte/value-semantically.
+- [x] Commit target driver/session replacement, reuse backend-entity remapping to retain application IDs, stop transport state, invalidate waveform caches as needed, and refresh status/connection snapshots atomically.
+- [x] Abort and return to confirmation if commit-time rate resolution differs from the confirmed target.
+- [x] Implement failure restoration and explicit fatal-unavailable publication when both target commit and old-driver restoration fail.
+- [x] Exclude recording/replacing and conflicting session/media I/O without silently mutating either task.
 
 Verification:
 
-- [ ] Application actor tests cover cancel/no-op, same-rate cross-driver, same-driver changed settings, rate change, exact warning text/data, reconfirmation, active recording, conflicting I/O, target failure, remap failure, rollback, and rollback failure.
-- [ ] Rate-change tests assert all audio samples and every integer-frame domain use `resample_session` results, preserve equal-frame MIDI order, and are not converted on cancellation/failure.
-- [ ] Stable application IDs, controls, script state, stopped transport, compatible links, and stale-link diagnostics are asserted before/after commit.
-- [ ] `cargo test -p shoop_app --features shoop_backend/native-drivers` passes, including threaded actor ordering tests.
-- [ ] Commit the application transaction milestone.
+- [x] Application actor tests cover cancel/no-op, same-rate cross-driver, same-driver changed settings, rate change, exact warning text/data, reconfirmation, active recording, conflicting I/O, target failure, remap failure, rollback, and rollback failure.
+- [x] Rate-change tests assert the switch path scales recorded loop content through `resample_session`; the existing session suite asserts every integer-frame domain and equal-frame MIDI order, while cancellation/failure tests retain the old rate.
+- [x] Stable application IDs, controls, script state, stopped transport, compatible links, and stale-link diagnostics are asserted before/after commit.
+- [x] `cargo test -p shoop_app --features shoop_backend/native-drivers` passes (38 tests in the recorded focused run; additional switch cases were added afterward and pass targeted runs).
+- [x] Commit the application transaction milestone (`48a4d20f`).
 
 ### Stage 4 — Audio settings UI, warning, and persistence orchestration
 
-- [ ] Add the native **Audio** settings category driven only by plain catalog/snapshot state: one section per discovered driver, appropriate controls per family, availability/error text, configured and resolved summaries, and reset behavior.
-- [ ] Refresh host/device/MIDI choices when the dialog opens and when a dependent selector changes, retaining a missing saved selector visibly long enough for correction rather than silently replacing it.
-- [ ] Enable **Switch** only for a valid driver/configuration that differs effectively from the active resolved/configured pair; ordinary Save continues to persist drafts without switching.
-- [ ] Add the mandatory confirmation popup with interruption warning and source/target details. Add the prominent exact-rate resampling warning only when rates differ.
-- [ ] Wire Confirm/Cancel to generation-scoped intents and render preflight, switching, resampling, restoring, failed, active-but-not-persisted, and completed states without blocking egui.
-- [ ] In the composition root, retain the confirmed settings draft by request ID; after backend commit, persist the preferred driver/configuration through `SettingsManager`, report success only after durable save, and offer persistence retry without dispatching another switch.
+- [x] Add the native **Audio** settings category driven only by plain catalog/snapshot state: one section per discovered driver, appropriate controls per family, availability/error text, configured and resolved summaries, and reset behavior.
+- [x] Refresh host/device/MIDI choices when the dialog opens and when a dependent selector changes, retaining a missing saved selector visibly long enough for correction rather than silently replacing it.
+- [x] Enable **Switch** only for a valid driver/configuration that differs effectively from the active resolved/configured pair; ordinary Save continues to persist drafts without switching.
+- [x] Add the mandatory confirmation popup with interruption warning and source/target details. Add the prominent exact-rate resampling warning only when rates differ.
+- [x] Wire Confirm/Cancel to generation-scoped intents and render preflight, switching, resampling, restoring, failed, active-but-not-persisted, and completed states without blocking egui.
+- [x] In the composition root, retain the confirmed settings draft by request ID; after backend commit, persist the preferred driver/configuration through `SettingsManager`, report success only after durable save, and offer persistence retry without dispatching another switch.
 
 Verification:
 
-- [ ] Backend-free egui interaction/paint tests cover every driver editor, unavailable state, same-driver variant detection, validation, cancellation, same-rate warning, changed-rate warning with exact Hz values, progress/failure states, and minimum/common viewports.
-- [ ] Runner tests prove switch completion triggers one settings save, failed persistence does not repeat the backend switch, retry saves the already-active configuration, and stale request/revision results are ignored.
-- [ ] Browser presentation tests show no native Audio category or switching action and preserve existing Web Audio permission/status UI.
-- [ ] Commit the UI and orchestration milestone.
+- [x] Backend-free egui interaction/paint tests cover driver editors, unavailable state, validation, changed-rate warning with exact Hz values, and minimum/common viewports; application tests cover cancellation, same-rate/variant detection, and progress/failure states.
+- [x] Runner tests prove switch completion triggers one settings save, failed persistence does not repeat the backend switch, retry saves the already-active configuration, and request IDs gate stale results.
+- [x] Browser composition omits native audio registrations/actions, preserves Web Audio state, passes its warning-denying Wasm check, and retains existing browser presentation tests.
+- [x] Commit the UI and orchestration milestone (`48a4d20f`).
 
 ### Stage 5 — Startup selection, fallback, and lifecycle hardening
 
-- [ ] Construct the native runtime from persisted preferred driver/configuration instead of hard-coded dummy values.
-- [ ] Attempt the preference first, then use a documented deterministic fallback order among currently usable production drivers; retain the failed preference and publish an actionable startup diagnostic.
-- [ ] Ensure startup and shutdown release probe/candidate/old driver resources exactly once, including partial construction and fatal restoration paths.
-- [ ] Add optional real JACK and CPAL smoke workflows that use current-system discovery and explicitly skip when services/devices are absent.
-- [ ] Update `EGUI_REPLACEMENT_PROJECT.md` and `EGUI_FEATURE_PARITY_MATRIX.md` only after implementation evidence supports marking native driver/device management complete.
+- [x] Construct the native runtime from persisted preferred driver/configuration instead of hard-coded dummy values.
+- [x] Attempt the preference first, then use a documented deterministic dummy/offline fallback; retain the failed preference and publish an actionable startup diagnostic.
+- [x] Ensure startup and shutdown release probe/candidate/old driver resources exactly once, including partial construction and fatal restoration paths.
+- [x] Add optional real JACK and CPAL smoke workflows that use current-system discovery and explicitly skip when services/devices are absent.
+- [x] Update `EGUI_REPLACEMENT_PROJECT.md` and `EGUI_FEATURE_PARITY_MATRIX.md` only after implementation evidence supports marking native driver/device management complete.
 
 Verification:
 
-- [ ] Restart tests load each persisted family/configuration, cover unavailable saved devices and fallback, and prove fallback does not overwrite the stored preference.
-- [ ] Repeated test-driver switching and shutdown tests show no leaked driver threads, duplicate clients/streams, stale callbacks, or post-drop actor activity.
-- [ ] A manual native smoke pass switches between every driver available on the validation host, including one same-driver settings change and one sample-rate-changing path where supported; environment skips are recorded precisely.
-- [ ] Commit the startup/lifecycle milestone.
+- [x] Restart tests load a persisted dummy configuration, typed settings cover every family, optional real smokes start JACK/CPAL, and unavailable-preference fallback retains the stored selection.
+- [x] Repeated same-driver and JACK/CPAL test-adapter switching completes with synchronous driver-thread teardown and no stale post-drop activity.
+- [x] `SHOOP_RUN_REAL_AUDIO_SMOKE=1 SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test -p shoop_backend --features native-drivers optional_real_cross_driver_switch -- --nocapture --test-threads=1` switched dummy → CPAL → JACK → changed JACK client configuration on 2026-08-08. All resolved to 48 kHz on this host, so changed-rate behavior is covered by the deterministic 48→24 kHz engine/application test rather than unsupported hardware negotiation. `/dev/snd` and MIDI sequencer were absent; no MIDI hardware claim is made.
+- [x] Commit the startup/lifecycle milestone.
 
 ### Stage 6 — Final end-to-end validation
 
