@@ -571,23 +571,23 @@ mod tests {
         for role in PortRole::ORDERED {
             assert!(snapshot
                 .connections
-                .ports
+                .application_ports
                 .iter()
                 .any(|port| port.role == role));
         }
-        let candidates: Vec<_> = snapshot
-            .connections
-            .ports
-            .iter()
-            .flat_map(|port| port.candidates.iter())
-            .collect();
-        assert!(candidates.iter().any(|candidate| candidate.connected));
-        assert!(candidates.iter().any(|candidate| !candidate.connected));
-        assert!(candidates
-            .iter()
-            .any(|candidate| candidate.pending.is_some()));
-        assert!(candidates.iter().any(|candidate| candidate.error.is_some()));
+        assert!(!snapshot.connections.host_ports.is_empty());
+        assert!(!snapshot.connections.confirmed_links.is_empty());
+        assert!(!snapshot.connections.pending_links.is_empty());
         assert!(!snapshot.connections.errors.is_empty());
+        assert!(snapshot.connections.application_ports.iter().any(|port| {
+            snapshot.connections.host_ports.iter().any(|host| {
+                port.data_type == host.data_type
+                    && port.direction != host.direction
+                    && !snapshot.connections.confirmed_links.iter().any(|link| {
+                        link.application_port_id == port.id && link.host_port_id == host.id
+                    })
+            })
+        }));
     }
 
     #[test]
@@ -598,33 +598,27 @@ mod tests {
             host_port_id: HostPortId::new("system:playback_1"),
             connected: true,
         });
-        let pending = preview
+        assert!(preview
             .snapshot
             .connections
-            .ports
+            .pending_links
             .iter()
-            .find(|port| port.id == PortId::from_raw(3))
-            .unwrap()
-            .candidates
-            .iter()
-            .find(|candidate| candidate.full_name == "system:playback_1")
-            .unwrap()
-            .pending;
-        assert_eq!(pending, Some(true));
+            .any(|link| {
+                link.application_port_id == PortId::from_raw(3)
+                    && link.host_port_id.as_str() == "system:playback_1"
+                    && link.desired_connected
+            }));
         preview.resolve_pending(true);
-        let candidate = preview
+        assert!(preview.snapshot.connections.pending_links.is_empty());
+        assert!(preview
             .snapshot
             .connections
-            .ports
+            .confirmed_links
             .iter()
-            .find(|port| port.id == PortId::from_raw(3))
-            .unwrap()
-            .candidates
-            .iter()
-            .find(|candidate| candidate.full_name == "system:playback_1")
-            .unwrap();
-        assert!(candidate.connected);
-        assert_eq!(candidate.pending, None);
+            .any(|link| {
+                link.application_port_id == PortId::from_raw(3)
+                    && link.host_port_id.as_str() == "system:playback_1"
+            }));
     }
 
     #[test]
