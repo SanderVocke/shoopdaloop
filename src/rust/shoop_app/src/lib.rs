@@ -11,13 +11,13 @@ use anyhow::{anyhow, Result};
 use shoop_app_api::{
     AppIntent, AppNotification, AppSnapshot, ApplicationPortOwner, ApplicationPortState,
     AudioChannelMappingState, AudioChannelSelectionState, AudioDriverState, ChannelId,
-    ConfirmedConnectionState, ConnectionErrorKind, ConnectionErrorState, ConnectionViewState,
-    DirectTrackSpec, GlobalControlAction, HostPortId, HostPortState, IoTaskKind, IoTaskState,
-    IoTaskStatus, KeyEvent, KeyEventType, LoopAction, LoopAudioExportFormat, LoopDetailsState,
-    LoopId, LoopMode, LoopState, NotificationLevel, PendingConnectionState, PortDataType,
-    PortDirection, PortId, PortRole, SampleRateWarning, ScriptId, ScriptKind, ScriptingState,
-    StatusState, TaskId, TrackAction, TrackControlState, TrackId, TrackPortOwnerKind, TrackState,
-    WaveformChannelState,
+    ConfirmedConnectionState, ConnectionErrorKind, ConnectionErrorState, ConnectionPolicy,
+    ConnectionViewState, DirectTrackSpec, GlobalControlAction, HostPortId, HostPortState,
+    IoTaskKind, IoTaskState, IoTaskStatus, KeyEvent, KeyEventType, LoopAction,
+    LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, NotificationLevel,
+    PendingConnectionState, PortDataType, PortDirection, PortId, PortRole, SampleRateWarning,
+    ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState, TaskId,
+    TrackAction, TrackControlState, TrackId, TrackPortOwnerKind, TrackState, WaveformChannelState,
 };
 use shoop_backend::{
     Backend, BackendAudioContent, BackendConnectionSnapshot, BackendGrabRequest,
@@ -1500,6 +1500,9 @@ impl ApplicationModel {
             supported: true,
             scripts: self.script_manager.states().into(),
         });
+        if !self.connection_view.loading {
+            self.rebuild_connection_view();
+        }
     }
 
     fn begin_save_session(&mut self) -> Result<(), String> {
@@ -2731,8 +2734,20 @@ impl ApplicationModel {
             });
             return Err(message);
         }
+        if self.connection_view.application_ports.iter().any(|port| {
+            port.id == port_id && port.connection_policy == ConnectionPolicy::OwnerManaged
+        }) {
+            let message = format!("connection policy is managed by the port owner: {port_id}");
+            self.push_connection_error(ConnectionErrorState {
+                port_id: Some(port_id),
+                external_port: Some(external_port),
+                kind: ConnectionErrorKind::Incompatible,
+                message: message.clone(),
+            });
+            return Err(message);
+        }
         let Some(port) = self.connection_ports.get(&port_id) else {
-            let message = format!("stale or unknown local port {port_id}");
+            let message = format!("stale or unknown application port {port_id}");
             self.push_connection_error(ConnectionErrorState {
                 port_id: Some(port_id),
                 external_port: Some(external_port),
@@ -3144,7 +3159,7 @@ impl ApplicationModel {
     }
 
     fn rebuild_connection_view(&mut self) {
-        let application_ports: Arc<[ApplicationPortState]> = self
+        let mut application_ports: Vec<ApplicationPortState> = self
             .connection_ports
             .values()
             .map(|port| {
@@ -3167,19 +3182,79 @@ impl ApplicationModel {
                     data_type: port.data_type,
                     direction: port.direction,
                     role: port.role,
+                    connection_policy: ConnectionPolicy::UserManaged,
                 }
             })
-            .collect::<Vec<_>>()
-            .into();
-        let host_ports: Arc<[HostPortState]> =
-            self.host_ports.values().cloned().collect::<Vec<_>>().into();
-        let confirmed_links: Arc<[ConfirmedConnectionState]> = self
+            .collect();
+        let mut normalized_hosts = self.host_ports.clone();
+        let mut normalized_links: BTreeSet<(PortId, HostPortId)> = self
             .confirmed_connections
             .iter()
+            .map(|(port_id, host_id)| (*port_id, HostPortId::new(host_id.clone())))
+            .collect();
+        for script in self.scripting_view.scripts.iter() {
+            for (registration, rule) in script.midi.rule_states.iter().enumerate() {
+                let registration = u32::try_from(registration).unwrap_or(u32::MAX);
+                let (direction, role, host_direction, host_kind) = match rule.direction {
+                    ScriptMidiRuleDirection::Input => (
+                        PortDirection::Input,
+                        PortRole::MidiInput,
+                        PortDirection::Output,
+                        "source",
+                    ),
+                    ScriptMidiRuleDirection::Output => (
+                        PortDirection::Output,
+                        PortRole::MidiOutput,
+                        PortDirection::Input,
+                        "sink",
+                    ),
+                };
+                let port_id = script_connection_port_id(script.id, registration);
+                application_ports.push(ApplicationPortState {
+                    id: port_id,
+                    owner: ApplicationPortOwner::LuaControl {
+                        script_id: script.id,
+                        registration,
+                    },
+                    name: format!(
+                        "{}: MIDI {} {}",
+                        script.name,
+                        host_kind,
+                        registration.saturating_add(1)
+                    ),
+                    data_type: PortDataType::Midi,
+                    direction,
+                    role,
+                    connection_policy: ConnectionPolicy::OwnerManaged,
+                });
+                for endpoint in rule.endpoints.iter() {
+                    let host_id = script_midi_host_id(host_direction, &endpoint.id);
+                    normalized_hosts
+                        .entry(host_id.to_string())
+                        .or_insert_with(|| HostPortState {
+                            id: host_id.clone(),
+                            name: endpoint.name.clone(),
+                            data_type: PortDataType::Midi,
+                            direction: host_direction,
+                        });
+                    if endpoint.connected {
+                        normalized_links.insert((port_id, host_id));
+                    }
+                }
+            }
+        }
+        application_ports.sort_by(|left, right| {
+            (&left.owner, &left.name, left.id).cmp(&(&right.owner, &right.name, right.id))
+        });
+        let application_ports: Arc<[ApplicationPortState]> = application_ports.into();
+        let host_ports: Arc<[HostPortState]> =
+            normalized_hosts.into_values().collect::<Vec<_>>().into();
+        let confirmed_links: Arc<[ConfirmedConnectionState]> = normalized_links
+            .into_iter()
             .map(
                 |(application_port_id, host_port_id)| ConfirmedConnectionState {
-                    application_port_id: *application_port_id,
-                    host_port_id: HostPortId::new(host_port_id.clone()),
+                    application_port_id,
+                    host_port_id,
                 },
             )
             .collect::<Vec<_>>()
@@ -4655,6 +4730,24 @@ fn backend_port_role(value: PortRoleDocument) -> BackendPortRole {
     }
 }
 
+fn script_connection_port_id(script_id: ScriptId, registration: u32) -> PortId {
+    const SCRIPT_PORT_NAMESPACE: u64 = 1 << 63;
+    const SCRIPT_ID_MASK: u64 = 0x7fff_ffff;
+    PortId::from_raw(
+        SCRIPT_PORT_NAMESPACE
+            | ((script_id.raw() & SCRIPT_ID_MASK) << 32)
+            | u64::from(registration.saturating_add(1)),
+    )
+}
+
+fn script_midi_host_id(direction: PortDirection, endpoint: &str) -> HostPortId {
+    let kind = match direction {
+        PortDirection::Input => "sink",
+        PortDirection::Output => "source",
+    };
+    HostPortId::new(format!("script-midi:{kind}:{endpoint}"))
+}
+
 fn map_port_data_type(value: BackendPortDataType) -> PortDataType {
     match value {
         BackendPortDataType::Audio => PortDataType::Audio,
@@ -4865,6 +4958,97 @@ mod tests {
         runtime.tick(Duration::ZERO);
         runtime.tick(Duration::ZERO);
         assert!(runtime.snapshot().tracks[1].loops[0].selected);
+    }
+
+    #[test]
+    fn lua_control_ports_are_owner_managed_stable_and_visible_without_midi_hosts() {
+        let mut backend = EngineBackend::new_web_audio(48_000, 128).unwrap();
+        backend.configure_web_audio_channels(0, 2).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start_with_midi(
+            Box::new(backend),
+            Box::new(shoop_scripting::NullMidiService),
+        )
+        .unwrap();
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "akai_apc_mini_mk1.lua".to_owned(),
+                source: Arc::from(shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT),
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(1));
+        let snapshot = runtime.snapshot();
+        let script_id = snapshot.scripting.scripts[0].id;
+        let control_ports: Vec<_> = snapshot
+            .connections
+            .application_ports
+            .iter()
+            .filter(|port| {
+                matches!(
+                    port.owner,
+                    ApplicationPortOwner::LuaControl {
+                        script_id: owner, ..
+                    } if owner == script_id
+                )
+            })
+            .collect();
+        assert_eq!(control_ports.len(), 2);
+        assert!(control_ports.iter().all(|port| {
+            port.data_type == PortDataType::Midi
+                && port.connection_policy == ConnectionPolicy::OwnerManaged
+        }));
+        assert!(!snapshot
+            .connections
+            .host_ports
+            .iter()
+            .any(|host| host.data_type == PortDataType::Midi));
+        let stable_ids: Vec<_> = control_ports.iter().map(|port| port.id).collect();
+
+        runtime
+            .dispatch(AppIntent::SetPortConnected {
+                port_id: stable_ids[0],
+                host_port_id: HostPortId::new("invented:midi"),
+                connected: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().connections.errors.iter().any(|error| {
+            error.port_id == Some(stable_ids[0]) && error.kind == ConnectionErrorKind::Incompatible
+        }));
+
+        runtime
+            .dispatch(AppIntent::StopScript { script_id })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(!runtime
+            .snapshot()
+            .connections
+            .application_ports
+            .iter()
+            .any(|port| matches!(
+                port.owner,
+                ApplicationPortOwner::LuaControl {
+                    script_id: owner, ..
+                } if owner == script_id
+            )));
+        runtime
+            .dispatch(AppIntent::RestartScript { script_id })
+            .unwrap();
+        runtime.tick(Duration::from_millis(1));
+        let restarted_ids: Vec<_> = runtime
+            .snapshot()
+            .connections
+            .application_ports
+            .iter()
+            .filter_map(|port| match port.owner {
+                ApplicationPortOwner::LuaControl {
+                    script_id: owner, ..
+                } if owner == script_id => Some(port.id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(restarted_ids, stable_ids);
     }
 
     #[test]
@@ -5493,6 +5677,41 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             shoop_app_api::ScriptLifecycle::Listening
         );
         assert_eq!(runtime.snapshot().scripting.scripts[0].midi.connections, 2);
+        let connected_snapshot = runtime.snapshot();
+        let script_id = connected_snapshot.scripting.scripts[0].id;
+        let control_ports: Vec<_> = connected_snapshot
+            .connections
+            .application_ports
+            .iter()
+            .filter(|port| {
+                matches!(
+                    port.owner,
+                    ApplicationPortOwner::LuaControl {
+                        script_id: owner, ..
+                    } if owner == script_id
+                )
+            })
+            .collect();
+        assert_eq!(control_ports.len(), 2);
+        assert!(control_ports
+            .iter()
+            .all(|port| port.connection_policy == ConnectionPolicy::OwnerManaged));
+        assert_eq!(
+            connected_snapshot
+                .connections
+                .confirmed_links
+                .iter()
+                .filter(|link| control_ports
+                    .iter()
+                    .any(|port| port.id == link.application_port_id))
+                .count(),
+            2
+        );
+        assert!(connected_snapshot
+            .connections
+            .host_ports
+            .iter()
+            .any(|host| host.name == "AKAI APC MINI MIDI controller"));
         runtime.tick(Duration::from_millis(1_000));
         let mut reset = midi_control.take_sent();
         assert!(reset.len() <= 1, "positive MIDI rate limit emitted a burst");

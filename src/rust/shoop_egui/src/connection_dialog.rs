@@ -1,6 +1,6 @@
 use crate::{
-    AppIntent, AppState, ApplicationPortOwner, ApplicationPortState, ConnectionViewState,
-    HostPortState, PortRole, TrackId,
+    AppIntent, AppState, ApplicationPortOwner, ApplicationPortState, ConnectionPolicy,
+    ConnectionViewState, HostPortState, PortRole, TrackId,
 };
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -247,6 +247,12 @@ impl ConnectionDialog {
                 false,
                 "Incompatible with this application port".to_owned(),
             )
+        } else if port.connection_policy == ConnectionPolicy::OwnerManaged {
+            (
+                "◆",
+                false,
+                "Connection is managed by the port owner".to_owned(),
+            )
         } else if let Some(pending) = pending {
             (
                 "…",
@@ -359,6 +365,7 @@ mod tests {
                         data_type: PortDataType::Audio,
                         direction: PortDirection::Input,
                         role: PortRole::AudioInput,
+                        connection_policy: ConnectionPolicy::UserManaged,
                     },
                     ApplicationPortState {
                         id: PortId::from_raw(12),
@@ -370,6 +377,7 @@ mod tests {
                         data_type: PortDataType::Audio,
                         direction: PortDirection::Output,
                         role: PortRole::AudioOutput,
+                        connection_policy: ConnectionPolicy::UserManaged,
                     },
                 ]),
                 host_ports: Arc::from([
@@ -489,6 +497,7 @@ mod tests {
                 data_type: PortDataType::Audio,
                 direction: PortDirection::Input,
                 role: PortRole::AudioInput,
+                connection_policy: ConnectionPolicy::UserManaged,
             })
             .collect::<Vec<_>>()
             .into();
@@ -562,6 +571,41 @@ mod tests {
         });
         assert!(output.shapes.len() > 2);
         assert_eq!(state.connections.application_ports.len(), 2);
+        assert!(dialog.cell_rects.is_empty());
+    }
+
+    #[test]
+    fn lua_control_ports_are_global_owner_managed_and_safe_without_hosts() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut state = state();
+        Arc::make_mut(&mut state.connections).application_ports =
+            Arc::from([ApplicationPortState {
+                id: PortId::from_raw(99),
+                owner: ApplicationPortOwner::LuaControl {
+                    script_id: crate::ScriptId::from_raw(7),
+                    registration: 0,
+                },
+                name: "APC: MIDI source 1".to_owned(),
+                data_type: PortDataType::Midi,
+                direction: PortDirection::Input,
+                role: PortRole::MidiInput,
+                connection_policy: ConnectionPolicy::OwnerManaged,
+            }]);
+        Arc::make_mut(&mut state.connections).host_ports = Arc::from([]);
+        let mut dialog = ConnectionDialog::default();
+        dialog.open(ConnectionScope::AllTracks);
+        let global = context.run_ui(Default::default(), |ui| {
+            assert!(dialog.show(ui.ctx(), &state).is_empty());
+        });
+        assert!(global.shapes.len() > 2);
+        assert!(dialog.cell_rects.is_empty());
+
+        dialog.open(ConnectionScope::Track(TrackId::from_raw(1)));
+        let scoped = context.run_ui(Default::default(), |ui| {
+            assert!(dialog.show(ui.ctx(), &state).is_empty());
+        });
+        assert!(scoped.shapes.len() > 2);
         assert!(dialog.cell_rects.is_empty());
     }
 

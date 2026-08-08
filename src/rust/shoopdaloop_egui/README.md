@@ -50,7 +50,7 @@ The browser requests echo cancellation, noise suppression, and automatic gain co
 
 Browser recording storage is prepared per channel for ten seconds at the actual sample rate. Exhaustion stops further channel recording work and is reported in diagnostics instead of growing Wasm memory in the render callback.
 
-The browser application embeds omniLua, Shoop's Lua modules, `keyboard.lua`, and the APC Mini script. Keyboard control is enabled by default and receives egui press/release events independently of audio permission. The APC script is embedded but disabled by default and can run healthily against the empty browser MIDI host inventory. Source-bearing `.shoop` scripts use the same syntax-check/transaction/save path as native egui. Browser script settings UI and persistence are completed separately from this runtime integration.
+The browser application embeds omniLua, Shoop's Lua modules, `keyboard.lua`, and the APC Mini script. Keyboard control is enabled by default and receives egui press/release events independently of audio permission. The APC script is embedded but disabled by default and can run healthily against the empty browser MIDI host inventory. The Scripts settings tab persists those bundled toggles in `localStorage` and reconciles runtime state only after a successful save; native user-file paths and the Add-file action are omitted. Source-bearing `.shoop` scripts use the same syntax-check/transaction/save path as native egui.
 
 ## Session and loop files
 

@@ -21,6 +21,8 @@ use eframe::egui;
 use settings::SettingsManager;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_backend::EngineBackend;
+#[cfg(target_arch = "wasm32")]
+use shoop_egui::register_bundled_script_settings;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_egui::register_script_settings;
 use shoop_egui::{
@@ -89,13 +91,15 @@ impl UnifiedApp {
         register_settings(&mut settings_builder)?;
         #[cfg(not(target_arch = "wasm32"))]
         register_script_settings(&mut settings_builder)?;
+        #[cfg(target_arch = "wasm32")]
+        register_bundled_script_settings(&mut settings_builder)?;
         let settings_registry = settings_builder.finish();
         let settings = load_settings_manager(settings_registry.clone());
         let widget = AppWidget::new(std::sync::Arc::new(settings_registry));
         #[cfg(not(target_arch = "wasm32"))]
         let runtime = Runtime::new(&settings.active())?;
         #[cfg(target_arch = "wasm32")]
-        let runtime = Runtime::new()?;
+        let runtime = Runtime::new(&settings.active())?;
         Ok(Self {
             runtime,
             widget,
@@ -154,8 +158,9 @@ impl UnifiedApp {
             SettingsAction::RecoverWithDefaults => self.settings.request_recovery(),
             SettingsAction::RequestAddUserScript
             | SettingsAction::RequestReloadUserScript { .. } => {
-                self.settings
-                    .report_action_error("Lua scripting is unavailable in browser builds");
+                self.settings.report_action_error(
+                    "Path-based user scripts are unavailable in browser builds",
+                );
                 return;
             }
         };
@@ -166,7 +171,6 @@ impl UnifiedApp {
 
     fn show(&mut self, ui: &mut egui::Ui) {
         self.settings.poll();
-        #[cfg(not(target_arch = "wasm32"))]
         if let Err(error) = self
             .runtime
             .reconcile_script_settings(&self.settings.active())
@@ -192,7 +196,7 @@ impl UnifiedApp {
         self.browser_self_test.update(&mut self.runtime, &snapshot);
         #[cfg(target_arch = "wasm32")]
         self.browser_settings_test
-            .update(&mut self.settings, &mut self.widget);
+            .update(&mut self.settings, &mut self.widget, &self.runtime);
         let settings_state = self.settings.view();
         #[cfg(not(target_arch = "wasm32"))]
         let script_paths = Some(self.runtime.script_paths());
@@ -460,9 +464,7 @@ impl eframe::App for UnifiedApp {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 const KEYBOARD_SCRIPT_FILENAME: &str = "keyboard.lua";
-#[cfg(not(target_arch = "wasm32"))]
 const APC_MINI_SCRIPT_FILENAME: &str = "akai_apc_mini_mk1.lua";
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -691,21 +693,23 @@ impl Runtime {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn browser_startup_scripts() -> Vec<StartupScript> {
-    vec![
+fn browser_startup_scripts(
+    settings: &shoop_settings::SettingsSnapshot,
+) -> anyhow::Result<Vec<StartupScript>> {
+    Ok(vec![
         StartupScript {
-            name: "keyboard.lua".to_owned(),
+            name: KEYBOARD_SCRIPT_FILENAME.to_owned(),
             source: shoop_scripting::KEYBOARD_SCRIPT.to_owned(),
             kind: ScriptKind::Bundled,
-            enabled: true,
+            enabled: settings.get(shoop_egui::KEYBOARD_SCRIPT_ENABLED)?,
         },
         StartupScript {
-            name: "akai_apc_mini_mk1.lua".to_owned(),
+            name: APC_MINI_SCRIPT_FILENAME.to_owned(),
             source: shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT.to_owned(),
             kind: ScriptKind::Bundled,
-            enabled: false,
+            enabled: settings.get(shoop_egui::APC_MINI_SCRIPT_ENABLED)?,
         },
-    ]
+    ])
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -718,15 +722,16 @@ enum BrowserRuntimeMode {
 struct Runtime {
     runtime: CooperativeApplicationRuntime,
     mode: BrowserRuntimeMode,
+    applied_settings_revision: u64,
 }
 
 #[cfg(target_arch = "wasm32")]
 impl Runtime {
-    fn new() -> anyhow::Result<Self> {
+    fn new(settings: &shoop_settings::SettingsSnapshot) -> anyhow::Result<Self> {
         let offline = web_sys::window()
             .and_then(|window| window.location().search().ok())
             .is_some_and(|search| search.contains("offline=1"));
-        let startup_scripts = browser_startup_scripts();
+        let startup_scripts = browser_startup_scripts(settings)?;
         if offline {
             let backend = shoop_backend::EngineBackend::new_dummy(48_000, 256)?;
             return Ok(Self {
@@ -735,6 +740,7 @@ impl Runtime {
                     startup_scripts,
                 )?,
                 mode: BrowserRuntimeMode::OfflineDummy,
+                applied_settings_revision: settings.revision(),
             });
         }
         let (backend, transport) = browser_audio::WebAudioBackend::new();
@@ -745,6 +751,7 @@ impl Runtime {
                 startup_scripts,
             )?,
             mode: BrowserRuntimeMode::WebAudio(controller),
+            applied_settings_revision: settings.revision(),
         })
     }
 
@@ -763,6 +770,42 @@ impl Runtime {
             message.push_str(&notification.message);
         }
         set_browser_status(&message, Some(&snapshot));
+    }
+
+    fn reconcile_script_settings(
+        &mut self,
+        settings: &shoop_settings::SettingsSnapshot,
+    ) -> anyhow::Result<()> {
+        if settings.revision() == self.applied_settings_revision {
+            return Ok(());
+        }
+        let desired = [
+            (
+                KEYBOARD_SCRIPT_FILENAME,
+                settings.get(shoop_egui::KEYBOARD_SCRIPT_ENABLED)?,
+            ),
+            (
+                APC_MINI_SCRIPT_FILENAME,
+                settings.get(shoop_egui::APC_MINI_SCRIPT_ENABLED)?,
+            ),
+        ];
+        let snapshot = self.runtime.snapshot();
+        for (name, enabled) in desired {
+            let script = snapshot
+                .scripting
+                .scripts
+                .iter()
+                .find(|script| script.kind == ScriptKind::Bundled && script.name == name)
+                .ok_or_else(|| anyhow::anyhow!("bundled browser script is missing: {name}"))?;
+            if script.enabled != enabled {
+                self.runtime.dispatch(AppIntent::SetScriptEnabled {
+                    script_id: script.id,
+                    enabled,
+                })?;
+            }
+        }
+        self.applied_settings_revision = settings.revision();
+        Ok(())
     }
 
     fn snapshot(&self) -> std::sync::Arc<AppSnapshot> {
@@ -845,7 +888,12 @@ impl BrowserSettingsSelfTest {
         }
     }
 
-    fn update(&mut self, settings: &mut SettingsManager, widget: &mut AppWidget) {
+    fn update(
+        &mut self,
+        settings: &mut SettingsManager,
+        widget: &mut AppWidget,
+        runtime: &Runtime,
+    ) {
         let result = match *self {
             Self::Disabled | Self::Complete | Self::Failed => return,
             Self::Write => {
@@ -853,9 +901,14 @@ impl BrowserSettingsSelfTest {
                 let mut draft = shoop_egui::SettingsDraft::from_snapshot(&active);
                 draft.set(shoop_egui::DEFAULT_NEW_TRACK_AUDIO_CHANNELS, 6);
                 draft.set(shoop_egui::DEFAULT_NEW_TRACK_MIDI, true);
+                draft.set(shoop_egui::KEYBOARD_SCRIPT_ENABLED, false);
+                draft.set(shoop_egui::APC_MINI_SCRIPT_ENABLED, true);
                 settings.request_save(draft).map(|()| "written")
             }
-            Self::Verify => verify_browser_settings(settings, widget, 6, true).map(|()| "passed"),
+            Self::Verify => {
+                verify_browser_settings(settings, widget, runtime, 6, true, false, true)
+                    .map(|()| "passed")
+            }
             Self::Rejected => {
                 let view = settings.view();
                 if !view.recovery_required {
@@ -863,7 +916,8 @@ impl BrowserSettingsSelfTest {
                         "rejected settings did not require recovery".to_owned(),
                     ))
                 } else {
-                    verify_browser_settings(settings, widget, 2, false).map(|()| "rejected")
+                    verify_browser_settings(settings, widget, runtime, 2, false, true, false)
+                        .map(|()| "rejected")
                 }
             }
             Self::Invalid => {
@@ -873,13 +927,16 @@ impl BrowserSettingsSelfTest {
                         "invalid known value did not fall back with a diagnostic".to_owned(),
                     ))
                 } else {
-                    verify_browser_settings(settings, widget, 2, false).map(|()| "invalid")
+                    verify_browser_settings(settings, widget, runtime, 2, false, true, false)
+                        .map(|()| "invalid")
                 }
             }
             Self::SaveFailure => {
                 let active = settings.view().active;
                 let mut draft = shoop_egui::SettingsDraft::from_snapshot(&active);
                 draft.set(shoop_egui::DEFAULT_NEW_TRACK_AUDIO_CHANNELS, 8);
+                draft.set(shoop_egui::KEYBOARD_SCRIPT_ENABLED, false);
+                draft.set(shoop_egui::APC_MINI_SCRIPT_ENABLED, true);
                 match settings.request_save(draft) {
                     Err(settings::SettingsManagerError::Storage(_)) => {
                         let view = settings.view();
@@ -906,7 +963,8 @@ impl BrowserSettingsSelfTest {
                         "unavailable browser storage was not observable".to_owned(),
                     ))
                 } else {
-                    verify_browser_settings(settings, widget, 2, false).map(|()| "unavailable")
+                    verify_browser_settings(settings, widget, runtime, 2, false, true, false)
+                        .map(|()| "unavailable")
                 }
             }
         };
@@ -937,8 +995,11 @@ impl BrowserSettingsSelfTest {
 fn verify_browser_settings(
     settings: &SettingsManager,
     widget: &mut AppWidget,
+    runtime: &Runtime,
     expected_channels: u32,
     expected_midi: bool,
+    expected_keyboard: bool,
+    expected_apc: bool,
 ) -> Result<(), settings::SettingsManagerError> {
     let view = settings.view();
     let channels = view
@@ -949,12 +1010,35 @@ fn verify_browser_settings(
         .active
         .get(shoop_egui::DEFAULT_NEW_TRACK_MIDI)
         .map_err(|error| settings::SettingsManagerError::Storage(error.to_string()))?;
+    let keyboard = view
+        .active
+        .get(shoop_egui::KEYBOARD_SCRIPT_ENABLED)
+        .map_err(|error| settings::SettingsManagerError::Storage(error.to_string()))?;
+    let apc = view
+        .active
+        .get(shoop_egui::APC_MINI_SCRIPT_ENABLED)
+        .map_err(|error| settings::SettingsManagerError::Storage(error.to_string()))?;
+    let snapshot = runtime.snapshot();
+    let runtime_keyboard = snapshot
+        .scripting
+        .scripts
+        .iter()
+        .find(|script| script.name == KEYBOARD_SCRIPT_FILENAME)
+        .is_some_and(|script| script.enabled);
+    let runtime_apc = snapshot
+        .scripting
+        .scripts
+        .iter()
+        .find(|script| script.name == APC_MINI_SCRIPT_FILENAME)
+        .is_some_and(|script| script.enabled);
     let dialog_defaults = widget.browser_settings_test_open_add_track(&view);
     if (channels, midi) != (expected_channels, expected_midi)
+        || (keyboard, apc) != (expected_keyboard, expected_apc)
+        || (runtime_keyboard, runtime_apc) != (expected_keyboard, expected_apc)
         || dialog_defaults != (expected_channels, expected_midi)
     {
         return Err(settings::SettingsManagerError::Storage(format!(
-            "settings consumer mismatch: active ({channels}, {midi}), dialog {dialog_defaults:?}"
+            "settings consumer mismatch: active ({channels}, {midi}, keyboard={keyboard}, apc={apc}), runtime scripts ({runtime_keyboard}, {runtime_apc}), dialog {dialog_defaults:?}"
         )));
     }
     Ok(())

@@ -363,7 +363,9 @@ impl SettingsDialog {
             );
             return;
         }
-        if ui.button("Add Lua file…").clicked() {
+        if self.registry.definition(USER_SCRIPTS.id()).is_some()
+            && ui.button("Add Lua file…").clicked()
+        {
             response
                 .settings_actions
                 .push(SettingsAction::RequestAddUserScript);

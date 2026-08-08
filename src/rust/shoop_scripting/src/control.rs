@@ -287,11 +287,19 @@ pub enum MidiRuleRuntimeDirection {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MidiEndpointRuntimeDiagnostics {
+    pub id: String,
+    pub name: String,
+    pub connected: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MidiRuleRuntimeDiagnostics {
     pub direction: MidiRuleRuntimeDirection,
     pub pattern: String,
     pub matched_endpoints: Vec<String>,
     pub connected_endpoints: Vec<String>,
+    pub endpoints: Vec<MidiEndpointRuntimeDiagnostics>,
     pub latest_error: Option<String>,
 }
 
@@ -624,6 +632,14 @@ impl ScriptCallbacks {
                         .filter(|entry| rule.connections.contains_key(&entry.id))
                         .map(|entry| endpoint_label(entry))
                         .collect(),
+                    endpoints: matches
+                        .iter()
+                        .map(|entry| MidiEndpointRuntimeDiagnostics {
+                            id: entry.id.clone(),
+                            name: entry.name.clone(),
+                            connected: rule.connections.contains_key(&entry.id),
+                        })
+                        .collect(),
                     latest_error: rule.latest_error.clone(),
                 }
             })
@@ -641,6 +657,14 @@ impl ScriptCallbacks {
                         .iter()
                         .filter(|entry| rule.connections.contains_key(&entry.id))
                         .map(|entry| endpoint_label(entry))
+                        .collect(),
+                    endpoints: matches
+                        .iter()
+                        .map(|entry| MidiEndpointRuntimeDiagnostics {
+                            id: entry.id.clone(),
+                            name: entry.name.clone(),
+                            connected: rule.connections.contains_key(&entry.id),
+                        })
                         .collect(),
                     latest_error: rule.latest_error.clone(),
                 }

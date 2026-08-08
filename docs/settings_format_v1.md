@@ -75,7 +75,7 @@ On load:
 - Unknown keys remain opaque JSON values and are preserved byte-semantically as JSON values across a same-version save. They are not exposed to consumers or the settings dialog.
 - Duplicate registrations, invalid defaults, incompatible editor/type combinations, and typed reads using the wrong key type are programming errors rejected while composing/testing the registry.
 
-Version 1 registers the cross-target track defaults below. Native composition additionally registers the scripting values; browser composition omits them because browser Lua is unsupported and preserves them as unknown values if encountered.
+Version 1 registers the cross-target track defaults and bundled-script toggles below. Native composition additionally registers the ordered user-script path list. Browser composition omits that machine-path setting and preserves it as an unknown value if encountered.
 
 | Key | Type | Default | Effect |
 |---|---|---:|---|
@@ -87,7 +87,7 @@ Version 1 registers the cross-target track defaults below. Native composition ad
 
 An ordered string/toggle list is a JSON array. Each entry is exactly an object with a non-empty unique `value` string and an `enabled` boolean. Array order is retained. The generic editor supports editing, toggling, adding, removing, and resetting entries. Invalid or duplicate entries reject a draft; malformed stored values produce a diagnostic and use the registered default.
 
-The track defaults do not change an existing track, an already-open Add Track draft, or session data. Native scripting settings contain machine paths only and never enter `.shoop` session state. Both bundled scripts remain discoverable; only `keyboard.lua` runs by default.
+The track defaults do not change an existing track, an already-open Add Track draft, or session data. Bundled script toggles reconcile running scripts only after a successful durable save; a failed write leaves the active revision and runtime unchanged. Native user-script settings contain machine paths only and never enter `.shoop` session state. Both bundled scripts remain discoverable on native and browser targets; only `keyboard.lua` runs by default.
 
 ## Version checks and migration
 
@@ -108,7 +108,7 @@ A missing document is a normal first run and publishes registered defaults.
 
 Malformed, unsupported, unreadable, or storage-unavailable input publishes defaults plus an actionable diagnostic. The source is not automatically rewritten. An unsupported future document must never be normalized by an older application. The settings dialog requires an explicit recovery/reset action before replacing rejected source data.
 
-The application has one Settings dialog. Registered categories are tabs; native builds include a **Scripts** tab with startup preferences plus script lifecycle, documentation, logs, and MIDI diagnostics. Browser builds omit that tab.
+The application has one Settings dialog. Registered categories are tabs. Native builds include a **Scripts** tab with bundled toggles, user-file management, lifecycle, documentation, logs, and MIDI diagnostics. Browser builds include the same bundled toggles and runtime diagnostics but omit the native user-path definition and Add-file action.
 
 Dialog edits are drafts. Cancel or close discards them. Save validates the complete draft, merges known values into the retained current-version document, and preserves unknown keys. Native script files are read and syntax-checked before a script-settings draft is accepted. Running scripts are reconciled only after persistence publishes the committed revision; runtime-only Stop, Restart, and Reload actions do not mutate the draft.
 

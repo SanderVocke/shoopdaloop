@@ -328,6 +328,12 @@ pub enum ApplicationPortOwner {
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum ConnectionPolicy {
+    UserManaged,
+    OwnerManaged,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ApplicationPortState {
     pub id: PortId,
@@ -336,6 +342,7 @@ pub struct ApplicationPortState {
     pub data_type: PortDataType,
     pub direction: PortDirection,
     pub role: PortRole,
+    pub connection_policy: ConnectionPolicy,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -560,11 +567,19 @@ pub enum ScriptMidiRuleDirection {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScriptMidiEndpointDiagnostics {
+    pub id: String,
+    pub name: String,
+    pub connected: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ScriptMidiRuleDiagnostics {
     pub direction: ScriptMidiRuleDirection,
     pub pattern: String,
     pub matched_endpoints: Arc<[String]>,
     pub connected_endpoints: Arc<[String]>,
+    pub endpoints: Arc<[ScriptMidiEndpointDiagnostics]>,
     pub latest_error: Option<String>,
 }
 
@@ -913,6 +928,7 @@ mod tests {
             data_type: PortDataType::Audio,
             direction: PortDirection::Input,
             role: PortRole::AudioInput,
+            connection_policy: ConnectionPolicy::UserManaged,
         };
         let host = HostPortState {
             id: HostPortId::new(endpoint.clone()),

@@ -197,17 +197,17 @@ Verification:
 
 ### Stage 5 — Publish control ports and complete browser settings/artifact UX
 
-- [ ] Give each Lua MIDI input/output registration a stable script-owned application-port ID and lifecycle; remove it on script stop/restart/forget without leaking pending links.
-- [ ] Merge script logical ports and host MIDI endpoint observations into the global connection view. Mark regex-autoconnect cells as policy-managed and preserve diagnostics/confirmed truth.
-- [ ] Ensure direct MIDI track ports and logical control ports paint their names with zero Web MIDI endpoints; add/stop/restart scripts while the dialog is open to prove live churn.
-- [ ] Split script settings registration into cross-target bundled toggles and native-only user-path definitions/actions. Show a functional browser Scripts tab without a dead file-path picker.
-- [ ] Reconcile committed browser settings revisions into startup/runtime scripts; failed `localStorage` saves must not change running scripts.
+- [x] Give each Lua MIDI input/output registration a deterministic script/registration-owned application-port ID; remove it on stop/forget and restore the same ID on restart without pending-link leakage.
+- [x] Merge script logical ports and raw-ID host MIDI observations into the global connection view. Mark regex-autoconnect cells owner-managed and preserve diagnostic/confirmed truth.
+- [x] Ensure direct MIDI track ports and logical control ports remain named/visible with zero MIDI host endpoints; application and GUI tests cover stop/restart and global-versus-track scope.
+- [x] Split script settings registration into cross-target bundled toggles and native-only user-path definitions/actions. Show a functional browser Scripts tab without a dead Add-file action.
+- [x] Reconcile committed browser settings revisions into startup/runtime bundled scripts; failed `localStorage` saves cannot change the active revision or running scripts.
 - [ ] Ensure hosted and self-contained package generation embeds omniLua and all `include_str!` Lua sources, and rejects missing/stale assets, forbidden native dependencies, or any reintroduced `mlua` runtime.
 - [ ] Update all planning documents, settings/session/Lua contracts, runner README, artifact descriptions, and browser limitation copy in the same milestone commit.
 
 Verification:
 
-- [ ] Application/GUI tests prove global versus track ownership, active control-port churn, policy-managed native links, zero-endpoint browser categories, settings Save/Cancel/failure behavior, and keyboard default enablement.
+- [x] Application/GUI/settings tests prove global versus track ownership, control-port stop/restart stability, owner-managed native links, zero-endpoint categories, bundled/native registry separation, existing Save/Cancel/failure semantics, and keyboard/APC defaults.
 - [ ] Hosted and self-contained browser automation opens the Scripts tab, observes embedded keyboard/APC entries, drives an authoritative keyboard workflow, observes APC logical MIDI ports with zero candidates, reloads settings, and round-trips an enabled session script.
 - [ ] Archive and standalone HTML inspections find omniLua runtime code, built-in source markers, no former C Lua runtime, and no checkout-relative or network fetch dependency for Lua.
 

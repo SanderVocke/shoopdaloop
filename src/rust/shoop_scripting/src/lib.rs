@@ -8,7 +8,7 @@ use omnilua::{Function, Lua, Value};
 use shoop_app_api::{
     ScriptActivityDiagnostics as ApiScriptActivityDiagnostics, ScriptId, ScriptKind,
     ScriptLifecycle, ScriptLogLevel as ApiScriptLogLevel, ScriptLogState, ScriptMidiDiagnostics,
-    ScriptMidiRuleDiagnostics, ScriptMidiRuleDirection, ScriptState,
+    ScriptMidiEndpointDiagnostics, ScriptMidiRuleDiagnostics, ScriptMidiRuleDirection, ScriptState,
 };
 
 mod control;
@@ -657,6 +657,16 @@ impl ScriptManager {
                                 pattern: rule.pattern,
                                 matched_endpoints: rule.matched_endpoints.into(),
                                 connected_endpoints: rule.connected_endpoints.into(),
+                                endpoints: rule
+                                    .endpoints
+                                    .into_iter()
+                                    .map(|endpoint| ScriptMidiEndpointDiagnostics {
+                                        id: endpoint.id,
+                                        name: endpoint.name,
+                                        connected: endpoint.connected,
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .into(),
                                 latest_error: rule.latest_error,
                             })
                             .collect::<Vec<_>>()

@@ -3,9 +3,9 @@ use std::sync::Arc;
 use eframe::egui;
 use shoop_app_api::{
     AppIntent, AppSnapshot, ApplicationPortOwner, ApplicationPortState, ConfirmedConnectionState,
-    ConnectionErrorKind, ConnectionErrorState, ConnectionViewState, HostPortId, HostPortState,
-    LoopId, LoopState, PendingConnectionState, PortDataType, PortDirection, PortId, PortRole,
-    StatusState, TrackControlState, TrackId, TrackPortOwnerKind, TrackState,
+    ConnectionErrorKind, ConnectionErrorState, ConnectionPolicy, ConnectionViewState, HostPortId,
+    HostPortState, LoopId, LoopState, PendingConnectionState, PortDataType, PortDirection, PortId,
+    PortRole, StatusState, TrackControlState, TrackId, TrackPortOwnerKind, TrackState,
 };
 use shoop_egui::{
     register_settings, AppWidget, ConnectionScope, SettingsPersistenceState,
@@ -238,6 +238,7 @@ fn port(
         data_type,
         direction,
         role,
+        connection_policy: ConnectionPolicy::UserManaged,
     }
 }
 

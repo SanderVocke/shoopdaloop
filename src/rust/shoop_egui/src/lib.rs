@@ -15,9 +15,9 @@ mod waveform;
 mod waveform_widget;
 
 pub use app_widget::{
-    register_script_settings, register_settings, AppWidget, AppWidgetResponse,
-    APC_MINI_SCRIPT_ENABLED, DEFAULT_NEW_TRACK_AUDIO_CHANNELS, DEFAULT_NEW_TRACK_MIDI,
-    KEYBOARD_SCRIPT_ENABLED, USER_SCRIPTS,
+    register_bundled_script_settings, register_script_settings, register_settings, AppWidget,
+    AppWidgetResponse, APC_MINI_SCRIPT_ENABLED, DEFAULT_NEW_TRACK_AUDIO_CHANNELS,
+    DEFAULT_NEW_TRACK_MIDI, KEYBOARD_SCRIPT_ENABLED, USER_SCRIPTS,
 };
 pub use connection_dialog::{ConnectionDialog, ConnectionScope};
 pub use details_pane::DetailsPane;
