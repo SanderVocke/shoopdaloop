@@ -923,12 +923,20 @@ pub enum AppIntent {
         host_port_id: HostPortId,
         connected: bool,
     },
+    RefreshAudioDriverDiscovery {
+        config: AudioDriverConfig,
+    },
     RequestAudioDriverSwitch {
         config: AudioDriverConfig,
     },
     ConfirmAudioDriverSwitch {
         request_id: u64,
         accept: bool,
+    },
+    CompleteAudioDriverSwitchPersistence {
+        request_id: u64,
+        success: bool,
+        message: String,
     },
     RequestSaveSession,
     RequestLoadSessionPicker,

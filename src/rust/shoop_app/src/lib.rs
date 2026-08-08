@@ -10,15 +10,15 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, Result};
 use shoop_app_api::{
     AppIntent, AppNotification, AppSnapshot, ApplicationPortOwner, ApplicationPortState,
-    AudioChannelMappingState, AudioChannelSelectionState, AudioDriverRuntimeState,
-    AudioDriverState, ChannelId, ConfirmedConnectionState, ConnectionErrorKind,
-    ConnectionErrorState, ConnectionPolicy, ConnectionViewState, DirectTrackSpec,
-    GlobalControlAction, HostPortId, HostPortState, IoTaskKind, IoTaskState, IoTaskStatus,
-    KeyEvent, KeyEventType, LoopAction, LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode,
-    LoopState, NotificationLevel, PendingConnectionState, PortDataType, PortDirection, PortId,
-    PortRole, SampleRateWarning, ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState,
-    StatusState, TaskId, TrackAction, TrackControlState, TrackId, TrackPortOwnerKind, TrackState,
-    WaveformChannelState,
+    AudioChannelMappingState, AudioChannelSelectionState, AudioDriverConfig,
+    AudioDriverRuntimeState, AudioDriverState, AudioDriverSwitchState, AudioDriverSwitchStatus,
+    ChannelId, ConfirmedConnectionState, ConnectionErrorKind, ConnectionErrorState,
+    ConnectionPolicy, ConnectionViewState, DirectTrackSpec, GlobalControlAction, HostPortId,
+    HostPortState, IoTaskKind, IoTaskState, IoTaskStatus, KeyEvent, KeyEventType, LoopAction,
+    LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, NotificationLevel,
+    PendingConnectionState, PortDataType, PortDirection, PortId, PortRole, SampleRateWarning,
+    ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState, TaskId,
+    TrackAction, TrackControlState, TrackId, TrackPortOwnerKind, TrackState, WaveformChannelState,
 };
 use shoop_backend::{
     Backend, BackendAudioContent, BackendConnectionSnapshot, BackendGrabRequest,
@@ -420,6 +420,8 @@ struct ApplicationModel {
     audio_drivers: AudioDriverRuntimeState,
     notifications: Vec<AppNotification>,
     next_task_id: u64,
+    next_audio_switch_id: u64,
+    pending_audio_switch: Option<PendingAudioSwitch>,
     io_task: Option<IoTaskState>,
     pending_io: Option<PendingIo>,
     session_encoding: Option<Receiver<Result<Vec<u8>, String>>>,
@@ -472,6 +474,10 @@ struct ScriptCompositionPlayback {
     section: usize,
     remaining_frames: u64,
     mode: LoopMode,
+}
+
+struct PendingAudioSwitch {
+    target: shoop_app_api::ResolvedAudioDriverConfig,
 }
 
 enum PendingIo {
@@ -618,6 +624,8 @@ impl ApplicationModel {
             audio_drivers: backend.audio_driver_state().unwrap_or_default(),
             notifications: Vec::new(),
             next_task_id: 1,
+            next_audio_switch_id: 1,
+            pending_audio_switch: None,
             io_task: None,
             pending_io: None,
             session_encoding: None,
@@ -682,10 +690,25 @@ impl ApplicationModel {
                 host_port_id,
                 connected,
             } => self.set_port_connected(backend, port_id, host_port_id.to_string(), connected),
-            AppIntent::RequestAudioDriverSwitch { .. }
-            | AppIntent::ConfirmAudioDriverSwitch { .. } => {
-                Err("audio-driver switching is not initialized".to_owned())
+            AppIntent::RefreshAudioDriverDiscovery { config } => backend
+                .refresh_audio_driver_discovery(&config)
+                .map(|runtime| {
+                    let switch = self.audio_drivers.switch.clone();
+                    self.audio_drivers = runtime;
+                    self.audio_drivers.switch = switch;
+                })
+                .map_err(|error| format!("could not refresh audio devices: {error}")),
+            AppIntent::RequestAudioDriverSwitch { config } => {
+                self.request_audio_driver_switch(backend, config)
             }
+            AppIntent::ConfirmAudioDriverSwitch { request_id, accept } => {
+                self.confirm_audio_driver_switch(backend, request_id, accept)
+            }
+            AppIntent::CompleteAudioDriverSwitchPersistence {
+                request_id,
+                success,
+                message,
+            } => self.complete_audio_driver_persistence(request_id, success, message),
             AppIntent::RequestSaveSession => self.begin_save_session(),
             AppIntent::RequestLoadSessionPicker
             | AppIntent::RequestLoopAudioImportPicker { .. }
@@ -1510,6 +1533,292 @@ impl ApplicationModel {
         if !self.connection_view.loading {
             self.rebuild_connection_view();
         }
+    }
+
+    fn request_audio_driver_switch(
+        &mut self,
+        backend: &mut dyn Backend,
+        config: AudioDriverConfig,
+    ) -> Result<(), String> {
+        self.ensure_io_idle()?;
+        if matches!(
+            self.audio_drivers.switch.status,
+            AudioDriverSwitchStatus::AwaitingConfirmation
+                | AudioDriverSwitchStatus::Switching
+                | AudioDriverSwitchStatus::Resampling
+                | AudioDriverSwitchStatus::Restoring
+        ) {
+            return Err("another audio-driver switch is active".to_owned());
+        }
+        let source = self
+            .audio_drivers
+            .active
+            .clone()
+            .ok_or_else(|| "the active audio driver is unavailable".to_owned())?;
+        let target = backend
+            .preflight_audio_driver(&config)
+            .map_err(|error| format!("could not prepare audio driver: {error}"))?;
+        if source.configured == target.configured
+            && source.sample_rate == target.sample_rate
+            && source.buffer_size == target.buffer_size
+        {
+            return Err("the requested audio-driver configuration is already active".to_owned());
+        }
+        let request_id = self.next_audio_switch_id;
+        self.next_audio_switch_id = self.next_audio_switch_id.saturating_add(1);
+        let rate_message = if source.sample_rate == target.sample_rate {
+            format!("Sample rate remains {} Hz.", source.sample_rate)
+        } else {
+            format!(
+                "Sample rate changes from {} Hz to {} Hz. All loop audio, MIDI timing, lengths, offsets, preplay, ring-buffer durations, and cycle timing will be resampled.",
+                source.sample_rate, target.sample_rate
+            )
+        };
+        self.pending_audio_switch = Some(PendingAudioSwitch {
+            target: target.clone(),
+        });
+        self.audio_drivers.switch = AudioDriverSwitchState {
+            request_id,
+            status: AudioDriverSwitchStatus::AwaitingConfirmation,
+            source: Some(source.clone()),
+            target: Some(target.clone()),
+            message: format!(
+                "Switch {} ({}) to {} ({})? Audio processing and current transport activity will be interrupted. {rate_message}",
+                source.configured.kind().label(),
+                source.instance_name,
+                target.configured.kind().label(),
+                target.instance_name,
+            ),
+            persistence_retry_available: false,
+        };
+        Ok(())
+    }
+
+    fn confirm_audio_driver_switch(
+        &mut self,
+        backend: &mut dyn Backend,
+        request_id: u64,
+        accept: bool,
+    ) -> Result<(), String> {
+        if self.audio_drivers.switch.request_id != request_id
+            || self.audio_drivers.switch.status != AudioDriverSwitchStatus::AwaitingConfirmation
+        {
+            return Err(format!("stale audio-driver switch request {request_id}"));
+        }
+        let Some(pending) = self.pending_audio_switch.take() else {
+            return Err("audio-driver switch preparation is missing".to_owned());
+        };
+        if !accept {
+            self.audio_drivers.switch = AudioDriverSwitchState {
+                request_id,
+                status: AudioDriverSwitchStatus::Completed,
+                message: "Audio-driver switch cancelled; runtime and settings are unchanged."
+                    .to_owned(),
+                ..Default::default()
+            };
+            return Ok(());
+        }
+        if let Err(error) = self.ensure_io_idle() {
+            self.pending_audio_switch = Some(pending);
+            return Err(error);
+        }
+        let source = self.audio_drivers.switch.source.clone();
+        self.audio_drivers.switch.status = AudioDriverSwitchStatus::Switching;
+        self.audio_drivers.switch.message = "Capturing the current session".to_owned();
+        let capture = match backend.capture_session() {
+            Ok(capture) => capture,
+            Err(error) => {
+                let message = format!("could not capture session before driver switch: {error}");
+                self.fail_audio_driver_switch(request_id, source, pending.target, &message);
+                return Err(message);
+            }
+        };
+        let source_bundle = match self.session_bundle_from_backend(&capture) {
+            Ok(bundle) => bundle,
+            Err(error) => {
+                self.fail_audio_driver_switch(request_id, source, pending.target, &error);
+                return Err(error);
+            }
+        };
+        let target_rate = pending.target.sample_rate;
+        let bundle = if source_bundle.document.sample_rate == target_rate {
+            source_bundle.clone()
+        } else {
+            self.audio_drivers.switch.status = AudioDriverSwitchStatus::Resampling;
+            self.audio_drivers.switch.message = format!(
+                "Resampling all loop contents from {} Hz to {target_rate} Hz",
+                source_bundle.document.sample_rate
+            );
+            match resample_session(&source_bundle, target_rate) {
+                Ok(bundle) => bundle,
+                Err(error) => {
+                    let message = format!("could not resample session: {error}");
+                    self.fail_audio_driver_switch(request_id, source, pending.target, &message);
+                    return Err(message);
+                }
+            }
+        };
+        let backend_data = match session_bundle_to_backend(&bundle) {
+            Ok(data) => data,
+            Err(error) => {
+                self.fail_audio_driver_switch(request_id, source, pending.target, &error);
+                return Err(error);
+            }
+        };
+        self.audio_drivers.switch.status = AudioDriverSwitchStatus::Switching;
+        self.audio_drivers.switch.message =
+            "Starting the target driver and restoring session".to_owned();
+        let replacement = match backend.switch_audio_driver(
+            &pending.target.configured,
+            target_rate,
+            &backend_data,
+        ) {
+            Ok(replacement) => replacement,
+            Err(error) => {
+                if error
+                    .to_string()
+                    .contains("resolved target sample rate changed")
+                {
+                    if let Ok(target) = backend.preflight_audio_driver(&pending.target.configured) {
+                        let source = backend
+                            .audio_driver_state()
+                            .ok()
+                            .and_then(|runtime| runtime.active);
+                        let rate_message = source.as_ref().map_or_else(
+                            || format!("Target sample rate is now {} Hz.", target.sample_rate),
+                            |source| {
+                                format!(
+                                    "Sample rate is now resolved as {} Hz → {} Hz. All loop contents will be resampled after confirmation.",
+                                    source.sample_rate, target.sample_rate
+                                )
+                            },
+                        );
+                        self.pending_audio_switch = Some(PendingAudioSwitch {
+                            target: target.clone(),
+                        });
+                        self.audio_drivers.switch = AudioDriverSwitchState {
+                            request_id,
+                            status: AudioDriverSwitchStatus::AwaitingConfirmation,
+                            source,
+                            target: Some(target),
+                            message: format!(
+                                "The target sample rate changed during preparation. Confirm again. {rate_message}"
+                            ),
+                            persistence_retry_available: false,
+                        };
+                        return Ok(());
+                    }
+                }
+                let message = format!("audio-driver switch failed: {error}");
+                let runtime = backend.audio_driver_state().unwrap_or_default();
+                let fatal = runtime.active.is_none();
+                self.audio_drivers = runtime;
+                self.audio_drivers.switch = AudioDriverSwitchState {
+                    request_id,
+                    status: if fatal {
+                        AudioDriverSwitchStatus::Fatal
+                    } else {
+                        AudioDriverSwitchStatus::Failed
+                    },
+                    source,
+                    target: Some(pending.target),
+                    message: message.clone(),
+                    persistence_retry_available: false,
+                };
+                return Err(message);
+            }
+        };
+        if let Err(error) = self.apply_loaded_session(backend, &bundle, &replacement) {
+            self.audio_drivers.switch.status = AudioDriverSwitchStatus::Restoring;
+            self.audio_drivers.switch.message = "Restoring the prior audio driver".to_owned();
+            let rollback = source.as_ref().ok_or_else(|| {
+                "could not restore switched session because source driver state is missing"
+                    .to_owned()
+            });
+            let rollback = rollback.and_then(|source| {
+                backend
+                    .switch_audio_driver(&source.configured, source.sample_rate, &capture)
+                    .map_err(|rollback_error| rollback_error.to_string())
+                    .and_then(|mapping| {
+                        self.apply_loaded_session(backend, &source_bundle, &mapping)
+                    })
+            });
+            let message = match rollback {
+                Ok(()) => format!(
+                    "could not remap switched session: {error}; the prior driver was restored"
+                ),
+                Err(rollback_error) => {
+                    let message = format!(
+                        "could not remap switched session: {error}; restoring the prior driver failed: {rollback_error}"
+                    );
+                    self.audio_drivers.switch = AudioDriverSwitchState {
+                        request_id,
+                        status: AudioDriverSwitchStatus::Fatal,
+                        source,
+                        target: Some(pending.target),
+                        message: message.clone(),
+                        persistence_retry_available: false,
+                    };
+                    return Err(message);
+                }
+            };
+            self.fail_audio_driver_switch(request_id, source, pending.target, &message);
+            return Err(message);
+        }
+        let runtime = backend.audio_driver_state().unwrap_or_default();
+        self.audio_drivers = runtime;
+        self.audio_drivers.switch = AudioDriverSwitchState {
+            request_id,
+            status: AudioDriverSwitchStatus::Persisting,
+            source,
+            target: Some(pending.target),
+            message: "Audio driver switched; saving the preferred configuration".to_owned(),
+            persistence_retry_available: false,
+        };
+        Ok(())
+    }
+
+    fn complete_audio_driver_persistence(
+        &mut self,
+        request_id: u64,
+        success: bool,
+        message: String,
+    ) -> Result<(), String> {
+        if self.audio_drivers.switch.request_id != request_id
+            || !matches!(
+                self.audio_drivers.switch.status,
+                AudioDriverSwitchStatus::Persisting | AudioDriverSwitchStatus::Failed
+            )
+        {
+            return Err(format!(
+                "stale audio-driver persistence result {request_id}"
+            ));
+        }
+        self.audio_drivers.switch.status = if success {
+            AudioDriverSwitchStatus::Completed
+        } else {
+            AudioDriverSwitchStatus::Failed
+        };
+        self.audio_drivers.switch.message = message;
+        self.audio_drivers.switch.persistence_retry_available = !success;
+        Ok(())
+    }
+
+    fn fail_audio_driver_switch(
+        &mut self,
+        request_id: u64,
+        source: Option<shoop_app_api::ResolvedAudioDriverConfig>,
+        target: shoop_app_api::ResolvedAudioDriverConfig,
+        message: &str,
+    ) {
+        self.audio_drivers.switch = AudioDriverSwitchState {
+            request_id,
+            status: AudioDriverSwitchStatus::Failed,
+            source,
+            target: Some(target),
+            message: message.to_owned(),
+            persistence_retry_available: false,
+        };
     }
 
     fn begin_save_session(&mut self) -> Result<(), String> {
@@ -2898,7 +3207,11 @@ impl ApplicationModel {
     }
 
     fn apply_backend_snapshot(&mut self, snapshot: BackendSnapshot) {
+        let switch = self.audio_drivers.switch.clone();
         self.audio_drivers = snapshot.audio_drivers.clone();
+        if switch.status != AudioDriverSwitchStatus::Idle {
+            self.audio_drivers.switch = switch;
+        }
         self.status.dsp_load_percent = snapshot.status.dsp_load_percent;
         self.status.xruns = self.status.xruns.saturating_add(snapshot.status.xruns);
         self.status.buffer_size = snapshot.status.buffer_size;
@@ -6715,6 +7028,447 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             &first.connections.application_ports,
             &second.connections.application_ports
         ));
+    }
+
+    #[test]
+    fn audio_driver_switch_requires_confirmation_and_resamples_transactionally() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime.tick(Duration::ZERO);
+        let before = runtime.snapshot();
+        let track_ids = before
+            .tracks
+            .iter()
+            .map(|track| track.id)
+            .collect::<Vec<_>>();
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    sample_rate: 32_000,
+                    buffer_size: 128,
+                }),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let warning = runtime.snapshot();
+        assert_eq!(
+            warning.audio_drivers.switch.status,
+            AudioDriverSwitchStatus::AwaitingConfirmation
+        );
+        assert!(warning
+            .audio_drivers
+            .switch
+            .message
+            .contains("48000 Hz to 32000 Hz"));
+        assert!(warning
+            .audio_drivers
+            .switch
+            .message
+            .contains("All loop audio, MIDI timing"));
+        assert_eq!(warning.status.sample_rate, 48_000);
+        let request_id = warning.audio_drivers.switch.request_id;
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let switched = runtime.snapshot();
+        assert_eq!(
+            switched.audio_drivers.switch.status,
+            AudioDriverSwitchStatus::Persisting
+        );
+        assert_eq!(
+            switched.audio_drivers.active.as_ref().unwrap().sample_rate,
+            32_000
+        );
+        assert_eq!(
+            switched
+                .tracks
+                .iter()
+                .map(|track| track.id)
+                .collect::<Vec<_>>(),
+            track_ids
+        );
+        assert!(switched
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .all(|loop_| loop_.mode == LoopMode::Stopped));
+        runtime
+            .dispatch(AppIntent::CompleteAudioDriverSwitchPersistence {
+                request_id,
+                success: true,
+                message: "saved".to_owned(),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().audio_drivers.switch.status,
+            AudioDriverSwitchStatus::Completed
+        );
+    }
+
+    #[test]
+    fn engine_driver_switch_scales_recorded_loop_length_with_existing_resampler() {
+        let backend = EngineBackend::new_dummy(48_000, 128).unwrap();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        let sync = &runtime.snapshot().tracks[0];
+        let track_id = sync.id;
+        let loop_id = sync.loops[0].id;
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::RecordClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(10));
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id,
+                loop_id,
+                action: LoopAction::IconClicked(Default::default()),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().details.as_ref().unwrap().channels[0].loop_length,
+            480
+        );
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    sample_rate: 24_000,
+                    buffer_size: 64,
+                }),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let request_id = runtime.snapshot().audio_drivers.switch.request_id;
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime.tick(Duration::ZERO);
+        let switched = runtime.snapshot();
+        assert_eq!(switched.status.sample_rate, 24_000);
+        assert_eq!(
+            switched.details.as_ref().unwrap().channels[0].loop_length,
+            240
+        );
+        assert_eq!(
+            switched
+                .audio_drivers
+                .switch
+                .target
+                .as_ref()
+                .unwrap()
+                .sample_rate,
+            24_000
+        );
+    }
+
+    #[test]
+    fn persistence_failure_keeps_new_driver_active_and_enables_save_retry() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    sample_rate: 32_000,
+                    buffer_size: 128,
+                }),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let request_id = runtime.snapshot().audio_drivers.switch.request_id;
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::CompleteAudioDriverSwitchPersistence {
+                request_id,
+                success: false,
+                message: "save failed".to_owned(),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let failed = runtime.snapshot();
+        assert_eq!(failed.status.sample_rate, 32_000);
+        assert_eq!(
+            failed.audio_drivers.switch.status,
+            AudioDriverSwitchStatus::Failed
+        );
+        assert!(failed.audio_drivers.switch.persistence_retry_available);
+        assert_eq!(
+            failed.audio_drivers.active.as_ref().unwrap().sample_rate,
+            32_000
+        );
+    }
+
+    #[test]
+    fn cancelling_audio_driver_switch_leaves_runtime_unchanged() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    sample_rate: 44_100,
+                    buffer_size: 256,
+                }),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let request_id = runtime.snapshot().audio_drivers.switch.request_id;
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: false,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let cancelled = runtime.snapshot();
+        assert_eq!(cancelled.status.sample_rate, 48_000);
+        assert_eq!(
+            cancelled
+                .audio_drivers
+                .active
+                .as_ref()
+                .unwrap()
+                .configured
+                .kind(),
+            shoop_app_api::AudioDriverKind::Dummy
+        );
+        assert!(cancelled.audio_drivers.switch.message.contains("cancelled"));
+    }
+
+    #[test]
+    fn active_io_task_rejects_audio_driver_preflight_without_mutation() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    sample_rate: 32_000,
+                    buffer_size: 128,
+                }),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let snapshot = runtime.snapshot();
+        assert_eq!(
+            snapshot.audio_drivers.switch.status,
+            AudioDriverSwitchStatus::Idle
+        );
+        assert_eq!(snapshot.status.sample_rate, 48_000);
+        assert!(snapshot
+            .notifications
+            .iter()
+            .any(|notification| notification.message.contains("I/O task is active")));
+    }
+
+    #[test]
+    fn failed_audio_driver_switch_restores_prior_runtime_and_reports_failure() {
+        let backend = FakeBackend::default();
+        let control = backend.audio_driver_control();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Cpal(shoop_app_api::CpalAudioDriverConfig {
+                    sample_rate: 48_000,
+                    buffer_size: 128,
+                    ..Default::default()
+                }),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let request_id = runtime.snapshot().audio_drivers.switch.request_id;
+        control.fail_next_switch("injected target failure");
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let failed = runtime.snapshot();
+        assert_eq!(
+            failed.audio_drivers.switch.status,
+            AudioDriverSwitchStatus::Failed
+        );
+        assert!(failed
+            .audio_drivers
+            .switch
+            .message
+            .contains("injected target failure"));
+        assert_eq!(failed.status.sample_rate, 48_000);
+        assert_eq!(
+            failed
+                .audio_drivers
+                .active
+                .as_ref()
+                .unwrap()
+                .configured
+                .kind(),
+            shoop_app_api::AudioDriverKind::Dummy
+        );
+    }
+
+    #[test]
+    fn remap_failure_rolls_back_the_committed_target_driver() {
+        let backend = FakeBackend::default();
+        let control = backend.audio_driver_control();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Cpal(shoop_app_api::CpalAudioDriverConfig {
+                    sample_rate: 48_000,
+                    buffer_size: 128,
+                    ..Default::default()
+                }),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let request_id = runtime.snapshot().audio_drivers.switch.request_id;
+        control.corrupt_next_replacement_mapping();
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let failed = runtime.snapshot();
+        assert_eq!(
+            failed.audio_drivers.switch.status,
+            AudioDriverSwitchStatus::Failed
+        );
+        assert!(failed
+            .audio_drivers
+            .switch
+            .message
+            .contains("prior driver was restored"));
+        assert_eq!(
+            failed
+                .audio_drivers
+                .active
+                .as_ref()
+                .unwrap()
+                .configured
+                .kind(),
+            shoop_app_api::AudioDriverKind::Dummy
+        );
+        assert_eq!(failed.tracks.len(), 1);
+    }
+
+    #[test]
+    fn changed_commit_time_rate_requires_a_second_confirmation() {
+        let backend = FakeBackend::default();
+        let control = backend.audio_driver_control();
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    sample_rate: 44_100,
+                    buffer_size: 128,
+                }),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let request_id = runtime.snapshot().audio_drivers.switch.request_id;
+        control.set_preflight_sample_rate_override(Some(32_000));
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let reconfirm = runtime.snapshot();
+        assert_eq!(
+            reconfirm.audio_drivers.switch.status,
+            AudioDriverSwitchStatus::AwaitingConfirmation
+        );
+        assert_eq!(
+            reconfirm
+                .audio_drivers
+                .switch
+                .target
+                .as_ref()
+                .unwrap()
+                .sample_rate,
+            32_000
+        );
+        assert!(reconfirm
+            .audio_drivers
+            .switch
+            .message
+            .contains("Confirm again"));
+    }
+
+    #[test]
+    fn recording_blocks_confirmed_audio_driver_switch_without_stopping_recording() {
+        let mut runtime =
+            CooperativeApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
+        runtime.tick(Duration::ZERO);
+        let sync = &runtime.snapshot().tracks[0];
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: sync.id,
+                loop_id: sync.loops[0].id,
+                action: LoopAction::RecordClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    sample_rate: 44_100,
+                    buffer_size: 256,
+                }),
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let request_id = runtime.snapshot().audio_drivers.switch.request_id;
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let failed = runtime.snapshot();
+        assert_eq!(
+            failed.audio_drivers.switch.status,
+            AudioDriverSwitchStatus::Failed
+        );
+        assert_eq!(failed.tracks[0].loops[0].mode, LoopMode::Recording);
+        assert_eq!(failed.status.sample_rate, 48_000);
     }
 
     #[test]

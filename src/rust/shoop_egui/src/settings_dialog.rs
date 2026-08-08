@@ -5,14 +5,26 @@ use shoop_settings::{
     SettingsViewState, StringToggle, StringToggleList,
 };
 
-use crate::{AppAction, ScriptId, ScriptKind, ScriptLogLevel, ScriptingState, USER_SCRIPTS};
+use crate::{
+    audio_driver_config_from_draft, AppAction, AudioDriverKind, AudioDriverRuntimeState, ScriptId,
+    ScriptKind, ScriptLogLevel, ScriptingState, USER_SCRIPTS,
+};
 
 #[derive(Clone, Debug)]
 pub enum SettingsAction {
     Save(SettingsDraft),
+    RequestAudioDriverSwitch {
+        config: crate::AudioDriverConfig,
+        draft: SettingsDraft,
+    },
+    RetryAudioDriverPersistence {
+        request_id: u64,
+    },
     RecoverWithDefaults,
     RequestAddUserScript,
-    RequestReloadUserScript { script_id: ScriptId },
+    RequestReloadUserScript {
+        script_id: ScriptId,
+    },
 }
 
 #[derive(Default)]
@@ -26,6 +38,8 @@ pub struct SettingsDialog {
     open: bool,
     draft: Option<SettingsDraft>,
     active_category: Option<String>,
+    audio_target: Option<AudioDriverKind>,
+    audio_discovery_key: Option<(AudioDriverKind, String)>,
     #[cfg(test)]
     restart_rects: BTreeMap<ScriptId, egui::Rect>,
     #[cfg(test)]
@@ -41,6 +55,8 @@ impl SettingsDialog {
             open: false,
             draft: None,
             active_category: None,
+            audio_target: None,
+            audio_discovery_key: None,
             #[cfg(test)]
             restart_rects: BTreeMap::new(),
             #[cfg(test)]
@@ -113,6 +129,7 @@ impl SettingsDialog {
         context: &egui::Context,
         state: &SettingsViewState,
         scripting: &ScriptingState,
+        audio_drivers: &AudioDriverRuntimeState,
         script_paths: Option<&BTreeMap<ScriptId, String>>,
     ) -> SettingsDialogResponse {
         if !self.open {
@@ -158,7 +175,11 @@ impl SettingsDialog {
                 egui::ScrollArea::vertical()
                     .id_salt("settings_values")
                     .show(ui, |ui| {
-                        self.show_definitions(ui, &active_category);
+                        if active_category == "Audio" {
+                            self.show_audio(ui, audio_drivers, &mut response);
+                        } else {
+                            self.show_definitions(ui, &active_category);
+                        }
                         if active_category == "Scripts" {
                             ui.add_space(8.0);
                             self.show_script_runtime(
@@ -205,9 +226,12 @@ impl SettingsDialog {
         if close_without_save || !open {
             self.open = false;
             self.draft = None;
+            self.audio_target = None;
+            self.audio_discovery_key = None;
         } else {
             self.open = open;
         }
+        self.show_audio_confirmation(context, audio_drivers, &mut response);
         response
     }
 
@@ -284,6 +308,185 @@ impl SettingsDialog {
             .filter(|definition| definition.category() == category)
             .cloned()
             .collect::<Vec<_>>();
+        self.show_definition_cards(ui, definitions, None);
+    }
+
+    fn show_audio(
+        &mut self,
+        ui: &mut egui::Ui,
+        audio: &AudioDriverRuntimeState,
+        response: &mut SettingsDialogResponse,
+    ) {
+        if !audio.supported {
+            ui.colored_label(
+                egui::Color32::YELLOW,
+                "Native runtime driver switching is unavailable in this build.",
+            );
+            return;
+        }
+        let active_kind = audio.active.as_ref().map(|active| active.configured.kind());
+        let mut selected = self
+            .audio_target
+            .unwrap_or_else(|| active_kind.unwrap_or(AudioDriverKind::Dummy));
+        ui.heading("Audio driver");
+        ui.horizontal_wrapped(|ui| {
+            for driver in audio.catalog.iter() {
+                let button = egui::Button::selectable(selected == driver.kind, driver.kind.label());
+                if ui.add_enabled(driver.available, button).clicked() {
+                    selected = driver.kind;
+                }
+            }
+        });
+        self.audio_target = Some(selected);
+        let descriptor = audio.catalog.iter().find(|driver| driver.kind == selected);
+        if let Some(reason) = descriptor.and_then(|driver| driver.unavailable_reason.as_ref()) {
+            ui.colored_label(egui::Color32::LIGHT_RED, reason);
+        }
+        if let Some(active) = &audio.active {
+            ui.label(format!(
+                "Active: {} · {} Hz · {} frames · {}",
+                active.configured.kind().label(),
+                active.sample_rate,
+                active.buffer_size,
+                active.instance_name
+            ));
+        }
+        let prefix = match selected {
+            AudioDriverKind::Dummy => "audio.dummy.",
+            AudioDriverKind::Jack => "audio.jack.",
+            AudioDriverKind::Cpal => "audio.cpal.",
+            AudioDriverKind::WebAudio => "audio.webaudio.",
+        };
+        let definitions = self
+            .registry
+            .definitions()
+            .iter()
+            .filter(|definition| definition.key().starts_with(prefix))
+            .cloned()
+            .collect::<Vec<_>>();
+        self.show_definition_cards(ui, definitions, descriptor);
+
+        let config = self
+            .draft
+            .as_ref()
+            .ok_or_else(|| "settings draft is unavailable".to_owned())
+            .and_then(|draft| audio_driver_config_from_draft(draft, selected));
+        if let Ok(configured) = &config {
+            let discovery_key = match configured {
+                crate::AudioDriverConfig::Cpal(config) => {
+                    (AudioDriverKind::Cpal, config.host.clone())
+                }
+                _ => (configured.kind(), String::new()),
+            };
+            if self.audio_discovery_key.as_ref() != Some(&discovery_key) {
+                self.audio_discovery_key = Some(discovery_key);
+                response
+                    .app_actions
+                    .push(AppAction::RefreshAudioDriverDiscovery {
+                        config: configured.clone(),
+                    });
+            }
+        }
+        let differs = config.as_ref().is_ok_and(|config| {
+            audio
+                .active
+                .as_ref()
+                .is_none_or(|active| active.configured != *config)
+        });
+        if let Err(error) = &config {
+            ui.colored_label(egui::Color32::LIGHT_RED, error);
+        }
+        let can_switch = descriptor.is_some_and(|driver| driver.available)
+            && differs
+            && !matches!(
+                audio.switch.status,
+                crate::AudioDriverSwitchStatus::AwaitingConfirmation
+                    | crate::AudioDriverSwitchStatus::Switching
+                    | crate::AudioDriverSwitchStatus::Resampling
+                    | crate::AudioDriverSwitchStatus::Restoring
+                    | crate::AudioDriverSwitchStatus::Persisting
+            );
+        if ui
+            .add_enabled(can_switch, egui::Button::new("Switch"))
+            .clicked()
+        {
+            if let (Ok(config), Some(draft)) = (config, self.draft.clone()) {
+                response
+                    .settings_actions
+                    .push(SettingsAction::RequestAudioDriverSwitch { config, draft });
+            }
+        }
+        if audio.switch.status != crate::AudioDriverSwitchStatus::Idle {
+            let color = if matches!(
+                audio.switch.status,
+                crate::AudioDriverSwitchStatus::Failed | crate::AudioDriverSwitchStatus::Fatal
+            ) {
+                egui::Color32::LIGHT_RED
+            } else {
+                egui::Color32::YELLOW
+            };
+            ui.colored_label(color, &audio.switch.message);
+        }
+        if audio.switch.persistence_retry_available
+            && ui.button("Retry saving active driver settings").clicked()
+        {
+            response
+                .settings_actions
+                .push(SettingsAction::RetryAudioDriverPersistence {
+                    request_id: audio.switch.request_id,
+                });
+        }
+    }
+
+    fn show_audio_confirmation(
+        &self,
+        context: &egui::Context,
+        audio: &AudioDriverRuntimeState,
+        response: &mut SettingsDialogResponse,
+    ) {
+        if audio.switch.status != crate::AudioDriverSwitchStatus::AwaitingConfirmation {
+            return;
+        }
+        egui::Window::new("Confirm audio driver switch")
+            .id(egui::Id::new(("audio_driver_confirmation", audio.switch.request_id)))
+            .collapsible(false)
+            .resizable(false)
+            .show(context, |ui| {
+                ui.colored_label(egui::Color32::YELLOW, &audio.switch.message);
+                if let (Some(source), Some(target)) = (&audio.switch.source, &audio.switch.target) {
+                    if source.sample_rate != target.sample_rate {
+                        ui.colored_label(
+                            egui::Color32::LIGHT_RED,
+                            format!(
+                                "Sample rate differs: {} Hz → {} Hz. All loop contents will be resampled.",
+                                source.sample_rate, target.sample_rate
+                            ),
+                        );
+                    }
+                }
+                ui.horizontal(|ui| {
+                    if ui.button("Confirm switch").clicked() {
+                        response.app_actions.push(AppAction::ConfirmAudioDriverSwitch {
+                            request_id: audio.switch.request_id,
+                            accept: true,
+                        });
+                    }
+                    if ui.button("Cancel").clicked() {
+                        response.app_actions.push(AppAction::ConfirmAudioDriverSwitch {
+                            request_id: audio.switch.request_id,
+                            accept: false,
+                        });
+                    }
+                });
+            });
+    }
+
+    fn show_definition_cards(
+        &mut self,
+        ui: &mut egui::Ui,
+        definitions: Vec<shoop_settings::ErasedSettingDefinition>,
+        audio: Option<&crate::AudioDriverDescriptor>,
+    ) {
         for definition in definitions {
             egui::Frame::group(ui.style())
                 .inner_margin(egui::Margin::same(8))
@@ -324,7 +527,51 @@ impl SettingsDialog {
                                 ui.add(egui::DragValue::new(value).range(*min..=*max));
                             }
                             (SettingEditor::Text, SettingValue::String(value)) => {
-                                ui.text_edit_singleline(value);
+                                let choices = audio.and_then(|audio| match definition.key() {
+                                    key if key == crate::CPAL_HOST.id() => Some(&audio.hosts),
+                                    key if key == crate::CPAL_INPUT_DEVICE.id() => {
+                                        Some(&audio.input_devices)
+                                    }
+                                    key if key == crate::CPAL_OUTPUT_DEVICE.id() => {
+                                        Some(&audio.output_devices)
+                                    }
+                                    _ => None,
+                                });
+                                if let Some(choices) = choices.filter(|choices| !choices.is_empty())
+                                {
+                                    egui::ComboBox::from_id_salt((
+                                        "audio_choice",
+                                        definition.key(),
+                                    ))
+                                    .selected_text(value.as_str())
+                                    .show_ui(ui, |ui| {
+                                        if !choices.contains(value) {
+                                            ui.selectable_value(
+                                                value,
+                                                value.clone(),
+                                                format!("{} (unavailable)", value),
+                                            );
+                                        }
+                                        for choice in choices {
+                                            ui.selectable_value(value, choice.clone(), choice);
+                                        }
+                                    });
+                                } else {
+                                    ui.text_edit_singleline(value);
+                                }
+                                if let Some(audio) = audio {
+                                    if definition.key() == crate::CPAL_MIDI_INPUTS.id() {
+                                        ui.weak(format!(
+                                            "Discovered: {}",
+                                            audio.midi_inputs.join(", ")
+                                        ));
+                                    } else if definition.key() == crate::CPAL_MIDI_OUTPUTS.id() {
+                                        ui.weak(format!(
+                                            "Discovered: {}",
+                                            audio.midi_outputs.join(", ")
+                                        ));
+                                    }
+                                }
                             }
                             (
                                 SettingEditor::StringToggleList,
@@ -590,13 +837,100 @@ mod tests {
                     ..Default::default()
                 },
                 |ui| {
-                    dialog.show(ui.ctx(), &state, &ScriptingState::default(), None);
+                    dialog.show(
+                        ui.ctx(),
+                        &state,
+                        &ScriptingState::default(),
+                        &AudioDriverRuntimeState::default(),
+                        None,
+                    );
                 },
             );
             assert!(!output.shapes.is_empty());
             assert!(dialog.is_open());
         }
         assert_eq!(dialog.categories(), ["Other", "Track defaults"]);
+    }
+
+    #[test]
+    fn audio_category_and_exact_rate_warning_paint_at_supported_sizes() {
+        let mut builder = SettingsRegistryBuilder::default();
+        crate::register_audio_settings(&mut builder).unwrap();
+        let registry = Arc::new(builder.finish());
+        let state = SettingsViewState {
+            active: Arc::new(registry.defaults(1)),
+            diagnostics: Arc::from([]),
+            storage_location: "fixture".to_owned(),
+            recovery_required: false,
+            persistence: SettingsPersistenceState::Idle,
+        };
+        let source = crate::ResolvedAudioDriverConfig {
+            configured: crate::AudioDriverConfig::Dummy(crate::DummyAudioDriverConfig::default()),
+            sample_rate: 48_000,
+            buffer_size: 256,
+            instance_name: "dummy".to_owned(),
+        };
+        let target = crate::ResolvedAudioDriverConfig {
+            configured: crate::AudioDriverConfig::Dummy(crate::DummyAudioDriverConfig {
+                sample_rate: 44_100,
+                buffer_size: 128,
+            }),
+            sample_rate: 44_100,
+            buffer_size: 128,
+            instance_name: "dummy variant".to_owned(),
+        };
+        let audio = AudioDriverRuntimeState {
+            supported: true,
+            catalog: Arc::from([
+                crate::AudioDriverDescriptor {
+                    kind: AudioDriverKind::Dummy,
+                    available: true,
+                    ..Default::default()
+                },
+                crate::AudioDriverDescriptor {
+                    kind: AudioDriverKind::Jack,
+                    available: false,
+                    unavailable_reason: Some("JACK server unavailable".to_owned()),
+                    ..Default::default()
+                },
+                crate::AudioDriverDescriptor {
+                    kind: AudioDriverKind::Cpal,
+                    available: true,
+                    unavailable_reason: None,
+                    hosts: vec!["alsa".to_owned()],
+                    input_devices: vec!["capture".to_owned()],
+                    output_devices: vec!["playback".to_owned()],
+                    midi_inputs: vec!["controller".to_owned()],
+                    midi_outputs: vec!["synth".to_owned()],
+                },
+            ]),
+            active: Some(source.clone()),
+            switch: crate::AudioDriverSwitchState {
+                request_id: 9,
+                status: crate::AudioDriverSwitchStatus::AwaitingConfirmation,
+                source: Some(source),
+                target: Some(target),
+                message: "Sample rate changes from 48000 Hz to 44100 Hz".to_owned(),
+                persistence_retry_available: false,
+            },
+        };
+        let context = egui::Context::default();
+        let mut dialog = SettingsDialog::new(registry);
+        dialog.open(&state);
+        dialog.select_category("Audio");
+        for size in [egui::vec2(360.0, 200.0), egui::vec2(900.0, 600.0)] {
+            let output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+                    ..Default::default()
+                },
+                |ui| {
+                    dialog.show(ui.ctx(), &state, &ScriptingState::default(), &audio, None);
+                },
+            );
+            assert!(!output.shapes.is_empty());
+        }
+        assert_eq!(dialog.audio_target, Some(AudioDriverKind::Dummy));
     }
 
     #[test]
@@ -778,7 +1112,13 @@ mod tests {
         let mut dialog = SettingsDialog::new(registry);
         dialog.open(&state);
         let output = context.run_ui(Default::default(), |ui| {
-            dialog.show(ui.ctx(), &state, &ScriptingState::default(), None);
+            dialog.show(
+                ui.ctx(),
+                &state,
+                &ScriptingState::default(),
+                &AudioDriverRuntimeState::default(),
+                None,
+            );
         });
         assert!(!output.shapes.is_empty());
     }

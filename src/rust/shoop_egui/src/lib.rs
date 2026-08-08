@@ -16,9 +16,14 @@ mod waveform;
 mod waveform_widget;
 
 pub use app_widget::{
-    register_bundled_script_settings, register_script_settings, register_settings, AppWidget,
-    AppWidgetResponse, APC_MINI_SCRIPT_ENABLED, DEFAULT_NEW_TRACK_AUDIO_CHANNELS,
-    DEFAULT_NEW_TRACK_MIDI, KEYBOARD_SCRIPT_ENABLED, USER_SCRIPTS,
+    audio_driver_config_from_draft, audio_driver_config_from_snapshot, register_audio_settings,
+    register_bundled_script_settings, register_script_settings, register_settings,
+    selected_audio_driver, set_selected_audio_driver, AppWidget, AppWidgetResponse,
+    APC_MINI_SCRIPT_ENABLED, CPAL_BUFFER_SIZE, CPAL_CAPTURE_RING_FRAMES, CPAL_CLIENT_NAME,
+    CPAL_HOST, CPAL_INPUT_CHANNELS, CPAL_INPUT_DEVICE, CPAL_MIDI_INPUTS, CPAL_MIDI_OUTPUTS,
+    CPAL_OUTPUT_CHANNELS, CPAL_OUTPUT_DEVICE, CPAL_SAMPLE_RATE, DEFAULT_NEW_TRACK_AUDIO_CHANNELS,
+    DEFAULT_NEW_TRACK_MIDI, DUMMY_BUFFER_SIZE, DUMMY_SAMPLE_RATE, JACK_CLIENT_NAME,
+    KEYBOARD_SCRIPT_ENABLED, SELECTED_AUDIO_DRIVER, USER_SCRIPTS,
 };
 pub use connection_dialog::{ConnectionDialog, ConnectionScope};
 pub use details_pane::DetailsPane;

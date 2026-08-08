@@ -2,6 +2,10 @@
 name = "shoop_backend"
 edition = "2021"
 
+[features]
+default = []
+native-drivers = ["shoop_engine/app_backend"]
+
 [dependencies]
 anyhow = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

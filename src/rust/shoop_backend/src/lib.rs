@@ -1,3 +1,8 @@
+#[cfg(all(feature = "native-drivers", not(target_arch = "wasm32")))]
+mod native;
+#[cfg(all(feature = "native-drivers", not(target_arch = "wasm32")))]
+pub use native::NativeBackend;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -319,6 +324,12 @@ pub struct BackendSnapshot {
 pub trait Backend {
     fn audio_driver_state(&mut self) -> Result<AudioDriverRuntimeState> {
         Ok(AudioDriverRuntimeState::default())
+    }
+    fn refresh_audio_driver_discovery(
+        &mut self,
+        _config: &AudioDriverConfig,
+    ) -> Result<AudioDriverRuntimeState> {
+        self.audio_driver_state()
     }
     fn preflight_audio_driver(
         &mut self,
@@ -2259,6 +2270,41 @@ fn apply_fake_connection(
     state.revision = state.revision.wrapping_add(1);
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct FakeAudioDriverControl {
+    state: Arc<Mutex<FakeAudioDriverControlState>>,
+}
+
+#[derive(Debug, Default)]
+struct FakeAudioDriverControlState {
+    fail_next_switch: Option<String>,
+    corrupt_next_replacement_mapping: bool,
+    preflight_sample_rate_override: Option<u32>,
+}
+
+impl FakeAudioDriverControl {
+    pub fn fail_next_switch(&self, message: impl Into<String>) {
+        self.state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .fail_next_switch = Some(message.into());
+    }
+
+    pub fn corrupt_next_replacement_mapping(&self) {
+        self.state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .corrupt_next_replacement_mapping = true;
+    }
+
+    pub fn set_preflight_sample_rate_override(&self, sample_rate: Option<u32>) {
+        self.state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .preflight_sample_rate_override = sample_rate;
+    }
+}
+
 #[derive(Debug)]
 pub struct FakeBackend {
     status: BackendStatus,
@@ -2270,8 +2316,7 @@ pub struct FakeBackend {
     next_track_id: u64,
     next_port_id: u64,
     fail_track_creation_after: Option<usize>,
-    fail_next_driver_switch: Option<String>,
-    preflight_sample_rate_override: Option<u32>,
+    audio_driver_control: FakeAudioDriverControl,
     operations: Vec<FakeOperation>,
     connections: FakeConnectionControl,
     loop_content: BTreeMap<BackendLoopId, BackendLoopContent>,
@@ -2321,8 +2366,7 @@ impl Default for FakeBackend {
             next_track_id: 1,
             next_port_id: 1,
             fail_track_creation_after: None,
-            fail_next_driver_switch: None,
-            preflight_sample_rate_override: None,
+            audio_driver_control: FakeAudioDriverControl::default(),
             operations: Vec::new(),
             connections: FakeConnectionControl {
                 state: Arc::new(Mutex::new(FakeConnectionState::default())),
@@ -2342,11 +2386,16 @@ impl FakeBackend {
     }
 
     pub fn fail_next_driver_switch(&mut self, message: impl Into<String>) {
-        self.fail_next_driver_switch = Some(message.into());
+        self.audio_driver_control.fail_next_switch(message);
     }
 
     pub fn set_preflight_sample_rate_override(&mut self, sample_rate: Option<u32>) {
-        self.preflight_sample_rate_override = sample_rate;
+        self.audio_driver_control
+            .set_preflight_sample_rate_override(sample_rate);
+    }
+
+    pub fn audio_driver_control(&self) -> FakeAudioDriverControl {
+        self.audio_driver_control.clone()
     }
 
     pub fn connection_control(&self) -> FakeConnectionControl {
@@ -2492,7 +2541,13 @@ impl Backend for FakeBackend {
         };
         Ok(ResolvedAudioDriverConfig {
             configured: config.clone(),
-            sample_rate: self.preflight_sample_rate_override.unwrap_or(sample_rate),
+            sample_rate: self
+                .audio_driver_control
+                .state
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .preflight_sample_rate_override
+                .unwrap_or(sample_rate),
             buffer_size,
             instance_name,
         })
@@ -2505,7 +2560,14 @@ impl Backend for FakeBackend {
         session: &BackendSessionData,
     ) -> Result<BackendSessionReplacement> {
         let resolved = self.preflight_audio_driver(config)?;
-        if let Some(message) = self.fail_next_driver_switch.take() {
+        if let Some(message) = self
+            .audio_driver_control
+            .state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .fail_next_switch
+            .take()
+        {
             return Err(anyhow!(message));
         }
         if resolved.sample_rate != confirmed_sample_rate {
@@ -2524,7 +2586,20 @@ impl Backend for FakeBackend {
         self.status.buffer_size = resolved.buffer_size;
         self.active_audio_driver = resolved;
         match self.replace_session(session) {
-            Ok(replacement) => Ok(replacement),
+            Ok(mut replacement) => {
+                let corrupt = {
+                    let mut control = self
+                        .audio_driver_control
+                        .state
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner());
+                    std::mem::take(&mut control.corrupt_next_replacement_mapping)
+                };
+                if corrupt {
+                    replacement.tracks.clear();
+                }
+                Ok(replacement)
+            }
             Err(error) => {
                 self.status.sample_rate = previous.sample_rate;
                 self.status.buffer_size = previous.buffer_size;
@@ -2907,6 +2982,7 @@ impl Backend for FakeBackend {
         let mut staged = FakeBackend::default();
         staged.status = self.status;
         staged.active_audio_driver = self.active_audio_driver.clone();
+        staged.audio_driver_control = self.audio_driver_control.clone();
         staged.connections.with_state(|state| {
             state.external_ports = external_ports;
         });

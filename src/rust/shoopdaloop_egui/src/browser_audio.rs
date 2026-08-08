@@ -1189,6 +1189,10 @@ impl WebAudioBackend {
             driver_state: state,
             ..Default::default()
         };
+        if let Some(active) = self.snapshot.audio_drivers.active.as_mut() {
+            active.sample_rate = wire.sample_rate;
+            active.buffer_size = wire.quantum;
+        }
         self.snapshot.connections.available = true;
         self.snapshot.connections.application_ports = wire
             .application_ports
