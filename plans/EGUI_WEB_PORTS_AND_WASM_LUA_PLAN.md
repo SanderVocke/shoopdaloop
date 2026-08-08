@@ -127,7 +127,7 @@ Dependencies are strict unless a documented finding warrants reordering: Stage 0
 
 Verification:
 
-- [x] Native `shoop_scripting` (21 tests) and representative retained frontend engine/conversion/callback probes (33 tests, including 11 Lua-engine tests) pass with omniLua.
+- [x] Native `shoop_scripting` (21 tests), frontend Rust tests (33 tests, including 11 Lua-engine tests), and all retained Lua-specific QML self-tests pass with omniLua.
 - [ ] A Wasm test artifact constructs isolated omniLua states, runs the embedded keyboard script, receives key callbacks, and emits expected typed control operations.
 - [x] `cargo tree -p shoop_scripting --target wasm32-unknown-unknown` contains omniLua but no former C Lua runtime, `midir`, ALSA/CoreMIDI/WinMM, or Emscripten dependency.
 
@@ -191,9 +191,9 @@ Verification:
 
 Verification:
 
-- [ ] Focused frontend Rust tests and every retained Lua/QML testcase pass on omniLua, including LuaEngine, LuaScriptWithEngine, MIDI control ports/actions/filters, callbacks, QVariant conversions, keyboard/APC behavior, and lifecycle cleanup.
+- [x] Focused frontend Rust tests and every retained Lua-specific QML testcase pass on omniLua, including `tst_LuaEngine.qml`, `tst_LuaEngine_SessionControlHandler.qml`, and `tst_LuaScriptWithEngine.qml`. The full offscreen suite passed 235/236; the sole unrelated CPAL-port case was unavailable because CPAL test settings were absent.
 - [x] Native egui scripting tests rerun after workspace dependency removal; the shared 21-test scripting suite and frontend Lua-engine tests use the same pinned omniLua semantics.
-- [x] Workspace manifest, Rust-source, metadata, lockfile, and resolved-tree scans contain no former runtime or C-runtime dependency; packaged-library scans remain part of Stages 5–6.
+- [ ] Workspace manifest, Rust-source, metadata, lockfile, and resolved-tree scans contain no former runtime or C-runtime dependency; packaged-library scans remain open for Stages 5–6.
 
 ### Stage 5 — Publish control ports and complete browser settings/artifact UX
 
