@@ -26,7 +26,7 @@ webmidi:sink:<MIDIPort.id>
 
 The opaque browser ID and direction form identity. Manufacturer and name form display text and regex input only. Map order, display name, and reconnect order never identify a port.
 
-One main-thread hub owns `MIDIAccess`, physical ports, and one callback per input. It fans input out to user-managed track routes and owner-managed Lua subscriptions. Both consumers publish the same canonical host rows. Track route confirmation comes from AudioWorklet snapshots; Lua link confirmation comes from the scripting manager's logical subscriptions.
+One main-thread hub owns `MIDIAccess`, physical ports, and one callback per input. State refreshes reuse handles whose device is connected and whose connection is open or pending, so notifications caused by a successful `open` do not reinstall handlers or create lifecycle churn. A connected handle observed as closed is replaced and reopened once. It fans input out to user-managed track routes and owner-managed Lua subscriptions. Both consumers publish the same canonical host rows. Track route confirmation comes from AudioWorklet snapshots; Lua link confirmation comes from the scripting manager's logical subscriptions.
 
 Endpoint state changes remove current host truth without deleting desired track routes. Reappearance of the same stable endpoint restores compatible desired track routes and script regex autoconnect.
 
@@ -51,7 +51,7 @@ The worklet render callback never calls browser APIs, awaits promises, serialize
 | Recorded-track payload | 4 bytes | Refuse and count; never truncate |
 | Lua-control payload | 256 bytes | Refuse and count; never truncate |
 
-Live input batches are ephemeral and are never journaled. Endpoint inventory and desired routes are journaled in generation-safe order. Stale input after hot-unplug is discarded nonfatally. Worklet restart replays endpoint and route configuration without replaying old live input. Output-send/open errors and permission failures remain observable without running browser APIs in render processing.
+Live input batches are ephemeral and are never journaled. Endpoint inventory and desired routes are journaled in generation-safe order. Stale input after hot-unplug is discarded nonfatally. Worklet restart replays endpoint and route configuration without replaying old live input. A generation-current asynchronous port-open failure removes that endpoint from physical and script connection truth until a later state refresh successfully reopens it; failures from superseded refreshes cannot remove the newer handle but remain visible as stale-generation diagnostics. Output-send/open errors and permission failures remain observable without running browser APIs in render processing.
 
 ## Persistence
 

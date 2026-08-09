@@ -256,7 +256,7 @@ mod platform {
     use wasm_bindgen_futures::{spawn_local, JsFuture};
     use web_sys::{
         Event, HtmlButtonElement, MidiAccess, MidiInput, MidiMessageEvent, MidiOptions, MidiOutput,
-        MidiPort, MidiPortDeviceState,
+        MidiPort, MidiPortConnectionState, MidiPortDeviceState,
     };
 
     use super::*;
@@ -265,44 +265,65 @@ mod platform {
 
     struct InputHandle {
         port: MidiInput,
+        generation: u64,
         _handler: Closure<dyn FnMut(MidiMessageEvent)>,
+    }
+
+    struct OutputHandle {
+        port: MidiOutput,
+        generation: u64,
     }
 
     struct HubInner {
         core: BrowserMidiCore,
         access: Option<MidiAccess>,
         inputs: BTreeMap<String, InputHandle>,
-        outputs: BTreeMap<String, MidiOutput>,
+        outputs: BTreeMap<String, OutputHandle>,
         state_handler: Option<Closure<dyn FnMut(Event)>>,
+        next_port_generation: u64,
     }
 
     impl HubInner {
+        fn next_generation(inner: &Rc<RefCell<Self>>) -> u64 {
+            let mut state = inner.borrow_mut();
+            state.next_port_generation = state.next_port_generation.wrapping_add(1).max(1);
+            state.next_port_generation
+        }
+
         fn refresh(inner: &Rc<RefCell<Self>>) -> anyhow::Result<()> {
             let access = inner
                 .borrow()
                 .access
                 .clone()
                 .ok_or_else(|| anyhow!("Web MIDI access is unavailable"))?;
-            let mut endpoints = Vec::new();
-            {
+            let input_ports = iterator_values(access.inputs().values().into())?
+                .into_iter()
+                .map(|value| {
+                    value
+                        .dyn_into::<MidiInput>()
+                        .map_err(|_| anyhow!("Web MIDI input map contained an invalid port"))
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            let output_ports = iterator_values(access.outputs().values().into())?
+                .into_iter()
+                .map(|value| {
+                    value
+                        .dyn_into::<MidiOutput>()
+                        .map_err(|_| anyhow!("Web MIDI output map contained an invalid port"))
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            let (mut previous_inputs, mut previous_outputs) = {
                 let mut state = inner.borrow_mut();
-                for handle in state.inputs.values() {
-                    handle.port.set_onmidimessage(None);
-                    let port: &MidiPort = handle.port.unchecked_ref();
-                    let _ = port.close();
-                }
-                for output in state.outputs.values() {
-                    let port: &MidiPort = output.unchecked_ref();
-                    let _ = port.close();
-                }
-                state.inputs.clear();
-                state.outputs.clear();
-            }
+                (
+                    std::mem::take(&mut state.inputs),
+                    std::mem::take(&mut state.outputs),
+                )
+            };
+            let mut endpoints = Vec::new();
             let mut inputs = BTreeMap::new();
-            for value in iterator_values(access.inputs().values().into())? {
-                let port = value
-                    .dyn_into::<MidiInput>()
-                    .map_err(|_| anyhow!("Web MIDI input map contained an invalid port"))?;
+            let mut outputs = BTreeMap::new();
+            let mut pending_open = Vec::new();
+            for port in input_ports {
                 let midi_port: &MidiPort = port.unchecked_ref();
                 if midi_port.state() != MidiPortDeviceState::Connected {
                     continue;
@@ -315,30 +336,39 @@ mod platform {
                     name: endpoint_name(midi_port),
                     direction: MidiEndpointDirection::Output,
                 });
+                if let Some(handle) = previous_inputs.remove(&id) {
+                    let previous_port: &MidiPort = handle.port.unchecked_ref();
+                    if previous_port.state() == MidiPortDeviceState::Connected
+                        && previous_port.connection() != MidiPortConnectionState::Closed
+                    {
+                        inputs.insert(id, handle);
+                        continue;
+                    }
+                    close_input(handle);
+                }
+                let generation = Self::next_generation(inner);
                 let weak = Rc::downgrade(inner);
                 let callback_id = id.clone();
                 let handler = Closure::wrap(Box::new(move |event: MidiMessageEvent| {
                     if let Some(inner) = weak.upgrade() {
-                        if let Ok(data) = event.data() {
-                            inner.borrow_mut().core.receive(&callback_id, &data);
+                        match event.data() {
+                            Ok(data) => inner.borrow_mut().core.receive(&callback_id, &data),
+                            Err(_) => inner.borrow_mut().core.receive(&callback_id, &[]),
                         }
                     }
                 }) as Box<dyn FnMut(_)>);
                 port.set_onmidimessage(Some(handler.as_ref().unchecked_ref()));
-                observe_open(inner, midi_port.open(), "input", &id);
+                pending_open.push((midi_port.open(), "input", id.clone(), generation));
                 inputs.insert(
                     id,
                     InputHandle {
                         port,
+                        generation,
                         _handler: handler,
                     },
                 );
             }
-            let mut outputs = BTreeMap::new();
-            for value in iterator_values(access.outputs().values().into())? {
-                let port = value
-                    .dyn_into::<MidiOutput>()
-                    .map_err(|_| anyhow!("Web MIDI output map contained an invalid port"))?;
+            for port in output_ports {
                 let midi_port: &MidiPort = port.unchecked_ref();
                 if midi_port.state() != MidiPortDeviceState::Connected {
                     continue;
@@ -351,15 +381,48 @@ mod platform {
                     name: endpoint_name(midi_port),
                     direction: MidiEndpointDirection::Input,
                 });
-                observe_open(inner, midi_port.open(), "output", &id);
-                outputs.insert(id, port);
+                if let Some(handle) = previous_outputs.remove(&id) {
+                    let previous_port: &MidiPort = handle.port.unchecked_ref();
+                    if previous_port.state() == MidiPortDeviceState::Connected
+                        && previous_port.connection() != MidiPortConnectionState::Closed
+                    {
+                        outputs.insert(id, handle);
+                        continue;
+                    }
+                    close_output(handle);
+                }
+                let generation = Self::next_generation(inner);
+                pending_open.push((midi_port.open(), "output", id.clone(), generation));
+                outputs.insert(id, OutputHandle { port, generation });
             }
-            let mut state = inner.borrow_mut();
-            state.inputs = inputs;
-            state.outputs = outputs;
-            state.core.replace_endpoints(endpoints);
+            {
+                let mut state = inner.borrow_mut();
+                state.inputs = inputs;
+                state.outputs = outputs;
+                state.core.replace_endpoints(endpoints);
+            }
+            for (_, handle) in previous_inputs {
+                close_input(handle);
+            }
+            for (_, handle) in previous_outputs {
+                close_output(handle);
+            }
+            for (promise, kind, id, generation) in pending_open {
+                observe_open(inner, promise, kind, &id, generation);
+            }
             Ok(())
         }
+    }
+
+    fn close_input(handle: InputHandle) {
+        handle.port.set_onmidimessage(None);
+        let port: &MidiPort = handle.port.unchecked_ref();
+        let _ = port.close();
+    }
+
+    fn close_output(handle: OutputHandle) {
+        let port: &MidiPort = handle.port.unchecked_ref();
+        let _ = port.close();
     }
 
     fn iterator_values(iterator: js_sys::Iterator) -> anyhow::Result<Vec<JsValue>> {
@@ -380,15 +443,53 @@ mod platform {
         promise: js_sys::Promise,
         kind: &'static str,
         endpoint_id: &str,
+        generation: u64,
     ) {
         let weak = Rc::downgrade(inner);
         let endpoint_id = endpoint_id.to_owned();
         spawn_local(async move {
             if let Err(error) = JsFuture::from(promise).await {
                 if let Some(inner) = weak.upgrade() {
-                    inner.borrow_mut().core.report_error(format!(
-                        "could not open Web MIDI {kind} {endpoint_id}: {error:?}"
-                    ));
+                    let message =
+                        format!("could not open Web MIDI {kind} {endpoint_id}: {error:?}");
+                    let (input, output) = {
+                        let mut state = inner.borrow_mut();
+                        let input_matches = state
+                            .inputs
+                            .get(&endpoint_id)
+                            .is_some_and(|handle| handle.generation == generation);
+                        let output_matches = state
+                            .outputs
+                            .get(&endpoint_id)
+                            .is_some_and(|handle| handle.generation == generation);
+                        if !input_matches && !output_matches {
+                            state.core.report_error(format!(
+                                "{message} (superseded endpoint generation)"
+                            ));
+                            return;
+                        }
+                        let input = input_matches
+                            .then(|| state.inputs.remove(&endpoint_id))
+                            .flatten();
+                        let output = output_matches
+                            .then(|| state.outputs.remove(&endpoint_id))
+                            .flatten();
+                        let endpoints = state
+                            .core
+                            .endpoints()
+                            .into_iter()
+                            .filter(|endpoint| endpoint.id != endpoint_id)
+                            .collect();
+                        state.core.replace_endpoints(endpoints);
+                        state.core.report_error(message);
+                        (input, output)
+                    };
+                    if let Some(input) = input {
+                        close_input(input);
+                    }
+                    if let Some(output) = output {
+                        close_output(output);
+                    }
                 }
             }
         });
@@ -437,6 +538,7 @@ mod platform {
                     inputs: BTreeMap::new(),
                     outputs: BTreeMap::new(),
                     state_handler: None,
+                    next_port_generation: 0,
                 })),
             }
         }
@@ -595,7 +697,12 @@ mod platform {
             if message.is_empty() || message.len() > MAX_MIDI_MESSAGE_BYTES {
                 anyhow::bail!("invalid MIDI message length {}", message.len());
             }
-            let output = self.inner.borrow().outputs.get(endpoint_id).cloned();
+            let output = self
+                .inner
+                .borrow()
+                .outputs
+                .get(endpoint_id)
+                .map(|handle| handle.port.clone());
             let result = match output {
                 Some(output) => {
                     let data = Uint8Array::from(message);
@@ -815,7 +922,7 @@ mod platform {
                 let _ = port.close();
             }
             for output in state.outputs.values() {
-                let port: &MidiPort = output.unchecked_ref();
+                let port: &MidiPort = output.port.unchecked_ref();
                 let _ = port.close();
             }
         }

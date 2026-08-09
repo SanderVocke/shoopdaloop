@@ -458,6 +458,88 @@ mod tests {
     }
 
     #[test]
+    fn clicking_a_rendered_user_managed_cell_emits_the_exact_route_intent() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let state = state();
+        let mut dialog = ConnectionDialog::default();
+        dialog.open(ConnectionScope::AllTracks);
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 600.0),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                assert!(dialog.show(ui.ctx(), &state).is_empty());
+            },
+        );
+        let mut cell = dialog.cell_rects[0].2.center();
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 600.0),
+                )),
+                events: vec![egui::Event::PointerMoved(cell)],
+                ..Default::default()
+            },
+            |ui| assert!(dialog.show(ui.ctx(), &state).is_empty()),
+        );
+        cell = dialog.cell_rects[0].2.center();
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 600.0),
+                )),
+                events: vec![
+                    egui::Event::PointerMoved(cell),
+                    egui::Event::PointerButton {
+                        pos: cell,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::default(),
+                    },
+                ],
+                ..Default::default()
+            },
+            |ui| assert!(dialog.show(ui.ctx(), &state).is_empty()),
+        );
+        cell = dialog.cell_rects[0].2.center();
+        let mut intents = Vec::new();
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 600.0),
+                )),
+                events: vec![
+                    egui::Event::PointerMoved(cell),
+                    egui::Event::PointerButton {
+                        pos: cell,
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        modifiers: egui::Modifiers::default(),
+                    },
+                ],
+                ..Default::default()
+            },
+            |ui| intents = dialog.show(ui.ctx(), &state),
+        );
+        assert_eq!(
+            intents,
+            vec![AppIntent::SetPortConnected {
+                port_id: crate::PortId::from_raw(11),
+                host_port_id: crate::HostPortId::new("client:out"),
+                connected: true,
+            }]
+        );
+    }
+
+    #[test]
     fn close_reopen_scope_switch_and_stale_track_keep_presentation_routing_safe() {
         let context = egui::Context::default();
         crate::initialize(&context);

@@ -208,17 +208,36 @@ try {
             this.version = '1';
             this.state = 'connected';
             this.connection = 'closed';
+            this.openCalls = 0;
+            this.closeCalls = 0;
             this.onstatechange = null;
           }
           open() {
+            this.openCalls += 1;
+            if (this.failOpenDeferred) {
+              this.failOpenDeferred = false;
+              return new Promise((_, reject) => { this.rejectDeferredOpen = reject; });
+            }
             if (this.failOpen) {
               this.failOpen = false;
               return Promise.reject(new DOMException('test open failure', 'InvalidStateError'));
             }
-            this.connection = 'open';
+            if (this.connection !== 'open') {
+              this.connection = 'open';
+              if (!this.suppressOpenStatechange) {
+                queueMicrotask(() => this.access?.onstatechange?.(new Event('statechange')));
+              }
+            }
             return Promise.resolve(this);
           }
-          close() { this.connection = 'closed'; return Promise.resolve(this); }
+          close() {
+            this.closeCalls += 1;
+            if (this.connection !== 'closed') {
+              this.connection = 'closed';
+              queueMicrotask(() => this.access?.onstatechange?.(new Event('statechange')));
+            }
+            return Promise.resolve(this);
+          }
         }
         class FakeMIDIInput extends FakeMIDIPort {
           constructor(...args) { super(...args); this.onmidimessage = null; }
@@ -241,6 +260,8 @@ try {
             super();
             this.inputs = new Map([[input.id, input]]);
             this.outputs = new Map([[output.id, output]]);
+            input.access = this;
+            output.access = this;
             this.sysexEnabled = true;
             this.onstatechange = null;
           }
@@ -253,6 +274,7 @@ try {
         });
         const input = new FakeMIDIInput('test-input', 'APC MINI MIDI', 'Shoop Test');
         const output = new FakeMIDIOutput('test-output', 'APC MINI MIDI', 'Shoop Test');
+        input.suppressOpenStatechange = ${webMidiOpenFail};
         output.failOpen = ${webMidiOpenFail};
         const access = new FakeMIDIAccess(input, output);
         window.__shoopWebMidi = {
@@ -341,6 +363,8 @@ try {
     webMidiTrackRefusals: Number(document.getElementById('runtime_status')?.getAttribute('data-web-midi-track-refusals')),
     webMidiControlRefusals: Number(document.getElementById('runtime_status')?.getAttribute('data-web-midi-control-refusals')),
     webMidiStatus: document.getElementById('enable_midi')?.title,
+    webMidiInputConnection: window.__shoopWebMidi?.input.connection,
+    webMidiOutputConnection: window.__shoopWebMidi?.output.connection,
     applicationPorts: Number(document.getElementById('runtime_status')?.getAttribute('data-application-ports')),
     hostPorts: Number(document.getElementById('runtime_status')?.getAttribute('data-host-ports')),
     confirmedLinks: Number(document.getElementById('runtime_status')?.getAttribute('data-confirmed-links')),
@@ -493,6 +517,19 @@ try {
       );
       await clickEnable('enable_midi');
     }
+    if (webMidiOpenFail) {
+      await waitFor(
+        candidate => candidate.webMidi === 'Running'
+          && candidate.webMidiEndpoints === 1
+          && candidate.webMidiSelfTest !== 'control-ready-without-audio'
+          && candidate.webMidiStatus?.includes('could not open Web MIDI output'),
+        'Web MIDI port-open failure was not propagated to inventory and status',
+      );
+      await evaluate(`(() => {
+        window.__shoopWebMidi.input.suppressOpenStatechange = false;
+        window.__shoopWebMidi.access.onstatechange?.(new Event('statechange'));
+      })()`);
+    }
     await waitFor(
       candidate => candidate.webMidi === 'Running'
         && candidate.webMidiEndpoints === 2
@@ -502,12 +539,36 @@ try {
       'Web MIDI control did not become ready independently of audio',
       120_000,
     );
-    if (webMidiOpenFail) {
-      await waitFor(
-        candidate => candidate.webMidiStatus?.includes('could not open Web MIDI output'),
-        'Web MIDI port-open failure was not user-visible',
-      );
+    await evaluate(`(() => {
+      const midi = window.__shoopWebMidi;
+      midi.output.connection = 'closed';
+      midi.output.failOpenDeferred = true;
+      midi.access.onstatechange?.(new Event('statechange'));
+    })()`);
+    const deferredOpenDeadline = Date.now() + 10_000;
+    while (Date.now() < deferredOpenDeadline) {
+      if (await evaluate(`typeof window.__shoopWebMidi.output.rejectDeferredOpen === 'function'`)) {
+        break;
+      }
+      await delay(25);
     }
+    if (!(await evaluate(`typeof window.__shoopWebMidi.output.rejectDeferredOpen === 'function'`))) {
+      throw new Error('Web MIDI deferred stale-open fixture was not reached');
+    }
+    await evaluate(`(() => {
+      const midi = window.__shoopWebMidi;
+      const reject = midi.output.rejectDeferredOpen;
+      midi.output.rejectDeferredOpen = null;
+      midi.access.onstatechange?.(new Event('statechange'));
+      queueMicrotask(() => reject(new DOMException('test stale open failure', 'InvalidStateError')));
+    })()`);
+    await waitFor(
+      candidate => candidate.webMidiEndpoints === 2
+        && candidate.webMidiOutputConnection === 'open'
+        && candidate.webMidiStatus?.includes('superseded endpoint generation'),
+      'stale Web MIDI open failure mutated current endpoint truth or lacked diagnostics',
+    );
+
     const controlDeadline = Date.now() + 10_000;
     let preAudioControlOutput = [];
     while (Date.now() < controlDeadline) {
@@ -610,6 +671,20 @@ try {
 
     await evaluate(`(() => {
       const midi = window.__shoopWebMidi;
+      midi.input.connection = 'closed';
+      midi.output.connection = 'closed';
+      midi.access.onstatechange?.(new Event('statechange'));
+    })()`);
+    await waitFor(
+      candidate => candidate.webMidiEndpoints === 2
+        && candidate.midiHostPorts === 2
+        && candidate.webMidiInputConnection === 'open'
+        && candidate.webMidiOutputConnection === 'open',
+      'Web MIDI connection-close recovery did not reopen stable endpoints',
+    );
+
+    await evaluate(`(() => {
+      const midi = window.__shoopWebMidi;
       midi.input.state = 'disconnected';
       midi.output.state = 'disconnected';
       midi.access.inputs.delete(midi.input.id);
@@ -654,6 +729,21 @@ try {
     );
     if (callbacksBeforeRestart === 0 || recovered.overflows === 0) {
       throw new Error(`Web MIDI restart/refusal evidence is invalid: ${JSON.stringify(recovered)}`);
+    }
+    const portLifecycle = await evaluate(`({
+      inputOpen: window.__shoopWebMidi.input.openCalls,
+      outputOpen: window.__shoopWebMidi.output.openCalls,
+      inputClose: window.__shoopWebMidi.input.closeCalls,
+      outputClose: window.__shoopWebMidi.output.closeCalls,
+    })`);
+    const expectedOutputOpen = webMidiOpenFail ? 6 : 5;
+    if (
+      portLifecycle.inputOpen !== 3
+      || portLifecycle.outputOpen !== expectedOutputOpen
+      || portLifecycle.inputClose < 1
+      || portLifecycle.outputClose < 1
+    ) {
+      throw new Error(`Web MIDI port lifecycle churned or failed cleanup: ${JSON.stringify(portLifecycle)}`);
     }
     console.log(`${selfContained ? 'self-contained' : 'hosted'} Web MIDI track/control/hotplug/restart workflow passed: ${JSON.stringify(recovered)}`);
   } else {
