@@ -1100,6 +1100,7 @@ pub enum AppIntent {
     },
     Global(GlobalControlAction),
     AddTrack(DirectTrackSpec),
+    AddTrackWithTopology(TrackSpec),
     AddLoop {
         track_id: TrackId,
     },

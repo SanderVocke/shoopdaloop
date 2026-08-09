@@ -1,5 +1,7 @@
 use super::*;
-use shoop_app_api::CpalAudioDriverConfig;
+use shoop_app_api::{
+    CpalAudioDriverConfig, TrackProcessorConstraints, TrackProcessorFeatures, TrackProcessorTypeId,
+};
 use shoop_engine::app_backend::{
     AudioChannel, AudioDriver, AudioDriverSettings, AudioPort, BackendSession,
     CpalMidiAudioDriverSettings, DummyAudioDriverSettings, JackAudioDriverSettings, Loop,
@@ -36,17 +38,23 @@ struct NativeTrack {
     port_name_base: String,
     audio_inputs: Vec<AudioPort>,
     audio_outputs: Vec<AudioPort>,
+    audio_sends: Vec<AudioPort>,
+    audio_returns: Vec<AudioPort>,
     midi_input: Option<MidiPort>,
     midi_output: Option<MidiPort>,
     loops: Vec<BackendLoopId>,
     ports: Vec<BackendPortId>,
     state: BackendTrackState,
+    dry_passthrough_muted: Option<bool>,
+    wet_passthrough_muted: Option<bool>,
 }
 
 struct NativeLoop {
     handle: Loop,
     audio: Vec<AudioChannel>,
+    audio_modes: Vec<BackendChannelMode>,
     midi: Vec<MidiChannel>,
+    midi_modes: Vec<BackendChannelMode>,
     gain: f32,
     balance: f32,
 }
@@ -235,32 +243,77 @@ impl NativeRuntime {
     }
 
     fn create_track_loop(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {
-        let (audio_inputs, audio_outputs, midi_input, midi_output) = {
+        let (
+            topology,
+            audio_inputs,
+            audio_outputs,
+            audio_sends,
+            audio_returns,
+            midi_input,
+            midi_output,
+        ) = {
             let track = self
                 .tracks
                 .get(&track_id)
                 .ok_or_else(|| anyhow!("unknown native track {track_id:?}"))?;
             (
+                track.state.topology.clone(),
                 track.audio_inputs.clone(),
                 track.audio_outputs.clone(),
+                track.audio_sends.clone(),
+                track.audio_returns.clone(),
                 track.midi_input.clone(),
                 track.midi_output.clone(),
             )
         };
         let handle = self.session.create_loop()?;
-        let mut audio = Vec::with_capacity(audio_inputs.len());
-        for (input, output) in audio_inputs.iter().zip(&audio_outputs) {
-            let channel = handle.add_audio_channel(ChannelMode::Direct)?;
-            channel.connect_input(input)?;
-            channel.connect_output(output)?;
-            audio.push(channel);
-        }
+        let mut audio = Vec::new();
+        let mut audio_modes = Vec::new();
         let mut midi = Vec::new();
-        if let (Some(input), Some(output)) = (&midi_input, &midi_output) {
-            let channel = handle.add_midi_channel(ChannelMode::Direct)?;
-            channel.connect_input(input)?;
-            channel.connect_output(output)?;
-            midi.push(channel);
+        let mut midi_modes = Vec::new();
+        match topology {
+            BackendTrackTopology::Direct { .. } => {
+                for (input, output) in audio_inputs.iter().zip(&audio_outputs) {
+                    let channel = handle.add_audio_channel(ChannelMode::Direct)?;
+                    channel.connect_input(input)?;
+                    channel.connect_output(output)?;
+                    audio.push(channel);
+                    audio_modes.push(BackendChannelMode::Direct);
+                }
+                if let (Some(input), Some(output)) = (&midi_input, &midi_output) {
+                    let channel = handle.add_midi_channel(ChannelMode::Direct)?;
+                    channel.connect_input(input)?;
+                    channel.connect_output(output)?;
+                    midi.push(channel);
+                    midi_modes.push(BackendChannelMode::Direct);
+                }
+            }
+            BackendTrackTopology::DryWetExternal { .. } => {
+                for (input, send) in audio_inputs.iter().zip(&audio_sends) {
+                    let channel = handle.add_audio_channel(ChannelMode::Dry)?;
+                    channel.connect_input(input)?;
+                    channel.connect_output(send)?;
+                    audio.push(channel);
+                    audio_modes.push(BackendChannelMode::Dry);
+                }
+                for (return_, output) in audio_returns.iter().zip(&audio_outputs) {
+                    let channel = handle.add_audio_channel(ChannelMode::Wet)?;
+                    channel.connect_input(return_)?;
+                    channel.connect_output(output)?;
+                    audio.push(channel);
+                    audio_modes.push(BackendChannelMode::Wet);
+                }
+                if let (Some(input), Some(send)) = (&midi_input, &midi_output) {
+                    let channel = handle.add_midi_channel(ChannelMode::Dry)?;
+                    channel.connect_input(input)?;
+                    channel.connect_output(send)?;
+                    midi.push(channel);
+                    midi_modes.push(BackendChannelMode::Dry);
+                }
+            }
+            BackendTrackTopology::DryWetProcessor { .. } => {
+                return Err(anyhow!("requested track processor is unavailable"));
+            }
         }
         let id = BackendLoopId::from_raw(self.next_loop_id);
         self.next_loop_id = self.next_loop_id.saturating_add(1);
@@ -269,7 +322,9 @@ impl NativeRuntime {
             NativeLoop {
                 handle,
                 audio,
+                audio_modes,
                 midi,
+                midi_modes,
                 gain: 1.0,
                 balance: 0.0,
             },
@@ -280,6 +335,7 @@ impl NativeRuntime {
             .loops
             .push(id);
         self.wait();
+        self.apply_track_routing(track_id)?;
         Ok(id)
     }
 
@@ -376,9 +432,11 @@ impl NativeRuntime {
                 let audio = loop_
                     .audio
                     .iter()
-                    .map(|channel| {
+                    .zip(&loop_.audio_modes)
+                    .map(|(channel, mode)| {
                         let state = channel.get_state()?;
                         Ok(BackendAudioContent {
+                            mode: *mode,
                             samples: channel.get_data(),
                             gain: state.gain,
                             start_offset: state.start_offset,
@@ -389,10 +447,12 @@ impl NativeRuntime {
                 let midi = loop_
                     .midi
                     .iter()
-                    .map(|channel| {
+                    .zip(&loop_.midi_modes)
+                    .map(|(channel, mode)| {
                         let state = channel.get_state()?;
                         let data = channel.get_all_midi_data();
                         Ok(BackendMidiContent {
+                            mode: *mode,
                             length: state.length,
                             start_state: data
                                 .iter()
@@ -446,6 +506,7 @@ impl NativeRuntime {
             tracks.push(BackendSessionTrack {
                 source_id: track_id.raw(),
                 port_name_base: track.port_name_base.clone(),
+                topology: track.state.topology.clone(),
                 state: track.state.clone(),
                 loops,
                 ports,
@@ -463,17 +524,43 @@ impl NativeRuntime {
         if !self.tracks.is_empty() {
             return Err(anyhow!("target native session is not empty"));
         }
-        if data.tracks.iter().any(|track| track.carla_state.is_some()) {
-            return Err(anyhow!("Carla topology is unavailable in this backend"));
+        if data.tracks.iter().any(|track| {
+            track.carla_state.is_some()
+                || matches!(track.topology, BackendTrackTopology::DryWetProcessor { .. })
+        }) {
+            return Err(anyhow!(
+                "requested track processor is unavailable in this backend"
+            ));
         }
         let mut replacement = BackendSessionReplacement::default();
         for source_track in &data.tracks {
-            let created = self.create_direct_track(DirectTrackRequest {
+            if source_track.state.topology != source_track.topology {
+                return Err(anyhow!("prepared native topology state is inconsistent"));
+            }
+            let request = TrackRequest {
                 port_name_base: source_track.port_name_base.clone(),
-                audio_channels: source_track.state.audio_channels,
-                midi: source_track.state.midi,
+                topology: source_track.topology.clone(),
                 initial_loops: source_track.loops.len(),
-            })?;
+            };
+            let created = match &request.topology {
+                BackendTrackTopology::Direct {
+                    audio_channels,
+                    midi,
+                } => self.create_direct_track(DirectTrackRequest {
+                    port_name_base: request.port_name_base,
+                    audio_channels: *audio_channels,
+                    midi: *midi,
+                    initial_loops: request.initial_loops,
+                })?,
+                BackendTrackTopology::DryWetExternal { .. } => {
+                    self.create_external_track(request)?
+                }
+                BackendTrackTopology::DryWetProcessor { .. } => {
+                    return Err(anyhow!(
+                        "requested track processor is unavailable in this backend"
+                    ));
+                }
+            };
             if created.ports.len() != source_track.ports.len() {
                 return Err(anyhow!("prepared native port shape changed"));
             }
@@ -494,6 +581,18 @@ impl NativeRuntime {
                     .ok_or_else(|| anyhow!("missing restored native loop"))?;
                 if target.audio.len() != source_loop.audio.len()
                     || target.midi.len() != source_loop.midi.len()
+                    || target.audio_modes
+                        != source_loop
+                            .audio
+                            .iter()
+                            .map(|channel| channel.mode)
+                            .collect::<Vec<_>>()
+                    || target.midi_modes
+                        != source_loop
+                            .midi
+                            .iter()
+                            .map(|channel| channel.mode)
+                            .collect::<Vec<_>>()
                 {
                     return Err(anyhow!("prepared native channel shape changed"));
                 }
@@ -661,15 +760,189 @@ impl NativeRuntime {
                 port_name_base: request.port_name_base,
                 audio_inputs,
                 audio_outputs,
+                audio_sends: Vec::new(),
+                audio_returns: Vec::new(),
                 midi_input,
                 midi_output,
                 loops: Vec::new(),
                 ports: descriptors.iter().map(|port| port.id).collect(),
                 state: BackendTrackState {
+                    topology: BackendTrackTopology::Direct {
+                        audio_channels: request.audio_channels,
+                        midi: request.midi,
+                    },
                     audio_channels: request.audio_channels,
                     midi: request.midi,
                     ..Default::default()
                 },
+                dry_passthrough_muted: Some(true),
+                wet_passthrough_muted: None,
+            },
+        );
+        let mut loops = Vec::with_capacity(request.initial_loops);
+        for _ in 0..request.initial_loops {
+            loops.push(self.create_track_loop(track_id)?);
+        }
+        self.wait();
+        Ok(BackendTrackCreation {
+            track_id,
+            loops,
+            ports: descriptors,
+        })
+    }
+
+    fn create_external_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
+        let BackendTrackTopology::DryWetExternal {
+            dry_audio_channels,
+            wet_audio_channels,
+            dry_midi,
+        } = request.topology.clone()
+        else {
+            return Err(anyhow!("expected External dry/wet topology"));
+        };
+        let ring = self
+            .resolved
+            .sample_rate
+            .saturating_mul(RECORDING_CAPACITY_SECONDS);
+        let mut audio_inputs = Vec::with_capacity(dry_audio_channels as usize);
+        let mut audio_sends = Vec::with_capacity(dry_audio_channels as usize);
+        let mut audio_returns = Vec::with_capacity(wet_audio_channels as usize);
+        let mut audio_outputs = Vec::with_capacity(wet_audio_channels as usize);
+        let mut descriptors = Vec::new();
+        for index in 0..dry_audio_channels {
+            let input_name = format!("{}_audio_dry_in_{}", request.port_name_base, index + 1);
+            let send_name = format!("{}_audio_dry_send_{}", request.port_name_base, index + 1);
+            let input = AudioPort::new_driver_port(
+                &self.session,
+                &self.driver,
+                &input_name,
+                &PortDirection::Input,
+                ring,
+            )?;
+            input.set_passthrough_muted(true)?;
+            input.set_ringbuffer_n_samples(ring)?;
+            let send = AudioPort::new_driver_port(
+                &self.session,
+                &self.driver,
+                &send_name,
+                &PortDirection::Output,
+                self.resolved.buffer_size,
+            )?;
+            input.connect_internal(&send)?;
+            descriptors.push(self.next_port(
+                input_name,
+                BackendPortDataType::Audio,
+                BackendPortDirection::Input,
+                BackendPortRole::AudioInput,
+                NativePortHandle::Audio(input.clone()),
+            ));
+            descriptors.push(self.next_port(
+                send_name,
+                BackendPortDataType::Audio,
+                BackendPortDirection::Output,
+                BackendPortRole::AudioSend,
+                NativePortHandle::Audio(send.clone()),
+            ));
+            audio_inputs.push(input);
+            audio_sends.push(send);
+        }
+        for index in 0..wet_audio_channels {
+            let return_name = format!("{}_audio_wet_return_{}", request.port_name_base, index + 1);
+            let output_name = format!("{}_audio_wet_out_{}", request.port_name_base, index + 1);
+            let return_ = AudioPort::new_driver_port(
+                &self.session,
+                &self.driver,
+                &return_name,
+                &PortDirection::Input,
+                ring,
+            )?;
+            return_.set_passthrough_muted(true)?;
+            return_.set_ringbuffer_n_samples(ring)?;
+            let output = AudioPort::new_driver_port(
+                &self.session,
+                &self.driver,
+                &output_name,
+                &PortDirection::Output,
+                self.resolved.buffer_size,
+            )?;
+            return_.connect_internal(&output)?;
+            descriptors.push(self.next_port(
+                return_name,
+                BackendPortDataType::Audio,
+                BackendPortDirection::Input,
+                BackendPortRole::AudioReturn,
+                NativePortHandle::Audio(return_.clone()),
+            ));
+            descriptors.push(self.next_port(
+                output_name,
+                BackendPortDataType::Audio,
+                BackendPortDirection::Output,
+                BackendPortRole::AudioOutput,
+                NativePortHandle::Audio(output.clone()),
+            ));
+            audio_returns.push(return_);
+            audio_outputs.push(output);
+        }
+        let (midi_input, midi_output) = if dry_midi {
+            let input_name = format!("{}_dry_midi_in", request.port_name_base);
+            let send_name = format!("{}_dry_midi_send", request.port_name_base);
+            let input = MidiPort::new_driver_port(
+                &self.session,
+                &self.driver,
+                &input_name,
+                &PortDirection::Input,
+                ring,
+            )?;
+            input.set_passthrough_muted(true)?;
+            input.set_ringbuffer_n_samples(ring)?;
+            let send = MidiPort::new_driver_port(
+                &self.session,
+                &self.driver,
+                &send_name,
+                &PortDirection::Output,
+                ring,
+            )?;
+            input.connect_internal(&send)?;
+            descriptors.push(self.next_port(
+                input_name,
+                BackendPortDataType::Midi,
+                BackendPortDirection::Input,
+                BackendPortRole::MidiInput,
+                NativePortHandle::Midi(input.clone()),
+            ));
+            descriptors.push(self.next_port(
+                send_name,
+                BackendPortDataType::Midi,
+                BackendPortDirection::Output,
+                BackendPortRole::MidiSend,
+                NativePortHandle::Midi(send.clone()),
+            ));
+            (Some(input), Some(send))
+        } else {
+            (None, None)
+        };
+        let track_id = BackendTrackId::from_raw(self.next_track_id);
+        self.next_track_id = self.next_track_id.saturating_add(1);
+        self.tracks.insert(
+            track_id,
+            NativeTrack {
+                port_name_base: request.port_name_base,
+                audio_inputs,
+                audio_outputs,
+                audio_sends,
+                audio_returns,
+                midi_input,
+                midi_output,
+                loops: Vec::new(),
+                ports: descriptors.iter().map(|port| port.id).collect(),
+                state: BackendTrackState {
+                    topology: request.topology,
+                    audio_channels: wet_audio_channels,
+                    midi: dry_midi,
+                    ..Default::default()
+                },
+                dry_passthrough_muted: Some(true),
+                wet_passthrough_muted: Some(true),
             },
         );
         let mut loops = Vec::with_capacity(request.initial_loops);
@@ -689,49 +962,118 @@ impl NativeRuntime {
         track_id: BackendTrackId,
         control: BackendTrackControl,
     ) -> Result<()> {
+        {
+            let track = self
+                .tracks
+                .get_mut(&track_id)
+                .ok_or_else(|| anyhow!("unknown native track {track_id:?}"))?;
+            match control {
+                BackendTrackControl::OutputGainDb(value) => track.state.output_gain_db = value,
+                BackendTrackControl::OutputBalance(value) => {
+                    track.state.output_balance = value.clamp(-1.0, 1.0)
+                }
+                BackendTrackControl::OutputMute(value) => {
+                    track.state.output_muted = value;
+                    for port in &track.audio_outputs {
+                        port.set_muted(value)?;
+                    }
+                    if matches!(track.state.topology, BackendTrackTopology::Direct { .. }) {
+                        if let Some(port) = &track.midi_output {
+                            port.set_muted(value)?;
+                        }
+                    }
+                }
+                BackendTrackControl::InputGainDb(value) => track.state.input_gain_db = value,
+                BackendTrackControl::InputBalance(value) => {
+                    track.state.input_balance = value.clamp(-1.0, 1.0)
+                }
+                BackendTrackControl::InputMonitoring(value) => {
+                    track.state.input_monitoring = value;
+                }
+            }
+            let (left, right) = balance_factors(track.state.output_balance);
+            let output_gain = db_gain(track.state.output_gain_db);
+            let stereo = track.audio_outputs.len() == 2;
+            for (index, port) in track.audio_outputs.iter().enumerate() {
+                port.set_gain(output_gain * stereo_factor(stereo, index, left, right))?;
+            }
+            let (left, right) = balance_factors(track.state.input_balance);
+            let input_gain = db_gain(track.state.input_gain_db);
+            let stereo = track.audio_inputs.len() == 2;
+            for (index, port) in track.audio_inputs.iter().enumerate() {
+                port.set_gain(input_gain * stereo_factor(stereo, index, left, right))?;
+            }
+        }
+        self.apply_track_routing(track_id)
+    }
+
+    fn apply_track_routing(&mut self, track_id: BackendTrackId) -> Result<()> {
+        let (topology, loop_ids, monitoring) = {
+            let track = self
+                .tracks
+                .get(&track_id)
+                .ok_or_else(|| anyhow!("unknown native track {track_id:?}"))?;
+            (
+                track.state.topology.clone(),
+                track.loops.clone(),
+                track.state.input_monitoring,
+            )
+        };
+        let (dry_muted, wet_muted, force_monitoring_off) = match topology {
+            BackendTrackTopology::Direct { .. } => (!monitoring, true, false),
+            BackendTrackTopology::DryWetExternal { .. } => {
+                let mut current = Vec::with_capacity(loop_ids.len());
+                let mut next = Vec::with_capacity(loop_ids.len());
+                for loop_id in loop_ids {
+                    let state = self
+                        .loops
+                        .get(&loop_id)
+                        .ok_or_else(|| anyhow!("missing native loop {loop_id:?}"))?
+                        .handle
+                        .get_state()?;
+                    current.push(from_native_mode(state.mode));
+                    if state.maybe_next_mode_delay == Some(1) {
+                        if let Some(mode) = state.maybe_next_mode {
+                            next.push(from_native_mode(mode));
+                        }
+                    }
+                }
+                let routing = dry_wet_routing_state(monitoring, &current, &next);
+                (
+                    routing.dry_input_passthrough_muted,
+                    routing.wet_output_passthrough_muted,
+                    routing.force_monitoring_off,
+                )
+            }
+            BackendTrackTopology::DryWetProcessor { .. } => {
+                return Err(anyhow!("requested track processor is unavailable"));
+            }
+        };
         let track = self
             .tracks
             .get_mut(&track_id)
             .ok_or_else(|| anyhow!("unknown native track {track_id:?}"))?;
-        match control {
-            BackendTrackControl::OutputGainDb(value) => track.state.output_gain_db = value,
-            BackendTrackControl::OutputBalance(value) => {
-                track.state.output_balance = value.clamp(-1.0, 1.0)
-            }
-            BackendTrackControl::OutputMute(value) => {
-                track.state.output_muted = value;
-                for port in &track.audio_outputs {
-                    port.set_muted(value)?;
-                }
-                if let Some(port) = &track.midi_output {
-                    port.set_muted(value)?;
-                }
-            }
-            BackendTrackControl::InputGainDb(value) => track.state.input_gain_db = value,
-            BackendTrackControl::InputBalance(value) => {
-                track.state.input_balance = value.clamp(-1.0, 1.0)
-            }
-            BackendTrackControl::InputMonitoring(value) => {
-                track.state.input_monitoring = value;
-                for port in &track.audio_inputs {
-                    port.set_passthrough_muted(!value)?;
-                }
-                if let Some(port) = &track.midi_input {
-                    port.set_passthrough_muted(!value)?;
-                }
-            }
+        if force_monitoring_off {
+            track.state.input_monitoring = false;
         }
-        let (left, right) = balance_factors(track.state.output_balance);
-        let output_gain = db_gain(track.state.output_gain_db);
-        let stereo = track.audio_outputs.len() == 2;
-        for (index, port) in track.audio_outputs.iter().enumerate() {
-            port.set_gain(output_gain * stereo_factor(stereo, index, left, right))?;
+        if track.dry_passthrough_muted != Some(dry_muted) {
+            for port in &track.audio_inputs {
+                port.set_passthrough_muted(dry_muted)?;
+            }
+            if let Some(port) = &track.midi_input {
+                port.set_passthrough_muted(dry_muted)?;
+            }
+            track.dry_passthrough_muted = Some(dry_muted);
         }
-        let (left, right) = balance_factors(track.state.input_balance);
-        let input_gain = db_gain(track.state.input_gain_db);
-        let stereo = track.audio_inputs.len() == 2;
-        for (index, port) in track.audio_inputs.iter().enumerate() {
-            port.set_gain(input_gain * stereo_factor(stereo, index, left, right))?;
+        if matches!(
+            track.state.topology,
+            BackendTrackTopology::DryWetExternal { .. }
+        ) && track.wet_passthrough_muted != Some(wet_muted)
+        {
+            for port in &track.audio_returns {
+                port.set_passthrough_muted(wet_muted)?;
+            }
+            track.wet_passthrough_muted = Some(wet_muted);
         }
         Ok(())
     }
@@ -755,9 +1097,25 @@ impl NativeRuntime {
             .get(&loop_id)
             .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?;
         let (left, right) = balance_factors(loop_.balance);
-        let stereo = loop_.audio.len() == 2;
-        for (index, channel) in loop_.audio.iter().enumerate() {
-            channel.set_gain(loop_.gain * stereo_factor(stereo, index, left, right))?;
+        for mode in [
+            BackendChannelMode::Direct,
+            BackendChannelMode::Dry,
+            BackendChannelMode::Wet,
+        ] {
+            let count = loop_
+                .audio_modes
+                .iter()
+                .filter(|candidate| **candidate == mode)
+                .count();
+            let mut role_index = 0;
+            for (channel, channel_mode) in loop_.audio.iter().zip(&loop_.audio_modes) {
+                if *channel_mode == mode {
+                    channel.set_gain(
+                        loop_.gain * stereo_factor(count == 2, role_index, left, right),
+                    )?;
+                    role_index += 1;
+                }
+            }
         }
         Ok(())
     }
@@ -926,13 +1284,50 @@ impl Backend for NativeBackend {
             NativeLoop {
                 handle,
                 audio: Vec::new(),
+                audio_modes: Vec::new(),
                 midi: Vec::new(),
+                midi_modes: Vec::new(),
                 gain: 1.0,
                 balance: 0.0,
             },
         );
         runtime.wait();
         Ok(id)
+    }
+
+    fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
+        Ok(Arc::from([TrackProcessorDescriptor {
+            id: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
+            label: "External".to_owned(),
+            available: true,
+            unavailable_reason: None,
+            constraints: TrackProcessorConstraints {
+                max_dry_audio_channels: None,
+                max_wet_audio_channels: None,
+                dry_midi: true,
+            },
+            features: TrackProcessorFeatures::default(),
+        }]))
+    }
+
+    fn create_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
+        match &request.topology {
+            BackendTrackTopology::Direct {
+                audio_channels,
+                midi,
+            } => self.runtime_mut()?.create_direct_track(DirectTrackRequest {
+                port_name_base: request.port_name_base,
+                audio_channels: *audio_channels,
+                midi: *midi,
+                initial_loops: request.initial_loops,
+            }),
+            BackendTrackTopology::DryWetExternal { .. } => {
+                self.runtime_mut()?.create_external_track(request)
+            }
+            BackendTrackTopology::DryWetProcessor { .. } => {
+                Err(anyhow!("requested track processor is unavailable"))
+            }
+        }
     }
 
     fn create_direct_track(&mut self, request: DirectTrackRequest) -> Result<BackendTrackCreation> {
@@ -1062,7 +1457,8 @@ impl Backend for NativeBackend {
         cycles_delay: Option<u32>,
         align_to_sync_at: Option<u32>,
     ) -> Result<()> {
-        self.runtime()?
+        let runtime = self.runtime_mut()?;
+        runtime
             .loops
             .get(&loop_id)
             .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?
@@ -1072,16 +1468,33 @@ impl Backend for NativeBackend {
                 cycles_delay.map(|value| value as i32).unwrap_or(-1),
                 align_to_sync_at.map(|value| value as i32).unwrap_or(-1),
             )?;
+        runtime.wait();
+        if let Some(track_id) = runtime
+            .tracks
+            .iter()
+            .find_map(|(track_id, track)| track.loops.contains(&loop_id).then_some(*track_id))
+        {
+            runtime.apply_track_routing(track_id)?;
+        }
         Ok(())
     }
 
     fn clear_loop(&mut self, loop_id: BackendLoopId) -> Result<()> {
-        self.runtime()?
+        let runtime = self.runtime_mut()?;
+        runtime
             .loops
             .get(&loop_id)
             .ok_or_else(|| anyhow!("unknown native loop {loop_id:?}"))?
             .handle
             .clear(0)?;
+        runtime.wait();
+        if let Some(track_id) = runtime
+            .tracks
+            .iter()
+            .find_map(|(track_id, track)| track.loops.contains(&loop_id).then_some(*track_id))
+        {
+            runtime.apply_track_routing(track_id)?;
+        }
         Ok(())
     }
 
@@ -1112,6 +1525,11 @@ impl Backend for NativeBackend {
     fn poll(&mut self) -> Result<BackendSnapshot> {
         let audio_drivers = self.audio_driver_state()?;
         let runtime = self.runtime_mut()?;
+        runtime.wait();
+        let track_ids = runtime.tracks.keys().copied().collect::<Vec<_>>();
+        for track_id in track_ids {
+            runtime.apply_track_routing(track_id)?;
+        }
         runtime.wait();
         let driver = runtime.driver.get_state();
         let session = runtime.session.get_state();
@@ -1159,7 +1577,14 @@ impl Backend for NativeBackend {
                     position: state.position,
                     next_mode: state.maybe_next_mode.map(from_native_mode),
                     next_transition_delay: state.maybe_next_mode_delay,
-                    stereo: loop_.audio.len() == 2,
+                    stereo: loop_
+                        .audio_modes
+                        .iter()
+                        .filter(|mode| {
+                            matches!(mode, BackendChannelMode::Direct | BackendChannelMode::Wet)
+                        })
+                        .count()
+                        == 2,
                     gain: loop_.gain,
                     balance: loop_.balance,
                     audio_peaks: loop_
@@ -1455,6 +1880,7 @@ mod tests {
         captured.tracks[0].loops[0].length = 512;
         captured.tracks[0].loops[0].audio[0].samples = vec![0.25, -0.5, 0.75];
         captured.tracks[0].loops[0].midi[0] = BackendMidiContent {
+            mode: BackendChannelMode::Direct,
             length: 512,
             start_state: vec![vec![0xB0, 7, 99]],
             events: vec![BackendMidiEvent {
@@ -1498,6 +1924,111 @@ mod tests {
         assert!(failures[0].desired_connected);
         assert!(failures[0].message.contains("unavailable after"));
         assert!(backend.poll().unwrap().connections.failures.is_empty());
+    }
+
+    #[test]
+    fn native_dummy_external_track_preserves_roles_media_and_routing() {
+        let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            sample_rate: 48_000,
+            buffer_size: 128,
+        });
+        let mut backend = NativeBackend::new(config.clone()).unwrap();
+        assert_eq!(
+            backend.track_processor_catalog().unwrap()[0].id.as_str(),
+            TrackProcessorTypeId::EXTERNAL
+        );
+        let created = backend
+            .create_track(TrackRequest {
+                port_name_base: "external".to_owned(),
+                topology: BackendTrackTopology::DryWetExternal {
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 1,
+                    dry_midi: true,
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        assert_eq!(created.ports.len(), 8);
+        let dry_input = created
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::AudioInput)
+            .unwrap();
+        let wet_output = created
+            .ports
+            .iter()
+            .find(|port| port.role == BackendPortRole::AudioOutput)
+            .unwrap();
+        backend
+            .set_port_connected(dry_input.id, "system:capture_1", true)
+            .unwrap();
+        backend
+            .set_port_connected(wet_output.id, "system:playback_1", true)
+            .unwrap();
+        let mut captured = backend.capture_session().unwrap();
+        captured.tracks[0].loops[0].length = 2;
+        captured.tracks[0].loops[0].audio[0].samples = vec![0.25, -0.5];
+        captured.tracks[0].loops[0].audio[2].samples = vec![0.75, -1.0];
+        assert_eq!(
+            captured.tracks[0].loops[0]
+                .audio
+                .iter()
+                .map(|channel| channel.mode)
+                .collect::<Vec<_>>(),
+            vec![
+                BackendChannelMode::Dry,
+                BackendChannelMode::Dry,
+                BackendChannelMode::Wet,
+            ]
+        );
+        {
+            let track = &backend.runtime().unwrap().tracks[&created.track_id];
+            assert!(track.audio_inputs[0].get_state().unwrap().passthrough_muted);
+            assert!(
+                track.audio_returns[0]
+                    .get_state()
+                    .unwrap()
+                    .passthrough_muted
+            );
+        }
+        backend
+            .set_track_control(created.track_id, BackendTrackControl::InputMonitoring(true))
+            .unwrap();
+        backend.wait_idle();
+        {
+            let track = &backend.runtime().unwrap().tracks[&created.track_id];
+            assert!(!track.audio_inputs[0].get_state().unwrap().passthrough_muted);
+            assert!(
+                !track.audio_returns[0]
+                    .get_state()
+                    .unwrap()
+                    .passthrough_muted
+            );
+        }
+        let snapshot = backend.poll().unwrap();
+        assert!(snapshot.tracks[&created.track_id].input_monitoring);
+
+        backend
+            .switch_audio_driver(&config, 48_000, &captured)
+            .unwrap();
+        let restored = backend.capture_session().unwrap();
+        assert_eq!(restored.tracks[0].topology, captured.tracks[0].topology);
+        assert_eq!(
+            restored.tracks[0].loops[0].audio[0].samples,
+            vec![0.25, -0.5]
+        );
+        assert_eq!(
+            restored.tracks[0].loops[0].audio[2].samples,
+            vec![0.75, -1.0]
+        );
+        assert!(restored.tracks[0]
+            .ports
+            .iter()
+            .any(|port| port.external_connections == ["system:capture_1"]));
+        assert!(restored.tracks[0]
+            .ports
+            .iter()
+            .any(|port| port.external_connections == ["system:playback_1"]));
     }
 
     #[test]

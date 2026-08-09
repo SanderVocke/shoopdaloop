@@ -19,15 +19,15 @@ use shoop_app_api::{
     PendingConnectionState, PortDataType, PortDirection, PortId, PortRole, SampleRateWarning,
     ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState, TaskId,
     TrackAction, TrackControlState, TrackId, TrackPortOwnerKind, TrackProcessorDescriptor,
-    TrackState, TrackTopology, WaveformChannelState,
+    TrackSpec, TrackSpecTopology, TrackState, TrackTopology, WaveformChannelState,
 };
 use shoop_backend::{
-    Backend, BackendAudioContent, BackendConnectionSnapshot, BackendGrabRequest,
-    BackendLoopContent, BackendLoopId, BackendLoopMode, BackendMidiContent, BackendMidiEvent,
-    BackendPortDataType, BackendPortDescriptor, BackendPortDirection, BackendPortId,
-    BackendPortRole, BackendSessionData, BackendSessionPort, BackendSessionReplacement,
-    BackendSessionTrack, BackendSnapshot, BackendTrackControl, BackendTrackId, BackendTrackState,
-    DirectTrackRequest,
+    Backend, BackendAudioContent, BackendChannelMode, BackendConnectionSnapshot,
+    BackendGrabRequest, BackendLoopContent, BackendLoopId, BackendLoopMode, BackendMidiContent,
+    BackendMidiEvent, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
+    BackendPortId, BackendPortRole, BackendSessionData, BackendSessionPort,
+    BackendSessionReplacement, BackendSessionTrack, BackendSnapshot, BackendTrackControl,
+    BackendTrackId, BackendTrackState, BackendTrackTopology, DirectTrackRequest, TrackRequest,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_scripting::NativeMidiService;
@@ -439,6 +439,7 @@ struct TrackModel {
     port_name_base: String,
     is_sync: bool,
     audio_channels: u32,
+    topology: TrackTopology,
     loops: Vec<LoopId>,
     port_ids: Arc<[PortId]>,
     controls: TrackControlState,
@@ -600,6 +601,7 @@ impl ApplicationModel {
                 port_name_base: "sync_loop".to_owned(),
                 is_sync: true,
                 audio_channels: 1,
+                topology: TrackTopology::Direct,
                 loops: vec![loop_id],
                 port_ids,
                 controls: Default::default(),
@@ -673,6 +675,7 @@ impl ApplicationModel {
                 self.handle_track_action(backend, track_id, action)
             }
             AppIntent::AddTrack(spec) => self.add_track(backend, spec),
+            AppIntent::AddTrackWithTopology(spec) => self.add_track_spec(backend, spec),
             AppIntent::AddLoop { track_id } => self.add_aligned_loop_row(backend, track_id),
             AppIntent::KeyEvent(event) => self.handle_script_key_event(backend, event),
             AppIntent::AddScriptSource {
@@ -2427,8 +2430,57 @@ impl ApplicationModel {
         backend: &mut dyn Backend,
         spec: DirectTrackSpec,
     ) -> Result<(), String> {
-        spec.validate()
+        self.add_track_spec(backend, spec.into())
+    }
+
+    fn add_track_spec(&mut self, backend: &mut dyn Backend, spec: TrackSpec) -> Result<(), String> {
+        spec.validate(&self.track_processors)
             .map_err(|error| format!("invalid track: {error:?}"))?;
+        let (backend_topology, topology, loop_audio_channels) = match &spec.topology {
+            TrackSpecTopology::Direct {
+                audio_channels,
+                midi,
+            } => (
+                BackendTrackTopology::Direct {
+                    audio_channels: *audio_channels,
+                    midi: *midi,
+                },
+                TrackTopology::Direct,
+                *audio_channels,
+            ),
+            TrackSpecTopology::DryWet {
+                dry_audio_channels,
+                wet_audio_channels,
+                dry_midi,
+                processor_type,
+            } => {
+                let backend_topology =
+                    if processor_type.as_str() == shoop_app_api::TrackProcessorTypeId::EXTERNAL {
+                        BackendTrackTopology::DryWetExternal {
+                            dry_audio_channels: *dry_audio_channels,
+                            wet_audio_channels: *wet_audio_channels,
+                            dry_midi: *dry_midi,
+                        }
+                    } else {
+                        BackendTrackTopology::DryWetProcessor {
+                            processor_type: processor_type.as_str().to_owned(),
+                            dry_audio_channels: *dry_audio_channels,
+                            wet_audio_channels: *wet_audio_channels,
+                            dry_midi: *dry_midi,
+                        }
+                    };
+                (
+                    backend_topology,
+                    TrackTopology::DryWet {
+                        dry_audio_channels: *dry_audio_channels,
+                        wet_audio_channels: *wet_audio_channels,
+                        dry_midi: *dry_midi,
+                        processor_type: processor_type.clone(),
+                    },
+                    dry_audio_channels.saturating_add(*wet_audio_channels),
+                )
+            }
+        };
         let slot_count = self
             .tracks
             .iter()
@@ -2440,10 +2492,9 @@ impl ApplicationModel {
         let track_id = TrackId::from_raw(self.next_track_id);
         let port_name_base = self.unique_port_name(&spec.name, track_id);
         let created = backend
-            .create_direct_track(DirectTrackRequest {
+            .create_track(TrackRequest {
                 port_name_base: port_name_base.clone(),
-                audio_channels: spec.audio_channels,
-                midi: spec.midi,
+                topology: backend_topology,
                 initial_loops: slot_count,
             })
             .map_err(|error| format!("could not create track: {error}"))?;
@@ -2466,7 +2517,7 @@ impl ApplicationModel {
                 track_id,
                 backend_loop,
                 format!("({})", index + 1),
-                spec.audio_channels,
+                loop_audio_channels,
             ));
         }
         self.tracks.push(TrackModel {
@@ -2475,7 +2526,8 @@ impl ApplicationModel {
             name: spec.name,
             port_name_base,
             is_sync: false,
-            audio_channels: spec.audio_channels,
+            audio_channels: loop_audio_channels,
+            topology,
             loops: loop_ids,
             port_ids,
             controls: Default::default(),
@@ -3249,10 +3301,28 @@ impl ApplicationModel {
             let Some(backend_state) = snapshot.tracks.get(&track.backend_id) else {
                 continue;
             };
+            let (input_audio_channels, output_audio_channels, input_midi, output_midi) =
+                match &backend_state.topology {
+                    BackendTrackTopology::Direct {
+                        audio_channels,
+                        midi,
+                    } => (*audio_channels, *audio_channels, *midi, *midi),
+                    BackendTrackTopology::DryWetExternal {
+                        dry_audio_channels,
+                        wet_audio_channels,
+                        dry_midi,
+                    }
+                    | BackendTrackTopology::DryWetProcessor {
+                        dry_audio_channels,
+                        wet_audio_channels,
+                        dry_midi,
+                        ..
+                    } => (*dry_audio_channels, *wet_audio_channels, *dry_midi, false),
+                };
             let controls = &mut track.controls;
-            controls.has_output = backend_state.audio_channels > 0 || backend_state.midi;
-            controls.has_output_audio = backend_state.audio_channels > 0;
-            controls.output_stereo = backend_state.audio_channels == 2;
+            controls.has_output = output_audio_channels > 0 || output_midi;
+            controls.has_output_audio = output_audio_channels > 0;
+            controls.output_stereo = output_audio_channels == 2;
             controls.output_gain_db = backend_state.output_gain_db;
             controls.output_balance = backend_state.output_balance;
             controls.output_muted = backend_state.output_muted;
@@ -3267,9 +3337,9 @@ impl ApplicationModel {
                 .copied()
                 .unwrap_or(controls.output_peak_left_db);
             controls.output_midi_activity = backend_state.output_midi_activity;
-            controls.has_input = backend_state.audio_channels > 0 || backend_state.midi;
-            controls.has_input_audio = backend_state.audio_channels > 0;
-            controls.input_stereo = backend_state.audio_channels == 2;
+            controls.has_input = input_audio_channels > 0 || input_midi;
+            controls.has_input_audio = input_audio_channels > 0;
+            controls.input_stereo = input_audio_channels == 2;
             controls.input_gain_db = backend_state.input_gain_db;
             controls.input_balance = backend_state.input_balance;
             controls.input_monitoring = backend_state.input_monitoring;
@@ -3287,10 +3357,12 @@ impl ApplicationModel {
             .tracks
             .iter()
             .filter_map(|track| {
-                snapshot
-                    .tracks
-                    .get(&track.backend_id)
-                    .map(|state| (track.id, (state.audio_channels > 0, state.midi)))
+                snapshot.tracks.get(&track.backend_id).map(|state| {
+                    (
+                        track.id,
+                        (track.audio_channels > 0, state.topology.has_midi()),
+                    )
+                })
             })
             .collect::<BTreeMap<_, _>>();
         for model in self.loops.values_mut() {
@@ -4055,6 +4127,7 @@ impl ApplicationModel {
                 port_name_base: track_document.port_name_base.clone(),
                 is_sync: track_document.is_sync,
                 audio_channels,
+                topology: TrackTopology::Direct,
                 loops: loop_ids,
                 port_ids: Arc::from(port_ids),
                 controls: TrackControlState {
@@ -4121,7 +4194,7 @@ impl ApplicationModel {
                     id: track.id,
                     name: track.name.clone(),
                     is_sync: track.is_sync,
-                    topology: TrackTopology::Direct,
+                    topology: track.topology.clone(),
                     fx: None,
                     loops: track
                         .loops
@@ -4252,6 +4325,7 @@ impl ApplicationModel {
             .first_mut()
             .ok_or_else(|| "target loop has no MIDI channel".to_owned())?;
         *channel = BackendMidiContent {
+            mode: channel.mode,
             length: u32::try_from(midi.length_frames)
                 .map_err(|_| "MIDI duration exceeds engine range".to_owned())?,
             start_state: midi.start_state.clone(),
@@ -4674,6 +4748,7 @@ impl ApplicationModel {
             .first_mut()
             .ok_or_else(|| "target loop has no MIDI channel".to_owned())?;
         *channel = BackendMidiContent {
+            mode: channel.mode,
             length: u32::try_from(midi.length_frames)
                 .map_err(|_| "MIDI duration exceeds engine range".to_owned())?,
             start_state: midi.start_state,
@@ -4848,7 +4923,12 @@ fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionDat
         .flat_map(|group| &group.tracks)
     {
         let (audio_channels, midi) = direct_topology(track)?;
+        let topology = BackendTrackTopology::Direct {
+            audio_channels,
+            midi,
+        };
         let state = BackendTrackState {
+            topology: topology.clone(),
             audio_channels,
             midi,
             output_gain_db: track.controls.output_gain_db,
@@ -4889,6 +4969,7 @@ fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionDat
                             None => Vec::new(),
                         };
                         audio.push(BackendAudioContent {
+                            mode: BackendChannelMode::Direct,
                             samples,
                             gain: channel.gain,
                             start_offset: i32::try_from(channel.start_offset_frames)
@@ -4906,6 +4987,7 @@ fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionDat
                             None => None,
                         };
                         midi_channels.push(BackendMidiContent {
+                            mode: BackendChannelMode::Direct,
                             length: u32::try_from(channel.data_length_frames)
                                 .map_err(|_| "MIDI duration exceeds engine range".to_owned())?,
                             start_state: exact
@@ -4937,12 +5019,14 @@ fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionDat
             }
             if loop_.composite.is_some() {
                 audio.resize_with(audio_channels as usize, || BackendAudioContent {
+                    mode: BackendChannelMode::Direct,
                     samples: Vec::new(),
                     gain: 1.0,
                     start_offset: 0,
                     preplay: 0,
                 });
                 midi_channels.resize_with(usize::from(midi), || BackendMidiContent {
+                    mode: BackendChannelMode::Direct,
                     length: 0,
                     start_state: Vec::new(),
                     events: Vec::new(),
@@ -4966,6 +5050,7 @@ fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionDat
         tracks.push(BackendSessionTrack {
             source_id: track.id,
             port_name_base: track.port_name_base.clone(),
+            topology,
             state,
             loops,
             ports,
@@ -5220,6 +5305,60 @@ mod tests {
             runtime.handle().snapshot().track_processors.as_ref(),
             &[descriptor]
         );
+    }
+
+    #[test]
+    fn application_adds_external_dry_wet_tracks_from_processor_capabilities() {
+        let descriptor = shoop_app_api::TrackProcessorDescriptor {
+            id: shoop_app_api::TrackProcessorTypeId::new(
+                shoop_app_api::TrackProcessorTypeId::EXTERNAL,
+            ),
+            label: "External".to_owned(),
+            available: true,
+            unavailable_reason: None,
+            constraints: shoop_app_api::TrackProcessorConstraints {
+                max_dry_audio_channels: None,
+                max_wet_audio_channels: None,
+                dry_midi: true,
+            },
+            features: shoop_app_api::TrackProcessorFeatures::default(),
+        };
+        let mut backend = FakeBackend::default();
+        backend.set_track_processor_catalog(vec![descriptor]);
+        let runtime = ApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime
+            .handle()
+            .dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
+                name: "Outboard".to_owned(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 1,
+                    dry_midi: true,
+                    processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                        shoop_app_api::TrackProcessorTypeId::EXTERNAL,
+                    ),
+                },
+            }))
+            .unwrap();
+        let snapshot = wait_for(&runtime.handle(), |snapshot| snapshot.tracks.len() == 2);
+        let track = &snapshot.tracks[1];
+        assert_eq!(
+            track.topology,
+            TrackTopology::DryWet {
+                dry_audio_channels: 2,
+                wet_audio_channels: 1,
+                dry_midi: true,
+                processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                    shoop_app_api::TrackProcessorTypeId::EXTERNAL,
+                ),
+            }
+        );
+        assert_eq!(track.loops.len(), 8);
+        assert!(track.controls.has_input);
+        assert!(track.controls.input_stereo);
+        assert!(track.controls.has_output);
+        assert!(!track.controls.output_stereo);
+        assert_eq!(track.port_ids.len(), 8);
     }
 
     #[test]

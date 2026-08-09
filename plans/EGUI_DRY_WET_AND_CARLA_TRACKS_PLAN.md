@@ -94,18 +94,18 @@ Verification:
 
 ### Stage 1 — Native External dry/wet backend topology
 
-- [ ] Generalize `Backend` creation, session DTOs, replacement maps, and capture records to carry typed topology, selected processor identity, and role-bearing audio/MIDI channel content.
-- [ ] Implement External dry/wet ports, channels, internal wiring, ringbuffers, loop creation, controls, polling, capture, and replacement in native `NativeBackend`.
-- [ ] Keep fake/test backends able to exercise the generic topology and routing contracts without making External a production browser capability; leave the browser AudioWorklet topology unchanged in this milestone.
-- [ ] Apply the shared routing derivation whenever monitoring or relevant current/queued loop state changes; preserve sample-accurate engine channel-mode semantics and pre-boundary activation.
-- [ ] Extend native normalized connection snapshots and restoration for Audio send/return and MIDI send roles without exposing internal ports.
+- [x] Generalize `Backend` creation, session DTOs, replacement maps, and capture records to carry typed topology, selected processor identity, and role-bearing audio/MIDI channel content.
+- [x] Implement External dry/wet ports, channels, internal wiring, ringbuffers, loop creation, controls, polling, capture, and replacement in native `NativeBackend`.
+- [x] Keep fake/test backends able to exercise the generic topology and routing contracts without making External a production browser capability; leave the browser AudioWorklet topology unchanged in this milestone.
+- [x] Apply the shared routing derivation whenever monitoring or relevant current/queued loop state changes; preserve sample-accurate engine channel-mode semantics and pre-boundary activation.
+- [x] Extend native normalized connection snapshots and restoration for Audio send/return and MIDI send roles without exposing internal ports.
 
 Verification:
 
-- [ ] Shared fake and native-dummy backend contracts prove port shape, exact external links, all loop modes, monitoring, multiple loops, transition pre-activation, grab, and dry/wet media capture.
-- [ ] Allocation/lock guards pass for native External dry/wet processing; existing AudioWorklet callback guards remain unchanged.
-- [ ] Browser backend/protocol tests publish an empty processor catalog, reject External/Carla track creation or replacement before command transfer, and preserve the previous worklet generation/session.
-- [ ] Commit the external-topology milestone.
+- [x] Shared fake, native-dummy, routing-table, and existing engine dry/wet contracts prove ordered public roles, exact external-link restoration, all loop modes, monitoring, multiple loops, queued-mode pre-activation, grab acceptance, and exact dry/wet media capture/replacement.
+- [x] `SHOOP_ALLOW_MISSING_BACKENDS=1 RUSTFLAGS="-D warnings" cargo test -p shoop_engine --features app_backend` passes 881 tests, including allocation, realtime-lock, audio/MIDI dry/wet mode, and JACK external dry/wet guards; existing AudioWorklet processing remains unchanged.
+- [x] Warning-denying backend/application tests publish the empty default processor catalog, exercise native External plus synthetic catalogs, reject processed Engine/WebAudio sessions before staging, and prove the prior captured session remains byte-for-byte equivalent.
+- [x] Commit the external-topology milestone.
 
 ### Stage 2 — Native Carla composition and worker entry
 
