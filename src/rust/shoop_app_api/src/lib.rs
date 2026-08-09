@@ -810,6 +810,8 @@ pub struct ClickSoundDescriptor {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ClickTrackState {
     pub sounds: Arc<[ClickSoundDescriptor]>,
+    pub max_click_count: u32,
+    pub max_output_frames: u32,
     pub preview_request_id: u64,
     pub preview_status: ClickTrackPreviewStatus,
     pub preview_message: String,

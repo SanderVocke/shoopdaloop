@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    colors, AppAction, AppState, AudioDriverConfig, AudioDriverKind, ConnectionDialog,
-    ConnectionScope, CpalAudioDriverConfig, DetailsPane, DirectTrackSpec, DummyAudioDriverConfig,
-    GlobalControls, JackAudioDriverConfig, SettingsAction, SettingsDialog, TrackWidget,
-    TracksWidget,
+    click_track_dialog::ClickTrackDialog, colors, AppAction, AppState, AudioDriverConfig,
+    AudioDriverKind, ConnectionDialog, ConnectionScope, CpalAudioDriverConfig, DetailsPane,
+    DirectTrackSpec, DummyAudioDriverConfig, GlobalControls, JackAudioDriverConfig, SettingsAction,
+    SettingsDialog, TrackWidget, TracksWidget,
 };
 use shoop_settings::{
     SettingDefinition, SettingEffect, SettingKey, SettingsDraft, SettingsRegistry,
@@ -424,6 +424,7 @@ pub struct AppWidget {
     details: DetailsPane,
     sync_track: TrackWidget,
     connections: ConnectionDialog,
+    click_track: ClickTrackDialog,
     settings: SettingsDialog,
     details_open: bool,
     add_track_open: bool,
@@ -456,6 +457,7 @@ impl AppWidget {
             details: DetailsPane::default(),
             sync_track: TrackWidget::default(),
             connections: ConnectionDialog::default(),
+            click_track: ClickTrackDialog::default(),
             settings: SettingsDialog::new(settings_registry),
             details_open: true,
             add_track_open: false,
@@ -587,6 +589,13 @@ impl AppWidget {
                             if response.connections_requested {
                                 self.connections.open(ConnectionScope::Track(sync.id));
                             }
+                            if let Some(loop_id) = response.click_track_requested {
+                                if let Some(loop_state) =
+                                    sync.loops.iter().find(|loop_| loop_.id == loop_id)
+                                {
+                                    self.click_track.open(loop_state, &state.click_track);
+                                }
+                            }
                             actions.extend(response.actions.into_iter().map(|action| {
                                 AppAction::Track {
                                     track_id: sync.id,
@@ -617,10 +626,20 @@ impl AppWidget {
                 if let Some(track_id) = response.connection_track_requested {
                     self.connections.open(ConnectionScope::Track(track_id));
                 }
+                if let Some(loop_id) = response.click_track_requested {
+                    if let Some(loop_state) = main_tracks
+                        .iter()
+                        .flat_map(|track| &track.loops)
+                        .find(|loop_| loop_.id == loop_id)
+                    {
+                        self.click_track.open(loop_state, &state.click_track);
+                    }
+                }
                 actions.extend(response.intents);
             });
 
         self.show_add_track_dialog(ui.ctx(), &mut actions);
+        actions.extend(self.click_track.show(ui.ctx(), state));
         self.show_io_task_dialog(ui.ctx(), state, &mut actions);
         actions.extend(self.connections.show(ui.ctx(), state));
         let settings_response = self.settings.show(

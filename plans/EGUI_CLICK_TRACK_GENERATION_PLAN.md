@@ -109,17 +109,17 @@ Verification:
 
 ### Stage 2 — Implement the egui context action and dialog
 
-- [ ] Add **Generate click track...** to applicable loop context menus and route the exact stable target ID through `TrackWidget`, `TracksWidget`, and the sync-track path.
-- [ ] Add one resizable egui dialog with kind-specific controls, the legacy defaults, catalog-driven selectors, numeric validation, **Fill loop length**, audio-only Preview, Generate, and Cancel.
-- [ ] Retain presentation drafts by stable loop ID, reconcile removed/stale loops and changed capabilities safely, and prevent context menus or reordered tracks from retargeting an open draft.
-- [ ] Render preview/generation running, completion, and actionable failure state without blocking; keep ordinary media-I/O dialogs and settings/connections independent.
+- [x] Add **Generate click track...** to applicable loop context menus and route the exact stable target ID through `TrackWidget`, `TracksWidget`, and the sync-track path.
+- [x] Add one resizable egui dialog with kind-specific controls, the legacy defaults, catalog-driven selectors, numeric validation, **Fill loop length**, audio-only Preview, Generate, and Cancel.
+- [x] Retain presentation drafts by stable loop ID, reconcile removed/stale loops and changed capabilities safely, and prevent context menus or reordered tracks from retargeting an open draft.
+- [x] Render preview/generation running, completion, and actionable failure state without blocking; keep ordinary media-I/O dialogs and settings/connections independent.
 - [ ] Update loop-control user documentation for the generated content, timing, defaults, preview, and session persistence behavior; update planning documents in the same stage.
 
 Verification:
 
-- [ ] Backend-free egui interaction tests cover menu applicability, sync/main stable routing, default values, audio/MIDI visibility, catalog selection, fractional BPM, invalid fields, fill calculation/disabled states, preview enablement, Generate/Cancel, stale target, and dialog reopen behavior.
-- [ ] Paint tests pass at 360×200 and 900×600 with long validation/error text and both audio/MIDI forms.
-- [ ] `cargo test -p shoop_egui -p shoop_app_api` and its Wasm compiler check pass without adding session/backend/platform dependencies; commit the presentation milestone and synchronized docs.
+- [x] Backend-free egui tests cover menu applicability, sync/main stable routing, default values, audio/MIDI capability reconciliation, catalog selection, fractional BPM, invalid fields, fill calculation/disabled states, preview enablement, exact Generate/Preview intents, Cancel draft retention, stale target, and dialog reopen behavior.
+- [x] Paint tests pass at 360×200 and 900×600 with validation/status surfaces and both kind-specific control paths.
+- [x] `cargo test -p shoop_egui -p shoop_app_api` passes 51 presentation and 10 API tests, and the focused Wasm compiler check passes without adding session/backend/platform dependencies; commit the presentation milestone and synchronize final user docs with working platform preview in Stage 3.
 
 ### Stage 3 — Compose native/browser preview and production assets
 

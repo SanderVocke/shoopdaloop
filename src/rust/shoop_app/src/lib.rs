@@ -46,6 +46,7 @@ use shoop_session::{
     MediaPayload, MidiClickTrackSpec, MidiControlDocument, PortDirectionDocument, PortDocument,
     PortRoleDocument, RecordingActionDocument, ScriptDocument, SessionBundle, SessionDocument,
     TrackControlsDocument, TrackDocument, TrackGroupDocument, TrackTopologyDocument,
+    MAX_CLICK_TRACK_CLICKS, MAX_CLICK_TRACK_FRAMES,
 };
 
 const COMMAND_CAPACITY: usize = 1024;
@@ -685,6 +686,8 @@ impl ApplicationModel {
                     })
                     .collect::<Vec<_>>()
                     .into(),
+                max_click_count: MAX_CLICK_TRACK_CLICKS,
+                max_output_frames: MAX_CLICK_TRACK_FRAMES,
                 ..Default::default()
             },
             next_preview_request_id: 1,

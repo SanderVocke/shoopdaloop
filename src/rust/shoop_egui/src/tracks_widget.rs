@@ -6,6 +6,7 @@ pub struct TracksWidgetResponse {
     pub intents: Vec<AppIntent>,
     pub add_track_requested: bool,
     pub connection_track_requested: Option<crate::TrackId>,
+    pub click_track_requested: Option<crate::LoopId>,
 }
 
 #[derive(Debug, Default)]
@@ -87,6 +88,9 @@ fn collect_response(
     response: crate::TrackWidgetResponse,
 ) {
     result.intents.extend(response.io_intents.iter().cloned());
+    if response.click_track_requested.is_some() {
+        result.click_track_requested = response.click_track_requested;
+    }
     result
         .intents
         .extend(
@@ -164,6 +168,7 @@ mod tests {
                 loop_id,
                 LoopWidgetAction::IconClicked(SelectionModifiers { additive: true }),
             )],
+            click_track_requested: Some(loop_id),
             add_loop_requested: true,
             connections_requested: true,
             ..Default::default()
@@ -171,6 +176,7 @@ mod tests {
         let mut result = TracksWidgetResponse::default();
         collect_response(&mut result, &track, response);
         assert_eq!(result.connection_track_requested, Some(track.id));
+        assert_eq!(result.click_track_requested, Some(loop_id));
         assert_eq!(
             result.intents,
             vec![
