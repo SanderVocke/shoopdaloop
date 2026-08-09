@@ -1,4 +1,4 @@
-use crate::{waveform_bins, WaveformChannelState};
+use crate::{colors, waveform_bins, WaveformChannelState};
 
 #[derive(Debug)]
 pub struct WaveformWidget {
@@ -31,17 +31,17 @@ impl WaveformWidget {
         let desired = egui::vec2(ui.available_width(), 72.0);
         let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::drag());
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, 2.0, egui::Color32::from_rgb(24, 24, 24));
+        painter.rect_filled(rect, 2.0, colors::WAVEFORM_BACKGROUND);
         painter.rect_stroke(
             rect,
             2.0,
-            egui::Stroke::new(1.0, egui::Color32::GRAY),
+            egui::Stroke::new(1.0, colors::MUTED_FOREGROUND),
             egui::StrokeKind::Inside,
         );
         painter.hline(
             rect.x_range(),
             rect.center().y,
-            egui::Stroke::new(1.0, egui::Color32::from_gray(90)),
+            egui::Stroke::new(1.0, colors::WAVEFORM_ZERO_LINE),
         );
 
         if channel.samples.is_empty() {
@@ -50,7 +50,7 @@ impl WaveformWidget {
                 egui::Align2::CENTER_CENTER,
                 "No audio data",
                 egui::FontId::proportional(12.0),
-                egui::Color32::GRAY,
+                colors::MUTED_FOREGROUND,
             );
             return;
         }
@@ -84,7 +84,7 @@ impl WaveformWidget {
                     egui::pos2(right, rect.bottom()),
                 ),
                 0.0,
-                egui::Color32::from_rgba_unmultiplied(0, 0, 180, 45),
+                colors::WAVEFORM_LOOP_REGION,
             );
         }
 
@@ -98,7 +98,7 @@ impl WaveformWidget {
             painter.vline(
                 x,
                 top.min(bottom)..=top.max(bottom),
-                egui::Stroke::new(1.0, egui::Color32::from_rgb(0, 188, 212)),
+                egui::Stroke::new(1.0, colors::AUDIO_ACTIVITY),
             );
         }
 
@@ -108,7 +108,7 @@ impl WaveformWidget {
                 painter.vline(
                     x,
                     rect.y_range(),
-                    egui::Stroke::new(2.0, egui::Color32::GREEN),
+                    egui::Stroke::new(2.0, colors::WAVEFORM_PLAYHEAD),
                 );
             }
         }

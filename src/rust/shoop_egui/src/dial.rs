@@ -1,3 +1,5 @@
+use crate::colors;
+
 pub(crate) fn dial_indicator(rect: egui::Rect, fraction: f32) -> [egui::Pos2; 2] {
     let angle = -2.35 + fraction.clamp(0.0, 1.0) * 4.7;
     let direction = egui::vec2(angle.sin(), -angle.cos());
@@ -18,7 +20,7 @@ pub(crate) fn paint_dial(
     ui.painter().circle_filled(
         rect.center(),
         rect.width() / 2.0,
-        egui::Color32::from_rgb(34, 34, 34),
+        colors::CONTROL_BACKGROUND,
     );
     ui.painter().circle_stroke(
         rect.center(),
@@ -27,14 +29,14 @@ pub(crate) fn paint_dial(
     );
     ui.painter().line_segment(
         dial_indicator(rect, fraction),
-        egui::Stroke::new(1.5, egui::Color32::WHITE),
+        egui::Stroke::new(1.5, colors::FOREGROUND),
     );
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
         label,
         egui::FontId::proportional(7.0),
-        egui::Color32::from_gray(180),
+        colors::DIAL_LABEL,
     );
 }
 

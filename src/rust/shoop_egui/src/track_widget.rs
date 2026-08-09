@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    AppIntent, FxLifecycle, LoopId, LoopWidget, LoopWidgetAction, TrackControls,
+    colors, AppIntent, FxLifecycle, LoopId, LoopWidget, LoopWidgetAction, TrackControls,
     TrackProcessorDescriptor, TrackState, TrackWidgetAction,
 };
 use egui_material_icons::icons::{ICON_ADD, ICON_MORE_VERT};
@@ -70,10 +70,10 @@ impl TrackWidget {
         #[cfg(test)]
         self.test_loop_rects.clear();
         egui::Frame::new()
-            .fill(egui::Color32::from_rgb(85, 85, 85))
+            .fill(colors::RAISED_BACKGROUND)
             .inner_margin(egui::Margin::same(4))
             .show(ui, |ui| {
-                ui.set_width(180.0);
+                ui.set_width(100.0);
                 ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                     self.show_header(ui, state, processor, &mut result);
                     ui.add_space(2.0);
@@ -124,7 +124,7 @@ impl TrackWidget {
         state: &crate::TrackControlState,
     ) -> Vec<TrackWidgetAction> {
         egui::Frame::new()
-            .fill(egui::Color32::from_rgb(85, 85, 85))
+            .fill(colors::RAISED_BACKGROUND)
             .inner_margin(egui::Margin::same(4))
             .show(ui, |ui| {
                 ui.set_width(180.0);

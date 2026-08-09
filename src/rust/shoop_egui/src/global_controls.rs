@@ -3,7 +3,7 @@ use egui_material_icons::icons::{
     ICON_PLAY_ARROW, ICON_STOP, ICON_TIMER,
 };
 
-use crate::{DefaultRecordingAction, GlobalControlAction, GlobalControlState};
+use crate::{colors, DefaultRecordingAction, GlobalControlAction, GlobalControlState};
 
 #[derive(Debug, Default)]
 pub struct GlobalControls {
@@ -160,9 +160,9 @@ impl GlobalControls {
             .family(ICON_FIBER_MANUAL_RECORD.font_family())
             .size(20.0)
             .color(if state.play_after_record {
-                egui::Color32::WHITE
+                colors::FOREGROUND
             } else {
-                egui::Color32::GRAY
+                colors::MUTED_FOREGROUND
             });
             let response = ui
                 .selectable_label(state.play_after_record, play_after_text)

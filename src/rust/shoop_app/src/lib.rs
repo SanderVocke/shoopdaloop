@@ -32,11 +32,9 @@ use shoop_backend::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_scripting::NativeMidiService;
-#[cfg(target_arch = "wasm32")]
-use shoop_scripting::NullMidiService;
 use shoop_scripting::{
-    ControlLoop, ControlOperation, ControlSnapshot, ControlTrack, ScriptKeyEvent, ScriptLoopEvent,
-    ScriptManager, SessionScriptSource,
+    ControlLoop, ControlOperation, ControlSnapshot, ControlTrack, NullMidiService, ScriptKeyEvent,
+    ScriptLoopEvent, ScriptManager, SessionScriptSource,
 };
 use shoop_session::{
     decode_exact_midi, decode_loop_audio, decode_session, decode_standard_midi, decode_wav,
@@ -242,27 +240,32 @@ impl CooperativeApplicationRuntime {
     }
 
     pub fn start_with_scripts(
-        mut backend: Box<dyn Backend>,
+        backend: Box<dyn Backend>,
         startup_scripts: Vec<StartupScript>,
     ) -> Result<Self> {
-        let file_outputs = Arc::new(Mutex::new(VecDeque::new()));
-        let mut model =
-            ApplicationModel::initialize(&mut *backend, Arc::clone(&file_outputs), false)?;
-        model.install_startup_scripts(startup_scripts);
-        Self::from_model(model, backend, file_outputs)
+        Self::start_with_scripts_and_midi(backend, startup_scripts, Box::new(NullMidiService))
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn start_with_midi(
+    pub fn start_with_scripts_and_midi(
         mut backend: Box<dyn Backend>,
+        startup_scripts: Vec<StartupScript>,
         midi: Box<dyn shoop_scripting::MidiControlService>,
     ) -> Result<Self> {
         let file_outputs = Arc::new(Mutex::new(VecDeque::new()));
         let mut model =
             ApplicationModel::initialize(&mut *backend, Arc::clone(&file_outputs), false)?;
         model.script_manager = ScriptManager::new_with_midi(midi);
+        model.install_startup_scripts(startup_scripts);
         model.script_last_snapshot = model.script_control_snapshot();
         Self::from_model(model, backend, file_outputs)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn start_with_midi(
+        backend: Box<dyn Backend>,
+        midi: Box<dyn shoop_scripting::MidiControlService>,
+    ) -> Result<Self> {
+        Self::start_with_scripts_and_midi(backend, Vec::new(), midi)
     }
 
     fn from_model(
@@ -5641,11 +5644,11 @@ fn script_connection_port_id(script_id: ScriptId, registration: u32) -> PortId {
 }
 
 fn script_midi_host_id(direction: PortDirection, endpoint: &str) -> HostPortId {
-    let kind = match direction {
-        PortDirection::Input => "sink",
-        PortDirection::Output => "source",
+    let direction = match direction {
+        PortDirection::Input => shoop_scripting::MidiEndpointDirection::Input,
+        PortDirection::Output => shoop_scripting::MidiEndpointDirection::Output,
     };
-    HostPortId::new(format!("script-midi:{kind}:{endpoint}"))
+    HostPortId::new(shoop_scripting::midi_endpoint_host_id(direction, endpoint))
 }
 
 fn map_port_data_type(value: BackendPortDataType) -> PortDataType {
@@ -6303,6 +6306,90 @@ mod tests {
             })
             .collect();
         assert_eq!(restarted_ids, stable_ids);
+    }
+
+    #[test]
+    fn web_midi_track_and_control_views_share_canonical_host_rows() {
+        let backend = FakeBackend::default();
+        let backend_control = backend.connection_control();
+        backend_control.add_external_port(
+            "webmidi:source:test-input",
+            BackendPortDirection::Output,
+            BackendPortDataType::Midi,
+        );
+        backend_control.add_external_port(
+            "webmidi:sink:test-output",
+            BackendPortDirection::Input,
+            BackendPortDataType::Midi,
+        );
+        let (midi, midi_control) = shoop_scripting::FakeMidiService::new();
+        midi_control.set_endpoints(vec![
+            shoop_scripting::MidiEndpoint {
+                id: "webmidi:source:test-input".to_owned(),
+                name: "APC MINI MIDI".to_owned(),
+                direction: shoop_scripting::MidiEndpointDirection::Output,
+            },
+            shoop_scripting::MidiEndpoint {
+                id: "webmidi:sink:test-output".to_owned(),
+                name: "APC MINI MIDI".to_owned(),
+                direction: shoop_scripting::MidiEndpointDirection::Input,
+            },
+        ]);
+        let mut runtime =
+            CooperativeApplicationRuntime::start_with_midi(Box::new(backend), Box::new(midi))
+                .unwrap();
+        runtime
+            .dispatch(AppIntent::AddScriptSource {
+                name: "akai_apc_mini_mk1.lua".to_owned(),
+                source: Arc::from(shoop_scripting::AKAI_APC_MINI_MK1_SCRIPT),
+                kind: ScriptKind::Bundled,
+                enabled: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::from_millis(1));
+        let snapshot = runtime.snapshot();
+        let midi_hosts = snapshot
+            .connections
+            .host_ports
+            .iter()
+            .filter(|host| {
+                host.data_type == PortDataType::Midi && host.id.as_str().starts_with("webmidi:")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(midi_hosts.len(), 2);
+        assert_eq!(
+            midi_hosts
+                .iter()
+                .map(|host| host.id.as_str())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["webmidi:sink:test-output", "webmidi:source:test-input",])
+        );
+        let script_id = snapshot.scripting.scripts[0].id;
+        let control_ports = snapshot
+            .connections
+            .application_ports
+            .iter()
+            .filter(|port| {
+                matches!(
+                    port.owner,
+                    ApplicationPortOwner::LuaControl {
+                        script_id: owner, ..
+                    } if owner == script_id
+                )
+            })
+            .map(|port| port.id)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(control_ports.len(), 2);
+        assert_eq!(
+            snapshot
+                .connections
+                .confirmed_links
+                .iter()
+                .filter(|link| control_ports.contains(&link.application_port_id))
+                .map(|link| link.host_port_id.as_str())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["webmidi:sink:test-output", "webmidi:source:test-input",])
+        );
     }
 
     #[test]

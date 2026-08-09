@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    AppAction, AppState, AudioDriverConfig, AudioDriverKind, ConnectionDialog, ConnectionScope,
-    CpalAudioDriverConfig, DetailsPane, DummyAudioDriverConfig, GlobalControls,
+    colors, AppAction, AppState, AudioDriverConfig, AudioDriverKind, ConnectionDialog,
+    ConnectionScope, CpalAudioDriverConfig, DetailsPane, DummyAudioDriverConfig, GlobalControls,
     JackAudioDriverConfig, SettingsAction, SettingsDialog, TrackProcessorDescriptor,
     TrackProcessorTypeId, TrackSpec, TrackSpecTopology, TrackWidget, TracksWidget,
 };
@@ -559,7 +559,7 @@ impl AppWidget {
         egui::Panel::top("global_controls")
             .frame(
                 egui::Frame::new()
-                    .fill(egui::Color32::from_rgb(30, 30, 30))
+                    .fill(colors::DARK_BACKGROUND)
                     .inner_margin(egui::Margin::symmetric(6, 4)),
             )
             .show(ui, |ui| {
@@ -604,7 +604,7 @@ impl AppWidget {
                 .max_size(400.0)
                 .frame(
                     egui::Frame::new()
-                        .fill(egui::Color32::from_rgb(85, 85, 85))
+                        .fill(colors::RAISED_BACKGROUND)
                         .inner_margin(egui::Margin::same(6)),
                 )
                 .show(ui, |ui| self.details.show(ui, state.details.as_ref()));
@@ -615,7 +615,7 @@ impl AppWidget {
             .exact_size(190.0)
             .frame(
                 egui::Frame::new()
-                    .fill(egui::Color32::from_rgb(42, 42, 42))
+                    .fill(colors::SIDEBAR_BACKGROUND)
                     .inner_margin(egui::Margin::same(5)),
             )
             .show(ui, |ui| {
@@ -651,7 +651,7 @@ impl AppWidget {
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
-                    .fill(egui::Color32::from_rgb(30, 30, 30))
+                    .fill(colors::DARK_BACKGROUND)
                     .inner_margin(8.0),
             )
             .show(ui, |ui| {
@@ -908,7 +908,7 @@ impl AppWidget {
                     });
                 } else if let Some(warning) = &task.sample_rate_warning {
                     ui.colored_label(
-                        egui::Color32::YELLOW,
+                        colors::WARNING,
                         format!(
                             "This will resample {} from {} Hz to {} Hz.",
                             warning.affected_media, warning.source_rate, warning.target_rate
@@ -935,7 +935,7 @@ impl AppWidget {
                 }
                 if task.status == crate::IoTaskStatus::Failed {
                     ui.colored_label(
-                        egui::Color32::RED,
+                        colors::STRONG_ERROR,
                         "The operation failed; the prior session is unchanged.",
                     );
                 }
@@ -1190,7 +1190,7 @@ impl AppWidget {
             || state.status.storage_exhaustions > 0
         {
             ui.colored_label(
-                egui::Color32::YELLOW,
+                colors::WARNING,
                 format!(
                     "audio limits: budget {} / queue {} / storage low {} / exhausted {}",
                     state.status.callback_budget_overruns,

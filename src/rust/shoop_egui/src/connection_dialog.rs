@@ -1,5 +1,5 @@
 use crate::{
-    AppIntent, AppState, ApplicationPortOwner, ApplicationPortState, ConnectionPolicy,
+    colors, AppIntent, AppState, ApplicationPortOwner, ApplicationPortState, ConnectionPolicy,
     ConnectionViewState, HostPortState, PortRole, TrackId,
 };
 
@@ -76,7 +76,7 @@ impl ConnectionDialog {
             .min_size([300.0, 180.0])
             .show(context, |ui| {
                 if matches!(self.scope, ConnectionScope::Track(_)) && scoped_track.is_none() {
-                    ui.colored_label(egui::Color32::YELLOW, "This track is no longer available.");
+                    ui.colored_label(colors::WARNING, "This track is no longer available.");
                     return;
                 }
                 self.show_contents(ui, &state.connections, &mut intents);
@@ -100,7 +100,7 @@ impl ConnectionDialog {
         }
         if !state.backend_available {
             ui.colored_label(
-                egui::Color32::YELLOW,
+                colors::WARNING,
                 "Host connection management is unavailable for this audio backend.",
             );
         }
@@ -215,7 +215,7 @@ impl ConnectionDialog {
 
         if let Some(error) = state.errors.last() {
             ui.separator();
-            ui.colored_label(egui::Color32::LIGHT_RED, &error.message);
+            ui.colored_label(colors::ERROR, &error.message);
         }
     }
 
@@ -455,6 +455,108 @@ mod tests {
         );
         assert_ne!(port.direction, eligible.direction);
         assert_eq!(port.direction, disabled.direction);
+    }
+
+    #[test]
+    fn clicking_a_rendered_user_managed_cell_emits_the_exact_route_intent() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut state = state();
+        let connections = Arc::make_mut(&mut state.connections);
+        connections.application_ports = Arc::from([ApplicationPortState {
+            id: PortId::from_raw(11),
+            owner: ApplicationPortOwner::Track {
+                track_id: TrackId::from_raw(1),
+                kind: TrackPortOwnerKind::Main,
+            },
+            name: "one:midi_in".to_owned(),
+            data_type: PortDataType::Midi,
+            direction: PortDirection::Input,
+            role: PortRole::MidiInput,
+            connection_policy: ConnectionPolicy::UserManaged,
+        }]);
+        connections.host_ports = Arc::from([HostPortState {
+            id: HostPortId::new("webmidi:source:test-input"),
+            name: "Shoop Test: APC MINI MIDI".to_owned(),
+            data_type: PortDataType::Midi,
+            direction: PortDirection::Output,
+        }]);
+        connections.confirmed_links = Arc::from([]);
+        let mut dialog = ConnectionDialog::default();
+        dialog.open(ConnectionScope::AllTracks);
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 600.0),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                assert!(dialog.show(ui.ctx(), &state).is_empty());
+            },
+        );
+        let mut cell = dialog.cell_rects[0].2.center();
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 600.0),
+                )),
+                events: vec![egui::Event::PointerMoved(cell)],
+                ..Default::default()
+            },
+            |ui| assert!(dialog.show(ui.ctx(), &state).is_empty()),
+        );
+        cell = dialog.cell_rects[0].2.center();
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 600.0),
+                )),
+                events: vec![
+                    egui::Event::PointerMoved(cell),
+                    egui::Event::PointerButton {
+                        pos: cell,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::default(),
+                    },
+                ],
+                ..Default::default()
+            },
+            |ui| assert!(dialog.show(ui.ctx(), &state).is_empty()),
+        );
+        cell = dialog.cell_rects[0].2.center();
+        let mut intents = Vec::new();
+        let _ = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(900.0, 600.0),
+                )),
+                events: vec![
+                    egui::Event::PointerMoved(cell),
+                    egui::Event::PointerButton {
+                        pos: cell,
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        modifiers: egui::Modifiers::default(),
+                    },
+                ],
+                ..Default::default()
+            },
+            |ui| intents = dialog.show(ui.ctx(), &state),
+        );
+        assert_eq!(
+            intents,
+            vec![AppIntent::SetPortConnected {
+                port_id: crate::PortId::from_raw(11),
+                host_port_id: crate::HostPortId::new("webmidi:source:test-input"),
+                connected: true,
+            }]
+        );
     }
 
     #[test]

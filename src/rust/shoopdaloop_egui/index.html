@@ -68,7 +68,8 @@
       }
 
       #enable_audio,
-      #enable_output_audio {
+      #enable_output_audio,
+      #enable_midi {
         border: 1px solid #f0b429;
         border-radius: 4px;
         padding: 5px 9px;
@@ -80,7 +81,8 @@
       }
 
       #enable_audio[hidden],
-      #enable_output_audio[hidden] {
+      #enable_output_audio[hidden],
+      #enable_midi[hidden] {
         display: none;
       }
     </style>
@@ -90,6 +92,7 @@
     <div id="audio_controls">
       <button id="enable_audio" type="button">Enable microphone audio</button>
       <button id="enable_output_audio" type="button">Enable output-only audio</button>
+      <button id="enable_midi" type="button">Enable Web MIDI + SysEx</button>
       <span id="runtime_status" data-driver-state="starting">Starting browser application…</span>
     </div>
     <noscript>This application requires JavaScript and WebAssembly. Browser audio availability depends on browser origin policy.</noscript>

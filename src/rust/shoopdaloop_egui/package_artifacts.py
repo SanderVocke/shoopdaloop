@@ -224,6 +224,8 @@ def verify_web(bundle: Path, html: Path) -> None:
     text = html.read_text(encoding="utf-8")
     if "TrunkApplicationStarted" not in text or "shoopWasmBytes" not in text:
         raise RuntimeError("self-contained HTML does not contain the embedded application")
+    if "enable_midi" not in text or "requestMIDIAccess" not in text:
+        raise RuntimeError("self-contained HTML does not contain Web MIDI access")
     if (
         "shoopEmbeddedAudioWorklet" not in text
         or "shoopAudioWorkletWasmBytes" not in text

@@ -1,6 +1,7 @@
 //! Controller-independent egui elements.
 
 mod app_widget;
+pub mod colors;
 mod connection_dialog;
 mod details_pane;
 mod dial;
