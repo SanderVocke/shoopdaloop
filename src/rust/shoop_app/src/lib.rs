@@ -18,7 +18,8 @@ use shoop_app_api::{
     LoopAudioExportFormat, LoopDetailsState, LoopId, LoopMode, LoopState, NotificationLevel,
     PendingConnectionState, PortDataType, PortDirection, PortId, PortRole, SampleRateWarning,
     ScriptId, ScriptKind, ScriptMidiRuleDirection, ScriptingState, StatusState, TaskId,
-    TrackAction, TrackControlState, TrackId, TrackPortOwnerKind, TrackState, WaveformChannelState,
+    TrackAction, TrackControlState, TrackId, TrackPortOwnerKind, TrackProcessorDescriptor,
+    TrackState, TrackTopology, WaveformChannelState,
 };
 use shoop_backend::{
     Backend, BackendAudioContent, BackendConnectionSnapshot, BackendGrabRequest,
@@ -411,6 +412,7 @@ struct ApplicationModel {
     connection_backend_available: bool,
     connection_view: Arc<ConnectionViewState>,
     scripting_view: Arc<ScriptingState>,
+    track_processors: Arc<[TrackProcessorDescriptor]>,
     script_manager: ScriptManager,
     script_last_snapshot: ControlSnapshot,
     script_composition_playback: BTreeMap<LoopId, ScriptCompositionPlayback>,
@@ -615,6 +617,9 @@ impl ApplicationModel {
                 supported: true,
                 scripts: Arc::from([]),
             }),
+            track_processors: backend
+                .track_processor_catalog()
+                .unwrap_or_else(|_| Arc::from([])),
             script_manager,
             script_last_snapshot: ControlSnapshot::default(),
             script_composition_playback: BTreeMap::new(),
@@ -4116,6 +4121,8 @@ impl ApplicationModel {
                     id: track.id,
                     name: track.name.clone(),
                     is_sync: track.is_sync,
+                    topology: TrackTopology::Direct,
+                    fx: None,
                     loops: track
                         .loops
                         .iter()
@@ -4130,6 +4137,7 @@ impl ApplicationModel {
                     port_ids: Arc::clone(&track.port_ids),
                 })
                 .collect(),
+            track_processors: Arc::clone(&self.track_processors),
             global_controls: self.global.clone(),
             status: self.status.clone(),
             audio_drivers: self.audio_drivers.clone(),
@@ -5184,6 +5192,34 @@ mod tests {
         assert!(snapshot.tracks[0].loops[0].sync);
         assert!(snapshot.tracks[0].id.is_valid());
         assert!(snapshot.tracks[0].loops[0].id.is_valid());
+    }
+
+    #[test]
+    fn application_publishes_backend_processor_capabilities() {
+        let descriptor = shoop_app_api::TrackProcessorDescriptor {
+            id: shoop_app_api::TrackProcessorTypeId::new("future_browser_fx"),
+            label: "Future browser FX".to_owned(),
+            available: true,
+            unavailable_reason: None,
+            constraints: shoop_app_api::TrackProcessorConstraints {
+                max_dry_audio_channels: Some(2),
+                max_wet_audio_channels: Some(2),
+                dry_midi: false,
+            },
+            features: shoop_app_api::TrackProcessorFeatures {
+                state: true,
+                external_ui: false,
+                recovery: false,
+                logs: false,
+            },
+        };
+        let mut backend = FakeBackend::default();
+        backend.set_track_processor_catalog(vec![descriptor.clone()]);
+        let runtime = ApplicationRuntime::start(Box::new(backend)).unwrap();
+        assert_eq!(
+            runtime.handle().snapshot().track_processors.as_ref(),
+            &[descriptor]
+        );
     }
 
     #[test]

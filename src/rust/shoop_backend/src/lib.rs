@@ -11,7 +11,7 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use shoop_app_api::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
-    DummyAudioDriverConfig, ResolvedAudioDriverConfig,
+    DummyAudioDriverConfig, ResolvedAudioDriverConfig, TrackProcessorDescriptor,
 };
 use shoop_engine::dummy_midi_port::DummyMidiPort;
 use shoop_engine::dummy_port::{DummyAudioPort, DummyExternalConnections, PortId};
@@ -214,6 +214,78 @@ pub enum BackendLoopMode {
     RecordingDryIntoWet,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct DryWetProcessorMapping {
+    pub dry_audio: Vec<(u32, u32)>,
+    pub wet_audio: Vec<(u32, u32)>,
+    pub dry_midi: bool,
+}
+
+pub fn dry_wet_processor_mapping(
+    dry_audio_channels: u32,
+    wet_audio_channels: u32,
+    dry_midi: bool,
+    processor_audio_inputs: u32,
+    processor_audio_outputs: u32,
+    processor_has_midi_input: bool,
+) -> DryWetProcessorMapping {
+    DryWetProcessorMapping {
+        dry_audio: (0..dry_audio_channels.min(processor_audio_inputs))
+            .map(|index| (index, index))
+            .collect(),
+        wet_audio: (0..wet_audio_channels.min(processor_audio_outputs))
+            .map(|index| (index, index))
+            .collect(),
+        dry_midi: dry_midi && processor_has_midi_input,
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct DryWetRoutingState {
+    pub dry_input_passthrough_muted: bool,
+    pub wet_output_passthrough_muted: bool,
+    pub processor_active: bool,
+    pub force_monitoring_off: bool,
+}
+
+pub fn dry_wet_routing_state(
+    monitoring: bool,
+    current_modes: &[BackendLoopMode],
+    next_cycle_modes: &[BackendLoopMode],
+) -> DryWetRoutingState {
+    let recording = current_modes.iter().any(|mode| {
+        matches!(
+            mode,
+            BackendLoopMode::Recording | BackendLoopMode::Replacing
+        )
+    });
+    let pre_recording = next_cycle_modes.iter().any(|mode| {
+        matches!(
+            mode,
+            BackendLoopMode::Recording | BackendLoopMode::Replacing
+        )
+    });
+    let playing_dry = current_modes.contains(&BackendLoopMode::PlayingDryThroughWet);
+    let rerecording = current_modes.contains(&BackendLoopMode::RecordingDryIntoWet);
+    let pre_rerecording = next_cycle_modes.contains(&BackendLoopMode::RecordingDryIntoWet);
+    DryWetRoutingState {
+        dry_input_passthrough_muted: (!monitoring && !(recording || pre_recording))
+            || rerecording
+            || pre_rerecording,
+        wet_output_passthrough_muted: !(monitoring
+            || playing_dry
+            || rerecording
+            || pre_rerecording),
+        processor_active: monitoring
+            || recording
+            || pre_recording
+            || playing_dry
+            || rerecording
+            || pre_rerecording,
+        force_monitoring_off: rerecording || pre_rerecording,
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BackendLoopState {
     pub mode: BackendLoopMode,
@@ -322,6 +394,10 @@ pub struct BackendSnapshot {
 }
 
 pub trait Backend {
+    fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
+        Ok(Arc::from([]))
+    }
+
     fn audio_driver_state(&mut self) -> Result<AudioDriverRuntimeState> {
         Ok(AudioDriverRuntimeState::default())
     }
@@ -2324,6 +2400,7 @@ pub struct FakeBackend {
     next_track_id: u64,
     next_port_id: u64,
     fail_track_creation_after: Option<usize>,
+    processor_catalog: Arc<[TrackProcessorDescriptor]>,
     audio_driver_control: FakeAudioDriverControl,
     operations: Vec<FakeOperation>,
     connections: FakeConnectionControl,
@@ -2374,6 +2451,7 @@ impl Default for FakeBackend {
             next_track_id: 1,
             next_port_id: 1,
             fail_track_creation_after: None,
+            processor_catalog: Arc::from([]),
             audio_driver_control: FakeAudioDriverControl::default(),
             operations: Vec::new(),
             connections: FakeConnectionControl {
@@ -2391,6 +2469,10 @@ impl FakeBackend {
 
     pub fn fail_track_creation_after(&mut self, successful_creations: usize) {
         self.fail_track_creation_after = Some(successful_creations);
+    }
+
+    pub fn set_track_processor_catalog(&mut self, catalog: Vec<TrackProcessorDescriptor>) {
+        self.processor_catalog = Arc::from(catalog);
     }
 
     pub fn fail_next_driver_switch(&mut self, message: impl Into<String>) {
@@ -2478,6 +2560,10 @@ impl FakeBackend {
 }
 
 impl Backend for FakeBackend {
+    fn track_processor_catalog(&mut self) -> Result<Arc<[TrackProcessorDescriptor]>> {
+        Ok(Arc::clone(&self.processor_catalog))
+    }
+
     fn audio_driver_state(&mut self) -> Result<AudioDriverRuntimeState> {
         Ok(AudioDriverRuntimeState {
             supported: true,
@@ -3003,6 +3089,7 @@ impl Backend for FakeBackend {
         staged.status = self.status;
         staged.active_audio_driver = self.active_audio_driver.clone();
         staged.audio_driver_control = self.audio_driver_control.clone();
+        staged.processor_catalog = Arc::clone(&self.processor_catalog);
         staged.connections.with_state(|state| {
             state.external_ports = external_ports;
         });
@@ -3135,6 +3222,140 @@ impl Backend for FakeBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dry_wet_processor_mapping_is_ordered_and_clamps_unequal_shapes() {
+        assert_eq!(
+            dry_wet_processor_mapping(4, 1, true, 2, 16, true),
+            DryWetProcessorMapping {
+                dry_audio: vec![(0, 0), (1, 1)],
+                wet_audio: vec![(0, 0)],
+                dry_midi: true,
+            }
+        );
+        assert_eq!(
+            dry_wet_processor_mapping(1, 3, true, 16, 2, false),
+            DryWetProcessorMapping {
+                dry_audio: vec![(0, 0)],
+                wet_audio: vec![(0, 0), (1, 1)],
+                dry_midi: false,
+            }
+        );
+    }
+
+    #[test]
+    fn dry_wet_routing_matches_monitor_and_transition_truth_table() {
+        let cases = [
+            (
+                false,
+                vec![],
+                vec![],
+                DryWetRoutingState {
+                    dry_input_passthrough_muted: true,
+                    wet_output_passthrough_muted: true,
+                    processor_active: false,
+                    force_monitoring_off: false,
+                },
+            ),
+            (
+                true,
+                vec![],
+                vec![],
+                DryWetRoutingState {
+                    dry_input_passthrough_muted: false,
+                    wet_output_passthrough_muted: false,
+                    processor_active: true,
+                    force_monitoring_off: false,
+                },
+            ),
+            (
+                false,
+                vec![BackendLoopMode::Recording],
+                vec![],
+                DryWetRoutingState {
+                    dry_input_passthrough_muted: false,
+                    wet_output_passthrough_muted: true,
+                    processor_active: true,
+                    force_monitoring_off: false,
+                },
+            ),
+            (
+                false,
+                vec![],
+                vec![BackendLoopMode::Replacing],
+                DryWetRoutingState {
+                    dry_input_passthrough_muted: false,
+                    wet_output_passthrough_muted: true,
+                    processor_active: true,
+                    force_monitoring_off: false,
+                },
+            ),
+            (
+                false,
+                vec![BackendLoopMode::PlayingDryThroughWet],
+                vec![],
+                DryWetRoutingState {
+                    dry_input_passthrough_muted: true,
+                    wet_output_passthrough_muted: false,
+                    processor_active: true,
+                    force_monitoring_off: false,
+                },
+            ),
+            (
+                true,
+                vec![BackendLoopMode::RecordingDryIntoWet],
+                vec![],
+                DryWetRoutingState {
+                    dry_input_passthrough_muted: true,
+                    wet_output_passthrough_muted: false,
+                    processor_active: true,
+                    force_monitoring_off: true,
+                },
+            ),
+            (
+                false,
+                vec![],
+                vec![BackendLoopMode::RecordingDryIntoWet],
+                DryWetRoutingState {
+                    dry_input_passthrough_muted: true,
+                    wet_output_passthrough_muted: false,
+                    processor_active: true,
+                    force_monitoring_off: true,
+                },
+            ),
+        ];
+        for (monitoring, current, next, expected) in cases {
+            assert_eq!(dry_wet_routing_state(monitoring, &current, &next), expected);
+        }
+    }
+
+    #[test]
+    fn fake_backend_publishes_empty_and_future_processor_catalogs() {
+        let mut backend = FakeBackend::default();
+        assert!(backend.track_processor_catalog().unwrap().is_empty());
+        let descriptor = shoop_app_api::TrackProcessorDescriptor {
+            id: shoop_app_api::TrackProcessorTypeId::new("future_browser_fx"),
+            label: "Future browser FX".to_owned(),
+            available: true,
+            unavailable_reason: None,
+            constraints: shoop_app_api::TrackProcessorConstraints {
+                max_dry_audio_channels: Some(8),
+                max_wet_audio_channels: Some(8),
+                dry_midi: true,
+            },
+            features: shoop_app_api::TrackProcessorFeatures {
+                state: true,
+                external_ui: false,
+                recovery: false,
+                logs: false,
+            },
+        };
+        backend.set_track_processor_catalog(vec![descriptor.clone()]);
+        assert_eq!(
+            backend.track_processor_catalog().unwrap().as_ref(),
+            &[descriptor]
+        );
+    }
 
     fn backend_contract(backend: &mut dyn Backend) {
         let sync = backend.create_loop().unwrap();

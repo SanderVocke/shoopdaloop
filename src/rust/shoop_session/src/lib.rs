@@ -234,7 +234,7 @@ mod tests {
                             connected_port_ids: Vec::new(),
                             media_id: None,
                             recording_started_at: Some("fixture-take".to_owned()),
-                            recording_fx_state_id: Some(900),
+                            recording_fx_state_id: None,
                         },
                         ChannelDocument {
                             id: 201,
@@ -244,6 +244,19 @@ mod tests {
                             start_offset_frames: 12,
                             preplay_frames: 24,
                             gain: 0.7,
+                            connected_port_ids: Vec::new(),
+                            media_id: None,
+                            recording_started_at: None,
+                            recording_fx_state_id: None,
+                        },
+                        ChannelDocument {
+                            id: 202,
+                            mode: ChannelModeDocument::Dry,
+                            data_type: DataTypeDocument::Midi,
+                            data_length_frames: 0,
+                            start_offset_frames: 0,
+                            preplay_frames: 0,
+                            gain: 1.0,
                             connected_port_ids: Vec::new(),
                             media_id: None,
                             recording_started_at: None,
@@ -460,6 +473,14 @@ mod tests {
                 .delay_frames,
             240
         );
+        assert!(matches!(
+            decoded.document.track_groups[0].tracks[3].topology,
+            TrackTopologyDocument::Carla {
+                chain_type: FxChainTypeDocument::CarlaRack,
+                audio_channels: 16,
+                midi: true,
+            }
+        ));
     }
 
     #[test]
@@ -698,6 +719,35 @@ mod tests {
                 }
             ),
             Err(SessionError::ResourceLimit(_))
+        ));
+    }
+
+    #[test]
+    fn topology_channel_shapes_and_fx_state_references_are_validated() {
+        let mut wrong_mode = direct_bundle(1);
+        wrong_mode.document.track_groups[0].tracks[0].loops[0].channels[0].mode =
+            ChannelModeDocument::Wet;
+        assert!(matches!(
+            validate_bundle(&wrong_mode),
+            Err(SessionError::Validation(message))
+                if message.contains("channel shape")
+        ));
+
+        let mut missing_state = direct_bundle(1);
+        missing_state.document.track_groups[0].tracks[0].loops[0].channels[0]
+            .recording_fx_state_id = Some(123_456);
+        assert!(matches!(
+            validate_bundle(&missing_state),
+            Err(SessionError::Validation(message))
+                if message.contains("missing FX state")
+        ));
+
+        let mut wrong_state_type = direct_bundle(1);
+        wrong_state_type.document.fx_states[0].chain_type = FxChainTypeDocument::CarlaRack;
+        assert!(matches!(
+            validate_bundle(&wrong_state_type),
+            Err(SessionError::Validation(message))
+                if message.contains("does not match")
         ));
     }
 
