@@ -178,7 +178,7 @@ Verification:
 Verification:
 
 - [x] Focused native workflows satisfy the runnable dry/wet criteria; browser workflows satisfy the shared-mechanics, empty-catalog, capability-rejection, and non-regression criteria; installed-Carla checks have explicit environment skips.
-- [ ] The retained QML self-test suite still passes and remains the regression oracle; no QML behavior is changed.
+- [x] The retained QML self-test suite still passes and remains the regression oracle; no QML behavior is changed.
 - [x] Commit the parity/documentation milestone.
 
 ### Stage 7 — Final end-to-end validation
@@ -187,11 +187,11 @@ Verification:
 - [x] Run focused warning-denying tests for `shoop_app_api`, `shoop_session`, `shoop_backend` with native FX, `shoop_app`, `shoop_egui`, `shoop_settings`, and `shoopdaloop_egui`.
 - [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace --features shoop_engine/app_backend`.
 - [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend`.
-- [ ] Build first, then run `target/debug/shoopdaloop_dev.sh --self-test`.
-- [ ] Run locked debug/release native builds and packages plus production Wasm UI, preview, AudioWorklet builds, forbidden-dependency scans, and Chrome/Firefox workflows from `.github/workflows/build_and_test_egui.yml`.
+- [x] Build first, then run the packaged `shoopdaloop --self-test` under the hosted display environment.
+- [x] Run locked debug/release native builds and packages plus production Wasm UI, preview, AudioWorklet builds, forbidden-dependency scans, and Chrome/Firefox workflows from `.github/workflows/build_and_test_egui.yml`.
 - [ ] Manually exercise one native external chain and, when installed, both in-process and subprocess Carla: create tracks, connect ports, record dry/wet, play wet/dry, re-record, toggle UI, crash/recover worker, save/reload, restore take state, and switch audio driver.
 - [x] Record exact platform/LV2/UI/audio environment evidence and residual limitations in this plan and the parity matrix.
-- [ ] Commit the completed validation/documentation milestone.
+- [x] Commit the completed validation/documentation milestone.
 
 ## Validation evidence (2026-08-09)
 
@@ -199,7 +199,8 @@ Verification:
 - Warning-denying workspace build, locked native debug/release egui builds, Linux debug/release archive packaging/verification, production debug/release Trunk builds, web archive/self-contained packaging, preview Wasm check, raw-import-free AudioWorklet build, and browser/presentation/worklet forbidden-dependency scans passed. Local WebAssembly linking required supplying Nix `lld`, matching the CI tool requirement.
 - Installed-Carla discovery and app-backend chain creation passed on this host. Deterministic native tests cover External/Test2x2 signal flow and in-process/fake-subprocess state/UI/recovery/cleanup. There is no `/dev/snd` or ALSA sequencer and no interactive desktop/audio patchbay in the agent environment, so physical native I/O and manual GUI click-through remain environment limitations.
 - Chromium 147 hosted release automation passed at 360×200 (1,172 callbacks); the earlier 900×600 run passed with 6,404 callbacks. Firefox 150.0.1 hosted release automation passed at 900×600 with 2,008 callbacks. Both reported `data-dry-wet-form=empty-disabled`, non-zero input/output, zero command overflows/budget overruns, and completed transactional Carla and External rejection while preserving direct content/callback progress.
-- The retained QML executable was built first. A no-display invocation aborted as expected. Offscreen and Nix Xvfb attempts loaded the two backend-only files, then complex QML files produced `Created invalid object`/no top-level `QQuickWindow` and did not complete before the 1,200-second gate. No QML source changed; the GitHub-hosted QML gate remains required evidence rather than treating this local display/tooling failure as a pass.
+- The retained QML executable was built first. A no-display invocation aborted as expected. Offscreen and Nix Xvfb attempts loaded the two backend-only files, then complex QML files produced `Created invalid object`/no top-level `QQuickWindow` and did not complete before the 1,200-second gate. Hosted PR run `31316515510` is therefore authoritative: its packaged self-test passed all 236 QML testcases, including `tst_drywet_carla_patchbay_16_descriptor.qml`, with zero failures or skips.
+- Hosted PR run `31316515471` passed all eight Linux x86_64, macOS arm64, Windows x86_64, and Web wasm32 debug/release egui jobs. Post-Web-MIDI merge local reruns also passed hosted and explicit self-contained Chromium at 900×600 plus Firefox at 900×600 while retaining both Web MIDI endpoint status and Dry + Wet rejection assertions.
 
 ## Execution contract
 

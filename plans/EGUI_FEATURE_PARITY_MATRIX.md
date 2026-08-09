@@ -342,7 +342,7 @@ The native QML Carla path supplied the frontend-independent hosting-mode, proces
 | FX-SUBPROC-005 | Worker diagnostics | No per-chain subprocess streams existed. | Explored for dry/wet/Carla | Complete | Capability-driven lifecycle/crash state and bounded per-generation stdout/stderr refresh/copy/clear UI |
 | FX-SUBPROC-006 | Pure-egui FX integration | FX chains and dry/wet tracks were deferred. | Explored for dry/wet/Carla | Complete | Native composition, role-aware persistence/media, controls/logs, worker entry, hosting settings, and browser capability rejection are implemented |
 
-Dry/wet/Carla validation on 2026-08-09 passed 200 warning-denying focused unit tests plus the egui executable worker handshake and 1,228 serialized workspace/app-backend tests. Installed-Carla discovery/creation, Linux debug/release native and web builds/packages, dependency scans, Chromium 147 at 360×200 and 900×600, and Firefox 150.0.1 passed. Browser runs explicitly observed the empty disabled Dry + Wet processor surface and transactional External/Carla rejection with continuing callbacks. This agent environment has no `/dev/snd`, ALSA sequencer, interactive desktop, or native patchbay, so physical/manual native I/O remains an environment limitation. The retained QML binary built, but local offscreen/Xvfb complex QML creation failed to produce a top-level window and timed out; no QML source changed, and GitHub-hosted QML/Windows/macOS matrix results remain required closure evidence.
+Dry/wet/Carla validation on 2026-08-09 passed 200 warning-denying focused unit tests plus the egui executable worker handshake and 1,228 serialized workspace/app-backend tests. Installed-Carla discovery/creation, Linux debug/release native and web builds/packages, dependency scans, Chromium 147 at 360×200 and 900×600, and Firefox 150.0.1 passed. Browser runs explicitly observed the empty disabled Dry + Wet processor surface and transactional External/Carla rejection with continuing callbacks. Hosted PR run `31316515471` passed all eight Linux/macOS/Windows/Web debug/release egui jobs, and run `31316515510` passed all 236 retained QML testcases with zero failures or skips. This agent environment has no `/dev/snd`, ALSA sequencer, interactive desktop, or native patchbay, so physical/manual native I/O remains an environment limitation.
 
 ## Milestone-5 persistence and loop-I/O matrix
 
@@ -473,7 +473,7 @@ These broader future areas remain outside the currently explored milestone contr
 |---|---|---|
 | Click-track generation beyond loop media I/O | Partially explored | Deferred |
 | Runtime reconnect policy and runnable bus topology | Partially explored | Deferred |
-| Dry/wet topology and FX-chain hosting/state management | Explored for dry/wet/Carla | Implemented; final validation in progress under `EGUI_DRY_WET_AND_CARLA_TRACKS_PLAN.md` |
+| Dry/wet topology and FX-chain hosting/state management | Explored for dry/wet/Carla | Implemented and validated under `EGUI_DRY_WET_AND_CARLA_TRACKS_PLAN.md` |
 | Composite-loop creation, scheduling, editing, and nesting beyond the Lua-required append path | Partially explored | Deferred |
 | Generic MIDI control configuration, learning, filtering, and non-script rule editor | Unexplored | Deferred |
 | Monitoring, profiling, logging, crash/developer tools, and first-run UX | Unexplored | Deferred |

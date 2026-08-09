@@ -7,9 +7,11 @@ use shoop_plugin_protocol::{ChainId, ProcessGeneration};
 
 #[test]
 fn egui_executable_serves_the_hidden_fake_carla_worker_entry() {
-    let executable = env!("CARGO_BIN_EXE_shoopdaloop_egui");
+    let executable = std::env::var_os("NEXTEST_BIN_EXE_shoopdaloop_egui")
+        .or_else(|| std::env::var_os("CARGO_BIN_EXE_shoopdaloop_egui"))
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_shoopdaloop_egui").into());
     let mut worker = SubprocessCarlaProcessor::spawn_test_worker(
-        executable,
+        &executable,
         FXChainType::CarlaRack,
         48_000,
         128,
