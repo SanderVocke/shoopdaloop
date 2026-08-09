@@ -226,7 +226,7 @@ Gate audit:
 - Focused suites passed before the full `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend --no-fail-fast` run; that full run reported 1,204 passed and no failed summary.
 - `QT_QPA_PLATFORM=offscreen ... shoopdaloop_dev.sh --self-test` reported 236 passed, zero failed, and zero skipped.
 - `package_artifacts.py verify` passed both debug and release ZIP/standalone pairs. Its marker checks were supplemented by actual hosted and self-contained Chrome execution, worklet import inspection, protocol tests, and target dependency-tree scans.
-- The initial implementation/browser milestone is commit `b1dca267`, documentation closure is `cd202912`, and the first durable audit is `dedfca6e`; generation-safe open-failure propagation and rendered-cell interaction evidence are in the follow-up hardening commit containing this updated audit. Pre-existing unrelated `src/rust/shoop_egui` working-tree edits are excluded from every milestone commit.
+- The initial implementation/browser milestone is commit `b1dca267`, documentation closure is `cd202912`, and the first durable audit is `dedfca6e`; generation-safe open-failure propagation, state-event lifecycle reconciliation, and rendered-cell interaction evidence are in hardening commit `b30b2993`. Pre-existing unrelated `src/rust/shoop_egui` working-tree edits are excluded from every milestone commit.
 
 No criterion is missing or represented only by a proxy signal. The only environment-dependent action is the explicitly conditional physical-hardware smoke, whose unavailable-hardware skip and deterministic production-adapter acceptance substitute are recorded above.
 
