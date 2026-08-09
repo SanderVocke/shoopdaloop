@@ -2003,12 +2003,13 @@ impl ApplicationModel {
             .loops
             .get(&loop_id)
             .ok_or_else(|| format!("stale loop {loop_id}"))?;
-        let destinations = self
+        let track = self
             .tracks
             .iter()
             .find(|track| track.id == loop_model.track_id)
-            .ok_or_else(|| "target loop track is unavailable".to_owned())?
-            .audio_channels as usize;
+            .ok_or_else(|| "target loop track is unavailable".to_owned())?;
+        let destination_channels = audio_channel_labels(&track.topology, track.audio_channels);
+        let destinations = destination_channels.len();
         let default_mapping = (0..destinations)
             .map(|index| (index % audio.channels.len()) as u32)
             .collect::<Vec<_>>();
@@ -2024,9 +2025,7 @@ impl ApplicationModel {
                     .iter()
                     .map(|channel| channel.label.clone())
                     .collect(),
-                destination_channels: (0..destinations)
-                    .map(|index| format!("Loop channel {}", index + 1))
-                    .collect(),
+                destination_channels,
                 default_mapping,
             });
         }
@@ -9103,6 +9102,137 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert_eq!(exported_midi.sample_rate, 48_000);
         assert_eq!(exported_midi.length_frames, 150);
         assert_eq!(exported_midi.events[0].frame, 75);
+    }
+
+    #[test]
+    fn dry_wet_media_io_maps_and_exports_role_order_without_flattening() {
+        let mut backend = FakeBackend::default();
+        backend.set_track_processor_catalog(vec![shoop_app_api::TrackProcessorDescriptor {
+            id: shoop_app_api::TrackProcessorTypeId::new(
+                shoop_app_api::TrackProcessorTypeId::EXTERNAL,
+            ),
+            label: "External".to_owned(),
+            available: true,
+            unavailable_reason: None,
+            constraints: shoop_app_api::TrackProcessorConstraints {
+                max_dry_audio_channels: None,
+                max_wet_audio_channels: None,
+                dry_midi: true,
+            },
+            features: shoop_app_api::TrackProcessorFeatures::default(),
+        }]);
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
+                name: "Role media".to_owned(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 1,
+                    dry_midi: true,
+                    processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                        shoop_app_api::TrackProcessorTypeId::EXTERNAL,
+                    ),
+                },
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let loop_id = runtime.snapshot().tracks[1].loops[0].id;
+        let input = LoopAudio {
+            sample_rate: 48_000,
+            channels: (0..3)
+                .map(|index| LoopAudioChannel {
+                    label: format!("source {index}"),
+                    role: "source".to_owned(),
+                    samples: vec![index as f32 + 0.25; 32],
+                })
+                .collect(),
+        };
+        runtime
+            .dispatch(AppIntent::ImportLoopAudioBytes {
+                loop_id,
+                name: "roles.shoop-audio".to_owned(),
+                bytes: Arc::from(encode_loop_audio(&input).unwrap()),
+                update_loop_length: true,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let mapping = runtime.snapshot().io_task.clone().unwrap();
+        let destinations = &mapping
+            .audio_channel_mapping
+            .as_ref()
+            .unwrap()
+            .destination_channels;
+        assert_eq!(destinations, &["Dry 1", "Dry 2", "Wet 1"]);
+        runtime
+            .dispatch(AppIntent::ConfirmAudioChannelMapping {
+                task_id: mapping.id,
+                source_for_destination: vec![2, 0, 2],
+            })
+            .unwrap();
+        for _ in 0..10 {
+            runtime.tick(Duration::ZERO);
+        }
+        runtime
+            .dispatch(AppIntent::RequestLoopAudioExport {
+                loop_id,
+                format: LoopAudioExportFormat::Exact,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let selection = runtime.snapshot().io_task.clone().unwrap();
+        assert_eq!(
+            selection
+                .audio_channel_selection
+                .as_ref()
+                .unwrap()
+                .available_channels,
+            vec!["Dry 1", "Dry 2", "Wet 1"]
+        );
+        runtime
+            .dispatch(AppIntent::ConfirmAudioChannelSelection {
+                task_id: selection.id,
+                channels: vec![2, 0],
+            })
+            .unwrap();
+        for _ in 0..10 {
+            runtime.tick(Duration::ZERO);
+        }
+        let exported = decode_loop_audio(&runtime.take_file_output().unwrap().bytes).unwrap();
+        assert_eq!(
+            exported
+                .channels
+                .iter()
+                .map(|channel| (channel.label.as_str(), channel.role.as_str()))
+                .collect::<Vec<_>>(),
+            vec![("Wet 1", "wet"), ("Dry 1", "dry")]
+        );
+        assert_eq!(exported.channels[0].samples, input.channels[2].samples);
+        assert_eq!(exported.channels[1].samples, input.channels[2].samples);
+
+        for (channel, expected_label, expected_role) in [(0, "Dry 1", "dry"), (2, "Wet 1", "wet")] {
+            runtime
+                .dispatch(AppIntent::RequestLoopAudioExport {
+                    loop_id,
+                    format: LoopAudioExportFormat::Exact,
+                })
+                .unwrap();
+            runtime.tick(Duration::ZERO);
+            let task_id = runtime.snapshot().io_task.as_ref().unwrap().id;
+            runtime
+                .dispatch(AppIntent::ConfirmAudioChannelSelection {
+                    task_id,
+                    channels: vec![channel],
+                })
+                .unwrap();
+            for _ in 0..10 {
+                runtime.tick(Duration::ZERO);
+            }
+            let exported = decode_loop_audio(&runtime.take_file_output().unwrap().bytes).unwrap();
+            assert_eq!(exported.channels.len(), 1);
+            assert_eq!(exported.channels[0].label, expected_label);
+            assert_eq!(exported.channels[0].role, expected_role);
+        }
     }
 
     #[test]
