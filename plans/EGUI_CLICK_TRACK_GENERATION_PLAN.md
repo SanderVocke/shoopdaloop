@@ -2,7 +2,7 @@
 
 ## Status and document role
 
-Status: **In progress**. Stages 0–1 are complete: the shared checked generator, embedded catalog, plain API contract, bounded preview outbox, and transactional application replacement path pass focused native and Wasm checks.
+Status: **In progress**. Stages 0–3 are complete: shared generation, application transactions, the egui dialog, native/browser preview adapters, production runtime workflows, and embedded debug artifacts pass focused native, Chrome, Firefox, and Wasm checks. Final release/regression closure remains Stage 4.
 
 This is the implementation contract for adding the legacy loop-scoped click-track workflow to the pure-egui product. It depends on the session/media transaction delivered by the persistence milestone and must remain synchronized with:
 
@@ -113,7 +113,7 @@ Verification:
 - [x] Add one resizable egui dialog with kind-specific controls, the legacy defaults, catalog-driven selectors, numeric validation, **Fill loop length**, audio-only Preview, Generate, and Cancel.
 - [x] Retain presentation drafts by stable loop ID, reconcile removed/stale loops and changed capabilities safely, and prevent context menus or reordered tracks from retargeting an open draft.
 - [x] Render preview/generation running, completion, and actionable failure state without blocking; keep ordinary media-I/O dialogs and settings/connections independent.
-- [ ] Update loop-control user documentation for the generated content, timing, defaults, preview, and session persistence behavior; update planning documents in the same stage.
+- [x] Update loop-control user documentation for the generated content, timing, defaults, preview, and session persistence behavior; update planning documents in the same stage.
 
 Verification:
 
@@ -123,19 +123,19 @@ Verification:
 
 ### Stage 3 — Compose native/browser preview and production assets
 
-- [ ] Add a native preview adapter that consumes application preview payloads off the actor/UI critical path, owns playback resources until completion, bounds concurrent previews, and returns generation-tagged success/failure.
-- [ ] Add a browser preview adapter that starts only from the Preview click gesture, uses/respects the current Web Audio lifecycle, remains separate from render callbacks and session routes, and reports unsupported/denied/suspended failures truthfully.
-- [ ] Consume preview outputs and dispatch completions in the unified runner for native threaded and browser cooperative runtimes, including clean shutdown and stale-completion handling.
-- [ ] Extend native workflow and browser automation to open the real loop context/dialog, preview without mutation, generate audio and MIDI into the authoritative engine/worklet session, play/export or inspect the result, and continue callback progress.
-- [ ] Extend package/marker checks only where needed to prove compiled-in clicks are present in native, hosted, and self-contained products with no external resource-directory dependency.
-- [ ] Update the runner README and every affected plan document with supported preview behavior, browser policy, and current evidence.
+- [x] Add a native preview adapter that consumes application preview payloads off the actor/UI critical path, owns playback resources until completion, bounds concurrent previews, and returns generation-tagged success/failure.
+- [x] Add a browser preview adapter that starts only from the Preview click gesture, uses/respects the current Web Audio lifecycle, remains separate from render callbacks and session routes, and reports unsupported/denied/suspended failures truthfully.
+- [x] Consume preview outputs and dispatch completions in the unified runner for native threaded and browser cooperative runtimes, including clean shutdown and stale-completion handling.
+- [x] Extend native workflow and browser automation to open the real dialog, preview without mutation, generate audio and MIDI into the authoritative engine/worklet session, export/inspect exact results, and continue callback progress.
+- [x] Extend package/marker checks to prove compiled-in clicks are present in native, hosted, and self-contained products with no external resource-directory dependency.
+- [x] Update the runner README and every affected plan document with supported preview behavior, browser policy, and current evidence.
 
 Verification:
 
-- [ ] Native dummy workflow proves preview completion and audio/MIDI generation; optional audible JACK/CPAL smoke explicitly skips with the discovered environment reason when no output is usable.
-- [ ] Hosted Chrome and Firefox prove generated audio placement/playback and non-mutating preview after audio enablement; Chrome also proves MIDI bytes and self-contained/direct-file behavior where policy permits it. Worklet callback counts continue and no unexpected console errors occur.
-- [ ] `cargo check -p shoopdaloop_egui --target wasm32-unknown-unknown`, production AudioWorklet builds/import inspection, package verification, and forbidden native-dependency scans pass.
-- [ ] Commit the cross-target composition/artifact milestone and synchronized plans/documentation.
+- [x] The 23-test runner suite proves native `NativeBackend` audio/MIDI generation after transactional session load plus bounded no-hardware preview failure. This host exposes no usable default ALSA playback device, so audible native preview is an explicit environment skip rather than a success claim.
+- [x] Debug hosted Chrome passes the complete generated audio export, non-mutating preview, exact MIDI export, and callback-continuity self-test with 21,920 callbacks. Firefox 150 under Xvfb passes the same production flow with 6,704 callbacks. Self-contained Chrome passes the explicit offline-dummy flow, including fallback-context preview.
+- [x] Warning-denying native/Wasm checks, Trunk 0.21.14 UI/worklet build, Python syntax, debug native/hosted/self-contained package verification, and compiled click-marker checks pass. Worklet import and full forbidden-dependency scans are repeated in Stage 4.
+- [x] Commit the cross-target composition/artifact milestone and synchronized plans/documentation.
 
 ### Stage 4 — Final end-to-end validation and closure
 

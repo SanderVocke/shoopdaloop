@@ -8834,6 +8834,51 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
             decode_loop_audio(&runtime.take_file_output().unwrap().bytes).unwrap();
         assert_eq!(audio_after_midi, audio_before_midi);
 
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        for _ in 0..12 {
+            runtime.tick(Duration::ZERO);
+            if runtime
+                .snapshot()
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Completed)
+            {
+                break;
+            }
+        }
+        let session = runtime.take_file_output().unwrap();
+        let decoded = decode_session(&session.bytes).unwrap();
+        let saved_loop = decoded.document.track_groups[1].tracks[0]
+            .loops
+            .iter()
+            .find(|saved| saved.id == loop_id.raw())
+            .unwrap();
+        assert_eq!(saved_loop.length_frames, 9_600);
+        assert_eq!(
+            saved_loop
+                .channels
+                .iter()
+                .filter(|channel| channel.media_id.is_some())
+                .count(),
+            3
+        );
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: session.suggested_name,
+                bytes: session.bytes,
+            })
+            .unwrap();
+        for _ in 0..12 {
+            runtime.tick(Duration::ZERO);
+            if runtime.snapshot().io_task.as_ref().is_some_and(|task| {
+                task.kind == IoTaskKind::LoadSession && task.status == IoTaskStatus::Completed
+            }) {
+                break;
+            }
+        }
+        assert_eq!(runtime.snapshot().tracks[1].loops[0].id, loop_id);
+        assert_eq!(runtime.snapshot().tracks[1].loops[0].length_frames, 9_600);
+
         let state_before_preview = runtime.snapshot();
         runtime
             .dispatch(AppIntent::PreviewClickTrack {

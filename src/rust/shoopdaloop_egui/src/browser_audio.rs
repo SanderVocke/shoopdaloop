@@ -331,6 +331,10 @@ impl BrowserAudioController {
         self.inner.borrow().transport.borrow().driver_state
     }
 
+    pub fn audio_context(&self) -> Option<AudioContext> {
+        self.inner.borrow().context.clone()
+    }
+
     pub fn update_presentation(&self) {
         let (state, generation, owned_media_tracks, input_mode) = {
             let mut inner = self.inner.borrow_mut();

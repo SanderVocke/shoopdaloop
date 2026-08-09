@@ -700,6 +700,25 @@ impl AppWidget {
         self.connections.open(ConnectionScope::AllTracks);
     }
 
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_open_click_track(
+        &mut self,
+        state: &AppState,
+        loop_id: crate::LoopId,
+    ) -> bool {
+        let Some(loop_state) = state
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .find(|loop_| loop_.id == loop_id)
+        else {
+            return false;
+        };
+        self.click_track.open(loop_state, &state.click_track);
+        true
+    }
+
     fn show_io_task_dialog(
         &mut self,
         context: &egui::Context,

@@ -38,6 +38,10 @@ use shoop_app::CooperativeApplicationRuntime;
 mod browser_audio;
 #[cfg(any(target_arch = "wasm32", test))]
 mod browser_midi;
+#[cfg(target_arch = "wasm32")]
+mod browser_preview;
+#[cfg(not(target_arch = "wasm32"))]
+mod native_preview;
 mod settings;
 use shoop_app::StartupScript;
 #[cfg(not(target_arch = "wasm32"))]
@@ -306,6 +310,7 @@ impl UnifiedApp {
         let elapsed = now.saturating_duration_since(self.last_update);
         self.last_update = now;
         self.runtime.tick(elapsed);
+        self.runtime.process_audio_previews();
 
         #[cfg(target_arch = "wasm32")]
         let pending: Vec<_> = self.pending_file_intents.borrow_mut().drain(..).collect();
@@ -681,6 +686,7 @@ struct Runtime {
     handle: ApplicationHandle,
     script_paths: std::collections::BTreeMap<shoop_egui::ScriptId, String>,
     pending_script_paths: std::collections::VecDeque<(String, ScriptKind, String)>,
+    preview_player: native_preview::NativePreviewPlayer,
     applied_settings_revision: u64,
 }
 
@@ -704,6 +710,7 @@ impl Runtime {
         warnings.extend(backend_warning);
         let runtime = ApplicationRuntime::start_with_scripts(Box::new(backend), startup_scripts)?;
         let handle = runtime.handle();
+        let preview_player = native_preview::NativePreviewPlayer::new(handle.clone())?;
         for warning in warnings {
             eprintln!("ShoopDaLoop script settings: {warning}");
             handle.dispatch(AppIntent::ReportFileIoError {
@@ -718,6 +725,7 @@ impl Runtime {
             handle,
             script_paths,
             pending_script_paths: std::collections::VecDeque::new(),
+            preview_player,
             applied_settings_revision: settings.revision(),
         })
     }
@@ -831,6 +839,12 @@ impl Runtime {
     fn take_file_output(&self) -> Option<shoop_app::ApplicationFileOutput> {
         self.handle.take_file_output()
     }
+
+    fn process_audio_previews(&mut self) {
+        while let Some(preview) = self.handle.take_audio_preview() {
+            self.preview_player.play(preview);
+        }
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -864,6 +878,7 @@ struct Runtime {
     runtime: CooperativeApplicationRuntime,
     mode: BrowserRuntimeMode,
     midi: browser_midi::BrowserMidiController,
+    preview_player: browser_preview::BrowserPreviewPlayer,
     applied_settings_revision: u64,
 }
 
@@ -886,6 +901,7 @@ impl Runtime {
                 )?,
                 mode: BrowserRuntimeMode::OfflineDummy,
                 midi,
+                preview_player: browser_preview::BrowserPreviewPlayer::default(),
                 applied_settings_revision: settings.revision(),
             });
         }
@@ -899,6 +915,7 @@ impl Runtime {
             )?,
             mode: BrowserRuntimeMode::WebAudio(controller),
             midi,
+            preview_player: browser_preview::BrowserPreviewPlayer::default(),
             applied_settings_revision: settings.revision(),
         })
     }
@@ -982,6 +999,26 @@ impl Runtime {
 
     fn take_file_output(&self) -> Option<shoop_app::ApplicationFileOutput> {
         self.runtime.take_file_output()
+    }
+
+    fn process_audio_previews(&mut self) {
+        if let Some(intent) = self.preview_player.update() {
+            let _ = self.runtime.dispatch(intent);
+        }
+        while let Some(preview) = self.runtime.take_audio_preview() {
+            let request_id = preview.request_id;
+            let context = match &self.mode {
+                BrowserRuntimeMode::WebAudio(controller) => controller.audio_context(),
+                BrowserRuntimeMode::OfflineDummy => None,
+            };
+            if let Err(message) = self.preview_player.play(context, preview) {
+                let _ = self.runtime.dispatch(AppIntent::CompleteClickTrackPreview {
+                    request_id,
+                    success: false,
+                    message,
+                });
+            }
+        }
     }
 
     fn audio_running(&self) -> bool {
@@ -1240,6 +1277,17 @@ fn set_browser_web_midi_test_status(status: &str) {
 }
 
 #[cfg(target_arch = "wasm32")]
+fn browser_click_request(kind: shoop_egui::ClickTrackKind) -> shoop_egui::ClickTrackRequest {
+    shoop_egui::ClickTrackRequest {
+        kind,
+        bpm: 600.0,
+        click_count: 2,
+        midi_note: 67,
+        ..Default::default()
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum BrowserSelfTest {
     Disabled,
@@ -1327,6 +1375,19 @@ enum BrowserSelfTest {
     ExportLoopMidi,
     WaitForLoopMidiExport,
     WaitForLoopMidiImport,
+    GenerateClickAudio,
+    WaitForClickAudio {
+        previous_task: shoop_egui::TaskId,
+    },
+    WaitForClickAudioSelection,
+    WaitForClickAudioExport,
+    PreviewClickAudio,
+    WaitForClickPreview,
+    GenerateClickMidi,
+    WaitForClickMidi {
+        previous_task: shoop_egui::TaskId,
+    },
+    WaitForClickMidiExport,
     Complete,
     Failed,
 }
@@ -2210,6 +2271,161 @@ impl BrowserSelfTest {
                     task.kind != shoop_egui::IoTaskKind::ImportLoopMidi
                         || task.status != shoop_egui::IoTaskStatus::Completed
                 }) {
+                    return;
+                }
+                Ok(Self::GenerateClickAudio)
+            }
+            Self::GenerateClickAudio => {
+                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                    return;
+                };
+                if !widget.browser_test_open_click_track(snapshot, loop_state.id) {
+                    self.fail("production click-track dialog did not open");
+                    return;
+                }
+                let previous_task = snapshot
+                    .io_task
+                    .as_ref()
+                    .map(|task| task.id)
+                    .unwrap_or_default();
+                runtime
+                    .dispatch(AppIntent::GenerateClickTrack {
+                        loop_id: loop_state.id,
+                        request: browser_click_request(shoop_egui::ClickTrackKind::Audio),
+                    })
+                    .map(|()| Self::WaitForClickAudio { previous_task })
+            }
+            Self::WaitForClickAudio { previous_task } => {
+                let Some(task) = &snapshot.io_task else {
+                    return;
+                };
+                if task.id == previous_task
+                    || task.kind != shoop_egui::IoTaskKind::GenerateClickTrack
+                    || task.status != shoop_egui::IoTaskStatus::Completed
+                {
+                    return;
+                }
+                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                    return;
+                };
+                let expected = u64::from(snapshot.status.sample_rate / 5);
+                if loop_state.length_frames != expected || loop_state.empty {
+                    self.fail("generated browser audio click length/state is incorrect");
+                    return;
+                }
+                runtime
+                    .dispatch(AppIntent::RequestLoopAudioExport {
+                        loop_id: loop_state.id,
+                        format: shoop_egui::LoopAudioExportFormat::Exact,
+                    })
+                    .map(|()| Self::WaitForClickAudioSelection)
+            }
+            Self::WaitForClickAudioSelection => {
+                let Some(task) = &snapshot.io_task else {
+                    return;
+                };
+                let Some(selection) = &task.audio_channel_selection else {
+                    return;
+                };
+                runtime
+                    .dispatch(AppIntent::ConfirmAudioChannelSelection {
+                        task_id: task.id,
+                        channels: selection.default_selection.clone(),
+                    })
+                    .map(|()| Self::WaitForClickAudioExport)
+            }
+            Self::WaitForClickAudioExport => {
+                let Some(output) = runtime.take_file_output() else {
+                    return;
+                };
+                let Ok(audio) = shoop_session::decode_loop_audio(&output.bytes) else {
+                    self.fail("generated browser click audio did not decode");
+                    return;
+                };
+                let expected = (snapshot.status.sample_rate / 5) as usize;
+                if audio.channels.len() != 2
+                    || audio
+                        .channels
+                        .iter()
+                        .any(|channel| channel.samples.len() != expected)
+                    || audio
+                        .channels
+                        .iter()
+                        .any(|channel| !channel.samples.iter().any(|sample| *sample != 0.0))
+                {
+                    self.fail("generated browser click audio payload is incorrect");
+                    return;
+                }
+                Ok(Self::PreviewClickAudio)
+            }
+            Self::PreviewClickAudio => {
+                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                    return;
+                };
+                runtime
+                    .dispatch(AppIntent::PreviewClickTrack {
+                        loop_id: loop_state.id,
+                        request: browser_click_request(shoop_egui::ClickTrackKind::Audio),
+                    })
+                    .map(|()| Self::WaitForClickPreview)
+            }
+            Self::WaitForClickPreview => match snapshot.click_track.preview_status {
+                shoop_egui::ClickTrackPreviewStatus::Completed => Ok(Self::GenerateClickMidi),
+                shoop_egui::ClickTrackPreviewStatus::Failed => {
+                    self.fail("browser click preview failed");
+                    return;
+                }
+                _ => return,
+            },
+            Self::GenerateClickMidi => {
+                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                    return;
+                };
+                let previous_task = snapshot
+                    .io_task
+                    .as_ref()
+                    .map(|task| task.id)
+                    .unwrap_or_default();
+                runtime
+                    .dispatch(AppIntent::GenerateClickTrack {
+                        loop_id: loop_state.id,
+                        request: browser_click_request(shoop_egui::ClickTrackKind::Midi),
+                    })
+                    .map(|()| Self::WaitForClickMidi { previous_task })
+            }
+            Self::WaitForClickMidi { previous_task } => {
+                let Some(task) = &snapshot.io_task else {
+                    return;
+                };
+                if task.id == previous_task
+                    || task.kind != shoop_egui::IoTaskKind::GenerateClickTrack
+                    || task.status != shoop_egui::IoTaskStatus::Completed
+                {
+                    return;
+                }
+                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                    return;
+                };
+                runtime
+                    .dispatch(AppIntent::RequestLoopMidiExport {
+                        loop_id: loop_state.id,
+                        standard: false,
+                    })
+                    .map(|()| Self::WaitForClickMidiExport)
+            }
+            Self::WaitForClickMidiExport => {
+                let Some(output) = runtime.take_file_output() else {
+                    return;
+                };
+                let Ok(midi) = shoop_session::decode_exact_midi(&output.bytes) else {
+                    self.fail("generated browser click MIDI did not decode");
+                    return;
+                };
+                if midi.length_frames != u64::from(snapshot.status.sample_rate / 5)
+                    || midi.events.len() != 4
+                    || midi.events[0].data != [0x90, 67, 127]
+                {
+                    self.fail("generated browser click MIDI payload is incorrect");
                     return;
                 }
                 Ok(Self::Complete)
@@ -3186,6 +3402,61 @@ mod tests {
                         && (track.controls.output_gain_db + 3.0).abs() < 0.001
                 }));
                 break;
+            }
+            assert!(started.elapsed() < Duration::from_secs(5));
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        let loaded = app.runtime.snapshot();
+        let target = loaded
+            .tracks
+            .iter()
+            .find(|track| track.name == "Native stereo + MIDI")
+            .unwrap();
+        let generated_loop = target.loops[1].id;
+        let mut request = shoop_egui::ClickTrackRequest::default();
+        request.bpm = 600.0;
+        request.click_count = 2;
+        app.runtime
+            .dispatch(AppIntent::GenerateClickTrack {
+                loop_id: generated_loop,
+                request: request.clone(),
+            })
+            .unwrap();
+        wait_for_click_generation(&app, generated_loop, 9_600, None);
+        let first_task = app.runtime.snapshot().io_task.as_ref().unwrap().id;
+        request.kind = shoop_egui::ClickTrackKind::Midi;
+        request.midi_note = 67;
+        app.runtime
+            .dispatch(AppIntent::GenerateClickTrack {
+                loop_id: generated_loop,
+                request,
+            })
+            .unwrap();
+        wait_for_click_generation(&app, generated_loop, 9_600, Some(first_task));
+    }
+
+    fn wait_for_click_generation(
+        app: &UnifiedApp,
+        loop_id: shoop_egui::LoopId,
+        length: u64,
+        previous_task: Option<shoop_egui::TaskId>,
+    ) {
+        let started = Instant::now();
+        loop {
+            let snapshot = app.runtime.snapshot();
+            if snapshot.io_task.as_ref().is_some_and(|task| {
+                task.kind == shoop_egui::IoTaskKind::GenerateClickTrack
+                    && task.status == shoop_egui::IoTaskStatus::Completed
+                    && Some(task.id) != previous_task
+            }) && snapshot
+                .tracks
+                .iter()
+                .flat_map(|track| &track.loops)
+                .find(|loop_| loop_.id == loop_id)
+                .is_some_and(|loop_| loop_.length_frames == length && !loop_.empty)
+            {
+                return;
             }
             assert!(started.elapsed() < Duration::from_secs(5));
             thread::sleep(Duration::from_millis(5));
