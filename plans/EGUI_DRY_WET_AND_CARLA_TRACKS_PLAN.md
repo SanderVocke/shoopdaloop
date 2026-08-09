@@ -170,28 +170,36 @@ Verification:
 
 ### Stage 6 — QML-parity integration and documentation
 
-- [ ] Translate the retained QML dry/wet direct, external, transition, multiple-loop, Carla activation/MIDI-gating, and session-save/load cases into the narrowest Rust backend/application integration tests.
-- [ ] Add native egui end-to-end workflows for external ports and fake/installed Carla: create, connect, monitor, record, play wet, play dry, re-record wet, show/hide UI, save, replace, reload, and restore recorded FX state.
+- [x] Translate the retained QML dry/wet direct, external, transition, multiple-loop, Carla activation/MIDI-gating, and session-save/load cases into the narrowest Rust backend/application integration tests.
+- [x] Add native egui end-to-end workflows for external ports and fake/installed Carla: create, connect, monitor, record, play wet, play dry, re-record wet, show/hide UI, save, replace, reload, and restore recorded FX state.
 - [x] Extend browser automation to open the Dry + Wet form, verify all shared fields/mechanics remain visible, observe an empty processing selector with disabled acceptance, and prove External/Carla session rejection leaves direct tracks/media and AudioWorklet callback progress intact.
 - [x] Update `docs/session_format_v1.md`, `docs/settings_format_v1.md`, `docs/egui_port_model.md`, `shoopdaloop_egui/README.md`, user track/Carla documentation, project roadmap, and parity evidence.
 
 Verification:
 
-- [ ] Focused native workflows satisfy the runnable dry/wet criteria; browser workflows satisfy the shared-mechanics, empty-catalog, capability-rejection, and non-regression criteria; installed-Carla checks have explicit environment skips.
+- [x] Focused native workflows satisfy the runnable dry/wet criteria; browser workflows satisfy the shared-mechanics, empty-catalog, capability-rejection, and non-regression criteria; installed-Carla checks have explicit environment skips.
 - [ ] The retained QML self-test suite still passes and remains the regression oracle; no QML behavior is changed.
-- [ ] Commit the parity/documentation milestone.
+- [x] Commit the parity/documentation milestone.
 
 ### Stage 7 — Final end-to-end validation
 
-- [ ] Run `cargo fmt --all -- --check` and `git diff --check`.
-- [ ] Run focused warning-denying tests for `shoop_app_api`, `shoop_session`, `shoop_backend` with native FX, `shoop_app`, `shoop_egui`, `shoop_settings`, and `shoopdaloop_egui`.
-- [ ] Run `RUSTFLAGS="-D warnings" cargo build --workspace --features shoop_engine/app_backend`.
-- [ ] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend`.
+- [x] Run `cargo fmt --all -- --check` and `git diff --check`.
+- [x] Run focused warning-denying tests for `shoop_app_api`, `shoop_session`, `shoop_backend` with native FX, `shoop_app`, `shoop_egui`, `shoop_settings`, and `shoopdaloop_egui`.
+- [x] Run `RUSTFLAGS="-D warnings" cargo build --workspace --features shoop_engine/app_backend`.
+- [x] Run `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo test --workspace --features shoop_engine/app_backend`.
 - [ ] Build first, then run `target/debug/shoopdaloop_dev.sh --self-test`.
 - [ ] Run locked debug/release native builds and packages plus production Wasm UI, preview, AudioWorklet builds, forbidden-dependency scans, and Chrome/Firefox workflows from `.github/workflows/build_and_test_egui.yml`.
 - [ ] Manually exercise one native external chain and, when installed, both in-process and subprocess Carla: create tracks, connect ports, record dry/wet, play wet/dry, re-record, toggle UI, crash/recover worker, save/reload, restore take state, and switch audio driver.
-- [ ] Record exact platform/LV2/UI/audio environment evidence and residual limitations in this plan and the parity matrix.
+- [x] Record exact platform/LV2/UI/audio environment evidence and residual limitations in this plan and the parity matrix.
 - [ ] Commit the completed validation/documentation milestone.
+
+## Validation evidence (2026-08-09)
+
+- Linux x86_64 focused warning-denying suites passed 188 tests across the seven target packages plus the hidden egui worker handshake. The complete serialized workspace/app-backend run passed 1,215 tests, including 659 engine unit tests, 20 dry/wet audio-loop cases, JACK External round trip, 14 Carla worker cases, realtime allocation/lock guards, and all new application/session/settings/UI tests.
+- Warning-denying workspace build, locked native debug/release egui builds, Linux debug/release archive packaging/verification, production debug/release Trunk builds, web archive/self-contained packaging, preview Wasm check, raw-import-free AudioWorklet build, and browser/presentation/worklet forbidden-dependency scans passed. Local WebAssembly linking required supplying Nix `lld`, matching the CI tool requirement.
+- Installed-Carla discovery and app-backend chain creation passed on this host. Deterministic native tests cover External/Test2x2 signal flow and in-process/fake-subprocess state/UI/recovery/cleanup. There is no `/dev/snd` or ALSA sequencer and no interactive desktop/audio patchbay in the agent environment, so physical native I/O and manual GUI click-through remain environment limitations.
+- Chromium 147 hosted release automation passed at 360×200 (1,172 callbacks); the earlier 900×600 run passed with 6,404 callbacks. Firefox 150.0.1 hosted release automation passed at 900×600 with 2,008 callbacks. Both reported `data-dry-wet-form=empty-disabled`, non-zero input/output, zero command overflows/budget overruns, and completed transactional Carla and External rejection while preserving direct content/callback progress.
+- The retained QML executable was built first. A no-display invocation aborted as expected. Offscreen and Nix Xvfb attempts loaded the two backend-only files, then complex QML files produced `Created invalid object`/no top-level `QQuickWindow` and did not complete before the 1,200-second gate. No QML source changed; the GitHub-hosted QML gate remains required evidence rather than treating this local display/tooling failure as a pass.
 
 ## Execution contract
 
