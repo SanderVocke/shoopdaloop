@@ -451,6 +451,8 @@ fn representative_snapshot() -> AppSnapshot {
                 id: TrackId::from_raw(1),
                 name: "Sync".to_owned(),
                 is_sync: true,
+                topology: Default::default(),
+                fx: None,
                 loops: vec![LoopState {
                     id: LoopId::from_raw(1),
                     name: "sync loop".to_owned(),

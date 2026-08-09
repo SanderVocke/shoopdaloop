@@ -2690,17 +2690,33 @@ impl BackendSession {
                                     buffer_size,
                                 )
                                 .map(|host| Box::new(host) as Box<_>)
+                                .map_err(|error| {
+                                    anyhow!(
+                                        "in-process Carla host initialization failed: {error:#}"
+                                    )
+                                })
                             }
                             CarlaHostingMode::Subprocess => {
                                 let chain_id = NEXT_CARLA_CHAIN_ID.fetch_add(1, Ordering::Relaxed);
-                                engine::carla_subprocess::SupervisedCarlaProcessor::launch(
-                                    std::env::current_exe()?,
-                                    chain_type,
-                                    sample_rate,
-                                    buffer_size,
-                                    shoop_plugin_protocol::ChainId(chain_id),
-                                )
-                                .map(|host| Box::new(host) as Box<_>)
+                                std::env::current_exe()
+                                    .map_err(|error| {
+                                        anyhow!("could not locate Carla worker executable: {error}")
+                                    })
+                                    .and_then(|executable| {
+                                        engine::carla_subprocess::SupervisedCarlaProcessor::launch(
+                                            executable,
+                                            chain_type,
+                                            sample_rate,
+                                            buffer_size,
+                                            shoop_plugin_protocol::ChainId(chain_id),
+                                        )
+                                        .map(|host| Box::new(host) as Box<_>)
+                                        .map_err(|error| {
+                                            anyhow!(
+                                                "Carla subprocess launch/handshake failed: {error:#}"
+                                            )
+                                        })
+                                    })
                             }
                         };
                     match host.and_then(|host| {
@@ -5636,17 +5652,30 @@ impl FXChain {
         }
     }
 
-    pub fn get_state_str(&self) -> Option<String> {
+    pub fn try_get_state_str(&self) -> Result<String> {
         match &self.backend {
-            FXChainBackendKind::Unavailable { reason } => Some(format!(
-                "{{\"chain_type\":\"{:?}\",\"unavailable\":{reason:?}}}",
-                self.chain_type
-            )),
+            FXChainBackendKind::Unavailable { reason } => Err(anyhow!(reason.clone())),
             #[cfg(feature = "lv2")]
-            FXChainBackendKind::Carla(host) => host.save_state().ok(),
-            _ => Some(String::new()),
+            FXChainBackendKind::Carla(host) => host.save_state(),
+            _ => Ok(String::new()),
         }
     }
+
+    pub fn get_state_str(&self) -> Option<String> {
+        self.try_get_state_str().ok()
+    }
+
+    pub fn try_restore_state(&self, state: &str) -> Result<()> {
+        #[cfg(not(feature = "lv2"))]
+        let _ = state;
+        match &self.backend {
+            #[cfg(feature = "lv2")]
+            FXChainBackendKind::Carla(host) => host.restore_state(state),
+            FXChainBackendKind::Test2x2x1 => Ok(()),
+            FXChainBackendKind::Unavailable { reason } => Err(anyhow!(reason.clone())),
+        }
+    }
+
     pub fn restore_state(&self, state: &str) {
         #[cfg(feature = "lv2")]
         if let FXChainBackendKind::Carla(host) = &self.backend {

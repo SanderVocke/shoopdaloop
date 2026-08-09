@@ -40,6 +40,7 @@ The file is canonical UTF-8 JSON with a trailing newline:
   "document_version": 1,
   "writer_version": "0.0.0",
   "values": {
+    "carla.hosting_mode": "in_process",
     "scripting.bundled.akai_apc_mini_mk1.enabled": false,
     "scripting.bundled.keyboard.enabled": true,
     "scripting.user_scripts": [
@@ -99,6 +100,9 @@ Version 1 registers the cross-target track defaults and bundled-script toggles b
 | `audio.cpal.capture_ring_frames` | `u32` | `4096` | Confirmed CPAL Switch |
 | `audio.cpal.midi_inputs` | string | `"all"` | Confirmed CPAL Switch; comma-separated selectors |
 | `audio.cpal.midi_outputs` | string | `"all"` | Confirmed CPAL Switch; comma-separated selectors |
+| `carla.hosting_mode` | string choice | `"in_process"` | Next native application start; allowed values are `"in_process"` and `"subprocess"` |
+
+`carla.hosting_mode` is registered only by native composition. It is a global machine preference and never enters `.shoop` session settings. Native startup validates and applies it through the backend adapter before constructing `NativeBackend` or any FX chain. Ordinary **Save** persists a changed value but does not migrate or restart running chains; the Settings dialog marks it restart-required. Missing or invalid values fall back to in-process hosting with a diagnostic. Subprocess mode launches one independently supervised worker per Carla chain using the packaged main executable's hidden worker entry.
 
 These optional keys do not change document version 1. Each driver keeps an independent configured profile. Saving a profile does not change the running backend. A confirmed runtime Switch updates `audio.selected_driver` only after backend commit and persists the complete draft before reporting full success. Native startup attempts the saved driver/configuration first and falls back to dummy/offline with a diagnostic if it is unavailable; fallback does not overwrite the preference.
 

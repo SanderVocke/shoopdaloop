@@ -5,12 +5,15 @@ edition = "2021"
 [features]
 default = []
 native-drivers = ["shoop_engine/native_audio_backend"]
+native-fx = ["native-drivers", "shoop_engine/lv2", "dep:shoop_plugin_protocol"]
 
 [dependencies]
 anyhow = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 shoop_app_api = { path = "../shoop_app_api" }
 shoop_engine = { path = "../shoop_engine" }
+shoop_plugin_protocol = { path = "../shoop_plugin_protocol", optional = true }
+shoop_settings = { path = "../shoop_settings" }
 
 [dev-dependencies]
 assert_no_alloc = { workspace = true }
