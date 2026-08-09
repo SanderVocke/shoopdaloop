@@ -2690,17 +2690,33 @@ impl BackendSession {
                                     buffer_size,
                                 )
                                 .map(|host| Box::new(host) as Box<_>)
+                                .map_err(|error| {
+                                    anyhow!(
+                                        "in-process Carla host initialization failed: {error:#}"
+                                    )
+                                })
                             }
                             CarlaHostingMode::Subprocess => {
                                 let chain_id = NEXT_CARLA_CHAIN_ID.fetch_add(1, Ordering::Relaxed);
-                                engine::carla_subprocess::SupervisedCarlaProcessor::launch(
-                                    std::env::current_exe()?,
-                                    chain_type,
-                                    sample_rate,
-                                    buffer_size,
-                                    shoop_plugin_protocol::ChainId(chain_id),
-                                )
-                                .map(|host| Box::new(host) as Box<_>)
+                                std::env::current_exe()
+                                    .map_err(|error| {
+                                        anyhow!("could not locate Carla worker executable: {error}")
+                                    })
+                                    .and_then(|executable| {
+                                        engine::carla_subprocess::SupervisedCarlaProcessor::launch(
+                                            executable,
+                                            chain_type,
+                                            sample_rate,
+                                            buffer_size,
+                                            shoop_plugin_protocol::ChainId(chain_id),
+                                        )
+                                        .map(|host| Box::new(host) as Box<_>)
+                                        .map_err(|error| {
+                                            anyhow!(
+                                                "Carla subprocess launch/handshake failed: {error:#}"
+                                            )
+                                        })
+                                    })
                             }
                         };
                     match host.and_then(|host| {

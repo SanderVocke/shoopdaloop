@@ -1,9 +1,11 @@
 #[cfg(all(feature = "native-drivers", not(target_arch = "wasm32")))]
 mod native;
-#[cfg(all(feature = "native-fx", not(target_arch = "wasm32")))]
-pub use native::run_carla_worker_if_requested;
 #[cfg(all(feature = "native-drivers", not(target_arch = "wasm32")))]
 pub use native::NativeBackend;
+#[cfg(all(feature = "native-fx", not(target_arch = "wasm32")))]
+pub use native::{
+    configure_carla_hosting_mode, configured_carla_hosting_mode, run_carla_worker_if_requested,
+};
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};

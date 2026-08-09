@@ -20,13 +20,13 @@ use web_time::Instant;
 use eframe::egui;
 use settings::SettingsManager;
 #[cfg(not(target_arch = "wasm32"))]
-use shoop_backend::NativeBackend;
+use shoop_backend::{configure_carla_hosting_mode, NativeBackend};
 #[cfg(target_arch = "wasm32")]
 use shoop_egui::register_bundled_script_settings;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_egui::register_script_settings;
 #[cfg(not(target_arch = "wasm32"))]
-use shoop_egui::{register_audio_settings, AudioDriverConfig};
+use shoop_egui::{register_audio_settings, register_carla_settings, AudioDriverConfig};
 use shoop_egui::{
     register_settings, AppIntent, AppSnapshot, AppWidget, ScriptKind, SettingsAction,
     SettingsRegistryBuilder,
@@ -103,6 +103,8 @@ impl UnifiedApp {
         register_settings(&mut settings_builder)?;
         #[cfg(not(target_arch = "wasm32"))]
         register_audio_settings(&mut settings_builder)?;
+        #[cfg(not(target_arch = "wasm32"))]
+        register_carla_settings(&mut settings_builder)?;
         #[cfg(not(target_arch = "wasm32"))]
         register_script_settings(&mut settings_builder)?;
         #[cfg(target_arch = "wasm32")]
@@ -685,6 +687,17 @@ struct Runtime {
 #[cfg(not(target_arch = "wasm32"))]
 impl Runtime {
     fn new(settings: &shoop_settings::SettingsSnapshot) -> anyhow::Result<Self> {
+        let (carla_hosting_mode, carla_configuration_warning) =
+            match shoop_egui::carla_hosting_mode_from_snapshot(settings) {
+                Ok(mode) => (mode, None),
+                Err(error) => (
+                    shoop_settings::CarlaHostingMode::InProcess,
+                    Some(format!(
+                        "Could not use Carla hosting setting: {error}; using in_process"
+                    )),
+                ),
+            };
+        configure_carla_hosting_mode(carla_hosting_mode);
         let configured_driver = shoop_egui::selected_audio_driver(settings)
             .and_then(|kind| shoop_egui::audio_driver_config_from_snapshot(settings, kind));
         let (configured_driver, configuration_warning) = match configured_driver {
@@ -699,11 +712,12 @@ impl Runtime {
         let (backend, backend_warning) = NativeBackend::new_with_fallback(configured_driver)?;
         let (startup_scripts, script_paths, mut warnings) = configured_startup_scripts(settings)?;
         warnings.extend(configuration_warning);
+        warnings.extend(carla_configuration_warning);
         warnings.extend(backend_warning);
         let runtime = ApplicationRuntime::start_with_scripts(Box::new(backend), startup_scripts)?;
         let handle = runtime.handle();
         for warning in warnings {
-            eprintln!("ShoopDaLoop script settings: {warning}");
+            eprintln!("ShoopDaLoop settings: {warning}");
             handle.dispatch(AppIntent::ReportFileIoError {
                 task_id: None,
                 message: warning,
@@ -2078,6 +2092,7 @@ mod tests {
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();
         register_audio_settings(&mut builder).unwrap();
+        register_carla_settings(&mut builder).unwrap();
         register_script_settings(&mut builder).unwrap();
         let manager = SettingsManager::load_from_path(builder.finish(), "test", path);
         std::fs::write(&blocker, b"not a directory").unwrap();
@@ -2180,6 +2195,7 @@ mod tests {
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();
         register_audio_settings(&mut builder).unwrap();
+        register_carla_settings(&mut builder).unwrap();
         register_script_settings(&mut builder).unwrap();
         let registry = builder.finish();
         let mut manager = SettingsManager::load_from_path(registry.clone(), "test", path.clone());
@@ -2217,10 +2233,37 @@ mod tests {
     }
 
     #[test]
+    fn carla_hosting_mode_persists_but_does_not_change_the_running_backend() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("settings.json");
+        let mut builder = SettingsRegistryBuilder::default();
+        register_carla_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let mut manager = SettingsManager::load_from_path(registry.clone(), "test", path.clone());
+        configure_carla_hosting_mode(shoop_settings::CarlaHostingMode::InProcess);
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&manager.active());
+        draft.set(shoop_egui::CARLA_HOSTING_MODE, "subprocess".to_owned());
+        manager.request_save(draft).unwrap();
+        wait_for_settings_save(&mut manager);
+        assert_eq!(
+            shoop_backend::configured_carla_hosting_mode(),
+            shoop_settings::CarlaHostingMode::InProcess
+        );
+        drop(manager);
+
+        let restarted = SettingsManager::load_from_path(registry, "test-2", path);
+        assert_eq!(
+            shoop_egui::carla_hosting_mode_from_snapshot(&restarted.active()).unwrap(),
+            shoop_settings::CarlaHostingMode::Subprocess
+        );
+    }
+
+    #[test]
     fn unavailable_saved_preference_falls_back_without_overwriting_settings() {
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();
         register_audio_settings(&mut builder).unwrap();
+        register_carla_settings(&mut builder).unwrap();
         register_script_settings(&mut builder).unwrap();
         let registry = builder.finish();
         let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));

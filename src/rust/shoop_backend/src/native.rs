@@ -14,6 +14,16 @@ use shoop_engine::{
 };
 
 #[cfg(feature = "native-fx")]
+pub fn configure_carla_hosting_mode(mode: shoop_settings::CarlaHostingMode) {
+    shoop_engine::app_backend::set_carla_hosting_mode(mode);
+}
+
+#[cfg(feature = "native-fx")]
+pub fn configured_carla_hosting_mode() -> shoop_settings::CarlaHostingMode {
+    shoop_engine::app_backend::carla_hosting_mode()
+}
+
+#[cfg(feature = "native-fx")]
 pub fn run_carla_worker_if_requested<I, S>(args: I) -> Result<bool>
 where
     I: IntoIterator<Item = S>,

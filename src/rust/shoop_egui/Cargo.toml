@@ -9,5 +9,8 @@ egui = { workspace = true }
 egui_material_icons = { workspace = true }
 image = { workspace = true }
 
+[dev-dependencies]
+serde_json = { workspace = true }
+
 [lints]
 workspace = true

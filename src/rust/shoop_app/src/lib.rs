@@ -5997,6 +5997,11 @@ mod tests {
         assert_eq!(saved.document.fx_states.len(), 1);
         assert_eq!(saved.document.fx_states[0].id, take_id);
         assert_eq!(saved.document.fx_states[0].internal_state, exact_state);
+        assert!(!saved
+            .document
+            .settings
+            .iter()
+            .any(|setting| setting.key == "carla.hosting_mode"));
 
         runtime
             .dispatch(AppIntent::LoadSessionBytes {

@@ -526,6 +526,22 @@ impl SettingsDialog {
                             (SettingEditor::Number { min, max }, SettingValue::F64(value)) => {
                                 ui.add(egui::DragValue::new(value).range(*min..=*max));
                             }
+                            (
+                                SettingEditor::StringChoice { choices },
+                                SettingValue::String(value),
+                            ) => {
+                                egui::ComboBox::from_id_salt(("setting_choice", definition.key()))
+                                    .selected_text(value.as_str())
+                                    .show_ui(ui, |ui| {
+                                        for choice in *choices {
+                                            ui.selectable_value(
+                                                value,
+                                                (*choice).to_owned(),
+                                                *choice,
+                                            );
+                                        }
+                                    });
+                            }
                             (SettingEditor::Text, SettingValue::String(value)) => {
                                 let choices = audio.and_then(|audio| match definition.key() {
                                     key if key == crate::CPAL_HOST.id() => Some(&audio.hosts),

@@ -23,6 +23,7 @@ pub const KEYBOARD_SCRIPT_ENABLED: SettingKey<bool> =
 pub const APC_MINI_SCRIPT_ENABLED: SettingKey<bool> =
     SettingKey::new("scripting.bundled.akai_apc_mini_mk1.enabled");
 pub const USER_SCRIPTS: SettingKey<StringToggleList> = SettingKey::new("scripting.user_scripts");
+pub const CARLA_HOSTING_MODE: SettingKey<String> = SettingKey::new("carla.hosting_mode");
 
 pub const SELECTED_AUDIO_DRIVER: SettingKey<String> = SettingKey::new("audio.selected_driver");
 pub const DUMMY_SAMPLE_RATE: SettingKey<u32> = SettingKey::new("audio.dummy.sample_rate");
@@ -261,6 +262,36 @@ pub fn register_audio_settings(
         builder.register(definition)?;
     }
     Ok(())
+}
+
+pub fn register_carla_settings(
+    builder: &mut SettingsRegistryBuilder,
+) -> Result<(), SettingsRegistryError> {
+    builder.register(
+        SettingDefinition::new(
+            CARLA_HOSTING_MODE,
+            shoop_settings::CarlaHostingMode::InProcess.as_str().to_owned(),
+            "Carla",
+            "Hosting mode",
+            "Run Carla in this process or in a supervised subprocess. This is a global machine setting, is not stored in sessions, and takes effect after restart.",
+        )
+        .category_order(7)
+        .setting_order(10)
+        .effect(SettingEffect::RestartRequired)
+        .editor(shoop_settings::SettingEditor::StringChoice {
+            choices: &["in_process", "subprocess"],
+        }),
+    )
+}
+
+pub fn carla_hosting_mode_from_snapshot(
+    snapshot: &SettingsSnapshot,
+) -> Result<shoop_settings::CarlaHostingMode, String> {
+    snapshot
+        .get(CARLA_HOSTING_MODE)
+        .map_err(|error| error.to_string())?
+        .parse()
+        .map_err(|error: shoop_settings::CarlaHostingModeParseError| error.to_string())
 }
 
 pub fn selected_audio_driver(snapshot: &SettingsSnapshot) -> Result<AudioDriverKind, String> {
@@ -1201,6 +1232,53 @@ mod tests {
     use shoop_settings::{
         SettingsDraft, SettingsPersistenceState, SettingsRegistryBuilder, SettingsViewState,
     };
+
+    #[test]
+    fn carla_hosting_setting_validates_modes_and_preserves_unknown_keys() {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_carla_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let defaults = registry.defaults(1);
+        assert_eq!(
+            carla_hosting_mode_from_snapshot(&defaults).unwrap(),
+            shoop_settings::CarlaHostingMode::InProcess
+        );
+        let definition = registry.definition(CARLA_HOSTING_MODE.id()).unwrap();
+        assert_eq!(definition.effect(), SettingEffect::RestartRequired);
+
+        let mut draft = SettingsDraft::from_snapshot(&defaults);
+        draft.set(CARLA_HOSTING_MODE, "subprocess".to_owned());
+        let mut base = shoop_settings::EgSettingsDocument::empty("test");
+        base.values.insert(
+            "future.setting".to_owned(),
+            serde_json::Value::String("preserved".to_owned()),
+        );
+        let document = registry.document_from_draft(&base, &draft, "test").unwrap();
+        let resolved = registry.resolve(&document, 2);
+        assert_eq!(
+            carla_hosting_mode_from_snapshot(&resolved.snapshot).unwrap(),
+            shoop_settings::CarlaHostingMode::Subprocess
+        );
+        assert_eq!(
+            document.values.get("future.setting"),
+            Some(&serde_json::Value::String("preserved".to_owned()))
+        );
+
+        let mut invalid = document;
+        invalid.values.insert(
+            CARLA_HOSTING_MODE.id().to_owned(),
+            serde_json::Value::String("invalid".to_owned()),
+        );
+        let resolved = registry.resolve(&invalid, 3);
+        assert_eq!(
+            carla_hosting_mode_from_snapshot(&resolved.snapshot).unwrap(),
+            shoop_settings::CarlaHostingMode::InProcess
+        );
+        assert!(resolved
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.key.as_deref() == Some(CARLA_HOSTING_MODE.id())));
+    }
 
     fn settings_state() -> SettingsViewState {
         let mut builder = SettingsRegistryBuilder::default();

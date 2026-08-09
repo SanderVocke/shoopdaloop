@@ -383,6 +383,7 @@ pub enum SettingEditor {
     SignedInteger { min: i32, max: i32 },
     Number { min: f64, max: f64 },
     Text,
+    StringChoice { choices: &'static [&'static str] },
     StringToggleList,
 }
 
@@ -393,7 +394,7 @@ impl SettingEditor {
             Self::UnsignedInteger { .. } => SettingValueType::U32,
             Self::SignedInteger { .. } => SettingValueType::I32,
             Self::Number { .. } => SettingValueType::F64,
-            Self::Text => SettingValueType::String,
+            Self::Text | Self::StringChoice { .. } => SettingValueType::String,
             Self::StringToggleList => SettingValueType::StringToggleList,
         }
     }
@@ -401,6 +402,9 @@ impl SettingEditor {
     fn validate(&self, value: &SettingValue) -> bool {
         match (self, value) {
             (Self::Checkbox, SettingValue::Bool(_)) | (Self::Text, SettingValue::String(_)) => true,
+            (Self::StringChoice { choices }, SettingValue::String(value)) => {
+                choices.contains(&value.as_str())
+            }
             (Self::StringToggleList, SettingValue::StringToggleList(value)) => {
                 let mut seen = BTreeSet::new();
                 value

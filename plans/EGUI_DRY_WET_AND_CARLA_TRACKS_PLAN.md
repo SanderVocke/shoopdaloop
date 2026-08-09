@@ -156,14 +156,14 @@ Verification:
 
 ### Stage 5 — Carla hosting setting and startup orchestration
 
-- [ ] Register a stable native `carla.hosting_mode` setting with in-process default, validated string-to-enum helpers, and restart-required effect; document that it is global and excluded from sessions.
-- [ ] Load and apply the setting through a `shoop_backend` adapter before constructing `NativeBackend` or any FX chain; ordinary Save persists it without migrating running chains.
-- [ ] Ensure fallback/recovery diagnostics distinguish missing LV2, in-process host failure, subprocess launch/handshake failure, crash, and stale state while preserving settings recovery behavior.
+- [x] Register a stable native `carla.hosting_mode` setting with in-process default, validated string-to-enum helpers, and restart-required effect; document that it is global and excluded from sessions.
+- [x] Load and apply the setting through a `shoop_backend` adapter before constructing `NativeBackend` or any FX chain; ordinary Save persists it without migrating running chains.
+- [x] Ensure fallback/recovery diagnostics distinguish missing LV2, in-process host failure, subprocess launch/handshake failure, crash, and stale state while preserving settings recovery behavior.
 - [ ] Add native packaging checks ensuring the main executable can serve as its own worker on Linux, Windows, and macOS.
 
 Verification:
 
-- [ ] Settings tests cover default, both modes, invalid fallback/diagnostic, unknown-key preservation, restart persistence, and no session serialization.
+- [x] Settings tests cover default, both modes, invalid fallback/diagnostic, unknown-key preservation, restart persistence, and no session serialization.
 - [ ] Runner/backend tests prove the selected mode is applied before first FX creation and changing the setting has no runtime effect until restart.
 - [ ] In-process and fake-subprocess workflows create independent chains, save/restore state, toggle UI, recover one failed chain, and shut down without orphan workers.
 - [ ] Commit the settings/startup milestone.

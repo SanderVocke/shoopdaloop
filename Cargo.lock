@@ -4768,6 +4768,7 @@ dependencies = [
  "shoop_app_api",
  "shoop_engine",
  "shoop_plugin_protocol",
+ "shoop_settings",
 ]
 
 [[package]]
@@ -4777,6 +4778,7 @@ dependencies = [
  "egui",
  "egui_material_icons",
  "image 0.25.10",
+ "serde_json",
  "shoop_app_api",
  "shoop_settings",
 ]
