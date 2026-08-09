@@ -317,6 +317,8 @@ jobs:
       - name: Install geckodriver
         if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
         uses: browser-actions/setup-geckodriver@latest
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Selenium
         if: matrix.target == 'web' && matrix.profile == 'release' && env.ACT != 'true'
