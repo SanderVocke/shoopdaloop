@@ -530,14 +530,18 @@ impl SettingsDialog {
                                 SettingEditor::StringChoice { choices },
                                 SettingValue::String(value),
                             ) => {
+                                let selected = choices
+                                    .iter()
+                                    .find(|(choice, _label)| *choice == value.as_str())
+                                    .map_or(value.as_str(), |(_choice, label)| *label);
                                 egui::ComboBox::from_id_salt(("setting_choice", definition.key()))
-                                    .selected_text(value.as_str())
+                                    .selected_text(selected)
                                     .show_ui(ui, |ui| {
-                                        for choice in *choices {
+                                        for (choice, label) in *choices {
                                             ui.selectable_value(
                                                 value,
                                                 (*choice).to_owned(),
-                                                *choice,
+                                                *label,
                                             );
                                         }
                                     });

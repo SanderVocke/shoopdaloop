@@ -6030,6 +6030,95 @@ mod tests {
     }
 
     #[test]
+    fn failed_recorded_fx_restore_leaves_the_processed_track_usable() {
+        let descriptor = shoop_app_api::TrackProcessorDescriptor {
+            id: shoop_app_api::TrackProcessorTypeId::new(
+                shoop_app_api::TrackProcessorTypeId::CARLA_RACK,
+            ),
+            label: "Carla Rack".to_owned(),
+            available: true,
+            unavailable_reason: None,
+            constraints: shoop_app_api::TrackProcessorConstraints {
+                max_dry_audio_channels: Some(2),
+                max_wet_audio_channels: Some(2),
+                dry_midi: true,
+            },
+            features: shoop_app_api::TrackProcessorFeatures {
+                state: true,
+                external_ui: true,
+                recovery: true,
+                logs: true,
+            },
+        };
+        let mut backend = FakeBackend::default();
+        backend.set_track_processor_catalog(vec![descriptor]);
+        backend.set_fail_fx_state_restore(true);
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
+                name: "Restore failure".to_owned(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 1,
+                    dry_midi: false,
+                    processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                        shoop_app_api::TrackProcessorTypeId::CARLA_RACK,
+                    ),
+                },
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let track = runtime.snapshot().tracks[1].clone();
+        let loop_id = track.loops[0].id;
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track.id,
+                loop_id,
+                action: LoopAction::RecordClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        runtime.tick(Duration::ZERO);
+        assert_eq!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Recording
+        );
+        assert!(runtime.snapshot().notifications.iter().any(|notification| {
+            notification
+                .message
+                .contains("active recording/replacement content to settle")
+        }));
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track.id,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track.id,
+                loop_id,
+                action: LoopAction::RestoreRecordedFxState,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let after = runtime.snapshot();
+        assert_eq!(after.tracks[1].id, track.id);
+        assert_eq!(after.tracks[1].loops[0].id, loop_id);
+        assert!(after.tracks[1].loops[0].has_recorded_fx_state);
+        assert!(after.notifications.iter().any(|notification| {
+            notification.level == NotificationLevel::Error
+                && notification
+                    .message
+                    .contains("injected processor state restore failure")
+        }));
+    }
+
+    #[test]
     fn actor_starts_embedded_production_keyboard_script_without_checkout_files() {
         let runtime = ApplicationRuntime::start_with_scripts(
             Box::new(FakeBackend::default()),

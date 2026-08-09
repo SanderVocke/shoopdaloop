@@ -2586,6 +2586,7 @@ pub struct FakeBackend {
     fail_track_creation_after: Option<usize>,
     processor_catalog: Arc<[TrackProcessorDescriptor]>,
     default_fx_state_string: String,
+    fail_fx_state_restore: bool,
     audio_driver_control: FakeAudioDriverControl,
     operations: Vec<FakeOperation>,
     connections: FakeConnectionControl,
@@ -2639,6 +2640,7 @@ impl Default for FakeBackend {
             fail_track_creation_after: None,
             processor_catalog: Arc::from([]),
             default_fx_state_string: "{}".to_owned(),
+            fail_fx_state_restore: false,
             audio_driver_control: FakeAudioDriverControl::default(),
             operations: Vec::new(),
             connections: FakeConnectionControl {
@@ -2664,6 +2666,10 @@ impl FakeBackend {
 
     pub fn set_default_fx_state_string(&mut self, state: impl Into<String>) {
         self.default_fx_state_string = state.into();
+    }
+
+    pub fn set_fail_fx_state_restore(&mut self, fail: bool) {
+        self.fail_fx_state_restore = fail;
     }
 
     pub fn set_track_fx_state(
@@ -3307,6 +3313,9 @@ impl Backend for FakeBackend {
             .fx
             .as_mut()
             .ok_or_else(|| anyhow!("track has no processor"))?;
+        if self.fail_fx_state_restore && matches!(control, BackendTrackFxControl::RestoreState(_)) {
+            return Err(anyhow!("injected processor state restore failure"));
+        }
         match control {
             BackendTrackFxControl::SetActive(active) => fx.active = active,
             BackendTrackFxControl::SetVisible(visible) => fx.visible = visible,
@@ -3548,6 +3557,7 @@ impl Backend for FakeBackend {
         staged
             .default_fx_state_string
             .clone_from(&self.default_fx_state_string);
+        staged.fail_fx_state_restore = self.fail_fx_state_restore;
         staged.connections.with_state(|state| {
             state.external_ports = external_ports;
         });

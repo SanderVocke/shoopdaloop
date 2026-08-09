@@ -379,11 +379,22 @@ impl SettingEffect {
 #[derive(Clone, Debug, PartialEq)]
 pub enum SettingEditor {
     Checkbox,
-    UnsignedInteger { min: u32, max: u32 },
-    SignedInteger { min: i32, max: i32 },
-    Number { min: f64, max: f64 },
+    UnsignedInteger {
+        min: u32,
+        max: u32,
+    },
+    SignedInteger {
+        min: i32,
+        max: i32,
+    },
+    Number {
+        min: f64,
+        max: f64,
+    },
     Text,
-    StringChoice { choices: &'static [&'static str] },
+    StringChoice {
+        choices: &'static [(&'static str, &'static str)],
+    },
     StringToggleList,
 }
 
@@ -402,9 +413,9 @@ impl SettingEditor {
     fn validate(&self, value: &SettingValue) -> bool {
         match (self, value) {
             (Self::Checkbox, SettingValue::Bool(_)) | (Self::Text, SettingValue::String(_)) => true,
-            (Self::StringChoice { choices }, SettingValue::String(value)) => {
-                choices.contains(&value.as_str())
-            }
+            (Self::StringChoice { choices }, SettingValue::String(value)) => choices
+                .iter()
+                .any(|(choice, _label)| *choice == value.as_str()),
             (Self::StringToggleList, SettingValue::StringToggleList(value)) => {
                 let mut seen = BTreeSet::new();
                 value

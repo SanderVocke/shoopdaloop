@@ -151,7 +151,7 @@ Verification:
 
 - [x] Codec/application/backend round trips assert exact float bits, MIDI bytes/timing, channel modes/order, offsets/preplay/gain, current and recorded Carla strings (including Unicode/newlines/NUL), and exact external host IDs.
 - [x] Import/export tests cover dry-only, wet-only, mixed/reordered/duplicated source mapping, unequal channel counts, standard WAV/MIDI, exact formats, resampling confirmation, and cancellation.
-- [ ] Failure tests prove malformed topology/state references, unavailable Carla, restore failure, recording-time save, and replacement failure leave the prior session usable.
+- [x] Failure tests prove malformed topology/state references, unavailable Carla, restore failure, recording-time save, and replacement failure leave the prior session usable.
 - [x] Commit the persistence/media milestone.
 
 ### Stage 5 — Carla hosting setting and startup orchestration

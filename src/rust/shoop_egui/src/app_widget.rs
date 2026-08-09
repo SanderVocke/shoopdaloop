@@ -279,7 +279,10 @@ pub fn register_carla_settings(
         .setting_order(10)
         .effect(SettingEffect::RestartRequired)
         .editor(shoop_settings::SettingEditor::StringChoice {
-            choices: &["in_process", "subprocess"],
+            choices: &[
+                ("in_process", "In application process"),
+                ("subprocess", "One subprocess per FX chain"),
+            ],
         }),
     )
 }
