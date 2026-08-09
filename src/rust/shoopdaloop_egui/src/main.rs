@@ -1231,10 +1231,73 @@ const BROWSER_SESSION_SCRIPT_SOURCE: &str =
     "local shoop_control = require('shoop_control'); shoop_control.register_keyboard_event_cb(function(_) end)";
 
 #[cfg(target_arch = "wasm32")]
+fn browser_unsupported_session_bytes(
+    sample_rate: u32,
+    carla: bool,
+) -> Result<std::sync::Arc<[u8]>, String> {
+    use shoop_session::{
+        encode_session, FxChainDocument, FxChainTypeDocument, SessionBundle, SessionDocument,
+        TrackControlsDocument, TrackDocument, TrackGroupDocument, TrackTopologyDocument,
+    };
+
+    let mut document = SessionDocument::empty(sample_rate);
+    let (name, port_name_base, topology, fx_chain) = if carla {
+        (
+            "Unsupported browser Carla",
+            "unsupported_browser_carla",
+            TrackTopologyDocument::Carla {
+                chain_type: FxChainTypeDocument::CarlaRack,
+                audio_channels: 1,
+                midi: true,
+                dry_audio_channels: Some(1),
+                wet_audio_channels: Some(1),
+            },
+            Some(FxChainDocument {
+                id: 100,
+                title: "Unavailable".to_owned(),
+                chain_type: FxChainTypeDocument::CarlaRack,
+                ports: Vec::new(),
+                internal_state: "opaque browser rejection state".to_owned(),
+            }),
+        )
+    } else {
+        (
+            "Unsupported browser External",
+            "unsupported_browser_external",
+            TrackTopologyDocument::DryWetExternal {
+                dry_audio_channels: 1,
+                wet_audio_channels: 1,
+                dry_midi: true,
+            },
+            None,
+        )
+    };
+    document.track_groups.push(TrackGroupDocument {
+        name: "main".to_owned(),
+        tracks: vec![TrackDocument {
+            id: 99,
+            name: name.to_owned(),
+            port_name_base: port_name_base.to_owned(),
+            is_sync: false,
+            width: None,
+            topology,
+            controls: TrackControlsDocument::default(),
+            loops: Vec::new(),
+            ports: Vec::new(),
+            fx_chain,
+        }],
+    });
+    encode_session(&SessionBundle::new(document), "browser-capability-test")
+        .map(std::sync::Arc::from)
+        .map_err(|error| format!("could not encode browser capability fixture: {error}"))
+}
+
+#[cfg(target_arch = "wasm32")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum BrowserSelfTest {
     Disabled,
     WaitForAudio,
+    WaitForDryWetForm,
     AddTrack,
     WaitForTrack,
     WaitForRecording,
@@ -1276,6 +1339,12 @@ enum BrowserSelfTest {
     ExportLoopMidi,
     WaitForLoopMidiExport,
     WaitForLoopMidiImport,
+    RejectProcessedSession,
+    RejectExternalSession,
+    WaitForProcessedSessionRejection {
+        callbacks_before: u64,
+        external: bool,
+    },
     Complete,
     Failed,
 }
@@ -1301,6 +1370,21 @@ impl BrowserSelfTest {
                 if !runtime.audio_running() {
                     return;
                 }
+                if !snapshot.track_processors.is_empty()
+                    || !widget.browser_test_open_empty_dry_wet_form()
+                {
+                    return self.fail(
+                        "browser dry/wet form did not expose an empty disabled processor selector",
+                    );
+                }
+                mark_browser_dry_wet_capability_check();
+                Ok(Self::WaitForDryWetForm)
+            }
+            Self::WaitForDryWetForm => {
+                if !snapshot.track_processors.is_empty() {
+                    return self.fail("browser unexpectedly advertised a track processor");
+                }
+                widget.browser_test_close_add_track();
                 widget.browser_test_open_global_connections();
                 Ok(Self::AddTrack)
             }
@@ -1673,7 +1757,7 @@ impl BrowserSelfTest {
                     return;
                 }
                 if browser_stress_enabled() || browser_session_only_enabled() {
-                    Ok(Self::Complete)
+                    Ok(Self::RejectProcessedSession)
                 } else {
                     Ok(Self::ExportLoopAudio)
                 }
@@ -1776,7 +1860,49 @@ impl BrowserSelfTest {
                 }) {
                     return;
                 }
-                Ok(Self::Complete)
+                Ok(Self::RejectProcessedSession)
+            }
+            Self::RejectProcessedSession | Self::RejectExternalSession => {
+                let external = matches!(*self, Self::RejectExternalSession);
+                match browser_unsupported_session_bytes(snapshot.status.sample_rate, !external) {
+                    Ok(bytes) => runtime
+                        .dispatch(AppIntent::LoadSessionBytes {
+                            name: "unsupported-processed.shoop".to_owned(),
+                            bytes,
+                        })
+                        .map(|()| Self::WaitForProcessedSessionRejection {
+                            callbacks_before: snapshot.status.callback_count,
+                            external,
+                        }),
+                    Err(error) => return self.fail(&error),
+                }
+            }
+            Self::WaitForProcessedSessionRejection {
+                callbacks_before,
+                external,
+            } => {
+                if snapshot.io_task.as_ref().is_none_or(|task| {
+                    task.kind != shoop_egui::IoTaskKind::LoadSession
+                        || task.status != shoop_egui::IoTaskStatus::Failed
+                }) {
+                    return;
+                }
+                if snapshot.status.callback_count <= callbacks_before {
+                    return;
+                }
+                let Some((_, loop_state)) = first_main_loop(snapshot) else {
+                    return self.fail("processed-session rejection removed direct tracks");
+                };
+                if snapshot.status.audio_driver != shoop_egui::AudioDriverState::Dummy
+                    && loop_state.empty
+                {
+                    return self.fail("processed-session rejection removed direct loop media");
+                }
+                if external {
+                    Ok(Self::Complete)
+                } else {
+                    Ok(Self::RejectExternalSession)
+                }
             }
         };
 
@@ -1849,6 +1975,16 @@ fn set_browser_self_test_status(status: &str) {
         if status == "passed" {
             element.set_text_content(Some("Web Audio non-zero I/O self-test passed"));
         }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn mark_browser_dry_wet_capability_check() {
+    if let Some(element) = web_sys::window()
+        .and_then(|window| window.document())
+        .and_then(|document| document.get_element_by_id("runtime_status"))
+    {
+        let _ = element.set_attribute("data-dry-wet-form", "empty-disabled");
     }
 }
 

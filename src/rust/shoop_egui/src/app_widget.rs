@@ -720,6 +720,26 @@ impl AppWidget {
 
     #[cfg(target_arch = "wasm32")]
     #[doc(hidden)]
+    pub fn browser_test_open_empty_dry_wet_form(&mut self) -> bool {
+        self.add_track_name = "Browser dry/wet capability check".to_owned();
+        self.add_track_mode = AddTrackMode::DryWet;
+        self.add_track_open = true;
+        self.add_track_processor = None;
+        self.add_track_open
+            && self.add_track_dry_audio_channels == self.add_track_audio_channels
+            && self.add_track_wet_audio_channels == self.add_track_audio_channels
+            && self.add_track_dry_midi == self.add_track_midi
+            && self.add_track_spec().is_none()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
+    pub fn browser_test_close_add_track(&mut self) {
+        self.cancel_add_track();
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[doc(hidden)]
     pub fn browser_settings_test_open_scripts(
         &mut self,
         settings_state: &SettingsViewState,

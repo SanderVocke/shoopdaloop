@@ -133,10 +133,10 @@ Verification:
 
 Verification:
 
-- [ ] Application tests cover every accepted native spec, stable IDs, at-least-eight alignment, Add Loop cloning, stale actions, empty browser capabilities, unsupported browser External/Carla, FX lifecycle/actions, and audio-driver replacement.
-- [ ] Backend-free egui interaction/paint tests cover native catalogs, the actual empty browser catalog, injected synthetic browser-native processors with and without UI/state facets, validation, applicable FX states/logs, minimum/common viewports, and absence of FX controls on direct/external tracks.
-- [ ] Existing direct-track, loop-control, connection, settings, and script tests remain behaviorally unchanged.
-- [ ] Commit the application/UI milestone.
+- [x] Application tests cover every accepted native spec, stable IDs, at-least-eight alignment, Add Loop cloning, stale actions, empty browser capabilities, unsupported browser External/Carla, FX lifecycle/actions, and audio-driver replacement.
+- [x] Backend-free egui interaction/paint tests cover native catalogs, the actual empty browser catalog, injected synthetic browser-native processors with and without UI/state facets, validation, applicable FX states/logs, minimum/common viewports, and absence of FX controls on direct/external tracks.
+- [x] Existing direct-track, loop-control, connection, settings, and script tests remain behaviorally unchanged.
+- [x] Commit the application/UI milestone.
 
 ### Stage 4 — Role-aware session and loop media I/O
 
@@ -149,31 +149,31 @@ Verification:
 
 Verification:
 
-- [ ] Codec/application/backend round trips assert exact float bits, MIDI bytes/timing, channel modes/order, offsets/preplay/gain, current and recorded Carla strings (including Unicode/newlines/NUL), and exact external host IDs.
+- [x] Codec/application/backend round trips assert exact float bits, MIDI bytes/timing, channel modes/order, offsets/preplay/gain, current and recorded Carla strings (including Unicode/newlines/NUL), and exact external host IDs.
 - [x] Import/export tests cover dry-only, wet-only, mixed/reordered/duplicated source mapping, unequal channel counts, standard WAV/MIDI, exact formats, resampling confirmation, and cancellation.
 - [ ] Failure tests prove malformed topology/state references, unavailable Carla, restore failure, recording-time save, and replacement failure leave the prior session usable.
-- [ ] Commit the persistence/media milestone.
+- [x] Commit the persistence/media milestone.
 
 ### Stage 5 — Carla hosting setting and startup orchestration
 
 - [x] Register a stable native `carla.hosting_mode` setting with in-process default, validated string-to-enum helpers, and restart-required effect; document that it is global and excluded from sessions.
 - [x] Load and apply the setting through a `shoop_backend` adapter before constructing `NativeBackend` or any FX chain; ordinary Save persists it without migrating running chains.
 - [x] Ensure fallback/recovery diagnostics distinguish missing LV2, in-process host failure, subprocess launch/handshake failure, crash, and stale state while preserving settings recovery behavior.
-- [ ] Add native packaging checks ensuring the main executable can serve as its own worker on Linux, Windows, and macOS.
+- [x] Add native packaging checks ensuring the main executable can serve as its own worker on Linux, Windows, and macOS.
 
 Verification:
 
 - [x] Settings tests cover default, both modes, invalid fallback/diagnostic, unknown-key preservation, restart persistence, and no session serialization.
 - [ ] Runner/backend tests prove the selected mode is applied before first FX creation and changing the setting has no runtime effect until restart.
 - [ ] In-process and fake-subprocess workflows create independent chains, save/restore state, toggle UI, recover one failed chain, and shut down without orphan workers.
-- [ ] Commit the settings/startup milestone.
+- [x] Commit the settings/startup milestone.
 
 ### Stage 6 — QML-parity integration and documentation
 
 - [ ] Translate the retained QML dry/wet direct, external, transition, multiple-loop, Carla activation/MIDI-gating, and session-save/load cases into the narrowest Rust backend/application integration tests.
 - [ ] Add native egui end-to-end workflows for external ports and fake/installed Carla: create, connect, monitor, record, play wet, play dry, re-record wet, show/hide UI, save, replace, reload, and restore recorded FX state.
-- [ ] Extend browser automation to open the Dry + Wet form, verify all shared fields/mechanics remain visible, observe an empty processing selector with disabled acceptance, and prove External/Carla session rejection leaves direct tracks/media and AudioWorklet callback progress intact.
-- [ ] Update `docs/session_format_v1.md`, `docs/settings_format_v1.md`, `docs/egui_port_model.md`, `shoopdaloop_egui/README.md`, user track/Carla documentation, project roadmap, and parity evidence.
+- [x] Extend browser automation to open the Dry + Wet form, verify all shared fields/mechanics remain visible, observe an empty processing selector with disabled acceptance, and prove External/Carla session rejection leaves direct tracks/media and AudioWorklet callback progress intact.
+- [x] Update `docs/session_format_v1.md`, `docs/settings_format_v1.md`, `docs/egui_port_model.md`, `shoopdaloop_egui/README.md`, user track/Carla documentation, project roadmap, and parity evidence.
 
 Verification:
 

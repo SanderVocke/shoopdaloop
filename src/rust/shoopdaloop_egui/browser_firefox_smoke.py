@@ -61,6 +61,7 @@ def main() -> None:
                 "self_test": status.get_attribute("data-self-test"),
                 "driver": status.get_attribute("data-driver-state"),
                 "self_test_error": status.get_attribute("data-self-test-error"),
+                "dry_wet_form": status.get_attribute("data-dry-wet-form"),
                 "callbacks": int(status.get_attribute("data-callback-count") or 0),
                 "input_peak": float(status.get_attribute("data-input-peak") or 0),
                 "output_peak": float(status.get_attribute("data-output-peak") or 0),
@@ -89,6 +90,7 @@ def main() -> None:
             and state["overflows"] == 0
             and state["budget_overruns"] == 0
             and state["owned_media_tracks"] > 0
+            and state["dry_wet_form"] == "empty-disabled"
         ):
             raise RuntimeError(f"Firefox browser evidence is incomplete: {state}")
         print(f"Firefox Web Audio self-test passed: {state}")

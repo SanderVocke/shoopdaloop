@@ -230,6 +230,7 @@ try {
     selfTest: document.getElementById('runtime_status')?.getAttribute('data-self-test'),
     selfTestError: document.getElementById('runtime_status')?.getAttribute('data-self-test-error'),
     selfTestNonzeroIo: document.getElementById('runtime_status')?.getAttribute('data-self-test-nonzero-io'),
+    dryWetForm: document.getElementById('runtime_status')?.getAttribute('data-dry-wet-form'),
     settingsTest: document.getElementById('runtime_status')?.getAttribute('data-settings-self-test'),
     settingsChannels: Number(document.getElementById('runtime_status')?.getAttribute('data-settings-channels')),
     settingsMidi: document.getElementById('runtime_status')?.getAttribute('data-settings-midi'),
@@ -366,8 +367,8 @@ try {
         && candidate.selfTest === 'passed',
       'offline dummy session round trip did not finish',
     );
-    if (state.driver !== 'Dummy' || !entryUrl.includes('offline=1')) {
-      throw new Error(`offline artifact was not explicit: ${JSON.stringify(state)}`);
+    if (state.driver !== 'Dummy' || !entryUrl.includes('offline=1') || state.dryWetForm !== 'empty-disabled') {
+      throw new Error(`offline artifact or dry/wet capability evidence was incomplete: ${JSON.stringify(state)}`);
     }
     console.log(`explicit self-contained offline dummy passed at ${browserSize}`);
   } else if (outputOnly) {
@@ -413,6 +414,9 @@ try {
     }
     if (state.selfTestNonzeroIo !== 'true') {
       throw new Error(`non-zero I/O evidence is missing: ${JSON.stringify(state)}`);
+    }
+    if (state.dryWetForm !== 'empty-disabled') {
+      throw new Error(`empty browser dry/wet processor evidence is missing: ${JSON.stringify(state)}`);
     }
     if (!(state.sampleRate > 0 && state.quantum === 128 && state.captureChannels > 0)) {
       throw new Error(`context rate/quantum diagnostics are invalid: ${JSON.stringify(state)}`);
