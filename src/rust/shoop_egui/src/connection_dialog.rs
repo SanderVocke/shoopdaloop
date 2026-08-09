@@ -1,5 +1,5 @@
 use crate::{
-    AppIntent, AppState, ApplicationPortOwner, ApplicationPortState, ConnectionPolicy,
+    colors, AppIntent, AppState, ApplicationPortOwner, ApplicationPortState, ConnectionPolicy,
     ConnectionViewState, HostPortState, PortRole, TrackId,
 };
 
@@ -76,7 +76,7 @@ impl ConnectionDialog {
             .min_size([300.0, 180.0])
             .show(context, |ui| {
                 if matches!(self.scope, ConnectionScope::Track(_)) && scoped_track.is_none() {
-                    ui.colored_label(egui::Color32::YELLOW, "This track is no longer available.");
+                    ui.colored_label(colors::WARNING, "This track is no longer available.");
                     return;
                 }
                 self.show_contents(ui, &state.connections, &mut intents);
@@ -100,7 +100,7 @@ impl ConnectionDialog {
         }
         if !state.backend_available {
             ui.colored_label(
-                egui::Color32::YELLOW,
+                colors::WARNING,
                 "Host connection management is unavailable for this audio backend.",
             );
         }
@@ -215,7 +215,7 @@ impl ConnectionDialog {
 
         if let Some(error) = state.errors.last() {
             ui.separator();
-            ui.colored_label(egui::Color32::LIGHT_RED, &error.message);
+            ui.colored_label(colors::ERROR, &error.message);
         }
     }
 

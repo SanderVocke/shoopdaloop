@@ -5,7 +5,7 @@ use egui_material_icons::icons::{
 use egui_material_icons::MaterialIcon;
 
 use crate::{
-    dial::paint_dial, AppIntent, CompositeKind, LoopAudioExportFormat, LoopMode, LoopState,
+    colors, dial::paint_dial, AppIntent, CompositeKind, LoopAudioExportFormat, LoopMode, LoopState,
     LoopWidgetAction, SelectionModifiers,
 };
 
@@ -62,36 +62,26 @@ fn icon_for_state(
     script_composite: bool,
 ) -> (MaterialIcon, egui::Color32, bool) {
     if empty {
-        return (ICON_BORDER_CLEAR, egui::Color32::GRAY, false);
+        return (ICON_BORDER_CLEAR, colors::MUTED_FOREGROUND, false);
     }
 
     match mode {
         LoopMode::Playing => (
             ICON_PLAY_ARROW,
             if script_composite {
-                egui::Color32::WHITE
+                colors::FOREGROUND
             } else {
-                egui::Color32::from_rgb(0, 170, 0)
+                colors::PLAYING_STATE
             },
             false,
         ),
-        LoopMode::PlayingDryThroughWet => {
-            (ICON_PLAY_ARROW, egui::Color32::from_rgb(255, 165, 0), true)
-        }
-        LoopMode::Recording => (ICON_FIBER_MANUAL_RECORD, egui::Color32::RED, false),
-        LoopMode::RecordingDryIntoWet => (
-            ICON_FIBER_MANUAL_RECORD,
-            egui::Color32::from_rgb(255, 165, 0),
-            true,
-        ),
-        LoopMode::Stopped if regular_composite => {
-            (ICON_VIEW_LIST, egui::Color32::from_rgb(30, 30, 30), false)
-        }
-        LoopMode::Stopped if script_composite => {
-            (ICON_EDIT_NOTE, egui::Color32::from_rgb(30, 30, 30), false)
-        }
-        LoopMode::Stopped => (ICON_STOP, egui::Color32::GRAY, false),
-        _ => (ICON_HELP, egui::Color32::GRAY, false),
+        LoopMode::PlayingDryThroughWet => (ICON_PLAY_ARROW, colors::DRY_THROUGH_WET, true),
+        LoopMode::Recording => (ICON_FIBER_MANUAL_RECORD, colors::RECORD_ACTION, false),
+        LoopMode::RecordingDryIntoWet => (ICON_FIBER_MANUAL_RECORD, colors::DRY_THROUGH_WET, true),
+        LoopMode::Stopped if regular_composite => (ICON_VIEW_LIST, colors::DARK_BACKGROUND, false),
+        LoopMode::Stopped if script_composite => (ICON_EDIT_NOTE, colors::DARK_BACKGROUND, false),
+        LoopMode::Stopped => (ICON_STOP, colors::MUTED_FOREGROUND, false),
+        _ => (ICON_HELP, colors::MUTED_FOREGROUND, false),
     }
 }
 
@@ -198,23 +188,23 @@ impl LoopWidget {
         let hovered = hover_allowed && ui.rect_contains_pointer(rect);
         let rounding = egui::CornerRadius::same(2);
         let background = if state.composite_kind == CompositeKind::Regular {
-            egui::Color32::from_rgb(255, 192, 203)
+            colors::LOOP_REGULAR_COMPOSITE
         } else if state.composite_kind == CompositeKind::Script {
-            egui::Color32::from_rgb(119, 170, 119)
+            colors::LOOP_SCRIPT_COMPOSITE
         } else if !state.empty {
-            egui::Color32::from_rgb(0, 0, 68)
+            colors::LOOP_AUDIO_BACKGROUND
         } else {
-            egui::Color32::from_rgb(30, 30, 30)
+            colors::DARK_BACKGROUND
         };
         ui.painter().rect_filled(rect, rounding, background);
 
         if state.position > 0.0 {
             let progress_color = match state.mode {
-                LoopMode::Playing => egui::Color32::from_rgb(0, 68, 0),
-                LoopMode::PlayingDryThroughWet => egui::Color32::from_rgb(51, 51, 0),
-                LoopMode::Recording => egui::Color32::from_rgb(102, 0, 0),
-                LoopMode::RecordingDryIntoWet => egui::Color32::from_rgb(102, 51, 0),
-                _ => egui::Color32::from_rgb(68, 68, 68),
+                LoopMode::Playing => colors::LOOP_PROGRESS_PLAYING,
+                LoopMode::PlayingDryThroughWet => colors::LOOP_PROGRESS_PLAYING_DRY,
+                LoopMode::Recording => colors::LOOP_PROGRESS_RECORDING,
+                LoopMode::RecordingDryIntoWet => colors::LOOP_PROGRESS_RECORDING_DRY,
+                _ => colors::LOOP_PROGRESS_OTHER,
             };
             let progress_rect = egui::Rect::from_min_size(
                 rect.min + egui::vec2(2.0, 2.0),
@@ -235,10 +225,10 @@ impl LoopWidget {
                 egui::pos2(rect.right() - 2.0, rect.bottom() - 2.0),
             );
             ui.painter()
-                .rect_filled(midi_rect, 0.0, egui::Color32::CYAN);
+                .rect_filled(midi_rect, 0.0, colors::MIDI_ACTIVITY);
         }
 
-        let meter_color = egui::Color32::from_rgb(0, 188, 212);
+        let meter_color = colors::AUDIO_ACTIVITY;
         let meter_top = (rect.bottom() - 5.0).max(rect.top());
         let meter_bottom = (rect.bottom() - 2.0).max(meter_top);
         if state.stereo {
@@ -276,17 +266,17 @@ impl LoopWidget {
         }
 
         let border_color = if state.targeted {
-            egui::Color32::from_rgb(255, 165, 0)
+            colors::LOOP_TARGET_EDGE
         } else if state.selected {
-            egui::Color32::YELLOW
+            colors::LOOP_SELECTED_EDGE
         } else if state.selected_composite_kind == CompositeKind::Regular {
-            egui::Color32::from_rgb(255, 192, 203)
+            colors::LOOP_REGULAR_COMPOSITE
         } else if state.selected_composite_kind == CompositeKind::Script {
-            egui::Color32::from_rgb(119, 170, 119)
+            colors::LOOP_SCRIPT_COMPOSITE
         } else if state.empty {
-            egui::Color32::GRAY
+            colors::MUTED_FOREGROUND
         } else {
-            egui::Color32::from_gray(221)
+            colors::LOOP_CONTENT_EDGE
         };
         ui.painter().rect_stroke(
             rect,
@@ -305,7 +295,7 @@ impl LoopWidget {
                     egui::Align2::CENTER_CENTER,
                     (transition_delay + 1).to_string(),
                     egui::FontId::proportional(12.0),
-                    egui::Color32::WHITE,
+                    colors::FOREGROUND,
                 );
             } else {
                 paint_icon(
@@ -313,7 +303,7 @@ impl LoopWidget {
                     icon_rect.center(),
                     ICON_TIMER,
                     20.0,
-                    egui::Color32::WHITE,
+                    colors::FOREGROUND,
                 );
             }
             let (next_icon, next_color, next_fx) =
@@ -335,7 +325,7 @@ impl LoopWidget {
                     egui::Align2::RIGHT_BOTTOM,
                     "FX",
                     egui::FontId::proportional(5.0),
-                    egui::Color32::WHITE,
+                    colors::FOREGROUND,
                 );
             }
         } else {
@@ -352,7 +342,7 @@ impl LoopWidget {
                     egui::Align2::RIGHT_BOTTOM,
                     "FX",
                     egui::FontId::proportional(7.0),
-                    egui::Color32::WHITE,
+                    colors::FOREGROUND,
                 );
             }
         }
@@ -363,7 +353,7 @@ impl LoopWidget {
                 egui::pos2(rect.left() + 6.0, rect.top() + 6.0),
                 ICON_STAR,
                 10.0,
-                egui::Color32::YELLOW,
+                colors::LOOP_SYNC_MARKER,
             );
         }
 
@@ -459,9 +449,9 @@ impl LoopWidget {
                     play_rect,
                     egui::Button::new(ICON_PLAY_ARROW.rich_text().size(icon_size).color(
                         if non_script {
-                            egui::Color32::from_rgb(0, 128, 0)
+                            colors::PLAY_ACTION
                         } else {
-                            egui::Color32::WHITE
+                            colors::FOREGROUND
                         },
                     )),
                 )
@@ -477,7 +467,7 @@ impl LoopWidget {
                     record_rect.center(),
                     ICON_FIBER_MANUAL_RECORD,
                     icon_size,
-                    egui::Color32::RED,
+                    colors::RECORD_ACTION,
                 );
                 if state.play_after_record {
                     paint_icon(
@@ -488,7 +478,7 @@ impl LoopWidget {
                         record_rect.center(),
                         ICON_FIBER_MANUAL_RECORD,
                         icon_size,
-                        egui::Color32::from_rgb(0, 128, 0),
+                        colors::PLAY_ACTION,
                     );
                 }
                 if record_response.on_hover_text("Record").clicked() {
@@ -502,7 +492,7 @@ impl LoopWidget {
                         ICON_STOP
                             .rich_text()
                             .size(icon_size)
-                            .color(egui::Color32::WHITE),
+                            .color(colors::FOREGROUND),
                     ),
                 )
                 .on_hover_text("Stop")
@@ -521,9 +511,9 @@ impl LoopWidget {
                 &state.name,
                 egui::FontId::proportional(11.0),
                 if generated_loop_name(&state.name) {
-                    egui::Color32::GRAY
+                    colors::MUTED_FOREGROUND
                 } else {
-                    egui::Color32::WHITE
+                    colors::FOREGROUND
                 },
             );
         }
@@ -539,7 +529,7 @@ impl LoopWidget {
                         play_popup_rect.size(),
                         ICON_PLAY_ARROW,
                         icon_size,
-                        egui::Color32::from_rgb(255, 165, 0),
+                        colors::DRY_THROUGH_WET,
                         "Play dry through live effects",
                     );
                     #[cfg(test)]
@@ -563,7 +553,7 @@ impl LoopWidget {
                         egui::vec2(button_width, button_height),
                         ICON_ARROW_DOWNWARD,
                         icon_size,
-                        egui::Color32::RED,
+                        colors::RECORD_ACTION,
                         "Grab always-on recording",
                     );
                     if state.play_after_record {
@@ -575,7 +565,7 @@ impl LoopWidget {
                             grab.rect.center(),
                             ICON_ARROW_DOWNWARD,
                             icon_size,
-                            egui::Color32::from_rgb(0, 128, 0),
+                            colors::PLAY_ACTION,
                         );
                     }
                     if grab.clicked() {
@@ -586,7 +576,7 @@ impl LoopWidget {
                         egui::vec2(button_width, button_height),
                         ICON_FIBER_MANUAL_RECORD,
                         icon_size,
-                        egui::Color32::from_rgb(255, 165, 0),
+                        colors::DRY_THROUGH_WET,
                         "Re-record dry through live effects",
                     )
                     .clicked()

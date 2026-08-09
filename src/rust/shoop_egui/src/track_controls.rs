@@ -1,5 +1,6 @@
 use crate::{
-    dial::paint_dial, TrackControlState, TrackWidgetAction, MAX_TRACK_GAIN_DB, MIN_TRACK_GAIN_DB,
+    colors, dial::paint_dial, TrackControlState, TrackWidgetAction, MAX_TRACK_GAIN_DB,
+    MIN_TRACK_GAIN_DB,
 };
 use egui_material_icons::icons::{ICON_HEARING, ICON_VOLUME_MUTE, ICON_VOLUME_UP};
 
@@ -99,7 +100,7 @@ impl TrackControls {
                 let color = if state.input_monitoring {
                     ui.visuals().text_color()
                 } else {
-                    egui::Color32::GRAY
+                    colors::MUTED_FOREGROUND
                 };
                 let response = ui
                     .add(
@@ -206,10 +207,10 @@ fn meter(ui: &mut egui::Ui, stereo: bool, left_db: f32, right_db: f32, midi_acti
     let (rect, _) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), 4.0), egui::Sense::hover());
     let painter = ui.painter();
-    painter.rect_filled(rect, 1.0, egui::Color32::from_rgb(34, 34, 34));
+    painter.rect_filled(rect, 1.0, colors::CONTROL_BACKGROUND);
 
     let normalized = |db: f32| ((db - METER_MIN_DB) / -METER_MIN_DB).clamp(0.0, 1.0);
-    let color = egui::Color32::from_rgb(102, 102, 102);
+    let color = colors::METER_LEVEL;
     if stereo {
         let center = rect.center().x;
         let left_width = normalized(left_db) * rect.width() * 0.5;
@@ -246,7 +247,7 @@ fn meter(ui: &mut egui::Ui, stereo: bool, left_db: f32, right_db: f32, midi_acti
                 rect.right_bottom(),
             ),
             1.0,
-            egui::Color32::CYAN,
+            colors::MIDI_ACTIVITY,
         );
     }
 }

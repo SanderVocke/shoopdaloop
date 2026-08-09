@@ -6,8 +6,8 @@ use shoop_settings::{
 };
 
 use crate::{
-    audio_driver_config_from_draft, AppAction, AudioDriverKind, AudioDriverRuntimeState, ScriptId,
-    ScriptKind, ScriptLogLevel, ScriptingState, USER_SCRIPTS,
+    audio_driver_config_from_draft, colors, AppAction, AudioDriverKind, AudioDriverRuntimeState,
+    ScriptId, ScriptKind, ScriptLogLevel, ScriptingState, USER_SCRIPTS,
 };
 
 #[derive(Clone, Debug)]
@@ -216,7 +216,7 @@ impl SettingsDialog {
                         }
                         if stale {
                             ui.colored_label(
-                                egui::Color32::YELLOW,
+                                colors::WARNING,
                                 "Settings changed elsewhere; close and reopen this dialog.",
                             );
                         }
@@ -289,14 +289,14 @@ impl SettingsDialog {
                 ui.label("Saving settings…");
             }
             SettingsPersistenceState::Saved => {
-                ui.colored_label(egui::Color32::LIGHT_GREEN, "Settings saved");
+                ui.colored_label(colors::SUCCESS, "Settings saved");
             }
             SettingsPersistenceState::Failed => {
-                ui.colored_label(egui::Color32::LIGHT_RED, "Settings were not saved");
+                ui.colored_label(colors::ERROR, "Settings were not saved");
             }
         }
         for diagnostic in state.diagnostics.iter() {
-            ui.colored_label(egui::Color32::YELLOW, &diagnostic.message);
+            ui.colored_label(colors::WARNING, &diagnostic.message);
         }
     }
 
@@ -319,7 +319,7 @@ impl SettingsDialog {
     ) {
         if !audio.supported {
             ui.colored_label(
-                egui::Color32::YELLOW,
+                colors::WARNING,
                 "Native runtime driver switching is unavailable in this build.",
             );
             return;
@@ -340,7 +340,7 @@ impl SettingsDialog {
         self.audio_target = Some(selected);
         let descriptor = audio.catalog.iter().find(|driver| driver.kind == selected);
         if let Some(reason) = descriptor.and_then(|driver| driver.unavailable_reason.as_ref()) {
-            ui.colored_label(egui::Color32::LIGHT_RED, reason);
+            ui.colored_label(colors::ERROR, reason);
         }
         if let Some(active) = &audio.active {
             ui.label(format!(
@@ -394,7 +394,7 @@ impl SettingsDialog {
                 .is_none_or(|active| active.configured != *config)
         });
         if let Err(error) = &config {
-            ui.colored_label(egui::Color32::LIGHT_RED, error);
+            ui.colored_label(colors::ERROR, error);
         }
         let can_switch = descriptor.is_some_and(|driver| driver.available)
             && differs
@@ -421,9 +421,9 @@ impl SettingsDialog {
                 audio.switch.status,
                 crate::AudioDriverSwitchStatus::Failed | crate::AudioDriverSwitchStatus::Fatal
             ) {
-                egui::Color32::LIGHT_RED
+                colors::ERROR
             } else {
-                egui::Color32::YELLOW
+                colors::WARNING
             };
             ui.colored_label(color, &audio.switch.message);
         }
@@ -452,11 +452,11 @@ impl SettingsDialog {
             .collapsible(false)
             .resizable(false)
             .show(context, |ui| {
-                ui.colored_label(egui::Color32::YELLOW, &audio.switch.message);
+                ui.colored_label(colors::WARNING, &audio.switch.message);
                 if let (Some(source), Some(target)) = (&audio.switch.source, &audio.switch.target) {
                     if source.sample_rate != target.sample_rate {
                         ui.colored_label(
-                            egui::Color32::LIGHT_RED,
+                            colors::ERROR,
                             format!(
                                 "Sample rate differs: {} Hz → {} Hz. All loop contents will be resampled.",
                                 source.sample_rate, target.sample_rate
@@ -503,7 +503,7 @@ impl SettingsDialog {
                     ui.weak(definition.effect().label());
                     if let Some(draft) = &mut self.draft {
                         let Some(value) = draft.value(definition.key()).cloned() else {
-                            ui.colored_label(egui::Color32::LIGHT_RED, "Missing draft value");
+                            ui.colored_label(colors::ERROR, "Missing draft value");
                             return;
                         };
                         let mut changed = value.clone();
@@ -579,7 +579,7 @@ impl SettingsDialog {
                             ) => Self::show_string_toggle_list(ui, value),
                             _ => {
                                 ui.colored_label(
-                                    egui::Color32::LIGHT_RED,
+                                    colors::ERROR,
                                     "Definition and value types do not match",
                                 );
                             }
@@ -624,7 +624,7 @@ impl SettingsDialog {
         ui.heading("Runtime status");
         if !scripting.supported {
             ui.colored_label(
-                egui::Color32::YELLOW,
+                colors::WARNING,
                 "Lua scripting and MIDI control are unavailable in this build.",
             );
             return;
@@ -694,7 +694,7 @@ impl SettingsDialog {
                     }
                 });
                 if let Some(error) = &script.latest_error {
-                    ui.colored_label(egui::Color32::LIGHT_RED, error);
+                    ui.colored_label(colors::ERROR, error);
                 }
                 if let Some(documentation) = &script.documentation {
                     ui.collapsing("Documentation", |ui| {
@@ -735,10 +735,7 @@ impl SettingsDialog {
                             ));
                         }
                         if let Some(error) = &rule.latest_error {
-                            ui.colored_label(
-                                egui::Color32::LIGHT_RED,
-                                format!("Latest failure: {error}"),
-                            );
+                            ui.colored_label(colors::ERROR, format!("Latest failure: {error}"));
                         }
                     });
                 }
@@ -748,8 +745,8 @@ impl SettingsDialog {
                     }
                     for entry in script.logs.iter() {
                         let color = match entry.level {
-                            ScriptLogLevel::Warning => egui::Color32::YELLOW,
-                            ScriptLogLevel::Error => egui::Color32::LIGHT_RED,
+                            ScriptLogLevel::Warning => colors::WARNING,
+                            ScriptLogLevel::Error => colors::ERROR,
                             _ => ui.visuals().text_color(),
                         };
                         ui.colored_label(color, &entry.message);
