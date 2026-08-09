@@ -1070,6 +1070,11 @@ pub enum TrackAction {
     InputGainChanged(f32),
     InputBalanceChanged(f32),
     InputMonitoringChanged(bool),
+    FxActiveChanged(bool),
+    FxVisibilityChanged(bool),
+    FxToggleOrRecover,
+    FxRestoreState(String),
+    FxClearLogs,
 }
 
 pub type TrackWidgetAction = TrackAction;

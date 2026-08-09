@@ -4767,6 +4767,7 @@ dependencies = [
  "serde",
  "shoop_app_api",
  "shoop_engine",
+ "shoop_plugin_protocol",
 ]
 
 [[package]]
@@ -4924,6 +4925,8 @@ dependencies = [
  "shoop_audio_protocol",
  "shoop_backend",
  "shoop_egui",
+ "shoop_engine",
+ "shoop_plugin_protocol",
  "shoop_scripting",
  "shoop_session",
  "shoop_settings",

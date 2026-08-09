@@ -981,6 +981,14 @@ fn create_app(
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
+    match shoop_backend::run_carla_worker_if_requested(std::env::args_os()) {
+        Ok(true) => return Ok(()),
+        Ok(false) => {}
+        Err(error) => {
+            eprintln!("Carla worker failed: {error:#}");
+            std::process::exit(2);
+        }
+    }
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("ShoopDaLoop egui (dummy engine)")

@@ -109,19 +109,19 @@ Verification:
 
 ### Stage 2 — Native Carla composition and worker entry
 
-- [ ] Add a native-FX backend feature that enables existing LV2/Carla support without contaminating browser or presentation dependency graphs.
-- [ ] Extend native track storage/construction to own one existing `FXChain`, wire dry inputs/MIDI and wet outputs by index, and apply shared active/bypass routing state.
-- [ ] Expose typed control operations for UI visibility/toggle-or-recover, state capture/restore, lifecycle/generation/crash status, and bounded generation logs.
-- [ ] Add a reusable native worker-entry parser/dispatcher at the backend/engine boundary and invoke it in `shoopdaloop_egui` before eframe, settings, audio drivers, or the application actor start.
-- [ ] Preserve the existing supervised processor's last-confirmed state and independent generation/recovery semantics through capture and teardown.
+- [x] Add a native-FX backend feature that enables existing LV2/Carla support without contaminating browser or presentation dependency graphs.
+- [x] Extend native track storage/construction to own one existing `FXChain`, wire dry inputs/MIDI and wet outputs by index, and apply shared active/bypass routing state.
+- [x] Expose typed control operations for UI visibility/toggle-or-recover, state capture/restore, lifecycle/generation/crash status, and bounded generation logs.
+- [x] Add a reusable native worker-entry parser/dispatcher at the backend/engine boundary and invoke it in `shoopdaloop_egui` before eframe, settings, audio drivers, or the application actor start.
+- [x] Preserve the existing supervised processor's last-confirmed state and independent generation/recovery semantics through capture and teardown.
 
 Verification:
 
-- [ ] Deterministic `Test2x2x1`/fake-Carla tests prove audio/MIDI wiring, active gating, wet silence on failure/deadline miss, state checkpoint identity, recovery, logs, and clean shutdown.
-- [ ] An integration test launches the egui executable in hidden fake-worker mode and completes the existing handshake/shared-memory protocol without creating a GUI.
-- [ ] Optional installed-Carla Rack/Patchbay/Patchbay16x and external-UI smokes skip with explicit reasons when LV2/UI support is unavailable.
-- [ ] Native dependency scans include LV2 only in the intended product/backend feature; Wasm/worklet/presentation scans remain clean.
-- [ ] Commit the native-Carla milestone.
+- [x] Native `Test2x2x1`, engine realtime, and the 14-test fake-worker suite prove public/internal wiring, audio/MIDI flow, active gating, bounded wet failure, checkpoint identity, recovery, generation logs, independent chains, and clean/abnormal shutdown.
+- [x] `shoopdaloop_egui/tests/carla_worker_entry.rs` launches the actual egui executable in hidden fake-worker mode and completes the handshake, shared-memory setup, controls, state request, and clean exit without creating a GUI.
+- [x] Existing installed-Carla creation, Rack/Patchbay/Patchbay16x transport, and external-UI checks run when available and retain explicit environment skips otherwise.
+- [x] `cargo tree` scans show LV2/native audio dependencies only under `shoop_backend/native-fx` and the native product; production Wasm and `shoop_egui` normal/build trees remain free of `lilv`, `lv2_raw`, JACK, CPAL, and midir.
+- [x] Commit the native-Carla milestone.
 
 ### Stage 3 — Application model, actions, and Add Track UI
 

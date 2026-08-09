@@ -5636,17 +5636,30 @@ impl FXChain {
         }
     }
 
-    pub fn get_state_str(&self) -> Option<String> {
+    pub fn try_get_state_str(&self) -> Result<String> {
         match &self.backend {
-            FXChainBackendKind::Unavailable { reason } => Some(format!(
-                "{{\"chain_type\":\"{:?}\",\"unavailable\":{reason:?}}}",
-                self.chain_type
-            )),
+            FXChainBackendKind::Unavailable { reason } => Err(anyhow!(reason.clone())),
             #[cfg(feature = "lv2")]
-            FXChainBackendKind::Carla(host) => host.save_state().ok(),
-            _ => Some(String::new()),
+            FXChainBackendKind::Carla(host) => host.save_state(),
+            _ => Ok(String::new()),
         }
     }
+
+    pub fn get_state_str(&self) -> Option<String> {
+        self.try_get_state_str().ok()
+    }
+
+    pub fn try_restore_state(&self, state: &str) -> Result<()> {
+        #[cfg(not(feature = "lv2"))]
+        let _ = state;
+        match &self.backend {
+            #[cfg(feature = "lv2")]
+            FXChainBackendKind::Carla(host) => host.restore_state(state),
+            FXChainBackendKind::Test2x2x1 => Ok(()),
+            FXChainBackendKind::Unavailable { reason } => Err(anyhow!(reason.clone())),
+        }
+    }
+
     pub fn restore_state(&self, state: &str) {
         #[cfg(feature = "lv2")]
         if let FXChainBackendKind::Carla(host) = &self.backend {

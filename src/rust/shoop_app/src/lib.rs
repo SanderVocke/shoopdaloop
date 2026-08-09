@@ -27,7 +27,8 @@ use shoop_backend::{
     BackendMidiEvent, BackendPortDataType, BackendPortDescriptor, BackendPortDirection,
     BackendPortId, BackendPortRole, BackendSessionData, BackendSessionPort,
     BackendSessionReplacement, BackendSessionTrack, BackendSnapshot, BackendTrackControl,
-    BackendTrackId, BackendTrackState, BackendTrackTopology, DirectTrackRequest, TrackRequest,
+    BackendTrackFxControl, BackendTrackId, BackendTrackState, BackendTrackTopology,
+    DirectTrackRequest, TrackRequest,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_scripting::NativeMidiService;
@@ -440,6 +441,7 @@ struct TrackModel {
     is_sync: bool,
     audio_channels: u32,
     topology: TrackTopology,
+    fx: Option<shoop_app_api::TrackFxState>,
     loops: Vec<LoopId>,
     port_ids: Arc<[PortId]>,
     controls: TrackControlState,
@@ -602,6 +604,7 @@ impl ApplicationModel {
                 is_sync: true,
                 audio_channels: 1,
                 topology: TrackTopology::Direct,
+                fx: None,
                 loops: vec![loop_id],
                 port_ids,
                 controls: Default::default(),
@@ -2528,6 +2531,7 @@ impl ApplicationModel {
             is_sync: false,
             audio_channels: loop_audio_channels,
             topology,
+            fx: None,
             loops: loop_ids,
             port_ids,
             controls: Default::default(),
@@ -2614,6 +2618,37 @@ impl ApplicationModel {
             TrackAction::InputBalanceChanged(value) => BackendTrackControl::InputBalance(value),
             TrackAction::InputMonitoringChanged(value) => {
                 BackendTrackControl::InputMonitoring(value)
+            }
+            TrackAction::FxActiveChanged(value) => {
+                return backend
+                    .set_track_fx_control(track.backend_id, BackendTrackFxControl::SetActive(value))
+                    .map_err(|error| format!("could not update track FX {track_id}: {error}"));
+            }
+            TrackAction::FxVisibilityChanged(value) => {
+                return backend
+                    .set_track_fx_control(
+                        track.backend_id,
+                        BackendTrackFxControl::SetVisible(value),
+                    )
+                    .map_err(|error| format!("could not update track FX {track_id}: {error}"));
+            }
+            TrackAction::FxToggleOrRecover => {
+                return backend
+                    .set_track_fx_control(track.backend_id, BackendTrackFxControl::ToggleOrRecover)
+                    .map_err(|error| format!("could not update track FX {track_id}: {error}"));
+            }
+            TrackAction::FxRestoreState(state) => {
+                return backend
+                    .set_track_fx_control(
+                        track.backend_id,
+                        BackendTrackFxControl::RestoreState(state),
+                    )
+                    .map_err(|error| format!("could not update track FX {track_id}: {error}"));
+            }
+            TrackAction::FxClearLogs => {
+                return backend
+                    .set_track_fx_control(track.backend_id, BackendTrackFxControl::ClearLogs)
+                    .map_err(|error| format!("could not update track FX {track_id}: {error}"));
             }
         };
         backend
@@ -3319,6 +3354,7 @@ impl ApplicationModel {
                         ..
                     } => (*dry_audio_channels, *wet_audio_channels, *dry_midi, false),
                 };
+            track.fx.clone_from(&backend_state.fx);
             let controls = &mut track.controls;
             controls.has_output = output_audio_channels > 0 || output_midi;
             controls.has_output_audio = output_audio_channels > 0;
@@ -4128,6 +4164,7 @@ impl ApplicationModel {
                 is_sync: track_document.is_sync,
                 audio_channels,
                 topology: TrackTopology::Direct,
+                fx: None,
                 loops: loop_ids,
                 port_ids: Arc::from(port_ids),
                 controls: TrackControlState {
@@ -4195,7 +4232,7 @@ impl ApplicationModel {
                     name: track.name.clone(),
                     is_sync: track.is_sync,
                     topology: track.topology.clone(),
-                    fx: None,
+                    fx: track.fx.clone(),
                     loops: track
                         .loops
                         .iter()

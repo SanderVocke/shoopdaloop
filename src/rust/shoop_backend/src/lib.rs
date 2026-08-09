@@ -1,5 +1,7 @@
 #[cfg(all(feature = "native-drivers", not(target_arch = "wasm32")))]
 mod native;
+#[cfg(all(feature = "native-fx", not(target_arch = "wasm32")))]
+pub use native::run_carla_worker_if_requested;
 #[cfg(all(feature = "native-drivers", not(target_arch = "wasm32")))]
 pub use native::NativeBackend;
 
@@ -11,7 +13,7 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use shoop_app_api::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
-    DummyAudioDriverConfig, ResolvedAudioDriverConfig, TrackProcessorDescriptor,
+    DummyAudioDriverConfig, ResolvedAudioDriverConfig, TrackFxState, TrackProcessorDescriptor,
 };
 use shoop_engine::dummy_midi_port::DummyMidiPort;
 use shoop_engine::dummy_port::{DummyAudioPort, DummyExternalConnections, PortId};
@@ -235,9 +237,20 @@ pub enum BackendTrackControl {
     InputMonitoring(bool),
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum BackendTrackFxControl {
+    SetActive(bool),
+    SetVisible(bool),
+    ToggleOrRecover,
+    RestoreState(String),
+    ClearLogs,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct BackendTrackState {
     pub topology: BackendTrackTopology,
+    #[serde(skip)]
+    pub fx: Option<TrackFxState>,
     pub audio_channels: u32,
     pub midi: bool,
     pub output_gain_db: f32,
@@ -542,6 +555,13 @@ pub trait Backend {
         track_id: BackendTrackId,
         control: BackendTrackControl,
     ) -> Result<()>;
+    fn set_track_fx_control(
+        &mut self,
+        _track_id: BackendTrackId,
+        _control: BackendTrackFxControl,
+    ) -> Result<()> {
+        Err(anyhow!("track FX controls are unavailable"))
+    }
     fn set_loop_gain(&mut self, loop_id: BackendLoopId, gain: f32) -> Result<()>;
     fn set_loop_balance(&mut self, loop_id: BackendLoopId, balance: f32) -> Result<()>;
     fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()>;
@@ -2180,6 +2200,7 @@ impl Backend for EngineBackend {
                         audio_channels: track.audio_inputs.len() as u32,
                         midi: track.midi_input.is_some(),
                     },
+                    fx: None,
                     audio_channels: track.audio_inputs.len() as u32,
                     midi: track.midi_input.is_some(),
                     output_gain_db: track.output_gain_db,
