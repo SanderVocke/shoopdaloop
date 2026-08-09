@@ -379,6 +379,7 @@ impl TrackControlState {
 pub struct LoopState {
     pub id: LoopId,
     pub name: String,
+    pub length_frames: u64,
     pub position: f32,
     pub mode: LoopMode,
     pub next_mode: LoopMode,
@@ -406,6 +407,7 @@ impl Default for LoopState {
         Self {
             id: LoopId::INVALID,
             name: "Loop".to_owned(),
+            length_frames: 0,
             position: 0.0,
             mode: LoopMode::Unknown,
             next_mode: LoopMode::Unknown,
@@ -629,6 +631,7 @@ pub enum IoTaskKind {
     ImportLoopAudio,
     ExportLoopMidi,
     ImportLoopMidi,
+    GenerateClickTrack,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -788,6 +791,30 @@ impl Default for ScriptingState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ClickTrackPreviewStatus {
+    #[default]
+    Idle,
+    Queued,
+    Playing,
+    Completed,
+    Failed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClickSoundDescriptor {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ClickTrackState {
+    pub sounds: Arc<[ClickSoundDescriptor]>,
+    pub preview_request_id: u64,
+    pub preview_status: ClickTrackPreviewStatus,
+    pub preview_message: String,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct AppSnapshot {
     pub revision: u64,
@@ -798,6 +825,7 @@ pub struct AppSnapshot {
     pub details: Option<LoopDetailsState>,
     pub connections: Arc<ConnectionViewState>,
     pub scripting: Arc<ScriptingState>,
+    pub click_track: ClickTrackState,
     pub io_task: Option<IoTaskState>,
     pub notifications: Vec<AppNotification>,
 }
@@ -834,6 +862,42 @@ pub struct SelectionModifiers {
 pub enum LoopAudioExportFormat {
     Exact,
     FloatWav,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ClickTrackKind {
+    #[default]
+    Audio,
+    Midi,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClickTrackRequest {
+    pub kind: ClickTrackKind,
+    pub primary_sound_id: String,
+    pub secondary_sound_id: Option<String>,
+    pub secondary_clicks_per_primary: u32,
+    pub bpm: f64,
+    pub click_count: u32,
+    pub odd_click_delay_percent: f64,
+    pub midi_note: u8,
+    pub midi_note_length_seconds: f64,
+}
+
+impl Default for ClickTrackRequest {
+    fn default() -> Self {
+        Self {
+            kind: ClickTrackKind::Audio,
+            primary_sound_id: "click_high".to_owned(),
+            secondary_sound_id: Some("click_low".to_owned()),
+            secondary_clicks_per_primary: 3,
+            bpm: 100.0,
+            click_count: 4,
+            odd_click_delay_percent: 0.0,
+            midi_note: 64,
+            midi_note_length_seconds: 0.1,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -963,6 +1027,19 @@ pub enum AppIntent {
         task_id: Option<TaskId>,
         message: String,
     },
+    PreviewClickTrack {
+        loop_id: LoopId,
+        request: ClickTrackRequest,
+    },
+    CompleteClickTrackPreview {
+        request_id: u64,
+        success: bool,
+        message: String,
+    },
+    GenerateClickTrack {
+        loop_id: LoopId,
+        request: ClickTrackRequest,
+    },
     RequestLoopAudioExport {
         loop_id: LoopId,
         format: LoopAudioExportFormat,
@@ -1045,6 +1122,32 @@ mod tests {
         }
         .validate()
         .is_ok());
+    }
+
+    #[test]
+    fn click_track_defaults_and_intents_preserve_visible_contract_and_target() {
+        let request = ClickTrackRequest::default();
+        assert_eq!(request.kind, ClickTrackKind::Audio);
+        assert_eq!(request.primary_sound_id, "click_high");
+        assert_eq!(request.secondary_sound_id.as_deref(), Some("click_low"));
+        assert_eq!(request.secondary_clicks_per_primary, 3);
+        assert_eq!(request.bpm, 100.0);
+        assert_eq!(request.click_count, 4);
+        assert_eq!(request.odd_click_delay_percent, 0.0);
+        assert_eq!(request.midi_note, 64);
+        assert_eq!(request.midi_note_length_seconds, 0.1);
+        let loop_id = LoopId::from_raw(42);
+        assert_eq!(
+            AppIntent::GenerateClickTrack {
+                loop_id,
+                request: request.clone(),
+            },
+            AppIntent::GenerateClickTrack { loop_id, request }
+        );
+        assert_eq!(
+            AppSnapshot::default().click_track,
+            ClickTrackState::default()
+        );
     }
 
     #[test]

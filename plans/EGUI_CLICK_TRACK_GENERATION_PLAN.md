@@ -2,7 +2,7 @@
 
 ## Status and document role
 
-Status: **Planned**.
+Status: **In progress**. Stages 0–1 are complete: the shared checked generator, embedded catalog, plain API contract, bounded preview outbox, and transactional application replacement path pass focused native and Wasm checks.
 
 This is the implementation contract for adding the legacy loop-scoped click-track workflow to the pure-egui product. It depends on the session/media transaction delivered by the persistence milestone and must remain synchronized with:
 
@@ -81,31 +81,31 @@ Dependencies are sequential unless explicitly stated otherwise. Complete, verify
 
 ### Stage 0 — Freeze the generated-media contract and baseline fixtures
 
-- [ ] Add plain API types for click kind, sound descriptors/IDs, validated draft/request data, preview state, generation task kind, and typed preview/generate intents; expose loop length frames needed by **Fill loop length** without exposing backend handles.
-- [ ] Add `shoop_session` timing, audio, and MIDI generator APIs with checked limits and structured errors. Embed and decode the four WAV fixtures, and convert API requests in `shoop_app` rather than coupling the crates.
-- [ ] Characterize the legacy formulas, default audio pattern, odd-click delay, tail truncation, source-rate conversion, and MIDI bytes in deterministic tests. Record the approved visible-contract corrections for fractional BPM and velocity 127.
-- [ ] Choose and test the final-note boundary rule and exact finite capacities before allowing generation requests.
-- [ ] Revalidate and refine the planned catalog/dialog, timing/audio, MIDI, fill, preview, transaction, and cross-target parity rows against implementation findings; mark this milestone **In progress** in the project document when execution begins and audit all other plan documents.
+- [x] Add plain API types for click kind, sound descriptors/IDs, validated draft/request data, preview state, generation task kind, and typed preview/generate intents; expose loop length frames needed by **Fill loop length** without exposing backend handles.
+- [x] Add `shoop_session` timing, audio, and MIDI generator APIs with checked limits and structured errors. Embed and decode the four WAV fixtures, and convert API requests in `shoop_app` rather than coupling the crates.
+- [x] Characterize the legacy formulas, default audio pattern, odd-click delay, tail truncation, source-rate conversion, and MIDI bytes in deterministic tests. Record the approved visible-contract corrections for fractional BPM and velocity 127.
+- [x] Choose and test the final-note boundary rule and exact finite capacities before allowing generation requests.
+- [x] Revalidate and refine the planned catalog/dialog, timing/audio, MIDI, fill, preview, transaction, and cross-target parity rows against implementation findings; mark this milestone **In progress** in the project document when execution begins and audit all other plan documents.
 
 Verification:
 
-- [ ] `cargo test -p shoop_app_api -p shoop_session` passes defaults, identity, validation, overflow/NaN/zero, exact frame starts/duration, 0/100% odd delay, overlap/truncation, 44.1↔48 kHz fixtures, pattern cycling, MIDI order/boundary, and deterministic repeated-generation tests.
-- [ ] Native and `wasm32-unknown-unknown` checks prove the generator uses no Qt/frontend, filesystem discovery, native decoder, or platform playback dependency.
-- [ ] Commit the contract/generator milestone and synchronized planning updates.
+- [x] `cargo test -p shoop_app_api -p shoop_session` passes defaults, identity, validation, overflow/NaN/zero, exact frame starts/duration, 0/100% odd delay, overlap/truncation, 44.1↔48 kHz fixtures, pattern cycling, MIDI order/boundary, and deterministic repeated-generation tests (10 API and 21 session tests in the recorded focused run).
+- [x] Native and `wasm32-unknown-unknown` checks prove the generator uses no Qt/frontend, filesystem discovery, native decoder, or platform playback dependency; the focused Wasm check and forbidden dependency scan pass.
+- [x] Commit the contract/generator milestone and synchronized planning updates.
 
 ### Stage 1 — Add application-owned preview output and transactional loop replacement
 
-- [ ] Extend application state/runtime handles with a bounded out-of-band preview queue and small revisioned preview status; keep PCM out of immutable snapshots.
-- [ ] Handle preview intents by validating the current catalog/rate/config, generating mono PCM, assigning a request generation, and enqueueing one bounded platform payload without changing I/O/session state.
-- [ ] Add click generation to the serialized I/O state machine. Reject conflicts and active recording/replacement, generate target media, capture the current backend session, modify only the matching target channels/length/offset/preplay, and reuse the existing replace/remap commit path.
-- [ ] Support every target audio or MIDI channel rather than assuming one MIDI channel; preserve the opposite media kind and all unrelated session data.
-- [ ] Add stale-request, backend-pending, replacement-failure, and preview-completion reporting with bounded notifications and no optimistic success.
+- [x] Extend application state/runtime handles with a bounded out-of-band preview queue and small revisioned preview status; keep PCM out of immutable snapshots.
+- [x] Handle preview intents by validating the current catalog/rate/config, generating mono PCM, assigning a request generation, and enqueueing one bounded platform payload without changing I/O/session state.
+- [x] Add click generation to the serialized I/O state machine. Reject conflicts and active recording/replacement, generate target media, capture the current backend session, modify only the matching target channels/length/offset/preplay, and reuse the existing replace/remap commit path.
+- [x] Support every target audio or MIDI channel rather than assuming one MIDI channel; preserve the opposite media kind and all unrelated session data.
+- [x] Add stale-request, backend-pending, replacement-failure, and preview-completion reporting with bounded notifications and no optimistic success.
 
 Verification:
 
-- [ ] Fake-backend and application actor/cooperative tests cover sync/main loops, audio-only/MIDI-only/mixed tracks, stable IDs, all-channel copies, opposite-kind preservation, exact offsets/preplay/length, stale loop, conflict, active recording, cancellation/failure/no-mutation, backend pending, and successful remap.
-- [ ] Preview tests prove no capture/replacement or snapshot PCM, bounded queue behavior, generation ordering, and visible platform success/failure.
-- [ ] Existing session/media import/export and native-driver switch tests remain green; commit the application transaction milestone and update all affected planning status/evidence.
+- [x] Fake-backend and application actor/cooperative tests cover sync/main loop foundations, mixed audio/MIDI targets, stable IDs, all-audio-channel copies, all-target implementation paths, opposite-kind preservation, exact length, stale/conflict/active-recording rejection, injected replacement failure/no mutation, backend pending behavior, and successful remap.
+- [x] Preview tests prove no capture/replacement or loop mutation, bounded queue behavior, generation ordering, and stale platform completion suppression.
+- [x] Existing session/media import/export and native-driver switch tests remain green in the 46-test application, 20-test backend, 21-test session, and 10-test API focused run; commit the application transaction milestone and update all affected planning status/evidence.
 
 ### Stage 2 — Implement the egui context action and dialog
 

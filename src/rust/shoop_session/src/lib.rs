@@ -1,4 +1,5 @@
 mod archive;
+mod click_track;
 mod document;
 mod media;
 mod resample;
@@ -6,6 +7,12 @@ mod resample;
 pub use archive::{
     decode_session, decode_session_with_limits, encode_session, validate_bundle, DecodeLimits,
     SessionError,
+};
+pub use click_track::{
+    click_sound_ids, generate_audio_click_track, generate_click_track_timing,
+    generate_midi_click_track, AudioClickTrackSpec, ClickTrackError, ClickTrackTiming,
+    ClickTrackTimingSpec, MidiClickTrackSpec, MAX_CLICK_TRACK_CLICKS, MAX_CLICK_TRACK_FRAMES,
+    MAX_CLICK_TRACK_MIDI_EVENTS,
 };
 pub use document::*;
 pub use media::{
