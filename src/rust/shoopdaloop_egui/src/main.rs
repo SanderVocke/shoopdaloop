@@ -1342,7 +1342,7 @@ enum BrowserSelfTest {
     RejectProcessedSession,
     RejectExternalSession,
     WaitForProcessedSessionRejection {
-        callbacks_before: u64,
+        audio_progress_before: u64,
         external: bool,
     },
     Complete,
@@ -1871,14 +1871,17 @@ impl BrowserSelfTest {
                             bytes,
                         })
                         .map(|()| Self::WaitForProcessedSessionRejection {
-                            callbacks_before: snapshot.status.callback_count,
+                            audio_progress_before: snapshot
+                                .status
+                                .callback_count
+                                .max(snapshot.status.processed_frames),
                             external,
                         }),
                     Err(error) => return self.fail(&error),
                 }
             }
             Self::WaitForProcessedSessionRejection {
-                callbacks_before,
+                audio_progress_before,
                 external,
             } => {
                 if snapshot.io_task.as_ref().is_none_or(|task| {
@@ -1887,7 +1890,12 @@ impl BrowserSelfTest {
                 }) {
                     return;
                 }
-                if snapshot.status.callback_count <= callbacks_before {
+                if snapshot
+                    .status
+                    .callback_count
+                    .max(snapshot.status.processed_frames)
+                    <= audio_progress_before
+                {
                     return;
                 }
                 let Some((_, loop_state)) = first_main_loop(snapshot) else {
