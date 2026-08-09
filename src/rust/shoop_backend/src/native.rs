@@ -1,7 +1,7 @@
 use super::*;
 use shoop_app_api::{
-    CpalAudioDriverConfig, FxGenerationLogState, FxLifecycle, TrackProcessorConstraints,
-    TrackProcessorFeatures, TrackProcessorTypeId,
+    CpalAudioDriverConfig, FxGenerationLogState, TrackProcessorConstraints, TrackProcessorFeatures,
+    TrackProcessorTypeId,
 };
 use shoop_engine::app_backend::{
     AudioChannel, AudioDriver, AudioDriverSettings, AudioPort, BackendSession,

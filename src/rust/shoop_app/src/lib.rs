@@ -5396,6 +5396,15 @@ mod tests {
         assert!(track.controls.has_output);
         assert!(!track.controls.output_stereo);
         assert_eq!(track.port_ids.len(), 8);
+        runtime
+            .handle()
+            .dispatch(AppIntent::AddLoop { track_id: track.id })
+            .unwrap();
+        let snapshot = wait_for(&runtime.handle(), |snapshot| {
+            snapshot.tracks[1].loops.len() == 9
+        });
+        assert_eq!(snapshot.tracks[1].topology, track.topology);
+        assert!(snapshot.tracks[1].loops[8].has_audio);
     }
 
     #[test]

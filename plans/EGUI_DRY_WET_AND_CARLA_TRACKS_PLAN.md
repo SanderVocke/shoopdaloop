@@ -127,8 +127,8 @@ Verification:
 
 - [ ] Store topology and role metadata in authoritative track/loop models and immutable snapshots; derive control applicability, stereo state, waveform labels, and connection ownership from it.
 - [ ] Generalize Add Track, aligned Add Loop, load/remap, audio-driver switch, loop state publication, and script control paths without regressing direct/sync tracks.
-- [ ] Implement the egui Regular/Dry + Wet draft UI from the capability catalog—not `cfg`/target branches—with independent channel controls, processor constraints, empty-catalog explanation/disabled acceptance, validation, cancellation, and typed acceptance.
-- [ ] Add capability-driven FX status/controls to processed track headers. Render show/hide and recovery only when advertised; for Carla, also render crash details and process logs with refresh/clear/copy and stale-track handling.
+- [x] Implement the egui Regular/Dry + Wet draft UI from the capability catalog—not `cfg`/target branches—with independent channel controls, processor constraints, empty-catalog explanation/disabled acceptance, validation, cancellation, and typed acceptance.
+- [x] Add capability-driven FX status/controls to processed track headers. Render show/hide and recovery only when advertised; for Carla, also render crash details and process logs with refresh/clear/copy and stale-track handling.
 - [ ] Expose a loop action to restore its compatible recorded-wet FX state.
 
 Verification:

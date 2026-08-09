@@ -13,7 +13,8 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use shoop_app_api::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
-    DummyAudioDriverConfig, ResolvedAudioDriverConfig, TrackFxState, TrackProcessorDescriptor,
+    DummyAudioDriverConfig, FxLifecycle, ResolvedAudioDriverConfig, TrackFxState,
+    TrackProcessorDescriptor,
 };
 use shoop_engine::dummy_midi_port::DummyMidiPort;
 use shoop_engine::dummy_port::{DummyAudioPort, DummyExternalConnections, PortId};
@@ -2653,6 +2654,19 @@ impl FakeBackend {
         self.processor_catalog = Arc::from(catalog);
     }
 
+    pub fn set_track_fx_state(
+        &mut self,
+        track_id: BackendTrackId,
+        state: TrackFxState,
+    ) -> Result<()> {
+        self.tracks
+            .get_mut(&track_id)
+            .ok_or_else(|| anyhow!("unknown fake track {track_id:?}"))?
+            .state
+            .fx = Some(state);
+        Ok(())
+    }
+
     pub fn fail_next_driver_switch(&mut self, message: impl Into<String>) {
         self.audio_driver_control.fail_next_switch(message);
     }
@@ -3183,6 +3197,40 @@ impl Backend for FakeBackend {
         }
         self.operations
             .push(FakeOperation::SetTrackControl(track_id, control));
+        Ok(())
+    }
+
+    fn set_track_fx_control(
+        &mut self,
+        track_id: BackendTrackId,
+        control: BackendTrackFxControl,
+    ) -> Result<()> {
+        let fx = self
+            .tracks
+            .get_mut(&track_id)
+            .ok_or_else(|| anyhow!("unknown fake track {track_id:?}"))?
+            .state
+            .fx
+            .as_mut()
+            .ok_or_else(|| anyhow!("track has no processor"))?;
+        match control {
+            BackendTrackFxControl::SetActive(active) => fx.active = active,
+            BackendTrackFxControl::SetVisible(visible) => fx.visible = visible,
+            BackendTrackFxControl::ToggleOrRecover => {
+                if matches!(
+                    fx.lifecycle,
+                    FxLifecycle::Crashed | FxLifecycle::Unavailable
+                ) {
+                    fx.lifecycle = FxLifecycle::Running;
+                    fx.generation = fx.generation.saturating_add(1);
+                    fx.visible = true;
+                } else {
+                    fx.visible = !fx.visible;
+                }
+            }
+            BackendTrackFxControl::RestoreState(_) => {}
+            BackendTrackFxControl::ClearLogs => fx.logs = Arc::from([]),
+        }
         Ok(())
     }
 
