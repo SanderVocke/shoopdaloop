@@ -1,7 +1,6 @@
 use super::*;
 use shoop_app_api::{
     CpalAudioDriverConfig, FxGenerationLogState, TrackProcessorConstraints, TrackProcessorFeatures,
-    TrackProcessorTypeId,
 };
 use shoop_engine::app_backend::{
     AudioChannel, AudioDriver, AudioDriverSettings, AudioPort, BackendSession,
@@ -1282,6 +1281,29 @@ impl NativeRuntime {
         Ok(())
     }
 
+    fn track_fx_state_string(&mut self, track_id: BackendTrackId) -> Result<Option<String>> {
+        let Some(fx) = self
+            .tracks
+            .get_mut(&track_id)
+            .ok_or_else(|| anyhow!("unknown native track {track_id:?}"))?
+            .fx
+            .as_mut()
+        else {
+            return Ok(None);
+        };
+        match fx.chain.try_get_state_str() {
+            Ok(state) => {
+                fx.last_confirmed_state = Some(state.clone());
+                Ok(Some(state))
+            }
+            Err(error) => fx
+                .last_confirmed_state
+                .clone()
+                .map(Some)
+                .ok_or_else(|| anyhow!("processor state unavailable: {error}")),
+        }
+    }
+
     fn apply_track_routing(&mut self, track_id: BackendTrackId) -> Result<()> {
         let (topology, loop_ids, monitoring) = {
             let track = self
@@ -1663,6 +1685,10 @@ impl Backend for NativeBackend {
         control: BackendTrackFxControl,
     ) -> Result<()> {
         self.runtime_mut()?.set_track_fx_control(track_id, control)
+    }
+
+    fn track_fx_state_string(&mut self, track_id: BackendTrackId) -> Result<Option<String>> {
+        self.runtime_mut()?.track_fx_state_string(track_id)
     }
 
     fn set_loop_gain(&mut self, loop_id: BackendLoopId, gain: f32) -> Result<()> {

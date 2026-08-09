@@ -128,8 +128,13 @@ pub enum TrackTopologyDocument {
     },
     Carla {
         chain_type: FxChainTypeDocument,
+        /// Legacy equal dry/wet count retained for backward compatibility.
         audio_channels: u32,
         midi: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dry_audio_channels: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        wet_audio_channels: Option<u32>,
     },
     Trigger,
 }

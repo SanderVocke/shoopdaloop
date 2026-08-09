@@ -43,11 +43,11 @@ use shoop_session::{
     encode_exact_midi, encode_float_wav, encode_loop_audio, encode_session, encode_standard_midi,
     resample_exact_midi, resample_loop_audio, resample_session, AudioPayload, ChannelDocument,
     ChannelModeDocument, CompositeDocument, CompositeEventDocument, CompositeKindDocument,
-    ConnectabilityDocument, DataTypeDocument, ExactMidi, ExactMidiEvent, GlobalControlsDocument,
-    LoopAudio, LoopAudioChannel, LoopDocument, MediaPayload, MidiControlDocument,
-    PortDirectionDocument, PortDocument, PortRoleDocument, RecordingActionDocument, ScriptDocument,
-    SessionBundle, SessionDocument, TrackControlsDocument, TrackDocument, TrackGroupDocument,
-    TrackTopologyDocument,
+    ConnectabilityDocument, DataTypeDocument, ExactMidi, ExactMidiEvent, FxChainDocument,
+    FxChainTypeDocument, FxStateDocument, GlobalControlsDocument, LoopAudio, LoopAudioChannel,
+    LoopDocument, MediaPayload, MidiControlDocument, PortDirectionDocument, PortDocument,
+    PortRoleDocument, RecordingActionDocument, ScriptDocument, SessionBundle, SessionDocument,
+    TrackControlsDocument, TrackDocument, TrackGroupDocument, TrackTopologyDocument,
 };
 
 const COMMAND_CAPACITY: usize = 1024;
@@ -463,6 +463,12 @@ struct PendingConnection {
     age: Duration,
 }
 
+#[derive(Clone)]
+struct RecordedFxState {
+    processor_type: shoop_app_api::TrackProcessorTypeId,
+    state: String,
+}
+
 struct LoopModel {
     id: LoopId,
     backend_id: BackendLoopId,
@@ -473,6 +479,7 @@ struct LoopModel {
     position: u32,
     audio_data: Option<Vec<Arc<[f32]>>>,
     script_composition: Vec<Vec<LoopId>>,
+    recorded_fx_state: Option<RecordedFxState>,
 }
 
 struct ScriptCompositionPlayback {
@@ -586,6 +593,7 @@ impl ApplicationModel {
             position: 0,
             audio_data: None,
             script_composition: Vec::new(),
+            recorded_fx_state: None,
         };
         #[cfg(not(target_arch = "wasm32"))]
         let script_manager = ScriptManager::new_with_midi(Box::new(NativeMidiService::new()));
@@ -1669,7 +1677,7 @@ impl ApplicationModel {
                 }
             }
         };
-        let backend_data = match session_bundle_to_backend(&bundle) {
+        let backend_data = match session_bundle_to_backend(&bundle, &self.track_processors) {
             Ok(data) => data,
             Err(error) => {
                 self.fail_audio_driver_switch(request_id, source, pending.target, &error);
@@ -1899,7 +1907,7 @@ impl ApplicationModel {
             });
             return Ok(());
         }
-        let backend_data = match session_bundle_to_backend(&bundle) {
+        let backend_data = match session_bundle_to_backend(&bundle, &self.track_processors) {
             Ok(backend_data) => backend_data,
             Err(message) => {
                 self.finish_io(IoTaskStatus::Failed, &message);
@@ -1938,7 +1946,8 @@ impl ApplicationModel {
                 resample_session(&bundle, self.status.sample_rate)
                     .map_err(|error| error.to_string())
                     .and_then(|bundle| {
-                        let backend_data = session_bundle_to_backend(&bundle)?;
+                        let backend_data =
+                            session_bundle_to_backend(&bundle, &self.track_processors)?;
                         self.pending_io = Some(PendingIo::CommitSessionLoad {
                             name,
                             bundle,
@@ -2684,6 +2693,7 @@ impl ApplicationModel {
                 position: 0,
                 audio_data: None,
                 script_composition: Vec::new(),
+                recorded_fx_state: None,
             },
         );
         id
@@ -2822,7 +2832,73 @@ impl ApplicationModel {
                 }
                 Ok(())
             }
+            LoopAction::RestoreRecordedFxState => {
+                let recorded = loop_model
+                    .recorded_fx_state
+                    .clone()
+                    .ok_or_else(|| format!("loop {loop_id} has no recorded FX state"))?;
+                let track = self
+                    .tracks
+                    .iter()
+                    .find(|track| track.id == track_id)
+                    .ok_or_else(|| format!("stale or unknown track {track_id}"))?;
+                let TrackTopology::DryWet { processor_type, .. } = &track.topology else {
+                    return Err(format!("track {track_id} has no compatible processor"));
+                };
+                if *processor_type != recorded.processor_type {
+                    return Err("recorded FX state belongs to another processor".to_owned());
+                }
+                backend
+                    .set_track_fx_control(
+                        track.backend_id,
+                        BackendTrackFxControl::RestoreState(recorded.state),
+                    )
+                    .map_err(|error| format!("could not restore recorded FX state: {error}"))
+            }
         }
+    }
+
+    fn capture_recording_fx_states(
+        &mut self,
+        backend: &mut dyn Backend,
+        loop_ids: &[LoopId],
+    ) -> Result<(), String> {
+        let mut captured = Vec::new();
+        for loop_id in loop_ids {
+            let track_id = self
+                .loops
+                .get(loop_id)
+                .ok_or_else(|| format!("stale loop {loop_id}"))?
+                .track_id;
+            let track = self
+                .tracks
+                .iter()
+                .find(|track| track.id == track_id)
+                .ok_or_else(|| format!("stale track {track_id}"))?;
+            let TrackTopology::DryWet { processor_type, .. } = &track.topology else {
+                continue;
+            };
+            if processor_type.as_str() == shoop_app_api::TrackProcessorTypeId::EXTERNAL {
+                continue;
+            }
+            let state = backend
+                .track_fx_state_string(track.backend_id)
+                .map_err(|error| format!("could not capture processor state: {error}"))?
+                .ok_or_else(|| "processed track returned no processor state".to_owned())?;
+            captured.push((
+                *loop_id,
+                RecordedFxState {
+                    processor_type: processor_type.clone(),
+                    state,
+                },
+            ));
+        }
+        for (loop_id, state) in captured {
+            let model = self.loops.get_mut(&loop_id).expect("loop was checked");
+            model.recorded_fx_state = Some(state);
+            model.state.has_recorded_fx_state = true;
+        }
+        Ok(())
     }
 
     fn refresh_selected_audio(&mut self, backend: &mut dyn Backend) -> Result<(), String> {
@@ -2894,7 +2970,9 @@ impl ApplicationModel {
         } else {
             cycles.saturating_sub(current_cycle).saturating_sub(1)
         };
-        for id in self.action_target_ids(initiating_loop) {
+        let ids = self.action_target_ids(initiating_loop);
+        self.capture_recording_fx_states(backend, &ids)?;
+        for id in ids {
             let model = self.loops.get(&id).expect("action target exists");
             let previous = backend_loop_mode(model.state.mode);
             backend
@@ -2944,6 +3022,7 @@ impl ApplicationModel {
         } else {
             BackendLoopMode::Unknown
         };
+        self.capture_recording_fx_states(backend, &ids)?;
         let requests = ids
             .iter()
             .map(|id| {
@@ -3056,6 +3135,15 @@ impl ApplicationModel {
             .map(|model| (model.id, model.track_id, model.backend_id))
             .collect();
         let delay = self.global.sync.then_some(self.target_delay());
+        if matches!(
+            mode,
+            BackendLoopMode::Recording
+                | BackendLoopMode::Replacing
+                | BackendLoopMode::RecordingDryIntoWet
+        ) {
+            let ids = targets.iter().map(|(id, _, _)| *id).collect::<Vec<_>>();
+            self.capture_recording_fx_states(backend, &ids)?;
+        }
         if self.global.solo
             && matches!(
                 mode,
@@ -3755,6 +3843,8 @@ impl ApplicationModel {
     ) -> Result<SessionBundle, String> {
         let mut media = BTreeMap::new();
         let mut next_channel_id = 1_u64;
+        let mut next_fx_state_id = 1_u64;
+        let mut fx_states = Vec::new();
         let mut sync_tracks = Vec::new();
         let mut main_tracks = Vec::new();
         for track in &self.tracks {
@@ -3794,21 +3884,20 @@ impl ApplicationModel {
                     ringbuffer_frames: 0,
                 });
             }
-            let audio_inputs = ports
-                .iter()
-                .filter(|port| port.role == PortRoleDocument::AudioInput)
-                .map(|port| port.id)
-                .collect::<Vec<_>>();
-            let audio_outputs = ports
-                .iter()
-                .filter(|port| port.role == PortRoleDocument::AudioOutput)
-                .map(|port| port.id)
-                .collect::<Vec<_>>();
-            let midi_ports = ports
-                .iter()
-                .filter(|port| port.data_type == DataTypeDocument::Midi)
-                .map(|port| port.id)
-                .collect::<Vec<_>>();
+            let port_ids_for_role = |role| {
+                ports
+                    .iter()
+                    .filter(|port| port.role == role)
+                    .map(|port| port.id)
+                    .collect::<Vec<_>>()
+            };
+            let audio_inputs = port_ids_for_role(PortRoleDocument::AudioInput);
+            let audio_sends = port_ids_for_role(PortRoleDocument::AudioSend);
+            let audio_returns = port_ids_for_role(PortRoleDocument::AudioReturn);
+            let audio_outputs = port_ids_for_role(PortRoleDocument::AudioOutput);
+            let midi_inputs = port_ids_for_role(PortRoleDocument::MidiInput);
+            let midi_sends = port_ids_for_role(PortRoleDocument::MidiSend);
+            let midi_outputs = port_ids_for_role(PortRoleDocument::MidiOutput);
             let mut loops = Vec::with_capacity(track.loops.len());
             for loop_id in &track.loops {
                 let model = self
@@ -3820,6 +3909,29 @@ impl ApplicationModel {
                     .iter()
                     .find(|candidate| candidate.source_id == model.backend_id.raw())
                     .ok_or_else(|| format!("backend omitted loop {loop_id}"))?;
+                let recorded_fx_state_id = model
+                    .recorded_fx_state
+                    .as_ref()
+                    .filter(|_| {
+                        content
+                            .audio
+                            .iter()
+                            .any(|channel| channel.mode == BackendChannelMode::Wet)
+                    })
+                    .map(|recorded| {
+                        let id = next_fx_state_id;
+                        next_fx_state_id = next_fx_state_id.saturating_add(1);
+                        fx_states.push(FxStateDocument {
+                            id,
+                            chain_type: fx_chain_type_for_processor(&recorded.processor_type)?,
+                            internal_state: recorded.state.clone(),
+                        });
+                        Ok::<u64, String>(id)
+                    })
+                    .transpose()?;
+                let mut direct_audio_index = 0_usize;
+                let mut dry_audio_index = 0_usize;
+                let mut wet_audio_index = 0_usize;
                 let mut channels = Vec::with_capacity(content.audio.len() + content.midi.len());
                 for (index, audio) in content.audio.iter().enumerate() {
                     let channel_id = next_channel_id;
@@ -3834,16 +3946,44 @@ impl ApplicationModel {
                             }),
                         );
                     }
-                    let mut connected_port_ids = Vec::new();
-                    if let Some(port) = audio_inputs.get(index) {
-                        connected_port_ids.push(*port);
-                    }
-                    if let Some(port) = audio_outputs.get(index) {
-                        connected_port_ids.push(*port);
-                    }
+                    let (mode, connected_port_ids, fx_state_id) = match audio.mode {
+                        BackendChannelMode::Direct => {
+                            let mut ids = Vec::new();
+                            ids.extend(audio_inputs.get(direct_audio_index));
+                            ids.extend(audio_outputs.get(direct_audio_index));
+                            direct_audio_index += 1;
+                            (
+                                ChannelModeDocument::Direct,
+                                ids.into_iter().copied().collect(),
+                                None,
+                            )
+                        }
+                        BackendChannelMode::Dry => {
+                            let mut ids = Vec::new();
+                            ids.extend(audio_inputs.get(dry_audio_index));
+                            ids.extend(audio_sends.get(dry_audio_index));
+                            dry_audio_index += 1;
+                            (
+                                ChannelModeDocument::Dry,
+                                ids.into_iter().copied().collect(),
+                                None,
+                            )
+                        }
+                        BackendChannelMode::Wet => {
+                            let mut ids = Vec::new();
+                            ids.extend(audio_returns.get(wet_audio_index));
+                            ids.extend(audio_outputs.get(wet_audio_index));
+                            wet_audio_index += 1;
+                            (
+                                ChannelModeDocument::Wet,
+                                ids.into_iter().copied().collect(),
+                                recorded_fx_state_id,
+                            )
+                        }
+                    };
                     channels.push(ChannelDocument {
                         id: channel_id,
-                        mode: ChannelModeDocument::Direct,
+                        mode,
                         data_type: DataTypeDocument::Audio,
                         data_length_frames,
                         start_offset_frames: i64::from(audio.start_offset),
@@ -3852,7 +3992,7 @@ impl ApplicationModel {
                         connected_port_ids,
                         media_id: (data_length_frames > 0).then_some(media_id),
                         recording_started_at: None,
-                        recording_fx_state_id: None,
+                        recording_fx_state_id: fx_state_id,
                     });
                 }
                 for (index, midi) in content.midi.iter().enumerate() {
@@ -3879,15 +4019,28 @@ impl ApplicationModel {
                             }),
                         );
                     }
+                    let (mode, connected_port_ids) = match midi.mode {
+                        BackendChannelMode::Direct => (
+                            ChannelModeDocument::Direct,
+                            midi_inputs.iter().chain(&midi_outputs).copied().collect(),
+                        ),
+                        BackendChannelMode::Dry => (
+                            ChannelModeDocument::Dry,
+                            midi_inputs.iter().chain(&midi_sends).copied().collect(),
+                        ),
+                        BackendChannelMode::Wet => {
+                            return Err("wet MIDI channels are unsupported".to_owned());
+                        }
+                    };
                     channels.push(ChannelDocument {
                         id: channel_id,
-                        mode: ChannelModeDocument::Direct,
+                        mode,
                         data_type: DataTypeDocument::Midi,
                         data_length_frames: u64::from(midi.length),
                         start_offset_frames: i64::from(midi.start_offset),
                         preplay_frames: u64::from(midi.preplay),
                         gain: 1.0,
-                        connected_port_ids: midi_ports.clone(),
+                        connected_port_ids,
                         media_id: (midi.length > 0
                             || !midi.events.is_empty()
                             || !midi.start_state.is_empty())
@@ -3928,16 +4081,66 @@ impl ApplicationModel {
                     }),
                 });
             }
+            let (topology, fx_chain) = match &captured.topology {
+                BackendTrackTopology::Direct {
+                    audio_channels,
+                    midi,
+                } => (
+                    TrackTopologyDocument::Direct {
+                        audio_channels: *audio_channels,
+                        midi: *midi,
+                    },
+                    None,
+                ),
+                BackendTrackTopology::DryWetExternal {
+                    dry_audio_channels,
+                    wet_audio_channels,
+                    dry_midi,
+                } => (
+                    TrackTopologyDocument::DryWetExternal {
+                        dry_audio_channels: *dry_audio_channels,
+                        wet_audio_channels: *wet_audio_channels,
+                        dry_midi: *dry_midi,
+                    },
+                    None,
+                ),
+                BackendTrackTopology::DryWetProcessor {
+                    processor_type,
+                    dry_audio_channels,
+                    wet_audio_channels,
+                    dry_midi,
+                } => {
+                    let chain_type = fx_chain_type_for_processor(
+                        &shoop_app_api::TrackProcessorTypeId::new(processor_type.clone()),
+                    )?;
+                    let internal_state = captured.carla_state.clone().ok_or_else(|| {
+                        format!("processed track {} has no captured state", track.id)
+                    })?;
+                    (
+                        TrackTopologyDocument::Carla {
+                            chain_type,
+                            audio_channels: *wet_audio_channels,
+                            midi: *dry_midi,
+                            dry_audio_channels: Some(*dry_audio_channels),
+                            wet_audio_channels: Some(*wet_audio_channels),
+                        },
+                        Some(FxChainDocument {
+                            id: track.id.raw(),
+                            title: track.name.clone(),
+                            chain_type,
+                            ports: Vec::new(),
+                            internal_state,
+                        }),
+                    )
+                }
+            };
             let document = TrackDocument {
                 id: track.id.raw(),
                 name: track.name.clone(),
                 port_name_base: track.port_name_base.clone(),
                 is_sync: track.is_sync,
                 width: None,
-                topology: TrackTopologyDocument::Direct {
-                    audio_channels: track.audio_channels,
-                    midi: captured.state.midi,
-                },
+                topology,
                 controls: TrackControlsDocument {
                     output_gain_db: captured.state.output_gain_db,
                     output_balance: captured.state.output_balance,
@@ -3948,7 +4151,7 @@ impl ApplicationModel {
                 },
                 loops,
                 ports,
-                fx_chain: None,
+                fx_chain,
             };
             if track.is_sync {
                 sync_tracks.push(document);
@@ -3994,7 +4197,7 @@ impl ApplicationModel {
                 .map(|loop_| loop_.id.raw()),
             buses: Vec::new(),
             global_ports: Vec::new(),
-            fx_states: Vec::new(),
+            fx_states,
             scripts: self.session_script_documents(),
             midi_control: MidiControlDocument::default(),
             settings: Vec::new(),
@@ -4050,7 +4253,9 @@ impl ApplicationModel {
                 .tracks
                 .get(&track_document.id)
                 .ok_or_else(|| format!("backend omitted loaded track {}", track_document.id))?;
-            let (audio_channels, _) = direct_topology(track_document)?;
+            let (backend_topology, topology, audio_channels, _) =
+                runtime_track_topology(track_document, &self.track_processors)?;
+            let output_audio_channels = backend_topology.wet_audio_channels();
             if created.ports.len() != track_document.ports.len()
                 || created.loops.len() != track_document.loops.len()
             {
@@ -4092,6 +4297,26 @@ impl ApplicationModel {
                         .channels
                         .iter()
                         .all(|channel| channel.data_length_frames == 0);
+                let recorded_fx_state = loop_document
+                    .channels
+                    .iter()
+                    .filter(|channel| channel.mode == ChannelModeDocument::Wet)
+                    .filter_map(|channel| channel.recording_fx_state_id)
+                    .next()
+                    .map(|state_id| {
+                        let state = bundle
+                            .document
+                            .fx_states
+                            .iter()
+                            .find(|state| state.id == state_id)
+                            .ok_or_else(|| format!("missing recorded FX state {state_id}"))?;
+                        let processor_type = processor_for_fx_chain_type(state.chain_type);
+                        Ok::<RecordedFxState, String>(RecordedFxState {
+                            processor_type,
+                            state: state.internal_state.clone(),
+                        })
+                    })
+                    .transpose()?;
                 let script_composition = loop_document
                     .composite
                     .as_ref()
@@ -4131,7 +4356,7 @@ impl ApplicationModel {
                                 .any(|channel| channel.data_type == DataTypeDocument::Midi),
                             gain: loop_document.gain,
                             balance: loop_document.balance,
-                            stereo: audio_channels == 2,
+                            stereo: output_audio_channels == 2,
                             play_after_record: bundle.document.global.play_after_record,
                             composite_kind: match loop_document
                                 .composite
@@ -4146,6 +4371,7 @@ impl ApplicationModel {
                                 }
                                 None => shoop_app_api::CompositeKind::None,
                             },
+                            has_recorded_fx_state: recorded_fx_state.is_some(),
                             ..Default::default()
                         },
                         length: u32::try_from(loop_document.length_frames)
@@ -4153,6 +4379,7 @@ impl ApplicationModel {
                         position: 0,
                         audio_data: None,
                         script_composition,
+                        recorded_fx_state,
                     },
                 );
             }
@@ -4163,7 +4390,7 @@ impl ApplicationModel {
                 port_name_base: track_document.port_name_base.clone(),
                 is_sync: track_document.is_sync,
                 audio_channels,
-                topology: TrackTopology::Direct,
+                topology,
                 fx: None,
                 loops: loop_ids,
                 port_ids: Arc::from(port_ids),
@@ -4265,6 +4492,12 @@ impl ApplicationModel {
         if selected.next().is_some() {
             return None;
         }
+        let labels = self
+            .tracks
+            .iter()
+            .find(|track| track.id == model.track_id)
+            .map(|track| audio_channel_labels(&track.topology, track.audio_channels))
+            .unwrap_or_default();
         let channels = model
             .audio_data
             .as_ref()
@@ -4274,7 +4507,10 @@ impl ApplicationModel {
                     .enumerate()
                     .map(|(index, samples)| WaveformChannelState {
                         id: ChannelId::from_raw((model.id.raw() << 8) | index as u64 + 1),
-                        label: format!("audio {}", index + 1),
+                        label: labels
+                            .get(index)
+                            .cloned()
+                            .unwrap_or_else(|| format!("Audio {}", index + 1)),
                         samples: Arc::clone(samples),
                         start_offset: 0,
                         loop_length: model.length as u64,
@@ -4397,12 +4633,13 @@ impl ApplicationModel {
             .loops
             .get(&loop_id)
             .ok_or_else(|| format!("stale loop {loop_id}"))?;
-        let channels = self
+        let track = self
             .tracks
             .iter()
             .find(|track| track.id == loop_model.track_id)
-            .ok_or_else(|| "loop track is unavailable".to_owned())?
-            .audio_channels;
+            .ok_or_else(|| "loop track is unavailable".to_owned())?;
+        let channels = track.audio_channels;
+        let available_channels = audio_channel_labels(&track.topology, channels);
         if channels == 0 {
             return Err("loop has no audio channels".to_owned());
         }
@@ -4411,9 +4648,7 @@ impl ApplicationModel {
             task.status = IoTaskStatus::AwaitingChannelSelection;
             task.progress = 0.2;
             task.audio_channel_selection = Some(AudioChannelSelectionState {
-                available_channels: (0..channels)
-                    .map(|index| format!("Direct channel {}", index + 1))
-                    .collect(),
+                available_channels,
                 default_selection: (0..channels).collect(),
             });
         }
@@ -4554,6 +4789,12 @@ impl ApplicationModel {
         let capture = backend
             .capture_session()
             .map_err(|error| format!("could not capture loop: {error}"))?;
+        let labels = self
+            .tracks
+            .iter()
+            .find(|track| track.id == model.track_id)
+            .map(|track| audio_channel_labels(&track.topology, track.audio_channels))
+            .unwrap_or_default();
         let content = capture
             .tracks
             .iter()
@@ -4570,8 +4811,16 @@ impl ApplicationModel {
                         .get(*index as usize)
                         .ok_or_else(|| "selected audio channel is unavailable".to_owned())?;
                     Ok(LoopAudioChannel {
-                        label: format!("audio {}", index + 1),
-                        role: "direct".to_owned(),
+                        label: labels
+                            .get(*index as usize)
+                            .cloned()
+                            .unwrap_or_else(|| format!("Audio {}", index + 1)),
+                        role: match channel.mode {
+                            BackendChannelMode::Direct => "direct",
+                            BackendChannelMode::Dry => "dry",
+                            BackendChannelMode::Wet => "wet",
+                        }
+                        .to_owned(),
                         samples: channel.samples.clone(),
                     })
                 })
@@ -4879,6 +5128,22 @@ impl ApplicationModel {
     }
 }
 
+fn audio_channel_labels(topology: &TrackTopology, direct_audio_channels: u32) -> Vec<String> {
+    match topology {
+        TrackTopology::Direct => (0..direct_audio_channels)
+            .map(|index| format!("Direct {}", index + 1))
+            .collect(),
+        TrackTopology::DryWet {
+            dry_audio_channels,
+            wet_audio_channels,
+            ..
+        } => (0..*dry_audio_channels)
+            .map(|index| format!("Dry {}", index + 1))
+            .chain((0..*wet_audio_channels).map(|index| format!("Wet {}", index + 1)))
+            .collect(),
+    }
+}
+
 fn safe_file_stem(name: &str) -> String {
     let stem = name
         .chars()
@@ -4910,23 +5175,155 @@ fn io_pending_error(message: &str) -> bool {
     message.contains("session capture pending") || message.contains("session replacement pending")
 }
 
-fn direct_topology(track: &TrackDocument) -> Result<(u32, bool), String> {
-    if track.fx_chain.is_some() {
-        return Err(format!(
-            "track {} requires unsupported FX/Carla topology",
-            track.id
-        ));
+fn fx_chain_type_for_processor(
+    processor: &shoop_app_api::TrackProcessorTypeId,
+) -> Result<FxChainTypeDocument, String> {
+    match processor.as_str() {
+        shoop_app_api::TrackProcessorTypeId::CARLA_RACK => Ok(FxChainTypeDocument::CarlaRack),
+        shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY => {
+            Ok(FxChainTypeDocument::CarlaPatchbay)
+        }
+        shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY_16X => {
+            Ok(FxChainTypeDocument::CarlaPatchbay16x)
+        }
+        "test_2x2x1" => Ok(FxChainTypeDocument::Test),
+        value => Err(format!(
+            "processor {value} has no session FX-chain representation"
+        )),
     }
-    match track.topology {
+}
+
+fn processor_for_fx_chain_type(
+    chain_type: FxChainTypeDocument,
+) -> shoop_app_api::TrackProcessorTypeId {
+    shoop_app_api::TrackProcessorTypeId::new(match chain_type {
+        FxChainTypeDocument::CarlaRack => shoop_app_api::TrackProcessorTypeId::CARLA_RACK,
+        FxChainTypeDocument::CarlaPatchbay => shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY,
+        FxChainTypeDocument::CarlaPatchbay16x => {
+            shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY_16X
+        }
+        FxChainTypeDocument::Test => "test_2x2x1",
+    })
+}
+
+fn runtime_track_topology(
+    track: &TrackDocument,
+    processors: &[TrackProcessorDescriptor],
+) -> Result<(BackendTrackTopology, TrackTopology, u32, bool), String> {
+    match &track.topology {
         TrackTopologyDocument::Direct {
             audio_channels,
             midi,
-        } => Ok((audio_channels, midi)),
-        _ => Err(format!(
-            "track {} requires an unsupported deferred topology",
+        } => {
+            if track.fx_chain.is_some() {
+                return Err(format!("direct track {} contains an FX chain", track.id));
+            }
+            Ok((
+                BackendTrackTopology::Direct {
+                    audio_channels: *audio_channels,
+                    midi: *midi,
+                },
+                TrackTopology::Direct,
+                *audio_channels,
+                *midi,
+            ))
+        }
+        TrackTopologyDocument::DryWetExternal {
+            dry_audio_channels,
+            wet_audio_channels,
+            dry_midi,
+        } => {
+            let processor = shoop_app_api::TrackProcessorTypeId::new(
+                shoop_app_api::TrackProcessorTypeId::EXTERNAL,
+            );
+            validate_loaded_processor(
+                track.id,
+                &processor,
+                *dry_audio_channels,
+                *wet_audio_channels,
+                *dry_midi,
+                processors,
+            )?;
+            Ok((
+                BackendTrackTopology::DryWetExternal {
+                    dry_audio_channels: *dry_audio_channels,
+                    wet_audio_channels: *wet_audio_channels,
+                    dry_midi: *dry_midi,
+                },
+                TrackTopology::DryWet {
+                    dry_audio_channels: *dry_audio_channels,
+                    wet_audio_channels: *wet_audio_channels,
+                    dry_midi: *dry_midi,
+                    processor_type: processor,
+                },
+                dry_audio_channels.saturating_add(*wet_audio_channels),
+                *dry_midi,
+            ))
+        }
+        TrackTopologyDocument::Carla {
+            chain_type,
+            audio_channels,
+            midi,
+            dry_audio_channels,
+            wet_audio_channels,
+        } => {
+            let dry_audio_channels = dry_audio_channels.unwrap_or(*audio_channels);
+            let wet_audio_channels = wet_audio_channels.unwrap_or(*audio_channels);
+            let processor = processor_for_fx_chain_type(*chain_type);
+            validate_loaded_processor(
+                track.id,
+                &processor,
+                dry_audio_channels,
+                wet_audio_channels,
+                *midi,
+                processors,
+            )?;
+            Ok((
+                BackendTrackTopology::DryWetProcessor {
+                    processor_type: processor.as_str().to_owned(),
+                    dry_audio_channels,
+                    wet_audio_channels,
+                    dry_midi: *midi,
+                },
+                TrackTopology::DryWet {
+                    dry_audio_channels,
+                    wet_audio_channels,
+                    dry_midi: *midi,
+                    processor_type: processor,
+                },
+                dry_audio_channels.saturating_add(wet_audio_channels),
+                *midi,
+            ))
+        }
+        TrackTopologyDocument::Trigger => Err(format!(
+            "track {} requires unsupported trigger topology",
             track.id
         )),
     }
+}
+
+fn validate_loaded_processor(
+    track_id: u64,
+    processor: &shoop_app_api::TrackProcessorTypeId,
+    dry_audio_channels: u32,
+    wet_audio_channels: u32,
+    dry_midi: bool,
+    processors: &[TrackProcessorDescriptor],
+) -> Result<(), String> {
+    let descriptor = processors
+        .iter()
+        .find(|descriptor| descriptor.id == *processor)
+        .filter(|descriptor| descriptor.available)
+        .ok_or_else(|| format!("track {track_id} requires unavailable processor {processor}"))?;
+    if !descriptor
+        .constraints
+        .accepts(dry_audio_channels, wet_audio_channels, dry_midi)
+    {
+        return Err(format!(
+            "track {track_id} processor {processor} does not support its channel shape"
+        ));
+    }
+    Ok(())
 }
 
 fn session_script_sources(bundle: &SessionBundle) -> Vec<SessionScriptSource> {
@@ -4943,10 +5340,12 @@ fn session_script_sources(bundle: &SessionBundle) -> Vec<SessionScriptSource> {
         .collect()
 }
 
-fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionData, String> {
+fn session_bundle_to_backend(
+    bundle: &SessionBundle,
+    processors: &[TrackProcessorDescriptor],
+) -> Result<BackendSessionData, String> {
     if !bundle.document.buses.is_empty()
         || !bundle.document.global_ports.is_empty()
-        || !bundle.document.fx_states.is_empty()
         || !bundle.document.midi_control.bindings.is_empty()
         || !bundle.document.settings.is_empty()
     {
@@ -4959,14 +5358,11 @@ fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionDat
         .iter()
         .flat_map(|group| &group.tracks)
     {
-        let (audio_channels, midi) = direct_topology(track)?;
-        let topology = BackendTrackTopology::Direct {
-            audio_channels,
-            midi,
-        };
+        let (topology, _, _, midi) = runtime_track_topology(track, processors)?;
+        let output_audio_channels = topology.wet_audio_channels();
         let state = BackendTrackState {
             topology: topology.clone(),
-            audio_channels,
+            audio_channels: output_audio_channels,
             midi,
             output_gain_db: track.controls.output_gain_db,
             output_balance: track.controls.output_balance,
@@ -4991,6 +5387,33 @@ fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionDat
                 external_connections: port.external_connections.clone(),
             })
             .collect();
+        let expected_audio_modes = match &topology {
+            BackendTrackTopology::Direct { audio_channels, .. } => {
+                vec![BackendChannelMode::Direct; *audio_channels as usize]
+            }
+            BackendTrackTopology::DryWetExternal {
+                dry_audio_channels,
+                wet_audio_channels,
+                ..
+            }
+            | BackendTrackTopology::DryWetProcessor {
+                dry_audio_channels,
+                wet_audio_channels,
+                ..
+            } => (0..*dry_audio_channels)
+                .map(|_| BackendChannelMode::Dry)
+                .chain((0..*wet_audio_channels).map(|_| BackendChannelMode::Wet))
+                .collect(),
+        };
+        let expected_midi_modes = if midi {
+            vec![if matches!(topology, BackendTrackTopology::Direct { .. }) {
+                BackendChannelMode::Direct
+            } else {
+                BackendChannelMode::Dry
+            }]
+        } else {
+            Vec::new()
+        };
         let mut loops = Vec::with_capacity(track.loops.len());
         for loop_ in &track.loops {
             let mut audio = Vec::new();
@@ -5006,7 +5429,7 @@ fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionDat
                             None => Vec::new(),
                         };
                         audio.push(BackendAudioContent {
-                            mode: BackendChannelMode::Direct,
+                            mode: backend_channel_mode(channel.mode)?,
                             samples,
                             gain: channel.gain,
                             start_offset: i32::try_from(channel.start_offset_frames)
@@ -5024,7 +5447,7 @@ fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionDat
                             None => None,
                         };
                         midi_channels.push(BackendMidiContent {
-                            mode: BackendChannelMode::Direct,
+                            mode: backend_channel_mode(channel.mode)?,
                             length: u32::try_from(channel.data_length_frames)
                                 .map_err(|_| "MIDI duration exceeds engine range".to_owned())?,
                             start_state: exact
@@ -5055,23 +5478,37 @@ fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionDat
                 }
             }
             if loop_.composite.is_some() {
-                audio.resize_with(audio_channels as usize, || BackendAudioContent {
-                    mode: BackendChannelMode::Direct,
-                    samples: Vec::new(),
-                    gain: 1.0,
-                    start_offset: 0,
-                    preplay: 0,
-                });
-                midi_channels.resize_with(usize::from(midi), || BackendMidiContent {
-                    mode: BackendChannelMode::Direct,
-                    length: 0,
-                    start_state: Vec::new(),
-                    events: Vec::new(),
-                    start_offset: 0,
-                    preplay: 0,
-                });
+                audio = expected_audio_modes
+                    .iter()
+                    .copied()
+                    .map(|mode| BackendAudioContent {
+                        mode,
+                        samples: Vec::new(),
+                        gain: 1.0,
+                        start_offset: 0,
+                        preplay: 0,
+                    })
+                    .collect();
+                midi_channels = expected_midi_modes
+                    .iter()
+                    .copied()
+                    .map(|mode| BackendMidiContent {
+                        mode,
+                        length: 0,
+                        start_state: Vec::new(),
+                        events: Vec::new(),
+                        start_offset: 0,
+                        preplay: 0,
+                    })
+                    .collect();
             }
-            if audio.len() != audio_channels as usize || midi_channels.len() != usize::from(midi) {
+            if audio.iter().map(|channel| channel.mode).collect::<Vec<_>>() != expected_audio_modes
+                || midi_channels
+                    .iter()
+                    .map(|channel| channel.mode)
+                    .collect::<Vec<_>>()
+                    != expected_midi_modes
+            {
                 return Err(format!("loop {} channel shape is invalid", loop_.id));
             }
             loops.push(BackendLoopContent {
@@ -5091,7 +5528,10 @@ fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionDat
             state,
             loops,
             ports,
-            carla_state: None,
+            carla_state: track
+                .fx_chain
+                .as_ref()
+                .map(|chain| chain.internal_state.clone()),
         });
     }
     Ok(BackendSessionData {
@@ -5100,6 +5540,15 @@ fn session_bundle_to_backend(bundle: &SessionBundle) -> Result<BackendSessionDat
         use_legacy_browser_default_routes: cfg!(target_arch = "wasm32")
             && bundle.document.connection_model_version == 0,
     })
+}
+
+fn backend_channel_mode(value: ChannelModeDocument) -> Result<BackendChannelMode, String> {
+    match value {
+        ChannelModeDocument::Direct => Ok(BackendChannelMode::Direct),
+        ChannelModeDocument::Dry => Ok(BackendChannelMode::Dry),
+        ChannelModeDocument::Wet => Ok(BackendChannelMode::Wet),
+        ChannelModeDocument::Disabled => Err("disabled loop channels are unsupported".to_owned()),
+    }
 }
 
 fn session_data_type(value: PortDataType) -> DataTypeDocument {
@@ -5405,6 +5854,175 @@ mod tests {
         });
         assert_eq!(snapshot.tracks[1].topology, track.topology);
         assert!(snapshot.tracks[1].loops[8].has_audio);
+        runtime
+            .handle()
+            .dispatch(AppIntent::RequestSaveSession)
+            .unwrap();
+        let _ = wait_for(&runtime.handle(), |snapshot| {
+            snapshot
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Completed)
+        });
+        let output = runtime.handle().take_file_output().unwrap();
+        let saved = decode_session(&output.bytes).unwrap();
+        let saved_track = &saved.document.track_groups[1].tracks[0];
+        assert_eq!(
+            saved_track.topology,
+            TrackTopologyDocument::DryWetExternal {
+                dry_audio_channels: 2,
+                wet_audio_channels: 1,
+                dry_midi: true,
+            }
+        );
+        assert_eq!(
+            saved_track
+                .ports
+                .iter()
+                .map(|port| port.role)
+                .collect::<Vec<_>>(),
+            vec![
+                PortRoleDocument::AudioInput,
+                PortRoleDocument::AudioSend,
+                PortRoleDocument::AudioInput,
+                PortRoleDocument::AudioSend,
+                PortRoleDocument::AudioReturn,
+                PortRoleDocument::AudioOutput,
+                PortRoleDocument::MidiInput,
+                PortRoleDocument::MidiSend,
+            ]
+        );
+    }
+
+    #[test]
+    fn processed_track_session_round_trip_preserves_roles_state_and_recorded_take() {
+        let descriptor = shoop_app_api::TrackProcessorDescriptor {
+            id: shoop_app_api::TrackProcessorTypeId::new(
+                shoop_app_api::TrackProcessorTypeId::CARLA_RACK,
+            ),
+            label: "Carla Rack".to_owned(),
+            available: true,
+            unavailable_reason: None,
+            constraints: shoop_app_api::TrackProcessorConstraints {
+                max_dry_audio_channels: Some(2),
+                max_wet_audio_channels: Some(2),
+                dry_midi: true,
+            },
+            features: shoop_app_api::TrackProcessorFeatures {
+                state: true,
+                external_ui: true,
+                recovery: true,
+                logs: true,
+            },
+        };
+        let exact_state = "opaque\0state\nユニコード";
+        let mut backend = FakeBackend::default();
+        backend.set_track_processor_catalog(vec![descriptor]);
+        backend.set_default_fx_state_string(exact_state);
+        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
+                name: "Processed".to_owned(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 1,
+                    dry_midi: true,
+                    processor_type: shoop_app_api::TrackProcessorTypeId::new(
+                        shoop_app_api::TrackProcessorTypeId::CARLA_RACK,
+                    ),
+                },
+            }))
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let track = runtime.snapshot().tracks[1].clone();
+        let loop_id = track.loops[0].id;
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track.id,
+                loop_id,
+                action: LoopAction::RecordClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track.id,
+                loop_id,
+                action: LoopAction::StopClicked,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(runtime.snapshot().tracks[1].loops[0].has_recorded_fx_state);
+
+        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
+        runtime.tick(Duration::ZERO);
+        let output = runtime.take_file_output().unwrap();
+        let saved = decode_session(&output.bytes).unwrap();
+        let saved_track = &saved.document.track_groups[1].tracks[0];
+        assert_eq!(
+            saved_track.topology,
+            TrackTopologyDocument::Carla {
+                chain_type: FxChainTypeDocument::CarlaRack,
+                audio_channels: 1,
+                midi: true,
+                dry_audio_channels: Some(2),
+                wet_audio_channels: Some(1),
+            }
+        );
+        assert_eq!(
+            saved_track.fx_chain.as_ref().unwrap().internal_state,
+            exact_state
+        );
+        assert_eq!(
+            saved_track.loops[0]
+                .channels
+                .iter()
+                .map(|channel| channel.mode)
+                .collect::<Vec<_>>(),
+            vec![
+                ChannelModeDocument::Dry,
+                ChannelModeDocument::Dry,
+                ChannelModeDocument::Wet,
+                ChannelModeDocument::Dry,
+            ]
+        );
+        let take_id = saved_track.loops[0]
+            .channels
+            .iter()
+            .find(|channel| channel.mode == ChannelModeDocument::Wet)
+            .unwrap()
+            .recording_fx_state_id
+            .unwrap();
+        assert_eq!(saved.document.fx_states.len(), 1);
+        assert_eq!(saved.document.fx_states[0].id, take_id);
+        assert_eq!(saved.document.fx_states[0].internal_state, exact_state);
+
+        runtime
+            .dispatch(AppIntent::LoadSessionBytes {
+                name: "processed.shoop".to_owned(),
+                bytes: output.bytes,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        let loaded = runtime.snapshot();
+        assert_eq!(loaded.tracks.len(), 2);
+        assert_eq!(loaded.tracks[1].topology, track.topology);
+        assert!(loaded.tracks[1].loops[0].has_recorded_fx_state);
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: loaded.tracks[1].id,
+                loop_id: loaded.tracks[1].loops[0].id,
+                action: LoopAction::RestoreRecordedFxState,
+            })
+            .unwrap();
+        runtime.tick(Duration::ZERO);
+        assert!(
+            !runtime.snapshot().notifications.iter().any(|notification| {
+                notification.level == NotificationLevel::Error
+                    && notification.message.contains("recorded FX")
+            })
+        );
     }
 
     #[test]
@@ -8208,7 +8826,7 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         assert!(after.notifications.iter().any(|notification| {
             notification
                 .message
-                .contains("unsupported deferred topology")
+                .contains("unsupported trigger topology")
         }));
     }
 
@@ -8405,8 +9023,8 @@ c.register_one_shot_timer_cb(1, function() c.set_sync_active(false) end)
         }
         let exported_audio = decode_loop_audio(&runtime.take_file_output().unwrap().bytes).unwrap();
         assert_eq!(exported_audio.channels.len(), 2);
-        assert_eq!(exported_audio.channels[0].label, "audio 2");
-        assert_eq!(exported_audio.channels[1].label, "audio 1");
+        assert_eq!(exported_audio.channels[0].label, "Direct 2");
+        assert_eq!(exported_audio.channels[1].label, "Direct 1");
         assert_ne!(
             exported_audio.channels[0].samples,
             exported_audio.channels[1].samples

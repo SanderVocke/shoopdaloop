@@ -693,10 +693,14 @@ fn validate_track_channel_shape(
         TrackTopologyDocument::Carla {
             audio_channels,
             midi,
+            dry_audio_channels,
+            wet_audio_channels,
             ..
         } => {
-            count(ChannelModeDocument::Dry, DataTypeDocument::Audio) == audio_channels
-                && count(ChannelModeDocument::Wet, DataTypeDocument::Audio) == audio_channels
+            let dry_audio_channels = dry_audio_channels.unwrap_or(audio_channels);
+            let wet_audio_channels = wet_audio_channels.unwrap_or(audio_channels);
+            count(ChannelModeDocument::Dry, DataTypeDocument::Audio) == dry_audio_channels
+                && count(ChannelModeDocument::Wet, DataTypeDocument::Audio) == wet_audio_channels
                 && count(ChannelModeDocument::Dry, DataTypeDocument::Midi) == u32::from(midi)
                 && channels.iter().all(|channel| {
                     matches!(

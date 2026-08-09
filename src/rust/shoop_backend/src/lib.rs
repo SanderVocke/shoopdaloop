@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use shoop_app_api::{
     AudioDriverConfig, AudioDriverDescriptor, AudioDriverKind, AudioDriverRuntimeState,
     DummyAudioDriverConfig, FxLifecycle, ResolvedAudioDriverConfig, TrackFxState,
-    TrackProcessorDescriptor,
+    TrackProcessorDescriptor, TrackProcessorTypeId,
 };
 use shoop_engine::dummy_midi_port::DummyMidiPort;
 use shoop_engine::dummy_port::{DummyAudioPort, DummyExternalConnections, PortId};
@@ -562,6 +562,9 @@ pub trait Backend {
         _control: BackendTrackFxControl,
     ) -> Result<()> {
         Err(anyhow!("track FX controls are unavailable"))
+    }
+    fn track_fx_state_string(&mut self, _track_id: BackendTrackId) -> Result<Option<String>> {
+        Ok(None)
     }
     fn set_loop_gain(&mut self, loop_id: BackendLoopId, gain: f32) -> Result<()>;
     fn set_loop_balance(&mut self, loop_id: BackendLoopId, balance: f32) -> Result<()>;
@@ -2580,6 +2583,7 @@ pub struct FakeBackend {
     next_port_id: u64,
     fail_track_creation_after: Option<usize>,
     processor_catalog: Arc<[TrackProcessorDescriptor]>,
+    default_fx_state_string: String,
     audio_driver_control: FakeAudioDriverControl,
     operations: Vec<FakeOperation>,
     connections: FakeConnectionControl,
@@ -2592,6 +2596,7 @@ struct FakeTrack {
     state: BackendTrackState,
     loops: Vec<BackendLoopId>,
     ports: Vec<BackendPortId>,
+    fx_state_string: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -2631,6 +2636,7 @@ impl Default for FakeBackend {
             next_port_id: 1,
             fail_track_creation_after: None,
             processor_catalog: Arc::from([]),
+            default_fx_state_string: "{}".to_owned(),
             audio_driver_control: FakeAudioDriverControl::default(),
             operations: Vec::new(),
             connections: FakeConnectionControl {
@@ -2654,16 +2660,22 @@ impl FakeBackend {
         self.processor_catalog = Arc::from(catalog);
     }
 
+    pub fn set_default_fx_state_string(&mut self, state: impl Into<String>) {
+        self.default_fx_state_string = state.into();
+    }
+
     pub fn set_track_fx_state(
         &mut self,
         track_id: BackendTrackId,
         state: TrackFxState,
+        state_string: impl Into<String>,
     ) -> Result<()> {
-        self.tracks
+        let track = self
+            .tracks
             .get_mut(&track_id)
-            .ok_or_else(|| anyhow!("unknown fake track {track_id:?}"))?
-            .state
-            .fx = Some(state);
+            .ok_or_else(|| anyhow!("unknown fake track {track_id:?}"))?;
+        track.state.fx = Some(state);
+        track.fx_state_string = Some(state_string.into());
         Ok(())
     }
 
@@ -2816,6 +2828,87 @@ impl FakeBackend {
                 },
                 loops: Vec::new(),
                 ports: ports.iter().map(|port| port.id).collect(),
+                fx_state_string: None,
+            },
+        );
+        self.operations.push(FakeOperation::CreateTrack(track_id));
+        let mut loops = Vec::with_capacity(request.initial_loops);
+        for _ in 0..request.initial_loops {
+            loops.push(self.add_loop_to_track(track_id)?);
+        }
+        Ok(BackendTrackCreation {
+            track_id,
+            loops,
+            ports,
+        })
+    }
+
+    fn create_processed_track(&mut self, request: TrackRequest) -> Result<BackendTrackCreation> {
+        let BackendTrackTopology::DryWetProcessor {
+            processor_type,
+            dry_audio_channels,
+            wet_audio_channels,
+            dry_midi,
+        } = request.topology.clone()
+        else {
+            return Err(anyhow!("expected processed dry/wet topology"));
+        };
+        if let Some(remaining) = self.fail_track_creation_after.as_mut() {
+            if *remaining == 0 {
+                self.fail_track_creation_after = None;
+                return Err(anyhow!("injected track creation failure"));
+            }
+            *remaining -= 1;
+        }
+        let mut ports = Vec::new();
+        for index in 0..dry_audio_channels {
+            ports.push(self.next_port_descriptor(
+                format!("{}_audio_dry_in_{}", request.port_name_base, index + 1),
+                BackendPortDataType::Audio,
+                BackendPortDirection::Input,
+                BackendPortRole::AudioInput,
+            ));
+        }
+        for index in 0..wet_audio_channels {
+            ports.push(self.next_port_descriptor(
+                format!("{}_audio_wet_out_{}", request.port_name_base, index + 1),
+                BackendPortDataType::Audio,
+                BackendPortDirection::Output,
+                BackendPortRole::AudioOutput,
+            ));
+        }
+        if dry_midi {
+            ports.push(self.next_port_descriptor(
+                format!("{}_dry_midi_in", request.port_name_base),
+                BackendPortDataType::Midi,
+                BackendPortDirection::Input,
+                BackendPortRole::MidiInput,
+            ));
+        }
+        let track_id = BackendTrackId::from_raw(self.next_track_id);
+        self.next_track_id = self.next_track_id.saturating_add(1);
+        self.tracks.insert(
+            track_id,
+            FakeTrack {
+                port_name_base: request.port_name_base,
+                state: BackendTrackState {
+                    topology: request.topology,
+                    fx: Some(TrackFxState {
+                        processor_type: TrackProcessorTypeId::new(processor_type),
+                        active: false,
+                        visible: false,
+                        lifecycle: FxLifecycle::Running,
+                        generation: 1,
+                        crash_summary: None,
+                        logs: Arc::from([]),
+                    }),
+                    audio_channels: wet_audio_channels,
+                    midi: dry_midi,
+                    ..Default::default()
+                },
+                loops: Vec::new(),
+                ports: ports.iter().map(|port| port.id).collect(),
+                fx_state_string: Some(self.default_fx_state_string.clone()),
             },
         );
         self.operations.push(FakeOperation::CreateTrack(track_id));
@@ -3032,9 +3125,7 @@ impl Backend for FakeBackend {
                 initial_loops: request.initial_loops,
             }),
             BackendTrackTopology::DryWetExternal { .. } => self.create_external_track(request),
-            BackendTrackTopology::DryWetProcessor { .. } => {
-                Err(anyhow!("requested track processor is unavailable"))
-            }
+            BackendTrackTopology::DryWetProcessor { .. } => self.create_processed_track(request),
         }
     }
 
@@ -3103,6 +3194,7 @@ impl Backend for FakeBackend {
                 },
                 loops: Vec::new(),
                 ports: ports.iter().map(|port| port.id).collect(),
+                fx_state_string: None,
             },
         );
         self.operations.push(FakeOperation::CreateTrack(track_id));
@@ -3232,6 +3324,15 @@ impl Backend for FakeBackend {
             BackendTrackFxControl::ClearLogs => fx.logs = Arc::from([]),
         }
         Ok(())
+    }
+
+    fn track_fx_state_string(&mut self, track_id: BackendTrackId) -> Result<Option<String>> {
+        Ok(self
+            .tracks
+            .get(&track_id)
+            .ok_or_else(|| anyhow!("unknown fake track {track_id:?}"))?
+            .fx_state_string
+            .clone())
     }
 
     fn set_loop_gain(&mut self, loop_id: BackendLoopId, gain: f32) -> Result<()> {
@@ -3414,7 +3515,7 @@ impl Backend for FakeBackend {
                     state: track.state.clone(),
                     loops,
                     ports,
-                    carla_state: None,
+                    carla_state: track.fx_state_string.clone(),
                 })
             })
             .collect::<Result<Vec<_>>>()?;
@@ -3434,14 +3535,6 @@ impl Backend for FakeBackend {
                 "prepared session sample rate does not match backend"
             ));
         }
-        if session.tracks.iter().any(|track| {
-            track.carla_state.is_some()
-                || matches!(track.topology, BackendTrackTopology::DryWetProcessor { .. })
-        }) {
-            return Err(anyhow!(
-                "requested track processor is unavailable in this backend"
-            ));
-        }
         let external_ports = self
             .connections
             .with_state(|state| state.external_ports.clone());
@@ -3450,6 +3543,9 @@ impl Backend for FakeBackend {
         staged.active_audio_driver = self.active_audio_driver.clone();
         staged.audio_driver_control = self.audio_driver_control.clone();
         staged.processor_catalog = Arc::clone(&self.processor_catalog);
+        staged
+            .default_fx_state_string
+            .clone_from(&self.default_fx_state_string);
         staged.connections.with_state(|state| {
             state.external_ports = external_ports;
         });
@@ -3465,6 +3561,26 @@ impl Backend for FakeBackend {
             })?;
             if created.ports.len() != source_track.ports.len() {
                 return Err(anyhow!("prepared session port shape changed"));
+            }
+            match &source_track.topology {
+                BackendTrackTopology::DryWetProcessor { .. } => {
+                    let state = source_track
+                        .carla_state
+                        .clone()
+                        .ok_or_else(|| anyhow!("processed track has no saved state"))?;
+                    let track = staged
+                        .tracks
+                        .get_mut(&created.track_id)
+                        .ok_or_else(|| anyhow!("missing staged processed track"))?;
+                    track.fx_state_string = Some(state);
+                    if source_track.state.fx.is_some() {
+                        track.state.fx.clone_from(&source_track.state.fx);
+                    }
+                }
+                _ if source_track.carla_state.is_some() => {
+                    return Err(anyhow!("unprocessed track has processor state"));
+                }
+                _ => {}
             }
             for control in [
                 BackendTrackControl::OutputGainDb(source_track.state.output_gain_db),

@@ -307,6 +307,8 @@ mod tests {
                     chain_type: FxChainTypeDocument::CarlaRack,
                     audio_channels: 16,
                     midi: true,
+                    dry_audio_channels: None,
+                    wet_audio_channels: None,
                 },
                 controls: TrackControlsDocument::default(),
                 loops: Vec::new(),
@@ -479,6 +481,7 @@ mod tests {
                 chain_type: FxChainTypeDocument::CarlaRack,
                 audio_channels: 16,
                 midi: true,
+                ..
             }
         ));
     }

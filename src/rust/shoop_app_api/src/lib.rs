@@ -490,6 +490,7 @@ pub struct LoopState {
     pub peak_left_db: f32,
     pub peak_right_db: f32,
     pub midi_activity: bool,
+    pub has_recorded_fx_state: bool,
 }
 
 impl Default for LoopState {
@@ -517,6 +518,7 @@ impl Default for LoopState {
             peak_left_db: -200.0,
             peak_right_db: -200.0,
             midi_activity: false,
+            has_recorded_fx_state: false,
         }
     }
 }
@@ -1057,6 +1059,7 @@ pub enum LoopAction {
     StopClicked,
     GainChanged(f32),
     BalanceChanged(f32),
+    RestoreRecordedFxState,
 }
 
 pub type LoopWidgetAction = LoopAction;

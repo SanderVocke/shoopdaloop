@@ -125,11 +125,11 @@ Verification:
 
 ### Stage 3 — Application model, actions, and Add Track UI
 
-- [ ] Store topology and role metadata in authoritative track/loop models and immutable snapshots; derive control applicability, stereo state, waveform labels, and connection ownership from it.
-- [ ] Generalize Add Track, aligned Add Loop, load/remap, audio-driver switch, loop state publication, and script control paths without regressing direct/sync tracks.
+- [x] Store topology and role metadata in authoritative track/loop models and immutable snapshots; derive control applicability, stereo state, waveform labels, and connection ownership from it.
+- [x] Generalize Add Track, aligned Add Loop, load/remap, audio-driver switch, loop state publication, and script control paths without regressing direct/sync tracks.
 - [x] Implement the egui Regular/Dry + Wet draft UI from the capability catalog—not `cfg`/target branches—with independent channel controls, processor constraints, empty-catalog explanation/disabled acceptance, validation, cancellation, and typed acceptance.
 - [x] Add capability-driven FX status/controls to processed track headers. Render show/hide and recovery only when advertised; for Carla, also render crash details and process logs with refresh/clear/copy and stale-track handling.
-- [ ] Expose a loop action to restore its compatible recorded-wet FX state.
+- [x] Expose a loop action to restore its compatible recorded-wet FX state.
 
 Verification:
 
@@ -140,12 +140,12 @@ Verification:
 
 ### Stage 4 — Role-aware session and loop media I/O
 
-- [ ] Convert role-bearing backend capture into `Direct`/`Dry`/`Wet` `ChannelDocument`s with exact stable media, port references, metadata, and FX descriptors rather than forcing `Direct` topology.
-- [ ] Convert validated dry/wet/Carla documents back into backend DTOs without flattening roles; stage Carla construction and exact state restore before application publication.
-- [ ] Capture one FX state when wet recording begins, retain its exact string/type as `FxStateDocument`, associate affected wet channels, and garbage-collect only unreferenced automatic states on save.
-- [ ] Make waveform/detail labels, audio export selection, and import destination mapping role-aware; support ordered dry-only, wet-only, or mixed exports and imports. Route MIDI import/export to dry MIDI.
-- [ ] Preserve topology, media, Carla state, captured take state, public links, and controls through native driver switches and sample-rate conversion.
-- [ ] Remove the documented runtime capability rejection only for processor types supported by the active backend. Retain transactional capability rejection for browser External/Carla, unknown future processors, buses, and other deferred features.
+- [x] Convert role-bearing backend capture into `Direct`/`Dry`/`Wet` `ChannelDocument`s with exact stable media, port references, metadata, and FX descriptors rather than forcing `Direct` topology.
+- [x] Convert validated dry/wet/Carla documents back into backend DTOs without flattening roles; stage Carla construction and exact state restore before application publication.
+- [x] Capture one FX state when wet recording begins, retain its exact string/type as `FxStateDocument`, associate affected wet channels, and garbage-collect only unreferenced automatic states on save.
+- [x] Make waveform/detail labels, audio export selection, and import destination mapping role-aware; support ordered dry-only, wet-only, or mixed exports and imports. Route MIDI import/export to dry MIDI.
+- [x] Preserve topology, media, Carla state, captured take state, public links, and controls through native driver switches and sample-rate conversion.
+- [x] Remove the documented runtime capability rejection only for processor types supported by the active backend. Retain transactional capability rejection for browser External/Carla, unknown future processors, buses, and other deferred features.
 
 Verification:
 

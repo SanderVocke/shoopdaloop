@@ -172,6 +172,12 @@ impl LoopWidget {
                     ui.close();
                 }
             }
+            if state.has_recorded_fx_state && ui.button("Restore recorded FX state").clicked() {
+                result
+                    .actions
+                    .push(LoopWidgetAction::RestoreRecordedFxState);
+                ui.close();
+            }
             if state.has_midi {
                 if ui.button("Save exact MIDI…").clicked() {
                     result.io_intents.push(AppIntent::RequestLoopMidiExport {
