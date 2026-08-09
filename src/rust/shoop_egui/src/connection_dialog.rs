@@ -461,7 +461,27 @@ mod tests {
     fn clicking_a_rendered_user_managed_cell_emits_the_exact_route_intent() {
         let context = egui::Context::default();
         crate::initialize(&context);
-        let state = state();
+        let mut state = state();
+        let connections = Arc::make_mut(&mut state.connections);
+        connections.application_ports = Arc::from([ApplicationPortState {
+            id: PortId::from_raw(11),
+            owner: ApplicationPortOwner::Track {
+                track_id: TrackId::from_raw(1),
+                kind: TrackPortOwnerKind::Main,
+            },
+            name: "one:midi_in".to_owned(),
+            data_type: PortDataType::Midi,
+            direction: PortDirection::Input,
+            role: PortRole::MidiInput,
+            connection_policy: ConnectionPolicy::UserManaged,
+        }]);
+        connections.host_ports = Arc::from([HostPortState {
+            id: HostPortId::new("webmidi:source:test-input"),
+            name: "Shoop Test: APC MINI MIDI".to_owned(),
+            data_type: PortDataType::Midi,
+            direction: PortDirection::Output,
+        }]);
+        connections.confirmed_links = Arc::from([]);
         let mut dialog = ConnectionDialog::default();
         dialog.open(ConnectionScope::AllTracks);
         let _ = context.run_ui(
@@ -533,7 +553,7 @@ mod tests {
             intents,
             vec![AppIntent::SetPortConnected {
                 port_id: crate::PortId::from_raw(11),
-                host_port_id: crate::HostPortId::new("client:out"),
+                host_port_id: crate::HostPortId::new("webmidi:source:test-input"),
                 connected: true,
             }]
         );
