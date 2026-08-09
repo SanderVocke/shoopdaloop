@@ -16,7 +16,7 @@ pub(crate) fn paint_dial(
     fraction: f32,
     label: &str,
 ) {
-    let visuals = ui.style().interact(response);
+    let _visuals = ui.style().interact(response);
     ui.painter().circle_filled(
         rect.center(),
         rect.width() / 2.0,
